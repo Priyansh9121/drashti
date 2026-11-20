@@ -50,7 +50,122 @@ export class EditService {
     this.wake();
   }
   wake(): void {
-    /* Red scaffold: the idle service has not queued anything yet. */
+    if (this.closed) return;
+    if (this.active) {
+      const current = this.deps.repo.read(this.active.sourceId);
+      if (!current || current.revision !== this.active.revision || current.state !== 'preparing')
+        this.deps.conversions.cancelFile(this.active.job);
+      return;
+    }
+    if (!this.deps.idle()) return;
+    const pending = this.deps.repo.waiting()[0];
+    if (!pending) return;
+    const source = this.deps.source(pending.mediaId);
+    if (!source || !existsSync(source.path)) {
+      this.fail(
+        pending.mediaId,
+        pending.revision,
+        'The source video’s file is missing. Restore it, then Save the edits again.',
+      );
+      return;
+    }
+    const info: MediaInfo = { durationMs: null, video: null, audio: null };
+    let plan: EditPlan | null = null;
+    let checked: MediaInfo | null = null;
+    let copyId: string | null = null;
+    const current = () => {
+      const edit = this.deps.repo.read(pending.mediaId);
+      return !this.closed && edit?.revision === pending.revision && edit.state === 'preparing';
+    };
+    const options: EditCopyOptions = {
+      lengthMs: 0,
+      waitForShow: true,
+      strictPriority: true,
+      inspect: (read) => {
+        if (!current()) return 'These edits have been replaced by a newer save.';
+        Object.assign(info, read);
+        try {
+          plan = editPlan({
+            file: source.path,
+            recipe: pending.recipe,
+            info,
+            identity: `${pending.mediaId}-${String(pending.revision)}`,
+          });
+          options.lengthMs = plan.durationMs;
+        } catch (error) {
+          return error instanceof Error
+            ? error.message
+            : 'The source video could not be prepared. Check its edits, then Save again.';
+        }
+      },
+      args: (temporary) => {
+        if (!plan) throw new Error('The video has not been read by the idle worker.');
+        return plan.args(temporary);
+      },
+      validate: (read) => {
+        if (
+          !plan ||
+          !read.video ||
+          !read.durationMs ||
+          Math.abs(read.durationMs - plan.durationMs) > 250 ||
+          (hasAlpha(info) && !hasAlpha(read))
+        )
+          return 'The edited video did not have the expected picture, length or transparency. Check its source and Save again.';
+        checked = read;
+      },
+      preparePublish: async (temporary, signal) => {
+        if (!checked || !current() || !this.deps.idle())
+          throw new Error('The edits are no longer ready to publish.');
+        copyId = await this.deps.register(temporary, checked, `${source.name} — edited`, signal);
+      },
+      beforePublish: () => {
+        if (!current() || !this.deps.idle()) throw new Error('The showing or saved edits changed.');
+      },
+    };
+    const job = this.deps.conversions.saveCopy(
+      source.path,
+      join(this.work, `${pending.mediaId}-${String(pending.revision)}.copy`),
+      info,
+      options,
+    );
+    this.active = { sourceId: pending.mediaId, revision: pending.revision, job: job.id };
+    void job.done
+      .then(async (result) => {
+        if (result.ok && result.copy) rmSync(result.copy, { force: true });
+        if (!current()) return;
+        if (!result.ok) {
+          if (!result.stopped) this.fail(pending.mediaId, pending.revision, result.message);
+          return;
+        }
+        if (!copyId) {
+          this.fail(
+            pending.mediaId,
+            pending.revision,
+            'The edited file could not be kept. Check free space and Save again.',
+          );
+          return;
+        }
+        // The worker's last idle check and this synchronous CAS are separated only by promise settlement.
+        if (!this.deps.idle()) return;
+        const id = copyId;
+        const completed = await this.deps.write(
+          { signal: new AbortController().signal, allowed: () => current() && this.deps.idle() },
+          () => this.deps.repo.complete(pending.mediaId, pending.revision, id),
+        );
+        if (completed) this.tell(pending.mediaId);
+      })
+      .catch(() => {
+        if (current())
+          this.fail(
+            pending.mediaId,
+            pending.revision,
+            'The edited video could not be prepared. Check its file and free space, then Save again.',
+          );
+      })
+      .finally(() => {
+        this.active = null;
+        if (!this.closed) this.wake();
+      });
   }
   private tell(id: string): void {
     const edit = this.deps.repo.read(id);
