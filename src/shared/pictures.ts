@@ -131,6 +131,8 @@ export interface SharpenJobView {
   key: string;
   data: Uint8Array;
   percent: number;
+  /** Private display-copy job: resize only, with no pixel convolution/readback. */
+  resizeOnly?: true;
   type: 'image/jpeg' | 'image/png';
   maxPixels: number;
   /** The size the screens draw it at (Session 26g): the copy is the picture fitted into it; null, its own size. */
