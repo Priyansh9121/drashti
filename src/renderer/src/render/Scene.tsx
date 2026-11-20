@@ -477,15 +477,18 @@ export const Scene = memo(function Scene({
   // lead's): the Wallpaper's picture is read again as it comes back, and the screen showed black meanwhile. Now what the
   // background drew stays, the Wallpaper out of sight over it, until its picture has come (NothingUp's onDrawn), at
   // most HOLD_FOR_WALLPAPER_MS: never black between. Only when something was drawn, and a wallpaper is chosen.
+  // Followed by what it holds, not by the object (a page's copy of the state may give the same background anew).
+  const backgroundNow = background === null ? null : JSON.stringify(background);
   const [back, setBack] = useState<{
     was: BackgroundLayer | null;
+    wasNow: string | null;
     keep: BackgroundLayer | null;
     n: number;
     done: boolean;
-  }>(() => ({ was: background, keep: null, n: 0, done: true }));
-  if (back.was !== background) {
+  }>(() => ({ was: background, wasNow: backgroundNow, keep: null, n: 0, done: true }));
+  if (back.wasNow !== backgroundNow) {
     const keep = background === null && back.was !== null && drawnKey !== null ? back.was : null;
-    setBack({ was: background, keep, n: back.n + 1, done: keep === null });
+    setBack({ was: background, wasNow: backgroundNow, keep, n: back.n + 1, done: keep === null });
   }
   const holding = !back.done && back.keep !== null && nothingUpNow === 'wallpaper';
   const endHold = useCallback((n: number) => {
