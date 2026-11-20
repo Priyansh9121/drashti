@@ -44,6 +44,7 @@ interface Probe {
 
 type DecodeGlobals = typeof globalThis & {
   drashtiDecodeFrames?: Frame[];
+  drashtiDecodeWindowId?: number;
   drashtiDecodeProbe?: Probe;
   drashtiDecodeCaptureStop?: () => void;
 };
@@ -120,6 +121,7 @@ async function captureHall(app: ElectronApplication, hall: Page): Promise<number
     await w.evaluate((window: BrowserWindow) => {
       const frames: Frame[] = [];
       (globalThis as DecodeGlobals).drashtiDecodeFrames = frames;
+      (globalThis as DecodeGlobals).drashtiDecodeWindowId = window.id;
       window.webContents.beginFrameSubscription(false, (image) => {
         const bytes = image.resize({ width: 32, height: 18 }).toBitmap();
         const sum = [0, 0, 0];
@@ -261,87 +263,206 @@ async function waitCaptured(
   }
 }
 
+/** Failure-only evidence from the actual page and window; never prepares a passing test's picture. */
+async function sayFirstRevealState(app: ElectronApplication, page: Page): Promise<void> {
+  const bounded = async <T>(label: string, promise: Promise<T>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<{ timedOut: string }>((resolve) => {
+          timer = setTimeout(() => resolve({ timedOut: label }), 1000);
+        }),
+      ]);
+    } catch (error) {
+      return { failed: label, error: String(error) };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const dom = await bounded(
+    'page state after failed first-reveal wait',
+    page.evaluate(() => {
+      const describe = (el: HTMLElement) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return {
+          tag: el.tagName,
+          data: Object.fromEntries(Object.entries(el.dataset)),
+          box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          opacity: style.opacity,
+          display: style.display,
+          visibility: style.visibility,
+          background: style.backgroundColor,
+          transform: style.transform,
+        };
+      };
+      const root = document.querySelector<HTMLElement>(
+        '[data-testid="output-root"], [data-testid="program-root"]',
+      );
+      const paint = (globalThis as typeof globalThis & { drashtiPaintLog?: unknown[] }).drashtiPaintLog;
+      return {
+        at: Date.now(),
+        ready: document.readyState,
+        visibility: document.visibilityState,
+        viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
+        root: root ? describe(root) : null,
+        boxes: [
+          ...document.querySelectorAll<HTMLElement>(
+            '[data-box], [data-layer], [data-slide-in], [data-slide]',
+          ),
+        ]
+          .slice(0, 20)
+          .map(describe),
+        images: [...document.images].slice(0, 20).map((img) => ({
+          ...describe(img),
+          src: img.src,
+          currentSrc: img.currentSrc,
+          complete: img.complete,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          decoding: img.decoding,
+          inIncoming: img.closest('[data-slide-in]') !== null,
+        })),
+        painted: paint?.slice(-5) ?? [],
+      };
+    }),
+  );
+  const windows = await bounded(
+    'Main windows after failed first-reveal wait',
+    app.evaluate(({ BrowserWindow }) => ({
+      sourceWindow: (globalThis as DecodeGlobals).drashtiDecodeWindowId ?? null,
+      windows: BrowserWindow.getAllWindows().map((w) => ({
+        id: w.id,
+        url: w.webContents.getURL(),
+        visible: w.isVisible(),
+        minimized: w.isMinimized(),
+        focused: w.isFocused(),
+        bounds: w.getBounds(),
+      })),
+    })),
+  );
+  console.log(`FIRST REVEAL STATE ${JSON.stringify({ dom, windows })}`);
+  // This readback is an intervention AFTER the original wait has failed. Its result cannot turn the failure green.
+  const readback = await bounded(
+    'post-failure native readback',
+    app.evaluate(async ({ BrowserWindow }, url) => {
+      const w = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url);
+      if (!w) return { missingWindow: true };
+      const image = await w.webContents.capturePage();
+      const size = image.getSize();
+      const bytes = image.resize({ width: 32, height: 18 }).toBitmap();
+      const sum = [0, 0, 0];
+      let count = 0;
+      for (let y = 4; y < 14; y++)
+        for (let x = 8; x < 24; x++) {
+          const i = (y * 32 + x) * 4;
+          sum[0] = (sum[0] ?? 0) + (bytes[i + 2] ?? 0);
+          sum[1] = (sum[1] ?? 0) + (bytes[i + 1] ?? 0);
+          sum[2] = (sum[2] ?? 0) + (bytes[i] ?? 0);
+          count++;
+        }
+      return {
+        id: w.id,
+        size,
+        rgb: sum.map((n) => n / count),
+        subscriptionFramesAfterReadback: (globalThis as DecodeGlobals).drashtiDecodeFrames?.length ?? 0,
+      };
+    }, page.url()),
+  );
+  console.log(`FIRST REVEAL READBACK ${JSON.stringify(readback)}`);
+}
+
 for (const place of ['hall', 'stream'] as const) {
   test(`${place}: a loaded but undecoded slide picture never cuts in without its pixels (X19 L7)`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    const dir = mkdtempSync(join(tmpdir(), 'drashti-decode-first-'));
-    const [picture = ''] = await importAndGetIds(win, [
-      await bigPicture(win, join(dir, 'Placeholder large noise.png')),
-    ]);
-    const id = await makeSlides(
-      win,
-      'Placeholder decode first',
-      [{ background: '#202020' }, { picture, background: '#606060' }],
-      { kind: 'cut', durationMs: 0 },
-    );
-    let page: Page;
-    let pixelsBy: number;
-    if (place === 'hall') {
-      await setUpScreen(win);
-      page = await outputPage(app);
-      await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
-      pixelsBy = await captureHall(app, page);
-    } else {
-      await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
-      await win.getByTestId('open-stream').click();
-      page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
-      await expect(page.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready');
-      pixelsBy = await captureStream(page);
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      const dir = mkdtempSync(join(tmpdir(), 'drashti-decode-first-'));
+      const [picture = ''] = await importAndGetIds(win, [
+        await bigPicture(win, join(dir, 'Placeholder large noise.png')),
+      ]);
+      const id = await makeSlides(
+        win,
+        'Placeholder decode first',
+        [{ background: '#202020' }, { picture, background: '#606060' }],
+        { kind: 'cut', durationMs: 0 },
+      );
+      let page: Page;
+      let pixelsBy: number;
+      if (place === 'hall') {
+        await setUpScreen(win);
+        page = await outputPage(app);
+        await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+        pixelsBy = await captureHall(app, page);
+      } else {
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
+        await win.getByTestId('open-stream').click();
+        page = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
+        await expect(page.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready');
+        pixelsBy = await captureStream(page);
+      }
+      const frames = () =>
+        place === 'hall'
+          ? app.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? [])
+          : page.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? []);
+      await holdPreload(page, picture);
+      await goLive(win, id, 0);
+      try {
+        await waitCaptured(frames, OLD, pixelsBy);
+      } catch (error) {
+        await sayFirstRevealState(app, page);
+        throw error;
+      }
+      const preload = page.locator(`img[data-preload="${picture}"]`);
+      await expect(preload).toHaveAttribute('data-state', 'loading');
+      await expect
+        .poll(() =>
+          preload.evaluate(
+            (img: HTMLImageElement, width) => img.complete && img.naturalWidth === width,
+            SIZE.width,
+          ),
+        )
+        .toBe(true);
+      const from = Date.now();
+      await goLive(win, id, 1);
+      // Observe the first actual cut frame before the probe can start a native decode and hide the fault. A correct
+      // output's first changed frame is already the full picture; the old fast path first paints the slide background.
+      await expect
+        .poll(async () => (await frames()).some((frame) => frame.t >= from && !matches(frame, OLD)))
+        .toBe(true);
+      const probe = await page.evaluate(() => {
+        const probe = (globalThis as DecodeGlobals).drashtiDecodeProbe;
+        probe?.release();
+        const img = document.querySelector<HTMLImageElement>('[data-slide-in] img');
+        if (img) void img.decode().catch(() => undefined);
+        return { loadedAtCut: probe?.loadedAtCut, widthAtCut: probe?.widthAtCut };
+      });
+      await waitCaptured(frames, PICTURE, from + 20_000);
+      expect(probe, 'the cut exercised a genuinely loaded picture, before its preload decoded it').toEqual({
+        loadedAtCut: true,
+        widthAtCut: SIZE.width,
+      });
+      const cut = (await frames()).filter((frame) => frame.t >= from);
+      const bad = cut.filter((frame) => !matches(frame, OLD) && !matches(frame, PICTURE));
+      const line = cut
+        .slice(0, 40)
+        .map((frame) => `${String(frame.t - from)}ms:${frame.rgb.map(Math.round).join(',')}`)
+        .join(' ');
+      console.log(`${place} loaded-before-decode cut: ${String(cut.length)} frames; ${line}`);
+      expect(
+        cut.some((frame) => matches(frame, PICTURE)),
+        'the new picture was actually captured',
+      ).toBe(true);
+      expect(
+        bad,
+        `${place}: frames showing neither the old slide nor the new picture whole; ${line}`,
+      ).toEqual([]);
+    } finally {
+      await app.close();
     }
-    const frames = () =>
-      place === 'hall'
-        ? app.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? [])
-        : page.evaluate(() => (globalThis as DecodeGlobals).drashtiDecodeFrames ?? []);
-    await holdPreload(page, picture);
-    await goLive(win, id, 0);
-    await waitCaptured(frames, OLD, pixelsBy);
-    const preload = page.locator(`img[data-preload="${picture}"]`);
-    await expect(preload).toHaveAttribute('data-state', 'loading');
-    await expect
-      .poll(() =>
-        preload.evaluate(
-          (img: HTMLImageElement, width) => img.complete && img.naturalWidth === width,
-          SIZE.width,
-        ),
-      )
-      .toBe(true);
-    const from = Date.now();
-    await goLive(win, id, 1);
-    // Observe the first actual cut frame before the probe can start a native decode and hide the fault. A correct
-    // output's first changed frame is already the full picture; the old fast path first paints the slide background.
-    await expect
-      .poll(async () => (await frames()).some((frame) => frame.t >= from && !matches(frame, OLD)))
-      .toBe(true);
-    const probe = await page.evaluate(() => {
-      const probe = (globalThis as DecodeGlobals).drashtiDecodeProbe;
-      probe?.release();
-      const img = document.querySelector<HTMLImageElement>('[data-slide-in] img');
-      if (img) void img.decode().catch(() => undefined);
-      return { loadedAtCut: probe?.loadedAtCut, widthAtCut: probe?.widthAtCut };
-    });
-    await waitCaptured(frames, PICTURE, from + 20_000);
-    expect(probe, 'the cut exercised a genuinely loaded picture, before its preload decoded it').toEqual({
-      loadedAtCut: true,
-      widthAtCut: SIZE.width,
-    });
-    const cut = (await frames()).filter((frame) => frame.t >= from);
-    const bad = cut.filter((frame) => !matches(frame, OLD) && !matches(frame, PICTURE));
-    const line = cut
-      .slice(0, 40)
-      .map((frame) => `${String(frame.t - from)}ms:${frame.rgb.map(Math.round).join(',')}`)
-      .join(' ');
-    console.log(`${place} loaded-before-decode cut: ${String(cut.length)} frames; ${line}`);
-    expect(
-      cut.some((frame) => matches(frame, PICTURE)),
-      'the new picture was actually captured',
-    ).toBe(true);
-    expect(bad, `${place}: frames showing neither the old slide nor the new picture whole; ${line}`).toEqual(
-      [],
-    );
-    await app.close();
   });
 }
 
