@@ -39,7 +39,13 @@ const clip = (file: string, size: string, interlaced = false) =>
   ]);
 
 async function start(env: Record<string, string> = {}): Promise<{ app: ElectronApplication; win: Page }> {
-  const { app } = await launchApp({ DRASHTI_TEST_AUTO_SCREENS: 'pretend', ...env });
+  // An audience screen of its own, set by itself, in a window (as video-no-picture.spec.ts has one).
+  const { app } = await launchApp({
+    DRASHTI_TEST_AUTO_SCREENS: 'pretend',
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_DISPLAY_CHANGES: '1',
+    ...env,
+  });
   const win = await operatorPage(app);
   await operatorReady(win);
   return { app, win };
@@ -136,7 +142,7 @@ test('an 8K H.264, read by FFmpeg at import: converted by itself to a 2160p copy
     const [id = ''] = await importAndGetIds(win, [clip(join(dir, 'Placeholder 8K clip.mp4'), '7680x4320')]);
     expect(id).not.toBe('');
     // Never up as it is: Media says why, by its size.
-    expect(await unplayableOf(win, id)).toMatch(/7680 × 4320/u);
+    expect((await unplayableOf(win, id)) ?? 'plays as it is').toMatch(/7680 × 4320/u);
     const copy = await convertedCopy(win, id);
     expect(await pictureOf(win, copy)).toEqual({ width: 3840, height: 2160, scan: 'progressive' });
     await drawsOnTheHall(win, hall, copy);
@@ -152,7 +158,7 @@ test('an 8K H.264 judged by its header alone (as a library from before Session 5
   try {
     const [id = ''] = await importAndGetIds(win, [clip(join(dir, 'Placeholder 8K header.mp4'), '7680x4320')]);
     expect(id).not.toBe('');
-    expect(await unplayableOf(win, id)).toMatch(/7680 × 4320/u);
+    expect((await unplayableOf(win, id)) ?? 'plays as it is').toMatch(/7680 × 4320/u);
   } finally {
     await app.close();
   }
@@ -169,7 +175,7 @@ test('an interlaced H.264: converted by itself into a progressive copy, never up
     ]);
     expect(id).not.toBe('');
     expect(await pictureOf(win, id)).toMatchObject({ scan: 'top first' });
-    expect(await unplayableOf(win, id)).toMatch(/interlaced/u);
+    expect((await unplayableOf(win, id)) ?? 'plays as it is').toMatch(/interlaced/u);
     const copy = await convertedCopy(win, id);
     expect(await pictureOf(win, copy)).toEqual({ width: 640, height: 360, scan: 'progressive' });
     await drawsOnTheHall(win, hall, copy);
