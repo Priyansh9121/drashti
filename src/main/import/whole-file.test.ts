@@ -1,7 +1,12 @@
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
+import { compoundFile } from './testing/compound-file';
+import { makeOldWordDoc } from './testing/make-docx';
 import { makeZip } from './testing/zip-writer';
 import { wholeFile } from './whole-file';
 
@@ -263,7 +268,7 @@ describe('a file whole or cut, every kind that says where it ends (Q60-31)', () 
     await tellsBoth('picture.jp2', jp2, cut(jp2, 1500));
   });
 
-  it('what truly cannot tell (no size nor end mark in its own bytes) says so: an MPEG-TS, a raw AAC or AC-3, a FLAC, a TIFF', async () => {
+  it('what truly cannot tell (no size nor end mark in its own bytes) says so: an MPEG-TS of whole packets, a raw AAC or AC-3', async () => {
     const ts = Buffer.alloc(188 * 20, 0xff);
     for (let i = 0; i < 20; i++) ts[i * 188] = 0x47;
     expect(await wholeFile(await at('camera.mts', ts))).toBe('unknown');
@@ -275,12 +280,6 @@ describe('a file whole or cut, every kind that says where it ends (Q60-31)', () 
     expect(
       await wholeFile(await at('sound.ac3', Buffer.from([0x0b, 0x77, ...new Array<number>(500).fill(1)]))),
     ).toBe('unknown');
-    expect(await wholeFile(await at('sound.flac', Buffer.from(`fLaC${'x'.repeat(500)}`, 'latin1')))).toBe(
-      'unknown',
-    );
-    expect(await wholeFile(await at('scan.tif', Buffer.from(`II*\0${'x'.repeat(500)}`, 'latin1')))).toBe(
-      'unknown',
-    );
   });
 });
 
@@ -365,5 +364,159 @@ describe('a file whole or cut: the odd turns of real files (Q60-31)', () => {
     const m2ts = stream(192, 4, 30);
     expect(await wholeFile(await at('whole.m2ts', m2ts))).toBe('unknown');
     expect(await wholeFile(await at('cut.mts', m2ts.subarray(0, 192 * 20 + 64)))).toBe('cut');
+  });
+});
+
+/** Each whole one, then cut at these shares of its length: whole, then cut each time. */
+async function wholeThenCut(name: string, whole: Buffer, shares = [0.5, 0.9]): Promise<void> {
+  expect(await wholeFile(await at(name, whole)), `${name} whole`).toBe('whole');
+  for (const share of shares)
+    expect(
+      await wholeFile(
+        await at(`cut-${String(share)}-${name}`, whole.subarray(0, Math.floor(whole.length * share))),
+      ),
+      `${name} cut at ${String(share * 100)} %`,
+    ).toBe('cut');
+}
+
+const ffmpeg = testFfmpeg();
+
+/** A file the bundled FFmpeg makes, as a program would write it (generated, placeholder only). */
+function made(name: string, args: string[]): Buffer {
+  const out = join(dir, `made-${name}`);
+  const r = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', ...args, out], {
+    timeout: 60_000,
+  });
+  if (r.status !== 0) throw new Error(`FFmpeg could not make ${name}: ${r.stderr.toString()}`);
+  return readFileSync(out);
+}
+
+const SINE = ['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100:duration=3'];
+const BARS = (size: string, seconds: number) => [
+  '-f',
+  'lavfi',
+  '-i',
+  `testsrc=size=${size}:rate=25:duration=${String(seconds)}`,
+];
+
+/** The kinds whose own bytes tell, read further than a header (Q60-46 (2), the owner's answer A through the lead). */
+describe.skipIf(!ffmpegHere(ffmpeg))(
+  'a file whole or cut, the kinds told on a longer read, as FFmpeg writes them (Q60-46)',
+  () => {
+    it('FLAC: its last frame, by its number and its own check, against the samples its header counts (a tag after it too)', async () => {
+      const flac = made('song.flac', [...SINE, '-c:a', 'flac']);
+      await wholeThenCut('song.flac', flac, [0.5, 0.9, 0.999]);
+      const tagged = Buffer.concat([flac, Buffer.from(`TAG${'x'.repeat(125)}`, 'latin1')]);
+      expect(await wholeFile(await at('tagged.flac', tagged))).toBe('whole');
+    });
+
+    it('TIFF: its strips within the file', async () => {
+      await wholeThenCut(
+        'scan.tif',
+        made('scan.tif', [...BARS('320x240', 1), '-frames:v', '1', '-c:v', 'tiff']),
+      );
+    });
+
+    it('Targa, run-length and plain: its picture data within the file', async () => {
+      await wholeThenCut(
+        'rle.tga',
+        made('rle.tga', [...BARS('160x120', 1), '-frames:v', '1', '-c:v', 'targa']),
+      );
+      await wholeThenCut(
+        'plain.tga',
+        made('plain.tga', [...BARS('160x120', 1), '-frames:v', '1', '-c:v', 'targa', '-rle', '0']),
+      );
+    });
+
+    it('ICO: each picture within the file', async () => {
+      await wholeThenCut('icon.ico', made('icon.ico', [...BARS('64x64', 1), '-frames:v', '1']));
+    });
+
+    it('FLV: its last tag ends where its last tag size says', async () => {
+      await wholeThenCut('clip.flv', made('clip.flv', [...BARS('320x240', 2), '-c:v', 'flv', '-an']));
+    });
+
+    it('MXF: its random index pack at its end; cut before its footer', async () => {
+      await wholeThenCut(
+        'camera.mxf',
+        made('camera.mxf', [...BARS('720x576', 1), '-c:v', 'mpeg2video', '-an']),
+      );
+    });
+
+    it('RealMedia: its chunks within the file', async () => {
+      await wholeThenCut('old.rm', made('old.rm', [...BARS('320x240', 2), '-c:v', 'rv10', '-an']));
+    });
+
+    it('CAF and AU: their sizes', async () => {
+      await wholeThenCut('sound.caf', made('sound.caf', [...SINE, '-c:a', 'pcm_s16le', '-f', 'caf']));
+      await wholeThenCut('sound.au', made('sound.au', [...SINE, '-c:a', 'pcm_s16be', '-f', 'au']));
+    });
+
+    it('WavPack: its last block ends the samples its blocks count', async () => {
+      await wholeThenCut('sound.wv', made('sound.wv', [...SINE, '-c:a', 'wavpack']));
+    });
+
+    it('DV: whole frames of a DV picture (144,000 bytes in PAL); one ending part-way through a frame is cut', async () => {
+      const dv = made('tape.dv', [
+        ...BARS('720x576', 1),
+        '-c:v',
+        'dvvideo',
+        '-pix_fmt',
+        'yuv420p',
+        '-an',
+        '-f',
+        'dv',
+      ]);
+      expect(await wholeFile(await at('whole.dv', dv))).toBe('unknown');
+      expect(await wholeFile(await at('cut.dv', dv.subarray(0, 144_000 * 3 + 5000)))).toBe('cut');
+    });
+  },
+);
+
+describe('a file whole or cut, the kinds no FFmpeg here writes (Q60-46)', () => {
+  it('PSD: its sections and its picture data, plain and run-length', async () => {
+    const psd = (rle: boolean) => {
+      const head = Buffer.alloc(26);
+      head.write('8BPS', 0, 'latin1');
+      head.writeUInt16BE(1, 4);
+      head.writeUInt16BE(3, 12);
+      head.writeUInt32BE(64, 14);
+      head.writeUInt32BE(64, 18);
+      head.writeUInt16BE(8, 22);
+      head.writeUInt16BE(3, 24);
+      const sections = Buffer.alloc(12); // colour mode data, image resources, layers and masks: none
+      if (!rle) return Buffer.concat([head, sections, Buffer.from([0, 0]), Buffer.alloc(3 * 64 * 64, 7)]);
+      // Each row of each channel packed as one run of 64 (PackBits: -63, then the byte): 2 bytes a row.
+      const counts = Buffer.alloc(3 * 64 * 2);
+      for (let r = 0; r < 3 * 64; r++) counts.writeUInt16BE(2, r * 2);
+      const rows = Buffer.alloc(3 * 64 * 2);
+      for (let r = 0; r < 3 * 64; r++) rows.set([0xc1, 7], r * 2);
+      return Buffer.concat([head, sections, Buffer.from([0, 1]), counts, rows]);
+    };
+    await wholeThenCut('plain.psd', psd(false));
+    await wholeThenCut('packed.psd', psd(true));
+  });
+
+  it('APE (Monkey’s Audio): the lengths its descriptor gives', async () => {
+    const ape = Buffer.alloc(1124, 3);
+    ape.write('MAC ', 0, 'latin1');
+    ape.writeUInt16LE(3990, 4);
+    ape.writeUInt16LE(0, 6);
+    for (const [at, v] of [
+      [8, 52],
+      [12, 24],
+      [16, 4],
+      [20, 44],
+      [24, 1000],
+      [28, 0],
+      [32, 0],
+    ] as const)
+      ape.writeUInt32LE(v, at);
+    await wholeThenCut('sound.ape', ape);
+  });
+
+  it('an old PowerPoint or Word file (an Office compound file): the last sector its table uses', async () => {
+    await wholeThenCut('deck.ppt', compoundFile('PowerPoint Document'));
+    await wholeThenCut('notes.doc', makeOldWordDoc());
   });
 });
