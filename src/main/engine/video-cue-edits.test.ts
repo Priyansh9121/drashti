@@ -5,6 +5,7 @@ import { ShowEngine } from './show-engine';
 import { MemoryPlaylistSource } from './playlist-source';
 import { makeSource, RecordingTransport } from './testing';
 import { prepareVideoEdits } from './video-edit-ready';
+import { prepareVideoProxies } from '../convert/proxy-showing';
 
 it('Cue refuses a preparing saved edit before loading an unedited private frame and preserves LIVE', () => {
   const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => 1000, undefined, {
@@ -167,4 +168,40 @@ it('keeps a preparing automatic edit visibly unavailable and holds the current v
   if (!cue) throw new Error('No visible preparing reason');
   expect(engine.dispatch({ type: 'goVideoCue', cueId: cue.id })).toMatchObject({ ok: false });
   expect(engine.current.layers.background).toMatchObject({ mediaId: 'first' });
+});
+
+it('repeated Cue readiness through Main’s edit and lighter-copy hooks sends no new state while LIVE video continues', () => {
+  const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => 1000, undefined, {
+    schedule: () => () => undefined,
+    mediaKind: () => 'video',
+    mediaLength: () => 10_000,
+    videoCueParticipants: () => ['hall'],
+    prepareVideoEdits: (previous, next, historic) => {
+      const edited = prepareVideoEdits(previous, next, () => null, historic);
+      return edited.state
+        ? prepareVideoProxies(previous, edited.state, (id) => ({ mediaId: id, message: null }), historic)
+        : edited;
+    },
+  });
+  engine.dispatch({
+    type: 'setBackground',
+    background: { kind: 'media', mediaId: 'first', media: 'video', fit: 'fit', loop: true },
+  });
+  engine.dispatch({ type: 'cueVideo', mediaId: 'second' });
+  const cue = engine.current.videoCue;
+  if (!cue) throw new Error('No private cue');
+  expect(engine.reportVideoCue(cue.id, 'hall', true)).toMatchObject({ ok: true, changed: true });
+  const before = engine.current;
+  const revision = engine.rev;
+  let broadcasts = 0;
+  const stop = engine.onChange(() => broadcasts++);
+  try {
+    for (let n = 0; n < 3; n++) engine.reportVideoCue(cue.id, 'hall', true);
+    expect(broadcasts, 'a renderer re-acknowledging its loaded frame must not sustain an IPC loop').toBe(0);
+    expect(engine.rev).toBe(revision);
+    expect(engine.current).toBe(before);
+    expect(engine.current.layers.background).toMatchObject({ mediaId: 'first' });
+  } finally {
+    stop();
+  }
 });
