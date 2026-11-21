@@ -108,6 +108,48 @@ it('rejects a non-byte chunk before asking for more or losing the byte bound', a
   expect(body.locked).toBe(false);
 });
 
+it('preserves ordered bytes when a multi-chunk producer reuses its view', async () => {
+  const view = new Uint8Array(3);
+  let produced = 0;
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (produced === 4) {
+          controller.close();
+          return;
+        }
+        view.fill(++produced);
+        controller.enqueue(view);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const blob = await readDisplaySource(URL, 12, () =>
+    Promise.resolve(new Response(body, { headers: { 'Content-Length': '12' } })),
+  );
+  expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4]);
+  expect(blob.type).toBe('');
+});
+
+it('cancels and releases the original reader if its native Blob consumer fails', async () => {
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({ cancel }, { highWaterMark: 0 });
+  const blob = vi
+    .spyOn(Response.prototype, 'blob')
+    .mockRejectedValueOnce(new Error('Native Blob consumer failed.'));
+  try {
+    await expect(
+      readDisplaySource(URL, 8, () =>
+        Promise.resolve(new Response(body, { headers: { 'Content-Length': '4' } })),
+      ),
+    ).rejects.toThrow('Native Blob consumer failed.');
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
+  } finally {
+    blob.mockRestore();
+  }
+});
+
 it('keeps the source failure when the native Blob consumer reports a generic fetch failure', async () => {
   const failure = new Error('Synthetic original source failure.');
   const body = new ReadableStream<Uint8Array>(

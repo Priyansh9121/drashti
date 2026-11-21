@@ -38,23 +38,47 @@ export async function readDisplaySource(
   )
     return reject('The picture source exceeds its byte limit.');
   const reader = response.body.getReader();
-  const parts: BlobPart[] = [];
-  let bytes = 0;
-  let complete = false;
+  const transfer: { bytes: number; complete: boolean; failure: { reason: unknown } | null } = {
+    bytes: 0,
+    complete: false,
+    failure: null,
+  };
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > maxBytes || bytes > expected) throw new Error('The picture source exceeds its byte limit.');
-      parts.push(new Uint8Array(value));
-    }
-    if (bytes !== expected) throw new Error('The picture source ended before its advertised length.');
-    complete = true;
-    // Empty MIME preserves Chromium's source-format sniffing, independently of the output encoding.
-    return new Blob(parts);
+    // Feed the native Blob consumer as bytes arrive, with only the current chunk kept by this reader.
+    const body = new ReadableStream<Uint8Array>(
+      {
+        async pull(controller) {
+          try {
+            const chunk = await reader.read();
+            if (chunk.done) {
+              if (transfer.bytes !== expected)
+                throw new Error('The picture source ended before its advertised length.');
+              transfer.complete = true;
+              controller.close();
+              return;
+            }
+            const value: unknown = chunk.value;
+            if (!(value instanceof Uint8Array)) throw new Error('The picture source did not supply bytes.');
+            transfer.bytes += value.byteLength;
+            if (transfer.bytes > maxBytes || transfer.bytes > expected)
+              throw new Error('The picture source exceeds its byte limit.');
+            // Snapshot a producer's view before its next read can reuse the buffer.
+            controller.enqueue(new Uint8Array(value));
+          } catch (reason) {
+            transfer.failure = { reason };
+            throw reason;
+          }
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    // No Content-Type keeps the existing empty Blob MIME and Chromium's source-format sniffing.
+    return await new Response(body).blob();
+  } catch (error) {
+    if (transfer.failure) throw transfer.failure.reason;
+    throw error;
   } finally {
-    if (!complete) await reader.cancel().catch(() => undefined);
+    if (!transfer.complete) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
