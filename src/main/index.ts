@@ -806,7 +806,10 @@ async function paced(response: Response, mediaId: string | null): Promise<Respon
 // the main process 60 to 180 ms each time a sound started on Windows (the performance check's trace).
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 // Sound-only elements select no video track, avoiding unused software picture decoding (S5).
-app.commandLine.appendSwitch('enable-blink-features', 'AudioVideoTracks');
+app.commandLine.appendSwitch(
+  'enable-blink-features',
+  [app.commandLine.getSwitchValue('enable-blink-features'), 'AudioVideoTracks'].filter(Boolean).join(','),
+);
 
 // The show's own process first (Session 15): on a two-core PC with no graphics chip, the windows decoding
 // video at the same priority kept the main process (every slide change, and the screens' media) waiting
