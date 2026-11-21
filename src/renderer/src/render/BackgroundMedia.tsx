@@ -1,3 +1,4 @@
+import { cuePresentation } from './cue-presentation';
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
 import { reportVideoCue, reportLoadedVideoCue } from './video-cue-report';
 import {
@@ -104,6 +105,13 @@ function VideoSlot({
     // A hidden private video may never receive a compositor callback. Its trimmed decoded frame is ready;
     // the armed Go lead warms its decoder silently before the shared moment (playback.ts).
     let settled = false;
+    const ready = () => {
+      settled = true;
+      reportVideoCue(layer.cueId, 'picture', true);
+      if (privateCue.current) dispatch({ type: 'ready', key, at: engineNow() });
+      else dispatch({ type: 'loaded', key });
+    };
+    const presentation = layer.cueId ? cuePresentation(v, ready) : null;
     const p = startPlayback(v, {
       mediaId,
       attempt,
@@ -117,15 +125,11 @@ function VideoSlot({
           if (!privateCue.current) tellNoPicture(mediaId, startedAt);
           return;
         }
-        settled = true;
-        reportVideoCue(layer.cueId, 'picture', true);
-        if (privateCue.current) dispatch({ type: 'ready', key, at: engineNow() });
-        else {
-          // Ordinary hand-over still keeps its previous picture until native presentation.
-          dispatch({ type: 'loaded', key });
-        }
+        if (presentation) presentation.decoded();
+        else ready();
       },
       onError: (error) => {
+        presentation?.stop();
         settled = true;
         reportVideoCue(layer.cueId, 'picture', false);
         if (!privateCue.current) tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
@@ -151,6 +155,7 @@ function VideoSlot({
     return () => {
       settled = true;
       stopWatch();
+      presentation?.stop();
       playback.current = null;
       p();
     };
