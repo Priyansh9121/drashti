@@ -194,6 +194,31 @@ describe('a stream link’s player on a page', () => {
     }
   });
 
+  it('rejoins a sound player stalled without a media error instead of leaving it silent at current data', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 50 };
+    const el = new FakeLive(0, 100);
+    const rejoin = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: true,
+      onBehind: rejoin,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(el.paused).toBe(false);
+      const held = el.currentTime;
+      Object.defineProperty(el, 'currentTime', { get: () => held });
+      el.readyState = 2;
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(el.readyState).toBe(2);
+      expect(el.paused).toBe(false);
+      expect(el.error).toBeNull();
+      expect(rejoin).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
   it('a recovering picture loads at its joined moment and plays as data arrives, without another early hold', async () => {
     joinAt = { segment: 5, startAt: Date.now() + 2500 };
     const el = new FakeLive(0, 100);
