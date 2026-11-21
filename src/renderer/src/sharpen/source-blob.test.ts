@@ -83,3 +83,68 @@ it('requires a whole source and a bounded advertised length', async () => {
     ),
   ).rejects.toThrow();
 });
+
+it('rejects a non-byte chunk before asking for more or losing the byte bound', async () => {
+  let reads = 0;
+  const cancel = vi.fn();
+  const body = new ReadableStream<unknown>(
+    {
+      pull(controller) {
+        reads++;
+        if (reads === 1) controller.enqueue('invalid');
+        else controller.error(new Error('Reader asked after a non-byte chunk.'));
+      },
+      cancel,
+    },
+    { highWaterMark: 0 },
+  );
+  const response = new Response(null, { headers: { 'Content-Length': '4' } });
+  Object.defineProperty(response, 'body', { value: body });
+  await expect(readDisplaySource(URL, 8, () => Promise.resolve(response))).rejects.toThrow(
+    'The picture source did not supply bytes.',
+  );
+  expect(reads).toBe(1);
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(body.locked).toBe(false);
+});
+
+it('keeps the source failure when the native Blob consumer reports a generic fetch failure', async () => {
+  const failure = new Error('Synthetic original source failure.');
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        controller.error(failure);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  // Chromium BodyConsumerBase::DidFetchDataLoadFailed rejects with a new generic TypeError.
+  const blob = vi.spyOn(Response.prototype, 'blob').mockImplementationOnce(async function (this: Response) {
+    const reader = this.body?.getReader();
+    if (!reader) throw new Error('The synthetic Blob has no source body.');
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) return new Blob([]);
+      }
+    } catch (cause) {
+      throw new TypeError('Failed to fetch', { cause });
+    } finally {
+      reader.releaseLock();
+    }
+  });
+  try {
+    await expect(
+      readDisplaySource(URL, 8, () =>
+        Promise.resolve(
+          new Response(body, {
+            headers: { 'Content-Length': '4' },
+          }),
+        ),
+      ),
+    ).rejects.toBe(failure);
+  } finally {
+    blob.mockRestore();
+  }
+  expect(body.locked).toBe(false);
+});
