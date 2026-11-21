@@ -170,6 +170,36 @@ describe('a stream link’s sound in the hall', () => {
     }
   });
 
+  it('a replacement never replays an old joined segment while the source has no fresh future start', async () => {
+    let fresh = false;
+    vi.stubGlobal('drashti', {
+      liveLink: {
+        join: () => {
+          joins++;
+          return Promise.resolve({
+            segment: joins + 4,
+            startAt: Date.now() + (joins === 1 || fresh ? 50 : -2000),
+          });
+        },
+      },
+    });
+    const el = new FailsOnce();
+    const linked = startLinkSound(el as unknown as HTMLMediaElement, LINK);
+    try {
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(joins).toBe(2);
+      expect(el.loads).toBe(1);
+      expect(el.src).toBe('');
+      fresh = true;
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(el.loads).toBe(2);
+      expect(el.error).toBeNull();
+      expect(el.paused).toBe(false);
+    } finally {
+      linked.stop();
+    }
+  });
+
   it('stopped, it never joins again', async () => {
     const el = new FailsOnce();
     const linked = startLinkSound(el as unknown as HTMLMediaElement, LINK);
