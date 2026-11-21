@@ -23,10 +23,12 @@ export function startLinkSound(el: HTMLMediaElement, linkId: string): LinkSound 
   let stopLive: () => void = () => undefined;
   let again: ReturnType<typeof setTimeout> | null = null;
   let on = true;
+  let joinAtMoment = false;
   const live = (): void => {
     stopLive = startLivePlayback(el, {
       linkId,
       audible: true,
+      joinAtMoment,
       onBehind: () => {
         resync();
       },
@@ -43,6 +45,7 @@ export function startLinkSound(el: HTMLMediaElement, linkId: string): LinkSound 
     if (again) clearTimeout(again);
     again = null;
     stopLive();
+    joinAtMoment = true;
     live();
   };
   live();
