@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { APPEARANCE_FAMILIES, BUILT_IN, familyOf } from '../../src/shared/appearance/appearances';
-import { expectNoSeriousA11yIssues } from './a11y';
+import { expectNoSeriousA11yIssues, settled } from './a11y';
 import {
   chooseMenuItem,
   launchApp,
@@ -46,7 +46,9 @@ test('every appearance in its family, in the window’s order; found by a word o
     );
   }
   await expect(choices(win)).toHaveCount(BUILT_IN.length + 1);
-  // It fits: nothing wider than the window, nothing below it but what scrolls inside the sheet.
+  // It fits: nothing wider than the window, nothing below it but what scrolls inside the sheet. Measured once the sheet has
+  // slid in (16 px from the right): part-way, its edge is still past the window's (the third mid-way CI, Black part 1).
+  await settled(win);
   const box = await sheet(win).boundingBox();
   expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
   expect((box?.x ?? 0) + (box?.width ?? 2000)).toBeLessThanOrEqual(1024);
