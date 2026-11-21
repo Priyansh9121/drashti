@@ -151,39 +151,107 @@ async function closeAll(app: ElectronApplication, standIn: LiveStandIn): Promise
   await standIn.close();
 }
 
-test('Show a Stream Link… puts a live stream on the hall’s screen and LIVE, moving; Drashti’s own stream shows the Wallpaper; Clear background takes it off and its folder goes', async () => {
-  test.setTimeout(180_000);
-  const { standIn, app, userData, win, hall } = await hallAndLink();
-  await showLink(win, standIn.url, true);
-  expect((await background(win)).layers.background).toMatchObject({ kind: 'link', name: '127.0.0.1' });
-  await expect(hall.locator('[data-kind="link"]')).toHaveAttribute('data-link-state', 'live', {
-    timeout: 15_000,
-  });
-  await moving(hall, 'the hall’s screen');
-  await moving(win, 'LIVE', '[data-testid="live-preview"]');
-  await expect(win.getByTestId('stream-link-notice')).toHaveAttribute('data-state', 'playing');
+for (const resumeError of [false, true]) {
+  test(`Show a Stream Link… puts a live stream on the hall’s screen and LIVE, moving; Drashti’s own stream shows the Wallpaper; Clear background takes it off and its folder goes${resumeError ? ' (an early native resume fails)' : ''}`, async () => {
+    test.setTimeout(180_000);
+    const { standIn, app, userData, win, hall } = await hallAndLink();
 
-  // Drashti's own stream never carries it: the Wallpaper, and no player of it there.
-  await win.getByTestId('open-stream').click();
-  const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
-  await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
-    timeout: 60_000,
-  });
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
-  await expect(program.getByTestId('wallpaper')).toBeVisible({ timeout: 15_000 });
-  await expect(program.locator('[data-kind="link"]')).toHaveCount(0);
-  await win.getByRole('button', { name: 'Close stream' }).click();
+    if (resumeError) {
+      await hall.evaluate(() => {
+        // Native code4 after an early pause/resume left the first picture loading through seven joins on CI.
+        // Deliver that same error for every player held before its joined moment; a replacement loaded at
+        // its moment avoids that native lifecycle. No stream data or output assertion is changed.
+        const prototype = HTMLMediaElement.prototype;
+        const pause = Object.getOwnPropertyDescriptor(prototype, 'pause')?.value as
+          ((this: HTMLMediaElement) => void) | undefined;
+        const play = Object.getOwnPropertyDescriptor(prototype, 'play')?.value as
+          ((this: HTMLMediaElement) => Promise<void>) | undefined;
+        if (!pause || !play) throw new Error('The native media methods are missing.');
+        const probe = { held: 0, failed: 0 };
+        (globalThis as typeof globalThis & { linkPictureProbe?: typeof probe }).linkPictureProbe = probe;
+        const held = new WeakSet<HTMLMediaElement>();
+        prototype.pause = function () {
+          const early =
+            !this.paused &&
+            this.closest('[data-kind="link"]') !== null &&
+            Number(this.dataset['startAt']) > Date.now();
+          pause.call(this);
+          if (early) {
+            held.add(this);
+            probe.held++;
+          }
+        };
+        prototype.play = function () {
+          if (!held.has(this)) return play.call(this);
+          held.delete(this);
+          probe.failed++;
+          Object.defineProperty(this, 'error', {
+            configurable: true,
+            get: () => ({ code: 4, message: 'PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE (injected)' }),
+          });
+          this.dispatchEvent(new Event('error'));
+          return Promise.reject(new DOMException('The injected native HLS resume failed.', 'NotSupportedError'));
+        };
+      });
+    }
+    await showLink(win, standIn.url, true);
+    expect((await background(win)).layers.background).toMatchObject({ kind: 'link', name: '127.0.0.1' });
+    try {
+      if (resumeError)
+        await expect
+          .poll(() =>
+            hall.evaluate(
+              () =>
+                (globalThis as typeof globalThis & { linkPictureProbe?: { failed: number } }).linkPictureProbe
+                  ?.failed ?? 0,
+            ),
+          )
+          .toBeGreaterThan(0);
+      await expect(hall.locator('[data-kind="link"]')).toHaveAttribute('data-link-state', 'live', {
+        timeout: 15_000,
+      });
+    } catch (error) {
+      throw new Error(`the first link picture: ${JSON.stringify(await linkLook(hall))} Main: ${mainSaid()}`, {
+        cause: error,
+      });
+    } finally {
+      await test.info().attach('Link picture startup', {
+        body: JSON.stringify({
+          resumeError,
+          look: await linkLook(hall),
+          probe: await hall.evaluate(
+            () => (globalThis as typeof globalThis & { linkPictureProbe?: unknown }).linkPictureProbe ?? null,
+          ),
+        }),
+        contentType: 'application/json',
+      });
+    }
+    await moving(hall, 'the hall’s screen');
+    await moving(win, 'LIVE', '[data-testid="live-preview"]');
+    await expect(win.getByTestId('stream-link-notice')).toHaveAttribute('data-state', 'playing');
 
-  // Its own clear (F3, the background) takes it off: no player left, its local stream's folder gone.
-  await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearLayer', layer: 'background' }),
-  );
-  await expect(hall.locator('[data-kind="link"]')).toHaveCount(0);
-  await expect(win.getByTestId('stream-link-notice')).toHaveCount(0);
-  const folder = join(userData, 'Stream links');
-  await expect.poll(() => (existsSync(folder) ? readdirSync(folder).length : 0), { timeout: 15_000 }).toBe(0);
-  await closeAll(app, standIn);
-});
+    // Drashti's own stream never carries it: the Wallpaper, and no player of it there.
+    await win.getByTestId('open-stream').click();
+    const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
+    await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 60_000,
+    });
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
+    await expect(program.getByTestId('wallpaper')).toBeVisible({ timeout: 15_000 });
+    await expect(program.locator('[data-kind="link"]')).toHaveCount(0);
+    await win.getByRole('button', { name: 'Close stream' }).click();
+
+    // Its own clear (F3, the background) takes it off: no player left, its local stream's folder gone.
+    await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearLayer', layer: 'background' }),
+    );
+    await expect(hall.locator('[data-kind="link"]')).toHaveCount(0);
+    await expect(win.getByTestId('stream-link-notice')).toHaveCount(0);
+    const folder = join(userData, 'Stream links');
+    await expect.poll(() => (existsSync(folder) ? readdirSync(folder).length : 0), { timeout: 15_000 }).toBe(0);
+    await closeAll(app, standIn);
+  });
+}
 
 for (const heldJump of [false, true]) {
   test(`a stream link’s sound plays in the hall at the Video level, and none of it in Drashti’s own stream${heldJump ? ' (a held timeline jumps ahead)' : ''}`, async () => {
