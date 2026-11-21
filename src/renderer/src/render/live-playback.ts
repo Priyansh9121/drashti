@@ -67,7 +67,7 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
   const ask = async () => {
     const got = (await bridge?.liveLink.join(options.linkId).catch(() => null)) ?? null;
     if (!on) return;
-    if (!got) {
+    if (!got || (options.joinAtMoment && got.startAt <= engineNow())) {
       later(ASK_AGAIN_MS, () => void ask());
       return;
     }
@@ -165,8 +165,10 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
       play();
       return;
     }
-    // Stopped for want of pictures (the link itself stopped): left as it is, its last frame shown.
-    if (el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
+    // A picture waiting for data keeps its last frame. A native sound player can stall alone without an
+    // error (CI44119): ask for a fresh join when it falls behind. A replacement accepts only a future start
+    // above, so a stopped source waits for new data instead of replaying the old sound.
+    if (!options.audible && el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
     // Playing a while and still behind, with pictures to play (it loaded late, or stalled alone): it joins again.
     if (offset < -BEHIND_S[kind] && playedAt !== null && now - playedAt >= SETTLE_MS && !behind) {
       behind = true;
