@@ -89,9 +89,10 @@ function generated(path: string, large = false) {
 const digest = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
 test('idle lighter copies and vertical clip exports keep the originals and stop at the on-air gate', async () => {
-  const { app } = await launchApp({
+  const { app, userData } = await launchApp({
     DRASHTI_TEST_ON_AIR_HOOK: '1',
     DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_TEST_MEDIA_DELAY_MS: '2000',
   });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-video-copies-'));
   try {
@@ -177,8 +178,24 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     await win.getByRole('menuitem', { name: 'Edit Video…', exact: true }).click();
     const editor = win.getByTestId('edit-video');
     await expect(editor).toBeVisible();
+    const end = editor.getByLabel('End (seconds)', { exact: true });
+    const preview = editor.getByTestId('edit-video-preview');
+    await expect(end, 'the delayed header has not supplied the default end yet').toHaveValue('0');
+    // The header owns the initial End value. Let it arrive before selecting either input, so it cannot replace
+    // Playwright's selection between that selection and its separate text insertion (CI x67-1121-132910-14446).
+    await expect
+      .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState))
+      .toBeGreaterThanOrEqual(1);
+    await expect(end).toHaveValue('2');
     await editor.getByLabel('Start (seconds)', { exact: true }).fill('0.350');
-    await editor.getByLabel('End (seconds)', { exact: true }).fill('1.750');
+    // Playwright fill selects a number input, then inserts text in a separate call. Force its real race:
+    // metadata supplies the default end after selection and before that text arrives.
+    await end.selectText();
+    await expect
+      .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState))
+      .toBeGreaterThanOrEqual(1);
+    await expect(end).toHaveValue('2');
+    await win.keyboard.insertText('1.750');
     await editor.getByRole('button', { name: 'Preparation and export', exact: true }).click();
     await editor.getByLabel('Picture and sound').selectOption('original');
     await editor.getByLabel('Clip shape').selectOption('vertical');
@@ -191,6 +208,21 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     );
     const accepted = { job: queued.find((job) => job.id !== stopped.job?.id && job.state === 'waiting') };
     if (!accepted.job) throw new Error('The editor did not queue its export.');
+    const pending = JSON.parse(
+      readFileSync(join(userData, 'Media', 'video-clip-clips.json'), 'utf8'),
+    ) as unknown;
+    expect(pending, 'the accepted editor request keeps the exact source-time bounds').toMatchObject([
+      { request },
+    ]);
+    const originalPath = join(userData, 'Media', hashes[1]?.slice(0, 2) ?? '', `${hashes[1] ?? ''}.mp4`);
+    const sourceRead = ffmpeg(['-i', originalPath]);
+    expect(sourceRead.stderr.toString(), 'the immutable imported source has its full length').toMatch(
+      /Duration: 00:00:02\.00/u,
+    );
+    await test.info().attach('Queued export source and bounds', {
+      body: JSON.stringify({ pending, originalRead: sourceRead.stderr.toString() }, null, 2),
+      contentType: 'application/json',
+    });
     await test
       .info()
       .attach('Queued clip export', { body: await editor.screenshot(), contentType: 'image/png' });
@@ -208,7 +240,10 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
           (globalThis as unknown as CopiesGlobals).drashti.media.clipExports(),
         );
         const job = jobs.find((job) => job.id === accepted.job?.id);
-        if (job?.state === 'failed') throw new Error(job.message ?? 'The export failed.');
+        if (job?.state === 'failed')
+          throw new Error(
+            `${job.message ?? 'The export failed.'} Queued: ${JSON.stringify(pending)} Source: ${/Duration:[^\r\n]+/u.exec(sourceRead.stderr.toString())?.[0] ?? 'no duration'}`,
+          );
         return job?.state;
       })
       .toBe('done');

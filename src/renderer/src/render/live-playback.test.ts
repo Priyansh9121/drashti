@@ -102,10 +102,12 @@ describe('a stream link’s player on a page', () => {
     joinAt = { segment: 5, startAt: Date.now() + 500 };
     const el = new FakeLive(2.3, 1500);
     const failed = vi.fn();
+    const rejoin = vi.fn();
     const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
       linkId: LINK,
       audible: true,
       onError: failed,
+      onBehind: rejoin,
     });
     try {
       await vi.advanceTimersByTimeAsync(1600);
@@ -116,10 +118,136 @@ describe('a stream link’s player on a page', () => {
       // Its time comes: it plays on, in step, and never failed.
       await vi.advanceTimersByTimeAsync(2000);
       expect(failed).not.toHaveBeenCalled();
+      expect(rejoin).not.toHaveBeenCalled();
       expect(el.error).toBeNull();
       expect(el.paused).toBe(false);
       const expected = (Date.now() - joinAt.startAt) / 1000;
       expect(Math.abs(el.currentTime - expected)).toBeLessThan(0.2);
+    } finally {
+      stop();
+    }
+  });
+
+  it('rejoins when a held sound timeline jumps ahead instead of holding that native HLS jump forever', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 2500 };
+    const el = new FakeLive(0, 500);
+    const pause = el.pause.bind(el);
+    let jumped = false;
+    el.pause = () => {
+      const from = el.currentTime;
+      pause();
+      if (jumped) return;
+      jumped = true;
+      const at = Date.now();
+      Object.defineProperty(el, 'currentTime', {
+        get: () => from + 2 + (Date.now() - at) / 1000,
+      });
+    };
+    const rejoin = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: true,
+      onBehind: rejoin,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(jumped).toBe(true);
+      expect(el.paused).toBe(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(rejoin).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it('rejoins when resuming a held sound jumps its native HLS timeline ahead again', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 2500 };
+    const el = new FakeLive(0, 500);
+    const play = el.play.bind(el);
+    let jumped = false;
+    el.play = () => {
+      const before = el.played;
+      const result = play();
+      if (before === 1 && el.played === 2) {
+        const from = el.currentTime;
+        const at = Date.now();
+        jumped = true;
+        Object.defineProperty(el, 'currentTime', {
+          get: () => from + 2 + (Date.now() - at) / 1000,
+        });
+      }
+      return result;
+    };
+    const rejoin = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: true,
+      onBehind: rejoin,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(jumped).toBe(true);
+      expect(el.played).toBe(2);
+      expect(rejoin).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it('rejoins a sound player stalled without a media error instead of leaving it silent at current data', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 50 };
+    const el = new FakeLive(0, 100);
+    const rejoin = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: true,
+      onBehind: rejoin,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(el.paused).toBe(false);
+      const held = el.currentTime;
+      Object.defineProperty(el, 'currentTime', { get: () => held });
+      el.readyState = 2;
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(el.readyState).toBe(2);
+      expect(el.paused).toBe(false);
+      expect(el.error).toBeNull();
+      expect(rejoin).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it('a recovering picture loads at its joined moment and plays as data arrives, without another early hold', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 2500 };
+    const el = new FakeLive(0, 100);
+    const failed = vi.fn();
+    const rejoin = vi.fn();
+    const framed = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: false,
+      joinAtMoment: true,
+      onError: failed,
+      onBehind: rejoin,
+      onFrame: framed,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(el.src).toBe('');
+      expect(el.played).toBe(0);
+      expect(framed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(el.played).toBe(1);
+      expect(el.paused).toBe(false);
+      el.dispatchEvent(new Event('timeupdate'));
+      expect(framed).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(failed).not.toHaveBeenCalled();
+      expect(rejoin).not.toHaveBeenCalled();
+      expect(el.error).toBeNull();
+      expect(el.paused).toBe(false);
     } finally {
       stop();
     }
