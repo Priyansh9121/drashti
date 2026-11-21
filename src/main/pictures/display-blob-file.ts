@@ -21,9 +21,13 @@ function ownBlob(contents: WebContents, blob: DisplayCopyBlob): boolean {
     return false;
   if (typeof blob.url !== 'string' || blob.url.length > 512) return false;
   try {
-    const origin = new URL(contents.getURL()).origin;
-    const prefix = `blob:${origin}/`;
-    return blob.url.startsWith(prefix) && UUID.test(blob.url.slice(prefix.length));
+    const origin = contents.mainFrame.origin;
+    if (!origin) return false;
+    const address = /^blob:(.+)\/([^/]+)$/u.exec(blob.url);
+    if (!address) return false;
+    const [, addressOrigin, id] = address;
+    if (!id) return false;
+    return addressOrigin === origin && id.length === 36 && UUID.test(id);
   } catch {
     return false;
   }

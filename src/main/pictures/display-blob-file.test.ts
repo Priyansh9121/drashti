@@ -324,3 +324,22 @@ it('rejects a Blob when the committed frame has no live origin', async () => {
   expect(t.downloadURL).not.toHaveBeenCalled();
   expect(item.setSavePath).not.toHaveBeenCalled();
 });
+
+it.each(['https://other.invalid', 'https://generated.invalid.evil', 'null', 'file://'])(
+  'refuses Blob origin %s when the trusted sender origin differs',
+  async (origin) => {
+    const t = setup();
+    t.frame.origin = 'https://generated.invalid';
+    t.blob.url = `blob:${origin}/${randomUUID()}`;
+    await expect(t.start()).rejects.toThrow('The display Blob is not this worker’s to save.');
+    expect(t.downloadURL).not.toHaveBeenCalled();
+  },
+);
+
+it('refuses trailing bytes after the browser UUID even when the origin equals the sender', async () => {
+  const t = setup();
+  t.frame.origin = 'file://';
+  t.blob.url = `blob:file:///${randomUUID()}\n`;
+  await expect(t.start()).rejects.toThrow('The display Blob is not this worker’s to save.');
+  expect(t.downloadURL).not.toHaveBeenCalled();
+});
