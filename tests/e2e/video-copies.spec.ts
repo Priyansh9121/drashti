@@ -89,7 +89,7 @@ function generated(path: string, large = false) {
 const digest = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
 test('idle lighter copies and vertical clip exports keep the originals and stop at the on-air gate', async () => {
-  const { app } = await launchApp({
+  const { app, userData } = await launchApp({
     DRASHTI_TEST_ON_AIR_HOOK: '1',
     DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
   });
@@ -191,6 +191,15 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     );
     const accepted = { job: queued.find((job) => job.id !== stopped.job?.id && job.state === 'waiting') };
     if (!accepted.job) throw new Error('The editor did not queue its export.');
+    const pending = JSON.parse(
+      readFileSync(join(userData, 'Media', 'video-clip-clips.json'), 'utf8'),
+    ) as unknown;
+    const originalPath = join(userData, 'Media', hashes[1]?.slice(0, 2) ?? '', `${hashes[1] ?? ''}.mp4`);
+    const sourceRead = ffmpeg(['-i', originalPath]);
+    await test.info().attach('Queued export source and bounds', {
+      body: JSON.stringify({ pending, originalRead: sourceRead.stderr.toString() }, null, 2),
+      contentType: 'application/json',
+    });
     await test
       .info()
       .attach('Queued clip export', { body: await editor.screenshot(), contentType: 'image/png' });
