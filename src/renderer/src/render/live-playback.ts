@@ -112,11 +112,12 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     if (!on || !j || el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
     const now = engineNow();
     const expected = (now - j.startAt) / 1000;
-    const offset = el.currentTime - expected;
+    // For the tests and Save Diagnostics: where it is against where the engine's time has it.
+    el.dataset['offset'] = (el.currentTime - expected).toFixed(3);
     // A native HLS sound can jump forward while held or when resumed. Holding that new position again can repeat
     // forever, silent (CI x67-1121-122650-81592). Rejoin through the existing clock-recovery path; normal playback
     // since a resume is accounted for, so ordinary playback progress is not mistaken for a jump.
-    if (heldSound && offset > AHEAD_S.sound && !behind) {
+    if (heldSound && el.currentTime - expected > AHEAD_S.sound && !behind) {
       const resumed = el.paused ? null : heldSound.resumed;
       const advance = resumed
         ? el.currentTime - resumed.position - Math.max(0, (now - resumed.at) / 1000)
@@ -127,8 +128,6 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
         return;
       }
     }
-    // For the tests and Save Diagnostics: where it is against where the engine's time has it.
-    el.dataset['offset'] = offset.toFixed(3);
     // Its moment still to come: it plays at once all the same (a player held paused before it ever played failed as it
     // began, code 4, CI x54-1120-223559-2185), and is held there, paused, once it has played (a frame or two).
     if (expected < 0) {
@@ -139,6 +138,7 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
       }
       return;
     }
+    const offset = el.currentTime - expected;
     const kind = options.audible ? 'sound' : 'picture';
     // Ahead (a clock moved, or it loaded late and so started later in the stream): it waits there until the engine's
     // time comes to it, once it has played (a frame or two): one never played plays at once all the same, as above
