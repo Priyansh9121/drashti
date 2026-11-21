@@ -194,8 +194,14 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     const pending = JSON.parse(
       readFileSync(join(userData, 'Media', 'video-clip-clips.json'), 'utf8'),
     ) as unknown;
+    expect(pending, 'the accepted editor request keeps the exact source-time bounds').toMatchObject([
+      { request },
+    ]);
     const originalPath = join(userData, 'Media', hashes[1]?.slice(0, 2) ?? '', `${hashes[1] ?? ''}.mp4`);
     const sourceRead = ffmpeg(['-i', originalPath]);
+    expect(sourceRead.stderr.toString(), 'the immutable imported source has its full length').toMatch(
+      /Duration: 00:00:02\.00/u,
+    );
     await test.info().attach('Queued export source and bounds', {
       body: JSON.stringify({ pending, originalRead: sourceRead.stderr.toString() }, null, 2),
       contentType: 'application/json',
@@ -217,7 +223,10 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
           (globalThis as unknown as CopiesGlobals).drashti.media.clipExports(),
         );
         const job = jobs.find((job) => job.id === accepted.job?.id);
-        if (job?.state === 'failed') throw new Error(job.message ?? 'The export failed.');
+        if (job?.state === 'failed')
+          throw new Error(
+            `${job.message ?? 'The export failed.'} Queued: ${JSON.stringify(pending)} Source: ${/Duration:[^\r\n]+/u.exec(sourceRead.stderr.toString())?.[0] ?? 'no duration'}`,
+          );
         return job?.state;
       })
       .toBe('done');
