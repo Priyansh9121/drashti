@@ -224,6 +224,51 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       const original = Object.getOwnPropertyDescriptor(AudioData.prototype, 'close');
       if (!original) throw new Error('No native audio frame closer');
       const rows: { at: number; timestamp: number; frames: number }[] = [];
+      const post = Object.getOwnPropertyDescriptor(MessagePort.prototype, 'postMessage');
+      if (!post) throw new Error('No native PCM port sender');
+      const tones: { at: number; a: number; b: number }[] = [];
+      const coefficientA = 2 * Math.cos((2 * Math.PI * 440) / 48_000);
+      const coefficientB = 2 * Math.cos((2 * Math.PI * 880) / 48_000);
+      let count = 0,
+        oneA = 0,
+        twoA = 0,
+        oneB = 0,
+        twoB = 0;
+      Object.defineProperty(MessagePort.prototype, 'postMessage', {
+        ...post,
+        value(this: MessagePort, ...args: unknown[]) {
+          const message = args[0] as { kind?: string; data?: unknown; frames?: number } | null;
+          if (
+            message?.kind === 'audio' &&
+            message.data instanceof ArrayBuffer &&
+            typeof message.frames === 'number'
+          ) {
+            const values = new Float32Array(message.data);
+            for (let frame = 0; frame < message.frames; frame++) {
+              const sample = ((values[frame * 2] ?? 0) + (values[frame * 2 + 1] ?? 0)) / 2;
+              const nextA = sample + coefficientA * oneA - twoA;
+              const nextB = sample + coefficientB * oneB - twoB;
+              twoA = oneA;
+              oneA = nextA;
+              twoB = oneB;
+              oneB = nextB;
+              if (++count === 4800) {
+                tones.push({
+                  at: Date.now(),
+                  a:
+                    (2 * Math.sqrt(Math.max(0, oneA * oneA + twoA * twoA - coefficientA * oneA * twoA))) /
+                    4800,
+                  b:
+                    (2 * Math.sqrt(Math.max(0, oneB * oneB + twoB * twoB - coefficientB * oneB * twoB))) /
+                    4800,
+                });
+                count = oneA = twoA = oneB = twoB = 0;
+              }
+            }
+          }
+          (post.value as (this: MessagePort, ...args: unknown[]) => void).apply(this, args);
+        },
+      });
       Object.defineProperty(AudioData.prototype, 'close', {
         ...original,
         value(this: AudioData) {
@@ -235,7 +280,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       (globalThis as { s5CaptureProbe?: { stop: () => unknown } }).s5CaptureProbe = {
         stop: () => {
           Object.defineProperty(AudioData.prototype, 'close', original);
-          return rows;
+          Object.defineProperty(MessagePort.prototype, 'postMessage', post);
+          return { rows, tones };
         },
       };
     });
