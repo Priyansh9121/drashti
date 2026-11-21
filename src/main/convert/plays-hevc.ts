@@ -89,6 +89,33 @@ export async function askPlaysHevc(
   }
 }
 
+/**
+ * Both questions as the HEVC page asks them (hevc-page.ts): whether this computer plays HEVC, then its other kinds,
+ * each by `run` (a script in that page). The answer as Chromium gives it; the kinds after it, null when not asked or
+ * not told within `kindsMs`.
+ */
+export function askHevcQuestions(
+  run: (script: string) => Promise<unknown>,
+  script: string,
+  kindsScript: string | null,
+  _kindsMs: number = HEVC_KINDS_MS,
+): { answer: Promise<boolean | null>; kinds: Promise<HevcKinds | null> } {
+  let settleKinds: (kinds: HevcKinds | null) => void = () => undefined;
+  const kinds = new Promise<HevcKinds | null>((resolve) => {
+    settleKinds = resolve;
+  });
+  const answer = (async () => {
+    const plays = await askPlaysHevc(run, script);
+    // The other kinds before the answer is given, so an import that waited for it has both.
+    settleKinds(kindsScript !== null && plays !== null ? await askHevcKinds(run, kindsScript) : null);
+    return plays;
+  })();
+  return { answer, kinds };
+}
+
+/** The longest the HEVC page waits for Chromium to say the other kinds before they are not known. */
+export const HEVC_KINDS_MS = 10_000;
+
 /** The window's answer, as the imports wait for it: known from the start when a test gives it. */
 export class HevcAnswer {
   private answer: boolean | null;

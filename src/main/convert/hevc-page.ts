@@ -1,6 +1,6 @@
 import { WebContentsView } from 'electron';
 import { secureWebPreferences } from '../windows/web-preferences';
-import { askHevcKinds, askPlaysHevc, type HevcKinds } from './plays-hevc';
+import { askHevcQuestions, type HevcKinds } from './plays-hevc';
 
 /*
  * The HEVC question's own page (question 36 of Session 54). Chromium answers whether it plays HEVC only once the GPU
@@ -54,13 +54,13 @@ export function askInOwnPage(script: string, kindsScript: string | null = null):
   void contents
     .loadURL('about:blank')
     .then(async () => {
-      const run = (s: string) => contents.executeJavaScript(s);
-      const plays = await askPlaysHevc(run, script);
-      // The other kinds before the answer is given, so an import that waited for it has both.
-      settleKinds(kindsScript !== null && plays !== null ? await askHevcKinds(run, kindsScript) : null);
-      return plays;
+      const asked = askHevcQuestions((s) => contents.executeJavaScript(s), script, kindsScript);
+      void asked.answer.then(settle);
+      void asked.kinds.then(settleKinds);
+      // The page goes once both are said (or not known).
+      await Promise.all([asked.answer, asked.kinds]);
     })
-    .then(settle, () => {
+    .catch(() => {
       settleKinds(null);
       settle(null);
     })
