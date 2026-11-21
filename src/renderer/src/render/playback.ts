@@ -1,3 +1,4 @@
+import { audioOnlyTracks } from './audio-only-tracks';
 import type { DrashtiBridge } from '../../../shared/bridge';
 import type { CorrectionLimits, PlaybackClip, PlaybackSeek } from '../../../shared/media';
 import {
@@ -266,6 +267,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (seekFrom === 0 && settleFrom === 0) startFrom = performance.now();
   };
   const onMetadata = () => {
+    if (audible) audioOnlyTracks(v);
     tellLength(mediaId, v.duration);
     const at = expected();
     // Within a moment of where it is, it plays from there at once: a file just loaded is at its start, and one loaded
