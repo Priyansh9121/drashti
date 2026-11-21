@@ -2,7 +2,7 @@ import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnosti
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { dispatch, snapshot } from './time-bar-helpers';
@@ -203,6 +203,22 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       return { id, first: rows.ids[0] ?? '' };
     }, ids);
     await beginCueDiagnostics([hall, win, stream, audio]);
+    const decoderProcesses = await app.evaluate(
+      ({ BrowserWindow }, pages) =>
+        pages.map(({ role, url }) => ({
+          role,
+          pid: BrowserWindow.getAllWindows()
+            .find((w) => w.webContents.getURL() === url)
+            ?.webContents.getOSProcessId(),
+        })),
+      [
+        { role: 'hall', url: hall.url() },
+        { role: 'LIVE', url: win.url() },
+        { role: 'stream', url: stream.url() },
+        { role: 'sound', url: audio.url() },
+      ],
+    );
+    const traceFiles: string[] = [];
     const streamAt = Date.now();
     const actions: { at: number; round: number; mode: string; action: string; engineAt?: number }[] = [];
     const samples: {
@@ -279,6 +295,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             tracePath,
           );
           tracing = false;
+          traceFiles.push(tracePath);
           await info.attach('s5-drawing-trace.json', { path: tracePath, contentType: 'application/json' });
         }
         samples.push({
@@ -290,6 +307,41 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         });
       }
     }
+    const audioPictureTracks = await Promise.all(
+      [audio, stream].map((page) =>
+        page.evaluate(() =>
+          [...document.querySelectorAll<HTMLAudioElement>('audio[data-kind="video"]')].map((el) => {
+            const tracks = (
+              el as HTMLAudioElement & {
+                videoTracks?: { length: number; [index: number]: { selected: boolean } };
+              }
+            ).videoTracks;
+            return {
+              available: tracks !== undefined,
+              videos: tracks?.length ?? 0,
+              selected: tracks
+                ? Array.from(
+                    { length: tracks.length },
+                    (_, index) => tracks[index]?.selected === true,
+                  ).filter(Boolean).length
+                : -1,
+            };
+          }),
+        ),
+      ),
+    );
+    const soundPid = decoderProcesses.find((p) => p.role === 'sound')?.pid;
+    const soundPictureDecodes = traceFiles.reduce((count, path) => {
+      const trace = JSON.parse(readFileSync(path, 'utf8')) as {
+        traceEvents?: { pid?: number; name?: string; ph?: string }[];
+      };
+      return (
+        count +
+        (trace.traceEvents ?? []).filter(
+          (e) => e.pid === soundPid && e.ph === 'X' && e.name === 'vpx_codec_decode',
+        ).length
+      );
+    }, 0);
     const ended = await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.stream.end({ confirmed: true }),
     );
@@ -358,6 +410,9 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       features,
       encoder,
       samples,
+      decoderProcesses,
+      audioPictureTracks,
+      soundPictureDecodes,
       streamAt,
       actions,
       encodedFrames: media.videoFrames,
@@ -382,6 +437,19 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       longest,
       'both generated tones overlap continuously through the sound crossfade',
     ).toBeGreaterThanOrEqual(12);
+    expect(soundPid).toBeGreaterThan(0);
+    for (const page of audioPictureTracks) {
+      expect(page.length, 'the generated video sounds are playing').toBeGreaterThan(0);
+      for (const tracks of page) {
+        expect(tracks.available, 'sound-only track selection is supported on this system').toBe(true);
+        expect(tracks.videos).toBeGreaterThan(0);
+        expect(tracks.selected, 'sound players select no pictures to decode').toBe(0);
+      }
+    }
+    expect(
+      soundPictureDecodes,
+      'the sound-only renderer does no picture decoding during the actual overlap',
+    ).toBe(0);
   } finally {
     if (running) {
       if (tracing && tracePath) {
