@@ -1,3 +1,4 @@
+import { nativeCostPair, periods } from './display-cost-meter';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -243,21 +244,6 @@ async function recordDisplayCost(app: ElectronApplication): Promise<void> {
   }
 }
 
-function periods(frames: readonly number[], reference?: number) {
-  const gaps = frames.slice(1).map((t, i) => t - (frames[i] ?? t));
-  const sorted = [...gaps].sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
-  const period = reference ?? median;
-  return {
-    frames: frames.length,
-    period,
-    longest: sorted.at(-1) ?? 0,
-    p95: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0,
-    over15: gaps.filter((ms) => ms > period * 1.5).length,
-    gaps,
-  };
-}
-
 async function startDisplayCostPage(out: Page): Promise<void> {
   await out.evaluate(() => {
     const g = globalThis as DisplayCostPageGlobals;
@@ -404,8 +390,9 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       const control = trials.find((trial) => trial.pair === pair && !trial.importing);
       const importing = trials.find((trial) => trial.pair === pair && trial.importing);
       if (!control || !importing) throw new Error('A paired round was not completed.');
-      const nativeControl = periods(control.main.frames);
-      const nativeImport = periods(importing.main.frames, nativeControl.period);
+      const nativePair = nativeCostPair(control, importing);
+      const nativeControl = nativePair.control;
+      const nativeImport = nativePair.imported;
       const rafControl = periods(control.page.frames);
       const rafImport = periods(importing.page.frames, rafControl.period);
       expect(nativeControl.period).toBeGreaterThan(0);
@@ -415,7 +402,7 @@ test('a large picture imported during a hall dissolve does not add sustained fra
         measured.p95 - control.p95 > 1 ||
         measured.longest - control.longest > 1 ||
         measured.over15 > control.over15;
-      allWorse.native.push(worse(nativeImport, nativeControl));
+      allWorse.native.push(nativePair.worse);
       allWorse.raf.push(worse(rafImport, rafControl));
       const verdict = {
         pair,
