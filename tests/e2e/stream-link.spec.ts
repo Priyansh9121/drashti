@@ -189,6 +189,38 @@ test('a stream link’s sound plays in the hall at the Video level, and none of 
   test.setTimeout(180_000);
   const { standIn, app, win, hall } = await hallAndLink();
   const audio = await audioPage(app);
+  await audio.evaluate(() => {
+    // CI x67-1121-122650-81592: the native HLS timeline jumps forward through its hold, repeatedly ahead,
+    // while the actual sound stays paused. Deliver that state on its first hold, until its source is rejoined.
+    const prototype = HTMLMediaElement.prototype;
+    const pause = Object.getOwnPropertyDescriptor(prototype, 'pause')?.value as
+      ((this: HTMLMediaElement) => void) | undefined;
+    const load = Object.getOwnPropertyDescriptor(prototype, 'load')?.value as
+      ((this: HTMLMediaElement) => void) | undefined;
+    if (!pause || !load) throw new Error('The native media methods are missing.');
+    const probe = { held: false, rejoined: false };
+    (globalThis as typeof globalThis & { linkHoldProbe?: typeof probe }).linkHoldProbe = probe;
+    const held = new WeakSet<HTMLMediaElement>();
+    prototype.pause = function () {
+      const from = this.currentTime;
+      pause.call(this);
+      if (probe.held || !this.dataset['key']?.startsWith('link:') || !this.getAttribute('src')) return;
+      probe.held = true;
+      held.add(this);
+      const at = Date.now();
+      Object.defineProperty(this, 'currentTime', {
+        configurable: true,
+        get: () => from + 2 + (Date.now() - at) / 1000,
+      });
+    };
+    prototype.load = function () {
+      if (held.has(this)) {
+        Reflect.deleteProperty(this, 'currentTime');
+        if (this.getAttribute('src')) probe.rejoined = true;
+      }
+      load.call(this);
+    };
+  });
   const soundConsole: string[] = [];
   audio.on('console', (message) => soundConsole.push(`${message.type()}: ${message.text()}`));
   await audio.evaluate(() => {
@@ -258,6 +290,13 @@ test('a stream link’s sound plays in the hall at the Video level, and none of 
       contentType: 'application/json',
     });
   }
+  expect(
+    await audio.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { linkHoldProbe?: { held: boolean; rejoined: boolean } })
+          .linkHoldProbe,
+    ),
+  ).toEqual({ held: true, rejoined: true });
   // Video's mute takes it away; unmuted, it is back.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', true));
   await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBe(0);
