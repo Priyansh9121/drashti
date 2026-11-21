@@ -12,7 +12,7 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
     writeFileSync(
       file,
       `
-      let port, frames = 0, started = 0, previous = 0, longest = 0, ready = false;
+      const ports = []; let port, frames = 0, started = 0, previous = 0, longest = 0, ready = false;
       const send = (message) => process.parentPort.postMessage(message);
       process.parentPort.on('message', (event) => {
         if (event.data === 'begin') {
@@ -23,7 +23,7 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
           send({ kind: 'result', frames, elapsed: now - started,
             longestGap: Math.max(longest, now - previous) });
         } else if (event.ports[0]) {
-          port = event.ports[0];
+          port = event.ports[0]; ports.push(port);
           port.on('message', ({ data }) => {
             if (data.kind !== 'audio') return;
             const now = performance.now();

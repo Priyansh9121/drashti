@@ -34,7 +34,7 @@ const pageWindow = globalThis as unknown as {
 // And video out's (x30): the page's frames to other software.
 ipcRenderer.on(
   IPC.stream.port,
-  (event, payload: { role: 'preview' | 'encoder' | 'speech' | 'video-out' }) => {
+  (event, payload: { role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' | 'video-out' }) => {
     pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
   },
 );

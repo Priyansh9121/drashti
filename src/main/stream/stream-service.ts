@@ -969,6 +969,10 @@ export class StreamService {
     const worker = this.worker;
     if (!worker || !pageAlive(program) || !this.programReady) return;
     const { port1, port2 } = new MessageChannelMain();
+    // A separate sound port can be owned by the PCM worker while this page draws and sends pictures.
+    const sound = new MessageChannelMain();
+    worker.sendFrames(sound.port1);
+    program.webContents.postMessage(IPC.stream.port, { role: 'encoder-audio' }, [sound.port2]);
     worker.sendFrames(port1);
     program.webContents.postMessage(IPC.stream.port, { role: 'encoder' }, [port2]);
     this.deps.log('info', "The stream's page was given the encoder");
