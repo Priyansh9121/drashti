@@ -151,39 +151,38 @@ async function closeAll(app: ElectronApplication, standIn: LiveStandIn): Promise
   await standIn.close();
 }
 
-for (const resumeError of [false, true]) {
-  test(`Show a Stream Link… puts a live stream on the hall’s screen and LIVE, moving; Drashti’s own stream shows the Wallpaper; Clear background takes it off and its folder goes${resumeError ? ' (an early native resume fails)' : ''}`, async () => {
+for (const earlyError of [false, true]) {
+  test(`Show a Stream Link… puts a live stream on the hall’s screen and LIVE, moving; Drashti’s own stream shows the Wallpaper; Clear background takes it off and its folder goes${earlyError ? ' (an early-loaded native player fails)' : ''}`, async () => {
     test.setTimeout(180_000);
     const { standIn, app, userData, win, hall } = await hallAndLink();
 
-    if (resumeError) {
+    if (earlyError) {
       await hall.evaluate(() => {
-        // Native code4 after an early pause/resume left the first picture loading through seven joins on CI.
-        // Deliver that same error for every player held before its joined moment; a replacement loaded at
-        // its moment avoids that native lifecycle. No stream data or output assertion is changed.
+        // The failed native players stayed unsupported, including replacement failures at 0.00 s. Keep
+        // every player loaded before its joined moment unsupported until it is replaced; allowing its
+        // next play call through would not model a native decode error (the first probe, CI31753).
         const prototype = HTMLMediaElement.prototype;
-        const pause = Object.getOwnPropertyDescriptor(prototype, 'pause')?.value as
+        const load = Object.getOwnPropertyDescriptor(prototype, 'load')?.value as
           ((this: HTMLMediaElement) => void) | undefined;
         const play = Object.getOwnPropertyDescriptor(prototype, 'play')?.value as
           ((this: HTMLMediaElement) => Promise<void>) | undefined;
-        if (!pause || !play) throw new Error('The native media methods are missing.');
-        const probe = { held: 0, failed: 0 };
+        if (!load || !play) throw new Error('The native media methods are missing.');
+        const probe = { loadedEarly: 0, failed: 0 };
         (globalThis as typeof globalThis & { linkPictureProbe?: typeof probe }).linkPictureProbe = probe;
-        const held = new WeakSet<HTMLMediaElement>();
-        prototype.pause = function () {
-          const early =
-            !this.paused &&
+        const early = new WeakSet<HTMLMediaElement>();
+        prototype.load = function () {
+          if (
+            this.getAttribute('src') &&
             this.closest('[data-kind="link"]') !== null &&
-            Number(this.dataset['startAt']) > Date.now();
-          pause.call(this);
-          if (early) {
-            held.add(this);
-            probe.held++;
+            Number(this.dataset['startAt']) > Date.now()
+          ) {
+            early.add(this);
+            probe.loadedEarly++;
           }
+          load.call(this);
         };
         prototype.play = function () {
-          if (!held.has(this)) return play.call(this);
-          held.delete(this);
+          if (!early.has(this)) return play.call(this);
           probe.failed++;
           Object.defineProperty(this, 'error', {
             configurable: true,
@@ -191,7 +190,7 @@ for (const resumeError of [false, true]) {
           });
           this.dispatchEvent(new Event('error'));
           return Promise.reject(
-            new DOMException('The injected native HLS resume failed.', 'NotSupportedError'),
+            new DOMException('The injected native HLS load failed.', 'NotSupportedError'),
           );
         };
       });
@@ -199,7 +198,7 @@ for (const resumeError of [false, true]) {
     await showLink(win, standIn.url, true);
     expect((await background(win)).layers.background).toMatchObject({ kind: 'link', name: '127.0.0.1' });
     try {
-      if (resumeError)
+      if (earlyError)
         await expect
           .poll(() =>
             hall.evaluate(() => {
@@ -218,7 +217,7 @@ for (const resumeError of [false, true]) {
     } finally {
       await test.info().attach('Link picture startup', {
         body: JSON.stringify({
-          resumeError,
+          earlyError,
           look: await linkLook(hall),
           probe: await hall.evaluate(
             () => (globalThis as typeof globalThis & { linkPictureProbe?: unknown }).linkPictureProbe ?? null,
