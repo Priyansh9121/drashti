@@ -476,6 +476,40 @@ describe('every page joining a stream link at the same frame at the same moment'
     expect(await t.service.playlistFor('00000000-0000-4000-8000-000000000099', 0)).toBeNull();
   });
 
+  it('keeps the chosen first three through a future joined moment when a recovering player loads there', async () => {
+    const t = setUp();
+    await showUp(t);
+    const bg = t.engine.get().layers.background;
+    if (bg?.kind !== 'link') throw new Error('a link expected');
+    const askedAt = Date.now();
+    const joined = t.service.join(bg.linkId);
+    if (!joined) throw new Error('a joined player expected');
+    expect(joined.segment).toBe(0);
+    expect(joined.startAt - askedAt).toBeGreaterThan(1500);
+    // The real stream carries on while the recovering player waits to load at its joined moment.
+    for (const n of [3, 4]) {
+      t.progress.newest = n;
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(Date.now() - askedAt).toBe(2000);
+    expect(Date.now() - joined.startAt).toBeGreaterThanOrEqual(0);
+    expect(Date.now() - joined.startAt).toBeLessThan(2000);
+    const names = (text: string) => text.split('\n').filter((line) => line.startsWith('seg-'));
+    expect(names((await t.service.playlistFor(bg.linkId, joined.segment)) ?? '')).toEqual([
+      'seg-000000.ts',
+      'seg-000001.ts',
+      'seg-000002.ts',
+    ]);
+    // Its original two-second initial window still ends; the playlist then follows the live stream.
+    for (const n of [5, 6]) {
+      t.progress.newest = n;
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(names((await t.service.playlistFor(bg.linkId, joined.segment)) ?? '').at(-1)).toBe(
+      'seg-000006.ts',
+    );
+  });
+
   it('a page still joins long after the anchor’s segment has gone from the disk (CI x54-1120-195548-69004: none could)', async () => {
     const t = setUp();
     await showUp(t);

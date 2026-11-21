@@ -194,6 +194,40 @@ describe('a stream link’s player on a page', () => {
     }
   });
 
+  it('a recovering picture loads at its joined moment and plays as data arrives, without another early hold', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 2500 };
+    const el = new FakeLive(0, 100);
+    const failed = vi.fn();
+    const rejoin = vi.fn();
+    const framed = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: false,
+      joinAtMoment: true,
+      onError: failed,
+      onBehind: rejoin,
+      onFrame: framed,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(el.src).toBe('');
+      expect(el.played).toBe(0);
+      expect(framed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(el.played).toBe(1);
+      expect(el.paused).toBe(false);
+      el.dispatchEvent(new Event('timeupdate'));
+      expect(framed).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(failed).not.toHaveBeenCalled();
+      expect(rejoin).not.toHaveBeenCalled();
+      expect(el.error).toBeNull();
+      expect(el.paused).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
   it('loaded before its moment, it plays at once, is held on its first frames until its moment, then plays in step', async () => {
     joinAt = { segment: 5, startAt: Date.now() + 2500 };
     const el = new FakeLive(0, 500);
