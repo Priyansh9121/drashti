@@ -59,7 +59,7 @@ class LinkPlayers {
     this.joins++;
     this.root.dataset['linkJoins'] = `${String(this.joins)} ${why}`;
     if (this.incoming) this.drop(this.incoming);
-    this.incoming = this.make();
+    this.incoming = this.make(why !== 'start');
   }
 
   close(): void {
@@ -87,7 +87,7 @@ class LinkPlayers {
     this.kept.dataset['kept'] = '1';
   }
 
-  private make(): Player {
+  private make(joinAtMoment: boolean): Player {
     const el = document.createElement('video');
     el.muted = true;
     el.playsInline = true;
@@ -101,6 +101,7 @@ class LinkPlayers {
     player.stop = startLivePlayback(el, {
       linkId: this.linkId,
       audible: false,
+      joinAtMoment,
       onFrame: () => {
         if (this.off || this.incoming !== player) return;
         el.style.zIndex = '2';

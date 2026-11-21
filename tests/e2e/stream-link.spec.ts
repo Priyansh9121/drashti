@@ -151,84 +151,249 @@ async function closeAll(app: ElectronApplication, standIn: LiveStandIn): Promise
   await standIn.close();
 }
 
-test('Show a Stream Link… puts a live stream on the hall’s screen and LIVE, moving; Drashti’s own stream shows the Wallpaper; Clear background takes it off and its folder goes', async () => {
-  test.setTimeout(180_000);
-  const { standIn, app, userData, win, hall } = await hallAndLink();
-  await showLink(win, standIn.url, true);
-  expect((await background(win)).layers.background).toMatchObject({ kind: 'link', name: '127.0.0.1' });
-  await expect(hall.locator('[data-kind="link"]')).toHaveAttribute('data-link-state', 'live', {
-    timeout: 15_000,
-  });
-  await moving(hall, 'the hall’s screen');
-  await moving(win, 'LIVE', '[data-testid="live-preview"]');
-  await expect(win.getByTestId('stream-link-notice')).toHaveAttribute('data-state', 'playing');
+for (const earlyError of [false, true]) {
+  test(`Show a Stream Link… puts a live stream on the hall’s screen and LIVE, moving; Drashti’s own stream shows the Wallpaper; Clear background takes it off and its folder goes${earlyError ? ' (an early-loaded native player fails)' : ''}`, async () => {
+    test.setTimeout(180_000);
+    const { standIn, app, userData, win, hall } = await hallAndLink();
 
-  // Drashti's own stream never carries it: the Wallpaper, and no player of it there.
-  await win.getByTestId('open-stream').click();
-  const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
-  await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
-    timeout: 60_000,
-  });
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
-  await expect(program.getByTestId('wallpaper')).toBeVisible({ timeout: 15_000 });
-  await expect(program.locator('[data-kind="link"]')).toHaveCount(0);
-  await win.getByRole('button', { name: 'Close stream' }).click();
+    if (earlyError) {
+      await hall.evaluate(() => {
+        // The failed native players stayed unsupported, including replacement failures at 0.00 s. Keep
+        // every player loaded before its joined moment unsupported until it is replaced; allowing its
+        // next play call through would not model a native decode error (the first probe, CI31753).
+        const prototype = HTMLMediaElement.prototype;
+        const load = Object.getOwnPropertyDescriptor(prototype, 'load')?.value as
+          ((this: HTMLMediaElement) => void) | undefined;
+        const play = Object.getOwnPropertyDescriptor(prototype, 'play')?.value as
+          ((this: HTMLMediaElement) => Promise<void>) | undefined;
+        if (!load || !play) throw new Error('The native media methods are missing.');
+        const probe = { loadedEarly: 0, failed: 0 };
+        (globalThis as typeof globalThis & { linkPictureProbe?: typeof probe }).linkPictureProbe = probe;
+        const early = new WeakSet<HTMLMediaElement>();
+        prototype.load = function () {
+          if (
+            this.getAttribute('src') &&
+            this.closest('[data-kind="link"]') !== null &&
+            Number(this.dataset['startAt']) > Date.now()
+          ) {
+            early.add(this);
+            probe.loadedEarly++;
+          }
+          load.call(this);
+        };
+        prototype.play = function () {
+          if (!early.has(this)) return play.call(this);
+          probe.failed++;
+          Object.defineProperty(this, 'error', {
+            configurable: true,
+            get: () => ({ code: 4, message: 'PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE (injected)' }),
+          });
+          this.dispatchEvent(new Event('error'));
+          return Promise.reject(
+            new DOMException('The injected native HLS load failed.', 'NotSupportedError'),
+          );
+        };
+      });
+    }
+    await showLink(win, standIn.url, true);
+    expect((await background(win)).layers.background).toMatchObject({ kind: 'link', name: '127.0.0.1' });
+    try {
+      if (earlyError)
+        await expect
+          .poll(() =>
+            hall.evaluate(() => {
+              const page = globalThis as { linkPictureProbe?: { failed: number } };
+              return page.linkPictureProbe?.failed ?? 0;
+            }),
+          )
+          .toBeGreaterThan(0);
+      await expect(hall.locator('[data-kind="link"]')).toHaveAttribute('data-link-state', 'live', {
+        timeout: 15_000,
+      });
+    } catch (error) {
+      throw new Error(`the first link picture: ${JSON.stringify(await linkLook(hall))} Main: ${mainSaid()}`, {
+        cause: error,
+      });
+    } finally {
+      await test.info().attach('Link picture startup', {
+        body: JSON.stringify({
+          earlyError,
+          look: await linkLook(hall),
+          probe: await hall.evaluate(
+            () => (globalThis as typeof globalThis & { linkPictureProbe?: unknown }).linkPictureProbe ?? null,
+          ),
+        }),
+        contentType: 'application/json',
+      });
+    }
+    await moving(hall, 'the hall’s screen');
+    await moving(win, 'LIVE', '[data-testid="live-preview"]');
+    await expect(win.getByTestId('stream-link-notice')).toHaveAttribute('data-state', 'playing');
 
-  // Its own clear (F3, the background) takes it off: no player left, its local stream's folder gone.
-  await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearLayer', layer: 'background' }),
-  );
-  await expect(hall.locator('[data-kind="link"]')).toHaveCount(0);
-  await expect(win.getByTestId('stream-link-notice')).toHaveCount(0);
-  const folder = join(userData, 'Stream links');
-  await expect.poll(() => (existsSync(folder) ? readdirSync(folder).length : 0), { timeout: 15_000 }).toBe(0);
-  await closeAll(app, standIn);
-});
+    // Drashti's own stream never carries it: the Wallpaper, and no player of it there.
+    await win.getByTestId('open-stream').click();
+    const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
+    await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 60_000,
+    });
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
+    await expect(program.getByTestId('wallpaper')).toBeVisible({ timeout: 15_000 });
+    await expect(program.locator('[data-kind="link"]')).toHaveCount(0);
+    await win.getByRole('button', { name: 'Close stream' }).click();
 
-test('a stream link’s sound plays in the hall at the Video level, and none of it in Drashti’s own stream', async () => {
-  test.setTimeout(180_000);
-  const { standIn, app, win, hall } = await hallAndLink();
-  const audio = await audioPage(app);
-  await showLink(win, standIn.url);
-  await moving(hall, 'the hall’s screen');
-  // The stand-in's tone through the audio player, under Video's level.
-  const sound = audio.locator('audio[data-key^="link:"]');
-  await expect(sound).toHaveCount(1);
-  await expect(sound).toHaveAttribute('data-kind', 'video');
-  try {
-    await expect
-      .poll(async () => Number(await audio.locator('body').getAttribute('data-level')), { timeout: 15_000 })
-      .toBeGreaterThan(-50);
-  } catch (error) {
-    // Said with the hall's sound player as it was: its join, clock, events and how it failed, if it did.
-    const player = await sound.evaluate((el: HTMLAudioElement) =>
-      JSON.stringify({
-        ...Object.fromEntries(Object.entries(el.dataset)),
-        t: el.currentTime.toFixed(2),
-        paused: el.paused,
-        readyState: el.readyState,
-        error: el.error ? el.error.code : null,
-        now: Date.now(),
-      }),
+    // Its own clear (F3, the background) takes it off: no player left, its local stream's folder gone.
+    await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearLayer', layer: 'background' }),
     );
-    throw new Error(`the hall’s sound: ${player} Main: ${mainSaid()}: ${String(error)}`, { cause: error });
-  }
-  // Video's mute takes it away; unmuted, it is back.
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', true));
-  await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBe(0);
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', false));
-  await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBeGreaterThan(0);
-  // Drashti's own stream mixes none of it.
-  await win.getByTestId('open-stream').click();
-  const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
-  await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
-    timeout: 60_000,
+    await expect(hall.locator('[data-kind="link"]')).toHaveCount(0);
+    await expect(win.getByTestId('stream-link-notice')).toHaveCount(0);
+    const folder = join(userData, 'Stream links');
+    await expect
+      .poll(() => (existsSync(folder) ? readdirSync(folder).length : 0), { timeout: 15_000 })
+      .toBe(0);
+    await closeAll(app, standIn);
   });
-  await letTimePass(program, 2000, 'the stream’s page has had its state');
-  await expect(program.locator('audio[data-key^="link:"]')).toHaveCount(0);
-  await win.getByRole('button', { name: 'Close stream' }).click();
-  await closeAll(app, standIn);
-});
+}
+
+for (const heldJump of [false, true]) {
+  test(`a stream link’s sound plays in the hall at the Video level, and none of it in Drashti’s own stream${heldJump ? ' (a held timeline jumps ahead)' : ''}`, async () => {
+    test.setTimeout(180_000);
+    const { standIn, app, win, hall } = await hallAndLink();
+    const audio = await audioPage(app);
+    if (heldJump) {
+      await audio.evaluate(() => {
+        // CI x67-1121-122650-81592: the native HLS timeline jumps forward through its hold, repeatedly ahead,
+        // while the actual sound stays paused. Deliver that state on its first hold, until its source is rejoined.
+        const prototype = HTMLMediaElement.prototype;
+        const pause = Object.getOwnPropertyDescriptor(prototype, 'pause')?.value as
+          ((this: HTMLMediaElement) => void) | undefined;
+        const load = Object.getOwnPropertyDescriptor(prototype, 'load')?.value as
+          ((this: HTMLMediaElement) => void) | undefined;
+        if (!pause || !load) throw new Error('The native media methods are missing.');
+        const probe = { held: false, delivered: false, rejoined: false };
+        (globalThis as typeof globalThis & { linkHoldProbe?: typeof probe }).linkHoldProbe = probe;
+        const held = new WeakSet<HTMLMediaElement>();
+        prototype.pause = function () {
+          const from = this.currentTime;
+          pause.call(this);
+          if (probe.held || !this.dataset['key']?.startsWith('link:') || !this.getAttribute('src')) return;
+          probe.held = true;
+          held.add(this);
+          const at = Date.now();
+          Object.defineProperty(this, 'currentTime', {
+            configurable: true,
+            get: () => {
+              probe.delivered = true;
+              return from + 2 + (Date.now() - at) / 1000;
+            },
+          });
+        };
+        prototype.load = function () {
+          if (held.has(this)) {
+            Reflect.deleteProperty(this, 'currentTime');
+            if (this.getAttribute('src')) probe.rejoined = true;
+          }
+          load.call(this);
+        };
+      });
+    }
+    const soundConsole: string[] = [];
+    audio.on('console', (message) => soundConsole.push(`${message.type()}: ${message.text()}`));
+    await audio.evaluate(() => {
+      const prototype = AudioContext.prototype;
+      const original = Object.getOwnPropertyDescriptor(prototype, 'createMediaElementSource')?.value as
+        ((this: AudioContext, element: HTMLMediaElement) => MediaElementAudioSourceNode) | undefined;
+      if (!original) throw new Error('The sound source method is missing.');
+      prototype.createMediaElementSource = function (element) {
+        const source = original.call(this, element);
+        (globalThis as typeof globalThis & { linkSoundContext?: AudioContext }).linkSoundContext = this;
+        return source;
+      };
+    });
+    await showLink(win, standIn.url);
+    await moving(hall, 'the hall’s screen');
+    // The stand-in's tone through the audio player, under Video's level.
+    const sound = audio.locator('audio[data-key^="link:"]');
+    await expect(sound).toHaveCount(1);
+    await expect(sound).toHaveAttribute('data-kind', 'video');
+    const soundLooks: unknown[] = [];
+    try {
+      await expect
+        .poll(
+          async () => {
+            const look = await audio.evaluate(() => {
+              const el = document.querySelector<HTMLAudioElement>('audio[data-key^="link:"]');
+              const context = (globalThis as typeof globalThis & { linkSoundContext?: AudioContext })
+                .linkSoundContext;
+              return {
+                level: Number(document.body.dataset['level']),
+                context: context ? { state: context.state, time: context.currentTime } : null,
+                player: el
+                  ? {
+                      ...Object.fromEntries(Object.entries(el.dataset)),
+                      time: el.currentTime,
+                      paused: el.paused,
+                      ready: el.readyState,
+                      volume: el.volume,
+                      muted: el.muted,
+                      error: el.error?.message ?? null,
+                    }
+                  : null,
+              };
+            });
+            soundLooks.push(look);
+            return look.level;
+          },
+          { timeout: 15_000 },
+        )
+        .toBeGreaterThan(-50);
+    } catch (error) {
+      // Said with the hall's sound player as it was: its join, clock, events and how it failed, if it did.
+      const player = await sound.evaluate((el: HTMLAudioElement) =>
+        JSON.stringify({
+          ...Object.fromEntries(Object.entries(el.dataset)),
+          t: el.currentTime.toFixed(2),
+          paused: el.paused,
+          readyState: el.readyState,
+          error: el.error ? el.error.code : null,
+          now: Date.now(),
+        }),
+      );
+      throw new Error(`the hall’s sound: ${player} Main: ${mainSaid()}: ${String(error)}`, { cause: error });
+    } finally {
+      await test.info().attach('Link sound state', {
+        body: JSON.stringify({ heldJump, looks: soundLooks, console: soundConsole }, null, 2),
+        contentType: 'application/json',
+      });
+    }
+    if (heldJump)
+      expect(
+        await audio.evaluate(
+          () =>
+            (
+              globalThis as typeof globalThis & {
+                linkHoldProbe?: { held: boolean; delivered: boolean; rejoined: boolean };
+              }
+            ).linkHoldProbe,
+        ),
+      ).toEqual({ held: true, delivered: true, rejoined: true });
+    // Video's mute takes it away; unmuted, it is back.
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', true));
+    await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBe(0);
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', false));
+    await expect.poll(async () => Number(await sound.getAttribute('data-gain'))).toBeGreaterThan(0);
+    // Drashti's own stream mixes none of it.
+    await win.getByTestId('open-stream').click();
+    const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
+    await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 60_000,
+    });
+    await letTimePass(program, 2000, 'the stream’s page has had its state');
+    await expect(program.locator('audio[data-key^="link:"]')).toHaveCount(0);
+    await win.getByRole('button', { name: 'Close stream' }).click();
+    await closeAll(app, standIn);
+  });
+}
 
 test('a stream link that drops: its last picture held while Drashti reconnects, the Wallpaper after 20 s, back by itself; never back once something else went up', async () => {
   test.setTimeout(300_000);

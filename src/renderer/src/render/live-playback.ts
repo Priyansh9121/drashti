@@ -31,9 +31,11 @@ export interface LivePlaybackOptions {
   linkId: string;
   /** The hall's sound (the audio player): every other page plays it muted. */
   audible: boolean;
+  /** A recovering player loads at its joined moment, so its new native player never needs an early hold. */
+  joinAtMoment?: boolean;
   /** Its first frame is in, playing (presented, for a picture). */
   onFrame?: () => void;
-  /** Far behind with pictures to play: the caller joins it again (a new element, the old one kept until then). */
+  /** Far behind, or a held sound jumps ahead: the caller joins it again (keeping the old picture until then). */
   onBehind?: () => void;
   /** Its player gave up (an error). */
   onError?: () => void;
@@ -65,7 +67,7 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
   const ask = async () => {
     const got = (await bridge?.liveLink.join(options.linkId).catch(() => null)) ?? null;
     if (!on) return;
-    if (!got) {
+    if (!got || (options.joinAtMoment && got.startAt <= engineNow())) {
       later(ASK_AGAIN_MS, () => void ask());
       return;
     }
@@ -73,8 +75,17 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     // For the tests and Save Diagnostics: where this player joined, and when its first frame is shown.
     el.dataset['segment'] = String(got.segment);
     el.dataset['startAt'] = String(got.startAt);
-    el.src = streamLinkUrl(options.linkId, got.segment);
-    el.load();
+    const load = () => {
+      if (!on) return;
+      el.src = streamLinkUrl(options.linkId, got.segment);
+      el.load();
+    };
+    // An early native HLS player can fail when resumed after a hold (CI x67-1121-132824-14333). For a
+    // replacement, defer the load itself to its joined moment: it plays as soon as it has data, never loaded
+    // and left unplayed (which also fails, x54-1120-223559-2185). Initial players keep their original early load.
+    const until = got.startAt - engineNow();
+    if (options.joinAtMoment && until > 0) later(until, load);
+    else load();
   };
   /**
    * Its first frame is in, playing: told once its time has moved on from where it started (a player never played may
@@ -90,7 +101,16 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
   };
   /** Where its time stood as it was first played. */
   let playedFrom = 0;
+  let heldSound: {
+    position: number;
+    resumed: { position: number; at: number } | null;
+  } | null = null;
+  const hold = () => {
+    if (options.audible) heldSound = { position: el.currentTime, resumed: null };
+    el.pause();
+  };
   const play = () => {
+    if (heldSound && el.paused) heldSound.resumed = { position: el.currentTime, at: engineNow() };
     void el.play().catch(() => undefined);
     if (playedAt !== null) return;
     playedAt = engineNow();
@@ -105,12 +125,26 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     const expected = (now - j.startAt) / 1000;
     // For the tests and Save Diagnostics: where it is against where the engine's time has it.
     el.dataset['offset'] = (el.currentTime - expected).toFixed(3);
+    // A native HLS sound can jump forward while held or when resumed. Holding that new position again can repeat
+    // forever, silent (CI x67-1121-122650-81592). Rejoin through the existing clock-recovery path; normal playback
+    // since a resume is accounted for, so ordinary playback progress is not mistaken for a jump.
+    if (heldSound && el.currentTime - expected > AHEAD_S.sound && !behind) {
+      const resumed = el.paused ? null : heldSound.resumed;
+      const advance = resumed
+        ? el.currentTime - resumed.position - Math.max(0, (now - resumed.at) / 1000)
+        : el.currentTime - heldSound.position;
+      if (advance > BEHIND_S.sound) {
+        behind = true;
+        options.onBehind?.();
+        return;
+      }
+    }
     // Its moment still to come: it plays at once all the same (a player held paused before it ever played failed as it
     // began, code 4, CI x54-1120-223559-2185), and is held there, paused, once it has played (a frame or two).
     if (expected < 0) {
       if (playedAt === null) play();
       else {
-        if (!el.paused && el.currentTime > playedFrom) el.pause();
+        if (!el.paused && el.currentTime > playedFrom) hold();
         later(-expected * 1000, check);
       }
       return;
@@ -122,7 +156,7 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
     // (CI x54-1121-004746-1596: the hall's sound, loaded after its moment and ahead, held, then failed as it began).
     if (offset > AHEAD_S[kind]) {
       if (playedAt === null) play();
-      else if (!el.paused && el.currentTime > playedFrom) el.pause();
+      else if (!el.paused && el.currentTime > playedFrom) hold();
       later(offset * 1000, check);
       return;
     }
@@ -131,8 +165,10 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
       play();
       return;
     }
-    // Stopped for want of pictures (the link itself stopped): left as it is, its last frame shown.
-    if (el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
+    // A picture waiting for data keeps its last frame. A native sound player can stall alone without an
+    // error (CI44119): ask for a fresh join when it falls behind. A replacement accepts only a future start
+    // above, so a stopped source waits for new data instead of replaying the old sound.
+    if (!options.audible && el.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
     // Playing a while and still behind, with pictures to play (it loaded late, or stalled alone): it joins again.
     if (offset < -BEHIND_S[kind] && playedAt !== null && now - playedAt >= SETTLE_MS && !behind) {
       behind = true;
