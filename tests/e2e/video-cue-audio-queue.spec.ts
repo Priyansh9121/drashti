@@ -56,6 +56,9 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
         const ready = waitFor('ready');
         const page = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url);
         if (!page) throw new Error('No generated stream page');
+        const sound = new MessageChannelMain();
+        child.postMessage('port', [sound.port1]);
+        page.webContents.postMessage(ipc, { role: 'encoder-audio' }, [sound.port2]);
         const { port1, port2 } = new MessageChannelMain();
         child.postMessage('port', [port1]);
         (
