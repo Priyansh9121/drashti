@@ -125,6 +125,72 @@ describe('a stream link’s player on a page', () => {
     }
   });
 
+  it('rejoins when a held sound timeline jumps ahead instead of holding that native HLS jump forever', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 2500 };
+    const el = new FakeLive(0, 500);
+    const pause = el.pause.bind(el);
+    let jumped = false;
+    el.pause = () => {
+      const from = el.currentTime;
+      pause();
+      if (jumped) return;
+      jumped = true;
+      const at = Date.now();
+      Object.defineProperty(el, 'currentTime', {
+        get: () => from + 2 + (Date.now() - at) / 1000,
+      });
+    };
+    const rejoin = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: true,
+      onBehind: rejoin,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(jumped).toBe(true);
+      expect(el.paused).toBe(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(rejoin).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it('rejoins when resuming a held sound jumps its native HLS timeline ahead again', async () => {
+    joinAt = { segment: 5, startAt: Date.now() + 2500 };
+    const el = new FakeLive(0, 500);
+    const play = el.play.bind(el);
+    let jumped = false;
+    el.play = () => {
+      const before = el.played;
+      const result = play();
+      if (before === 1 && el.played === 2) {
+        const from = el.currentTime;
+        const at = Date.now();
+        jumped = true;
+        Object.defineProperty(el, 'currentTime', {
+          get: () => from + 2 + (Date.now() - at) / 1000,
+        });
+      }
+      return result;
+    };
+    const rejoin = vi.fn();
+    const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
+      linkId: LINK,
+      audible: true,
+      onBehind: rejoin,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(jumped).toBe(true);
+      expect(el.played).toBe(2);
+      expect(rejoin).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
   it('loaded before its moment, it plays at once, is held on its first frames until its moment, then plays in step', async () => {
     joinAt = { segment: 5, startAt: Date.now() + 2500 };
     const el = new FakeLive(0, 500);
