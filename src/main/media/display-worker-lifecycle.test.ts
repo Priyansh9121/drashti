@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,13 +32,24 @@ function setup() {
   const beforeBytes = vi.fn<() => void>();
   const freeBytes = vi.fn(() => 10 * 1024 ** 3);
   const activity = { quiet: true, otherWorker: false };
+  const blobs = new Map<string, Uint8Array>();
   const copies = new DisplayCopies({
     mediaDir: dir,
     targets: () => [{ width: 1920, height: 1080 }],
     canWork: () => activity.quiet,
     canStart: () => !activity.otherWorker,
     open: (gone) => {
-      const win = { id: windows.length + 1, gone, destroy: vi.fn(), beforeBytes };
+      const win = {
+        id: windows.length + 1,
+        gone,
+        destroy: vi.fn(),
+        beforeBytes,
+        saveBlob: async (blob: { url: string; bytes: number }, destination: string) => {
+          const bytes = blobs.get(blob.url);
+          if (bytes?.byteLength !== blob.bytes) throw new Error('Unknown generated Blob');
+          await writeFile(destination, bytes);
+        },
+      };
       windows.push(win);
       return win;
     },
@@ -53,14 +66,19 @@ function setup() {
     writeFileSync(join(dir, path), png(6144, 3456));
     return { path, sha256 };
   };
-  return { copies, windows, beforeBytes, freeBytes, activity, candidate };
+  const made = (sender: number, key: unknown, bytes: Uint8Array) => {
+    const url = `blob:null/${randomUUID()}`;
+    blobs.set(url, bytes);
+    return copies.made(sender, key, { url, bytes: bytes.byteLength });
+  };
+  return { copies, windows, beforeBytes, freeBytes, activity, candidate, made };
 }
 async function finishFirst(t: ReturnType<typeof setup>) {
   const first = t.copies.prepare(t.candidate('a'));
   await vi.waitFor(() => expect(t.windows).toHaveLength(1));
   const job = await t.copies.next(1);
   if (!job) throw new Error('The first owned display job was not granted.');
-  await t.copies.made(1, job.key, png(1920, 1080));
+  await t.made(1, job.key, png(1920, 1080));
   expect(await first).toMatchObject({ ok: true });
 }
 
@@ -86,7 +104,7 @@ describe('the display worker between imports', () => {
       expect(t.copies.workerSource(999, key)).toBeNull();
       expect(t.copies.workerSource(1, 'another-job')).toBeNull();
       if (ending === 'made') {
-        await t.copies.made(1, key, png(1920, 1080));
+        await t.made(1, key, png(1920, 1080));
         expect(await prepared).toMatchObject({ ok: true });
       } else {
         abort.abort();
@@ -123,7 +141,7 @@ describe('the display worker between imports', () => {
       resizeOnly: true,
     });
     expect(job).not.toHaveProperty('data');
-    await t.copies.made(1, job.key, png(1920, 1080));
+    await t.made(1, job.key, png(1920, 1080));
     expect(await prepared).toMatchObject({ ok: true });
   });
 
@@ -139,7 +157,7 @@ describe('the display worker between imports', () => {
     expect(t.windows).toHaveLength(1);
     if (!job) throw new Error('The warm worker was closed instead of receiving the next import.');
     expect(t.copies.working).toBe(true);
-    await t.copies.made(1, job.key, png(1920, 1080));
+    await t.made(1, job.key, png(1920, 1080));
     expect(await second).toMatchObject({ ok: true });
   });
 
@@ -158,7 +176,7 @@ describe('the display worker between imports', () => {
     const job = await waiting;
     if (!job) throw new Error('The warm worker did not receive the next import.');
     expect(t.beforeBytes).toHaveBeenCalledOnce();
-    await t.copies.made(1, job.key, png(1920, 1080));
+    await t.made(1, job.key, png(1920, 1080));
     expect(await second).toMatchObject({ ok: true });
   });
 
@@ -193,7 +211,7 @@ describe('the display worker between imports', () => {
     const job = await waiting;
     if (!job) throw new Error('The waiting display request was lost while sharpening owned the slot.');
     expect(t.copies.working).toBe(true);
-    await t.copies.made(1, job.key, png(1920, 1080));
+    await t.made(1, job.key, png(1920, 1080));
     expect(await second).toMatchObject({ ok: true });
   });
 
@@ -222,8 +240,8 @@ describe('the display worker between imports', () => {
     if (!job) throw new Error('The replacement worker did not receive the next import.');
     t.windows[0]?.gone();
     expect(t.copies.workerSource(2, job.key)).not.toBeNull();
-    expect(await t.copies.made(1, job.key, png(1920, 1080))).toBe(false);
-    expect(await t.copies.made(2, job.key, png(1920, 1080))).toBe(true);
+    expect(await t.made(1, job.key, png(1920, 1080))).toBe(false);
+    expect(await t.made(2, job.key, png(1920, 1080))).toBe(true);
     expect(await second).toMatchObject({ ok: true });
   });
 });

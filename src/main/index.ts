@@ -196,6 +196,7 @@ import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { DisplayCopies } from './media/display-copies';
+import { DisplayBlobFiles } from './pictures/display-blob-file';
 import { handleDisplaySourceRequest } from './media/display-worker-source';
 import { DEFAULT_DISPLAY_SIZE } from '../shared/picture-display';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
@@ -1967,6 +1968,8 @@ function start(): void {
   // No shared media permissions or cache: this Session can read only its one currently granted source.
   const displaySession = session.fromPartition('drashti-display-copies');
   applySessionSecurity(displaySession);
+  const displayBlobFiles = new DisplayBlobFiles(displaySession);
+  stops.add('display blob files', () => displayBlobFiles.close());
   let displayWorkerId = 0;
   const displayCopies = new DisplayCopies({
     mediaDir,
@@ -1979,6 +1982,8 @@ function start(): void {
       displayWorkerId = id;
       return {
         id,
+        saveBlob: (blob, destination, signal) =>
+          displayBlobFiles.save(win.webContents, blob, destination, signal),
         beforeBytes: () => {
           const priority = pictureWorkerPriority(win.webContents.getOSProcessId());
           log.info(`Display copy worker priority: ${String(priority)} (${process.platform})`);

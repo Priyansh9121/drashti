@@ -2,7 +2,7 @@ import { copySize, sharpenPixels } from '../../../shared/picture-look';
 import type { SharpenJobView } from '../../../shared/pictures';
 import { readDisplaySource } from './source-blob';
 
-export async function makePictureCopy(job: SharpenJobView): Promise<Uint8Array> {
+export async function makePictureBlob(job: SharpenJobView): Promise<Blob> {
   const source = job.resizeOnly
     ? await readDisplaySource(job.source, job.maxBytes)
     : new Blob([new Uint8Array(job.data)]);
@@ -31,6 +31,11 @@ export async function makePictureCopy(job: SharpenJobView): Promise<Uint8Array> 
     image.data.set(sharpenPixels(image.data, canvas.width, canvas.height, job.percent));
     ctx.putImageData(image, 0, 0);
   }
-  const blob = await canvas.convertToBlob({ type: job.type, quality: 0.95 });
+  return canvas.convertToBlob({ type: job.type, quality: 0.95 });
+}
+
+/** The ordinary sharpen worker keeps its existing byte-array route. */
+export async function makePictureCopy(job: SharpenJobView): Promise<Uint8Array> {
+  const blob = await makePictureBlob(job);
   return new Uint8Array(await blob.arrayBuffer());
 }

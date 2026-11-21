@@ -129,6 +129,15 @@ export function tidyNotes(text: string): string {
 /** The display source bound, applied before grant, by its private protocol, and by its worker reader. */
 export const MAX_DISPLAY_SOURCE_BYTES = 256 * 1024 * 1024;
 
+/** The existing limit on one encoded display rendition, checked again before its native file write. */
+export const MAX_DISPLAY_COPY_BYTES = 512 * 1024 * 1024;
+
+/** A worker-owned encoded Blob; its bytes stay in Chromium until its private native file write ends. */
+export interface DisplayCopyBlob {
+  url: string;
+  bytes: number;
+}
+
 interface PictureCopyJob {
   key: string;
   percent: number;

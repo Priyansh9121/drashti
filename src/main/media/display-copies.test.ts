@@ -1,4 +1,6 @@
-import { createHash, webcrypto } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import * as displayFileHash from './display-file-hash';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -38,6 +40,7 @@ function setup(
   const path = `aa/${SHA}.png`;
   writeFileSync(join(dir, path), bytes);
   const windows = { opened: 0, destroyed: 0 };
+  const blobs = new Map<string, Uint8Array>();
   const changed = vi.fn<() => void>();
   const copies = new DisplayCopies({
     mediaDir: dir,
@@ -48,6 +51,11 @@ function setup(
       return {
         id: windows.opened,
         beforeBytes: () => undefined,
+        saveBlob: async (blob, destination) => {
+          const bytes = blobs.get(blob.url);
+          if (bytes?.byteLength !== blob.bytes) throw new Error('Unknown generated Blob');
+          await writeFile(destination, bytes);
+        },
         destroy: () => {
           windows.destroyed++;
         },
@@ -58,7 +66,13 @@ function setup(
     freeBytes: () => (typeof free === 'number' ? free : free()),
   });
   services.push(copies);
-  return { dir, copies, windows, changed, candidate: { path, sha256: SHA } };
+  const made = (sender: number, key: unknown, bytes: Uint8Array | null) => {
+    if (bytes === null) return copies.made(sender, key, null);
+    const url = `blob:null/${randomUUID()}`;
+    blobs.set(url, bytes);
+    return copies.made(sender, key, { url, bytes: bytes.byteLength });
+  };
+  return { dir, copies, windows, changed, made, candidate: { path, sha256: SHA } };
 }
 
 describe('original-preserving display copies', () => {
@@ -81,7 +95,7 @@ describe('original-preserving display copies', () => {
       new Uint8Array(png(6144, 3456)),
     );
     const output = png(1920, 1080);
-    expect(await t.copies.made(1, job.key, new Uint8Array(output))).toBe(true);
+    expect(await t.made(1, job.key, new Uint8Array(output))).toBe(true);
     const result = await prepared;
     expect(result).toMatchObject({
       ok: true,
@@ -95,7 +109,7 @@ describe('original-preserving display copies', () => {
     await vi.waitFor(() => expect(t.windows.opened).toBe(1));
     const job = await t.copies.next(1);
     if (!job) throw new Error('The queued copy job was not offered.');
-    await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+    await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
     const made = await first;
     const again = setup(png(6144, 3456), 10 * 1024 ** 3, t.dir);
     expect(await again.copies.prepare(again.candidate)).toEqual(made);
@@ -110,7 +124,7 @@ describe('original-preserving display copies', () => {
       await vi.waitFor(() => expect(t.windows.opened).toBe(1));
       const job = await t.copies.next(1);
       if (!job) throw new Error('The queued copy job was not offered.');
-      await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+      await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
       const result = await first;
       if (!result.ok || !result.copy) throw new Error('The display file was not made.');
       const idleNext = t.copies.next(1);
@@ -148,7 +162,7 @@ describe('original-preserving display copies', () => {
     await vi.waitFor(() => expect(t.windows.opened).toBe(1));
     const job = await t.copies.next(1);
     if (!job) throw new Error('The queued copy job was not offered.');
-    await t.copies.made(1, job.key, new Uint8Array(png(320, 180)));
+    await t.made(1, job.key, new Uint8Array(png(320, 180)));
     expect(await prepared).toMatchObject({ ok: false });
     expect(t.copies.ready(SHA)).toBeNull();
   });
@@ -160,7 +174,7 @@ describe('original-preserving display copies', () => {
     const job = await t.copies.next(1);
     if (!job) throw new Error('The queued copy job was not offered.');
     free = 1024;
-    await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+    await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
     expect(await prepared).toMatchObject({ ok: false });
     expect(t.copies.ready(SHA)).toBeNull();
   });
@@ -175,7 +189,7 @@ describe('original-preserving display copies', () => {
     abort.abort();
     expect(await first).toMatchObject({ ok: false });
     expect(t.windows.destroyed).toBe(0);
-    await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+    await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
     expect(await second).toMatchObject({ ok: true, copy: { width: 1920 } });
     expect(t.windows.opened).toBe(1);
   });
@@ -188,7 +202,7 @@ describe('original-preserving display copies', () => {
     await vi.waitFor(() => expect(t.windows.opened).toBe(1));
     const job = await t.copies.next(1);
     if (!job) throw new Error('The import copy job did not start during the show.');
-    await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+    await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
     expect(await fresh).toMatchObject({ ok: true });
     expect(await old).toMatchObject({ ok: true });
     quiet = true;
@@ -210,7 +224,7 @@ describe('original-preserving display copies', () => {
     });
     const job = await t.copies.next(1);
     if (!job) throw new Error('The display worker did not start after sharpening finished.');
-    await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+    await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
     expect(await prepared).toMatchObject({ ok: true });
   });
   it('retains a checked smaller source while a larger target waits for an idle show', async () => {
@@ -224,7 +238,7 @@ describe('original-preserving display copies', () => {
     await vi.waitFor(() => expect(t.windows.opened).toBe(1));
     const job = await t.copies.next(1);
     if (!job) throw new Error('The first display copy job did not start.');
-    await t.copies.made(1, job.key, new Uint8Array(png(1920, 1080)));
+    await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
     await first;
     const idleNext = t.copies.next(1);
     await t.copies.idle();
@@ -239,7 +253,7 @@ describe('original-preserving display copies', () => {
     expect(t.windows.opened).toBe(1);
     if (!next) throw new Error('The larger display copy job did not start at idle.');
     expect(next.box).toEqual(target);
-    await t.copies.made(1, next.key, new Uint8Array(png(3840, 2160)));
+    await t.made(1, next.key, new Uint8Array(png(3840, 2160)));
     await larger;
     expect(t.copies.ready(SHA)).toMatchObject(target);
   });
@@ -258,27 +272,29 @@ describe('asynchronous display checksums', () => {
     const job = await t.copies.next(1);
     if (!job) throw new Error('The checksum test did not receive its copy job.');
     const output = new Uint8Array(png(1920, 1080));
-    const hash = Uint8Array.from(createHash('sha256').update(output).digest()).buffer;
+    const hash = createHash('sha256').update(output).digest('hex');
     return { ...t, prepared, job, output, hash };
   }
 
   it('advertises the same copy only after its asynchronous checksum is complete', async () => {
     const t = await copyJob();
-    let finish!: (value: ArrayBuffer) => void;
-    const pending = new Promise<ArrayBuffer>((resolve) => {
+    let finish!: (value: string) => void;
+    const pending = new Promise<string>((resolve) => {
       finish = resolve;
     });
-    const digest = vi.spyOn(webcrypto.subtle, 'digest').mockReturnValueOnce(pending);
-    const made = t.copies.made(1, t.job.key, t.output);
+    const digest = vi.spyOn(displayFileHash, 'hashDisplayFile').mockReturnValueOnce(pending);
+    const made = t.made(1, t.job.key, t.output);
     try {
       await vi.waitFor(() => expect(digest).toHaveBeenCalledOnce());
       expect(t.copies.ready(SHA)).toBeNull();
       expect(t.changed).not.toHaveBeenCalled();
-      expect(digest).toHaveBeenCalledWith('SHA-256', t.output);
+      const checkedPath = digest.mock.calls[0]?.[0];
+      if (!checkedPath) throw new Error('The encoded file was not offered for its checksum.');
+      expect(readFileSync(checkedPath)).toEqual(Buffer.from(t.output));
       finish(t.hash);
       expect(await made).toBe(true);
       const result = await t.prepared;
-      expect(result).toMatchObject({ ok: true, copy: { hash: Buffer.from(t.hash).toString('hex') } });
+      expect(result).toMatchObject({ ok: true, copy: { hash: t.hash } });
       if (!result.ok || !result.copy) throw new Error('The checked copy was not published.');
       expect(readFileSync(join(t.dir, result.copy.path))).toEqual(Buffer.from(t.output));
       expect(t.changed).toHaveBeenCalledOnce();
@@ -294,12 +310,12 @@ describe('asynchronous display checksums', () => {
     async (how) => {
       const abort = new AbortController();
       const t = await copyJob(abort.signal);
-      let finish!: (value: ArrayBuffer) => void;
-      const pending = new Promise<ArrayBuffer>((resolve) => {
+      let finish!: (value: string) => void;
+      const pending = new Promise<string>((resolve) => {
         finish = resolve;
       });
-      const digest = vi.spyOn(webcrypto.subtle, 'digest').mockReturnValueOnce(pending);
-      const made = t.copies.made(1, t.job.key, t.output);
+      const digest = vi.spyOn(displayFileHash, 'hashDisplayFile').mockReturnValueOnce(pending);
+      const made = t.made(1, t.job.key, t.output);
       try {
         await vi.waitFor(() => expect(digest).toHaveBeenCalledOnce());
         if (how === 'closed') t.copies.close();
@@ -322,10 +338,10 @@ describe('asynchronous display checksums', () => {
   it('refuses a failed checksum without publishing a copy or changing its original', async () => {
     const t = await copyJob();
     const digest = vi
-      .spyOn(webcrypto.subtle, 'digest')
+      .spyOn(displayFileHash, 'hashDisplayFile')
       .mockRejectedValueOnce(new Error('Generated asynchronous checksum failure'));
     try {
-      expect(await t.copies.made(1, t.job.key, t.output)).toBe(true);
+      expect(await t.made(1, t.job.key, t.output)).toBe(true);
       expect(await t.prepared).toMatchObject({ ok: false });
       expect(t.copies.ready(SHA)).toBeNull();
       expect(t.changed).not.toHaveBeenCalled();
@@ -349,7 +365,7 @@ describe('display look target snapshots', () => {
     await vi.waitFor(() => expect(t.windows.opened).toBe(1));
     const a = await t.copies.next(1);
     if (!a) throw new Error('The small checked copy was not offered.');
-    await t.copies.made(1, a.key, new Uint8Array(png(1920, 1080)));
+    await t.made(1, a.key, new Uint8Array(png(1920, 1080)));
     const smallResult = await first;
     const waiting = t.copies.next(1);
     await t.copies.idle();
@@ -357,7 +373,7 @@ describe('display look target snapshots', () => {
     const second = t.copies.prepare(t.candidate);
     const b = await waiting;
     if (!b) throw new Error('The large checked copy was not offered.');
-    await t.copies.made(1, b.key, new Uint8Array(png(3840, 2160)));
+    await t.made(1, b.key, new Uint8Array(png(3840, 2160)));
     const largeResult = await second;
     if (!smallResult.ok || !smallResult.copy || !largeResult.ok || !largeResult.copy)
       throw new Error('Both physical target sizes must have checked copies.');

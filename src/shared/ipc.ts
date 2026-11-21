@@ -50,7 +50,7 @@ import type { MediaDetailsResult } from './media-details';
 import type { ResumePoint } from './play-history';
 import type { PlayingRef } from './engine/playing';
 import type { SnapshotResult } from './snapshot';
-import type { PictureAssetKind, SharpenJobView } from './pictures';
+import type { DisplayCopyBlob, PictureAssetKind, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
   PassageInfo,
@@ -1367,7 +1367,7 @@ export interface InvokeContract {
   [IPC.pdfExport.done]: { args: [done: PdfCopyFinished]; result: boolean };
   [IPC.pdfExport.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.displayCopies.next]: { args: []; result: SharpenJobView | null };
-  [IPC.displayCopies.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
+  [IPC.displayCopies.made]: { args: [key: string, blob: DisplayCopyBlob | null]; result: boolean };
   [IPC.sharpen.next]: { args: []; result: SharpenJobView | null };
   [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };

@@ -86,7 +86,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
-import type { PictureAssetKind, SharpenJobView } from './pictures';
+import type { DisplayCopyBlob, PictureAssetKind, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
@@ -1254,7 +1254,7 @@ export interface DrashtiBridge {
   /** The hidden window that makes pictures' sharpened copies (Session 26f); that window only. */
   displayCopies: {
     next(): Promise<SharpenJobView | null>;
-    made(key: string, bytes: Uint8Array | null): Promise<boolean>;
+    made(key: string, blob: DisplayCopyBlob | null): Promise<boolean>;
   };
   sharpen: {
     /** The next picture to make a copy of (null: none left). */

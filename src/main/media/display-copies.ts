@@ -1,18 +1,24 @@
-import { randomUUID, webcrypto } from 'node:crypto';
-import { mkdir, readdir, rename, stat, writeFile, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readdir, rename, stat, rm } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { PictureLook, PixelSize } from '../../shared/picture-look';
 import { displayPictureSize, originalForOlderPictureWithoutDisplayCopy } from '../../shared/picture-display';
-import { MAX_DISPLAY_SOURCE_BYTES, type SharpenJobView } from '../../shared/pictures';
+import {
+  MAX_DISPLAY_COPY_BYTES,
+  MAX_DISPLAY_SOURCE_BYTES,
+  type DisplayCopyBlob,
+  type SharpenJobView,
+} from '../../shared/pictures';
 import { mediaUrl } from '../../shared/media';
 import type { MediaFileRow } from './media-protocol';
 import { diskFreeBytes, sha256File } from '../import/media-store';
 import { realPlaceAsync } from './contained';
-import { pictureHeader, readPictureHeader, type PictureHeader } from './picture-header';
+import { readPictureHeader, type PictureHeader } from './picture-header';
+import { hashDisplayFile } from './display-file-hash';
 
 export const DISPLAY_DIR = 'display';
 const MAX_SOURCE_BYTES = MAX_DISPLAY_SOURCE_BYTES;
-const MAX_COPY_BYTES = 512 * 1024 * 1024;
+const MAX_COPY_BYTES = MAX_DISPLAY_COPY_BYTES;
 const MAX_SOURCE_PIXELS = 50_000_000;
 const RESERVE_BYTES = 2 * 1024 ** 3;
 const JOB_MS = 120_000;
@@ -38,6 +44,8 @@ export interface DisplayWorker {
   destroy(): void;
   /** Recheck this window's current OS process immediately before each job grant. */
   beforeBytes(): void;
+  /** The private Session writes this worker's encoded Blob without a full Main byte array. */
+  saveBlob(blob: DisplayCopyBlob, destination: string, signal: AbortSignal): Promise<void>;
 }
 export interface DisplayDeps {
   mediaDir: string;
@@ -59,6 +67,7 @@ interface Job {
   result: Promise<DisplayResult>;
   users: number;
   idleOnly: boolean;
+  transfer: AbortController;
 }
 const failure = (message: string): DisplayResult => ({ ok: false, message });
 const keyOf = (sha: string, size: PixelSize) =>
@@ -82,7 +91,12 @@ export class DisplayCopies {
   private generation = 0;
   private active = false;
   private waiting: { sender: number; resolve(job: SharpenJobView | null): void } | null = null;
-  private current: { job: Job; timer: ReturnType<typeof setTimeout>; granted: boolean } | null = null;
+  private current: {
+    job: Job;
+    timer: ReturnType<typeof setTimeout>;
+    granted: boolean;
+    receiving: boolean;
+  } | null = null;
   private stopped = false;
   private sweeping: Promise<void> = Promise.resolve();
   private wake: ReturnType<typeof setTimeout> | null = null;
@@ -188,7 +202,17 @@ export class DisplayCopies {
         const result = new Promise<DisplayResult>((done) => {
           resolve = done;
         });
-        job = { candidate, size, header, key, result, resolve, users: 0, idleOnly };
+        job = {
+          candidate,
+          size,
+          header,
+          key,
+          result,
+          resolve,
+          users: 0,
+          idleOnly,
+          transfer: new AbortController(),
+        };
         this.pending.set(key, job);
         if (idleOnly) this.queue.push(job);
         else this.queue.unshift(job);
@@ -311,6 +335,7 @@ export class DisplayCopies {
     }
     this.pending.delete(job.key);
     this.queue = this.queue.filter((j) => j !== job);
+    job.transfer.abort();
     if (!this.current && this.queue.length === 0) this.active = false;
     job.resolve(result);
     if (!result.ok) this.deps.log(`Display copy: ${result.message}`);
@@ -339,7 +364,7 @@ export class DisplayCopies {
       this.destroyWorker();
       this.start();
     }, JOB_MS);
-    this.current = { job, timer, granted: false };
+    this.current = { job, timer, granted: false, receiving: false };
     try {
       const source = await realPlaceAsync(this.deps.mediaDir, join(this.deps.mediaDir, job.candidate.path));
       if (!source?.inside) throw new Error('outside media');
@@ -379,30 +404,43 @@ export class DisplayCopies {
     return { path: current.job.candidate.path, sha256: current.job.candidate.sha256, missing: false };
   }
 
-  async made(sender: number, key: unknown, bytes: unknown): Promise<boolean> {
-    const job = this.current?.job;
-    if (!job || !this.current?.granted || this.win?.id !== sender || key !== job.key) return false;
-    if (!(bytes instanceof Uint8Array) || bytes.length > MAX_COPY_BYTES) {
+  async made(sender: number, key: unknown, source: unknown): Promise<boolean> {
+    const current = this.current;
+    const job = current?.job;
+    const worker = this.win;
+    if (
+      !current ||
+      !job ||
+      !worker ||
+      !current.granted ||
+      current.receiving ||
+      worker.id !== sender ||
+      key !== job.key
+    )
+      return false;
+    if (
+      !source ||
+      typeof source !== 'object' ||
+      !('url' in source) ||
+      typeof source.url !== 'string' ||
+      source.url.length > 512 ||
+      !('bytes' in source) ||
+      typeof source.bytes !== 'number' ||
+      !Number.isSafeInteger(source.bytes) ||
+      source.bytes <= 0 ||
+      source.bytes > MAX_COPY_BYTES
+    ) {
       this.complete(job, failure('The display copy could not be drawn.'));
       return true;
     }
-    const header = pictureHeader(bytes);
-    if (
-      !header ||
-      header.animated ||
-      header.type !== job.header.type ||
-      header.size.width !== job.size.width ||
-      header.size.height !== job.size.height
-    ) {
-      this.complete(job, failure('The display copy has the wrong size or type.'));
-      return true;
-    }
+    current.receiving = true;
+    const blob: DisplayCopyBlob = { url: source.url, bytes: source.bytes };
     const dir = join(this.deps.mediaDir, DISPLAY_DIR);
     const relative = `${DISPLAY_DIR}/${nameOf(job.candidate.sha256, job.size, job.header.type)}`;
     let partial = '';
     try {
       const free = this.deps.freeBytes?.() ?? diskFreeBytes(this.deps.mediaDir);
-      if (free < RESERVE_BYTES + bytes.length) {
+      if (free < RESERVE_BYTES + blob.bytes) {
         this.complete(
           job,
           failure('Not enough disk space to keep the display copy and 2 GiB free for the show.'),
@@ -412,10 +450,26 @@ export class DisplayCopies {
       await mkdir(dir, { recursive: true });
       if (!(await realPlaceAsync(this.deps.mediaDir, dir))?.inside) throw new Error('outside media');
       partial = `${join(this.deps.mediaDir, relative)}.part-${randomUUID()}`;
-      await writeFile(partial, bytes);
+      await worker.saveBlob(blob, partial, job.transfer.signal);
       if (this.cancelled() || this.pending.get(job.key) !== job) throw new Error('cancelled');
-      // A native asynchronous crypto job keeps the full-copy checksum off Main's event loop.
-      const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', bytes)).toString('hex');
+      const actual = await stat(partial);
+      const header = await readPictureHeader(partial);
+      if (
+        !actual.isFile() ||
+        actual.size !== blob.bytes ||
+        actual.size > MAX_COPY_BYTES ||
+        !header ||
+        header.animated ||
+        header.type !== job.header.type ||
+        header.size.width !== job.size.width ||
+        header.size.height !== job.size.height
+      ) {
+        await rm(partial, { force: true });
+        this.complete(job, failure('The display copy has the wrong size or type.'));
+        return true;
+      }
+      // One reused small buffer avoids both the full-result IPC clone and WebCrypto's full-input copy.
+      const hash = await hashDisplayFile(partial, blob.bytes, job.transfer.signal);
       if (this.cancelled() || this.pending.get(job.key) !== job) throw new Error('cancelled');
       await rename(partial, join(this.deps.mediaDir, relative));
       const file: DisplayFile = {
@@ -423,7 +477,7 @@ export class DisplayCopies {
         ...job.size,
         path: relative,
         hash,
-        bytes: bytes.length,
+        bytes: blob.bytes,
         ext: job.header.type,
       };
       this.files.set(`${job.candidate.sha256}/${job.key}`, file);
