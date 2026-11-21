@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cuePresentation } from './cue-presentation';
 
 class Video {
   currentTime = 1;
+  decodedTimestamp = 1_000_000;
   seeking = false;
   private next = 0;
   private callbacks = new Map<number, VideoFrameRequestCallback>();
@@ -25,6 +26,33 @@ class Video {
 }
 
 describe('a private Cue first frame', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'VideoFrame',
+      class {
+        readonly timestamp: number;
+        constructor(video: Video) {
+          this.timestamp = video.decodedTimestamp;
+        }
+        close(): void {
+          /* A generated native frame handle. */
+        }
+      },
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  it('matches the actual decoded frame timestamp when a trim falls between frames of a 24 fps file', () => {
+    const video = new Video(),
+      ready = vi.fn();
+    video.currentTime = 1.04;
+    video.decodedTimestamp = 1_000_000;
+    const gate = cuePresentation(video.element(), ready);
+    gate.decoded();
+    expect(ready).not.toHaveBeenCalled();
+    video.present(1);
+    expect(ready).toHaveBeenCalledTimes(1);
+    gate.stop();
+  });
   it('cannot acknowledge decoded data until that trimmed frame reaches native presentation', () => {
     const video = new Video(),
       ready = vi.fn();
