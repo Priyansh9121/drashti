@@ -10,7 +10,9 @@ import type { PageGlobals } from './helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
 
 /** Cause experiments only: production is unchanged; normal S5 specs remain the acceptance gate. */
-async function probeClock(mode: 'disabled track' | 'absent track' | 'silent graph'): Promise<void> {
+async function probeClock(
+  mode: 'disabled track' | 'absent track' | 'silent graph' | 'silent graph unmuted',
+): Promise<void> {
   const { app, win, hall, stream, audio, ids, dir } = await setupVideoCue();
   const pages = [hall, win, stream];
   const id = ids[1] ?? '';
@@ -164,6 +166,7 @@ async function probeClock(mode: 'disabled track' | 'absent track' | 'silent grap
                   outputLatency: graph.outputLatency,
                 }
               : null,
+            muted: v.muted,
             available: tracks !== undefined,
             audioTracks: tracks ? Array.from(tracks).map((t) => t.enabled) : null,
             frames: JSON.parse(v.dataset['clockFrames'] ?? '[]') as unknown,
