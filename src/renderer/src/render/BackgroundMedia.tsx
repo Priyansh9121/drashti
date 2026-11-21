@@ -111,7 +111,18 @@ function VideoSlot({
       if (privateCue.current) dispatch({ type: 'ready', key, at: engineNow() });
       else dispatch({ type: 'loaded', key });
     };
-    const presentation = layer.cueId ? cuePresentation(v, ready) : null;
+    const presentation = layer.cueId
+      ? cuePresentation(v, ready, () => {
+          settled = true;
+          reportVideoCue(layer.cueId, 'picture', false);
+          if (!privateCue.current)
+            tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
+              code: 0,
+              message: 'The cued video’s first frame could not be read.',
+            });
+          dispatch({ type: 'failed', key, landed: landed.current });
+        })
+      : null;
     const p = startPlayback(v, {
       mediaId,
       attempt,
@@ -204,6 +215,7 @@ function VideoSlot({
       data-media-id={mediaId}
       muted
       playsInline
+      crossOrigin={layer.cueId ? 'anonymous' : undefined}
       disablePictureInPicture
       preload="auto"
       loop={layer.loop && !layer.clip}

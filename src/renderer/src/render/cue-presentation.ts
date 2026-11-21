@@ -9,7 +9,7 @@ export function cuePresentation(
   decoded(): void;
   stop(): void;
 } {
-  let decoded = false;
+  let decoded: number | null = null;
   let presented: number | null = null;
   let finished = false;
   let stopped = false;
@@ -18,10 +18,10 @@ export function cuePresentation(
     if (
       stopped ||
       finished ||
-      !decoded ||
+      decoded === null ||
       presented === null ||
       video.seeking ||
-      Math.abs(presented - video.currentTime) >= 1 / 30
+      Math.abs(presented * 1_000_000 - decoded) > 1
     )
       return;
     finished = true;
@@ -35,14 +35,27 @@ export function cuePresentation(
     if (!finished) callback = video.requestVideoFrameCallback(onPresented);
   };
   callback = video.requestVideoFrameCallback(onPresented);
+  const stop = () => {
+    stopped = true;
+    if (callback) video.cancelVideoFrameCallback(callback);
+  };
   return {
     decoded: () => {
-      decoded = true;
-      release();
+      if (stopped || finished) return;
+      try {
+        // A trim can lie between source frames: use the decoder's actual PTS, not an assumed frame rate.
+        const frame = new VideoFrame(video);
+        try {
+          decoded = frame.timestamp;
+        } finally {
+          frame.close();
+        }
+        release();
+      } catch {
+        stop();
+        failed?.();
+      }
     },
-    stop: () => {
-      stopped = true;
-      if (callback) video.cancelVideoFrameCallback(callback);
-    },
+    stop,
   };
 }
