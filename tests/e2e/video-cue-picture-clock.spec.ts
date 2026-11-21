@@ -62,24 +62,29 @@ async function probeClock(mode: 'disabled track' | 'absent track' | 'silent grap
           },
           { id, url: mediaUrl(pictureId) },
         );
-    } else if (mode === 'silent graph') {
+    } else if (mode === 'silent graph' || mode === 'silent graph unmuted') {
       for (const page of pages)
-        await page.evaluate(async (id) => {
-          const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
-          const destination = context.createMediaStreamDestination();
-          (globalThis as { s5ClockGraph?: AudioContext }).s5ClockGraph = context;
-          document.addEventListener(
-            'loadedmetadata',
-            (event) => {
-              const v = event.target;
-              if (v instanceof HTMLVideoElement && v.dataset['mediaId'] === id)
-                context.createMediaElementSource(v).connect(destination);
-            },
-            true,
-          );
-          // A silent MediaStream destination only: nothing is connected to a loudspeaker or an input device.
-          await context.resume();
-        }, id);
+        await page.evaluate(
+          async ({ id, unmuted }) => {
+            const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
+            const destination = context.createMediaStreamDestination();
+            (globalThis as { s5ClockGraph?: AudioContext }).s5ClockGraph = context;
+            document.addEventListener(
+              'loadedmetadata',
+              (event) => {
+                const v = event.target;
+                if (v instanceof HTMLVideoElement && v.dataset['mediaId'] === id) {
+                  context.createMediaElementSource(v).connect(destination);
+                  if (unmuted) v.muted = false;
+                }
+              },
+              true,
+            );
+            // A silent MediaStream destination only: nothing is connected to a loudspeaker or an input device.
+            await context.resume();
+          },
+          { id, unmuted: mode === 'silent graph unmuted' },
+        );
     } else {
       for (const page of pages)
         await page.evaluate((id) => {
@@ -179,3 +184,6 @@ test('A cued picture with disabled track starts on its native video clock', () =
   probeClock('disabled track'));
 test('A cued picture with absent track starts on its native video clock', () => probeClock('absent track'));
 test('A cued picture with silent graph starts on its native video clock', () => probeClock('silent graph'));
+
+test('A cued picture with silent graph unmuted starts on its native video clock', () =>
+  probeClock('silent graph unmuted'));
