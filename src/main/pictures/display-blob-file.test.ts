@@ -52,8 +52,10 @@ function setup() {
   const pages = events as unknown as Session;
   const windowEvents = new EventEmitter();
   const downloadURL = vi.fn();
+  const frame = { origin: 'null' };
   const contents = Object.assign(windowEvents, {
     id: 7,
+    mainFrame: frame,
     session: pages,
     isDestroyed: () => false,
     getURL: () => 'file:///generated/sharpen.html',
@@ -78,7 +80,20 @@ function setup() {
     item.received = blob.bytes;
     item.finish();
   };
-  return { files, pages, events, contents, downloadURL, blob, destination, abort, start, dispatch, finish };
+  return {
+    files,
+    pages,
+    events,
+    contents,
+    frame,
+    downloadURL,
+    blob,
+    destination,
+    abort,
+    start,
+    dispatch,
+    finish,
+  };
 }
 
 it('permits only the exact native file and resolves after its complete byte count and terminal event', async () => {
@@ -266,5 +281,46 @@ it('keeps the private Session closed to downloads after shutdown', () => {
   t.files.close();
   const item = new NativeFile(t.blob.url, t.blob.bytes);
   expect(t.dispatch(item)).toHaveBeenCalledOnce();
+  expect(item.setSavePath).not.toHaveBeenCalled();
+});
+
+it('accepts the exact Blob from a file-backed worker’s committed file origin', async () => {
+  const t = setup();
+  t.frame.origin = 'file://';
+  t.blob.url = `blob:file:///${randomUUID()}`;
+  // Node's URL-origin serialization is not the browser's committed file origin.
+  expect(new URL(t.contents.getURL()).origin).toBe('null');
+  const saved = t.start();
+  const item = new NativeFile(t.blob.url, t.blob.bytes);
+  const prevented = t.dispatch(item);
+  t.finish(item);
+  await expect(saved).resolves.toBeUndefined();
+  expect(prevented).not.toHaveBeenCalled();
+  expect(t.downloadURL).toHaveBeenCalledExactlyOnceWith(t.blob.url);
+  expect(item.setSavePath).toHaveBeenCalledExactlyOnceWith(t.destination);
+});
+
+it('rejects an opaque-origin Blob when the worker’s committed origin is file', async () => {
+  const t = setup();
+  t.frame.origin = 'file://';
+  const saved = t.start();
+  // Complete a wrongly started write so the red fails on identity, never on a timeout.
+  const item = new NativeFile(t.blob.url, t.blob.bytes);
+  t.dispatch(item);
+  t.finish(item);
+  await expect(saved).rejects.toThrow('The display Blob is not this worker’s to save.');
+  expect(t.downloadURL).not.toHaveBeenCalled();
+  expect(item.setSavePath).not.toHaveBeenCalled();
+});
+
+it('rejects a Blob when the committed frame has no live origin', async () => {
+  const t = setup();
+  t.frame.origin = '';
+  const saved = t.start();
+  const item = new NativeFile(t.blob.url, t.blob.bytes);
+  t.dispatch(item);
+  t.finish(item);
+  await expect(saved).rejects.toThrow('The display Blob is not this worker’s to save.');
+  expect(t.downloadURL).not.toHaveBeenCalled();
   expect(item.setSavePath).not.toHaveBeenCalled();
 });
