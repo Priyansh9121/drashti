@@ -240,7 +240,8 @@ function QrSlideForm() {
             </p>
           )}
         </div>
-        <figure className="flex w-[204px] flex-col items-center gap-2 self-start rounded-lg bg-black/40 p-3">
+        {/* Dark enough under white words on any appearance's surface (axe's 4.5:1; black/40 left a mid-grey on light ones). */}
+        <figure className="flex w-[204px] flex-col items-center gap-2 self-start rounded-lg bg-black/70 p-3">
           {fits ? (
             // With the words as they are typed (as before), so the code is there the moment they are.
             <QrPreview words={words} logo={useLogo ? logo.dataUrl : null} />
@@ -252,7 +253,7 @@ function QrSlideForm() {
           )}
           {fits && wordsUnder && (
             <figcaption
-              className="line-clamp-4 max-w-full text-center text-sm break-words"
+              className="line-clamp-4 max-w-full text-center text-sm break-words text-white"
               data-testid="qr-words"
             >
               {words}
