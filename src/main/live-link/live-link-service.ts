@@ -105,7 +105,7 @@ const READY_AT = 2;
  * took over a second to have a page's first frame, x54-1120-195548-69004).
  */
 const START_MS = 2000;
-/** How long a player's playlist lists only its first three segments, so Chromium starts it at the first of them. */
+/** How long after its joined moment the initial playlist lists only three segments, so it starts at the first. */
 const JOIN_WINDOW_MS = 2000;
 /** A page joins at a segment whose moment is at least this far off: time to load it and have its first frame. */
 const JOIN_LEAD_MS = 1500;
@@ -209,7 +209,7 @@ interface Link {
    * goes once it is gone from the disk (each page later joins by the stream's time from it).
    */
   anchor: { segment: number; start: number; at: number } | null;
-  /** When pages joined at each segment (for their first playlist's three segments). */
+  /** Each segment's initial playlist starts its window at the joined moment, or a later join request. */
   joins: Map<number, number>;
   lastProgress: number;
   state: StreamLinkState;
@@ -680,9 +680,11 @@ export class LiveLinkService {
     const choices = [link.newest - 2, link.newest - 1].filter((n) => n >= a.segment && moment(n) !== null);
     const segment = choices.find((n) => (moment(n) ?? 0) >= now + JOIN_LEAD_MS) ?? choices[0];
     if (segment === undefined) return null;
-    // Each page joining there has its own first playlist of three: the window runs from the latest join.
-    link.joins.set(segment, now);
-    return { segment, startAt: moment(segment) ?? now };
+    // A recovering player may load at its moment rather than pause early. Keep its chosen first three until
+    // after that moment too, so Chromium starts at the promised segment even for that later initial request.
+    const startAt = moment(segment) ?? now;
+    link.joins.set(segment, Math.max(now, startAt));
+    return { segment, startAt };
   }
 
   /**
