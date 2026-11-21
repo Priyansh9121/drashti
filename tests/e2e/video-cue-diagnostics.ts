@@ -7,10 +7,11 @@ export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
       const events: unknown[] = [],
         samples: unknown[] = [],
         contexts = new Set<AudioContext>();
-      const createGain = BaseAudioContext.prototype.createGain;
+      const createGain = Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, 'createGain');
+      if (!createGain) throw new Error('No native gain factory');
       BaseAudioContext.prototype.createGain = function () {
         contexts.add(this as AudioContext);
-        return createGain.call(this);
+        return (createGain.value as (this: BaseAudioContext) => GainNode).call(this);
       };
       const media = (v: HTMLMediaElement) => ({
         key: v.dataset['key'] ?? v.dataset['bgSlot'],
@@ -73,7 +74,7 @@ export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
       (globalThis as { s5Diagnostics?: { sample: () => void; stop: () => unknown } }).s5Diagnostics = {
         sample,
         stop: () => {
-          BaseAudioContext.prototype.createGain = createGain;
+          Object.defineProperty(BaseAudioContext.prototype, 'createGain', createGain);
           for (const name of names) document.removeEventListener(name, record, true);
           observer.disconnect();
           return { events, samples };
