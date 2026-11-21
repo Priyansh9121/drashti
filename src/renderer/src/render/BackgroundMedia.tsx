@@ -1,4 +1,4 @@
-import { cuePresentation } from './cue-presentation';
+import { cuePresentation, PRIVATE_VIDEO_OPACITY } from './cue-presentation';
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
 import { reportVideoCue, reportLoadedVideoCue } from './video-cue-report';
 import {
@@ -102,8 +102,8 @@ function VideoSlot({
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    // A hidden private video may never receive a compositor callback. Its trimmed decoded frame is ready;
-    // the armed Go lead warms its decoder silently before the shared moment (playback.ts).
+    // Keep a private cue in the compositor below pixel precision, and require its trimmed native frame.
+    // The armed Go lead then warms the same decoder silently before the shared moment (playback.ts).
     let settled = false;
     const ready = () => {
       settled = true;
@@ -143,6 +143,7 @@ function VideoSlot({
     // a paired computer) shows it if its first frame comes after all.
     const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
       if (settled) return;
+      presentation?.stop();
       settled = true;
       reportVideoCue(layer.cueId, 'picture', false);
       if (!privateCue.current)
@@ -193,6 +194,7 @@ function VideoSlot({
     };
   }, [presenting, key, dispatch]);
 
+  const opacity = visible ? 1 : layer.cueId ? PRIVATE_VIDEO_OPACITY : 0;
   return (
     <video
       ref={ref}
@@ -207,8 +209,8 @@ function VideoSlot({
       loop={layer.loop && !layer.clip}
       style={
         shape === null
-          ? style(layer.fit, visible)
-          : { ...shapedVideoStyle(shape, layer.fit === 'fill' ? 'fill' : 'fit'), opacity: visible ? 1 : 0 }
+          ? { ...style(layer.fit, visible), opacity }
+          : { ...shapedVideoStyle(shape, layer.fit === 'fill' ? 'fill' : 'fit'), opacity }
       }
     />
   );
