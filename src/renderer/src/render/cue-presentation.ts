@@ -5,6 +5,7 @@ export const PRIVATE_VIDEO_OPACITY = 1 / 1024;
 export function cuePresentation(
   video: HTMLVideoElement,
   ready: () => void,
+  failed?: () => void,
 ): {
   decoded(): void;
   stop(): void;
