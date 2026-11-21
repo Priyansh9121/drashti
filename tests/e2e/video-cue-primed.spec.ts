@@ -22,22 +22,22 @@ test('Cue ready includes a native trimmed frame on every picture page while the 
       await page.evaluate((id) => {
         const source = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
         if (!source?.set) throw new Error('No native media source setter');
+        const observe = (v: HTMLVideoElement) => {
+          const frames: number[] = [];
+          const presented: VideoFrameRequestCallback = (_now, frame) => {
+            frames.push(frame.mediaTime);
+            v.dataset['privateNativeFrames'] = JSON.stringify(frames);
+            if (Math.abs(frame.mediaTime - 1) < 0.001)
+              v.dataset['privateNativeFrame'] = String(frame.mediaTime);
+            else v.requestVideoFrameCallback(presented);
+          };
+          // Arm before src loads: a paused native frame may arrive before loadeddata is dispatched.
+          v.requestVideoFrameCallback(presented);
+        };
         Object.defineProperty(HTMLMediaElement.prototype, 'src', {
           ...source,
           set(this: HTMLMediaElement, value: string) {
-            const v = this;
-            if (v instanceof HTMLVideoElement && v.dataset['mediaId'] === id) {
-              const frames: number[] = [];
-              const presented: VideoFrameRequestCallback = (_now, frame) => {
-                frames.push(frame.mediaTime);
-                v.dataset['privateNativeFrames'] = JSON.stringify(frames);
-                if (Math.abs(frame.mediaTime - 1) < 0.001)
-                  v.dataset['privateNativeFrame'] = String(frame.mediaTime);
-                else v.requestVideoFrameCallback(presented);
-              };
-              // Arm before src loads: a paused native frame may arrive before loadeddata is dispatched.
-              v.requestVideoFrameCallback(presented);
-            }
+            if (this instanceof HTMLVideoElement && this.dataset['mediaId'] === id) observe(this);
             source.set?.call(this, value);
           },
         });

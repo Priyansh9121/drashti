@@ -21,9 +21,11 @@ test('A cued picture without an unused audio track starts on its native video cl
           (event) => {
             const v = event.target;
             if (!(v instanceof HTMLVideoElement) || v.dataset['mediaId'] !== id) return;
-            const tracks = (v as HTMLVideoElement & {
-              audioTracks?: { length: number; [index: number]: { enabled: boolean } };
-            }).audioTracks;
+            const tracks = (
+              v as HTMLVideoElement & {
+                audioTracks?: { length: number; [index: number]: { enabled: boolean } };
+              }
+            ).audioTracks;
             if (!tracks) throw new Error('No native audio-track selection for the cause experiment');
             for (const track of Array.from(tracks)) track.enabled = false;
           },
@@ -74,9 +76,11 @@ test('A cued picture without an unused audio track starts on its native video cl
         page.evaluate((id) => {
           const v = document.querySelector<HTMLVideoElement>(`video[data-media-id="${id}"]`);
           if (!v) return null;
-          const tracks = (v as HTMLVideoElement & {
-            audioTracks?: { length: number; [index: number]: { enabled: boolean } };
-          }).audioTracks;
+          const tracks = (
+            v as HTMLVideoElement & {
+              audioTracks?: { length: number; [index: number]: { enabled: boolean } };
+            }
+          ).audioTracks;
           return {
             available: tracks !== undefined,
             audioTracks: tracks ? Array.from(tracks).map((t) => t.enabled) : null,
