@@ -189,15 +189,55 @@ test('a stream link’s sound plays in the hall at the Video level, and none of 
   test.setTimeout(180_000);
   const { standIn, app, win, hall } = await hallAndLink();
   const audio = await audioPage(app);
+  const soundConsole: string[] = [];
+  audio.on('console', (message) => soundConsole.push(`${message.type()}: ${message.text()}`));
+  await audio.evaluate(() => {
+    const prototype = AudioContext.prototype;
+    const original = Object.getOwnPropertyDescriptor(prototype, 'createMediaElementSource')?.value as
+      ((this: AudioContext, element: HTMLMediaElement) => MediaElementAudioSourceNode) | undefined;
+    if (!original) throw new Error('The sound source method is missing.');
+    prototype.createMediaElementSource = function (element) {
+      const source = original.call(this, element);
+      (globalThis as typeof globalThis & { linkSoundContext?: AudioContext }).linkSoundContext = this;
+      return source;
+    };
+  });
   await showLink(win, standIn.url);
   await moving(hall, 'the hall’s screen');
   // The stand-in's tone through the audio player, under Video's level.
   const sound = audio.locator('audio[data-key^="link:"]');
   await expect(sound).toHaveCount(1);
   await expect(sound).toHaveAttribute('data-kind', 'video');
+  const soundLooks: unknown[] = [];
   try {
     await expect
-      .poll(async () => Number(await audio.locator('body').getAttribute('data-level')), { timeout: 15_000 })
+      .poll(
+        async () => {
+          const look = await audio.evaluate(() => {
+            const el = document.querySelector<HTMLAudioElement>('audio[data-key^="link:"]');
+            const context = (globalThis as typeof globalThis & { linkSoundContext?: AudioContext })
+              .linkSoundContext;
+            return {
+              level: Number(document.body.dataset['level']),
+              context: context ? { state: context.state, time: context.currentTime } : null,
+              player: el
+                ? {
+                    ...Object.fromEntries(Object.entries(el.dataset)),
+                    time: el.currentTime,
+                    paused: el.paused,
+                    ready: el.readyState,
+                    volume: el.volume,
+                    muted: el.muted,
+                    error: el.error?.message ?? null,
+                  }
+                : null,
+            };
+          });
+          soundLooks.push(look);
+          return look.level;
+        },
+        { timeout: 15_000 },
+      )
       .toBeGreaterThan(-50);
   } catch (error) {
     // Said with the hall's sound player as it was: its join, clock, events and how it failed, if it did.
@@ -212,6 +252,11 @@ test('a stream link’s sound plays in the hall at the Video level, and none of 
       }),
     );
     throw new Error(`the hall’s sound: ${player} Main: ${mainSaid()}: ${String(error)}`, { cause: error });
+  } finally {
+    await test.info().attach('Link sound state', {
+      body: JSON.stringify({ looks: soundLooks, console: soundConsole }, null, 2),
+      contentType: 'application/json',
+    });
   }
   // Video's mute takes it away; unmuted, it is back.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('video', true));
