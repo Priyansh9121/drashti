@@ -107,6 +107,69 @@ describe('a stream link’s sound in the hall', () => {
     }
   });
 
+  it('after a held timeline jumps, loads its replacement at its moment and plays without another early hold', async () => {
+    class JumpsHeld extends FailsOnce {
+      private started: number | null = null;
+      private heldAt: number | null = null;
+      jumped = false;
+
+      override get currentTime(): number {
+        if (this.heldAt !== null) return 2 + (Date.now() - this.heldAt) / 1000;
+        return this.started === null ? 0 : (Date.now() - this.started) / 1000;
+      }
+
+      override load(): void {
+        this.started = null;
+        this.heldAt = null;
+        super.load();
+      }
+
+      override play(): Promise<void> {
+        if (this.paused) {
+          this.started = Date.now();
+          this.paused = false;
+          this.dispatchEvent(new Event('playing'));
+        }
+        return Promise.resolve();
+      }
+
+      override pause(): void {
+        if (!this.paused && !this.jumped && this.loads === 1 && this.src !== '') {
+          this.jumped = true;
+          this.heldAt = Date.now();
+        }
+        this.paused = true;
+      }
+    }
+    vi.stubGlobal('drashti', {
+      liveLink: {
+        join: () => {
+          joins++;
+          return Promise.resolve({ segment: joins + 4, startAt: Date.now() + 2500 });
+        },
+      },
+    });
+    const el = new JumpsHeld();
+    const linked = startLinkSound(el as unknown as HTMLMediaElement, LINK);
+    try {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(el.jumped).toBe(true);
+      expect(joins).toBe(2);
+      // Loading early would require the replacement's native player to pause before its moment again.
+      expect(el.loads).toBe(1);
+      expect(el.src).toBe('');
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(el.loads).toBe(2);
+      expect(el.paused).toBe(false);
+      expect(el.error).toBeNull();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(joins).toBe(2);
+      expect(el.paused).toBe(false);
+    } finally {
+      linked.stop();
+    }
+  });
+
   it('stopped, it never joins again', async () => {
     const el = new FailsOnce();
     const linked = startLinkSound(el as unknown as HTMLMediaElement, LINK);
