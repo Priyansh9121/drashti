@@ -229,7 +229,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         value(this: AudioData) {
           if (rows.length < 60_000)
             rows.push({ at: Date.now(), timestamp: this.timestamp, frames: this.numberOfFrames });
-          return (original.value as (this: AudioData) => void).call(this);
+          (original.value as (this: AudioData) => void).call(this);
         },
       });
       (globalThis as { s5CaptureProbe?: { stop: () => unknown } }).s5CaptureProbe = {
