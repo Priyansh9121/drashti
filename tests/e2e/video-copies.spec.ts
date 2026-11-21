@@ -181,6 +181,12 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     const end = editor.getByLabel('End (seconds)', { exact: true });
     const preview = editor.getByTestId('edit-video-preview');
     await expect(end, 'the delayed header has not supplied the default end yet').toHaveValue('0');
+    // The header owns the initial End value. Let it arrive before selecting either input, so it cannot replace
+    // Playwright's selection between that selection and its separate text insertion (CI x67-1121-132910-14446).
+    await expect
+      .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState))
+      .toBeGreaterThanOrEqual(1);
+    await expect(end).toHaveValue('2');
     await editor.getByLabel('Start (seconds)', { exact: true }).fill('0.350');
     // Playwright fill selects a number input, then inserts text in a separate call. Force its real race:
     // metadata supplies the default end after selection and before that text arrives.
