@@ -102,10 +102,12 @@ describe('a stream link’s player on a page', () => {
     joinAt = { segment: 5, startAt: Date.now() + 500 };
     const el = new FakeLive(2.3, 1500);
     const failed = vi.fn();
+    const rejoin = vi.fn();
     const stop = startLivePlayback(el as unknown as HTMLMediaElement, {
       linkId: LINK,
       audible: true,
       onError: failed,
+      onBehind: rejoin,
     });
     try {
       await vi.advanceTimersByTimeAsync(1600);
@@ -116,6 +118,7 @@ describe('a stream link’s player on a page', () => {
       // Its time comes: it plays on, in step, and never failed.
       await vi.advanceTimersByTimeAsync(2000);
       expect(failed).not.toHaveBeenCalled();
+      expect(rejoin).not.toHaveBeenCalled();
       expect(el.error).toBeNull();
       expect(el.paused).toBe(false);
       const expected = (Date.now() - joinAt.startAt) / 1000;
