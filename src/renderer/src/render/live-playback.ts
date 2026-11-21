@@ -31,7 +31,7 @@ export interface LivePlaybackOptions {
   linkId: string;
   /** The hall's sound (the audio player): every other page plays it muted. */
   audible: boolean;
-  /** A recovering sound loads at its joined moment, so its new native player never needs an early hold. */
+  /** A recovering player loads at its joined moment, so its new native player never needs an early hold. */
   joinAtMoment?: boolean;
   /** Its first frame is in, playing (presented, for a picture). */
   onFrame?: () => void;
@@ -80,11 +80,11 @@ export function startLivePlayback(el: HTMLMediaElement, options: LivePlaybackOpt
       el.src = streamLinkUrl(options.linkId, got.segment);
       el.load();
     };
-    // An early native HLS sound can fail when resumed after a hold (CI x67-1121-132824-14333). For a
+    // An early native HLS player can fail when resumed after a hold (CI x67-1121-132824-14333). For a
     // replacement, defer the load itself to its joined moment: it plays as soon as it has data, never loaded
-    // and left unplayed (which also fails, x54-1120-223559-2185). Pictures keep their original early load.
+    // and left unplayed (which also fails, x54-1120-223559-2185). Initial players keep their original early load.
     const until = got.startAt - engineNow();
-    if (options.audible && options.joinAtMoment && until > 0) later(until, load);
+    if (options.joinAtMoment && until > 0) later(until, load);
     else load();
   };
   /**
