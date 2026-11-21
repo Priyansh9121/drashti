@@ -9,7 +9,7 @@ export function audioOnlyTracks(audio: HTMLMediaElement): boolean {
   const tracks = (audio as HTMLMediaElement & { videoTracks?: VideoTracks }).videoTracks;
   if (!tracks) return false;
   for (const track of Array.from(tracks)) {
-    if (track?.selected) track.selected = false;
+    if (track.selected) track.selected = false;
   }
   return true;
 }
