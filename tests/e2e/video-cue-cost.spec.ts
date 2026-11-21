@@ -1,6 +1,6 @@
 import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnostics';
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Page, Worker as BrowserWorker } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -110,6 +110,22 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
   let running: Awaited<ReturnType<typeof setupVideoCue>> | null = null;
   let receiver: ReturnType<typeof rtmpListener> | null = null;
   let tracing = false;
+  let captureWorker: BrowserWorker | null = null;
+  const retainCapture = async () => {
+    const worker = captureWorker;
+    captureWorker = null;
+    if (!worker) return;
+    const samples = await worker
+      .evaluate(() => {
+        const g = globalThis as { s5CaptureProbe?: { stop: () => unknown } };
+        return g.s5CaptureProbe?.stop();
+      })
+      .catch(() => null);
+    await info.attach('s5-capture-queue.json', {
+      body: Buffer.from(JSON.stringify(samples)),
+      contentType: 'application/json',
+    });
+  };
   let tracePath: string | null = null;
   try {
     if (process.platform === 'win32') {
@@ -202,6 +218,27 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       await d.playlists.setPlayOptions(id, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
       return { id, first: rows.ids[0] ?? '' };
     }, ids);
+    captureWorker = stream.workers().find((worker) => worker.url().includes('encoder-audio-worker')) ?? null;
+    if (!captureWorker) throw new Error('No native PCM worker for the capture cause observation');
+    await captureWorker.evaluate(() => {
+      const original = Object.getOwnPropertyDescriptor(AudioData.prototype, 'close');
+      if (!original) throw new Error('No native audio frame closer');
+      const rows: { at: number; timestamp: number; frames: number }[] = [];
+      Object.defineProperty(AudioData.prototype, 'close', {
+        ...original,
+        value(this: AudioData) {
+          if (rows.length < 60_000)
+            rows.push({ at: Date.now(), timestamp: this.timestamp, frames: this.numberOfFrames });
+          return (original.value as (this: AudioData) => void).call(this);
+        },
+      });
+      (globalThis as { s5CaptureProbe?: { stop: () => unknown } }).s5CaptureProbe = {
+        stop: () => {
+          Object.defineProperty(AudioData.prototype, 'close', original);
+          return rows;
+        },
+      };
+    });
     await beginCueDiagnostics([hall, win, stream, audio]);
     const decoderProcesses = await app.evaluate(
       ({ BrowserWindow }, pages) =>
@@ -342,6 +379,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         ).length
       );
     }, 0);
+    await retainCapture();
     const ended = await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.stream.end({ confirmed: true }),
     );
@@ -455,6 +493,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       'the sound-only renderer does no picture decoding during the actual overlap',
     ).toBe(0);
   } finally {
+    await retainCapture();
     if (running) {
       if (tracing && tracePath) {
         await running.app.evaluate(
