@@ -190,7 +190,9 @@ for (const resumeError of [false, true]) {
             get: () => ({ code: 4, message: 'PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE (injected)' }),
           });
           this.dispatchEvent(new Event('error'));
-          return Promise.reject(new DOMException('The injected native HLS resume failed.', 'NotSupportedError'));
+          return Promise.reject(
+            new DOMException('The injected native HLS resume failed.', 'NotSupportedError'),
+          );
         };
       });
     }
@@ -200,11 +202,10 @@ for (const resumeError of [false, true]) {
       if (resumeError)
         await expect
           .poll(() =>
-            hall.evaluate(
-              () =>
-                (globalThis as typeof globalThis & { linkPictureProbe?: { failed: number } }).linkPictureProbe
-                  ?.failed ?? 0,
-            ),
+            hall.evaluate(() => {
+              const page = globalThis as { linkPictureProbe?: { failed: number } };
+              return page.linkPictureProbe?.failed ?? 0;
+            }),
           )
           .toBeGreaterThan(0);
       await expect(hall.locator('[data-kind="link"]')).toHaveAttribute('data-link-state', 'live', {
@@ -248,7 +249,9 @@ for (const resumeError of [false, true]) {
     await expect(hall.locator('[data-kind="link"]')).toHaveCount(0);
     await expect(win.getByTestId('stream-link-notice')).toHaveCount(0);
     const folder = join(userData, 'Stream links');
-    await expect.poll(() => (existsSync(folder) ? readdirSync(folder).length : 0), { timeout: 15_000 }).toBe(0);
+    await expect
+      .poll(() => (existsSync(folder) ? readdirSync(folder).length : 0), { timeout: 15_000 })
+      .toBe(0);
     await closeAll(app, standIn);
   });
 }
