@@ -33,18 +33,15 @@ export class PcmForwarder {
   }
 
   private async run(): Promise<PcmResult> {
-    let result: PcmResult = 'ended';
     try {
       for (;;) {
         const { value: data, done } = await this.reader.read();
         if (done) {
-          result = this.stopped ? 'stopped' : 'ended';
-          break;
+          return this.stopped ? 'stopped' : 'ended';
         }
         try {
           if (this.stopped) {
-            result = 'stopped';
-            break;
+            return 'stopped';
           }
           const frames = data.numberOfFrames;
           const out = new Float32Array(frames * 2);
@@ -66,7 +63,7 @@ export class PcmForwarder {
         }
       }
     } catch {
-      result = this.stopped ? 'stopped' : 'failed';
+      return this.stopped ? 'stopped' : 'failed';
     } finally {
       this.stopped = true;
       this.port?.close();
@@ -74,6 +71,5 @@ export class PcmForwarder {
       await this.reader.cancel().catch(() => undefined);
       this.reader.releaseLock();
     }
-    return result;
   }
 }

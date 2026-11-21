@@ -118,7 +118,8 @@ function VideoSlot({
           if (!privateCue.current)
             tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
               code: 0,
-              message: 'The cued video’s first frame could not be read.',
+              message:
+                'The cued video’s first frame could not be read. Cancel the cue and check the video in Media.',
             });
           dispatch({ type: 'failed', key, landed: landed.current });
         })

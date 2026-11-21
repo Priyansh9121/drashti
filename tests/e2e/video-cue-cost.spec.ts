@@ -426,7 +426,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       body: Buffer.from(JSON.stringify(report, null, 2)),
       contentType: 'application/json',
     });
-    await info.attach('s5-received.flv', { path: received, contentType: 'video/x-flv' });
+    await info.attach('s5-received.flv', { body: readFileSync(received), contentType: 'video/x-flv' });
+    await info.attach('s5-encoded-pixels.rgb', {
+      body: pixels.stdout,
+      contentType: 'application/octet-stream',
+    });
     const { toneWindows: _toneWindows, ...summary } = report;
     console.log('S5_COST ' + JSON.stringify(summary));
     expect(begun, 'the actual encoded stream received the videos').toBe(true);
