@@ -20,20 +20,27 @@ test('Cue ready includes a native trimmed frame on every picture page while the 
     await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#205020' } });
     for (const page of [hall, win, stream])
       await page.evaluate((id) => {
-        document.addEventListener(
-          'loadeddata',
-          (event) => {
-            const v = event.target;
-            if (!(v instanceof HTMLVideoElement) || v.dataset['mediaId'] !== id) return;
-            const presented: VideoFrameRequestCallback = (_now, frame) => {
-              if (Math.abs(frame.mediaTime - 1) < 0.001)
-                v.dataset['privateNativeFrame'] = String(frame.mediaTime);
-              else v.requestVideoFrameCallback(presented);
-            };
-            v.requestVideoFrameCallback(presented);
+        const source = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+        if (!source?.set) throw new Error('No native media source setter');
+        Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+          ...source,
+          set(this: HTMLMediaElement, value: string) {
+            const v = this;
+            if (v instanceof HTMLVideoElement && v.dataset['mediaId'] === id) {
+              const frames: number[] = [];
+              const presented: VideoFrameRequestCallback = (_now, frame) => {
+                frames.push(frame.mediaTime);
+                v.dataset['privateNativeFrames'] = JSON.stringify(frames);
+                if (Math.abs(frame.mediaTime - 1) < 0.001)
+                  v.dataset['privateNativeFrame'] = String(frame.mediaTime);
+                else v.requestVideoFrameCallback(presented);
+              };
+              // Arm before src loads: a paused native frame may arrive before loadeddata is dispatched.
+              v.requestVideoFrameCallback(presented);
+            }
+            source.set?.call(this, value);
           },
-          true,
-        );
+        });
       }, id);
     expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
     await cueReady(win);
@@ -52,6 +59,23 @@ test('Cue ready includes a native trimmed frame on every picture page while the 
       'the audience keeps its exact current colour while Cue prepares',
     ).toEqual([32, 80, 32]);
   } finally {
+    const frames = await Promise.all(
+      [hall, win, stream].map((page) =>
+        page.evaluate((id) => {
+          const v = document.querySelector<HTMLVideoElement>(`video[data-media-id="${id}"]`);
+          return {
+            nativeFrames: JSON.parse(v?.dataset['privateNativeFrames'] ?? '[]') as unknown,
+            ready: v?.dataset['state'],
+            at: v?.currentTime,
+            paused: v?.paused,
+          };
+        }, ids[1] ?? ''),
+      ),
+    );
+    await test.info().attach('s5-private-frames.json', {
+      body: Buffer.from(JSON.stringify(frames)),
+      contentType: 'application/json',
+    });
     await app.close();
   }
 });
