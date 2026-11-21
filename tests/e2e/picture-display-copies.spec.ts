@@ -1,4 +1,5 @@
 import { nativeCostPair, periods } from './display-cost-meter';
+import { beginNativeFeedback, type NativeFeedback } from './display-presentation-feedback';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -147,7 +148,7 @@ test('an oversized imported still is ready with its display source, while the or
 });
 
 interface DisplayJobMark {
-  kind: 'decode-start' | 'decode-end' | 'blob-start' | 'blob-end';
+  kind: 'source-start' | 'decode-start' | 'decode-end' | 'blob-start' | 'blob-end';
   t: number;
   received: number;
   pid: number;
@@ -174,10 +175,17 @@ function logDisplayWork(): void {
   const observed = globalThis as typeof globalThis & { drashtiDisplayWorkObserved?: boolean };
   if (observed.drashtiDisplayWorkObserved) return;
   observed.drashtiDisplayWorkObserved = true;
-  const mark = (kind: DisplayJobMark['kind']) =>
+  const mark = (kind: DisplayJobMark['kind']) => {
+    performance.mark('x19-native-display-job-' + kind);
     console.log(
       'DISPLAY_COST_JOB ' + JSON.stringify({ kind, t: performance.timeOrigin + performance.now() }),
     );
+  };
+  const fetchSource = globalThis.fetch;
+  globalThis.fetch = (...args: Parameters<typeof fetchSource>) => {
+    mark('source-start');
+    return Reflect.apply(fetchSource, globalThis, args);
+  };
   const decode = globalThis.createImageBitmap;
   globalThis.createImageBitmap = ((...args: Parameters<typeof decode>) => {
     mark('decode-start');
@@ -269,9 +277,11 @@ async function startDisplayCostPage(out: Page): Promise<void> {
   });
 }
 
-/** Main callbacks and renderer rAF are separate observations; neither claims a hardware presentation timestamp. */
+/** Native presentation feedback and renderer callback entry retain independent, unchanged paired limits. */
 test('a large picture imported during a hall dissolve does not add sustained frame gaps', async () => {
   const info = test.info();
+  const subscribe = true;
+  const lane = 0;
   test.setTimeout(240_000);
   const { app } = await launchApp();
   const trials: {
@@ -280,15 +290,20 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     page: DisplayCostPage;
     main: DisplayCostMain;
     imported: { start: number; ready: number; durationMs: number; id: string; hash: string } | null;
+    nativeTimesUs: number[];
   }[] = [];
   const paired: unknown[] = [];
+  let endFeedback: Awaited<ReturnType<typeof beginNativeFeedback>> | undefined;
+  let feedback: NativeFeedback | undefined;
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
     await recordDisplayCost(app);
     await setUpScreen(win);
     const out = await outputPage(app);
-    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+    await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 20_000,
+    });
     const operatorPid = await app.evaluate(
       ({ BrowserWindow }, url) =>
         BrowserWindow.getAllWindows()
@@ -315,6 +330,7 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     );
     const layer = out.locator('[data-layer="slide"]');
     const allWorse = { native: [] as boolean[], raf: [] as boolean[] };
+    endFeedback = await beginNativeFeedback(app, out, 'native-observer');
     for (let pair = 0; pair < 3; pair++) {
       // Alternate pair order so a first-use pipeline or a warm machine cannot always favour either side.
       for (const importing of pair % 2 === 0 ? [false, true] : [true, false]) {
@@ -367,9 +383,8 @@ test('a large picture imported during a hall dissolve does not add sustained fra
         if (page?.start == null || page.end === null || !main)
           throw new Error('The actual dissolve interval was not recorded.');
         main.frames = main.frames.filter((t) => t >= (page.start ?? 0) && t <= (page.end ?? 0));
-        const trial = { pair, importing, page, main, imported };
+        const trial = { pair, importing, page, main, imported, nativeTimesUs: [] as number[] };
         trials.push(trial);
-        console.log('DISPLAY DISSOLVE TRIAL ' + JSON.stringify(trial));
         expect(page.frames.length).toBeGreaterThan(2);
         expect(main.frames.length).toBeGreaterThan(2);
         if (imported) {
@@ -387,9 +402,50 @@ test('a large picture imported during a hall dissolve does not add sustained fra
           }
         } else expect(main.jobs).toHaveLength(0);
       }
+    }
+    const stop = endFeedback;
+    endFeedback = undefined;
+    const nativeFeedback = await stop();
+    feedback = nativeFeedback;
+    for (const trial of trials) {
+      const start = trial.page.start;
+      const end = trial.page.end;
+      if (start === null || end === null) throw new Error('Missing original phase bounds.');
+      trial.nativeTimesUs = nativeFeedback.nativeTimesUs.filter((t) => {
+        const at = t / 1000 + nativeFeedback.anchorOffsetMs;
+        return at >= start && at <= end;
+      });
+      expect(trial.nativeTimesUs.length).toBeGreaterThan(2);
+      const missing = nativeFeedback.reporters.filter((r) => {
+        const at = r.nativeUs / 1000 + nativeFeedback.anchorOffsetMs;
+        return r.missingContent && at >= start && at <= end;
+      });
+      expect(missing, 'Native presentation must not contain missing content.').toHaveLength(0);
+      const jobs = nativeFeedback.jobs.filter((job) => job.wallAt >= start && job.wallAt <= end);
+      if (trial.importing) {
+        for (const kind of ['source-start', 'decode-start', 'decode-end', 'blob-start', 'blob-end'])
+          expect(
+            jobs.filter((job) => job.kind === kind),
+            'Whole native source/decode/blob exposure: ' + kind,
+          ).toHaveLength(1);
+        expect(jobs.map((job) => job.kind)).toEqual([
+          'source-start',
+          'decode-start',
+          'decode-end',
+          'blob-start',
+          'blob-end',
+        ]);
+        expect(new Set(jobs.map((job) => job.pid)).size).toBe(1);
+        expect(jobs[0]?.pid).toBe(trial.main.jobs[0]?.pid);
+      } else expect(jobs).toHaveLength(0);
+      console.log(
+        'DISPLAY DISSOLVE TRIAL ' + JSON.stringify({ subscribe, lane, ...trial, nativeJobs: jobs }),
+      );
+    }
+    for (let pair = 0; pair < 3; pair++) {
       const control = trials.find((trial) => trial.pair === pair && !trial.importing);
       const importing = trials.find((trial) => trial.pair === pair && trial.importing);
-      if (!control || !importing) throw new Error('A paired round was not completed.');
+      if (!control || !importing) throw new Error('An original paired round is missing.');
       const nativePair = nativeCostPair(control, importing);
       const nativeControl = nativePair.control;
       const nativeImport = nativePair.imported;
@@ -397,19 +453,26 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       const rafImport = periods(importing.page.frames, rafControl.period);
       expect(nativeControl.period).toBeGreaterThan(0);
       expect(rafControl.period).toBeGreaterThan(0);
-      // The existing paired rule (N/bin/measure-tables.py): p95/longest within +1 ms and no more long gaps.
-      const worse = (measured: ReturnType<typeof periods>, control: ReturnType<typeof periods>) =>
-        measured.p95 - control.p95 > 1 ||
-        measured.longest - control.longest > 1 ||
+      // EXACT original rule. Native integers use microseconds: +1ms is +1000us, with no clock rounding.
+      const worse = (measured: ReturnType<typeof periods>, control: ReturnType<typeof periods>, oneMs = 1) =>
+        measured.p95 - control.p95 > oneMs ||
+        measured.longest - control.longest > oneMs ||
         measured.over15 > control.over15;
       allWorse.native.push(nativePair.worse);
       allWorse.raf.push(worse(rafImport, rafControl));
       const verdict = {
+        subscribe,
+        lane,
         pair,
         nativeControl,
         nativeImport,
         rafControl,
         rafImport,
+        callbackWorse: nativePair.callbackWorse,
+        presentationWorse: nativePair.presentationWorse,
+        eitherWorse: nativePair.worse,
+        presentationControlUs: nativePair.presentationControlUs,
+        presentationImportUs: nativePair.presentationImportUs,
         importReadyMs: importing.imported?.durationMs,
       };
       paired.push(verdict);
@@ -418,18 +481,41 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
     expect(
       allWorse.native.every(Boolean),
-      'Import made native callback frames worse in all three pairs.',
+      'Import made native presentation or capture callback frames worse in all three pairs.',
     ).toBe(false);
     expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(false);
   } finally {
     const unfinished = await app
       .evaluate(() => (globalThis as DisplayCostMainGlobals).drashtiDisplayCostMain)
       .catch(() => null);
-    await info.attach('display-dissolve-all-trials', {
-      body: Buffer.from(JSON.stringify({ platform: process.platform, trials, paired, unfinished })),
-      contentType: 'application/json',
-    });
-    await app.close();
+    try {
+      const native = {
+        frameClocks: ['original-main-capture-callback', 'native-presentation-feedback'],
+        platform: process.platform,
+        subscribe,
+        lane,
+        trials,
+        paired,
+        unfinished,
+        feedback,
+      };
+      await info.attach('display-dissolve-all-trials', {
+        body: Buffer.from(JSON.stringify(native)),
+        contentType: 'application/json',
+      });
+      if (endFeedback) {
+        try {
+          await endFeedback();
+        } catch (error) {
+          await info.attach('native-observer-cleanup-error', {
+            body: Buffer.from(error instanceof Error ? error.message : 'Native observer cleanup failed.'),
+            contentType: 'text/plain',
+          });
+        }
+      }
+    } finally {
+      await app.close();
+    }
   }
 });
 
