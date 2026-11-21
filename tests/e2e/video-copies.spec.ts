@@ -92,6 +92,7 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
   const { app, userData } = await launchApp({
     DRASHTI_TEST_ON_AIR_HOOK: '1',
     DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software',
+    DRASHTI_TEST_MEDIA_DELAY_MS: '2000',
   });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-video-copies-'));
   try {
@@ -177,8 +178,18 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     await win.getByRole('menuitem', { name: 'Edit Video…', exact: true }).click();
     const editor = win.getByTestId('edit-video');
     await expect(editor).toBeVisible();
+    const end = editor.getByLabel('End (seconds)', { exact: true });
+    const preview = editor.getByTestId('edit-video-preview');
+    await expect(end, 'the delayed header has not supplied the default end yet').toHaveValue('0');
     await editor.getByLabel('Start (seconds)', { exact: true }).fill('0.350');
-    await editor.getByLabel('End (seconds)', { exact: true }).fill('1.750');
+    // Playwright fill selects a number input, then inserts text in a separate call. Force its real race:
+    // metadata supplies the default end after selection and before that text arrives.
+    await end.selectText();
+    await expect
+      .poll(() => preview.evaluate((video: HTMLVideoElement) => video.readyState))
+      .toBeGreaterThanOrEqual(1);
+    await expect(end).toHaveValue('2');
+    await win.keyboard.insertText('1.750');
     await editor.getByRole('button', { name: 'Preparation and export', exact: true }).click();
     await editor.getByLabel('Picture and sound').selectOption('original');
     await editor.getByLabel('Clip shape').selectOption('vertical');
