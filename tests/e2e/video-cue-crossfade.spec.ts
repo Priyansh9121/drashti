@@ -1,3 +1,4 @@
+import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnostics';
 import { outputReady } from './helpers';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -10,6 +11,7 @@ const video = (page: Page, id: string) => page.locator(`video[data-media-id="${i
 
 test('Cue holds the first trimmed frame privately, then Go uses its loaded frame at one shared engine moment', async () => {
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
+  await beginCueDiagnostics([hall, win, stream, audio]);
   let pixelGoAt: number | null = null;
   try {
     const id = ids[1] ?? '';
@@ -57,6 +59,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
         v.requestVideoFrameCallback(presented);
         // Retain the old observer beside the native frame timestamp, to prove any polling delay.
         const polled = () => {
+          (globalThis as { s5Diagnostics?: { sample: () => void } }).s5Diagnostics?.sample();
           if (v.currentTime > initial + 0.001) v.dataset['polledMotionAt'] = String(Date.now());
           else requestAnimationFrame(polled);
         };
@@ -167,6 +170,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
         body: Buffer.from(JSON.stringify({ goAt: pixelGoAt, ...pixels })),
         contentType: 'application/json',
       });
+    await retainCueDiagnostics([hall, win, stream, audio], test.info());
     await app.close();
   }
 });

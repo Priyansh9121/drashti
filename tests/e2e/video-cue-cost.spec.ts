@@ -1,3 +1,4 @@
+import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnostics';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
@@ -30,6 +31,7 @@ async function frames(page: Page, ms: number) {
       { start: number; droppedStart: number; total: number; dropped: number }
     >();
     const observe = (initial: boolean) => {
+      (globalThis as { s5Diagnostics?: { sample: () => void } }).s5Diagnostics?.sample();
       for (const video of document.querySelectorAll<HTMLVideoElement>('video[data-media-id]')) {
         const q = video.getVideoPlaybackQuality();
         let seen = decoders.get(video);
@@ -107,6 +109,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
   if (!ffmpeg) throw new Error('The bundled encoder is required for S5 measuring');
   let running: Awaited<ReturnType<typeof setupVideoCue>> | null = null;
   let receiver: ReturnType<typeof rtmpListener> | null = null;
+  let tracing = false;
+  let tracePath: string | null = null;
   try {
     if (process.platform === 'win32') {
       previousAffinity = powershell(
@@ -116,7 +120,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     }
     const setup = await setupVideoCue(true);
     running = setup;
-    const { app, win, hall, stream, ids, dir } = setup;
+    const { app, win, hall, stream, audio, ids, dir } = setup;
+    tracePath = join(dir, 's5-drawing-trace.json');
     const mainPid = await app.evaluate(() => process.pid);
     if (process.platform === 'win32')
       expect(powershell(`(Get-Process -Id ${String(mainPid)}).ProcessorAffinity.ToInt64()`)).toBe('3');
@@ -197,6 +202,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       await d.playlists.setPlayOptions(id, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
       return { id, first: rows.ids[0] ?? '' };
     }, ids);
+    await beginCueDiagnostics([hall, win, stream, audio]);
     const streamAt = Date.now();
     const actions: { at: number; round: number; mode: string; action: string; engineAt?: number }[] = [];
     const samples: {
@@ -243,6 +249,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             dropped: state.live.droppedFrames,
           });
         }
+        if (round === 0 && mode === 'crossfade') {
+          await app.evaluate(async ({ contentTracing }) => {
+            await contentTracing.startRecording({
+              included_categories: ['cc', 'blink', 'devtools.timeline', 'media'],
+            });
+          });
+          tracing = true;
+        }
         // Start a fresh window after readiness, so slow preparation cannot consume the Go measurement.
         const sampling = Promise.all([hall, win, stream].map((p) => frames(p, 2300)));
         if (mode === 'cue') {
@@ -259,6 +273,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         }
         const pages = await sampling,
           state = await status();
+        if (tracing && tracePath) {
+          await app.evaluate(
+            async ({ contentTracing }, path) => contentTracing.stopRecording(path),
+            tracePath,
+          );
+          tracing = false;
+          await info.attach('s5-drawing-trace.json', { path: tracePath, contentType: 'application/json' });
+        }
         samples.push({
           round,
           mode: mode === 'cue' ? 'cue Go' : mode,
@@ -361,6 +383,16 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       'both generated tones overlap continuously through the sound crossfade',
     ).toBeGreaterThanOrEqual(12);
   } finally {
+    if (running) {
+      if (tracing && tracePath) {
+        await running.app.evaluate(
+          async ({ contentTracing }, path) => contentTracing.stopRecording(path),
+          tracePath,
+        );
+        await info.attach('s5-drawing-trace.json', { path: tracePath, contentType: 'application/json' });
+      }
+      await retainCueDiagnostics([running.hall, running.win, running.stream, running.audio], info);
+    }
     receiver?.kill('SIGKILL');
     await running?.app.close();
     if (previousAffinity)
