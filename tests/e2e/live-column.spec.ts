@@ -1,7 +1,11 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { makeTestVideo } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
@@ -80,5 +84,74 @@ test('in CI’s 1024 × 645 window, all of the column can be reached: under a st
   // The last of More tools is reached, inside the window.
   await expect(live.getByTestId('more-tools').getByRole('button').last()).toBeInViewport();
   await expect(win.getByRole('contentinfo', { name: 'Status' })).toBeInViewport({ ratio: 1 });
+  await app.close();
+});
+
+test('a paused video in the owner’s narrowest live column (1410 × 900, both columns at their least): its row says so by its Play button alone, its times show whole inside the column, and nothing of the LIVE block lies over the levels', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, OWNERS_WINDOW);
+  // His columns (22 Nov 2026): each at its least, as Home on its splitter puts it.
+  for (const name of ['Resize the playlists', 'Resize the live column']) {
+    const splitter = win.getByRole('separator', { name, exact: true });
+    await splitter.focus();
+    await splitter.press('Home');
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-live-column-'));
+  const file = await makeTestVideo(win, join(dir, 'Placeholder paused talk.webm'), {
+    seconds: 12,
+    hue: 200,
+    tone: 440,
+  });
+  const [mediaId = ''] = await importAndGetIds(win, [file]);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: id, media: 'video', fit: 'fill', loop: true },
+      }),
+    mediaId,
+  );
+  const live = win.getByRole('complementary', { name: 'Live', exact: true });
+  const bg = live.locator('[data-testid="time-bar-row"][data-playing="background"]');
+  await expect(bg.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+  await bg.getByRole('button', { name: 'Pause' }).click();
+  await expect(bg).toHaveAttribute('data-paused', 'true');
+  await expect(bg.getByRole('button', { name: 'Play' })).toBeVisible();
+  // No word for it (his "remove where its written paused, it takes up much space"): the Play button says it.
+  await expect(bg.getByText('Paused', { exact: true })).toHaveCount(0);
+  await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-\d+:\d\d$/u);
+  const problems = await live.evaluate((column) => {
+    const out: string[] = [];
+    const edge = column.getBoundingClientRect();
+    const row = column.querySelector('[data-testid="time-bar-row"][data-playing="background"]');
+    const named = (el: Element) =>
+      el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName.toLowerCase();
+    for (const el of row?.querySelectorAll('button, [role="slider"], [data-testid^="time-bar-"]') ?? []) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0) continue;
+      if (r.left < edge.left - 0.5 || r.right > edge.right + 0.5)
+        out.push(`${named(el)} sticks out of the column`);
+    }
+    for (const id of ['time-bar-elapsed', 'time-bar-left']) {
+      const time = row?.querySelector(`[data-testid="${id}"]`);
+      if (time instanceof HTMLElement && time.scrollWidth > time.clientWidth + 0.5) out.push(`${id} is cut`);
+    }
+    const levels = column.querySelector('[data-testid="sound-levels"]');
+    const under = levels?.getBoundingClientRect();
+    if (!levels || !under) return [...out, 'no levels'];
+    for (const el of column.querySelectorAll('[data-testid="live-still"] *')) {
+      if (el === levels || levels.contains(el) || el.contains(levels)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const across = r.right > under.left + 0.5 && r.left < under.right - 0.5;
+      if (across && r.bottom > under.top + 0.5 && r.top < under.bottom - 0.5)
+        out.push(`${named(el)} lies over the levels`);
+    }
+    return out;
+  });
+  expect(problems).toEqual([]);
   await app.close();
 });
