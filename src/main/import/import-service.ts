@@ -43,6 +43,11 @@ export interface ImportServiceDeps {
   playsHevc?(): Promise<boolean | null>;
   /** HEVC's other kinds, as the window said with that answer (Session 60, x36); null while not known. */
   hevcKinds?(): HevcKinds | null;
+  /**
+   * Resolves once no transition runs on the screens (alpha.21, Q60-60 A): each import starts only then, so nothing
+   * heavy runs during a dissolve. RED: not yet asked.
+   */
+  quiet?(): Promise<void>;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
   /**

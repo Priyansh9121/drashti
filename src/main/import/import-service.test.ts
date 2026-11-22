@@ -178,6 +178,25 @@ describe('ImportService', () => {
     await first;
   });
 
+  it('starts an import only once no transition runs on the screens: one started during a dissolve waits for it to end (alpha.21, Q60-60 A)', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    const { service, workers } = setup({ playsHevc: () => Promise.resolve(true), quiet: () => quiet });
+    const first = service.start(['/Placeholder picture.png']);
+    await Promise.resolve();
+    await Promise.resolve();
+    // The HEVC answer is in, but the dissolve still runs: nothing heavy starts.
+    expect(workers[0]?.sent).toEqual([]);
+    end();
+    await vi.waitFor(() => {
+      expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: true });
+    });
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+  });
+
   it('tells each import HEVC’s other kinds as the window said them with its answer, read as it starts (Session 60, x36)', async () => {
     let kinds: { main10: boolean; rext: boolean } | null = null;
     const { service, workers } = setup({ playsHevc: () => Promise.resolve(true), hevcKinds: () => kinds });
