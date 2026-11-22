@@ -1048,7 +1048,6 @@ function Music() {
             [
               ['back', 'Back 15 s'],
               ['forward', 'Forward 15 s'],
-              ['last', 'Last 10 s'],
             ] as const
           ).map(([jump, label]) => (
             <Button

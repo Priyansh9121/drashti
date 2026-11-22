@@ -1,7 +1,7 @@
 import type { EngineState } from '../../../shared/engine/state';
 
 /**
- * Back 15 s, Forward 15 s and Last 10 s (Session 50) for one place: 'ready', 'waiting' while the file's
+ * Back 15 s and Forward 15 s (Session 50) for one place: 'ready', 'waiting' while the file's
  * length is not known yet (a moment after it starts: they are dimmed), or null where there are none.
  */
 export type SkipsShown = 'ready' | 'waiting' | null;

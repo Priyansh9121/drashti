@@ -1,10 +1,11 @@
 import { dispatch } from '../operator/actions';
 import { Button, IconButton } from '../ui/Button';
-import { ArrowRightToLine, type Icon, RotateCcw, RotateCw } from '../ui/icons';
+import { type Icon, RotateCcw, RotateCw } from '../ui/icons';
 import type { SkipsShown } from './skips';
 
 /*
- * Back 15 s, Forward 15 s and Last 10 s (Session 50, as on the mandir's audio controls), in Pro Mode: for
+ * Back 15 s and Forward 15 s (Session 50, as on the mandir's audio controls; Last 10 s went in alpha.21, the owner's
+ * "remove last 10s whole concept"), in Pro Mode: for
  * the background video and a single sound under the live picture, and for an audio playlist's track in the
  * row with its Play and Pause (Session 51). Each is a jump, as to a marker, in step on every screen, the nodes
  * and the stream (the engine's skip, which keeps to the file's start and end points). Dimmed until Drashti
@@ -13,14 +14,13 @@ import type { SkipsShown } from './skips';
  * since Session 54 (D5: web/remote/Playing.tsx).
  */
 
-const SKIPS: { jump: 'back' | 'forward' | 'last'; label: string; icon: Icon }[] = [
+const SKIPS: { jump: 'back' | 'forward'; label: string; icon: Icon }[] = [
   { jump: 'back', label: 'Back 15 s', icon: RotateCcw },
   { jump: 'forward', label: 'Forward 15 s', icon: RotateCw },
-  { jump: 'last', label: 'Last 10 s', icon: ArrowRightToLine },
 ];
 
 /**
- * The three buttons for the background video or the sound playing; a refusal shows as the notice. `compact`
+ * The two buttons for the background video or the sound playing; a refusal shows as the notice. `compact`
  * (the Music panel's row, Session 51): their icons alone, each named by its tooltip, as Previous and Next are
  * there, so they fit beside Play and Pause in the live column at 1024 wide; with their words they do not.
  */

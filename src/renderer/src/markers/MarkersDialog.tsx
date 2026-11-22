@@ -584,7 +584,7 @@ function MarkersForm({
 }
 
 /**
- * Under the live picture: the background video's and a single sound's Back 15 s, Forward 15 s and Last 10 s
+ * Under the live picture: the background video's and a single sound's Back 15 s and Forward 15 s
  * (Session 50; an audio playlist's track has them beside its Play and Pause, in the Music panel), and jumps
  * to the markers of the background video or the sound playing. One row each, as long as it plays.
  */

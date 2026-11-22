@@ -208,7 +208,7 @@ function playedToEnd(layer: PlaybackClock & { durationMs?: number }, now: number
  * and neither is a track ending and the next starting.
  */
 const MUSIC_COMMANDS: ReadonlySet<string> = new Set([
-  // A jump to a marker moves what plays, not the slides; so do Back 15 s, Forward 15 s and Last 10 s
+  // A jump to a marker moves what plays, not the slides; so do Back 15 s and Forward 15 s
   // (Session 50).
   'jumpToMarker',
   'skip',
@@ -1579,7 +1579,7 @@ export class ShowEngine {
 
   /**
    * Layers as they were (Back), each file that plays on now as it did then (the same file, from the same
-   * start) keeping where it has jumped to since: a marker, Back 15 s, Forward 15 s or Last 10 s (Session 50),
+   * start) keeping where it has jumped to since: a marker, Back 15 s or Forward 15 s (Session 50),
    * so undoing a Next moves the slides, not what plays.
    */
   private withJumps(layers: Layers): Layers {
@@ -2331,7 +2331,7 @@ export class ShowEngine {
   }
 
   /**
-   * Back 15 s, Forward 15 s or Last 10 s (Session 50) on the background video or the sound playing: a jump,
+   * Back 15 s or Forward 15 s (Session 50) on the background video or the sound playing: a jump,
    * made as a jump to a marker is (the layer's seek), so every screen, the audio player, the nodes and the
    * stream play on from there in step. At the end, the end does what it always does: a looping file goes
    * round, one played once holds its end, an audio playlist's track goes on to the next. A paused track waits

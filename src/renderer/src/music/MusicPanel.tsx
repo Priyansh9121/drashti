@@ -159,7 +159,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               setRemoving(ids);
             }}
           />
-          {/* One row (Session 51): previous, Play or Pause, next, Back 15 s, Forward 15 s and Last 10 s, then loop
+          {/* One row (Session 51): previous, Play or Pause, next, Back 15 s and Forward 15 s, then loop
               and shuffle. It fits the live column at 1024 wide; dragged narrower, loop and shuffle go to a line of
               their own first. */}
           <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Play the music">
@@ -199,7 +199,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               disabled={!isShownPlaying}
               onClick={() => void dispatch('musicNext')}
             />
-            {/* Back 15 s, Forward 15 s, Last 10 s (Session 50) for the track playing: icons named by their
+            {/* Back 15 s, Forward 15 s (Session 50) for the track playing: icons named by their
                 tooltips, as previous and next are (with their words, the row would not fit). */}
             <div
               className="flex items-center gap-1"

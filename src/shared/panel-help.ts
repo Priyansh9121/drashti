@@ -55,7 +55,7 @@ export const PANEL_HELP = {
     chapter: 'live',
     feature: 'LIVE',
     doc: 'operator',
-    text: 'What the hall sees this moment: a picture up there zooms on the screens as you scroll or pinch over it, moves as you drag it, and goes back as it was kept with a double-click. Under it, each video or sound playing has a time bar, with Play or Pause: a click moves it there on every screen at once, and a drag moves a video’s picture with your finger, playing on from where you let go; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
+    text: 'What the hall sees this moment: a picture up there zooms on the screens as you scroll or pinch over it, moves as you drag it, and goes back as it was kept with a double-click. Under it, each video or sound playing has a time bar, with Play or Pause: a click moves it there on every screen at once, and a drag moves a video’s picture with your finger, playing on from where you let go; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s and Forward 15 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
     guide: 'headed **LIVE**',
   },
   lowerthirds: {
@@ -159,7 +159,7 @@ export const PANEL_HELP = {
     chapter: 'audio',
     feature: 'Audio playlists',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha, listed here: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing; under a video with sound, or a slide’s or a deck’s own sound, the music steps aside (the switch below the lists), and each video and sound plays at an even loudness (right-click one to play it as it is).',
+    text: 'Audio playlists to play before the sabha, listed here: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s and Forward 15 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing; under a video with sound, or a slide’s or a deck’s own sound, the music steps aside (the switch below the lists), and each video and sound plays at an even loudness (right-click one to play it as it is).',
     guide: '**Audio.** In the right column',
   },
   tools: {
