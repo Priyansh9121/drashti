@@ -45,7 +45,7 @@ export interface ImportServiceDeps {
   hevcKinds?(): HevcKinds | null;
   /**
    * Resolves once no transition runs on the screens (alpha.21, Q60-60 A): each import starts only then, so nothing
-   * heavy runs during a dissolve. RED: not yet asked.
+   * heavy runs during a dissolve. Left out: at once.
    */
   quiet?(): Promise<void>;
   onProgress(progress: ImportProgress): void;
@@ -374,10 +374,15 @@ export class ImportService {
       });
     };
     // Once it is known whether this computer plays HEVC (Session 51 review: an import in the first moments after
-    // the start waits for the answer, convert/plays-hevc.ts, 15 s at most).
-    if (this.deps.playsHevc)
-      void this.deps.playsHevc().then(start, () => {
-        start(null);
+    // the start waits for the answer, convert/plays-hevc.ts, 15 s at most), and once no transition runs on the screens
+    // (alpha.21, Q60-60 A: an import started during a dissolve waits for its end, so nothing heavy runs during one).
+    const quiet = this.deps.quiet?.().catch(() => undefined);
+    if (this.deps.playsHevc) {
+      const plays = this.deps.playsHevc().catch(() => null);
+      void (quiet ? Promise.all([plays, quiet]).then(([said]) => said) : plays).then(start);
+    } else if (quiet)
+      void quiet.then(() => {
+        start();
       });
     else start();
   }

@@ -885,6 +885,10 @@ const testVersion = packaged() ? undefined : sw('DRASHTI_TEST_VERSION');
 const appVersion = () => testVersion ?? app.getVersion();
 /** How long after a running transition's end a new picture's display copy starts (alpha.21, Q60-59 A). */
 const TRANSITION_WAKE_MARGIN_MS = 250;
+/** The longest an import waits for the screens' transitions to end (Q60-60 A). */
+const IMPORT_QUIET_MAX_MS = 15_000;
+/** The import's wait for no running transition, set once the engine and the outputs exist (Q60-60 A). */
+let importQuiet: (() => Promise<void>) | null = null;
 const nodeClockSkewMs = packaged() ? 0 : Number(sw('DRASHTI_TEST_CLOCK_SKEW_MS') ?? 0) || 0;
 const nodePortOverride = Number(sw('DRASHTI_NODE_PORT') ?? 0) || null;
 // Tests only (never a packaged Drashti): a test can make an output draw an element that throws, to see a
@@ -1978,6 +1982,22 @@ function start(): void {
   // by his assister under his 1-minute rule: made during a hall dissolve, its work held up the hall's frames): it waits
   // for the running dissolve or fade to end, then starts at once (one wake-up at that end).
   let transitionWake: ReturnType<typeof setTimeout> | null = null;
+  // An import waits the same way (Q60-60 A, the owner's own "A."): until no transition runs, re-checked at each end, at
+  // most IMPORT_QUIET_MAX_MS so a run of dissolves never holds it long.
+  const untilNoTransition = (): Promise<void> =>
+    new Promise((resolve) => {
+      const giveUp = Date.now() + IMPORT_QUIET_MAX_MS;
+      const check = () => {
+        const ends = transitionsEndAt(engine.current, Date.now());
+        if (ends === null || Date.now() >= giveUp) {
+          resolve();
+          return;
+        }
+        setTimeout(check, Math.min(ends, giveUp) - Date.now() + TRANSITION_WAKE_MARGIN_MS);
+      };
+      check();
+    });
+  importQuiet = untilNoTransition;
   const noTransitionRunning = (): boolean => {
     const ends = transitionsEndAt(engine.current, Date.now());
     if (ends === null) return true;
@@ -4054,6 +4074,8 @@ function start(): void {
     playsHevc: () => hevc.wait(),
     // HEVC's other kinds, as the window said with its answer (Session 60, x36), read as the import starts.
     hevcKinds: () => hevc.kinds,
+    // Each import starts only once no transition runs on the screens (alpha.21, Q60-60 A).
+    quiet: () => importQuiet?.() ?? Promise.resolve(),
     // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
     // 58: such a write copied the import's pages and waited for the disk on the main thread).
     running: leaveCopyingToImports(libraryDb),
