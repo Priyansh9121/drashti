@@ -278,7 +278,7 @@ async function startDisplayCostPage(out: Page): Promise<void> {
 }
 
 /** Native presentation feedback and renderer callback entry retain independent, unchanged paired limits. */
-test('a large picture imported during a hall dissolve does not add sustained frame gaps', async () => {
+test('a large picture imported during a hall dissolve does not add sustained frame gaps: its display copy waits for the dissolve to end (Q60-59)', async () => {
   const info = test.info();
   const subscribe = true;
   const lane = 0;
@@ -390,10 +390,17 @@ test('a large picture imported during a hall dissolve does not add sustained fra
         if (imported) {
           const begin = main.jobs.find((job) => job.kind === 'decode-start');
           const end = main.jobs.find((job) => job.kind === 'blob-end');
-          expect(begin, 'The actual native display decode began during the dissolve.').toBeDefined();
+          // Q60-59 A (alpha.21): a new picture's copy is never made during a transition on the screens: its decode
+          // begins only once the dissolve is over, and the import is ready soon after.
+          expect(begin, 'The actual native display decode ran, after the dissolve.').toBeDefined();
           expect(end, 'The native display job completed; import readiness was real.').toBeDefined();
-          expect(begin?.t ?? Infinity).toBeLessThan(page.end);
-          expect(end?.t ?? -Infinity).toBeGreaterThan(page.start);
+          expect(
+            begin?.t ?? -Infinity,
+            'The display decode waited for the dissolve to end.',
+          ).toBeGreaterThanOrEqual(page.end);
+          expect(imported.durationMs, 'Ready soon after the dissolve: its 5 s and the copy.').toBeLessThan(
+            15_000,
+          );
           expect(main.jobs.filter((job) => job.kind === 'decode-start')).toHaveLength(1);
           for (const job of main.jobs) {
             expect(job.pid).toBeGreaterThan(0);
@@ -422,22 +429,8 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       });
       expect(missing, 'Native presentation must not contain missing content.').toHaveLength(0);
       const jobs = nativeFeedback.jobs.filter((job) => job.wallAt >= start && job.wallAt <= end);
-      if (trial.importing) {
-        for (const kind of ['source-start', 'decode-start', 'decode-end', 'blob-start', 'blob-end'])
-          expect(
-            jobs.filter((job) => job.kind === kind),
-            'Whole native source/decode/blob exposure: ' + kind,
-          ).toHaveLength(1);
-        expect(jobs.map((job) => job.kind)).toEqual([
-          'source-start',
-          'decode-start',
-          'decode-end',
-          'blob-start',
-          'blob-end',
-        ]);
-        expect(new Set(jobs.map((job) => job.pid)).size).toBe(1);
-        expect(jobs[0]?.pid).toBe(trial.main.jobs[0]?.pid);
-      } else expect(jobs).toHaveLength(0);
+      // No display copy work at all during the dissolve, importing or not (Q60-59 A).
+      expect(jobs, 'No display copy work during the dissolve.').toHaveLength(0);
       console.log(
         'DISPLAY DISSOLVE TRIAL ' + JSON.stringify({ subscribe, lane, ...trial, nativeJobs: jobs }),
       );
