@@ -401,6 +401,7 @@ import { spawnStreamWorker } from './stream/stream-worker';
 import { AFTER_START_MS, ConvertService, readInfo } from './convert/convert-service';
 import { HevcAnswer, hevcKindsScript, playsHevcScript } from './convert/plays-hevc';
 import { askInOwnPage, type HevcPage } from './convert/hevc-page';
+import { transitionsEndAt } from '../shared/engine/transitions-running';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
@@ -882,6 +883,8 @@ const perfNodes = Math.min(50, Math.max(0, Number(sw('DRASHTI_PERF_NODES') ?? 0)
 // Main listens for nodes on.
 const testVersion = packaged() ? undefined : sw('DRASHTI_TEST_VERSION');
 const appVersion = () => testVersion ?? app.getVersion();
+/** How long after a running transition's end a new picture's display copy starts (alpha.21, Q60-59 A). */
+const TRANSITION_WAKE_MARGIN_MS = 250;
 const nodeClockSkewMs = packaged() ? 0 : Number(sw('DRASHTI_TEST_CLOCK_SKEW_MS') ?? 0) || 0;
 const nodePortOverride = Number(sw('DRASHTI_NODE_PORT') ?? 0) || null;
 // Tests only (never a packaged Drashti): a test can make an output draw an element that throws, to see a
@@ -1971,10 +1974,29 @@ function start(): void {
   const displayBlobFiles = new DisplayBlobFiles(displaySession);
   stops.add('display blob files', () => displayBlobFiles.close());
   let displayWorkerId = 0;
+  // A new picture's copy is never made during a transition on the screens (alpha.21, Q60-59 A, answered for the owner
+  // by his assister under his 1-minute rule: made during a hall dissolve, its work held up the hall's frames): it waits
+  // for the running dissolve or fade to end, then starts at once (one wake-up at that end).
+  let transitionWake: ReturnType<typeof setTimeout> | null = null;
+  const noTransitionRunning = (): boolean => {
+    const ends = transitionsEndAt(engine.current, Date.now());
+    if (ends === null) return true;
+    transitionWake ??= setTimeout(
+      () => {
+        transitionWake = null;
+        displayCopies.activityChanged();
+      },
+      ends - Date.now() + TRANSITION_WAKE_MARGIN_MS,
+    );
+    return false;
+  };
+  stops.add('display copies’ transition wake', () => {
+    if (transitionWake) clearTimeout(transitionWake);
+  });
   const displayCopies = new DisplayCopies({
     mediaDir,
     targets: displayTargets,
-    canStart: () => !sharpened.working,
+    canStart: () => !sharpened.working && noTransitionRunning(),
     canWork: () => nothingUp(engine.current.layers) && !displayOnAir(),
     open: (gone) => {
       const win = createSharpenWindow(gone, true, displaySession);
