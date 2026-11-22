@@ -85,6 +85,11 @@ export function startLogFile(dir: string, options: { maxBytes?: number; keep?: n
   };
 }
 
+/** RED (alpha.21): not yet. */
+export function startLogCopy(_file: string): void {
+  // Nothing yet.
+}
+
 /** The log files, newest first (for diagnostics). */
 export function logFiles(): string[] {
   const s = sink;
