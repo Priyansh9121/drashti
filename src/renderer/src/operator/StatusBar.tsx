@@ -402,9 +402,10 @@ function NoticeCard({ notice }: { notice: string }) {
         onClick={() => {
           void showReport({ notice });
         }}
-        // 24 px tall, as every target (alpha.21: the 16 px link failed the target-size check once the live column's
-        // Audio buttons came under the notice).
-        className="pointer-events-auto -my-1 inline-flex min-h-6 shrink-0 items-center rounded-sm px-1.5 text-xs text-muted underline hover:bg-panel-2 hover:text-fg"
+        // 24 px tall, as every target, and no wider, so the card's words wrap as before (alpha.21: the 16 px link failed
+        // the target-size check once the live column's Audio buttons came under the notice; 4 px wider, the words
+        // wrapped a line more on a Mac and the card covered the levels' Sound on).
+        className="pointer-events-auto -my-1 inline-flex min-h-6 shrink-0 items-center rounded-sm px-1 text-xs text-muted underline hover:bg-panel-2 hover:text-fg"
       >
         Report this…
       </button>
@@ -414,7 +415,7 @@ function NoticeCard({ notice }: { notice: string }) {
         onClick={() => {
           useNotice.setState({ text: null });
         }}
-        className="pointer-events-auto -my-1 -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
+        className="pointer-events-auto -my-1 -mr-2 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
       >
         <X size={12} aria-hidden="true" />
       </button>
