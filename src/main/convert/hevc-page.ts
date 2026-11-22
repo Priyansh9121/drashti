@@ -12,6 +12,13 @@ import { askHevcQuestions, type HevcKinds } from './plays-hevc';
  * The operator window never asks it.
  */
 
+/**
+ * The questions' own views while they ask (alpha.21: held by nothing, a view no window holds was taken by a garbage
+ * collection with its page and its question, which then never answered: 2 of alpha.20's 5 starts on the owner's Mac,
+ * and CI's start-marks.spec:48 late in a run). Held here until each has answered or gone.
+ */
+const asking = new Set<WebContentsView>();
+
 /** The question being asked in its own page. */
 export interface HevcPage {
   /** Whether this computer plays HEVC; null when the page could not say (its process ended, or it was closed). */
@@ -33,7 +40,9 @@ export function askInOwnPage(script: string, kindsScript: string | null = null):
   const webPreferences: Electron.WebPreferences = { ...secureWebPreferences(), backgroundThrottling: false };
   // A blank page that runs one line: no bridge to Drashti.
   delete webPreferences.preload;
-  const contents = new WebContentsView({ webPreferences }).webContents;
+  const view = new WebContentsView({ webPreferences });
+  asking.add(view);
+  const contents = view.webContents;
   let settle: (answer: boolean | null) => void = () => undefined;
   const answer = new Promise<boolean | null>((resolve) => {
     settle = resolve;
@@ -48,9 +57,12 @@ export function askInOwnPage(script: string, kindsScript: string | null = null):
     settle(null);
     if (closed) return;
     closed = true;
+    asking.delete(view);
     if (!contents.isDestroyed()) contents.close();
   };
   contents.once('render-process-gone', close);
+  // Gone for any other reason: its questions are not known, never left waiting.
+  contents.once('destroyed', close);
   void contents
     .loadURL('about:blank')
     .then(async () => {
