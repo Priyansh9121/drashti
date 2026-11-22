@@ -75,6 +75,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   iconEnd?: Icon;
   /** The keyboard shortcut, shown as a key hint after the words. */
   kbd?: string;
+  /** Classes for the key hint alone: a narrow row can hide it (alpha.21: NextBack's, below its width). */
+  kbdClassName?: string;
   /** A show control: its state (on, lit) changes at once, with no colour fade. */
   instant?: boolean;
   /**
@@ -92,6 +94,7 @@ export function Button({
   icon: IconBefore,
   iconEnd: IconAfter,
   kbd,
+  kbdClassName,
   instant = false,
   wrap = false,
   className,
@@ -119,7 +122,7 @@ export function Button({
       {IconBefore && <IconBefore size={iconPx} aria-hidden="true" className="shrink-0" />}
       {children}
       {IconAfter && <IconAfter size={iconPx} aria-hidden="true" className="shrink-0" />}
-      {kbd && <Kbd className="ml-1">{kbd}</Kbd>}
+      {kbd && <Kbd className={cx('ml-1', kbdClassName)}>{kbd}</Kbd>}
     </button>
   );
 }
