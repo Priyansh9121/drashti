@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { redact } from './stream/redact';
 
 /*
@@ -8,7 +8,8 @@ import { redact } from './stream/redact';
  * data folder once startLogFile() has run (logs/drashti.log, then .1 to .4
  * as it fills). Log lines carry counts and ids, never library content: the
  * home folder is written as ~ and file URLs are left out, as a safety net
- * for a path in an error message.
+ * for a path in an error message. Tests can have every line written to one
+ * more file as well (startLogCopy).
  */
 
 type Level = 'info' | 'warn' | 'error';
@@ -21,6 +22,8 @@ interface Sink {
 }
 
 let sink: Sink | null = null;
+/** Tests only (index.ts: never a packaged Drashti): one more file every line goes to, never rotated. */
+let copy: string | null = null;
 const HOME = homedir();
 const FILE = 'drashti.log';
 
@@ -66,11 +69,21 @@ function toFile(line: string): void {
   }
 }
 
+function toCopy(line: string): void {
+  if (copy === null) return;
+  try {
+    appendFileSync(copy, `${line}\n`);
+  } catch {
+    // Nor may a test's copy.
+  }
+}
+
 function write(level: Level, message: string, detail?: unknown): void {
   const line = scrub(`${new Date().toISOString()} [${level}] ${message}${detailText(detail)}`);
   const out = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
   out(line);
   toFile(line);
+  toCopy(line);
 }
 
 /** Keep the log in files too, in `dir` (made if needed), about 2 MB each, the last 5. */
@@ -85,9 +98,18 @@ export function startLogFile(dir: string, options: { maxBytes?: number; keep?: n
   };
 }
 
-/** RED (alpha.21): not yet. */
-export function startLogCopy(_file: string): void {
-  // Nothing yet.
+/**
+ * Tests only: every line from now on written to `file` too (its folder made if needed), as the log file has it
+ * (alpha.21, the owner's Q60-57: the test's own folder, kept only when the test fails, so a failed test keeps its
+ * Drashti's log).
+ */
+export function startLogCopy(file: string): void {
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    copy = file;
+  } catch {
+    copy = null;
+  }
 }
 
 /** The log files, newest first (for diagnostics). */

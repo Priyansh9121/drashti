@@ -108,6 +108,8 @@ export async function launchApp(
       // Crash files go into the test's own output folder (Session 39), which Playwright keeps only when the
       // test fails (playwright.config.ts, preserveOutput), so a failed run's report carries them.
       ...crashFilesHere(),
+      // And its log, line by line, from its first (alpha.21).
+      ...logCopyHere(),
       // The stand-in list and this computer's pretend hardware id (Session 54).
       ...lock.env,
       ...extraEnv,
@@ -193,6 +195,23 @@ function crashFilesHere(): { DRASHTI_TEST_CRASH_DUMPS?: string } {
   } catch {
     return {};
   }
+}
+
+/** How many Drashtis each test has started: each start's log copy has its own number. */
+const logCopies = new WeakMap<TestInfo, number>();
+
+/**
+ * The running test's own copy of this Drashti's log (alpha.21, the owner's Q60-57: three rare flaky tests of
+ * alpha.20.1 could not be given a cause, as a failed test kept no log), kept as the crash files are, only when the
+ * test fails: drashti-1.log for its first start, drashti-2.log for the next (a node, or a start again). Nothing
+ * outside a test.
+ */
+function logCopyHere(): { DRASHTI_TEST_LOG_COPY?: string } {
+  const running = currentTest();
+  if (!running) return {};
+  const n = (logCopies.get(running) ?? 0) + 1;
+  logCopies.set(running, n);
+  return { DRASHTI_TEST_LOG_COPY: running.outputPath(`drashti-${String(n)}.log`) };
 }
 
 /** Quitting this long is said, with the end of Drashti's own log (a quit that took 60 s once on CI Windows). */
