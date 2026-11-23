@@ -2008,7 +2008,7 @@ function start(): void {
       },
       videoGoFrames: () => {
         const program = streaming.programContents();
-        // Only a grid the stream's page told in the last 3 s (it tells once a second while a cue waits).
+        // Only a grid the stream's page told in the last 3 s (it tells four times a second while a cue waits).
         if (!streamFrames || !program || program.isDestroyed() || Date.now() - streamFrames.told > 3000)
           return null;
         return { at: streamFrames.at, periodMs: streamFrames.periodMs };
