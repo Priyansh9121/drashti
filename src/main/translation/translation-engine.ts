@@ -12,6 +12,9 @@ import {
   type Route,
 } from './indictrans-text';
 import { HelperError, TranslationHelper } from './translation-helper';
+import { pyStrip } from './python-text';
+
+const cancelled = (): HelperError => new HelperError('cancelled', 'Stopped.');
 
 /*
  * Prepare translations' engine (alpha.22, a22-mt, from Codex x92's job; x79's design, x74's trial): IndicTrans2's
@@ -95,14 +98,22 @@ export class TranslationEngine implements Translator {
   /** A draft translation of the source, line by line. Throws a HelperError with plain words when it cannot. */
   translate(source: string, from: TranslationLanguage, to: TranslationLanguage): Promise<string> {
     const generation = this.generation;
+    // Stop (or the stream going on air) starts a new generation: everything of an older one stops at its next step.
+    const stopped = (): boolean => generation !== this.generation;
     const run = this.queue.then(async () => {
-      if (generation !== this.generation) throw new HelperError('cancelled', 'Stopped.');
-      const out: string[] = [];
-      for (const line of source.split(/\r\n|\n|\r/u)) {
-        if (generation !== this.generation) throw new HelperError('cancelled', 'Stopped.');
-        out.push(line.trim() === '' ? line : await this.translateLine(line, from, to));
+      try {
+        if (stopped()) throw cancelled();
+        const out: string[] = [];
+        for (const line of source.split(/\r\n|\n|\r/u)) {
+          if (stopped()) throw cancelled();
+          out.push(pyStrip(line) === '' ? line : await this.translateLine(line, from, to, stopped));
+        }
+        return out.join('\n');
+      } catch (error) {
+        // Whatever failed after Stop (the helper it ended, a hold let go) is the Stop itself.
+        if (stopped()) throw cancelled();
+        throw error;
       }
-      return out.join('\n');
     });
     this.queue = run.catch(() => undefined);
     return run;
@@ -133,6 +144,7 @@ export class TranslationEngine implements Translator {
     line: string,
     from: TranslationLanguage,
     to: TranslationLanguage,
+    stopped: () => boolean,
   ): Promise<string> {
     if (holdsSpecialToken(line))
       throw new HelperError(
@@ -140,32 +152,46 @@ export class TranslationEngine implements Translator {
         'These words hold a model marker (such as </s>) and cannot be translated.',
       );
     const prepared = preprocess(line, from);
+    // Nothing left to translate once prepared (only marks the pipeline drops): the line stays as it is.
+    if (prepared.text === '') return line;
     const route = routeFor(from, to);
-    const helper = await this.ready(route, from, to);
+    const helper = await this.ready(route, from, to, stopped);
     const tokens = await helper.translate(route, TAG_OF[from], TAG_OF[to], prepared.text, this.o.beam ?? 5);
+    if (stopped()) throw cancelled();
     this.restartIdle();
     return restoreSourceClockSpacing(line, postprocess(decodeTokens(tokens), to, prepared.placeholders));
   }
 
+  /**
+   * The running helper with this direction's model loaded. After every wait (the helper's start, the model's check
+   * and load) a Stop is honoured: a helper started for a stopped run is ended, a hold taken for it let go.
+   */
   private async ready(
     route: Route,
     from: TranslationLanguage,
     to: TranslationLanguage,
+    stopped: () => boolean,
   ): Promise<TranslationHelper> {
     const program = this.o.program();
     const model = this.modelFor(from, to);
     if (program === null || model === null)
       throw new HelperError(
         'not-installed',
-        'Translation is not installed: ask the admin to import the offline model pack (Help › Caption and Translation Models…).',
+        'Translation is not installed: ask the admin to import the offline model pack (Help \u203a Caption and Translation Models\u2026).',
       );
-    if (!this.helper?.running) {
+    let helper = this.helper;
+    if (!helper?.running) {
       this.stopHelper();
-      const helper = (this.o.createHelper ?? ((p) => new TranslationHelper({ program: p, log: this.o.log })))(
-        program,
-      );
-      await helper.start();
-      this.helper = helper;
+      const started = (
+        this.o.createHelper ?? ((p) => new TranslationHelper({ program: p, log: this.o.log }))
+      )(program);
+      await started.start();
+      if (stopped()) {
+        started.stop();
+        throw cancelled();
+      }
+      this.helper = started;
+      helper = started;
     }
     if (this.loaded?.route !== route || this.loaded.modelId !== model.id) {
       // One model in memory at a time: the one before is let go in the helper, then by the pack store.
@@ -173,28 +199,37 @@ export class TranslationEngine implements Translator {
       this.loaded = null;
       if (before) {
         try {
-          await this.helper.unload(before.route);
+          await helper.unload(before.route);
         } finally {
           before.hold.release();
         }
       }
+      if (stopped()) throw cancelled();
       const hold = await this.o.models.acquire(model.id);
       if (!hold)
         throw new HelperError(
           'model-changed',
           'The translation model on this computer changed or is incomplete. Import the model pack again.',
         );
+      if (stopped()) {
+        hold.release();
+        throw cancelled();
+      }
       const file = (name: string) => model.files.find((f) => basename(f.path) === name)?.path ?? '';
       try {
-        await this.helper.load(route, dirname(file('model.bin')), file('source.spm'), this.o.threads ?? 2);
+        await helper.load(route, dirname(file('model.bin')), file('source.spm'), this.o.threads ?? 2);
       } catch (error) {
         hold.release();
         throw error;
       }
+      if (stopped()) {
+        hold.release();
+        throw cancelled();
+      }
       this.loaded = { route, modelId: model.id, hold };
       this.o.log.info(`Translation: loaded ${model.id} for ${route}.`);
     }
-    return this.helper;
+    return helper;
   }
 
   private restartIdle(): void {
