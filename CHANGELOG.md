@@ -12,6 +12,7 @@ Update after a sabha, and update Main and nodes together.
 - Everything fits at its smallest size: titles wrap instead of being cut; the QR code window, the slide editor’s tools, the Lower Thirds templates (name and star under the picture) and long names show whole; on a phone the remote held sideways has its own layout with the live picture whole, and no page scrolls sideways.
 - Playback: a paused video’s row has no Paused badge (its Play button says so) and room for its times. Last 10 s is gone; a video’s last 10 seconds still turn amber, and the stage’s Video ends in stays.
 - Quicker to answer: the operator window as a show starts (the Lower Thirds fonts load one at a time while it is idle), and a press from a phone, a controller or the window right after a video goes up is no longer refused.
+- Paired phones, stage tablets and nodes keep their places while new devices wait.
 - Screens: a show’s first picture is whole: what Drashti draws to ready the graphics chip is gone before it starts.
 - Importing a picture or a video never waits on this computer’s answer about HEVC video: the answer now always comes.
 - Edit Video…: Also add the clip to Media stands on its own line above Export clip….
