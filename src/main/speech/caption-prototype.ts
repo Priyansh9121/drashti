@@ -47,7 +47,8 @@ export class CaptionPrototype {
       sequence: final ? 2 : 1,
       text: final ? example.settled : example.partial,
       final,
-      startAt: now - SYNTHETIC_CAPTURE_MS,
+      // Never before the clock's start (a test's, or Main's first second).
+      startAt: Math.max(0, now - SYNTHETIC_CAPTURE_MS),
       endAt: now,
       observedAt: now,
     });
