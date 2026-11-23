@@ -354,7 +354,7 @@ function LinkConversionStatus() {
  * scrolls under the LIVE block, so no control is ever under it (floating over the column, a long one had covered the
  * levels' Sound on and Audio's buttons); a click on its card reaches what is under it, only its buttons take one. With
  * no live column mounted yet, it floats in the corner over the window, a control the keyboard is on staying in sight
- * through it (WCAG 2.4.11). The practice show uses the same capped live-column foot as the show (alpha.22).
+ * through it (WCAG 2.4.11). The practice show uses the same capped live-column foot as the show (alpha.21).
  */
 export function NoticeArea() {
   const notice = useNotice((s) => s.text);
