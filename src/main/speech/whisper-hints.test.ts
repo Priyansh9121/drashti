@@ -47,7 +47,8 @@ function engineWith(hints: CaptionHints | undefined) {
   const play = async (): Promise<void> => {
     for (let t = 0; t < 1_600; t += 100) {
       const samples = new Int16Array(SAMPLE_RATE / 10);
-      if (t < 1_100) for (let i = 0; i < samples.length; i += 1) samples[i] = Math.round(3000 * Math.sin(i / 3));
+      if (t < 1_100)
+        for (let i = 0; i < samples.length; i += 1) samples[i] = Math.round(3000 * Math.sin(i / 3));
       to?.(samples, Date.now());
       await new Promise((wait) => setTimeout(wait, 100));
     }

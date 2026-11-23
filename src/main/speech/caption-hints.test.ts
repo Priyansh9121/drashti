@@ -50,7 +50,9 @@ describe('the hints for the language the engine is asked for', () => {
     // Whole words from the start of the list, up to the first that does not fit.
     const inPrompt = hints.prompt.split(', ');
     expect(inPrompt).toEqual(hints.words.slice(0, inPrompt.length));
-    expect(bytes(`${hints.prompt}, ${hints.words[inPrompt.length] ?? ''}`)).toBeGreaterThan(HINT_PROMPT_BYTES);
+    expect(bytes(`${hints.prompt}, ${hints.words[inPrompt.length] ?? ''}`)).toBeGreaterThan(
+      HINT_PROMPT_BYTES,
+    );
   });
 
   it('are read from the list as it is now, and worked out again only when it changes', () => {
