@@ -1,0 +1,35 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { noteOutside, undo, redo, useEditor } from './editor-store';
+import { newSlide } from './ops';
+import type { EditDoc } from '../../../shared/slide-edit';
+const doc: EditDoc = { presentationId: 'placeholder', name: 'Placeholder', width: 400, height: 300, loop: false, transition: null, groups: [{ id: 'group', name: '', color: null, slides: [newSlide(null)] }] };
+beforeEach(() => useEditor.setState({ doc, opened: doc, past: [], future: [], editing: null, sourceConversion: null }));
+describe('PDF external Undo acknowledgement', () => {
+  it('retains a refused step, then advances only when Main confirms Undo and Redo', async () => {
+    let allowed = false;
+    noteOutside({ undo: () => Promise.resolve(allowed), redo: () => Promise.resolve(allowed) });
+    const past = useEditor.getState().past;
+    undo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useEditor.getState().past).toBe(past);
+    expect(useEditor.getState().future).toHaveLength(0);
+    allowed = true;
+    undo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useEditor.getState().past).toHaveLength(0);
+    expect(useEditor.getState().future).toHaveLength(1);
+    allowed = false;
+    redo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useEditor.getState().future).toHaveLength(1);
+    allowed = true;
+    redo();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useEditor.getState().past).toHaveLength(1);
+    expect(useEditor.getState().future).toHaveLength(0);
+  });
+});
