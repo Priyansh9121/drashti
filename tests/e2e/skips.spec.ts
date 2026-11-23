@@ -18,12 +18,12 @@ import {
 import { makeTestTone, makeTestVideo } from './test-media';
 
 /*
- * Back 15 s, Forward 15 s and Last 10 s (Session 50): under the live picture for the background video and a
- * single sound, and beside an audio playlist's Play and Pause, in Pro Mode. Each lands in step on two screens
- * and the audio player, as a jump to a marker does, never past the file's start or end: Back within the first
- * 15 s goes to the start, Forward within the last 15 s to the end (a file played once holds it), and so does
- * Last 10 s on a file shorter than 10 s; an audio playlist goes on to its next track; paused, it moves where
- * playing will start. Simple Mode has an audio playlist's, in its Audio (Session 56: Pro Mode's own), and none under
+ * Back 15 s and Forward 15 s (Session 50): under the live picture for the background video and a single sound,
+ * and beside an audio playlist's Play and Pause, in Pro Mode; Last 10 s is no more (alpha.21, the owner's "remove
+ * last 10s whole concept", 22 Nov 2026). Each lands in step on two screens and the audio player, as a jump to a
+ * marker does, never past the file's start or end: Back within the first 15 s goes to the start, Forward within the
+ * last 15 s to the end (a file played once holds it); an audio playlist goes on to its next track; paused, it moves
+ * where playing will start. Simple Mode has an audio playlist's, in its Audio (Session 56: Pro Mode's own), and none under
  * the live picture. Generated media only, quiet, on displays no wider than 1024.
  */
 
@@ -114,16 +114,13 @@ async function inStep(copies: { page: Page; selector: string }[], t: Timing, wha
 }
 
 /** A skip button in a place (a row under the live picture, or the Music panel's), once it can be pressed. */
-async function skipButton(
-  place: Locator,
-  name: 'Back 15 s' | 'Forward 15 s' | 'Last 10 s',
-): Promise<Locator> {
+async function skipButton(place: Locator, name: 'Back 15 s' | 'Forward 15 s'): Promise<Locator> {
   const button = place.getByRole('button', { name });
   await expect(button).toBeEnabled({ timeout: 15_000 });
   return button;
 }
 
-test('the background video: Back 15 s, Forward 15 s and Last 10 s under the live picture land in step on two screens and the audio player', async () => {
+test('the background video: Back 15 s and Forward 15 s under the live picture land in step on two screens and the audio player, and there is no Last 10 s', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
@@ -150,7 +147,7 @@ test('the background video: Back 15 s, Forward 15 s and Last 10 s under the live
     { page: audio, selector: `audio[data-media-id="${mediaId}"]` },
   ];
 
-  // A video played once as the background: its row under the live picture has the three, once its length is known.
+  // A video played once as the background: its row under the live picture has the two, once its length is known.
   await win.evaluate(
     (id) =>
       (globalThis as PageGlobals).drashti.engine.dispatch({
@@ -162,7 +159,7 @@ test('the background video: Back 15 s, Forward 15 s and Last 10 s under the live
   const row = win.getByTestId('playing-background');
   const back = await skipButton(row, 'Back 15 s');
   const forward = await skipButton(row, 'Forward 15 s');
-  const last = await skipButton(row, 'Last 10 s');
+  await expect(row.getByRole('button', { name: 'Last 10 s' })).toHaveCount(0);
   await inStep(copies, timingOf(await backgroundLayer(win)), 'playing');
   await expectNoSeriousA11yIssues(win, 'the background video’s skip buttons');
   const length = (await backgroundLayer(win))?.durationMs ?? 0;
@@ -183,11 +180,6 @@ test('the background video: Back 15 s, Forward 15 s and Last 10 s under the live
   await back.click();
   await expect.poll(async () => (await backgroundLayer(win))?.seek?.toMs).toBe(0);
   await inStep(copies, timingOf(await backgroundLayer(win)), 'Back 15 s from the end');
-
-  // Last 10 s on a file shorter than 10 s: the end too.
-  await last.click();
-  await expect.poll(async () => (await backgroundLayer(win))?.seek?.toMs).toBe(length);
-  for (const c of copies) await expect.poll(() => heldAtEnd(c.page, c.selector)).toBe(true);
   await app.close();
 });
 
@@ -217,30 +209,28 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
   const row = win.getByTestId('playing-sound');
   const back = await skipButton(row, 'Back 15 s');
   const forward = await skipButton(row, 'Forward 15 s');
-  const last = await skipButton(row, 'Last 10 s');
+  await expect(row.getByRole('button', { name: 'Last 10 s' })).toHaveCount(0);
   await expectNoSeriousA11yIssues(win, 'the sound’s skip buttons');
   await letTimePass(win, 2000, 'the sound plays two seconds in, within its first 15 s');
   await back.click();
   await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(0);
   await inStep(copy(long), timingOf(await audioLayer(win)), 'Back 15 s to the start');
-  await last.click();
-  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(30_000);
-  await inStep(copy(long), timingOf(await audioLayer(win)), 'Last 10 s');
-  await back.click();
-  // About 15 s back from where it was (30 s and the in-step wait, a few seconds on a slow computer).
-  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs ?? 0).toBeLessThan(25_000);
-  const fifteen = (await audioLayer(win))?.seek?.toMs ?? 0;
-  expect(fifteen).toBeGreaterThanOrEqual(15_000);
-  await inStep(copy(long), timingOf(await audioLayer(win)), 'Back 15 s');
+  await forward.click();
+  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs ?? 0).toBeGreaterThanOrEqual(15_000);
+  await inStep(copy(long), timingOf(await audioLayer(win)), 'Forward 15 s');
   await forward.click();
   await expect.poll(async () => (await audioLayer(win))?.seek?.toMs ?? 0).toBeGreaterThanOrEqual(30_000);
-  await inStep(copy(long), timingOf(await audioLayer(win)), 'Forward 15 s');
+  await inStep(copy(long), timingOf(await audioLayer(win)), 'Forward 15 s again');
   // Within the last 15 s: to the end, where it stops.
   await forward.click();
   await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(40_000);
   await expect.poll(() => heldAtEnd(audio, `audio[data-media-id="${long}"]`)).toBe(true);
+  // Back 15 s from the end, where it held: 25 s in, exactly.
+  await back.click();
+  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(25_000);
+  await inStep(copy(long), timingOf(await audioLayer(win)), 'Back 15 s from the end');
 
-  // An audio playlist: its three are beside Play and Pause in the Music panel, not under the live picture.
+  // An audio playlist: its two are beside Play and Pause in the Music panel, not under the live picture.
   const listId = await win.evaluate(
     async ({ one, two }) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -268,8 +258,7 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
   // Paused: the skips move where playing will start, and nothing sounds meanwhile.
   await panel.getByTestId('music-pause').click();
   await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBeGreaterThanOrEqual(0);
-  await (await skipButton(skips, 'Last 10 s')).click();
-  await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBe(2000);
+  await expect(skips.getByRole('button', { name: 'Last 10 s' })).toHaveCount(0);
   await expect(audio.locator(`audio[data-media-id="${two}"]`)).toHaveCount(0);
   await (await skipButton(skips, 'Back 15 s')).click();
   await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBe(0);
@@ -277,21 +266,22 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
   await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBeUndefined();
   await inStep(copy(two), timingOf(await audioLayer(win)), 'playing from where the skips left it');
 
-  // Simple Mode (Session 56, the owner: Pro Mode's Audio there too): the track's three in Audio, beside its Play and
+  // Simple Mode (Session 56, the owner: Pro Mode's Audio there too): the track's two in Audio, beside its Play and
   // Pause, as in Pro Mode, and they move it there too; none under the live picture.
   await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple.getByTestId('time-bars')).toBeVisible();
   await expect(simple.getByTestId('marker-jumps')).toHaveCount(0);
-  for (const name of ['Back 15 s', 'Forward 15 s', 'Last 10 s'])
+  for (const name of ['Back 15 s', 'Forward 15 s'])
     await expect(simple.getByRole('button', { name })).toHaveCount(1);
-  // Last 10 s of track two (12 s long): from 2 s in.
-  await (await skipButton(simple.getByTestId('music-skips'), 'Last 10 s')).click();
-  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(2000);
+  await expect(simple.getByRole('button', { name: 'Last 10 s' })).toHaveCount(0);
+  // Back 15 s within track two's first 15 s (12 s long): to its start.
+  await (await skipButton(simple.getByTestId('music-skips'), 'Back 15 s')).click();
+  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(0);
   await app.close();
 });
 
-test('an audio playlist’s three sit in the row with its Play and Pause, in a window 1024 wide (Session 51)', async () => {
+test('an audio playlist’s two sit in the row with its Play and Pause, in a window 1024 wide (Session 51)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -324,7 +314,6 @@ test('an audio playlist’s three sit in the row with its Play and Pause, in a w
     row.getByRole('button', { name: 'Next track' }),
     await skipButton(row, 'Back 15 s'),
     await skipButton(row, 'Forward 15 s'),
-    await skipButton(row, 'Last 10 s'),
     row.getByTestId('music-loop'),
     row.getByTestId('music-shuffle'),
   ];

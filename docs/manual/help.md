@@ -53,24 +53,26 @@
 **How:**
 
 1. Choose **Help**, then **Report a Problem…**.
-2. Tick the feature the problem is in, in its chapter or by typing its name in **Find a feature**. Tick more if it is in several.
+2. Tick the feature the problem is in, in its chapter or by typing its name in **Find a feature**. You can tick up to eight.
 3. Say what went wrong with each, and what you expected if you like.
-4. Tick **Diagnostics**, **Crash files** or **A picture of this window** if they would help.
+4. Tick **Diagnostics**, **Crash files** or **A picture of this window** if they would help. Crash files and a picture may contain what was on the screens: check before sending.
 5. Press **Review…**, read what goes, then **Send**. Without the internet, or while the stream or a recording is on, it waits on this computer and goes by itself later.
+
+It works in both modes and on a node. A node hands its report to the Main it is paired with, which sends it. **Your reports** says whether a report is waiting or sent; **Save a Copy…** lets you send it another way. If reports keep waiting for the access list to be updated, its owner follows **Putting in a change later** in `docs/access-setup.md`.
 
 ![Report a Problem…](../screenshots/manual-report-problem.png)
 
 ## Save Diagnostics…
 
-**What it is.** One file on the Desktop for whoever looks after Drashti, after a problem. It holds no kirtan words, names or file paths.
+**What it is.** One file on the Desktop for whoever looks after Drashti, after a problem. It holds the versions, screens, sound and recent log. On Main, **Graphics** also lists each graphics chip, its driver, how the computer draws and the video decoding it offers. The file holds no kirtan words, names or file paths; optional crash files can hold slide words.
 
-**When you would use it.** After anything went wrong, once the sabha is over.
+**When you would use it.** When whoever helps asks for the file, or when you need to send it another way. **Report a Problem…** above can include diagnostics too.
 
 **How:**
 
 1. Choose **Help**, then **Save Diagnostics…**. A file appears on the Desktop.
 2. Leave **Include crash files** unticked unless you are asked for them.
-3. Send the file with the time and what you saw.
+3. Send the file with the time and what you saw. For a problem on a node's screens, save its diagnostics there too, and send both files.
 
 ![Ready? before the sabha](../screenshots/ready.png)
 
@@ -127,8 +129,10 @@
 
 1. Open the screens dashboard (click the screens' line in the status bar).
 2. Press **Reload** on that screen.
-3. Or press **Try again** on the red notice.
+3. Or press **Try again** on the red notice. Drashti also tries a stopped screen after 2 minutes, then every 10 minutes.
 4. If the status bar says **Audience off**, press **Turn on**.
+
+A picture that repeatedly fails to draw stops that screen the same way; it comes back as soon as it draws again. If a notice names a video taken off after repeated failures, see **LIVE, Back and Next › When a video cannot play**.
 
 ![A stopped screen's notice at the top of the window](../screenshots/screen-stopped-notice.png)
 
@@ -144,6 +148,7 @@
 2. Press the red **Muted** switch above **Audio** to have the sound back.
 3. In **Screens**, check **Sound output** is the mixer's.
 4. Check the mixer's channel for this computer.
+5. If a red notice says **Drashti’s sound has stopped**, press **Try again**. Drashti also tries after 2 minutes, then every 10. If it stops again, report the problem after the sabha.
 
 ![How loud: the Audio and Video lines, Video muted](../screenshots/manual-levels.png)
 

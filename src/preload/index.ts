@@ -426,6 +426,14 @@ const bridge: DrashtiBridge = {
     startCountdown: (time) => invoke(IPC.timers.startCountdown, time),
   },
   media: {
+    proxyStatus: (id, retry = false) => invoke(IPC.media.proxyStatus, id, retry),
+    stopProxy: (id) => invoke(IPC.media.stopProxy, id),
+    clipExport: (request) => invoke(IPC.media.clipExport, request),
+    clipExports: () => invoke(IPC.media.clipExports),
+    stopClipExport: (id) => invoke(IPC.media.stopClipExport, id),
+    showClipExport: (id) => invoke(IPC.media.showClipExport, id),
+    videoAnalysis: (mediaId, audioStream = 0, retry = false) =>
+      invoke(IPC.media.videoAnalysis, mediaId, audioStream, retry),
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
     convert: (mediaIds) => invoke(IPC.media.convert, mediaIds),
     retryConversion: (jobId) => invoke(IPC.media.retryConversion, jobId),
@@ -464,11 +472,17 @@ const bridge: DrashtiBridge = {
     noPicture: (mediaId, startedAt) => invoke(IPC.media.noPicture, mediaId, startedAt),
     cannotPlay: (mediaId, startedAt, code, words) =>
       invoke(IPC.media.cannotPlay, mediaId, startedAt, code, words),
+    served: (mediaId) => invoke(IPC.media.served, mediaId),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     details: (mediaId) => invoke(IPC.media.details, mediaId),
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
     resumePoint: (mediaId) => invoke(IPC.media.resumePoint, mediaId),
     snapshot: (playing) => invoke(IPC.media.snapshot, playing),
+    videoEdit: (mediaId) => invoke(IPC.media.videoEdit, mediaId),
+    setVideoEdit: (request) => invoke(IPC.media.setVideoEdit, request),
+    onVideoEdit: (listener) => on(IPC.media.videoEditChanged, listener),
+    playback: (mediaId) => invoke(IPC.media.playback, mediaId),
+    setPlayback: (mediaId, settings) => invoke(IPC.media.setPlayback, mediaId, settings),
     setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },
   sound: {
@@ -494,6 +508,7 @@ const bridge: DrashtiBridge = {
       on(IPC.audio.testTone, (payload) => {
         listener(payload.deviceId);
       }),
+    tryAgain: () => invoke(IPC.audio.tryAgain),
   },
   network: {
     status: () => invoke(IPC.network.status),
@@ -585,6 +600,14 @@ const bridge: DrashtiBridge = {
     schedule: (input) => invoke(IPC.youtube.schedule, input),
     useBroadcast: (profileId, broadcastId) => invoke(IPC.youtube.useBroadcast, profileId, broadcastId),
     endBroadcast: (profileId) => invoke(IPC.youtube.endBroadcast, profileId),
+  },
+  liveLink: {
+    show: (link) => invoke(IPC.liveLink.show, link),
+    stop: () => invoke(IPC.liveLink.stop),
+    status: () => invoke(IPC.liveLink.status),
+    last: () => invoke(IPC.liveLink.last),
+    join: (linkId) => invoke(IPC.liveLink.join, linkId),
+    onChanged: (listener) => on(IPC.liveLink.changed, listener),
   },
   liveWindow: {
     list: () => invoke(IPC.liveWindow.list),
@@ -792,6 +815,10 @@ const bridge: DrashtiBridge = {
     onTestThrow: (listener) =>
       on(IPC.output.testThrow, () => {
         listener();
+      }),
+    onTestThrowWhile: (listener) =>
+      on(IPC.output.testThrowWhile, ({ mediaId }) => {
+        listener(mediaId);
       }),
     onTestClock: (listener) =>
       on(IPC.output.testClock, ({ at }) => {

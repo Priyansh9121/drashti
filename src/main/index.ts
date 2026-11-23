@@ -1,3 +1,19 @@
+import { editPlan } from './convert/edit-plan';
+import { editedClipSource } from './convert/clip-edited-source';
+import { withSceneMarkers } from './convert/scene-marker-save';
+import { VideoEditsRepo } from './db/video-edits';
+import { prepareVideoEdits } from './engine/video-edit-ready';
+import { prepareVideoProxies } from './convert/proxy-showing';
+import { registerEditVideoIpc } from './convert/edit-video-ipc';
+
+import { registerVideoCopies } from './convert/video-copies-ipc';
+import { VideoAnalysisService } from './convert/video-analysis';
+import { EditService } from './convert/edit-service';
+import { registerEditedFile } from './convert/edit-files';
+import { videoEditTimes } from '../shared/video-edit-time';
+import { soundForEditedVideo } from '../shared/video-edit-sound';
+import { type PlaybackSettings, playbackSettingsSchema, toneOf } from '../shared/playback-settings';
+import { shapeOverride } from '../shared/video-shape';
 import { fileProblem } from './plain-errors';
 import { importM3u, M3uError, writeM3u, type M3uExportRow } from './playlists/m3u';
 import { playlistPlayOptionsSchema } from '../shared/playlist-playback';
@@ -24,6 +40,7 @@ import {
   session,
   systemPreferences,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
@@ -172,8 +189,14 @@ import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJour
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
-import { log, logFiles, startLogFile } from './log';
-import { cannotPlayNotice, NO_FIRST_FRAME, noPictureNotice } from '../shared/no-picture';
+import { log, logFiles, startLogCopy, startLogFile } from './log';
+import {
+  cannotPlayNotice,
+  cannotStartInTimeNotice,
+  NO_FIRST_FRAME,
+  NO_START_IN_TIME,
+  noPictureNotice,
+} from '../shared/no-picture';
 import {
   CannotPlay,
   type CannotPlayWhere,
@@ -185,12 +208,19 @@ import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
-import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './media/media-protocol';
+import {
+  handleMediaRequest,
+  MEDIA_SCHEME_PRIVILEGES,
+  mediaRequestOf,
+  openingCopyPath,
+} from './media/media-protocol';
 import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { MediaDetailsService } from './media/media-details';
 import { PlayHistory } from './media/play-history';
+import { editedPlayHistory } from './media/edit-play-history';
+import { editedSoundSettings } from './media/edit-sound-settings';
 import { takeSnapshot } from './media/snapshot';
 import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
@@ -324,7 +354,9 @@ import {
   watchdogLine,
   whyText,
   type WatchdogEvent,
+  type WatchTarget,
 } from './watchdog';
+import { filesUp, KeepsFailing, keptFailingNotice, stillUpOn } from './keeps-failing';
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
@@ -349,6 +381,10 @@ import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamPageWarmUp } from './stream/stream-warm';
 import { LiveWindowService } from './live-window/live-window-service';
+import { LiveLinkService } from './live-link/live-link-service';
+import { localPlaylist, localProgress, startRelay } from './live-link/relay-process';
+import { fetchPlaylist } from './live-link/fetch-playlist';
+import { lookYoutube } from './live-link/youtube-look';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
 import { applyCaptureRules } from './live-window/capture-rules';
@@ -479,6 +515,9 @@ if (userDataOverride) app.setPath('userData', userDataOverride);
 else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
 // The log goes to a rotating file in the data folder too (see log.ts), from the start.
 startLogFile(join(app.getPath('userData'), 'logs'));
+// Tests only (never a packaged Drashti): every line into the test's own folder as well, kept when it fails (alpha.21).
+const testLogCopy = packaged() ? undefined : sw('DRASHTI_TEST_LOG_COPY');
+if (testLogCopy) startLogCopy(testLogCopy);
 log.info(phaseLine('the main process running'));
 log.info(
   `Drashti ${app.getVersion()} (Electron ${process.versions.electron}, Chrome ${process.versions.chrome}, Node ${process.versions.node}) on ${process.platform} ${osRelease()} ${process.arch}`,
@@ -726,6 +765,50 @@ const noRelaunch = sw('DRASHTI_TEST_NO_RELAUNCH') === '1';
 const logPermissions = sw('DRASHTI_LOG_PERMISSIONS') === '1';
 // Tests only: answer media requests late, as a slow disk would (up to a minute: the opening's photo past its limit).
 const mediaDelayMs = Math.min(60_000, Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_DELAY_MS') ?? 0) || 0));
+/**
+ * A test switch (Q60-51): every media file sent at this many bytes a second, a quarter of it four times a second, as
+ * from a slow disk or a busy computer: a video's first frame then comes late while it still loads. 0: as fast as it can.
+ */
+const mediaPaceBps = Math.max(0, Number(sw('DRASHTI_TEST_MEDIA_PACE_BPS') ?? 0) || 0);
+
+/**
+ * Bytes Main has sent of each library file as the pages load it, by its id (Q60-51): a video whose file is still coming
+ * in is loading, even where its page can tell nothing else (on CI's Mac a slow file showed no buffered time, no frame,
+ * no readiness step and no 'progress' event: x47-1120-205802-554). One number a file, for as long as Drashti runs.
+ * Counted as the file is read for the page (media-protocol.ts `sent`), or as the test pace sends it (paced): never by
+ * wrapping the response, which changed how the bytes reached the player (x47-1120-215255-57755).
+ */
+const mediaServed = new Map<string, number>();
+const mediaSent = (mediaId: string, bytes: number): void => {
+  mediaServed.set(mediaId, (mediaServed.get(mediaId) ?? 0) + bytes);
+};
+
+/** A response's body sent at mediaPaceBps (the test switch above), counted as it goes for a library file; as it is with none. */
+async function paced(response: Response, mediaId: string | null): Promise<Response> {
+  if (mediaPaceBps <= 0 || !response.body) return response;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const slice = Math.max(1024, Math.floor(mediaPaceBps / 4));
+  let at = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (at >= bytes.length) {
+        controller.close();
+        return;
+      }
+      const chunk = bytes.subarray(at, at + slice);
+      controller.enqueue(chunk);
+      if (mediaId !== null) mediaSent(mediaId, chunk.byteLength);
+      at += slice;
+      // A test switch's pace, never in a real show.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    },
+  });
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 // Drashti's sound is the show's, not the computer's media (Session 15): the system's media controls
 // (Windows' media overlay, macOS's Now Playing) and the keyboard's or a headset's media keys never see
@@ -909,6 +992,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...M
 
 /** What the show does with an output's watchdog events (set once the outputs exist: Session 23). */
 let outputWatchdogEvent: ((e: WatchdogEvent) => void) | null = null;
+/** The watchdog's name for the sound player, the hidden window that plays every sound (audio-window.ts). */
+const SOUND_PLAYER = 'audio player';
 /** The watchdog's recent events, for diagnostics. */
 const watchdogHistory: { at: string; window: string; kind: string; reason: string | null }[] = [];
 /** The watchdog's problems into the crash journal: a hung window's restart adds Drashti's wait to its hang (Session 38). */
@@ -1569,6 +1654,11 @@ function start(): void {
   const restored = pendingRestore();
   /** The operator window has read the start notice: later news goes as an ordinary notice. */
   let startNoticeTaken = false;
+  /**
+   * The operator window's page has read its start notice since it last began to load (x53): news reaches it at once.
+   * While it is down or loading again (a video that brought it down just taken off), news waits in the start notice.
+   */
+  let operatorAsked = false;
   let startNotice = restored.restored
     ? `Library restored from “${restored.from}”. The library from before is kept in Drashti’s data folder, in Backups/${restored.keptIn}.`
     : restored.message;
@@ -1751,11 +1841,13 @@ function start(): void {
   const soundRepo = new SoundRepo(db);
   const soundKnown = new Map<string, { gain: number; silent: boolean } | null>();
   const soundOf = (mediaId: string): { gain: number; silent: boolean } | null => {
+    const recipe = editedPlaying.renditionOf(mediaId)?.recipe ?? null;
+    mediaId = editedPlaying.sourceId(mediaId);
     if (!soundKnown.has(mediaId)) {
       const s = soundRepo.soundOf(mediaId);
       soundKnown.set(mediaId, s ? { gain: s.gain, silent: s.silent } : null);
     }
-    return soundKnown.get(mediaId) ?? null;
+    return soundForEditedVideo(soundKnown.get(mediaId) ?? null, recipe);
   };
   /** Music steps aside under a video with sound (Session 55, Part 7, K): Audio's switch, kept with the library; on by default. */
   let stepsAside = settings.get('music.stepsAside') !== false;
@@ -1782,6 +1874,29 @@ function start(): void {
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
+  // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
+  let proxySourceOf: (id: string) => string = (id) => id;
+  let proxyReadyFor: (id: string) => { mediaId: string | null; message: string | null } = (id) => ({
+    mediaId: id,
+    message: null,
+  });
+  const videoEdits = new VideoEditsRepo(db, (id) => proxySourceOf(id));
+  // Every playback metadata consumer follows the repo's shared identity callback (S4 supplies proxy parents).
+  const editedPlaying = {
+    sourceId: (id: string) => videoEdits.sourceId(id),
+    renditionOf: (id: string) => videoEdits.renditionOf(id),
+  };
+  const playbackRepo = new MediaRepo(db);
+  const ownPlayback = new Map<string, PlaybackSettings>();
+  const playbackOfFile = (mediaId: string): PlaybackSettings => {
+    mediaId = editedPlaying.sourceId(mediaId);
+    let kept = ownPlayback.get(mediaId);
+    if (!kept) {
+      kept = playbackRepo.playbackOf(mediaId);
+      ownPlayback.set(mediaId, kept);
+    }
+    return kept;
+  };
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1797,11 +1912,42 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state)
             ? simpleRefusalText(simpleAccess())
             : null,
+      sourceMediaId: (id) => editedPlaying.sourceId(id),
+      prepareVideoEdits: (previous, next, historic) => {
+        const edited = prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
+          sourceId: (id) => editedPlaying.sourceId(id),
+          renditionOf: (id) => editedPlaying.renditionOf(id),
+          lengthOf: (id) => mediaLength(id),
+          available: (id) => {
+            const row = playbackRepo.kindAndFile(id);
+            return !!row && !row.missing && existsSync(join(mediaDir, row.path));
+          },
+        });
+        return edited.state ? prepareVideoProxies(previous, edited.state, proxyReadyFor, historic) : edited;
+      },
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
-        const track = videoCaptionsRepo.chosen(mediaId);
-        return track ? { track, size: videoCaptionBand.size, place: videoCaptionBand.place } : null;
+        const sourceId = editedPlaying.sourceId(mediaId);
+        const original = videoCaptionsRepo.chosen(sourceId);
+        const rendition = editedPlaying.renditionOf(mediaId);
+        const length = mediaLength(sourceId);
+        const track =
+          original && rendition
+            ? length === null
+              ? null
+              : videoEditTimes(rendition.recipe, length).captions(original)
+            : original;
+        // Sound and picture… (alpha.20): the captions' own delay against the picture.
+        const delayMs = playbackOfFile(mediaId).captionDelayMs;
+        return track
+          ? {
+              track,
+              size: videoCaptionBand.size,
+              place: videoCaptionBand.place,
+              ...(delayMs === 0 ? {} : { delayMs }),
+            }
+          : null;
       },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
@@ -1822,6 +1968,13 @@ function start(): void {
       stepsAside: () => stepsAside,
       // The operator's Audio and Video levels and mutes (X33).
       levels: () => soundLevels.levels(),
+      // Sound and picture… (alpha.20): each file's own tone and its sound's delay.
+      playbackOf: (mediaId) => {
+        const own = playbackOfFile(mediaId);
+        return { tone: toneOf(own), soundDelayMs: own.soundDelayMs };
+      },
+      // Sound and picture…'s Shape (alpha.20, x55): each video's own shape on the screens.
+      videoShape: (mediaId) => shapeOverride(playbackOfFile(mediaId).shape),
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -1931,6 +2084,21 @@ function start(): void {
   const mediaDir = join(userDataDir, 'Media');
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
+  registerEditVideoIpc({
+    appendScenes: (id, times, save) => withSceneMarkers(libraryDb, media, id, times, save),
+    markersChanged: () => libraryChanged(true),
+    repo: videoEdits,
+    fromOperator: (event) => fromOperator(event) && !simpleNow(),
+    available: (id) => {
+      const file = media.file(id);
+      return !!file && !file.missing && !file.deleted && existsSync(join(mediaDir, file.path));
+    },
+    changed: (edit) => sendToOperator(IPC.media.videoEditChanged, edit),
+    write: sourceWrite(
+      libraryDb,
+      () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },
+    ),
+  });
   const trimmedVideos = new TrimmedVideos(libraryDb, media, playlists);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
   mediaKind = (mediaId) => media.kindAndName(mediaId)?.kind ?? null;
@@ -2164,9 +2332,16 @@ function start(): void {
     return known === true;
   };
   mediaMarkers = (mediaId, itemId) => {
-    const marks = media.markersOf(mediaId);
-    return marks && itemId && trimmedVideos.playsFull(itemId, mediaId, marks)
-      ? { ...marks, startMs: null, endMs: null }
+    const sourceId = editedPlaying.sourceId(mediaId);
+    const original = media.markersOf(sourceId);
+    const marks =
+      original && itemId && trimmedVideos.playsFull(itemId, sourceId, original)
+        ? { ...original, startMs: null, endMs: null }
+        : original;
+    const rendition = editedPlaying.renditionOf(mediaId);
+    const length = media.lengthOf(sourceId);
+    return marks && rendition && length !== null
+      ? videoEditTimes(rendition.recipe, length).markers(marks)
       : marks;
   };
   const captionFileReader = new CaptionFileReader(spawnImportWorker);
@@ -2175,7 +2350,11 @@ function start(): void {
   });
   registerVideoCaptionIpc({
     fromOperator,
-    repo: videoCaptionsRepo,
+    repo: {
+      view: (id) => videoCaptionsRepo.view(editedPlaying.sourceId(id)),
+      select: (id, track) => videoCaptionsRepo.select(editedPlaying.sourceId(id), track),
+      put: (id, tracks) => videoCaptionsRepo.put(editedPlaying.sourceId(id), tracks),
+    },
     reader: captionFileReader,
     write: sourceWrite(
       libraryDb,
@@ -2196,7 +2375,10 @@ function start(): void {
     },
     changed: (mediaId) => {
       engine.refreshVideoCaptions();
-      sendToOperator(IPC.videoCaptions.changed, { mediaId, view: videoCaptionsRepo.view(mediaId) });
+      sendToOperator(IPC.videoCaptions.changed, {
+        mediaId,
+        view: videoCaptionsRepo.view(editedPlaying.sourceId(mediaId)),
+      });
     },
   });
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
@@ -2326,6 +2508,10 @@ function start(): void {
   });
   /** The opening pack's sound the opening keeps (alpha.16), by its sha256: set once the opening's service is made. */
   let openingSoundFile: (sha256: string) => string | null = () => null;
+  /** A stream link's local stream (alpha.20, slice 8): its folder, and a joined player's playlist; set once its service is made. */
+  let streamLinkFolder: (linkId: string) => string | null = () => null;
+  let streamLinkPlaylist: (linkId: string, segment: number) => Promise<string | null> = () =>
+    Promise.resolve(null);
   const serveMedia = async (request: Request) => {
     const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
@@ -2336,6 +2522,7 @@ function start(): void {
         const found = media.file(id);
         return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
       },
+      selectedThumbnail: (id) => videoEdits.thumbnailOf(id),
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
       display: (sha256, key) => displayCopies.relativePath(sha256, key),
       blurred: (sha256) => blurred.relativePath(sha256),
@@ -2348,11 +2535,18 @@ function start(): void {
       openingPhoto: () => openingPhoto,
       // The opening pack's sound, as Drashti keeps its copy in the media folder (only the one the opening keeps).
       openingSound: (sha256) => openingSoundFile(sha256),
+      // A stream link's local stream (alpha.20, slice 8): only while that link is connecting or up.
+      liveFolder: (linkId) => streamLinkFolder(linkId),
+      livePlaylist: (linkId, segment) => streamLinkPlaylist(linkId, segment),
       warn: (message) => {
         log.warn(message);
       },
+      // What of a library file goes out (Q60-51, mediaServed): as it is read, or, at the test pace, as that sends it.
+      ...(mediaPaceBps > 0 ? {} : { sent: mediaSent }),
     });
-    return perfWatch ? watchedMedia(perfWatch, request, started, response) : response;
+    const asked = mediaRequestOf(request.url);
+    const sent = await paced(response, asked?.what === 'media' ? asked.mediaId : null);
+    return perfWatch ? watchedMedia(perfWatch, request, started, sent) : sent;
   };
   // Every window's session: the default one, and the audio player's own.
   protocol.handle(MEDIA_SCHEME, serveMedia);
@@ -2489,12 +2683,82 @@ function start(): void {
     sendToOperator(IPC.app.notice, { text });
   };
   outputWatchdogEvent = (e) => {
+    // A window that went down, on Main's next turn once the watchdog has done its part: the video it keeps going down
+    // on comes off, and it loads again at once without it (x53, below).
+    if (e.kind === 'crashed')
+      setImmediate(() => {
+        wentDown(e.window);
+      });
+    // The sound player given up on, or tried again (x53, the owner's Q60-50 (2) A): the red notice says so, or goes.
+    if (e.window === SOUND_PLAYER && (e.kind === 'gave-up' || e.kind === 'retried'))
+      audioOutput.setPlayerStopped(e.kind === 'gave-up');
     const screenId = screenOfOutput(e.window);
     if (screenId === undefined) return;
     // A page loaded again gets its grace before it is judged.
     if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
     // Given up on: Stopped (the status line and Screens say so) until it draws again.
     if (e.kind === 'gave-up') stopOutput(screenId);
+  };
+  /*
+   * A page that keeps failing on a video up (x53; the owner's Q60-31 bug hunt, x52's show-stoppers; his Q60-50 A): a
+   * hall screen whose picture fails each time it draws or whose renderer goes down each time it loads it, LIVE (the
+   * operator window) going down each time it loads it, the sound player going down each time it loads its sound. Failing
+   * again within a minute with a video up that was up the time before, the newest such comes off as a video that fails
+   * does (x46's take-off: its sound with it, on the slide paused, the box off), said by its name and where, and the page
+   * loads again at once without it (main/keeps-failing.ts). With nothing to blame, the watchdog gives up on it as before.
+   */
+  const keepsFailing = new KeepsFailing();
+  /** The engine's revision when each screen's picture last failed as it drew (x53): drawn past it, it draws again. */
+  const pictureFailedAt = new Map<string, number>();
+  /** Where a window the watchdog names is, in the notice's words, and its page: a hall screen, LIVE, the sound player. */
+  const failingPage = (window: string): { where: string; page: WatchTarget } | null => {
+    if (window === 'operator')
+      return pageAlive(operatorWindow) ? { where: 'LIVE', page: operatorWindow.webContents } : null;
+    if (window === SOUND_PLAYER)
+      return pageAlive(audioWindow)
+        ? { where: 'Drashti’s sound player', page: audioWindow.webContents }
+        : null;
+    const screenId = screenOfOutput(window);
+    const win = screenId === undefined ? undefined : outputWindows.get(screenId);
+    if (screenId === undefined || !win || win.isDestroyed()) return null;
+    const name = screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId;
+    return { where: whereWords([{ screen: name }]), page: win.webContents };
+  };
+  /** A page failed (`how`): the file it keeps failing on taken off, said and logged. Whether one was. */
+  const takeOffWhatFails = (window: string, where: string, how: string): boolean => {
+    const mediaId = keepsFailing.failed(window, Date.now(), filesUp(engine.current, window === SOUND_PLAYER));
+    if (mediaId === null) return false;
+    const name = media.kindAndName(mediaId)?.name ?? 'A file';
+    const took = engine.cannotPlay(mediaId);
+    if (took) {
+      const off = [
+        took.background ? 'the background' : '',
+        took.slide ? 'paused on the slide' : '',
+        took.box ? 'the box' : '',
+      ]
+        .filter((w) => w !== '')
+        .join(', ');
+      log.warn(
+        `${window} kept failing (${how}) with a video up, twice within a minute: ${mediaId}; taken off (${off})`,
+      );
+      tellOperator(cannotPlayNotice(name, where, took));
+      return true;
+    }
+    // Still up though x46's take-off left it so (paused on the slide), or the music (Q60-52 A): off as Clear slide or
+    // Clear audio takes it, so Back or Oops can bring it back.
+    const layer = stillUpOn(engine.current, mediaId);
+    if (layer === null || !engine.dispatch({ type: 'clearLayer', layer }).ok) return false;
+    log.warn(
+      `${window} kept failing (${how}) with a file up, again within a minute: ${mediaId}; its ${layer} cleared`,
+    );
+    tellOperator(keptFailingNotice(name, where, layer));
+    return true;
+  };
+  /** A window went down (any of them): if it keeps going down on a video, that comes off and it loads again at once. */
+  const wentDown = (window: string) => {
+    const failing = failingPage(window);
+    if (failing && takeOffWhatFails(window, failing.where, 'it went down'))
+      watchdog.tookOff(failing.page, window, 'without the video it kept going down on');
   };
   // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would,
   // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes). On Main's next turn,
@@ -3045,6 +3309,8 @@ function start(): void {
       stageMessage: put.stageMessage,
       timers: put.timers,
       window: put.window,
+      // A stream link (alpha.20, slice 8): never put back, only named.
+      link: put.link ?? null,
       pipWindow: put.pipWindow,
       input: put.input,
       inputGone: put.inputGone,
@@ -3055,6 +3321,7 @@ function start(): void {
     const {
       slide: slideBack,
       window: windowName,
+      link: linkName,
       pipWindow: boxWindowName,
       input: inputName,
       inputGone: inputNotListed,
@@ -3071,6 +3338,7 @@ function start(): void {
         playlistItem: saved.playlist?.itemId ?? null,
         ...alsoBack,
         windowNotPutBack: windowName !== null,
+        linkNotPutBack: linkName !== undefined,
         boxWindowNotPutBack: boxWindowName !== null,
         inputPutBack: inputName !== null,
         inputNotListed: inputNotListed !== null,
@@ -3097,8 +3365,12 @@ function start(): void {
           : null,
       slideGone,
       background:
-        old.background !== null && old.background.kind !== 'window' && old.background.kind !== 'input',
+        old.background !== null &&
+        old.background.kind !== 'window' &&
+        old.background.kind !== 'input' &&
+        old.background.kind !== 'link',
       window: old.background?.kind === 'window' ? old.background.name : null,
+      link: old.background?.kind === 'link' ? old.background.name : null,
       // The picture-in-picture box (Session 50): a window in it named apart, as the background's is.
       pip: old.pip !== null && old.pip.source.kind !== 'window',
       pipWindow: old.pip?.source.kind === 'window' ? old.pip.source.name : null,
@@ -3543,6 +3815,108 @@ function start(): void {
   stops.add('shown window', () => {
     shownWindows.close();
   });
+
+  // ---- a stream link on the screens (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A) ------------------
+  // Show a Stream Link… (Pro Mode): an HLS or YouTube live link, received by Drashti's own FFmpeg into a short local
+  // stream in its own folder, which the screens play (src/main/live-link/). The folder is emptied at each start (what a
+  // crash left; its FFmpeg was stopped above with the other leftovers). A test run asks nothing of any address but
+  // 127.0.0.1, and looks at YouTube links with the fake yt-dlp only.
+  const streamLinkRoot = join(userDataDir, 'Stream links');
+  void fsPromises.rm(streamLinkRoot, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+  const streamLinkFfmpeg = findFfmpeg({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+    override: sw('DRASHTI_FFMPEG'),
+  });
+  let lastStreamLink: string | null = null;
+  const streamLinks = new LiveLinkService({
+    startRelay: (args) =>
+      startRelay(streamLinkFfmpeg, args, {
+        started: (pid) => void leftovers.started(pid, 'stream-link'),
+        ended: (pid) => {
+          leftovers.forget(pid);
+        },
+      }),
+    fetchPlaylist: (url, signal) => fetchPlaylist(url, { guard: !packaged() && anyTestSwitch(), signal }),
+    lookYoutube: (url, signal) =>
+      lookYoutube(url, signal, {
+        work: join(userDataDir, 'Stream link look'),
+        launch: (folders) =>
+          youtubeLaunch(
+            {
+              packaged: packaged(),
+              platform: process.platform,
+              testing: anyTestSwitch(),
+              fake: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP') ?? null),
+              fakeConfig: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP_CONFIG') ?? null),
+              execPath: process.execPath,
+              tools: findYoutubeTools({
+                packaged: packaged(),
+                resourcesPath: process.resourcesPath,
+                appPath: app.getAppPath(),
+                platform: process.platform,
+                arch: process.arch,
+              }),
+              ffmpeg: streamLinkFfmpeg,
+            },
+            folders,
+          ),
+        children: {
+          started: (pid, group) => void leftovers.started(pid, 'yt-dlp', { group }),
+          ended: (pid) => {
+            leftovers.forget(pid);
+          },
+        },
+      }),
+    onAir: () => streaming.inUse() || testOnAir,
+    root: streamLinkRoot,
+    progress: localProgress,
+    readPlaylist: localPlaylist,
+    makeFolder: (dir) => {
+      mkdirSync(dir, { recursive: true });
+    },
+    removeFolder: (dir) =>
+      fsPromises.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }),
+    showLink: (link) => engine.showLink(link),
+    restartLink: (linkId) => engine.restartLink(linkId),
+    dropped: (linkId) => engine.linkDropped(linkId),
+    clearLink: (linkId) => engine.clearLink(linkId),
+    state: () => engine.current,
+    changed: (status) => {
+      sendToOperator(IPC.liveLink.changed, status);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: Date.now,
+    newId: randomUUID,
+    guard: !packaged() && anyTestSwitch(),
+  });
+  streamLinkFolder = (linkId) => streamLinks.folderOf(linkId);
+  streamLinkPlaylist = (linkId, segment) => streamLinks.playlistFor(linkId, segment);
+  engine.onChange(() => {
+    streamLinks.follow();
+  });
+  stops.add('stream links', () => streamLinks.close());
+  handle(IPC.liveLink.show, async (e, link) => {
+    if (!fromOperator(e) || typeof link !== 'string')
+      return { ok: false as const, message: 'Only the operator window can show a stream link.' };
+    // Kept for this run only, to offer again (never written down: a link can hold a token); never one too long to be a link.
+    lastStreamLink = link.length <= 2000 ? link.trim() : null;
+    return streamLinks.show(link);
+  });
+  handle(IPC.liveLink.stop, (e) => {
+    if (fromOperator(e)) streamLinks.stop();
+    return null;
+  });
+  handle(IPC.liveLink.status, () => streamLinks.view());
+  handle(IPC.liveLink.last, (e) => (fromOperator(e) ? lastStreamLink : null));
+  // Any of Drashti's own pages that plays it (a screen, LIVE, a card, a stage screen's box, the audio player).
+  handle(IPC.liveLink.join, (_e, linkId) => (typeof linkId === 'string' ? streamLinks.join(linkId) : null));
 
   // ---- the window for Zoom (Session 48) -------------------------------------------
   const zoom = new ZoomWindow({
@@ -4252,6 +4626,87 @@ function start(): void {
       },
     },
   });
+  const videoAnalysis = new VideoAnalysisService({ mediaDir, row: (id) => media.about(id), conversions });
+  const analysisResume = setTimeout(() => videoAnalysis.resume(), AFTER_START_MS);
+  stops.add('video analysis', () => {
+    clearTimeout(analysisResume);
+    videoAnalysis.close();
+  });
+  handle(IPC.media.videoAnalysis, (e, mediaId, audioStream, retry) =>
+    fromOperator(e) &&
+    typeof mediaId === 'string' &&
+    MEDIA_ID_PATTERN.test(mediaId) &&
+    (typeof audioStream === 'number' || audioStream === null) &&
+    typeof retry === 'boolean'
+      ? videoAnalysis.get(mediaId, audioStream, retry)
+      : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
+  );
+  const videoCopies = registerVideoCopies({
+    editedExport: (request) =>
+      editedClipSource(request, {
+        mediaDir,
+        sourceId: (id) => videoEdits.sourceId(id),
+        row: (id) => media.about(id),
+        read: (id) => videoEdits.read(id),
+        plan: editPlan,
+      }),
+    sourceId: (id) => videoEdits.sourceId(id),
+    db: libraryDb,
+    media,
+    mediaDir,
+    conversions,
+    fromOperator,
+    proMode: () => mode === 'pro',
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    gpuStatus,
+    freeBytes: diskFreeBytes,
+    pickDest: async (name, container) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export video clip',
+        defaultPath: name,
+        buttonLabel: 'Export',
+        filters: [{ name: container === 'mp4' ? 'MP4 video' : 'WebM video', extensions: [container] }],
+      });
+      return picked.canceled ? null : picked.filePath;
+    },
+    showFile: (path) => shell.showItemInFolder(path),
+    libraryChanged: () => libraryChanged(true),
+  });
+  proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
+  proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
+  stops.add('video copies', () => videoCopies.close());
+  const editedCopies = new EditService({
+    repo: videoEdits,
+    mediaDir,
+    source: (id) => {
+      const row = media.kindAndFile(id);
+      const named = media.kindAndName(id);
+      return row?.kind === 'video' && !row.missing && named
+        ? { path: join(mediaDir, row.path), name: named.name }
+        : null;
+    },
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    conversions,
+    register: (file, info, name, signal) =>
+      registerEditedFile({
+        db: libraryDb,
+        mediaDir,
+        file,
+        info,
+        name,
+        signal,
+        idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+        freeBytes: diskFreeBytes,
+        write: sourceWrite(libraryDb, () => imports.giveWay()),
+      }),
+    changed: (edit) => {
+      sendToOperator(IPC.media.videoEditChanged, edit);
+      libraryChanged(true);
+    },
+    write: sourceWrite(libraryDb, () => imports.giveWay()),
+  });
+  stops.add('video edits', () => editedCopies.close());
   conversionActivityChanged = () => conversions.activityChanged();
   let displayWasIdle = nothingUp(engine.current.layers) && !displayOnAir();
   const offDisplayActivity = engine.onChange(() => {
@@ -4321,8 +4776,9 @@ function start(): void {
   soundPass.startLibrary();
   handle(IPC.sound.view, () => soundView());
   /** A video's or sound's loudness as measured, and its own switch (the Even loudness notice, the tests). */
+  const loudnessSettings = editedSoundSettings(soundRepo, (id) => editedPlaying.sourceId(id));
   const fileSound = (mediaId: string) => {
-    const known = soundRepo.soundOf(mediaId);
+    const known = loudnessSettings.read(mediaId);
     if (!known) return null;
     const loudness = known.loudness;
     return {
@@ -4395,9 +4851,10 @@ function start(): void {
       typeof on !== 'boolean'
     )
       return { ok: false as const, message: 'Only the operator window can change a file’s loudness.' };
-    if (!soundRepo.setEven(mediaId, on))
+    const changed = loudnessSettings.set(mediaId, on);
+    if (!changed.ok)
       return { ok: false as const, message: 'Even loudness is for a video or a sound in the library.' };
-    soundKnown.delete(mediaId);
+    soundKnown.delete(changed.sourceId);
     engine.refreshSound();
     sendToOperator(IPC.sound.changed, soundView());
     log.info(`Sound: a file plays ${on ? 'at the even loudness' : 'as it is'}`);
@@ -4718,8 +5175,15 @@ function start(): void {
     const text = [startNotice, interruptedTrim].filter(Boolean).join(' ') || null;
     startNotice = null;
     startNoticeTaken = true;
+    operatorAsked = true;
     return text;
   });
+  /** Tell the operator: at once, or as the operator window's page opens while it is down or loading again (x53). */
+  const tellOperator = (text: string) => {
+    if (operatorAsked && pageAlive(operatorWindow) && !operatorWindow.webContents.isCrashed())
+      sendToOperator(IPC.app.notice, { text });
+    else startNotice = startNotice ? `${startNotice}\n\n${text}` : text;
+  };
   handle(IPC.app.dismissRecovery, (e) => {
     if (fromOperator(e)) recovery = null;
     return null;
@@ -6458,15 +6922,40 @@ function start(): void {
       heartbeat.report(screenId, r.paintedRev, r.warming === true);
       // Reporting from a page loaded since it was given up on: it draws again.
       if (loadedSinceStopped.has(screenId)) manager.setStopped(screenId, false);
+      // A page whose picture failed, having painted a change since its last failure (its boundary draws the scene
+      // again at each change; a failure would have been said before this report): it draws again (x53). Given up on
+      // for it, it is back by itself, no reload.
+      const failedAt = pictureFailedAt.get(screenId);
+      const win = outputWindows.get(screenId);
+      if (failedAt !== undefined && r.paintedRev > failedAt && win && !win.isDestroyed()) {
+        pictureFailedAt.delete(screenId);
+        watchdog.drawsAgain(win.webContents, outputNames.get(screenId) ?? 'an output');
+        manager.setStopped(screenId, false);
+      }
     }
     return null;
   });
-  // Render errors in any window (Session 23): logged; an output draws black and is reloaded once.
+  // Render errors in any window (Session 23): logged; an output draws black and is reloaded once, or given up on if it
+  // fails again (x53), unless the video it keeps failing on comes off (keepsFailing, above).
   hearRenderErrors({
     log: (line) => {
       log.warn(line);
     },
     watchdog,
+    failed: (name) => {
+      const screenId = screenOfOutput(name);
+      const failing = failingPage(name);
+      if (screenId === undefined || !failing) return false;
+      // A failure from a draw of what was just taken off is not a new one (keeps-failing.ts): nothing more is done.
+      if (
+        keepsFailing.stillDrawingWhatWentOff(name, Date.now(), localReports.get(screenId)?.paintedRev ?? null)
+      )
+        return true;
+      pictureFailedAt.set(screenId, engine.rev);
+      const tookOff = takeOffWhatFails(name, failing.where, 'its picture failed as it drew');
+      if (tookOff) keepsFailing.tookOff(name, engine.rev, Date.now());
+      return tookOff;
+    },
     windowOf: (sender) => {
       const screenId = manager.screenIdFor(sender.id);
       const output = screenId ? outputWindows.get(screenId) : undefined;
@@ -6517,13 +7006,16 @@ function start(): void {
       });
     };
   if (testRenderErrors)
-    (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (
-      screenId,
-    ) => {
+    (
+      globalThis as { drashtiTestRenderError?: (screenId?: string, whileUp?: string | null) => number }
+    ).drashtiTestRenderError = (screenId, whileUp) => {
       let sent = 0;
       for (const [id, win] of outputWindows)
         if (screenId === undefined || id === screenId) {
-          sendToPage(win, IPC.output.testThrow, {});
+          // A file named (null: none): the scene fails each time it draws while that file is up (x53), and the page
+          // keeps the word until it loads again; else it fails at once, whatever is up, until it loads again.
+          if (whileUp === undefined) sendToPage(win, IPC.output.testThrow, {});
+          else sendToPage(win, IPC.output.testThrowWhile, { mediaId: whileUp });
           sent++;
         }
       return sent;
@@ -7154,8 +7646,12 @@ function start(): void {
   // Resume where it stopped, last played and play counts (alpha.20, the owner's Q60-34 item 3 and his "Yes, all A" to
   // Q60-39): Main follows the engine's state; each write waits while the library is busy. An audio playlist stopped
   // part-way plays on from its track. What plays at a quit keeps where it is.
+  const historyMedia = editedPlayHistory(media, {
+    sourceId: (id) => editedPlaying.sourceId(id),
+    renditionOf: (id) => editedPlaying.renditionOf(id),
+  });
   const history = new PlayHistory(
-    { later: (key, run) => later.write(key, run), media, now: () => Date.now() },
+    { later: (key, run) => later.write(key, run), media: historyMedia, now: () => Date.now() },
     engine.current,
   );
   engine.onChange((state) => {
@@ -7168,7 +7664,7 @@ function start(): void {
   });
   handle(IPC.media.resumePoint, (e, mediaId) =>
     fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
-      ? media.resumeOf(mediaId)
+      ? historyMedia.resumeOf(mediaId)
       : null,
   );
   // Snapshot (alpha.20, the time bar's ⋯; the owner's "Yes, all A" to Q60-39 P6 (d) A): the frame on the screens, made
@@ -7206,7 +7702,44 @@ function start(): void {
   });
   // Its Copy: the window's words on the clipboard, by the main process (copyWords).
   handle(IPC.media.copyDetails, (e, text) => copyWords(e, text));
+  // Sound and picture… (alpha.20; the owner's "Yes, all A" to Q60-39 P2 A and P6 (a) A): a video's or a sound's own
+  // tone and delays, kept with it; the engine stamps them again at once, so the hall and the stream follow. Pro Mode's.
+  handle(IPC.media.playback, (e, mediaId) =>
+    fromOperator(e) && typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
+      ? playbackOfFile(mediaId)
+      : null,
+  );
+  handle(IPC.media.setPlayback, (e, mediaId, settings) => {
+    const parsed = playbackSettingsSchema.safeParse(settings);
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId) || !parsed.success)
+      return {
+        ok: false as const,
+        message: 'Those settings could not be kept: open Sound and picture… again and set them once more.',
+      };
+    const sourceId = editedPlaying.sourceId(mediaId);
+    if (!media.setPlayback(sourceId, parsed.data))
+      return {
+        ok: false as const,
+        message: 'Only a video or a sound has these settings: choose one in Media.',
+      };
+    ownPlayback.set(sourceId, parsed.data);
+    engine.refreshSound();
+    engine.refreshVideoCaptions();
+    engine.refreshVideoShapes();
+    return { ok: true as const };
+  });
   handle(IPC.audio.getOutput, () => audioOutput.status);
+  // The sound player's red notice's Try again (x53, the owner's Q60-50 (2) A), in either mode: tried again now, its
+  // count afresh; the notice goes as it is tried, and comes again if it is given up on again.
+  handle(IPC.audio.tryAgain, (e) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can try the sound again.' };
+    if (!pageAlive(audioWindow))
+      return { ok: false as const, message: 'Drashti’s sound player is not running.' };
+    log.info('Trying the sound player again, as the operator asked');
+    watchdog.retryNow(audioWindow.webContents, 'Try again');
+    return { ok: true as const };
+  });
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
   );
@@ -7231,6 +7764,11 @@ function start(): void {
   // box, Q60-46) or waits paused (on the slide); the operator window says so, once a file; and it is converted by itself
   // once the show is idle. Only for a video that was up, so a page's word never takes off anything else; the other
   // windows that found the same showing find it off already, and say nothing more.
+  // How much of a library file Main has sent so far (Q60-51): a page waiting on a video's first frame counts it as
+  // progress.
+  handle(IPC.media.served, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? (mediaServed.get(mediaId) ?? 0) : 0,
+  );
   handle(IPC.media.noPicture, (e, mediaId, startedAt) => {
     const drawsShow = fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined;
     if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
@@ -7266,7 +7804,7 @@ function start(): void {
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
     // No first frame within FIRST_FRAME_MS (Q60-44): heeded from Main's own screens, what the hall sees; LIVE's or the
     // stream's page alone only logs it (shared/no-picture.ts).
-    if (code === NO_FIRST_FRAME && screenId === undefined) {
+    if ((code === NO_FIRST_FRAME || code === NO_START_IN_TIME) && screenId === undefined) {
       log.info(
         `A video had ${kind} on ${whereWords([where])}: ${mediaId}; left up (only a screen’s takes it off)`,
       );
@@ -7287,7 +7825,13 @@ function start(): void {
           .filter((w) => w !== '')
           .join(', ');
         log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        sendToOperator(IPC.app.notice, { text: cannotPlayNotice(file.name, named, took) });
+        // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
+        sendToOperator(IPC.app.notice, {
+          text:
+            code === NO_START_IN_TIME
+              ? cannotStartInTimeNotice(file.name, named, took)
+              : cannotPlayNotice(file.name, named, took),
+        });
       },
       (named) => {
         log.info(
@@ -7927,7 +8471,8 @@ function start(): void {
         state: st.state,
         checked: st.checked,
         chosen: st.chosen?.label ?? null,
-        playerRunning: pageAlive(audioWindow),
+        // Down and given up on (x53) is not running: Ready? says so.
+        playerRunning: pageAlive(audioWindow) && !audioWindow.webContents.isCrashed(),
       };
     },
     videoInput: () => {
@@ -8109,6 +8654,8 @@ function start(): void {
     switchQuestion.asking(null);
     // A picture adjusted from the window that is loading again (x27): its grid goes from the screens.
     screens.stopAdjusting();
+    // News waits for its page to open (x53: tellOperator).
+    operatorAsked = false;
   });
   operatorWindow.webContents.on('did-start-navigation', (navigation) => {
     if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
@@ -8118,6 +8665,7 @@ function start(): void {
     importNotices.pause();
     switchQuestion.asking(null);
     screens.stopAdjusting();
+    operatorAsked = false;
   });
   // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
   // has loaded, and again at its next load while it could not be told. Never of the operator window itself (question
@@ -8163,7 +8711,7 @@ function start(): void {
     if (audioStarted || quitStarted) return;
     audioStarted = true;
     audioWindow = createAudioWindow();
-    watchdog.watch(audioWindow.webContents, 'audio player');
+    watchdog.watch(audioWindow.webContents, SOUND_PLAYER);
   };
   operatorWindow.webContents.once('did-finish-load', startAudioPlayer);
   operatorWindow.webContents.once('did-finish-load', resumeStream);
@@ -8177,6 +8725,7 @@ function start(): void {
       // conversions, then at the first quiet moment (nothing up, no stream on air or recording).
       setTimeout(() => {
         playlistTrims.resumeWhenQuiet();
+        editedCopies.resume();
       }, AFTER_START_MS).unref();
     });
   operatorWindow.webContents.once('did-finish-load', () => {

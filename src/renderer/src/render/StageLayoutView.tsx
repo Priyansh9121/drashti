@@ -109,7 +109,7 @@ function Sized({
 
 /**
  * How long is left on a playing file: its pass, when it loops; held where it is while paused (music). To its
- * end point, and from where it jumped to (a marker, Back 15 s, Forward 15 s or Last 10 s: Session 50).
+ * end point, and from where it jumped to (a marker, Back 15 s or Forward 15 s: Session 50).
  */
 function leftOn(
   layer: PlaybackClock & { durationMs?: number; pausedAtMs?: number },

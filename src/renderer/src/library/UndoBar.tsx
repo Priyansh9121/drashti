@@ -3,7 +3,6 @@ import { useEngine } from '../engine/engine-store';
 import { useMode } from '../operator/mode-store';
 import { Button } from '../ui/Button';
 import { Undo2 } from '../ui/icons';
-import { Truncate } from '../ui/Truncate';
 import { lastRemoval, undoRemoval, useUndo } from './undo';
 
 /**
@@ -28,10 +27,13 @@ export function UndoBar({ platform }: { platform: string }) {
       {last && !puttingBack && (
         <div
           data-testid="undo-removal"
-          className="flex shrink-0 items-center gap-2 border-t border-line bg-panel-2 px-3 py-2 text-xs"
+          // Its words whole, Undo under them in a narrow column (alpha.21: the owner's column at its least cut "Deleted
+          // folder" short).
+          className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-line bg-panel-2 px-3 py-2 text-xs"
         >
-          <Truncate text={last.text} className="flex-1 text-muted" />
+          <span className="min-w-0 flex-1 break-words text-muted">{last.text}</span>
           <Button
+            className="ml-auto"
             size="sm"
             icon={Undo2}
             kbd={shortcutText('undo', platform)}

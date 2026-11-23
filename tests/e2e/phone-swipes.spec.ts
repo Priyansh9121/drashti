@@ -103,45 +103,66 @@ async function fingers(
   if (engine === 'chromium') {
     const cdp = await p.context().newCDPSession(p);
     const points = (step: number) => starts.map((_, i) => ({ ...at(i, step), id: i }));
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(0) });
+    // Each event carries the swipe's own time, 25 ms a step (CDP's timestamp, which the page's timeStamp follows): a
+    // loaded runner's slow sends never stretch it (alpha.20.1's final CI, CI's Mac: Back's sends took 1.04 s, past the
+    // phone's 1 s, so it was no swipe).
+    const t0 = Date.now() / 1000;
+    const stamp = (ms: number) => t0 + ms / 1000;
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: points(0),
+      timestamp: stamp(0),
+    });
     for (let step = 1; step <= STEPS; step++) {
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(step) });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: points(step),
+        timestamp: stamp(step * 25),
+      });
       await letTimePass(p, 25, 'a finger moves through its 200 ms swipe');
     }
     await rest();
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+      timestamp: stamp(STEPS * 25 + (stop ? AT_REST_MS : 0)),
+    });
     await cdp.detach();
     return;
   }
-  const fire = (type: string, step: number) =>
+  // The same swipe's own time here (the event's timeStamp, from the page's clock at the first touch), as in Chrome's
+  // engine: a loaded runner's slow round trips never stretch it past the phone's 1 s.
+  const fire = (type: string, step: number, t0: number | null, ms: number) =>
     p.getByTestId('remote-live').evaluate(
-      (el, { starts, dx, dy, steps, step, type }) => {
+      (el, { starts, dx, dy, steps, step, type, t0, ms }) => {
+        const first = t0 ?? performance.now();
         starts.forEach((start, id) => {
           const clientX = start.x + ((dx[id] ?? 0) * step) / steps;
           const clientY = start.y + ((dy[id] ?? 0) * step) / steps;
           const target = document.elementFromPoint(clientX, clientY) ?? el;
-          target.dispatchEvent(
-            new PointerEvent(type, {
-              pointerId: 100 + id,
-              pointerType: 'touch',
-              isPrimary: id === 0,
-              clientX,
-              clientY,
-              bubbles: true,
-              cancelable: true,
-            }),
-          );
+          const event = new PointerEvent(type, {
+            pointerId: 100 + id,
+            pointerType: 'touch',
+            isPrimary: id === 0,
+            clientX,
+            clientY,
+            bubbles: true,
+            cancelable: true,
+          });
+          Object.defineProperty(event, 'timeStamp', { value: first + ms });
+          target.dispatchEvent(event);
         });
+        return first;
       },
-      { starts, dx, dy, steps: STEPS, step, type },
+      { starts, dx, dy, steps: STEPS, step, type, t0, ms },
     );
-  await fire('pointerdown', 0);
+  const t0 = await fire('pointerdown', 0, null, 0);
   for (let step = 1; step <= STEPS; step++) {
-    await fire('pointermove', step);
+    await fire('pointermove', step, t0, step * 25);
     await letTimePass(p, 25, 'a finger moves through its 200 ms swipe');
   }
   await rest();
-  await fire('pointerup', STEPS);
+  await fire('pointerup', STEPS, t0, STEPS * 25 + (stop ? AT_REST_MS : 0));
 }
 
 /** Passive, bounded source-of-input evidence; it never changes the gesture or opens the viewer. */

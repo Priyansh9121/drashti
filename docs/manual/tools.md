@@ -1,10 +1,10 @@
 # More tools
 
-**More tools**, folded away at the end of the right column, holds the tools a sabha needs now and then: Lower Thirds, the MIDI controller, OSC control, Show a Window…, Add a Video Input…, Picture in Picture… and QR code…. They are Pro Mode's.
+**More tools**, folded away at the end of the right column, holds the tools a sabha needs now and then: Lower Thirds, the MIDI controller, OSC control, Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture… and QR code…. They are Pro Mode's.
 
 ## More tools and the Tools menu
 
-**What it is.** The folded group at the end of the right column, each tool with a line saying what it does. **Tools** in the menu bar has the same: Show a Window…, Add a Video Input…, Picture in Picture…, QR code…, then Lower Thirds Studio…, MIDI Controller… and OSC Control….
+**What it is.** The folded group at the end of the right column, each tool with a line saying what it does. **Tools** in the menu bar has the same: Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture…, QR code…, then Lower Thirds Studio…, MIDI Controller… and OSC Control….
 
 **When you would use it.** Whenever you need one of these tools.
 
@@ -63,6 +63,25 @@
 
 ![Show a Window: the open windows, each with a small live picture](../screenshots/window-picker.png)
 
+## Show a Stream Link
+
+**What it is.** A live stream from an HLS link or a YouTube live stream's link, received on this computer's hall screens as the background, with its sound in the hall. Drashti's own stream shows the Wallpaper while it is up.
+
+**When you would use it.** When the hall should watch another mandir's webcast live.
+
+**How:**
+
+1. In **More tools**, press **Show a Stream Link…**, or choose it from the **Tools** menu. This is Pro Mode's.
+2. Paste the HLS link ending in **.m3u8**, or the YouTube live stream's **Share** link. A YouTube link can be checked only while Drashti is off air and not recording.
+3. Press **Show on the screens**. The earlier picture stays until the link's pictures come.
+4. If it drops, the last picture stays while Drashti reconnects. After 20 seconds the Wallpaper goes up. The link returns by itself, unless something else went up.
+5. **F3**, **Clear all**, or **Take it off** on its notice removes it. These clear controls still work in Simple Mode.
+6. After Drashti stops unexpectedly, open this tool and show the link again; it is not put back by itself.
+
+Output nodes show the rest of the show without this link; stage screens name it, and a phone can name and clear it. The last link is offered again during this run only. It may contain a private way in, so Drashti never writes it down. See **Stream › The Stream panel** for sending Drashti's own show.
+
+![Show a Stream Link with an unsubmitted placeholder link](../screenshots/manual-stream-link.png)
+
 ## Video inputs
 
 **What it is.** A camera or capture input on this computer (the video mixer's USB output, say), named once and then one click away in **Media**. It goes up as the background, with the slide's words over it.
@@ -90,6 +109,8 @@
 2. Under **What goes in the box**, choose what goes in it.
 3. Choose **Where it sits**, the **Size** and how it comes on.
 4. Press **Show in the box**. Under **LIVE**, **Swap** and **Take off** work on it.
+
+If a video in the box cannot play, the box closes and a notice names it: see **LIVE, Back and Next › When a video cannot play**.
 
 ![Picture in Picture…: what goes in the box, where it sits and its size](../screenshots/manual-pip.png)
 

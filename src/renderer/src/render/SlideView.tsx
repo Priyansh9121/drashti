@@ -22,8 +22,10 @@ import { fontFamilyFor } from './fonts';
 import { TranslitSourceContext, useHtmlLang } from './lang';
 import { translitSource } from '../../../shared/tracks';
 import { OBJECT_FIT } from './media-style';
+import { shapedFrame } from '../../../shared/video-shape';
+import { shapedClip, shapeFor, useVideoShapes } from './video-shape';
 import { type Playback, startPlayback } from './playback';
-import { hasNoPicture, tellNoPicture } from './no-picture';
+import { hasNoPicture, tellCannotPlay, tellNoPicture, watchFirstFrame } from './no-picture';
 import { requestStill, useStill } from './stills';
 import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
 import { hasElementMotion, motionFrame } from '../../../shared/element-motion';
@@ -805,6 +807,26 @@ function mediaStyle(el: MediaElement): CSSProperties {
 }
 
 /**
+ * A slide's video with a Shape of its own (Sound and picture…, alpha.20, x55; render/video-shape.ts): drawn in its
+ * frame's box of that shape, fitted or filling as its fit says, the picture stretched to the box; turned and flipped
+ * about the same middle, and clipped to what showed of its frame there (its own shape, the frame's edge when filling).
+ */
+function shapedMediaStyle(el: MediaElement, aspect: number): CSSProperties {
+  const { x, y, width, height } = el.frame;
+  const box = shapedFrame(aspect, { width, height }, el.fit === 'fill' ? 'fill' : 'fit');
+  return {
+    ...frameStyle(el),
+    left: x + box.x,
+    top: y + box.y,
+    width: box.width,
+    height: box.height,
+    objectFit: 'fill',
+    opacity: el.opacity ?? 1,
+    clipPath: shapedClip({ width, height }, box, el.pictureClip),
+  };
+}
+
+/**
  * A video placed on a slide, playing (muted) from when the slide went live, in step on every window; between its
  * file's start and end points when it has them (Session 52), going round between them when it loops, as a
  * background video does; from where the time bar moved it, or waiting where it paused it (Session 54).
@@ -833,6 +855,10 @@ function SlideVideo({
   imageDecoding?: 'sync';
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+  // A Shape of its own (Sound and picture…, alpha.20, x55): drawn in its frame's box of that shape; a new shape moves
+  // the same video element, never loading it again.
+  const shape = shapeFor(useVideoShapes(), el.mediaId, el.fit);
+  const drawn = shape === null ? mediaStyle(el) : shapedMediaStyle(el, shape);
   // Props and other things without a start time play from when they appear.
   const [mountedAt] = useState(() => engineNow());
   const start = startedAt ?? mountedAt;
@@ -866,12 +892,18 @@ function SlideVideo({
       attempt: attempt + tries,
       startedAt: start,
       timing: () => timing.current,
-      onError: () => {
+      onError: (error) => {
+        // Said to Main (Q60-31, x46's item 4): a slide's video waits paused where it is with its sound, the box comes
+        // off, and the operator is told (unless a GPU process stopped then: it plays again here).
+        tellCannotPlay(el.mediaId, start, attempt + tries, error);
         setFailedWith(restartsNow.current);
       },
     });
+    // No first frame is said too (Q60-44; render/no-picture.ts watchFirstFrame says when).
+    const unwatch = watchFirstFrame(v, el.mediaId, start, attempt + tries);
     playback.current = p;
     return () => {
+      unwatch();
       playback.current = null;
       p();
     };
@@ -906,7 +938,7 @@ function SlideVideo({
           if (deck && Number.isFinite(e.currentTarget.duration))
             setDurationMs(Math.round(e.currentTarget.duration * 1000));
         }}
-        style={cover === 'hidden' ? { ...mediaStyle(el), visibility: 'hidden' } : mediaStyle(el)}
+        style={cover === 'hidden' ? { ...drawn, visibility: 'hidden' } : drawn}
       />
       {/* A deck's video's poster, over it until it plays (Session 54, C2). */}
       {cover === 'poster' && deck?.posterId && (

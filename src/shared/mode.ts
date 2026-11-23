@@ -84,7 +84,7 @@ export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode })
  * a phone, the API): a picture-in-picture box is set up, swapped and moved in Pro Mode only (Session 50; Take off and
  * Clear all still take one off); Simple Mode does not choose a video
  * input (Session 50: Pro Mode's Media puts one up; Simple Mode may clear it,
- * as any background); and Back 15 s, Forward 15 s and Last 10 s are Pro Mode's
+ * as any background); and Back 15 s and Forward 15 s are Pro Mode's
  * (Session 54: Simple Mode's window has no skips; since Session 56 its Audio's
  * are, on an audio playlist's track: simpleModeRefuses). The time bar is Simple
  * Mode's as Pro Mode's since Session 56 (the owner's words of 11 Nov: drag LIVE's
@@ -110,7 +110,7 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
 
 /**
  * Whether Simple Mode refuses an engine command (the engine's refuse option, src/main/index.ts): those listed above,
- * but Audio's own Back 15 s, Forward 15 s and Last 10 s on an audio playlist's track (Session 56: Simple Mode has Pro
+ * but Audio's own Back 15 s and Forward 15 s on an audio playlist's track (Session 56: Simple Mode has Pro
  * Mode's Audio), which `state`, the show as it is, tells apart; a single sound's and the background's stay refused
  * (Simple Mode's window has no skips under LIVE). `state` decided the time bar's Pause too until Session 56.
  */

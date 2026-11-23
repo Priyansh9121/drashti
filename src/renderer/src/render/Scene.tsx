@@ -28,6 +28,7 @@ import { BackgroundMedia } from './BackgroundMedia';
 import { slotKey } from './background-slots';
 import { CanvasClip } from './canvas-clip';
 import { LiveWindowView } from './LiveWindowView';
+import { LinkView, linkKey } from './LinkView';
 import { useEntrance } from './entrance';
 import { NothingUp, nothingUpShows, WallpaperCover } from './NothingUp';
 import { clockHeld, engineFrameNow, onClockJump } from './clock';
@@ -304,12 +305,15 @@ function BackgroundPicture({
   annotate,
   movement,
   onDrawn,
+  onLinkDrawn,
 }: {
   background: BackgroundLayer | null;
   annotate: boolean;
   movement: Movement;
   /** Told which background is drawn now (the main picture's alone: render/BackgroundMedia.tsx). */
   onDrawn?: (key: string | null) => void;
+  /** The same for a stream link (alpha.20, slice 8: render/LinkView.tsx), told apart from the files'. */
+  onLinkDrawn?: (key: string | null) => void;
 }) {
   return (
     <>
@@ -321,6 +325,7 @@ function BackgroundPicture({
       )}
       <BackgroundMedia layer={background} annotate={annotate} movement={movement} onDrawn={onDrawn} />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
+      {background?.kind === 'link' && <LinkView layer={background} onDrawn={onLinkDrawn} />}
     </>
   );
 }
@@ -422,14 +427,26 @@ export const Scene = memo(function Scene({
   // A group's lower third (a key and fill pair's) keeps the bottom: messages go along the top (as in the stream's
   // Camera layout), and the words sit above the ticker's band.
   const lowerThirds = look.slides === 'lowerThird';
-  const background = shown('background') ? layers.background : null;
+  // A stream link (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A) is the hall's alone: Drashti's own
+  // stream never carries it (the Wallpaper meanwhile, below), and a key and fill pair has nothing of it to key.
+  const linkUp = layers.background?.kind === 'link';
+  const linkNotHere = linkUp && (place === 'stream' || matte !== null);
+  const background = shown('background') && !linkNotHere ? layers.background : null;
   // Key and fill: black-out and the Wallpaper take the graphics off; the key draws every colour white, by its opacity.
   const keyed = matte !== null;
   const off = keyed && (state.blackout || state.wallpaper);
   // What the background draws now, as BackgroundMedia tells it before each painting (Q60-31, the owner's video bug): a
   // new picture or video is waited on until its first frame, what the hall saw staying until then (below).
-  const [drawnKey, setDrawnKey] = useState<string | null>(null);
-  const wantedKey = background?.kind === 'media' || background?.kind === 'input' ? slotKey(background) : null;
+  const [fileDrawn, setDrawnKey] = useState<string | null>(null);
+  // A stream link tells what it draws apart (render/LinkView.tsx), so a file's going never reads as the link's.
+  const [linkDrawn, setLinkDrawn] = useState<string | null>(null);
+  const drawnKey = background?.kind === 'link' ? linkDrawn : fileDrawn;
+  const wantedKey =
+    background?.kind === 'media' || background?.kind === 'input'
+      ? slotKey(background)
+      : background?.kind === 'link'
+        ? linkKey(background)
+        : null;
   // Nothing of the background drawn yet (none before it): the screen shows what it shows with nothing up meanwhile.
   const nothingDrawnYet = wantedKey !== null && drawnKey === null;
   // Black-out or the Wallpaper that the engine took off as a new background went up stays until that background's
@@ -470,8 +487,13 @@ export const Scene = memo(function Scene({
   const up = boxHere(layers.pip) ? layers.pip : null;
   // Nothing up on these screens (the box counts): what shows then (Session 55, render/NothingUp.tsx: Part 6's
   // chosen wallpaper; black with none chosen).
+  // Q60-51 (the owner's "never black", x52's A11): with the box up over a background whose first frame has not come,
+  // what shows with nothing up stays under the box until it does; not with the box swapped into the background's
+  // place (its own picture is there).
   const nothingUp =
-    (background === null || nothingDrawnYet) && (layers.slide === null || !shown('slide')) && up === null;
+    (background === null || nothingDrawnYet) &&
+    (layers.slide === null || !shown('slide')) &&
+    (up === null || (nothingDrawnYet && !up.swapped));
   const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
   // Back to the Wallpaper (Clear background, a video's end, one that could not play coming off; Q60-31 (3), the
   // lead's): the Wallpaper's picture is read again as it comes back, and the screen showed black meanwhile. Now what the
@@ -487,7 +509,9 @@ export const Scene = memo(function Scene({
     done: boolean;
   }>(() => ({ was: background, wasNow: backgroundNow, keep: null, n: 0, done: true }));
   if (back.wasNow !== backgroundNow) {
-    const keep = background === null && back.was !== null && drawnKey !== null ? back.was : null;
+    // What was drawn as it went (a stream link tells its own: render/LinkView.tsx).
+    const wasDrawn = back.was?.kind === 'link' ? linkDrawn : fileDrawn;
+    const keep = background === null && back.was !== null && wasDrawn !== null ? back.was : null;
     setBack({ was: background, wasNow: backgroundNow, keep, n: back.n + 1, done: keep === null });
   }
   const holding = !back.done && back.keep !== null && nothingUpNow === 'wallpaper';
@@ -516,8 +540,10 @@ export const Scene = memo(function Scene({
       pictures: state.pictures,
       liveZoom: state.liveZoom,
       ...(state.opaquePictures ? { opaque: state.opaquePictures } : {}),
+      // Sound and picture…'s Shape (alpha.20, x55): the videos drawn in a shape of their own.
+      ...(state.videoShapes ? { videoShapes: state.videoShapes } : {}),
     }),
-    [state.pictures, state.liveZoom, state.opaquePictures],
+    [state.pictures, state.liveZoom, state.opaquePictures, state.videoShapes],
   );
   // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
   const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;
@@ -592,6 +618,7 @@ export const Scene = memo(function Scene({
                       annotate={annotate}
                       movement={look.movement}
                       onDrawn={setDrawnKey}
+                      onLinkDrawn={setLinkDrawn}
                     />
                   </BackgroundBox.Provider>
                 </MainSlot>
@@ -698,7 +725,7 @@ export const Scene = memo(function Scene({
                 )}
                 {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}
               </div>
-              {(state.wallpaper || heldCover === 'wallpaper') && !keyed && (
+              {(state.wallpaper || heldCover === 'wallpaper' || (linkUp && place === 'stream')) && !keyed && (
                 // The Wallpaper instead of the picture (Session 55, Part 13, in the Logo's place): drawn over the
                 // layers, which carry on underneath, so taking it off brings back exactly what was there. Black-out
                 // covers it in turn.

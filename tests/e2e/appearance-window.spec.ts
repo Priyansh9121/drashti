@@ -1,8 +1,15 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { APPEARANCE_FAMILIES, BUILT_IN, familyOf } from '../../src/shared/appearance/appearances';
-import { expectNoSeriousA11yIssues } from './a11y';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { expectNoSeriousA11yIssues, settled } from './a11y';
+import {
+  chooseMenuItem,
+  launchApp,
+  OWN_APPEARANCE,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+} from './helpers';
 
 /*
  * The Appearance window (Session 60, the owner's Q60-36 (4) and Q60-45: 64 appearances): every one in its family,
@@ -39,7 +46,9 @@ test('every appearance in its family, in the window’s order; found by a word o
     );
   }
   await expect(choices(win)).toHaveCount(BUILT_IN.length + 1);
-  // It fits: nothing wider than the window, nothing below it but what scrolls inside the sheet.
+  // It fits: nothing wider than the window, nothing below it but what scrolls inside the sheet. Measured once the sheet has
+  // slid in (16 px from the right): part-way, its edge is still past the window's (the third mid-way CI, Black part 1).
+  await settled(win);
   const box = await sheet(win).boundingBox();
   expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
   expect((box?.x ?? 0) + (box?.width ?? 2000)).toBeLessThanOrEqual(1024);
@@ -62,7 +71,8 @@ test('every appearance in its family, in the window’s order; found by a word o
 });
 
 test('favourites: the chosen one starred, shown first, kept over a restart and unstarred', async () => {
-  const first = await launchApp();
+  // A choice kept over a restart gives its own switch (ci.yml's job in Black starts every other test in Black).
+  const first = await launchApp(OWN_APPEARANCE);
   let win = await operatorPage(first.app);
   await operatorReady(win);
   await openWindow(win, first.app);
@@ -79,7 +89,7 @@ test('favourites: the chosen one starred, shown first, kept over a restart and u
     .evaluateAll((els) => els.map((el) => el.getAttribute('data-family')));
   expect(order[0]).toBe('Favourites');
   await first.app.close();
-  const again = await relaunchApp(first.userData);
+  const again = await relaunchApp(first.userData, OWN_APPEARANCE);
   win = await operatorPage(again.app);
   await operatorReady(win);
   await openWindow(win, again.app);

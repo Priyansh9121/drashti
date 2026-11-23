@@ -11,6 +11,7 @@ import {
   mediaUrl,
 } from '../../../shared/media';
 import type { EditLayout, LiveZoom, PictureLook, PixelSize } from '../../../shared/picture-look';
+import type { ShapeOverride } from '../../../shared/video-shape';
 import {
   copyStep,
   cssFilter,
@@ -56,6 +57,8 @@ export const ScreenPictures = createContext<{
   pictures: Record<string, PictureLook>;
   liveZoom: LiveZoom | null;
   opaque?: readonly string[];
+  /** Sound and picture…'s Shape (alpha.20, x55): the videos drawn in a shape of their own (render/video-shape.ts). */
+  videoShapes?: Readonly<Record<string, ShapeOverride>>;
 } | null>(null);
 
 /** The library's looks, for the operator window's thumbnails (connectPictureLooks fills it). */

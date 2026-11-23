@@ -1,6 +1,6 @@
 import { WebContentsView } from 'electron';
 import { secureWebPreferences } from '../windows/web-preferences';
-import { askHevcKinds, askPlaysHevc, type HevcKinds } from './plays-hevc';
+import { askHevcQuestions, type HevcKinds } from './plays-hevc';
 
 /*
  * The HEVC question's own page (question 36 of Session 54). Chromium answers whether it plays HEVC only once the GPU
@@ -11,6 +11,13 @@ import { askHevcKinds, askPlaysHevc, type HevcKinds } from './plays-hevc';
  * as one, and it never shows), sandboxed as every page is and with no bridge to Drashti, gone once it has answered.
  * The operator window never asks it.
  */
+
+/**
+ * The questions' own views while they ask (alpha.21: held by nothing, a view no window holds was taken by a garbage
+ * collection with its page and its question, which then never answered: 2 of alpha.20's 5 starts on the owner's Mac,
+ * and CI's start-marks.spec:48 late in a run). Held here until each has answered or gone.
+ */
+const asking = new Set<WebContentsView>();
 
 /** The question being asked in its own page. */
 export interface HevcPage {
@@ -33,7 +40,9 @@ export function askInOwnPage(script: string, kindsScript: string | null = null):
   const webPreferences: Electron.WebPreferences = { ...secureWebPreferences(), backgroundThrottling: false };
   // A blank page that runs one line: no bridge to Drashti.
   delete webPreferences.preload;
-  const contents = new WebContentsView({ webPreferences }).webContents;
+  const view = new WebContentsView({ webPreferences });
+  asking.add(view);
+  const contents = view.webContents;
   let settle: (answer: boolean | null) => void = () => undefined;
   const answer = new Promise<boolean | null>((resolve) => {
     settle = resolve;
@@ -48,19 +57,22 @@ export function askInOwnPage(script: string, kindsScript: string | null = null):
     settle(null);
     if (closed) return;
     closed = true;
+    asking.delete(view);
     if (!contents.isDestroyed()) contents.close();
   };
   contents.once('render-process-gone', close);
+  // Gone for any other reason: its questions are not known, never left waiting.
+  contents.once('destroyed', close);
   void contents
     .loadURL('about:blank')
     .then(async () => {
-      const run = (s: string) => contents.executeJavaScript(s);
-      const plays = await askPlaysHevc(run, script);
-      // The other kinds before the answer is given, so an import that waited for it has both.
-      settleKinds(kindsScript !== null && plays !== null ? await askHevcKinds(run, kindsScript) : null);
-      return plays;
+      const asked = askHevcQuestions((s) => contents.executeJavaScript(s), script, kindsScript);
+      void asked.answer.then(settle);
+      void asked.kinds.then(settleKinds);
+      // The page goes once both are said (or not known).
+      await Promise.all([asked.answer, asked.kinds]);
     })
-    .then(settle, () => {
+    .catch(() => {
       settleKinds(null);
       settle(null);
     })

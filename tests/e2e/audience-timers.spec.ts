@@ -49,6 +49,22 @@ const makeStage = (win: Page, name: string) =>
 const state = async (win: Page) =>
   (await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).state;
 
+const hhmm = (d: Date) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+/**
+ * The sabha's time a Countdown to the start can show at `now`: two hours ahead, or the day's last minute late in the
+ * evening; null in the day's last two minutes, when no time today is still a minute ahead (alpha.20.1's final CI ran
+ * the test at 23:59 by the runner's clock: 23:59 had come, so the countdown was rightly refused).
+ */
+function sabhaTime(now: number): string | null {
+  const later = new Date(now + 2 * 3600_000);
+  if (later.getDate() === new Date(now).getDate()) return hhmm(later);
+  const lastTwoMinutes = new Date(now);
+  lastTwoMinutes.setHours(23, 58, 0, 0);
+  return now < lastTwoMinutes.getTime() ? '23:59' : null;
+}
+
 /** A countdown in Timers, through its form: its id. */
 async function newCountdown(win: Page, name: string, length: string): Promise<string> {
   const timers = win.getByTestId('timers');
@@ -157,8 +173,17 @@ test('Countdown to the start: the sabha’s time, counted down over the wallpape
   const timers = win.getByTestId('timers');
   await timers.getByRole('button', { name: 'Countdown to the start…' }).click();
   const start = timers.getByTestId('start-countdown');
-  const hhmm = (d: Date) =>
-    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  // In the day's last two minutes no time today is a minute ahead: the next day first (two minutes at most).
+  if (sabhaTime(Date.now()) === null)
+    await expect
+      .poll(() => sabhaTime(Date.now()), {
+        timeout: 130_000,
+        message: 'the next day, with a sabha time to come',
+      })
+      .not.toBeNull();
+  // Two hours ahead (or the day's last minute, late in the evening), chosen before the refusal below takes its time.
+  const time = sabhaTime(Date.now());
+  if (time === null) throw new Error('no sabha time still to come today');
   // A time already come today is refused, with the reason (it would go at once).
   const earlier = new Date(Date.now() - 60_000);
   if (earlier.getDate() === new Date().getDate()) {
@@ -166,9 +191,6 @@ test('Countdown to the start: the sabha’s time, counted down over the wallpape
     await start.getByRole('button', { name: 'Show the countdown' }).click();
     await expect(start.getByRole('alert')).toContainText('already come today');
   }
-  // Two hours ahead (or the day's last minute, late in the evening).
-  const later = new Date(Date.now() + 2 * 3600_000);
-  const time = later.getDate() === new Date().getDate() ? hhmm(later) : '23:59';
   await start.getByLabel('The sabha’s time').fill(time);
   await start.getByRole('button', { name: 'Show the countdown' }).click();
   const onHall = hall.locator('[data-layer="timer"]');

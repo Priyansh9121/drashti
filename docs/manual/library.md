@@ -35,7 +35,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 ## Importing files
 
-**What it is.** **Import…** brings files and folders into the library: presentations, PDFs, PowerPoint and Keynote decks, pictures, videos and sounds. A file the screens can't play as it is says **Converting…** until Drashti has made a copy that plays.
+**What it is.** **Import…** brings files and folders into the library: presentations, PDFs, PowerPoint and Keynote decks, pictures, videos and sounds. A file the screens can't play as it is says **Converting…** until Drashti has made a copy that plays: see **Bringing things in and sharing › Files Drashti converts**.
 
 **When you would use it.** Before the sabha, for anything new you will show.
 
@@ -97,7 +97,7 @@ The library holds everything on this computer that can go on the screens: presen
 
 **What it is.** Every row, file, video, sound and picture has one menu, wherever it shows. **Delete…** is always last, with **Undo**.
 
-**When you would use it.** To rename, trim, check or remove something.
+**When you would use it.** To rename, trim, check or remove something, or to set a video's or sound's own **Sound and picture…** (Bass, Treble, its delays, a video's shape).
 
 **How:**
 
@@ -121,7 +121,35 @@ The library holds everything on this computer that can go on the screens: presen
 3. Press **Copy** to put its words in a message or a problem report.
 4. Press **Esc** to close it.
 
-![A playlist's right-click menu](../screenshots/share-with-phones.png)
+A video also shows its **Lighter playing copy** status; see **Lighter playing copies** below. For the button that offers a long file's saved place, see **LIVE, Back and Next › Resume where it stopped**. For the time bar's repeat, frame steps and Snapshot, see that chapter too.
+
+![Media information: a generated video and its lighter playing copy status](../screenshots/manual-media-information.png)
+
+## Edit Video
+
+**What it is.** A ready local video's own editing window, in Pro Mode, with a private preview and **Trim**, **Picture**, **Sound**, **Playback** and **Preparation and export** sections. Saved changes apply to its next showing. A video already on the screens keeps playing as it was.
+
+**When you would use it.** Before the sabha, to prepare a video's picture, sound or timing, or choose its library thumbnail.
+
+**How:**
+
+1. In **Media** or a playlist, right-click the video and choose **Edit Video…**.
+2. Type a time in the original video, such as **0:03.500**, in **Go to time** and press **Jump**, or move the **Trim timeline**. The source preview is private and silent.
+3. In **Trim**, set **Start (seconds)** and **End (seconds)**. **Use this frame as library thumbnail** keeps the chosen frame when you Save.
+4. In **Picture**, crop, turn, flip, zoom or move the picture, adjust **Brightness**, **Contrast** or **Colour**, and choose **Frame shape** and **Blurred fill behind the video**.
+5. In **Sound**, choose **Audio track** or **Reduce steady background noise in a talk**. In **Playback**, choose **Speed** and the picture and sound fades.
+6. Press **Save**. **Preparing** waits while anything is up, streaming or recording. Once clear and idle, let preparation finish until **Ready for next showing** appears.
+7. Choose **Preview saved edits** to check the saved copy privately. **Source preview** returns to the original. If the saved copy cannot play, **Prepare again** rebuilds it.
+
+**Original shape** follows the crop and rotation; **16:9**, **4:3**, **Square (1:1)** and **Vertical (9:16)** make a fixed frame. The source preview stays as it was taken: check picture changes with **Preview saved edits** after Save. For a file marked with the wrong shape, see **Audio and the levels › Sound and picture…**; its **Shape** changes the drawing at once.
+
+**Reset edits** changes only the draft until Save. **Cancel**, or closing the window, lets you discard unsaved changes or keep editing. A failed save keeps the draft; read its reason and try Save again. If another editor saved first, reopen the video before saving again. The original, its usual thumbnail, playlist row trims and existing markers stay; tone and delays stay in **Sound and picture…**.
+
+For the waveform and scene suggestions, see **Waveforms and suggested scene markers** below. For lighter copies and clips, choose **Preparation and export** and follow the features below.
+
+![Edit Video: the private source preview, waveform and Trim section](../screenshots/manual-edit-video.png)
+
+![Edit Video's Picture section with Frame shape and crop choices](../screenshots/manual-edit-video-picture.png)
 
 ## The Picture editor
 
@@ -152,3 +180,66 @@ The library holds everything on this computer that can go on the screens: presen
 4. Press **Save**.
 
 ![The timeline: start, end and markers on a placeholder video](../screenshots/video-timeline.png)
+
+## Browsing a video's frames
+
+**What it is.** In **Media**, a video's small preview browses a strip of frames prepared once while Drashti is idle. It is silent and does not move the video on the screens. Its times are approximate.
+
+**When you would use it.** To recognise a video before adding it to a playlist.
+
+**How:**
+
+1. Point at a video in **Media**. Its preview waits while the show, stream or recording is on.
+2. Move across the small preview to browse its frames.
+3. With the keyboard, Tab to **Browse frames of …**, then use the arrow keys, Home or End.
+4. If it says **Retry preview**, check the video is available and that the disk has space, then press it while idle.
+
+![The library opens above the playlists; choose its Media tab](../screenshots/playlist-up-down.png)
+
+## Waveforms and suggested scene markers
+
+**What it is.** **Edit Video…** shows the chosen sound track's waveform along the trim timeline, and offers scene changes as suggested markers. The waveform and suggestions use the original video's time. They prepare while the show, stream and recording are idle; starting any of these stops preparation and removes its partial copy. It starts again from the beginning once idle.
+
+**When you would use it.** To find a quiet gap for a trim, or mark a change of scene without replacing your own named points.
+
+**How:**
+
+1. Open **Edit Video…** and wait for its waveform and scene suggestions. The time fields still work while they prepare.
+2. A video without sound says **No audio track**. Choosing another track prepares its own waveform.
+3. Press **Keep** beside a scene to add it to the current draft, or **Drop** to dismiss that suggestion from this view.
+4. Press **Save** to keep the draft. Cancel leaves saved markers and each playlist row's trim points as they were. A new analysis never replaces those points.
+5. If preparation fails, check the original video and free space, then press **Retry analysis**.
+
+![Edit Video: the waveform and suggested scene markers beside the trim controls](../screenshots/manual-edit-video.png)
+
+## Lighter playing copies
+
+**What it is.** On a slow computer, a large video gets a smaller playing copy while Drashti is idle. The original is kept for editing and export. A current showing keeps its file; the next showing uses its prepared copy.
+
+**When you would use it.** To play a large video more smoothly on a computer with few processor cores or software video drawing.
+
+**How:**
+
+1. Open the video's **Media information…** to read its lighter copy's status.
+2. Finish the show and stop streaming and recording so waiting preparation can run.
+3. In **Edit Video…**, choose **Preparation and export**. **Stop lighter copy** stops preparation. If it failed or was stopped, check the original video and free space, then use **Retry lighter copy**.
+4. Wait for the status to say the next showing uses the lighter copy. It retains the picture's proportions and transparency.
+
+![Media information with the lighter playing copy status](../screenshots/manual-media-information.png)
+
+## Exporting a clip, including vertical video
+
+**What it is.** A new video file containing the start and end chosen in Edit Video, with saved edits or the original picture. Vertical 9:16 keeps the middle of the picture without stretching. The original stays unchanged.
+
+**When you would use it.** To share a short part of a video or make a portrait clip for a phone.
+
+**How:**
+
+1. Open **Edit Video…** in Pro Mode and choose the start and end in **Trim**.
+2. Choose **Preparation and export**. Under **Picture and sound**, choose **Saved edits** or **Original**. Under **Clip shape**, choose **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
+3. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
+4. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
+5. The export waits while a show, stream or recording is on. You may close the editor; it keeps the accepted request across a restart too.
+6. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
+
+![Preparation and export: Original, Vertical 9:16 and a new clip file](../screenshots/manual-edit-video-export.png)

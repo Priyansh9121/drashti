@@ -1,8 +1,9 @@
 import type { Icon } from '../ui/icons';
-import { AppWindow, PictureInPicture2, QrCode, Video } from '../ui/icons';
+import { AppWindow, MonitorPlay, PictureInPicture2, QrCode, Video } from '../ui/icons';
 import { Button } from '../ui/Button';
 import { openQrSlide } from '../library/QrSlideDialog';
 import { openWindowPicker } from '../live-window/live-window-store';
+import { openStreamLink } from '../live-link/live-link-store';
 import { openAddInput } from '../video-inputs/video-inputs-store';
 import { openPipDialog } from './pip-store';
 import { openStudio } from '../lower-thirds/lower-thirds-store';
@@ -20,6 +21,7 @@ import { SETUP_TOOLS, type SetupTool, type ToolsMenuItem } from '../../../shared
 /** Each tool's button: its test id (the same as when it was in the library), its icon, and what it opens. */
 const TOOL_PARTS: Record<SetupTool, { testId: string; icon: Icon; open: () => void }> = {
   'show-a-window': { testId: 'show-a-window', icon: AppWindow, open: openWindowPicker },
+  'show-a-stream-link': { testId: 'show-a-stream-link', icon: MonitorPlay, open: openStreamLink },
   'add-video-input': { testId: 'add-video-input', icon: Video, open: openAddInput },
   'picture-in-picture': { testId: 'pip-open', icon: PictureInPicture2, open: openPipDialog },
   'qr-code': { testId: 'qr-code-open', icon: QrCode, open: openQrSlide },

@@ -108,10 +108,21 @@ const realTimers: Timers = {
  */
 export class RendererWatchdog {
   readonly events: WatchdogEvent[] = [];
-  /** When each window was last reloaded after a render error. */
+  /** When each window was last reloaded after a render error, or tried again (x53). */
   private readonly renderReloads = new Map<string, number>();
+  /** Windows with a reload for a render error on its way: what their old page still says is not a new failure. */
+  private readonly renderReloading = new Set<string>();
+  /** How each window's page is loaded again after a render error, when not by a reload (a page that failed to load). */
+  private readonly ownReloads = new Map<string, () => void>();
+  /** Windows given up on because their picture failed again after a reload (x53): Stopped until it draws again. */
+  private readonly renderGaveUp = new Set<string>();
   /** Each watched window's "try it again now" (Screens' Try again, Session 23). */
   private readonly retries = new Map<WatchTarget, (why: string) => void>();
+  /** Each watched window's own give-up, its tries afresh, and its reload soon (x53), from its watch. */
+  private readonly states = new Map<
+    WatchTarget,
+    { giveUp: (why: string) => void; settle: () => void; reloadSoon: (why: string) => void }
+  >();
   /** Hung windows waiting to say where their JavaScript is, each with what to do if it stops first. */
   private readonly askingStack = new Map<WatchTarget, () => void>();
 
@@ -147,23 +158,65 @@ export class RendererWatchdog {
 
   /**
    * A window's page failed as it drew, and said so (Session 23): its process is healthy, so nothing
-   * else would notice. It is reloaded through the same reload a crash gets, once: again only after a
-   * minute, so a page that fails every time it draws is never reloaded over and over (an output
-   * shows black meanwhile, and tries again with each change).
+   * else would notice. It is reloaded through the same reload a crash gets, once. If it fails again within
+   * a minute of that reload (x53; the owner's Q60-31 bug hunt, x52's D6a: until then it was left black for
+   * good, counted as showing, nobody told), it is given up on as a crash loop is: Stopped and said, tried
+   * again by itself 2 minutes later (then 10), and back as soon as it draws again (drawsAgain). An error its
+   * old page says before the reload is not its failing again; one after it is (a page loaded again can fail at
+   * once, and missing that left it black and counted as showing).
    */
   renderError(target: WatchTarget, name: string, reason: string, reload?: () => void): void {
-    this.record(name, 'render-error', reason);
+    if (this.renderGaveUp.has(name) || this.renderReloading.has(name)) return;
     const now = this.timers.now();
     const last = this.renderReloads.get(name);
-    if (last !== undefined && now - last < 60_000) return;
-    this.renderReloads.set(name, now);
+    this.record(name, 'render-error', reason);
+    // A page that failed to load is loaded again as itself (Session 31), not reloaded at the failed address.
+    if (reload) this.ownReloads.set(name, reload);
+    if (last !== undefined && now - last < 60_000) {
+      this.renderGaveUp.add(name);
+      this.giveUp(target, name, 'its picture failed again after a reload');
+      return;
+    }
+    this.renderReloading.add(name);
     this.timers.setTimeout(() => {
+      this.renderReloading.delete(name);
+      this.renderReloads.set(name, this.timers.now());
       if (target.isDestroyed()) return;
-      // A page that failed to load is loaded again as itself (Session 31), not reloaded at the failed address.
-      if (reload) reload();
-      else target.reload();
+      this.loadAgain(target, name);
       this.record(name, 'reloaded');
     }, 100);
+  }
+
+  /** A window's page loaded again: as itself, if it once failed to load (Session 31); else reloaded. */
+  private loadAgain(target: WatchTarget, name: string): void {
+    const own = this.ownReloads.get(name);
+    if (own) own();
+    else target.reload();
+  }
+
+  /** Given up on (a crash loop, or a picture that fails again after a reload: x53): its watch's give-up, or said. */
+  private giveUp(target: WatchTarget, name: string, why: string): void {
+    const state = this.states.get(target);
+    if (state) state.giveUp(why);
+    else this.record(name, 'gave-up', why);
+  }
+
+  /**
+   * A window given up on because its picture kept failing draws again (x53): its page drew a change after its last
+   * failure, as its boundary tries each change. No longer given up on; nothing reloaded.
+   */
+  drawsAgain(target: WatchTarget, name: string): void {
+    if (!this.renderGaveUp.delete(name)) return;
+    this.states.get(target)?.settle();
+  }
+
+  /**
+   * What kept bringing a window down was taken off the show (x53: a video it went down on twice within a minute): it
+   * is loaded again now, its crash count and any give-up afresh, never after its longer back-off, or never at all.
+   */
+  tookOff(target: WatchTarget, name: string, why: string): void {
+    this.renderGaveUp.delete(name);
+    this.states.get(target)?.reloadSoon(why);
   }
 
   /**
@@ -254,17 +307,55 @@ export class RendererWatchdog {
     /** How many times it was given up on: the first is tried again sooner. */
     let gaveUpTimes = 0;
 
-    // Given up on: tried again, its crash count starting afresh (Session 23).
+    // Given up on: tried again, its crash count starting afresh (Session 23). A try is its reload: a picture failing
+    // again soon after it is given up on again (x53), and one given up on for that is no longer.
     const retry = (why: string) => {
       if (retryTimer !== null) this.timers.clearTimeout(retryTimer);
       retryTimer = null;
       if (target.isDestroyed()) return;
       crashes.length = 0;
       gaveUp = false;
-      target.reload();
+      this.renderGaveUp.delete(name);
+      this.renderReloads.set(name, this.timers.now());
+      this.loadAgain(target, name);
       this.record(name, 'retried', why);
     };
     this.retries.set(target, retry);
+
+    // Given up on (a crash loop, or its picture failing again after a reload: x53): no reload meanwhile (one may still
+    // wait from the crash before), only the retry, sooner the first time.
+    const giveUp = (why: string) => {
+      if (!gaveUp) {
+        this.record(name, 'gave-up', why);
+        if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
+        reloadTimer = null;
+        gaveUpTimes++;
+        const wait = gaveUpTimes === 1 ? RETRY_FIRST_MS : RETRY_AGAIN_MS;
+        retryTimer = this.timers.setTimeout(() => {
+          retry(`${Math.round(wait / 60_000)} minutes after giving up`);
+        }, wait);
+      }
+      gaveUp = true;
+    };
+    // Its tries afresh (x53): no longer given up on, its crashes forgotten.
+    const settle = () => {
+      if (retryTimer !== null) this.timers.clearTimeout(retryTimer);
+      retryTimer = null;
+      crashes.length = 0;
+      gaveUp = false;
+    };
+    // What brought it down was taken off (x53): loaded again almost at once, as after a first crash.
+    const reloadSoon = (why: string) => {
+      settle();
+      if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
+      reloadTimer = this.timers.setTimeout(() => {
+        reloadTimer = null;
+        if (target.isDestroyed()) return;
+        target.reload();
+        this.record(name, 'reloaded', why);
+      }, backoff[0] ?? 100);
+    };
+    this.states.set(target, { giveUp, settle, reloadSoon });
 
     const cancelHang = () => {
       if (hangTimer !== null) this.timers.clearTimeout(hangTimer);
@@ -281,18 +372,7 @@ export class RendererWatchdog {
       crashes.push(now);
       while (crashes.length > 0 && now - (crashes[0] ?? now) > 60_000) crashes.shift();
       if (crashes.length > maxCrashes) {
-        if (!gaveUp) {
-          this.record(name, 'gave-up', `${crashes.length} crashes in a minute`);
-          // No reload meanwhile (one was still waiting from the crash before): only the retry.
-          if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
-          reloadTimer = null;
-          gaveUpTimes++;
-          const wait = gaveUpTimes === 1 ? RETRY_FIRST_MS : RETRY_AGAIN_MS;
-          retryTimer = this.timers.setTimeout(() => {
-            retry(`${Math.round(wait / 60_000)} minutes after giving up`);
-          }, wait);
-        }
-        gaveUp = true;
+        giveUp(`${crashes.length} crashes in a minute`);
         return;
       }
       const wait = backoff[Math.min(crashes.length - 1, backoff.length - 1)] ?? 1000;
@@ -327,6 +407,12 @@ export class RendererWatchdog {
       if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
       if (retryTimer !== null) this.timers.clearTimeout(retryTimer);
       this.retries.delete(target);
+      this.states.delete(target);
+      // A window made again for the same screen starts afresh (x53): never left given up on, never loaded again
+      // through the closed window's own loader.
+      this.renderGaveUp.delete(name);
+      this.renderReloading.delete(name);
+      this.ownReloads.delete(name);
     });
   }
 }

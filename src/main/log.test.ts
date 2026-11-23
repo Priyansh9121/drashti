@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { log, logFiles, scrub, startLogFile } from './log';
+import { log, logFiles, scrub, startLogCopy, startLogFile } from './log';
 
 describe('the log file', () => {
   it('keeps the home folder and file URLs out of every line', () => {
@@ -29,5 +29,30 @@ describe('the log file', () => {
     const files = logFiles();
     expect(files[0]).toBe(join(dir, 'drashti.log'));
     expect(readFileSync(join(dir, 'drashti.log'), 'utf8')).toContain('placeholder line 29');
+  });
+
+  it('with a test’s copy, writes every line there too, whole and scrubbed, however the files rotate (alpha.21: a failed test keeps its Drashti’s log)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-log-'));
+    const copy = join(mkdtempSync(join(tmpdir(), 'drashti-test-out-')), 'a', 'drashti-1.log');
+    startLogFile(dir, { maxBytes: 200, keep: 2 });
+    startLogCopy(copy);
+    for (let i = 0; i < 30; i++) log.info(`placeholder copy ${i} at ${join(homedir(), 'x')}`);
+    const lines = readFileSync(copy, 'utf8').trimEnd().split('\n');
+    expect(lines).toHaveLength(30);
+    expect(lines[0]).toContain('placeholder copy 0 at ~');
+    expect(lines[29]).toContain('placeholder copy 29');
+    expect(readFileSync(copy, 'utf8')).not.toContain(homedir());
+  });
+
+  it('a copy that cannot be written never gets in the way: the log file goes on', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-log-'));
+    startLogFile(dir);
+    // A folder where the file should be: every write to the copy fails.
+    const copy = mkdtempSync(join(tmpdir(), 'drashti-test-out-'));
+    startLogCopy(copy);
+    expect(() => {
+      log.warn('placeholder after a broken copy');
+    }).not.toThrow();
+    expect(readFileSync(join(dir, 'drashti.log'), 'utf8')).toContain('placeholder after a broken copy');
   });
 });

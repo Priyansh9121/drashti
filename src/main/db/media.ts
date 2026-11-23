@@ -1,3 +1,4 @@
+import { isPlainPlayback, type PlaybackSettings, readPlaybackSettings } from '../../shared/playback-settings';
 import type { PictureLook } from '../../shared/picture-look';
 import { isPlain, lookOf } from '../../shared/picture-look';
 import type { Statement } from 'better-sqlite3';
@@ -331,5 +332,22 @@ export class MediaRepo {
     return row?.resume_ms != null && row.resume_at !== null
       ? { atMs: row.resume_ms, at: row.resume_at }
       : null;
+  }
+
+  /** Sound and picture… (alpha.20): a video's or a sound's own playback settings; none for an unknown id. */
+  playbackOf(mediaId: string): PlaybackSettings {
+    const row = this.db.prepare('SELECT playback FROM media WHERE id = ?').get(mediaId) as
+      { playback: string | null } | undefined;
+    return readPlaybackSettings(row?.playback ?? null);
+  }
+
+  /** Keep a video's or a sound's playback settings (none: plays as it is). False when it is not a video or a sound. */
+  setPlayback(mediaId: string, settings: PlaybackSettings): boolean {
+    const json = isPlainPlayback(settings) ? null : JSON.stringify(settings);
+    return (
+      this.db
+        .prepare("UPDATE media SET playback = ? WHERE id = ? AND kind IN ('video', 'audio')")
+        .run(json, mediaId).changes === 1
+    );
   }
 }

@@ -1,3 +1,8 @@
+import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+
+import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type { VideoAnalysisResult } from './video-analysis';
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest } from './controller-actions';
@@ -125,6 +130,7 @@ import type {
   StreamStatus,
 } from './stream';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { StreamLinkJoin, StreamLinkResult, StreamLinkStatus } from './live-link';
 import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
@@ -700,6 +706,18 @@ export interface DrashtiBridge {
     startCountdown(time: string): Promise<TimerResult>;
   };
   media: {
+    proxyStatus(mediaId: string, retry?: boolean): Promise<VideoProxyResult>;
+    stopProxy(mediaId: string): Promise<boolean>;
+    clipExport(request: ClipExportRequest): Promise<ClipExportResult>;
+    clipExports(): Promise<ClipExportJob[]>;
+    stopClipExport(jobId: string): Promise<boolean>;
+    showClipExport(jobId: string): Promise<null>;
+    /** Cached source-time analysis; queues only through the idle conversion worker. Audio uses 0:a:N. */
+    videoAnalysis(
+      mediaId: string,
+      audioStream?: number | null,
+      retry?: boolean,
+    ): Promise<VideoAnalysisResult>;
     /**
      * Keep a still frame (a JPEG drawn from the file) for a media item's
      * thumbnails, so it is made only once (operator window only).
@@ -770,6 +788,16 @@ export interface DrashtiBridge {
     resumePoint(mediaId: string): Promise<ResumePoint | null>;
     /** Snapshot (alpha.20): the frame of a video on the screens now, a PNG in Media; or why not. */
     snapshot(playing: PlayingRef): Promise<SnapshotResult>;
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays; null for anything else. */
+    videoEdit(mediaId: string): Promise<VideoEditResult>;
+    setVideoEdit(request: SaveVideoEdit): Promise<VideoEditResult>;
+    onVideoEdit(listener: (edit: VideoEditSnapshot) => void): () => void;
+    playback(mediaId: string): Promise<PlaybackSettings | null>;
+    /** Keep them (heard at once wherever it plays). */
+    setPlayback(
+      mediaId: string,
+      settings: PlaybackSettings,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
@@ -784,6 +812,8 @@ export interface DrashtiBridge {
      * 4; 0: none) and Chromium's words for Main's log.
      */
     cannotPlay(mediaId: string, startedAt: number, code: number, words: string): Promise<null>;
+    /** How many bytes of a library file Main has sent the pages so far (Q60-51; 0 for none). */
+    served(mediaId: string): Promise<number>;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,
@@ -816,6 +846,8 @@ export interface DrashtiBridge {
     onChosen(listener: (device: AudioDevice | null) => void): () => void;
     /** Audio player only: play a short test tone on this output ('' for the system default). */
     onTestTone(listener: (deviceId: string) => void): () => void;
+    /** The sound player given up on, tried again now (x53: its red notice's Try again). */
+    tryAgain(): Promise<{ ok: true } | { ok: false; message: string }>;
   };
   /** Built-in streaming (PLAN.md 4.2). Going live and ending need the operator's confirmation. */
   stream: {
@@ -874,6 +906,19 @@ export interface DrashtiBridge {
     schedule(input: YouTubeScheduleInput): Promise<YouTubeResult>;
     useBroadcast(profileId: string, broadcastId: string): Promise<YouTubeResult>;
     endBroadcast(profileId: string): Promise<YouTubeResult>;
+  };
+  /** Show a Stream Link… (alpha.20, the playback set's slice 8): an HLS or YouTube live link on the hall's screens. */
+  liveLink: {
+    /** The operator window: show a link typed (up once its pictures come), or why not. */
+    show(link: string): Promise<StreamLinkResult>;
+    /** The operator window: stop the link connecting, or take the one up off. */
+    stop(): Promise<null>;
+    status(): Promise<StreamLinkStatus>;
+    /** The operator window: the last link shown, to offer again. */
+    last(): Promise<string | null>;
+    /** A screen's page or the audio player: join the link up (where its player starts, and when), or null. */
+    join(linkId: string): Promise<StreamLinkJoin | null>;
+    onChanged(listener: (status: StreamLinkStatus) => void): () => void;
   };
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
@@ -1221,6 +1266,8 @@ export interface DrashtiBridge {
     onPointed(listener: (clip: PointedClip | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;
+    /** Tests only (a packaged Drashti never sends it): the scene fails as it draws while this file is up (x53). */
+    onTestThrowWhile(listener: (mediaId: string | null) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */
     onTestClock(listener: (at: number | null) => void): () => void;
     /** Keep these screens? (Session 50) on this output, when it covers the controls (null: answered). */

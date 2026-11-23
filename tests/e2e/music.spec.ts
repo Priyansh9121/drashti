@@ -118,6 +118,9 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
   const second = await audioLayer(win);
   expect(Math.abs((second?.startedAt ?? 0) - (started + 3000))).toBeLessThan(100);
   await expect(panel.getByTestId('music-now')).toContainText('Placeholder tone two');
+  // Heard before it is paused: a track whose sound has not begun yet (still at 0) has nothing to fade, and stops at
+  // once (the final CI on CI's Mac paused it 11 ms after it went up, lead-1121-212601-final).
+  await expect.poll(() => volumeOf(audio, toneTwo)).toBeGreaterThan(0.99);
 
   // Pause: it fades out and makes no sound; Play goes on from where it was.
   const fadingOut = await sampleVolumes(audio, toneTwo);

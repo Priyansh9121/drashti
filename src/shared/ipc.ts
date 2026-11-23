@@ -1,3 +1,8 @@
+import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+
+import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type { VideoAnalysisResult } from './video-analysis';
+import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
 import type { ControllerArea, ControllerReply, ControllerRequest, EngineSeen } from './controller-actions';
@@ -156,6 +161,7 @@ import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { StreamLinkJoin, StreamLinkResult, StreamLinkStatus } from './live-link';
 import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
@@ -597,6 +603,11 @@ export const IPC = {
      * off with its sound, says so by its name and where, and logs the error's kind (unless a GPU process stopped then).
      */
     cannotPlay: 'media:cannot-play',
+    /**
+     * How many bytes of a library file Main has sent the pages so far (Q60-51): a video still coming in is loading, even
+     * where its page can tell nothing else.
+     */
+    served: 'media:served',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -604,12 +615,25 @@ export const IPC = {
      * at low priority, with the library's notes on it (the operator window's, Simple Mode's too; it changes nothing).
      */
     details: 'media:details',
+    videoAnalysis: 'media:video-analysis',
+    proxyStatus: 'media:proxy-status',
+    stopProxy: 'media:stop-proxy',
+    clipExport: 'media:clip-export',
+    clipExports: 'media:clip-clips',
+    stopClipExport: 'media:stop-clip-export',
+    showClipExport: 'media:show-clip-export',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
     resumePoint: 'media:resume-point',
     /** Snapshot (alpha.20, the time bar's ⋯): the frame on the screens, a PNG in Media (operator window, Pro Mode). */
     snapshot: 'media:snapshot',
+    /** Sound and picture… (alpha.20): a video's or a sound's own tone and delays, read and kept (operator window). */
+    videoEdit: 'media:video-edit',
+    setVideoEdit: 'media:set-video-edit',
+    videoEditChanged: 'media:video-edit-changed',
+    playback: 'media:playback',
+    setPlayback: 'media:set-playback',
     /**
      * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
      * and keep the live zoom as the picture's (Keep this zoom).
@@ -652,6 +676,8 @@ export const IPC = {
     testTone: 'audio:test-tone',
     /** main -> operator: the sound output status changed. */
     status: 'audio:status',
+    /** The sound player given up on is tried again now (x53, its red notice's Try again; the operator window only). */
+    tryAgain: 'audio:try-again',
   },
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside switch, a file's Even
@@ -1032,6 +1058,21 @@ export const IPC = {
     /** main -> operator: YouTube's state here changed. */
     changed: 'youtube:changed',
   },
+  /** Show a Stream Link… (alpha.20, the playback set's slice 8): an HLS or YouTube live link on the hall's screens. */
+  liveLink: {
+    /** Show a link the operator typed: up once its pictures come, or why not (operator window only; Pro Mode). */
+    show: 'livelink:show',
+    /** Stop the link connecting, or take the one up off (operator window only). */
+    stop: 'livelink:stop',
+    /** How the stream link stands (operator window). */
+    status: 'livelink:status',
+    /** The last link shown, for the window to offer again (operator window only; Pro Mode). */
+    last: 'livelink:last',
+    /** A screen's page or the audio player joins the link up: where its player starts, and when (any of Drashti's pages). */
+    join: 'livelink:join',
+    /** main -> operator: it changed (connecting, playing, reconnecting, the Wallpaper, ended, off). */
+    changed: 'livelink:changed',
+  },
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
     /** The other apps' open windows the picker offers (operator window only; Pro Mode). */
@@ -1209,6 +1250,11 @@ export const IPC = {
     gpuRestarted: 'output:gpu-restarted',
     /** main -> output, tests only (never sent by a packaged Drashti): draw an element that throws (Session 23). */
     testThrow: 'output:test-throw',
+    /**
+     * main -> output, tests only (never sent by a packaged Drashti): the hall screen's scene fails each time it draws
+     * while this file is up (x53; null: none), as a layer whose data makes a component throw would.
+     */
+    testThrowWhile: 'output:test-throw-while',
     /**
      * main -> output, tests only (never sent by a packaged Drashti): hold the page's clock at a moment of the
      * engine's time, or let it go (null), so two screens can be compared part-way through a transition
@@ -1661,11 +1707,29 @@ export interface InvokeContract {
     args: [mediaId: string, startedAt: number, code: number, words: string];
     result: null;
   };
+  [IPC.media.served]: { args: [mediaId: string]; result: number };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
+  [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
+  [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };
+  [IPC.media.clipExport]: { args: [request: ClipExportRequest]; result: ClipExportResult };
+  [IPC.media.clipExports]: { args: []; result: ClipExportJob[] };
+  [IPC.media.stopClipExport]: { args: [jobId: string]; result: boolean };
+  [IPC.media.showClipExport]: { args: [jobId: string]; result: null };
+  [IPC.media.videoAnalysis]: {
+    args: [mediaId: string, audioStream: number | null, retry: boolean];
+    result: VideoAnalysisResult;
+  };
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
   [IPC.media.snapshot]: { args: [playing: PlayingRef]; result: SnapshotResult };
+  [IPC.media.videoEdit]: { args: [mediaId: string]; result: VideoEditResult };
+  [IPC.media.setVideoEdit]: { args: [request: SaveVideoEdit]; result: VideoEditResult };
+  [IPC.media.playback]: { args: [mediaId: string]; result: PlaybackSettings | null };
+  [IPC.media.setPlayback]: {
+    args: [mediaId: string, settings: PlaybackSettings];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
@@ -1705,6 +1769,7 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
+  [IPC.audio.tryAgain]: { args: []; result: { ok: true } | { ok: false; message: string } };
   [IPC.messages.list]: { args: []; result: MessageTemplate[] };
   [IPC.messages.create]: { args: [template: MessageTemplateFields]; result: MessageResult };
   [IPC.messages.update]: {
@@ -1868,6 +1933,11 @@ export interface InvokeContract {
   [IPC.youtube.schedule]: { args: [input: YouTubeScheduleInput]; result: YouTubeResult };
   [IPC.youtube.useBroadcast]: { args: [profileId: string, broadcastId: string]; result: YouTubeResult };
   [IPC.youtube.endBroadcast]: { args: [profileId: string]; result: YouTubeResult };
+  [IPC.liveLink.show]: { args: [link: string]; result: StreamLinkResult };
+  [IPC.liveLink.stop]: { args: []; result: null };
+  [IPC.liveLink.status]: { args: []; result: StreamLinkStatus };
+  [IPC.liveLink.last]: { args: []; result: string | null };
+  [IPC.liveLink.join]: { args: [linkId: string]; result: StreamLinkJoin | null };
   [IPC.liveWindow.list]: { args: []; result: WindowList };
   [IPC.liveWindow.show]: { args: [id: string]; result: LiveWindowResult };
   [IPC.liveWindow.access]: { args: []; result: null };
@@ -2019,6 +2089,7 @@ export interface EventContract {
   [IPC.output.gpuRestarted]: { at: number };
   [IPC.output.pointed]: { clip: PointedClip | null };
   [IPC.output.testThrow]: Record<string, never>;
+  [IPC.output.testThrowWhile]: { mediaId: string | null };
   [IPC.output.testClock]: { at: number | null };
   [IPC.audio.chosen]: { device: AudioDevice | null };
   [IPC.audio.testTone]: { deviceId: string };
@@ -2033,9 +2104,11 @@ export interface EventContract {
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
+  [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;
+  [IPC.liveLink.changed]: StreamLinkStatus;
   [IPC.liveWindow.changed]: LiveWindowStatus;
   [IPC.videoInputs.changed]: VideoInputsView;
   [IPC.videoInputs.statusChanged]: VideoInputStatus;

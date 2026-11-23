@@ -1,5 +1,12 @@
 import type { DrashtiBridge } from '../../../shared/bridge';
-import { FIRST_FRAME_MS, NO_FIRST_FRAME } from '../../../shared/no-picture';
+import {
+  NO_FIRST_FRAME,
+  NO_START_IN_TIME,
+  startVerdict,
+  startWatch,
+  startWatched,
+} from '../../../shared/no-picture';
+import { engineNow } from './clock';
 import type { PlaybackError } from './playback';
 
 /*
@@ -43,7 +50,9 @@ export function tellCannotPlay(
 ): void {
   const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
   // A first frame that never came is said once, and an error after it still is (Q60-44).
-  const key = `${mediaId}@${String(startedAt)}#${String(attempt)}${error.code === NO_FIRST_FRAME ? '/no-frame' : ''}`;
+  const key = `${mediaId}@${String(startedAt)}#${String(attempt)}${
+    error.code === NO_FIRST_FRAME ? '/no-frame' : error.code === NO_START_IN_TIME ? '/slow' : ''
+  }`;
   if (!bridge?.media?.cannotPlay || failedTold.has(key)) return;
   failedTold.add(key);
   void bridge.media.cannotPlay(mediaId, startedAt, error.code, error.message).catch(() => undefined);
@@ -62,16 +71,102 @@ export function watchFirstFrame(
 ): () => void {
   if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return () => undefined;
   const listening = new AbortController();
-  // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
-  const timer = setTimeout(() => {
+  const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
     listening.abort();
-    tellCannotPlay(mediaId, startedAt, attempt, { code: NO_FIRST_FRAME, message: '' });
-  }, FIRST_FRAME_MS);
+    tellCannotPlay(mediaId, startedAt, attempt, {
+      code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
+      message: seen,
+    });
+  });
   const stop = () => {
-    clearTimeout(timer);
+    stopWatch();
     listening.abort();
   };
   v.addEventListener('loadeddata', stop, { signal: listening.signal });
   v.addEventListener('error', stop, { signal: listening.signal });
+  return stop;
+}
+
+/** How often a page looks at a video's start (ms). */
+const START_LOOK_MS = 500;
+
+/** The end of what a video has buffered (ms into its file). */
+function bufferedEndMs(v: HTMLVideoElement): number {
+  const b = v.buffered;
+  return b.length > 0 ? b.end(b.length - 1) * 1000 : 0;
+}
+
+/** Frames a video has decoded (Chromium's count; 0 where the page cannot tell). */
+function decodedFrames(v: HTMLVideoElement): number {
+  const chromium = (v as HTMLVideoElement & { webkitDecodedFrameCount?: number }).webkitDecodedFrameCount;
+  return typeof chromium === 'number' ? chromium : 0;
+}
+
+/**
+ * Watch a video's start until its first frame (Q60-51, the owner's "Yes, A"; shared/no-picture.ts startVerdict): every
+ * half second, how much it has loaded and decoded and how ready it is, its own 'progress' events, and how much of its
+ * file Main has sent (on CI's Mac a slow file told the page nothing else: x47-1120-205802-554); said once: 'stalled'
+ * (no progress for FIRST_FRAME_MS: it cannot play, as before) or 'slow' (still loading or decoding with no first frame by
+ * SLOW_START_MS: it could not start in time). Stop it when the first frame comes or it fails.
+ */
+export function watchStart(
+  v: HTMLVideoElement,
+  mediaId: string,
+  said: (verdict: 'stalled' | 'slow', seen: string) => void,
+): () => void {
+  let watch = startWatch(engineNow());
+  let looked = 0;
+  let answers = 0;
+  let progressEvents = 0;
+  const onProgress = () => {
+    progressEvents++;
+  };
+  v.addEventListener('progress', onProgress);
+  // What Main has sent of the file, asked at each look (phones' pages have no bridge: 0, as they cannot ask).
+  const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
+  let served = 0;
+  const askServed = () => {
+    if (!bridge?.media) return;
+    void bridge.media
+      .served(mediaId)
+      .then((bytes) => {
+        answers++;
+        if (typeof bytes === 'number' && bytes > served) served = bytes;
+      })
+      .catch(() => undefined);
+  };
+  askServed();
+  // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
+  const looks = setInterval(() => {
+    const at = engineNow();
+    watch = startWatched(watch, {
+      at,
+      loadedMs: bufferedEndMs(v),
+      readyState: v.readyState,
+      decoded: decodedFrames(v),
+      progressEvents,
+      served,
+    });
+    looked++;
+    askServed();
+    const verdict = startVerdict(watch, at);
+    if (verdict === 'wait') return;
+    stop();
+    // What it saw, for the log and Save Diagnostics (Main logs it with the video's kind; never shown to anyone).
+    const last = watch.last;
+    const seen = `${String(looked)} looks over ${((at - watch.since) / 1000).toFixed(1)} s, the last progress ${(
+      (at - watch.lastProgress) /
+      1000
+    ).toFixed(1)} s ago; loaded ${String(Math.round(last?.loadedMs ?? 0))} ms, ready state ${String(
+      last?.readyState ?? 0,
+    )}, ${String(last?.decoded ?? 0)} decoded, ${String(last?.progressEvents ?? 0)} progress, ${String(
+      last?.served ?? 0,
+    )} bytes sent (${String(answers)} answers)`;
+    said(verdict, seen);
+  }, START_LOOK_MS);
+  const stop = () => {
+    clearInterval(looks);
+    v.removeEventListener('progress', onProgress);
+  };
   return stop;
 }

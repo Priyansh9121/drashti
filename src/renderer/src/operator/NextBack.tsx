@@ -15,6 +15,10 @@ import { NextPicture, useNextCaption } from './NextPreview';
  * what was on the screens before the last change comes back, one step a press. In the practice show they work the
  * practice.
  */
+
+/** Back's and Next's keys, shown from about a 336 px live column (alpha.21): narrower, their words have the room. */
+const KEY_WHEN_ROOM = 'hidden @[19.5rem]/nextback:inline-flex';
+
 export function NextBack({
   platform,
   run,
@@ -49,7 +53,8 @@ export function NextBack({
   return (
     <>
       <div
-        className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 px-3 pt-2"
+        // Their keys only where they fit (alpha.21: in the owner's live column at its least, Next ran into the picture).
+        className="@container/nextback grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 px-3 pt-2"
         role="group"
         aria-label="Next and Back"
       >
@@ -58,6 +63,7 @@ export function NextBack({
           instant
           icon={ChevronLeft}
           kbd={shortcutText('previous', platform)}
+          kbdClassName={KEY_WHEN_ROOM}
           disabled={!live}
           data-testid="show-back"
           onClick={() => {
@@ -72,6 +78,7 @@ export function NextBack({
           instant
           iconEnd={ChevronRight}
           kbd={shortcutText('next', platform)}
+          kbdClassName={KEY_WHEN_ROOM}
           disabled={!canNext}
           data-testid="show-next"
           onClick={() => {

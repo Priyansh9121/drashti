@@ -85,7 +85,7 @@ When the stream starts following a show already running, the current picture is 
 
 **How:**
 
-1. Once, set up your own free Google project (`docs/youtube-setup.md`), then **Set up…** and **Sign in to YouTube…**.
+1. Once, follow **Scheduling YouTube streams from Drashti: your Google project** (`docs/youtube-setup.md`), then **Set up…** and **Sign in to YouTube…**.
 2. Press **Schedule a stream…**, give its title, date and time, and **Who can watch**.
 3. Leave **Stream to it from** this profile ticked, so its key goes in.
 4. Go live from the Stream panel as usual. **End the stream…** ends it on YouTube too.

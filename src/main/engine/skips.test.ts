@@ -72,7 +72,7 @@ const sound = (mediaId: string, loop = false): EngineCommand => ({
   audio: { id: `sound:${mediaId}`, title: 'Placeholder sound', mediaId, volume: 1, loop },
 });
 
-const skip = (layer: 'background' | 'audio', jump: 'back' | 'forward' | 'last'): EngineCommand => ({
+const skip = (layer: 'background' | 'audio', jump: 'back' | 'forward'): EngineCommand => ({
   type: 'skip',
   layer,
   jump,
@@ -97,8 +97,8 @@ const background = (e: ShowEngine) => {
 };
 const audio = (e: ShowEngine) => e.current.layers.audio;
 
-describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
-  it('jump the background video: Back within the first 15 s to the start, else 15 s either way; Last 10 s', () => {
+describe('Back 15 s and Forward 15 s (Session 50; Last 10 s went in alpha.21)', () => {
+  it('jump the background video: Back within the first 15 s to the start, else 15 s either way', () => {
     const { engine, elapse, now } = setup();
     engine.dispatch(video('video'));
     elapse(10_000);
@@ -110,8 +110,6 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     elapse(5000);
     engine.dispatch(skip('background', 'forward'));
     expect(background(engine)?.seek).toEqual({ at: now(), toMs: 35_000 });
-    engine.dispatch(skip('background', 'last'));
-    expect(background(engine)?.seek).toEqual({ at: now(), toMs: 50_000 });
     // The same file, start time and look: only where it plays from moved.
     expect(background(engine)).toMatchObject({ mediaId: 'video', startedAt: 1_000_000, durationMs: 60_000 });
   });
@@ -126,11 +124,6 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     if (held) expect(playbackPosition(held, 60, now() + 5000)).toBe(60);
     // Already at its end: nothing more to do.
     expect(engine.dispatch(skip('background', 'forward'))).toMatchObject({ ok: true, changed: false });
-    // Last 10 s on a file shorter than 10 s goes to the end too.
-    engine.dispatch(video('short'));
-    elapse(1000);
-    engine.dispatch(skip('background', 'last'));
-    expect(background(engine)?.seek).toEqual({ at: now(), toMs: 8000 });
     // Looping, the end goes round: it plays on from its start.
     engine.dispatch(video('video', true));
     elapse(50_000);
@@ -150,10 +143,11 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     elapse(18_000);
     engine.dispatch(skip('background', 'forward'));
     expect(background(engine)?.seek).toEqual({ at: now(), toMs: 40_000 });
-    engine.dispatch(skip('background', 'last'));
-    expect(background(engine)?.seek).toEqual({ at: now(), toMs: 30_000 });
+    // Back from its end point it holds, then back again to no earlier than its start point.
     engine.dispatch(skip('background', 'back'));
-    expect(background(engine)?.seek).toEqual({ at: now(), toMs: 15_000 });
+    expect(background(engine)?.seek).toEqual({ at: now(), toMs: 25_000 });
+    engine.dispatch(skip('background', 'back'));
+    expect(background(engine)?.seek).toEqual({ at: now(), toMs: 10_000 });
   });
 
   it('jump a single sound the same way: played once it ends at the end, looping it goes round', () => {
@@ -162,9 +156,9 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     elapse(20_000);
     engine.dispatch(skip('audio', 'back'));
     expect(audio(engine)?.seek).toEqual({ at: now(), toMs: 5000 });
-    engine.dispatch(skip('audio', 'last'));
-    expect(audio(engine)?.seek).toEqual({ at: now(), toMs: 80_000 });
-    elapse(5000);
+    engine.dispatch(skip('audio', 'forward'));
+    expect(audio(engine)?.seek).toEqual({ at: now(), toMs: 20_000 });
+    elapse(60_000);
     engine.dispatch(skip('audio', 'forward'));
     expect(audio(engine)).toMatchObject({ mediaId: 'sound', seek: { at: now(), toMs: 90_000 } });
     engine.dispatch(sound('b', true));
@@ -182,10 +176,10 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     engine.dispatch(skip('audio', 'forward'));
     expect(audio(engine)).toMatchObject({ mediaId: 'b', startedAt: now() });
     expect(audio(engine)?.seek).toBeUndefined();
-    // Last 10 s of track B: ten seconds later, C starts where B ended.
-    engine.dispatch(skip('audio', 'last'));
-    expect(audio(engine)?.seek).toEqual({ at: now(), toMs: 20_000 });
-    elapse(9_900);
+    // Forward 15 s of track B (30 s long): fifteen seconds later, C starts where B ended.
+    engine.dispatch(skip('audio', 'forward'));
+    expect(audio(engine)?.seek).toEqual({ at: now(), toMs: 15_000 });
+    elapse(14_900);
     expect(audio(engine)?.mediaId).toBe('b');
     elapse(100);
     expect(audio(engine)).toMatchObject({ mediaId: 'c', startedAt: now() });
@@ -193,11 +187,9 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     elapse(35_000);
     engine.dispatch(skip('audio', 'forward'));
     expect(audio(engine)).toBeNull();
-    // Going round, the last track's end goes on to the first; Last 10 s within the last 10 s goes back.
+    // Going round, the last track's end goes on to the first.
     engine.dispatch({ type: 'playMusic', music: music({ loop: true }), index: 2 });
     elapse(40_000);
-    engine.dispatch(skip('audio', 'last'));
-    expect(audio(engine)).toMatchObject({ mediaId: 'c', seek: { at: now(), toMs: 35_000 } });
     engine.dispatch(skip('audio', 'forward'));
     expect(audio(engine)).toMatchObject({ mediaId: 'a', startedAt: now() });
   });
@@ -212,8 +204,8 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     expect(audio(engine)?.seek).toBeUndefined();
     engine.dispatch(skip('audio', 'back'));
     expect(audio(engine)?.pausedAtMs).toBe(0);
-    engine.dispatch(skip('audio', 'last'));
-    expect(audio(engine)?.pausedAtMs).toBe(50_000);
+    for (let i = 0; i < 3; i++) engine.dispatch(skip('audio', 'forward'));
+    expect(audio(engine)?.pausedAtMs).toBe(45_000);
     engine.dispatch(skip('audio', 'forward'));
     expect(audio(engine)).toMatchObject({ mediaId: 'b', pausedAtMs: 0 });
     // Paused, it waits however long, and plays from its new point.
@@ -226,8 +218,9 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     // The last track, paused: its end waits there (it can still come back); Play then ends the music.
     engine.dispatch({ type: 'musicNext' });
     engine.dispatch({ type: 'pauseMusic' });
-    engine.dispatch(skip('audio', 'last'));
-    expect(audio(engine)).toMatchObject({ mediaId: 'c', pausedAtMs: 35_000 });
+    engine.dispatch(skip('audio', 'forward'));
+    engine.dispatch(skip('audio', 'forward'));
+    expect(audio(engine)).toMatchObject({ mediaId: 'c', pausedAtMs: 30_000 });
     engine.dispatch(skip('audio', 'forward'));
     expect(audio(engine)).toMatchObject({ mediaId: 'c', pausedAtMs: 45_000 });
     engine.dispatch(skip('audio', 'back'));
@@ -292,25 +285,27 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
       type: 'setBackground',
       background: { kind: 'media', mediaId: 'picture', media: 'image', fit: 'fit', loop: false },
     });
-    expect(engine.dispatch(skip('background', 'last'))).toMatchObject({
+    expect(engine.dispatch(skip('background', 'forward'))).toMatchObject({
       ok: false,
       error: 'nothing-playing',
     });
     // A file no window has said the length of yet: nothing moves.
     engine.dispatch(video('new'));
     const before = engine.rev;
-    expect(engine.dispatch(skip('background', 'last'))).toMatchObject({ ok: false, error: 'no-length' });
+    expect(engine.dispatch(skip('background', 'forward'))).toMatchObject({ ok: false, error: 'no-length' });
     expect(engine.dispatch(skip('background', 'back'))).toMatchObject({ ok: false, error: 'no-length' });
     expect(engine.rev).toBe(before);
     // Once a window says how long it is, it jumps.
     engine.learnLength('new', 20_000);
-    expect(engine.dispatch(skip('background', 'last'))).toMatchObject({ ok: true, changed: true });
-    expect(background(engine)?.seek?.toMs).toBe(10_000);
+    expect(engine.dispatch(skip('background', 'forward'))).toMatchObject({ ok: true, changed: true });
+    expect(background(engine)?.seek?.toMs).toBe(15_000);
   });
 
-  it('come from the operator window and, since Session 54, a phone remote’s LIVE (D5), and only these three exist', () => {
+  it('come from the operator window and, since Session 54, a phone remote’s LIVE (D5), and only these two exist (Last 10 s is no more: alpha.21, the owner’s “remove last 10s whole concept”)', () => {
     expect(REMOTE_COMMANDS as readonly string[]).toContain('skip');
-    expect(parseEngineCommand({ type: 'skip', layer: 'audio', jump: 'last' }).ok).toBe(true);
+    expect(parseEngineCommand({ type: 'skip', layer: 'audio', jump: 'back' }).ok).toBe(true);
+    expect(parseEngineCommand({ type: 'skip', layer: 'audio', jump: 'forward' }).ok).toBe(true);
+    expect(parseEngineCommand({ type: 'skip', layer: 'audio', jump: 'last' }).ok).toBe(false);
     expect(parseEngineCommand({ type: 'skip', layer: 'audio', jump: 'next' }).ok).toBe(false);
     expect(parseEngineCommand({ type: 'skip', layer: 'slide', jump: 'back' }).ok).toBe(false);
   });

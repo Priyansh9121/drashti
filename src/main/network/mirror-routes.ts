@@ -3,7 +3,7 @@ import type { DeviceOp } from '../../shared/network-api';
 /*
  * The requests that make a phone a mirror of the operator window (Session 54, D5; docs/api.md): the keys the
  * window answers, the media, the lower thirds and the audio playlists, read and put up by id; a lower third taken
- * off; a timer alone on the screens; the stage message; and Back 15 s, Forward 15 s and Last 10 s (Session 55, Part
+ * off; a timer alone on the screens; the stage message; and Back 15 s and Forward 15 s (Session 55, Part
  * 12: the props, the masks and the idle rotation went). Made by server.ts's own `route`, so each is checked as every
  * other request is (a Remote's token, its kind, Simple Mode in the main process). None shares a path with a request
  * before it.

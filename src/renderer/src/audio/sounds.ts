@@ -3,6 +3,7 @@ import type { DeckMedia } from '../../../shared/deck';
 import { deckMediaOf, playsAcross } from '../../../shared/deck-show';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
+import type { Tone } from '../../../shared/playback-settings';
 import { gainOf, type SoundKind } from '../../../shared/sound';
 
 /** One sound the show is making: a file, when it started, and how. */
@@ -32,6 +33,13 @@ export interface Sound {
   gain?: number;
   /** The music (Part 7, K): the audio layer's sound, which steps aside under a video with sound. */
   aside?: true;
+  /** Sound and picture… (alpha.20): its file's tone (Bass, Treble, Voice boost). Left out: as it is. */
+  tone?: Tone;
+  /**
+   * A stream link's sound (alpha.20, the playback set's slice 8): the link's id, its player joined as its pictures are
+   * (render/live-playback.ts), never a file. Left out for every file's sound.
+   */
+  link?: string;
   /**
    * Which of the operator's two levels it plays under (X33, shared/sound.ts): Audio's (a sound: the audio layer, a sound
    * over it, a deck's sounds and its transition's) or Video's (a video's sound: the background's, the slide's videos').
@@ -197,5 +205,49 @@ export function soundsOf(state: EngineState): Sound[] {
         kind: 'audio',
       });
   }
-  return sounds;
+  return sounds.map((s) => withPlayback(state, s));
+}
+
+/**
+ * Sound and picture… (alpha.20): a file's tone, and its sound moved later (or earlier) than its picture by its delay: a
+ * jump of its own (a start still to come waits paused at its point), so the hall and the stream hear it alike; its key
+ * stays, so a change while it plays is one aimed jump, never a new start. The pictures never move.
+ */
+export function withPlayback(state: EngineState, sound: Sound): Sound {
+  const tones = state.sound?.tones;
+  const delays = state.sound?.delays;
+  const tone = tones && Object.hasOwn(tones, sound.mediaId) ? tones[sound.mediaId] : undefined;
+  const delay = delays && Object.hasOwn(delays, sound.mediaId) ? (delays[sound.mediaId] ?? 0) : 0;
+  let out = tone ? { ...sound, tone } : sound;
+  if (delay !== 0 && Number.isFinite(delay)) {
+    const seek = out.seek
+      ? { ...out.seek, at: out.seek.at + delay }
+      : { at: out.startedAt + delay, toMs: out.clip?.startMs ?? 0 };
+    out = { ...out, seek };
+  }
+  return out;
+}
+
+/**
+ * Every sound the hall hears (the audio player's): soundsOf's, and a stream link's up as the background (alpha.20, the
+ * playback set's slice 8), at the Video level as a video's sound is. One sound for the link whatever start its pages
+ * are on (they all start again together after a drop: the player joins again, the sound carries on as one). Never in
+ * soundsOf, which Drashti's own stream mixes: someone else's webcast never goes out again (the owner's Q60-39 P3 A).
+ */
+export function hallSoundsOf(state: EngineState): Sound[] {
+  const sounds = soundsOf(state);
+  const bg = state.layers.background;
+  if (state.stopped || bg?.kind !== 'link') return sounds;
+  return [
+    ...sounds,
+    {
+      key: `link:${bg.linkId}`,
+      mediaId: `link:${bg.linkId}`,
+      link: bg.linkId,
+      startedAt: bg.startedAt,
+      loop: false,
+      volume: 1,
+      kind: 'video',
+    },
+  ];
 }

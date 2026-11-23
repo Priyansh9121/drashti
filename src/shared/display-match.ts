@@ -9,6 +9,13 @@ const sameSize = (k: DisplayKey, d: DisplayInfo) =>
   k.pixelWidth === d.pixelWidth && k.pixelHeight === d.pixelHeight;
 const samePlace = (k: DisplayKey, d: DisplayInfo) => k.x === d.key.x && k.y === d.key.y;
 const sameLabel = (k: DisplayKey, d: DisplayInfo) => k.label !== '' && k.label === d.label;
+/**
+ * The same display id and the same name, an empty one too, at any size (x53; the owner's Q60-31 bug hunt, x52's D2): a
+ * display that gives no name and no serial number (some cheap projectors, HDMI converters, extenders) changing its
+ * resolution, or two of one model with one name changing theirs at once, keeps its screen as a named one does by its
+ * name. Its id holds through a change of mode on both systems.
+ */
+const sameIdAndName = (k: DisplayKey, d: DisplayInfo) => k.id === d.id && k.label === d.label;
 /** Both know the display's own identity (Session 55), and it is the same display. */
 const sameHardware = (k: DisplayKey, d: DisplayInfo) =>
   typeof k.hardwareId === 'string' && k.hardwareId !== '' && k.hardwareId === d.key.hardwareId;
@@ -31,8 +38,10 @@ const otherHardware = (k: DisplayKey, d: DisplayInfo) =>
  *   1. same display id and pixel size;
  *   2. same label and pixel size (id changed, e.g. after a reboot on Windows);
  *   3. same position and pixel size (unlabelled displays);
- *   4. same label (the monitor is back but its resolution changed).
- * Passes 1 to 4 are for a display whose identity is not known on one side (it gives no serial number, it has not
+ *   4. same display id and label, at any size (x53: a display with no name, or two of one model with one name, whose
+ *      resolution changed);
+ *   5. same label (the monitor is back but its resolution changed).
+ * Passes 1 to 5 are for a display whose identity is not known on one side (it gives no serial number, it has not
  * been read yet, or the key was saved before Session 55): two whose identities are both known and differ are
  * never matched. A screen with no match maps to null: its display is missing.
  */
@@ -47,6 +56,7 @@ export function matchDisplays(
     (k, d) => k.id === d.id && sameSize(k, d),
     (k, d) => sameLabel(k, d) && sameSize(k, d),
     (k, d) => samePlace(k, d) && sameSize(k, d),
+    sameIdAndName,
     (k, d) => sameLabel(k, d),
   ];
   for (const pass of passes) {

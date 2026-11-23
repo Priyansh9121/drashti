@@ -1,3 +1,6 @@
+import type { VideoEditPreparation } from './video-edit-ready';
+import type { Tone } from '../../shared/playback-settings';
+import type { ShapeOverride } from '../../shared/video-shape';
 import { followingItems } from './playlist-source';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
@@ -34,6 +37,7 @@ import {
   type UpNext,
   type VideoClips,
   type VideoSeeks,
+  type LinkBackground,
   type WindowBackground,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
@@ -204,7 +208,7 @@ function playedToEnd(layer: PlaybackClock & { durationMs?: number }, now: number
  * and neither is a track ending and the next starting.
  */
 const MUSIC_COMMANDS: ReadonlySet<string> = new Set([
-  // A jump to a marker moves what plays, not the slides; so do Back 15 s, Forward 15 s and Last 10 s
+  // A jump to a marker moves what plays, not the slides; so do Back 15 s and Forward 15 s
   // (Session 50).
   'jumpToMarker',
   'skip',
@@ -248,6 +252,10 @@ export interface LookSource {
 }
 
 export interface EngineOptions {
+  /** Logical library identity for an immutable prepared playing file. */
+  sourceMediaId?: (mediaId: string) => string;
+  /** Check new showings once; historic/recovered showings keep their immutable files. */
+  prepareVideoEdits?: (previous: EngineState, next: EngineState, historic: boolean) => VideoEditPreparation;
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
   defaultTransition?: () => Transition;
   /** Run `run` after `delayMs`; returns a way to cancel it (setTimeout when left out; tests run it by hand). */
@@ -311,6 +319,16 @@ export interface EngineOptions {
   levels?: () => SoundLevels;
   /** Parsed captions for a library video, with the admin’s band size and place. */
   videoCaptionsOf?: (mediaId: string) => VideoCaptionsShown | null;
+  /**
+   * Sound and picture… (alpha.20, main/index.ts from the library): a file's tone (none: as it is) and how much later
+   * its sound comes than its picture (ms); null for none.
+   */
+  playbackOf?: (mediaId: string) => { tone: Tone | null; soundDelayMs: number } | null;
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55; main/index.ts from the library): a video's own shape on the screens, or
+   * null as its file says (shared/video-shape.ts).
+   */
+  videoShape?: (mediaId: string) => ShapeOverride | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -387,6 +405,11 @@ export interface Restored {
   window: string | null;
   /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
   pipWindow: string | null;
+  /**
+   * A stream link that was the background (alpha.20, slice 8), by its name: never put back (its local stream went with
+   * the stop; Show a Stream Link… shows it again), only said. Left out when there was none.
+   */
+  link?: string;
   /** The video input put back as the background (Session 50), by name (not counted in `background`), or null. */
   input: string | null;
   /** A video input that was the background but is no longer in this computer's list, by name: only said. */
@@ -493,6 +516,7 @@ export class ShowEngine {
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
   private bookkeeping = false;
+  private restoringVideoEdits = false;
   /**
    * The chosen video input put up by LIVE's one press (Session 55, toggleInput), as it went up, and the background it
    * replaced: pressed again while that showing is still up, that background comes back.
@@ -666,12 +690,14 @@ export class ShowEngine {
     if (alone) actions.push({ type: 'slide/put', layer: this.timerLayer(alone, null) });
     // Another app's window is never put back: it may be gone, or be another window now (Session 48).
     const window = request.background?.kind === 'window' ? request.background.name : null;
+    // Nor is a stream link (alpha.20, slice 8): its local stream went with the stop; only said.
+    const link = request.background?.kind === 'link' ? request.background.name : null;
     // A video input (Session 50) comes back while it is still in this computer's list, as the list has it now;
     // one no longer there is only said. Whether its camera is plugged in only the screens can tell: the first
     // to draw it says (src/main/video-inputs/), and one that is not there comes off again, named.
     const wasInput = request.background?.kind === 'input' ? request.background : null;
     const input = wasInput ? this.asListed(wasInput) : null;
-    let background = window !== null ? null : wasInput ? input : request.background;
+    let background = window !== null || link !== null ? null : wasInput ? input : request.background;
     // A video keeps its start time and its last jump, so it carries on where it would be now, between its start
     // and end points (Session 51: since Session 14 it came back as if never jumped, over the whole file).
     if (background?.kind === 'media') {
@@ -745,7 +771,12 @@ export class ShowEngine {
     const repeating = request.repeat ? this.repeatRun(request.repeat.playlistId) : null;
     if (slide && repeating && request.slide?.presentationId === repeatPresentationId(repeating.playlistId))
       actions.push({ type: 'repeat/set', repeat: repeating });
-    this.apply(actions);
+    this.restoringVideoEdits = true;
+    try {
+      this.apply(actions);
+    } finally {
+      this.restoringVideoEdits = false;
+    }
     // A video or a video input under black-out or the Wallpaper (a file saved before Session 56 could hold both) did not
     // come back: the cover did (one-at-a-time.ts), so the notice never names it.
     const kept = this.state.layers.background !== null;
@@ -782,6 +813,7 @@ export class ShowEngine {
       stageMessage: Boolean(request.stageMessage),
       timers,
       window,
+      ...(link !== null ? { link } : {}),
       pipWindow: box.window,
       input: kept ? (input?.name ?? null) : null,
       inputGone: wasInput && !input ? wasInput.name : null,
@@ -815,6 +847,64 @@ export class ShowEngine {
         true,
       ),
     );
+  }
+
+  /**
+   * A stream link as the background (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A), live on this
+   * computer's audience screens from now, in place of what was there. Only the main process calls this, with a link the
+   * operator typed whose local stream has begun (src/main/live-link/): no command from a window, a phone or the API can
+   * name one. The operator's own change, as Media's click is: it takes black-out and the Wallpaper off
+   * (one-at-a-time.ts), and so does its coming back by itself after a drop (the main process's, once nothing else went
+   * up meanwhile).
+   */
+  showLink(link: Pick<LinkBackground, 'linkId' | 'name'>): CommandResult {
+    return this.atOnce(() =>
+      this.apply(
+        [
+          {
+            type: 'background/set',
+            background: { kind: 'link', linkId: link.linkId, name: link.name, startedAt: this.now() },
+          },
+        ],
+        null,
+        true,
+      ),
+    );
+  }
+
+  /**
+   * A stream link gone for 20 seconds (P3 A): the Wallpaper goes up, the engine's own change (never the operator's), so
+   * the link comes off under it as a video does (one-at-a-time.ts). Nothing when that link is not the background.
+   */
+  linkDropped(linkId: string): CommandResult {
+    const bg = this.state.layers.background;
+    if (bg?.kind !== 'link' || bg.linkId !== linkId) return this.unchanged();
+    return this.apply([{ type: 'wallpaper/set', on: true }]);
+  }
+
+  /**
+   * Every page joins the stream link afresh (alpha.20, slice 8): the same link, a new start for all of them at once
+   * (after a drop, or as the show's time drifted from the stream's: src/main/live-link/). Bookkeeping, never the
+   * operator's change: nothing Back or Put it back would undo changes, and no cover is touched.
+   */
+  restartLink(linkId: string): CommandResult {
+    const bg = this.state.layers.background;
+    if (bg?.kind !== 'link' || bg.linkId !== linkId) return this.unchanged();
+    this.bookkeeping = true;
+    try {
+      return this.atOnce(() =>
+        this.apply([{ type: 'background/set', background: { ...bg, startedAt: this.now() } }]),
+      );
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  /** A stream link taken off by the main process (the operator's Stop on its notice, or one no longer received). */
+  clearLink(linkId: string): CommandResult {
+    const bg = this.state.layers.background;
+    if (bg?.kind !== 'link' || bg.linkId !== linkId) return this.unchanged();
+    return this.apply([{ type: 'layer/clear', layer: 'background' }], null, true);
   }
 
   /**
@@ -888,7 +978,13 @@ export class ShowEngine {
       Object.keys(old).length === Object.keys(tracks).length &&
       Object.entries(tracks).every(([id, next]) => {
         const prev = old[id];
-        return prev?.track === next.track && prev.size === next.size && prev.place === next.place;
+        return (
+          prev?.track === next.track &&
+          prev.size === next.size &&
+          prev.place === next.place &&
+          // Sound and picture… (alpha.20): a caption delay changed is a change.
+          prev.delayMs === next.delayMs
+        );
       })
     )
       return old;
@@ -912,8 +1008,8 @@ export class ShowEngine {
    * an engine with no library to ask (then the state never says, and every page plays each file as it is).
    */
   private soundFor(state: EngineState): SoundState | undefined {
-    const { soundOf, stepsAside, levels } = this.options;
-    if (!soundOf && !stepsAside && !levels) return undefined;
+    const { soundOf, stepsAside, levels, playbackOf } = this.options;
+    if (!soundOf && !stepsAside && !levels && !playbackOf) return undefined;
     const gains: Record<string, number> = {};
     const silent: string[] = [];
     for (const mediaId of soundFilesOf(state)) {
@@ -923,7 +1019,33 @@ export class ShowEngine {
       if (known.silent) silent.push(mediaId);
     }
     // The operator's Audio and Video levels and mutes (X33), as Main has them now.
-    return { stepsAside: stepsAside?.() ?? true, gains, silent, ...(levels ? { levels: levels() } : {}) };
+    return {
+      stepsAside: stepsAside?.() ?? true,
+      gains,
+      silent,
+      ...(levels ? { levels: levels() } : {}),
+      ...this.ownPlaybackFor(state),
+    };
+  }
+
+  /**
+   * Sound and picture… (alpha.20): the tone and the sound's delay of each file sounding now that has them, by media id,
+   * stamped as the even gains are, so the hall's audio player and the stream's own sound play them alike.
+   */
+  private ownPlaybackFor(state: EngineState): Pick<SoundState, 'tones' | 'delays'> {
+    const { playbackOf } = this.options;
+    if (!playbackOf) return {};
+    const tones: Record<string, Tone> = {};
+    const delays: Record<string, number> = {};
+    for (const mediaId of soundFilesOf(state)) {
+      const own = playbackOf(mediaId);
+      if (own?.tone) tones[mediaId] = own.tone;
+      if (own?.soundDelayMs) delays[mediaId] = own.soundDelayMs;
+    }
+    return {
+      ...(Object.keys(tones).length > 0 ? { tones } : {}),
+      ...(Object.keys(delays).length > 0 ? { delays } : {}),
+    };
   }
 
   refreshFiles(): CommandResult {
@@ -1457,7 +1579,7 @@ export class ShowEngine {
 
   /**
    * Layers as they were (Back), each file that plays on now as it did then (the same file, from the same
-   * start) keeping where it has jumped to since: a marker, Back 15 s, Forward 15 s or Last 10 s (Session 50),
+   * start) keeping where it has jumped to since: a marker, Back 15 s or Forward 15 s (Session 50),
    * so undoing a Next moves the slides, not what plays.
    */
   private withJumps(layers: Layers): Layers {
@@ -1746,7 +1868,7 @@ export class ShowEngine {
     // The same video played to its end starts again from its start point (Session 55): one still playing carries on,
     // and a paused one stays paused, as before.
     const up = this.state.layers.background;
-    const again = up?.kind === 'media' && up.mediaId === item.mediaId && playedToEnd(up, now);
+    const again = up?.kind === 'media' && this.sameMedia(up.mediaId, item.mediaId) && playedToEnd(up, now);
     const background = this.backgroundLayer(
       {
         kind: 'media',
@@ -1886,6 +2008,27 @@ export class ShowEngine {
    */
   refreshPictures(): CommandResult {
     return this.atOnce(() => this.apply([this.picturesSet(this.state)]));
+  }
+
+  /** A video's Shape changed in Sound and picture… (alpha.20, x55): the screens draw it so at once. */
+  refreshVideoShapes(): CommandResult {
+    return this.apply(this.videoShapesSet(this.state));
+  }
+
+  /**
+   * Sound and picture…'s Shape (alpha.20, x55): the shapes of the videos on the screens and coming next, and of the
+   * box's going out, by media id, as their pictures carry their looks (picturesIn), so every screen, node and the stream
+   * draw them alike; a video as its file says is left out. Nothing for an engine with no library to ask.
+   */
+  private videoShapesSet(state: EngineState): EngineAction[] {
+    const shapeOf = this.options.videoShape;
+    if (!shapeOf) return [];
+    const shapes: Record<string, ShapeOverride> = {};
+    for (const id of this.picturesIn(state)) {
+      const shape = shapeOf(id);
+      if (shape) shapes[id] = shape;
+    }
+    return [{ type: 'videoShapes/set', shapes }];
   }
 
   /** The live zoom ends (kept as the picture's look, say): the screens show its kept look. */
@@ -2188,7 +2331,7 @@ export class ShowEngine {
   }
 
   /**
-   * Back 15 s, Forward 15 s or Last 10 s (Session 50) on the background video or the sound playing: a jump,
+   * Back 15 s or Forward 15 s (Session 50) on the background video or the sound playing: a jump,
    * made as a jump to a marker is (the layer's seek), so every screen, the audio player, the nodes and the
    * stream play on from there in step. At the end, the end does what it always does: a looping file goes
    * round, one played once holds its end, an audio playlist's track goes on to the next. A paused track waits
@@ -2259,6 +2402,14 @@ export class ShowEngine {
    * The background layer for a choice. The file already on the layer keeps
    * its start time, so it carries on playing instead of restarting.
    */
+  private sameMedia(first: string, second: string): boolean {
+    return (
+      first === second ||
+      (!!this.options.sourceMediaId &&
+        this.options.sourceMediaId(first) === this.options.sourceMediaId(second))
+    );
+  }
+
   private backgroundLayer(
     choice: BackgroundChoice,
     fade?: { at: number; durationMs: number },
@@ -2268,10 +2419,15 @@ export class ShowEngine {
   ): BackgroundLayer {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
-    const length = this.lengthOf(choice.mediaId);
-    const same = !again && current?.kind === 'media' && current.mediaId === choice.mediaId;
-    const clip = this.pointsFor(choice.mediaId, 'background', same ? current.startedAt : undefined, itemId);
-    const media = { ...choice, ...(choice.media === 'video' ? { sourceItemId: itemId ?? null } : {}) };
+    const same = !again && current?.kind === 'media' && this.sameMedia(current.mediaId, choice.mediaId);
+    const mediaId = same ? current.mediaId : choice.mediaId;
+    const length = this.lengthOf(mediaId);
+    const clip = this.pointsFor(mediaId, 'background', same ? current.startedAt : undefined, itemId);
+    const media = {
+      ...choice,
+      mediaId,
+      ...(choice.media === 'video' ? { sourceItemId: itemId ?? null } : {}),
+    };
     if (same)
       return {
         ...media,
@@ -2998,6 +3154,13 @@ export class ShowEngine {
     // Before all that follows from the layers (what comes next, the time bars, the sound, Oops).
     const putUp = operator && !this.bookkeeping && putsUp(actions, next);
     next = oneAtATime(prev, next, { operator, putUp }, this.now()).reduce(reduce, next);
+    const edited = this.options.prepareVideoEdits?.(
+      prev,
+      next,
+      this.restoringVideoEdits || (cause !== null && BACKWARDS.has(cause)),
+    );
+    if (edited?.message) return { ok: false, error: 'preparing', message: edited.message };
+    if (edited?.state) next = edited.state;
     // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the
     // slide cleared ends it (Stop and Esc leave its slide up).
     if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))
@@ -3091,6 +3254,9 @@ export class ShowEngine {
       next.chosenWallpaper !== prev.chosenWallpaper
     )
       next = reduce(next, this.picturesSet(next));
+    // Sound and picture…'s Shape (alpha.20, x55): the videos up and coming next carry their shapes too.
+    if (next.layers !== prev.layers || next.next !== prev.next || next.pipOff !== prev.pipOff)
+      next = this.videoShapesSet(next).reduce(reduce, next);
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();

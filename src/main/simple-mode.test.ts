@@ -137,10 +137,10 @@ describe('Simple Mode locks', () => {
         expect(simpleModeRefuses({ type: 'pausePlaying', playing }, state), playing.layer).toBe(false);
         expect(simpleModeRefuses({ type: 'resumePlaying', playing }, state), playing.layer).toBe(false);
       }
-    // Back 15 s, Forward 15 s and Last 10 s under LIVE stay Pro Mode's (Simple Mode's window has none there); Audio's
+    // Back 15 s and Forward 15 s under LIVE stay Pro Mode's (Simple Mode's window has none there); Audio's
     // own, on an audio playlist's track, are Simple Mode's since Session 56 (the owner: Audio in Simple Mode, as in Pro
     // Mode); a single sound's and the background's stay refused.
-    for (const jump of ['back', 'forward', 'last'] as const) {
+    for (const jump of ['back', 'forward'] as const) {
       expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump }, music), jump).toBe(false);
       expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump }, sound), jump).toBe(true);
       expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump }, none), jump).toBe(true);
@@ -739,4 +739,15 @@ describe('Simple Mode locks', () => {
       expect(SIMPLE_MODE_BOUNDED.has(c)).toBe(false);
     }
   });
+});
+
+it('keeps clip exports and manual preparation stops in Pro Mode with their expected refusal shapes', () => {
+  const answers = simpleModeRefusals(() => ({}) as AudioOutputStatus);
+  for (const channel of [IPC.media.clipExport, IPC.media.stopClipExport, IPC.media.stopProxy])
+    expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+  expect(answers.get(IPC.media.clipExport)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  expect(answers.get(IPC.media.stopClipExport)?.()).toBe(false);
+  expect(answers.get(IPC.media.stopProxy)?.()).toBe(false);
+  for (const channel of [IPC.media.proxyStatus, IPC.media.clipExports])
+    expect(simpleModeRefusesWhole(channel), channel).toBe(false);
 });

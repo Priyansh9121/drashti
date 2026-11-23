@@ -11,11 +11,14 @@ const REST =
 
 export function thisComputerOnly(
   background: BackgroundLayer | null | undefined,
-): { kind: 'window' | 'input'; text: string } | null {
+): { kind: 'window' | 'input' | 'link'; text: string } | null {
   if (background?.kind === 'window')
     return { kind: 'window', text: `The window “${background.name}” ${REST}` };
   if (background?.kind === 'input')
     return { kind: 'input', text: `The video input “${background.name}” ${REST}` };
+  // A stream link (alpha.20, slice 8): received and played on this computer alone.
+  if (background?.kind === 'link')
+    return { kind: 'link', text: `The stream link from “${background.name}” ${REST}` };
   return null;
 }
 
