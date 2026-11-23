@@ -1,6 +1,7 @@
 // Node's type stripping checks the transport contract without Electron/build/start-up. Vitest separately covers
 // the full speech-engine integration under the shared heavy lock.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { pcmFrame, indicWords, routeCFiles } from '../src/main/speech/indic-protocol.ts';
 test('PCM and native words have strict audio and timing bounds', () => {
@@ -69,4 +70,17 @@ test('Indic unknown-token markers never reach displayed words, while malformed r
     () => indicWords({ language: 'gu', words: [{ w: '<unk>', start: 0, end: 13 }] }, 'gu', 0, 1000),
     /Invalid recogniser reply/,
   );
+});
+
+test('the helper checks every allocation before using it: it says so and exits, never writes through null (review)', () => {
+  const source = readFileSync(new URL('../tools/indic-conformer/ic_ctc.c', import.meta.url), 'utf8');
+  const allocations = [...source.matchAll(/\b(\w+)\s*=\s*(?:malloc|calloc|realloc)\(/gu)];
+  assert.ok(allocations.length >= 10);
+  for (const allocation of allocations) {
+    const name = allocation[1] ?? '';
+    const after = source.slice(allocation.index);
+    const checked = after.search(new RegExp(`!${name}\\b`, 'u'));
+    const used = after.search(new RegExp(`\\b${name}\\s*\\[|\\(${name}\\s*\\+`, 'u'));
+    assert.ok(checked >= 0 && (used < 0 || checked < used), `${name} is used before its allocation is checked`);
+  }
 });
