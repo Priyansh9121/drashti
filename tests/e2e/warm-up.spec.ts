@@ -156,7 +156,8 @@ async function brightest(page: Page): Promise<number> {
  * mistaken for the warm-up's drawing (X12 wide: 12 border pixels, maximum 191, while every interior pixel was 0).
  * Nothing else is ignored or allowed a colour difference. The whole audience output and every captured frame are still
  * checked against absolute zero below. Decode in Node, never on a show page (X17).
- * One allowance, the LIVE picture's only (a21, the owner's B): its box's own antialiased corner pixels, where the box
+ * The neutral chip fixture uses an exact comparison: black UI colours cancel its own antialiased edge contribution.
+ * One allowance in the normal UI, the LIVE picture's only (a21, the owner's B): its box's own antialiased corner pixels, where the box
  * alone (the warm-up hidden) is neither black nor anything else of the warm-up's, may differ by 2 levels at most. On
  * CI's Mac Chromium composes those pixels a level or two apart from frame to frame, in black frames too
  * (warm-up.spec:428's flaky failure, reports/a21-flaky-mac.md); a real leak there (the native copies': up to 30) fails.
@@ -562,10 +563,6 @@ test('where Chromium draws with a graphics chip the LIVE picture’s warm-up is 
       (_colour, alpha: string | undefined) => `rgba(0, 0, 0, ${alpha ?? '1'})`,
     );
     for (let at: HTMLElement | null = box; at; at = at.parentElement) at.style.backgroundColor = '#000';
-  });
-  // Red: reproduce the original square native-copy container, without changing any other warm-up drawing.
-  await win.addStyleTag({
-    content: '[data-testid="live-preview"] [data-warm-ui-drawing] { border-radius: 0 !important; }',
   });
   await expectWarmUp(win, '[data-testid="live-preview"]', 'the LIVE picture with a chip', true, true);
   await app.close();
