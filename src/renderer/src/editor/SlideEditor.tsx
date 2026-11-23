@@ -76,7 +76,7 @@ import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
-import { pdfOffAir } from '../../../shared/pdf-work';
+import { pdfAcknowledged, pdfOffAir } from '../../../shared/pdf-work';
 import { PdfPagesDialog } from './PdfPagesDialog';
 import { PdfHandoutDialog } from './PdfHandoutDialog';
 import { replacePdfPage, splitPdfPages } from './pdf-pages';
@@ -350,7 +350,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   };
   const mayWorkOnPdf = async () => {
     try {
-      if ((await window.drashti.library.pdfWorkAllowed()) === true) return true;
+      if (pdfAcknowledged(await window.drashti.library.pdfWorkAllowed())) return true;
     } catch {
       /* Refuse when Main cannot confirm the stream is off air. */
     }
@@ -883,11 +883,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                     return window.drashti.library
                       .showExtractedPdfCopy(undoId, visible)
                       .then((ok) => {
-                        if (ok !== true)
+                        if (!pdfAcknowledged(ok))
                           tell(
                             'The extracted PDF changed or the stream is on air. Undo and Redo cannot replace another file.',
                           );
-                        return ok === true;
+                        return pdfAcknowledged(ok);
                       })
                       .catch(() => {
                         tell('The extracted PDF could not be changed.');
@@ -913,11 +913,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 return window.drashti.library
                   .showExtractedPdf(result.id, visible)
                   .then((ok) => {
-                    if (ok !== true)
+                    if (!pdfAcknowledged(ok))
                       tell(
                         'The extracted presentation could not be changed. Try again while the stream is off air.',
                       );
-                    return ok === true;
+                    return pdfAcknowledged(ok);
                   })
                   .catch(() => {
                     tell('The extracted presentation could not be changed.');

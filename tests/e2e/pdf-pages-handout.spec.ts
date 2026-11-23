@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { importAndGetIds } from './helpers';
+import { importAndGetIds, type PageGlobals } from './helpers';
 import { openGeneratedPdf, savePdfCopy, usePdfTools, generatedPdf, PDF_PAGES } from './pdf-tools-fixtures';
 import { inspectPdf } from './pdf-export-oracle';
 
@@ -32,6 +32,12 @@ test('extracts chosen pages to a PDF copy in reading order without changing the 
     await s.ed.getByRole('button', { name: 'Redo', exact: true }).click();
     await expect.poll(() => existsSync(output)).toBe(true);
     expect(readFileSync(output)).toEqual(bytes);
+    const changed = Buffer.from('Placeholder file changed outside Drashti');
+    writeFileSync(output, changed);
+    await s.ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(s.ed.getByTestId('editor-note')).toContainText('The extracted PDF changed');
+    await expect(s.ed.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
+    expect(readFileSync(output)).toEqual(changed);
     await expect(s.editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
     s.unchanged();
   } finally {
@@ -78,20 +84,46 @@ test('replaces one page and undoes it, then splits before the chosen page with U
     await expect(s.editor.getByTestId('editor-slide')).toContainText('Placeholder replaced words B');
     await s.ed.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(s.editor.getByTestId('editor-slide')).toContainText(PDF_PAGES[0].oldWords);
+    await s.ed.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(s.editor.getByTestId('editor-slide')).toContainText('Placeholder replaced words B');
+    await s.ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(s.editor.getByTestId('editor-slide')).toContainText(PDF_PAGES[0].oldWords);
     expect(readFileSync(sourceFile)).toEqual(sourceBytes);
     await s.editor.getByTestId('editor-slide-thumb').nth(1).click();
-    const beforeSplit = await s.win.evaluate(() => window.drashti.library.listPresentations());
+    const beforeSplit = await s.win.evaluate(() =>
+      (window as PageGlobals).drashti.library.listPresentations(),
+    );
     await s.ed.getByRole('button', { name: 'Split…', exact: true }).click();
     await s.ed
       .getByTestId('pdf-pages-dialog')
       .getByRole('button', { name: 'Split presentation', exact: true })
       .click();
     await expect(s.editor.getByTestId('editor-slide-thumb')).toHaveCount(1);
-    const tail = (await s.win.evaluate(() => window.drashti.library.listPresentations())).filter(
-      (row) => !beforeSplit.some((old) => old.id === row.id),
-    );
+    const tail = (
+      await s.win.evaluate(() => (window as PageGlobals).drashti.library.listPresentations())
+    ).filter((row) => !beforeSplit.some((old) => old.id === row.id));
     expect(tail).toHaveLength(1);
     expect(tail[0]?.slideCount).toBe(2);
+    const tailId = tail[0]?.id;
+    if (!tailId) throw new Error('Generated split part missing.');
+    await s.ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(s.editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
+    await expect
+      .poll(async () =>
+        (await s.win.evaluate(() => (window as PageGlobals).drashti.library.listPresentations())).some(
+          (row) => row.id === tailId,
+        ),
+      )
+      .toBe(false);
+    await s.ed.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(s.editor.getByTestId('editor-slide-thumb')).toHaveCount(1);
+    await expect
+      .poll(async () =>
+        (await s.win.evaluate(() => (window as PageGlobals).drashti.library.listPresentations())).some(
+          (row) => row.id === tailId,
+        ),
+      )
+      .toBe(true);
     await s.ed.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(s.editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
     s.unchanged();
@@ -135,16 +167,16 @@ test('keeps a header footer watermark and page numbers on one master through PDF
 test('extracts selected pages to a new library presentation with reversible creation', async () => {
   const s = await openGeneratedPdf();
   try {
-    const before = await s.win.evaluate(() => window.drashti.library.listPresentations());
+    const before = await s.win.evaluate(() => (window as PageGlobals).drashti.library.listPresentations());
     await usePdfTools(s.ed);
     await s.ed.getByRole('button', { name: 'Extract pages…', exact: true }).click();
     const dialog = s.ed.getByTestId('pdf-pages-dialog');
     await dialog.getByLabel('Pages').fill('2-3');
     await dialog.getByRole('button', { name: 'Extract pages', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    const copies = (await s.win.evaluate(() => window.drashti.library.listPresentations())).filter(
-      (row) => !before.some((old) => old.id === row.id),
-    );
+    const copies = (
+      await s.win.evaluate(() => (window as PageGlobals).drashti.library.listPresentations())
+    ).filter((row) => !before.some((old) => old.id === row.id));
     expect(copies).toHaveLength(1);
     expect(copies[0]?.slideCount).toBe(2);
     const copy = copies[0];
@@ -152,7 +184,7 @@ test('extracts selected pages to a new library presentation with reversible crea
     await s.ed.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect
       .poll(async () =>
-        (await s.win.evaluate(() => window.drashti.library.listPresentations())).some(
+        (await s.win.evaluate(() => (window as PageGlobals).drashti.library.listPresentations())).some(
           (row) => row.id === copy.id,
         ),
       )
@@ -160,7 +192,7 @@ test('extracts selected pages to a new library presentation with reversible crea
     await s.ed.getByRole('button', { name: 'Redo', exact: true }).click();
     await expect
       .poll(async () =>
-        (await s.win.evaluate(() => window.drashti.library.listPresentations())).some(
+        (await s.win.evaluate(() => (window as PageGlobals).drashti.library.listPresentations())).some(
           (row) => row.id === copy.id,
         ),
       )
@@ -177,7 +209,7 @@ test('pauses every PDF page control during a generated stream or recording trans
   const s = await openGeneratedPdf();
   try {
     await usePdfTools(s.ed);
-    const status = await s.win.evaluate(() => window.drashti.stream.status());
+    const status = await s.win.evaluate(() => (window as PageGlobals).drashti.stream.status());
     const send = async (live: 'off' | 'starting', recording: 'off' | 'starting') => {
       await s.app.evaluate(
         ({ BrowserWindow }, payload) => {

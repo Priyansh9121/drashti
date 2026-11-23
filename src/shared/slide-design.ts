@@ -36,7 +36,7 @@ export function composeSlide(
             ...fitElements(masterElements, masterCanvas ?? slide, slide).map((el) => {
               if (el.kind !== 'text') return el;
               const original = masterElements.find((element) => element.id === el.id);
-              if (!original || original.kind !== 'text' || !el.name?.startsWith(PDF_HANDOUT_PREFIX))
+              if (original?.kind !== 'text' || !el.name?.startsWith(PDF_HANDOUT_PREFIX))
                 return { ...el, everyScreen: true };
               const canvas = masterCanvas ?? slide;
               const sx = slide.width / canvas.width,
