@@ -58,7 +58,7 @@ function setup() {
     mainFrame: frame,
     session: pages,
     isDestroyed: () => false,
-    getURL: () => 'file:///generated/sharpen.html',
+    getURL: () => 'file:///generated/display-copy.html',
     downloadURL,
   }) as unknown as WebContents;
   const files = new DisplayBlobFiles(pages);

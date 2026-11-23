@@ -4,16 +4,18 @@ import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 
 /**
- * The hidden window that makes pictures' sharpened copies (Session 26f, src/main/media/sharpened.ts): never
- * shown, never focused, never throttled, with the app's secure settings, its process at the lowest
- * priority so the show's processes always come first. `gone`: its process ended unexpectedly.
+ * The hidden window that makes pictures' sharpened copies (Session 26f, src/main/media/sharpened.ts), or with
+ * `display` their display copies (alpha.22, src/main/media/display-copies.ts, in its private Session `pages`, on a
+ * page of its own: only that page connects to the local media scheme, QA22-L8-2): never shown, never focused, never
+ * throttled, with the app's secure settings, its process at the lowest priority so the show's processes always come
+ * first. `gone`: its process ended unexpectedly.
  */
 export function createSharpenWindow(gone: () => void, display = false, pages?: Session): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     width: 320,
     height: 200,
-    title: 'Drashti sharpening',
+    title: display ? 'Drashti display copies' : 'Drashti sharpening',
     skipTaskbar: true,
     focusable: false,
     webPreferences: {
@@ -33,7 +35,8 @@ export function createSharpenWindow(gone: () => void, display = false, pages?: S
     gone();
     if (!win.isDestroyed()) win.destroy();
   });
-  void loadPage(win, 'sharpen', display ? { purpose: 'display' } : {});
+  // The display worker's address keeps its purpose, as its tests find it by (picture-display-copies.spec.ts).
+  void loadPage(win, display ? 'display-copy' : 'sharpen', display ? { purpose: 'display' } : {});
   return win;
 }
 
