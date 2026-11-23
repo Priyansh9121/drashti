@@ -7,6 +7,30 @@ import type { OperatorMode } from '../shared/mode';
 import type { ScreenSwitch, ScreenSwitches } from '../shared/screen-switches';
 import { SETUP_TOOLS, TOOLS_MENU, type ToolsMenuItem } from '../shared/setup-tools';
 import { type LogPeriod, periodChoices } from '../shared/log-period';
+import type { SpeechLanguage } from '../shared/speech';
+
+/** File › Speaker’s Language's choices (alpha.22), in the Live captions dialog's order. */
+const SPEAKER_LANGUAGES: readonly { id: SpeechLanguage | 'auto'; label: string }[] = [
+  { id: 'auto', label: 'As Heard (Gujarati, Hindi, Sanskrit or English)' },
+  { id: 'gu', label: 'Gujarati' },
+  { id: 'hi', label: 'Hindi' },
+  { id: 'sa', label: 'Sanskrit' },
+  { id: 'en', label: 'English' },
+];
+
+const speakerLanguageItem = (s: NonNullable<MenuActions['speakerLanguage']>): MenuItemConstructorOptions => ({
+  id: 'speaker-language',
+  label: 'Speaker’s Language',
+  submenu: SPEAKER_LANGUAGES.map(({ id, label }): MenuItemConstructorOptions => ({
+    id: `speaker-language-${id}`,
+    label,
+    type: 'radio',
+    checked: s.language === id,
+    click: () => {
+      s.choose(id);
+    },
+  })),
+});
 
 /** The main process's priority on Windows (Session 16): ticked is above normal, the default. */
 export interface PriorityItem {
@@ -86,6 +110,19 @@ export interface MenuActions {
   opening: () => void;
   /** File > Live Captions… (Session 55, Part 10; Pro Mode): left out where there is no such choice. */
   liveCaptions?: () => void;
+  /**
+   * File › Speaker’s Language (alpha.22, Pro Mode): the language live captions listen for, as heard or one
+   * language, ticked as it is, chosen as the speakers change. Left out (or null) where there are no live captions.
+   */
+  speakerLanguage?: {
+    language: SpeechLanguage | 'auto';
+    choose: (language: SpeechLanguage | 'auto') => void;
+  } | null;
+  /**
+   * Help › Caption and Translation Models… (alpha.22, cap-pack; Pro Mode only): the offline model packs on this
+   * computer. Left out where there is no such choice.
+   */
+  modelPacks?: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
@@ -236,6 +273,7 @@ export function installMenu(actions: MenuActions): void {
               ...(actions.liveCaptions
                 ? [{ id: 'live-captions', label: 'Live Captions…', click: actions.liveCaptions }]
                 : []),
+              ...(actions.speakerLanguage ? [speakerLanguageItem(actions.speakerLanguage)] : []),
               ...(actions.deckAnimations
                 ? [
                     {
@@ -454,6 +492,16 @@ export function installMenu(actions: MenuActions): void {
         ? []
         : [
             { type: 'separator' } as MenuItemConstructorOptions,
+            // The offline caption and translation models (alpha.22): an admin's, beside the updates.
+            ...(actions.modelPacks
+              ? [
+                  {
+                    id: 'model-packs',
+                    label: 'Caption and Translation Models…',
+                    click: actions.modelPacks,
+                  } as MenuItemConstructorOptions,
+                ]
+              : []),
             { id: 'check-for-updates', label: 'Check for Updates…', click: actions.checkForUpdates },
           ]),
     ],

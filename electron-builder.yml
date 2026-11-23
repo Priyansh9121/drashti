@@ -242,6 +242,10 @@ mac:
       filter: [deno]
     # Live captions' engine (scripts/fetch-whisper.mjs, Session 55, Part 10): whisper.cpp's library and our small
     # program on it, its framework's links kept: LICENSES/whisper/. Signed with the rest of the app.
+    # Native Gujarati/Hindi recognition, Microsoft ONNX Runtime MIT; acoustic models stay in imported packs.
+    - from: vendor/indic/darwin-${arch}
+      to: indic
+      filter: [ic-ctc, libonnxruntime.dylib, LICENSE, ThirdPartyNotices.txt]
     - from: vendor/whisper/darwin-${arch}
       to: whisper
       filter: ['**/*', '!SOURCE.txt']
@@ -301,6 +305,9 @@ win:
       filter: [deno.exe]
     # Live captions' engine (scripts/fetch-whisper.mjs, Session 55, Part 10): whisper.cpp's whisper-server.exe and its
     # DLLs: LICENSES/whisper/.
+    - from: vendor/indic/win32-${arch}
+      to: indic
+      filter: [ic-ctc.exe, onnxruntime.dll, onnxruntime_providers_shared.dll, LICENSE, ThirdPartyNotices.txt]
     - from: vendor/whisper/win32-${arch}
       to: whisper
       # afterPack copies these four Microsoft files with their original signatures intact.

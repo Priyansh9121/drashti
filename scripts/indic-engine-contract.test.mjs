@@ -1,0 +1,567 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { createIndicEngine } from '../src/main/speech/indic-engine.ts';
+import { createSpeechHub } from '../src/main/speech/hub.ts';
+test('unselected language cannot acquire a model or open sound', () => {
+  let acquired = false,
+    opened = false,
+    state;
+  const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => {} },
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: {
+      open: () => {
+        opened = true;
+        return null;
+      },
+    },
+    log: { info() {}, warn() {} },
+  });
+  engine.start('auto', {
+    heard() {},
+    state: (s) => {
+      state = s;
+    },
+  })();
+  assert.equal(acquired, false);
+  assert.equal(opened, false);
+  assert.equal(state.phase, 'failed');
+});
+
+test('stop during asynchronous pack checking releases the late hold without starting sound or compute', async () => {
+  let resolveHold;
+  const hold = new Promise((done) => {
+    resolveHold = done;
+  });
+  let releases = 0,
+    opens = 0;
+  const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => {} },
+    program: () => '/native',
+    acquire: () => hold,
+    sound: {
+      open: () => {
+        opens += 1;
+        return null;
+      },
+    },
+    open: async () => {
+      throw new Error('must not start');
+    },
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', { heard() {}, state() {} });
+  stop();
+  resolveHold({
+    files: { model: '/m', tokens: '/t', frontend: '/f' },
+    release: () => {
+      releases += 1;
+    },
+  });
+  await hold;
+  await Promise.resolve();
+  assert.equal(releases, 1);
+  assert.equal(opens, 0);
+});
+
+test('late native inference cannot publish into a stopped session', async () => {
+  let capture, reply, ready;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const decoded = new Promise((done) => {
+    reply = done;
+  });
+  let published = 0,
+    releases = 0;
+  const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => {} },
+    program: () => '/native',
+    acquire: () => ({
+      files: { model: '/m', tokens: '/t', frontend: '/f' },
+      release: () => {
+        releases += 1;
+      },
+    }),
+    sound: {
+      open: (to) => {
+        capture = to;
+        return () => {};
+      },
+    },
+    open: async () => ({ decode: () => decoded, close() {} }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard: () => {
+      published += 1;
+    },
+    state: (state) => {
+      if (state.phase === 'listening') ready();
+    },
+  });
+  await listening;
+  const began = Date.now() - 800;
+  capture(new Int16Array(1600).fill(5000), began + 100, began);
+  for (let i = 1; i <= 7; i += 1) capture(new Int16Array(1600), began + (i + 1) * 100, began + i * 100);
+  stop();
+  reply({ language: 'gu', words: [{ w: 'shape', start: 0, end: 0.08 }] });
+  await decoded;
+  await Promise.resolve();
+  assert.equal(published, 0);
+  assert.equal(releases, 1);
+});
+
+test('without an authoritative background-work gate no model can load', async () => {
+  let acquired = false;
+  const engine = createIndicEngine({
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: { open: () => null },
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', { heard() {}, state() {} });
+  await Promise.resolve();
+  stop();
+  assert.equal(acquired, false);
+});
+
+test('revoking the background lease terminates compute and discards the pending result', async () => {
+  let allowed = true,
+    changed,
+    capture,
+    resolveDecode,
+    ready;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const decode = new Promise((done) => {
+    resolveDecode = done;
+  });
+  let closed = 0,
+    released = 0,
+    heard = 0;
+  const engine = createIndicEngine({
+    workGate: {
+      allowed: () => allowed,
+      listen: (to) => {
+        changed = to;
+        return () => {};
+      },
+    },
+    program: () => '/native',
+    acquire: () => ({
+      files: { model: '/m', tokens: '/t', frontend: '/f' },
+      release: () => {
+        released += 1;
+      },
+    }),
+    sound: {
+      open: (to) => {
+        capture = to;
+        return () => {};
+      },
+    },
+    open: async () => ({
+      decode: () => decode,
+      close: () => {
+        closed += 1;
+      },
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard: () => {
+      heard += 1;
+    },
+    state: (state) => {
+      if (state.phase === 'listening') ready();
+    },
+  });
+  await listening;
+  const began = Date.now() - 800;
+  capture(new Int16Array(1600).fill(5000), began + 100, began);
+  for (let i = 1; i <= 7; i += 1) capture(new Int16Array(1600), began + (i + 1) * 100, began + i * 100);
+  allowed = false;
+  changed();
+  assert.equal(closed, 1);
+  assert.equal(released, 1);
+  resolveDecode({ language: 'gu', words: [{ w: 'shape', start: 0, end: 0.08 }] });
+  await decode;
+  await Promise.resolve();
+  assert.equal(heard, 0);
+  stop();
+});
+
+test('an unavailable background subscription fails closed without throwing into the show', () => {
+  let acquired = false;
+  const engine = createIndicEngine({
+    workGate: {
+      allowed: () => true,
+      listen: () => {
+        throw new Error('unavailable');
+      },
+    },
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: { open: () => null },
+    log: { info() {}, warn() {} },
+  });
+  assert.doesNotThrow(() => engine.start('gu', { heard() {}, state() {} })());
+  assert.equal(acquired, false);
+});
+
+test('a broken gate unsubscribe cannot prevent native cancellation', async () => {
+  let ready,
+    closed = 0;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const engine = createIndicEngine({
+    workGate: {
+      allowed: () => true,
+      listen: () => () => {
+        throw new Error('unavailable');
+      },
+    },
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: { open: () => () => {} },
+    open: async () => ({
+      decode: async () => ({}),
+      close: () => {
+        closed += 1;
+      },
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      if (state.phase === 'listening') ready();
+    },
+  });
+  await listening;
+  assert.doesNotThrow(stop);
+  assert.equal(closed, 1);
+});
+
+test('an opening callback during failed gate registration cannot admit a model', async () => {
+  let open = false,
+    acquired = false;
+  const engine = createIndicEngine({
+    workGate: {
+      allowed: () => open,
+      listen: (changed) => {
+        open = true;
+        changed();
+        throw new Error('unavailable');
+      },
+    },
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: { open: () => null },
+    log: { info() {}, warn() {} },
+  });
+  engine.start('gu', { heard() {}, state() {} })();
+  await Promise.resolve();
+  assert.equal(acquired, false);
+});
+
+test('native lag uses the original sixty-second rest before reloading', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  let fail,
+    ready,
+    starts = 0;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const states = [];
+  const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => {} },
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: { open: () => () => {} },
+    open: async (options) => {
+      starts += 1;
+      fail = options.failed;
+      return { decode: async () => ({}), close() {} };
+    },
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      states.push(state);
+      if (state.phase === 'listening') ready();
+    },
+  });
+  try {
+    await listening;
+    fail('recogniser lag');
+    assert.deepEqual(states.at(-1), { phase: 'held', reason: 'busy' });
+    context.mock.timers.tick(59999);
+    await Promise.resolve();
+    assert.equal(starts, 1);
+    context.mock.timers.tick(1);
+    await Promise.resolve();
+    assert.equal(starts, 2);
+  } finally {
+    stop();
+  }
+});
+
+test('queued PCM from a closed input subscription cannot enter a reopened generation', async () => {
+  let allowed = true,
+    changed,
+    ready,
+    twice;
+  const first = new Promise((done) => {
+    ready = done;
+  });
+  const second = new Promise((done) => {
+    twice = done;
+  });
+  const captures = [];
+  let decodes = 0,
+    starts = 0;
+  const engine = createIndicEngine({
+    workGate: {
+      allowed: () => allowed,
+      listen: (to) => {
+        changed = to;
+        return () => {};
+      },
+    },
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: {
+      open: (to) => {
+        captures.push(to);
+        return () => {};
+      },
+    },
+    open: async () => ({
+      decode: async () => {
+        decodes += 1;
+        return { language: 'gu', words: [] };
+      },
+      close() {},
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      if (state.phase === 'listening') {
+        starts += 1;
+        if (starts === 1) ready();
+        else twice();
+      }
+    },
+  });
+  try {
+    await first;
+    allowed = false;
+    changed();
+    allowed = true;
+    changed();
+    await second;
+    const start = Date.now() - 800;
+    captures[0](new Int16Array(1600).fill(5000), start + 100, start);
+    for (let i = 1; i <= 7; i += 1) captures[0](new Int16Array(1600), start + (i + 1) * 100, start + i * 100);
+    assert.equal(decodes, 0);
+    captures[1](new Int16Array(1600).fill(5000), start + 100, start);
+    for (let i = 1; i <= 7; i += 1) captures[1](new Int16Array(1600), start + (i + 1) * 100, start + i * 100);
+    assert.equal(decodes, 1);
+  } finally {
+    stop();
+  }
+});
+
+test('explicit below-show admission supports continuous ASR without pretending to have a transition lease', async () => {
+  let listening = false,
+    opened = 0;
+  const engine = createIndicEngine({
+    admission: 'below-show',
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: { open: () => () => {} },
+    open: async () => {
+      opened += 1;
+      return { decode: async () => ({}), close() {} };
+    },
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      if (state.phase === 'listening') listening = true;
+    },
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(listening, true);
+    assert.equal(opened, 1);
+  } finally {
+    stop();
+  }
+});
+
+test('a provided closed gate remains authoritative over explicit below-show admission', async () => {
+  let acquired = false;
+  const engine = createIndicEngine({
+    admission: 'below-show',
+    workGate: { allowed: () => false, listen: () => () => {} },
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: { open: () => null },
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', { heard() {}, state() {} });
+  await Promise.resolve();
+  stop();
+  assert.equal(acquired, false);
+});
+
+test('a capture chunk crossing twelve seconds is split without dropping samples or exceeding the native frame', async () => {
+  let capture, ready;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const decoded = [];
+  const engine = createIndicEngine({
+    admission: 'below-show',
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: {
+      open: (to) => {
+        capture = to;
+        return () => {};
+      },
+    },
+    open: async () => ({
+      decode: async (samples) => {
+        decoded.push(samples);
+        return { language: 'gu', words: [] };
+      },
+      close() {},
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      if (state.phase === 'listening') ready();
+    },
+  });
+  try {
+    await listening;
+    const start = Date.now();
+    let offset = 0;
+    const send = (length, value) => {
+      const from = offset;
+      offset += length;
+      capture(new Int16Array(length).fill(value), start + offset / 16, start + from / 16);
+    };
+    for (let i = 0; i < 191; i += 1) send(1000, 5000);
+    send(16000, 6000);
+    await Promise.resolve();
+    await Promise.resolve();
+    send(11200, 0);
+    assert.deepEqual(
+      decoded.map((samples) => samples.length),
+      [192000, 26200],
+    );
+    assert.deepEqual(Array.from(decoded[0].slice(-1000)), Array(1000).fill(6000));
+    assert.deepEqual(Array.from(decoded[1]), [...Array(15000).fill(6000), ...Array(11200).fill(0)]);
+  } finally {
+    stop();
+  }
+});
+
+test('phrases pass the real speech hub: ids run s1, s2 and nothing is turned away', async () => {
+  let capture, ready;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const warnings = [];
+  let turnAway;
+  const turnedAway = new Promise((_, fail) => {
+    turnAway = fail;
+  });
+  const engine = createIndicEngine({
+    admission: 'below-show',
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: {
+      open: (to) => {
+        capture = to;
+        return () => {};
+      },
+    },
+    open: async () => ({
+      decode: async () => ({ language: 'gu', words: [{ w: 'shape', start: 0, end: 0.08 }] }),
+      close() {},
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const hub = createSpeechHub({
+    engine,
+    log: {
+      info() {},
+      warn: (message) => {
+        warnings.push(message);
+        turnAway(new Error(message));
+      },
+    },
+  });
+  const finals = [];
+  let second;
+  const both = new Promise((done) => {
+    second = done;
+  });
+  const unwatch = hub.onState((state) => {
+    if (state.phase === 'listening') ready();
+  });
+  const unlisten = hub.listen('contract', (phrase) => {
+    if (!phrase.final) return;
+    finals.push(phrase.id);
+    if (finals.length === 2) second();
+  });
+  try {
+    hub.setLanguage('gu');
+    hub.setOn(true);
+    await listening;
+    const phrase = (start) => {
+      capture(new Int16Array(1600).fill(5000), start + 100, start);
+      for (let i = 1; i <= 7; i += 1) capture(new Int16Array(1600), start + (i + 1) * 100, start + i * 100);
+    };
+    phrase(Date.now() - 1600);
+    phrase(Date.now() - 800);
+    await Promise.race([both, turnedAway]);
+    assert.deepEqual(finals, ['s1', 's2']);
+    assert.deepEqual(warnings, []);
+  } finally {
+    unlisten();
+    unwatch();
+    hub.close();
+  }
+});
