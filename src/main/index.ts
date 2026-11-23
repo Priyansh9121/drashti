@@ -466,6 +466,7 @@ import { handleModelPacks } from './model-packs/ipc';
 import { findTranslateHelper } from './translation/helper-place';
 import { handleTranslation } from './translation/ipc';
 import { TranslationEngine } from './translation/translation-engine';
+import { StandInTranslator } from '../shared/prepared-translations';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
@@ -5585,6 +5586,10 @@ function start(): void {
     log,
   });
   const translationOnAir = () => streaming.inUse() || testOnAir;
+  // Tests only (never a packaged Drashti): DRASHTI_TEST_TRANSLATE=1 stands in for the engine with x83's stand-in (a
+  // marked placeholder, never a translation), so the dialog's Prepare translations is driven without a model pack.
+  const testTranslate = !packaged() && sw('DRASHTI_TEST_TRANSLATE') === '1';
+  const standInTranslator = new StandInTranslator();
   handleTranslation({
     handle,
     mayDraft: (e) =>
@@ -5593,7 +5598,14 @@ function start(): void {
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
     onAir: translationOnAir,
-    engine: translationEngine,
+    engine: testTranslate
+      ? {
+          installed: () => true,
+          available: (from, to) => from !== to,
+          translate: (source, from, to) => standInTranslator.translate(source, from, to),
+          cancel: () => undefined,
+        }
+      : translationEngine,
   });
   const stopTranslationOnAir = () => {
     if (translationOnAir()) translationEngine.cancel();
