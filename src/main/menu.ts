@@ -118,6 +118,11 @@ export interface MenuActions {
     language: SpeechLanguage | 'auto';
     choose: (language: SpeechLanguage | 'auto') => void;
   } | null;
+  /**
+   * Help › Caption and Translation Models… (alpha.22, cap-pack; Pro Mode only): the offline model packs on this
+   * computer. Left out where there is no such choice.
+   */
+  modelPacks?: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
@@ -487,6 +492,16 @@ export function installMenu(actions: MenuActions): void {
         ? []
         : [
             { type: 'separator' } as MenuItemConstructorOptions,
+            // The offline caption and translation models (alpha.22): an admin's, beside the updates.
+            ...(actions.modelPacks
+              ? [
+                  {
+                    id: 'model-packs',
+                    label: 'Caption and Translation Models…',
+                    click: actions.modelPacks,
+                  } as MenuItemConstructorOptions,
+                ]
+              : []),
             { id: 'check-for-updates', label: 'Check for Updates…', click: actions.checkForUpdates },
           ]),
     ],

@@ -289,6 +289,33 @@ describe('File › Speaker’s Language (alpha.22)', () => {
   );
 });
 
+describe('Help › Caption and Translation Models… (alpha.22, cap-pack)', () => {
+  it.each(PLATFORMS)(
+    'opens the models dialog, just above Check for Updates…, in Pro Mode only (%s)',
+    (platform) => {
+      const opened: string[] = [];
+      on(platform, () => {
+        const made = actions('pro');
+        installMenu({ ...made.a, modelPacks: () => opened.push('models') });
+      });
+      const help = built.at(-1)?.find((m) => m.role === 'help')?.submenu;
+      const ids = Array.isArray(help) ? help.map((i) => i.id) : [];
+      expect(ids.indexOf('model-packs')).toBeGreaterThan(-1);
+      expect(ids.indexOf('model-packs')).toBe(ids.indexOf('check-for-updates') - 1);
+      const entry = item('model-packs');
+      expect(entry).toMatchObject({ label: 'Caption and Translation Models…' });
+      (entry?.click as (() => void) | undefined)?.();
+      expect(opened).toEqual(['models']);
+      // Simple Mode has none.
+      on(platform, () => {
+        const made = actions('simple');
+        installMenu({ ...made.a, modelPacks: () => opened.push('simple') });
+      });
+      expect(item('model-packs')).toBeUndefined();
+    },
+  );
+});
+
 describe('the menu while not let in (Session 54, access by Gmail)', () => {
   it.each(PLATFORMS)(
     'has Quit and the editing keys only: no show, no library, no devtools (%s)',

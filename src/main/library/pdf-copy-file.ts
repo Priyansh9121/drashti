@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
+import { copyFile, link, lstat, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -8,6 +9,8 @@ import { isInside } from '../media/contained';
 export const MAX_PDF_COPY_BYTES = 64 * 1024 * 1024;
 export interface PdfCopyRequest {
   bytes: Uint8Array;
+  /** Extraction creates a new file so Undo never replaces an older output. */
+  newOnly?: boolean;
   /** Main's native Save dialog choice, never a renderer-provided path. */
   outputPath: string;
   mediaDir: string;
@@ -16,6 +19,15 @@ export interface PdfCopyRequest {
   signal?: AbortSignal;
   /** Main's current editor/permission/sender-generation admission. */
   current?(): boolean;
+}
+export interface PdfCopyReceipt {
+  identity: BigIntStats;
+  hash: string;
+  /**
+   * Published as an exclusive copy: the volume has no hard links (exFAT and FAT32 USB sticks, some network shares),
+   * where a file's number also changes when it is renamed, so Undo checks its bytes, size and times, not its number.
+   */
+  copied?: boolean;
 }
 export interface PdfCopyControl {
   /** Main/test-only interleaving seam; this path never crosses IPC. */
@@ -85,6 +97,22 @@ async function checked<T>(request: PdfCopyRequest, action: () => Promise<T>): Pr
 }
 function codeIs(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code;
+}
+/** What link() answers on a volume without hard links (exFAT, FAT32, some shares) on macOS, Windows and Linux. */
+const NO_HARD_LINKS = ['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'EXDEV', 'EINVAL', 'EISDIR', 'ENOSYS'];
+/**
+ * Puts `from`'s bytes at `to` only while nothing is there: a hard link where the volume has them, else an exclusive
+ * copy (COPYFILE_EXCL, never over an existing file). True when it copied: the file at `to` is then a file of its own.
+ */
+export async function publishExclusive(from: string, to: string): Promise<boolean> {
+  try {
+    await link(from, to);
+    return false;
+  } catch (error) {
+    if (!NO_HARD_LINKS.some((code) => codeIs(error, code))) throw error;
+  }
+  await copyFile(from, to, constants.COPYFILE_EXCL);
+  return true;
 }
 async function maybeStat(file: string, request: PdfCopyRequest): Promise<BigIntStats | null> {
   try {
@@ -318,12 +346,17 @@ async function cleanup(file: string, identity: BigIntStats): Promise<void> {
  * a hostile filesystem actor can still race the final recheck and rename. Do
  * not broaden replacement authority beyond the exact native Save dialog choice.
  */
-export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyControl = {}): Promise<void> {
+export async function writePdfCopy(
+  request: PdfCopyRequest,
+  control: PdfCopyControl = {},
+): Promise<PdfCopyReceipt> {
   stopped(request);
   const bytes = validPdf(request.bytes);
   const hash = createHash('sha256').update(bytes).digest('hex');
   const protectedFiles = await protections(request);
   const target = await output(request);
+  if (request.newOnly && target.identity)
+    throw new PdfCopyError('output-exists', 'Choose a new file name for the extracted PDF.');
   safeOutput(target, protectedFiles);
   const staged = join(target.parent.canonical, '.drashti-pdf-' + randomUUID() + '.tmp');
   let handle: FileHandle | null = null;
@@ -353,6 +386,8 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
     await verifyStaged(staged, owned, hash, bytes.length, request);
     const currentProtected = await protections(request);
     const currentTarget = await output(request);
+    if (request.newOnly && currentTarget.identity)
+      throw new PdfCopyError('output-exists', 'Choose a new file name for the extracted PDF.');
     safeOutput(currentTarget, protectedFiles);
     safeOutput(currentTarget, currentProtected);
     unchangedProtections(protectedFiles, currentProtected);
@@ -365,9 +400,25 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
     const finalStaged = await checked(request, () => lstat(staged, { bigint: true }));
     if (!finalStaged.isFile() || finalStaged.isSymbolicLink() || !sameFile(owned, finalStaged)) corrupt();
     stopped(request);
-    await rename(staged, target.file);
+    if (request.newOnly) {
+      const copied = await publishExclusive(staged, target.file);
+      committed = true;
+      try {
+        await unlink(staged);
+      } catch {
+        /* Publication already committed; never report a failed copy after it. */
+      }
+      // A copy is a file of its own: its receipt is the published file (Undo's keep checks its bytes against it).
+      if (copied)
+        return {
+          identity: await lstat(target.file, { bigint: true }).catch(() => finalStaged),
+          hash,
+          copied: true,
+        };
+    } else await rename(staged, target.file);
     // No throwing admission check after this successful commit boundary.
     committed = true;
+    return { identity: finalStaged, hash };
   } catch (error) {
     if (codeIs(error, 'ABORT_ERR'))
       throw new PdfCopyError('cancelled', 'Saving the PDF copy was cancelled before publication.');

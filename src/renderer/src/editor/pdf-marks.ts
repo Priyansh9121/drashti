@@ -45,7 +45,7 @@ export function pdfMark(tool: PdfCanvasTool, points: readonly Point[], id: strin
     width: Math.max(1, spreadX),
     height: Math.max(1, spreadY),
   };
-  const base = { id, kind: 'shape' as const, frame, cornerRadius: 0 };
+  const base = { id, kind: 'shape' as const, frame, cornerRadius: 0, pdfMark: { tool } };
   if (tool === 'cover') return { ...base, shape: 'rectangle', fill: '#000000', opacity: 1 };
   if (tool === 'highlight')
     return { ...base, shape: 'path', path: rectanglePath(), fill: '#f4c542', opacity: 0.32 };

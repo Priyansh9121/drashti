@@ -62,6 +62,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.exportPdf,
   // Make a slide… (alpha.21): a new presentation from a PDF page, as New › QR code… makes one.
   IPC.slideEditor.makeSlide,
+  IPC.library.extractPdfPages,
+  IPC.library.showExtractedPdf,
+  IPC.library.showExtractedPdfCopy,
+  IPC.library.pdfWorkAllowed,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
   // The single-letter keys (Session 37): Pro Mode's keys sheet turns them on or off.
@@ -255,6 +259,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.captions.addLanguageModel,
   IPC.captions.checkLanguageModel,
   IPC.captions.setTiming,
+  // Caption and translation models (alpha.22, cap-pack): Help › Caption and Translation Models… is Pro Mode's.
+  IPC.modelPacks.view,
+  IPC.modelPacks.import,
+  IPC.modelPacks.cancel,
+  IPC.modelPacks.remove,
+  IPC.modelPacks.licence,
   // A file deleted from the library and put back (the audio playlists' own changes are bounded since Session 56, below).
   IPC.media.remove,
   // Snapshot (alpha.20, the time bar's ⋯) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).
@@ -563,6 +573,9 @@ export function simpleModeRefusals(
   answers.set(IPC.media.rowTrim, () => null);
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.library.stopReadingWords, () => false);
+  answers.set(IPC.library.pdfWorkAllowed, () => false);
+  answers.set(IPC.library.showExtractedPdf, () => false);
+  answers.set(IPC.library.showExtractedPdfCopy, () => false);
   answers.set(IPC.wallpapers.pickFiles, () => []);
   // Nothing made from what was dropped, saying why.
   answers.set(IPC.playlists.createSmartFrom, () => ({ made: [], files: [], problems: [words()] }));
@@ -572,6 +585,7 @@ export function simpleModeRefusals(
   answers.set(IPC.events.copySecret, () => false);
   answers.set(IPC.media.stopClipExport, () => false);
   answers.set(IPC.media.stopProxy, () => false);
+  answers.set(IPC.modelPacks.cancel, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).

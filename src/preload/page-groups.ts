@@ -56,6 +56,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'media',
     'messages',
     'midi',
+    // Help › Caption and Translation Models… (alpha.22, cap-pack).
+    'modelPacks',
     'music',
     'network',
     'nodes',

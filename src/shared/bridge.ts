@@ -113,6 +113,7 @@ import type {
   CaptionTiming,
   LanguageModelLanguage,
 } from './captions';
+import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -406,6 +407,20 @@ export interface DrashtiBridge {
     /** File > Live Captions… was chosen. */
     onOpen(listener: () => void): () => void;
   };
+  /**
+   * Caption and translation models (alpha.22, cap-pack; operator window, Pro Mode): the offline packs on this
+   * computer. The pack's folder or zip is chosen in main's own dialog; never fetched.
+   */
+  modelPacks: {
+    view(): Promise<ModelPacksStatus>;
+    import(kind: 'folder' | 'zip'): Promise<PackImportResult>;
+    cancel(): Promise<boolean>;
+    remove(packId: string): Promise<PackRemoveResult>;
+    licence(packId: string, file: string): Promise<PackLicenceResult>;
+    onChanged(listener: (status: ModelPacksStatus) => void): () => void;
+    /** Help › Caption and Translation Models… was chosen. */
+    onOpen(listener: () => void): () => void;
+  };
   /** Audio playlists (Session 14, operator window). */
   music: {
     view(): Promise<MusicView>;
@@ -541,7 +556,16 @@ export interface DrashtiBridge {
     insertPdfPages(presentationId: string, stamp: string, sourceId: string): Promise<InsertPdfPagesResult>;
     insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
-    exportPdf(presentationId: string, doc: EditDoc, stamp: string): Promise<PdfCopyResult>;
+    exportPdf(presentationId: string, doc: EditDoc, stamp: string, pages?: number[]): Promise<PdfCopyResult>;
+    extractPdfPages(
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      pages: number[],
+    ): Promise<{ ok: true; id: string; name: string } | { ok: false; message: string }>;
+    showExtractedPdf(id: string, visible: boolean): Promise<boolean>;
+    showExtractedPdfCopy(id: string, visible: boolean): Promise<boolean>;
+    pdfWorkAllowed(): Promise<boolean>;
     /**
      * Put edited slides back as one change (Undo brings back the copy kept
      * before it). Refused when the presentation changed since `stamp`, unless forced.
@@ -1152,6 +1176,12 @@ export interface DrashtiBridge {
     slidePlace(): Promise<SlidePlace>;
     /** The operator window: a slide was made in the editor's window (one change for its Undo). */
     onSlideMade(listener: (made: SlideMade) => void): () => void;
+    /**
+     * The stream's state, read only (x85's Extract, Replace, Split and Hand-out wait while it is on air or recording):
+     * the editor's narrower bridge (ARCH-7) has none of the stream's controls.
+     */
+    streamStatus(): Promise<StreamStatus>;
+    onStreamChanged(listener: (status: StreamStatus) => void): () => void;
   };
   lowerThirds: {
     list(): Promise<LowerThird[]>;

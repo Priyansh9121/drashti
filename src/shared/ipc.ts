@@ -53,6 +53,7 @@ import type {
   CaptionTiming,
   LanguageModelLanguage,
 } from './captions';
+import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -408,6 +409,25 @@ export const IPC = {
     open: 'captions:open',
   },
   /**
+   * Caption and translation models (alpha.22, cap-pack; shared/model-packs.ts): Help › Caption and Translation
+   * Models… (Pro Mode). An offline pack an admin chooses, checked file by file and kept on this computer; never
+   * fetched.
+   */
+  modelPacks: {
+    view: 'modelpacks:view',
+    /** Choose a pack's folder or zip (main's own dialog: the page never gives a path) and import it. */
+    import: 'modelpacks:import',
+    /** Stop the import under way. */
+    cancel: 'modelpacks:cancel',
+    remove: 'modelpacks:remove',
+    /** A licence's own text, from the copy kept. */
+    licence: 'modelpacks:get-licence',
+    /** main -> operator: how the packs stand changed (an import's progress too). */
+    changed: 'modelpacks:changed',
+    /** main -> operator: Help › Caption and Translation Models… was chosen. */
+    open: 'modelpacks:open',
+  },
+  /**
    * Updates (Session 14, shared/updates.ts): looking, downloading, installing
    * at quit and the daily look are anyone's in Pro Mode. Simple Mode never
    * sees any of it.
@@ -527,6 +547,10 @@ export const IPC = {
     slidesForEdit: 'library:slides-for-edit',
     saveSlides: 'library:save-slides',
     exportPdf: 'library:export-pdf',
+    extractPdfPages: 'library:extract-pdf-pages',
+    showExtractedPdf: 'library:show-extracted-pdf',
+    showExtractedPdfCopy: 'library:show-extracted-pdf-copy',
+    pdfWorkAllowed: 'library:pdf-work-allowed',
     pdfPageSources: 'library:pdf-page-sources',
     insertPdfPages: 'library:insert-pdf-pages',
     insertPdfFile: 'library:insert-pdf-file',
@@ -1534,6 +1558,11 @@ export interface InvokeContract {
   [IPC.captions.addLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
   [IPC.captions.checkLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
   [IPC.captions.setTiming]: { args: [timing: CaptionTiming]; result: CaptionsStatus };
+  [IPC.modelPacks.view]: { args: []; result: ModelPacksStatus };
+  [IPC.modelPacks.import]: { args: [kind: 'folder' | 'zip']; result: PackImportResult };
+  [IPC.modelPacks.cancel]: { args: []; result: boolean };
+  [IPC.modelPacks.remove]: { args: [packId: string]; result: PackRemoveResult };
+  [IPC.modelPacks.licence]: { args: [packId: string, file: string]; result: PackLicenceResult };
   [IPC.updates.view]: { args: []; result: UpdateView };
   [IPC.music.view]: { args: []; result: MusicView };
   [IPC.music.create]: { args: [name: string]; result: MusicResult };
@@ -1691,9 +1720,19 @@ export interface InvokeContract {
   };
   [IPC.library.cancelPdfInsertion]: { args: [presentationId: string, stamp: string]; result: boolean };
   [IPC.library.exportPdf]: {
-    args: [presentationId: string, doc: EditDoc, stamp: string];
+    args: [presentationId: string, doc: EditDoc, stamp: string, pages?: number[]];
     result: PdfCopyResult;
   };
+  [IPC.library.extractPdfPages]: {
+    args: [presentationId: string, doc: EditDoc, stamp: string, pages: number[]];
+    result: { ok: true; id: string; name: string } | { ok: false; message: string };
+  };
+  [IPC.library.showExtractedPdf]: {
+    args: [id: string, visible: boolean];
+    result: boolean;
+  };
+  [IPC.library.pdfWorkAllowed]: { args: []; result: boolean };
+  [IPC.library.showExtractedPdfCopy]: { args: [id: string, visible: boolean]; result: boolean };
   [IPC.library.saveSlides]: {
     args: [presentationId: string, doc: EditDoc, stamp: string, force: boolean];
     result: SaveSlidesResult;
@@ -2117,6 +2156,8 @@ export interface EventContract {
   [IPC.captions.prototypeChanged]: CaptionReview;
   [IPC.captions.changed]: CaptionsStatus;
   [IPC.captions.open]: { at: number };
+  [IPC.modelPacks.changed]: ModelPacksStatus;
+  [IPC.modelPacks.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };

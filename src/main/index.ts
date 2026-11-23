@@ -467,6 +467,8 @@ import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { knownLanguageModels, languageModelFile, languageModelStore } from './speech/language-models';
+import { handleModelPacks } from './model-packs/ipc';
+import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { VideoCaptionsRepo } from './db/video-captions';
@@ -3682,6 +3684,7 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      slideEditor?.send(IPC.stream.changed, status);
       automaticErrorRuntime?.stream(status.live.state, status.live.message);
       if (stream?.inUse()) automaticReports.cancel();
       else void automaticReports.wake();
@@ -3938,6 +3941,35 @@ function start(): void {
   handle(IPC.captions.setTiming, (e, timing) =>
     fromOperator(e) ? captions.setTiming(parseCaptionTiming(timing)) : captions.view(),
   );
+
+  // ---- caption and translation models (alpha.22, cap-pack) ---------------------------------------------------
+  // An offline pack an admin imports (Help › Caption and Translation Models…, Pro Mode), every file checked, kept in
+  // the data folder's model-packs/ (outside the library and its backups). Never fetched; nothing uses it until a
+  // caption or translation engine asks (modelPacks.model / acquire): today's captions are as they were.
+  const modelPacks = new ModelPackStore({ root: join(app.getPath('userData'), 'model-packs'), log });
+  modelPacks.start();
+  modelPacks.onChanged((status) => {
+    sendToOperator(IPC.modelPacks.changed, status);
+  });
+  stops.add('model packs', () => {
+    modelPacks.close();
+  });
+  handleModelPacks({
+    handle,
+    fromOperator,
+    store: modelPacks,
+    pick: async (kind) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: kind === 'zip' ? 'Import a Model Pack (Zip)' : 'Import a Model Pack (Folder)',
+        message: 'Choose the caption and translation model pack the admin was given.',
+        buttonLabel: 'Import',
+        properties: kind === 'zip' ? ['openFile'] : ['openDirectory'],
+        ...(kind === 'zip' ? { filters: [{ name: 'Zip', extensions: ['zip'] }] } : {}),
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+  });
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
@@ -5538,6 +5570,8 @@ function start(): void {
     // After the requested PDF pages have opened, the reading behind ends its job whenever the show needs the computer
     // (anything up, or the stream on air or recording), and waits here, outside every queue, until the show is idle.
     showBusy: () => !pdfReadIdle(),
+    // Extract pages… to a new presentation and its Undo/Redo wait off air (x85); everything else here goes on.
+    onAir: () => streaming.inUse() || testOnAir,
     waitForPdfIdle: (signal) => {
       if (signal.aborted || pdfReadIdle()) return Promise.resolve(!signal.aborted);
       return new Promise<boolean>((resolve) => {
@@ -5609,7 +5643,6 @@ function start(): void {
     drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
     keepSlide: ({ png, name, place }, current) => keepPageSlide(png, name, place, current),
   });
-  handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
   // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
   // operator window) asks; Pro Mode only, as Save a PDF copy is.
   handle(IPC.slideEditor.makeSlide, (e, request) => pdfEditor.makeSlide(e, request));
@@ -5624,6 +5657,18 @@ function start(): void {
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
   });
+  handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
+  handle(
+    IPC.library.pdfWorkAllowed,
+    (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !streaming.inUse() &&
+      !testOnAir &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+  );
+  handle(IPC.library.showExtractedPdfCopy, (e, id, visible) => pdfEditor.showExtractedCopy(e, id, visible));
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
   cancelSourceEdits = () => {
@@ -9546,6 +9591,9 @@ function start(): void {
         if (mode === 'pro') captions.setSettings({ ...captions.view().settings, language });
         rebuildMenu();
       },
+    },
+    modelPacks: () => {
+      if (mode === 'pro') sendToOperator(IPC.modelPacks.open, { at: Date.now() });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
