@@ -1,6 +1,7 @@
 import { videoOverlapMs } from '../../shared/video-crossfade';
 import { type SavedVideoCue, restoredVideoCue } from '../recovery/video-cue';
 import {
+  type FrameGrid,
   type CuedVideo,
   type VideoCue,
   VIDEO_GO_LEAD_MS,
@@ -265,6 +266,8 @@ export interface LookSource {
 export interface EngineOptions {
   /** Trusted identities of the local pages that must load the cued first frame. */
   videoCueParticipants?: () => string[];
+  /** The stream page's frame grid (S5, a21-s5), told while a cue waits: a manual Go is placed on its frames. */
+  videoGoFrames?: () => FrameGrid | null;
 
   /** Logical library identity of an immutable prepared video. */
   sourceMediaId?: (mediaId: string) => string;

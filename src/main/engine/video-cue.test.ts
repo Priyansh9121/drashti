@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  goOnStreamFrame,
   VIDEO_GO_LEAD_MS,
   videoCueReady,
   videoFadeProgress,
@@ -96,6 +97,30 @@ describe('S5 video cue in the show engine', () => {
     expect(bg.seek).toEqual({ at: 12_000 + VIDEO_GO_LEAD_MS, toMs: 500 });
     expect(engine.current.videoCue).toBeNull();
     expect(engine.current.live.playlist).toEqual({ playlistId: 'pl', itemId: 'b' });
+  });
+
+  it("Go is placed the margin before one of the stream's frames when the stream's page has told its grid", () => {
+    const grid = { at: 11_990.5, periodMs: 1000 / 30 };
+    let now = 10_000;
+    const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => now, new MemoryPlaylistSource(), {
+      schedule: () => () => undefined,
+      mediaLength: () => 10_000,
+      mediaKind: () => 'video',
+      mediaMarkers: () => ({ startMs: 500, endMs: 8000, markers: [] }),
+      videoCueParticipants: () => ['hall', 'live', 'audio', 'stream'],
+      videoGoFrames: () => grid,
+    });
+    engine.dispatch({ type: 'cueVideo', mediaId: 'second' });
+    const cue = engine.current.videoCue;
+    if (!cue) throw new Error('No cue');
+    ready(engine, cue.id);
+    now = 12_000;
+    expect(engine.dispatch({ type: 'goVideoCue', cueId: cue.id }).ok).toBe(true);
+    const bg = engine.current.layers.background;
+    if (bg?.kind !== 'media' || !bg.seek) throw new Error('No video');
+    expect(bg.seek.at).toBe(goOnStreamFrame(12_000 + VIDEO_GO_LEAD_MS, grid));
+    expect(bg.seek.at).not.toBe(12_000 + VIDEO_GO_LEAD_MS);
+    expect(engine.current.videoStart?.at).toBe(bg.seek.at);
   });
 
   it('Cancel, Clear and a cover invalidate a future Go without changing what was cued into live', () => {
