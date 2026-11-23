@@ -479,7 +479,7 @@ function session(child) {
     while ((nl = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, nl);
       buffer = buffer.slice(nl + 1);
-      let r = null;
+      let r;
       try {
         r = JSON.parse(line);
       } catch {
