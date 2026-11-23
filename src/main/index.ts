@@ -2029,7 +2029,11 @@ function start(): void {
     } finally {
       dispatching--;
     }
-    commandLog.show(command, result);
+    try {
+      commandLog.show(command, result);
+    } catch {
+      // The log is never in a show command's way.
+    }
     return result;
   };
   // And what the show did by itself (a slide moving on, a message's time up, what a restart put back): the parts that
@@ -2045,7 +2049,11 @@ function start(): void {
     if (state.live !== was.live) parts.unshift('live');
     if (state.blackout !== was.blackout) parts.push('black-out');
     if (state.wallpaper !== was.wallpaper) parts.push('wallpaper');
-    if (parts.length > 0) commandLog.changedByItself(engine.rev, parts);
+    try {
+      if (parts.length > 0) commandLog.changedByItself(engine.rev, parts);
+    } catch {
+      // Nor in the show's own changes'.
+    }
   });
 
   // ---- video inputs (Session 50) ----------------------------------------------------

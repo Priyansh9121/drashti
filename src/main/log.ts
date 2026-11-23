@@ -39,6 +39,10 @@ interface Sink {
   day: string;
   dayEnds: number;
   size: number;
+  /** A move of drashti.log that failed, said in the log with the next line (once). */
+  unmoved: string | null;
+  /** A full part's move failed: the day goes on in drashti.log, not tried again until the next day. */
+  holdParts: boolean;
 }
 
 let sink: Sink | null = null;
@@ -189,14 +193,41 @@ function headerLine(s: Sink): string {
   );
 }
 
-/** drashti.log moved to its day's part, and a new one begun for `day`. */
+/** Why a move failed, by its code only (EBUSY, EPERM…). */
+function codeOf(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? code : 'an error';
+}
+
+/** The line that says drashti.log could not be moved (on Windows, a scanner or a viewer holding it). */
+const unmovedLine = (day: string, error: unknown) =>
+  `Log: drashti.log could not be moved to its day, ${day} (${codeOf(error)}): its lines and the next go on in it until it can be`;
+
+/**
+ * drashti.log moved to its day's part, and a new one begun for `day`. A move that fails (Windows: a file another
+ * program holds) loses nothing: the lines go on in drashti.log, the new day is taken anyway (so the move is not tried
+ * for every line), and the log says so once; the next new day, or the next start, moves it.
+ */
 function nextFile(s: Sink, day: string): void {
   const current = join(s.dir, FILE);
-  if (existsSync(current)) moveToDay(s.dir, FILE, s.day);
+  let moved = true;
+  if (existsSync(current))
+    try {
+      moveToDay(s.dir, FILE, s.day);
+    } catch (error) {
+      moved = false;
+      s.unmoved = unmovedLine(s.day, error);
+    }
+  // A full part not moved waits for the next day (or start); a new day tries again.
+  s.holdParts = !moved && day === s.day;
   s.day = day;
   s.dayEnds = nextDayStart(s.now());
-  s.size = 0;
-  prune(s);
+  if (moved) s.size = 0;
+  try {
+    prune(s);
+  } catch {
+    // Never in the way.
+  }
   daysChanged();
 }
 
@@ -207,12 +238,18 @@ function toFile(line: string): void {
     const now = s.now();
     const bytes = Buffer.byteLength(line) + 1;
     if (now >= s.dayEnds) nextFile(s, dayOf(now));
-    else if (s.size > 0 && s.size + bytes > s.partBytes) nextFile(s, s.day);
+    else if (!s.holdParts && s.size > 0 && s.size + bytes > s.partBytes) nextFile(s, s.day);
     if (s.size === 0) {
       const head = headerLine(s);
       const first = `${head}\n`;
       appendFileSync(join(s.dir, FILE), first);
       s.size += Buffer.byteLength(first);
+    }
+    if (s.unmoved !== null) {
+      const said = `${scrub(`${new Date(now).toISOString()} [warn] ${s.unmoved}`)}\n`;
+      s.unmoved = null;
+      appendFileSync(join(s.dir, FILE), said);
+      s.size += Buffer.byteLength(said);
     }
     appendFileSync(join(s.dir, FILE), `${line}\n`);
     s.size += bytes;
@@ -277,10 +314,23 @@ export function startLogFile(
   moveNumbered(dir);
   const today = dayOf(now());
   let size = 0;
-  if (existsSync(current)) {
-    const was = fileDay(current);
-    if (was === today) size = statSync(current).size;
-    else moveToDay(dir, FILE, was);
+  let unmoved: string | null = null;
+  // Never in the way of the start (this runs before anything else): a file that cannot be moved (Windows: a scanner
+  // or a viewer holding it) stays drashti.log, today's lines go on in it, and the log says so once.
+  try {
+    if (existsSync(current)) {
+      const was = fileDay(current);
+      if (was === today) size = statSync(current).size;
+      else
+        try {
+          moveToDay(dir, FILE, was);
+        } catch (error) {
+          unmoved = unmovedLine(was, error);
+          size = statSync(current).size;
+        }
+    }
+  } catch {
+    // Unreadable: written to as it is.
   }
   sink = {
     dir,
@@ -291,6 +341,8 @@ export function startLogFile(
     day: today,
     dayEnds: nextDayStart(now()),
     size,
+    unmoved,
+    holdParts: false,
   };
   try {
     prune(sink);

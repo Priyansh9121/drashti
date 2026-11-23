@@ -1,4 +1,5 @@
 import { mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import type * as Fs from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -20,7 +21,7 @@ import {
  */
 const held = vi.hoisted(() => ({ on: false, tries: 0 }));
 vi.mock('node:fs', async (importOriginal) => {
-  const real = await importOriginal<typeof import('node:fs')>();
+  const real = await importOriginal<typeof Fs>();
   return {
     ...real,
     renameSync: (from: string, to: string) => {
