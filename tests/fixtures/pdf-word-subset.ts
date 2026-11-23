@@ -4,7 +4,8 @@ import { sfntFromWoff } from '../../src/main/import/testing/embedded-font';
 
 /** Generated page with the bundled Noto Latin subset embedded: no Gujarati glyph exists in this font. */
 export function generatedWordSubsetPdf(): Buffer {
-  const require = createRequire(import.meta.url);
+  // __filename, not import.meta: Playwright loads this file as CommonJS (pdf-words.spec.ts), vitest as a module.
+  const require = createRequire(__filename);
   const font = sfntFromWoff(
     readFileSync(require.resolve('@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff')),
   );
