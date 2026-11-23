@@ -34,12 +34,23 @@ function child(code = 0, output = '', error = '') {
   const emitter = new EventEmitter();
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();
+  // As a real child: its exit, then 'close' once its output has ended (run() reads its words then: a21).
+  const end = (at: number | null) => {
+    emitter.emit('exit', at);
+    emitter.emit('close', at);
+  };
   queueMicrotask(() => {
     stdout.emit('data', Buffer.from(output));
     stderr.emit('data', Buffer.from(error));
-    emitter.emit('exit', code);
+    end(code);
   });
-  return Object.assign(emitter, { stdout, stderr, kill: () => emitter.emit('exit', null) });
+  return Object.assign(emitter, {
+    stdout,
+    stderr,
+    kill: () => {
+      end(null);
+    },
+  });
 }
 
 /** Exercise the real session's private copy and cleanup, with every subprocess stood in. */
