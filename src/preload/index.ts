@@ -728,6 +728,8 @@ const bridge: DrashtiBridge = {
     makeSlide: (request) => invoke(IPC.slideEditor.makeSlide, request),
     slidePlace: () => invoke(IPC.slideEditor.slidePlace),
     onSlideMade: (listener) => on(IPC.slideEditor.slideMade, listener),
+    streamStatus: () => invoke(IPC.stream.status),
+    onStreamChanged: (listener) => on(IPC.stream.changed, listener),
   },
   osc: {
     status: () => invoke(IPC.osc.status),

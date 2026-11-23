@@ -173,12 +173,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   useEffect(() => {
     let mounted = true;
     let changed = false;
-    const off = window.drashti.stream.onChanged((status) => {
+    const off = window.drashti.slideEditor.onStreamChanged((status) => {
       changed = true;
       if (mounted) setPdfStreamOffAir(pdfOffAir(status));
     });
-    void window.drashti.stream
-      .status()
+    void window.drashti.slideEditor
+      .streamStatus()
       .then((status) => {
         if (mounted && !changed) setPdfStreamOffAir(pdfOffAir(status));
       })

@@ -1139,6 +1139,12 @@ export interface DrashtiBridge {
     slidePlace(): Promise<SlidePlace>;
     /** The operator window: a slide was made in the editor's window (one change for its Undo). */
     onSlideMade(listener: (made: SlideMade) => void): () => void;
+    /**
+     * The stream's state, read only (x85's Extract, Replace, Split and Hand-out wait while it is on air or recording):
+     * the editor's narrower bridge (ARCH-7) has none of the stream's controls.
+     */
+    streamStatus(): Promise<StreamStatus>;
+    onStreamChanged(listener: (status: StreamStatus) => void): () => void;
   };
   lowerThirds: {
     list(): Promise<LowerThird[]>;
