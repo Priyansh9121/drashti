@@ -116,15 +116,15 @@ describe('IndicTrans2 text pipeline, against x74’s Python', () => {
     const many = (order: string[][]) => order.flat().length >= 10;
     const { pre, post } = fixture;
     expect(count(pre, (r) => astral.test(r.text))).toBeGreaterThanOrEqual(60);
-    expect(count(pre, (r) => r.text.includes(' '))).toBeGreaterThanOrEqual(30);
-    expect(count(pre, (r) => r.text.includes(' '))).toBeGreaterThanOrEqual(30);
+    expect(count(pre, (r) => r.text.includes('\u202f'))).toBeGreaterThanOrEqual(30);
+    expect(count(pre, (r) => r.text.includes('\u2009'))).toBeGreaterThanOrEqual(30);
     expect(count(pre, (r) => /< ID1\d >/u.test(r.pre))).toBeGreaterThanOrEqual(25);
     expect(count(pre, (r) => nested(r.order))).toBeGreaterThanOrEqual(45);
     const english = pre.filter((r) => r.src === 'eng_Latn');
     expect(count(english, (r) => /n't/iu.test(r.text))).toBeGreaterThanOrEqual(30);
     expect(count(english, (r) => /\b(?:Mr|Mrs|Dr|Ms|Prof|No)\./u.test(r.text))).toBeGreaterThanOrEqual(18);
     expect(count(post, (r) => astral.test(r.cand))).toBeGreaterThanOrEqual(80);
-    expect(count(post, (r) => /[  ]/u.test(r.cand))).toBeGreaterThanOrEqual(80);
+    expect(count(post, (r) => /[\u202f\u2009]/u.test(r.cand))).toBeGreaterThanOrEqual(80);
     expect(count(post, (r) => nested(r.order))).toBeGreaterThanOrEqual(45);
     expect(count(post, (r) => many(r.order) && /ID ?1[0-4]/u.test(r.cand))).toBeGreaterThanOrEqual(30);
     const toEnglish = post.filter((r) => r.tgt === 'eng_Latn');
