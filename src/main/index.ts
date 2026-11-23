@@ -412,6 +412,13 @@ import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
+import { ErrorReports } from './error-reports/service';
+import { ErrorReportRuntime } from './error-reports/runtime';
+import { automaticIdentity, diagnosticInstallId } from './error-reports/identity';
+import { manageErrorReports } from './error-reports/admin';
+import { sendErrorReport } from './error-reports/transport';
+import { electronTransport as errorReportTransport } from './access/electron-transport';
+import { AccessStore as ErrorReportAccessStore } from './access/store';
 import { runReportIntake, runReportJob } from './report/report-worker-run';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
@@ -527,11 +534,14 @@ const crashJournal = new CrashJournal(join(app.getPath('userData'), JOURNAL_FILE
 /** An uncaught error, as the journal keeps it: its name and message (the log has its stack). */
 const errorWords = (what: string, error: unknown) =>
   `${what}: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
+let automaticErrorRuntime: ErrorReportRuntime | null = null;
 process.on('uncaughtException', (error) => {
+  automaticErrorRuntime?.crash();
   log.error('Uncaught exception in the main process', error);
   crashJournal.add(errorWords('an error in the main process that nothing caught', error));
 });
 process.on('unhandledRejection', (reason) => {
+  automaticErrorRuntime?.crash();
   log.error('Unhandled promise rejection in the main process', reason);
   crashJournal.add(errorWords('a promise in the main process failed and nothing caught it', reason));
 });
@@ -1001,7 +1011,10 @@ const watchdog = new RendererWatchdog(
     if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
       log.warn(text);
     else log.info(text);
-    if (!quitting) journalWatchdog(e);
+    if (!quitting) {
+      journalWatchdog(e);
+      if (e.kind === 'crashed') automaticErrorRuntime?.crash();
+    }
     outputWatchdogEvent?.(e);
   },
   undefined,
@@ -3391,10 +3404,84 @@ function start(): void {
     liveWriter.markClean();
   });
 
+  // alpha.22 automatic reports: separate consent/outbox; a typed identity seam for alpha.21 diagnostics.
+  const automaticReports = new ErrorReports({
+    dir: join(userDataDir, 'automatic-error-reports'),
+    now: Date.now,
+    owner: () => isLetIn() && accessState().owner,
+    letIn: isLetIn,
+    onAir: () => stream?.inUse() === true || testOnAir,
+    // Development and CI never contact a real receiver. Unit tests inject local services instead.
+    send: (config, body, stop) =>
+      packaged() ? sendErrorReport(errorReportTransport, config, body, stop) : Promise.resolve(false),
+  });
+  const errorAccessStore = new ErrorReportAccessStore(userDataDir);
+  automaticErrorRuntime = new ErrorReportRuntime({
+    now: Date.now,
+    capture: (incident) => {
+      const kept = automaticReports.capture(incident);
+      if (kept) void automaticReports.wake();
+      return kept;
+    },
+    identity: () => {
+      if (!automaticReports.status().enabled) return null;
+      const computer = behind?.client?.computer();
+      const grant = behind?.service.grant();
+      if (!computer || !grant) return null;
+      const kept = errorAccessStore.read(0);
+      if (
+        kept.status !== 'ok' ||
+        kept.value.computerId !== computer.id ||
+        kept.value.grantId !== grant.grantId
+      )
+        return null;
+      return automaticIdentity(
+        {
+          computerId: computer.id,
+          installId: diagnosticInstallId(userDataDir),
+          grantId: grant.grantId,
+          role: { mode: simpleNow() ? 'simple' : 'pro', owner: accessState().owner },
+          made: simpleNow() ? 'simple' : 'pro',
+        },
+        { version: app.getVersion(), platform: process.platform, arch: process.arch, release: osRelease() },
+        kept.value.activity,
+      );
+    },
+  });
+  // Bounded production wake cadence; no tight failure loop and never while on air.
+  const automaticReportTimer = setInterval(
+    () => {
+      void automaticReports.wake();
+    },
+    5 * 60 * 1000,
+  );
+  automaticReportTimer.unref();
+  const offAutomaticAccess = onAccessChange(() => {
+    if (isLetIn()) void automaticReports.wake();
+    else automaticReports.cancel();
+  });
+  stops.add('automatic reports', () => {
+    clearInterval(automaticReportTimer);
+    offAutomaticAccess();
+    automaticReports.cancel();
+    automaticErrorRuntime = null;
+  });
+  if (!startup.cleanQuit) automaticErrorRuntime.crash();
+  void automaticReports.wake();
+
   // ---- imports ----------------------------------------------------------------
   // The window's page, not just the window: at quit the page goes first (Session 20).
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
-    sendToPage(operatorWindow, channel, payload);
+    const delivered = sendToPage(operatorWindow, channel, payload);
+    if (
+      delivered &&
+      channel === IPC.app.notice &&
+      typeof payload === 'object' &&
+      payload !== null &&
+      'text' in payload &&
+      typeof payload.text === 'string'
+    )
+      automaticErrorRuntime?.operatorNotice(payload.text);
   };
   // A watched folder can finish its first look before the operator window subscribes.
   const importNotices = automaticImportNotices((notice) =>
@@ -3470,6 +3557,9 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      automaticErrorRuntime?.stream(status.live.state, status.live.message);
+      if (stream?.inUse()) automaticReports.cancel();
+      else void automaticReports.wake();
       youtubeService?.streamChanged(status);
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
@@ -4353,7 +4443,10 @@ function start(): void {
           ),
         );
       // Each import, counted for the Access List (Session 54): never what.
-      if (run) behind?.service.count('imports');
+      if (run) {
+        behind?.service.count('imports');
+        automaticErrorRuntime?.event('import-completed');
+      }
       // Its videos and sounds measured a moment later (Session 55, Part 7); a From a Link… import's videos trimmed past
       // their black and silence too. Bytes it brought back may be new: every file's sound is read from the library again.
       if (run) {
@@ -9210,6 +9303,17 @@ function start(): void {
       },
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
+    automaticErrorReports:
+      isLetIn() && accessState().owner
+        ? () => {
+            if (operatorWindow && !operatorWindow.isDestroyed())
+              void manageErrorReports(
+                automaticReports,
+                operatorWindow,
+                () => isLetIn() && accessState().owner,
+              );
+          }
+        : null,
     saveDiagnostics: () => {
       void (async () => {
         try {
@@ -9511,7 +9615,12 @@ function start(): void {
     void osc.accessChanged();
   });
   // Each presentation put up, counted for the Access List: never which.
-  engine.onChange(showCounter((kind) => behind?.service.count(kind)));
+  engine.onChange(
+    showCounter((kind) => {
+      behind?.service.count(kind);
+      automaticErrorRuntime?.event('show-started');
+    }),
+  );
 
   // Restore the saved screen assignments, and follow display changes: at once, then again once each display's own
   // identity has been read (Session 55), when a display plugged in is given its job.

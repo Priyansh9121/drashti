@@ -50,7 +50,9 @@ function setup() {
 }
 describe('automatic error reports', () => {
   it('does not rewrite consent or the secret when an empty queue wakes while idle', async () => {
-    const s = setup(); s.configure(); s.service.enable(true);
+    const s = setup();
+    s.configure();
+    s.service.enable(true);
     const file = join(s.dir, 'state.json');
     utimesSync(file, new Date(1000), new Date(1000));
     await s.service.wake();

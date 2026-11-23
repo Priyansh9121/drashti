@@ -714,3 +714,11 @@ On computers with at most two logical processor cores, or software video decodin
 Leave at least 2 GB free after copies and exports. Saved-edits exports use the full-quality original with the saved choices, once ready; Original exports use its original picture and sound. Neither uses a lighter playing copy. **Vertical 9:16** keeps the middle in a 1080 × 1920 frame; choose WebM to keep transparency. The system's **Save as…** chooses a new file, keeping the original even if its name is chosen. **Also add the clip to Media** adds only a checked, finished file.
 
 An accepted export stays across closing the editor or restarting Drashti; **Stop export** removes its unfinished file. Exports wait for the show, stream and recording to be idle, like the other preparation. See **Library › Exporting a clip, including vertical video** in the Manual.
+
+## Automatic error reports (alpha.22)
+
+Automatic error reports start **off**. On the admin’s computer, **Help › Automatic Error Reports…** opens the choice to set up this computer and turn reports on or off. Set up your own receiving Sheet and private Drive folder first, following [Automatic error report setup](automatic-error-reports.md). Set up each computer separately, with its own secret. A setup file does not turn reporting on: choose **Turn On** afterwards. Only a computer let in as the access-list owner may change this choice.
+
+With reporting on, an error notice delivered to the operator, a crashed process, a restart after an unexpected stop, or a failed stream can leave a report. Each holds the computer id, access entry id, version, system, role, counts and coded log events. It sends no names, content, email addresses, passwords, pictures or raw crash files. These short reports help you match the problem to the computer’s fuller local log. A node continues to use **Report a Problem…** through Main; automatic reporting here is for Main.
+
+At most 10 reports are kept from a computer each UTC day. Up to 20 wait offline for 7 days, then expire. Nothing sends while streaming or recording. Turning reporting off clears what waits here and stops an upload in progress; a report already received stays in your Sheet and Drive until you remove it. **Report a Problem…** remains the operator’s way to add their own explanation and chosen files.
