@@ -1,0 +1,50 @@
+import { expect, test } from '@playwright/test';
+import { type PageGlobals, slideEditorClosed } from './helpers';
+import { openGeneratedPdf, usePdfTools } from './pdf-tools-fixtures';
+
+test('PDF marks have an undoable click order that survives saving and drives Next', async () => {
+  const s = await openGeneratedPdf();
+  try {
+    for (const [tool, top] of [['Highlight', 0.2], ['Draw', 0.6]] as const) {
+      await usePdfTools(s.ed);
+      await s.ed.getByRole('button', { name: tool, exact: true }).click();
+      const box = await s.editor.getByTestId('editor-slide').boundingBox();
+      if (!box) throw new Error('Generated PDF page is missing.');
+      await s.ed.mouse.move(box.x + box.width * 0.2, box.y + box.height * top);
+      await s.ed.mouse.down();
+      await s.ed.mouse.move(box.x + box.width * 0.7, box.y + box.height * (top + 0.1), { steps: 8 });
+      await s.ed.mouse.up();
+      await s.ed.getByRole('tab', { name: 'Motion', exact: true }).click();
+      const onClick = s.ed.getByRole('checkbox', { name: 'Comes in on click', exact: true });
+      await expect(onClick).not.toBeChecked();
+      await onClick.check();
+      await expect(onClick).toBeChecked();
+    }
+    const order = s.ed.getByRole('list', { name: 'PDF mark order', exact: true });
+    await expect(order.getByRole('listitem')).toHaveText(['Click 1 · Highlight', 'Click 2 · Draw']);
+    await s.ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(order.getByRole('listitem')).toHaveText(['Click 1 · Highlight']);
+    await s.ed.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(order.getByRole('listitem')).toHaveText(['Click 1 · Highlight', 'Click 2 · Draw']);
+    await s.editor.getByTestId('save-slides').click();
+    await slideEditorClosed(s.app);
+    s.unchanged();
+    await s.win.evaluate((id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 }), s.id);
+    const step = () => s.win.evaluate(async () => {
+      const live = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide;
+      return { index: live?.slideIndex, step: live?.step };
+    });
+    await expect.poll(step).toEqual({ index: 0, step: 0 });
+    for (const n of [1, 2]) {
+      await s.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
+      await expect.poll(step).toEqual({ index: 0, step: n });
+    }
+    await s.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'back' }));
+    await expect.poll(step).toEqual({ index: 0, step: 1 });
+    await s.win.getByTestId('edit-slides').click();
+    // Reopening is covered by the saved engine timeline above; the original is byte-for-byte unchanged.
+    s.unchanged();
+  } finally {
+    await s.app.close();
+  }
+});
