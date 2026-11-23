@@ -533,7 +533,16 @@ export interface DrashtiBridge {
     insertPdfPages(presentationId: string, stamp: string, sourceId: string): Promise<InsertPdfPagesResult>;
     insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
-    exportPdf(presentationId: string, doc: EditDoc, stamp: string): Promise<PdfCopyResult>;
+    exportPdf(presentationId: string, doc: EditDoc, stamp: string, pages?: number[]): Promise<PdfCopyResult>;
+    extractPdfPages(
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      pages: number[],
+    ): Promise<{ ok: true; id: string; name: string } | { ok: false; message: string }>;
+    showExtractedPdf(id: string, visible: boolean): Promise<boolean>;
+    showExtractedPdfCopy(id: string, visible: boolean): Promise<boolean>;
+    pdfWorkAllowed(): Promise<boolean>;
     /**
      * Put edited slides back as one change (Undo brings back the copy kept
      * before it). Refused when the presentation changed since `stamp`, unless forced.
@@ -1144,6 +1153,12 @@ export interface DrashtiBridge {
     slidePlace(): Promise<SlidePlace>;
     /** The operator window: a slide was made in the editor's window (one change for its Undo). */
     onSlideMade(listener: (made: SlideMade) => void): () => void;
+    /**
+     * The stream's state, read only (x85's Extract, Replace, Split and Hand-out wait while it is on air or recording):
+     * the editor's narrower bridge (ARCH-7) has none of the stream's controls.
+     */
+    streamStatus(): Promise<StreamStatus>;
+    onStreamChanged(listener: (status: StreamStatus) => void): () => void;
   };
   lowerThirds: {
     list(): Promise<LowerThird[]>;

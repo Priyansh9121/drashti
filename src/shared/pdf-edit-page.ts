@@ -1,3 +1,6 @@
+import { pdfTextSpan } from './pdf-text-span';
+import { pdfWordFont, PDF_WORD_FONT_NOTE } from './pdf-word-font';
+import { pdfParagraphs } from './pdf-paragraphs';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { NativePathCommand, ShapeElement, SlideElement } from './model';
 
@@ -818,16 +821,8 @@ export async function editablePdfPage(
     const shape = nativePdfPath(index, path.commands, call, scale, path.fillRule);
     if (shape) native.set(index, shape);
   }
-  const textItems = new Map<string, { indices: number[]; next: number }>();
-  for (const [index, item] of content.items.entries()) {
-    if (!('str' in item)) continue;
-    const same = textItems.get(item.str);
-    if (same) same.indices.push(index);
-    else textItems.set(item.str, { indices: [index], next: 0 });
-  }
-  const issues = [
-    'Edited PDF text uses Drashti’s available fonts; line breaks and spacing may differ from the source.',
-  ];
+  const usedTextItems = new Set<number>();
+  const issues = [PDF_WORD_FONT_NOTE];
   for (const [index, values] of calls) {
     if (outlinedText.has(index)) continue;
     const first = values[0],
@@ -850,9 +845,10 @@ export async function editablePdfPage(
       values.some((v) => v.composite !== 'source-over' || v.font !== first.font || v.fill !== first.fill)
     )
       continue;
-    const same = textItems.get(words);
-    const itemIndex = same?.indices[same.next];
-    const item = itemIndex === undefined ? undefined : content.items[itemIndex];
+    const matched = pdfTextSpan(content.items, words, usedTextItems);
+    const item = matched?.item;
+    // Every paint owns its occurrence, even when its rotation or clip keeps it as a picture.
+    for (const itemIndex of matched?.indices ?? []) usedTextItems.add(itemIndex);
     let size: number, textWidth: number, x: number, y: number;
     if (item && 'str' in item) {
       const a = matrixOf(base.transform),
@@ -870,7 +866,6 @@ export async function editablePdfPage(
       textWidth = item.width;
       x = tx[4];
       y = tx[5] - size * (content.styles[item.fontName]?.ascent ?? 0.8);
-      if (same) same.next++;
     } else {
       if (
         !px ||
@@ -902,14 +897,15 @@ export async function editablePdfPage(
       )
     )
       continue;
+    const font = pdfWordFont(words);
     native.set(index, {
       id: `pdf-text-${index}`,
       kind: 'text',
       text: words,
-      lang: null,
+      lang: font.lang,
       frame,
       style: {
-        fontFamily: 'Noto Sans',
+        fontFamily: font.family,
         fontSize: size,
         fontWeight: /bold|[6-9]00/u.test(first.font) ? 700 : 400,
         color: fill,
@@ -1015,5 +1011,5 @@ export async function editablePdfPage(
     issues.push(
       'Some stroked or complex source drawings stay as separate pictures. They can be moved or removed; their control points cannot be edited.',
     );
-  return { width: base.width, height: base.height, elements, assets, issues };
+  return { width: base.width, height: base.height, elements: pdfParagraphs(elements), assets, issues };
 }

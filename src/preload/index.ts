@@ -317,7 +317,13 @@ const bridge: DrashtiBridge = {
     insertPdfFile: (presentationId, stamp) => invoke(IPC.library.insertPdfFile, presentationId, stamp),
     cancelPdfInsertion: (presentationId, stamp) =>
       invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
-    exportPdf: (presentationId, doc, stamp) => invoke(IPC.library.exportPdf, presentationId, doc, stamp),
+    exportPdf: (presentationId, doc, stamp, pages) =>
+      invoke(IPC.library.exportPdf, presentationId, doc, stamp, pages),
+    extractPdfPages: (presentationId, doc, stamp, pages) =>
+      invoke(IPC.library.extractPdfPages, presentationId, doc, stamp, pages),
+    showExtractedPdf: (id, visible) => invoke(IPC.library.showExtractedPdf, id, visible),
+    showExtractedPdfCopy: (id, visible) => invoke(IPC.library.showExtractedPdfCopy, id, visible),
+    pdfWorkAllowed: () => invoke(IPC.library.pdfWorkAllowed),
     saveSlides: (presentationId, doc, stamp, force = false) =>
       invoke(IPC.library.saveSlides, presentationId, doc, stamp, force),
     getDefaultTransition: () => invoke(IPC.library.getDefaultTransition),
@@ -729,6 +735,8 @@ const bridge: DrashtiBridge = {
     makeSlide: (request) => invoke(IPC.slideEditor.makeSlide, request),
     slidePlace: () => invoke(IPC.slideEditor.slidePlace),
     onSlideMade: (listener) => on(IPC.slideEditor.slideMade, listener),
+    streamStatus: () => invoke(IPC.stream.status),
+    onStreamChanged: (listener) => on(IPC.stream.changed, listener),
   },
   osc: {
     status: () => invoke(IPC.osc.status),

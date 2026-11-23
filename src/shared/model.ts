@@ -336,6 +336,12 @@ export type GradientFill =
 
 export interface ShapeElement extends ElementBase {
   kind: 'shape';
+  /** A PDF annotation; click order is opt-in and independent of the object's drawing order. */
+  pdfMark?: {
+    /** Older marks are ordinary shapes; choosing a click may leave the original tool unnamed. */
+    tool?: 'highlight' | 'underline' | 'strike' | 'draw' | 'cover';
+    clickOrder?: number;
+  };
   /** Left out: a rectangle (every shape before Session 7 was one). */
   shape?: ShapeKind;
   /** Required for a Drawing; its frame, turn and flips transform every point. */
