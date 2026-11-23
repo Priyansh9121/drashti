@@ -173,6 +173,7 @@ const KNOWN: LanguageModelEntry[] = [
   }, // Route C (alpha.22): AI4Bharat's IndicConformer (120M, CTC head, MIT) exported to ONNX by cap-route-c and run by
   // Drashti's helper on ONNX Runtime 1.23.2; known by the pack's model.onnx (its tokens and frontend files come with
   // it in the pack). The 8-bit copies hear real Gujarati as well as the full ones at 40% of the size (cap-route-c).
+  // Whisper's fallback and timestamps do not apply (Route C gives each phrase its own times).
   {
     id: 'gu-indicconformer-ctc-int8',
     language: 'gu',
@@ -181,7 +182,7 @@ const KNOWN: LanguageModelEntry[] = [
     sha256: '52d70bb2b311e9acf44fa868f5f75c3ab21e49885ed89f77ade4c2f011a32307',
     licence: 'MIT',
     fallback: false,
-    timestamps: true,
+    timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
   },
   {
@@ -192,7 +193,7 @@ const KNOWN: LanguageModelEntry[] = [
     sha256: '02ef118807cbf4eda797cebab30703757ec920e328acdcf067227220ef0afeed',
     licence: 'MIT',
     fallback: false,
-    timestamps: true,
+    timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
   },
   {
@@ -203,7 +204,7 @@ const KNOWN: LanguageModelEntry[] = [
     sha256: '7f5e83cd55d7832d671db1c9bd9299ea37cea6e5f8b79d2981fecb7c58537766',
     licence: 'MIT',
     fallback: false,
-    timestamps: true,
+    timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
   },
   {
@@ -214,7 +215,7 @@ const KNOWN: LanguageModelEntry[] = [
     sha256: 'fdeb04da4f5a9abc0b4a6f0d3900848776629331c23d64a92ddd466bddb3ecf0',
     licence: 'MIT',
     fallback: false,
-    timestamps: true,
+    timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
   },
 ];

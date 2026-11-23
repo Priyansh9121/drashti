@@ -188,3 +188,51 @@ test('caption AI: the pack imported, Gujarati’s own model chosen: what is hear
     await app.close();
   }
 });
+
+test('caption AI, Route C: Gujarati’s IndicConformer model from the pack is heard through its own route, one phrase at a time on the hall, the stage and the stream', async () => {
+  test.setTimeout(180_000);
+  const pack = placeholderCaptionPack({ conformer: true });
+  const { app } = await launchApp({
+    ...OUTPUTS,
+    ...NO_PLACEHOLDERS,
+    DRASHTI_TEST_SPEECH: GU_PHRASES.join('|'),
+    DRASHTI_TEST_SPEECH_MODELS: pack.list,
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const places = await threePlaces(win, app);
+    const watched = await Promise.all(
+      [places.hall, places.stage, places.stream].map(async (page) => ({
+        page,
+        drawn: await recordLines(page),
+      })),
+    );
+    await importCaptionPack(app, win, pack.folder);
+    await chooseMenuItem(app, 'live-captions');
+    const dialog = win.getByTestId('captions-dialog');
+    await dialog.getByTestId('captions-audience').click();
+    await chooseGujaratiOwnModel(app, dialog);
+    for (const { page } of watched) await forgetLines(page);
+    await dialog.getByTestId('captions-on').click();
+    // Route C made its recognizer from the pack's three files (no "no checked model" refusal), and it hears.
+    await expect(dialog.getByTestId('captions-state')).toHaveText('Listening to the stream’s sound input.');
+    for (const { page, drawn } of watched) {
+      await expect
+        .poll(
+          async () => {
+            const all = await drawn();
+            return GU_PHRASES.every((phrase) => all.includes(phrase));
+          },
+          { timeout: 20_000 },
+        )
+        .toBe(true);
+      expect((await drawn()).filter((lines) => lines.includes(' | '))).toEqual([]);
+      await expect(page.getByTestId('captions')).toHaveAttribute('lang', 'gu');
+    }
+    await dialog.getByTestId('captions-on').click();
+    for (const { page } of watched) await expect(page.getByTestId('captions')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});

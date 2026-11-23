@@ -23,14 +23,24 @@ export interface PlaceholderCaptionPack {
   list: string;
 }
 
-export function placeholderCaptionPack(): PlaceholderCaptionPack {
+/**
+ * Route W (the default): one whisper.cpp file. Route C (`conformer`): AI4Bharat IndicConformer's three files
+ * (model.onnx, tokens.txt, frontend.bin) in IndicConformer's format, known by the model.onnx file.
+ */
+export function placeholderCaptionPack(o: { conformer?: boolean } = {}): PlaceholderCaptionPack {
   const root = mkdtempSync(join(tmpdir(), 'drashti-e2e-caption-ai-'));
   const folder = join(root, 'Placeholder caption pack');
   const model = Buffer.from(Array.from({ length: 8_192 }, (_, i) => (i * 13 + 1) % 251));
-  const files = new Map<string, Buffer>([
-    ['licences/Apache-2.0.txt', Buffer.from(LICENCE)],
-    ['captions/gu/model.bin', model],
-  ]);
+  const tokens = Buffer.from('<blk>\nplaceholder\n');
+  const frontend = Buffer.from(Array.from({ length: 1_024 }, (_, i) => (i * 7 + 3) % 251));
+  const modelFiles: [string, Buffer][] = o.conformer
+    ? [
+        ['captions/gu-conformer/model.onnx', model],
+        ['captions/gu-conformer/tokens.txt', tokens],
+        ['captions/gu-conformer/frontend.bin', frontend],
+      ]
+    : [['captions/gu/model.bin', model]];
+  const files = new Map<string, Buffer>([['licences/Apache-2.0.txt', Buffer.from(LICENCE)], ...modelFiles]);
   const manifest = {
     format: PACK_FORMAT,
     version: 1,
@@ -45,18 +55,18 @@ export function placeholderCaptionPack(): PlaceholderCaptionPack {
         licence: 'Apache-2.0',
         purpose: ['licence'],
       },
-      {
-        name: 'captions/gu/model.bin',
-        bytes: model.length,
-        sha256: sha(model),
+      ...modelFiles.map(([name, data]) => ({
+        name,
+        bytes: data.length,
+        sha256: sha(data),
         licence: 'Apache-2.0',
         purpose: ['captions-gu'],
         model: 'placeholder-gu-pack',
-        format: 'whisper-ggml',
+        format: o.conformer ? 'indicconformer-ctc-onnx-v1' : 'whisper-ggml',
         // A pack credits each model (cap-pack refuses one that does not).
         attribution: 'Placeholder Gujarati model, made by the tests',
         licenceFile: 'licences/Apache-2.0.txt',
-      },
+      })),
     ],
   };
   files.set(PACK_MANIFEST, Buffer.from(JSON.stringify(manifest, null, 2)));
@@ -77,6 +87,7 @@ export function placeholderCaptionPack(): PlaceholderCaptionPack {
         licence: 'Apache-2.0',
         fallback: false,
         timestamps: false,
+        ...(o.conformer ? { format: 'indicconformer-ctc-onnx-v1' } : {}),
       },
     ]),
   );
