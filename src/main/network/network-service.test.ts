@@ -1380,3 +1380,14 @@ it('shows the general paired-device notice from its worker without changing netw
   expect(notices).toEqual(['Drashti is busy with new connections. Paired devices keep their places.']);
   expect(t.service.status().state).toBe('listening');
 });
+
+it('identifies public poster links separately from individually paired announcement devices', () => {
+  const t = setup();
+  t.service.setOn(true);
+  t.fromWorker({ type: 'started', result: { ok: true, port: 8740 } });
+  const personal = t.service.pairForCheck('announcements', 'Placeholder paired announcer');
+  t.service.makePoster();
+  const last = t.sent.filter((message) => message.type === 'devices').at(-1);
+  expect(last?.devices.some((device) => device.poster === true)).toBe(true);
+  expect(last?.devices.find((device) => device.id === personal.id)?.poster === true).toBe(false);
+});

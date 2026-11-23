@@ -560,8 +560,9 @@ export class NetworkServer {
     this.devices = new Map(list.map((d) => [d.tokenHash, d]));
     const ids = new Map(list.map((d) => [d.id, d]));
     this.uploads?.keepDevices(new Set(ids.keys()));
+    const pairedIds = new Set(list.filter((device) => !device.poster).map((device) => device.id));
     for (const [key, known] of this.socketDevices) {
-      for (const id of known.ids) if (!ids.has(id)) known.ids.delete(id);
+      for (const id of known.ids) if (!pairedIds.has(id)) known.ids.delete(id);
       if (known.ids.size === 0) {
         this.socketDevices.delete(key);
         known.release();
@@ -691,7 +692,7 @@ export class NetworkServer {
         return;
       }
       const device = this.authenticate(req) ?? this.linked(req, segments);
-      if (device) this.protectConnection(req, device.id);
+      if (device && !device.poster) this.protectConnection(req, device.id);
       else if (this.letIn && this.sockets.openFull(socketSeat(req.socket))) {
         this.capacityBusy();
         this.json(res, 503, { ok: false, message: PAIRED_SEATS_BUSY });
@@ -1082,7 +1083,7 @@ export class NetworkServer {
         this.bye(client, 'unauthorized');
         return;
       }
-      if (device.kind !== 'remote' && device.kind !== 'stage') {
+      if (device.poster || (device.kind !== 'remote' && device.kind !== 'stage')) {
         this.bye(client, 'not-allowed');
         return;
       }

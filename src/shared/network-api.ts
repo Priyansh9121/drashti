@@ -324,6 +324,8 @@ export type PairAnswer =
 
 /** A device as the network server knows it: enough to check its token. */
 export interface DeviceAuth {
+  /** A public announcements link, rather than an individually paired device. */
+  poster?: boolean;
   id: string;
   name: string;
   kind: DeviceKind;

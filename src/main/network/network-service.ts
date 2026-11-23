@@ -780,9 +780,13 @@ export class NetworkService implements EngineTransport {
   }
 
   private pushDevices(): void {
-    const devices: DeviceAuth[] = this.deps.devices
-      .list()
-      .map((d) => ({ id: d.id, name: d.name, kind: d.kind, tokenHash: d.tokenHash }));
+    const devices: DeviceAuth[] = this.deps.devices.list().map((d) => ({
+      id: d.id,
+      name: d.name,
+      kind: d.kind,
+      tokenHash: d.tokenHash,
+      ...(d.poster ? { poster: true } : {}),
+    }));
     this.worker?.send({ type: 'devices', devices });
   }
 
