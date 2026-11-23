@@ -535,3 +535,7 @@ For a clip, choose start and end under **Trim**, then **Preparation and export**
 **Export clip…** opens **Save as…** for a new file. The accepted export waits while anything is up, streaming or recording, and stays across closing the editor or restarting Drashti. Open the editor again for progress, **Stop export** or **Show the file**. The original stays unchanged. The Manual's **Library › Exporting a clip, including vertical video** has the steps.
 
 ![Edit Video's Preparation and export choices for a vertical clip](screenshots/manual-edit-video-export.png)
+
+### Automatic error reports (alpha.22)
+
+The admin may turn on automatic error reports for this computer. They start off. When on, Drashti can send a short coded report after an error, a crash or a failed stream to the admin’s own Sheet and Drive folder. It contains computer ids, version, system and counts, with no show content, email addresses, pictures or raw crash files. Reports wait while streaming or recording and while offline. For your own explanation and files you choose, use **Help › Report a Problem…** as before. Ask the admin to change automatic reporting in **Help › Automatic Error Reports…**.
