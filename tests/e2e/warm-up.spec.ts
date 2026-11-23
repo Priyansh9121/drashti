@@ -154,8 +154,12 @@ async function brightest(page: Page): Promise<number> {
  * Every pixel of the warm-up's whole box against black alone, including its edges. A LIVE picture's rounded UI
  * border crosses that rectangle's corners, so its pixels must match the black-only frame too, rather than be
  * mistaken for the warm-up's drawing (X12 wide: 12 border pixels, maximum 191, while every interior pixel was 0).
- * Nothing is ignored or allowed a colour difference. The whole audience output and every captured frame are still
+ * Nothing else is ignored or allowed a colour difference. The whole audience output and every captured frame are still
  * checked against absolute zero below. Decode in Node, never on a show page (X17).
+ * One allowance, the LIVE picture's only (a21, the owner's B): its box's own antialiased corner pixels, where the box
+ * alone (the warm-up hidden) is neither black nor anything else of the warm-up's, may differ by 2 levels at most. On
+ * CI's Mac Chromium composes those pixels a level or two apart from frame to frame, in black frames too
+ * (warm-up.spec:428's flaky failure, reports/a21-flaky-mac.md); a real leak there (the native copies': up to 30) fails.
  */
 async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   const selector = `${scope} [data-warm-up]`;
@@ -180,10 +184,51 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   }, scope);
   let black: ReturnType<typeof decodePng>;
   let blackPng: Buffer;
+  let corners: Set<number> | null = null;
   try {
     blackPng = await page.screenshot({ scale: 'css', clip });
     black = decodePng(blackPng);
+    if (scope === '[data-testid="live-preview"]') {
+      // The box alone: the warm-up's black group and its final cover hidden too.
+      const inner = await page.evaluate((scope) => {
+        const box = document.querySelector<HTMLElement>(scope);
+        const host = box?.querySelector<HTMLElement>('[data-warm-up]');
+        const final = host?.parentElement?.querySelector<HTMLElement>('[data-warm-final-cover]');
+        if (!box || !host || !final) throw new Error('no LIVE box, warm-up group or final cover');
+        host.style.visibility = 'hidden';
+        final.style.visibility = 'hidden';
+        const css = getComputedStyle(box);
+        return parseFloat(css.borderTopLeftRadius) - parseFloat(css.borderTopWidth);
+      }, scope);
+      const alone = decodePng(await page.screenshot({ scale: 'css', clip }));
+      // Its antialiased corner pixels: in a square of the box's inner corner (and 2 px more) at each corner of the
+      // warm-up's box, those the box alone draws neither black nor its border's or the page's full colour.
+      const side = Math.ceil(inner) + 2;
+      corners = new Set<number>();
+      for (let y = 0; y < alone.height; y++)
+        for (let x = 0; x < alone.width; x++) {
+          const inCorner = (x < side || x >= alone.width - side) && (y < side || y >= alone.height - side);
+          if (!inCorner) continue;
+          const i = (y * alone.width + x) * 4;
+          const value = [alone.rgba[i] ?? 0, alone.rgba[i + 1] ?? 0, alone.rgba[i + 2] ?? 0];
+          const neighbours = [
+            [x - 1, y],
+            [x + 1, y],
+            [x, y - 1],
+            [x, y + 1],
+          ].map(([nx, ny]) => alone.rgba[((ny ?? 0) * alone.width + (nx ?? 0)) * 4] ?? 0);
+          // An edge pixel: not black, and not the same as every neighbour (the border's or the page's flat colour).
+          if (value.some((v) => v !== 0) && neighbours.some((n) => n !== value[0])) corners.add(i / 4);
+        }
+    }
   } finally {
+    if (scope === '[data-testid="live-preview"]')
+      await page.evaluate((scope) => {
+        const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
+        if (host) host.style.visibility = '';
+        const final = host?.parentElement?.querySelector<HTMLElement>('[data-warm-final-cover]');
+        if (final) final.style.visibility = '';
+      }, scope);
     await page.evaluate(
       ({ scope, opacity }) => {
         const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
@@ -208,7 +253,8 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   let at = 0;
   let channels = 0;
   for (let i = 0; i < drawn.rgba.length; i++) {
-    const delta = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
+    const raw = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
+    const delta = corners?.has(Math.floor(i / 4)) && raw <= 2 ? 0 : raw;
     if (delta !== 0) channels++;
     if (delta > difference) {
       difference = delta;
