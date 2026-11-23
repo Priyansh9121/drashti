@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, type ReadStream } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { basename } from 'node:path';
 import type { Duplex } from 'node:stream';
@@ -397,6 +397,8 @@ export class NetworkServer {
   private wss: WebSocketServer | null = null;
   private options: ServerOptions | null = null;
   private files = new Map<string, WebFile>();
+  /** Page responses can finish before their disk handles close, especially on Windows. */
+  private readonly pageFiles = new Map<ReadStream, Promise<void>>();
   private devices = new Map<string, DeviceAuth>();
   private readonly clients = new Set<Client>();
   private readonly mirror = new EngineMirror();
@@ -542,9 +544,11 @@ export class NetworkServer {
     this.server = null;
     this.wss = null;
     this.updateConnected();
-    if (!server) return Promise.resolve();
+    const filesClosed = [...this.pageFiles.values()];
+    for (const stream of this.pageFiles.keys()) stream.destroy();
+    if (!server) return Promise.all(filesClosed).then(() => undefined);
     this.sockets.closeWaiting();
-    return new Promise((resolve) => {
+    const listenerClosed = new Promise<void>((resolve) => {
       server.close(() => {
         this.sockets.clear();
         this.socketDevices.clear();
@@ -553,6 +557,7 @@ export class NetworkServer {
       });
       server.closeAllConnections();
     });
+    return Promise.all([listenerClosed, ...filesClosed]).then(() => undefined);
   }
 
   /** The paired devices (replacing the list): one no longer there is cut off at once. */
@@ -752,6 +757,14 @@ export class NetworkServer {
       return;
     }
     const stream = createReadStream(file.file);
+    const closed = new Promise<void>((resolve) => {
+      stream.once('close', () => {
+        this.pageFiles.delete(stream);
+        resolve();
+      });
+    });
+    this.pageFiles.set(stream, closed);
+    res.once('close', () => stream.destroy());
     stream.on('error', () => res.destroy());
     stream.pipe(res);
   }

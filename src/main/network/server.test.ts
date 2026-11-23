@@ -1,4 +1,5 @@
 import { createReadStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import type * as NodeFs from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { PassThrough, type Duplex } from 'node:stream';
 import { type IncomingMessage, request, type Server } from 'node:http';
@@ -21,7 +22,7 @@ import { NetworkServer, type ServerHost, SOCKET_LIMITS } from './server';
 import { hashToken } from './tokens';
 
 vi.mock('node:fs', async (original) => {
-  const fs = await original<typeof import('node:fs')>();
+  const fs = await original<typeof NodeFs>();
   return { ...fs, createReadStream: vi.fn(fs.createReadStream) };
 });
 
@@ -1360,12 +1361,11 @@ it('keeps paired places when public announcement links are waiting for answers',
   }
 });
 
-
 it('waits for a served page file to close before shutdown completes', async () => {
   const { port, server: network } = await start();
   // A response can finish before Windows releases the file handle. Hold that close event explicitly.
   const page = new PassThrough({ autoDestroy: false, emitClose: false });
-  vi.mocked(createReadStream).mockReturnValueOnce(page as ReturnType<typeof createReadStream>);
+  vi.mocked(createReadStream).mockReturnValueOnce(page as unknown as ReturnType<typeof createReadStream>);
   page.end('<!doctype html><title>pair</title>');
   expect((await call(port, '/pair')).status).toBe(200);
   const listener = Reflect.get(network, 'server') as Server;
