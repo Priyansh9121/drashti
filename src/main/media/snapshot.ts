@@ -76,7 +76,7 @@ export async function takeSnapshot(deps: SnapshotDeps, ref: PlayingRef): Promise
       return {
         ok: false,
         message:
-          'Drashti could not make the snapshot from its file. Try again; if it fails again, choose Help, then Save Diagnostics…',
+          'Drashti could not make the snapshot from its file. Try again; if it fails again, choose Help, then Save Diagnostics',
       };
     const added = await deps.importFile(out);
     return added.ok ? { ok: true, mediaId: added.mediaId, name } : added;
