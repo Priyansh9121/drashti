@@ -8,6 +8,8 @@
 // program (x30: Syphon on a Mac, Spout on Windows) must be there and start: its input ended at once, it says "ready"
 // and stops by itself (scripts/fetch-video-out.mjs builds it; tools/video-out/).
 // Book OCR (alpha.21): the reading process reads a blank page with its own model (src/main/ocr/ocr-selftest.ts).
+// Route C (alpha.22): in packaged apps the Gujarati and Hindi recognition helper starts beside its own ONNX Runtime
+// 1.23.2 (and on Windows its app-local Microsoft runtime), without any model (src/main/speech/indic-selftest.ts).
 //
 //   node scripts/check-ffmpeg.mjs             the built app in out/ (pnpm build first)
 //   node scripts/check-ffmpeg.mjs --packaged  every app electron-builder left in release/
@@ -94,12 +96,14 @@ function check(label, command, args) {
       const works = result.encoders.map((e) => `${e.label}: ${e.works ? 'works' : 'no'}`).join('; ');
       const yt = result.youtube;
       const whisper = result.whisper?.detail ?? (packaged ? 'no startup result' : 'checked in packaged apps');
-      const passed = result.passed && (!packaged || result.whisper?.passed === true);
+      const indic = result.indic?.detail ?? (packaged ? 'no startup result' : 'checked in packaged apps');
+      const passed =
+        result.passed && (!packaged || (result.whisper?.passed === true && result.indic?.passed === true));
       const sandbox = yt.sandbox
         ? `reading a file: ${yt.sandbox.readFile}; reaching 127.0.0.1: ${yt.sandbox.network} (${yt.sandbox.connections} connection(s) arrived); starting a program: ${yt.sandbox.runProgram}`
         : 'not run';
       console.log(
-        `${label}: ${passed ? 'OK' : 'FAILED'}\n  ${result.path}\n  ${result.version}\n  RTMPS: ${result.rtmps ? 'yes' : 'no'}\n  ${works}\n  Streams with: ${result.chosen ?? 'nothing'}\n  yt-dlp: ${yt.ytDlp.version ?? 'does not run'} (${yt.ytDlp.path ?? 'missing'})\n  Deno: ${yt.deno.version ?? 'does not run'} (${yt.deno.path ?? 'missing'})\n  Deno as yt-dlp starts it: ${sandbox}\n  Live captions: ${whisper}\n  Book OCR: ${result.ocr?.detail ?? 'no result'}`,
+        `${label}: ${passed ? 'OK' : 'FAILED'}\n  ${result.path}\n  ${result.version}\n  RTMPS: ${result.rtmps ? 'yes' : 'no'}\n  ${works}\n  Streams with: ${result.chosen ?? 'nothing'}\n  yt-dlp: ${yt.ytDlp.version ?? 'does not run'} (${yt.ytDlp.path ?? 'missing'})\n  Deno: ${yt.deno.version ?? 'does not run'} (${yt.deno.path ?? 'missing'})\n  Deno as yt-dlp starts it: ${sandbox}\n  Live captions: ${whisper}\n  Gujarati and Hindi recognition: ${indic}\n  Book OCR: ${result.ocr?.detail ?? 'no result'}`,
       );
       resolve(passed);
     });

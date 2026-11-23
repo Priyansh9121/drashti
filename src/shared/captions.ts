@@ -64,6 +64,8 @@ export function parseCaptionSettings(raw: unknown): CaptionSettings {
  * sets it; null when nothing is being said (or captions are off). Never kept: the recovery file leaves it out.
  */
 export interface CaptionsShown {
+  /** Phase D clause bands fit their measured width; absent for the existing roll-up path. */
+  fit?: true;
   lines: string[];
   /** The spoken language. Sanskrit captions use Gujarati letters. */
   language: SpeechLanguage;
@@ -159,6 +161,76 @@ export function defaultModel(platform: string, arch: string): CaptionModelId {
   return platform === 'darwin' && arch === 'arm64' ? 'turbo' : 'small';
 }
 
+/**
+ * A model of its own for one language (alpha.22): Gujarati, Hindi or English, chosen on this computer. It hears that
+ * language when the speaker's language is set to it; Sanskrit, and captions "as heard", use the general model above.
+ * Drashti knows each such model by its SHA-256 (main/speech/language-models.ts): no other file is used.
+ */
+export const LANGUAGE_MODEL_LANGUAGES = ['gu', 'hi', 'en'] as const;
+export type LanguageModelLanguage = (typeof LANGUAGE_MODEL_LANGUAGES)[number];
+
+export const isLanguageModelLanguage = (value: unknown): value is LanguageModelLanguage =>
+  LANGUAGE_MODEL_LANGUAGES.some((language) => language === value);
+
+/** How one language's own model stands on this computer. */
+export interface LanguageModelView {
+  language: LanguageModelLanguage;
+  /** The models this copy of Drashti knows for the language, and whether each is on this computer. */
+  known: readonly { id: string; name: string; bytes: number; here: boolean }[];
+  /** The one chosen on this computer, or null: the general model hears the language. */
+  chosen: string | null;
+  /**
+   * general: none chosen. ready: here and checked. missing: chosen but not on this computer. changed: its file is
+   * not as it was checked, so it is not used. unknown: chosen, but this copy of Drashti does not know it. checking:
+   * a file is being checked.
+   */
+  phase: 'general' | 'ready' | 'missing' | 'changed' | 'unknown' | 'checking';
+  /** What to do, or why a file was refused (plain words), or null. */
+  message: string | null;
+}
+
+/**
+ * Live timing (alpha.22, from x80's budget for live captions), on this computer: how often the words of a phrase
+ * being heard are worked out again (the step), how long a pause ends a phrase, the longest phrase (the chunk), how
+ * loud sound must be to count as speech, and the engine's threads. The defaults are the timing captions always had.
+ */
+export const CAPTION_STEPS_MS = [1_500, 1_000] as const;
+export const CAPTION_PAUSES_MS = [700, 500] as const;
+export const CAPTION_LONGEST_MS = [12_000, 8_000, 6_000] as const;
+export const CAPTION_SPEECH_LEVELS = ['standard', 'quiet-room', 'noisy-hall'] as const;
+export const CAPTION_THREADS = [4, 2, 1] as const;
+
+export interface CaptionTiming {
+  stepMs: (typeof CAPTION_STEPS_MS)[number];
+  pauseMs: (typeof CAPTION_PAUSES_MS)[number];
+  longestMs: (typeof CAPTION_LONGEST_MS)[number];
+  speech: (typeof CAPTION_SPEECH_LEVELS)[number];
+  threads: (typeof CAPTION_THREADS)[number];
+}
+
+export const DEFAULT_CAPTION_TIMING: Readonly<CaptionTiming> = Object.freeze({
+  stepMs: 1_500,
+  pauseMs: 700,
+  longestMs: 12_000,
+  speech: 'standard',
+  threads: 4,
+});
+
+/** Timing as stored or sent, each field checked on its own: anything unknown is that field's default. */
+export function parseCaptionTiming(raw: unknown): CaptionTiming {
+  const from = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
+  const pick = <T>(choices: readonly T[], value: unknown, fallback: T): T =>
+    choices.find((choice) => choice === value) ?? fallback;
+  const d = DEFAULT_CAPTION_TIMING;
+  return {
+    stepMs: pick(CAPTION_STEPS_MS, from['stepMs'], d.stepMs),
+    pauseMs: pick(CAPTION_PAUSES_MS, from['pauseMs'], d.pauseMs),
+    longestMs: pick(CAPTION_LONGEST_MS, from['longestMs'], d.longestMs),
+    speech: pick(CAPTION_SPEECH_LEVELS, from['speech'], d.speech),
+    threads: pick(CAPTION_THREADS, from['threads'], d.threads),
+  };
+}
+
 /** How the captions model stands on this computer: not here, coming (bytes so far), here, or not downloaded (why). */
 export interface CaptionsDownload {
   phase: 'missing' | 'downloading' | 'ready' | 'failed';
@@ -182,4 +254,8 @@ export interface CaptionsStatus {
   engineProblem: string | null;
   /** Captions are a trial: Gujarati is not good enough yet with any free model (Session 55). */
   trial: boolean;
+  /** Gujarati's, Hindi's and English's own models on this computer (alpha.22), in that order. */
+  languageModels: LanguageModelView[];
+  /** Live timing on this computer (alpha.22). */
+  timing: CaptionTiming;
 }
