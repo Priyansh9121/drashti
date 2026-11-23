@@ -1185,3 +1185,26 @@ describe('places for paired devices', () => {
     }
   });
 });
+
+
+it('asks a newcomer to wait when the open places are busy', async () => {
+  const { port, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+  const sockets: Socket[] = [];
+  const listener = Reflect.get(network, 'server') as import('node:http').Server;
+  try {
+    for (let i = 0; i < 2; i++) {
+      const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
+      const { socket } = await socketTo(port);
+      sockets.push(socket);
+      await accepted;
+    }
+    const answer = await call(port, '/pair');
+    expect(answer.status).toBe(503);
+    expect(JSON.parse(answer.body)).toEqual({
+      ok: false,
+      message: 'Drashti is busy. Paired devices keep their places. Ask the operator before pairing a new device.',
+    });
+  } finally {
+    for (const socket of sockets) socket.destroy();
+  }
+});
