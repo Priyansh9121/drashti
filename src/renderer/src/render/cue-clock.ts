@@ -5,23 +5,25 @@
  * its media time past the trim), so a cued video began that late on every screen. Pulled by a Web Audio graph instead,
  * its sound is taken as the graph renders and its clock starts with its rate: hall and LIVE within about 11 ms.
  *
- * Nothing is heard: the picture's sound goes only into the graph (that is what a media element source does), the graph
- * multiplies it by nothing, and its context has no output device at all. Where no graph can be had (no Web Audio, a page
- * whose graph never runs, a source that cannot be taken) the picture stays muted, on its own clock, as before.
+ * Nothing is heard: the picture's sound goes only into the graph (that is what a media element source does), and the
+ * graph multiplies it by nothing before its destination. The graph renders on the default output's own audio thread:
+ * a context with no device (sinkId 'none') is paced by a thread-pool timer instead, which ran at a quarter to a half
+ * of real time on CI's Mac (a21-s5-1123-121533-19312), so the picture's sound was pulled late and slow. Where no graph
+ * can be had (no Web Audio, a page whose graph never runs, a source that cannot be taken) the picture stays muted, on
+ * its own clock, as before.
  */
 
 /** The one silent graph of this page that a cued picture's sound is pulled by (made on first use). */
 export interface SilentGraph {
   readonly context: AudioContext;
-  /** Where each routed picture's sound goes: a gain of nothing into a sink with no device. */
+  /** Where each routed picture's sound goes: a gain of nothing before the context's destination. */
   readonly sink: AudioNode;
 }
 
-/** A graph with no device (`sinkId: none`), whose every input is multiplied by nothing; null where none can be had. */
+/** A graph on the default output whose every input is multiplied by nothing; null where none can be had. */
 export function createSilentGraph(make: (options: AudioContextOptions) => AudioContext): SilentGraph | null {
   try {
-    // AudioContextOptions' sinkId (Chromium 110 on) is not in TypeScript's DOM types yet.
-    const context = make({ latencyHint: 'interactive', sinkId: { type: 'none' } } as AudioContextOptions);
+    const context = make({ latencyHint: 'interactive' });
     const sink = context.createGain();
     sink.gain.value = 0;
     sink.connect(context.destination);
