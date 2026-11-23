@@ -9,3 +9,5 @@ allowBuilds:
   better-sqlite3: true
   electron-winstaller: false
   esbuild: true
+  # tesseract.js's only install script is a donation notice (book OCR, alpha.21).
+  tesseract.js: false
