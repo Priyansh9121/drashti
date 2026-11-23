@@ -554,7 +554,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     >
       {/* Undo's and Redo's words only from a 60rem top (alpha.21's fit pass: at the window's least on Windows, 884 px
           inside, the top was 905 px and Save ran off the window); their icons alone narrower, named either way. */}
-      <header className="@container/editor-top flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5">
+      {/* At window zoom the top can be narrower than its commands: keep their order and wrap whole controls.
+          From xl up the original single row stays unchanged. */}
+      <header className="@container/editor-top flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5 max-xl:flex-wrap">
         <h1 id={titleId} className="min-w-24 flex-[1_1_8rem] text-sm font-bold">
           <Truncate text={`Slides of “${name}”`} />
         </h1>

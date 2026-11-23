@@ -80,12 +80,7 @@ async function output(app: ElectronApplication, id: string): Promise<Page> {
   throw new Error('Expected output page is missing');
 }
 
-/**
- * The Translation dialog itself fits (fit.ts's expectFits, all but its whole-page check): inside the window,
- * every button's words whole and inside the dialog, nothing in it scrolling sideways. At 200% zoom the slide
- * editor's own top row is wider than its page (822-837 px in 512, on phase1 before prepared translations too:
- * diagnostic a21-take-tr-1123-210335-48560), an alpha.22 item of its own (QA21-TR-1 A, the lead).
- */
+/** Extra dialog-local checks alongside expectFits, including inner scrollers and both button edges. */
 async function expectDialogFits(dialog: Locator, what: string): Promise<void> {
   await expect(dialog).toBeVisible();
   await settled(dialog.page());
@@ -267,19 +262,22 @@ test('translation review fits the least editor size, keeps focus and readable sc
     if (!editor) throw new Error('No editor page');
     editor.setZoomFactor(2);
   });
+  await expectFits(review, 'Translation dialog and whole editor page at 200% zoom');
   await expectDialogFits(review, 'Translation dialog at 200% zoom');
   await ed.keyboard.press('Escape');
   await expect(review).toHaveCount(0);
-  // Translate… is reached at 200% too, though the top row is wider than the page there: by keys (focus comes back
-  // to it, Enter opens it) and by the pointer (the click scrolls the page to it and lands only where it is hit).
+  // The wrapped editor top row fits too; Translate… stays reachable by keyboard and pointer.
+  await expectFits(ed.getByTestId('slide-editor').locator('header'), 'Editor top row at 200% zoom');
   const translate = ed.getByRole('button', { name: 'Translate…', exact: true });
   await expect(translate).toBeFocused();
   await ed.keyboard.press('Enter');
+  await expectFits(review, 'Translation dialog and whole editor page opened by keys at 200% zoom');
   await expectDialogFits(review, 'Translation dialog opened by keys at 200% zoom');
   await ed.keyboard.press('Escape');
   await expect(review).toHaveCount(0);
   await expect(translate).toBeFocused();
   await translate.click();
+  await expectFits(review, 'Translation dialog and whole editor page opened by the pointer at 200% zoom');
   await expectDialogFits(review, 'Translation dialog opened by the pointer at 200% zoom');
   await review.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(review).toHaveCount(0);
