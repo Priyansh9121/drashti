@@ -7,7 +7,11 @@ import type { SpeechEngine } from './hub';
  * one every `everyMs`, each first half-heard and then whole. No sound, no model, no program: the hub, the captions
  * and the screens run as they do with the real engine.
  */
-export function createStandInEngine(phrases: readonly string[], everyMs = 1_500): SpeechEngine {
+export function createStandInEngine(
+  phrases: readonly string[],
+  everyMs = 1_500,
+  _options: { once?: boolean } = {},
+): SpeechEngine {
   return {
     start(language, to) {
       to.state({ phase: 'listening', language });
