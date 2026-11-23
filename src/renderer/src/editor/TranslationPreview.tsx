@@ -1,20 +1,23 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { initialEngineState } from '../../../shared/engine/state';
-import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
+import { STAGE_HEIGHT, STAGE_WIDTH, stageShows } from '../../../shared/stage-layouts';
 import type { ScreenGroupConfig } from '../../../shared/screens';
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
 import { renderEditedSlide } from '../../../shared/slide-design';
 import { checkedTranslationView } from '../../../shared/prepared-translation-view';
+import { preparedOutputState } from '../../../shared/prepared-output-state';
 import { translationProblems } from '../../../shared/prepared-translation-status';
+import { programPicture } from '../../../shared/program';
 import { useEngine } from '../engine/engine-store';
-import { ProgramView } from '../program/ProgramView';
-import { StageScreen } from '../render/StageScreen';
+import { MovingLowerThird } from '../render/LowerThird';
+import { StageView } from '../render/StageView';
+import { StageLayoutCanvas } from '../render/StageLayoutCanvas';
 import { SlideView } from '../render/SlideView';
 import { PlacedInParent } from '../render/Placed';
 import { Field, Select } from '../ui/Field';
 
-/** Uses the same checked projection and output renderers without dispatching a show command. */
+/** Reuses output text drawing; captures and show commands are not part of a words preview. */
 export function TranslationPreview({
   doc,
   slide,
@@ -43,8 +46,7 @@ export function TranslationPreview({
   const where = {
     ...(group ? { groupId: group.id } : {}),
     ...(screen ? { outputId: screen.id } : {}),
-    canvas,
-    scaling: screen?.scaling ?? ('fit' as const),
+    ...(group?.role === 'stage' ? {} : { canvas, scaling: screen?.scaling ?? ('fit' as const) }),
   };
   const problems = translationProblems(rendered, where);
   const state = initialEngineState();
@@ -72,6 +74,69 @@ export function TranslationPreview({
       itemId: null,
       notes: next.notes,
     };
+  const projected = preparedOutputState(state, where);
+  const drawing = <SlideView slide={checkedTranslationView(rendered, where)} media="still" />;
+  let picture: ReactNode = (
+    <PlacedInParent content={rendered} mode={screen?.scaling ?? 'fit'} className="absolute inset-0">
+      {drawing}
+    </PlacedInParent>
+  );
+  if (group?.role === 'stream') {
+    const program = programPicture(projected, streamLayout, group.languages ?? null);
+    if (program.kind === 'camera' && program.lowerThird.length)
+      picture = (
+        <MovingLowerThird
+          lines={program.lowerThird}
+          shownKey={rendered.id}
+          shownAt={0}
+          leaving={null}
+          canvas={canvas}
+          movement="calm"
+        />
+      );
+  } else if (group?.role === 'stage') {
+    const hallGroup = groups.find((value) => value.role === 'audience');
+    const hallScreen = hallGroup?.screens[0];
+    const hall = hallGroup
+      ? {
+          groupId: hallGroup.id,
+          canvasWidth: hallScreen?.canvasWidth ?? 1920,
+          canvasHeight: hallScreen?.canvasHeight ?? 1080,
+          scaling: hallScreen?.scaling ?? ('fit' as const),
+        }
+      : null;
+    const audience = (
+      <SlideView
+        slide={checkedTranslationView(
+          rendered,
+          hallGroup ? { groupId: hallGroup.id, outputId: hallScreen?.id } : {},
+        )}
+        media="still"
+      />
+    );
+    const layout = stageShows(state.stage) === 'layout' ? state.stage?.layout : null;
+    picture =
+      stageShows(state.stage) === 'audience' ? (
+        audience
+      ) : layout ? (
+        <PlacedInParent
+          content={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}
+          mode="fit"
+          className="absolute inset-0"
+        >
+          <StageLayoutCanvas
+            layout={layout}
+            state={projected}
+            languages={group.languages ?? null}
+            hall={hall}
+            audience={audience}
+            videoInput={<p className="text-center text-white">Video input picture</p>}
+          />
+        </PlacedInParent>
+      ) : (
+        <StageView state={projected} languages={group.languages ?? null} />
+      );
+  }
   return (
     <div className="space-y-2">
       <Field label="Preview destination">
@@ -116,28 +181,7 @@ export function TranslationPreview({
         aria-hidden="true"
       >
         <PlacedInParent content={canvas} mode="fit" className="absolute inset-0">
-          {group?.role === 'stage' ? (
-            <StageScreen
-              state={state}
-              canvas={canvas}
-              look={DEFAULT_LIVE_GROUP_LOOK}
-              translationGroupId={group.id}
-              translationOutputId={screen?.id}
-            />
-          ) : group?.role === 'stream' ? (
-            <ProgramView
-              state={state}
-              canvas={canvas}
-              layout={streamLayout}
-              languages={null}
-              camera={null}
-              translationGroupId={group.id}
-            />
-          ) : (
-            <PlacedInParent content={rendered} mode={where.scaling} className="absolute inset-0">
-              <SlideView slide={checkedTranslationView(rendered, where)} media="still" />
-            </PlacedInParent>
-          )}
+          {picture}
         </PlacedInParent>
       </div>
     </div>

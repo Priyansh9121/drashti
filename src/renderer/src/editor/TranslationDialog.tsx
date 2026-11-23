@@ -66,7 +66,11 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
       fn();
       setProblem(null);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : 'The translation could not be changed.');
+      setProblem(
+        error instanceof Error
+          ? error.message
+          : 'The translation could not be changed. Check the source, target and reserved area, then try again.',
+      );
     }
   };
   const route = first?.translationDisplay;

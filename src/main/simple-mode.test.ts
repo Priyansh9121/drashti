@@ -88,6 +88,8 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('zoomLive');
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('resetLiveZoom');
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual([
+      // Prepared translations: hide and restore remain Pro Mode's.
+      'setTranslationHidden',
       'showPip',
       'swapPip',
       'placePip',
