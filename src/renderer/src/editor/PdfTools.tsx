@@ -84,7 +84,11 @@ export function PdfTools({
 }: PdfToolsProps) {
   const busy = blocked || pending !== null;
   return (
-    <div className="flex min-w-0 flex-wrap items-start" data-testid="pdf-pages-group" aria-busy={pending !== null}>
+    <div
+      className="flex min-w-0 flex-wrap items-start"
+      data-testid="pdf-pages-group"
+      aria-busy={pending !== null}
+    >
       <Cluster name="Mark this page">
         <Button
           size="sm"
@@ -177,10 +181,18 @@ export function PdfTools({
       </Cluster>
       <Divider />
       <Cluster name="Hand-out">
-        <Button size="sm" variant="ghost" disabled={busy || !onExtractPages} onClick={onExtractPages}>Extract pages…</Button>
-        <Button size="sm" variant="ghost" disabled={busy || !onReplacePage} onClick={onReplacePage}>Replace page…</Button>
-        <Button size="sm" variant="ghost" disabled={busy || !onSplit} onClick={onSplit}>Split…</Button>
-        <Button size="sm" variant="ghost" disabled={busy || !onHandout} onClick={onHandout}>Hand-out…</Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onExtractPages} onClick={onExtractPages}>
+          Extract pages…
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onReplacePage} onClick={onReplacePage}>
+          Replace page…
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onSplit} onClick={onSplit}>
+          Split…
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onHandout} onClick={onHandout}>
+          Hand-out…
+        </Button>
       </Cluster>
       <Divider />
       <Cluster name="Copy">

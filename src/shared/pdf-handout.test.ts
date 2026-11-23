@@ -62,12 +62,17 @@ describe('PDF hand-out one master', () => {
     expect(doc.master?.elements).toHaveLength(4);
   });
   it('anchors hand-out words to each mixed paper edge instead of centering a landscape master on portrait paper', () => {
-    const doc = pdfHandout(fixture(), { header: 'Placeholder header', footer: 'Placeholder footer', watermark: '', numbers: true });
+    const doc = pdfHandout(fixture(), {
+      header: 'Placeholder header',
+      footer: 'Placeholder footer',
+      watermark: '',
+      numbers: true,
+    });
     const page = required(required(doc.groups[0]).slides[1]);
     page.pageSize = { width: 300, height: 500 };
     const rendered = renderEditedSlide(doc, page);
-    const header = required(rendered.elements.find(e => e.name === 'PDF hand-out header'));
-    const numbers = required(rendered.elements.find(e => e.name === 'PDF hand-out numbers'));
+    const header = required(rendered.elements.find((e) => e.name === 'PDF hand-out header'));
+    const numbers = required(rendered.elements.find((e) => e.name === 'PDF hand-out numbers'));
     expect(header.frame.y).toBeCloseTo(12.5, 8);
     expect(numbers.frame.y + numbers.frame.height).toBeCloseTo(487.5, 8);
   });

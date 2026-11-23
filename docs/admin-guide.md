@@ -634,6 +634,10 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 **An older import may need a match.** **Link source page…** lets the operator choose a PDF reading copy and match the saved picture to its page. For an older PowerPoint or Keynote import (a Keynote deck imported with its animations before alpha.17 among them, or since then one whose PowerPoint copy did not match it), make that PDF in the deck's own program first. Drashti does not guess an uncertain match. Check the page, its fonts and the source notes before approving; an unsupported turn, crop or other change to the old source picture may prevent linking.
 
+**PDF hand-outs (alpha.22).** In the slide editor, **PDF pages** offers **Extract pages…**, **Replace page…**, **Split…** and **Hand-out…**. Extraction creates a separate presentation or a PDF with a new file name; the source pages remain. Split keeps the first part in the editor and puts the rest in a new library presentation. Save keeps that first part. Each action has Undo and Redo. The one master holds headers, footers, a watermark and page numbers, and a PDF copy includes them. Numbers follow the current page order. An extracted PDF changed elsewhere is never removed by Undo; Redo refuses an occupied file name. Keep Drashti open while using this file Undo and Redo.
+
+**Leave the stream its time.** PDF page editing and copies wait while streaming or recording, including their start and stop. An active PDF job stops when the stream needs the computer. Page reading and printing use the lowest priority. Only generated placeholder PDFs are used in the checks for these tools.
+
 **Save a separate PDF.** **Save a PDF copy…** writes a new file where the operator chooses; it cannot overwrite a retained original, even through another name for the same file. It does not save unfinished changes to the library: the editor's **Save** does that. **Cover** is a visible patch over part of a page, not a way to remove private words from a PDF. Keep a file with private material out of a copy meant to be shared.
 
 ## 25. Live captions (Trial)

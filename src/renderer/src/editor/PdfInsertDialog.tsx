@@ -98,8 +98,21 @@ export function PdfInsertDialog({
       <Button disabled={busy} onClick={() => void insert(true)}>
         Choose a PDF file…
       </Button>
-      <p className="my-3 text-sm text-muted">{replace ? 'Choose a PDF and the page to put here. Undo brings this page back. The original files stay as they are.' : 'Insert all pages of another PDF after this page. The PDF in the library stays as it is; Undo removes this insertion.'}</p>
-      {replace && <Field label="Page number"><TextInput inputMode="numeric" value={pageNumber} disabled={busy} onChange={e => setPageNumber(e.target.value)} /></Field>}
+      <p className="my-3 text-sm text-muted">
+        {replace
+          ? 'Choose a PDF and the page to put here. Undo brings this page back. The original files stay as they are.'
+          : 'Insert all pages of another PDF after this page. The PDF in the library stays as it is; Undo removes this insertion.'}
+      </p>
+      {replace && (
+        <Field label="Page number">
+          <TextInput
+            inputMode="numeric"
+            value={pageNumber}
+            disabled={busy}
+            onChange={(e) => setPageNumber(e.target.value)}
+          />
+        </Field>
+      )}
       {sources === null && !problem && <Loading label="Reading PDFs…" />}
       {sources?.length === 0 && (
         <p className="text-sm text-muted">

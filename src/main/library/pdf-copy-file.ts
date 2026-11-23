@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
+import { link, lstat, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -8,6 +8,8 @@ import { isInside } from '../media/contained';
 export const MAX_PDF_COPY_BYTES = 64 * 1024 * 1024;
 export interface PdfCopyRequest {
   bytes: Uint8Array;
+  /** Extraction creates a new file so Undo never replaces an older output. */
+  newOnly?: boolean;
   /** Main's native Save dialog choice, never a renderer-provided path. */
   outputPath: string;
   mediaDir: string;
@@ -324,6 +326,8 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
   const hash = createHash('sha256').update(bytes).digest('hex');
   const protectedFiles = await protections(request);
   const target = await output(request);
+  if (request.newOnly && target.identity)
+    throw new PdfCopyError('output-exists', 'Choose a new file name for the extracted PDF.');
   safeOutput(target, protectedFiles);
   const staged = join(target.parent.canonical, '.drashti-pdf-' + randomUUID() + '.tmp');
   let handle: FileHandle | null = null;
@@ -353,6 +357,8 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
     await verifyStaged(staged, owned, hash, bytes.length, request);
     const currentProtected = await protections(request);
     const currentTarget = await output(request);
+    if (request.newOnly && currentTarget.identity)
+      throw new PdfCopyError('output-exists', 'Choose a new file name for the extracted PDF.');
     safeOutput(currentTarget, protectedFiles);
     safeOutput(currentTarget, currentProtected);
     unchangedProtections(protectedFiles, currentProtected);
@@ -365,7 +371,15 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
     const finalStaged = await checked(request, () => lstat(staged, { bigint: true }));
     if (!finalStaged.isFile() || finalStaged.isSymbolicLink() || !sameFile(owned, finalStaged)) corrupt();
     stopped(request);
-    await rename(staged, target.file);
+    if (request.newOnly) {
+      await link(staged, target.file);
+      committed = true;
+      try {
+        await unlink(staged);
+      } catch {
+        /* Publication already committed; never report a failed copy after it. */
+      }
+    } else await rename(staged, target.file);
     // No throwing admission check after this successful commit boundary.
     committed = true;
   } catch (error) {

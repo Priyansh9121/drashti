@@ -12,3 +12,18 @@ export function pdfPageSelection(text: string, count: number): number[] | null {
   }
   return selected.size ? [...selected].sort((a, b) => a - b) : null;
 }
+
+/** Validate untrusted zero-based selections from an editor request. */
+export function pdfPageIndices(value: unknown, count: number): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const items: unknown[] = value;
+  const pages = items.filter((n): n is number => typeof n === 'number');
+  if (
+    !pages.length ||
+    pages.length !== items.length ||
+    pages.length > 400 ||
+    pages.some((n, i) => !Number.isInteger(n) || n < 0 || n >= count || (i > 0 && n <= (pages[i - 1] ?? n)))
+  )
+    return null;
+  return pages;
+}

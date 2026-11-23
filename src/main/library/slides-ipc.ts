@@ -475,7 +475,7 @@ export function registerSlidesIpc({
 
   const extracted = new Map<string, number>();
   handle(IPC.library.extractPdfPages, (e, id, doc, stamp, rawPages) => {
-    if (!fromOperator(e) || !mayPrepareSource(e, id)) return onlyOperator;
+    if (!fromOperator(e) || !mayPrepareSource(e, typeof id === 'string' ? id : '')) return onlyOperator;
     const pages = z.array(z.number().int().min(0).max(399)).min(1).max(400).safeParse(rawPages);
     if (!pages.success) return { ok: false as const, message: 'Choose the PDF pages to extract.' };
     const checked = validateDocument(id, doc, stamp, false);
@@ -486,11 +486,21 @@ export function registerSlidesIpc({
       changed([copy.id]);
       return { ok: true as const, ...copy };
     } catch {
-      return { ok: false as const, message: 'Those PDF pages could not be extracted. Choose their page numbers again.' };
+      return {
+        ok: false as const,
+        message: 'Those PDF pages could not be extracted. Choose their page numbers again.',
+      };
     }
   });
   handle(IPC.library.showExtractedPdf, (e, id, visible) => {
-    if (!fromOperator(e) || !mayPrepareSource(e) || extracted.get(id) !== e.sender.id || typeof visible !== 'boolean') return false;
+    if (
+      !fromOperator(e) ||
+      !mayPrepareSource(e) ||
+      typeof id !== 'string' ||
+      extracted.get(id) !== e.sender.id ||
+      typeof visible !== 'boolean'
+    )
+      return false;
     const ids = visible ? presentations.restore([id]) : presentations.remove([id]);
     changed(ids);
     return ids.length === 1;

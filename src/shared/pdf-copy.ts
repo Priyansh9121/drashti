@@ -32,7 +32,8 @@ export interface PdfPrintPage {
   rotate: number;
 }
 
-export type PdfCopyResult = { ok: true; name: string } | { ok: false; message: string; cancelled?: boolean };
+export type PdfCopyResult =
+  { ok: true; name: string; undoId?: string } | { ok: false; message: string; cancelled?: boolean };
 
 export interface PdfCopyFinished {
   id: string;

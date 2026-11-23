@@ -57,6 +57,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.exportPdf,
   IPC.library.extractPdfPages,
   IPC.library.showExtractedPdf,
+  IPC.library.showExtractedPdfCopy,
+  IPC.library.pdfWorkAllowed,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
   // The single-letter keys (Session 37): Pro Mode's keys sheet turns them on or off.

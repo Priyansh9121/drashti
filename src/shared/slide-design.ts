@@ -1,5 +1,5 @@
 import { nativeDeckMotion } from './deck';
-import { numberedPdfMaster } from './pdf-handout';
+import { numberedPdfMaster, PDF_HANDOUT_PREFIX } from './pdf-handout';
 import { slidesOf } from './slide-edit';
 import type { RenderSlide, SlideDesign } from './model';
 import type { EditDoc, EditSlide } from './slide-edit';
@@ -33,9 +33,26 @@ export function composeSlide(
     ...(behind
       ? {
           elements: [
-            ...fitElements(masterElements, masterCanvas ?? slide, slide).map((el) =>
-              el.kind === 'text' ? { ...el, everyScreen: true } : el,
-            ),
+            ...fitElements(masterElements, masterCanvas ?? slide, slide).map((el) => {
+              if (el.kind !== 'text') return el;
+              const original = masterElements.find((element) => element.id === el.id);
+              if (!original || original.kind !== 'text' || !el.name?.startsWith(PDF_HANDOUT_PREFIX))
+                return { ...el, everyScreen: true };
+              const canvas = masterCanvas ?? slide;
+              const sx = slide.width / canvas.width,
+                sy = slide.height / canvas.height;
+              return {
+                ...el,
+                everyScreen: true,
+                frame: {
+                  x: original.frame.x * sx,
+                  y: original.frame.y * sy,
+                  width: original.frame.width * sx,
+                  height: original.frame.height * sy,
+                },
+                style: { ...el.style, fontSize: original.style.fontSize * sy },
+              };
+            }),
             ...own.elements,
           ],
           masterElementIds: masterElements.map((el) => el.id),
@@ -60,7 +77,7 @@ export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
     doc.master?.id === slide.id ? null : doc.master,
     slide.cues.some((c) => c.kind === 'background'),
     slideCanvas(doc.master ?? undefined, doc),
-    slidesOf(doc).findIndex(page => page.id === slide.id),
+    slidesOf(doc).findIndex((page) => page.id === slide.id),
   );
 }
 

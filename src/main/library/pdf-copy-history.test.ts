@@ -25,6 +25,8 @@ describe('extracted PDF file Undo', () => {
       expect(await history.show(id, false)).toBe(false);
       expect(await readFile(path, 'utf8')).toBe('Placeholder externally changed');
       expect(await history.show('unknown', false)).toBe(false);
-    } finally { await rm(root, { recursive: true, force: true }); }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

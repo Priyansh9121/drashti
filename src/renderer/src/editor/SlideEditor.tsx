@@ -76,6 +76,7 @@ import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
+import { pdfOffAir } from '../../../shared/pdf-work';
 import { PdfPagesDialog } from './PdfPagesDialog';
 import { PdfHandoutDialog } from './PdfHandoutDialog';
 import { replacePdfPage, splitPdfPages } from './pdf-pages';
@@ -159,6 +160,29 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const note = useEditor((s) => s.note);
   const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
   const [pickingBusy, setPickingBusy] = useState(false);
+  const [pdfStreamOffAir, setPdfStreamOffAir] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    let changed = false;
+    const off = window.drashti.stream.onChanged((status) => {
+      changed = true;
+      if (mounted) setPdfStreamOffAir(pdfOffAir(status));
+    });
+    void window.drashti.stream
+      .status()
+      .then((status) => {
+        if (mounted && !changed) setPdfStreamOffAir(pdfOffAir(status));
+      })
+      .catch(() => {
+        if (mounted) setPdfStreamOffAir(false);
+      });
+    return () => {
+      mounted = false;
+      off();
+    };
+  }, []);
+  const pdfPaused =
+    !!doc && slidesOf(doc).some((page) => page.documentPage?.ext === 'pdf') && !pdfStreamOffAir;
   const [pageAction, setPageAction] = useState<'extract' | 'split' | 'handout' | null>(null);
   const [replacing, setReplacing] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
@@ -317,6 +341,24 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     commit(removed.doc, { select: [] });
     showSlide(removed.show);
   };
+  const mayWorkOnPdf = async () => {
+    try {
+      if (await window.drashti.library.pdfWorkAllowed()) return true;
+    } catch {
+      /* Refuse when Main cannot confirm the stream is off air. */
+    }
+    tell('PDF pages wait while the stream is on air or recording.');
+    return false;
+  };
+  const beginPageAction = async (action: 'extract' | 'split' | 'handout') => {
+    if (pdfJob.current || !(await mayWorkOnPdf())) return;
+    if (useEditor.getState().preparingSource.size) {
+      tell('Wait for the PDF pages to finish preparing.');
+      return;
+    }
+    finishTextEditing();
+    setPageAction(action);
+  };
   const closeInsertion = () => {
     setReplacing(false);
     if (insertBase.current) revokeSourceContent(insertBase.current.slideId);
@@ -413,7 +455,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   // The window's keys: Save, Undo and Redo, Find, and zoom; typing in a field or a text box keeps its own keys.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (useEditor.getState().sourceConversion) return;
+      if (pdfPaused || useEditor.getState().sourceConversion) return;
       // The show's F-keys (Clear all, Oops, the Wallpaper...): the operator window acts on them (Session 55, 17a).
       if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && SHOW_F_KEYS.includes(e.key)) {
         e.preventDefault();
@@ -468,7 +510,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mac, saveWhenReady]);
+  }, [mac, saveWhenReady, pdfPaused]);
 
   return (
     <div
@@ -625,10 +667,27 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onRotateRight={rotatePdfPage}
               onDeletePage={deleteCurrentPdfPage}
               onInsertPages={openInsertion}
-              onReplacePage={() => { setReplacing(true); openInsertion(); }}
-              onExtractPages={() => { finishTextEditing(); setPageAction('extract'); }}
-              onSplit={doc && slidesOf(doc).findIndex(page => page.id === slideId) > 0 ? () => { finishTextEditing(); setPageAction('split'); } : undefined}
-              onHandout={() => { finishTextEditing(); setPageAction('handout'); }}
+              onReplacePage={() => {
+                void mayWorkOnPdf().then((ok) => {
+                  if (ok) {
+                    setReplacing(true);
+                    openInsertion();
+                  }
+                });
+              }}
+              onExtractPages={() => {
+                void beginPageAction('extract');
+              }}
+              onSplit={
+                doc && slidesOf(doc).findIndex((page) => page.id === slideId) > 0
+                  ? () => {
+                      void beginPageAction('split');
+                    }
+                  : undefined
+              }
+              onHandout={() => {
+                void beginPageAction('handout');
+              }}
               onSaveCopy={() => {
                 void savePdfCopy();
               }}
@@ -774,41 +833,98 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         />
       )}
-      {pageAction === 'handout' && doc && <PdfHandoutDialog doc={doc} onKeep={next => commit(next, { select: [] })} onClose={() => setPageAction(null)} />}
-      {(pageAction === 'extract' || pageAction === 'split') && doc && slideId && <PdfPagesDialog
-        count={slidesOf(doc).length}
-        page={slidesOf(doc).findIndex(page => page.id === slideId)}
-        split={pageAction === 'split'}
-        onClose={() => setPageAction(null)}
-        onConfirm={async (pages, file) => {
-          const before = useEditor.getState();
-          if (!before.doc || !before.open || pdfJob.current || before.sourceConversion || before.pdfDrawing) return 'Finish the current page edit first.';
-          const original = before.doc;
-          pdfJob.current = true;
-          try {
-            if (file) {
-              const result = await window.drashti.library.exportPdf(original.presentationId, original, before.stamp, pages);
-              return result.ok ? null : result.message;
+      {pageAction === 'handout' && doc && (
+        <PdfHandoutDialog
+          doc={doc}
+          onKeep={async (next) => {
+            if (!(await mayWorkOnPdf()) || useEditor.getState().doc !== doc) return false;
+            commit(next, { select: [] });
+            return true;
+          }}
+          onClose={() => setPageAction(null)}
+        />
+      )}
+      {(pageAction === 'extract' || pageAction === 'split') && doc && slideId && (
+        <PdfPagesDialog
+          count={slidesOf(doc).length}
+          page={slidesOf(doc).findIndex((page) => page.id === slideId)}
+          split={pageAction === 'split'}
+          onClose={() => setPageAction(null)}
+          onConfirm={async (pages, file) => {
+            const before = useEditor.getState();
+            if (!before.doc || !before.open || pdfJob.current || before.sourceConversion || before.pdfDrawing)
+              return 'Finish the current page edit first.';
+            const original = before.doc;
+            pdfJob.current = true;
+            try {
+              if (file) {
+                const result = await window.drashti.library.exportPdf(
+                  original.presentationId,
+                  original,
+                  before.stamp,
+                  pages,
+                );
+                if (!result.ok) return result.message;
+                const undoId = result.undoId;
+                if (undoId) {
+                  const show = (visible: boolean) => {
+                    void window.drashti.library
+                      .showExtractedPdfCopy(undoId, visible)
+                      .then((ok) => {
+                        if (!ok)
+                          tell(
+                            'The extracted PDF changed or the stream is on air. Undo and Redo cannot replace another file.',
+                          );
+                      })
+                      .catch(() => tell('The extracted PDF could not be changed.'));
+                  };
+                  noteOutside({ undo: () => show(false), redo: () => show(true) });
+                }
+                tell(`Saved PDF copy “${result.name}”.`);
+                return null;
+              }
+              const result = await window.drashti.library.extractPdfPages(
+                original.presentationId,
+                original,
+                before.stamp,
+                pages,
+              );
+              if (!result.ok) return result.message;
+              const parts =
+                pageAction === 'split' && before.slideId ? splitPdfPages(original, before.slideId) : null;
+              const head = parts ? parts[0] : original;
+              const show = (visible: boolean) => {
+                void window.drashti.library
+                  .showExtractedPdf(result.id, visible)
+                  .then((ok) => {
+                    if (!ok)
+                      tell(
+                        'The extracted presentation could not be changed. Try again while the stream is off air.',
+                      );
+                  })
+                  .catch(() => tell('The extracted presentation could not be changed.'));
+              };
+              noteOutside({
+                undo: () => {
+                  show(false);
+                  if (parts) useEditor.setState({ doc: original, slideId: before.slideId, selection: [] });
+                },
+                redo: () => {
+                  show(true);
+                  if (parts)
+                    useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] });
+                },
+              });
+              if (parts)
+                useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] });
+              tell(`Made presentation “${result.name}”. Undo removes it.`);
+              return null;
+            } finally {
+              pdfJob.current = false;
             }
-            const result = await window.drashti.library.extractPdfPages(original.presentationId, original, before.stamp, pages);
-            if (!result.ok) return result.message;
-            const parts = pageAction === 'split' && before.slideId ? splitPdfPages(original, before.slideId) : null;
-            const head = parts ? parts[0] : original;
-            const show = (visible: boolean) => {
-              void window.drashti.library.showExtractedPdf(result.id, visible).then(ok => {
-                if (!ok) tell('The extracted presentation could not be changed. Try again while the stream is off air.');
-              }).catch(() => tell('The extracted presentation could not be changed.'));
-            };
-            noteOutside({
-              undo: () => { show(false); if (parts) useEditor.setState({ doc: original, slideId: before.slideId, selection: [] }); },
-              redo: () => { show(true); if (parts) useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] }); },
-            });
-            if (parts) useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] });
-            tell(`Made presentation “${result.name}”. Undo removes it.`);
-            return null;
-          } finally { pdfJob.current = false; }
-        }}
-      />}
+          }}
+        />
+      )}
       {inserting && (
         <PdfInsertDialog
           replace={replacing}
@@ -825,7 +941,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             if (replacing) {
               const replacement = pages[0];
               const next = replacement && replacePdfPage(base.doc, base.slideId, replacement);
-              if (!next || !replacement) { tell('That page could not replace this page.'); return; }
+              if (!next) {
+                tell('That page could not replace this page.');
+                return;
+              }
               commit(next, { select: [] });
               showSlide(replacement.id);
               useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
@@ -843,6 +962,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
           }}
         />
+      )}
+      {pdfPaused && (
+        <Dialog
+          title="PDF editing paused"
+          testId="pdf-off-air"
+          size="md"
+          onTop
+          closeButton={false}
+          onClose={() => undefined}
+        >
+          <p className="text-sm">
+            Stop the stream and recording before working on PDF pages. This editor resumes when both are off.
+          </p>
+        </Dialog>
       )}
       {askDiscard && (
         <KeepChangesDialog

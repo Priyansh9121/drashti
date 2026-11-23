@@ -511,8 +511,15 @@ export interface DrashtiBridge {
     insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
     exportPdf(presentationId: string, doc: EditDoc, stamp: string, pages?: number[]): Promise<PdfCopyResult>;
-    extractPdfPages(presentationId: string, doc: EditDoc, stamp: string, pages: number[]): Promise<{ ok: true; id: string; name: string } | { ok: false; message: string }>;
+    extractPdfPages(
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      pages: number[],
+    ): Promise<{ ok: true; id: string; name: string } | { ok: false; message: string }>;
     showExtractedPdf(id: string, visible: boolean): Promise<boolean>;
+    showExtractedPdfCopy(id: string, visible: boolean): Promise<boolean>;
+    pdfWorkAllowed(): Promise<boolean>;
     /**
      * Put edited slides back as one change (Undo brings back the copy kept
      * before it). Refused when the presentation changed since `stamp`, unless forced.
