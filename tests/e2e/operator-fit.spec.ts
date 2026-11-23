@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NETWORK_ENV, networkOn } from './devices';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
-import { makeTestImage, makeTestVideo, setWebmDuration } from './test-media';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import { makeTestImage, makeTestTone, makeTestVideo, setWebmDuration } from './test-media';
 import { dispatch, row, slideWithVideos } from './time-bar-helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -15,10 +15,12 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * The whole operator window fits (alpha.21, the owner's "dont like the design here. frontend issue." and "all good fit
  * in 21", 22 Nov 2026), in Pro and Simple Mode: at his own 1410 × 900, at 1280 × 720 and at CI's 1024 × 645, with the
  * side columns at their least, the left one at its most and the live column at its most, and typical content in it
- * (long names, the network on, a playlist open, a slide's video playing, the background's paused, Audio's playlists, a
- * long notice). In every one of them no control or heading is cut, lies over another, runs out of its column or is
- * under a notice, no words of Drashti's own are cut short, nothing scrolls sideways, and every target is 24 px (axe's
- * target-size). Placeholder names and generated media only.
+ * (long names, the network on, a playlist open, a slide's video playing, the background's paused, Audio's playlists and
+ * a track, More tools open, a long notice; in Pro Mode the library's sheet open too), each part that scrolls at its top
+ * and at its end. In every one of them no control or heading is cut, lies over another (an action in a row's own room,
+ * as Rename and Delete at its end, may, if none of the row's words or icons are under it), runs out of its column or is
+ * under a notice, no words of Drashti's own are cut short (a name the operator gave may be, with an ellipsis), nothing
+ * scrolls sideways, and every target is 24 px (axe's target-size). Placeholder names and generated media only.
  */
 
 /** The owner's own window (22 Nov 2026, alpha.20.1 on his Mac), in CSS pixels. */
@@ -38,6 +40,7 @@ const LONG = {
   presentation: 'Placeholder Opening Words over a Video with a Long Name',
   video: 'Placeholder Evening Talk Recording with a Long File Name.webm',
   picture: 'Placeholder Wide Picture of the Stage with a Long Name.png',
+  tone: 'Placeholder Evening Music Track with a Long File Name.wav',
   audio: [
     'Placeholder Music Before the Sabha with a Long Name',
     'Placeholder Music After the Sabha',
@@ -180,7 +183,10 @@ const fitFaults = (win: Page) =>
         if (box.left < edge.left - 0.5 || box.right > edge.right + 0.5)
           out.add(`${name}: ${named(el)} runs out of it`);
         if (el.matches(WORDS_CUT) && el instanceof HTMLElement) {
-          if (el.scrollWidth > el.clientWidth + 1)
+          // Cut with an ellipsis is the next check's (a name the operator gave may be).
+          const style = getComputedStyle(el);
+          const ellipsis = style.textOverflow === 'ellipsis' && style.overflowX !== 'visible';
+          if (!ellipsis && el.scrollWidth > el.clientWidth + 1)
             out.add(
               `${name}: ${named(el)} is cut (${String(el.scrollWidth)} > ${String(el.clientWidth)} px)`,
             );
@@ -192,12 +198,12 @@ const fitFaults = (win: Page) =>
         parts.push({ el, region: name, seen, control: el.matches(CONTROLS) });
       }
       // Words of Drashti's own cut short with an ellipsis (a placeholder name may be).
-      for (const el of r.querySelectorAll('.truncate, .text-ellipsis, [class*="line-clamp"]')) {
-        if (!(el instanceof HTMLElement) || hidden(el)) continue;
-        const short = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+      for (const el of r.querySelectorAll('*')) {
+        if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth + 1) continue;
+        const style = getComputedStyle(el);
+        if (style.textOverflow !== 'ellipsis' || style.overflowX === 'visible' || hidden(el)) continue;
         const words = el.textContent.replace(/\s+/gu, ' ').trim();
         if (
-          short &&
           words !== '' &&
           !words.includes('Placeholder') &&
           inSight(el.parentElement, boxOf(el.getBoundingClientRect())).seen
@@ -206,14 +212,31 @@ const fitFaults = (win: Page) =>
       }
     }
 
-    // Controls and headings lying over each other, and controls under a notice.
+    // Controls and headings lying over each other, and controls under a notice. A control wholly in another's box is
+    // an action in a row's own room (Rename and Delete at its end): the row's words and icons must not be under it.
+    const within = (a: Box, b: Box) =>
+      a.left >= b.left - 0.5 &&
+      a.right <= b.right + 0.5 &&
+      a.top >= b.top - 0.5 &&
+      a.bottom <= b.bottom + 0.5;
+    const icons = (el: Element) =>
+      [...el.querySelectorAll('svg, img')]
+        .filter((g) => !unseen(g))
+        .map((g) => boxOf(g.getBoundingClientRect()));
     parts.forEach((a, i) => {
       for (const b of parts.slice(i + 1)) {
         if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
         if (a.el instanceof HTMLLabelElement && a.el.control === b.el) continue;
         if (b.el instanceof HTMLLabelElement && b.el.control === a.el) continue;
-        if (meet(a.seen, b.seen))
-          out.add(`${a.region}: ${named(a.el)} and ${named(b.el)} lie over each other`);
+        if (!meet(a.seen, b.seen)) continue;
+        const outer = within(b.seen, a.seen) ? a : within(a.seen, b.seen) ? b : null;
+        const inner = outer === a ? b : a;
+        if (outer?.control && inner.control) {
+          if (icons(outer.el).some((g) => meet(g, inner.seen)))
+            out.add(`${outer.region}: an icon of ${named(outer.el)} lies under ${named(inner.el)}`);
+          continue;
+        }
+        out.add(`${a.region}: ${named(a.el)} and ${named(b.el)} lie over each other`);
       }
       if (a.control)
         noticeBoxes.forEach((n, k) => {
@@ -293,6 +316,23 @@ async function setColumns(win: Page, columns: { left: string; right: string }): 
   );
 }
 
+/** Every part of the window that scrolls up and down, at its top or at its end, then laid out. */
+async function scrollAll(win: Page, end: boolean): Promise<void> {
+  await win.evaluate((end) => {
+    for (const el of document.querySelectorAll('*')) {
+      if (!(el instanceof HTMLElement) || el.scrollHeight <= el.clientHeight + 1) continue;
+      const y = getComputedStyle(el).overflowY;
+      if (y === 'auto' || y === 'scroll') el.scrollTop = end ? el.scrollHeight : 0;
+    }
+  }, end);
+  await win.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
 /** The window filled as a sabha has it (see the top), in `mode`. */
 async function fill(app: ElectronApplication, win: Page, mode: 'pro' | 'simple'): Promise<void> {
   // Set up in Pro Mode (Simple Mode makes no presentation), then the mode.
@@ -303,10 +343,16 @@ async function fill(app: ElectronApplication, win: Page, mode: 'pro' | 'simple')
   writeFileSync(long, setWebmDuration(readFileSync(long), 2 * 3600 * 1000));
   const clip = await makeTestVideo(win, join(dir, 'Placeholder slide clip.webm'), { seconds: 8, hue: 200 });
   const picture = await makeTestImage(win, join(dir, LONG.picture), { width: 320, height: 180 });
-  const [longId = '', clipId = '', pictureId = ''] = await importAndGetIds(win, [long, clip, picture]);
+  const tone = makeTestTone(join(dir, LONG.tone), { seconds: 30, hz: 440 });
+  const [longId = '', clipId = '', pictureId = '', toneId = ''] = await importAndGetIds(win, [
+    long,
+    clip,
+    picture,
+    tone,
+  ]);
   const presentationId = await slideWithVideos(win, dir, LONG.presentation, [clipId]);
   await win.evaluate(
-    async ({ names, presentationId, longId, pictureId }) => {
+    async ({ names, presentationId, longId, pictureId, toneId }) => {
       const d = (globalThis as PageGlobals).drashti;
       const made = await d.playlists.create(names.playlist, null, false);
       if (!made.ok) throw new Error(made.message);
@@ -318,10 +364,15 @@ async function fill(app: ElectronApplication, win: Page, mode: 'pro' | 'simple')
       if (!added.ok) throw new Error(added.message);
       for (const name of names.audio) {
         const music = await d.music.create(name);
-        if (!music.ok) throw new Error('Could not make an audio playlist');
+        if (!music.ok || !music.id) throw new Error('Could not make an audio playlist');
+        // A track in the first.
+        if (name === names.audio[0]) {
+          const tracked = await d.music.addTracks(music.id, [toneId], null);
+          if (!tracked.ok) throw new Error('Could not add the track');
+        }
       }
     },
-    { names: LONG, presentationId, longId, pictureId },
+    { names: LONG, presentationId, longId, pictureId, toneId },
   );
   await win.getByTestId('playlist-node').filter({ hasText: LONG.playlist }).click();
   await expect(win.getByTestId('column-middle')).toContainText(LONG.presentation);
@@ -336,6 +387,11 @@ async function fill(app: ElectronApplication, win: Page, mode: 'pro' | 'simple')
   await expect(bg.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
   await bg.getByRole('button', { name: 'Pause' }).click();
   await expect(bg).toHaveAttribute('data-paused', 'true');
+  // The first audio playlist shown, with its track.
+  await win.getByTestId('music-playlist').filter({ hasText: LONG.audio[0] }).click();
+  await expect(win.getByTestId('music-track')).toBeVisible();
+  // More tools open (Pro Mode's).
+  if (mode === 'pro') await win.getByTestId('group-more-tools-toggle').click();
   if (mode === 'simple') {
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(win.getByTestId('simple-mode')).toBeVisible();
@@ -360,17 +416,25 @@ for (const mode of ['pro', 'simple'] as const)
       await fill(app, win, mode);
       await win.evaluate(() => document.fonts.ready.then(() => undefined));
       const findings: string[] = [];
-      for (const [name, columns] of Object.entries(COLUMNS)) {
-        await setColumns(win, columns);
-        // Still there after the columns moved (a resize sends no command).
-        await expect(win.getByTestId('operator-notice')).toBeVisible();
-        const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
-        findings.push(...faults.map((f) => `${name}: ${f}`));
-        if (faults.length > 0)
-          await test.info().attach(`${mode}-${String(size.width)}-${name}`, {
-            body: await win.screenshot(),
-            contentType: 'image/png',
-          });
+      // Pro Mode's library over the playlists too.
+      for (const library of mode === 'pro' ? [false, true] : [false]) {
+        if (library) await openLibrary(win);
+        for (const [name, columns] of Object.entries(COLUMNS)) {
+          await setColumns(win, columns);
+          for (const end of [false, true]) {
+            await scrollAll(win, end);
+            // Still there after the columns moved (a resize sends no command).
+            await expect(win.getByTestId('operator-notice')).toBeVisible();
+            const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
+            const where = `${library ? 'the library open, ' : ''}${name}${end ? ', scrolled to the end' : ''}`;
+            findings.push(...faults.map((f) => `${where}: ${f}`));
+            if (faults.length > 0)
+              await test.info().attach(`${mode}-${String(size.width)}-${where}`, {
+                body: await win.screenshot(),
+                contentType: 'image/png',
+              });
+          }
+        }
       }
       console.log(
         `${mode} ${String(size.width)} × ${String(size.height)}: ${String(findings.length)} findings\n${findings.join('\n')}`,
