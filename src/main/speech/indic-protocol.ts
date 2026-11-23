@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import type { HeardWord } from '../../shared/speech';
+import type { HeardWord, SpeechLanguage } from '../../shared/speech';
 
 export type IndicLanguage = 'gu' | 'hi';
 export interface IndicFiles {
@@ -26,7 +26,8 @@ export function pcmFrame(samples: Int16Array): Buffer {
   return out;
 }
 
-export function routeCFiles(pack: IndicPack | null, language: IndicLanguage): IndicFiles | null {
+export function routeCFiles(pack: IndicPack | null, language: SpeechLanguage | 'auto'): IndicFiles | null {
+  if (language !== 'gu' && language !== 'hi') return null;
   if (pack?.format !== 'indicconformer-ctc-onnx-v1' || !pack.purposes.includes(`captions-${language}`))
     return null;
   const named = (name: string): string | null => {

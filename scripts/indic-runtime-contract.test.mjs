@@ -14,8 +14,14 @@ test('PCM and native words have strict audio and timing bounds', () => {
 });
 
 test('the shared recogniser seam refuses unsupported languages even if a pack claims them', () => {
-  const pack = { format: 'indicconformer-ctc-onnx-v1', purposes: ['captions-en'], files: [
-    { name: 'model.onnx', path: '/p/model.onnx' }, { name: 'tokens.txt', path: '/p/tokens.txt' }, { name: 'frontend.bin', path: '/p/frontend.bin' },
-  ] };
+  const pack = {
+    format: 'indicconformer-ctc-onnx-v1',
+    purposes: ['captions-en'],
+    files: [
+      { name: 'model.onnx', path: '/p/model.onnx' },
+      { name: 'tokens.txt', path: '/p/tokens.txt' },
+      { name: 'frontend.bin', path: '/p/frontend.bin' },
+    ],
+  };
   assert.equal(routeCFiles(pack, 'en'), null);
 });
