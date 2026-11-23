@@ -132,3 +132,10 @@ test('a replacement model under the same id cannot silently change the selected 
     stop();
   }
 });
+
+test('a selected file reference cannot be replaced by different metadata returned for the same id', () => {
+  const first = { ...pack, files: pack.files.map((file) => ({ ...file, sha256: '1'.repeat(64) })) };
+  const selected = { ...first, id: 'chosen', files: first.files.map((file) => ({ ...file, sha256: '2'.repeat(64) })) };
+  const route = createIndicRoute({ ...base, store: { model: () => first, acquire: async () => null } });
+  assert.equal(route.make(selected, 'gu'), null);
+});
