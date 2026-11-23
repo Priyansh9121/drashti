@@ -36,13 +36,3 @@ export function redactNames(text: string, names: readonly string[]): string {
   }
   return out;
 }
-
-function section(title: string, lines: readonly string[]): string {
-  return `== ${title} ==\n${lines.length > 0 ? lines.join('\n') : '(none)'}\n`;
-}
-
-const record = (v: unknown): Record<string, unknown> | null =>
-  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
-
-const hex = (v: unknown) => (typeof v === 'number' ? `0x${v.toString(16).padStart(4, '0')}` : String(v));
-

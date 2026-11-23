@@ -71,6 +71,15 @@ export interface CrashFilesChoice {
 const LOG_BYTES = 16_000_000;
 const count = (db: Db, sql: string) => (db.prepare(sql).get() as { n: number }).n;
 
+function section(title: string, lines: readonly string[]): string {
+  return `== ${title} ==\n${lines.length > 0 ? lines.join('\n') : '(none)'}\n`;
+}
+
+const record = (v: unknown): Record<string, unknown> | null =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+const hex = (v: unknown) => (typeof v === 'number' ? `0x${v.toString(16).padStart(4, '0')}` : String(v));
+
 /** Every list under a key that names video decoding, wherever Chromium put it (a few levels down at most). */
 function videoDecodeLists(v: unknown, depth = 0): unknown[] {
   const r = record(v);
