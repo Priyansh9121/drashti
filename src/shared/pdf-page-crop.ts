@@ -1,5 +1,13 @@
 import type { RenderSlide } from './model';
 import type { CropRect } from './picture-look';
-export function cropRenderedPage(_slide: RenderSlide, _crop?: CropRect): RenderSlide {
-  throw new Error('PDF crop rendering is not implemented yet.');
+/** Resolve the page viewport once before fitting it on any output. Elements stay in original coordinates. */
+export function cropRenderedPage(slide: RenderSlide, crop?: CropRect): RenderSlide {
+  if (!crop) return slide;
+  return {
+    ...slide,
+    width: slide.width * crop.w,
+    height: slide.height * crop.h,
+    pageCrop: { x: slide.width * crop.x, y: slide.height * crop.y, width: slide.width, height: slide.height },
+    fullSlide: true,
+  };
 }

@@ -24,3 +24,6 @@ export const PDF_PAGES_WAIT_NOTE =
 export function pdfAcknowledged(value: unknown): boolean {
   return value === true;
 }
+
+/** Cropping has its own admission words, shared by the ribbon and its dialog. */
+export const PDF_CROP_WAIT = 'Crop page waits until the stream and recording are off.';

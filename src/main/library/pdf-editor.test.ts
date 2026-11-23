@@ -375,9 +375,11 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       page.documentPage.crop = crop;
       t.saveTo(join(t.world.root, 'Placeholder cropped.pdf'));
       expect((await t.editor.export(t.event, t.imported.id, t.doc, t.stamp)).ok).toBe(true);
-      expect(t.run.mock.calls[0]?.[0].pages).toEqual([{kind:'original',sourceId:t.hash,page:0,crop}]);
+      expect(t.run.mock.calls[0]?.[0].pages).toEqual([{ kind: 'original', sourceId: t.hash, page: 0, crop }]);
       expect(readFileSync(t.world.source)).toEqual(t.world.bytes);
-    } finally { await t.clean(); }
+    } finally {
+      await t.clean();
+    }
   });
 
   it('prints that one page as it now looks, draws the part dragged out, and keeps it with its name and place', async () => {

@@ -1053,7 +1053,6 @@ describe('imported editor provenance and legacy safety', () => {
   });
 });
 
-
 it('saves a crop-only PDF edit without converting source content, and reopens the same crop', async () => {
   const w = originalWorld();
   try {
@@ -1069,8 +1068,14 @@ it('saves a crop-only PDF edit without converting source content, and reopens th
     const stored = repo.content(imported.id)?.slides[0];
     expect(documentPageFromJson(stored?.document_page)).toMatchObject({ crop });
     expect(documentPageFromJson(stored?.document_page)?.edited).not.toBe(true);
+    const shown = repo.get(imported.id)?.groups[0]?.slides[0]?.slide;
+    expect(shown?.pageCrop).toBeDefined();
+    expect(shown?.width).toBe(960);
+    expect(shown?.height).toBe(540);
     const reopened = await open(imported.id);
     expect(reopened.doc.groups[0]?.slides[0]?.documentPage?.crop).toEqual(crop);
     originalsUnchanged(w);
-  } finally { w.clean(); }
+  } finally {
+    w.clean();
+  }
 });

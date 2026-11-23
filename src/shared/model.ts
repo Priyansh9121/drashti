@@ -437,6 +437,8 @@ export interface Darken {
 }
 
 export interface RenderSlide {
+  /** Original page canvas translated underneath this cropped viewport. Render-only. */
+  pageCrop?: { x: number; y: number; width: number; height: number };
   id: string;
   /** Design size of the slide (the presentation's size). */
   width: number;

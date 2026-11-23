@@ -38,7 +38,7 @@ for (const [choice, indices] of [
       await s.ed.mouse.up();
       await expect(dialog.getByTestId('crop-readout')).toContainText('right 50%');
       await expect(dialog.getByTestId('crop-readout')).toContainText('bottom 50%');
-      await dialog.getByRole('combobox', { name: 'Apply to', exact: true }).selectOption(choice);
+      await dialog.getByRole('combobox', { name: 'Apply to', exact: true }).selectOption({ label: choice });
       await dialog.getByRole('button', { name: 'Keep crop', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       for (let i = 0; i < 3; i++)
@@ -67,7 +67,7 @@ for (const [choice, indices] of [
       await slideEditorClosed(s.app);
       const stored = rawContent(s.userData, s.id);
       for (const [i, row] of stored.slides.entries()) {
-        const ref = JSON.parse(String(row.document_page)) as {
+        const ref = JSON.parse(String(row['document_page'])) as {
           crop?: { w: number; h: number };
           edited?: boolean;
         };
@@ -197,7 +197,7 @@ test('Turn page right turns the crop with the full page, Undo restores it, and t
     await expect(kept).toHaveCSS('height', '240px');
     await expect(kept).toHaveCSS('overflow', 'hidden');
     const page = await kept.boundingBox();
-    const screen = out.viewportSize();
+    const screen = await out.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     if (!page || !screen) throw new Error('Missing hall crop viewport');
     expect(page.width).toBeCloseTo(Math.min(screen.width, screen.height), 0);
     expect(page.height).toBeCloseTo(Math.min(screen.width, screen.height), 0);

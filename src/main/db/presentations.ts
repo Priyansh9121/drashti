@@ -18,6 +18,7 @@ import { darkenFromJson, slideDesignFromJson, slideElementSchema } from '../../s
 import type { DeckSlide } from '../../shared/deck';
 import { deckFromJson, deckToJson } from '../../shared/deck-schema';
 import { cueInputName, masterFromJson } from '../../shared/slide-edit';
+import { cropRenderedPage } from '../../shared/pdf-page-crop';
 import { composeSlide } from '../../shared/slide-design';
 import { langsOf } from '../../shared/tracks';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
@@ -473,21 +474,24 @@ export class PresentationRepo {
       const darken = darkenFromJson(s.darken);
       // A deck's slide (Session 54, C2): left out for every other slide, as darkening is.
       const deck = deckFromJson(s.deck);
-      const slide = composeSlide(
-        {
-          id: s.id,
-          ...(pageSizeFromJson(s.page_size) ?? documentCanvas(documentPageFromJson(s.document_page), p)),
-          background: s.background,
-          // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
-          ...(darken ? { darken } : {}),
-          elements: bySlide.get(s.id) ?? [],
-          ...(deck ? { deck } : {}),
-        },
-        slideDesignFromJson(s.editor_design),
-        master,
-        (cuesBySlide.get(s.id) ?? []).some((c) => c.kind === 'background'),
-        slideCanvas(master ?? undefined, p),
-        index,
+      const slide = cropRenderedPage(
+        composeSlide(
+          {
+            id: s.id,
+            ...(pageSizeFromJson(s.page_size) ?? documentCanvas(documentPageFromJson(s.document_page), p)),
+            background: s.background,
+            // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
+            ...(darken ? { darken } : {}),
+            elements: bySlide.get(s.id) ?? [],
+            ...(deck ? { deck } : {}),
+          },
+          slideDesignFromJson(s.editor_design),
+          master,
+          (cuesBySlide.get(s.id) ?? []).some((c) => c.kind === 'background'),
+          slideCanvas(master ?? undefined, p),
+          index,
+        ),
+        documentPageFromJson(s.document_page)?.crop,
       );
       const info: SlideInfo = {
         id: s.id,

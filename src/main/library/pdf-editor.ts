@@ -245,15 +245,20 @@ export class PdfEditor {
             );
           sources.set(ref.sha256, data);
         }
-        pages.push({ kind: 'original', sourceId: ref.sha256, page: ref.page });
+        pages.push({
+          kind: 'original',
+          sourceId: ref.sha256,
+          page: ref.page,
+          ...(ref.crop ? { crop: ref.crop } : {}),
+        });
       } else {
-        const rendered = renderEditedSlide(doc, slide);
+        const rendered = renderEditedSlide(doc, slide, true);
         if (rendered.elements.some((element) => element.kind === 'video' || element.kind === 'timer'))
           throw new PdfEditorError(
             'A page contains video or a live timer. Remove that moving element before saving a PDF copy.',
           );
         const { deck: _deck, ...still } = rendered;
-        pages.push({ kind: 'native', slide: still });
+        pages.push({ kind: 'native', slide: still, ...(ref?.crop ? { crop: ref.crop } : {}) });
       }
     }
     return { pages, sources: [...sources].map(([id, data]) => ({ id, data })) };

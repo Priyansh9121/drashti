@@ -1,8 +1,10 @@
+import type { CropRect } from './picture-look';
 import type { RenderSlide } from './model';
 import type { PictureLook } from './picture-look';
 
-export type PdfCopyPage =
-  { kind: 'original'; sourceId: string; page: number } | { kind: 'native'; slide: RenderSlide };
+export type PdfCopyPage = (
+  { kind: 'original'; sourceId: string; page: number } | { kind: 'native'; slide: RenderSlide }
+) & { crop?: CropRect };
 
 /** Private to the exact hidden export window. Source bytes never reach an operator or phone. */
 export interface PdfCopyJob {

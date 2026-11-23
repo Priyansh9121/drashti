@@ -1314,6 +1314,28 @@ export const SlideView = memo(function SlideView({
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (none in the words alone).
   const wholeUnder =
     darken?.kind === 'whole' && text !== 'only' ? slide.elements.find(darkensBehind)?.id : undefined;
+  if (slide.pageCrop) {
+    const { pageCrop, ...whole } = slide;
+    return (
+      <div
+        data-page-crop=""
+        style={{ position: 'relative', width: slide.width, height: slide.height, overflow: 'hidden' }}
+      >
+        <div style={{ position: 'absolute', left: -pageCrop.x, top: -pageCrop.y }}>
+          <SlideView
+            slide={{ ...whole, width: pageCrop.width, height: pageCrop.height }}
+            media={media}
+            startedAt={startedAt}
+            clips={clips}
+            seeks={seeks}
+            text={text}
+            reveal={reveal}
+            step={step}
+          />
+        </div>
+      </div>
+    );
+  }
   return (
     <TranslitSourceContext.Provider value={source}>
       <div
