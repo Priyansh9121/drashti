@@ -13,6 +13,7 @@ export type BridgePage =
   | 'output'
   | 'audio'
   | 'stream'
+  | 'stream-sound'
   | 'node'
   | 'pdf'
   | 'pdf-export'
@@ -95,6 +96,9 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   audio: ['audio', 'engine', 'liveLink', 'media'],
   // The stream's picture.
   stream: ['app', 'engine', 'liveLink', 'liveWindow', 'media', 'output', 'stream', 'videoInputs'],
+  // The stream's sound (alpha.22, Codex x86): its input, mix, captions' tap and the encoder's sound; the show's state
+  // and its own sounds' files, a cue's readiness, the test clock and its page's context and reports.
+  'stream-sound': ['engine', 'media', 'output', 'stream'],
   // A node's own window, including its explicitly enabled shared show view. Main-only changes have no node handlers.
   // Its code reaches the panels' "What is this?" (ui/Panel's SectionTitle beside it), whose Open the manual asks the
   // manual (x37; the guides until then), though no panel of its own has a "?".
