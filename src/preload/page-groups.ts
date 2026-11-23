@@ -36,6 +36,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'backups',
     'calendar',
     'captions',
+    // Caption words (alpha.22, cap-glossary): File › Live Captions… › Caption Words…, Pro Mode.
+    'captionWords',
     'videoCaptions',
     'drop',
     'engine',
@@ -56,6 +58,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'media',
     'messages',
     'midi',
+    // Help › Caption and Translation Models… (alpha.22, cap-pack).
+    'modelPacks',
     'music',
     'network',
     'nodes',

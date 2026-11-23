@@ -1,16 +1,45 @@
 import {
   CAPTION_MODELS,
+  isLanguageModelLanguage,
+  LANGUAGE_MODEL_LANGUAGES,
   parseCaptionSettings,
+  parseCaptionTiming,
+  type CaptionTiming,
+  type LanguageModelLanguage,
+  type LanguageModelView,
   type CaptionModelId,
   type CaptionSettings,
   type CaptionsDownload,
   type CaptionsShown,
   type CaptionsStatus,
 } from '../../shared/captions';
-import type { Heard } from '../../shared/speech';
+import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
+import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
+import type { CaptionRecognizer } from './caption-routes';
+import {
+  chooseCaptionPath,
+  createCaptionFlow,
+  type CaptionPaths,
+  type CaptionSpelling,
+  type ClauseSink,
+} from './caption-flow';
+import { CaptionPrototype } from './caption-prototype';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
-import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
+import {
+  readCaptionsSwitch,
+  readCaptionsTuning,
+  writeCaptionsSwitch,
+  writeCaptionsTuning,
+  type CaptionsSwitch,
+  type CaptionsTuning,
+} from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
+import {
+  languageName,
+  LanguageModelRefused,
+  type LanguageModelCheck,
+  type LanguageModelEntry,
+} from './language-models';
 
 export type { CaptionsStatus } from '../../shared/captions';
 
@@ -38,15 +67,71 @@ export interface CaptionsServiceDeps {
   /** The engine's setCaptions. */
   show: (captions: CaptionsShown | null) => void;
   onFinalPhrase?: (phrase: Heard) => void;
+  /**
+   * Caption AI (alpha.22): when the admin chose it, the speaker's language is heard by a recognizer made from that
+   * language's checked model in the offline pack (Route W's whisper.cpp or Route C's IndicConformer: caption-routes.ts),
+   * and what it hears goes through the coordinator instead of today's feed. Not given, or off: today's captions
+   * exactly as before.
+   */
+  aiPath?: {
+    on(): boolean;
+    /** The recognizer for this language, from the pack's checked model, or null. */
+    recognizer(language: SpeechLanguage): CaptionRecognizer | null;
+    coordinator: ClauseSink;
+    spelling?: CaptionSpelling;
+  };
+  /** Separate private operator review; never included in the existing status. */
+  prototypeChanged?: (review: CaptionReview) => void;
+  /** The caption words' spelling fixer (alpha.22): each phrase from the engine passes through it, partials too. */
+  spell?: (phrase: Heard) => Heard;
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
+  /** The language models on this computer (alpha.22; main/speech/language-models.ts). None known when left out. */
+  languageModels?: LanguageModelStore;
 }
+
+const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
+  gu: 'Gujarati',
+  hi: 'Hindi',
+  sa: 'Sanskrit',
+  en: 'English',
+});
+
+/** A model of its own per language on this computer (alpha.22): what Drashti knows, and each file's check. */
+export interface LanguageModelStore {
+  /** The models this copy of Drashti knows (by SHA-256). */
+  known(): readonly LanguageModelEntry[];
+  /** The quick check before each use. */
+  check(entry: LanguageModelEntry): LanguageModelCheck;
+  /** The file checked whole again (stamped again when it is still the same). */
+  verify(entry: LanguageModelEntry): Promise<LanguageModelCheck>;
+  /** Add a file the admin chose for `language`: its entry, or LanguageModelRefused with what to say. */
+  add(language: LanguageModelLanguage, source: string): Promise<LanguageModelEntry>;
+}
+
+const NO_LANGUAGE_MODELS: LanguageModelStore = {
+  known: () => [],
+  check: () => 'missing',
+  verify: () => Promise.resolve('missing'),
+  add: () => Promise.reject(new LanguageModelRefused('This copy of Drashti knows no language models.')),
+};
 
 export class CaptionsService {
   readonly hub: SpeechHubControl;
   private readonly feed: CaptionsFeed;
+  /** Today's feed or caption AI's flow, when caption AI is wired in (null: today's feed alone). */
+  private readonly paths: CaptionPaths | null;
+  /** What caption AI's recognizer is while it runs. */
+  private recognizer: { route: string; modelId: string } | null = null;
+  private readonly prototype: CaptionPrototype;
   private switch: CaptionsSwitch;
+  private tuning: CaptionsTuning;
+  private readonly models: LanguageModelStore;
+  /** A file being checked or added, per language (alpha.22). */
+  private readonly checking = new Set<LanguageModelLanguage>();
+  /** Why a file was not added, per language, until the next change there (alpha.22). */
+  private readonly notices = new Map<LanguageModelLanguage, string>();
   private download: CaptionsDownload;
   private downloading: { controller: AbortController; promise: Promise<void> } | null = null;
   private streamInUse = false;
@@ -55,11 +140,58 @@ export class CaptionsService {
   private telling: NodeJS.Timeout | null = null;
 
   constructor(private readonly deps: CaptionsServiceDeps) {
+    this.prototype = new CaptionPrototype({
+      settings: () => this.settings(),
+      show: deps.show,
+      changed: (review) => deps.prototypeChanged?.(review),
+    });
     this.switch = readCaptionsSwitch(deps.userData, deps.platform, deps.arch);
+    this.tuning = readCaptionsTuning(deps.userData);
+    this.models = deps.languageModels ?? NO_LANGUAGE_MODELS;
     this.hub = createSpeechHub({
       engine: {
         // The model first: without it the hub is held (no-model) until it is downloaded.
-        start: (language, to) => {
+        start: (language, given) => {
+          // The caption words' fixer (cap-glossary) on every phrase from whichever engine hears: caption AI's, a
+          // language's own model or the general one.
+          const spell = this.deps.spell;
+          const to = spell
+            ? { heard: (h: Heard) => given.heard(spell(h)), state: (s: SpeechState) => given.state(s) }
+            : given;
+          // Caption AI: the speaker's language, and its checked model from the pack (never a download).
+          if (this.useAi()) {
+            if (language === 'auto') {
+              to.state({
+                phase: 'failed',
+                message: 'Caption AI listens for one language: choose the speaker’s language.',
+              });
+              return () => undefined;
+            }
+            const recognizer = this.deps.aiPath?.recognizer(language) ?? null;
+            if (recognizer === null) {
+              to.state({
+                phase: 'failed',
+                message: `Caption AI has no checked model for ${LANGUAGE_NAMES[language]}: import the model pack (Help › Caption and Translation Models…).`,
+              });
+              return () => undefined;
+            }
+            this.recognizer = { route: recognizer.route, modelId: recognizer.modelId };
+            const stop = recognizer.engine.start(language, to);
+            return () => {
+              this.recognizer = null;
+              stop();
+            };
+          }
+          // A model of its own chosen for the language (alpha.22) is used only when it is here and checked: never
+          // the general model in its place.
+          const own = this.ownModel(language);
+          if (own !== null) {
+            if (own.phase !== 'ready') {
+              to.state({ phase: 'failed', message: own.message });
+              return () => undefined;
+            }
+            return this.deps.engine.start(language, to);
+          }
           if (!this.deps.modelReady(this.switch.model)) {
             to.state({ phase: 'held', reason: 'no-model' });
             return () => undefined;
@@ -69,12 +201,30 @@ export class CaptionsService {
       },
       log: deps.log,
     });
-    this.feed = createCaptionsFeed({
+    const today = createCaptionsFeed({
       hub: this.hub,
       show: deps.show,
       onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
       settings: () => this.settings(),
     });
+    const ai = deps.aiPath;
+    this.paths = ai
+      ? chooseCaptionPath(
+          today,
+          createCaptionFlow({
+            hub: this.hub,
+            coordinator: ai.coordinator,
+            ...(ai.spelling ? { spelling: ai.spelling } : {}),
+            onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+          }),
+          () => this.useAi(),
+          () => {
+            this.hub.setOn(false);
+            this.hub.setOn(true);
+          },
+        )
+      : null;
+    this.feed = this.paths ?? today;
     this.hub.onState(() => {
       this.tell();
     });
@@ -100,6 +250,66 @@ export class CaptionsService {
         };
   }
 
+  private useAi(): boolean {
+    return this.deps.aiPath?.on() === true;
+  }
+
+  /** The route and pack model caption AI listens with now, or null (today's captions). Never a word. */
+  aiRecognizer(): { route: string; modelId: string } | null {
+    return this.recognizer;
+  }
+
+  /** The admin turned caption AI on or off: while captions run, the other path takes over at once. */
+  aiPathChanged(): void {
+    if (this.closed || !this.paths) return;
+    this.paths.reselect();
+    if (this.switch.on) void this.fetchModel();
+    this.tell();
+  }
+
+  /** The operator's review: caption AI's phrases while it runs (and no rehearsal does), else the rehearsal's. */
+  prototypeView(): CaptionReview {
+    return (this.aiReview() ?? this.prototype).view();
+  }
+
+  /** Caption AI's coordinator while its flow runs and no placeholder rehearsal does, or null. */
+  private aiReview(): ClauseSink | null {
+    const ai = this.deps.aiPath;
+    return ai && this.paths?.usingAi() === true && !this.prototype.view().on ? ai.coordinator : null;
+  }
+
+  setPrototypeOn(on: boolean): void {
+    if (this.closed || on === this.prototype.view().on) return;
+    if (on) {
+      this.turnOff();
+      this.prototype.setOn(true);
+    } else {
+      this.prototype.setOn(false);
+      if (this.switch.on) void this.turnOn();
+    }
+    this.tell();
+  }
+
+  /** An access stop: the rehearsal ends at once, and nothing of the real captions starts again (no listening, no download). */
+  cancelPrototype(): void {
+    if (this.closed || !this.prototype.view().on) return;
+    this.prototype.setOn(false);
+    this.tell();
+  }
+
+  advancePrototype(): void {
+    if (!this.closed) this.prototype.advance();
+  }
+  restartPrototype(): void {
+    if (!this.closed && this.prototype.view().on) this.prototype.restart();
+  }
+  correctPrototype(correction: CaptionCorrection): boolean {
+    return !this.closed && (this.aiReview() ?? this.prototype).correct(correction);
+  }
+  dismissPrototype(key: Omit<CaptionCorrection, 'text'>): boolean {
+    return !this.closed && (this.aiReview() ?? this.prototype).dismiss(key);
+  }
+
   selectedModel(): CaptionModelId {
     return this.switch.model;
   }
@@ -115,6 +325,8 @@ export class CaptionsService {
       engine: engineProblem === null,
       engineProblem,
       trial: true,
+      languageModels: LANGUAGE_MODEL_LANGUAGES.map((language) => this.languageModelView(language)),
+      timing: this.tuning.timing,
     };
   }
 
@@ -125,6 +337,7 @@ export class CaptionsService {
   }
 
   async setOn(on: boolean): Promise<CaptionsStatus> {
+    if (this.prototype.view().on) this.prototype.setOn(false);
     const next = { ...this.switch, on };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
@@ -142,7 +355,11 @@ export class CaptionsService {
     const next = { ...this.switch, model };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
-    if (this.switch.on) {
+    if (this.prototype.view().on) {
+      // The rehearsal starts a fresh session; the newly chosen model is not loaded while it runs.
+      this.prototype.restart();
+      this.download = this.modelState();
+    } else if (this.switch.on) {
       this.turnOff();
       await this.turnOn();
     } else this.download = this.modelState();
@@ -152,8 +369,15 @@ export class CaptionsService {
 
   setSettings(settings: CaptionSettings): CaptionsStatus {
     const s = parseCaptionSettings(settings);
+    const languageChanged = s.language !== this.settings().language;
     this.deps.repo.set(s);
+    if (this.prototype.view().on) {
+      if (languageChanged) this.prototype.restart();
+      else this.prototype.refresh();
+    }
     this.hub.setLanguage(s.language);
+    // Caption AI follows the speaker's language at once (a language with its own model, or not).
+    this.paths?.reselect();
     this.feed.refresh();
     this.tell();
     return this.view();
@@ -178,6 +402,7 @@ export class CaptionsService {
 
   close(): void {
     this.closed = true;
+    this.prototype.setOn(false);
     this.downloading?.controller.abort();
     this.feed.stop();
     this.hub.close();
@@ -185,7 +410,7 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (this.deps.engineProblem() !== null) return;
+    if (this.closed || this.prototype.view().on || this.deps.engineProblem() !== null) return;
     this.hub.setOn(true);
     this.feed.start();
     await this.fetchModel();
@@ -206,10 +431,13 @@ export class CaptionsService {
     const id = this.switch.model;
     if (
       this.closed ||
+      this.prototype.view().on ||
       !this.switch.on ||
       this.streamInUse ||
       this.deps.engineProblem() !== null ||
-      this.deps.modelReady(id)
+      this.deps.modelReady(id) ||
+      // Caption AI's models come from the pack, imported by the admin: nothing is downloaded for it.
+      this.useAi()
     )
       return;
     const running = this.downloading;
@@ -262,6 +490,190 @@ export class CaptionsService {
       this.downloading = null;
       this.tell();
     }
+  }
+
+  /* ---- a model per language and live timing (alpha.22) ---- */
+
+  /**
+   * The model of its own that hears this language now, here and checked, or null: the general model does (none
+   * chosen, "as heard", Sanskrit), or nothing does (the chosen one is not ready: listening says why).
+   */
+  languageModelFor(language: SpeechLanguage | 'auto'): LanguageModelEntry | null {
+    const own = this.ownModel(language);
+    return own?.phase === 'ready' ? own.entry : null;
+  }
+
+  /**
+   * Why the model for this language may not be used now (its own model chosen but not here, changed or unknown),
+   * or null: asked again before every start of the engine.
+   */
+  modelProblem(language: SpeechLanguage | 'auto'): string | null {
+    const own = this.ownModel(language);
+    return own === null || own.phase === 'ready' ? null : own.message;
+  }
+
+  /** The live timing on this computer. */
+  timing(): CaptionTiming {
+    return this.tuning.timing;
+  }
+
+  /** Choose the model for a language (a known id), or the general model (null). */
+  setLanguageModel(language: LanguageModelLanguage, id: string | null): CaptionsStatus {
+    if (!isLanguageModelLanguage(language)) return this.view();
+    if (id !== null && !this.known(language).some((entry) => entry.id === id)) return this.view();
+    this.notices.delete(language);
+    this.choose(language, id);
+    this.tell();
+    return this.view();
+  }
+
+  /** Add a model file the admin chose for a language: checked, copied in, and chosen for it. */
+  async addLanguageModel(language: LanguageModelLanguage, source: string): Promise<CaptionsStatus> {
+    if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
+    if (this.streamInUse) {
+      this.notices.set(language, 'Add a model file when the stream and recording have stopped.');
+      this.tell();
+      return this.view();
+    }
+    this.notices.delete(language);
+    this.checking.add(language);
+    this.tell();
+    try {
+      const entry = await this.models.add(language, source);
+      this.deps.log.info(`Captions: the ${entry.id} model was added for ${languageName(language)}.`);
+      this.checking.delete(language);
+      this.choose(language, entry.id, true);
+    } catch (error) {
+      this.checking.delete(language);
+      const message =
+        error instanceof LanguageModelRefused
+          ? error.message
+          : 'Drashti could not add that model file: check the file, then add it again.';
+      this.notices.set(language, message);
+      this.deps.log.warn(`Captions: a model file for ${languageName(language)} was not added.`);
+    }
+    this.tell();
+    return this.view();
+  }
+
+  /** Check the chosen model's file whole again (after it was found changed). */
+  async checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus> {
+    if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
+    const id = this.tuning.languageModels[language];
+    const entry = this.known(language).find((e) => e.id === id);
+    if (!entry) return this.view();
+    this.notices.delete(language);
+    this.checking.add(language);
+    this.tell();
+    const result = await this.models.verify(entry).catch((): LanguageModelCheck => 'missing');
+    this.checking.delete(language);
+    this.deps.log.info(`Captions: the ${entry.id} model was checked again (${result}).`);
+    if (result === 'ready' && this.hearing(language)) this.relisten();
+    this.tell();
+    return this.view();
+  }
+
+  /** Keep the live timing on this computer; listening starts again with it. */
+  setTiming(timing: CaptionTiming): CaptionsStatus {
+    const next = { ...this.tuning, timing: parseCaptionTiming(timing) };
+    writeCaptionsTuning(this.deps.userData, next);
+    this.tuning = next;
+    this.relisten();
+    this.tell();
+    return this.view();
+  }
+
+  private known(language: LanguageModelLanguage): LanguageModelEntry[] {
+    return this.models.known().filter((entry) => entry.language === language);
+  }
+
+  /** Whether listening is on and hears this language now. */
+  private hearing(language: LanguageModelLanguage): boolean {
+    return this.switch.on && this.settings().language === language;
+  }
+
+  private choose(language: LanguageModelLanguage, id: string | null, always = false): void {
+    const was = this.tuning.languageModels[language] ?? null;
+    if (was === id && !always) return;
+    const languageModels: CaptionsTuning['languageModels'] = {};
+    for (const each of LANGUAGE_MODEL_LANGUAGES) {
+      const chosen = each === language ? id : (this.tuning.languageModels[each] ?? null);
+      if (chosen !== null) languageModels[each] = chosen;
+    }
+    const next = { ...this.tuning, languageModels };
+    writeCaptionsTuning(this.deps.userData, next);
+    this.tuning = next;
+    if (this.hearing(language)) this.relisten();
+  }
+
+  /** Listening starts again (a model or the timing changed), when it is on. */
+  private relisten(): void {
+    if (!this.switch.on || this.closed) return;
+    // A language's own model chosen or taken away: caption AI or today's captions take over (listening again).
+    if (this.paths?.reselect()) return;
+    this.hub.setOn(false);
+    this.hub.setOn(true);
+  }
+
+  /** The model of its own chosen for this language, and how it stands; null when none is chosen. */
+  private ownModel(
+    language: SpeechLanguage | 'auto',
+  ): { entry: LanguageModelEntry | null; phase: LanguageModelView['phase']; message: string } | null {
+    if (!isLanguageModelLanguage(language)) return null;
+    const id = this.tuning.languageModels[language];
+    if (id === undefined) return null;
+    const name = languageName(language);
+    const entry = this.known(language).find((e) => e.id === id) ?? null;
+    if (!entry)
+      return {
+        entry,
+        phase: 'unknown',
+        message: `The model chosen for ${name} is not one this copy of Drashti knows, so captions do not use it. Choose another model for ${name}.`,
+      };
+    if (this.checking.has(language)) return { entry, phase: 'checking', message: 'Checking the file…' };
+    switch (this.models.check(entry)) {
+      case 'ready':
+        return { entry, phase: 'ready', message: '' };
+      case 'missing':
+        return {
+          entry,
+          phase: 'missing',
+          message: `The ${name} model is not on this computer: import the model pack that holds it (Help › Caption and Translation Models…).`,
+        };
+      case 'changed':
+        return {
+          entry,
+          phase: 'changed',
+          message: `The ${name} model’s file has changed since Drashti checked it, so captions do not use it. Check it again, or import the model pack again (Help › Caption and Translation Models…).`,
+        };
+    }
+  }
+
+  private languageModelView(language: LanguageModelLanguage): LanguageModelView {
+    const known = this.known(language).map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      bytes: entry.bytes,
+      here: this.models.check(entry) === 'ready',
+    }));
+    const own = this.ownModel(language);
+    const notice = this.notices.get(language) ?? null;
+    const checking = this.checking.has(language);
+    if (own === null)
+      return {
+        language,
+        known,
+        chosen: null,
+        phase: checking ? 'checking' : 'general',
+        message: checking ? 'Checking the file…' : notice,
+      };
+    return {
+      language,
+      known,
+      chosen: this.tuning.languageModels[language] ?? null,
+      phase: own.phase,
+      message: notice ?? (own.phase === 'ready' ? null : own.message),
+    };
   }
 
   /** Tell the dialog now. */
