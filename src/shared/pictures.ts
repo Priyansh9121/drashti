@@ -42,6 +42,11 @@ export interface PictureJob {
    * screens or the stream): every `every`th from `from`, or the pages listed (from 0). Left out: every page.
    */
   share?: PageShare;
+  /**
+   * Book OCR (alpha.21): the page on white either side instead of black, for reading its words (a black band reads as
+   * marks). Left out: black, as the screens show a page.
+   */
+  onWhite?: boolean;
 }
 
 export type PageShare = { every: number; from: number } | { pages: number[] };

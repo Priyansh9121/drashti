@@ -702,6 +702,20 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.quickBar.set)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   });
 
+  it('Read Words from a Page… (book OCR, alpha.21) is Pro Mode’s, as New presentation is: nothing read, nothing stopped', () => {
+    for (const channel of [
+      IPC.library.readWordsChoose,
+      IPC.library.readWords,
+      IPC.library.stopReadingWords,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+    }
+    expect(answers.get(IPC.library.readWordsChoose)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(answers.get(IPC.library.readWords)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(answers.get(IPC.library.stopReadingWords)?.()).toBe(false);
+  });
+
   it('New › QR code… (Session 55, Part 8) is Pro Mode’s: Simple Mode makes no slide', () => {
     expect(SIMPLE_MODE_LOCKED).toContain(IPC.library.newQrSlide);
     expect(SIMPLE_MODE_BOUNDED.has(IPC.library.newQrSlide)).toBe(false);
