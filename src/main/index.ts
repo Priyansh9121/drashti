@@ -3670,6 +3670,7 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      slideEditor?.send(IPC.stream.changed, status);
       automaticErrorRuntime?.stream(status.live.state, status.live.message);
       if (stream?.inUse()) automaticReports.cancel();
       else void automaticReports.wake();
@@ -5447,6 +5448,8 @@ function start(): void {
     // After the requested PDF pages have opened, the reading behind ends its job whenever the show needs the computer
     // (anything up, or the stream on air or recording), and waits here, outside every queue, until the show is idle.
     showBusy: () => !pdfReadIdle(),
+    // Extract pages… to a new presentation and its Undo/Redo wait off air (x85); everything else here goes on.
+    onAir: () => streaming.inUse() || testOnAir,
     waitForPdfIdle: (signal) => {
       if (signal.aborted || pdfReadIdle()) return Promise.resolve(!signal.aborted);
       return new Promise<boolean>((resolve) => {
@@ -5518,7 +5521,6 @@ function start(): void {
     drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
     keepSlide: ({ png, name, place }, current) => keepPageSlide(png, name, place, current),
   });
-  handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
   // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
   // operator window) asks; Pro Mode only, as Save a PDF copy is.
   handle(IPC.slideEditor.makeSlide, (e, request) => pdfEditor.makeSlide(e, request));
@@ -5533,6 +5535,18 @@ function start(): void {
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
   });
+  handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
+  handle(
+    IPC.library.pdfWorkAllowed,
+    (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !streaming.inUse() &&
+      !testOnAir &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+  );
+  handle(IPC.library.showExtractedPdfCopy, (e, id, visible) => pdfEditor.showExtractedCopy(e, id, visible));
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
   cancelSourceEdits = () => {

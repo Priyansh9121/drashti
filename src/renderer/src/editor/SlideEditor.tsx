@@ -43,6 +43,7 @@ import {
   cancelSourceConversion,
   closeSlideEditor,
   commit,
+  noteOutside,
   isDirty,
   keepEditing,
   requestClose,
@@ -79,6 +80,10 @@ import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
 import { MakeSlideDialog, type MakeSlideBase } from './MakeSlideDialog';
+import { PDF_PAGES_WAIT, pdfAcknowledged, pdfOffAir } from '../../../shared/pdf-work';
+import { PdfPagesDialog } from './PdfPagesDialog';
+import { PdfHandoutDialog } from './PdfHandoutDialog';
+import { replacePdfPage, splitPdfPages } from './pdf-pages';
 import type { PdfPendingAction } from './PdfTools';
 import { SourceLinkDialog } from './SourceLinkDialog';
 import { SourceIssues } from './SourceIssues';
@@ -135,6 +140,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const slideId = useEditor((s) => s.slideId);
   const problem = useEditor((s) => s.problem);
   const saving = useEditor((s) => s.saving);
+  const outsideBusy = useEditor((s) => s.outsideBusy);
   const askDiscard = useEditor((s) => s.askDiscard);
   const sourceConversion = useEditor((s) => s.sourceConversion);
   const warningDecks =
@@ -152,8 +158,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   );
   const conflict = useEditor((s) => s.conflict);
   // Undo and Redo, typing too (Session 55, Part 17a): while typing, its own steps first, then the editor's.
-  const canUndo = useEditor((s) => s.past.length > 0 || (s.editing !== null && s.typing.undo > 0));
-  const canRedo = useEditor((s) => s.future.length > 0 || (s.editing !== null && s.typing.redo > 0));
+  const canUndo = useEditor(
+    (s) => !s.outsideBusy && (s.past.length > 0 || (s.editing !== null && s.typing.undo > 0)),
+  );
+  const canRedo = useEditor(
+    (s) => !s.outsideBusy && (s.future.length > 0 || (s.editing !== null && s.typing.redo > 0)),
+  );
   const dirty = useEditor(isDirty);
   const unreadable = useEditor((s) => s.unreadable);
   const sourceIssues = useEditor((s) => s.sourceIssues);
@@ -164,6 +174,29 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const note = useEditor((s) => s.note);
   const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
   const [pickingBusy, setPickingBusy] = useState(false);
+  const [pdfStreamOffAir, setPdfStreamOffAir] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    let changed = false;
+    const off = window.drashti.slideEditor.onStreamChanged((status) => {
+      changed = true;
+      if (mounted) setPdfStreamOffAir(pdfOffAir(status));
+    });
+    void window.drashti.slideEditor
+      .streamStatus()
+      .then((status) => {
+        if (mounted && !changed) setPdfStreamOffAir(pdfOffAir(status));
+      })
+      .catch(() => {
+        if (mounted) setPdfStreamOffAir(false);
+      });
+    return () => {
+      mounted = false;
+      off();
+    };
+  }, []);
+  const [pageAction, setPageAction] = useState<'extract' | 'split' | 'handout' | null>(null);
+  const [replacing, setReplacing] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
   const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   // Make a slide… (alpha.21): the page as the editor had it when the dialog opened.
@@ -205,6 +238,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       !before.doc ||
       !before.slideId ||
       before.saving ||
+      before.outsideBusy ||
       before.askDiscard ||
       before.sourceConversion ||
       before.pdfDrawing ||
@@ -260,6 +294,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const exportBusy =
     loading ||
     saving ||
+    outsideBusy ||
     picking !== null ||
     pickingBusy ||
     pdfDrawing ||
@@ -322,7 +357,26 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     commit(removed.doc, { select: [] });
     showSlide(removed.show);
   };
+  const mayWorkOnPdf = async () => {
+    try {
+      if (pdfAcknowledged(await window.drashti.library.pdfWorkAllowed())) return true;
+    } catch {
+      /* Refuse when Main cannot confirm the stream is off air. */
+    }
+    tell(PDF_PAGES_WAIT);
+    return false;
+  };
+  const beginPageAction = async (action: 'extract' | 'split' | 'handout') => {
+    if (pdfJob.current || !(await mayWorkOnPdf())) return;
+    if (useEditor.getState().preparingSource.size) {
+      tell('Wait for the PDF pages to finish preparing.');
+      return;
+    }
+    finishTextEditing();
+    setPageAction(action);
+  };
   const closeInsertion = () => {
+    setReplacing(false);
     if (insertBase.current) revokeSourceContent(insertBase.current.slideId);
     insertBase.current = null;
     setLinking(null);
@@ -380,6 +434,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       pickingBusy ||
       before.loading ||
       before.saving ||
+      before.outsideBusy ||
       before.pdfDrawing ||
       before.sourceConversion ||
       before.askDiscard ||
@@ -438,7 +493,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         void window.drashti.slideEditor.showKey(e.key);
         return;
       }
-      if (translating) return;
+      if (outsideBusy || translating) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -487,7 +542,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mac, saveWhenReady, translating]);
+  }, [mac, saveWhenReady, outsideBusy, translating]);
 
   return (
     <div
@@ -589,6 +644,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           kbd={`${mod}S`}
           disabled={
             saving ||
+            outsideBusy ||
             loading ||
             !doc ||
             pickingBusy ||
@@ -671,7 +727,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               underlined={underlined}
               struckThrough={struckThrough}
               pending={pdfPending}
-              blocked={loading || saving || pickingBusy || pdfDrawing || sourceConversion !== null}
+              blocked={
+                loading || saving || outsideBusy || pickingBusy || pdfDrawing || sourceConversion !== null
+              }
+              // Only x85's page actions wait while the stream is on air or recording (QA21-TAKEPDF-1 A); marks, Save,
+              // a single Make a slide… and Save a PDF copy… go on during a show.
+              pagesWait={!pdfStreamOffAir}
               onHighlight={() => choosePdfTool('highlight')}
               onUnderline={() => applyPdfMark('underline')}
               onStrikeThrough={() => applyPdfMark('strike')}
@@ -680,6 +741,27 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onRotateRight={rotatePdfPage}
               onDeletePage={deleteCurrentPdfPage}
               onInsertPages={openInsertion}
+              onReplacePage={() => {
+                void mayWorkOnPdf().then((ok) => {
+                  if (ok) {
+                    setReplacing(true);
+                    openInsertion();
+                  }
+                });
+              }}
+              onExtractPages={() => {
+                void beginPageAction('extract');
+              }}
+              onSplit={
+                doc && slidesOf(doc).findIndex((page) => page.id === slideId) > 0
+                  ? () => {
+                      void beginPageAction('split');
+                    }
+                  : undefined
+              }
+              onHandout={() => {
+                void beginPageAction('handout');
+              }}
               onSaveCopy={() => {
                 void savePdfCopy();
               }}
@@ -827,8 +909,112 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         />
       )}
       {makingSlide && <MakeSlideDialog base={makingSlide} onClose={closeMakeSlide} onMade={tell} />}
+      {pageAction === 'handout' && doc && (
+        <PdfHandoutDialog
+          doc={doc}
+          onKeep={async (next) => {
+            if (!(await mayWorkOnPdf()) || useEditor.getState().doc !== doc) return false;
+            commit(next, { select: [] });
+            return true;
+          }}
+          onClose={() => setPageAction(null)}
+        />
+      )}
+      {(pageAction === 'extract' || pageAction === 'split') && doc && slideId && (
+        <PdfPagesDialog
+          count={slidesOf(doc).length}
+          page={slidesOf(doc).findIndex((page) => page.id === slideId)}
+          split={pageAction === 'split'}
+          onClose={() => setPageAction(null)}
+          onConfirm={async (pages, file) => {
+            const before = useEditor.getState();
+            if (!before.doc || !before.open || pdfJob.current || before.sourceConversion || before.pdfDrawing)
+              return 'Finish the current page edit first.';
+            const original = before.doc;
+            pdfJob.current = true;
+            try {
+              if (file) {
+                const result = await window.drashti.library.exportPdf(
+                  original.presentationId,
+                  original,
+                  before.stamp,
+                  pages,
+                );
+                if (!result.ok) return result.message;
+                const undoId = result.undoId;
+                if (undoId) {
+                  const show = (visible: boolean) => {
+                    return window.drashti.library
+                      .showExtractedPdfCopy(undoId, visible)
+                      .then((ok) => {
+                        if (!pdfAcknowledged(ok))
+                          tell(
+                            'The extracted PDF changed or the stream is on air. Undo and Redo cannot replace another file.',
+                          );
+                        return pdfAcknowledged(ok);
+                      })
+                      .catch(() => {
+                        tell('The extracted PDF could not be changed.');
+                        return false;
+                      });
+                  };
+                  noteOutside({ undo: () => show(false), redo: () => show(true) });
+                }
+                tell(result.undoMessage ?? `Saved PDF copy “${result.name}”.`);
+                return null;
+              }
+              const result = await window.drashti.library.extractPdfPages(
+                original.presentationId,
+                original,
+                before.stamp,
+                pages,
+              );
+              if (!result.ok) return result.message;
+              const parts =
+                pageAction === 'split' && before.slideId ? splitPdfPages(original, before.slideId) : null;
+              const head = parts ? parts[0] : original;
+              const show = (visible: boolean) => {
+                return window.drashti.library
+                  .showExtractedPdf(result.id, visible)
+                  .then((ok) => {
+                    if (!pdfAcknowledged(ok))
+                      tell(
+                        'The extracted presentation could not be changed. Try again while the stream is off air.',
+                      );
+                    return pdfAcknowledged(ok);
+                  })
+                  .catch(() => {
+                    tell('The extracted presentation could not be changed.');
+                    return false;
+                  });
+              };
+              noteOutside({
+                undo: async () => {
+                  const ok = await show(false);
+                  if (ok && parts)
+                    useEditor.setState({ doc: original, slideId: before.slideId, selection: [] });
+                  return ok;
+                },
+                redo: async () => {
+                  const ok = await show(true);
+                  if (ok && parts)
+                    useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] });
+                  return ok;
+                },
+              });
+              if (parts)
+                useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] });
+              tell(`Made presentation “${result.name}”. Undo removes it.`);
+              return null;
+            } finally {
+              pdfJob.current = false;
+            }
+          }}
+        />
+      )}
       {inserting && (
         <PdfInsertDialog
+          replace={replacing}
           presentationId={inserting.doc.presentationId}
           stamp={inserting.stamp}
           onClose={closeInsertion}
@@ -837,6 +1023,18 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             const now = useEditor.getState();
             if (base?.doc !== now.doc || now.stamp !== base.stamp) {
               tell('The slides changed while the pages were prepared. Choose Insert pages again.');
+              return;
+            }
+            if (replacing) {
+              const replacement = pages[0];
+              const next = replacement && replacePdfPage(base.doc, base.slideId, replacement);
+              if (!next) {
+                tell('That page could not replace this page.');
+                return;
+              }
+              commit(next, { select: [] });
+              showSlide(replacement.id);
+              useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
               return;
             }
             let next = base.doc,
@@ -851,6 +1049,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
           }}
         />
+      )}
+      {outsideBusy && (
+        <Dialog
+          title="Finishing Undo or Redo"
+          testId="pdf-history-pending"
+          size="sm"
+          onTop
+          closeButton={false}
+          onClose={() => undefined}
+        >
+          <p role="status" className="text-sm">
+            Wait while the PDF change finishes.
+          </p>
+        </Dialog>
       )}
       {askDiscard && (
         <KeepChangesDialog
