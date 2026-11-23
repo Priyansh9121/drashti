@@ -49,6 +49,21 @@ function setup() {
   return { service, deps, configure, sent, state, dir };
 }
 describe('automatic error reports', () => {
+  it('does not rewrite the outbox for an error storm after the cap, and counts those errors in the next report', () => {
+    const s = setup();
+    s.configure();
+    s.service.enable(true);
+    for (let i = 0; i < 10; i++) expect(s.service.capture(incident())).toBe(true);
+    const file = join(s.dir, 'state.json');
+    utimesSync(file, new Date(1000), new Date(1000));
+    for (let i = 0; i < 100; i++) expect(s.service.capture(incident())).toBe(false);
+    expect(statSync(file).mtimeMs).toBe(1000);
+    s.state.now += 86_400_000;
+    expect(s.service.capture(incident())).toBe(true);
+    const saved: { queue: { dropped: number }[] } = JSON.parse(readFileSync(file, 'utf8'));
+    expect(saved.queue.at(-1)?.dropped).toBe(100);
+  });
+
   it('sends at most ten queued reports per UTC day across restarts, even after a long outage', async () => {
     const s = setup();
     s.configure();
