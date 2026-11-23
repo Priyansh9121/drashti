@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NO_PICTURE_MS, PictureWatch } from './picture-watch';
+import { heardFrom, NO_PICTURE_MS, PictureWatch } from './picture-watch';
 
 /* The stream's picture (Session 18): no picture from the stream's page while wanted, and the page is given a new port. */
 
@@ -52,6 +52,29 @@ describe('the stream’s picture', () => {
     expect(watch.heard(status(200_000, { wanted: false }))).toBeNull();
     expect(watch.heard(status(200_000, { encoderChosen: false }))).toBeNull();
     expect(watch.heard(status(200_000, { failed: true }))).toBeNull();
+  });
+
+  it('an encoder starting again is no lasting fault: the page is still given a new port after the wait (x71’s take)', () => {
+    // x71: an encoder that stops or cannot start puts its words in the worker's error at once, and another starts. If
+    // the page's capture or port went with it (a graphics process restarting can take both), only a new port brings
+    // its pictures back, so the watch goes on as it did before those words.
+    const encoder = { name: 'libx264', label: 'x264', hardware: false };
+    const restarting = { encoder, encoding: false, error: 'The encoder stopped. Trying to start it again.' };
+    const watch = new PictureWatch();
+    watch.newWorker();
+    watch.paired(0);
+    expect(watch.heard(heardFrom(restarting, true, 0))).toBeNull();
+    expect(watch.heard(heardFrom(restarting, true, NO_PICTURE_MS - 1))).toBeNull();
+    expect(watch.heard(heardFrom(restarting, true, NO_PICTURE_MS))).toBe(5000);
+    // No H.264 encoder works on this computer: that lasts, and no port is given for it.
+    const none = {
+      encoder: null,
+      encoding: false,
+      error: 'No H.264 encoder works on this computer, so it cannot stream or record.',
+    };
+    watch.paired(100_000);
+    expect(watch.heard(heardFrom(none, true, 200_000))).toBeNull();
+    expect(heardFrom(none, true, 200_000).failed).toBe(true);
   });
 
   it('the time the worker takes to choose its encoder is not counted as no picture (alpha.14’s gate on CI’s Mac)', () => {

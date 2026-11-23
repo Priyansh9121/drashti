@@ -9,6 +9,8 @@
  * picture, although the page had sent its first frame at once.
  */
 
+import type { WorkerStatus } from './worker/protocol';
+
 /** No picture from the stream's page for this long, while wanted: it is given its port again. */
 export const NO_PICTURE_MS = 5000;
 /** The longest wait between two new ports. */
@@ -53,4 +55,22 @@ export class PictureWatch {
     this.tries++;
     return wait;
   }
+}
+
+/**
+ * What the watch hears from a worker's status: `wanted` (live or recording wanted, the stream's page ready) and `now`
+ * are Main's own.
+ */
+export function heardFrom(
+  status: Pick<WorkerStatus, 'encoder' | 'encoding' | 'error'>,
+  wanted: boolean,
+  now: number,
+): Parameters<PictureWatch['heard']>[0] {
+  return {
+    wanted,
+    encoderChosen: status.encoder !== null,
+    encoding: status.encoding,
+    failed: Boolean(status.error),
+    now,
+  };
 }
