@@ -382,7 +382,11 @@ export function decodeTokens(tokens: readonly string[]): string {
     .replaceAll(" 're", "'re");
 }
 
-/** The model's special tokens: a source holding one is refused (the Python tokenizer cannot take it either). */
+/**
+ * Whether prepared text holds one of the model's special tokens, which the tokenizer would read as the token itself.
+ * Only a backstop: both tokenisers split "<", "/" and ">" apart, so text that names one ("Use <s> tags") never does,
+ * and is translated as Python translates it.
+ */
 export const holdsSpecialToken = (text: string): boolean => [...SPECIAL_TOKENS].some((t) => text.includes(t));
 
 let sourceClock: RegExp | null = null;

@@ -152,14 +152,15 @@ export class TranslationEngine implements Translator {
     to: TranslationLanguage,
     stopped: () => boolean,
   ): Promise<string> {
-    if (holdsSpecialToken(line))
-      throw new HelperError(
-        'special-token',
-        'These words hold a model marker (such as </s>) and cannot be translated.',
-      );
     const prepared = preprocess(wellFormed(line), from);
     // Nothing left to translate once prepared (only marks the pipeline drops): the line stays as it is.
     if (prepared.text === '') return line;
+    // A backstop: the tokenisers split a written marker apart, so prepared text never holds one.
+    if (holdsSpecialToken(prepared.text))
+      throw new HelperError(
+        'special-token',
+        'These words hold a model marker (such as </s>) and cannot be translated. Write this translation by hand.',
+      );
     // Too long for one request: this box only, and the helper keeps running for the next box.
     if (Buffer.byteLength(JSON.stringify(prepared.text), 'utf8') > MAX_REQUEST_TEXT_BYTES) throw tooLong();
     const route = routeFor(from, to);
