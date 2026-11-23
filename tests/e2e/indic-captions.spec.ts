@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeIndicFixture } from '../../scripts/indic-fixture.mjs';
-import { createIndicEngine } from '../../src/main/speech/indic-engine';
+import { createIndicRoute } from '../../src/main/speech/indic-route';
 import { routeCFiles } from '../../src/main/speech/indic-protocol';
 import { createSpeechHub } from '../../src/main/speech/hub';
 import type { Heard } from '../../src/shared/speech';
@@ -35,7 +35,7 @@ test('imported Route C model decodes PCM through the native helper into the spee
   const released = new Promise<void>((done) => {
     release = done;
   });
-  const engine = createIndicEngine({
+  const route = createIndicRoute({
     workGate: { allowed: () => true, listen: () => () => undefined },
     program: () =>
       join(
@@ -45,7 +45,11 @@ test('imported Route C model decodes PCM through the native helper into the spee
         `${process.platform}-${process.arch}`,
         process.platform === 'win32' ? 'ic-ctc.exe' : 'ic-ctc',
       ),
-    acquire: () => ({ files: resolved, release: () => release?.() }),
+    store: {
+      model: (id) => (id === 'generated' ? pack : null),
+      acquire: (id) =>
+        Promise.resolve(id === 'generated' ? { model: pack, release: () => release?.() } : null),
+    },
     sound: {
       open: (to) => {
         sound = to;
@@ -56,6 +60,9 @@ test('imported Route C model decodes PCM through the native helper into the spee
     },
     log: { info: () => undefined, warn: () => undefined },
   });
+  const engine = route.make({ id: 'generated' }, 'gu');
+  expect(engine).not.toBeNull();
+  if (!engine) throw new Error('Generated recognition route missing');
   const hub = createSpeechHub({ engine, log: { info: () => undefined, warn: () => undefined } });
   const phrases: Heard[] = [];
   let heard: ((phrase: Heard) => void) | undefined;
