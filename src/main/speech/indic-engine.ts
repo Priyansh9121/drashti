@@ -1,5 +1,7 @@
+import type { CaptionTiming } from '../../shared/captions';
 import { SPEECH_RATE, type Heard } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
+import { isSpeech } from './whisper-engine';
 import {
   indicWords,
   noiseOnly,
@@ -28,7 +30,14 @@ export interface IndicEngineOptions {
     open(chunk: (samples: Int16Array, endAt: number, startAt?: number) => void): (() => void) | null;
   };
   log: { info(message: string): void; warn(message: string): void };
+  /** The helper's compute threads: Route C's own (two in the app), whatever the dialog's thread setting. */
   threads?: number;
+  /**
+   * The dialog's live timing on this computer (alpha.23, the review), read once at each start as Whisper's engine
+   * reads it: the step, the pause, the longest phrase and the speech level. Not its threads (above). Without it,
+   * the timing captions always had.
+   */
+  timing?: () => CaptionTiming;
   open?: (options: IndicPipeOptions) => Promise<IndicPipe>;
 }
 const SAMPLE_RATE = SPEECH_RATE;
@@ -61,12 +70,15 @@ interface Growing {
 }
 
 export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
-  const stepMs = 1_500,
-    pauseMs = 700,
-    maxMs = 12_000,
-    restMs = 60_000;
+  const restMs = 60_000;
   return {
     start(language, to) {
+      // The live timing, as it is now: a change starts listening again (as Whisper's engine).
+      const timing = o.timing?.();
+      const stepMs = timing?.stepMs ?? 1_500;
+      const pauseMs = timing?.pauseMs ?? 700;
+      const maxMs = timing?.longestMs ?? 12_000;
+      const speechLevel = timing?.speech ?? 'standard';
       if (language !== 'gu' && language !== 'hi') {
         to.state({ phase: 'failed', message: 'Choose Gujarati or Hindi for this recognition model.' });
         return () => undefined;
@@ -244,7 +256,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         let sum = 0;
         for (const s of samples) sum += s * s;
         const level = Math.sqrt(sum / Math.max(1, samples.length));
-        const speech = level > Math.max(400, floor * 3);
+        const speech = isSpeech(level, floor, speechLevel);
         if (!speech) floor = floor * 0.95 + level * 0.05;
         if (!phrase) {
           if (!speech) return;

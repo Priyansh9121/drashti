@@ -3972,6 +3972,8 @@ function start(): void {
     admission: 'below-show',
     // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
     threads: 2,
+    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review).
+    timing: () => captions.timing(),
     sound: { open: (chunk) => streaming.listenSound(chunk) },
     log,
   });
