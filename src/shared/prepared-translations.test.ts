@@ -29,4 +29,16 @@ describe('prepared translation review', () => {
     const standIn = new StandInTranslator();
     expect(await standIn.translate('Box Q.', 'en', 'gu')).toBe(await standIn.translate('Box Q.', 'en', 'gu'));
   });
+  it('binds review to the exact translated words and language pair as well as the source', () => {
+    const source = 'Box Q.';
+    const checked = checkTranslation(
+      draftTranslation(source, 'en', 'gu', 'Placeholder Q'),
+      source,
+      'Reader Q',
+    );
+    expect(checkedText({ ...checked, text: 'Changed result.' }, source)).toBeNull();
+    expect(checkedText({ ...checked, sourceLanguage: 'hi' }, source)).toBeNull();
+    expect(checkedText({ ...checked, targetLanguage: 'hi' }, source)).toBeNull();
+    expect(checkedText({ ...checked, text: ' ' }, source)).toBeNull();
+  });
 });

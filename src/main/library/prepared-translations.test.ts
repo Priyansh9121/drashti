@@ -118,6 +118,35 @@ describe('saved prepared translations', () => {
       db.close();
     }
   });
+  it('holds review when a non-editor content write changes source words or language', () => {
+    const db = openDatabase(':memory:');
+    try {
+      const repo = new PresentationRepo(db);
+      const id = repo.insert({
+        libraryId: repo.ensureLibrary('Default'),
+        name: 'Placeholder',
+        groups: [{ name: 'One', slides: [{ elements: [box()] }] }],
+      });
+      const before = required(repo.content(id));
+      const row = required(before.elements[0]);
+      const props = JSON.parse(row.props) as Record<string, unknown>;
+      props['text'] = 'Changed green box.';
+      repo.setContent({ ...before, elements: [{ ...row, props: JSON.stringify(props) }] });
+      const changed = required(repo.content(id)).elements[0];
+      expect(JSON.parse(required(changed).props)).toMatchObject({
+        translations: [{ state: 'needs-recheck', reader: null }],
+      });
+      repo.setContent(before);
+      props['text'] = source;
+      props['lang'] = 'hi';
+      repo.setContent({ ...before, elements: [{ ...row, props: JSON.stringify(props) }] });
+      expect(JSON.parse(required(required(repo.content(id)).elements[0]).props)).toMatchObject({
+        translations: [{ state: 'needs-recheck', reader: null }],
+      });
+    } finally {
+      db.close();
+    }
+  });
 });
 
 function required<T>(value: T): NonNullable<T> {
