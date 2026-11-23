@@ -288,6 +288,8 @@ export class StreamPipeline {
    * that picture came within 1.5 s of the encoder going down on CI's Windows (5 Nov 2026).
    */
   private programSinceStart = false;
+  /** A fresh source picture, rather than only sound or a repeated held picture. */
+  private pictureSinceStart = false;
   private keepFree = 2 * 1024 ** 3;
   private recording: WorkerRecording = {
     state: 'off',
@@ -379,6 +381,7 @@ export class StreamPipeline {
       if (message.data.byteLength !== expected) return;
       this.lastFrame = Buffer.from(message.data);
       this.programSinceStart = true;
+      this.pictureSinceStart = true;
       this.maybeStartEncoder();
       return;
     }
@@ -414,6 +417,7 @@ export class StreamPipeline {
     this.frames = 0;
     this.header = null;
     this.programSinceStart = false;
+    this.pictureSinceStart = false;
     const args = [
       '-hide_banner',
       '-loglevel',
@@ -584,7 +588,7 @@ export class StreamPipeline {
   private toConsumers(cluster: MkvCluster): void {
     this.hooks.cluster?.(cluster);
     // Starting a process alone is not recovery: wait for encoded pictures after fresh Program input.
-    if (this.error && this.programSinceStart && this.header && pictureStart(cluster)) {
+    if (this.error && this.pictureSinceStart && this.header && pictureStart(cluster)) {
       this.error = null;
       this.report();
     }
