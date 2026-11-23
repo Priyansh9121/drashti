@@ -308,7 +308,7 @@ describe('ImportService', () => {
     w?.exit(9);
     // What happened and what to do; the exit code goes to the log only.
     const said =
-      'The import stopped unexpectedly: import the files again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).';
+      'The import stopped unexpectedly: import the files again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).';
     await expect(done).resolves.toEqual({ ok: false, message: said });
     expect(mocks.failRun).toHaveBeenCalledWith(w?.runId, ['/a'], said);
     expect(mocks.onFinished).toHaveBeenCalledWith(null);

@@ -9,7 +9,7 @@ export const GPU_STOPS_WITHIN_MS = 10 * 60_000;
 
 /** What the operator is told. */
 export const GPU_STOPPED_TWICE =
-  'The screens’ graphics stopped twice in 10 minutes, and Drashti started them again each time. After the sabha, restart the computer; if it happens again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).';
+  'The screens’ graphics stopped twice in 10 minutes, and Drashti started them again each time. After the sabha, restart the computer; if it happens again, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).';
 
 /** The GPU process's stops: `stopped` says whether this one is the second within GPU_STOPS_WITHIN_MS. */
 export class GpuStops {

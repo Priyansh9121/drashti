@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useEngine } from '../engine/engine-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageScreen } from '../render/StageScreen';
-import { useFirstGroupLook } from '../screens/screens-store';
+import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -31,6 +31,9 @@ export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
   const state = useEngine((s) => s.state);
   // As the first stage group shows it in the live Look: its layout and languages.
   const first = useFirstGroupLook('stage');
+  const translationGroupId = useScreens(
+    (value) => value.snapshot?.groups.find((group) => group.role === 'stage')?.id,
+  );
   // A layout's audience picture box: the hall's picture, as the stage screens are told it (Session 50).
   const hall = useHallPicture();
   return (
@@ -48,6 +51,7 @@ export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
               look={first?.look ?? DEFAULT_LIVE_GROUP_LOOK}
               canvas={{ width: 1920, height: 1080 }}
               hall={hall}
+              translationGroupId={translationGroupId}
             />
           </div>
         </PlacedInParent>

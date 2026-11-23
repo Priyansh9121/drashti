@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { openDatabase } from './db/database';
+import { PresentationRepo } from './db/presentations';
+import { libraryNames } from './diagnostics';
 import { blankQuoted, CommandLog, requestLogged } from './log-commands';
 
 /*
@@ -9,11 +12,12 @@ import { blankQuoted, CommandLog, requestLogged } from './log-commands';
  * Placeholder ids only; the clock and the timers are the test's own.
  */
 
-function harness() {
+function harness(names: () => readonly string[] = () => []) {
   const lines: string[] = [];
   let now = 1_000_000;
   const timers: { at: number; run: () => void }[] = [];
   const log = new CommandLog({
+    libraryNames: names,
     write: (line) => lines.push(line),
     now: () => now,
     setTimer: (ms, run) => {
@@ -233,5 +237,40 @@ describe('the log of every notice (alpha.21, logs (a))', () => {
     expect(blankQuoted('the playlist "Placeholder Sabha" and “Placeholder Kirtan”, can’t')).toBe(
       'the playlist "…" and “…”, can’t',
     );
+  });
+});
+
+describe('notice names in the computer’s own log', () => {
+  it('blanks unquoted library names before the log receives a line, using the current library', () => {
+    const db = openDatabase(':memory:');
+    try {
+      const repo = new PresentationRepo(db);
+      const { log, lines, pass } = harness(() => libraryNames(db));
+      log.notice('Could not save diagnostics: see the log in the data folder.');
+      repo.insert({
+        libraryId: repo.ensureLibrary('Placeholder library'),
+        name: 'Placeholder Private Presentation',
+        groups: [{ name: 'Placeholder private group', slides: [{ elements: [] }] }],
+      });
+      log.notice('Could not open placeholder private presentation, slide 3.');
+      log.notice('Placeholder private group could not be opened.');
+      pass(0);
+      expect(lines).toEqual([
+        'Notice: Could not save diagnostics: see the log in the data folder.',
+        'Notice: Could not open [library name], slide 3.',
+        'Notice: [library name] could not be opened.',
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('never logs a notice’s words if its library names cannot be read', () => {
+    const { log, lines, pass } = harness(() => {
+      throw new Error('Placeholder private database failure');
+    });
+    expect(() => log.notice('Could not open Placeholder private presentation.')).not.toThrow();
+    pass(0);
+    expect(lines).toEqual(['Notice: [words unavailable]']);
   });
 });
