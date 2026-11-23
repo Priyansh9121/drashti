@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { bundleLibrary, must } from './testing/kirtan-bundle-fixture';
-import { runImport } from './pipeline';
+import { bundleLibrary, must } from '../import/testing/kirtan-bundle-fixture';
+import { runImport } from '../import/pipeline';
 import { checkTranslation, checkedText, draftTranslation } from '../../shared/prepared-translations';
-import { editDocOf } from '../library/slides';
+import { editDocOf } from './slides';
 
 describe('prepared translation sharing', () => {
   it('carries drafts, exact checks and reserved output choices through export/import and ID remapping', async () => {
