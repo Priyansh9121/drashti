@@ -180,7 +180,16 @@ test('hall, explicit screen Off and stage use their own saved checked targets; S
   await expect(offPage.getByTestId('output-root')).toContainText(SOURCE);
   await expect(offPage.getByTestId('output-root')).not.toContainText('Placeholder Gujarati Q7');
   await expect(stagePage.getByTestId('output-root')).toContainText('Placeholder Hindi R8');
+  const stageOriginal = stagePage.getByText(SOURCE, { exact: true }).first();
+  const stageSourceMetrics = () =>
+    stageOriginal.evaluate((el) => ({
+      top: el.getBoundingClientRect().top,
+      size: getComputedStyle(el).fontSize,
+    }));
+  const originalMetrics = await stageSourceMetrics();
   await win.getByRole('button', { name: 'Hide translation', exact: true }).click();
+  await expect(stagePage.getByTestId('output-root')).not.toContainText('Placeholder Hindi R8');
+  await expect.poll(stageSourceMetrics).toEqual(originalMetrics);
   await expect(hallPage.getByTestId('output-root')).not.toContainText('Placeholder Gujarati Q7');
   await expect(hallPage.getByTestId('output-root')).toContainText(SOURCE);
   await win.getByRole('button', { name: 'Show checked translation', exact: true }).click();

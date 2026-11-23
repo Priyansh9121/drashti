@@ -1,3 +1,4 @@
+import { fitStageTranslations } from './prepared-stage-fit';
 import { useContext, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
@@ -129,7 +130,7 @@ export function StageText({
             whiteSpace: 'pre-wrap',
             overflowWrap: 'anywhere',
             fontFamily: fontFamilyFor(el.style.fontFamily, el.lang),
-            ...(el.preparedTranslation ? { lineHeight: 1.45 } : {}),
+            ...(el.preparedTranslation ? { lineHeight: 1.45, fontWeight: 400 } : {}),
           }}
         >
           {el.runs && el.runs.length > 0
@@ -198,36 +199,43 @@ function StageFit({
       )
         return;
       measured = measurement;
-      const shrunk = b.style.getPropertyValue('--stage-fit') !== '';
-      if (!shrunk && wordsHeight <= height + 0.5) return;
-      const fits = (fit: number) => {
-        b.style.setProperty('--stage-fit', String(fit));
-        measurement.wordsHeight = target.offsetHeight;
-        return measurement.wordsHeight <= height + 0.5;
-      };
-      let lo = 1;
-      if (!fits(1)) {
-        lo = STAGE_MIN_FIT;
-        let hi = 1;
-        for (let i = 0; i < 12; i++) {
-          const mid = (lo + hi) / 2;
-          if (fits(mid)) lo = mid;
-          else hi = mid;
+      fitStageTranslations(target, b, () => {
+        const fits = (fit: number) => {
+          b.style.setProperty('--stage-fit', String(fit));
+          measurement.wordsHeight = target.offsetHeight;
+          return measurement.wordsHeight <= height + 0.5;
+        };
+        let lo = 1;
+        if (!fits(1)) {
+          lo = STAGE_MIN_FIT;
+          let hi = 1;
+          for (let i = 0; i < 12; i++) {
+            const mid = (lo + hi) / 2;
+            if (fits(mid)) lo = mid;
+            else hi = mid;
+          }
+          fits(lo);
         }
-        fits(lo);
-      }
-      if (lo < 1) b.setAttribute('data-stage-fit', lo.toFixed(3));
-      else {
-        b.style.removeProperty('--stage-fit');
-        b.removeAttribute('data-stage-fit');
-      }
+        if (lo < 1) b.setAttribute('data-stage-fit', lo.toFixed(3));
+        else {
+          b.style.removeProperty('--stage-fit');
+          b.removeAttribute('data-stage-fit');
+        }
+      });
+      // The observer may report the height changed by showing/holding a secondary block.
+      measurement.wordsHeight = target.offsetHeight;
     });
     const checkWords = () => {
       const child = b.firstElementChild;
       const next = child instanceof HTMLElement ? child : null;
       // Ordinary text is already at full size. A changed font or slide can let shrunk words grow
       // even when their measured height has not changed at the current fit.
-      if (next === words && !b.hasAttribute('data-stage-fit')) return;
+      if (
+        next === words &&
+        !b.hasAttribute('data-stage-fit') &&
+        !next?.querySelector('[data-prepared-translation]')
+      )
+        return;
       words = next;
       measured = null;
       observer.observeWords(words);

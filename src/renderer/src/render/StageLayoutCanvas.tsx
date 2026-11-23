@@ -1,3 +1,4 @@
+import { fitStageTranslations } from './prepared-stage-fit';
 import type { CSSProperties, ReactNode } from 'react';
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
@@ -75,22 +76,25 @@ function Sized({
   useLayoutEffect(() => {
     const b = box.current;
     const w = inner.current;
-    if (!b || !w || size !== 'fit') return;
-    const fits = (px: number) => {
-      w.style.fontSize = `${px}px`;
-      return w.offsetHeight <= b.clientHeight + 0.5 && w.scrollWidth <= b.clientWidth + 0.5;
-    };
-    let lo = FIT_MIN;
-    let hi = Math.min(max, Math.max(FIT_MIN, b.clientHeight));
-    if (fits(hi)) lo = hi;
-    else
-      for (let i = 0; i < 14; i++) {
-        const mid = (lo + hi) / 2;
-        if (fits(mid)) lo = mid;
-        else hi = mid;
-      }
-    w.style.fontSize = `${Math.floor(lo)}px`;
-    b.setAttribute('data-fit-size', String(Math.floor(lo)));
+    if (!b || !w) return;
+    fitStageTranslations(w, b, () => {
+      if (size !== 'fit') return;
+      const fits = (px: number) => {
+        w.style.fontSize = `${px}px`;
+        return w.offsetHeight <= b.clientHeight + 0.5 && w.scrollWidth <= b.clientWidth + 0.5;
+      };
+      let lo = FIT_MIN;
+      let hi = Math.min(max, Math.max(FIT_MIN, b.clientHeight));
+      if (fits(hi)) lo = hi;
+      else
+        for (let i = 0; i < 14; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid;
+          else hi = mid;
+        }
+      w.style.fontSize = `${Math.floor(lo)}px`;
+      b.setAttribute('data-fit-size', String(Math.floor(lo)));
+    });
   }, [size, again, fonts, max]);
   const placed =
     valign === undefined || valign === 'top'
