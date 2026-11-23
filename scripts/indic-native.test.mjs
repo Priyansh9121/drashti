@@ -42,14 +42,19 @@ test('the helper reports its approved ONNX Runtime without any model (the packag
   }
 });
 
-for (const trailingSeparator of [false, true]) {
-  test(`native helper decodes generated PCM with real ORT, repeats and trailing separator ${trailingSeparator}`, async (context) => {
+for (const [trailingSeparator, longWord] of [
+  [false, false],
+  [true, false],
+  [false, true],
+]) {
+  test(`native helper decodes generated PCM with real ORT, repeats and trailing separator ${trailingSeparator}${longWord ? '; an over-long word is cut, never the helper (review S3)' : ''}`, async (context) => {
     const root = mkdtempSync(join(tmpdir(), 'drashti-indic-'));
     try {
       const fixture = makeIndicFixture({ trailingSeparator });
       for (const [name, data] of [
         ['model.onnx', fixture.model],
-        ['tokens.txt', fixture.tokens],
+        // Two 200-byte pieces with no word break make one word over the helper's 255 bytes.
+        ['tokens.txt', longWord ? fixture.tokens.replace('▁shape', 'x'.repeat(200)) : fixture.tokens],
         ['frontend.bin', fixture.frontend],
       ])
         writeFileSync(join(root, name), data);
@@ -120,14 +125,14 @@ for (const trailingSeparator of [false, true]) {
         sampleFormat: 's16le',
       });
       assert.equal(lines.length, 2);
-      assert.equal(lines[1].text, 'shape shape box');
+      assert.equal(lines[1].text, longWord ? `${'x'.repeat(400)} box` : 'shape shape box');
       assert.equal(lines[1].confidence, null);
       // Each word carries the helper's confidence in it: the mean top posterior over its CTC frames, 0-1.
       for (const word of lines[1].words) assert.ok(typeof word.c === 'number' && word.c >= 0 && word.c <= 1);
       assert.equal(lines[1].language, 'gu');
       assert.deepEqual(
         lines[1].words.map((w) => w.w),
-        ['shape', 'shape', 'box'],
+        longWord ? ['x'.repeat(200), 'box'] : ['shape', 'shape', 'box'],
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

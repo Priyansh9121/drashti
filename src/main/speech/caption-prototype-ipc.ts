@@ -19,6 +19,8 @@ export interface CaptionPrototypeControl {
 export function registerCaptionPrototypeIpc(deps: {
   fromOperator(event: IpcMainInvokeEvent): boolean;
   captions: CaptionPrototypeControl;
+  /** The placeholder rehearsal's own controls (tests only, never a packaged Drashti). Red: not used yet. */
+  rehearsal?: boolean;
 }): void {
   handle(IPC.captions.prototypeView, (e) => (deps.fromOperator(e) ? deps.captions.prototypeView() : null));
   handle(IPC.captions.setPrototypeOn, (e, on) => {

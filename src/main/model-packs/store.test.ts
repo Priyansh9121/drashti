@@ -521,6 +521,15 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
     expect(damaged.model('gu-placeholder')).toBeNull();
     expect(existsSync(join(root, kept))).toBe(true);
     expect(readdirSync(root).some((n) => n.startsWith('installed.unreadable-'))).toBe(true);
+
+    // The next start finds no list (it was set aside): the operator's pack folders are never removed for that,
+    // and the problem is still said (review: pack folders deleted on the second start).
+    const again = storeIn(data);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(existsSync(join(root, kept))).toBe(true);
+    expect(again.status().problem).toBe(
+      'The list of caption and translation models on this computer did not read, so it was set aside: import the packs again.',
+    );
   });
 
   it('never fetches anything: its code names no network', () => {

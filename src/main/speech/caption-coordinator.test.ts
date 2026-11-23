@@ -429,4 +429,53 @@ describe('phase D caption coordinator', () => {
     expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(first.paintDeadlineAt);
     c.stop();
   });
+
+  it('keeps showing phrases when the wall clock steps during a session (the production clock, performance.now)', () => {
+    // Heard times are Date.now(); the coordinator's own clock is monotonic. A time sync (or a Mac waking from
+    // sleep) moves one against the other mid-session: phrases must still show (review M1).
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(new Date('2026-11-23T09:00:00Z'));
+    const shown: (CaptionsShown | null)[] = [];
+    const c = new CaptionCoordinator({
+      mayTranslate: () => false,
+      settings: () => DEFAULT_CAPTION_SETTINGS,
+      show: (s) => shown.push(s),
+      changed: vi.fn(),
+    });
+    const sessionId = c.start();
+    const phrase = (phraseId: string, sourceText: string): CaptionRevision => ({
+      sessionId,
+      phraseId,
+      revision: 1,
+      sourceLanguage: 'gu',
+      targetLanguage: 'en',
+      sourceText,
+      startAt: Date.now() - 1_000,
+      endAt: Date.now(),
+      status: 'settled',
+    });
+    expect(c.accept(phrase('s1', 'The blue box'))).toBe(true);
+    expect(shown.at(-1)?.lines).toEqual(['The blue box']);
+    vi.setSystemTime(Date.now() + 2_000);
+    expect(c.accept(phrase('s2', 'A round shape'))).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)?.lines).toEqual(['A round shape']);
+    vi.setSystemTime(Date.now() - 15_000);
+    expect(c.accept(phrase('s3', 'The green box'))).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)?.lines).toEqual(['The green box']);
+    c.stop();
+  });
+
+  it('shows a correction for its own full time, from when it was made (review S1)', () => {
+    const { coordinator: c, clause, last } = setup();
+    expect(c.accept(clause('The blue box', 1, 'settled'))).toBe(true);
+    vi.advanceTimersByTime(5_000);
+    expect(c.correct({ ...clause(''), text: 'The red box', revision: 1 })).toBe(true);
+    vi.advanceTimersByTime(3_000);
+    expect(last()?.lines).toEqual(['The red box']);
+    vi.advanceTimersByTime(3_100);
+    expect(last()).toBeNull();
+  });
 });

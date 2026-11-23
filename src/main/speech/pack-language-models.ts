@@ -12,7 +12,7 @@ export interface CaptionPackFiles {
   forPurpose(purpose: `captions-${'gu' | 'hi' | 'en'}`): readonly {
     id: string;
     format: string;
-    files: readonly { path: string; bytes: number; sha256: string }[];
+    files: readonly { name?: string; path: string; bytes: number; sha256: string }[];
   }[];
   acquire(id: string, signal?: AbortSignal): Promise<{ release(): void } | null>;
 }

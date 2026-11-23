@@ -92,3 +92,20 @@ describe('private prototype correction bridge', () => {
       expect(SIMPLE_MODE_LOCKED).toContain(channel);
   });
 });
+
+describe('the placeholder rehearsal in a packaged Drashti (review)', () => {
+  it('registers only the review, correction and dismissal: never the rehearsal’s switch, next or restart', () => {
+    const captions = {
+      prototypeView: vi.fn(),
+      setPrototypeOn: vi.fn(),
+      advancePrototype: vi.fn(),
+      restartPrototype: vi.fn(),
+      correctPrototype: vi.fn(() => true),
+      dismissPrototype: vi.fn(() => true),
+    };
+    registerCaptionPrototypeIpc({ fromOperator: () => true, captions, rehearsal: false });
+    expect([...handlers.keys()].sort()).toEqual(
+      [IPC.captions.prototypeView, IPC.captions.correctPrototype, IPC.captions.dismissPrototype].sort(),
+    );
+  });
+});

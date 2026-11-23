@@ -43,6 +43,11 @@ export interface LanguageModelEntry {
    * ('indicconformer-ctc-onnx-v1', its SHA-256 the model.onnx file's).
    */
   format?: CaptionModelFormat;
+  /**
+   * The model's other files, each pinned by name, size and SHA-256 (Route C: tokens.txt and frontend.bin). Red: not
+   * checked yet.
+   */
+  companions?: readonly { name: string; bytes: number; sha256: string }[];
 }
 
 /** The formats a caption route runs: Route W's whisper.cpp files and Route C's IndicConformer (ONNX Runtime). */
