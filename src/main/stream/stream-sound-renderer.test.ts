@@ -77,9 +77,7 @@ describe('the stream sound renderer', () => {
       // Loading the picture later gives it only picture ports, never sound players' work.
       picture.webContents.emit('did-finish-load');
       expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).toContain('encoder');
-      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).not.toContain(
-        'encoder-audio',
-      );
+      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).not.toContain('encoder-audio');
       expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).not.toContain('speech');
       stop?.();
       (service as unknown as { worker: unknown }).worker = null;
