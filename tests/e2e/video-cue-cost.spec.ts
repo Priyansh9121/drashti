@@ -9,6 +9,27 @@ import { dispatch, snapshot } from './time-bar-helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 
+/**
+ * Diagnostics only (a22-cue): each renderer's scheduling class now (Windows: its priority class; macOS: ps's
+ * priority and nice), to see whether the stream's hidden sound page runs at a lower class than its picture page.
+ */
+function schedulingClasses(processes: { role: string; pid?: number }[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { role, pid } of processes) {
+    if (!pid) continue;
+    const r =
+      process.platform === 'win32'
+        ? spawnSync(
+            `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
+            ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${String(pid)}).PriorityClass`],
+            { encoding: 'utf8' },
+          )
+        : spawnSync('ps', ['-o', 'pri=,nice=', '-p', String(pid)], { encoding: 'utf8' });
+    out[role] = `${r.stdout.trim()}`;
+  }
+  return out;
+}
+
 function powershell(command: string): string {
   const env = { ...process.env };
   delete env['PSModulePath'];
@@ -359,6 +380,9 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       ],
     );
     const traceFiles: string[] = [];
+    const classes: { round: number; at: number; classes: Record<string, string> }[] = [
+      { round: -1, at: Date.now(), classes: schedulingClasses(decoderProcesses) },
+    ];
     const streamAt = Date.now();
     const actions: { at: number; round: number; mode: string; action: string; engineAt?: number }[] = [];
     const samples: {
@@ -426,6 +450,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           await dispatch(win, { type: 'next' });
           const fade = (await snapshot(win)).videoCrossfade;
           actions.push({ at: Date.now(), round, mode, action: 'crossfade', engineAt: fade?.at });
+          classes.push({ round, at: Date.now(), classes: schedulingClasses(decoderProcesses) });
         }
         const pages = await sampling,
           state = await status();
@@ -585,6 +610,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       encoder,
       samples,
       decoderProcesses,
+      classes,
       audioPictureTracks,
       soundPictureDecodes,
       streamAt,
