@@ -1,3 +1,4 @@
+import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 
 import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
@@ -381,6 +382,14 @@ export interface DrashtiBridge {
     onChanged(listener: (change: { mediaId: string; view: VideoCaptionChoice }) => void): () => void;
   };
   captions: {
+    /** Ephemeral, operator-only phase D rehearsal; never part of captions status or the network API. */
+    prototypeView(): Promise<CaptionReview | null>;
+    setPrototypeOn(on: boolean): Promise<CaptionReview | null>;
+    advancePrototype(): Promise<CaptionReview | null>;
+    restartPrototype(): Promise<CaptionReview | null>;
+    correctPrototype(correction: CaptionCorrection): Promise<boolean>;
+    dismissPrototype(identity: Omit<CaptionCorrection, 'text'>): Promise<boolean>;
+    onPrototypeChanged(listener: (review: CaptionReview) => void): () => void;
     view(): Promise<CaptionsStatus>;
     setOn(on: boolean): Promise<CaptionsStatus>;
     setModel(model: CaptionModelId): Promise<CaptionsStatus>;

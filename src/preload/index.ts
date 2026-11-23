@@ -201,6 +201,13 @@ const bridge: DrashtiBridge = {
     onChanged: (listener) => on(IPC.videoCaptions.changed, listener),
   },
   captions: {
+    prototypeView: () => invoke(IPC.captions.prototypeView),
+    setPrototypeOn: (on) => invoke(IPC.captions.setPrototypeOn, on),
+    advancePrototype: () => invoke(IPC.captions.advancePrototype),
+    restartPrototype: () => invoke(IPC.captions.restartPrototype),
+    correctPrototype: (correction) => invoke(IPC.captions.correctPrototype, correction),
+    dismissPrototype: (identity) => invoke(IPC.captions.dismissPrototype, identity),
+    onPrototypeChanged: (listener) => on(IPC.captions.prototypeChanged, listener),
     view: () => invoke(IPC.captions.view),
     setOn: (value) => invoke(IPC.captions.setOn, value),
     setModel: (model) => invoke(IPC.captions.setModel, model),

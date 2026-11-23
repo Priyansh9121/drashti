@@ -1,3 +1,4 @@
+import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 
 import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
@@ -378,6 +379,13 @@ export const IPC = {
     changed: 'videocaptions:changed',
   },
   captions: {
+    prototypeView: 'captions:prototype-view',
+    setPrototypeOn: 'captions:prototype-set-on',
+    advancePrototype: 'captions:prototype-advance',
+    restartPrototype: 'captions:prototype-restart',
+    correctPrototype: 'captions:prototype-correct',
+    dismissPrototype: 'captions:prototype-dismiss',
+    prototypeChanged: 'captions:prototype-changed',
     view: 'captions:view',
     /** Turn captions on or off on this computer (the model downloads once when first turned on). */
     setOn: 'captions:set-on',
@@ -1508,6 +1516,12 @@ export interface InvokeContract {
     args: [mediaId: string, bytes: Uint8Array];
     result: { ok: true } | { ok: false; message: string };
   };
+  [IPC.captions.prototypeView]: { args: []; result: CaptionReview | null };
+  [IPC.captions.setPrototypeOn]: { args: [on: boolean]; result: CaptionReview | null };
+  [IPC.captions.advancePrototype]: { args: []; result: CaptionReview | null };
+  [IPC.captions.restartPrototype]: { args: []; result: CaptionReview | null };
+  [IPC.captions.correctPrototype]: { args: [correction: CaptionCorrection]; result: boolean };
+  [IPC.captions.dismissPrototype]: { args: [identity: Omit<CaptionCorrection, 'text'>]; result: boolean };
   [IPC.captions.view]: { args: []; result: CaptionsStatus };
   [IPC.captions.setOn]: { args: [on: boolean]; result: CaptionsStatus };
   [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };
@@ -2100,6 +2114,7 @@ export interface EventContract {
   [IPC.opening.screens]: { at: number };
   [IPC.opening.open]: { at: number };
   [IPC.videoCaptions.changed]: { mediaId: string; view: VideoCaptionChoice };
+  [IPC.captions.prototypeChanged]: CaptionReview;
   [IPC.captions.changed]: CaptionsStatus;
   [IPC.captions.open]: { at: number };
   [IPC.updates.changed]: UpdateView;

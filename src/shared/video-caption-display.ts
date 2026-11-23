@@ -17,6 +17,7 @@ export interface ActualVideoClock {
   clip?: PlaybackClip;
 }
 export interface CaptionBand {
+  fit?: true;
   lines: string[];
   language: string;
   size: CaptionSize;

@@ -13,6 +13,7 @@ import {
   type CaptionsShown,
   type CaptionsStatus,
 } from '../../shared/captions';
+import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
 import type { Heard, SpeechLanguage } from '../../shared/speech';
 import type { CaptionRecognizer } from './caption-routes';
 import {
@@ -22,6 +23,7 @@ import {
   type CaptionSpelling,
   type ClauseSink,
 } from './caption-flow';
+import { CaptionPrototype } from './caption-prototype';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
 import {
   readCaptionsSwitch,
@@ -78,6 +80,8 @@ export interface CaptionsServiceDeps {
     coordinator: ClauseSink;
     spelling?: CaptionSpelling;
   };
+  /** Separate private operator review; never included in the existing status. */
+  prototypeChanged?: (review: CaptionReview) => void;
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
@@ -118,6 +122,7 @@ export class CaptionsService {
   private readonly paths: CaptionPaths | null;
   /** What caption AI's recognizer is while it runs. */
   private recognizer: { route: string; modelId: string } | null = null;
+  private readonly prototype: CaptionPrototype;
   private switch: CaptionsSwitch;
   private tuning: CaptionsTuning;
   private readonly models: LanguageModelStore;
@@ -133,6 +138,11 @@ export class CaptionsService {
   private telling: NodeJS.Timeout | null = null;
 
   constructor(private readonly deps: CaptionsServiceDeps) {
+    this.prototype = new CaptionPrototype({
+      settings: () => this.settings(),
+      show: deps.show,
+      changed: (review) => deps.prototypeChanged?.(review),
+    });
     this.switch = readCaptionsSwitch(deps.userData, deps.platform, deps.arch);
     this.tuning = readCaptionsTuning(deps.userData);
     this.models = deps.languageModels ?? NO_LANGUAGE_MODELS;
@@ -249,6 +259,37 @@ export class CaptionsService {
     this.tell();
   }
 
+  prototypeView(): CaptionReview {
+    return this.prototype.view();
+  }
+
+  setPrototypeOn(on: boolean): void {
+    if (this.closed || on === this.prototype.view().on) return;
+    if (on) {
+      this.turnOff();
+      this.prototype.setOn(true);
+    } else {
+      this.prototype.setOn(false);
+      if (this.switch.on) void this.turnOn();
+    }
+    this.tell();
+  }
+
+  cancelPrototype(): void {}
+
+  advancePrototype(): void {
+    if (!this.closed) this.prototype.advance();
+  }
+  restartPrototype(): void {
+    if (!this.closed && this.prototype.view().on) this.prototype.restart();
+  }
+  correctPrototype(correction: CaptionCorrection): boolean {
+    return !this.closed && this.prototype.correct(correction);
+  }
+  dismissPrototype(key: Omit<CaptionCorrection, 'text'>): boolean {
+    return !this.closed && this.prototype.dismiss(key);
+  }
+
   selectedModel(): CaptionModelId {
     return this.switch.model;
   }
@@ -276,6 +317,7 @@ export class CaptionsService {
   }
 
   async setOn(on: boolean): Promise<CaptionsStatus> {
+    if (this.prototype.view().on) this.prototype.setOn(false);
     const next = { ...this.switch, on };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
@@ -303,7 +345,12 @@ export class CaptionsService {
 
   setSettings(settings: CaptionSettings): CaptionsStatus {
     const s = parseCaptionSettings(settings);
+    const languageChanged = s.language !== this.settings().language;
     this.deps.repo.set(s);
+    if (this.prototype.view().on) {
+      if (languageChanged) this.prototype.restart();
+      else this.prototype.refresh();
+    }
     this.hub.setLanguage(s.language);
     // Caption AI follows the speaker's language at once (a language with its own model, or not).
     this.paths?.reselect();
@@ -331,6 +378,7 @@ export class CaptionsService {
 
   close(): void {
     this.closed = true;
+    this.prototype.setOn(false);
     this.downloading?.controller.abort();
     this.feed.stop();
     this.hub.close();
@@ -338,7 +386,7 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (this.deps.engineProblem() !== null) return;
+    if (this.closed || this.prototype.view().on || this.deps.engineProblem() !== null) return;
     this.hub.setOn(true);
     this.feed.start();
     await this.fetchModel();
@@ -359,6 +407,7 @@ export class CaptionsService {
     const id = this.switch.model;
     if (
       this.closed ||
+      this.prototype.view().on ||
       !this.switch.on ||
       this.streamInUse ||
       this.deps.engineProblem() !== null ||

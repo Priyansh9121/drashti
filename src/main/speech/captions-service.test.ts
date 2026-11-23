@@ -412,3 +412,90 @@ describe('a model per language and live timing (alpha.22)', () => {
     expect(started).toEqual(['auto', 'auto']);
   });
 });
+
+describe('phase D prototype alongside the existing captions service', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 23, 9));
+  });
+  afterEach(() => vi.useRealTimers());
+  it('uses no real engine or model download and clears its words before the normal path resumes', async () => {
+    const { service, started, downloads, shown } = setup();
+    service.start();
+    expect(service.prototypeView().on).toBe(false);
+    service.setPrototypeOn(true);
+    service.advancePrototype();
+    service.advancePrototype();
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)?.lines).toEqual(['The green box is beside a round shape.']);
+    expect(started).toEqual([]);
+    expect(downloads).toEqual([]);
+    expect(JSON.stringify(service.view())).not.toContain('green box');
+    expect(service.view().on).toBe(false);
+    service.setPrototypeOn(false);
+    expect(service.prototypeView()).toMatchObject({ on: false, current: null, previous: null });
+    expect(shown.at(-1)).toBeNull();
+    await service.setOn(true);
+    expect(downloads).toEqual(['small']);
+    expect(started).toEqual(['auto']);
+    service.close();
+  });
+  it('stops Whisper while the prototype is selected; settings/language changes clear edits, and off is immediate', async () => {
+    const { service, started, shown, say } = setup();
+    await service.setOn(true);
+    service.setPrototypeOn(true);
+    say('Normal path must be stopped');
+    service.advancePrototype();
+    service.advancePrototype();
+    const old = service.prototypeView().current!;
+    service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'hi' });
+    expect(service.prototypeView().current).toBeNull();
+    expect(service.correctPrototype({ ...old, text: 'Stale correction' })).toBe(false);
+    await service.setOn(false);
+    expect(service.prototypeView().on).toBe(false);
+    expect(shown.at(-1)).toBeNull();
+    expect(started).toEqual(['auto']);
+    service.close();
+  });
+});
+
+it('cancels the rehearsal at an access stop without restarting Whisper or downloads', async () => {
+  vi.useFakeTimers();
+  try {
+    const { service, started, downloads, shown } = setup();
+    await service.setOn(true);
+    service.setPrototypeOn(true);
+    service.advancePrototype();
+    service.advancePrototype();
+    service.cancelPrototype();
+    expect(service.prototypeView().on).toBe(false);
+    expect(service.prototypeView().current).toBeNull();
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)).toBeNull();
+    expect(started).toEqual(['auto']);
+    expect(downloads).toEqual(['small']);
+    service.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('starts a fresh prototype session when the selected normal model changes, without loading it', async () => {
+  vi.useFakeTimers();
+  try {
+    const { service, started, downloads } = setup();
+    await service.setOn(true);
+    service.setPrototypeOn(true);
+    service.advancePrototype();
+    service.advancePrototype();
+    const old = service.prototypeView().sessionId;
+    await service.setModel('turbo');
+    expect(service.prototypeView().sessionId).not.toBe(old);
+    expect(service.prototypeView().current).toBeNull();
+    expect(started).toEqual(['auto']);
+    expect(downloads).toEqual(['small']);
+    service.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});

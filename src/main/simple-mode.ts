@@ -239,6 +239,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.drop.setOn,
   IPC.drop.importAnyway,
   // Live captions (Session 55, Part 10): set in Pro Mode only; Simple Mode's screens show them as they are.
+  IPC.captions.prototypeView,
+  IPC.captions.setPrototypeOn,
+  IPC.captions.advancePrototype,
+  IPC.captions.restartPrototype,
+  IPC.captions.correctPrototype,
+  IPC.captions.dismissPrototype,
   IPC.captions.view,
   IPC.captions.setOn,
   IPC.captions.setModel,
