@@ -104,6 +104,15 @@ function setup() {
   };
 }
 describe('Apps Script error receiver with local services only', () => {
+  it('rejects comma-containing counter keys instead of treating them as two required fields', () => {
+    const s = setup();
+    const report = { ...s.report, counts: { 'imports,minutes': 0, recordings: 0, shows: 0, streams: 0 } };
+    expect(reportSchema.safeParse(report).success).toBe(false);
+    expect(s.core.handle(s.env, s.body(report))).toEqual({ ok: false, error: 'invalid' });
+    expect(s.rows).toHaveLength(0);
+    expect(s.files.size).toBe(0);
+  });
+
   it('takes the real sender HMAC and survives a lost receipt without a second row', async () => {
     const s = setup();
     const dir = mkdtempSync(join(tmpdir(), 'drashti-receiver-'));
