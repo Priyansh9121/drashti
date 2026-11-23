@@ -23,7 +23,7 @@ export function packFileFor(
   entry: LanguageModelEntry,
 ): { modelId: string; path: string } | null {
   for (const model of pack.forPurpose(`captions-${entry.language}`)) {
-    if (model.format !== 'whisper-ggml') continue;
+    if (model.format !== (entry.format ?? 'whisper-ggml')) continue;
     const file = model.files.find((f) => f.sha256 === entry.sha256 && f.bytes === entry.bytes);
     if (file) return { modelId: model.id, path: file.path };
   }

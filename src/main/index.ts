@@ -3875,7 +3875,11 @@ function start(): void {
           // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
           model: (language) => {
             const own = captions.languageModelFor(language);
-            const file = own ? packFileFor(modelPacks, own)?.path : undefined;
+            // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
+            const file =
+              own && (own.format ?? 'whisper-ggml') === 'whisper-ggml'
+                ? packFileFor(modelPacks, own)?.path
+                : undefined;
             return file ?? modelFile(captionsData, captions.selectedModel());
           },
           // Asked before every start of the program: a language's own model not ready is never loaded.
@@ -3938,7 +3942,10 @@ function start(): void {
           const entry = languageModels.known().find((e) => e.id === own.id);
           const found = entry ? packFileFor(modelPacks, entry) : null;
           const packed = found ? modelPacks.model(found.modelId) : null;
-          return entry && packed ? whisperRoute.make(packed, entry.language) : null;
+          // Route W runs whisper.cpp's files; Route C (IndicConformer, cap-ship-c) plugs in here the same way.
+          return entry && packed && (entry.format ?? 'whisper-ggml') === 'whisper-ggml'
+            ? whisperRoute.make(packed, entry.language)
+            : null;
         },
       }),
       coordinator: captionCoordinator,

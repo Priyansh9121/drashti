@@ -40,10 +40,16 @@ export interface LanguageModelEntry {
   timestamps: boolean;
   /**
    * Its format in the model pack, when it is not whisper.cpp's ('whisper-ggml', left out): Route C's IndicConformer
-   * ('indicconformer-ctc-onnx-v1', its SHA-256 the model.onnx file's). Red: not read yet.
+   * ('indicconformer-ctc-onnx-v1', its SHA-256 the model.onnx file's).
    */
-  format?: string;
+  format?: CaptionModelFormat;
 }
+
+/** The formats a caption route runs: Route W's whisper.cpp files and Route C's IndicConformer (ONNX Runtime). */
+export const CAPTION_MODEL_FORMATS = ['whisper-ggml', 'indicconformer-ctc-onnx-v1'] as const;
+export type CaptionModelFormat = (typeof CAPTION_MODEL_FORMATS)[number];
+const isCaptionModelFormat = (value: unknown): value is CaptionModelFormat =>
+  CAPTION_MODEL_FORMATS.some((format) => format === value);
 
 /**
  * The language models Drashti knows, each by its file's exact bytes and SHA-256. Since alpha.22: the Gujarati (small
@@ -185,6 +191,8 @@ export function parseLanguageModelList(raw: unknown): LanguageModelEntry[] {
     const e = item as Record<string, unknown>;
     const { id, language, name, bytes, sha256, licence, fallback } = e;
     const timestamps = e['timestamps'] ?? true;
+    const format = e['format'];
+    if (format !== undefined && !isCaptionModelFormat(format)) continue;
     if (
       typeof id !== 'string' ||
       !ID.test(id) ||
@@ -203,7 +211,17 @@ export function parseLanguageModelList(raw: unknown): LanguageModelEntry[] {
     )
       continue;
     if (out.some((o) => o.id === id || o.sha256 === sha256)) continue;
-    out.push({ id, language, name, bytes, sha256, licence, fallback, timestamps });
+    out.push({
+      id,
+      language,
+      name,
+      bytes,
+      sha256,
+      licence,
+      fallback,
+      timestamps,
+      ...(format ? { format } : {}),
+    });
   }
   return out;
 }
