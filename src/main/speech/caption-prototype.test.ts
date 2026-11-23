@@ -49,3 +49,13 @@ describe('manual placeholder recognizer prototype', () => {
     expect(last()).toBeNull();
   });
 });
+
+it('passes recognizer observations through the scalar-range stabilizer', () => {
+  const { p } = setup();
+  p.setOn(true);
+  p.advance();
+  expect(p.view().current?.parent).toMatchObject({ enginePhraseId: 's1', observationSequence: 1, rangeStart: 0, rangeEnd: 12, timingPrecision: 'phrase' });
+  p.advance();
+  expect(p.view().current?.parent).toMatchObject({ enginePhraseId: 's1', observationSequence: 2, rangeStart: 0, rangeEnd: 37, timingPrecision: 'phrase' });
+  p.setOn(false);
+});

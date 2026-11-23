@@ -1,6 +1,25 @@
 import { captionLines } from './captions';
 
-/** Fit a clause without breaking a writing system's grapheme clusters. */
+/** Source preview roll-up only: wrap a long token between complete graphemes, never inside a vowel cluster. */
 export function captionClauseLines(text: string, max: number): string[] {
-  return captionLines(text.split(/\s+/u), max);
+  const segmenter = new Intl.Segmenter('und', { granularity: 'grapheme' });
+  const words = text.split(/\s+/u).flatMap(word => {
+    const pieces: string[] = [];
+    let piece = '';
+    let length = 0;
+    for (const { segment } of segmenter.segment(word)) {
+      const size = [...segment].length;
+      if (length > 0 && length + size > max) { pieces.push(piece); piece = ''; length = 0; }
+      piece += segment;
+      length += size;
+    }
+    if (piece) pieces.push(piece);
+    return pieces;
+  });
+  return captionLines(words, max);
+}
+
+/** A translation must fit whole, otherwise it is omitted, never silently shortened. */
+export function captionTranslationLines(text: string, max: number): string[] | null {
+  return captionClauseLines(text, max);
 }
