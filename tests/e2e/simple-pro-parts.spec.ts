@@ -19,7 +19,7 @@ import {
 } from './helpers';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone } from './test-media';
-import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 
 /*
  * Session 56 (alpha.16), the owner: Simple Mode's right column and bottom bar from Pro Mode's own parts, let through
@@ -656,9 +656,7 @@ test('Simple Mode from CI’s 1024 × 645 up: Audio under the time bar and above
   for (const size of [CI_WINDOW, { width: 1280, height: 720 }, { width: 1440, height: 820 }]) {
     const where = `${String(size.width)} × ${String(size.height)}`;
     await sizeOperatorWindow(app, win, size);
-    await column.evaluate((el) => {
-      el.scrollTop = 0;
-    });
+    await liveColumnToTop(column);
     const problems = await win.evaluate(() => {
       const out: string[] = [];
       const at = (selector: string) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
@@ -703,12 +701,14 @@ test('Simple Mode from CI’s 1024 × 645 up: Audio under the time bar and above
       return bar !== undefined && el.getBoundingClientRect().bottom <= bar.top + 0.5;
     });
     expect(above, where).toBe(true);
+    // What scrolls is inside the column since alpha.21 (LiveColumn, the notices' place at its foot): short, all of it.
     if (size.height <= CI_WINDOW.height)
-      expect(await column.evaluate((el) => el.scrollHeight > el.clientHeight), where).toBe(true);
+      expect(
+        await column.getByTestId('live-scroll').evaluate((el) => el.scrollHeight > el.clientHeight),
+        where,
+      ).toBe(true);
     // Back at its top, Next and Back are whole and in sight.
-    await column.evaluate((el) => {
-      el.scrollTop = 0;
-    });
+    await liveColumnToTop(column);
     for (const id of ['show-back', 'show-next'])
       await expect(simple.getByTestId(id), `${id} at ${where}`).toBeInViewport({ ratio: 1 });
   }

@@ -1,4 +1,4 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 /**
@@ -24,4 +24,19 @@ export async function sizeOperatorWindow(
   await expect
     .poll(() => win.evaluate(() => [window.innerWidth, window.innerHeight]))
     .toEqual([size.width, size.height]);
+}
+
+/**
+ * The live column (`getByRole('complementary', { name: 'Live' })`) from its top: what scrolls in it, which since
+ * alpha.21 is inside it (LiveColumn: the part under a still LIVE block, or, in a window too short for one, all of it
+ * above the notices' place at its foot), scrolled back up.
+ */
+export async function liveColumnToTop(live: Locator): Promise<void> {
+  await live.evaluate((column) => {
+    for (const part of [
+      column,
+      ...column.querySelectorAll('[data-testid="live-scroll"], [data-testid="live-rest"]'),
+    ])
+      part.scrollTop = 0;
+  });
 }

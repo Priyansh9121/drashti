@@ -1,6 +1,7 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,9 +21,11 @@ import {
   operatorPage,
   operatorReady,
   setUpScreen,
+  showExtras,
   slideEditorWindow,
   windowShowing,
 } from './helpers';
+import { releaseServer } from './release-server';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
 import { CI_WINDOW } from './window-size';
@@ -551,5 +554,206 @@ test('the lock window, Request Access and I Have a Token, at its least, at CI’
     });
   } finally {
     await app.close();
+  }
+});
+
+test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show a Window…, Updates, templates and a slot, timers, Books, Music, the Lower Thirds studio and the window for Zoom), each at its window’s least, at CI’s 1024 × 645 and at the owner’s 1410 × 900: nothing cut, over another or out of its box', async () => {
+  test.setTimeout(900_000);
+  const release = await releaseServer({ '9.9.9': randomBytes(64 * 1024) }, '9.9.9');
+  const { app } = await launchApp({
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+    DRASHTI_UPDATE_URL: release.base,
+    DRASHTI_TEST_UPDATE_INSTALL: join(mkdtempSync(join(tmpdir(), 'drashti-fit-update-')), 'install.json'),
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    // Templates, a template's slot and the Books show only with View › Show Books, Templates and Kirtan Details.
+    await showExtras(win);
+    const sizes = [await smallestContent(app, OPERATOR), CI_WINDOW, OWNERS_WINDOW];
+    const { wordsId } = await longShow(win);
+    // The most a stage layout's name takes is 60 letters.
+    const longLayout = 'Placeholder stage layout with a long name for the stage';
+    // A timer, and a stage screens' group (whose settings in Screens lead to the stage layouts); the long-named words a
+    // dhun with long details (so the template's Dhun slot, the slot filled below, offers them), and a long-named stage
+    // layout with long words in a box.
+    await win.evaluate(
+      async ({ wordsId, longLayout }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const details = await d.kirtans.setDetails(wordsId, {
+          category: 'Dhun',
+          kavi: 'Placeholder kavi with a long name for the slot',
+          raag: 'Placeholder raag with a long name',
+          occasions: [],
+          audioMediaId: null,
+        });
+        if (!details.ok) throw new Error(details.message);
+        const layout = await d.stageLayouts.save(null, {
+          name: longLayout,
+          background: '#000000',
+          boxes: [
+            {
+              id: 'words',
+              kind: 'text',
+              frame: { x: 48, y: 48, width: 1824, height: 300 },
+              size: 56,
+              color: '#ffffff',
+              align: 'left',
+              label: '',
+              text: 'Placeholder words for the stage with a long line for the singers and the players',
+            },
+          ],
+        });
+        if (!layout.ok) throw new Error(layout.message);
+        const created = await d.screens.createGroup(
+          'Placeholder stage with a long name for the stage screens',
+        );
+        if (!created.ok) throw new Error(created.message);
+        const stage = created.snapshot.groups.find((g) => g.name.startsWith('Placeholder stage'));
+        const set = await d.screens.setGroupRole(stage?.id ?? '', 'stage');
+        if (!set.ok) throw new Error(set.message);
+        const made = await d.timers.create({
+          name: 'Placeholder countdown with a long name for the audience and the stage',
+          kind: 'countdown',
+          durationMs: 300_000,
+          targetTime: null,
+          allowsOverrun: false,
+        });
+        if (!made.ok) throw new Error(made.message);
+      },
+      { wordsId, longLayout },
+    );
+    const dialog = operatorSweep(app, win, sizes);
+    const menu = (id: string) => () => chooseMenuItem(app, id);
+    const cancel = (root: Locator) => async () => {
+      await root.getByRole('button', { name: 'Cancel' }).click();
+      await expect(root).toBeHidden();
+    };
+
+    await dialog('Ready?', win.getByTestId('ready-dialog'), () => win.getByTestId('open-ready').click());
+    await dialog('Help › Check for Updates…', win.getByTestId('updates-dialog'), menu('check-for-updates'));
+    await dialog('Tools › Show a Window…', win.getByTestId('window-picker'), menu('tools-show-a-window'));
+
+    // Screens › Edit stage layouts…, and New from a Template… in it.
+    const screens = win.getByRole('dialog', { name: 'Screens', exact: true });
+    const layouts = win.getByTestId('stage-layout-editor');
+    await dialog(
+      'Screens › the stage layouts',
+      layouts,
+      async () => {
+        await win.getByRole('button', { name: 'Screens', exact: true }).click();
+        await screens.getByTestId('edit-stage-layouts').click();
+      },
+      async () => {
+        // The long-named layout shown: its name in the list, its boxes and their words at the side.
+        await dialog(
+          'Screens › the stage layouts, a long-named layout',
+          layouts,
+          () => layouts.getByRole('button', { name: longLayout, exact: true }).click(),
+          () => Promise.resolve(),
+        );
+        const template = win.getByTestId('stage-template-dialog');
+        await dialog('the stage layouts’ New from a Template…', template, () =>
+          layouts.getByTestId('stage-layout-from-template').click(),
+        );
+        await byEscape(win, layouts);
+        await byEscape(win, screens);
+      },
+    );
+
+    // A timer's look for the audience.
+    await dialog('a timer’s How it looks for the audience…', win.getByTestId('timer-look'), () =>
+      win
+        .getByTestId('timers')
+        .getByTestId('timer-row')
+        .first()
+        .getByRole('button', { name: 'How it looks for the audience…' })
+        .click(),
+    );
+
+    // The long-named playlist's words: Timers when it goes up….
+    const panel = win.getByTestId('playlists');
+    await panel.getByTestId('playlist-node').filter({ hasText: LONG_PLAYLIST }).click();
+    const cues = win.getByTestId('timer-cues');
+    await dialog(
+      'a playlist item’s Timers when it goes up… (a long name)',
+      cues,
+      async () => {
+        await win.getByTestId('playlist-item').filter({ hasText: LONG_WORDS }).click({ button: 'right' });
+        await win.getByRole('menuitem', { name: 'Timers when it goes up…' }).click();
+        await cues.getByTestId('add-timer-cue').click();
+      },
+      cancel(cues),
+    );
+    // Save as template…, then a playlist from a template and a slot to fill.
+    const save = win.getByTestId('save-template');
+    await dialog('a playlist’s Save as template… (a long name)', save, async () => {
+      await win.getByRole('button', { name: 'Playlist actions' }).click();
+      await win.getByRole('menuitem', { name: 'Save as template…' }).click();
+    });
+    const fill = win.getByTestId('fill-slot');
+    await dialog(
+      'a template’s slot to fill',
+      fill,
+      async () => {
+        await win.getByTestId('playlist-view-tab-templates').click();
+        await win.getByRole('button', { name: 'New playlist from Example: Ravi Sabha' }).click();
+        await win.getByRole('textbox', { name: 'Playlist name' }).press('Enter');
+        await win.getByTestId('playlist-item').nth(1).click();
+      },
+      cancel(fill),
+    );
+
+    // The library's Books: the loaded texts.
+    const sheet = await openLibrary(win);
+    await dialog('the library’s Books, its texts', win.getByTestId('shastra-texts-dialog'), async () => {
+      await sheet.getByTestId('library-tab-shastra').click();
+      await win.getByTestId('shastra-panel').getByTestId('open-shastra-texts').click();
+    });
+    await closeLibrary(win);
+
+    // Music: a new audio playlist's Add sounds….
+    await dialog('Music’s Add sounds…', win.getByTestId('music-add-dialog'), async () => {
+      await win.getByTestId('audio-add').click();
+      await win.getByRole('menuitem', { name: 'Create playlist' }).click();
+      await win.getByRole('textbox', { name: 'Name of the audio playlist' }).press('Enter');
+      await win.getByTestId('music-panel').getByTestId('music-add').click();
+    });
+
+    // The Lower Thirds studio's window, its first tab and its templates.
+    await chooseMenuItem(app, 'tools-lower-thirds-studio');
+    const studio = await windowShowing(
+      app,
+      (p) => p.url().includes('lower-thirds.html'),
+      'the Lower Thirds studio',
+    );
+    await expect(studio.getByTestId('lt-studio')).toBeVisible({ timeout: 30_000 });
+    const studioSizes = [await smallestContent(app, 'lower-thirds.html'), CI_WINDOW, OWNERS_WINDOW];
+    await each(studio, 'the Lower Thirds studio', () =>
+      sweep(app, studio, 'lower-thirds.html', studio.locator('body'), 'the Lower Thirds studio', studioSizes),
+    );
+    await each(studio, 'the Lower Thirds studio, Templates', async () => {
+      await studio.getByTestId('studio-templates').click();
+      // The templates' own dialog, over the studio (the studio under its dim is swept above).
+      await sweep(
+        app,
+        studio,
+        'lower-thirds.html',
+        studio.getByRole('dialog', { name: 'Lower third templates' }),
+        'the Lower Thirds studio, Templates',
+        studioSizes,
+      );
+    });
+
+    // The window for Zoom.
+    await chooseMenuItem(app, 'zoom-window');
+    const zoom = await windowShowing(app, (p) => p.url().includes('zoom.html'), 'the window for Zoom');
+    const zoomSizes = [await smallestContent(app, 'zoom.html'), CI_WINDOW, OWNERS_WINDOW];
+    await each(zoom, 'the window for Zoom', () =>
+      sweep(app, zoom, 'zoom.html', zoom.locator('body'), 'the window for Zoom', zoomSizes),
+    );
+  } finally {
+    await app.close();
+    release.close();
   }
 });
