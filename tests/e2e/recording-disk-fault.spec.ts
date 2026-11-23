@@ -33,6 +33,11 @@ fs.WriteStream.prototype._write = function(chunk, encoding, done) {
   if (armed() && fault === 'write-ENOSPC' && String(this.path).endsWith('.mkv')) return done(failure());
   return write.call(this, chunk, encoding, done);
 };
+const writev = fs.WriteStream.prototype._writev;
+fs.WriteStream.prototype._writev = function(chunks, done) {
+  if (armed() && fault === 'write-ENOSPC' && String(this.path).endsWith('.mkv')) return done(failure());
+  return writev.call(this, chunks, done);
+};
 require('node:module').syncBuiltinESMExports();
 require(process.argv.at(-1));
 `,
