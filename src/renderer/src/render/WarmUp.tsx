@@ -128,7 +128,10 @@ const MAX_MS = 5000;
  */
 const CAP_MS = 8000;
 /**
- * Its last step when it ends before its frames came on time (Session 58, h-black2, fault 2): stopped (told the page
+ * Its last step after drawing, including normal completion: remove the scenes and draw empty black frames before
+ * the parent needs their tiles. A finished GPU warm-up can still hold the old tree's tile resources as the live
+ * picture starts (L8, CI 61979); frames on time say it was drawn, not that its pictures have been retired.
+ * Also when it ends before its frames came on time (Session 58, h-black2, fault 2): stopped (told the page
  * draws without a graphics chip), at its cap, or by a scene that failed, once a frame of it has been drawn. It lets go
  * of its drawing (nothing but black) and waits until the page's frames come on time again, SETTLE_MS at most (by this
  * computer's clock too: a window that draws no frames still draws the show), before the show is drawn. Without a chip
@@ -946,6 +949,22 @@ function WarmScenes({
  */
 export type WarmUpEnd = 'drawn' | 'cap' | 'unseen' | 'error' | 'cut';
 
+/** Hand the drawing's resources back before the parent draws the show, using the existing empty settling step. */
+export function handOverWarmUp({
+  how,
+  drewFrame,
+  retire,
+  ready,
+}: {
+  how: WarmUpEnd;
+  drewFrame: boolean;
+  retire: (ready: () => void) => void;
+  ready: () => void;
+}): void {
+  if (how === 'unseen' || !drewFrame) ready();
+  else retire(ready);
+}
+
 /** This computer's clock for a length of time, how long a warm-up took (for the log: it times nothing drawn). */
 // eslint-disable-next-line no-restricted-properties -- a length of time for the log, never a time anything is drawn at
 const lengthClock = (): number => performance.now();
@@ -1017,12 +1036,16 @@ export function WarmUp({
       if (how !== 'cut') performance.mark(`${mark}-end`);
       ended.current?.(how, lengthClock() - began.current);
       const then = how === 'cut' ? () => stopped.current?.() : () => done.current();
-      // Drawn to its end on time, not seen (no frames come), or no frame of it drawn: nothing to let go of.
-      if (how === 'drawn' || how === 'unseen' || !drewFrame.current) then();
-      else {
-        afterSettle.current = then;
-        setStep((s) => ({ phase: 'settle', at: s.at }));
-      }
+      // Retire a drawn scene before the parent needs its tiles: on-time frames do not release the old tree.
+      handOverWarmUp({
+        how,
+        drewFrame: drewFrame.current,
+        ready: then,
+        retire: (ready) => {
+          afterSettle.current = ready;
+          setStep((s) => ({ phase: 'settle', at: s.at }));
+        },
+      });
     },
     [hold, mark],
   );
