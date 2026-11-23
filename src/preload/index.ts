@@ -719,6 +719,9 @@ const bridge: DrashtiBridge = {
     addPicture: (presentationId, path) => invoke(IPC.slideEditor.addPicture, presentationId, path),
     fontFamilies: () => invoke(IPC.slideEditor.fontFamilies),
     showKey: (key) => invoke(IPC.slideEditor.showKey, key),
+    makeSlide: (request) => invoke(IPC.slideEditor.makeSlide, request),
+    slidePlace: () => invoke(IPC.slideEditor.slidePlace),
+    onSlideMade: (listener) => on(IPC.slideEditor.slideMade, listener),
   },
   osc: {
     status: () => invoke(IPC.osc.status),

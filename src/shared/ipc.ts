@@ -56,6 +56,7 @@ import type { ResumePoint } from './play-history';
 import type { PlayingRef } from './engine/playing';
 import type { SnapshotResult } from './snapshot';
 import type { PictureAssetKind, SharpenJobView } from './pictures';
+import type { MakeSlideRequest, MakeSlideResult, SlideMade, SlidePlace } from './page-part';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
   PassageInfo,
@@ -870,6 +871,11 @@ export const IPC = {
     fontFamilies: 'slideeditor:font-families',
     /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
     showKey: 'slideeditor:show-key',
+    /** Make a slide… (alpha.21): a PDF page, or a part of it, made a Drashti slide; and where it can go now. */
+    makeSlide: 'slideeditor:make-slide',
+    slidePlace: 'slideeditor:slide-place',
+    /** main -> operator: a slide was made from a PDF page (for its Undo). */
+    slideMade: 'slideeditor:slide-made',
   },
   /** OSC settings belong only to this computer's operator window, in Pro Mode. */
   osc: { status: 'osc:status', configure: 'osc:configure', changed: 'osc:changed' },
@@ -1834,6 +1840,8 @@ export interface InvokeContract {
   };
   [IPC.slideEditor.fontFamilies]: { args: []; result: readonly string[] };
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
+  [IPC.slideEditor.makeSlide]: { args: [request: MakeSlideRequest]; result: MakeSlideResult };
+  [IPC.slideEditor.slidePlace]: { args: []; result: SlidePlace };
   [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.osc.status]: { args: []; result: OscStatus };
   [IPC.osc.configure]: { args: [settings: OscSettings]; result: OscResult };
@@ -2095,6 +2103,7 @@ export interface EventContract {
   [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;
   [IPC.slideEditor.edited]: SlidesSaved;
+  [IPC.slideEditor.slideMade]: SlideMade;
   [IPC.wallpapers.changed]: WallpapersView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.output.context]: OutputContext;

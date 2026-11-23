@@ -22,6 +22,9 @@ import {
 } from './helpers';
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+/** The crop's box, as the Picture editor names it. */
+const CROP_BOX_NAME =
+  'The part kept: drag it, or its sides and corners; the arrows move it, Shift and the arrows change its size';
 
 /** Hold metadata until the test releases it, without a timing-dependent delay. */
 async function holdPictureSize(ed: Page): Promise<void> {
@@ -119,8 +122,37 @@ test('Insert keeps a cropped picture, a video and a sound on this slide across s
       .click();
     await expect(editor.getByTestId('crop-picture')).toBeEnabled();
     await editor.getByTestId('crop-picture').click();
-    await ed.getByTestId('crop-right').fill('50');
-    await ed.getByRole('button', { name: 'Keep crop', exact: true }).click();
+    // Cropped by dragging, as in the Picture editor (alpha.21, the owner's "physical way to crop"): no number asked.
+    const cropping = ed.getByTestId('crop-slide-picture');
+    const kept = cropping.getByRole('button', { name: CROP_BOX_NAME, exact: true });
+    await expect(kept).toBeVisible();
+    await expect(cropping.getByRole('spinbutton')).toHaveCount(0);
+    await expectNoSeriousA11yIssues(ed, 'Crop this picture');
+    // The right side dragged to the middle of the picture: half of it taken off on the right.
+    const whole = await kept.boundingBox();
+    const east = await kept.locator('[data-edge="e"]').boundingBox();
+    if (!whole || !east) throw new Error('The crop has no box to drag.');
+    // Moved from where it is held by half the picture's width (the handle's middle is on the inside of the
+    // frame's line, not on its outside).
+    const from = { x: east.x + east.width / 2, y: east.y + east.height / 2 };
+    await ed.mouse.move(from.x, from.y);
+    await ed.mouse.down();
+    await ed.mouse.move(from.x - whole.width / 2, from.y, { steps: 8 });
+    await ed.mouse.up();
+    const readout = cropping.getByTestId('crop-readout');
+    await expect(readout).toContainText('right 50%');
+    await expect(readout).toContainText('left 0%');
+    // The arrows move the part kept (a hundredth each), as far as the picture goes, and back.
+    await kept.focus();
+    await ed.keyboard.press('ArrowRight');
+    await expect(readout).toContainText('left 1%');
+    for (let i = 0; i < 60; i++) await ed.keyboard.press('ArrowRight');
+    await expect(readout).toContainText('left 50%');
+    await expect(readout).toContainText('right 0%');
+    for (let i = 0; i < 60; i++) await ed.keyboard.press('ArrowLeft');
+    await expect(readout).toContainText('left 0%');
+    await expect(readout).toContainText('right 50%');
+    await cropping.getByRole('button', { name: 'Keep crop', exact: true }).click();
     await expect(editor.getByTestId('editor-slide').locator('[data-slide-crop]')).toHaveCount(1);
     await ed.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(editor.getByTestId('editor-slide').locator('[data-slide-crop]')).toHaveCount(0);
@@ -154,7 +186,8 @@ test('Insert keeps a cropped picture, a video and a sound on this slide across s
         expect.objectContaining({
           kind: 'image',
           mediaId: pictureId,
-          crop: { x: 0, y: 0, width: 0.5, height: 1 },
+          // Dragged by hand: half, to within a few pixels of the dialog's picture.
+          crop: { x: 0, y: 0, width: expect.closeTo(0.5, 2), height: 1 },
         }),
         expect.objectContaining({ kind: 'video', mediaId: videoId }),
       ]),

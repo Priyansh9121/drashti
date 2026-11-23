@@ -1,3 +1,4 @@
+import type { PagePart } from './page-part';
 import { cutText } from './text';
 
 /*
@@ -42,6 +43,12 @@ export interface PictureJob {
    * screens or the stream): every `every`th from `from`, or the pages listed (from 0). Left out: every page.
    */
   share?: PageShare;
+  /**
+   * Make a slide… (alpha.21): only this part of the page drawn (its first page; shares of it from its top-left), as
+   * large as fits in `width` x `height`, its own shape kept (shared/page-part.ts partDrawing), on the page's white:
+   * the picture is the part's size, not the canvas's.
+   */
+  part?: PagePart;
   /**
    * Book OCR (alpha.21): the page on white either side instead of black, for reading its words (a black band reads as
    * marks). Left out: black, as the screens show a page.
