@@ -9,7 +9,7 @@ import type { Heard } from '../../src/shared/speech';
 
 // Native process -> real speech engine -> real hub. Generated model/PCM only, no recording, microphone or download.
 // cap-integration's captions-ai spec covers the downstream coordinator and screen routing.
-test('imported Route C model decodes PCM through the native helper into the speech hub', async ({}, info) => {
+test('imported Route C model decodes PCM through the native helper into the speech hub', async (_fixtures, info) => {
   const root = info.outputPath('આકાર fixture');
   mkdirSync(root, { recursive: true });
   const fixture = makeIndicFixture();

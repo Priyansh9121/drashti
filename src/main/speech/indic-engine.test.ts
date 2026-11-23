@@ -40,10 +40,11 @@ describe('Route C behind the speech engine seam', () => {
         },
       },
       log: { info() {}, warn() {} },
-      open: async () => ({
-        decode: async () => ({ language: 'gu', words: [{ w: 'આકાર', start: 0, end: 0.08 }] }),
-        close,
-      }),
+      open: () =>
+        Promise.resolve({
+          decode: () => Promise.resolve({ language: 'gu', words: [{ w: 'આકાર', start: 0, end: 0.08 }] }),
+          close,
+        }),
     });
     const stop = engine.start('gu', { heard: (h) => phrases.push(h), state: (s) => states.push(s) });
     await vi.waitFor(() => expect(states.at(-1)?.phase).toBe('listening'));
