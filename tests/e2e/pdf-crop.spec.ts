@@ -12,6 +12,7 @@ import {
 } from './helpers';
 import { openGeneratedPdf, PDF_PAGES, savePdfCopy, usePdfTools } from './pdf-tools-fixtures';
 import { inspectPdf } from './pdf-export-oracle';
+import { near, pixels } from './pixels';
 
 for (const [choice, indices] of [
   ['This page', [0]],
@@ -83,6 +84,37 @@ for (const [choice, indices] of [
         await expect(
           reopened.editor.getByTestId('editor-slide-thumb').nth(i).locator('[data-page-crop]'),
         ).toHaveCount(1);
+      if (choice === 'This page') {
+        await setUpScreen(s.win, 'Placeholder cropped source hall', 0);
+        const out = await outputPage(s.app);
+        await outputReady(out);
+        await s.win.evaluate(
+          (id) =>
+            (globalThis as PageGlobals).drashti.engine.dispatch({
+              type: 'goLive',
+              presentationId: id,
+              slideIndex: 0,
+            }),
+          s.id,
+        );
+        const kept = out.locator('[data-page-crop]').last();
+        await expect(kept).toHaveCSS('width', '810px');
+        await expect(kept).toHaveCSS('height', '540px');
+        await expect
+          .poll(
+            async () => {
+              const b = await kept.boundingBox();
+              if (!b) return false;
+              const rgb = await pixels(out, [
+                { x: b.x + b.width * 0.05, y: b.y + b.height * 0.75 },
+                { x: b.x + b.width * (46.5 / 240), y: b.y + b.height * (56 / 160) },
+              ]);
+              return near(rgb[0], [48, 28, 64], 12) && near(rgb[1], [179, 38, 26], 12);
+            },
+            { message: 'The hall shows the cropped page pixels without the legacy preview margins.' },
+          )
+          .toBe(true);
+      }
       s.unchanged();
     } finally {
       await s.app.close();
