@@ -61,6 +61,7 @@ const LONG = {
   gmail: 'placeholder.volunteer.at.the.back.of.the.hall.with.a.long.address@example.com',
   name: 'Placeholder Volunteer with a Long Name Typed in Drashti',
   computer: 'Placeholder Mac in the Sabha Hall Office with a Long Name',
+  photo: 'Placeholder Photo from the Volunteer Phone with a Long Name',
 } as const;
 
 /** What a page is checked for, by the kind of page it is. */
@@ -625,11 +626,12 @@ function remoteViews(layout: 'phone' | 'wide', playlistId: string): View[] {
       },
     },
     {
-      name: "the library's media, with Add from this Phone…",
+      name: "the library's media, with Add from this Phone… and a file it sent",
       open: async (p) => {
         await library(p);
         await chosen(p, 'remote-library-media');
         await expect(p.getByTestId('remote-add-button')).toBeVisible();
+        await expect(p.getByTestId('remote-sending-list')).toContainText(LONG.photo);
         await expect(p.getByTestId('remote-media')).toContainText(LONG.picture);
       },
     },
@@ -699,6 +701,27 @@ for (const engine of ENGINES)
       await pairByQr(p, base, await pairingCode(win, 'remote', LONG.device), '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await expect(p.getByTestId('remote-live')).toBeVisible();
+      // A file added from this phone, its row in the list of what it sent (files from phones).
+      const photo = await makeTestImage(
+        win,
+        join(mkdtempSync(join(tmpdir(), 'drashti-phone-fit-')), `${LONG.photo}.png`),
+        {
+          width: 64,
+          height: 48,
+        },
+      );
+      await chosen(p, 'remote-tab-library');
+      await chosen(p, 'remote-library-media');
+      const [chooser] = await Promise.all([
+        p.waitForEvent('filechooser'),
+        p.getByTestId('remote-add-button').click(),
+      ]);
+      await chooser.setFiles(photo);
+      await expect(p.getByTestId('remote-sending').filter({ hasText: LONG.photo })).toHaveAttribute(
+        'data-state',
+        'added',
+        { timeout: 60_000 },
+      );
       const sweep = new Sweep(p, { ...DRASHTI_PAGE, remote: true });
       for (const size of SIZES) {
         await p.setViewportSize(size);
