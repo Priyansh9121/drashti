@@ -44,8 +44,8 @@ export interface ImportServiceDeps {
   /** HEVC's other kinds, as the window said with that answer (Session 60, x36); null while not known. */
   hevcKinds?(): HevcKinds | null;
   /**
-   * Resolves once no transition runs on the screens (alpha.21, Q60-60 A): each import starts only then, so nothing
-   * heavy runs during a dissolve. Left out: at once.
+   * Resolves once no transition runs on the screens (alpha.21, Q60-60 A): each run's worker process is started only
+   * then, so nothing heavy (not even starting the process) runs during a dissolve. Left out: at once.
    */
   quiet?(): Promise<void>;
   onProgress(progress: ImportProgress): void;
@@ -101,6 +101,8 @@ export class ImportService {
   private readonly queue: Job[] = [];
   /** Drashti is quitting: nothing more starts, and what the stopped worker says after is not heard. */
   private stopped = false;
+  /** The next run waits for no transition on the screens before its worker process starts (Q60-60 A). */
+  private waitingForQuiet = false;
   private active: {
     job: Job;
     worker: WorkerProcess;
@@ -233,6 +235,25 @@ export class ImportService {
   }
 
   private next(): void {
+    if (this.active || this.stopped || this.waitingForQuiet || this.queue.length === 0) return;
+    // The next run's worker process starts only once no transition runs on the screens (alpha.21, Q60-60 A; a21-l8a:
+    // on CI's Mac starting the process itself during a dissolve cost the hall's frames). Its job waits in the queue
+    // meanwhile, so Cancel and quitting end it as any waiting run, with no process started.
+    const quiet = this.deps.quiet?.();
+    if (quiet) {
+      this.waitingForQuiet = true;
+      void quiet
+        .catch(() => undefined)
+        .then(() => {
+          this.waitingForQuiet = false;
+          this.launch();
+        });
+      return;
+    }
+    this.launch();
+  }
+
+  private launch(): void {
     if (this.active || this.stopped) return;
     const job = this.queue.shift();
     if (!job) return;
@@ -374,15 +395,10 @@ export class ImportService {
       });
     };
     // Once it is known whether this computer plays HEVC (Session 51 review: an import in the first moments after
-    // the start waits for the answer, convert/plays-hevc.ts, 15 s at most), and once no transition runs on the screens
-    // (alpha.21, Q60-60 A: an import started during a dissolve waits for its end, so nothing heavy runs during one).
-    const quiet = this.deps.quiet?.().catch(() => undefined);
-    if (this.deps.playsHevc) {
-      const plays = this.deps.playsHevc().catch(() => null);
-      void (quiet ? Promise.all([plays, quiet]).then(([said]) => said) : plays).then(start);
-    } else if (quiet)
-      void quiet.then(() => {
-        start();
+    // the start waits for the answer, convert/plays-hevc.ts, 15 s at most). No transition runs by now (next(), above).
+    if (this.deps.playsHevc)
+      void this.deps.playsHevc().then(start, () => {
+        start(null);
       });
     else start();
   }

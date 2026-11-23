@@ -187,8 +187,8 @@ describe('ImportService', () => {
     const first = service.start(['/Placeholder picture.png']);
     await Promise.resolve();
     await Promise.resolve();
-    // The HEVC answer is in, but the dissolve still runs: nothing heavy starts.
-    expect(workers[0]?.sent).toEqual([]);
+    // The HEVC answer is in, but the dissolve still runs: nothing heavy starts (no worker is even started now).
+    expect(workers.flatMap((w) => w.sent)).toEqual([]);
     end();
     await vi.waitFor(() => {
       expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: true });
