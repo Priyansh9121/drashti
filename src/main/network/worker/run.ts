@@ -53,6 +53,7 @@ export function runNetworkWorker(
     resync: () => {
       send({ type: 'resync' });
     },
+    busy: () => send({ type: 'busy' }),
     log: (level, message) => {
       send({ type: 'log', level, message });
     },

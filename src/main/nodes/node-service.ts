@@ -1,3 +1,4 @@
+import { PAIRED_SEATS_NOTICE } from '../network/paired-seats';
 import { randomInt } from 'node:crypto';
 import type { NodeReportAnswer } from '../../shared/report';
 import { cutText } from '../../shared/text';
@@ -110,6 +111,7 @@ export interface NodeServiceDeps {
   /** How Main's own outputs draw, for the dashboard. */
   localOutputs(): NodeOutputStatus[];
   log(level: 'info' | 'warn', message: string): void;
+  notice?(text: string): void;
   now(): number;
   /** Tests: listen on this port instead of the setting's. */
   portOverride?: number | null;
@@ -440,6 +442,9 @@ export class NodeService implements EngineTransport {
         for (const w of waiters) w(m.stats);
         return;
       }
+      case 'busy':
+        this.deps.notice?.(PAIRED_SEATS_NOTICE);
+        return;
       case 'log':
         if (m.level === 'warn') this.deps.log('warn', `Nodes: ${m.message}`);
         else this.deps.log('info', `Nodes: ${m.message}`);
