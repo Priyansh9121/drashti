@@ -199,6 +199,12 @@ function StageFit({
       )
         return;
       measured = measurement;
+      const prepared = target.querySelector('[data-prepared-translation]') !== null;
+      const shifted = target.style.top !== '' && target.style.top !== '0px';
+      // Ordinary words (no checked translation, never moved for one) that fit at full size: nothing to measure, as
+      // before prepared translations (text-measure-order.spec: no layout read after the paint).
+      const shrunk = b.style.getPropertyValue('--stage-fit') !== '';
+      if (!prepared && !shifted && !shrunk && wordsHeight <= height + 0.5) return;
       fitStageTranslations(target, b, () => {
         const fits = (fit: number) => {
           b.style.setProperty('--stage-fit', String(fit));
@@ -223,7 +229,7 @@ function StageFit({
         }
       });
       // The observer may report the height changed by showing/holding a secondary block.
-      measurement.wordsHeight = target.offsetHeight;
+      if (prepared) measurement.wordsHeight = target.offsetHeight;
     });
     const checkWords = () => {
       const child = b.firstElementChild;
