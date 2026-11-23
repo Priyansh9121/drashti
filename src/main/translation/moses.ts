@@ -2,6 +2,7 @@
 // the Moses scripts) exactly as IndicTransToolkit 1.1.1 uses them: MosesPunctNormalizer() with its defaults,
 // MosesTokenizer(lang="en").tokenize(text, escape=False) and MosesDetokenizer(lang="en").detokenize(tokens).
 // Character classes are Python's (python-classes.ts), not JavaScript's.
+// Third-party notice: sacremoses, Copyright (c) 2020 alvations, MIT licence: LICENSES/translation/sacremoses-LICENSE.txt.
 import { EN_NONBREAKING_PREFIXES, EN_NUMERIC_ONLY_PREFIXES } from './python-classes';
 import { cls, inClass, pySplit, pyStrip } from './python-text';
 

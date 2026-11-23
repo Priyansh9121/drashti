@@ -3,6 +3,10 @@
 // tokeniser, detokeniser and script converter; the models' IndicTransTokenizer decode (MIT) with Hugging Face's
 // clean-up (Apache-2.0); and the trial's narrow clock-spacing repair. Only Gujarati, Hindi and English.
 // The model itself (SentencePiece + CTranslate2) runs in drashti-translate; see translation-helper.ts.
+// Third-party notices (texts in LICENSES/translation/): IndicTransToolkit, Copyright (c) Varun Gumma, MIT
+// (IndicTransToolkit-LICENSE.txt); indic-nlp-library, Copyright (c) 2013-present Anoop Kunchukuttan, MIT
+// (indic-nlp-library-LICENSE.txt); the IndicTrans2 tokenizer's decode, AI4Bharat, MIT; Hugging Face Transformers'
+// clean_up_tokenization, Copyright The Hugging Face team, Apache-2.0 (the text in sentencepiece-LICENSE.txt).
 import { mosesDetokenize, mosesNormalize, mosesTokenize } from './moses';
 import { cls, pyLen, pyStrip } from './python-text';
 

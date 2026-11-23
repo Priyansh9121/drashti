@@ -1,6 +1,8 @@
 // Generated from Python 3.13 (re; regex 2026.11.19) and sacremoses 0.2.0 (MIT) by translation-trial/tools/ref/gen_classes.py:
 // the character classes x74's Python pipeline uses, so the port follows Python's Unicode tables rather than
 // JavaScript's. Each class is "first-last,first-last,..." in hexadecimal code points. Do not edit by hand.
+// Third-party notice: the Perl classes and English prefixes are sacremoses' data (Copyright (c) 2020 alvations, MIT:
+// LICENSES/translation/sacremoses-LICENSE.txt), its prefixes from the Moses toolkit.
 export const PY_CLASSES = {
   re_s: '9-d,1c-20,85,a0,1680,2000-200a,2028-2029,202f,205f,3000',
   re_d: '30-39,660-669,6f0-6f9,7c0-7c9,966-96f,9e6-9ef,a66-a6f,ae6-aef,b66-b6f,be6-bef,c66-c6f,ce6-cef,d66-d6f,de6-def,e50-e59,ed0-ed9,f20-f29,1040-1049,1090-1099,17e0-17e9,1810-1819,1946-194f,19d0-19d9,1a80-1a89,1a90-1a99,1b50-1b59,1bb0-1bb9,1c40-1c49,1c50-1c59,a620-a629,a8d0-a8d9,a900-a909,a9d0-a9d9,a9f0-a9f9,aa50-aa59,abf0-abf9,ff10-ff19,104a0-104a9,10d30-10d39,11066-1106f,110f0-110f9,11136-1113f,111d0-111d9,112f0-112f9,11450-11459,114d0-114d9,11650-11659,116c0-116c9,11730-11739,118e0-118e9,11950-11959,11c50-11c59,11d50-11d59,11da0-11da9,11f50-11f59,16a60-16a69,16ac0-16ac9,16b50-16b59,1d7ce-1d7ff,1e140-1e149,1e2f0-1e2f9,1e4f0-1e4f9,1e950-1e959,1fbf0-1fbf9',
