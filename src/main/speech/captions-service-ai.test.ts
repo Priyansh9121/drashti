@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaptionRevision } from '../../shared/caption-coordinator';
 import {
   DEFAULT_CAPTION_SETTINGS,
+  DEFAULT_CAPTION_TIMING,
   type CaptionModelId,
   type CaptionSettings,
   type CaptionsShown,
@@ -261,6 +262,26 @@ describe('caption AI in the captions service', () => {
     t.service.aiPathChanged();
     expect(t.coordinator.view().sessionId).not.toBeNull();
     expect(t.coordinator.view().sessionId).not.toBe(first);
+    t.service.close();
+  });
+
+  it('the path follows the speaker’s language and its own model at once: a language change or a relisten re-chooses it', async () => {
+    const t = setup({ ai: true, pack: { gu: GU } });
+    // Caption AI is on only for Gujarati here (its own model); Hindi has none.
+    t.ai.on = false;
+    t.choose('hi');
+    await t.service.setOn(true);
+    expect(t.started.map((s) => s.engine)).toEqual(['today']);
+    // Gujarati chosen: caption AI takes over without captions being turned off and on.
+    t.ai.on = true;
+    t.choose('gu');
+    expect(t.started.at(-1)).toEqual({ engine: GU, language: 'gu' });
+    expect(t.coordinator.view().on).toBe(true);
+    // Its own model taken away (a relisten, as cap-whisper's choice of the general model does): today's captions.
+    t.ai.on = false;
+    t.service.setTiming(DEFAULT_CAPTION_TIMING);
+    expect(t.started.at(-1)).toEqual({ engine: 'today', language: 'gu' });
+    expect(t.coordinator.view().on).toBe(false);
     t.service.close();
   });
 });
