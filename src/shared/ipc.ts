@@ -54,6 +54,7 @@ import type {
   LanguageModelLanguage,
 } from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
+import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -368,6 +369,16 @@ export const IPC = {
     screens: 'opening:screens',
     /** main -> operator: File › Opening… was chosen. */
     open: 'opening:open',
+  },
+  /**
+   * Caption words (alpha.22, shared/caption-words.ts): the admin's names and terms for live captions, in Pro Mode
+   * only. The list as the Caption Words dialog shows it; a change sends the whole list; Import… and Export… a CSV.
+   */
+  captionWords: {
+    view: 'captionwords:view',
+    set: 'captionwords:set',
+    import: 'captionwords:import',
+    export: 'captionwords:export',
   },
   /**
    * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
@@ -1546,6 +1557,10 @@ export interface InvokeContract {
   [IPC.captions.restartPrototype]: { args: []; result: CaptionReview | null };
   [IPC.captions.correctPrototype]: { args: [correction: CaptionCorrection]; result: boolean };
   [IPC.captions.dismissPrototype]: { args: [identity: Omit<CaptionCorrection, 'text'>]; result: boolean };
+  [IPC.captionWords.view]: { args: []; result: CaptionWordsView };
+  [IPC.captionWords.set]: { args: [words: CaptionWord[]]; result: CaptionWordsResult };
+  [IPC.captionWords.import]: { args: []; result: CaptionWordsResult };
+  [IPC.captionWords.export]: { args: []; result: CaptionWordsResult };
   [IPC.captions.view]: { args: []; result: CaptionsStatus };
   [IPC.captions.setOn]: { args: [on: boolean]; result: CaptionsStatus };
   [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };

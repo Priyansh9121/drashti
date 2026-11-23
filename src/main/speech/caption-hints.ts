@@ -8,19 +8,42 @@ import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../shared/speech';
  * initial prompt, which nudges its spelling towards these words). This is the interface an engine calls: read at
  * each piece it sends, worked out again only when the list changes.
  *
- * Capped so it never slows recognition: the prompt is at most 200 bytes of UTF-8. Whisper's tokens are byte pairs,
- * never more than one a byte, so that is at most 200 tokens: below whisper.cpp's own limit (224, half its text
- * window; it would silently keep only the last ones), and a short prefix for the decoder next to the encoder's
- * fixed 30 s window. About 60 Gujarati or Devanagari letters (three bytes each), or 200 English ones. At most 50
- * words. Whole words only, from the start of the list, up to the first that does not fit.
+ * Capped by whisper's tokens, about 220 at most: below whisper.cpp's own limit (224, half its text window; past it,
+ * it silently keeps only the last ones), and a short prefix for the decoder next to the encoder's fixed 30 s
+ * window, so it never slows recognition. There is no tokenizer here, so the count is an estimate that is never
+ * below what cap-drive-learn measured on whisper's own tokenizer (23 Nov: Gujarati about one token a byte, Hindi
+ * one in 2.4 bytes, English one in 2.3; N/reports/cap-drive-learn.md): about 70 Gujarati letters fit, 140 Hindi
+ * ones or 400 English ones. At most 50 words, and never more than 1,000 bytes. Whole words only, from the start of
+ * the list, up to the first that does not fit; written with the first caption word last, so that were the
+ * estimate ever short, whisper.cpp would cut the least important ones.
  *
  * None for "as heard" (the engine chooses the language phrase by phrase: one language's words would push the others'
  * spelling towards its letters), and none when the list has no words for the language: then nothing is sent.
  * Sanskrit's words go in Devanagari, as the engine writes Sanskrit (the screens show it in Gujarati letters).
  */
 
-export const HINT_PROMPT_BYTES = 200;
+export const HINT_PROMPT_TOKENS = 220;
 export const HINT_WORDS = 50;
+/** A second bound: never more than this many bytes of UTF-8 (drashti-whisper.c reads up to 1,023). */
+export const HINT_PROMPT_MAX_BYTES = 1_000;
+
+/**
+ * About how many of whisper's tokens a text costs, never fewer than measured: a Gujarati letter three (one a byte),
+ * a Devanagari letter one and a half, any other letter outside ASCII one a byte, an English letter or digit a half,
+ * a space none (it goes with the word after it), any other sign one.
+ */
+export function promptTokens(text: string): number {
+  let tokens = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp >= 0x0a80 && cp <= 0x0aff) tokens += 3;
+    else if (cp >= 0x0900 && cp <= 0x097f) tokens += 1.5;
+    else if (cp > 0x7f) tokens += Buffer.byteLength(ch, 'utf8');
+    else if (/[A-Za-z0-9]/u.test(ch)) tokens += 0.5;
+    else if (ch !== ' ') tokens += 1;
+  }
+  return Math.ceil(tokens);
+}
 
 export interface Hints {
   words: readonly string[];
@@ -48,8 +71,8 @@ export function hintsOf(words: readonly CaptionWord[], language: SpeechLanguage 
   if (mine.length === 0) return NONE;
   let prompt = '';
   for (const word of mine) {
-    const next = prompt === '' ? word : `${prompt}, ${word}`;
-    if (bytesOf(next) > HINT_PROMPT_BYTES) break;
+    const next = prompt === '' ? word : `${word}, ${prompt}`;
+    if (promptTokens(next) > HINT_PROMPT_TOKENS || bytesOf(next) > HINT_PROMPT_MAX_BYTES) break;
     prompt = next;
   }
   return Object.freeze({ words: Object.freeze(mine), prompt });

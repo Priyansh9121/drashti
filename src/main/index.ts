@@ -471,6 +471,8 @@ import { handleModelPacks } from './model-packs/ipc';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
+import { CaptionWordsRepo } from './db/caption-words';
+import { CaptionWordsService } from './speech/caption-words-service';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
 import { registerVideoCaptionIpc } from './video-captions/ipc';
@@ -3814,6 +3816,32 @@ function start(): void {
     captionsData,
     knownLanguageModels(packaged() ? undefined : sw('DRASHTI_TEST_SPEECH_MODELS')),
   );
+  // Caption words (alpha.22): the admin's names and terms, kept in the library (File › Live Captions… › Caption
+  // Words…, Pro Mode). The engine is given the first ones as hints; each phrase heard goes through the spelling fixer.
+  const captionWords = new CaptionWordsService({
+    repo: new CaptionWordsRepo(opened.db),
+    pickImport: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Import Caption Words',
+        buttonLabel: 'Import',
+        properties: ['openFile'],
+        filters: [{ name: 'Caption words (CSV)', extensions: ['csv', 'txt'] }],
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    pickExport: async (defaultName) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export Caption Words',
+        defaultPath: defaultName,
+        buttonLabel: 'Export',
+        filters: [{ name: 'Caption words (CSV)', extensions: ['csv'] }],
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
+    log,
+  });
   const captionsEngineProblem =
     testSpeech !== undefined
       ? null
@@ -3844,6 +3872,8 @@ function start(): void {
           timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
           timing: () => captions.timing(),
           sound: { open: (chunk) => streaming.listenSound(chunk) },
+          // The admin's caption words as hints (cap-glossary).
+          hints: captionWords.hints,
           log,
         });
   // Caption AI (alpha.22, cap-integration): a speaker's language with a model of its own is heard through the
@@ -3881,6 +3911,7 @@ function start(): void {
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     prototypeChanged: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
+    spell: (phrase) => captionWords.fix(phrase),
     changed: (view) => {
       videoCaptionBand = view.settings;
       engine.refreshVideoCaptions();
@@ -3970,6 +4001,23 @@ function start(): void {
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
   });
+  const captionWordsElsewhere = () => ({
+    ok: false,
+    view: captionWords.view(),
+    message: 'Only the operator window can do that.',
+  });
+  handle(IPC.captionWords.view, (e) =>
+    fromOperator(e) ? captionWords.view() : { words: [], hinted: { gu: 0, hi: 0, sa: 0, en: 0 } },
+  );
+  handle(IPC.captionWords.set, (e, words) =>
+    fromOperator(e) ? captionWords.set(words) : captionWordsElsewhere(),
+  );
+  handle(IPC.captionWords.import, (e) =>
+    fromOperator(e) ? captionWords.importFile() : captionWordsElsewhere(),
+  );
+  handle(IPC.captionWords.export, (e) =>
+    fromOperator(e) ? captionWords.exportFile() : captionWordsElsewhere(),
+  );
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other

@@ -1,27 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import type { CaptionWord } from '../../shared/caption-words';
-import { createCaptionHints, HINT_PROMPT_BYTES, HINT_WORDS, hintsOf } from './caption-hints';
+import { createCaptionHints, HINT_PROMPT_TOKENS, HINT_WORDS, hintsOf, promptTokens } from './caption-hints';
 
 /*
  * What the captions engine is given to listen for (alpha.22): the first of the admin's caption words for the
  * language it is asked for, as words (an engine biased by a word list) and as one short prompt (whisper.cpp's
- * initial prompt). Capped so it never slows recognition; nothing when the list is empty or the language is "as
- * heard". Invented placeholder words only.
+ * initial prompt). Capped by whisper's tokens so it never slows recognition and whisper.cpp never cuts it; nothing
+ * when the list is empty or the language is "as heard". Invented placeholder words only.
  */
 
 const GU = 'ઝેન્ટ્રોવા';
+const HI = 'वेल्मोरिन';
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
 describe('the hints for the language the engine is asked for', () => {
-  it('are that language’s caption words in the list’s order, as words and as one prompt', () => {
+  it('are that language’s caption words in the list’s order, and one prompt with the most important last', () => {
     const list: CaptionWord[] = [
       { language: 'en', word: 'Zentrova' },
       { language: 'gu', word: GU },
       { language: 'en', word: 'Person Q7' },
     ];
+    // whisper.cpp keeps a prompt's last tokens: the first caption word goes last, where it is never cut.
     expect(hintsOf(list, 'en')).toEqual({
       words: ['Zentrova', 'Person Q7'],
-      prompt: 'Zentrova, Person Q7',
+      prompt: 'Person Q7, Zentrova',
     });
     expect(hintsOf(list, 'gu')).toEqual({ words: [GU], prompt: GU });
   });
@@ -37,22 +39,53 @@ describe('the hints for the language the engine is asked for', () => {
     expect(hintsOf([{ language: 'sa', word: 'વેલ્મોરિન' }], 'sa').prompt).toBe('वेल्मोरिन');
   });
 
-  it('keep the prompt within 200 bytes (so at most 200 of whisper’s tokens) and the words within 50', () => {
-    expect(HINT_PROMPT_BYTES).toBe(200);
+  it('count whisper’s tokens at least as cap-drive-learn measured them: Gujarati a byte each, Hindi and English fewer', () => {
+    // A Gujarati letter is three bytes and about three tokens; a Devanagari one fewer; English about two letters a
+    // token; a comma one; the space before a word goes with it.
+    expect(promptTokens(GU)).toBe(30);
+    expect(promptTokens(HI)).toBe(14);
+    expect(promptTokens('Zentrova')).toBe(4);
+    expect(promptTokens('Zentrova, Person Q7')).toBe(9);
+    // Measured on whisper's own tokenizer (N/reports/cap-drive-learn.md, 23 Nov): 200 bytes of Gujarati words were
+    // 173 tokens, of Hindi 84, of English 88. The count here is never below those rates.
+    const words = (word: string, n: number) => Array.from({ length: n }, (_, i) => `${word}${String(i)}`);
+    for (const [prompt, measured] of [
+      [words(GU, 6).join(', '), 173 / 200],
+      [words(HI, 7).join(', '), 84 / 200],
+      [words('Zentrova', 20).join(', '), 88 / 200],
+    ] as const)
+      expect(promptTokens(prompt) / bytes(prompt)).toBeGreaterThanOrEqual(measured);
+  });
+
+  it('keep the prompt within 220 tokens (whisper.cpp keeps at most 224) and the words within 50', () => {
+    expect(HINT_PROMPT_TOKENS).toBe(220);
     expect(HINT_WORDS).toBe(50);
-    const long: CaptionWord[] = Array.from({ length: 120 }, (_, i) => ({
-      language: 'gu',
-      word: `${GU}${String(i)}`,
-    }));
-    const hints = hintsOf(long, 'gu');
-    expect(hints.words).toHaveLength(HINT_WORDS);
-    expect(bytes(hints.prompt)).toBeLessThanOrEqual(HINT_PROMPT_BYTES);
-    // Whole words from the start of the list, up to the first that does not fit.
-    const inPrompt = hints.prompt.split(', ');
-    expect(inPrompt).toEqual(hints.words.slice(0, inPrompt.length));
-    expect(bytes(`${hints.prompt}, ${hints.words[inPrompt.length] ?? ''}`)).toBeGreaterThan(
-      HINT_PROMPT_BYTES,
-    );
+    for (const [word, language] of [
+      [GU, 'gu'],
+      [HI, 'hi'],
+      ['Zentrova', 'en'],
+    ] as const) {
+      const long: CaptionWord[] = Array.from({ length: 120 }, (_, i) => ({
+        language,
+        word: `${word}${String(i)}`,
+      }));
+      const hints = hintsOf(long, language);
+      expect(hints.words).toHaveLength(HINT_WORDS);
+      expect(promptTokens(hints.prompt)).toBeLessThanOrEqual(HINT_PROMPT_TOKENS);
+      // Whole words from the start of the list, up to the first that does not fit, the first one last.
+      const inPrompt = hints.prompt.split(', ').reverse();
+      expect(inPrompt).toEqual(hints.words.slice(0, inPrompt.length));
+      expect(promptTokens(`${hints.words[inPrompt.length] ?? ''}, ${hints.prompt}`)).toBeGreaterThan(
+        HINT_PROMPT_TOKENS,
+      );
+    }
+    // Hindi and English carry far more words than 200 bytes would have (7 Gujarati words fit either way).
+    expect(
+      hintsOf(
+        Array.from({ length: 60 }, (_, i) => ({ language: 'en', word: `Zentrova${String(i)}` })),
+        'en',
+      ).prompt.split(', ').length,
+    ).toBeGreaterThan(30);
   });
 
   it('are read from the list as it is now, and worked out again only when it changes', () => {

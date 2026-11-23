@@ -47,7 +47,7 @@ const textOf = (text: string, language: SpeechLanguage = 'en'): string => fix(ph
 
 describe('how far apart two spellings are', () => {
   it('counts letters (code points) added, taken away or changed, and stops counting past the most allowed', () => {
-    const cp = (s: string) => [...s];
+    const cp = (s: string) => Array.from(s);
     expect(editDistance(cp('Zentrova'), cp('Zentrova'), 2)).toBe(0);
     expect(editDistance(cp('Zentrova'), cp('Zentroba'), 2)).toBe(1);
     expect(editDistance(cp('Zentrova'), cp('Zentrva'), 2)).toBe(1);

@@ -82,6 +82,8 @@ export interface CaptionsServiceDeps {
   };
   /** Separate private operator review; never included in the existing status. */
   prototypeChanged?: (review: CaptionReview) => void;
+  /** The caption words' spelling fixer (alpha.22): each phrase from the engine passes through it, partials too. */
+  spell?: (phrase: Heard) => Heard;
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
@@ -188,7 +190,11 @@ export class CaptionsService {
             to.state({ phase: 'held', reason: 'no-model' });
             return () => undefined;
           }
-          return this.deps.engine.start(language, to);
+          const spell = this.deps.spell;
+          return this.deps.engine.start(
+            language,
+            spell ? { heard: (h) => to.heard(spell(h)), state: (s) => to.state(s) } : to,
+          );
         },
       },
       log: deps.log,

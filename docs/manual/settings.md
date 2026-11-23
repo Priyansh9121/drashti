@@ -133,7 +133,7 @@ If the secret was not kept, **New secret** makes another. Copy it into the recei
 1. Choose **File**, then **Live Captions…**.
 2. Turn them on or off there.
 3. When the next speaker uses another language, choose **File**, then **Speaker’s Language**, then that language.
-4. Tell whoever looks after Drashti if they are wrong or lag behind.
+4. Tell whoever looks after Drashti if they are wrong or lag behind. Misspelt names and terms can be added under **Caption Words…** there.
 
 ![Live captions off, and the Gujarati trial's warning](../screenshots/captions-off.png)
 

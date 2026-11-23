@@ -34,14 +34,14 @@ export const CAPTION_WORD_LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string
 export type CheckedCaptionWord = { ok: true; word: string } | { ok: false; message: string };
 
 /** Gujarati's and Hindi's joiners (ZWNJ, ZWJ): kept as typed, left out when comparing. */
-const JOINERS = /[‌‍]/gu;
+const JOINERS = /[\u200c\u200d]/gu;
 /** Hidden signs other than the joiners, and control characters. */
 const HIDDEN = /[\p{Cc}\p{Cf}]/u;
 /** A word's ends: a letter or a digit at its start, and a letter, a sign (a vowel sign, a virama) or a digit at its end. */
 const STARTS = /^[\p{L}\p{N}]/u;
 const ENDS = /[\p{L}\p{M}\p{N}]$/u;
 
-const lettersIn = (text: string): number => [...text].length;
+const lettersIn = (text: string): number => Array.from(text).length;
 
 /** A word as the admin typed it, as it is kept; or why it cannot be. */
 export function checkCaptionWord(text: string): CheckedCaptionWord {
@@ -105,7 +105,9 @@ export function parseCaptionWords(raw: unknown): CaptionWord[] {
   const checked: CaptionWord[] = [];
   for (const item of raw as unknown[]) {
     if (typeof item !== 'object' || item === null) continue;
-    const { language, word } = item as Record<string, unknown>;
+    const fields = item as Record<string, unknown>;
+    const language = fields['language'];
+    const word = fields['word'];
     if (!isLanguage(language) || typeof word !== 'string') continue;
     const c = checkCaptionWord(word);
     if (c.ok) checked.push({ language, word: c.word });
@@ -116,7 +118,7 @@ export function parseCaptionWords(raw: unknown): CaptionWord[] {
 /** The list as its file: UTF-8 with the byte-order mark (so a spreadsheet reads the letters right), a heading line. */
 export function captionWordsCsv(words: readonly CaptionWord[]): string {
   const rows = words.map((w) => `${CAPTION_WORD_LANGUAGE_NAMES[w.language]},${w.word}\r\n`);
-  return `﻿Language,Word\r\n${rows.join('')}`;
+  return `\uFEFFLanguage,Word\r\n${rows.join('')}`;
 }
 
 const languageOf = (field: string): SpeechLanguage | null => {
@@ -133,8 +135,11 @@ const unquoted = (field: string): string => {
 };
 
 /**
- * A list's file read: one word a line, "language,word" (Gujarati, Hindi, Sanskrit or English, or gu, hi, sa, en). A
- * heading, blank lines and lines starting with # are passed over; each line that cannot be read is named, with why.
+ * A list's file read, in either of two shapes. One word a line, "language,word" (Gujarati, Hindi, Sanskrit or
+ * English, or gu, hi, sa, en), with or without the heading "Language,Word". Or a column for each language, named
+ * in the first line ("Gujarati,Hindi,English", or one name alone over a plain list): each row one term in its
+ * spellings, an empty cell passed over. Blank lines and lines starting with # are passed over; each line that cannot
+ * be read is named, with why.
  */
 export function readCaptionWordsCsv(text: string): {
   words: CaptionWord[];
@@ -142,31 +147,52 @@ export function readCaptionWordsCsv(text: string): {
 } {
   const words: CaptionWord[] = [];
   const problems: { line: number; message: string }[] = [];
-  const lines = text.replace(/^﻿/u, '').split(/\r\n|\n|\r/u);
+  const lines = text.replace(/^\uFEFF/u, '').split(/\r\n|\n|\r/u);
+  /** The first line's languages, when it names a column for each. */
+  let columns: SpeechLanguage[] | null = null;
   let first = true;
   lines.forEach((raw, i) => {
     const line = raw.trim();
     if (line === '' || line.startsWith('#')) return;
     const fields = line.split(',').map(unquoted);
-    const heading =
-      first &&
-      fields.length === 2 &&
-      /^language$/iu.test(fields[0] ?? '') &&
-      /^word$/iu.test(fields[1] ?? '');
-    first = false;
-    if (heading) return;
+    const problem = (message: string) => problems.push({ line: i + 1, message });
+    const add = (language: SpeechLanguage, word: string) => {
+      const c = checkCaptionWord(word);
+      if (c.ok) words.push({ language, word: c.word });
+      else problem(c.message);
+    };
+    if (first) {
+      first = false;
+      if (fields.length === 2 && /^language$/iu.test(fields[0] ?? '') && /^word$/iu.test(fields[1] ?? ''))
+        return;
+      const named = fields.map(languageOf);
+      if (named.every((l) => l !== null)) {
+        columns = named;
+        return;
+      }
+    }
+    if (columns) {
+      const own = columns;
+      if (fields.length > own.length) {
+        problem('More words than the first line has languages.');
+        return;
+      }
+      fields.forEach((field, j) => {
+        const language = own[j];
+        if (language && field !== '') add(language, field);
+      });
+      return;
+    }
     if (fields.length !== 2) {
-      problems.push({ line: i + 1, message: 'A language, a comma, then the word.' });
+      problem('A language, a comma, then the word.');
       return;
     }
     const language = languageOf(fields[0] ?? '');
     if (language === null) {
-      problems.push({ line: i + 1, message: 'The language is not Gujarati, Hindi, Sanskrit or English.' });
+      problem('The language is not Gujarati, Hindi, Sanskrit or English.');
       return;
     }
-    const c = checkCaptionWord(fields[1] ?? '');
-    if (c.ok) words.push({ language, word: c.word });
-    else problems.push({ line: i + 1, message: c.message });
+    add(language, fields[1] ?? '');
   });
   return { words, problems };
 }

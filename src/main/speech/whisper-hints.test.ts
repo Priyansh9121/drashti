@@ -23,7 +23,8 @@ function engineWith(hints: CaptionHints | undefined) {
     return child;
   };
   const answer: typeof fetch = (url, options) => {
-    if (String(url).endsWith('/health')) return Promise.resolve(new Response('{"status":"ok"}'));
+    const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+    if (href.endsWith('/health')) return Promise.resolve(new Response('{"status":"ok"}'));
     const body = options?.body;
     if (body instanceof FormData) {
       const prompt = body.get('prompt');
