@@ -520,3 +520,56 @@ for (const mode of ['pro', 'simple'] as const)
     }
     await app.close();
   });
+
+for (const size of [...SIZES, { width: 1024, height: 540 }])
+  test(`Practice show at ${String(size.width)} × ${String(size.height)}: notices use the capped live foot, controls fit, every Dismiss is reachable, and leaving returns the notices to the show`, async () => {
+    const { app } = await launchApp({ DRASHTI_TEST_NO_WIZARD: '0' });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await win.getByTestId('welcome').getByRole('button', { name: 'Try a practice show first' }).click();
+    await expect(win.getByTestId('practice-banner')).toBeVisible();
+    await sizeOperatorWindow(app, win, size);
+    await app.evaluate(
+      ({ BrowserWindow }, { refused, text }) => {
+        for (const w of BrowserWindow.getAllWindows()) {
+          if (!w.webContents.getURL().includes('index.html')) continue;
+          w.webContents.send('library:automatic-import-notice', { refused });
+          w.webContents.send('app:notice', { text });
+        }
+      },
+      { refused: REFUSED, text: LONG.notice },
+    );
+    const live = win.getByTestId('live-column');
+    const place = live.getByTestId('notice-place');
+    await expect(place.getByTestId('operator-notice')).toBeVisible();
+    await expect(place.getByTestId('import-notice')).toHaveCount(4);
+    for (const columns of Object.values(COLUMNS)) {
+      await setColumns(win, columns);
+      await liveColumnToTop(live);
+      for (const id of ['show-back', 'show-next'])
+        await expect(win.getByTestId(id)).toBeInViewport({ ratio: 1 });
+      for (const end of [false, true]) {
+        await scrollAll(win, end);
+        expect(await fitFaults(win)).toEqual([]);
+        expect(await smallTargets(win)).toEqual([]);
+      }
+      const dismisses = place.getByRole('button', { name: /^Dismiss/u });
+      await expect(dismisses).toHaveCount(6);
+      for (const dismiss of await dismisses.all()) {
+        await dismiss.scrollIntoViewIfNeeded();
+        await expect(dismiss).toBeInViewport({ ratio: 1 });
+      }
+      const heights = await live.evaluate((el) => {
+        const foot = el.querySelector<HTMLElement>('[data-testid="notice-place"]');
+        if (!foot) throw new Error('The notice foot is missing');
+        return { height: foot.clientHeight, most: Number.parseFloat(foot.style.maxHeight), all: foot.scrollHeight };
+      });
+      expect(heights.height).toBeLessThanOrEqual(heights.most);
+      expect(heights.all).toBeGreaterThan(heights.height);
+    }
+    await win.getByTestId('practice-leave').click();
+    await expect(win.getByTestId('practice-banner')).toHaveCount(0);
+    await expect(place.getByTestId('operator-notice')).toBeVisible();
+    await expect(place.getByTestId('import-notice')).toHaveCount(4);
+    await app.close();
+  });
