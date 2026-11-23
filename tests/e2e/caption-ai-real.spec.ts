@@ -59,6 +59,7 @@ async function fetchedPack(id: string): Promise<string> {
   } catch (e) {
     throw new Error(
       `The real caption pack ${id} is not fetched on this computer: run node scripts/fetch-caption-models.mjs --cache ${PACKS} ${id} first (CI does). ${(e as Error).message}`,
+      { cause: e },
     );
   }
 }
