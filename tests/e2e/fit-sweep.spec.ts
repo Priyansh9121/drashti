@@ -20,7 +20,6 @@ import {
   operatorPage,
   operatorReady,
   slideEditorWindow,
-  slidesOf,
   windowShowing,
 } from './helpers';
 import { releaseServer } from './release-server';
@@ -239,10 +238,13 @@ test('the operator window’s dialogs and sheets, each at the window’s least, 
     await dialog('a picture’s Rename… (a long name)', win.getByTestId('rename-dialog'), fileTool('Rename…'));
     await closeLibrary(win);
 
-    // A wallpaper of the long-named picture: its editor, Rename… and Delete….
+    // A wallpaper of the long-named picture, the one in use (so Delete… asks first): its editor, Rename… and Delete….
     await win.evaluate(async (id) => {
-      const added = await (globalThis as PageGlobals).drashti.wallpapers.add([id], null);
+      const d = (globalThis as PageGlobals).drashti;
+      const added = await d.wallpapers.add([id], null);
       if (!added.ok) throw new Error(added.message);
+      const chosen = await d.wallpapers.choose(added.ids[0] ?? '');
+      if (!chosen.ok) throw new Error(chosen.message);
     }, pictureId);
     const tile = win
       .getByTestId('wallpapers')
@@ -395,12 +397,10 @@ test('the slide editor’s window, each of its groups along the top, at its leas
     const win = await operatorPage(app);
     await operatorReady(win);
     await longShow(win);
-    await win
-      .getByTestId('playlists')
-      .getByTestId('playlist-node')
-      .filter({ hasText: LONG_PLAYLIST })
-      .click();
-    await slidesOf(win, LONG_WORDS).first().dblclick();
+    // Edit slides on the library's long-named words, as the operator opens it.
+    const sheet = await openLibrary(win);
+    await sheet.getByTestId('presentation-row').filter({ hasText: LONG_WORDS }).click();
+    await win.getByTestId('edit-slides').click();
     const { ed, editor } = await slideEditorWindow(app);
     const sizes = [await smallestContent(app, 'slide-editor.html'), CI_WINDOW, OWNERS_WINDOW];
     // The words chosen, so their settings show at the side.
@@ -484,7 +484,8 @@ test('the Access List’s window and its dialogs, at its least, at CI’s 1024 �
     const sizes = [await smallestContent(app, 'access-list.html'), CI_WINDOW, OWNERS_WINDOW];
     const page = list.locator('body');
     await each(list, 'the Access List', () =>
-      sweep(app, list, 'access-list.html', page, 'the Access List', sizes),
+      // Its table scrolls both ways inside itself, by design (design.md §51).
+      sweep(app, list, 'access-list.html', page, 'the Access List', sizes, ['access-table']),
     );
     const add = list.getByTestId('access-add-dialog');
     await each(list, 'the Access List’s Add a Gmail…, a long Gmail typed', async () => {

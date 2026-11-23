@@ -62,10 +62,11 @@ export async function sizeWindow(
 /**
  * What in `root` does not fit, each said once: words cut (cut with "…" only where the whole name shows on hover, as
  * Truncate does, design.md §7), a control or words cut by a box that does not scroll that way or by the window, two
- * of them lying over each other, one running out of the bordered box it is in, and anything scrolling sideways. The
- * screens' pictures (data-a11y-picture) are the slides' own and left out.
+ * of them lying over each other, one running out of the bordered box it is in, and anything scrolling sideways but
+ * what is made to (`sideways`, by test id: the Access List's table, design.md §51). The screens' pictures
+ * (data-a11y-picture) are the slides' own and left out.
  */
-function problemsIn(root: Element): string[] {
+function problemsIn(root: Element, sideways: readonly string[]): string[] {
   const out: string[] = [];
   const say = (line: string) => {
     if (!out.includes(line)) out.push(line);
@@ -122,7 +123,8 @@ function problemsIn(root: Element): string[] {
   // Anything that scrolls sideways.
   for (const el of everything) {
     const cs = getComputedStyle(el);
-    if (scrolls(cs.overflowX) && el.scrollWidth > el.clientWidth + 1 && shown(el))
+    const made = sideways.includes(el.getAttribute('data-testid') ?? '');
+    if (!made && scrolls(cs.overflowX) && el.scrollWidth > el.clientWidth + 1 && shown(el))
       say(`${label(el)} scrolls sideways (${String(el.scrollWidth)} > ${String(el.clientWidth)} px)`);
   }
 
@@ -187,7 +189,8 @@ function problemsIn(root: Element): string[] {
     if ((fixed || !docScrolls) && (box.t < -0.5 || box.b > vh + 0.5))
       say(`${label(el)} runs off the top or bottom of the window`);
     seen.set(el, box);
-    // Inside the bordered box it is in (a card, a field, a frame), unless that box is a control of its own.
+    // Inside the bordered box it is in (a card, a field, a frame), unless that box is a control of its own: what of it
+    // shows (a row scrolled half out of sight in a list is judged by its half in sight).
     for (let a = el.parentElement; a && root.contains(a); a = a.parentElement) {
       const as = getComputedStyle(a);
       const bordered = ['Top', 'Right', 'Bottom', 'Left'].every(
@@ -196,13 +199,7 @@ function problemsIn(root: Element): string[] {
       if (!bordered) continue;
       if (a.matches(CONTROL)) break;
       const r = a.getBoundingClientRect();
-      const own = el.getBoundingClientRect();
-      if (
-        own.left < r.left - 0.5 ||
-        own.right > r.right + 0.5 ||
-        own.top < r.top - 0.5 ||
-        own.bottom > r.bottom + 0.5
-      )
+      if (box.l < r.left - 0.5 || box.r > r.right + 0.5 || box.t < r.top - 0.5 || box.b > r.bottom + 0.5)
         say(`${label(el)} runs out of ${label(a)}`);
       break;
     }
@@ -273,6 +270,8 @@ export async function sweep(
   root: Locator,
   what: string,
   sizes: readonly Size[],
+  /** What is made to scroll sideways, by test id. */
+  sideways: readonly string[] = [],
 ): Promise<void> {
   for (const size of sizes) {
     const at = `${what} at ${String(size.width)} × ${String(size.height)}`;
@@ -283,7 +282,7 @@ export async function sweep(
     await expect
       .poll(
         async () => {
-          found = await root.evaluate(problemsIn);
+          found = await root.evaluate(problemsIn, sideways);
           return found;
         },
         { timeout: 3000, message: `${at}: settled` },
