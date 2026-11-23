@@ -520,6 +520,21 @@ test('before a screen first draws the show it draws every kind in both Movements
   await app.close();
 });
 
+test('where Chromium draws with a graphics chip the LIVE picture’s warm-up is unseen to its rounded corners, its native Cover copies drawn', async () => {
+  test.setTimeout(180_000);
+  // The native copies of a deck's wide and 4:3 Cover (X12 wide) are drawn only where Chromium draws with a chip (a21:
+  // on CI's Mac they showed at the LIVE box's four rounded corners, 42 pixels up to 30 levels, while the test above,
+  // without a chip, never drew them).
+  const { app } = await launchApp({ ...HOLD, ...WITH_A_CHIP, DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-ui-cover]')).toHaveCount(2, {
+    timeout: 30_000,
+  });
+  await expectWarmUp(win, '[data-testid="live-preview"]', 'the LIVE picture with a chip');
+  await app.close();
+});
+
 test('with a graphics chip the warm-up passes by itself and the show is drawn after it; the screen is black until then', async () => {
   test.setTimeout(180_000);
   const { app, userData } = await launchApp({ ...WITH_A_CHIP, DRASHTI_WINDOWED_OUTPUTS: '1' });
