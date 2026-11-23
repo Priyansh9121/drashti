@@ -79,6 +79,7 @@ import { dropboxStandIn, folderLink } from './dropbox-stand-in';
 import { longPress } from './phone-gestures';
 import { linkFinished, linkView, pasteLink } from './paste-link';
 import { importItem } from './import-details';
+import { liveColumnToTop } from './window-size';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -254,9 +255,7 @@ test('every appearance in Pro Mode in a show, and the Appearance window (Session
   await win.setViewportSize({ width: 1440, height: 900 });
   await running(win);
   const live = win.getByRole('complementary', { name: 'Live' });
-  await live.evaluate((el) => {
-    el.scrollTop = 0;
-  });
+  await liveColumnToTop(live);
   mkdirSync(join(folder, 'appearances'), { recursive: true });
   for (const [i, a] of BUILT_IN.entries()) {
     await chooseMenuItem(app, `appearance-${a.id}`);
@@ -277,10 +276,7 @@ test('the operator window and its panels', async () => {
   await running(win);
   // The live column from its top (starting the timer and showing the message scrolled it): the previews.
   const live = win.getByRole('complementary', { name: 'Live' });
-  const toTop = () =>
-    live.evaluate((el) => {
-      el.scrollTop = 0;
-    });
+  const toTop = () => liveColumnToTop(live);
   await toTop();
   await shot(win, 'operator-1920x1080');
 
@@ -2291,9 +2287,7 @@ test('the time bar: under LIVE in Pro Mode and in Simple Mode, Music’s own, an
         .getByRole('button', { name: 'Pause' }),
     ).toBeEnabled({ timeout: 15_000 });
   await letTimePass(win, 4000, 'the docs’ picture: a few seconds of each played');
-  await win.getByRole('complementary', { name: 'Live' }).evaluate((el) => {
-    el.scrollTop = 0;
-  });
+  await liveColumnToTop(win.getByRole('complementary', { name: 'Live' }));
   await part(win, 'time-bar', [win.getByTestId('live-preview'), bars]);
   // Music's own bar, in its panel.
   await music.scrollIntoViewIfNeeded();
@@ -2789,9 +2783,7 @@ test('the quick bar: four pins just above the bar of clears in a sabha, a press 
   await expect(pins).toHaveCount(4);
   await expect(pins).toContainText([`${WELCOME}_1`, `${KIRTAN}_2`, PICTURE, 'Car parking']);
   // The live column from its top (starting the timer and showing the message scrolled it).
-  await win.getByRole('complementary', { name: 'Live' }).evaluate((el) => {
-    el.scrollTop = 0;
-  });
+  await liveColumnToTop(win.getByRole('complementary', { name: 'Live' }));
   await shot(win, 'quick-bar');
   await app.close();
 });
@@ -3136,10 +3128,7 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   await win.setViewportSize({ width: 1280, height: 720 });
   await running(win);
   const live = win.getByRole('complementary', { name: 'Live' });
-  const toTop = () =>
-    live.evaluate((el) => {
-      el.scrollTop = 0;
-    });
+  const toTop = () => liveColumnToTop(live);
   await toTop();
   /** A dialog by its test id, open, its picture taken, then closed with Esc. */
   const dialogShot = async (testId: string, name: string) => {

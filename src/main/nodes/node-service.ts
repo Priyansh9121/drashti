@@ -84,7 +84,13 @@ export interface NodeServiceDeps {
   addresses(): string[];
   /** Listen on every interface, or on this computer only (tests). */
   bind: string;
-  engine: { snapshot(): EngineSnapshotMessage; state(): EngineState; rev(): number; session: string };
+  engine: {
+    snapshot(): EngineSnapshotMessage;
+    state(): EngineState;
+    rev(): number;
+    acceptsPress(rev: number, session: string): boolean;
+    session: string;
+  };
   /** What a node should copy, in order. */
   wanted(state: EngineState, everything: boolean): MediaWant[];
   /** Main’s common show-action layer: current access and Simple Mode are checked there again. */
@@ -819,7 +825,7 @@ export class NodeService implements EngineTransport {
       }
       return answer;
     };
-    if (request.session !== this.deps.engine.session || request.rev !== this.deps.engine.rev())
+    if (!this.deps.engine.acceptsPress(request.rev, request.session))
       return remember({
         id,
         status: 'stale',
