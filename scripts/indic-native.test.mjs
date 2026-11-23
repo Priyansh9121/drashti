@@ -17,7 +17,11 @@ test('native helper decodes generated PCM with real ORT and CTC blank/repeat rul
       ['frontend.bin', fixture.frontend],
     ])
       writeFileSync(join(root, name), data);
-    const program = buildIndic({ ort: process.env.DRASHTI_ORT_ROOT, output: join(root, 'bin') });
+    const program = buildIndic({
+      ort: process.env.DRASHTI_ORT_ROOT,
+      output: join(root, 'bin'),
+      target: process.env.DRASHTI_INDIC_TARGET,
+    });
     context.diagnostic(
       `helper bytes: ${statSync(program).size}; target: ${process.env.DRASHTI_INDIC_TARGET ?? `${process.platform}-${process.arch}`}`,
     );
