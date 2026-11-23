@@ -31,7 +31,9 @@ const SPELLING: CaptionSpelling = (h) => {
   return { ...h, words, text: words.map((w) => w.text).join(' ') };
 };
 
-function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<SpeechLanguage, typeof PACK_GU>> } = {}) {
+function setup(
+  o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<SpeechLanguage, typeof PACK_GU>> } = {},
+) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-ai-'));
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS, audience: true };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
@@ -105,7 +107,12 @@ function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<Speec
       final,
       language,
       languageConfidence: null,
-      words: words.map((w, i) => ({ text: w, startAt: startAt + i * 300, endAt: startAt + i * 300 + 250, confidence: 0.9 })),
+      words: words.map((w, i) => ({
+        text: w,
+        startAt: startAt + i * 300,
+        endAt: startAt + i * 300 + 250,
+        confidence: 0.9,
+      })),
       text,
       startAt,
       endAt,
@@ -113,7 +120,18 @@ function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<Speec
     });
   };
   const choose = (language: SpeechLanguage | 'auto') => service.setSettings({ ...settings, language });
-  return { service, ai, say, choose, started, shown, downloads, accepted, coordinator, lines: () => shown.at(-1)?.lines ?? null };
+  return {
+    service,
+    ai,
+    say,
+    choose,
+    started,
+    shown,
+    downloads,
+    accepted,
+    coordinator,
+    lines: () => shown.at(-1)?.lines ?? null,
+  };
 }
 
 /** Two phrases, each half then whole, Gujarati chosen; then off. */
@@ -198,7 +216,8 @@ describe('caption AI in the captions service', () => {
     expect(t.started).toEqual([]);
     expect(t.service.view().speech).toEqual({
       phase: 'failed',
-      message: 'Caption AI has no checked model for Hindi: import the model pack (Help › Caption and Translation Models…).',
+      message:
+        'Caption AI has no checked model for Hindi: import the model pack (Help › Caption and Translation Models…).',
     });
     t.choose('auto');
     expect(t.started).toEqual([]);

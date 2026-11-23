@@ -74,11 +74,18 @@ function setup(o: { spelling?: CaptionSpelling; language?: SpeechLanguage } = {}
       heardAt: Date.now(),
     });
   };
+  /** The operator corrects the clause shown now (x90's correction panel does this). */
+  const correct = (text: string): boolean => {
+    const c = coordinator.view().current;
+    if (!c) throw new Error('No clause is shown to correct');
+    return coordinator.correct({ sessionId: c.sessionId, phraseId: c.phraseId, revision: c.revision, text });
+  };
   return {
     hub,
     coordinator,
     flow,
     say,
+    correct,
     starts,
     finals,
     shown,
@@ -103,21 +110,27 @@ describe('caption AI path: recognizer -> hub -> flow -> coordinator -> screens',
     expect(t.starts).toEqual(['gu']);
     t.say('લીલું ખોખું', false);
     expect(t.lines()).toEqual(['લીલું ખોખું']);
-    expect(t.current()).toMatchObject({ phraseId: 's1', revision: 1, status: 'provisional', sourceLanguage: 'gu' });
+    expect(t.current()).toMatchObject({
+      phraseId: 's1',
+      revision: 1,
+      status: 'provisional',
+      sourceLanguage: 'gu',
+    });
     t.say('લીલું ખોખું ગોળ આકાર પાસે છે', true);
     vi.advanceTimersByTime(300);
     expect(t.lines()).toEqual(['લીલું ખોખું ગોળ આકાર પાસે છે']);
     expect(t.current()).toMatchObject({ revision: 2, status: 'settled' });
-    const settled = t.current()!;
-    expect(t.coordinator.correct({ ...settled, text: 'વાદળી ખોખું ગોળ આકાર પાસે છે' })).toBe(true);
+    expect(t.correct('વાદળી ખોખું ગોળ આકાર પાસે છે')).toBe(true);
     vi.advanceTimersByTime(300);
     expect(t.lines()).toEqual(['વાદળી ખોખું ગોળ આકાર પાસે છે']);
     expect(t.current()).toMatchObject({ revision: 3, status: 'corrected' });
     // A long phrase still fits the band: at most two lines of at most 40 letters (Medium).
     t.say(Array.from({ length: 30 }, (_, i) => (i % 2 === 0 ? 'લીલું' : 'ખોખું')).join(' '), true, 's2');
     vi.advanceTimersByTime(300);
-    expect(t.lines()!.length).toBeLessThanOrEqual(2);
-    for (const line of t.lines()!) expect([...line].length).toBeLessThanOrEqual(40);
+    const lines = t.lines() ?? [];
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.length).toBeLessThanOrEqual(2);
+    for (const line of lines) expect(Array.from(line).length).toBeLessThanOrEqual(40);
     expect(t.current()).toMatchObject({ phraseId: 's2', revision: 1, status: 'settled' });
   });
 
@@ -186,9 +199,10 @@ describe('caption AI path: recognizer -> hub -> flow -> coordinator -> screens',
     t.say('લીલું ખોખુ', true);
     expect(t.finals).toHaveLength(1);
     expect(t.finals[0]).toMatchObject({ id: 's1', final: true, text: 'લીલું ખોખું' });
-    expect(t.finals[0]!.words.map((w) => w.text)).toEqual(['લીલું', 'ખોખું']);
-    expect(t.finals[0]!.words[1]!.endAt).toBeLessThanOrEqual(t.finals[0]!.endAt);
-    t.coordinator.correct({ ...t.current()!, text: 'વાદળી ખોખું' });
+    const [final] = t.finals;
+    expect(final?.words.map((w) => w.text)).toEqual(['લીલું', 'ખોખું']);
+    expect(final?.words.at(-1)?.endAt).toBeLessThanOrEqual(final?.endAt ?? Number.NaN);
+    expect(t.correct('વાદળી ખોખું')).toBe(true);
     expect(t.finals).toHaveLength(1);
     // Without a glossary, the very phrase the hub gave (as today's feed passes it on).
     const plain = setup();

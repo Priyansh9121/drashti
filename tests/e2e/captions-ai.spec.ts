@@ -28,7 +28,10 @@ const outputWith = async (app: ElectronApplication, role: string): Promise<Page>
 };
 
 /** The hall, the stage and the stream's page, captions shown on the hall too. */
-async function threePlaces(win: Page, app: ElectronApplication): Promise<{ hall: Page; stage: Page; stream: Page }> {
+async function threePlaces(
+  win: Page,
+  app: ElectronApplication,
+): Promise<{ hall: Page; stage: Page; stream: Page }> {
   await setUpScreen(win, 'Main Hall', 0);
   const stageId = await setUpScreen(win, 'Stage', 1);
   await win.evaluate(async (screenId) => {
@@ -55,11 +58,17 @@ async function recordLines(p: Page): Promise<() => Promise<string[]>> {
     const seen: string[] = [];
     (globalThis as unknown as { captionLines: string[] }).captionLines = seen;
     const note = (): void => {
-      const lines = [...document.querySelectorAll('[data-testid="captions"] > div > div')].map((l) => l.textContent);
+      const lines = [...document.querySelectorAll('[data-testid="captions"] > div > div')].map(
+        (l) => l.textContent,
+      );
       const now = lines.join(' | ');
       if (seen.at(-1) !== now) seen.push(now);
     };
-    new MutationObserver(note).observe(document.body, { childList: true, subtree: true, characterData: true });
+    new MutationObserver(note).observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
     note();
   });
   return () => p.evaluate(() => [...(globalThis as unknown as { captionLines: string[] }).captionLines]);
@@ -72,7 +81,12 @@ test('caption AI off (the default): today’s captions exactly as now on the hal
     const win = await operatorPage(app);
     await operatorReady(win);
     const places = await threePlaces(win, app);
-    const drawn = await Promise.all([places.hall, places.stage, places.stream].map(recordLines));
+    const watched = await Promise.all(
+      [places.hall, places.stage, places.stream].map(async (page) => ({
+        page,
+        drawn: await recordLines(page),
+      })),
+    );
     await chooseMenuItem(app, 'live-captions');
     const dialog = win.getByTestId('captions-dialog');
     await dialog.getByTestId('captions-audience').click();
@@ -80,18 +94,18 @@ test('caption AI off (the default): today’s captions exactly as now on the hal
     await expect(dialog.getByTestId('captions-state')).toHaveText('Listening to the stream’s sound input.');
     // Today's roll-up: the phrase before stays above the one being heard ("alpha beta gamma | delta epsilon"),
     // which caption AI's coordinator never draws (it replaces a clause whole).
-    for (const [n, p] of [places.hall, places.stage, places.stream].entries()) {
+    const rollUp = /^(alpha beta gamma \| delta|delta epsilon zeta \| alpha)/u;
+    for (const { page, drawn } of watched) {
       await expect
-        .poll(async () => (await drawn[n]!()).some((lines) => /^(alpha beta gamma \| delta|delta epsilon zeta \| alpha)/u.test(lines)), {
-          timeout: 20_000,
-        })
+        .poll(async () => (await drawn()).some((lines) => rollUp.test(lines)), { timeout: 20_000 })
         .toBe(true);
-      await expect(p.getByTestId('captions')).toHaveAttribute('data-source', 'live');
+      await expect(page.getByTestId('captions')).toHaveAttribute('data-source', 'live');
     }
     await expect(places.stream.getByTestId('captions')).toHaveAttribute('data-screen', 'stream');
     // Off: off every place at once.
     await dialog.getByTestId('captions-on').click();
-    for (const p of [places.hall, places.stage, places.stream]) await expect(p.getByTestId('captions')).toHaveCount(0);
+    for (const p of [places.hall, places.stage, places.stream])
+      await expect(p.getByTestId('captions')).toHaveCount(0);
   } finally {
     await app.close();
   }
