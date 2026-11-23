@@ -439,3 +439,78 @@ describe('Help › Drashti Manual… (x37, Session 60: the owner’s "A, new Man
     },
   );
 });
+
+describe('Help › Save Diagnostics (alpha.21, logs for 100+ installs (c): the log of a chosen period)', () => {
+  it.each(PLATFORMS)(
+    'is a submenu in Pro Mode, Simple Mode and on a node: Today… (save-diagnostics, its old id), Yesterday…, The Last 7 Days…, then One Day with each earlier day kept, newest first, each saving its period (%s)',
+    (platform) => {
+      vi.useFakeTimers({ now: new Date(2026, 10, 23, 10), toFake: ['Date'] });
+      try {
+        const days = ['2026-11-23', '2026-11-22', '2026-11-20', '2026-11-19'];
+        for (const where of ['pro', 'simple', 'node'] as const) {
+          const saved: string[] = [];
+          const save = (p: string) => {
+            saved.push(p);
+          };
+          on(platform, () => {
+            if (where === 'node')
+              installNodeMenu({
+                priority: null,
+                saveDiagnostics: save,
+                reportProblem: nothing,
+                diagnostics: null,
+                logDays: () => days,
+              });
+            else installMenu({ ...actions(where).a, saveDiagnostics: save, logDays: () => days });
+          });
+          const menu = item('save-diagnostics-menu');
+          expect(menu, where).toMatchObject({ label: 'Save Diagnostics' });
+          const list = Array.isArray(menu?.submenu) ? menu.submenu : [];
+          expect(
+            list.map((m) => `${m.id ?? ''} ${m.label ?? ''}`),
+            where,
+          ).toEqual([
+            'save-diagnostics Today…',
+            'save-diagnostics-yesterday Yesterday…',
+            'save-diagnostics-last-7-days The Last 7 Days…',
+            'save-diagnostics-day One Day',
+          ]);
+          const oneDay = item('save-diagnostics-day');
+          const earlier = Array.isArray(oneDay?.submenu) ? oneDay.submenu : [];
+          expect(earlier.map((m) => `${m.id ?? ''} ${m.label ?? ''}`)).toEqual([
+            'save-diagnostics-2026-11-20 Fri 20 Nov…',
+            'save-diagnostics-2026-11-19 Thu 19 Nov…',
+          ]);
+          for (const id of [
+            'save-diagnostics',
+            'save-diagnostics-yesterday',
+            'save-diagnostics-last-7-days',
+            'save-diagnostics-2026-11-19',
+          ])
+            (item(id)?.click as (() => void) | undefined)?.();
+          expect(saved, where).toEqual(['today', 'yesterday', 'last-7-days', '2026-11-19']);
+          // Just above it, as before: Report a Problem….
+          const help = (built.at(-1) ?? []).find((m) => m.role === 'help')?.submenu;
+          const helpList = Array.isArray(help) ? help : [];
+          const at = helpList.findIndex((m) => m.id === 'save-diagnostics-menu');
+          expect(helpList[at - 1]?.id, where).toBe('report-problem');
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it('with no earlier day kept, has no One Day', () => {
+    vi.useFakeTimers({ now: new Date(2026, 10, 23, 10), toFake: ['Date'] });
+    try {
+      on('darwin', () => {
+        installMenu({ ...actions('pro').a, logDays: () => ['2026-11-23'] });
+      });
+      expect(item('save-diagnostics-day')).toBeUndefined();
+      expect(item('save-diagnostics')).toMatchObject({ label: 'Today…' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -3,6 +3,7 @@ import { core } from '../../tests/access-core';
 import { formatBytes } from './format';
 import {
   draftProblem,
+  readReportDraft,
   REPORT_LIMITS,
   reportCleanLines,
   reportComputerLine,
@@ -137,5 +138,26 @@ describe('what the window lets go to Review', () => {
     expect(draftProblem({ features: nine })).toBe(
       'At most 8 features in one report: send another for the rest.',
     );
+  });
+});
+
+describe('the log of a chosen period in a report (alpha.21, logs for 100+ installs (c))', () => {
+  const draft = {
+    features: [{ id: 'f', chapter: 'Placeholder', name: 'The time bar', what: 'Placeholder.', expected: '' }],
+    notice: null,
+    diagnostics: true,
+    crashFiles: false,
+    picture: false,
+  };
+
+  it('takes the period the window chose: Today, Yesterday, the last 7 days or one day; Today when none is said', () => {
+    for (const period of ['today', 'yesterday', 'last-7-days', '2026-11-20'] as const)
+      expect(readReportDraft({ ...draft, period })?.period, period).toBe(period);
+    expect(readReportDraft(draft)?.period).toBe('today');
+  });
+
+  it('refuses any other', () => {
+    for (const period of ['tomorrow', '2026-02-30', '', 7, null])
+      expect(readReportDraft({ ...draft, period }), String(period)).toBeNull();
   });
 });

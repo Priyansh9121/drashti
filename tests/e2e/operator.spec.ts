@@ -1,7 +1,16 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { join } from 'node:path';
 import type { OutputGlobals, PageGlobals } from './helpers';
 import { launchApp, openLibrary, operatorPage } from './helpers';
+import {
+  outputRefreshes,
+  paintFrames,
+  paintParts,
+  startRefreshTrace,
+  stopRefreshTrace,
+  watchPaintFrames,
+} from './paint-frames';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
@@ -63,6 +72,11 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   }
   await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
   await outputCaughtUp(false);
+  // From here, the output's frames and the frame that painted each change, and Chromium's own record of the refreshes
+  // it dropped (a21, QA21-FLAKY-1: tests/e2e/paint-frames.ts).
+  await watchPaintFrames(output);
+  const traceFile = join(test.info().outputDir, 'refreshes.trace.json');
+  await startRefreshTrace(app, output);
 
   // The first presentation is selected; its three slides are shown as thumbnails.
   await list.getByRole('button', { name: /^Language test slides/ }).click();
@@ -153,20 +167,34 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
     await outputCaughtUp();
   }
 
+  await stopRefreshTrace(app, traceFile);
+  const parts = paintParts(
+    new Map(revs.map((rev, i) => [rev, latencies[i] ?? Infinity])),
+    await paintFrames(output),
+    outputRefreshes(traceFile),
+  );
+  // Every change reaches the very first frame the output begins after it is drawn into the page: Drashti adds no
+  // frame of its own.
+  expect(
+    parts.filter((p) => !p.firstFrame).map((p) => p.rev),
+    'changes painted later than the first frame after they were drawn into the page',
+  ).toEqual([]);
   // Updates reach a painted frame on the output within one 60 Hz frame (16.7 ms) of leaving
   // the main process. The median must meet that; the slow end too: the 12th of the 15 (about 3 in 4)
-  // within two frames (34 ms). A rare scheduling hiccup is tolerated, a stall is not.
-  const sorted = [...latencies].sort((a, b) => a - b);
+  // within two frames (34 ms). A rare scheduling hiccup is tolerated, a stall is not. Drashti's part: less any
+  // refresh Chromium itself dropped while the change waited (its trace says which: on CI's Mac its frame timer wakes
+  // late, a21), the owner's "A, yes" (QA21-FLAKY-1).
+  const sorted = parts.map((p) => p.drashti).sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] ?? Infinity;
   const slowEnd = sorted[11] ?? Infinity;
   const worst = sorted.at(-1) ?? Infinity;
   console.log(
-    `output paint latency (ms): ${latencies.join(', ')}; median ${median}, 12th of ${sorted.length} ${slowEnd}, worst ${worst}`,
+    `output paint latency (ms): ${latencies.join(', ')}; Drashti's part ${parts.map((p) => p.drashti).join(', ')}; median ${median}, 12th of ${sorted.length} ${slowEnd}, worst ${worst}; refreshes Chromium dropped while a change waited: ${parts.flatMap((p) => p.dropped).join(', ') || 'none'}`,
   );
   // Where the time went (Sessions 31–36, the named flake: a CI Mac's median 18): each change's message and
   // render (sent to drawn into the page), then its wait for the next frame; and how far apart the output's
   // frames come.
-  const parts = await output.evaluate((revs) => {
+  const split = await output.evaluate((revs) => {
     const log = (globalThis as OutputGlobals).drashtiPaintLog ?? [];
     return revs.map((rev) => {
       const p = log.filter((e) => e.rev === rev).at(-1);
@@ -189,9 +217,9 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   );
   const gapsSorted = [...gaps].sort((a, b) => a - b);
   console.log(
-    `output paint latency, message and render + wait for the frame (ms): ${parts.join(', ')}; the output's frames ${(gapsSorted[Math.floor(gapsSorted.length / 2)] ?? 0).toFixed(1)} ms apart (median of 60), ${(gapsSorted.at(-1) ?? 0).toFixed(1)} at most`,
+    `output paint latency, message and render + wait for the frame (ms): ${split.join(', ')}; the output's frames ${(gapsSorted[Math.floor(gapsSorted.length / 2)] ?? 0).toFixed(1)} ms apart (median of 60), ${(gapsSorted.at(-1) ?? 0).toFixed(1)} at most`,
   );
-  expect(latencies).toHaveLength(15);
+  expect(parts).toHaveLength(15);
   expect(median).toBeLessThanOrEqual(17);
   expect(slowEnd).toBeLessThanOrEqual(34);
   expect(worst).toBeLessThan(250);

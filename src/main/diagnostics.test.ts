@@ -7,6 +7,7 @@ import { openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { PresentationRepo } from './db/presentations';
 import type { CrashFile } from './crash-files';
+import type { DiagnosticsWho } from './log-who';
 import type { DiagnosticsInput, NodeDiagnosticsInput } from './diagnostics';
 import {
   diagnosticsText,
@@ -18,6 +19,17 @@ import {
 } from './diagnostics';
 
 /* Placeholder names and words only. */
+
+/** Who made Main's file (alpha.21, logs (b)): made-up ids. */
+const MAIN_WHO: DiagnosticsWho = {
+  computer: 'Placeholder Hall Mac',
+  computerId: 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00',
+  installId: '7K3P-Q2XM-4H9A',
+  grantId: '0a1b2c3d4e5f60718293a4b5c6d7e8f9',
+  role: { mode: 'pro', owner: false },
+  made: 'pro',
+  period: 'Today, 2026-09-29',
+};
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -70,6 +82,7 @@ function setup() {
     crashFiles: { files: [], included: false },
     logFiles: [logFile],
     now: new Date(2026, 8, 29, 10, 5),
+    who: MAIN_WHO,
   };
   return { db, dir, input };
 }
@@ -137,6 +150,50 @@ describe('diagnostics', () => {
   });
 });
 
+describe('who and what (alpha.21, logs for 100+ installs (b))', () => {
+  /** The file's first section. */
+  const about = (text: string) => text.slice(0, text.indexOf('\n== ', 1));
+
+  it('Main’s file names its computer, its access-list entry and role, the install id, the version, the system and the log’s period', () => {
+    const { input } = setup();
+    const head = about(diagnosticsText(input));
+    expect(head).toContain('== Drashti diagnostics ==');
+    expect(head).toContain('Drashti 1.0.0; Electron 44, Chrome 152, Node 24');
+    expect(head).toMatch(/^System: darwin \S+ arm64; /mu);
+    expect(head).toContain('Computer: Placeholder Hall Mac');
+    expect(head).toContain('Computer id: c0ffee00c0ff…');
+    expect(head).toContain('Install id: 7K3P-Q2XM-4H9A');
+    expect(head).toContain('Access-list entry: grant 0a1b2c3d…');
+    expect(head).toContain('Role: Pro');
+    expect(head).toContain('Made in: Pro Mode');
+    expect(head).toMatch(/^Time zone: /mu);
+    expect(head).toContain('Log: Today, 2026-09-29');
+  });
+
+  it('so does a node’s, with the Main it follows', () => {
+    const head = about(nodeDiagnosticsText(nodeInputForWho()));
+    expect(head).toContain('== Drashti diagnostics (node) ==');
+    expect(head).toContain('Computer: Placeholder Lobby PC');
+    expect(head).toContain('Install id: Q2XM-4H9A-7K3P');
+    expect(head).toContain('Access-list entry: none: a node, following Main “Placeholder Main”');
+    expect(head).toContain('Made in: the node');
+    expect(head).toContain('Log: Yesterday, 2026-10-07');
+  });
+
+  it('never holds a Gmail address or a private value, wherever one was written (the scrubber)', () => {
+    const { input, dir } = setup();
+    writeFileSync(
+      input.logFiles[0] ?? '',
+      '2026-09-29T10:00:00.000Z [warn] placeholder.person@gmail.com could not be let in\n',
+    );
+    const saved = readFileSync(saveDiagnostics(dir, input), 'utf8');
+    expect(saved).not.toMatch(/@gmail\.com/u);
+    expect(saved).toContain('[email] could not be let in');
+    expect(saved).not.toContain(MAIN_WHO.grantId ?? '');
+    expect(saved).not.toContain(MAIN_WHO.computerId ?? '');
+  });
+});
+
 describe('the graphics in diagnostics (Session 60, the owner\u2019s Q60-37)', () => {
   it('holds how each feature draws, each GPU with its driver, and the video decoding Chromium offers', () => {
     const { input } = setup();
@@ -189,59 +246,75 @@ describe('the graphics in diagnostics (Session 60, the owner\u2019s Q60-37)', ()
   });
 });
 
-describe("a node's diagnostics (Session 17)", () => {
-  function nodeInput(): { dir: string; input: NodeDiagnosticsInput } {
-    const dir = mkdtempSync(join(tmpdir(), 'drashti-node-diag-'));
-    const logFile = join(dir, 'drashti.log');
-    writeFileSync(logFile, '2026-10-08T10:00:00.000Z [info] Node: link online\n');
-    return {
-      dir,
-      input: {
-        app: { version: '1.0.0', electron: '44', chrome: '152', node: '24', platform: 'win32', arch: 'x64' },
-        displays: [],
-        screens: [
-          {
-            name: 'Placeholder lobby screen',
-            groupName: 'Lobby',
-            role: 'audience',
-            canvasWidth: 1920,
-            canvasHeight: 1080,
-            scaling: 'fit',
-            enabled: true,
-            state: 'showing',
-            display: 'Display 2',
-            droppedFrames: 3,
-            paintedRev: 41,
-          },
-        ],
-        main: {
-          name: 'Placeholder Main',
-          addresses: ['192.0.2.10'],
-          port: 8741,
-          pairedAt: '2026-10-08T09:00:00.000Z',
-        },
-        link: { state: 'online', why: null, since: Date.UTC(2026, 9, 8, 9, 1) },
-        clock: { offsetMs: -3.6, rttMs: 1.2, at: Date.UTC(2026, 9, 8, 10, 4) },
-        rev: 41,
-        fromSaved: false,
-        media: {
-          wanted: 14,
-          ready: 13,
-          bytesWanted: 30 * 1024 ** 2,
-          bytesReady: 28 * 1024 ** 2,
-          copying: null,
-          missingNow: 1,
-          problem: null,
-        },
-        watchdog: [{ at: '2026-10-08T10:02:00.000Z', window: 'node window', kind: 'reloaded', reason: null }],
-        crashJournal: [{ n: 1, at: '2026-10-08T10:01:00.000Z', what: 'the GPU process crashed (code 11)' }],
-        crashFiles: { files: [], included: false },
-        logFiles: [logFile],
-        now: new Date(2026, 9, 8, 10, 5),
-      },
-    };
-  }
+/** A node's input, for the who-and-what tests. */
+function nodeInputForWho(): NodeDiagnosticsInput {
+  return nodeInput().input;
+}
 
+/** A node's diagnostics input: placeholder names. */
+function nodeInput(): { dir: string; input: NodeDiagnosticsInput } {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-node-diag-'));
+  const logFile = join(dir, 'drashti.log');
+  writeFileSync(logFile, '2026-10-08T10:00:00.000Z [info] Node: link online\n');
+  return {
+    dir,
+    input: {
+      app: { version: '1.0.0', electron: '44', chrome: '152', node: '24', platform: 'win32', arch: 'x64' },
+      displays: [],
+      screens: [
+        {
+          name: 'Placeholder lobby screen',
+          groupName: 'Lobby',
+          role: 'audience',
+          canvasWidth: 1920,
+          canvasHeight: 1080,
+          scaling: 'fit',
+          enabled: true,
+          state: 'showing',
+          display: 'Display 2',
+          droppedFrames: 3,
+          paintedRev: 41,
+        },
+      ],
+      main: {
+        name: 'Placeholder Main',
+        addresses: ['192.0.2.10'],
+        port: 8741,
+        pairedAt: '2026-10-08T09:00:00.000Z',
+      },
+      link: { state: 'online', why: null, since: Date.UTC(2026, 9, 8, 9, 1) },
+      clock: { offsetMs: -3.6, rttMs: 1.2, at: Date.UTC(2026, 9, 8, 10, 4) },
+      rev: 41,
+      fromSaved: false,
+      media: {
+        wanted: 14,
+        ready: 13,
+        bytesWanted: 30 * 1024 ** 2,
+        bytesReady: 28 * 1024 ** 2,
+        copying: null,
+        missingNow: 1,
+        problem: null,
+      },
+      watchdog: [{ at: '2026-10-08T10:02:00.000Z', window: 'node window', kind: 'reloaded', reason: null }],
+      crashJournal: [{ n: 1, at: '2026-10-08T10:01:00.000Z', what: 'the GPU process crashed (code 11)' }],
+      crashFiles: { files: [], included: false },
+      logFiles: [logFile],
+      now: new Date(2026, 9, 8, 10, 5),
+      who: {
+        computer: 'Placeholder Lobby PC',
+        computerId: null,
+        installId: 'Q2XM-4H9A-7K3P',
+        grantId: null,
+        role: null,
+        made: 'node',
+        main: 'Placeholder Main',
+        period: 'Yesterday, 2026-10-07',
+      },
+    },
+  };
+}
+
+describe("a node's diagnostics (Session 17)", () => {
   it('holds the link, the clock, the screens, the copies, the watchdog and the log, and no library part', () => {
     const { input } = nodeInput();
     const text = nodeDiagnosticsText(input);
