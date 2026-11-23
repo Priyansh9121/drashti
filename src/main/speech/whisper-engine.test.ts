@@ -2,9 +2,11 @@ import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DEFAULT_CAPTION_TIMING, type CaptionTiming } from '../../shared/captions';
 import type { Heard, SpeechState } from '../../shared/speech';
 import {
   createWhisperEngine,
+  isSpeech,
   SAMPLE_RATE,
   wavOf,
   wordsOf,
@@ -84,7 +86,9 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
   const servers: Server[] = [];
   const asked: string[] = [];
   const requestPaths: string[] = [];
+  const spawned: string[][] = [];
   const spawn = (_program: string, args: string[]): ChildProcess => {
+    spawned.push(args);
     const port = Number(args[args.indexOf('--port') + 1]);
     const requestPath = args.includes('--request-path')
       ? (args[args.indexOf('--request-path') + 1] ?? '')
@@ -135,7 +139,7 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
     };
     return child;
   };
-  return { spawn, asked, requestPaths, close: () => servers.forEach((s) => s.close()) };
+  return { spawn, asked, requestPaths, spawned, close: () => servers.forEach((s) => s.close()) };
 }
 
 /** Sound: a burst of tone (`ms` long) then quiet, as 100 ms chunks timed on the real clock. */
@@ -346,5 +350,88 @@ describe('the captions engine (Part 10)', () => {
     stops.push(missing.start('en', { heard: () => undefined, state: (s) => none.push(s) }));
     await waitFor(() => none.length > 0);
     expect(none[0]).toEqual({ phase: 'failed', message: 'This copy of Drashti has no captions engine.' });
+  });
+});
+
+describe('what counts as speech (alpha.22: the speech level)', () => {
+  it('standard, as captions always heard: well above the noise, and at least a plain speaking level', () => {
+    expect(isSpeech(450, 100, 'standard')).toBe(true);
+    expect(isSpeech(350, 100, 'standard')).toBe(false);
+    expect(isSpeech(850, 300, 'standard')).toBe(false);
+    expect(isSpeech(950, 300, 'standard')).toBe(true);
+  });
+
+  it('a quiet room hears softer speech; a noisy hall asks for louder speech', () => {
+    expect(isSpeech(250, 100, 'quiet-room')).toBe(true);
+    expect(isSpeech(250, 100, 'standard')).toBe(false);
+    expect(isSpeech(700, 100, 'noisy-hall')).toBe(false);
+    expect(isSpeech(900, 100, 'noisy-hall')).toBe(true);
+    expect(isSpeech(1_100, 300, 'noisy-hall')).toBe(false);
+  });
+});
+
+describe('the engine with a model per language and live timing (alpha.22)', () => {
+  it('reads the model for the speaker’s language and the timing once at each start: threads, step, pause, longest phrase', async () => {
+    const server = standIn();
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const modelsAsked: string[] = [];
+    let timingReads = 0;
+    const timing: CaptionTiming = {
+      ...DEFAULT_CAPTION_TIMING,
+      threads: 2,
+      // Shorter than any choice, so the test is quick: the longest phrase cuts a phrase still being spoken.
+      longestMs: 1_000 as CaptionTiming['longestMs'],
+      stepMs: 60_000 as CaptionTiming['stepMs'],
+    };
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: (language) => {
+        modelsAsked.push(language);
+        return `/placeholder/${language}.bin`;
+      },
+      fallback: () => true,
+      timing: () => {
+        timingReads += 1;
+        return timing;
+      },
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+    });
+    stops.push(
+      engine.start('gu', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    const args = server.spawned[0] ?? [];
+    expect(args[args.indexOf('-m') + 1]).toBe('/placeholder/gu.bin');
+    expect(args[args.indexOf('-t') + 1]).toBe('2');
+    expect(modelsAsked).toEqual(['gu']);
+    // Spoken on without a pause: the longest phrase ends it anyway, with no partial before (the step is long).
+    await sound.play(1_600, 0);
+    await waitFor(() => heard.some((h) => h.final));
+    expect(heard.filter((h) => !h.final)).toEqual([]);
+    expect(heard.find((h) => h.final)).toMatchObject({ id: 's1', language: 'gu' });
+    expect(server.asked.every((l) => l === 'gu')).toBe(true);
+    expect(timingReads).toBe(1);
+  });
+
+  it('keeps the timing it always had when none is given', async () => {
+    const server = standIn();
+    const states: SpeechState[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound: bursts(),
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+    });
+    stops.push(engine.start('en', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    const args = server.spawned[0] ?? [];
+    expect(args[args.indexOf('-t') + 1]).toBe('4');
   });
 });

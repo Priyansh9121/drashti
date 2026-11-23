@@ -1,6 +1,13 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CAPTION_MODEL_IDS, defaultModel, type CaptionModelId } from '../../shared/captions';
+import {
+  CAPTION_MODEL_IDS,
+  DEFAULT_CAPTION_TIMING,
+  defaultModel,
+  type CaptionModelId,
+  type CaptionTiming,
+  type LanguageModelLanguage,
+} from '../../shared/captions';
 
 /*
  * Whether live captions are on, and with which model (Session 55, Part 10). It belongs to the computer, not the
@@ -31,4 +38,18 @@ export function writeCaptionsSwitch(userData: string, value: CaptionsSwitch): vo
   const file = join(userData, FILE);
   writeFileSync(`${file}.writing`, JSON.stringify({ on: value.on, model: value.model }, null, 2));
   renameSync(`${file}.writing`, file);
+}
+
+/** A model per language and the live timing on this computer (alpha.22): not built yet (the red's stand-in). */
+export interface CaptionsTuning {
+  languageModels: Partial<Record<LanguageModelLanguage, string>>;
+  timing: CaptionTiming;
+}
+
+export function readCaptionsTuning(_userData: string): CaptionsTuning {
+  return { languageModels: {}, timing: { ...DEFAULT_CAPTION_TIMING, threads: 1 } };
+}
+
+export function writeCaptionsTuning(_userData: string, _value: CaptionsTuning): void {
+  // Not built yet.
 }

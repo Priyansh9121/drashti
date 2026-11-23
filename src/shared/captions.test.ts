@@ -4,7 +4,9 @@ import {
   captionLines,
   captionsFor,
   DEFAULT_CAPTION_SETTINGS,
+  DEFAULT_CAPTION_TIMING,
   parseCaptionSettings,
+  parseCaptionTiming,
   type CaptionsShown,
 } from './captions';
 
@@ -75,5 +77,17 @@ describe('where captions show (Part 10)', () => {
     expect(captionsFor(null, 'stream')).toBeNull();
     expect(captionsFor(undefined, 'stage')).toBeNull();
     expect(captionsFor({ ...shown, lines: [] }, 'stream')).toBeNull();
+  });
+});
+
+describe('live timing (alpha.22)', () => {
+  it('is read whole, and anything unknown falls back to the timing captions always had, field by field', () => {
+    expect(parseCaptionTiming(undefined)).toEqual(DEFAULT_CAPTION_TIMING);
+    expect(
+      parseCaptionTiming({ stepMs: 1_000, pauseMs: 500, longestMs: 6_000, speech: 'quiet-room', threads: 1 }),
+    ).toEqual({ stepMs: 1_000, pauseMs: 500, longestMs: 6_000, speech: 'quiet-room', threads: 1 });
+    expect(parseCaptionTiming({ stepMs: 100, pauseMs: '500', longestMs: 6_000, speech: 'x', threads: 3 })).toEqual(
+      { ...DEFAULT_CAPTION_TIMING, longestMs: 6_000 },
+    );
   });
 });

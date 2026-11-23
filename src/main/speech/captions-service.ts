@@ -1,6 +1,8 @@
 import {
   CAPTION_MODELS,
+  DEFAULT_CAPTION_TIMING,
   parseCaptionSettings,
+  type CaptionTiming,
   type CaptionModelId,
   type CaptionSettings,
   type CaptionsDownload,
@@ -41,6 +43,8 @@ export interface CaptionsServiceDeps {
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
+  /** The language models on this computer (alpha.22): not built yet (the red's stand-in). */
+  languageModels?: unknown;
 }
 
 export class CaptionsService {
@@ -115,6 +119,8 @@ export class CaptionsService {
       engine: engineProblem === null,
       engineProblem,
       trial: true,
+      languageModels: [],
+      timing: DEFAULT_CAPTION_TIMING,
     };
   }
 
@@ -262,6 +268,31 @@ export class CaptionsService {
       this.downloading = null;
       this.tell();
     }
+  }
+
+  /* A model per language and live timing (alpha.22): not built yet (the red's stand-in). */
+  languageModelFor(_language: string): null {
+    return null;
+  }
+
+  setLanguageModel(_language: string, _id: string | null): CaptionsStatus {
+    return this.view();
+  }
+
+  addLanguageModel(_language: string, _source: string): Promise<CaptionsStatus> {
+    return Promise.resolve(this.view());
+  }
+
+  checkLanguageModel(_language: string): Promise<CaptionsStatus> {
+    return Promise.resolve(this.view());
+  }
+
+  timing(): CaptionTiming {
+    return DEFAULT_CAPTION_TIMING;
+  }
+
+  setTiming(_timing: CaptionTiming): CaptionsStatus {
+    return this.view();
   }
 
   /** Tell the dialog now. */

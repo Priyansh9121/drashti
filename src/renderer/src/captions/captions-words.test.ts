@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CAPTION_SETTINGS, type CaptionsStatus } from '../../../shared/captions';
-import { captionsStateText, downloadText, megabytes } from './captions-words';
+import {
+  CAPTION_LONGEST_MS,
+  CAPTION_PAUSES_MS,
+  CAPTION_SPEECH_LEVELS,
+  CAPTION_STEPS_MS,
+  CAPTION_THREADS,
+  DEFAULT_CAPTION_SETTINGS,
+  DEFAULT_CAPTION_TIMING,
+  type CaptionsStatus,
+  type LanguageModelView,
+} from '../../../shared/captions';
+import {
+  captionsStateText,
+  downloadText,
+  languageModelText,
+  LONGEST_NAMES,
+  megabytes,
+  PAUSE_NAMES,
+  SPEECH_LEVEL_NAMES,
+  STEP_NAMES,
+  THREAD_NAMES,
+} from './captions-words';
 
 /* The Live captions dialog's words (Part 10). */
 
@@ -13,6 +33,8 @@ const view = (over: Partial<CaptionsStatus>): CaptionsStatus => ({
   engine: true,
   engineProblem: null,
   trial: true,
+  languageModels: [],
+  timing: DEFAULT_CAPTION_TIMING,
   ...over,
 });
 
@@ -52,5 +74,53 @@ describe('the Live captions dialog’s words (Part 10)', () => {
       ),
     ).toBe('Downloading the model: 120 of 488 MB.');
     expect(downloadText(view({}))).toBe('The model is on this computer.');
+  });
+});
+
+describe('a model per language and live timing in the dialog (alpha.22)', () => {
+  const model = (over: Partial<LanguageModelView>): LanguageModelView => ({
+    language: 'gu',
+    known: [],
+    chosen: null,
+    phase: 'general',
+    message: null,
+    ...over,
+  });
+
+  it('say which model hears each language, and what to do', () => {
+    expect(languageModelText(model({}))).toBe('The general model hears Gujarati.');
+    expect(languageModelText(model({ language: 'hi', chosen: 'placeholder-hi', phase: 'ready' }))).toBe(
+      'Hindi’s own model hears Hindi when the speaker’s language is Hindi. It is on this computer and checked.',
+    );
+    expect(languageModelText(model({ phase: 'checking' }))).toBe('Checking the file…');
+    expect(languageModelText(model({ phase: 'changed', chosen: 'placeholder-gu', message: 'Placeholder.' }))).toBe(
+      'Placeholder.',
+    );
+  });
+
+  it('name every timing choice plainly, the timing captions always had first', () => {
+    expect(CAPTION_STEPS_MS.map((v) => STEP_NAMES[v])).toEqual([
+      'Every 1.5 seconds (standard)',
+      'Every second (quicker; needs a faster computer)',
+    ]);
+    expect(CAPTION_PAUSES_MS.map((v) => PAUSE_NAMES[v])).toEqual([
+      'A pause of 0.7 seconds (standard)',
+      'A pause of 0.5 seconds (quicker; may split a sentence)',
+    ]);
+    expect(CAPTION_LONGEST_MS.map((v) => LONGEST_NAMES[v])).toEqual([
+      '12 seconds (standard)',
+      '8 seconds',
+      '6 seconds (long sentences show sooner)',
+    ]);
+    expect(CAPTION_SPEECH_LEVELS.map((v) => SPEECH_LEVEL_NAMES[v])).toEqual([
+      'Standard',
+      'Quiet room: hears softer speech',
+      'Noisy hall: needs louder speech',
+    ]);
+    expect(CAPTION_THREADS.map((v) => THREAD_NAMES[v])).toEqual([
+      '4 (standard)',
+      '2 (for a computer with two cores)',
+      '1 (the lightest)',
+    ]);
   });
 });

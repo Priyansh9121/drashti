@@ -1,4 +1,4 @@
-import type { CaptionsStatus } from '../../../shared/captions';
+import type { CaptionsStatus, LanguageModelView } from '../../../shared/captions';
 
 /* The Live captions dialog's words (Session 55, Part 10). */
 
@@ -41,3 +41,11 @@ export function downloadText(view: CaptionsStatus): string {
       return d.message ?? 'The model could not be downloaded.';
   }
 }
+
+/* A model per language and live timing (alpha.22): not built yet (the red's stand-in). */
+export const languageModelText = (_model: LanguageModelView): string => '';
+export const STEP_NAMES: Record<number, string> = {};
+export const PAUSE_NAMES: Record<number, string> = {};
+export const LONGEST_NAMES: Record<number, string> = {};
+export const SPEECH_LEVEL_NAMES: Record<string, string> = {};
+export const THREAD_NAMES: Record<number, string> = {};

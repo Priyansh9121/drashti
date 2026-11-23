@@ -2,6 +2,7 @@ import { spawn as spawnChild, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { constants, setPriority } from 'node:os';
+import type { CaptionTiming } from '../../shared/captions';
 import { SPEECH_RATE, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
@@ -27,7 +28,9 @@ export interface PcmSource {
 export interface WhisperEngineOptions {
   /** The engine program, or null when this copy of Drashti has none. */
   program: () => string | null;
-  model: () => string;
+  model: (language: SpeechLanguage | 'auto') => string;
+  /** Live timing (alpha.22): not built yet (the red's stand-in). */
+  timing?: () => CaptionTiming;
   /** Whether a failed piece is tried again warmer (whisper's fallback): off for the large model, which then loops less. */
   fallback: () => boolean;
   sound: PcmSource;
@@ -51,6 +54,11 @@ const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
   ['sanskrit', 'sa'],
   ['english', 'en'],
 ]);
+
+/** Whether a chunk's level is speech (alpha.22): not built yet (the red's stand-in). */
+export function isSpeech(_level: number, _floor: number, _speech: CaptionTiming['speech']): boolean {
+  throw new Error('not built yet');
+}
 
 /** A free port on 127.0.0.1 for the engine. */
 async function freePort(): Promise<number> {

@@ -4,18 +4,73 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_CAPTION_SETTINGS,
+  DEFAULT_CAPTION_TIMING,
   type CaptionModelId,
   type CaptionSettings,
   type CaptionsShown,
 } from '../../shared/captions';
 import type { Heard, SpeechState } from '../../shared/speech';
 import { CaptionsService, type CaptionsStatus } from './captions-service';
-import { readCaptionsSwitch } from './captions-switch';
+import { readCaptionsSwitch, readCaptionsTuning } from './captions-switch';
 import type { SpeechEngine } from './hub';
+import { LanguageModelRefused, type LanguageModelEntry } from './language-models';
 
 /* Live captions as an admin turns them on (Part 10): a stand-in engine and download; placeholder words only. */
 
-function setup(o: { engine?: boolean; failDownload?: boolean; controlDownload?: boolean } = {}) {
+/** A stand-in for the language models on this computer: one placeholder Gujarati model Drashti knows. */
+function languageStore() {
+  const entry: LanguageModelEntry = {
+    id: 'placeholder-gu',
+    language: 'gu',
+    name: 'Placeholder Gujarati',
+    bytes: 4_096,
+    sha256: 'a'.repeat(64),
+    licence: 'MIT',
+    fallback: true,
+  };
+  let phase: 'ready' | 'missing' | 'changed' = 'missing';
+  let onDisk: 'ready' | 'missing' | 'changed' = 'missing';
+  const added: string[] = [];
+  return {
+    entry,
+    added,
+    set: (now: 'ready' | 'missing' | 'changed', whole = now) => {
+      phase = now;
+      onDisk = whole;
+    },
+    store: {
+      known: () => [entry],
+      file: (e: LanguageModelEntry) => `/placeholder/${e.id}.bin`,
+      check: () => phase,
+      verify: () => {
+        phase = onDisk;
+        return Promise.resolve(onDisk);
+      },
+      add: (language: string, source: string) => {
+        added.push(source);
+        if (language === 'gu' && source === '/placeholder/known-gu.bin') {
+          phase = 'ready';
+          onDisk = 'ready';
+          return Promise.resolve(entry);
+        }
+        return Promise.reject(
+          new LanguageModelRefused(
+            'This file is not a model Drashti knows for Gujarati, so it was not added. Use a file from the approved list of captions models.',
+          ),
+        );
+      },
+    },
+  };
+}
+
+function setup(
+  o: {
+    engine?: boolean;
+    failDownload?: boolean;
+    controlDownload?: boolean;
+    languageModels?: ReturnType<typeof languageStore>['store'];
+  } = {},
+) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-service-'));
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
@@ -61,6 +116,7 @@ function setup(o: { engine?: boolean; failDownload?: boolean; controlDownload?: 
     show: (c) => shown.push(c),
     changed: (v) => views.push(v),
     log: { info: () => undefined, warn: () => undefined },
+    ...(o.languageModels ? { languageModels: o.languageModels } : {}),
   });
   const say = (text: string, id = 's1') => {
     const endAt = Date.now() - 1_000;
@@ -210,5 +266,145 @@ describe('live captions as an admin turns them on (Part 10)', () => {
     expect(service.view().engine).toBe(false);
     expect(started).toEqual([]);
     expect(downloads).toEqual([]);
+  });
+});
+
+describe('a model per language and live timing (alpha.22)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(Date.UTC(2026, 10, 23, 12, 0, 0));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('start as captions always were: the general model for every language, and the timing they always had', async () => {
+    const { service, started } = setup();
+    service.start();
+    await service.setOn(true);
+    const view = service.view();
+    expect(view.languageModels.map((m) => [m.language, m.phase, m.chosen, m.known.length])).toEqual([
+      ['gu', 'general', null, 0],
+      ['hi', 'general', null, 0],
+      ['en', 'general', null, 0],
+    ]);
+    expect(view.timing).toEqual(DEFAULT_CAPTION_TIMING);
+    expect(service.timing()).toEqual(DEFAULT_CAPTION_TIMING);
+    expect(started).toEqual(['auto']);
+    expect(service.languageModelFor('gu')).toBeNull();
+  });
+
+  it('a chosen model of its own hears its language once it is here and checked; the general model hears the others', async () => {
+    const lm = languageStore();
+    const { service, started, userData } = setup({ languageModels: lm.store });
+    service.start();
+    await service.setOn(true);
+    lm.set('ready');
+    service.setLanguageModel('gu', 'placeholder-gu');
+    expect(readCaptionsTuning(userData).languageModels).toEqual({ gu: 'placeholder-gu' });
+    service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'gu' });
+    expect(started).toEqual(['auto', 'gu']);
+    expect(service.languageModelFor('gu')).toEqual(lm.entry);
+    expect(service.languageModelFor('hi')).toBeNull();
+    expect(service.languageModelFor('auto')).toBeNull();
+    expect(service.languageModelFor('sa')).toBeNull();
+    expect(service.view().languageModels[0]).toMatchObject({
+      language: 'gu',
+      chosen: 'placeholder-gu',
+      phase: 'ready',
+      known: [{ id: 'placeholder-gu', name: 'Placeholder Gujarati', bytes: 4_096, here: true }],
+    });
+    // Back to the general model for Gujarati: chosen on this computer, listening starts again with it.
+    service.setLanguageModel('gu', null);
+    expect(service.languageModelFor('gu')).toBeNull();
+    expect(started).toEqual(['auto', 'gu', 'gu']);
+    // An id this copy does not know for the language is not taken.
+    service.setLanguageModel('hi', 'placeholder-gu');
+    expect(service.view().languageModels[1]).toMatchObject({ chosen: null, phase: 'general' });
+  });
+
+  it('never hears with a file changed since it was checked, nor with the general model instead: it says so', async () => {
+    const lm = languageStore();
+    const { service, started } = setup({ languageModels: lm.store });
+    service.start();
+    await service.setOn(true);
+    lm.set('ready');
+    service.setLanguageModel('gu', 'placeholder-gu');
+    lm.set('changed', 'changed');
+    service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'gu' });
+    expect(started).toEqual(['auto']);
+    const message =
+      'The Gujarati model’s file has changed since Drashti checked it, so captions do not use it. Check it again, or add its file again.';
+    expect(service.view().speech).toEqual({ phase: 'failed', message });
+    expect(service.view().languageModels[0]).toMatchObject({ phase: 'changed', message });
+    expect(service.languageModelFor('gu')).toBeNull();
+    // Checked again whole and still changed: still not used.
+    await service.checkLanguageModel('gu');
+    expect(started).toEqual(['auto']);
+    // Only touched: checked whole, it is used again.
+    lm.set('changed', 'ready');
+    await service.checkLanguageModel('gu');
+    expect(service.view().languageModels[0]).toMatchObject({ phase: 'ready', message: null });
+    expect(started).toEqual(['auto', 'gu']);
+  });
+
+  it('says so when the chosen model is not on this computer', async () => {
+    const lm = languageStore();
+    const { service, started } = setup({ languageModels: lm.store });
+    service.start();
+    await service.setOn(true);
+    service.setLanguageModel('gu', 'placeholder-gu');
+    service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'gu' });
+    const message = 'The Gujarati model is not on this computer: add its file in File › Live Captions….';
+    expect(service.view().speech).toEqual({ phase: 'failed', message });
+    expect(service.view().languageModels[0]).toMatchObject({ phase: 'missing', message });
+    expect(started).toEqual(['auto']);
+  });
+
+  it('adds a model file chosen for a language: one it knows is used; one it does not is refused plainly; never while the stream is in use', async () => {
+    const lm = languageStore();
+    const { service, started } = setup({ languageModels: lm.store });
+    service.start();
+    await service.setOn(true);
+    service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'gu' });
+    service.setStreamInUse(true);
+    await service.addLanguageModel('gu', '/placeholder/known-gu.bin');
+    expect(lm.added).toEqual([]);
+    expect(service.view().languageModels[0]?.message).toBe(
+      'Add a model file when the stream and recording have stopped.',
+    );
+    service.setStreamInUse(false);
+    await service.addLanguageModel('gu', '/placeholder/other.bin');
+    expect(service.view().languageModels[0]).toMatchObject({
+      chosen: null,
+      phase: 'general',
+      message:
+        'This file is not a model Drashti knows for Gujarati, so it was not added. Use a file from the approved list of captions models.',
+    });
+    expect(started).toEqual(['auto', 'gu']);
+    await service.addLanguageModel('gu', '/placeholder/known-gu.bin');
+    expect(service.view().languageModels[0]).toMatchObject({
+      chosen: 'placeholder-gu',
+      phase: 'ready',
+      message: null,
+    });
+    expect(service.languageModelFor('gu')).toEqual(lm.entry);
+    // Listening started again, now with Gujarati's own model.
+    expect(started).toEqual(['auto', 'gu', 'gu']);
+  });
+
+  it('keeps the live timing on this computer and starts listening again with it', async () => {
+    const { service, started, userData } = setup();
+    service.start();
+    await service.setOn(true);
+    const quicker = { ...DEFAULT_CAPTION_TIMING, stepMs: 1_000, longestMs: 8_000, threads: 2 } as const;
+    expect(service.setTiming(quicker).timing).toEqual(quicker);
+    expect(readCaptionsTuning(userData).timing).toEqual(quicker);
+    expect(service.timing()).toEqual(quicker);
+    expect(started).toEqual(['auto', 'auto']);
+    // Off, a change is kept and nothing starts.
+    await service.setOn(false);
+    service.setTiming(DEFAULT_CAPTION_TIMING);
+    expect(started).toEqual(['auto', 'auto']);
   });
 });
