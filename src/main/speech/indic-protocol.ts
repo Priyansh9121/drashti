@@ -28,7 +28,11 @@ export function pcmFrame(samples: Int16Array): Buffer {
 
 export function routeCFiles(pack: IndicPack | null, language: SpeechLanguage | 'auto'): IndicFiles | null {
   if (language !== 'gu' && language !== 'hi') return null;
-  if (pack?.format !== 'indicconformer-ctc-onnx-v1' || !pack.purposes.includes(`captions-${language}`))
+  if (
+    pack?.format !== 'indicconformer-ctc-onnx-v1' ||
+    pack.purposes.length !== 1 ||
+    pack.purposes[0] !== `captions-${language}`
+  )
     return null;
   const named = (name: string): string | null => {
     const matches = pack.files.filter((file) => basename(file.name.replaceAll('\\', '/')) === name);

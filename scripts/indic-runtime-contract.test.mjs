@@ -27,9 +27,15 @@ test('the shared recogniser seam refuses unsupported languages even if a pack cl
 });
 
 test('a language-masked CTC graph cannot claim both Gujarati and Hindi', () => {
-  const pack = { format: 'indicconformer-ctc-onnx-v1', purposes: ['captions-gu', 'captions-hi'], files: [
-    { name: 'model.onnx', path: '/p/model.onnx' }, { name: 'tokens.txt', path: '/p/tokens.txt' }, { name: 'frontend.bin', path: '/p/frontend.bin' },
-  ] };
+  const pack = {
+    format: 'indicconformer-ctc-onnx-v1',
+    purposes: ['captions-gu', 'captions-hi'],
+    files: [
+      { name: 'model.onnx', path: '/p/model.onnx' },
+      { name: 'tokens.txt', path: '/p/tokens.txt' },
+      { name: 'frontend.bin', path: '/p/frontend.bin' },
+    ],
+  };
   assert.equal(routeCFiles(pack, 'gu'), null);
   assert.equal(routeCFiles(pack, 'hi'), null);
 });

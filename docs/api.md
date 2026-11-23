@@ -629,7 +629,7 @@ The separate `access-list/error-reports/` Apps Script project authenticates `{v:
 
 `createIndicEngine` implements `SpeechEngine`, selected only by the caption integration’s explicit model choice.
 `acquire(language, signal)` obtains and holds cap-pack’s checked model through native process exit; `routeCFiles`
-accepts only `indicconformer-ctc-onnx-v1`, purpose `captions-gu` or `captions-hi`, with `model.onnx`, `tokens.txt` and
+accepts only `indicconformer-ctc-onnx-v1`, exactly one purpose (`captions-gu` or `captions-hi`), with `model.onnx`, `tokens.txt` and
 `frontend.bin`. The graph takes `[1,80,T]` float features and `[1]` int64 length; its first output is `[1,T/4,257]`
 float language-masked CTC scores (blank 256). Tokens are 256 UTF-8 pieces and `<blank>` last; the front end is
 80 × 257 little-endian float32 Slaney mel weights, matching the export. No Python or model-supplied code runs.
