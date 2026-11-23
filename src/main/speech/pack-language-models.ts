@@ -40,7 +40,7 @@ function conformerFile(files: readonly PackFile[], entry: LanguageModelEntry): s
   for (const want of wanted) {
     const named = files.filter((f) => f.name !== undefined && baseName(f.name) === want.name);
     const [only] = named;
-    if (named.length !== 1 || !only || only.sha256 !== want.sha256 || only.bytes !== want.bytes) return null;
+    if (named.length !== 1 || only?.sha256 !== want.sha256 || only.bytes !== want.bytes) return null;
     model ??= only.path;
   }
   return model;
