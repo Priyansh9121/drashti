@@ -10,6 +10,7 @@ import type { Engine } from './devices';
 import { apiCall, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken, PHONE } from './devices';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { longPress } from './phone-gestures';
 import { setUpPlaceholderShow } from './placeholder-show';
 import { makeTestImage } from './test-media';
 
@@ -17,11 +18,11 @@ import { makeTestImage } from './test-media';
  * The whole-app fit pass, part 3 (alpha.21, the owner's "dont like the design here. frontend issue." and "all good fit
  * in 21", 22 Nov 2026): what people open on a phone or another browser. Each page at 360 × 740, 390 × 844 and
  * 430 × 932, upright and held sideways, and on a 768 × 1024 tablet, in Safari's engine and Chrome's, with long
- * placeholder names: the phone remote on each of its tabs and in each of its sheets and its viewer, files from phones
- * (Add from this Phone… and Shared from Drashti), the pairing page (as a QR code opens it, a wrong code, a device
- * removed), the announcements page with what it sent, the stage display, and the access list's pages an emailed
- * Approve or Reject link opens (the link page on GitHub Pages, and the one a link sent before x38 opens on the web
- * app). On each, nothing is cut, lies over another, is under another, or is off the screen with no way to it; nothing
+ * placeholder names: the phone remote on each of its tabs and in each of its sheets, its viewer, a row's menu and the
+ * Picture editor, files from phones (Add from this Phone… and Shared from Drashti), the pairing page (as a QR code opens
+ * it, a wrong code, a device removed), the announcements page with what it sent, the stage display, and the access
+ * list's pages an emailed Approve or Reject link opens (the link page on GitHub Pages, and the one a link sent before
+ * x38 opens on the web app). On each, nothing is cut, lies over another, is under another, or is off the screen with no way to it; nothing
  * scrolls sideways; every target is 44 px (docs/design.md §5, §16); no box a phone types in has words under 16 px (a
  * phone zooms in on one); and on Drashti's own phone pages no words are under 16 px (§16, its two small kinds
  * aside). The remote is one screen: Back and Next wholly on it, only its middle scrolling. Placeholder names and
@@ -506,14 +507,41 @@ function remoteViews(layout: 'phone' | 'wide', playlistId: string): View[] {
   const more = phone ? (p: Page) => chosen(p, 'remote-tab-more') : () => Promise.resolve();
   const playlist = (p: Page) => chosen(p, phone ? 'remote-tab-playlist' : 'remote-side-playlist');
   const library = (p: Page) => chosen(p, phone ? 'remote-tab-library' : 'remote-side-library');
+  const openPlaylist = async (p: Page) => {
+    await playlist(p);
+    await p.getByTestId('remote-playlist').selectOption(playlistId);
+    await expect(p.getByTestId('remote-items')).toContainText(LONG.presentation);
+  };
+  /** The long-named picture's row in the playlist. */
+  const pictureRow = (p: Page) =>
+    p.getByTestId('remote-items').locator('[data-testid="remote-item"][data-kind="media"]').filter({
+      hasText: LONG.picture,
+    });
   return [
     { name: phone ? 'the Show tab' : 'the show beside the playlist', open: show },
+    { name: 'the playlist', open: openPlaylist },
     {
-      name: 'the playlist',
+      name: "a picture's menu in the playlist (a long press)",
       open: async (p) => {
-        await playlist(p);
-        await p.getByTestId('remote-playlist').selectOption(playlistId);
-        await expect(p.getByTestId('remote-items')).toContainText(LONG.presentation);
+        await openPlaylist(p);
+        await longPress(pictureRow(p));
+      },
+      close: async (p) => {
+        await p.getByTestId('remote-row-menu-close').click();
+        await expect(p.getByTestId('remote-row-menu')).toHaveCount(0);
+      },
+    },
+    {
+      name: 'the Picture editor, from the menu',
+      open: async (p) => {
+        await openPlaylist(p);
+        await longPress(pictureRow(p));
+        await p.getByTestId('remote-row-menu').getByTestId('remote-menu-edit').click();
+        await expect(p.getByTestId('remote-picture-editor').getByTestId('remote-pe-frame')).toBeVisible();
+      },
+      close: async (p) => {
+        await p.getByTestId('remote-pe-cancel').click();
+        await expect(p.getByTestId('remote-picture-editor')).toHaveCount(0);
       },
     },
     {

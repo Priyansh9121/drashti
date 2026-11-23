@@ -119,9 +119,9 @@ for (const engine of ['webkit', 'chromium'] as const satisfies readonly Engine[]
       expect(await overflowsSideways(p)).toBe(false);
       await expectNoSeriousA11yIssues(p, `the playlist’s rows on a phone (${engine})`);
 
-      // Sideways: the same rows, still one tap each.
+      // Sideways: the same rows, still one tap each (since alpha.21 the tabs at the side).
       await p.setViewportSize({ width: 812, height: 375 });
-      await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', 'phone');
+      await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', 'sideways');
       await p.getByTestId('remote-tab-playlist').click();
       await slideRow(p, `${WELCOME}_1`).click();
       await expect.poll(async () => (await where(win)).presentationId).toBe(show.welcomeId);
