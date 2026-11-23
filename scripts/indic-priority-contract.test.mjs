@@ -109,3 +109,10 @@ test('malformed UTF-8 and output over 64KiB close the child without forwarding t
     assert.equal(child.killed, true);
   }
 });
+
+test('readiness without protocol and audio-format negotiation is refused', async () => {
+  const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), kill() {}, pid: 1 });
+  const opening = openIndicPipe({ program: '/fake', language: 'gu', files: { model: '/model', tokens: '/tokens', frontend: '/frontend' }, spawn: () => child, priority() {} });
+  child.stdout.emit('data', Buffer.from('{"ready":true}\n'));
+  await assert.rejects(opening.then((pipe) => { pipe.close(); return pipe; }), /protocol/);
+});
