@@ -14,7 +14,7 @@ import {
   type CaptionsStatus,
 } from '../../shared/captions';
 import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
-import type { Heard, SpeechLanguage } from '../../shared/speech';
+import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
 import type { CaptionRecognizer } from './caption-routes';
 import {
   chooseCaptionPath,
@@ -151,7 +151,13 @@ export class CaptionsService {
     this.hub = createSpeechHub({
       engine: {
         // The model first: without it the hub is held (no-model) until it is downloaded.
-        start: (language, to) => {
+        start: (language, given) => {
+          // The caption words' fixer (cap-glossary) on every phrase from whichever engine hears: caption AI's, a
+          // language's own model or the general one.
+          const spell = this.deps.spell;
+          const to = spell
+            ? { heard: (h: Heard) => given.heard(spell(h)), state: (s: SpeechState) => given.state(s) }
+            : given;
           // Caption AI: the speaker's language, and its checked model from the pack (never a download).
           if (this.useAi()) {
             if (language === 'auto') {
@@ -190,11 +196,7 @@ export class CaptionsService {
             to.state({ phase: 'held', reason: 'no-model' });
             return () => undefined;
           }
-          const spell = this.deps.spell;
-          return this.deps.engine.start(
-            language,
-            spell ? { heard: (h) => to.heard(spell(h)), state: (s) => to.state(s) } : to,
-          );
+          return this.deps.engine.start(language, to);
         },
       },
       log: deps.log,
