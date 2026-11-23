@@ -78,8 +78,11 @@ function useField(own: { id?: string | undefined; 'aria-describedby'?: string | 
   };
 }
 
-export const controlClass =
-  'h-8 rounded-md border border-field bg-panel-2 px-2 text-sm text-fg placeholder:text-faint hover:border-muted aria-invalid:border-danger disabled:cursor-not-allowed disabled:opacity-50';
+/** A control's look, its height apart. */
+const controlLook =
+  'rounded-md border border-field bg-panel-2 px-2 text-sm text-fg placeholder:text-faint hover:border-muted aria-invalid:border-danger disabled:cursor-not-allowed disabled:opacity-50';
+
+export const controlClass = `h-8 ${controlLook}`;
 
 export function TextInput({
   className,
@@ -125,13 +128,16 @@ export function Select({
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement> & { ref?: Ref<HTMLSelectElement> }) {
   const tie = useField(props);
+  // A height given (h-7 in the slide editor's groups) is the control's own: the select fills its box, 32 px otherwise
+  // (alpha.21's fit pass: in a 28 px box it stayed 32 px, and lay over the name of its group of tools under it).
+  const ownHeight = /(?:^|\s)h-/u.test(className ?? '');
   return (
-    <span className={cx('relative inline-flex min-w-0', className)}>
+    <span className={cx('relative inline-flex min-w-0', !ownHeight && 'h-8', className)}>
       <select
         ref={ref}
         {...props}
         {...tie}
-        className={cx(controlClass, 'w-full min-w-0 appearance-none truncate pr-7')}
+        className={cx(controlLook, 'h-full w-full min-w-0 appearance-none truncate pr-7')}
       >
         {children}
       </select>

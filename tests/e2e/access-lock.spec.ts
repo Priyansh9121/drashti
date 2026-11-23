@@ -239,11 +239,11 @@ test('the lock screen fits a small window and says what is wrong on the field it
   }
 });
 
-/** Everything a Drashti has written to its log, every file of it (drashti.log, then drashti.1.log… as it fills). */
+/** Everything a Drashti has written to its log, every file of it (drashti.log, and since alpha.21 each earlier day's drashti-YYYY-MM-DD.log and its parts). */
 function logOf(userData: string): string {
   const dir = join(userData, 'logs');
   return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
+    .filter((f) => /^drashti(?:-\d{4}-\d{2}-\d{2})?(?:\.\d+)?\.log$/u.test(f))
     .map((f) => readFileSync(join(dir, f), 'utf8'))
     .join('\n');
 }

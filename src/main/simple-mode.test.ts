@@ -647,6 +647,8 @@ describe('Simple Mode locks', () => {
       IPC.media.undoConversion,
       // The slide editor's Save a PDF copy…, and the default transition (every presentation's).
       IPC.library.exportPdf,
+      // Make a slide… (alpha.21): a new presentation, as New › QR code… makes one.
+      IPC.slideEditor.makeSlide,
       IPC.library.setDefaultTransition,
       // A timer slide's timer (Timers are Pro Mode's), words, and New › QR code….
       IPC.timers.update,
@@ -700,6 +702,20 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_BOUNDED.has(IPC.quickBar.set)).toBe(false);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.quickBar.view);
     expect(answers.get(IPC.quickBar.set)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  });
+
+  it('Read Words from a Page… (book OCR, alpha.21) is Pro Mode’s, as New presentation is: nothing read, nothing stopped', () => {
+    for (const channel of [
+      IPC.library.readWordsChoose,
+      IPC.library.readWords,
+      IPC.library.stopReadingWords,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+    }
+    expect(answers.get(IPC.library.readWordsChoose)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(answers.get(IPC.library.readWords)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(answers.get(IPC.library.stopReadingWords)?.()).toBe(false);
   });
 
   it('New › QR code… (Session 55, Part 8) is Pro Mode’s: Simple Mode makes no slide', () => {

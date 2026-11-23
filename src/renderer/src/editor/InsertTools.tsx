@@ -1,6 +1,11 @@
 import { slideCanvas } from '../../../shared/document-page';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { MediaElement, Rect } from '../../../shared/model';
+import type { CropRect, CropShape } from '../../../shared/picture-look';
+import { CropBox, cropForShape, CropShapes } from '../pictures/CropBox';
+import { cropReadout, keptCrop, shownCrop } from '../pictures/crop-box';
+import { PlacedInParent } from '../render/Placed';
+import { ElementView } from '../render/SlideView';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, NumberInput } from '../ui/Field';
@@ -191,24 +196,30 @@ function TableDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Its read-out's id, for the box's screen-reader description. */
+const CROP_READOUT_ID = 'slide-crop-readout';
+
+/**
+ * Crop only this slide's picture (alpha.21, the owner's "physical way to crop, like in a photo"): the Picture editor's
+ * box dragged over the whole picture as the slide draws it (its library look and its flips too), its sides, corners
+ * or the arrows; the four sides' numbers only as a read-out. Other slides keep their picture.
+ */
 function CropDialog({ el, slideId, onClose }: { el: MediaElement; slideId: string; onClose: () => void }) {
   const old = el.crop ?? { x: 0, y: 0, width: 1, height: 1 };
-  const [edges, setEdges] = useState({
-    left: old.x * 100,
-    top: old.y * 100,
-    right: (1 - old.x - old.width) * 100,
-    bottom: (1 - old.y - old.height) * 100,
-  });
-  const valid =
-    edges.left + edges.right <= 99 &&
-    edges.top + edges.bottom <= 99 &&
-    Object.values(edges).every((n) => Number.isFinite(n) && n >= 0 && n <= 99);
-  const keep = (crop: Rect | undefined) => {
+  // The picture's whole frame before this slide's crop: the box is dragged over all of it.
+  const whole = { width: el.frame.width / old.width, height: el.frame.height / old.height };
+  const [crop, setCrop] = useState<CropRect>(() => shownCrop(el.crop, el.flipX, el.flipY));
+  const [shape, setShape] = useState<CropShape>('free');
+  const area = useRef<HTMLDivElement>(null);
+  // As the slide draws it, uncropped and upright (its own turn is the slide's, after the crop), in the dialog's box.
+  const { crop: _crop, rotation: _turn, motion: _motion, hidden: _hidden, ...plain } = el;
+  const uncropped: MediaElement = { ...plain, frame: { x: 0, y: 0, ...whole } };
+  const keep = (next: Rect | undefined) => {
     const s = useEditor.getState();
     if (!s.doc) return;
     commit(
       mapElements(s.doc, slideId, [el.id], (value) =>
-        value.kind === 'image' ? croppedElement(value, crop) : value,
+        value.kind === 'image' ? croppedElement(value, next) : value,
       ),
     );
     onClose();
@@ -216,53 +227,69 @@ function CropDialog({ el, slideId, onClose }: { el: MediaElement; slideId: strin
   return (
     <Dialog
       title="Crop this picture"
-      size="sm"
+      size="md"
       testId="crop-slide-picture"
       onClose={onClose}
       footer={
         <>
           <Button onClick={() => keep(undefined)}>Whole picture</Button>
           <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!valid}
-            onClick={() =>
-              keep({
-                x: edges.left / 100,
-                y: edges.top / 100,
-                width: (100 - edges.left - edges.right) / 100,
-                height: (100 - edges.top - edges.bottom) / 100,
-              })
-            }
-          >
+          <Button variant="primary" onClick={() => keep(keptCrop(crop, el.flipX, el.flipY))}>
             Keep crop
           </Button>
         </>
       }
     >
       <p className="mb-3 text-sm text-muted">
-        How much to take off each edge, in percent. Other slides keep their picture.
+        Drag the frame, or its sides and corners, over the part to keep. Other slides keep their picture.
       </p>
-      <div className="grid grid-cols-2 gap-3">
-        {(['left', 'top', 'right', 'bottom'] as const).map((edge) => (
-          <Field key={edge} label={edge.charAt(0).toUpperCase() + edge.slice(1)}>
-            <NumberInput
-              aria-label={`Take off the ${edge} (%)`}
-              data-testid={`crop-${edge}`}
-              min={0}
-              max={99}
-              step={1}
-              value={Math.round(edges[edge] * 100) / 100}
-              onChange={(e) => setEdges({ ...edges, [edge]: Number(e.target.value) })}
-            />
-          </Field>
-        ))}
+      <div
+        data-testid="slide-crop-frame"
+        data-a11y-picture
+        className="relative mx-auto touch-none rounded-md border border-line bg-black"
+        style={{
+          aspectRatio: `${String(whole.width)} / ${String(whole.height)}`,
+          width: `min(100%, ${String(Math.round((CROP_AREA_HEIGHT * whole.width) / whole.height))}px)`,
+        }}
+      >
+        <PlacedInParent
+          fractional
+          content={whole}
+          mode="fit"
+          className="pointer-events-none absolute inset-0"
+        >
+          <ElementView el={uncropped} media="still" />
+        </PlacedInParent>
+        <div ref={area} className="absolute inset-0">
+          <CropBox
+            frame={area}
+            picture={{ left: 0, top: 0, width: 100, height: 100 }}
+            crop={crop}
+            change={setCrop}
+            shape={shape}
+            turned={whole}
+            testId="slide-crop-box"
+            describedBy={CROP_READOUT_ID}
+          />
+        </div>
       </div>
-      {!valid && (
-        <p role="alert" className="mt-2 text-sm text-warning-fg">
-          Keep at least 1% of the picture each way.
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <CropShapes
+          shape={shape}
+          choose={(next) => {
+            setShape(next);
+            setCrop((was) => cropForShape(next, whole, was));
+          }}
+          testId="slide-crop-shapes"
+          idPrefix="slide-crop"
+        />
+        <p id={CROP_READOUT_ID} className="text-xs text-muted tabular-nums" data-testid="crop-readout">
+          {cropReadout(crop)}
         </p>
-      )}
+      </div>
     </Dialog>
   );
 }
+
+/** The tallest the dialog's picture is drawn (CSS pixels): room for its buttons in a 645-pixel-high window. */
+const CROP_AREA_HEIGHT = 300;

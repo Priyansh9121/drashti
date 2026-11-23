@@ -144,10 +144,14 @@ function Viewer() {
     >
       <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
         <div className="min-w-0 flex-1">
-          <h2 id="viewer-title" className="truncate text-base font-bold text-fg" data-testid="viewer-title">
+          <h2
+            id="viewer-title"
+            className="text-base font-bold break-words text-fg"
+            data-testid="viewer-title"
+          >
             {page.title}
           </h2>
-          <p id="viewer-place" className="truncate text-base text-muted">
+          <p id="viewer-place" className="text-base break-words text-muted">
             {place}
           </p>
         </div>

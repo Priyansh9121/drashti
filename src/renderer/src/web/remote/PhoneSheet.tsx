@@ -70,7 +70,7 @@ export function PhoneSheet({
     >
       <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-2 pl-[max(0.75rem,env(safe-area-inset-left))]">
         <div className="min-w-0 flex-1">
-          <h2 id={titleId} className="truncate text-base font-bold text-fg">
+          <h2 id={titleId} className="text-base font-bold break-words text-fg">
             {title}
           </h2>
           {subtitle && <p className="text-base text-muted">{subtitle}</p>}
@@ -79,7 +79,7 @@ export function PhoneSheet({
           Close
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
+      <div className="relative min-h-0 flex-1 overflow-y-auto pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
         <div className="mx-auto max-w-3xl space-y-6">
           {notice && (
             <Notice

@@ -60,6 +60,7 @@ function service(o: { letIn?: boolean } = {}) {
     onAir: () => false,
     crashFiles: () => [],
     diagnostics: () => Promise.reject(new Error('not asked')),
+    logDays: () => [],
     makeFiles: () => Promise.reject(new Error('not asked')),
     now: () => Date.now(),
     setTimer: (ms, run) => {

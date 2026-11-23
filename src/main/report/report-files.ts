@@ -52,6 +52,8 @@ export interface ReportFilesJob {
   picture: CapturedPicture | null;
   /** Ticked: the crash files kept, newest first. */
   crash: { path: string; name: string; bytes: number }[];
+  /** The chosen period's time (alpha.21, logs (c)): the email's error lines are those within it (else the last day's). */
+  errorsWithin?: { from: number; to: number };
 }
 
 export type ReportFilesMade =
@@ -96,8 +98,11 @@ export function fitDiagnostics(text: string, max: number): string {
   return `${head}…\n${kept.join('\n')}`;
 }
 
-/** The newest error and warning lines of the diagnostics' log (the last day's), each one cut to the list's limit. */
-export function recentErrors(text: string, now: number): string[] {
+/**
+ * The newest error and warning lines of the diagnostics' log, each one cut to the list's limit: those within the
+ * period's days (alpha.21, logs (c)), or with none given, the last day's.
+ */
+export function recentErrors(text: string, now: number, within?: { from: number; to: number }): string[] {
   const at = text.indexOf(LOG_HEAD);
   if (at < 0) return [];
   const out: string[] = [];
@@ -105,7 +110,8 @@ export function recentErrors(text: string, now: number): string[] {
     const m = LOG_LINE.exec(line);
     if (!m) continue;
     const t = Date.parse(m[1] ?? '');
-    if (!Number.isFinite(t) || t < now - DAY || t > now + 60_000) continue;
+    if (!Number.isFinite(t)) continue;
+    if (within ? t < within.from || t >= within.to : t < now - DAY || t > now + 60_000) continue;
     out.push(cutText(line.replace(/\s+/gu, ' ').trim(), REPORT_LIMITS.errorLetters, '…'));
   }
   return out.slice(-REPORT_LIMITS.errorLines);
@@ -120,7 +126,7 @@ export async function makeReportFiles(job: ReportFilesJob, deps: ReportFilesDeps
   if (job.nodeDiagnostics) {
     // As a node's Save Diagnostics writes its own file.
     const text = fitDiagnostics(scrub(nodeDiagnosticsText(job.nodeDiagnostics)), REPORT_DIAGNOSTICS_BYTES);
-    errors = recentErrors(text, job.nodeDiagnostics.now.getTime());
+    errors = recentErrors(text, job.nodeDiagnostics.now.getTime(), job.errorsWithin);
     made.push({
       kind: 'diagnostics',
       name: reportFileName('diagnostics', job.stamp),
@@ -136,7 +142,7 @@ export async function makeReportFiles(job: ReportFilesJob, deps: ReportFilesDeps
       db.close();
     }
     text = fitDiagnostics(text, REPORT_DIAGNOSTICS_BYTES);
-    errors = recentErrors(text, job.diagnostics.input.now.getTime());
+    errors = recentErrors(text, job.diagnostics.input.now.getTime(), job.errorsWithin);
     made.push({
       kind: 'diagnostics',
       name: reportFileName('diagnostics', job.stamp),
@@ -240,4 +246,34 @@ export function intakeNodeReport(job: NodeIntakeJob): NodeIntake {
   for (const f of files) writeFileSync(join(folder, 'files', f.name), f.bytes);
   writeFileSync(join(folder, 'data.json'), JSON.stringify(data), 'utf8');
   return { ok: true, report, node: read.node };
+}
+
+// ---- Save Diagnostics' file, made in the report worker (alpha.21, logs (c)) ----
+
+/** Save Diagnostics' text: Main's (with the library's file, read only) or a node's. */
+export interface DiagnosticsTextJob {
+  kind: 'diagnostics-text';
+  main: { input: ReportDiagnosticsInput; dbFile: string } | null;
+  node: NodeDiagnosticsInput | null;
+}
+
+export type DiagnosticsTextMade = { ok: true; text: string } | { ok: false; message: string };
+
+/**
+ * Save Diagnostics' text, made as a report's diagnostics are (in the report worker, off Main's thread: a chosen
+ * period's log can be days long): Main's with every name in the library blanked, a node's as its own; scrubbed.
+ */
+export function makeDiagnosticsText(
+  job: DiagnosticsTextJob,
+  deps: Pick<ReportFilesDeps, 'openDb'>,
+): DiagnosticsTextMade {
+  if (job.node) return { ok: true, text: scrub(nodeDiagnosticsText(job.node)) };
+  if (!job.main) return { ok: false, message: 'Nothing to make.' };
+  const db = deps.openDb(job.main.dbFile);
+  try {
+    const input: DiagnosticsInput = { ...job.main.input, db };
+    return { ok: true, text: scrub(redactNames(diagnosticsText(input), libraryNames(db))) };
+  } finally {
+    db.close();
+  }
 }

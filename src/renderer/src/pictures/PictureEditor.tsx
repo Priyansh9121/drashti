@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from 'react';
+import type { CSSProperties, PointerEvent, WheelEvent } from 'react';
 import { create } from 'zustand';
 import { mediaUrl } from '../../../shared/media';
-import type { CropRect, CropShape, PictureLook, PixelSize } from '../../../shared/picture-look';
+import type { CropShape, PictureLook, PixelSize } from '../../../shared/picture-look';
 import {
   autoLevels,
-  CROP_SHAPES,
-  dragCrop,
   editLayout,
   fillZoom,
   flipAcross,
@@ -16,7 +14,6 @@ import {
   hasEdit,
   isPlain,
   PLAIN,
-  shapedCrop,
   shownSize,
   turnClockwise,
   turnedSize,
@@ -39,8 +36,8 @@ import {
   RotateCw,
   Wand2,
 } from '../ui/icons';
-import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Toggle } from '../ui/Toggle';
+import { CropBox, cropForShape, CropShapes } from './CropBox';
 import { savePictureItems } from './save-picture';
 
 /*
@@ -138,21 +135,6 @@ const placed = (b: { left: number; top: number; width: number; height: number })
   height: `${String(b.height)}%`,
 });
 
-/** What a crop's drag holds: its side or corner (or all of it), and where it started. */
-type Edge = 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
-const HANDLES: { edge: Edge; style: CSSProperties; cursor: string }[] = [
-  { edge: 'nw', style: { left: 0, top: 0 }, cursor: 'nwse-resize' },
-  { edge: 'n', style: { left: '50%', top: 0 }, cursor: 'ns-resize' },
-  { edge: 'ne', style: { left: '100%', top: 0 }, cursor: 'nesw-resize' },
-  { edge: 'e', style: { left: '100%', top: '50%' }, cursor: 'ew-resize' },
-  { edge: 'se', style: { left: '100%', top: '100%' }, cursor: 'nwse-resize' },
-  { edge: 's', style: { left: '50%', top: '100%' }, cursor: 'ns-resize' },
-  { edge: 'sw', style: { left: 0, top: '100%' }, cursor: 'nesw-resize' },
-  { edge: 'w', style: { left: 0, top: '50%' }, cursor: 'ew-resize' },
-];
-
-const SHAPE_LABELS: Record<CropShape, string> = { free: 'Free', '16:9': '16:9', '4:3': '4:3', '1:1': '1:1' };
-
 function EditorForm({
   media,
   start,
@@ -172,7 +154,6 @@ function EditorForm({
   const frame = useRef<HTMLDivElement>(null);
   const picture = useRef<HTMLImageElement>(null);
   const drag = useRef<{ x: number; y: number; from: PictureLook } | null>(null);
-  const cropDrag = useRef<{ x: number; y: number; edge: Edge; from: CropRect } | null>(null);
   const measured = useElementSize(frame);
   const box: PixelSize = measured.width > 0 ? measured : { width: 16, height: 9 };
   const set = (change: Partial<PictureLook>) => {
@@ -186,15 +167,6 @@ function EditorForm({
   const layout = natural ? editLayout(drawn, natural, box, 'contain') : null;
   const turned = natural ? turnedSize(natural, look.turn) : null;
   const crop = look.crop ?? FULL_CROP;
-  const cropBox =
-    cropping && layout
-      ? {
-          left: layout.frame.left + crop.x * layout.frame.width,
-          top: layout.frame.top + crop.y * layout.frame.height,
-          width: crop.w * layout.frame.width,
-          height: crop.h * layout.frame.height,
-        }
-      : null;
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (cropping) return;
@@ -211,54 +183,11 @@ function EditorForm({
     if (cropping) return;
     set({ zoom: look.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1) });
   };
-  // A crop's side, corner or the whole of it dragged: by fractions of the picture as it is drawn.
-  const startCrop = (e: PointerEvent<HTMLElement>) => {
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    // Which side or corner (or the whole of it) is the element's own: its data-edge.
-    const edge: Edge = HANDLES.find((h) => h.edge === e.currentTarget.dataset['edge'])?.edge ?? 'move';
-    cropDrag.current = { x: e.clientX, y: e.clientY, edge, from: crop };
-  };
-  const moveCrop = (e: PointerEvent<HTMLElement>) => {
-    const d = cropDrag.current;
-    const b = frame.current?.getBoundingClientRect();
-    if (!d || !b || !layout || !turned || b.width === 0) return;
-    const dx = (e.clientX - d.x) / ((b.width * layout.frame.width) / 100);
-    const dy = (e.clientY - d.y) / ((b.height * layout.frame.height) / 100);
-    setLook((was) => ({ ...was, crop: dragCrop(d.from, d.edge, dx, dy, shape, turned) }));
-  };
-  const endCrop = () => {
-    cropDrag.current = null;
-  };
-  /** The arrows move the crop by a hundredth; with Shift they change its size (its right side, or its bottom). */
-  const cropKeys = (e: KeyboardEvent<HTMLElement>) => {
-    const step = 0.01;
-    const by: Record<string, [number, number]> = {
-      ArrowLeft: [-step, 0],
-      ArrowRight: [step, 0],
-      ArrowUp: [0, -step],
-      ArrowDown: [0, step],
-    };
-    const d = by[e.key];
-    if (!d || !turned) return;
-    e.preventDefault();
-    setLook((was) => ({
-      ...was,
-      crop: dragCrop(
-        was.crop ?? FULL_CROP,
-        e.shiftKey ? (d[0] !== 0 ? 'e' : 's') : 'move',
-        d[0],
-        d[1],
-        shape,
-        turned,
-      ),
-    }));
-  };
   const chooseShape = (next: CropShape) => {
     setLook((was) => ({
       ...was,
       cropShape: next,
-      ...(turned && next !== 'free' ? { crop: shapedCrop(next, turned, was.crop ?? FULL_CROP) } : {}),
+      ...(turned && next !== 'free' ? { crop: cropForShape(next, turned, was.crop ?? FULL_CROP) } : {}),
     }));
   };
   const fill = () => {
@@ -390,44 +319,17 @@ function EditorForm({
                 />
               )}
             </div>
-            {cropBox && (
-              <>
-                {/* Outside the part kept: darker. */}
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute"
-                  style={{
-                    ...placed(cropBox),
-                    boxShadow: '0 0 0 9999px rgb(0 0 0 / 0.6)',
-                  }}
-                />
-                <div
-                  role="button"
-                  tabIndex={0}
-                  data-testid="pe-crop-box"
-                  aria-label="The part kept: drag it, or its sides and corners; the arrows move it, Shift and the arrows change its size"
-                  className="absolute cursor-move border-2 border-white outline-offset-2 focus-visible:outline-2 focus-visible:outline-primary"
-                  style={placed(cropBox)}
-                  data-edge="move"
-                  onPointerDown={startCrop}
-                  onPointerMove={moveCrop}
-                  onPointerUp={endCrop}
-                  onKeyDown={cropKeys}
-                >
-                  {HANDLES.map((h) => (
-                    <span
-                      key={h.edge}
-                      aria-hidden="true"
-                      data-edge={h.edge}
-                      className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-white bg-black/60"
-                      style={{ ...h.style, cursor: h.cursor }}
-                      onPointerDown={startCrop}
-                      onPointerMove={moveCrop}
-                      onPointerUp={endCrop}
-                    />
-                  ))}
-                </div>
-              </>
+            {cropping && layout && turned && (
+              <CropBox
+                frame={frame}
+                picture={layout.frame}
+                crop={crop}
+                change={(update) => {
+                  setLook((was) => ({ ...was, crop: update(was.crop ?? FULL_CROP) }));
+                }}
+                shape={shape}
+                turned={turned}
+              />
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -498,30 +400,7 @@ function EditorForm({
           </div>
           {cropping && (
             <div className="flex flex-wrap items-center gap-2">
-              <div
-                role="radiogroup"
-                aria-label="The crop’s shape"
-                className="inline-flex rounded-md border border-line"
-                data-testid="pe-crop-shapes"
-                onKeyDown={radioKeys(CROP_SHAPES, shape, chooseShape)}
-              >
-                {CROP_SHAPES.map((s, i) => (
-                  <button
-                    key={s}
-                    type="button"
-                    role="radio"
-                    aria-checked={shape === s}
-                    tabIndex={radioTabIndex(shape === s, i, true)}
-                    data-testid={`pe-crop-${s}`}
-                    className={`px-2.5 py-1 text-sm ${shape === s ? 'bg-primary text-on-primary' : 'text-fg hover:bg-panel-3'}`}
-                    onClick={() => {
-                      chooseShape(s);
-                    }}
-                  >
-                    {SHAPE_LABELS[s]}
-                  </button>
-                ))}
-              </div>
+              <CropShapes shape={shape} choose={chooseShape} />
               <Button
                 size="sm"
                 data-testid="pe-crop-whole"
