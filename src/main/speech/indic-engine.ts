@@ -268,7 +268,10 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
 
       const openSound = (): void => {
         if (stopped || busy || !allowed()) return;
-        closeSound = o.sound.open(chunk);
+        const mine = generation;
+        closeSound = o.sound.open((samples, endAt, startAt) => {
+          if (mine === generation) chunk(samples, endAt, startAt);
+        });
         if (closeSound) {
           to.state({ phase: 'listening', language });
           return;
