@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   log,
   logDays,
@@ -13,6 +13,25 @@ import {
   startLogCopy,
   startLogFile,
 } from './log';
+
+/*
+ * A rename that fails, as on Windows while a scanner, the indexer or a log viewer holds the file (EBUSY, EPERM): the
+ * real one otherwise. (alpha.21, a21-review: a failed move of drashti.log must never stop Drashti or lose a line.)
+ */
+const held = vi.hoisted(() => ({ on: false, tries: 0 }));
+vi.mock('node:fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...real,
+    renameSync: (from: string, to: string) => {
+      if (held.on) {
+        held.tries++;
+        throw Object.assign(new Error(`EBUSY: resource busy or locked, rename '${from}'`), { code: 'EBUSY' });
+      }
+      real.renameSync(from, to);
+    },
+  };
+});
 
 describe('the log file', () => {
   it('keeps the home folder and file URLs out of every line', () => {
@@ -243,3 +262,67 @@ describe('the log, one file a day', () => {
 function partOf(name: string): number {
   return Number(/\.(\d+)\.log$/u.exec(name)?.[1] ?? 1);
 }
+
+describe('a file that cannot be moved (alpha.21, a21-review: Windows holds a file a scanner or viewer has open)', () => {
+  const at = (day: number, hour: number, minute = 0) => new Date(2026, 10, day, hour, minute).getTime();
+  const fresh = () => mkdtempSync(join(tmpdir(), 'drashti-held-'));
+  const text = (dir: string) => readFileSync(join(dir, 'drashti.log'), 'utf8');
+
+  it('at a start on a later day, Drashti still starts, and the day goes on in drashti.log, said once in the log', () => {
+    const dir = fresh();
+    writeFileSync(
+      join(dir, 'drashti.log'),
+      `${new Date(at(20, 9)).toISOString()} [info] Drashti’s log of 2026-11-20 (this computer’s day; each line’s time is UTC)\nplaceholder line of the 20th\n`,
+    );
+    held.on = true;
+    try {
+      expect(() => {
+        startLogFile(dir, { now: () => at(22, 8) });
+      }).not.toThrow();
+      log.info('placeholder first line of the 22nd');
+      log.info('placeholder second line of the 22nd');
+    } finally {
+      held.on = false;
+    }
+    const all = text(dir);
+    expect(all).toContain('placeholder line of the 20th');
+    expect(all).toContain('placeholder first line of the 22nd');
+    expect(all).toContain('placeholder second line of the 22nd');
+    const said = all.split('\n').filter((l) => l.includes('could not be moved'));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/^\S+ \[warn\] Log: .*could not be moved.*\(EBUSY\)/u);
+    expect(readdirSync(dir)).toEqual(['drashti.log']);
+  });
+
+  it('at midnight, no line is lost and the move is not tried again for every line; the next start moves it', () => {
+    const dir = fresh();
+    let now = at(23, 22);
+    startLogFile(dir, { now: () => now });
+    log.info('placeholder on the 23rd');
+    held.on = true;
+    held.tries = 0;
+    try {
+      now = at(24, 0, 1);
+      log.info('placeholder just after midnight');
+      log.info('placeholder a little later');
+      log.info('placeholder later still');
+    } finally {
+      held.on = false;
+    }
+    const all = text(dir);
+    for (const words of [
+      'placeholder on the 23rd',
+      'placeholder just after midnight',
+      'placeholder a little later',
+      'placeholder later still',
+    ])
+      expect(all, words).toContain(words);
+    expect(held.tries).toBe(1);
+    expect(all.split('\n').filter((l) => l.includes('could not be moved'))).toHaveLength(1);
+    // Free again: the next day's first line moves it as it should.
+    now = at(25, 0, 1);
+    log.info('placeholder on the 25th');
+    expect(readdirSync(dir).sort()).toEqual(['drashti-2026-11-24.log', 'drashti.log']);
+    expect(text(dir)).toContain('placeholder on the 25th');
+  });
+});
