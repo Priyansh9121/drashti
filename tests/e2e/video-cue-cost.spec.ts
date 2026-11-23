@@ -25,7 +25,7 @@ function schedulingClasses(processes: { role: string; pid?: number }[]): Record<
             { encoding: 'utf8' },
           )
         : spawnSync('ps', ['-o', 'pri=,nice=', '-p', String(pid)], { encoding: 'utf8' });
-    out[role] = `${r.stdout.trim()}`;
+    out[role] = r.stdout.trim();
   }
   return out;
 }
