@@ -43,6 +43,9 @@ function setup(
     /** Whether the general model is on this computer (default: the small one is), and how its download goes. */
     general?: { ready: boolean };
     download?: () => Promise<void>;
+    /** What Drashti's whisper engine says is wrong on this computer (none by default), and the pack model's route. */
+    whisperProblem?: string;
+    route?: 'whisper' | 'conformer';
   } = {},
 ) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-ai-'));
@@ -89,7 +92,7 @@ function setup(
       },
     },
     engine,
-    engineProblem: () => null,
+    engineProblem: () => o.whisperProblem ?? null,
     modelReady: (id: CaptionModelId) => (o.general ? o.general.ready : id === 'small'),
     download: async (id) => {
       downloads.push(id);
@@ -105,11 +108,12 @@ function setup(
           ...deps,
           aiPath: {
             on: () => ai.on,
+            route: (language) => (o.pack?.[language] === undefined ? null : (o.route ?? 'whisper')),
             recognizer: (language) => {
               const modelId = o.pack?.[language];
               if (modelId === undefined) return null;
               if (!made.has(modelId)) made.set(modelId, recognizer(modelId));
-              return { route: 'whisper', modelId, engine: made.get(modelId) ?? recognizer(modelId) };
+              return { route: o.route ?? 'whisper', modelId, engine: made.get(modelId) ?? recognizer(modelId) };
             },
             coordinator,
             ...(o.spellInService ? {} : { spelling: SPELLING }),
@@ -376,5 +380,50 @@ describe('caption AI in the captions service', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(t.downloads).toEqual(['small']);
     t.service.close();
+  });
+
+  it('a language on Route C starts where Drashti’s whisper engine cannot run; today’s captions and Route W still say why and start nothing (alpha.23, cap-realc)', async () => {
+    const problem = 'This copy of Drashti has no captions engine.';
+    // Route C (IndicConformer) needs no whisper-server: Gujarati's own model starts.
+    const c = setup({ ai: true, pack: { gu: GU }, route: 'conformer', whisperProblem: problem });
+    c.choose('gu');
+    expect(c.service.view()).toMatchObject({ engine: true, engineProblem: null });
+    await c.service.setOn(true);
+    expect(c.started).toEqual([{ engine: GU, language: 'gu' }]);
+    expect(c.service.view().speech).toEqual({ phase: 'listening', language: 'gu' });
+    // As heard (today's captions) needs whisper: they say why and today's engine never starts.
+    c.ai.on = false;
+    c.choose('auto');
+    expect(c.started.map((s) => s.engine)).toEqual([GU]);
+    expect(c.service.view()).toMatchObject({ engine: false, engineProblem: problem });
+    expect(c.service.view().speech).toMatchObject({ phase: 'failed', message: problem });
+    // Gujarati again: Route C hears again.
+    c.ai.on = true;
+    c.choose('gu');
+    expect(c.started.at(-1)).toEqual({ engine: GU, language: 'gu' });
+    c.service.close();
+
+    // Turned on while as heard (nothing starts, as today), then Gujarati chosen: Route C starts.
+    const later = setup({ ai: false, pack: { gu: GU }, route: 'conformer', whisperProblem: problem });
+    await later.service.setOn(true);
+    expect(later.started).toEqual([]);
+    expect(later.service.view()).toMatchObject({ on: true, engine: false, engineProblem: problem });
+    later.ai.on = true;
+    later.choose('gu');
+    expect(later.started).toEqual([{ engine: GU, language: 'gu' }]);
+    later.service.close();
+
+    // Today's captions and Route W keep today's behaviour: nothing starts, the reason shows, nothing downloads.
+    for (const t of [
+      setup({ whisperProblem: problem, general: { ready: false } }),
+      setup({ ai: true, pack: { gu: GU }, route: 'whisper', whisperProblem: problem }),
+    ]) {
+      t.choose('gu');
+      await t.service.setOn(true);
+      expect(t.started).toEqual([]);
+      expect(t.downloads).toEqual([]);
+      expect(t.service.view()).toMatchObject({ engine: false, engineProblem: problem });
+      t.service.close();
+    }
   });
 });
