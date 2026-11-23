@@ -256,7 +256,7 @@ function LanguageModelRow({ model }: { model: LanguageModelView }) {
       data-phase={model.phase}
     >
       <div className="flex items-end gap-2">
-        <Field label={`${name} model`} className="flex-1">
+        <Field label={`${name} model`} className="min-w-0 flex-1">
           <Select
             data-testid={`captions-language-model-${model.language}-choice`}
             className="w-full"
