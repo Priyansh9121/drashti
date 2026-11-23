@@ -462,6 +462,12 @@ import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
+import { handleModelPacks } from './model-packs/ipc';
+import { findTranslateHelper } from './translation/helper-place';
+import { handleTranslation } from './translation/ipc';
+import { TranslationEngine } from './translation/translation-engine';
+import { StandInTranslator } from '../shared/prepared-translations';
+import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { VideoCaptionsRepo } from './db/video-captions';
@@ -3850,6 +3856,35 @@ function start(): void {
   );
   handle(IPC.captions.retry, (e) => (fromOperator(e) ? captions.retry() : captions.view()));
 
+  // ---- caption and translation models (alpha.22, cap-pack) ---------------------------------------------------
+  // An offline pack an admin imports (Help › Caption and Translation Models…, Pro Mode), every file checked, kept in
+  // the data folder's model-packs/ (outside the library and its backups). Never fetched; nothing uses it until a
+  // caption or translation engine asks (modelPacks.model / acquire): today's captions are as they were.
+  const modelPacks = new ModelPackStore({ root: join(app.getPath('userData'), 'model-packs'), log });
+  modelPacks.start();
+  modelPacks.onChanged((status) => {
+    sendToOperator(IPC.modelPacks.changed, status);
+  });
+  stops.add('model packs', () => {
+    modelPacks.close();
+  });
+  handleModelPacks({
+    handle,
+    fromOperator,
+    store: modelPacks,
+    pick: async (kind) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: kind === 'zip' ? 'Import a Model Pack (Zip)' : 'Import a Model Pack (Folder)',
+        message: 'Choose the caption and translation model pack the admin was given.',
+        buttonLabel: 'Import',
+        properties: kind === 'zip' ? ['openFile'] : ['openDirectory'],
+        ...(kind === 'zip' ? { filters: [{ name: 'Zip', extensions: ['zip'] }] } : {}),
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+  });
+
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
   // apps' (no test may need Screen Recording, or see the computer's own windows).
@@ -5535,6 +5570,52 @@ function start(): void {
   pdfReadWaits.add(stopPdfOnAir);
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
+  });
+  // Prepare translations (alpha.22, a22-mt): drafts from the offline engine (drashti-translate with a model pack's
+  // IndicTrans2 model) for the Translation… dialog only; a named reader checks each before it can show. Pro Mode, off
+  // air: what is under way stops when the stream goes on air. Nothing runs until the dialog asks.
+  const translateProgram = findTranslateHelper({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const translationEngine = new TranslationEngine({
+    program: () => translateProgram,
+    models: modelPacks,
+    log,
+  });
+  const translationOnAir = () => streaming.inUse() || testOnAir;
+  // Tests only (never a packaged Drashti): DRASHTI_TEST_TRANSLATE=1 stands in for the engine with x83's stand-in (a
+  // marked placeholder, never a translation), so the dialog's Prepare translations is driven without a model pack.
+  const testTranslate = !packaged() && sw('DRASHTI_TEST_TRANSLATE') === '1';
+  const standInTranslator = new StandInTranslator();
+  handleTranslation({
+    handle,
+    mayDraft: (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+    onAir: translationOnAir,
+    engine: testTranslate
+      ? {
+          installed: () => true,
+          available: (from, to) => from !== to,
+          unknownModel: () => false,
+          translate: (source, from, to) => standInTranslator.translate(source, from, to),
+          cancel: () => undefined,
+        }
+      : translationEngine,
+  });
+  const stopTranslationOnAir = () => {
+    if (translationOnAir()) translationEngine.cancel();
+  };
+  pdfReadWaits.add(stopTranslationOnAir);
+  stops.add('translation engine', () => {
+    pdfReadWaits.delete(stopTranslationOnAir);
+    translationEngine.stop();
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
   handle(
@@ -9457,6 +9538,9 @@ function start(): void {
     },
     liveCaptions: () => {
       if (mode === 'pro') sendToOperator(IPC.captions.open, { at: Date.now() });
+    },
+    modelPacks: () => {
+      if (mode === 'pro') sendToOperator(IPC.modelPacks.open, { at: Date.now() });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });

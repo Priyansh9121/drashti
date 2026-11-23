@@ -8,6 +8,8 @@
 // program (x30: Syphon on a Mac, Spout on Windows) must be there and start: its input ended at once, it says "ready"
 // and stops by itself (scripts/fetch-video-out.mjs builds it; tools/video-out/).
 // Book OCR (alpha.21): the reading process reads a blank page with its own model (src/main/ocr/ocr-selftest.ts).
+// Prepare translations' engine (alpha.22): each packaged app's drashti-translate starts, says hello in its own
+// protocol and stops by itself when its input ends (scripts/fetch-translate.mjs builds it; tools/translate/).
 //
 //   node scripts/check-ffmpeg.mjs             the built app in out/ (pnpm build first)
 //   node scripts/check-ffmpeg.mjs --packaged  every app electron-builder left in release/
@@ -18,6 +20,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
+import { probeTranslate } from './translate-probe.mjs';
 
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
 const packaged = process.argv.includes('--packaged');
@@ -29,6 +32,8 @@ const EMULATED_TIMEOUT_MS = 480_000;
 
 /** Each packaged app's video out program: [label, command, arguments] (an Intel Mac's under Rosetta). */
 const videoOutPrograms = [];
+/** Each packaged app's translation engine, the same way. */
+const translatePrograms = [];
 
 /** Each packaged app: [label, command, arguments]. */
 function packagedApps() {
@@ -40,18 +45,22 @@ function packagedApps() {
     const macIntel = at('mac', 'Drashti.app', 'Contents', 'MacOS', 'Drashti');
     const win = at('win-unpacked', 'Drashti.exe');
     const videoOut = (exe, appExe) => join(dirname(appExe), '..', 'Resources', 'video-out', exe);
+    const translate = (appExe) => join(dirname(appExe), '..', 'Resources', 'translate', 'drashti-translate');
     if (existsSync(macArm)) {
       found.push(['macOS arm64', macArm, []]);
       videoOutPrograms.push(['macOS arm64', videoOut('drashti-video-out', macArm), []]);
+      translatePrograms.push(['macOS arm64', translate(macArm), []]);
     }
     if (existsSync(macIntel)) {
       const program = videoOut('drashti-video-out', macIntel);
       if (process.arch === 'x64') {
         found.push(['macOS x64', macIntel, []]);
         videoOutPrograms.push(['macOS x64', program, []]);
+        translatePrograms.push(['macOS x64', translate(macIntel), []]);
       } else if (spawnSync('arch', ['-x86_64', '/usr/bin/true']).status === 0) {
         found.push(['macOS x64 (under Rosetta)', 'arch', ['-x86_64', macIntel]]);
         videoOutPrograms.push(['macOS x64 (under Rosetta)', 'arch', ['-x86_64', program]]);
+        translatePrograms.push(['macOS x64 (under Rosetta)', 'arch', ['-x86_64', translate(macIntel)]]);
       } else console.log('macOS x64: not run (this Mac has no Rosetta to run Intel apps)');
     }
     if (existsSync(win)) {
@@ -59,6 +68,11 @@ function packagedApps() {
       videoOutPrograms.push([
         'Windows x64',
         join(dirname(win), 'resources', 'video-out', 'drashti-video-out.exe'),
+        [],
+      ]);
+      translatePrograms.push([
+        'Windows x64',
+        join(dirname(win), 'resources', 'translate', 'drashti-translate.exe'),
         [],
       ]);
     }
@@ -135,10 +149,30 @@ function checkVideoOut(label, command, args) {
   });
 }
 
+/**
+ * A packaged app's drashti-translate starts: it says hello (protocol 1), refuses what it must (scripts/translate-probe.mjs:
+ * a bad line, a line over 64 KiB, an unknown op, a sentence before any model, a missing model), answers cancel and
+ * quit, and exits 0. No model is needed.
+ */
+async function checkTranslate(label, command, args) {
+  const program = command === 'arch' ? args[1] : command;
+  if (!existsSync(program)) {
+    console.log(`${label}: translation engine FAILED: no program at ${program}`);
+    return false;
+  }
+  const result = await probeTranslate(command, args, command === 'arch' ? EMULATED_TIMEOUT_MS : 60_000);
+  console.log(
+    `${label}: translation engine ${result.passed ? 'OK' : `FAILED (${result.problems.join('; ')})`}\n  ${program}\n  ${result.output.trim().split(/\r?\n/u).join('\n  ')}`,
+  );
+  return result.passed;
+}
+
 const targets = packaged
   ? packagedApps()
   : [['built app', createRequire(import.meta.url)('electron'), ['.']]];
 let ok = true;
 for (const [label, command, args] of targets) ok = (await check(label, command, args)) && ok;
 for (const [label, command, args] of videoOutPrograms) ok = (await checkVideoOut(label, command, args)) && ok;
+for (const [label, command, args] of translatePrograms)
+  ok = (await checkTranslate(label, command, args)) && ok;
 process.exit(ok ? 0 : 1);

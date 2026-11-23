@@ -15,3 +15,8 @@ characters, so `scripts/unicode-check.mjs` is seen to pass them (Sessions 31–3
 deck our tests generate (placeholder words and notes, flat colours, one shape, no pictures), kept byte
 for byte so the editable reader is tested against the way Keynote writes text boxes and lines
 (Session 57's Keynote round trip). Its document details are empty.
+
+`translation/indictrans-python.json` is what x74's Python translation pipeline (IndicTransToolkit 1.1.1 with the
+original indic-nlp-library 0.92, the IndicTrans2 models' tokenizer decode and the trial's clock-spacing repair)
+gave for generated inputs: x74's placeholder sentences and words, and random characters. It holds no model and no
+real text; every character above ASCII is written as `\uXXXX`. The Translation… engine's port is checked against it.

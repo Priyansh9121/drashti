@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ScreenGroupConfig } from '../../../shared/screens';
 import type { TextElement } from '../../../shared/model';
 import type { TranslationLanguage } from '../../../shared/prepared-translations';
-import { noTranslator, translationForSource } from '../../../shared/prepared-translations';
+import {
+  noTranslator,
+  translationForSource,
+  type TranslationEngineStatus,
+} from '../../../shared/prepared-translations';
 import {
   translationLayoutProblem,
   translationSource,
@@ -22,7 +26,9 @@ import { commit, useEditor } from './editor-store';
 import {
   approvePreparedWords,
   defaultTranslationDisplay,
+  draftTargets,
   editPreparedWords,
+  placeDraft,
   placePreparedWords,
   preparedRows,
   routePreparedWords,
@@ -59,7 +65,60 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
   const [reader, setReader] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [preview, setPreview] = useState(rows[0]?.slide.id ?? '');
+  // Prepare translations (alpha.22): the offline engine's state for this direction, and a run under way.
+  const [engine, setEngine] = useState<TranslationEngineStatus | null>(null);
+  const [preparing, setPreparing] = useState<{ done: number; total: number } | null>(null);
+  const stopped = useRef(false);
+  useEffect(() => {
+    // Simple Mode only reads saved translations: it never asks for the engine.
+    if (readOnly) return;
+    let current = true;
+    void window.drashti.slideEditor.translationStatus(from, to).then((status) => {
+      if (current) setEngine(status);
+    });
+    return () => {
+      current = false;
+    };
+  }, [from, to, preparing, readOnly]);
+  useEffect(
+    () => () => {
+      stopped.current = true;
+    },
+    [],
+  );
   if (!doc) return null;
+  const prepare = async () => {
+    const targets = draftTargets(doc, from, to);
+    if (readOnly || preparing || targets.length === 0) return;
+    stopped.current = false;
+    setProblem(null);
+    setPreparing({ done: 0, total: targets.length });
+    const drafted: { target: (typeof targets)[number]; text: string }[] = [];
+    // Read through a function: Stop changes it while a draft is awaited, which the type checker cannot see.
+    const wasStopped = (): boolean => stopped.current;
+    for (const [i, target] of targets.entries()) {
+      if (wasStopped()) break;
+      const draft = await window.drashti.slideEditor.translationDraft({ source: target.source, from, to });
+      if (wasStopped()) break;
+      if (!draft.ok) {
+        setProblem(draft.message);
+        // Only this box's words could not be drafted (too long, a model marker): go on with the next box.
+        if (!draft.thisBoxOnly) break;
+      } else drafted.push({ target, text: draft.text });
+      setPreparing({ done: i + 1, total: targets.length });
+    }
+    // The drafts made, put in together (Stop keeps those made before it): one Undo takes the run back. A box the
+    // operator typed into meanwhile keeps its words (placeDraft).
+    const latest = useEditor.getState().doc;
+    if (latest && drafted.length > 0)
+      commit(drafted.reduce((next, d) => placeDraft(next, d.target, from, to, d.text), latest));
+    setPreparing(null);
+  };
+  const stopPreparing = () => {
+    stopped.current = true;
+    void window.drashti.slideEditor.translationCancel();
+  };
+  const drafts = readOnly ? 0 : draftTargets(doc, from, to).length;
   const change = (fn: () => void) => {
     if (readOnly) return;
     try {
@@ -96,8 +155,10 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
     <Dialog title="Translation" onClose={onClose} size="lg" footer={<Button onClick={onClose}>Done</Button>}>
       <div className="space-y-4" data-testid="translation-dialog">
         <Notice>
-          {noTranslator.status}. Write translations by hand, then have a reader check their meaning, names,
-          numbers and fit. Only checked words can show.
+          {engine?.available
+            ? engine.message
+            : `${noTranslator.status}. ${engine ? `${engine.message} ` : ''}Write translations by hand, then have a reader check their meaning, names, numbers and fit.`}{' '}
+          Only checked words can show.
         </Notice>
         {readOnly && (
           <p role="status">
@@ -137,9 +198,23 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
             />
           </Field>
         </div>
-        <Button disabled title="No engine installed">
-          Prepare translations
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            disabled={readOnly || !engine?.available || preparing !== null || drafts === 0}
+            title={engine?.available ? undefined : (engine?.message ?? noTranslator.status)}
+            onClick={() => void prepare()}
+          >
+            Prepare translations
+          </Button>
+          {preparing && (
+            <>
+              <p role="status">
+                Preparing drafts: {preparing.done} of {preparing.total} text boxes
+              </p>
+              <Button onClick={stopPreparing}>Stop</Button>
+            </>
+          )}
+        </div>
         <p role="status">
           {checked} of {rows.length} text boxes checked for {LANG_NAMES[to]}. Changes stay in Edit slides
           until you save.
