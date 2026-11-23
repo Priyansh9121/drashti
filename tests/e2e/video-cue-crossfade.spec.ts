@@ -297,10 +297,6 @@ test('A cue held over half a minute still starts within one frame of Go', async 
 });
 
 test('Crossfade in the playlist blends both pictures and sounds without black on hall, LIVE and stream', async () => {
-  test.fixme(
-    true,
-    'Parked with the hidden feature: Crossfade… is not offered in alpha.21 (QA21-S5-2); this case comes back in alpha.22',
-  );
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
   try {
     const streamSound = await streamSoundPage(app);

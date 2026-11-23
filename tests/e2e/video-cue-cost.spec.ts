@@ -101,7 +101,7 @@ function toneAmplitudes(pcm: Buffer): { a: number; b: number }[] {
   return amplitudes;
 }
 
-test('S5 drawing and sound cost: actual 1080p cues while a loopback stream encodes, three rotating rounds', async () => {
+test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades while a loopback stream encodes, three rotating rounds', async () => {
   const info = test.info();
   test.setTimeout(180_000);
   let previousAffinity: string | null = null;
@@ -364,12 +364,10 @@ test('S5 drawing and sound cost: actual 1080p cues while a loopback stream encod
       readyAfterMs?: number;
       dropped: number;
     }[] = [];
-    // Crossfade… is not offered in alpha.21 (QA21-S5-2): its round (traced then), and the tone-overlap check below,
-    // come back with it in alpha.22 (a21-s5b's stream-sound work).
-    const modes = ['plain', 'cue'];
+    const modes = ['plain', 'cue', 'crossfade'];
     for (let round = 0; round < 3; round++) {
-      for (let n = 0; n < modes.length; n++) {
-        const mode = modes[(round + n) % modes.length] ?? 'plain';
+      for (let n = 0; n < 3; n++) {
+        const mode = modes[(round + n) % 3] ?? 'plain';
         actions.push({ at: Date.now(), round, mode, action: 'reset to red' });
         await dispatch(win, { type: 'cancelVideoCue' });
         await dispatch(win, {
@@ -402,7 +400,7 @@ test('S5 drawing and sound cost: actual 1080p cues while a loopback stream encod
             dropped: state.live.droppedFrames,
           });
         }
-        if (round === 0 && mode === 'cue') {
+        if (round === 0 && mode === 'crossfade') {
           await app.evaluate(async ({ contentTracing }) => {
             await contentTracing.startRecording({
               included_categories: ['cc', 'blink', 'devtools.timeline', 'media'],
@@ -617,8 +615,10 @@ test('S5 drawing and sound cost: actual 1080p cues while a loopback stream encod
       streamUnderflows,
       'the stream’s own sound players never run out of decoded sound while they play',
     ).toEqual([]);
-    // alpha.22, with Crossfade… (QA21-S5-2): both tones overlap continuously through the sound crossfade, at least
-    // 12 windows of 100 ms (the overlap `longest` is still measured and kept in s5-cost.json).
+    expect(
+      longest,
+      'both generated tones overlap continuously through the sound crossfade',
+    ).toBeGreaterThanOrEqual(12);
     expect(streamSoundAhead.length, 'the stream page plays its own sound').toBeGreaterThan(0);
     for (const player of streamSoundAhead)
       expect(player, 'each stream sound player keeps a second of sound decoded ahead').toEqual({

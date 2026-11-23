@@ -546,10 +546,12 @@ For a clip, choose start and end under **Trim**, then **Preparation and export**
 
 ![Edit Video's Preparation and export choices for a vertical clip](screenshots/manual-edit-video-export.png)
 
-## 15. Cue a video
+## 15. Cue a video and blend playlist videos
 
 In Pro Mode, right-click a ready video row and choose **Cue**. LIVE keeps showing the current scene while the video loads paused at its first start point. The cue card shows its first frame and **Preparing first frame…**, then **Cue ready**. Press **Go** to start it on the screens at one shared moment, or **Cancel** to remove it. Go uses the file and points selected when you cued it. A screen that reloads must get ready again. After an unexpected restart, a manual cue waits paused for another Go.
 
-Cue waits for the desired **Edit Video…** copy to be **Ready for next showing**. Saving new edits cancels that video’s private cue; cue it again after the copy is ready. A video already up keeps its file. Prepare edits before starting the show, stream or recording.
+Cue waits for the desired **Edit Video…** copy to be **Ready for next showing**. Saving new edits cancels that video’s private cue; cue it again after the copy is ready. A video already up, including one crossfading, keeps its file. Prepare edits before starting the show, stream or recording.
 
-A playlist crossfade between videos comes in a later release. Original files are never changed.
+For a playlist, open **⋯ → Crossfade…** beside Shuffle and Repeat all. Enter seconds and **Save**; 0 seconds is off. The default is off. Set a video row’s **When it ends** to **Next item** to blend into the following video. The saved playing order applies with Shuffle and Repeat all too. The overlap is limited to half the shorter video, so it uses two videos at once. Pictures, the hall’s sound and Drashti’s own sound in the stream blend together. The Video level, mute, tone and sound delay still apply.
+
+The next video prepares silently. If it cannot get ready, the current picture holds and LIVE says why; it never quietly cuts in its place. Cancel holds the current video at its end until an explicit Next. A ready automatic cue can also crossfade early with Next. Pause holds both videos and the blend; Play carries them on together. A jump on the time bar ends that overlap and moves the current video. Original files are never changed.

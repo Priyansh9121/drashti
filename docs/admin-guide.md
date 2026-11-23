@@ -757,9 +757,11 @@ Allow time for a fluent reader to check every source and translated passage, esp
 
 The normal library save, backup and Undo keep the translations and their checks. Kirtan bundles carry them with the source, including unchecked words for later work. Reader names are local review information in that saved presentation; show and phone feeds contain checked current pairs with no reader names or unchecked corpus. After importing onto another computer, review its screen choices and fit: individual screen choices refer to that computer's saved screen identities. Earlier Drashti versions do not offer this translation view; use a version that supports prepared translations to review and show them. Simple Mode can play checked words chosen in Pro Mode, but cannot approve them or change their routes.
 
-## 32. Looking after video cues
+## 32. Looking after video cues and crossfades
 
-Cue is a Pro Mode control. Allow the next video to prepare before it is needed. The cue waits for the first frame on the local playing pages and connected audience screens on paired computers. A disconnected screen joins by the usual file-copy and first-frame rules when it returns. An output that reloads loses its earlier ready acknowledgement. A failed cue keeps the live picture and sound as they were; Cancel and cue the video again after checking it in Media.
+Cue and playlist Crossfade are Pro Mode controls. Crossfade is off until an operator saves a nonzero length in the playlist’s ⋯ menu. Allow the next video to prepare before it is needed. The cue waits for the first frame on the local playing pages and connected audience screens on paired computers. A disconnected screen joins by the usual file-copy and first-frame rules when it returns. An output that reloads loses its earlier ready acknowledgement. A failed cue keeps the live picture and sound as they were; Cancel and cue the video again after checking it in Media.
+
+Crossfades use two playing videos for the overlap. The length is limited to half the shorter video to keep that limit through a sequence. The hall and stream use their existing sound levels and mutes; the stream hears Drashti’s own sound only when that profile includes it. Playlist seconds are kept with the library. Manual cues recover paused with new readiness checks after an unexpected restart, and a scheduled Go saved before its moment cannot become an audible start on recovery. No source file is rewritten.
 
 While a video is cued, and while it plays from its Go, the hall's screens, the operator window and the stream page keep this computer's sound output open, sending it nothing that can be heard, so that a cue held for minutes still starts on time.
 
