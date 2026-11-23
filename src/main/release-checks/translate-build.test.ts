@@ -212,13 +212,31 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     expect(helper).not.toMatch(/`-I\$\{/u);
   });
 
+  it('holds the helper’s own code to /W4 /WX on Windows, the libraries’ headers as external (a22-review-mt A13)', () => {
+    // As on a Mac: our file's warnings are errors, the libraries' are not ours to fix (MSVC warned C4834 in half.hpp
+    // in run 45249372868). SYSTEM gives MSVC their folders as /external:I; /external:W0 keeps them quiet.
+    const cmake = read('tools/translate/CMakeLists.txt');
+    expect(cmake).toContain('cmake_minimum_required(VERSION 3.25)');
+    expect(cmake).toContain('add_subdirectory(${CT2_SOURCE} ctranslate2 EXCLUDE_FROM_ALL SYSTEM)');
+    expect(cmake).toContain('add_subdirectory(${SPM_SOURCE} sentencepiece EXCLUDE_FROM_ALL SYSTEM)');
+    expect(cmake).toContain('target_include_directories(drashti-translate SYSTEM PRIVATE');
+    expect(cmake).toContain(
+      'target_compile_options(drashti-translate PRIVATE /W4 /WX /utf-8 /external:anglebrackets /external:W0)',
+    );
+    expect(cmake).not.toContain('/W3');
+    // MSVC deprecates _wfopen (C4996, an error under /WX); _wfsopen shares the file as _wfopen does.
+    const source = read('tools/translate/drashti-translate.cc');
+    expect(source).not.toMatch(/\b_wfopen\(/u);
+    expect(source).toContain('_wfsopen(wide.c_str(), L"rb", _SH_DENYNO)');
+  });
+
   it('reads the tokenizer model itself, through a wide path on Windows, and refuses an empty path (a22-review-mt A6)', () => {
     // SentencePiece's own Load opens a narrow path on Windows (a user name outside the ANSI code page fails), and
     // reads standard input for an empty name: the helper's own protocol channel.
     const source = read('tools/translate/drashti-translate.cc');
     expect(source).not.toMatch(/\.spm\.Load\(/u);
     expect(source).toContain('LoadFromSerializedProto');
-    expect(source).toMatch(/#ifdef _WIN32[\s\S]*MultiByteToWideChar\(CP_UTF8[\s\S]*_wfopen/u);
+    expect(source).toMatch(/#ifdef _WIN32[\s\S]*MultiByteToWideChar\(CP_UTF8[\s\S]*_wfsopen/u);
     expect(source).toContain('model->empty() || !spm || spm->empty()');
   });
 
