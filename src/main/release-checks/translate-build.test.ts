@@ -87,7 +87,7 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
 
   it('has the Intel program refuse only under Rosetta: on a real Intel Mac it runs as any other', () => {
     const source = read('tools/translate/drashti-translate.cc');
-    const gate = source.slice(source.indexOf('bool under_rosetta()'), source.indexOf('struct Route'));
+    const gate = source.split('bool under_rosetta()')[1]?.split('struct Route')[0] ?? '';
     expect(gate).toMatch(/#if defined\(__APPLE__\) && defined\(__x86_64__\)/u);
     expect(gate).toContain(
       'sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) == 0 && translated == 1',

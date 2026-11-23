@@ -145,7 +145,17 @@ describe('Prepare translations’ requests', () => {
             }),
         }),
     });
-    const { call } = setUp({}, engine);
+    const { call } = setUp(
+      {},
+      {
+        installed: () => engine.installed(),
+        available: (from, to) => engine.available(from, to),
+        translate: (source, from, to) => engine.translate(source, from, to),
+        cancel: () => {
+          engine.cancel();
+        },
+      },
+    );
     const result = await call(IPC.slideEditor.translationDraft, request);
     expect(result).toEqual({ ok: false, message: 'The translation engine stopped.' });
     expect(log.warn).toHaveBeenCalledWith('Translation: the engine stopped (exit 139).');
