@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
+import { generatedWordSubsetPdf } from '../fixtures/pdf-word-subset';
 import { inspectPdf, occurrences } from './pdf-export-oracle';
 import { openGeneratedPdf, savePdfCopy, usePdfTools } from './pdf-tools-fixtures';
 
