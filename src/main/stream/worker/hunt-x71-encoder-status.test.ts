@@ -85,13 +85,12 @@ describe('H6 encoder fault status', () => {
         );
         pipeline.fromProgram({ kind: 'video', data: frame.buffer });
         const writer = new MkvWriter({ ...format, fps: 30 }, { sampleRate: 48000, channels: 2 });
-        encoders[1]?.stdout.write(
-          Buffer.concat([
-            writer.header(),
-            ...writer.block(VIDEO_TRACK, 0, Buffer.from(frame)),
-            ...writer.block(VIDEO_TRACK, 1, Buffer.from(frame)),
-          ]),
-        );
+        // A generated OUTPUT cluster: FFmpeg resolves its size; raw MkvWriter input leaves it unknown.
+        const cluster = Buffer.concat(writer.block(VIDEO_TRACK, 0, Buffer.from(frame)));
+        cluster.fill(0, 4, 12);
+        cluster[4] = 1;
+        cluster.writeUIntBE(cluster.length - 12, 6, 6);
+        encoders[1]?.stdout.write(Buffer.concat([writer.header(), cluster]));
         expect(pipeline.status().error, 'newly encoded source frames clear the fault').toBeNull();
         expect(pipeline.status().recording.file).toContain(' part 2.mkv');
         const nextFile = (pipeline as unknown as { recordFile: WriteStream | null }).recordFile;

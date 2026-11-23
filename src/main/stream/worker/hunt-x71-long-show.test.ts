@@ -54,14 +54,29 @@ describe('H6 long show timeline', () => {
       },
     );
     splitter.push(header);
+    // MkvWriter makes live encoder INPUT with unknown-sized clusters. The encoder's OUTPUT has known
+    // sizes (the contract MkvSplitter reads). Packetize the generated timeline as that output does.
+    let pending: Buffer[] = [];
+    const flush = () => {
+      if (pending.length === 0) return;
+      const cluster = Buffer.concat(pending);
+      cluster.fill(0, 4, 12);
+      cluster[4] = 1;
+      cluster.writeUIntBE(cluster.length - 12, 6, 6);
+      splitter.push(cluster);
+      pending = [];
+    };
+    const add = (parts: Buffer[]) => {
+      if (parts[0]?.equals(Buffer.from([0x1f, 0x43, 0xb6, 0x75]))) flush();
+      pending.push(...parts);
+    };
     const end = 3 * 60 * 60 * 30;
     for (let frame = 0; frame <= end; frame++) {
       const seconds = frame / 30;
-      for (const bytes of writer.block(VIDEO_TRACK, seconds, picture)) splitter.push(bytes);
-      for (const bytes of writer.block(AUDIO_TRACK, seconds, sound)) splitter.push(bytes);
+      add(writer.block(VIDEO_TRACK, seconds, picture));
+      add(writer.block(AUDIO_TRACK, seconds, sound));
     }
-    // A final cluster gives the incremental reader the preceding cluster's end.
-    for (const bytes of writer.block(VIDEO_TRACK, end / 30 + 1, picture)) splitter.push(bytes);
+    flush();
     console.log(
       `HUNT-x71 long-show frames=${String(end + 1)} clusters=${String(count)} lastMs=${String(last)} lateJoinMs=${String(joinedAt)} lateLastMs=${String(lateLast)}`,
     );
