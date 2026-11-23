@@ -1,5 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { type IncomingMessage, request } from 'node:http';
+import { EventEmitter } from 'node:events';
+import { PassThrough, type Duplex } from 'node:stream';
+import { type IncomingMessage, request, type Server } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -47,6 +49,7 @@ afterEach(async () => {
 });
 
 interface Fake extends ServerHost {
+  busy?(): void;
   requests: DeviceRequest[];
   connectedNow: string[];
   resyncs: number;
@@ -1127,7 +1130,7 @@ describe('places for paired devices', () => {
   it('admits paired HTTP and both device feeds while new connections are waiting', async () => {
     const { port, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
     const sockets: Socket[] = [];
-    const listener = Reflect.get(network, 'server') as import('node:http').Server;
+    const listener = Reflect.get(network, 'server') as Server;
     try {
       for (let i = 0; i < 8; i++) {
         const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
@@ -1186,11 +1189,10 @@ describe('places for paired devices', () => {
   });
 });
 
-
 it('asks a newcomer to wait when the open places are busy', async () => {
   const { port, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
   const sockets: Socket[] = [];
-  const listener = Reflect.get(network, 'server') as import('node:http').Server;
+  const listener = Reflect.get(network, 'server') as Server;
   try {
     for (let i = 0; i < 2; i++) {
       const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
@@ -1202,9 +1204,114 @@ it('asks a newcomer to wait when the open places are busy', async () => {
     expect(answer.status).toBe(503);
     expect(JSON.parse(answer.body)).toEqual({
       ok: false,
-      message: 'Drashti is busy. Paired devices keep their places. Ask the operator before pairing a new device.',
+      message:
+        'Drashti is busy. Paired devices keep their places. Ask the operator before pairing a new device.',
     });
   } finally {
+    for (const socket of sockets) socket.destroy();
+  }
+});
+
+it('protects an authenticated reply while it waits for Main and coalesces the operator notice', async () => {
+  const { port, host, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+  let notices = 0;
+  host.busy = () => {
+    notices++;
+  };
+  let arrived!: () => void;
+  const requested = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  let answer!: (value: Awaited<ReturnType<ServerHost['request']>>) => void;
+  host.request = () =>
+    new Promise((resolve) => {
+      answer = resolve;
+      arrived();
+    });
+  const reply = call(port, '/api/v1/status', { headers: bearer(REMOTE_TOKEN) });
+  const sockets: Socket[] = [];
+  const listener = Reflect.get(network, 'server') as Server;
+  try {
+    await requested;
+    for (let i = 0; i < 4; i++) {
+      const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
+      const { socket } = await socketTo(port);
+      sockets.push(socket);
+      await accepted;
+    }
+    answer({ status: 200, body: { ok: true, op: 'status' } });
+    expect(await reply).toMatchObject({ status: 200, body: JSON.stringify({ ok: true, op: 'status' }) });
+    expect(notices).toBe(1);
+    expect((await call(port, '/remote', { headers: { Accept: 'text/html' } })).status).toBe(200);
+    expect((await call(port, '/pair', { headers: { Accept: 'text/html' } })).status).toBe(200);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+  }
+});
+
+it('admits a paired device after waiting feeds from many loopback addresses', async () => {
+  const { port, server: network } = await start();
+  class LocalFeed extends EventEmitter {
+    readonly OPEN = WebSocket.OPEN;
+    readyState = WebSocket.OPEN;
+    readonly bufferedAmount = 0;
+    readonly sent: ToDevice[] = [];
+    send(text: string): void {
+      this.sent.push(JSON.parse(text) as ToDevice);
+    }
+    close(): void {
+      this.readyState = WebSocket.CLOSED;
+      this.emit('close');
+    }
+    terminate(): void {
+      this.close();
+    }
+  }
+  // Stand-in transports allow many loopback addresses without changing this computer's interfaces.
+  // The server's address gate, feed admission and pairing checks are the production methods.
+  const feeds: LocalFeed[] = [];
+  const sockets: PassThrough[] = [];
+  let candidate = new LocalFeed();
+  Reflect.set(network, 'wss', {
+    handleUpgrade: (
+      _req: IncomingMessage,
+      socket: Duplex,
+      _head: Buffer,
+      accept: (ws: WebSocket) => void,
+    ) => {
+      const ws = candidate;
+      socket.once('close', () => ws.terminate());
+      accept(ws as unknown as WebSocket);
+    },
+  });
+  const upgrade = Reflect.get(network, 'onUpgrade') as (
+    req: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ) => void;
+  const open = (address: string) => {
+    candidate = new LocalFeed();
+    feeds.push(candidate);
+    const socket = Object.assign(new PassThrough(), { remoteAddress: address, remotePort: feeds.length });
+    sockets.push(socket);
+    const req = {
+      socket,
+      headers: { host: `127.0.0.1:${String(port)}` },
+      url: '/api/v1/feed',
+    } as unknown as IncomingMessage;
+    upgrade.call(network, req, socket, Buffer.alloc(0));
+    return candidate;
+  };
+  try {
+    for (let i = 0; i < 100; i++) open(`127.0.0.${String(2 + (i % 16))}`);
+    const paired = open('127.0.0.1');
+    paired.emit('message', Buffer.from(JSON.stringify({ type: 'hello', token: STAGE_TOKEN })), false);
+    expect(paired.sent).toContainEqual({
+      type: 'welcome',
+      device: { name: 'Placeholder tablet', kind: 'stage' },
+    });
+  } finally {
+    for (const ws of feeds) ws.terminate();
     for (const socket of sockets) socket.destroy();
   }
 });
