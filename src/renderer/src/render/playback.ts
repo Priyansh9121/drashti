@@ -389,7 +389,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     }
     const span = end - start;
     const offset = playbackOffset(v.currentTime, at, span, c.loop);
-    const correction = playbackCorrection(offset, limits);
+    // QA22-FADE-1 (alpha.23): the stream's own sound in a crossfade is brought back by speed alone, by its own limits.
+    const ease = options.ease?.() ?? null;
+    const correction = playbackCorrection(offset, ease ?? limits);
     // eslint-disable-next-line no-restricted-properties -- a length of time: how long it has played on since it landed or began
     const now = performance.now();
     // Once it has played on a moment after landing (or before it jumps again): where it plays says how much
@@ -412,10 +414,13 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       measured = offset;
     }
     let reaim = false;
+    // Easing (a crossfade's sound, QA22-FADE-1): never aimed again, a landing or a start measured as ever (so no stale
+    // measurement aims it after the fade), and never jumped for a small move the engine sends (a cue's Go among them,
+    // program/sound.ts's resync): a jump is silent until it lands, 1.9 s on CI's two-core Windows.
     if (measured !== null && !correction.seek) {
-      reaim = Math.abs(measured) > IN_STEP && reaims < REAIMS;
+      reaim = ease === null && Math.abs(measured) > IN_STEP && reaims < REAIMS;
       reaims = reaim ? reaims + 1 : 0;
-    } else if (moved && !correction.seek && Math.abs(offset) > IN_STEP) {
+    } else if (ease === null && moved && !correction.seek && Math.abs(offset) > IN_STEP) {
       // Sent a little way (Session 51), less than the half second that makes a sound jump: it lands there by a
       // jump too, measured as every landing is, not eased at 2% a second (0.3 s took 15 s). A picture less than
       // its quarter of a second alike (Session 52: 0.2 s took 4 s at 5%).
@@ -425,6 +430,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (correction.seek || reaim)
       jump(c.loop && span > 0 ? start + ((at - start + lead()) % span) - lead() : at);
     else {
+      // Faster or slower by up to its limits while easing, at the pitch it has (Chromium's default, asked to be sure).
+      if (ease !== null && !v.preservesPitch) v.preservesPitch = true;
       // A late start catching up (Session 57) plays that much faster on top, never more than its fastest.
       const up = catchingUp(c);
       const rate = up ? Math.min(up.maxRate, correction.rate + up.extra) : correction.rate;

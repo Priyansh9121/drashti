@@ -5,7 +5,7 @@ import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report
 import { videoSoundGain } from '../audio/sounds';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
-import { SOUND_LIMITS } from '../../../shared/media';
+import { FADE_SOUND_LIMITS, SOUND_LIMITS } from '../../../shared/media';
 import { musicAside, soundGain, StepAside } from '../../../shared/sound';
 import type { DeviceChoice } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
@@ -255,12 +255,18 @@ export class StreamSound {
         stop: () => undefined,
         resync: () => undefined,
       };
+      // QA22-FADE-1 (alpha.23, the owner: "±8%, jump past 0.5 s"): in a crossfade, out of step, by speed and not a
+      // jump, while it carries its envelope (from the crossfade's state until the engine takes the pair away). Only a
+      // player there before its fade (the outgoing one, or the cue's prepared one): one made inside a fade (this page
+      // started again in it) is put in place as ever, by a jump (a22-review-x86 E5: 0.3 s at 8% would outlast it).
+      const easeable = !sound.envelope || sound.prepared === true;
       const playback = startPlayback(el, {
         mediaId: sound.mediaId,
         startedAt: sound.startedAt,
         prepareScheduledStart: sound.cueId !== undefined,
         audible: true,
         limits: SOUND_LIMITS,
+        ease: () => (easeable && own.sound.envelope ? FADE_SOUND_LIMITS : null),
         onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
         onError: () => reportVideoCue(sound.cueId, 'sound', false),
         timing: () => ({ loop: own.sound.loop, clip: own.sound.clip, seek: own.sound.seek }),
