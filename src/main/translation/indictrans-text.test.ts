@@ -28,11 +28,15 @@ const fixture = JSON.parse(
 ) as Fixture;
 const ISO: Record<string, Iso> = { eng_Latn: 'en', guj_Gujr: 'gu', hin_Deva: 'hi' };
 const iso = (tag: string): Iso => ISO[tag] ?? 'en';
-// Python numbers a pattern's matches in its set's order; the fixture holds the order that process used.
+// Python numbers a pattern's matches in its set's order; the fixture holds the order that process used. The port's
+// own patterns must have found the very same matches (a22-review-mt A5): only their order is taken from Python.
 const pythonOrder =
   (order: string[][]): PlaceholderOrder =>
-  (index) =>
-    order[index] ?? [];
+  (index, matches) => {
+    const python = order[index] ?? [];
+    expect(new Set(matches), `placeholder pattern ${String(index)}`).toEqual(new Set(python));
+    return python;
+  };
 
 describe('IndicTrans2 text pipeline, against x74’s Python', () => {
   it('prepares each source exactly as IndicProcessor.preprocess_batch did', () => {
