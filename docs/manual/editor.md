@@ -27,10 +27,11 @@
 
 1. Open **Edit slides…**, then **Translate…**.
 2. Choose **Source language** and a different **Target language**. Keep one source language in each text box.
-3. Press **Prepare translations** for drafts of the empty ones (**Stop** ends the run; one **Undo** takes the run back), or write **Translation words** beside the original. A draft is only a start: read it against its source and correct it. Reserve clear space below the source using **Reserved translation area**. Rearrange the source in the editor first if it fills the slide.
-4. Have the reader check the exact pair and its fit, enter **Reader name**, then press **Mark checked**. Changing either set of words requires a new check.
-5. Open **Where checked translations show**. Choose the presentation language and any screen or group choices; **Off** on a screen takes precedence.
-6. Preview the checked words, press **Done**, then **Save**. Missing or unchecked words and translations that cannot fit stay hidden; the original stays in place.
+3. Press **Prepare translations** for drafts of the empty ones. **Stop** ends the run; one **Undo** takes it back. A draft is only a start: read it against its source and correct it.
+4. Or write **Translation words** beside the original. Reserve clear space below the source using **Reserved translation area**. Rearrange the source in the editor first if it fills the slide.
+5. Have the reader check the exact pair and its fit, enter **Reader name**, then press **Mark checked**. Changing either set of words requires a new check.
+6. Open **Where checked translations show**. Choose the presentation language and any screen or group choices; **Off** on a screen takes precedence.
+7. Preview the checked words, press **Done**, then **Save**. Missing or unchecked words and translations that cannot fit stay hidden; the original stays in place.
 
 Simple Mode has **Translation status…** to read the saved checks. It cannot write, check or choose translations. Imported pages, pictures and movies remain whole; use separately authored text boxes on ordinary slides. Normal Save, Undo, backups and kirtan bundles carry the saved words and their review.
 
