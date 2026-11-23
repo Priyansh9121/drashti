@@ -72,7 +72,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       if (!gate) {
         to.state({
           phase: 'failed',
-          message: 'Recognition is waiting for the show’s background-work protection.',
+          message: 'Recognition is not ready on this computer yet.',
         });
         return () => undefined;
       }
@@ -334,17 +334,23 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           if (!ended() && mine === generation) fail();
         }
       };
-      const stopGate = gate.listen(() => {
-        if (stopped) return;
-        if (!allowed()) {
-          gateHeld = true;
-          end();
-          to.state({ phase: 'held', reason: 'busy' });
-        } else if (gateHeld) {
-          gateHeld = false;
-          if (!busy) void begin();
-        }
-      });
+      let stopGate: () => void;
+      try {
+        stopGate = gate.listen(() => {
+          if (stopped) return;
+          if (!allowed()) {
+            gateHeld = true;
+            end();
+            to.state({ phase: 'held', reason: 'busy' });
+          } else if (gateHeld) {
+            gateHeld = false;
+            if (!busy) void begin();
+          }
+        });
+      } catch {
+        to.state({ phase: 'failed', message: 'Recognition is not ready on this computer yet.' });
+        return () => undefined;
+      }
       void begin();
       return () => {
         if (stopped) return;
