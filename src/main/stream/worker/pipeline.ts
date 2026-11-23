@@ -764,6 +764,11 @@ export class StreamPipeline {
       if (!error || this.syncFailed || this.recordFd !== fd) return;
       this.syncFailed = true;
       this.log('warn', `The recording could not be kept on the disk as it goes: ${error.message}`);
+      this.stopRecording(
+        error.code === 'ENOSPC'
+          ? 'The recording stopped: the disk is full.'
+          : 'The recording stopped: the disk could not keep what was written. Check that it is still connected.',
+      );
     });
   }
 

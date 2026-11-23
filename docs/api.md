@@ -563,6 +563,10 @@ In n8n, the **Crypto** node's HMAC (SHA256, hex, the secret as shown) of the bod
 
 Live captions (state 26, retained by state 27) are never sent in this API, to a phone or to a node; captions are left out or null.
 
+## Desktop video recording status
+
+Video recording status reports `state: 'off'` and a disk-related `message` if the periodic disk flush fails. Main also sends that message as an operator notice. A full disk is named plainly. This stops the recording without ending the outgoing stream.
+
 ## Desktop kirtan bundles
 
 The operator window in Pro Mode can call the typed desktop bridge `drashti.kirtans.exportBundle({ presentationIds, includeMedia })`. It opens the native save dialog; the page cannot supply an output path. It returns `{ ok: true, file, kirtans, media }`, or `{ ok: false, message, cancelled? }`. Requests are bounded to 1–1,000 ids and a boolean media choice, checked before the dialog and checked for Pro Mode again afterwards. ZIP work runs in the existing low-priority import worker, pauses while on air or recording and is cancelled before quit finishes.
