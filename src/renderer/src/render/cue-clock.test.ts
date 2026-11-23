@@ -84,6 +84,8 @@ describe("a cued picture's clock", () => {
     cueClock(v.media(), graphOf(context))();
     v.muted = true;
     cueClock(v.media(), graphOf(context));
+    // It rested between the two cues; it runs again a moment later.
+    context.start();
     expect(context.made).toHaveLength(1);
     expect(context.made[0]?.connected).toEqual([sink]);
     expect(v.muted).toBe(false);

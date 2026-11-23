@@ -45,6 +45,8 @@ export function pageSilentGraph(): SilentGraph | null {
 
 /** An element can be a media element source once only, ever: it is kept for a later cue of the same element. */
 const sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+/** How many cued pictures use (or wait for) each graph: with none, it rests (suspended) until the next cue. */
+const users = new WeakMap<AudioContext, number>();
 
 /**
  * Pull a cued picture's sound through the page's silent graph and unmute it there (its clock then starts with its
@@ -55,6 +57,9 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
   const silent = graph();
   if (!silent) return () => undefined;
   const { context, sink } = silent;
+  users.set(context, (users.get(context) ?? 0) + 1);
+  // Resting since its last cue: asked to run again (it does a moment later: the route waits for that, below).
+  if (context.state === 'suspended') void context.resume().catch(() => undefined);
   let stopped = false;
   let routed: MediaElementAudioSourceNode | null = null;
   const route = () => {
@@ -79,12 +84,18 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
   if (context.state === 'running') route();
   else context.addEventListener('statechange', started);
   return () => {
+    if (stopped) return;
     stopped = true;
     context.removeEventListener('statechange', started);
-    if (!routed) return;
-    v.muted = true;
-    delete v.dataset['cueClock'];
-    routed.disconnect();
-    routed = null;
+    if (routed) {
+      v.muted = true;
+      delete v.dataset['cueClock'];
+      routed.disconnect();
+      routed = null;
+    }
+    const left = (users.get(context) ?? 1) - 1;
+    users.set(context, left);
+    // Nothing cued uses it now: no device time spent on silence until the next cue.
+    if (left === 0 && context.state === 'running') void context.suspend().catch(() => undefined);
   };
 }
