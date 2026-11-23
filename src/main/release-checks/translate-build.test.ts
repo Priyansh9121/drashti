@@ -146,6 +146,10 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     // ruy enables its AVX paths on its own only for Linux clang, GCC 9 and MSVC; Apple clang needs its switch, in every
     // file that includes ruy (ruy itself and CTranslate2), or every int8 product runs ruy\u2019s reference C++.
     const script = read('scripts/fetch-translate.mjs');
-    expect(script.match(/x86 \? \['-DRUY_FORCE_ENABLE_X86_ENHANCEMENTS'\] : \[\]/gu)).toHaveLength(2);
+    expect(script).toContain("const x86Ruy = x86 ? ['-DRUY_FORCE_ENABLE_X86_ENHANCEMENTS'] : [];");
+    const ruyJobs = script.split('// ruy, every library source')[1]?.split('// cpu_features')[0] ?? '';
+    const ct2Defines = script.split('const ct2Defines = [')[1]?.split('];')[0] ?? '';
+    expect(ruyJobs).toContain('...x86Ruy');
+    expect(ct2Defines).toContain('...x86Ruy');
   });
 });

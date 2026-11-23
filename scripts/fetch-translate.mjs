@@ -218,6 +218,9 @@ export function macJobs(target, { ct2, spm }, work) {
       name: `cpuinfo_${f.replaceAll('/', '_')}`,
       flags: cpuinfoFlags,
     });
+  // ruy's x86 fast paths (AVX, AVX2+FMA, AVX-512): ruy turns them on by itself only for Linux clang, GCC 9 and MSVC,
+  // never for Apple clang, so the Intel build asks for them in every file that includes ruy (ruy and CTranslate2).
+  const x86Ruy = x86 ? ['-DRUY_FORCE_ENABLE_X86_ENHANCEMENTS'] : [];
   // ruy, every library source (its x86 kernels with their instruction sets).
   for (const f of readdirSync(join(ruy, 'ruy')).filter(
     (n) => n.endsWith('.cc') && !/(_test|^test_|benchmark|_main)/u.test(n),
@@ -233,7 +236,14 @@ export function macJobs(target, { ct2, spm }, work) {
     jobs.push({
       src: join(ruy, 'ruy', f),
       name: `ruy_${f}`,
-      flags: ['-std=c++17', `-I${ruy}`, `-I${join(cpuinfo, 'include')}`, '-DRUY_HAVE_CPUINFO', ...extra],
+      flags: [
+        '-std=c++17',
+        `-I${ruy}`,
+        `-I${join(cpuinfo, 'include')}`,
+        '-DRUY_HAVE_CPUINFO',
+        ...x86Ruy,
+        ...extra,
+      ],
     });
   }
   // cpu_features (x86 only), as its CMakeLists builds it.
@@ -257,6 +267,7 @@ export function macJobs(target, { ct2, spm }, work) {
     '-DCT2_WITH_RUY',
     '-DCT2_WITH_ACCELERATE',
     x86 ? '-DCT2_X86_BUILD' : '-DCT2_ARM64_BUILD',
+    ...x86Ruy,
   ];
   const ct2Flags = [
     '-std=c++17',
