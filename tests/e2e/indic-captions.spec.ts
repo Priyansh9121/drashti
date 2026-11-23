@@ -14,7 +14,7 @@ for (const policy of ['protected', 'below-show'] as const) {
   test(`checked Route C model decodes PCM through native helper and speech hub (${policy})`, async () => {
     const root = test.info().outputPath('આકાર fixture');
     mkdirSync(root, { recursive: true });
-    const fixture = makeIndicFixture();
+    const fixture = makeIndicFixture({ trailingSeparator: policy === 'below-show' });
     const files = [
       { name: 'model.onnx', data: fixture.model },
       { name: 'tokens.txt', data: fixture.tokens },

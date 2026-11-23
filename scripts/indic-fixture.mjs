@@ -20,8 +20,8 @@ const shape = (dims) =>
 const info = (name, type, dims) =>
   fields(message(1, name), message(2, message(1, fields(integer(1, type), message(2, shape(dims))))));
 
-export function makeIndicFixture() {
-  const sequence = [0, 0, 256, 0, 1, 256];
+export function makeIndicFixture({ trailingSeparator = false } = {}) {
+  const sequence = [0, 0, 256, 0, 1, 256, ...(trailingSeparator ? [2, 256] : [])];
   const logits = Buffer.alloc(sequence.length * 257 * 4);
   for (let t = 0; t < sequence.length; t += 1)
     for (let k = 0; k < 257; k += 1) logits.writeFloatLE(k === sequence[t] ? 0 : -20, (t * 257 + k) * 4);
@@ -48,7 +48,8 @@ export function makeIndicFixture() {
       message(8, integer(2, 17)),
     ),
     tokens:
-      ['▁shape', '▁box', ...Array.from({ length: 254 }, (_, i) => `unused${i}`), '<blank>'].join('\n') + '\n',
+      ['▁shape', '▁box', '▁', ...Array.from({ length: 253 }, (_, i) => `unused${i}`), '<blank>'].join('\n') +
+      '\n',
     // Zero mel bank yields finite constant log-energy; this fixture tests protocol and decoder, not acoustic quality.
     frontend: Buffer.alloc(80 * 257 * 4),
   };
