@@ -3778,6 +3778,13 @@ function start(): void {
     programChanged: () => {
       zoomWindow?.programChanged();
       videoOutService?.programChanged();
+      // A cue's pages worked out again: one gone (a crash, its cap) is no longer waited for (a22-review-x86 S1).
+      engine.videoCuePageJoined('');
+    },
+    // The stream's sound page went (a crash, its cap, closed): the same, so a waiting cue, an automatic crossfade's
+    // among them, goes at its moment and the hall with it (S1). A new page joins by its own subscription.
+    soundChanged: () => {
+      engine.videoCuePageJoined('');
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);

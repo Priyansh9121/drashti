@@ -95,6 +95,11 @@ export interface StreamServiceDeps {
    * afresh (programFrame()).
    */
   programChanged?(): void;
+  /**
+   * The stream's sound page went (it stopped, stopped for good at its cap, or closed): Main works out again which pages
+   * a waiting cue needs (a22-review-x86 S1), so a cue never waits on a page that is gone. A new page joins by itself.
+   */
+  soundChanged?(): void;
   /** The bundled FFmpeg, or null when it is missing. */
   ffmpegPath(): string | null;
   spawnWorker(): StreamWorker;
@@ -629,13 +634,15 @@ export class StreamService {
     if (this.programWanted()) {
       if (!pageAlive(this.streamSound)) void this.openSound();
     } else if (this.streamSound) {
-      this.streamSound.destroy();
+      const win = this.streamSound;
       this.streamSound = null;
       this.soundReady = false;
+      win.destroy();
       this.speechPort?.close();
       this.speechPort = null;
       this.inputs = { ...this.inputs, microphones: [], sound: 'none' };
       this.changed();
+      this.deps.soundChanged?.();
     }
   }
 
@@ -676,11 +683,13 @@ export class StreamService {
         }, 500);
       }
       this.changed();
+      this.deps.soundChanged?.();
     });
     win.on('closed', () => {
       if (this.streamSound !== win) return;
       this.streamSound = null;
       this.soundReady = false;
+      this.deps.soundChanged?.();
     });
     this.changed();
   }
