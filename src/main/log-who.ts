@@ -27,12 +27,23 @@ function newId(): string {
  * cannot be kept, an id for this run is still given, and `kept` says so.
  */
 export function installId(dir: string, now: () => Date = () => new Date()): { id: string; kept: boolean } {
-  void dir;
-  void now;
-  void newId;
-  void keptSchema;
-  void INSTALL_ID_FILE;
-  return { id: '', kept: false };
+  const file = join(dir, INSTALL_ID_FILE);
+  try {
+    const read = keptSchema.safeParse(JSON.parse(readFileSync(file, 'utf8')));
+    if (read.success) return { id: read.data.id, kept: true };
+  } catch {
+    // None yet, or damaged: a new one.
+  }
+  const id = newId();
+  try {
+    mkdirSync(dir, { recursive: true });
+    const part = `${file}.part`;
+    writeFileSync(part, `${JSON.stringify({ id, made: now().toISOString() })}\n`, 'utf8');
+    renameSync(part, file);
+    return { id, kept: true };
+  } catch {
+    return { id, kept: false };
+  }
 }
 
 /** Who and what wrote a diagnostics file: never a Gmail address or a private value. */
@@ -79,7 +90,24 @@ export function timeZoneText(now: Date): string {
  * Install id, Access-list entry, Role, Made in, Time zone, Log.
  */
 export function whoLines(who: DiagnosticsWho, now: Date): string[] {
-  void who;
-  void now;
-  return [];
+  const role = who.role
+    ? `${who.role.mode === 'simple' ? 'Simple' : 'Pro'}${who.role.owner ? ', the owner' : ''}`
+    : who.made === 'node'
+      ? 'a node (it has no entry of its own: Main is let in)'
+      : 'not let in';
+  let entry: string;
+  if (who.grantId) entry = `grant ${idStart(who.grantId, 8)} (the Computers tab's Grant column starts so)`;
+  else if (who.made === 'node')
+    entry = who.main ? `none: a node, following Main “${who.main}”` : 'none: a node, not paired';
+  else entry = 'none: not let in';
+  return [
+    `Computer: ${who.computer}`,
+    `Computer id: ${who.computerId ? `${idStart(who.computerId, 12)} (the Computers tab's Computer id column starts so)` : 'none'}`,
+    `Install id: ${who.installId}`,
+    `Access-list entry: ${entry}`,
+    `Role: ${role}`,
+    `Made in: ${who.made === 'node' ? 'the node' : who.made === 'simple' ? 'Simple Mode' : 'Pro Mode'}`,
+    `Time zone: ${timeZoneText(now)}`,
+    `Log: ${who.period}`,
+  ];
 }

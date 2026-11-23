@@ -61,10 +61,14 @@ export const LOG_TOTAL_BYTES = 100 * 1024 * 1024;
 /** The days kept: today and the 29 before it. */
 export const LOG_DAYS = 30;
 
-/** No paths in the log: the home folder becomes ~, and file URLs go. */
+/** An e-mail address (a Gmail let in, say): never in a log or a diagnostics file (alpha.21, logs (b)). */
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/gu;
+
+/** No paths in the log: the home folder becomes ~, and file URLs go; nor any e-mail address. */
 export function scrub(text: string): string {
   let out = HOME.length > 1 ? text.split(HOME).join('~') : text;
   out = out.replace(/file:\/\/[^\s"')]+/gu, 'file://…');
+  out = out.replace(EMAIL, '[email]');
   // The key part of any RTMP address, whatever wrote the line (Session 28; the skills review's MED-4).
   return redact(out);
 }

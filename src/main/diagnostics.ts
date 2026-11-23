@@ -11,7 +11,7 @@ import { ImportRepo } from './db/imports';
 import { type CrashFile, copyCrashFiles, crashFilesLines, KEEP_CRASH_FILES } from './crash-files';
 import { type CrashEntry, JOURNAL_ENTRIES } from './crash-journal';
 import { scrub } from './log';
-import type { DiagnosticsWho } from './log-who';
+import { type DiagnosticsWho, whoLines } from './log-who';
 
 /*
  * Help > Save diagnostics: one plain-text file an operator can send after a
@@ -154,13 +154,17 @@ function graphicsSection(graphics: GraphicsInfo | undefined): string {
   return section('Graphics', lines);
 }
 
-/** The versions and the system, the first section of either file. */
-function aboutSection(title: string, app: DiagnosticsInput['app'], now: Date): string {
+/**
+ * The first section of either file: when it was saved, the versions and the system, then who and what made it
+ * (alpha.21, logs (b): its computer, its ids by their start, its install, role, where made, time zone, the log's period).
+ */
+function aboutSection(title: string, app: DiagnosticsInput['app'], now: Date, who: DiagnosticsWho): string {
   const cpu = cpus();
   return section(title, [
     `Saved: ${now.toISOString()}`,
     `Drashti ${app.version}; Electron ${app.electron}, Chrome ${app.chrome}, Node ${app.node}`,
     `System: ${app.platform} ${release()} ${app.arch}; ${cpu.length} × ${cpu[0]?.model ?? 'CPU'}; ${Math.round(totalmem() / 1024 ** 3)} GB memory`,
+    ...whoLines(who, now),
   ]);
 }
 
@@ -237,7 +241,7 @@ function logSection(logFiles: readonly string[]): string {
 export function diagnosticsText(input: DiagnosticsInput): string {
   const { app, db } = input;
   const parts: string[] = [];
-  parts.push(aboutSection('Drashti diagnostics', app, input.now));
+  parts.push(aboutSection('Drashti diagnostics', app, input.now, input.who));
   parts.push(displaysSection(input.displays));
   parts.push(graphicsSection(input.graphics));
   const states = new Map(input.screens.status.map((s) => [s.screenId, s.state]));
@@ -343,7 +347,7 @@ export interface NodeDiagnosticsInput {
 /** The node's whole file. */
 export function nodeDiagnosticsText(input: NodeDiagnosticsInput): string {
   const parts: string[] = [];
-  parts.push(aboutSection('Drashti diagnostics (node)', input.app, input.now));
+  parts.push(aboutSection('Drashti diagnostics (node)', input.app, input.now, input.who));
   parts.push(displaysSection(input.displays));
   const main = input.main;
   const clock = input.clock;
