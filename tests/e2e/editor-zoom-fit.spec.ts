@@ -22,25 +22,25 @@ for (const mode of ['pro', 'simple'] as const)
         const win = await operatorPage(app);
         await operatorReady(win);
         const file = join(userData, `Placeholder zoom.${format === 'PDF' ? 'pdf' : 'txt'}`);
-        writeFileSync(
-          file,
-          format === 'PDF' ? generatedPdf(PDF_PAGES) : '[Verse]\nPlaceholder zoom words\n',
-        );
+        writeFileSync(file, format === 'PDF' ? generatedPdf(PDF_PAGES) : '[Verse]\nPlaceholder zoom words\n');
         const [id] = await importAndGetIds(win, [file]);
         if (!id) throw new Error('Placeholder presentation did not import');
-        const opened = await win.evaluate(async ({ id, mode }) => {
-          const d = (globalThis as PageGlobals).drashti;
-          // Simple Mode permits editing presentations belonging to its playlist.
-          const list = await d.playlists.create('Placeholder zoom playlist', null, false);
-          if (!list.ok || !list.ids[0]) throw new Error('No placeholder playlist');
-          const added = await d.playlists.addItems(list.ids[0], null, [
-            { kind: 'presentation', presentationId: id },
-          ]);
-          if (!added.ok) throw new Error(added.message);
-          const changed = await d.app.setMode(mode);
-          if (!changed.ok) throw new Error(changed.message);
-          return d.slideEditor.open(id, null);
-        }, { id, mode });
+        const opened = await win.evaluate(
+          async ({ id, mode }) => {
+            const d = (globalThis as PageGlobals).drashti;
+            // Simple Mode permits editing presentations belonging to its playlist.
+            const list = await d.playlists.create('Placeholder zoom playlist', null, false);
+            if (!list.ok || !list.ids[0]) throw new Error('No placeholder playlist');
+            const added = await d.playlists.addItems(list.ids[0], null, [
+              { kind: 'presentation', presentationId: id },
+            ]);
+            if (!added.ok) throw new Error(added.message);
+            const changed = await d.app.setMode(mode);
+            if (!changed.ok) throw new Error(changed.message);
+            return d.slideEditor.open(id, null);
+          },
+          { id, mode },
+        );
         expect(opened.ok).toBe(true);
         const { ed, editor } = await slideEditorWindow(app);
         await sizeSlideEditor(app, ed, { width: 1024, height: 645 });
@@ -65,7 +65,7 @@ for (const mode of ['pro', 'simple'] as const)
         }
         // Trial clicks prove pointer hit targets without invoking exports or closing the editor.
         const buttons = header.getByRole('button');
-        for (let i = 0; i < await buttons.count(); i++) {
+        for (let i = 0; i < (await buttons.count()); i++) {
           const button = buttons.nth(i);
           if (await button.isDisabled()) continue;
           await button.click({ trial: true });
