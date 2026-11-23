@@ -485,12 +485,15 @@ export class StreamPipeline {
       reader.push(chunk.toString());
     });
     child.stdin.on('error', () => undefined);
-    const failed = (message: string) => {
-      if (this.encodeProcess !== child) return;
+    /** This encoder went (it stopped, or never started): true when it was the current one, not stopped on purpose. */
+    const gone = (): boolean => {
+      if (this.encodeProcess !== child) return false;
       this.encodeProcess = null;
       child.stdin.end();
-      if (this.stopping) return;
-      this.log('warn', message);
+      return !this.stopping;
+    };
+    /** Stream says so at once; the recording waits for the next encoder, which starts in a second. */
+    const startAgain = () => {
       this.error = 'The encoder stopped. Trying to start it again.';
       this.holdRecording();
       this.reconnectForNewEncoder();
@@ -500,10 +503,14 @@ export class StreamPipeline {
       }, 1000);
     };
     child.on('error', (error) => {
-      failed(`The encoder could not start: ${error.message}`);
+      if (!gone()) return;
+      this.log('warn', `The encoder could not start: ${error.message}`);
+      startAgain();
     });
     child.on('exit', (code) => {
-      failed(`The encoder stopped (code ${String(code)}); starting it again`);
+      if (!gone()) return;
+      this.log('warn', `The encoder stopped (code ${String(code)}); starting it again`);
+      startAgain();
     });
     child.stdin.write(this.writer.header());
     // Sound keeps the clock; without any for a moment, silence takes its place.
