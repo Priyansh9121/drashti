@@ -404,6 +404,9 @@ jobs:
         run: node scripts/fetch-video-out.mjs
       - name: Video out sends a picture that a receiver on this runner reads back
         run: node scripts/check-video-out.mjs
+      # Route C's helper: tests/e2e/indic-captions.spec.ts runs it in whichever part it falls in (no model download).
+      - name: Build the approved native IndicConformer runtime (no model download)
+        run: node scripts/fetch-indic.mjs
       - name: Cache Playwright's browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -487,6 +490,9 @@ jobs:
         run: node scripts/fetch-video-out.mjs
       - name: Video out sends a picture that a receiver on this runner reads back
         run: node scripts/check-video-out.mjs
+      # Route C's helper: tests/e2e/indic-captions.spec.ts runs it in whichever part it falls in (no model download).
+      - name: Build the approved native IndicConformer runtime (no model download)
+        run: node scripts/fetch-indic.mjs
       - name: Cache Playwright's browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
