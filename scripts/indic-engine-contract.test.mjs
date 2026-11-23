@@ -439,3 +439,59 @@ test('a provided closed gate remains authoritative over explicit below-show admi
   stop();
   assert.equal(acquired, false);
 });
+
+test('a capture chunk crossing twelve seconds is split without dropping samples or exceeding the native frame', async () => {
+  let capture, ready;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const decoded = [];
+  const engine = createIndicEngine({
+    admission: 'below-show',
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: {
+      open: (to) => {
+        capture = to;
+        return () => {};
+      },
+    },
+    open: async () => ({
+      decode: async (samples) => {
+        decoded.push(samples);
+        return { language: 'gu', words: [] };
+      },
+      close() {},
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      if (state.phase === 'listening') ready();
+    },
+  });
+  try {
+    await listening;
+    const start = Date.now();
+    let offset = 0;
+    const send = (length, value) => {
+      const from = offset;
+      offset += length;
+      capture(new Int16Array(length).fill(value), start + offset / 16, start + from / 16);
+    };
+    for (let i = 0; i < 191; i += 1) send(1000, 5000);
+    send(16000, 6000);
+    await Promise.resolve();
+    await Promise.resolve();
+    send(11200, 0);
+    assert.deepEqual(
+      decoded.map((samples) => samples.length),
+      [192000, 26200],
+    );
+    assert.deepEqual(Array.from(decoded[0].slice(-1000)), Array(1000).fill(6000));
+    assert.deepEqual(Array.from(decoded[1]), [...Array(15000).fill(6000), ...Array(11200).fill(0)]);
+  } finally {
+    stop();
+  }
+});
