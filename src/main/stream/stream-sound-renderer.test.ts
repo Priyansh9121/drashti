@@ -30,7 +30,7 @@ function page(id: number) {
   return win;
 }
 
-function setup() {
+function setup(more: Record<string, unknown> = {}) {
   const picture = page(101),
     sound = page(102);
   const createProgram = vi.fn(() => picture as unknown as BrowserWindow);
@@ -55,6 +55,7 @@ function setup() {
     ffmpegPath: () => null,
     now: Date.now,
     log: vi.fn(),
+    ...more,
   } as unknown as StreamServiceDeps);
   return { service, picture, sound, createStreamSound };
 }
@@ -209,6 +210,45 @@ describe('the stream sound renderer', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(createStreamSound).toHaveBeenCalledTimes(7);
       expect(service.status().soundPageStopped).toBeUndefined();
+    } finally {
+      service.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells Main each time the sound page goes, so a waiting cue never waits on a page that is gone (a22-review-x86 S1)', async () => {
+    // A cue's pages are worked out again when a page joins; a sound page that crashed for the sixth time (or closed)
+    // has no successor to join, and a playlist's automatic crossfade waited on it for ever, the hall's next video
+    // with it. Main asks the engine again each time this says so (index.ts: videoCuePageJoined('')).
+    const soundChanged = vi.fn();
+    const { service, picture, createStreamSound } = setup({ soundChanged });
+    const windows: ReturnType<typeof page>[] = [];
+    createStreamSound.mockImplementation(() => {
+      const next = page(200 + windows.length);
+      windows.push(next);
+      return next as unknown as BrowserWindow;
+    });
+    try {
+      service.hold('generated picture', true);
+      await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
+      picture.webContents.emit('did-finish-load');
+      windows[0]?.webContents.emit('did-finish-load');
+      expect(soundChanged).not.toHaveBeenCalled();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      windows.at(-1)?.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+      expect(soundChanged, 'a crash: the page is gone at once').toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(500);
+      for (let crash = 1; crash < 6; crash++) {
+        windows.at(-1)?.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+        await vi.advanceTimersByTimeAsync(500);
+      }
+      expect(service.status().soundPageStopped).toBe(true);
+      expect(soundChanged, 'the sixth: stopped, with no page left to wait for').toHaveBeenCalledTimes(6);
+      service.tryAgainPage();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(createStreamSound).toHaveBeenCalledTimes(7);
+      service.hold('generated picture', false);
+      expect(soundChanged, 'nothing needs it any more: it closes').toHaveBeenCalledTimes(7);
     } finally {
       service.close();
       vi.useRealTimers();
