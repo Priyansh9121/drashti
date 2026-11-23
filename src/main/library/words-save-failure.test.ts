@@ -41,7 +41,7 @@ function setup() {
     styleNew,
   });
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)?.({}, ...args);
-  return { presentations, id, call, changed, styleNew };
+  return { db, presentations, id, call, changed, styleNew };
 }
 
 describe('words saved when the drive fills', () => {
@@ -74,7 +74,7 @@ describe('words saved when the drive fills', () => {
 
   it('rolls back a new presentation if the drive fills while its look is saved', () => {
     const t = setup();
-    const count = () => db?.prepare('SELECT count(*) FROM presentations').pluck().get();
+    const count = () => (t.db.prepare('SELECT count(*) AS n FROM presentations').get() as { n: number }).n;
     const before = count();
     t.styleNew.mockImplementation(() => {
       throw Object.assign(new Error('database or disk is full'), { code: 'SQLITE_FULL' });
@@ -90,5 +90,11 @@ describe('words saved when the drive fills', () => {
     );
     expect(result).toMatchObject({ ok: false });
     expect(t.changed).not.toHaveBeenCalled();
+    t.styleNew.mockReset();
+    expect(t.call(IPC.library.newFromWords, 'Placeholder new', 'Placeholder words')).toMatchObject({
+      ok: true,
+    });
+    expect(count()).toBe(before + 1);
+    expect(t.changed).toHaveBeenCalledOnce();
   });
 });
