@@ -72,7 +72,7 @@ function groupsUsed(files: Iterable<string>): string[] {
 }
 
 describe('a narrower bridge (ARCH-7)', () => {
-  it('keeps the sharpening window to its own group: only the display copies' worker has theirs (QA22-L8-2)', () => {
+  it('keeps the sharpening window to its own group: only the display worker has displayCopies (QA22-L8-2)', () => {
     expect(PAGE_GROUPS.sharpen).toEqual(['sharpen']);
     expect(PAGE_GROUPS['display-copy']).toEqual(['displayCopies']);
     expect(pageOf('file:///x/out/renderer/display-copy.html')).toBe('display-copy');
