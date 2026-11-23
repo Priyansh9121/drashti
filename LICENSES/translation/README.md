@@ -1,6 +1,6 @@
 # Prepare translations' engine (third-party notice)
 
-Since alpha.23, **Edit slides… › Translate… › Prepare translations** drafts translations between Gujarati, Hindi and English with an offline engine. A named reader checks every draft before it can show. The engine has two parts.
+Since alpha.22, **Edit slides… › Translate… › Prepare translations** drafts translations between Gujarati, Hindi and English with an offline engine. A named reader checks every draft before it can show. The engine has two parts.
 
 ## drashti-translate
 
