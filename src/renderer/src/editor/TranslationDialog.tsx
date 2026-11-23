@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ScreenGroupConfig } from '../../../shared/screens';
 import type { TextElement } from '../../../shared/model';
 import type { TranslationLanguage } from '../../../shared/prepared-translations';
 import { noTranslator, translationForSource } from '../../../shared/prepared-translations';
@@ -29,6 +30,7 @@ import {
   routePreparedWords,
 } from './prepared-translation-ops';
 
+const NO_GROUPS: ScreenGroupConfig[] = [];
 const languages = ['gu', 'hi', 'en'] as const;
 const language = (value: string): TranslationLanguage => languages.find((item) => item === value) ?? 'gu';
 const choice = (value: string): TranslationChoice => (value === 'off' ? 'off' : language(value));
@@ -48,7 +50,7 @@ function Choices({ inherit = false }: { inherit?: boolean }) {
 
 export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; readOnly: boolean }) {
   const doc = useEditor((state) => state.doc);
-  const groups = useScreens((state) => state.snapshot?.groups ?? []);
+  const groups = useScreens((state) => state.snapshot?.groups ?? NO_GROUPS);
   const rows = doc ? preparedRows(doc) : [];
   const first = rows[0]?.element;
   const saved = first?.translations?.[0];

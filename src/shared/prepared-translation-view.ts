@@ -46,12 +46,19 @@ export function translationFits(text: string, area: Rect, fontSize: number): boo
   const columns = Math.floor(area.width / (2 * fontSize));
   if (columns < 1 || fontSize <= 0 || !text.trim()) return false;
   const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-  const lines = text
-    .split('\n')
-    .reduce(
-      (count, line) => count + Math.max(1, Math.ceil([...graphemes.segment(line)].length / columns)),
-      0,
-    );
+  let lines = 0;
+  for (const explicit of text.split('\n')) {
+    let used = 0;
+    lines += 1;
+    for (const word of explicit.split(/\s+/u)) {
+      const width = [...graphemes.segment(word)].length;
+      if (width > columns) return false;
+      if (used && used + 1 + width > columns) {
+        lines += 1;
+        used = width;
+      } else used += (used ? 1 : 0) + width;
+    }
+  }
   return lines <= 2 && lines * fontSize * 1.45 <= area.height;
 }
 export function translationLayoutProblem(
@@ -83,8 +90,9 @@ export function translationLayoutProblem(
 /** Original content is never moved; unreviewed, mismatched or unsafe words add nothing. */
 export function checkedTranslationView(slide: RenderSlide, destination: TranslationDestination): RenderSlide {
   const additions: TextElement[] = [];
+  const paired = new Set<string>();
   for (const el of slide.elements) {
-    if (el.kind !== 'text' || el.hidden) continue;
+    if (el.kind !== 'text' || el.hidden || el.opacity === 0) continue;
     const choice = translationChoiceFor(el.translationDisplay, destination.groupId, destination.outputId);
     const value = el.translations?.find((item) => item.targetLanguage === choice);
     if (!value || !translationSourceSupported(el, value.sourceLanguage)) continue;
@@ -95,6 +103,7 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
       !el.translationDisplay
     )
       continue;
+    paired.add(el.id);
     additions.push({
       id: `${el.id}:translation:${choice}`,
       kind: 'text',
@@ -102,12 +111,14 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
       lang: value.targetLanguage,
       frame: el.translationDisplay.area,
       style: {
-        ...el.style,
         fontFamily: null,
         fontSize: el.translationDisplay.fontSize,
+        fontWeight: 400,
+        color: el.style.color,
+        align: el.style.align,
         lineHeight: 1.45,
         shrinkToFit: false,
-        noWrap: false,
+        shadow: el.style.shadow,
         verticalAlign: 'top',
       },
       everyScreen: true,
@@ -117,11 +128,25 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
   const clear = additions.filter(
     (el) => !additions.some((other) => other !== el && overlaps(el.frame, other.frame)),
   );
-  return clear.length ? { ...slide, elements: [...slide.elements, ...clear] } : slide;
+  return clear.length
+    ? {
+        ...slide,
+        elements: [
+          ...slide.elements.map((el) =>
+            slide.kirtan && el.kind === 'text' && paired.has(el.id) ? { ...el, everyScreen: true } : el,
+          ),
+          ...clear,
+        ],
+      }
+    : slide;
 }
+
+const playbackCache = new WeakMap<RenderSlide, RenderSlide>();
 
 /** Public playback carries checked pairs only, and never the local reader's name. */
 export function playbackTranslationSlide(slide: RenderSlide): RenderSlide {
+  const cached = playbackCache.get(slide);
+  if (cached) return cached;
   let changed = false;
   const elements = slide.elements.map((el) => {
     if (el.kind !== 'text' || !el.translations?.length) return el;
@@ -134,7 +159,9 @@ export function playbackTranslationSlide(slide: RenderSlide): RenderSlide {
       .map((value) => ({ ...value, reader: 'Checked' }));
     return { ...el, translations };
   });
-  return changed ? { ...slide, elements } : slide;
+  const result = changed ? { ...slide, elements } : slide;
+  playbackCache.set(slide, result);
+  return result;
 }
 
 export function refreshTranslationReview(el: TextElement): TextElement {

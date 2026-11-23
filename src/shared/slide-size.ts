@@ -100,6 +100,15 @@ function elementAt(el: SlideElement, from: Size, to: Size): SlideElement {
       ...el,
       frame,
       style: styleAt(el.style, scale),
+      ...(el.translationDisplay
+        ? {
+            translationDisplay: {
+              ...el.translationDisplay,
+              area: scaledFrame(el.translationDisplay.area, from, to),
+              fontSize: el.translationDisplay.fontSize * scale,
+            },
+          }
+        : {}),
       ...(el.runs ? { runs: el.runs.map((run) => runAt(run, scale)) } : {}),
     };
   if (el.kind === 'timer') return { ...el, frame, style: styleAt(el.style, scale) };
