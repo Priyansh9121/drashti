@@ -111,3 +111,12 @@ test('late native inference cannot publish into a stopped session', async () => 
   assert.equal(published, 0);
   assert.equal(releases, 1);
 });
+
+test('without an authoritative background-work gate no model can load', async () => {
+  let acquired = false;
+  const engine = createIndicEngine({ program: () => '/native', acquire: () => { acquired = true; return null; }, sound: { open: () => null }, log: { info() {}, warn() {} } });
+  const stop = engine.start('gu', { heard() {}, state() {} });
+  await Promise.resolve();
+  stop();
+  assert.equal(acquired, false);
+});
