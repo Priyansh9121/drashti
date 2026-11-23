@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import type { PageGlobals } from './helpers';
+import { windowShowing, type PageGlobals } from './helpers';
 
 /*
  * For the stream's tests: the bundled FFmpeg listening for RTMP on this
@@ -110,6 +110,12 @@ export function rtmpListener(
 export async function streamPage(app: ElectronApplication): Promise<Page> {
   const isStream = (p: Page) => p.url().includes('stream.html');
   return app.windows().find(isStream) ?? app.waitForEvent('window', { predicate: isStream });
+}
+
+/** The stream's sound renderer, kept apart from its picture decoding. */
+export async function streamSoundPage(app: ElectronApplication): Promise<Page> {
+  const isSound = (p: Page) => p.url().includes('stream-sound.html');
+  return windowShowing(app, isSound, 'stream sound');
 }
 
 /**

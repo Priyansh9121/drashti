@@ -384,6 +384,11 @@ import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
+import {
+  applyStreamSoundSecurity,
+  createStreamSoundWindow,
+  STREAM_SOUND_PARTITION,
+} from './stream/stream-sound-window';
 import { StreamPageWarmUp } from './stream/stream-warm';
 import { LiveWindowService } from './live-window/live-window-service';
 import { LiveLinkService } from './live-link/live-link-service';
@@ -1714,8 +1719,11 @@ function start(): void {
     // Only a page that asked is given it (and only the screens' pages may ask: IPC.liveWindow.ask).
     liveWindow: (frame) => liveWindows?.grantFor(frame) ?? null,
   });
+  const streamSoundSession = session.fromPartition(STREAM_SOUND_PARTITION);
+  applyStreamSoundSecurity(streamSoundSession, (contents) => stream?.isStreamSound(contents) ?? false);
   // A hung window's JavaScript stack, for the log (Sessions 31–36, ROB-1): every session's own pages.
-  for (const pages of [session.defaultSession, audioSession, streamSession]) allowHangStacks(pages);
+  for (const pages of [session.defaultSession, audioSession, streamSession, streamSoundSession])
+    allowHangStacks(pages);
 
   // Tests only (never a packaged Drashti): write a library as an older Drashti kept it, then stop.
   const oldLibrary = sw('DRASHTI_SELFTEST_LIBRARY');
@@ -2022,7 +2030,9 @@ function start(): void {
           if (screen.nodeId && screen.enabled && audience.has(screen.id) && remote.has(screen.id))
             ids.push(`node:${screen.nodeId}:${screen.id}`);
         const program = streaming.programContents();
-        if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`, `sound:${program.id}`);
+        if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`);
+        const sound = streaming.soundContents();
+        if (sound && !sound.isDestroyed()) ids.push(`sound:${sound.id}`);
         return ids;
       },
       videoGoFrames: () => {
@@ -2608,6 +2618,7 @@ function start(): void {
   protocol.handle(MEDIA_SCHEME, serveMedia);
   audioSession.protocol.handle(MEDIA_SCHEME, serveMedia);
   streamSession.protocol.handle(MEDIA_SCHEME, serveMedia);
+  streamSoundSession.protocol.handle(MEDIA_SCHEME, serveMedia);
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
@@ -3701,6 +3712,10 @@ function start(): void {
     keys: streamKeys,
     settings,
     screens: screenRepo,
+    createStreamSound: () =>
+      createStreamSoundWindow((line) => {
+        log.info(`Stream sound: ${line}`);
+      }),
     createProgram: (size) =>
       createProgramWindow(size, (line) => {
         log.info(`Stream page: ${line}`);
@@ -5344,7 +5359,7 @@ function start(): void {
       fromOperator(event) ||
       manager.screenIdFor(event.sender.id) !== undefined ||
       streaming.isProgram(event.sender);
-    const sound = event.sender.id === audioWindow?.webContents.id || streaming.isProgram(event.sender);
+    const sound = event.sender.id === audioWindow?.webContents.id || streaming.isStreamSound(event.sender);
     if ((kind === 'picture' && picture) || (kind === 'sound' && sound))
       engine.reportVideoCue(cueId, `${kind}:${event.sender.id}`, ready);
     return null;
@@ -7226,6 +7241,8 @@ function start(): void {
         program.send(IPC.output.testClock, { at });
         reached++;
       }
+      const sound = streaming.soundContents();
+      if (sound && !sound.isDestroyed()) sound.send(IPC.output.testClock, { at });
       return reached;
     };
   // Tests only: LIVE's clock in the operator window held the same way (Session 54, C review), on its own so a test that
@@ -8357,7 +8374,9 @@ function start(): void {
   });
   // Open in Simple Mode and to every role, as a stopped hall screen's Try again is (Session 31).
   handle(IPC.stream.tryAgain, (e) => (fromOperator(e) ? streaming.tryAgainPage() : notOperator));
-  handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
+  handle(IPC.stream.pageContext, (e) =>
+    streaming.isProgram(e.sender) || streaming.isStreamSound(e.sender) ? streaming.context() : null,
+  );
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);
     return null;

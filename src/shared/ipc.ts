@@ -2138,7 +2138,9 @@ export interface EventContract {
   [IPC.media.preparingTrimsChanged]: string[];
   [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
-  [IPC.stream.port]: { role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' };
+  [IPC.stream.port]: {
+    role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' | 'sound-meter' | 'video-out';
+  };
   [IPC.stream.context]: ProgramContext;
   [IPC.liveLink.changed]: StreamLinkStatus;
   [IPC.liveWindow.changed]: LiveWindowStatus;

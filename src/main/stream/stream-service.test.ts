@@ -1,3 +1,4 @@
+import { soundWindowFixture } from './sound-window-fixture';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -46,6 +47,7 @@ describe('the shared sound tap and Program', () => {
       settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
       screens: { streamGroup: () => null },
       createProgram,
+      createStreamSound: soundWindowFixture,
       sendToOperator: vi.fn(),
       platform: 'darwin',
       mediaAccess: (kind: 'camera' | 'microphone') => (kind === 'camera' ? cameraAccess : 'granted'),
@@ -100,6 +102,7 @@ describe('the stream’s page without a graphics chip (Session 58, WU-1), or onc
       settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
       screens: { streamGroup: () => null },
       createProgram,
+      createStreamSound: soundWindowFixture,
       sendToOperator: vi.fn(),
       platform: 'darwin',
       mediaAccess: () => 'granted',
@@ -151,6 +154,7 @@ describe('the stream’s page without a graphics chip (Session 58, WU-1), or onc
       settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
       screens: { streamGroup: () => null },
       createProgram,
+      createStreamSound: soundWindowFixture,
       sendToOperator: vi.fn(),
       platform: 'darwin',
       mediaAccess: () => 'granted',
@@ -236,6 +240,7 @@ describe('video out on the stream’s page (x30)', () => {
       settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
       screens: { streamGroup: () => null },
       createProgram,
+      createStreamSound: soundWindowFixture,
       sendToOperator: vi.fn(),
       platform: 'darwin',
       mediaAccess: () => 'granted',

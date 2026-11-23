@@ -76,6 +76,7 @@ export interface StreamServiceDeps {
   keys: StreamKeyStore;
   settings: SettingsRepo;
   screens: ScreenRepo;
+  createStreamSound(): BrowserWindow;
   createProgram(size: { width: number; height: number }): BrowserWindow;
   sendToOperator<C extends EventChannel>(channel: C, payload: EventContract[C]): void;
   platform: NodeJS.Platform;
@@ -163,6 +164,10 @@ const VIDEO_OUT_HOLDER = 'video out';
 export class StreamService {
   private program: BrowserWindow | null = null;
   private programReady = false;
+  private streamSound: BrowserWindow | null = null;
+  private soundReady = false;
+  private readonly soundRestarts = new RestartCap();
+  private soundStopped = false;
   /** No picture from the stream's page while wanted: it is given its port again (./picture-watch.ts). */
   private readonly pictureWatch = new PictureWatch();
   private readonly watchers = new Map<number, WebContents>();
@@ -495,6 +500,17 @@ export class StreamService {
     );
   }
 
+  /** The stream's sound has its own renderer and media thread, independent of picture decoding. */
+  soundContents(): WebContents | null {
+    return pageAlive(this.streamSound) ? this.streamSound.webContents : null;
+  }
+
+  isStreamSound(contents: WebContents | null): boolean {
+    return (
+      contents !== null && pageAlive(this.streamSound) && contents.id === this.streamSound.webContents.id
+    );
+  }
+
   /** The Program's page and its size, once it is open and ready (Session 48: the window for Zoom shows it). */
   programFrame(): { frame: WebFrameMain; width: number; height: number } | null {
     const program = this.program;
@@ -543,6 +559,7 @@ export class StreamService {
 
   /** The Program window is open while the preview is watched, something holds it, or the stream is live or recording. */
   private updateProgram(): void {
+    this.updateSound();
     // Stopped after crashing too often: only Try again starts it (tryAgainPage).
     if (this.closing || this.pageStopped) return;
     const wanted = this.programWanted();
@@ -553,9 +570,7 @@ export class StreamService {
       this.program.destroy();
       this.program = null;
       this.programReady = false;
-      this.speechPort?.close();
-      this.speechPort = null;
-      this.inputs = NO_INPUTS;
+      this.inputs = { ...this.inputs, cameras: [], camera: 'none' };
       this.changed();
       this.deps.programChanged?.();
     }
@@ -576,14 +591,12 @@ export class StreamService {
       this.programReady = true;
       this.pairPreviews();
       this.pairEncoder();
-      this.pairSpeech();
+      this.pairSoundMeter();
       this.changed();
       this.deps.programChanged?.();
     });
     win.webContents.on('render-process-gone', (_e, details) => {
       this.programReady = false;
-      this.speechPort?.close();
-      this.speechPort = null;
       if (!win.isDestroyed()) win.destroy();
       if (this.program === win) this.program = null;
       this.deps.programChanged?.();
@@ -608,6 +621,76 @@ export class StreamService {
       }
     });
     this.changed();
+  }
+
+  private updateSound(): void {
+    if (this.closing || this.soundStopped) return;
+    if (this.programWanted()) {
+      if (!pageAlive(this.streamSound)) void this.openSound();
+    } else if (this.streamSound) {
+      this.streamSound.destroy();
+      this.streamSound = null;
+      this.soundReady = false;
+      this.speechPort?.close();
+      this.speechPort = null;
+      this.inputs = { ...this.inputs, microphones: [], sound: 'none' };
+      this.changed();
+    }
+  }
+
+  private async openSound(): Promise<void> {
+    await this.checkSystemAccess();
+    if (this.closing || this.soundStopped || !this.programWanted() || pageAlive(this.streamSound)) return;
+    const win = this.deps.createStreamSound();
+    this.streamSound = win;
+    this.soundReady = false;
+    this.deps.log('info', "The stream's sound page opens");
+    win.webContents.on('did-finish-load', () => {
+      if (this.streamSound !== win) return;
+      this.soundReady = true;
+      this.pairEncoderSound();
+      this.pairSpeech();
+      this.pairSoundMeter();
+      this.contextChanged();
+    });
+    win.webContents.on('render-process-gone', (_event, details) => {
+      if (this.streamSound !== win) return;
+      this.soundReady = false;
+      this.speechPort?.close();
+      this.speechPort = null;
+      this.inputs = { ...this.inputs, sound: 'starting' };
+      this.streamSound = null;
+      if (!win.isDestroyed()) win.destroy();
+      if (!this.soundRestarts.allow(this.deps.now())) {
+        this.soundStopped = true;
+        this.inputs = { ...this.inputs, sound: 'failed' };
+        this.deps.log(
+          'warn',
+          `The stream's sound page stopped (${details.reason}) for the sixth time in a minute: it stays stopped until Try again`,
+        );
+      } else {
+        this.deps.log('warn', `The stream's sound page stopped (${details.reason}); starting it again`);
+        setTimeout(() => {
+          this.updateSound();
+        }, 500);
+      }
+      this.changed();
+    });
+    win.on('closed', () => {
+      if (this.streamSound !== win) return;
+      this.streamSound = null;
+      this.soundReady = false;
+    });
+    this.changed();
+  }
+
+  /** The meter uses a direct port; picture copies never queue the PCM or captions. */
+  private pairSoundMeter(): void {
+    if (!pageAlive(this.program) || !this.programReady || !pageAlive(this.streamSound) || !this.soundReady)
+      return;
+    const { port1, port2 } = new MessageChannelMain();
+    this.streamSound.webContents.postMessage(IPC.stream.port, { role: 'sound-meter' }, [port1]);
+    this.program.webContents.postMessage(IPC.stream.port, { role: 'sound-meter' }, [port2]);
   }
 
   /** Ask the system for the camera and microphone the profile uses (once; macOS shows its question). */
@@ -676,17 +759,24 @@ export class StreamService {
 
   /** The stream's page says what it sees. */
   reportInputs(contents: WebContents, raw: unknown): void {
-    if (!this.isProgram(contents)) return;
+    if (!this.isProgram(contents) && !this.isStreamSound(contents)) return;
     const parsed = inputsSchema.safeParse(raw);
     if (!parsed.success) return;
-    this.inputs = parsed.data;
+    this.inputs = this.isStreamSound(contents)
+      ? { ...this.inputs, microphones: parsed.data.microphones, sound: parsed.data.sound }
+      : {
+          ...this.inputs,
+          cameras: parsed.data.cameras,
+          camera: parsed.data.camera,
+          message: parsed.data.message,
+        };
     this.changed();
   }
 
   /** Something the page draws or opens changed. */
   contextChanged(): void {
     const program = this.program;
-    if (program && !program.isDestroyed() && !this.closing) {
+    if ((pageAlive(program) || pageAlive(this.streamSound)) && !this.closing) {
       // A Program first opened for sound alone may only now need permission for the camera.
       void this.checkSystemAccess().then((refresh) => {
         if (!refresh || this.program !== program || this.closing) return;
@@ -700,8 +790,10 @@ export class StreamService {
 
   private sendProgramContext(): void {
     const program = this.program;
+    const context = this.context();
+    if (pageAlive(this.streamSound) && this.soundReady)
+      this.streamSound.webContents.send(IPC.stream.context, context);
     if (pageAlive(program) && this.programReady) {
-      const context = this.context();
       const [w, h] = program.getContentSize();
       if (w !== context.width || h !== context.height) {
         program.setContentSize(context.width, context.height);
@@ -768,6 +860,7 @@ export class StreamService {
       profilesVersion: this.profilesVersion,
       noSound: this.noSound ? { ...this.noSound, message: this.noSoundMessage(this.noSound) } : null,
       pageStopped: this.pageStopped,
+      ...(this.soundStopped ? { soundPageStopped: true as const } : {}),
     };
   }
 
@@ -810,10 +903,7 @@ export class StreamService {
    * or the stream's page is still opening. Its wait for sound never counts this time.
    */
   private soundInputHeldBack(): boolean {
-    return (
-      this.mediaRequests.has('microphone') ||
-      (this.program !== null && !this.program.isDestroyed() && !this.programReady)
-    );
+    return this.mediaRequests.has('microphone') || (pageAlive(this.streamSound) && !this.soundReady);
   }
 
   /** What the No sound notice says: why, and what to do. */
@@ -924,8 +1014,8 @@ export class StreamService {
   }
 
   private pairSpeech(): void {
-    const program = this.program;
-    if (!this.soundListeners.size || !pageAlive(program) || !this.programReady) return;
+    const program = this.streamSound;
+    if (!this.soundListeners.size || !pageAlive(program) || !this.soundReady) return;
     this.speechPort?.close();
     const { port1, port2 } = new MessageChannelMain();
     port1.on('message', (event) => {
@@ -965,19 +1055,23 @@ export class StreamService {
 
   /** Give the worker a port to the stream's page for its frames and sound. */
   private pairEncoder(): void {
+    this.pairEncoderSound();
     const program = this.program;
     const worker = this.worker;
     if (!worker || !pageAlive(program) || !this.programReady) return;
     const { port1, port2 } = new MessageChannelMain();
-    // A separate sound port can be owned by the PCM worker while this page draws and sends pictures.
-    const sound = new MessageChannelMain();
-    worker.sendFrames(sound.port1);
-    program.webContents.postMessage(IPC.stream.port, { role: 'encoder-audio' }, [sound.port2]);
     worker.sendFrames(port1);
     program.webContents.postMessage(IPC.stream.port, { role: 'encoder' }, [port2]);
     this.deps.log('info', "The stream's page was given the encoder");
     this.pictureWatch.paired(this.deps.now());
     this.contextChanged();
+  }
+
+  private pairEncoderSound(): void {
+    if (!this.worker || !pageAlive(this.streamSound) || !this.soundReady) return;
+    const { port1, port2 } = new MessageChannelMain();
+    this.worker.sendFrames(port1);
+    this.streamSound.webContents.postMessage(IPC.stream.port, { role: 'encoder-audio' }, [port2]);
   }
 
   /**
@@ -1218,7 +1312,7 @@ export class StreamService {
     const folder = this.recording.folder;
     if (!folder || !existsSync(folder))
       return { ok: false, message: 'Choose a folder for recordings first.' };
-    if (this.pageStopped)
+    if (this.pageStopped || this.soundStopped)
       return { ok: false, message: 'The stream’s page is stopped. Press Try again before recording sound.' };
     const stopInput = this.listenSound((samples, endAt, startAt) =>
       this.soundRecording.chunk(samples, endAt, startAt),
@@ -1390,9 +1484,11 @@ export class StreamService {
   /** The operator answered the offer to go live again (or let it go). */
   /** Try again: the stream's page, stopped after crashing too often, starts afresh (open in Simple Mode). */
   tryAgainPage(): StreamResult {
-    if (!this.pageStopped) return { ok: true, status: this.status() };
+    if (!this.pageStopped && !this.soundStopped) return { ok: true, status: this.status() };
     this.pageStopped = false;
     this.pageRestarts.reset();
+    this.soundStopped = false;
+    this.soundRestarts.reset();
     this.deps.log('info', "The stream's page is tried again");
     this.updateProgram();
     this.changed();
@@ -1456,5 +1552,7 @@ export class StreamService {
     if (this.heartbeat) clearInterval(this.heartbeat);
     if (this.program && !this.program.isDestroyed()) this.program.destroy();
     this.program = null;
+    if (pageAlive(this.streamSound)) this.streamSound.destroy();
+    this.streamSound = null;
   }
 }

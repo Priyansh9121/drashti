@@ -131,6 +131,7 @@ export default defineConfig({
           audio: resolve('src/renderer/audio.html'),
           // The stream's Program, drawn off screen (src/main/stream/program-window.ts).
           stream: resolve('src/renderer/stream.html'),
+          'stream-sound': resolve('src/renderer/stream-sound.html'),
           // A node's own window (Session 13): which Main it follows, its displays and media.
           node: resolve('src/renderer/node.html'),
           // The component gallery, for development (Diagnostics > Component Gallery).

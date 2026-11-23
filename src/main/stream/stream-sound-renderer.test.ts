@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { BrowserWindow } from 'electron';
+import type { BrowserWindow, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { StreamService, type StreamServiceDeps } from './stream-service';
 
@@ -83,6 +83,126 @@ describe('the stream sound renderer', () => {
       (service as unknown as { worker: unknown }).worker = null;
     } finally {
       service.close();
+    }
+  });
+
+  it('recovers sound ports after a sound renderer crash without replacing the encoder or the picture page', async () => {
+    const { service, picture, sound, createStreamSound } = setup();
+    const replacement = page(103);
+    const worker = { sendFrames: vi.fn(), send: vi.fn() };
+    try {
+      service.hold('generated picture decode', true);
+      const stop = service.listenSound(vi.fn());
+      await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
+      (service as unknown as { worker: unknown }).worker = worker;
+      picture.webContents.emit('did-finish-load');
+      sound.webContents.emit('did-finish-load');
+      const picturePorts = picture.webContents.postMessage.mock.calls.filter(
+        (c) => c[1].role === 'encoder',
+      ).length;
+      createStreamSound.mockReturnValue(replacement as unknown as BrowserWindow);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      sound.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(createStreamSound).toHaveBeenCalledTimes(2);
+      replacement.webContents.emit('did-finish-load');
+      expect(replacement.webContents.postMessage.mock.calls.map((c) => c[1].role)).toEqual(
+        expect.arrayContaining(['encoder-audio', 'speech', 'sound-meter']),
+      );
+      expect(picture.destroy).not.toHaveBeenCalled();
+      expect(picture.webContents.postMessage.mock.calls.filter((c) => c[1].role === 'encoder')).toHaveLength(
+        picturePorts,
+      );
+      expect(worker.send).not.toHaveBeenCalled();
+      stop?.();
+    } finally {
+      (service as unknown as { worker: unknown }).worker = null;
+      service.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it('merges camera and microphone reports only from their owners, preserving the other input', async () => {
+    const { service, picture, sound, createStreamSound } = setup();
+    try {
+      service.hold('generated picture', true);
+      await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
+      picture.webContents.emit('did-finish-load');
+      sound.webContents.emit('did-finish-load');
+      const camera = { id: 'camera-in-picture-session', label: 'Generated camera' };
+      const microphone = { id: 'microphone-in-sound-session', label: 'Generated input' };
+      service.reportInputs(picture.webContents as unknown as WebContents, {
+        cameras: [camera],
+        microphones: [],
+        camera: 'on',
+        sound: 'none',
+        message: null,
+      });
+      service.reportInputs(sound.webContents as unknown as WebContents, {
+        cameras: [],
+        microphones: [microphone],
+        camera: 'none',
+        sound: 'on',
+        message: null,
+      });
+      expect(service.status().inputs).toMatchObject({
+        cameras: [camera],
+        microphones: [microphone],
+        camera: 'on',
+        sound: 'on',
+      });
+      service.reportInputs(picture.webContents as unknown as WebContents, {
+        cameras: [camera],
+        microphones: [],
+        camera: 'on',
+        sound: 'missing',
+        message: null,
+      });
+      expect(service.status().inputs.sound).toBe('on');
+      const outsider = page(104);
+      service.reportInputs(outsider.webContents as unknown as WebContents, {
+        cameras: [],
+        microphones: [],
+        camera: 'none',
+        sound: 'missing',
+        message: null,
+      });
+      expect(service.status().inputs).toMatchObject({ camera: 'on', sound: 'on' });
+    } finally {
+      service.close();
+    }
+  });
+
+  it('caps repeated sound crashes, keeps the picture, and restarts sound only after Try again', async () => {
+    const { service, picture, sound, createStreamSound } = setup();
+    const windows = [sound];
+    createStreamSound.mockImplementation(() => {
+      const next =
+        windows.length === 1 && createStreamSound.mock.calls.length === 1
+          ? sound
+          : page(102 + windows.length);
+      if (next !== sound) windows.push(next);
+      return next as unknown as BrowserWindow;
+    });
+    try {
+      service.hold('generated picture', true);
+      await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
+      picture.webContents.emit('did-finish-load');
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      for (let crash = 0; crash < 6; crash++) {
+        windows.at(-1)?.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+        await vi.advanceTimersByTimeAsync(500);
+      }
+      expect(createStreamSound).toHaveBeenCalledTimes(6);
+      expect(service.status()).toMatchObject({ pageStopped: false, soundPageStopped: true });
+      expect(picture.destroy).not.toHaveBeenCalled();
+      service.tryAgainPage();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(createStreamSound).toHaveBeenCalledTimes(7);
+      expect(service.status().soundPageStopped).toBeUndefined();
+    } finally {
+      service.close();
+      vi.useRealTimers();
     }
   });
 });

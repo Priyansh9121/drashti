@@ -406,6 +406,8 @@ After installing a font, quit Drashti and start it again. Then look at a few of 
 
 ## 12. Checks, diagnostics, and when things go wrong
 
+The stream's sound restarts separately from its picture. If it fails a sixth time in a minute, **The stream’s sound has stopped** offers **Try again**, in Pro and Simple Mode; the picture keeps going. Check the sound input after restarting it. The hall's sound is separate.
+
 **After installing or updating, on each computer:**
 
 1. **The performance check** (section 11 of `docs/parallel-run.md`): run it twice and keep the second line. It should say `"passed":true`. Since alpha.13 it runs only on a computer let in (section 3): otherwise it says why, and stops.

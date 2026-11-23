@@ -16,7 +16,7 @@ import {
   outputReady,
   setUpScreen,
 } from './helpers';
-import { streamPage, testFfmpeg } from './stream-helpers';
+import { streamSoundPage, testFfmpeg } from './stream-helpers';
 import { audioPage, dispatch } from './time-bar-helpers';
 
 /*
@@ -126,7 +126,7 @@ test('a video’s sound +200 ms trails its picture by 0.2 s in the hall and on t
       if (!saved.ok) throw new Error(saved.message);
       await d.stream.watchPreview(true);
     });
-    const program = await streamPage(app);
+    const program = await streamSoundPage(app);
     expect(
       (
         await dispatch(win, {

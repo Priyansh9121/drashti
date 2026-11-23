@@ -1,8 +1,8 @@
-import { EncoderAudio } from './encoder-audio';
+import type { SoundState } from '../../../shared/stream';
 import { PREVIEW_FPS, PREVIEW_WIDTH } from '../../../shared/stream';
 import { cutText } from '../../../shared/text';
 import { inTurn } from '../render/live-window';
-import { speechPort, type SpeechGraph } from './speech-tap';
+import { useProgram } from './program-store';
 
 /*
  * The stream's page captures its own picture (the Program), frame by frame,
@@ -11,8 +11,8 @@ import { speechPort, type SpeechGraph } from './speech-tap';
  *
  * Ports come from the main process through the preload (window.postMessage
  * with the port): 'preview' goes to the operator window, 'encoder' to the
- * stream worker. The encoder gets each new frame as it is (raw), and the
- * stream's sound, 48 kHz stereo; the worker keeps time by the sound.
+ * stream worker. The encoder gets each new frame as it is (raw) here, and
+ * 48 kHz stereo directly from the sound renderer; it keeps time by the sound.
  * (Messages go without a transfer list: a transferred buffer arrives empty
  * in a utility process.)
  */
@@ -26,12 +26,7 @@ let videoOut: MessagePort | null = null;
 let track: MediaStreamTrack | null = null;
 /** Share the pending platform request while ports arrive before its track. */
 let capturePending = false;
-const encoderAudio = new EncoderAudio(() => say('the stream’s sound capture stopped'));
 let size = { width: 1920, height: 1080 };
-let levelOf: () => number = () => -100;
-let soundTrack: () => MediaStreamTrack | null = () => null;
-let inputTrack: () => MediaStreamTrack | null = () => null;
-let inputGraph: () => SpeechGraph | null = () => null;
 let previewBusy = false;
 let lastPreview = 0;
 let frames = 0;
@@ -457,20 +452,11 @@ export function repaintUnseen(): void {
   nudge();
 }
 
+let meterPort: MessagePort | null = null;
 let listening = false;
 
 /** Start listening for ports from the main process (once, when the page starts). */
-export function startCapture(
-  level: () => number,
-  sound: () => MediaStreamTrack | null,
-  // The sound input's own track, for live captions (Session 55, Part 10).
-  input: () => MediaStreamTrack | null = () => null,
-  graph: () => SpeechGraph | null = () => null,
-): void {
-  levelOf = level;
-  soundTrack = sound;
-  inputTrack = input;
-  inputGraph = graph;
+export function startCapture(): void {
   if (listening) return;
   listening = true;
   window.addEventListener('message', (event) => {
@@ -478,13 +464,25 @@ export function startCapture(
     const data = event.data as { drashtiStreamPort?: string } | null;
     const port = event.ports[0];
     if (!port) return;
-    if (data?.drashtiStreamPort === 'speech') {
-      // Live captions (Session 55, Part 10): the sound input's own sound, on its own port.
-      speechPort(port, inputTrack, inputGraph);
-      return;
-    }
-    if (data?.drashtiStreamPort === 'encoder-audio') {
-      encoderAudio.pair(port, soundTrack());
+    if (data?.drashtiStreamPort === 'sound-meter') {
+      meterPort?.close();
+      meterPort = port;
+      port.onmessage = (
+        event: MessageEvent<{
+          db: number;
+          audio: string;
+          bands: string;
+          sound: SoundState;
+        }>,
+      ) => {
+        const reading = event.data;
+        document.body.dataset['level'] = String(Math.round(reading.db));
+        document.body.dataset['audio'] = reading.audio;
+        document.body.dataset['bands'] = reading.bands;
+        useProgram.setState({ sound: reading.sound });
+        preview?.postMessage({ kind: 'level', db: reading.db });
+      };
+      port.start();
       return;
     }
     if (data?.drashtiStreamPort === 'preview') {
@@ -515,19 +513,6 @@ export function startCapture(
     port.start();
     update();
   });
-  // The sound level: looked at every 25 ms (each look sees the last 43 ms), and the loudest of
-  // each 100 ms sent on, so a short sound is never missed between two reports.
-  let loudest = -100;
-  let looks = 0;
-  // eslint-disable-next-line no-restricted-syntax -- the sound meter's own reading, never a frame of the picture
-  setInterval(() => {
-    loudest = Math.max(loudest, levelOf());
-    if (++looks < 4) return;
-    document.body.dataset['level'] = String(Math.round(loudest));
-    preview?.postMessage({ kind: 'level', db: loudest });
-    loudest = -100;
-    looks = 0;
-  }, 25);
 }
 
 /** The preview is no longer watched. */
@@ -542,7 +527,6 @@ export function stopEncoder(): void {
   if (encoder) say('the encoder stops');
   encoder?.close();
   encoder = null;
-  encoderAudio.stop();
   update();
 }
 

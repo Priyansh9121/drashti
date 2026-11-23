@@ -2,11 +2,13 @@ import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc';
+import { streamSoundPage } from './stream-helpers';
 import { setupVideoCue } from './video-cue-helpers';
 
 test('The stream forwards continuous PCM while its drawing page handles a half-second long frame', async () => {
   const { app, stream, dir } = await setupVideoCue(true);
   try {
+    const streamSound = await streamSoundPage(app);
     // This generated stand-in receives the real capture port in its own utility process, like the encoder.
     const file = join(dir, 'pcm-observer.cjs');
     writeFileSync(
@@ -43,7 +45,7 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
     `,
     );
     await app.evaluate(
-      async ({ BrowserWindow, MessageChannelMain, utilityProcess }, { file, url, ipc }) => {
+      async ({ BrowserWindow, MessageChannelMain, utilityProcess }, { file, url, soundUrl, ipc }) => {
         const child = utilityProcess.fork(file, [], {
           serviceName: 'Generated PCM observer',
           stdio: 'ignore',
@@ -63,7 +65,9 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
         if (!page) throw new Error('No generated stream page');
         const sound = new MessageChannelMain();
         child.postMessage('port', [sound.port1]);
-        page.webContents.postMessage(ipc, { role: 'encoder-audio' }, [sound.port2]);
+        const soundPage = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === soundUrl);
+        if (!soundPage) throw new Error('No generated stream sound page');
+        soundPage.webContents.postMessage(ipc, { role: 'encoder-audio' }, [sound.port2]);
         const { port1, port2 } = new MessageChannelMain();
         child.postMessage('port', [port1]);
         (
@@ -80,7 +84,7 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
         page.webContents.postMessage(ipc, { role: 'encoder' }, [port2]);
         await ready;
       },
-      { file, url: stream.url(), ipc: IPC.stream.port },
+      { file, url: stream.url(), soundUrl: streamSound.url(), ipc: IPC.stream.port },
     );
     await app.evaluate(async () => {
       const probe = (

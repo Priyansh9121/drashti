@@ -11,14 +11,22 @@ import { useStream } from './stream-store';
  */
 
 export function StreamPageStopped() {
-  const stopped = useStream((s) => s.status?.pageStopped ?? false);
+  const pictureStopped = useStream((s) => s.status?.pageStopped ?? false);
+  const soundStopped = useStream((s) => s.status?.soundPageStopped ?? false);
+  const stopped = pictureStopped || soundStopped;
   const [failed, setFailed] = useState<string | null>(null);
   if (!stopped) return null;
   return (
     <div className="shrink-0 px-3 pt-2" data-testid="stream-page-stopped">
       <Notice
         tone="danger"
-        title="The stream’s picture has stopped"
+        title={
+          soundStopped
+            ? pictureStopped
+              ? 'The stream’s picture and sound have stopped'
+              : 'The stream’s sound has stopped'
+            : 'The stream’s picture has stopped'
+        }
         data-testid="stream-page-stopped-notice"
         actions={
           <Button
@@ -35,8 +43,11 @@ export function StreamPageStopped() {
           </Button>
         }
       >
-        Its page kept failing, so Drashti stopped starting it again: the stream shows its last picture. Try
-        again starts it afresh.
+        {soundStopped
+          ? pictureStopped
+            ? 'The picture and sound kept failing, so Drashti stopped starting them again: the stream shows its last picture without sound. Try again starts them afresh.'
+            : 'Its sound kept failing, so Drashti stopped starting it again. The picture keeps going without sound. Try again starts the sound afresh.'
+          : 'Its page kept failing, so Drashti stopped starting it again: the stream shows its last picture. Try again starts it afresh.'}
         {failed && <span className="block">{failed}</span>}
       </Notice>
     </div>

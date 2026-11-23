@@ -1,8 +1,9 @@
+import { soundWindowFixture } from './sound-window-fixture';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { BrowserWindow, WebContents } from 'electron';
+import type { BrowserWindow } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SPEECH_RATE } from '../../shared/speech';
 import { StreamService, type MediaAccess, type StreamServiceDeps } from './stream-service';
@@ -14,16 +15,11 @@ import { StreamService, type MediaAccess, type StreamServiceDeps } from './strea
  * does for the e2e tests).
  */
 
-const speech = vi.hoisted(() => ({ ports: [] as EventEmitter[] }));
-
 vi.mock('electron', () => ({
   dialog: {},
   MessageChannelMain: class {
     port1 = Object.assign(new EventEmitter(), { close: vi.fn(), start: vi.fn() });
-    port2 = {};
-    constructor() {
-      speech.ports.push(this.port1);
-    }
+    port2 = { incoming: this.port1 };
   },
 }));
 
@@ -46,7 +42,6 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
   const services: StreamService[] = [];
   beforeEach(async () => {
     folder = await mkdtemp(join(tmpdir(), 'drashti-record-sound-'));
-    speech.ports.length = 0;
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
   });
   afterEach(async () => {
@@ -62,7 +57,8 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     const webContents = Object.assign(new EventEmitter(), {
       id: 7,
       isDestroyed: () => false,
-      postMessage: vi.fn(),
+      postMessage:
+        vi.fn<(channel: string, payload: { role: string }, ports: { incoming: EventEmitter }[]) => void>(),
       send: vi.fn(),
     });
     const program = Object.assign(new EventEmitter(), {
@@ -71,7 +67,8 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
       getContentSize: () => [1920, 1080],
       destroy: vi.fn(),
     });
-    const createProgram = vi.fn(() => program as unknown as BrowserWindow);
+    const createStreamSound = vi.fn(() => program as unknown as BrowserWindow);
+    const createProgram = vi.fn(soundWindowFixture);
     const notice = vi.fn<(text: string) => void>();
     const stream = new StreamService({
       profiles: { get: () => profile },
@@ -82,6 +79,7 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
       },
       screens: { streamGroup: () => null },
       createProgram,
+      createStreamSound,
       sendToOperator: vi.fn(),
       platform: 'darwin',
       mediaAccess: () => 'granted',
@@ -97,7 +95,10 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     services.push(stream);
     /** The sound input's next 100 ms, as the stream's page sends it (after its page loaded). */
     const send = (samples: Int16Array) => {
-      speech.ports.at(-1)?.emit('message', {
+      const speech = webContents.postMessage.mock.calls
+        .filter((call) => call[1].role === 'speech')
+        .at(-1)?.[2][0]?.incoming;
+      speech?.emit('message', {
         data: { kind: 'pcm', samples, startAt: Date.now() - 100, endAt: Date.now() },
       });
     };
@@ -123,13 +124,13 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
         { timeout: 10_000 },
       );
     };
-    return { stream, webContents, createProgram, notice, pass, onDisk };
+    return { stream, webContents, createStreamSound, notice, pass, onDisk };
   }
 
   it('off air, its quiet raises No sound in the sound recording’s own words, and sound clears it', async () => {
-    const { stream, webContents, createProgram, pass, onDisk } = service();
+    const { stream, webContents, createStreamSound, pass, onDisk } = service();
     expect(stream.startSoundRecording()).toMatchObject({ ok: true });
-    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
     webContents.emit('did-finish-load');
     await pass(1000, TONE);
     await vi.waitFor(() =>
@@ -153,11 +154,13 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
 
   it('with its sound input unplugged, No sound says so after 3 s, and the recording warns before it gives up', async () => {
     // No sound's own 20 s for quiet here: the unplugged input's 3 s grace comes first, as in a show.
-    const { stream, webContents, createProgram, notice, pass } = service({ noSoundMs: 20_000 });
+    const { stream, webContents, createStreamSound, notice, pass } = service({ noSoundMs: 20_000 });
     expect(stream.startSoundRecording()).toMatchObject({ ok: true });
-    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
     webContents.emit('did-finish-load');
-    stream.reportInputs(webContents as unknown as WebContents, {
+    const soundPage = stream.soundContents();
+    if (!soundPage) throw new Error('The generated sound page did not open');
+    stream.reportInputs(soundPage, {
       cameras: [],
       microphones: [],
       camera: 'none',
@@ -186,18 +189,18 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     const asked = new Promise<boolean>((resolve) => {
       answer = resolve;
     });
-    const { stream, webContents, createProgram, pass } = service({
+    const { stream, webContents, createStreamSound, pass } = service({
       fakeDevices: false,
       mediaAccess: () => access,
       askMediaAccess: vi.fn(() => asked),
     });
     expect(stream.startSoundRecording()).toMatchObject({ ok: true });
     await pass(40_000);
-    expect(createProgram).not.toHaveBeenCalled();
+    expect(createStreamSound).not.toHaveBeenCalled();
     expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'starting', warning: null });
     access = 'granted';
     answer(true);
-    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
     await pass(10_000);
     expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'starting', warning: null });
     webContents.emit('did-finish-load');
@@ -209,9 +212,9 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
 
   it('says nothing about FAT32 for a sound recording on such a drive (a WAV part holds 32 hours)', async () => {
     const drive = vi.fn(() => Promise.resolve(true));
-    const { stream, webContents, createProgram, notice, pass } = service({ recordingDrive: drive });
+    const { stream, webContents, createStreamSound, notice, pass } = service({ recordingDrive: drive });
     expect(stream.startSoundRecording()).toMatchObject({ ok: true });
-    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
     webContents.emit('did-finish-load');
     await pass(3500, TONE);
     await vi.waitFor(() =>

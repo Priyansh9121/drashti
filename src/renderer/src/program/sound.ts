@@ -22,7 +22,7 @@ import type { SpeechGraph } from './speech-tap';
  * delay that lines it up with the camera's picture, and, when asked,
  * Drashti's own sound (videos and audio cues) for mandirs whose mixer
  * cannot send the hall's sound back. All of it is mixed here, in the
- * stream's page, at 48 kHz: none of it reaches a loudspeaker.
+ * stream's sound page, at 48 kHz: none of it reaches a loudspeaker.
  *
  * Session 55, Part 7 (shared/sound.ts): Drashti's own sound here plays as the hall's audio player plays it, each file
  * at its even loudness and the music stepping aside under a video with sound. X33: and at the operator's Audio and
@@ -215,7 +215,7 @@ export class StreamSound {
       el.crossOrigin = 'anonymous';
       el.dataset['key'] = sound.key;
       el.dataset['kind'] = sound.kind;
-      // Sound decoded ahead (a21-s5b), asked before its file loads: this page's pictures share its one media thread.
+      // Sound decoded ahead (a21-s5b), asked before its file loads: retained after moving sound off the picture renderer.
       if (keepSoundAhead(el)) el.dataset['soundAhead'] = String(STREAM_SOUND_AHEAD_S);
       document.body.append(el);
       // Into the stream's mix only (an element taken into Web Audio no longer plays out loud).
