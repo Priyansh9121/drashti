@@ -95,7 +95,7 @@ async function run(message: Extract<ToBackupWorker, { type: 'start' }>): Promise
             ? 'Drashti may not write to the backup folder: choose another folder, or ask the admin.'
             : code === 'ENOENT'
               ? 'The backup folder went away while it was being written (was the drive taken out?): connect it again, and back up again.'
-              : 'The backup stopped. Back up again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).';
+              : 'The backup stopped. Back up again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).';
     post({ type: 'failed', code, message });
   }
 }

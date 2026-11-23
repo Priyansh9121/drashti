@@ -10,7 +10,7 @@
 export type FileUse = 'read' | 'write' | 'own';
 
 const TRY_AGAIN =
-  'Try again; if it happens again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).';
+  'Try again; if it happens again, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).';
 
 /** A file or folder problem, said plainly with what to do, from its Node error code. */
 export function fileProblem(error: unknown, use: FileUse = 'write'): string {
