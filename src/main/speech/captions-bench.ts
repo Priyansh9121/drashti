@@ -348,7 +348,7 @@ export function benchMarkdown(
   const lines = [
     `# Captions bench (${meta.mode}${meta.mode === 'alongside' ? ', with the Performance check running' : ''})`,
     '',
-    `Platform ${meta.platform}; cores: ${meta.cores}. Live = first words and the final within ${sec(LIVE_MS)} s at p95, nothing held, dropped or missed, no growth over ${sec(GROWTH_MS)} s. Times in seconds (p50 / p95 / max): first words from the speech's onset, the final from its end.`,
+    `Platform ${meta.platform}; cores: ${meta.cores}. Live = first words and the final within ${sec(LIVE_MS)} s at p95, nothing held, dropped or missed, no growth over ${sec(GROWTH_MS)} s. Times in seconds (p50 / p95 / max): first words from the speech’s onset, the final from its end.`,
     '',
     '| candidate | clips | WER | CER | first words | final | held | dropped | missed | growth | engine start | engine MB | mask | live |',
     '|---|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|',
@@ -415,8 +415,8 @@ export function englishSpeechArgs(
   return {
     args: [
       ...POWERSHELL,
-      'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile($env:DRASHTI_BENCH_FILE, $f); $s.Speak($env:DRASHTI_BENCH_TEXT); $s.Dispose()',
+      'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile($env:CAPTIONS_BENCH_FILE, $f); $s.Speak($env:CAPTIONS_BENCH_TEXT); $s.Dispose()',
     ],
-    env: { DRASHTI_BENCH_TEXT: text, DRASHTI_BENCH_FILE: file },
+    env: { CAPTIONS_BENCH_TEXT: text, CAPTIONS_BENCH_FILE: file },
   };
 }

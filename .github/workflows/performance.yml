@@ -163,14 +163,14 @@ jobs:
       - name: Captions bench, alone (two cores)
         if: startsWith(inputs.captions, 'alone')
         env:
-          DRASHTI_CAPTIONS_BENCH: ${{ inputs.captions }}
-          DRASHTI_CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
         run: node scripts/captions-bench.mjs run
       - name: Captions bench, alongside (started; two cores)
         if: startsWith(inputs.captions, 'alongside')
         env:
-          DRASHTI_CAPTIONS_BENCH: ${{ inputs.captions }}
-          DRASHTI_CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
         run: node scripts/captions-bench.mjs start
       # Let in through the stand-in list on 127.0.0.1 (tests/perf/performance.spec.ts), never the real one (question 8).
       - name: Performance self-test (headless)
@@ -211,7 +211,7 @@ jobs:
       - name: Captions bench, alongside (stopped; its table)
         if: always() && startsWith(inputs.captions, 'alongside')
         env:
-          DRASHTI_CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
         run: node scripts/captions-bench.mjs stop
       - name: Keep the captions bench's tables (numbers only)
         if: always() && inputs.captions != ''

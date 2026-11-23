@@ -6,7 +6,7 @@
 //                                           input's "alongside": the Performance check runs meanwhile)
 //   node scripts/captions-bench.mjs stop    tells a started bench the Performance check is over, waits for it to finish
 //                                           its round, prints its table; its exit code is the bench's
-// DRASHTI_CAPTIONS_BENCH is the input (alone | alongside [:candidates]); DRASHTI_CAPTIONS_BENCH_OUT the folder for
+// CAPTIONS_BENCH is the input (alone | alongside [:candidates]); CAPTIONS_BENCH_OUT the folder for
 // compare.md, results.json and bench.log (numbers only, never a word heard).
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
@@ -38,8 +38,8 @@ export function benchCommand() {
 export const STOP_WAIT_MS = 25 * 60_000;
 
 function outDir() {
-  const out = process.env['DRASHTI_CAPTIONS_BENCH_OUT'];
-  if (!out) throw new Error('DRASHTI_CAPTIONS_BENCH_OUT is not set: the folder for the bench’s tables');
+  const out = process.env['CAPTIONS_BENCH_OUT'];
+  if (!out) throw new Error('CAPTIONS_BENCH_OUT is not set: the folder for the bench’s tables');
   mkdirSync(out, { recursive: true });
   return resolve(out);
 }
@@ -63,7 +63,7 @@ async function main(what) {
       cwd: root,
       detached: true,
       stdio: ['ignore', log, log],
-      env: { ...process.env, DRASHTI_CAPTIONS_BENCH_STOP: files.stop },
+      env: { ...process.env, CAPTIONS_BENCH_STOP: files.stop },
       windowsHide: true,
     });
     child.unref();

@@ -264,8 +264,8 @@ describe('the Windows commands', () => {
     expect(args.join(' ')).toMatch(/System\.Speech/u);
     expect(args.join(' ')).toMatch(/16000/u);
     expect(env).toEqual({
-      DRASHTI_BENCH_TEXT: 'Room number 12; is on "the" floor',
-      DRASHTI_BENCH_FILE: 'C:\\t\\en-08.wav',
+      CAPTIONS_BENCH_TEXT: 'Room number 12; is on "the" floor',
+      CAPTIONS_BENCH_FILE: 'C:\\t\\en-08.wav',
     });
   });
 });
