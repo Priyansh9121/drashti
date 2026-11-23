@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CHROMIUM_FAKE_DEVICES,
   CHROMIUM_FAKE_SOUND_FILE,
+  fakeMediaSelfTest,
   fakeMediaSwitchesOn,
   fakeSoundSwitch,
 } from './fake-sound';
@@ -82,6 +83,20 @@ describe('the fake microphone’s sound file (tests only)', () => {
       CHROMIUM_FAKE_SOUND_FILE,
       'use-fake-ui-for-media-stream',
     ]);
+  });
+
+  it('the packaged self-test (DRASHTI_SELFTEST=ffmpeg) passes only with none of them on, and names any that are', () => {
+    expect(fakeMediaSelfTest(() => false)).toEqual({
+      passed: true,
+      on: [],
+      detail: 'none: Chromium’s fake camera and microphone are off',
+    });
+    const on = fakeMediaSelfTest((name) => name === CHROMIUM_FAKE_SOUND_FILE || name === CHROMIUM_FAKE_DEVICES);
+    expect(on).toEqual({
+      passed: false,
+      on: [CHROMIUM_FAKE_DEVICES, CHROMIUM_FAKE_SOUND_FILE],
+      detail: `ON in this copy of Drashti: ${CHROMIUM_FAKE_DEVICES}, ${CHROMIUM_FAKE_SOUND_FILE}`,
+    });
   });
 
   it('Chromium’s fake media switches are named in src only by fake-sound.ts, so nothing else can turn them on', () => {
