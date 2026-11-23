@@ -12,6 +12,15 @@ const who = {
 const system = { version: '1.0.0-alpha.22', platform: 'win32', arch: 'x64', release: '10.0.26100' };
 const counts = { minutes: 1, shows: 2, streams: 3, recordings: 4, imports: 5 };
 describe('a21-log30 diagnostics identity adapter', () => {
+  it('reports the mode that made the error even when its access grant permits Pro', () => {
+    const identity = automaticIdentity(
+      { ...who, role: { mode: 'pro', owner: true }, made: 'simple' },
+      system,
+      counts,
+    );
+    expect(identity?.mode).toBe('simple');
+  });
+
   it('uses its posted install/grant/role/system fields and never copies the computer name or arbitrary lines', () => {
     expect(automaticIdentity(who, system, counts)).toEqual({
       computerId: who.computerId,
