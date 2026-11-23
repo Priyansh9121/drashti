@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createIndicEngine } from '../src/main/speech/indic-engine.ts';
+import { createSpeechHub } from '../src/main/speech/hub.ts';
 test('unselected language cannot acquire a model or open sound', () => {
   let acquired = false,
     opened = false,
@@ -493,5 +494,74 @@ test('a capture chunk crossing twelve seconds is split without dropping samples 
     assert.deepEqual(Array.from(decoded[1]), [...Array(15000).fill(6000), ...Array(11200).fill(0)]);
   } finally {
     stop();
+  }
+});
+
+test('phrases pass the real speech hub: ids run s1, s2 and nothing is turned away', async () => {
+  let capture, ready;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const warnings = [];
+  let turnAway;
+  const turnedAway = new Promise((_, fail) => {
+    turnAway = fail;
+  });
+  const engine = createIndicEngine({
+    admission: 'below-show',
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: {
+      open: (to) => {
+        capture = to;
+        return () => {};
+      },
+    },
+    open: async () => ({
+      decode: async () => ({ language: 'gu', words: [{ w: 'shape', start: 0, end: 0.08 }] }),
+      close() {},
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const hub = createSpeechHub({
+    engine,
+    log: {
+      info() {},
+      warn: (message) => {
+        warnings.push(message);
+        turnAway(new Error(message));
+      },
+    },
+  });
+  const finals = [];
+  let second;
+  const both = new Promise((done) => {
+    second = done;
+  });
+  const unwatch = hub.onState((state) => {
+    if (state.phase === 'listening') ready();
+  });
+  const unlisten = hub.listen('contract', (phrase) => {
+    if (!phrase.final) return;
+    finals.push(phrase.id);
+    if (finals.length === 2) second();
+  });
+  try {
+    hub.setLanguage('gu');
+    hub.setOn(true);
+    await listening;
+    const phrase = (start) => {
+      capture(new Int16Array(1600).fill(5000), start + 100, start);
+      for (let i = 1; i <= 7; i += 1) capture(new Int16Array(1600), start + (i + 1) * 100, start + i * 100);
+    };
+    phrase(Date.now() - 1600);
+    phrase(Date.now() - 800);
+    await Promise.race([both, turnedAway]);
+    assert.deepEqual(finals, ['s1', 's2']);
+    assert.deepEqual(warnings, []);
+  } finally {
+    unlisten();
+    unwatch();
+    hub.close();
   }
 });
