@@ -108,10 +108,18 @@ describe('Prepare translations’ engine', () => {
       [model('en-indic', ['translation-en-gu']), model('indic-en', ['translation-gu-en'])],
       (id) => Promise.resolve({ release: () => releases.push(id) }),
     );
-    const { engine } = engineWith(store);
+    const { engine, children } = engineWith(store);
     await engine.translate('a b', 'en', 'gu');
     await engine.translate('ક ખ', 'gu', 'en');
     expect(releases).toEqual(['en-indic']);
+    // Only one model is ever loaded in the helper: the first is unloaded before the second loads.
+    expect(children[0]?.requests.map((r) => `${String(r['op'])} ${String(r['route'])}`)).toEqual([
+      'load en-indic',
+      'translate en-indic',
+      'unload en-indic',
+      'load indic-en',
+      'translate indic-en',
+    ]);
     engine.stop();
     expect(releases).toEqual(['en-indic', 'indic-en']);
   });
