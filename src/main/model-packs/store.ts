@@ -99,6 +99,8 @@ export interface PackedModel {
   folder: string;
   files: readonly { name: string; path: string; bytes: number; sha256: string; licence: string }[];
   licences: readonly string[];
+  /** Who made it and where it is from, as the pack credits it. */
+  attributions: readonly string[];
 }
 
 /** A model held while an engine uses it: never removed or replaced under it. Let go once, when done. */
@@ -514,6 +516,7 @@ export class ModelPackStore {
         licence: f.licence,
       })),
       licences: [...m.licences],
+      attributions: [],
     };
   }
 
@@ -543,6 +546,7 @@ export class ModelPackStore {
         purposes: [...m.purposes],
         format: m.format,
         licences: [...m.licences],
+        attributions: [],
         bytes: m.bytes,
       })),
       licences: (c?.licenceTexts ?? []).map((f) => ({ file: f.name, licence: f.licence })),

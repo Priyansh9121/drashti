@@ -100,6 +100,7 @@ function packFiles(p: Pack = {}): Map<string, Buffer> {
         model: m.id,
         format: m.format,
         licenceFile: 'licences/MIT.txt',
+        attribution: `Placeholder model ${m.id}, made by the tests`,
       });
     }
   const manifest = {
@@ -186,6 +187,7 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
         purposes: ['captions-gu'],
         format: 'whisper-ggml',
         licences: ['MIT'],
+        attributions: ['Placeholder model gu-placeholder, made by the tests'],
         bytes: 64 * 1024,
       },
       {
@@ -193,6 +195,7 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
         purposes: ['translation-en-gu', 'translation-en-hi'],
         format: 'ctranslate2',
         licences: ['MIT'],
+        attributions: ['Placeholder model en-indic-placeholder, made by the tests'],
         bytes: 100 * 1024 + 22,
       },
     ]);
@@ -206,6 +209,7 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
     const gu = store.model('gu-placeholder');
     expect(gu?.folder.startsWith(root)).toBe(true);
     expect(gu?.folder.endsWith(join('captions', 'gu'))).toBe(true);
+    expect(gu?.attributions).toEqual(['Placeholder model gu-placeholder, made by the tests']);
     expect(gu?.files.map((f) => [f.name, f.path, f.bytes])).toEqual([
       ['captions/gu/model.bin', join(gu?.folder ?? '', 'model.bin'), 64 * 1024],
     ]);

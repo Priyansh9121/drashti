@@ -11,6 +11,7 @@ export interface PackPlan {
     licence: string;
     licenceFile: string;
     folder: string;
+    attribution: string;
   }[];
 }
 export function makeManifest(top: string, plan: PackPlan): Promise<unknown>;

@@ -90,6 +90,8 @@ export const packFileSchema = z.object({
     .regex(/^[a-z0-9][a-z0-9-]{0,39}$/u)
     .optional(),
   licenceFile: z.string().min(1).max(240).optional(),
+  /** Who made the model and where it is from, as its licence asks to be credited (a model's file only). */
+  attribution: z.string().trim().min(1).max(300).optional(),
 });
 export type PackFile = z.infer<typeof packFileSchema>;
 
@@ -109,6 +111,8 @@ export interface PackModelView {
   purposes: ModelPurpose[];
   format: string;
   licences: string[];
+  /** Who made it and where it is from, as the pack credits it. */
+  attributions: string[];
   bytes: number;
 }
 

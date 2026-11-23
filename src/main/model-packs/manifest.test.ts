@@ -26,6 +26,7 @@ const gu: PackFile = {
   model: 'gu-placeholder',
   format: 'whisper-ggml',
   licenceFile: 'licences/MIT.txt',
+  attribution: 'Placeholder Gujarati model, made by the tests',
 };
 const enIndic = (file: string, n: number): PackFile => ({
   name: `translation/en-indic/${file}`,
@@ -36,6 +37,7 @@ const enIndic = (file: string, n: number): PackFile => ({
   model: 'en-indic-placeholder',
   format: 'ctranslate2',
   licenceFile: 'licences/MIT.txt',
+  attribution: 'Placeholder translation model, made by the tests',
 });
 
 const pack = (files: PackFile[], more: Record<string, unknown> = {}) => ({
@@ -76,6 +78,24 @@ describe('a model pack’s list (alpha.22, cap-pack)', () => {
       'translation/en-indic/model.bin',
       'translation/en-indic/config.json',
     ]);
+    // Who made each model and where it is from, as its licence asks (Apache-2.0's notices, CC BY's credit).
+    expect(r.pack.models.map((m) => m.attributions)).toEqual([
+      ['Placeholder Gujarati model, made by the tests'],
+      ['Placeholder translation model, made by the tests'],
+    ]);
+  });
+
+  it('needs each model file to say who made it and where it is from (its attribution)', () => {
+    const { attribution: _a, ...uncredited } = gu;
+    expect(refusal(pack([licence, uncredited]))).toBe(
+      'captions/gu-placeholder/model.bin does not say who made it and where it is from (its attribution). Nothing was installed: ask for a pack that credits each model, as its licence asks.',
+    );
+    expect(refusal(pack([licence, { ...gu, attribution: 'x'.repeat(301) }]))).toBe(
+      'The pack’s list is not right (files › 2 › attribution). Nothing was installed: ask for a fresh copy of the pack.',
+    );
+    expect(refusal(pack([{ ...licence, attribution: 'A licence text credits no one' }, gu]))).toBe(
+      'licences/MIT.txt is a licence’s text, so it belongs to no model and has no format. Nothing was installed: ask for a fresh copy of the pack.',
+    );
   });
 
   it('reads the list’s text, and says plainly when it is not one', () => {

@@ -51,6 +51,7 @@ function placeholderPack(change = false): string {
         model: 'gu-placeholder',
         format: 'whisper-ggml',
         licenceFile: 'licences/MIT.txt',
+        attribution: 'Placeholder Gujarati model, made by the tests',
       },
     ],
   };
@@ -95,8 +96,12 @@ test('imports a pack, every file checked, kept outside the library; shows what i
     const pack = dialog.getByTestId('model-pack');
     await expect(pack).toHaveCount(1);
     await expect(pack.getByTestId('model-pack-line')).toContainText('Release 2026.11.1, 1 model, 256.0 KB');
-    await expect(pack.getByTestId('model-pack-model')).toHaveText(
+    await expect(pack.getByTestId('model-pack-model')).toContainText(
       'Captions in Gujarati (gu-placeholder: 256.0 KB, whisper-ggml, MIT licence)',
+    );
+    // Who made it and where it is from, as its licence asks.
+    await expect(pack.getByTestId('model-pack-credit')).toHaveText(
+      'By Placeholder Gujarati model, made by the tests',
     );
     const kept = readdirSync(join(userData, 'model-packs')).filter((n) => n.startsWith('placeholder-pack-'));
     expect(kept).toHaveLength(1);

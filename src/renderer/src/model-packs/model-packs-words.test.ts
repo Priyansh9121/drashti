@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InstalledPackView, ModelPacksStatus, PackModelView } from '../../../shared/model-packs';
-import { importingText, modelLine, modelPurposes, packLine } from './model-packs-words';
+import { importingText, modelCredit, modelLine, modelPurposes, packLine } from './model-packs-words';
 
 /* Help › Caption and Translation Models…'s words (alpha.22, cap-pack). Placeholder packs only. */
 
@@ -16,6 +16,7 @@ const pack: InstalledPackView = {
       purposes: ['captions-gu'],
       format: 'whisper-ggml',
       licences: ['MIT'],
+      attributions: ['Placeholder Gujarati model, made by the tests'],
       bytes: 512 * 1024 ** 2,
     },
     {
@@ -23,6 +24,10 @@ const pack: InstalledPackView = {
       purposes: ['translation-en-gu', 'translation-en-hi'],
       format: 'ctranslate2',
       licences: ['MIT', 'Apache-2.0'],
+      attributions: [
+        'Placeholder translation model, made by the tests',
+        'Placeholder vocabulary, made by the tests',
+      ],
       bytes: 210 * 1024 ** 2,
     },
   ],
@@ -61,5 +66,9 @@ describe('the caption and translation models’ words (alpha.22, cap-pack)', () 
       'Translation from English into Gujarati; Translation from English into Hindi',
     );
     expect(modelLine(enIndic)).toBe('210.0 MB, ctranslate2, MIT and Apache-2.0 licence');
+    expect(modelCredit(gu)).toBe('By Placeholder Gujarati model, made by the tests');
+    expect(modelCredit(enIndic)).toBe(
+      'By Placeholder translation model, made by the tests; Placeholder vocabulary, made by the tests',
+    );
   });
 });

@@ -41,6 +41,7 @@ const PLAN: PackPlan = {
       licence: 'MIT',
       licenceFile: 'licences/MIT.txt',
       folder: 'captions/gu',
+      attribution: 'Placeholder Gujarati model, made by the tests',
     },
     {
       id: 'en-indic-placeholder',
@@ -49,6 +50,7 @@ const PLAN: PackPlan = {
       licence: 'MIT',
       licenceFile: 'licences/MIT.txt',
       folder: 'translation/en-indic',
+      attribution: 'Placeholder translation model, made by the tests',
     },
   ],
 };
