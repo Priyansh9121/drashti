@@ -12,6 +12,8 @@ Everything here is **local only**: requests are refused from addresses outside t
 
 **Import from a Link on the computer.** The operator’s desktop bridge checks a YouTube or Dropbox link for the small window, then Download supplies the edited name and chosen save folder. It saves and imports the media into the open playlist; Audio takes a YouTube video’s MP3. The remembered caption tick saves creator captions and the original automatic language as SRT files beside the media, plus a learning copy and `captions.json` in the chosen captions folder. Checks, downloads and captions wait on air or while recording. These desktop actions are handled by `links.look`, `links.pickFolder` (downloads or captions), `links.start` (name and captions options) and `links.view`; their detailed file contract is in README, “Import from a Link”.
 
+**PDF mark clicks** (alpha.22). The desktop editor keeps each mark’s optional click order with its shape. Slide composition uses the existing deck motion timeline, so the existing Next and Back commands and state feed carry each mark’s step to screens, nodes and phones. There is no new HTTP authoring route. PDF copies show all visible marks together.
+
 ## Basics
 
 - **Address:** `http://<computer>:8740` (the port is set in the Phones panel). Examples below use

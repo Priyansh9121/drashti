@@ -464,6 +464,8 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 **Mark a PDF page.** Choose the page on the left, then **PDF pages**. **Highlight**, **Underline**, **Strike through**, **Draw** and **Cover** mark it: drag over the part wanted, or draw, and press Esc to cancel a mark before finishing it. Underline and Strike through can also style selected editable words. Finished marks can be selected, moved or removed, with Undo and Redo. **Cover** puts a visible patch over the page; it does not remove the words underneath and must not be used to make a private document safe to share.
 
+**Show marks with Next.** Select a PDF mark, choose **Motion**, then turn on **Comes in on click**. Each mark gets the next click; **Mark order** lists the sequence. **Next** reveals one mark and **Back** hides it again on the hall, stream, connected computers and phones. Turn the choice off to use the usual timed motion controls again. A mark with no motion shows with the page. Every choice has Undo and Redo. Older marks can be selected as shapes and given a click too; their order calls them **Mark**. Hidden and removed marks leave no empty clicks. The original PDF stays unchanged, and **Save a PDF copy…** includes all visible marks together.
+
 **Turn, remove or move a page.** In **PDF pages**, **Turn page right** turns the chosen page a quarter turn; **Delete page** removes that page. Drag a page in the slide list or **Slides across** to change its order. Undo and Redo put each change back. These are changes in the editor until **Save** keeps them in the library; the retained original PDF stays as it was.
 
 ![Placeholder PDF marks and the page controls](screenshots/pdf-marks-pages.png)

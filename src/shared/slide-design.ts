@@ -6,6 +6,7 @@ import type { EditDoc, EditSlide } from './slide-edit';
 import { slideCanvas } from './document-page';
 import { fitElements } from './slide-size';
 import type { Size } from './scaling';
+import { withPdfMarkMotion } from './pdf-mark-motion';
 
 /** Resolve the one master once, before sending a slide to any screen, node, phone or stream. */
 export function composeSlide(
@@ -16,9 +17,10 @@ export function composeSlide(
   masterCanvas?: Size,
   pageIndex?: number,
 ): RenderSlide {
-  const own = slide.elements.some((element) => element.hidden)
+  const shown = slide.elements.some((element) => element.hidden)
     ? { ...slide, elements: slide.elements.filter((element) => !element.hidden) }
     : slide;
+  const own = withPdfMarkMotion(shown);
   const nativeDeck = nativeDeckMotion(own.deck);
   if (own.deck && !nativeDeck) return own;
   const behind = design?.skipMaster ? null : numberedPdfMaster(master, pageIndex);

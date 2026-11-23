@@ -289,6 +289,8 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 
 **Sharing a playlist with phones** (since alpha.13). Right-click a playlist (a folder playlist or a smart playlist too), then **Share with Phones and Tablets**, offered while a phone or tablet is paired as a Remote: a mark on its row says it is shared, and **Stop Sharing** ends it. A Remote's **Library** then lists it under **Shared from Drashti**, every file in it to look at and play on the device itself, read-only; a deck in it plays there click by click, each click's motion and then its still. A Stage or Announcements device never sees it.
 
+**PDF marks with Next** (alpha.22). The slide editor’s **Motion › Comes in on click** is off until chosen for a mark. Marks follow the same Next and Back sequence on screens, connected computers, the stream and phones. These settings stay in Drashti’s copy; the original PDF stays unchanged. Each choice has Undo. Make these changes while preparing, with the stream off air and not recording.
+
 **Pictures at full quality** (since alpha.13). Phones and tablets show pictures, slides and PDF pages as sharp as their screens show them, up to the original, no longer as small previews. Drashti makes each at the width a device asks for, once, in the background, and keeps them in its data folder's `Network/previews/sized`, up to 400 MB in all (the least used go first); none is made while its disk has less than 2 GB free (the device keeps the one it has).
 
 ---

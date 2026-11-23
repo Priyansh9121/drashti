@@ -131,6 +131,7 @@ export function generatedPdf(pages: readonly GeneratedPage[]): Buffer {
 export async function openGeneratedPdf(
   pages: readonly GeneratedPage[] = PDF_PAGES,
   makeBytes: (pages: readonly GeneratedPage[]) => Buffer = generatedPdf,
+  env: Record<string, string> = {},
 ) {
   const folder = mkdtempSync(join(tmpdir(), 'drashti-pdf-tools-'));
   const source = join(folder, 'Placeholder PDF tools.pdf');
@@ -142,7 +143,7 @@ export async function openGeneratedPdf(
     expect(current.equals(original), 'exact original generated PDF bytes').toBe(true);
     expect(createHash('sha256').update(current).digest('hex')).toBe(digest);
   };
-  const { app, userData } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' }, undefined, {}, [
+  const { app, userData } = await launchApp({ ...env, DRASHTI_TEST_NO_CONVERTER: '1' }, undefined, {}, [
     '--force-color-profile=srgb',
   ]);
   try {

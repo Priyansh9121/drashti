@@ -278,6 +278,12 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       ...elementPlacement,
       id: idSchema,
       kind: z.literal('shape'),
+      pdfMark: z
+        .object({
+          tool: z.enum(['highlight', 'underline', 'strike', 'draw', 'cover']).optional(),
+          clickOrder: z.number().int().min(1).max(1_000_000).optional(),
+        })
+        .optional(),
       frame: rectSchema,
       rotation: rotationSchema,
       shape: z.enum(SHAPE_KINDS).optional(),

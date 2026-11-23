@@ -13,6 +13,8 @@ import { findSlide, mapElements } from './ops';
 import { finishTextEditing } from './TextBoxEditor';
 import { Cluster, Divider } from './RibbonParts';
 import { emptyClicks } from './empty-clicks';
+import { PdfMarkMotion } from './PdfMarkMotion';
+import { isPdfMark } from '../../../shared/pdf-mark-motion';
 
 const EFFECTS = {
   in: [
@@ -170,15 +172,26 @@ export function MotionTools() {
   const ids = useEditor((s) => s.selection);
   const preview = useEditor((s) => s.previewAt);
   const slide = doc ? findSlide(doc, slideId) : undefined;
+  const pdfPage = slide?.documentPage?.ext === 'pdf';
   if (doc && slide?.deck?.motion)
     return <ImportedMotion deck={slide.deck} elements={renderEditedSlide(doc, slide).elements} />;
   const selected = slide?.elements.filter((el) => ids.includes(el.id)) ?? [];
-  const disabled = !selected.length || Boolean(slide?.deck);
+  const clickBuilt = pdfPage && selected.some((el) => isPdfMark(el) && el.pdfMark.clickOrder !== undefined);
+  const disabled = !selected.length || Boolean(slide?.deck) || clickBuilt;
   const update = (phase: Phase, field: 'kind' | 'delayMs' | 'durationMs', value: string | number) => {
     finishTextEditing();
     const s = useEditor.getState();
     const at = s.doc ? findSlide(s.doc, s.slideId) : undefined;
-    if (!s.doc || !at || at.deck) return;
+    if (
+      !s.doc ||
+      !at ||
+      at.deck ||
+      (at.documentPage?.ext === 'pdf' &&
+        at.elements.some(
+          (el) => s.selection.includes(el.id) && isPdfMark(el) && el.pdfMark.clickOrder !== undefined,
+        ))
+    )
+      return;
     const next = mapElements(s.doc, at.id, s.selection, (el) => {
       if (field === 'kind' && value === 'none') {
         const { [phase]: _gone, ...motion } = el.motion ?? {};
@@ -207,6 +220,7 @@ export function MotionTools() {
     renderEditedSlide(doc, slide).elements.some((el) => hasElementMotion(el.motion));
   return (
     <>
+      {pdfPage && <PdfMarkMotion />}
       <Divider />
       {(['in', 'emphasis', 'out'] as const).map((phase) => {
         const step = selected[0]?.motion?.[phase];
