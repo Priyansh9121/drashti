@@ -1,3 +1,4 @@
+import { generatedWordSubsetPdf } from '../../../tests/fixtures/pdf-word-subset';
 import { nodePdfAssets } from '../import/testing/pdfjs-assets';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
@@ -66,6 +67,38 @@ it('real PDF.js extraction returns one editable paragraph, its leading and a bun
     expect(result.assets).toHaveLength(0);
     expect(result.issues.join(' ')).toContain('Noto Sans Gujarati');
     expect(bytes).toEqual(original);
+  } finally {
+    await loading.destroy();
+  }
+});
+
+it('reads editable words from an actual embedded Latin subset before Gujarati is added', async () => {
+  const bytes = generatedWordSubsetPdf();
+  expect(bytes.includes(Buffer.from('/FontFile2 6 0 R'))).toBe(true);
+  expect(bytes.includes(Buffer.from('/BaseFont /AAAAAA+NotoSans'))).toBe(true);
+  const root = dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'));
+  const loading = pdfjs.getDocument({
+    data: new Uint8Array(bytes),
+    useWorkerFetch: false,
+    useSystemFonts: false,
+    disableFontFace: true,
+    ...nodePdfAssets(root),
+  });
+  try {
+    const doc = await loading.promise;
+    const page = await doc.getPage(1);
+    const source = await page.getTextContent();
+    expect(
+      source.items
+        .filter((item) => 'str' in item)
+        .map((item) => ('str' in item ? item.str : ''))
+        .join(''),
+    ).toBe('Placeholder source letters');
+    const result = await editablePdfPage(doc, page, pdfjs.OPS);
+    expect(result.elements.filter((element) => element.kind === 'text')).toMatchObject([
+      { text: 'Placeholder source letters', style: { fontFamily: 'Noto Sans' } },
+    ]);
+    expect(result.assets).toHaveLength(0);
   } finally {
     await loading.destroy();
   }

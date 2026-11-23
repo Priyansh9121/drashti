@@ -19,7 +19,7 @@ export function pdfParagraphs(elements: SlideElement[]): SlideElement[] {
   const result: SlideElement[] = [];
   for (let i = 0; i < elements.length; i++) {
     const first = elements[i];
-    if (!first || first.kind !== 'text') {
+    if (first?.kind !== 'text') {
       if (first) result.push(first);
       continue;
     }
@@ -28,7 +28,7 @@ export function pdfParagraphs(elements: SlideElement[]): SlideElement[] {
     let leading: number | undefined;
     while (i + 1 < elements.length) {
       const next = elements[i + 1];
-      if (!next || next.kind !== 'text' || !sameLook(first, next)) break;
+      if (next?.kind !== 'text' || !sameLook(first, next)) break;
       const gap = next.frame.y - previous.frame.y;
       const size = first.style.fontSize;
       if (
@@ -37,7 +37,7 @@ export function pdfParagraphs(elements: SlideElement[]): SlideElement[] {
         gap > size * 1.6 ||
         (leading !== undefined && Math.abs(gap - leading) > size * 0.1) ||
         previous.frame.width < box.frame.width * 0.75 ||
-        /\n/u.test(previous.text + next.text)
+        (previous.text + next.text).includes('\n')
       )
         break;
       leading ??= gap;

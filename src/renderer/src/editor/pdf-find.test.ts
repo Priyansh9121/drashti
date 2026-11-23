@@ -54,7 +54,7 @@ describe('Find across editable PDF pages', () => {
     vi.stubGlobal('window', { drashti: {} });
     useEditor.setState({
       doc,
-      saved: doc,
+      opened: doc,
       past: [],
       future: [],
       preparingSource: new Set(),

@@ -45,7 +45,7 @@ test('PDF lines share one paragraph box and edited words wrap inside its width',
 });
 
 test('a newly typed Gujarati letter uses bundled Noto on the page and stays searchable in the PDF copy', async () => {
-  const s = await openGeneratedPdf([{ width: 480, height: 320, marker: 'Placeholder source letters' }]);
+  const s = await openGeneratedPdf([], generatedWordSubsetPdf);
   try {
     await expect(s.editor.getByTestId('editor-source-issues')).toContainText('Noto Sans Gujarati');
     const box = s.editor
@@ -65,16 +65,45 @@ test('a newly typed Gujarati letter uses bundled Noto on the page and stays sear
       .locator('[data-element]')
       .filter({ hasText: letters });
     await expect(rendered).toHaveCount(1);
-    const fonts = await rendered
-      .locator('span')
-      .evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).fontFamily));
+    const fonts = await rendered.evaluate((node) =>
+      [node, ...node.querySelectorAll('span')].map((part) => getComputedStyle(part).fontFamily),
+    );
     expect(fonts.some((family) => family.includes('Noto Sans Gujarati'))).toBe(true);
+    // Independent shaped-glyph reference from the bundled font, not the source subset or PDF text map.
+    const reference = await s.ed.evaluate((text) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 240;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No reference canvas');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000000';
+      ctx.font = '400 12px "Noto Sans Gujarati"';
+      ctx.fillText(text, 20, 30);
+      return {
+        pixels: [...ctx.getImageData(0, 0, canvas.width, canvas.height).data],
+        width: canvas.width,
+        height: canvas.height,
+      };
+    }, letters);
     await usePdfTools(s.ed);
     const output = join(s.folder, 'Placeholder Gujarati copy.pdf');
     await savePdfCopy(s.app, s.ed, output);
     const pages = await inspectPdf(output);
     expect(pages).toHaveLength(1);
-    expect(occurrences(pages[0]?.words ?? '', letters)).toBe(1);
+    const printed = pages[0];
+    if (!printed) throw new Error('Missing printed page');
+    expect(occurrences(printed.words, letters)).toBe(1);
+    const expectedInk = inkShape(reference.pixels, reference.width, reference.height);
+    const printedInk = inkShape(printed.pixels, printed.rasterWidth, printed.rasterHeight);
+    expect(expectedInk.points.length).toBeGreaterThan(30);
+    expect(printedInk.width).toBeGreaterThan(0);
+    expect(Math.abs(printedInk.width - expectedInk.width)).toBeLessThanOrEqual(2);
+    expect(Math.abs(printedInk.height - expectedInk.height)).toBeLessThanOrEqual(2);
+    // Allow one raster pixel for PDF.js/Chromium antialiasing; tofu and missing conjuncts fail both directions.
+    expect(inkCoverage(expectedInk, printedInk)).toBeGreaterThan(0.95);
+    expect(inkCoverage(printedInk, expectedInk)).toBeGreaterThan(0.95);
     s.unchanged();
   } finally {
     await s.app.close();
@@ -111,3 +140,43 @@ test('Find next and replacement span PDF pages, and Replace all undoes once', as
     await s.app.close();
   }
 });
+
+interface InkShape {
+  width: number;
+  height: number;
+  points: [number, number][];
+}
+function inkShape(pixels: ArrayLike<number>, width: number, height: number): InkShape {
+  const points: [number, number][] = [];
+  let left = width,
+    top = height,
+    right = -1,
+    bottom = -1;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4;
+      if ((pixels[at] ?? 255) > 180 || (pixels[at + 1] ?? 255) > 180 || (pixels[at + 2] ?? 255) > 180)
+        continue;
+      points.push([x, y]);
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  return {
+    width: Math.max(0, right - left + 1),
+    height: Math.max(0, bottom - top + 1),
+    points: points.map(([x, y]) => [x - left, y - top]),
+  };
+}
+function inkCoverage(source: InkShape, target: InkShape): number {
+  const ink = new Set(target.points.map(([x, y]) => `${x},${y}`));
+  let found = 0;
+  for (const [x, y] of source.points) {
+    let near = false;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) if (ink.has(`${x + dx},${y + dy}`)) near = true;
+    if (near) found++;
+  }
+  return source.points.length ? found / source.points.length : 0;
+}
