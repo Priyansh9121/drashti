@@ -344,6 +344,57 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
     }
   });
 
+  it('collects ordered parts across pages into one keep operation, printing each page only once', async () => {
+    const t = await opened();
+    try {
+      const pages = t.doc.groups.flatMap((g) => g.slides);
+      const first = pages[0];
+      const second = pages[1];
+      if (!first || !second) throw new Error('The generated PDF needs two pages.');
+      const parts = [
+        { slideId: second.id, part: { x: 0, y: 0, w: 1, h: 0.5 } },
+        { slideId: first.id, part: { x: 0, y: 0, w: 0.25, h: 0.5 } },
+        { slideId: second.id, part: { x: 0, y: 0.5, w: 1, h: 0.5 } },
+      ];
+      const made = await t.editor.makeSlide(t.event, t.request({ parts }));
+      expect(made.ok).toBe(true);
+      expect(t.run).toHaveBeenCalledTimes(2);
+      expect(t.run.mock.calls.map((call) => call[0].pages)).toEqual([
+        [{ kind: 'original', sourceId: t.world.hash, page: 1 }],
+        [{ kind: 'original', sourceId: t.world.hash, page: 0 }],
+      ]);
+      expect(t.drawPart.mock.calls.map((call) => call.slice(0, 2))).toEqual(
+        parts.map(({ part }) => [t.printed, part]),
+      );
+      expect(t.keepSlide).toHaveBeenCalledExactlyOnceWith({
+        png: [t.png, t.png, t.png], name: `${t.doc.name}, 3 parts`, place: 'playlist',
+      });
+      expect(t.presentations.content(t.imported.id)).toEqual(t.before);
+      expect(t.kept).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+
+  it('keeps no presentation when a later part fails or any collected page is invalid', async () => {
+    const t = await opened();
+    try {
+      const slideId = t.doc.groups[0]?.slides[0]?.id;
+      const part = { x: 0, y: 0, w: 1, h: 1 };
+      for (const parts of [[], [{ slideId: 'missing', part }], [{ slideId, part: { ...part, w: 2 } }]]) {
+        expect((await t.editor.makeSlide(t.event, t.request({ parts }))).ok).toBe(false);
+      }
+      expect(t.run).not.toHaveBeenCalled();
+      t.drawPart.mockResolvedValueOnce({ ok: true, png: t.png });
+      t.drawPart.mockResolvedValueOnce({ ok: false, message: 'Placeholder second part failed.' } as never);
+      expect(await t.editor.makeSlide(t.event, t.request({ parts: [{ slideId, part }, { slideId, part }] })))
+        .toEqual({ ok: false, message: 'Placeholder second part failed.' });
+      expect(t.keepSlide).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+
   it('refuses a part off the page, a slide not in the document, a changed presentation, a bad place, and another window', async () => {
     const t = await opened();
     try {
