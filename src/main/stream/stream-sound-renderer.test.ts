@@ -1,7 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { BrowserWindow } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { IPC } from '../../shared/ipc';
 import { StreamService, type StreamServiceDeps } from './stream-service';
 
 vi.mock('electron', () => ({
@@ -18,7 +17,7 @@ function page(id: number) {
     webContents: Object.assign(new EventEmitter(), {
       id,
       isDestroyed: () => destroyed,
-      postMessage: vi.fn(),
+      postMessage: vi.fn<(channel: string, payload: { role: string }, ports: unknown[]) => void>(),
       send: vi.fn(),
     }),
     isDestroyed: () => destroyed,
