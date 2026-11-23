@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { indicCandidates } from './indic-place';
+import { indicCandidates, indicProblem } from './indic-place';
 describe('native Route C runtime location', () => {
   it('uses each system’s own paths for packaged and development copies', () => {
     expect(
@@ -30,4 +30,10 @@ describe('native Route C runtime location', () => {
       }),
     ).toEqual([]);
   });
+});
+
+it('declares Microsoft’s actual 13.4 Mac minimum separately from Whisper', () => {
+  expect(indicProblem('darwin', '13.3.1')).toContain('13.4');
+  expect(indicProblem('darwin', '13.4')).toBeNull();
+  expect(indicProblem('win32', '10.0')).toBeNull();
 });
