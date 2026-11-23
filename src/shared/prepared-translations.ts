@@ -65,3 +65,13 @@ export class StandInTranslator implements Translator {
     return Promise.resolve(`[Test placeholder ${from}/${to}: ${sourceFingerprint(source)}]`);
   }
 }
+
+/** Changing translated words always starts a new review of the current source. */
+export function editTranslation(
+  value: PreparedTranslation,
+  source: string,
+  text: string,
+): PreparedTranslation {
+  if (value.text === text && value.sourceFingerprint === sourceFingerprint(source)) return value;
+  return draftTranslation(source, value.sourceLanguage, value.targetLanguage, text);
+}

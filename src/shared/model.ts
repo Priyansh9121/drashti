@@ -4,6 +4,7 @@
  */
 
 import type { DeckSlide } from './deck';
+import type { PreparedTranslation } from './prepared-translations';
 
 /**
  * Languages: English, Gujarati, Hindi (Devanagari), Roman transliteration,
@@ -272,6 +273,8 @@ export interface TextElement extends ElementBase {
    */
   everyScreen?: boolean;
   tableCell?: TableCell;
+  /** Saved source/result pairs; only a checked exact pair may reach an output. */
+  translations?: PreparedTranslation[];
 }
 
 /**
