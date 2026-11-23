@@ -77,6 +77,12 @@ describe('the Program window', () => {
 
 it('routes microphone permission to the sound renderer in the original stream session, without granting its camera or display capture', () => {
   const handlers: {
+    check?: (
+      contents: WebContents,
+      permission: string,
+      origin: string,
+      details: { requestingUrl: string; mediaType: 'audio' | 'video' | 'unknown'; isMainFrame: boolean },
+    ) => boolean;
     request?: (
       contents: WebContents,
       permission: string,
@@ -89,7 +95,9 @@ it('routes microphone permission to the sound renderer in the original stream se
     setPermissionRequestHandler: (next: NonNullable<typeof handlers.request>) => {
       handlers.request = next;
     },
-    setPermissionCheckHandler: vi.fn(),
+    setPermissionCheckHandler: (next: NonNullable<typeof handlers.check>) => {
+      handlers.check = next;
+    },
     setDisplayMediaRequestHandler: (next: NonNullable<typeof handlers.display>) => {
       handlers.display = next;
     },
@@ -101,8 +109,22 @@ it('routes microphone permission to the sound renderer in the original stream se
     isSound: (contents: WebContents | null) => contents === sound,
   };
   applyStreamSessionSecurity(session, rules);
-  if (!handlers.request || !handlers.display) throw new Error('The stream session did not install its rules');
+  if (!handlers.request || !handlers.display || !handlers.check)
+    throw new Error('The stream session did not install its rules');
   const url = 'file:///generated/stream-sound.html';
+  expect(
+    handlers.check(sound, 'media', 'file://', { requestingUrl: url, mediaType: 'audio', isMainFrame: true }),
+  ).toBe(true);
+  expect(
+    handlers.check(sound, 'media', 'file://', { requestingUrl: url, mediaType: 'video', isMainFrame: true }),
+  ).toBe(false);
+  expect(
+    handlers.check(sound, 'media', 'file://', {
+      requestingUrl: url,
+      mediaType: 'unknown',
+      isMainFrame: true,
+    }),
+  ).toBe(false);
   const answer = vi.fn();
   handlers.request(sound, 'media', answer, { requestingUrl: url, mediaTypes: ['audio'] });
   expect(answer).toHaveBeenLastCalledWith(true);
