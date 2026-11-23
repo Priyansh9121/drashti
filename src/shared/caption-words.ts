@@ -105,7 +105,9 @@ export function parseCaptionWords(raw: unknown): CaptionWord[] {
   const checked: CaptionWord[] = [];
   for (const item of raw as unknown[]) {
     if (typeof item !== 'object' || item === null) continue;
-    const { language, word } = item as Record<string, unknown>;
+    const fields = item as Record<string, unknown>;
+    const language = fields['language'];
+    const word = fields['word'];
     if (!isLanguage(language) || typeof word !== 'string') continue;
     const c = checkCaptionWord(word);
     if (c.ok) checked.push({ language, word: c.word });

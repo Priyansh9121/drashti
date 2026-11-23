@@ -21,6 +21,11 @@ import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../shared/speech';
 
 export const HINT_PROMPT_BYTES = 200;
 export const HINT_WORDS = 50;
+/** Red first (alpha.22): the cap by whisper's tokens, not written yet. */
+export const HINT_PROMPT_TOKENS = 220;
+export function promptTokens(_text: string): number {
+  return 0;
+}
 
 export interface Hints {
   words: readonly string[];

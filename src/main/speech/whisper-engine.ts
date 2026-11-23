@@ -243,7 +243,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         form.append('language', language);
         // The decode already reports its language. Asking for probabilities runs detection again.
         form.append('no_language_probabilities', 'true');
-        // The admin's caption words, as whisper.cpp's initial prompt (at most 200 bytes): none, none sent.
+        // The admin's caption words, as whisper.cpp's initial prompt (about 220 tokens at most): none, none sent.
         const prompt = o.hints?.for(language).prompt ?? '';
         if (prompt !== '') form.append('prompt', prompt);
         const began = Date.now();
