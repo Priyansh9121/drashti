@@ -256,11 +256,24 @@ test('a broken gate unsubscribe cannot prevent native cancellation', async () =>
 });
 
 test('an opening callback during failed gate registration cannot admit a model', async () => {
-  let open = false, acquired = false;
+  let open = false,
+    acquired = false;
   const engine = createIndicEngine({
-    workGate: { allowed: () => open, listen: (changed) => { open = true; changed(); throw new Error('unavailable'); } },
-    program: () => '/native', acquire: () => { acquired = true; return null; },
-    sound: { open: () => null }, log: { info() {}, warn() {} },
+    workGate: {
+      allowed: () => open,
+      listen: (changed) => {
+        open = true;
+        changed();
+        throw new Error('unavailable');
+      },
+    },
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: { open: () => null },
+    log: { info() {}, warn() {} },
   });
   engine.start('gu', { heard() {}, state() {} })();
   await Promise.resolve();

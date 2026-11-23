@@ -335,9 +335,10 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         }
       };
       let stopGate: () => void;
+      let observing = false;
       try {
         stopGate = gate.listen(() => {
-          if (stopped) return;
+          if (stopped || !observing) return;
           if (!allowed()) {
             gateHeld = true;
             end();
@@ -351,6 +352,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         to.state({ phase: 'failed', message: 'Recognition is not ready on this computer yet.' });
         return () => undefined;
       }
+      observing = true;
       void begin();
       return () => {
         if (stopped) return;
