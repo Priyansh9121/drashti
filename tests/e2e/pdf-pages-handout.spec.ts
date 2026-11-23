@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { openGeneratedPdf, savePdfCopy, usePdfTools } from './pdf-tools-fixtures';
 import { inspectPdf } from './pdf-export-oracle';
 
@@ -12,10 +13,11 @@ test('extracts chosen pages to a PDF copy in reading order without changing the 
     await dialog.getByLabel('Pages').fill('1, 3');
     await dialog.getByLabel('New PDF file').check();
     const output = join(s.folder, 'Placeholder extracted.pdf');
-    // The existing save helper supplies the native save dialog's destination.
-    await savePdfCopy(s.app, s.ed, output, async () => {
-      await dialog.getByRole('button', { name: 'Extract pages', exact: true }).click();
-    });
+    await s.app.evaluate(({ dialog }, path) => {
+      dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
+    }, output);
+    await dialog.getByRole('button', { name: 'Extract pages', exact: true }).click();
+    await expect.poll(() => existsSync(output)).toBe(true);
     expect(await inspectPdf(output)).toHaveLength(2);
     await expect(s.editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
     s.unchanged();
