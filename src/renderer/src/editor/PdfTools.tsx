@@ -4,6 +4,7 @@ import {
   Download,
   FilePlus,
   Pencil,
+  Presentation,
   RotateCw,
   Square,
   SquarePen,
@@ -11,7 +12,7 @@ import {
   Trash2,
   Underline,
 } from '../ui/icons';
-import { Cluster, Divider } from './RibbonParts';
+import { Cluster, Divider, GROUP_ROW } from './RibbonParts';
 
 export type PdfMarkTool = 'highlight' | 'underline' | 'strike' | 'draw' | 'cover';
 export type PdfPendingAction = 'insert-pages' | 'save-copy' | null;
@@ -27,6 +28,8 @@ export interface PdfToolAvailability {
   deletePage: boolean;
   insertPages: boolean;
   saveCopy: boolean;
+  /** Make a slide… (alpha.21): this page, or a part of it, as a Drashti slide. */
+  makeSlide: boolean;
 }
 
 /**
@@ -44,6 +47,7 @@ export interface PdfToolCallbacks {
   onDeletePage: () => void;
   onInsertPages?: () => void;
   onSaveCopy?: () => void;
+  onMakeSlide?: () => void;
 }
 
 export interface PdfToolsProps extends PdfToolCallbacks {
@@ -73,10 +77,13 @@ export function PdfTools({
   onDeletePage,
   onInsertPages,
   onSaveCopy,
+  onMakeSlide,
 }: PdfToolsProps) {
   const busy = blocked || pending !== null;
   return (
-    <div className="flex min-w-0 items-start" data-testid="pdf-pages-group" aria-busy={pending !== null}>
+    // Onto a second row where the window is narrower than its clusters (alpha.21's fit pass, GROUP_ROW), never
+    // scrolling sideways: Make a slide… made the row wider than CI's 1024-pixel window.
+    <div className={GROUP_ROW} data-testid="pdf-pages-group" aria-busy={pending !== null}>
       <Cluster name="Mark this page">
         <Button
           size="sm"
@@ -165,6 +172,20 @@ export function PdfTools({
           onClick={onDeletePage}
         >
           Delete page
+        </Button>
+      </Cluster>
+      <Divider />
+      <Cluster name="Drashti slide">
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={Presentation}
+          disabled={busy || !available.makeSlide || !onMakeSlide}
+          data-testid="pdf-make-slide"
+          title="This page, or a part of it you drag out, as a slide of its own"
+          onClick={onMakeSlide}
+        >
+          Make a slide…
         </Button>
       </Cluster>
       <Divider />

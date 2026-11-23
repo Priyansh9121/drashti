@@ -4,7 +4,11 @@ import { readFile, stat } from 'node:fs/promises';
 import { idSchema } from '../../shared/model-schema';
 import { editDocSchema, type EditDoc } from '../../shared/slide-edit';
 import { renderEditedSlide } from '../../shared/slide-design';
+import { z } from 'zod';
+import type { MadeSlidePlace, MakeSlideResult, PagePart } from '../../shared/page-part';
+import { madeSlideName, pagePartSchema } from '../../shared/page-part';
 import type { PdfCopyJob, PdfCopyResult } from '../../shared/pdf-copy';
+import type { PartPicture } from '../pictures/pdf-pictures';
 import { OriginalsStore, originalRelative } from '../import/originals-store';
 import type { Db } from '../db/database';
 import type { PdfCopySession } from './pdf-copy-session';
@@ -22,8 +26,21 @@ export interface PdfEditorDeps {
     stamp: string,
   ): { ok: true; doc: EditDoc } | { ok: false; message: string };
   chooseOutput(event: IpcMainInvokeEvent, name: string): Promise<string | null>;
+  /** Make a slide… (alpha.21): the part of a one-page PDF just printed here, drawn at the hall's picture size. */
+  drawPart?: (pdf: Uint8Array, part: PagePart, signal: AbortSignal) => Promise<PartPicture>;
+  /** Make a slide…: the picture kept in the library as a one-slide presentation, in the open playlist when asked. */
+  keepSlide?: (made: { png: Uint8Array; name: string; place: MadeSlidePlace }) => Promise<MakeSlideResult>;
 }
-const failed = (message: string): PdfCopyResult => ({ ok: false, message });
+const failed = (message: string): { ok: false; message: string } => ({ ok: false, message });
+/** Make a slide…'s request, its document checked apart (editDocSchema) and against what is stored (validate). */
+const makeSlideSchema = z.object({
+  presentationId: idSchema,
+  doc: z.unknown(),
+  stamp: z.string().max(1024),
+  slideId: z.string().min(1).max(200),
+  part: pagePartSchema,
+  place: z.enum(['playlist', 'library']),
+});
 class PdfEditorError extends Error {}
 
 /** Save a separate PDF from a validated editor snapshot; never writes a presentation or revision. */
@@ -162,6 +179,69 @@ export class PdfEditor {
       }
     }
     return { pages, sources: [...sources].map(([id, data]) => ({ id, data })) };
+  }
+
+  /**
+   * Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's page as it
+   * now looks (unsaved changes too), printed as a one-page PDF the way Save a PDF copy prints it (an unchanged page
+   * straight from the retained original), its part drawn from that at the hall's picture size, and kept as a slide
+   * in the library (in the open playlist when asked). The presentation being edited is never changed.
+   */
+  makeSlide(event: IpcMainInvokeEvent, raw: unknown): Promise<MakeSlideResult> {
+    const drawPart = this.deps.drawPart;
+    const keepSlide = this.deps.keepSlide;
+    if (this.stopped || this.active || !drawPart || !keepSlide || !this.deps.allowed(event))
+      return Promise.resolve(
+        failed('Drashti is making a PDF copy or a slide already: try again in a moment.'),
+      );
+    const asked = makeSlideSchema.safeParse(raw);
+    if (!asked.success)
+      return Promise.resolve(failed('Choose a part of the page, and where the slide goes, then try again.'));
+    const { presentationId, doc: rawDoc, stamp, slideId, part, place } = asked.data;
+    const checked = editDocSchema.safeParse(rawDoc);
+    if (!checked.success || checked.data.presentationId !== presentationId)
+      return Promise.resolve(failed('Reopen the editor before making a slide.'));
+    const validated = this.deps.validate(presentationId, checked.data, stamp);
+    if (!validated.ok) return Promise.resolve(validated);
+    const doc = structuredClone(validated.doc);
+    const pages = doc.groups.flatMap((group) => group.slides);
+    const at = pages.findIndex((slide) => slide.id === slideId);
+    const slide = pages[at];
+    const group = doc.groups.find((g) => g.slides.some((s) => s.id === slideId));
+    if (!slide || !group || slide.documentPage?.ext !== 'pdf')
+      return Promise.resolve(failed('Choose a PDF page, then make the slide again.'));
+    const controller = new AbortController();
+    const current = () =>
+      !controller.signal.aborted &&
+      !this.stopped &&
+      !event.sender.isDestroyed() &&
+      this.deps.allowed(event) &&
+      this.deps.stamp(presentationId) === stamp;
+    const abort = () => controller.abort();
+    event.sender.once('destroyed', abort);
+    const whole = part.x <= 0 && part.y <= 0 && part.w >= 1 && part.h >= 1;
+    const name = madeSlideName(doc.name, at + 1, whole);
+    const one: EditDoc = { ...doc, groups: [{ ...group, slides: [slide] }] };
+    const done = (async (): Promise<MakeSlideResult> => {
+      try {
+        if (!current()) return failed('The editor changed. Reopen it before making a slide.');
+        const plan = await this.plan(one, current);
+        const bytes = await this.deps.session.run(plan, current, controller.signal);
+        if (!bytes || !current()) return failed('The page could not be drawn. Try again in a moment.');
+        const drawn = await drawPart(bytes, part, controller.signal);
+        if (!drawn.ok) return failed(drawn.message);
+        if (!current()) return failed('The editor changed. Reopen it before making a slide.');
+        return await keepSlide({ png: drawn.png, name, place });
+      } catch (error) {
+        if (error instanceof PdfEditorError) return failed(error.message);
+        return failed('The slide could not be made. Try again in a moment.');
+      }
+    })().finally(() => {
+      event.sender.removeListener('destroyed', abort);
+      if (this.active?.abort === controller) this.active = null;
+    });
+    this.active = { abort: controller, done: done.then((made) => (made.ok ? { ok: true, name } : made)) };
+    return done;
   }
 
   cancel(): void {

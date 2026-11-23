@@ -10,6 +10,7 @@ import type { VideoCaptionChoice, VideoCaptionResult } from './video-captions';
 import type { YouTubeListResult, YouTubeResult, YouTubeScheduleInput, YouTubeStatus } from './youtube';
 import type { KirtanBundleExportRequest, KirtanBundleExportResult } from './kirtan-bundles';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
+import type { MakeSlideRequest, MakeSlideResult, SlideMade, SlidePlace } from './page-part';
 import type { SlidePictureResult } from './slide-picture';
 import type { ReadyReport } from './ready';
 import type { ToolsMenuItem } from './setup-tools';
@@ -1120,6 +1121,15 @@ export interface DrashtiBridge {
     fontFamilies(): Promise<readonly string[]>;
     /** One of the show's F-keys (Clear all F1, Oops F9, Wallpaper F12...): the operator window acts on it. */
     showKey(key: string): Promise<null>;
+    /**
+     * Make a slide… (alpha.21): a PDF page as the editor has it now, or a part of it, drawn from the page at the hall's
+     * picture size and kept as a one-slide presentation, in the open playlist or the library only (Pro Mode).
+     */
+    makeSlide(request: MakeSlideRequest): Promise<MakeSlideResult>;
+    /** Where Make a slide… can put the slide: the operator window's open playlist, or none. */
+    slidePlace(): Promise<SlidePlace>;
+    /** The operator window: a slide was made in the editor's window (one change for its Undo). */
+    onSlideMade(listener: (made: SlideMade) => void): () => void;
   };
   lowerThirds: {
     list(): Promise<LowerThird[]>;

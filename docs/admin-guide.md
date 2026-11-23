@@ -634,6 +634,8 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 **An older import may need a match.** **Link source page…** lets the operator choose a PDF reading copy and match the saved picture to its page. For an older PowerPoint or Keynote import (a Keynote deck imported with its animations before alpha.17 among them, or since then one whose PowerPoint copy did not match it), make that PDF in the deck's own program first. Drashti does not guess an uncertain match. Check the page, its fonts and the source notes before approving; an unsupported turn, crop or other change to the old source picture may prevent linking.
 
+**A slide from a PDF page** (since alpha.21). **PDF pages › Make a slide…** makes a page, or a part of it dragged out, a presentation of one slide in the library (and in the open playlist when the operator chooses it): the page as the editor has it, drawn again from its own words, lines and pictures at the size the hall's pictures are made at (the first audience screen's canvas, or 1920 × 1080), so it stays sharp. The picture is kept in the library as any picture is; the original PDF and its slides are not changed. Pro Mode only, as Save a PDF copy is; not while another PDF copy is being written.
+
 **Save a separate PDF.** **Save a PDF copy…** writes a new file where the operator chooses; it cannot overwrite a retained original, even through another name for the same file. It does not save unfinished changes to the library: the editor's **Save** does that. **Cover** is a visible patch over part of a page, not a way to remove private words from a PDF. Keep a file with private material out of a copy meant to be shared.
 
 ## 25. Live captions (Trial)

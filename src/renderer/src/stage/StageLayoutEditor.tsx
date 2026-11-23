@@ -441,11 +441,12 @@ export function StageLayoutEditor({ platform = '' }: { platform?: string }) {
                     go(l.id);
                   }}
                   className={cx(
-                    'min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm',
+                    'min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm',
                     on ? 'bg-panel-3 font-medium text-fg' : 'text-muted hover:bg-panel-2 hover:text-fg',
                   )}
                 >
-                  {l.name}
+                  {/* A long name (up to 60 letters) cut neatly, whole on hover (alpha.21's fit pass). */}
+                  <Truncate text={l.name} />
                 </button>
                 {inUse && (
                   <Badge tone="info" data-testid="stage-layout-in-use">
@@ -457,9 +458,10 @@ export function StageLayoutEditor({ platform = '' }: { platform?: string }) {
           })}
           {e?.id === null && (
             <li>
-              <span className="block w-full truncate rounded-md bg-panel-3 px-2 py-1.5 text-sm font-medium">
-                {e.name} (not saved)
-              </span>
+              <Truncate
+                text={`${e.name} (not saved)`}
+                className="w-full rounded-md bg-panel-3 px-2 py-1.5 text-sm font-medium"
+              />
             </li>
           )}
         </ul>
@@ -606,12 +608,14 @@ export function StageLayoutEditor({ platform = '' }: { platform?: string }) {
                       chooseBox(b.id);
                     }}
                     className={cx(
-                      'w-full truncate rounded-md border px-2 py-1 text-left text-sm',
+                      'w-full rounded-md border px-2 py-1 text-left text-sm',
                       b.id === s.boxId ? 'border-accent bg-panel-3' : 'border-line hover:bg-panel-2',
                     )}
                   >
-                    {STAGE_BOX_NAMES[b.kind]}
-                    {b.kind === 'text' && b.text ? `: ${b.text}` : ''}
+                    {/* A text box's words cut neatly, whole on hover (alpha.21's fit pass). */}
+                    <Truncate
+                      text={`${STAGE_BOX_NAMES[b.kind]}${b.kind === 'text' && b.text ? `: ${b.text}` : ''}`}
+                    />
                   </button>
                 </li>
               ))}

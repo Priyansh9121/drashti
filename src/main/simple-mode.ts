@@ -60,6 +60,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.downloadQr,
   // The slide editor's Save a PDF copy… (a copy: Pro Mode's; its save is bounded since Session 56, below).
   IPC.library.exportPdf,
+  // Make a slide… (alpha.21): a new presentation from a PDF page, as New › QR code… makes one.
+  IPC.slideEditor.makeSlide,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
   // The single-letter keys (Session 37): Pro Mode's keys sheet turns them on or off.

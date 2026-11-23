@@ -201,3 +201,183 @@ describe('real PDF editor copy source protection', () => {
     }
   });
 });
+
+describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti slide', () => {
+  /** The real imported generated PDF opened in the real editor validator, and a PdfEditor around fakes at its edges. */
+  async function opened() {
+    const restoreLocation = fixtureLocation();
+    const world = originalWorld();
+    const imported = await world.importPdf();
+    const presentations = new PresentationRepo(world.db);
+    const revisions = new Revisions();
+    const kept = vi.spyOn(revisions, 'keep');
+    const slides = registerSlidesIpc({
+      db: world.db,
+      presentations,
+      revisions,
+      settings: new SettingsRepo(world.db),
+      fromOperator: () => true,
+      mayPrepareSource: () => true,
+      sourceReader: nativeSourceReader,
+      sourceWrite: sourceWrite(world.db),
+      lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
+      changed: () => undefined,
+      saved: () => undefined,
+    });
+    const event = { sender: Object.assign(new EventEmitter(), { isDestroyed: () => false }) } as never;
+    const open = handlers.get(IPC.library.slidesForEdit);
+    if (!open) throw new Error('The real source editor-open handler was not registered.');
+    const result = await (open(event, imported.id) as EditSlidesResult | Promise<EditSlidesResult>);
+    if (!result.ok) throw new Error(result.message);
+    const session = new PdfCopySession({
+      open: () => {
+        throw new Error('The unit hidden-session boundary must not open an Electron window.');
+      },
+      assetDirs: () => [],
+      normalize: () => Promise.reject(new Error('No unit print operation is admitted.')),
+    });
+    const printed = new Uint8Array(
+      makeTestPdf([{ width: 960, height: 540, color: [40, 80, 120], text: 'Placeholder printed page' }]),
+    );
+    const run = vi.spyOn(session, 'run').mockResolvedValue(printed);
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    const drawPart = vi.fn(() => Promise.resolve({ ok: true as const, png }));
+    const keepSlide = vi.fn((made: { name: string }) =>
+      Promise.resolve({
+        ok: true as const,
+        presentationId: 'made-1',
+        name: made.name,
+        playlist: 'Placeholder list',
+      }),
+    );
+    let allowed = true;
+    const editor = new PdfEditor({
+      db: world.db,
+      mediaDir: world.mediaDir,
+      session,
+      allowed: () => allowed,
+      stamp: (id) => stamp(world, id),
+      validate: (...args) => slides.documentForExport(...args),
+      chooseOutput: () => Promise.reject(new Error('Make a slide never asks for a file.')),
+      drawPart,
+      keepSlide,
+    });
+    const slideId = result.doc.groups[0]?.slides[0]?.id ?? '';
+    const request = (change: Record<string, unknown> = {}) => ({
+      presentationId: imported.id,
+      doc: result.doc,
+      stamp: result.stamp,
+      slideId,
+      part: { x: 0, y: 0, w: 0.25, h: 0.5 },
+      place: 'playlist',
+      ...change,
+    });
+    const before = presentations.content(imported.id);
+    return {
+      world,
+      imported,
+      presentations,
+      before,
+      kept,
+      doc: result.doc,
+      editor,
+      event,
+      run,
+      printed,
+      png,
+      drawPart,
+      keepSlide,
+      request,
+      refuse: () => {
+        allowed = false;
+      },
+      clean: async () => {
+        try {
+          await editor.stop();
+          slides.cancelSourcePreparation();
+          await slides.drainSourcePreparation();
+          world.clean();
+        } finally {
+          restoreLocation();
+        }
+      },
+    };
+  }
+
+  it('prints that one page as it now looks, draws the part dragged out, and keeps it with its name and place', async () => {
+    const t = await opened();
+    try {
+      const made = await t.editor.makeSlide(t.event, t.request());
+      expect(made).toEqual({
+        ok: true,
+        presentationId: 'made-1',
+        name: `${t.doc.name}, page 1 (part)`,
+        playlist: 'Placeholder list',
+      });
+      // One page planned: the unchanged page from the retained original (a changed page would be printed natively).
+      expect(t.run).toHaveBeenCalledOnce();
+      expect(t.run.mock.calls[0]?.[0].pages).toEqual([{ kind: 'original', sourceId: t.world.hash, page: 0 }]);
+      // Its part drawn from those bytes; the picture kept as a slide in the open playlist.
+      expect(t.drawPart).toHaveBeenCalledOnce();
+      expect(t.drawPart.mock.calls[0]?.slice(0, 2)).toEqual([t.printed, { x: 0, y: 0, w: 0.25, h: 0.5 }]);
+      expect(t.keepSlide).toHaveBeenCalledWith({
+        png: t.png,
+        name: `${t.doc.name}, page 1 (part)`,
+        place: 'playlist',
+      });
+      // The PDF's own presentation is not changed, and no revision is kept for it.
+      expect(t.presentations.content(t.imported.id)).toEqual(t.before);
+      expect(t.kept).not.toHaveBeenCalled();
+      // The whole page into the library only: no "(part)".
+      const whole = await t.editor.makeSlide(
+        t.event,
+        t.request({ part: { x: 0, y: 0, w: 1, h: 1 }, place: 'library' }),
+      );
+      expect(whole.ok && whole.name).toBe(`${t.doc.name}, page 1`);
+      expect(t.keepSlide).toHaveBeenLastCalledWith({
+        png: t.png,
+        name: `${t.doc.name}, page 1`,
+        place: 'library',
+      });
+    } finally {
+      await t.clean();
+    }
+  });
+
+  it('refuses a part off the page, a slide not in the document, a changed presentation, a bad place, and another window', async () => {
+    const t = await opened();
+    try {
+      for (const change of [
+        { part: { x: 0.8, y: 0, w: 0.5, h: 1 } },
+        { part: { x: 0, y: 0, w: 0.01, h: 1 } },
+        { slideId: 'no-such-slide' },
+        { stamp: 'an older stamp' },
+        { place: 'somewhere' },
+        { presentationId: 'another-presentation' },
+      ]) {
+        const refused = await t.editor.makeSlide(t.event, t.request(change));
+        expect(refused.ok, JSON.stringify(change)).toBe(false);
+      }
+      expect((await t.editor.makeSlide(t.event, null)).ok).toBe(false);
+      t.refuse();
+      expect((await t.editor.makeSlide(t.event, t.request())).ok).toBe(false);
+      expect(t.run).not.toHaveBeenCalled();
+      expect(t.drawPart).not.toHaveBeenCalled();
+      expect(t.keepSlide).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+
+  it('says why when the part cannot be drawn, and keeps nothing', async () => {
+    const t = await opened();
+    try {
+      t.drawPart.mockResolvedValueOnce({ ok: false, message: 'The page could not be drawn.' } as never);
+      const made = await t.editor.makeSlide(t.event, t.request());
+      expect(made).toEqual({ ok: false, message: 'The page could not be drawn.' });
+      expect(t.keepSlide).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+});

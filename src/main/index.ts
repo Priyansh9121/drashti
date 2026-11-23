@@ -411,6 +411,8 @@ import {
   readQuickBar,
 } from '../shared/quick-bar';
 import { QR_TEXT_MAX, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
+import { pageSlidePresentation } from './library/page-slide';
+import type { MadeSlidePlace, MakeSlideResult, SlidePlace } from '../shared/page-part';
 import { QrService } from './library/qr-service';
 import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
@@ -5280,6 +5282,13 @@ function start(): void {
       sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
+  /** Make a slide…'s keeping (set below, where the open playlist is known). */
+  let keepPageSlide: (
+    png: Uint8Array,
+    name: string,
+    place: MadeSlidePlace,
+  ) => Promise<MakeSlideResult> = () =>
+    Promise.resolve({ ok: false, message: 'Drashti is still starting: try again in a moment.' });
   const pdfEditor = new PdfEditor({
     db: libraryDb,
     mediaDir,
@@ -5312,8 +5321,18 @@ function start(): void {
         : await dialog.showSaveDialog(options);
       return chosen.canceled ? null : chosen.filePath;
     },
+    // Make a slide… (alpha.21): the part drawn from the page just printed, at the size a PDF's pages are imported at.
+    drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
+    keepSlide: ({ png, name, place }) => keepPageSlide(png, name, place),
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
+  // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
+  // operator window) asks; Pro Mode only, as Save a PDF copy is.
+  handle(IPC.slideEditor.makeSlide, (e, request) => pdfEditor.makeSlide(e, request));
+  handle(IPC.slideEditor.slidePlace, (e): SlidePlace => {
+    if (!(fromOperator(e) || editorWindow.isPage(e.sender)) || mode !== 'pro') return { playlist: null };
+    return { playlist: openPlaylistForSlides() };
+  });
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
   cancelSourceEdits = () => {
@@ -5368,6 +5387,29 @@ function start(): void {
     if (done.ok) log.info('QR code: a code was saved where the operator chose');
     return done;
   });
+  /**
+   * A picture Drashti made (a QR code, a PDF page's part) kept in the library through an import as any picture is,
+   * from a temporary file: its media id, or null.
+   */
+  const keepMadePicture = async (
+    png: Uint8Array,
+    fileName: string,
+    prefix: string,
+  ): Promise<string | null> => {
+    const dir = await fsPromises.mkdtemp(join(tmpdir(), prefix));
+    try {
+      const file = join(dir, fileName);
+      await fsPromises.writeFile(file, png);
+      const done = await importPaths([file], {});
+      const made = done.ok
+        ? importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target
+        : undefined;
+      return made?.kind === 'media' ? made.id : null;
+    } finally {
+      // Gone once the import has its copy (Windows may hold it a moment: the system empties its temporary folder).
+      await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  };
   // New › QR code… (Session 55, Part 8, G): the code made offline, since alpha.20 in the QR worker and read back first
   // (with the logo in the middle when the window asks, Q60-28), kept as a picture in the library through an import as
   // any picture is, and one slide holding it large, with the words under it unless the window leaves them off.
@@ -5385,22 +5427,7 @@ function start(): void {
       typeof options === 'object' && options !== null ? options : {};
     const made = await qr.slidePicture(code, asked.logo === true);
     if (!made.ok) return { ok: false, message: made.message };
-    const png = made.png;
-    const dir = await fsPromises.mkdtemp(join(tmpdir(), 'drashti-qr-'));
-    const mediaId = await (async (): Promise<string | null> => {
-      try {
-        const file = join(dir, 'QR code.png');
-        await fsPromises.writeFile(file, png);
-        const done = await importPaths([file], {});
-        const made = done.ok
-          ? importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target
-          : undefined;
-        return made?.kind === 'media' ? made.id : null;
-      } finally {
-        // Gone once the import has its copy (Windows may hold it a moment: the system empties its temporary folder).
-        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
-      }
-    })();
+    const mediaId = await keepMadePicture(made.png, 'QR code.png', 'drashti-qr-');
     if (mediaId === null) return { ok: false, message: 'The code’s picture could not be kept: try again.' };
     const libraryId = presentations.ensureLibrary('Default');
     const look = themeLook(themes.themeOrDefault(null), 1920, 1080);
@@ -6117,6 +6144,45 @@ function start(): void {
   const phoneDevices = new DeviceRepo(db);
   /** The playlist open in Pro Mode's window, as it says (Session 55, Part 8: a phone's Add photos go there). */
   let openInPro: string | null = null;
+  /** Make a slide… (alpha.21): the playlist a made slide can go into, Pro Mode's open one (a playlist, not a folder). */
+  const openPlaylistForSlides = (): { id: string; name: string } | null => {
+    if (mode !== 'pro' || openInPro === null) return null;
+    const row = libraryDb
+      .prepare(
+        'SELECT id, name FROM playlists WHERE id = ? AND deleted_at IS NULL AND is_folder = 0 AND is_template = 0',
+      )
+      .get(openInPro) as { id: string; name: string } | undefined;
+    return row ?? null;
+  };
+  /**
+   * Make a slide… (alpha.21): the part of a PDF page, drawn at the hall's picture size, kept in the library as a
+   * picture (an import, as any picture is), a presentation of one slide holding it, and a row at the end of the open
+   * playlist when asked; the operator window is told, for its Undo.
+   */
+  keepPageSlide = async (png, name, place) => {
+    // The picture's file is named as its slide is (Media lists it by that name).
+    const file = `${cutText(name.replace(/[\\/:*?"<>|]/gu, ' ').trim(), 120) || 'Page'}.png`;
+    const mediaId = await keepMadePicture(png, file, 'drashti-page-slide-');
+    if (mediaId === null) return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+    const libraryId = presentations.ensureLibrary('Default');
+    const size = pictureSize(screenRepo.allScreens(), screenRepo.firstGroup('audience'));
+    const madeName = presentations.uniqueName(libraryId, name);
+    const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaId, size));
+    contentChanged([id]);
+    const playlist = place === 'playlist' ? openPlaylistForSlides() : null;
+    const [itemId = null] = playlist
+      ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
+      : [];
+    if (itemId !== null) playlistsChanged();
+    sendToOperator(IPC.slideEditor.slideMade, { presentationId: id, name: madeName, itemId });
+    log.info(`Library: a slide made from a PDF page${itemId !== null ? ', in the open playlist' : ''}`);
+    return {
+      ok: true,
+      presentationId: id,
+      name: madeName,
+      playlist: itemId !== null && playlist ? playlist.name : null,
+    };
+  };
   const phoneFiles = new PhoneFiles({
     db: libraryDb,
     settings,

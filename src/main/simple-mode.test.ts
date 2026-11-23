@@ -649,6 +649,8 @@ describe('Simple Mode locks', () => {
       IPC.media.undoConversion,
       // The slide editor's Save a PDF copy…, and the default transition (every presentation's).
       IPC.library.exportPdf,
+      // Make a slide… (alpha.21): a new presentation, as New › QR code… makes one.
+      IPC.slideEditor.makeSlide,
       IPC.library.setDefaultTransition,
       // A timer slide's timer (Timers are Pro Mode's), words, and New › QR code….
       IPC.timers.update,

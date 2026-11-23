@@ -293,6 +293,39 @@ describe('the size pictures are made at', () => {
   });
 });
 
+describe('Make a slide… (alpha.21): a part of a page drawn by the same window', () => {
+  it('asks one window for that part of the first page at the hall’s size, and hands back its PNG', async () => {
+    const t = setup([], { wide: () => true, atOnce: 3 });
+    const part = { x: 0, y: 0, w: 0.25, h: 0.5 };
+    const drawn = t.pictures.drawPart(new TextEncoder().encode('%PDF-1.4 printed page'), part);
+    const w = await t.opened();
+    const job = t.pictures.job(t.sender(w.webContents.id));
+    // One window even while several may draw at once; the first page only; the part, fitted into the hall's size.
+    expect(t.windows).toHaveLength(1);
+    expect(job).toMatchObject({ width: 1920, height: 1080, maxPages: 1, part });
+    expect(Buffer.from(job?.data ?? []).toString()).toBe('%PDF-1.4 printed page');
+    expect(await t.pictures.page(t.sender(w.webContents.id), { index: 0, png: PNG, notes: '' })).toBe(true);
+    t.pictures.done(t.sender(w.webContents.id), { total: 1, failed: [] });
+    const result = await drawn;
+    expect(result).toEqual({ ok: true, png: new Uint8Array(PNG) });
+    expect(w.destroyed).toBe(true);
+  });
+
+  it('says why when the window could not draw it', async () => {
+    const t = setup();
+    const drawn = t.pictures.drawPart(new TextEncoder().encode('%PDF-1.4 printed page'), {
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1,
+    });
+    const w = await t.opened();
+    t.pictures.done(t.sender(w.webContents.id), { total: 1, failed: [0] });
+    const result = await drawn;
+    expect(result.ok).toBe(false);
+  });
+});
+
 describe('drawing pages for reading their words (book OCR, alpha.21)', () => {
   it('draws only the pages asked for, by one window even when several may, at the reading size on white', async () => {
     const t = setup([], { wide: () => true, atOnce: 3 });
