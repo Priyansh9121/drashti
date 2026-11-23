@@ -15,6 +15,8 @@ test('collected PDF parts cross pages, reorder and remove, make one presentation
     const dialog = ed.getByTestId('make-slide');
     // A small part of page 1 must be drawn afresh at the hall's size, rather than cropped from its thumbnail.
     const box = dialog.getByTestId('make-slide-box');
+    // Hover's actionability check waits for the opening dialog's scale animation to finish before measuring.
+    await box.hover();
     const whole = await box.boundingBox();
     const corner = await box.locator('[data-edge="se"]').boundingBox();
     if (!whole || !corner) throw new Error('No crop frame');
