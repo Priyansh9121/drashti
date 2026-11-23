@@ -650,9 +650,9 @@ stay in cap-pack’s per-computer store. Runtime notices ship with the helper an
 `problem()` preflight so older Macs get a plain reason before loading a model. Production startup uses `--admit`: the
 helper waits for the private four bytes `GO01` before model loading, sent only after background priority is set.
 
-`workGate { allowed(), listen(changed) }` is Main’s read-only authoritative background-work lease. Without it,
+`workGate { allowed(), listen(changed) }` is Main’s read-only authoritative background-work lease for protected mode. Without it,
 or while it is closed/unknown, the recogniser loads no model and performs no inference. Revocation cancels native
-compute immediately without awaiting exit and invalidates pending results; a later opening starts fresh. The main
+compute immediately without awaiting exit and invalidates pending results; a later opening starts fresh. For protected mode the main
 integration must adapt L8’s public signal, never infer permission from an elapsed timer. Tests provide an explicit
 stand-in gate. The ordinary Whisper path is outside this new engine and remains unchanged.
 

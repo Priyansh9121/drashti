@@ -12,7 +12,7 @@ export interface IndicEngineOptions {
   problem?: () => string | null;
   /** Explicit continuous-ASR policy; still requires native below-show priority. A provided gate always wins. */
   admission?: 'below-show';
-  /** Read-only authoritative show/background lease. Absent or unknown is closed. Never derive this from a timer. */
+  /** Read-only authoritative show/background lease. Closed or unknown is closed; overrides below-show admission. */
   workGate?: { allowed(): boolean; listen(changed: () => void): () => void };
   /** Acquire a checked imported model; release only once native work has stopped. Never an installer model. */
   acquire(
