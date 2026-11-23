@@ -4,9 +4,22 @@ import { createIndicEngine, type IndicEngineOptions } from './indic-engine';
 import { routeCFiles, type IndicPack } from './indic-protocol';
 
 /** Structural subset of cap-pack's store; never imports another worker's unpublished implementation. */
+export interface CheckedIndicPack extends IndicPack {
+  files: readonly { name: string; path: string; sha256: string }[];
+}
 export interface IndicRouteStore {
-  model(id: string): IndicPack | null;
-  acquire(id: string, signal?: AbortSignal): Promise<{ model: IndicPack; release(): void } | null>;
+  model(id: string): CheckedIndicPack | null;
+  acquire(id: string, signal?: AbortSignal): Promise<{ model: CheckedIndicPack; release(): void } | null>;
+}
+function identity(pack: CheckedIndicPack | null): string | null {
+  if (!pack || pack.files.some((file) => !/^[a-f0-9]{64}$/u.test(file.sha256))) return null;
+  return JSON.stringify({
+    format: pack.format,
+    purposes: [...pack.purposes].sort(),
+    files: pack.files
+      .map((file) => [file.name, file.sha256])
+      .sort((a, b) => (a[0] ?? '').localeCompare(b[0] ?? '')),
+  });
 }
 /** Matches cap-integration's CaptionRoute, whose PackModel reference includes id but hides purpose metadata. */
 export interface IndicRoute {
@@ -22,14 +35,16 @@ export function createIndicRoute(
     id: 'conformer',
     make(model, language) {
       // This is metadata only. The authoritative store rechecks hashes asynchronously at actual start.
-      if (!routeCFiles(store.model(model.id), language)) return null;
+      const selected = store.model(model.id);
+      const expected = identity(selected);
+      if (!expected || !routeCFiles(selected, language)) return null;
       return createIndicEngine({
         ...engine,
         acquire: async (chosen, signal) => {
           const held = await store.acquire(model.id, signal);
           if (!held) return null;
           const files = routeCFiles(held.model, chosen);
-          if (!files) {
+          if (!files || identity(held.model) !== expected) {
             held.release();
             return null;
           }

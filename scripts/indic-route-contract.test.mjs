@@ -5,9 +5,9 @@ const pack = {
   format: 'indicconformer-ctc-onnx-v1',
   purposes: ['captions-gu'],
   files: [
-    { name: 'model.onnx', path: '/p/model.onnx' },
-    { name: 'tokens.txt', path: '/p/tokens.txt' },
-    { name: 'frontend.bin', path: '/p/frontend.bin' },
+    { name: 'model.onnx', path: '/p/model.onnx', sha256: '1'.repeat(64) },
+    { name: 'tokens.txt', path: '/p/tokens.txt', sha256: '1'.repeat(64) },
+    { name: 'frontend.bin', path: '/p/frontend.bin', sha256: '1'.repeat(64) },
   ],
 };
 const base = {
@@ -101,17 +101,34 @@ test('changed or wrong-language held metadata is released without starting the h
 });
 
 test('a replacement model under the same id cannot silently change the selected recogniser identity', async () => {
-  let released = 0, started = 0;
+  let released = 0,
+    started = 0;
   const first = { ...pack, files: pack.files.map((file) => ({ ...file, sha256: '1'.repeat(64) })) };
   const replacement = { ...first, files: first.files.map((file) => ({ ...file, sha256: '2'.repeat(64) })) };
-  const route = createIndicRoute({ ...base, store: {
-    model: () => first,
-    acquire: async () => ({ model: replacement, release: () => { released += 1; } }),
-  }, open: async () => { started += 1; return { decode: async () => ({}), close() {} }; } });
+  const route = createIndicRoute({
+    ...base,
+    store: {
+      model: () => first,
+      acquire: async () => ({
+        model: replacement,
+        release: () => {
+          released += 1;
+        },
+      }),
+    },
+    open: async () => {
+      started += 1;
+      return { decode: async () => ({}), close() {} };
+    },
+  });
   const engine = route.make({ id: 'chosen' }, 'gu');
   const stop = engine.start('gu', { heard() {}, state() {} });
   try {
-    await Promise.resolve(); await Promise.resolve();
-    assert.equal(started, 0); assert.equal(released, 1);
-  } finally { stop(); }
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(started, 0);
+    assert.equal(released, 1);
+  } finally {
+    stop();
+  }
 });

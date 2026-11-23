@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { makeIndicFixture } from '../../scripts/indic-fixture.mjs';
 import { createIndicRoute } from '../../src/main/speech/indic-route';
@@ -20,7 +21,7 @@ test('imported Route C model decodes PCM through the native helper into the spee
   ].map(({ name, data }) => {
     const path = join(root, name);
     writeFileSync(path, data);
-    return { name, path };
+    return { name, path, sha256: createHash('sha256').update(data).digest('hex') };
   });
   const pack = { format: 'indicconformer-ctc-onnx-v1', purposes: ['captions-gu'], files };
   const resolved = routeCFiles(pack, 'gu');
