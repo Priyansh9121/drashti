@@ -93,18 +93,15 @@ test('the operator corrects or dismisses the phrase on the screens; an edit from
     await expect(hall.getByTestId('captions')).toHaveText('લીલું ખોખું ગોળ આકાર પાસે છે', {
       timeout: 15_000,
     });
-    const refused = await win.evaluate(
-      (review) =>
-        review?.current
-          ? (globalThis as PageGlobals).drashti.captions.correctPrototype({
-              sessionId: review.current.sessionId,
-              phraseId: review.current.phraseId,
-              revision: review.current.revision,
-              text: 'Old session words',
-            })
-          : Promise.resolve('no phrase'),
-      before,
-    );
+    const refused = await win.evaluate((review) => {
+      if (!review?.current) throw new Error('The earlier review had no phrase');
+      return (globalThis as PageGlobals).drashti.captions.correctPrototype({
+        sessionId: review.current.sessionId,
+        phraseId: review.current.phraseId,
+        revision: review.current.revision,
+        text: 'Old session words',
+      });
+    }, before);
     expect(refused).toBe(false);
 
     // As heard: today's captions, at their own configured size (no fitted size left on the band).

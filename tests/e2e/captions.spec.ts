@@ -169,8 +169,12 @@ test('a known model comes with the model pack, chosen for Gujarati and checked; 
     // A model of its own comes only with the offline model pack (the lead's Q-CAPI-2 A): the row offers the pack's
     // dialog, never a file of its own.
     await expect(dialog.getByTestId('captions-language-model-gu-add')).toHaveCount(0);
-    await expect(dialog.getByTestId('captions-language-model-gu-packs')).toHaveText('Caption and Translation Models…');
-    await expect(dialog.getByTestId('captions-language-model-gu-choice')).toContainText('(not on this computer)');
+    await expect(dialog.getByTestId('captions-language-model-gu-packs')).toHaveText(
+      'Caption and Translation Models…',
+    );
+    await expect(dialog.getByTestId('captions-language-model-gu-choice')).toContainText(
+      '(not on this computer)',
+    );
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await importCaptionPack(app, win, pack.folder);
     await chooseMenuItem(app, 'live-captions');
