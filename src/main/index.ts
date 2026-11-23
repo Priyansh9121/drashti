@@ -579,15 +579,16 @@ const crashJournal = new CrashJournal(join(app.getPath('userData'), JOURNAL_FILE
 const errorWords = (what: string, error: unknown) =>
   `${what}: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
 let automaticErrorRuntime: ErrorReportRuntime | null = null;
+// The log and the crash journal first; an automatic report (off unless the owner turned it on) only after them.
 process.on('uncaughtException', (error) => {
-  automaticErrorRuntime?.crash();
   log.error('Uncaught exception in the main process', error);
   crashJournal.add(errorWords('an error in the main process that nothing caught', error));
+  automaticErrorRuntime?.crash();
 });
 process.on('unhandledRejection', (reason) => {
-  automaticErrorRuntime?.crash();
   log.error('Unhandled promise rejection in the main process', reason);
   crashJournal.add(errorWords('a promise in the main process failed and nothing caught it', reason));
+  automaticErrorRuntime?.crash();
 });
 // What stops as Drashti quits, in one ordered list (lifecycle.ts, Session 23): run at will-quit, or
 // before an exit that skips it (app.exit).
