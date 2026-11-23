@@ -99,3 +99,19 @@ test('changed or wrong-language held metadata is released without starting the h
   assert.equal(released, 1);
   stop();
 });
+
+test('a replacement model under the same id cannot silently change the selected recogniser identity', async () => {
+  let released = 0, started = 0;
+  const first = { ...pack, files: pack.files.map((file) => ({ ...file, sha256: '1'.repeat(64) })) };
+  const replacement = { ...first, files: first.files.map((file) => ({ ...file, sha256: '2'.repeat(64) })) };
+  const route = createIndicRoute({ ...base, store: {
+    model: () => first,
+    acquire: async () => ({ model: replacement, release: () => { released += 1; } }),
+  }, open: async () => { started += 1; return { decode: async () => ({}), close() {} }; } });
+  const engine = route.make({ id: 'chosen' }, 'gu');
+  const stop = engine.start('gu', { heard() {}, state() {} });
+  try {
+    await Promise.resolve(); await Promise.resolve();
+    assert.equal(started, 0); assert.equal(released, 1);
+  } finally { stop(); }
+});
