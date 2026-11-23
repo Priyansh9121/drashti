@@ -36,7 +36,6 @@ import {
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
 import {
   languageName,
-  LanguageModelRefused,
   type LanguageModelCheck,
   type LanguageModelEntry,
 } from './language-models';
@@ -106,15 +105,12 @@ export interface LanguageModelStore {
   check(entry: LanguageModelEntry): LanguageModelCheck;
   /** The file checked whole again (stamped again when it is still the same). */
   verify(entry: LanguageModelEntry): Promise<LanguageModelCheck>;
-  /** Add a file the admin chose for `language`: its entry, or LanguageModelRefused with what to say. */
-  add(language: LanguageModelLanguage, source: string): Promise<LanguageModelEntry>;
 }
 
 const NO_LANGUAGE_MODELS: LanguageModelStore = {
   known: () => [],
   check: () => 'missing',
   verify: () => Promise.resolve('missing'),
-  add: () => Promise.reject(new LanguageModelRefused('This copy of Drashti knows no language models.')),
 };
 
 export class CaptionsService {
@@ -535,35 +531,6 @@ export class CaptionsService {
     return this.view();
   }
 
-  /** Add a model file the admin chose for a language: checked, copied in, and chosen for it. */
-  async addLanguageModel(language: LanguageModelLanguage, source: string): Promise<CaptionsStatus> {
-    if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
-    if (this.streamInUse) {
-      this.notices.set(language, 'Add a model file when the stream and recording have stopped.');
-      this.tell();
-      return this.view();
-    }
-    this.notices.delete(language);
-    this.checking.add(language);
-    this.tell();
-    try {
-      const entry = await this.models.add(language, source);
-      this.deps.log.info(`Captions: the ${entry.id} model was added for ${languageName(language)}.`);
-      this.checking.delete(language);
-      this.choose(language, entry.id, true);
-    } catch (error) {
-      this.checking.delete(language);
-      const message =
-        error instanceof LanguageModelRefused
-          ? error.message
-          : 'Drashti could not add that model file: check the file, then add it again.';
-      this.notices.set(language, message);
-      this.deps.log.warn(`Captions: a model file for ${languageName(language)} was not added.`);
-    }
-    this.tell();
-    return this.view();
-  }
-
   /** Check the chosen model's file whole again (after it was found changed). */
   async checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus> {
     if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
@@ -600,9 +567,9 @@ export class CaptionsService {
     return this.switch.on && this.settings().language === language;
   }
 
-  private choose(language: LanguageModelLanguage, id: string | null, always = false): void {
+  private choose(language: LanguageModelLanguage, id: string | null): void {
     const was = this.tuning.languageModels[language] ?? null;
-    if (was === id && !always) return;
+    if (was === id) return;
     const languageModels: CaptionsTuning['languageModels'] = {};
     for (const each of LANGUAGE_MODEL_LANGUAGES) {
       const chosen = each === language ? id : (this.tuning.languageModels[each] ?? null);

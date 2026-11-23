@@ -256,7 +256,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.captions.retry,
   // A model per language and the live timing (alpha.22): Pro Mode's too.
   IPC.captions.setLanguageModel,
-  IPC.captions.addLanguageModel,
   IPC.captions.checkLanguageModel,
   IPC.captions.setTiming,
   // Caption and translation models (alpha.22, cap-pack): Help › Caption and Translation Models… is Pro Mode's.

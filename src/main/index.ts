@@ -4076,21 +4076,6 @@ function start(): void {
       ? captions.setLanguageModel(language, id)
       : captions.view(),
   );
-  handle(IPC.captions.addLanguageModel, async (e, language) => {
-    if (!fromOperator(e) || !isLanguageModelLanguage(language)) return captions.view();
-    const parent = BrowserWindow.fromWebContents(e.sender);
-    const options = {
-      title: 'Add a Captions Model',
-      buttonLabel: 'Add Model',
-      properties: ['openFile'] as 'openFile'[],
-      filters: [{ name: 'Captions models (ggml)', extensions: ['bin'] }],
-    };
-    const picked = parent
-      ? await dialog.showOpenDialog(parent, options)
-      : await dialog.showOpenDialog(options);
-    const file = picked.canceled ? undefined : picked.filePaths[0];
-    return file === undefined ? captions.view() : captions.addLanguageModel(language, file);
-  });
   handle(IPC.captions.checkLanguageModel, (e, language) =>
     fromOperator(e) && isLanguageModelLanguage(language)
       ? captions.checkLanguageModel(language)
