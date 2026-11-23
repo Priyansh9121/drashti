@@ -1,6 +1,6 @@
-# Automatic error report setup (alpha.22)
+# Automatic error report setup
 
-Do this only after alpha.21 is published and the alpha.22 change has been reviewed. This is a **new** Apps Script project, separate from the access list you already use. Keep the existing access-list project as it is.
+Automatic error reports came in alpha.21: each computer needs alpha.21 or later. This is a **new** Apps Script project, separate from the access list you already use. Keep the existing access-list project as it is.
 
 1. In your own Google account, create a blank Sheet for automatic error reports and a private Drive folder for their log files. Keep both private. Copy their ids from their addresses for the next step.
 2. Create a new Apps Script project. Paste `access-list/error-reports/core.js` into a script file called `core`, and `access-list/error-reports/Code.js` into `Code`. In Project Settings, show the manifest file, then paste `access-list/error-reports/appsscript.json` into `appsscript.json`.

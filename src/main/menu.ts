@@ -438,6 +438,7 @@ export function installMenu(actions: MenuActions): void {
           ]),
       // Help › Report a Problem… (x49, the owner's Q60-38): in both modes, just above Save Diagnostics….
       { id: 'report-problem', label: 'Report a Problem…', click: actions.reportProblem },
+      // Help › Automatic Error Reports… (alpha.21): the access-list owner's alone, on this computer.
       ...(actions.automaticErrorReports
         ? [
             {
