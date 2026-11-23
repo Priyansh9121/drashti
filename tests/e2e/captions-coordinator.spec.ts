@@ -39,6 +39,10 @@ test('the operator corrects or dismisses the phrase on the screens; an edit from
     const [hall] = outputPages(app);
     if (!hall) throw new Error('No hall output is open');
     await outputReady(hall);
+    // The hall draws only once its warm-up is over too: the stand-in hears its phrase once (a22-cand).
+    await expect(hall.getByTestId('output-root')).not.toHaveAttribute('data-warm-up', 'warming', {
+      timeout: 30_000,
+    });
     await importCaptionPack(app, win, pack.folder);
     await chooseMenuItem(app, 'live-captions');
     const dialog = win.getByTestId('captions-dialog');

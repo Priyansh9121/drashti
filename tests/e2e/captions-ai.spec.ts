@@ -47,7 +47,20 @@ async function threePlaces(
   await win.getByTestId('open-stream').click();
   const stream = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
   await expect(stream.getByTestId('program-root')).toBeVisible();
-  return { hall: await outputWith(app, 'audience'), stage: await outputWith(app, 'stage'), stream };
+  const places = { hall: await outputWith(app, 'audience'), stage: await outputWith(app, 'stage'), stream };
+  // Each place draws only once its fonts are in and its warm-up is over (the stream's page: 4.5-9.1 s on CI's
+  // Mac, C19). A phrase heard before then is never drawn there, and a stand-in that hears each phrase once never
+  // says it again (a22-cand: the stream missed one in runs 45249372868 and 45225817777). So wait, as
+  // deck-show.spec.ts does.
+  for (const [page, root] of [
+    [places.hall, 'output-root'],
+    [places.stage, 'output-root'],
+    [places.stream, 'program-root'],
+  ] as const) {
+    await expect(page.getByTestId(root)).toHaveAttribute('data-fonts', 'ready', { timeout: 30_000 });
+    await expect(page.getByTestId(root)).not.toHaveAttribute('data-warm-up', 'warming', { timeout: 30_000 });
+  }
+  return places;
 }
 
 /**
