@@ -187,7 +187,7 @@ import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJournal } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
-import { type CrashFilesChoice, type GraphicsInfo, writeDiagnosticsFile } from './diagnostics';
+import { type CrashFilesChoice, type GraphicsInfo, libraryNames, writeDiagnosticsFile } from './diagnostics';
 import { log, logDays, logFilesOf, onLogDaysChanged, setLogHeader, startLogCopy, startLogFile } from './log';
 import { CommandLog, requestLogged } from './log-commands';
 import { type DiagnosticsWho, installId } from './log-who';
@@ -425,6 +425,13 @@ import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
+import { ErrorReports } from './error-reports/service';
+import { ErrorReportRuntime } from './error-reports/runtime';
+import { automaticIdentity } from './error-reports/identity';
+import { manageErrorReports } from './error-reports/admin';
+import { sendErrorReport } from './error-reports/transport';
+import { electronTransport as errorReportTransport } from './access/electron-transport';
+import { AccessStore as ErrorReportAccessStore } from './access/store';
 import { runDiagnosticsText, runReportIntake, runReportJob } from './report/report-worker-run';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
@@ -533,6 +540,7 @@ setLogHeader(
  * words; written a turn after each was answered.
  */
 const commandLog = new CommandLog({
+  libraryNames: () => (db ? libraryNames(db) : []),
   write: (line) => {
     log.info(line);
   },
@@ -571,13 +579,17 @@ const crashJournal = new CrashJournal(join(app.getPath('userData'), JOURNAL_FILE
 /** An uncaught error, as the journal keeps it: its name and message (the log has its stack). */
 const errorWords = (what: string, error: unknown) =>
   `${what}: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
+let automaticErrorRuntime: ErrorReportRuntime | null = null;
+// The log and the crash journal first; an automatic report (off unless the owner turned it on) only after them.
 process.on('uncaughtException', (error) => {
   log.error('Uncaught exception in the main process', error);
   crashJournal.add(errorWords('an error in the main process that nothing caught', error));
+  automaticErrorRuntime?.crash();
 });
 process.on('unhandledRejection', (reason) => {
   log.error('Unhandled promise rejection in the main process', reason);
   crashJournal.add(errorWords('a promise in the main process failed and nothing caught it', reason));
+  automaticErrorRuntime?.crash();
 });
 // What stops as Drashti quits, in one ordered list (lifecycle.ts, Session 23): run at will-quit, or
 // before an exit that skips it (app.exit).
@@ -628,7 +640,11 @@ app.on('before-quit', () => {
 });
 app.on('child-process-gone', (_event, details) => {
   const words = quitting ? null : childGoneWords(details);
-  if (words) crashJournal.add(words);
+  if (words) {
+    crashJournal.add(words);
+    // An intentionally killed utility is already in the local journal; it is not an automatic crash report.
+    if (details.reason !== 'killed') automaticErrorRuntime?.crash();
+  }
 });
 
 /** The GPU process's stops (Sessions 31–36, ROB-5): a second within 10 minutes is said. */
@@ -1045,7 +1061,10 @@ const watchdog = new RendererWatchdog(
     if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
       log.warn(text);
     else log.info(text);
-    if (!quitting) journalWatchdog(e);
+    if (!quitting) {
+      journalWatchdog(e);
+      if (e.kind === 'crashed') automaticErrorRuntime?.crash();
+    }
     outputWatchdogEvent?.(e);
   },
   undefined,
@@ -1190,7 +1209,7 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
       restored: false,
       code: 'copy-failed',
       message:
-        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).',
+        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).',
     };
   }
 }
@@ -3493,12 +3512,89 @@ function start(): void {
     liveWriter.markClean();
   });
 
+  // Automatic error reports (alpha.21): their own consent and outbox, off until the owner turns them on; only the typed
+  // ids of the diagnostics files (log-who.ts) cross into them.
+  const automaticReports = new ErrorReports({
+    dir: join(userDataDir, 'automatic-error-reports'),
+    now: Date.now,
+    owner: () => isLetIn() && accessState().owner,
+    letIn: isLetIn,
+    onAir: () => stream?.inUse() === true || testOnAir,
+    // Development and CI never contact a real receiver. Unit tests inject local services instead.
+    send: (config, body, stop) =>
+      packaged() ? sendErrorReport(errorReportTransport, config, body, stop) : Promise.resolve(false),
+  });
+  const errorAccessStore = new ErrorReportAccessStore(userDataDir);
+  automaticErrorRuntime = new ErrorReportRuntime({
+    now: Date.now,
+    capture: (make) => {
+      const kept = automaticReports.captureWith(make);
+      if (kept) void automaticReports.wake();
+      return kept;
+    },
+    identity: () => {
+      if (!automaticReports.status().enabled) return null;
+      const computer = behind?.client?.computer();
+      const grant = behind?.service.grant();
+      if (!computer || !grant) return null;
+      const kept = errorAccessStore.read(0);
+      if (
+        kept.status !== 'ok' ||
+        kept.value.computerId !== computer.id ||
+        kept.value.grantId !== grant.grantId
+      )
+        return null;
+      // The same ids a diagnostics file names (diagnosticsWho, alpha.21 logs (b)), whole, and never its names or words.
+      return automaticIdentity(
+        {
+          computerId: computer.id,
+          installId: install.id,
+          grantId: grant.grantId,
+          role: isLetIn() ? { mode: accessState().mode, owner: accessState().owner } : null,
+          made: simpleNow() ? 'simple' : 'pro',
+        },
+        { version: app.getVersion(), platform: process.platform, arch: process.arch, release: osRelease() },
+        kept.value.activity,
+      );
+    },
+  });
+  // Bounded production wake cadence; no tight failure loop and never while on air.
+  const automaticReportTimer = setInterval(
+    () => {
+      void automaticReports.wake();
+    },
+    5 * 60 * 1000,
+  );
+  automaticReportTimer.unref();
+  const offAutomaticAccess = onAccessChange(() => {
+    if (isLetIn()) void automaticReports.wake();
+    else automaticReports.cancel();
+  });
+  stops.add('automatic reports', () => {
+    clearInterval(automaticReportTimer);
+    offAutomaticAccess();
+    automaticReports.dispose();
+    automaticErrorRuntime = null;
+  });
+  if (!startup.cleanQuit) automaticErrorRuntime.crash();
+  void automaticReports.wake();
+
   // ---- imports ----------------------------------------------------------------
   // The window's page, not just the window: at quit the page goes first (Session 20).
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
     // Every notice in the log (alpha.21, logs (a)), its names in quotes blanked.
     if (channel === IPC.app.notice) commandLog.notice((payload as EventContract[typeof IPC.app.notice]).text);
-    sendToPage(operatorWindow, channel, payload);
+    const delivered = sendToPage(operatorWindow, channel, payload);
+    // A failure notice the operator was given may leave an automatic report: its text is classified here, never kept.
+    if (
+      delivered &&
+      channel === IPC.app.notice &&
+      typeof payload === 'object' &&
+      payload !== null &&
+      'text' in payload &&
+      typeof payload.text === 'string'
+    )
+      automaticErrorRuntime?.operatorNotice(payload.text);
   };
   // A watched folder can finish its first look before the operator window subscribes.
   const importNotices = automaticImportNotices((notice) =>
@@ -3574,6 +3670,9 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      automaticErrorRuntime?.stream(status.live.state, status.live.message);
+      if (stream?.inUse()) automaticReports.cancel();
+      else void automaticReports.wake();
       youtubeService?.streamChanged(status);
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
@@ -4487,7 +4586,10 @@ function start(): void {
           ),
         );
       // Each import, counted for the Access List (Session 54): never what.
-      if (run) behind?.service.count('imports');
+      if (run) {
+        behind?.service.count('imports');
+        automaticErrorRuntime?.event('import-completed');
+      }
       // Its videos and sounds measured a moment later (Session 55, Part 7); a From a Link… import's videos trimmed past
       // their black and silence too. Bytes it brought back may be new: every file's sound is read from the library again.
       if (run) {
@@ -5231,6 +5333,7 @@ function start(): void {
     libraryChanged(true);
   };
   const wordsChanges = registerWordsIpc({
+    db,
     presentations,
     revisions,
     fromOperator,
@@ -5312,6 +5415,7 @@ function start(): void {
   );
   const pdfReadIdle = () => !streaming.inUse() && nothingUp(engine.snapshot().state.layers);
   const slideEdits = registerSlidesIpc({
+    mayChangeTranslations: () => mode === 'pro',
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
       const options = {
@@ -5371,9 +5475,10 @@ function start(): void {
   });
   /** Make a slide…'s keeping (set below, where the open playlist is known). */
   let keepPageSlide: (
-    png: Uint8Array,
+    png: Uint8Array | Uint8Array[],
     name: string,
     place: MadeSlidePlace,
+    current: () => boolean,
   ) => Promise<MakeSlideResult> = () =>
     Promise.resolve({ ok: false, message: 'Drashti is still starting: try again in a moment.' });
   const pdfEditor = new PdfEditor({
@@ -5388,6 +5493,7 @@ function start(): void {
       mode === 'pro' &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
+    onAir: () => streaming.inUse() || testOnAir,
     stamp: (presentationId) => {
       const row = libraryDb
         .prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
@@ -5410,7 +5516,7 @@ function start(): void {
     },
     // Make a slide… (alpha.21): the part drawn from the page just printed, at the size a PDF's pages are imported at.
     drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
-    keepSlide: ({ png, name, place }) => keepPageSlide(png, name, place),
+    keepSlide: ({ png, name, place }, current) => keepPageSlide(png, name, place, current),
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
   // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
@@ -5419,6 +5525,13 @@ function start(): void {
   handle(IPC.slideEditor.slidePlace, (e): SlidePlace => {
     if (!(fromOperator(e) || editorWindow.isPage(e.sender)) || mode !== 'pro') return { playlist: null };
     return { playlist: openPlaylistForSlides() };
+  });
+  const stopPdfOnAir = () => {
+    if (streaming.inUse() || testOnAir) pdfEditor.cancelBatch();
+  };
+  pdfReadWaits.add(stopPdfOnAir);
+  stops.add('PDF off-air guard', () => {
+    pdfReadWaits.delete(stopPdfOnAir);
   });
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
@@ -6246,20 +6359,43 @@ function start(): void {
    * picture (an import, as any picture is), a presentation of one slide holding it, and a row at the end of the open
    * playlist when asked; the operator window is told, for its Undo.
    */
-  keepPageSlide = async (png, name, place) => {
+  keepPageSlide = async (png, name, place, current) => {
+    const playlist = place === 'playlist' ? openPlaylistForSlides() : null;
+    const canKeep = () =>
+      current() &&
+      (place !== 'playlist' || (playlist !== null && openPlaylistForSlides()?.id === playlist.id));
+    const cancelled = {
+      ok: false as const,
+      message: 'The editor or open playlist changed. Choose where the slides go and try again.',
+    };
+    if (!canKeep()) return cancelled;
     // The picture's file is named as its slide is (Media lists it by that name).
     const file = `${cutText(name.replace(/[\\/:*?"<>|]/gu, ' ').trim(), 120) || 'Page'}.png`;
-    const mediaId = await keepMadePicture(png, file, 'drashti-page-slide-');
-    if (mediaId === null) return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+    const pictures = Array.isArray(png) ? png : [png];
+    const mediaIds: string[] = [];
+    for (const [index, picture] of pictures.entries()) {
+      if (!canKeep()) return cancelled;
+      const mediaId = await keepMadePicture(
+        picture,
+        pictures.length === 1 ? file : `${String(index + 1)} ${file}`,
+        'drashti-page-slide-',
+      );
+      if (mediaId === null)
+        return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+      mediaIds.push(mediaId);
+    }
+    if (!canKeep()) return cancelled;
     const libraryId = presentations.ensureLibrary('Default');
     const size = pictureSize(screenRepo.allScreens(), screenRepo.firstGroup('audience'));
     const madeName = presentations.uniqueName(libraryId, name);
-    const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaId, size));
+    const { id, itemId } = libraryDb.transaction(() => {
+      const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaIds, size));
+      const [itemId = null] = playlist
+        ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
+        : [];
+      return { id, itemId };
+    })();
     contentChanged([id]);
-    const playlist = place === 'playlist' ? openPlaylistForSlides() : null;
-    const [itemId = null] = playlist
-      ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
-      : [];
     if (itemId !== null) playlistsChanged();
     sendToOperator(IPC.slideEditor.slideMade, { presentationId: id, name: madeName, itemId });
     log.info(`Library: a slide made from a PDF page${itemId !== null ? ', in the open playlist' : ''}`);
@@ -6570,6 +6706,7 @@ function start(): void {
       if (level === 'warn') log.warn(message);
       else log.info(message);
     },
+    notice: (text) => sendToOperator(IPC.app.notice, { text }),
     now: Date.now,
   });
   network = net;
@@ -6773,6 +6910,7 @@ function start(): void {
             ]
           : [],
       ),
+    notice: (text) => sendToOperator(IPC.app.notice, { text }),
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
       else log.info(message);
@@ -9439,6 +9577,17 @@ function start(): void {
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
     logDays,
+    automaticErrorReports:
+      isLetIn() && accessState().owner
+        ? () => {
+            if (operatorWindow && !operatorWindow.isDestroyed())
+              void manageErrorReports(
+                automaticReports,
+                operatorWindow,
+                () => isLetIn() && accessState().owner,
+              );
+          }
+        : null,
     // Help › Save Diagnostics (alpha.21, logs (c)): the log of the period chosen; the file is made by a report worker,
     // off Main's thread (a period's log can be days long), and written here.
     saveDiagnostics: (period) => {
@@ -9754,7 +9903,12 @@ function start(): void {
     void osc.accessChanged();
   });
   // Each presentation put up, counted for the Access List: never which.
-  engine.onChange(showCounter((kind) => behind?.service.count(kind)));
+  engine.onChange(
+    showCounter((kind) => {
+      behind?.service.count(kind);
+      automaticErrorRuntime?.event('show-started');
+    }),
+  );
 
   // Restore the saved screen assignments, and follow display changes: at once, then again once each display's own
   // identity has been read (Session 55), when a display plugged in is given its job.

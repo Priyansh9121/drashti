@@ -1,10 +1,13 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { type IncomingMessage, request } from 'node:http';
+import { createReadStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import type * as NodeFs from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { PassThrough, type Duplex } from 'node:stream';
+import { type IncomingMessage, request, type Server } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32, inflateSync } from 'node:zlib';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { EngineMirror } from '../../shared/engine/mirror';
@@ -17,6 +20,11 @@ import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
 import { alpha17LowerThirdSchema } from '../../shared/testing/alpha17-lower-third';
 import { NetworkServer, type ServerHost, SOCKET_LIMITS } from './server';
 import { hashToken } from './tokens';
+
+vi.mock('node:fs', async (original) => {
+  const fs = await original<typeof NodeFs>();
+  return { ...fs, createReadStream: vi.fn(fs.createReadStream) };
+});
 
 /*
  * The network server on this computer only, with a stand-in for the main
@@ -47,6 +55,7 @@ afterEach(async () => {
 });
 
 interface Fake extends ServerHost {
+  busy?(): void;
   requests: DeviceRequest[];
   connectedNow: string[];
   resyncs: number;
@@ -1120,4 +1129,260 @@ describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
     s.setLetIn(true);
     expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
   });
+});
+
+// Admission is exercised over loopback; each accept is observed before the next device connects.
+describe('places for paired devices', () => {
+  it('admits paired HTTP and both device feeds while new connections are waiting', async () => {
+    const { port, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+    const sockets: Socket[] = [];
+    const listener = Reflect.get(network, 'server') as Server;
+    try {
+      for (let i = 0; i < 8; i++) {
+        const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
+        const { socket } = await socketTo(port);
+        sockets.push(socket);
+        await accepted;
+      }
+      expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
+      for (const token of [REMOTE_TOKEN, STAGE_TOKEN]) {
+        const { ws } = await feed(port);
+        try {
+          const welcome = new Promise<ToDevice>((resolve) =>
+            ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+          );
+          ws.send(JSON.stringify({ type: 'hello', token }));
+          expect(await welcome).toMatchObject({ type: 'welcome' });
+        } finally {
+          ws.terminate();
+        }
+      }
+    } finally {
+      for (const socket of sockets) socket.destroy();
+    }
+  });
+
+  it('keeps a paired feed and admits another paired device when the address has waiting feeds', async () => {
+    const { port } = await start();
+    const waiting: WebSocket[] = [];
+    const paired = await feed(port);
+    const welcome = new Promise<ToDevice>((resolve) =>
+      paired.ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+    );
+    paired.ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN }));
+    expect(await welcome).toMatchObject({ type: 'welcome' });
+    try {
+      for (let i = 0; i < 9; i++) waiting.push((await feed(port)).ws);
+      const stage = await feed(port);
+      try {
+        const admitted = new Promise<ToDevice>((resolve) =>
+          stage.ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+        );
+        stage.ws.send(JSON.stringify({ type: 'hello', token: STAGE_TOKEN }));
+        expect(await admitted).toMatchObject({ type: 'welcome' });
+        const clock = new Promise<ToDevice>((resolve) =>
+          paired.ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+        );
+        paired.ws.send(JSON.stringify({ type: 'clock', t0: 76 }));
+        expect(await clock).toMatchObject({ type: 'clock', t0: 76 });
+      } finally {
+        stage.ws.terminate();
+      }
+    } finally {
+      paired.ws.terminate();
+      for (const ws of waiting) ws.terminate();
+    }
+  });
+});
+
+it('asks a newcomer to wait when the open places are busy', async () => {
+  const { port, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+  const sockets: Socket[] = [];
+  const listener = Reflect.get(network, 'server') as Server;
+  try {
+    for (let i = 0; i < 2; i++) {
+      const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
+      const { socket } = await socketTo(port);
+      sockets.push(socket);
+      await accepted;
+    }
+    const answer = await call(port, '/pair');
+    expect(answer.status).toBe(503);
+    expect(JSON.parse(answer.body)).toEqual({
+      ok: false,
+      message:
+        'Drashti is busy. Paired devices keep their places. Ask the operator before pairing a new device.',
+    });
+  } finally {
+    for (const socket of sockets) socket.destroy();
+  }
+});
+
+it('protects an authenticated reply while it waits for Main and coalesces the operator notice', async () => {
+  const { port, host, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+  let notices = 0;
+  host.busy = () => {
+    notices++;
+  };
+  let arrived!: () => void;
+  const requested = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  let answer!: (value: Awaited<ReturnType<ServerHost['request']>>) => void;
+  host.request = () =>
+    new Promise((resolve) => {
+      answer = resolve;
+      arrived();
+    });
+  const reply = call(port, '/api/v1/status', { headers: bearer(REMOTE_TOKEN) });
+  const sockets: Socket[] = [];
+  const listener = Reflect.get(network, 'server') as Server;
+  try {
+    await requested;
+    for (let i = 0; i < 4; i++) {
+      const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
+      const { socket } = await socketTo(port);
+      sockets.push(socket);
+      await accepted;
+    }
+    answer({ status: 200, body: { ok: true, op: 'status' } });
+    expect(await reply).toMatchObject({ status: 200, body: JSON.stringify({ ok: true, op: 'status' }) });
+    expect(notices).toBe(1);
+    expect((await call(port, '/remote', { headers: { Accept: 'text/html' } })).status).toBe(200);
+    expect((await call(port, '/pair', { headers: { Accept: 'text/html' } })).status).toBe(200);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+  }
+});
+
+it('admits a paired device after waiting feeds from many loopback addresses', async () => {
+  const { port, server: network } = await start();
+  class LocalFeed extends EventEmitter {
+    readonly OPEN = WebSocket.OPEN;
+    readyState: number = WebSocket.OPEN;
+    readonly bufferedAmount = 0;
+    readonly sent: ToDevice[] = [];
+    send(text: string): void {
+      this.sent.push(JSON.parse(text) as ToDevice);
+    }
+    close(): void {
+      this.readyState = WebSocket.CLOSED;
+      this.emit('close');
+    }
+    terminate(): void {
+      this.close();
+    }
+  }
+  // Stand-in transports allow many loopback addresses without changing this computer's interfaces.
+  // The server's address gate, feed admission and pairing checks are the production methods.
+  const feeds: LocalFeed[] = [];
+  const sockets: PassThrough[] = [];
+  let candidate = new LocalFeed();
+  Reflect.set(network, 'wss', {
+    handleUpgrade: (
+      _req: IncomingMessage,
+      socket: Duplex,
+      _head: Buffer,
+      accept: (ws: WebSocket) => void,
+    ) => {
+      const ws = candidate;
+      socket.once('close', () => ws.terminate());
+      accept(ws as unknown as WebSocket);
+    },
+  });
+  const upgrade = Reflect.get(network, 'onUpgrade') as (
+    req: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ) => void;
+  const open = (address: string) => {
+    candidate = new LocalFeed();
+    feeds.push(candidate);
+    const socket = Object.assign(new PassThrough(), { remoteAddress: address, remotePort: feeds.length });
+    sockets.push(socket);
+    const req = {
+      socket,
+      headers: { host: `127.0.0.1:${String(port)}` },
+      url: '/api/v1/feed',
+    } as unknown as IncomingMessage;
+    upgrade.call(network, req, socket, Buffer.alloc(0));
+    return candidate;
+  };
+  try {
+    for (let i = 0; i < 100; i++) open(`127.0.0.${String(2 + (i % 16))}`);
+    const paired = open('127.0.0.1');
+    paired.emit('message', Buffer.from(JSON.stringify({ type: 'hello', token: STAGE_TOKEN })), false);
+    expect(paired.sent).toContainEqual({
+      type: 'welcome',
+      device: { name: 'Placeholder tablet', kind: 'stage' },
+    });
+  } finally {
+    for (const ws of feeds) ws.terminate();
+    for (const socket of sockets) socket.destroy();
+  }
+});
+
+it('keeps paired places when public announcement links are waiting for answers', async () => {
+  const { port, host, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+  const token = 'test-made-up-public-poster-token-0000000000';
+  const poster: DeviceAuth & { poster: true } = {
+    id: 'placeholder-public-poster',
+    name: 'Placeholder poster link',
+    kind: 'announcements',
+    tokenHash: hashToken(token),
+    poster: true,
+  };
+  network.addDevice(poster);
+  let classified: () => void = () => undefined;
+  const answers: ((value: Awaited<ReturnType<ServerHost['request']>>) => void)[] = [];
+  host.request = () =>
+    new Promise((resolve) => {
+      answers.push(resolve);
+      classified();
+    });
+  const attempts: Promise<unknown>[] = [];
+  try {
+    for (let i = 0; i < 8; i++) {
+      const entered = new Promise<void>((resolve) => {
+        classified = resolve;
+      });
+      const attempt = call(port, '/api/v1/announcements/placeholder', { headers: bearer(token) });
+      const done = attempt.then(
+        () => undefined,
+        () => undefined,
+      );
+      attempts.push(done);
+      await Promise.race([entered, done]);
+    }
+    expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
+  } finally {
+    for (const answer of answers) answer({ status: 200, body: { ok: true } });
+    await Promise.all(attempts);
+  }
+});
+
+it('waits for a served page file to close before shutdown completes', async () => {
+  const { port, server: network } = await start();
+  // A response can finish before Windows releases the file handle. Hold that close event explicitly.
+  const page = new PassThrough({ autoDestroy: false, emitClose: false });
+  vi.mocked(createReadStream).mockReturnValueOnce(page as unknown as ReturnType<typeof createReadStream>);
+  page.end('<!doctype html><title>pair</title>');
+  expect((await call(port, '/pair')).status).toBe(200);
+  const listener = Reflect.get(network, 'server') as Server;
+  const closed = new Promise<void>((resolve) => listener.once('close', resolve));
+  let stopped = false;
+  const stopping = network.stop().then(() => {
+    stopped = true;
+  });
+  try {
+    await closed;
+    // Flush the stop promise's continuation after the listener's close callback.
+    await Promise.resolve();
+    expect(page.destroyed).toBe(true);
+    expect(stopped).toBe(false);
+  } finally {
+    page.emit('close');
+    page.destroy();
+    await stopping;
+  }
 });

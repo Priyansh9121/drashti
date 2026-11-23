@@ -1,6 +1,6 @@
 # Drashti's local API (v1)
 
-This document describes the local network API shipped in **1.0.0-alpha.20**, including screen geometry and video-caption state. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
+This document describes the local network API shipped in **1.0.0-alpha.21**, including screen geometry and video-caption state; since alpha.21 the skip command takes `back` and `forward` only. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
 
 **Desktop controls in alpha.20.** The [Drashti Manual](manual/start.md#using-this-manual) gives the operating steps. Media information, the Resume offer, A-B repeat, frame steps, Snapshot, playlist Find/timing/M3U, appearances, YouTube scheduling, QR downloads and sending the picture to other software do not add HTTP routes here. Existing Remote playback and audio-playlist actions keep their contracts below. [Report a Problem](manual/help.md#report-a-problem) uses the [access service](access-setup.md#11-putting-in-a-change-later-always-the-same-deployment); a node hands its report to Main. It is separate from the local v1 API.
 
@@ -290,6 +290,8 @@ curl -s -X POST "$DRASHTI/api/v1/screens/keep" -H "Authorization: Bearer $TOKEN"
 
 **The library's changes** (Session 54, as the window makes them), a Remote's alone, Simple Mode refusing them as the window does (403). Things are named by their ids only, never a path or a file, at most 50 at once. Each answers with the ids it changed (`"ids"`), or a new presentation's `"id"`: a delete's Undo sends those ids back to its `restore`. The feed's `{"type":"changed","what":"presentations"}` or `"playlists"` says when to read the lists again.
 
+A new presentation from words is saved with its default look in one step. If the data drive fills, the request returns a refusal naming the full drive; it leaves no partly made presentation, and can be sent again after space is freed.
+
 | Request                               | Body                                                                                      | Does                                                                                                                       |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/v1/presentations/new`      | `{"name":"…","words":"…"}`                                                                | A presentation made from words, as **New…** makes one (a blank line between slides); answers its `"id"`.                   |
@@ -346,6 +348,8 @@ Rename's `name` is 1 to 200 characters once tabs and line breaks become spaces a
 The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep these screens?, a phone's ask, Media's video inputs, the cameras the computer lists, MIDI or (Session 55) the stage layouts changed: a Remote setting them up reads them again (`"screens"` still says the switches or the hall changed).
 
 ## The state feed (WebSocket)
+
+Paired devices keep their places when new devices are waiting. A new request may receive `503` with a plain busy message; wait before pairing another device. Pairing, tokens and the feed’s hello remain as described below.
 
 `ws://<computer>:8740/api/v1/feed` (Remote and Stage devices). The first message must say who the device is, within five seconds:
 
@@ -563,6 +567,10 @@ In n8n, the **Crypto** node's HMAC (SHA256, hex, the secret as shown) of the bod
 
 Live captions (state 26, retained by state 27) are never sent in this API, to a phone or to a node; captions are left out or null.
 
+## Desktop video recording status
+
+Video recording status reports `state: 'off'` and a disk-related `message` if the periodic disk flush fails. Main also sends that message as an operator notice. A full disk is named plainly. This stops the recording without ending the outgoing stream. The same full-disk cause is reported for first-file, active-write and next-part ENOSPC errors. Encoder exit and spawn errors immediately report `encoding: false` and a worker `error`; Main exposes that cause in the live and recording messages. Restarting the process alone does not clear it: encoded pictures after fresh Program input do. A held recording resumes in a new part.
+
 ## Desktop kirtan bundles
 
 The operator window in Pro Mode can call the typed desktop bridge `drashti.kirtans.exportBundle({ presentationIds, includeMedia })`. It opens the native save dialog; the page cannot supply an output path. It returns `{ ok: true, file, kirtans, media }`, or `{ ok: false, message, cancelled? }`. Requests are bounded to 1–1,000 ids and a boolean media choice, checked before the dialog and checked for Pro Mode again afterwards. ZIP work runs in the existing low-priority import worker, pauses while on air or recording and is cancelled before quit finishes.
@@ -602,3 +610,31 @@ Edit Video’s prepared IDs retain immutable recipe history. Main resolves sourc
 `CopyOptions.inspect(info)` reads the source header in that worker; `false` means no output is needed, and a string refuses with a next step. `stdout(chunk)` consumes bounded streamed analysis, `finish(tmp)` writes its reduced artifact after FFmpeg closes, and `validate(info)` checks an encoded file before publication. Header reads collect stderr through `close`, including WebM alpha metadata. `preparePublish(tmp, signal)` keeps asynchronous hashing, copying and registration inside the same serialized worker; its caller must pass the abort signal into that work. `beforePublish` remains the final synchronous source/revision guard. `background` lets a queued user request precede speculative work, and `estimatedBytes` reserves a bounded artifact’s known size while retaining the 2 GB reserve. Existing callers keep their own gate choices. None of these hooks adds screen drawing or work per frame.
 
 Strict POSIX preparation establishes its priority inside a small system-shell launch gate: it reads its own niceness, lowers it when needed, verifies below-normal priority, then execs FFmpeg under the same PID and streams. A refused or unchanged priority exits before reading media. The parent never mistakes a completed short header process for a priority refusal. Windows retains its native verified setter. This changes no queue, activity, process-collection, partial-removal or publication boundary.
+
+### PDF parts in the slide editor
+
+In Pro Mode, `slideEditor.makeSlide` accepts the editor snapshot and stamp, a PDF `slideId`, a normalized `part`, and `place` (`playlist` or `library`). The optional `parts` array collects 1 to 400 `{ slideId, part }` entries in reading order. Without it the single-page action stays available. Main validates every page before drawing, prints one page at a time and draws each part at the hall's picture size. Collected pictures are limited to 128 MB. It keeps one presentation only after every part succeeds; the operator receives one `slideEditor.slideMade` event for Undo of the presentation and its playlist row. The original PDF stays unchanged. No batch is made while the stream is on air or recording.
+
+## Desktop notices and the local log
+
+A notice shown by Main is logged with the current library’s names blanked as in diagnostics, including names without quotes. Names in quotes are blanked too. If the library’s names cannot be read, the log says only that the notice’s words are unavailable. The operator still sees the original notice. This does not change the HTTP API or the state feed.
+
+## Automatic error reports (alpha.21, main process)
+
+`main/error-reports/service.ts` owns a separate `automatic-error-reports/state.json`, outside the library and its backups. It is off by default. `configure` and `enable` require the current access-list owner; configuration changes clear the queue and require consent again. No new renderer IPC or HTTP command can configure or enable it. The native Help control imports a private per-install setup JSON and asks for a separate Turn On action. Production sends use Electron’s cookie-free transport; development/CI main processes cannot call a real receiver.
+
+`ErrorReportRuntime` is the adapter for the diagnostics files’ who-and-what (`log-who.ts`): `computerId`, `accessEntryId` (grant id, no Gmail), `diagnosticsInstallId`, `version`, `platform`, numeric `osRelease`, `arch`, `role`, current `mode`, the five access activity `counts`, and structured `events: {at,code,count}[]`. `AutomaticDiagnosticsWho` is `DiagnosticsWho`’s `computerId`, `installId`, `grantId`, `role` and `made`, whole, without the computer’s or a Main’s name or the period’s words; `made` gives the current mode. Main projects these fields from the access client and store, and the install id it read or made at its start (`installId()`, `install-id.json`). It classifies existing operator notices locally and captures only fixed failure codes, watchdog crashes, main uncaught failures, unclean startup and stream failure transitions. Notice text, raw log lines and diagnostic text never cross the seam. Node reporting remains the existing manual hand-over path.
+
+The sender persists at most 20 reports, expires them after 7 days, accepts 10 incidents per UTC day, reserves 10 distinct outbound ids per UTC day across restarts, and counts dropped incidents in the next accepted report. The receiver independently limits 10 receipts per install per UTC day. Queued reports may therefore take multiple days to drain. A receipt removes only the matching id; disable aborts sending and clears pending reports. Corrupt/unwritable state fails closed. A backward clock does not reset the allowance.
+
+The separate `access-list/error-reports/` Apps Script project authenticates `{v:1,installId,payload,mac}`. HMAC-SHA256 uses the per-install secret as UTF-8 text over `drashti-errors-v1\n` + install id + `\n` + the exact payload text. The receiver validates every report field and rejects unknown fields before storage, then uses ScriptLock, a deterministic Drive filename and a Sheet id check to tolerate lost responses/partial writes. There is no email. A new report produces one row and one scrubbed JSON log file. Only Google’s HTTPS `/macros/echo` response redirect is followed, using GET with no POST body; the acknowledgement must name the exact report id.
+
+`captureWith` receives a lazy diagnostic factory: consent/access/rate/queue checks run before any metadata read. Suppressed errors only increment a bounded in-memory counter; idle wakes, normal state writes and `dispose` flush it once. An abrupt kill before that flush can lose suppressed-count increments, not accepted queued reports or the persisted daily reservation. No per-error disk write or diagnostic collection occurs after the cap.
+
+## Prepared translations (desktop, alpha.21)
+
+The existing `library.slidesForEdit` / `library.saveSlides` document carries optional text-element `translations` (at most three distinct targets, `gu`, `hi`, `en`) and `translationDisplay`. Each saved pair has NFC-normalized `sourceFingerprint`, source/target tags, text (at most 20,000 characters), `state` (`unchecked`, `checked`, `needs-recheck`), a local reader name and `reviewFingerprint`. The latter binds approval to the exact source/result/language pair; modifying words cannot retain a valid check. Source changes across all normal content-write paths retain the old words with review held. Undo may restore an exact previously checked pair.
+
+`translationDisplay` contains an optional explicit `sourceLanguage`, `choice` (`off` or a target), bounded stable-ID `groups` and `outputs` overrides, a deliberately reserved slide-coordinate `area` and `fontSize`. Resolution is output override, group override, presentation choice, then Off. Output Off always wins; an explicit saved target can show checked words while the presentation choice is Off. The dialog applies presentation choices across its editable text boxes; attachments remain with those boxes through normal persistence and bundle ID remapping. There is no migration and no default translation data inserted into existing presentations.
+
+Main refuses translation authoring, approval and route changes through `saveSlides` unless the current mode is Pro, even if a caller bypasses the editor. Simple Mode source editing remains bounded as before and invalidates review. There is no new HTTP generation or editing endpoint. Engine playback and phone presentation responses include checked current pairs only, with reader names removed. Original publication and Next require no inference or asynchronous translation work. The deterministic `Translator` stand-in is a test double only; production reports `No engine installed` and never writes its placeholders into a library.

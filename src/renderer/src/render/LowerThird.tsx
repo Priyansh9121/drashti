@@ -29,6 +29,9 @@ import type { UnitFrame } from './reveal';
 const lineSize = (canvas: Size, count: number) =>
   canvas.height * (count <= 2 ? 0.05 : count === 3 ? 0.044 : 0.037);
 
+const originalLineCount = (lines: LowerThirdLine[]) =>
+  lines.filter((line) => !line.preparedTranslation).length;
+
 function Lines({ lines }: { lines: LowerThirdLine[] }) {
   return (
     <>
@@ -38,7 +41,11 @@ function Lines({ lines }: { lines: LowerThirdLine[] }) {
           data-lang={line.lang ?? ''}
           data-lt-line=""
           lang={line.lang ? htmlLang(line.lang, line.translitOf ?? null) : undefined}
-          style={{ position: 'relative', fontFamily: fontFamilyFor(null, line.lang) }}
+          style={{
+            position: 'relative',
+            fontFamily: fontFamilyFor(null, line.lang),
+            ...(line.preparedTranslation ? { lineHeight: 1.45, fontWeight: 400 } : {}),
+          }}
         >
           {line.runs.map((run, j) => (
             // Words typed in a legacy font keep their font; everything else takes the lower third's look.
@@ -160,7 +167,7 @@ export function MovingLowerThird({
   const going = phase === 'out' ? (drawn.prev ?? []) : null;
   const shown = going ?? lines;
   const old = phase === 'change' ? drawn.prev : going;
-  const size = lineSize(canvas, Math.max(shown.length, old?.length ?? 0));
+  const size = lineSize(canvas, Math.max(originalLineCount(shown), old ? originalLineCount(old) : 0));
   const radius = size * 0.3;
   const scale = canvas.height / 1080;
   const length = lowerThirdRunLength(drawn, movement);
@@ -237,7 +244,7 @@ export function MovingLowerThird({
           <div
             ref={oldRef}
             data-lt-words="old"
-            style={{ gridArea: '1 / 1', fontSize: lineSize(canvas, old.length) }}
+            style={{ gridArea: '1 / 1', fontSize: lineSize(canvas, originalLineCount(old)) }}
           >
             <Lines lines={old} />
           </div>
@@ -246,7 +253,7 @@ export function MovingLowerThird({
           <div
             ref={newRef}
             data-lt-words="new"
-            style={{ gridArea: '1 / 1', fontSize: lineSize(canvas, lines.length) }}
+            style={{ gridArea: '1 / 1', fontSize: lineSize(canvas, originalLineCount(lines)) }}
           >
             <Lines lines={lines} />
           </div>
