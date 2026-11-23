@@ -80,8 +80,7 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
       await remote.getByTestId('remote-next-button').click();
       await expect.poll(step).toEqual({ index: 0, step: n });
       await expect(targets.nth(n - 1)).toHaveCSS('opacity', '1');
-      for (const [index, mark] of phoneMarks.entries())
-        await expect(mark).toHaveCount(index < n ? 1 : 0);
+      for (const [index, mark] of phoneMarks.entries()) await expect(mark).toHaveCount(index < n ? 1 : 0);
       if (n === 1) await expect(targets.nth(1)).toHaveCSS('opacity', '0');
     }
     await remote.getByTestId('remote-back').click();
