@@ -79,9 +79,18 @@ describe('the stream sound renderer', () => {
       expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).toContain('encoder');
       expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).not.toContain('encoder-audio');
       expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).not.toContain('speech');
+      expect(
+        roles().filter((role) => role === 'encoder-audio'),
+        'loading pictures leaves the working sound port alone',
+      ).toHaveLength(1);
+      picture.webContents.emit('did-finish-load');
+      expect(
+        roles().filter((role) => role === 'encoder-audio'),
+        'reloading pictures repairs only picture ports',
+      ).toHaveLength(1);
       stop?.();
-      (service as unknown as { worker: unknown }).worker = null;
     } finally {
+      (service as unknown as { worker: unknown }).worker = null;
       service.close();
     }
   });
