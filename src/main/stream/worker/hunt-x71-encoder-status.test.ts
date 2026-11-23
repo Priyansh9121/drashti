@@ -83,14 +83,23 @@ describe('H6 encoder fault status', () => {
         expect(pipeline.status().error, 'spawning another encoder alone is not recovery').toContain(
           'encoder',
         );
-        pipeline.fromProgram({ kind: 'video', data: frame.buffer });
         const writer = new MkvWriter({ ...format, fps: 30 }, { sampleRate: 48000, channels: 2 });
         // A generated OUTPUT cluster: FFmpeg resolves its size; raw MkvWriter input leaves it unknown.
         const cluster = Buffer.concat(writer.block(VIDEO_TRACK, 0, Buffer.from(frame)));
         cluster.fill(0, 4, 12);
         cluster[4] = 1;
         cluster.writeUIntBE(cluster.length - 12, 6, 6);
+        pipeline.fromProgram({ kind: 'audio', data: new ArrayBuffer(480 * 2 * 4), frames: 480 });
         encoders[1]?.stdout.write(Buffer.concat([writer.header(), cluster]));
+        expect(
+          pipeline.status().error,
+          'sound and an encoded held picture are not fresh source pictures',
+        ).toContain('encoder');
+        pipeline.fromProgram({ kind: 'video', data: frame.buffer });
+        expect(pipeline.status().error, 'receiving a picture alone is not an encoded recovery').toContain(
+          'encoder',
+        );
+        encoders[1]?.stdout.write(cluster);
         expect(pipeline.status().error, 'newly encoded source frames clear the fault').toBeNull();
         expect(pipeline.status().recording.file).toContain(' part 2.mkv');
         const nextFile = (pipeline as unknown as { recordFile: WriteStream | null }).recordFile;
