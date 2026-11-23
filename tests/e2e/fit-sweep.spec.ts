@@ -19,6 +19,7 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
+  showExtras,
   slideEditorWindow,
   windowShowing,
 } from './helpers';
@@ -545,6 +546,8 @@ test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show 
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
+    // Templates, a template's slot and the Books show only with View › Show Books, Templates and Kirtan Details.
+    await showExtras(win);
     const sizes = [await smallestContent(app, OPERATOR), CI_WINDOW, OWNERS_WINDOW];
     await longShow(win);
     // A timer, and a stage screens' group (whose settings in Screens lead to the stage layouts).
@@ -641,7 +644,7 @@ test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show 
     // The library's Books: the loaded texts.
     const sheet = await openLibrary(win);
     await dialog('the library’s Books, its texts', win.getByTestId('shastra-texts-dialog'), async () => {
-      await sheet.getByRole('tab', { name: 'Books' }).click();
+      await sheet.getByTestId('library-tab-shastra').click();
       await win.getByTestId('shastra-panel').getByTestId('open-shastra-texts').click();
     });
     await closeLibrary(win);
@@ -668,11 +671,12 @@ test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show 
     );
     await each(studio, 'the Lower Thirds studio, Templates', async () => {
       await studio.getByTestId('studio-templates').click();
+      // The templates' own dialog, over the studio (the studio under its dim is swept above).
       await sweep(
         app,
         studio,
         'lower-thirds.html',
-        studio.locator('body'),
+        studio.getByRole('dialog', { name: 'Lower third templates' }),
         'the Lower Thirds studio, Templates',
         studioSizes,
       );
