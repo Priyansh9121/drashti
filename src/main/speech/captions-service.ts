@@ -8,7 +8,13 @@ import {
   type CaptionsStatus,
 } from '../../shared/captions';
 import type { Heard, SpeechLanguage } from '../../shared/speech';
-import type { CaptionSpelling, ClauseSink } from './caption-flow';
+import {
+  chooseCaptionPath,
+  createCaptionFlow,
+  type CaptionPaths,
+  type CaptionSpelling,
+  type ClauseSink,
+} from './caption-flow';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
 import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
@@ -62,9 +68,18 @@ export interface CaptionPackModel {
   sha256: string;
 }
 
+const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
+  gu: 'Gujarati',
+  hi: 'Hindi',
+  sa: 'Sanskrit',
+  en: 'English',
+});
+
 export class CaptionsService {
   readonly hub: SpeechHubControl;
   private readonly feed: CaptionsFeed;
+  /** Today's feed or caption AI's flow, when caption AI is wired in (null: today's feed alone). */
+  private readonly paths: CaptionPaths | null;
   private switch: CaptionsSwitch;
   private download: CaptionsDownload;
   private downloading: { controller: AbortController; promise: Promise<void> } | null = null;
@@ -79,6 +94,20 @@ export class CaptionsService {
       engine: {
         // The model first: without it the hub is held (no-model) until it is downloaded.
         start: (language, to) => {
+          // Caption AI: the speaker's language, and its checked model from the pack (never a download).
+          if (this.useAi()) {
+            const problem =
+              language === 'auto'
+                ? 'Caption AI listens for one language: choose the speaker’s language.'
+                : this.deps.aiPath?.model(language)
+                  ? null
+                  : `Caption AI has no checked model for ${LANGUAGE_NAMES[language]}: import the model pack (Help › Caption and Translation Models…).`;
+            if (problem !== null) {
+              to.state({ phase: 'failed', message: problem });
+              return () => undefined;
+            }
+            return this.deps.engine.start(language, to);
+          }
           if (!this.deps.modelReady(this.switch.model)) {
             to.state({ phase: 'held', reason: 'no-model' });
             return () => undefined;
@@ -88,12 +117,30 @@ export class CaptionsService {
       },
       log: deps.log,
     });
-    this.feed = createCaptionsFeed({
+    const today = createCaptionsFeed({
       hub: this.hub,
       show: deps.show,
       onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
       settings: () => this.settings(),
     });
+    const ai = deps.aiPath;
+    this.paths = ai
+      ? chooseCaptionPath(
+          today,
+          createCaptionFlow({
+            hub: this.hub,
+            coordinator: ai.coordinator,
+            ...(ai.spelling ? { spelling: ai.spelling } : {}),
+            onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+          }),
+          () => this.useAi(),
+          () => {
+            this.hub.setOn(false);
+            this.hub.setOn(true);
+          },
+        )
+      : null;
+    this.feed = this.paths ?? today;
     this.hub.onState(() => {
       this.tell();
     });
@@ -119,13 +166,24 @@ export class CaptionsService {
         };
   }
 
-  /** The pack's model caption AI runs with now, or null (today's captions). */
-  aiModel(): CaptionPackModel | null {
-    return null;
+  private useAi(): boolean {
+    return this.deps.aiPath?.on() === true;
   }
 
-  /** The admin turned caption AI on or off. */
-  aiPathChanged(): void {}
+  /** The pack's model caption AI runs with now, or null (today's captions). */
+  aiModel(): CaptionPackModel | null {
+    const language = this.settings().language;
+    if (!this.useAi() || language === 'auto') return null;
+    return this.deps.aiPath?.model(language) ?? null;
+  }
+
+  /** The admin turned caption AI on or off: while captions run, the other path takes over at once. */
+  aiPathChanged(): void {
+    if (this.closed || !this.paths) return;
+    this.paths.reselect();
+    if (this.switch.on) void this.fetchModel();
+    this.tell();
+  }
 
   selectedModel(): CaptionModelId {
     return this.switch.model;
@@ -236,7 +294,9 @@ export class CaptionsService {
       !this.switch.on ||
       this.streamInUse ||
       this.deps.engineProblem() !== null ||
-      this.deps.modelReady(id)
+      this.deps.modelReady(id) ||
+      // Caption AI's models come from the pack, imported by the admin: nothing is downloaded for it.
+      this.useAi()
     )
       return;
     const running = this.downloading;

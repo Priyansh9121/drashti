@@ -25,8 +25,10 @@ import type { SpeechEngine } from './hub';
 
 const PACK_GU = { path: '/placeholder/pack/captions-gu.bin', sha256: 'a'.repeat(64) };
 
-const SPELLING: CaptionSpelling = {
-  fix: (text, language) => (language === 'gu' ? text.replace(/(^| )ખોખુ( |$)/u, '$1ખોખું$2') : text),
+const SPELLING: CaptionSpelling = (h) => {
+  if (h.language !== 'gu') return h;
+  const words = h.words.map((w) => (w.text === 'ખોખુ' ? { ...w, text: 'ખોખું' } : w));
+  return { ...h, words, text: words.map((w) => w.text).join(' ') };
 };
 
 function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<SpeechLanguage, typeof PACK_GU>> } = {}) {
@@ -114,19 +116,25 @@ function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<Speec
   return { service, ai, say, choose, started, shown, downloads, accepted, coordinator, lines: () => shown.at(-1)?.lines ?? null };
 }
 
-/** Today's sequence for two phrases, each half then whole, on a service with no caption AI wired at all. */
-async function todays(): Promise<(CaptionsShown | null)[]> {
-  const t = setup({ aiWired: false });
+/** Two phrases, each half then whole, Gujarati chosen; then off. */
+async function twoPhrases(t: ReturnType<typeof setup>): Promise<void> {
   t.choose('gu');
   await t.service.setOn(true);
   t.say('લીલું', false, 's1');
   t.say('લીલું ખોખુ', true, 's1');
   vi.advanceTimersByTime(300);
   t.say('ગોળ', false, 's2');
+  vi.advanceTimersByTime(300);
   t.say('ગોળ આકાર', true, 's2');
   vi.advanceTimersByTime(7_000);
   await t.service.setOn(false);
   t.service.close();
+}
+
+/** Today's screens for them, on a service with no caption AI wired at all. */
+async function todays(): Promise<(CaptionsShown | null)[]> {
+  const t = setup({ aiWired: false });
+  await twoPhrases(t);
   return t.shown;
 }
 
@@ -148,16 +156,7 @@ describe('caption AI in the captions service', () => {
       ['ગોળ આકાર'],
     ]);
     const t = setup({ ai: false, pack: { gu: PACK_GU } });
-    t.choose('gu');
-    await t.service.setOn(true);
-    t.say('લીલું', false, 's1');
-    t.say('લીલું ખોખુ', true, 's1');
-    vi.advanceTimersByTime(300);
-    t.say('ગોળ', false, 's2');
-    t.say('ગોળ આકાર', true, 's2');
-    vi.advanceTimersByTime(7_000);
-    await t.service.setOn(false);
-    t.service.close();
+    await twoPhrases(t);
     expect(t.shown).toEqual(before);
     expect(t.accepted).toEqual([]);
     expect(t.coordinator.view().on).toBe(false);

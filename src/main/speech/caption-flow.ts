@@ -1,6 +1,6 @@
 import type { CaptionRevision } from '../../shared/caption-coordinator';
 import { toGujaratiScript } from '../../shared/scripts';
-import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
+import type { Heard, SpeechState } from '../../shared/speech';
 import type { SpeechHub } from './speech-hub';
 
 /*
@@ -20,16 +20,17 @@ export interface ClauseSink {
   refresh(): void;
 }
 
-/** The glossary's spelling fixer (cap-glossary): whole words only, the same language only. */
-export interface CaptionSpelling {
-  fix(text: string, language: SpeechLanguage): string;
-}
+/**
+ * The glossary's spelling fixer (cap-glossary's spellingFixer): a phrase with near-miss words put right, whole words
+ * only and in the phrase's own language only, each word keeping its times.
+ */
+export type CaptionSpelling = (h: Heard) => Heard;
 
 export interface CaptionFlowOptions {
   hub: SpeechHub;
   coordinator: ClauseSink;
   spelling?: CaptionSpelling;
-  /** The local sound recorder's draft gets final phrases as today's feed gives them. */
+  /** The local sound recorder's draft gets each final phrase with the glossary's spelling (never a correction). */
   onFinalPhrase?: (phrase: Heard) => void;
 }
 
@@ -62,16 +63,21 @@ export function createCaptionFlow(options: CaptionFlowOptions): CaptionFlow {
     } else if (sessionId !== null) end();
   };
 
-  const heard = (h: Heard): void => {
+  const heard = (given: Heard): void => {
     if (sessionId === null) return;
-    // As today's feed: Sanskrit in Gujarati letters, and the draft gets the same converted words.
+    // The glossary first, on the words as the recognizer gave them; then, as today's feed, Sanskrit in Gujarati
+    // letters (the draft gets the same words).
+    const h = options.spelling ? options.spelling(given) : given;
     const words =
       h.language === 'sa'
         ? h.words.map((word) => ({ ...word, text: toGujaratiScript(word.text).normalize('NFC') }))
         : h.words;
-    const said = words.map((w) => w.text).join(' ');
-    if (h.final) options.onFinalPhrase?.(h.language === 'sa' ? { ...h, words, text: said } : h);
-    const text = (options.spelling ? options.spelling.fix(said, h.language) : said).normalize('NFC').trim();
+    const text = words
+      .map((w) => w.text)
+      .join(' ')
+      .normalize('NFC')
+      .trim();
+    if (h.final) options.onFinalPhrase?.(h.language === 'sa' || h !== given ? { ...h, words, text } : h);
     if (text === '') return;
     const same = last !== null && last.id === h.id;
     if (same && last !== null && (last.final || (last.text === text && !h.final))) return;
@@ -106,6 +112,58 @@ export function createCaptionFlow(options: CaptionFlowOptions): CaptionFlow {
     },
     refresh() {
       options.coordinator.refresh();
+    },
+  };
+}
+
+/** What runs the captions on the screens: today's feed (src/main/speech/captions-feed.ts) or caption AI's flow. */
+export interface CaptionPath {
+  start(): void;
+  stop(): void;
+  refresh(): void;
+}
+
+export interface CaptionPaths extends CaptionPath {
+  /** The admin changed which one is chosen: while captions run, the other one takes over at once. */
+  reselect(): void;
+}
+
+/**
+ * Today's feed or caption AI's flow, whichever is chosen when captions start (never both). A change while they run
+ * stops the one running, starts listening again (so the recognizer starts with the right model) and starts the other.
+ * With caption AI not chosen, every call goes to today's feed as before.
+ */
+export function chooseCaptionPath(
+  today: CaptionPath,
+  ai: CaptionPath,
+  useAi: () => boolean,
+  listenAgain: () => void,
+): CaptionPaths {
+  let running: CaptionPath | null = null;
+  const chosen = (): CaptionPath => (useAi() ? ai : today);
+  return {
+    start() {
+      if (running) return;
+      running = chosen();
+      running.start();
+    },
+    stop() {
+      const was = running ?? chosen();
+      running = null;
+      was.stop();
+    },
+    refresh() {
+      (running ?? chosen()).refresh();
+    },
+    reselect() {
+      if (!running) return;
+      const next = chosen();
+      if (next === running) return;
+      running.stop();
+      running = null;
+      listenAgain();
+      running = next;
+      next.start();
     },
   };
 }

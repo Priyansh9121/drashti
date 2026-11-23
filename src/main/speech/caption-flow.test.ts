@@ -13,14 +13,10 @@ import { createSpeechHub } from './hub';
  */
 
 /** A stand-in for cap-glossary's fixer: one near-miss Gujarati spelling put right, nothing else touched. */
-const SPELLING: CaptionSpelling = {
-  fix: (text, language) =>
-    language === 'gu'
-      ? text
-          .split(' ')
-          .map((word) => (word === 'ખોખુ' ? 'ખોખું' : word))
-          .join(' ')
-      : text,
+const SPELLING: CaptionSpelling = (h) => {
+  if (h.language !== 'gu') return h;
+  const words = h.words.map((w) => (w.text === 'ખોખુ' ? { ...w, text: 'ખોખું' } : w));
+  return { ...h, words, text: words.map((w) => w.text).join(' ') };
 };
 
 function setup(o: { spelling?: CaptionSpelling; language?: SpeechLanguage } = {}) {
@@ -182,14 +178,23 @@ describe('caption AI path: recognizer -> hub -> flow -> coordinator -> screens',
     expect(t.lines()).toEqual(['કખગ']);
   });
 
-  it('finals reach the recording draft exactly as today (the glossary and corrections do not change the draft)', () => {
+  it('finals reach the recording draft once, with the glossary’s spelling and their own times; corrections do not', () => {
     const t = setup({ spelling: SPELLING });
     t.flow.start();
     t.say('લીલું ખોખુ', false);
     expect(t.finals).toHaveLength(0);
     t.say('લીલું ખોખુ', true);
     expect(t.finals).toHaveLength(1);
-    expect(t.finals[0]).toMatchObject({ id: 's1', final: true, text: 'લીલું ખોખુ' });
+    expect(t.finals[0]).toMatchObject({ id: 's1', final: true, text: 'લીલું ખોખું' });
+    expect(t.finals[0]!.words.map((w) => w.text)).toEqual(['લીલું', 'ખોખું']);
+    expect(t.finals[0]!.words[1]!.endAt).toBeLessThanOrEqual(t.finals[0]!.endAt);
+    t.coordinator.correct({ ...t.current()!, text: 'વાદળી ખોખું' });
+    expect(t.finals).toHaveLength(1);
+    // Without a glossary, the very phrase the hub gave (as today's feed passes it on).
+    const plain = setup();
+    plain.flow.start();
+    plain.say('લીલું ખોખુ', true);
+    expect(plain.finals[0]).toMatchObject({ text: 'લીલું ખોખુ' });
   });
 
   it('stop takes the captions off at once and closes the session; nothing heard after it shows', () => {
