@@ -21,10 +21,9 @@ function setup(o: { held?: PackModel | null } = {}) {
   let finish: (h: { model: PackModel; release(): void } | null) => void = () => undefined;
   const route = createWhisperRoute({
     store: {
-      acquire: (id) =>
+      acquire: () =>
         new Promise((resolve) => {
           finish = resolve;
-          void id;
         }),
     },
     known: (sha) => (sha === KNOWN ? { fallback: true } : null),

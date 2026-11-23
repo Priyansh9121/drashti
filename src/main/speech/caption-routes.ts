@@ -4,7 +4,8 @@ import type { SpeechEngine } from './hub';
 /*
  * Caption AI's recognizers (cap-integration): each route makes one from a model in the offline pack, the same way.
  * Route W runs a Gujarati, Hindi or English model on Drashti's own whisper.cpp; Route C runs AI4Bharat's
- * IndicConformer on ONNX Runtime (Codex x94). Red: not built yet.
+ * IndicConformer on ONNX Runtime (Codex x94). Which routes ship, and in which order, is decided by the real-speech
+ * accuracy numbers (cap-eval); a route not proven is not in the list, so it never runs.
  */
 
 /** What a route needs of a pack's model (cap-pack's PackedModel): its id, its format and its checked files. */
@@ -18,7 +19,11 @@ export interface PackModel {
 export interface CaptionRoute {
   /** For the dialog and the log (never words): 'whisper' (Route W) or 'conformer' (Route C). */
   id: string;
-  /** A recognizer for this model in this language, or null when this route cannot run it. */
+  /**
+   * A recognizer for this model in this language, or null only when this route does not run models like it (another
+   * format, a file missing, not known). A route that runs it but cannot on this computer (too old a Mac) returns a
+   * recognizer that says so plainly when started: never a quiet switch to another route.
+   */
   make(model: PackModel, language: SpeechLanguage): SpeechEngine | null;
 }
 
@@ -30,20 +35,28 @@ export interface CaptionRecognizer {
 }
 
 /** The pack's purpose for a language's captions (cap-pack's captions-gu, -hi, -en), or null. */
-export function captionPurpose(_language: SpeechLanguage): `captions-${'gu' | 'hi' | 'en'}` | null {
-  return null;
+export function captionPurpose(language: SpeechLanguage): `captions-${'gu' | 'hi' | 'en'}` | null {
+  return language === 'gu' || language === 'hi' || language === 'en' ? `captions-${language}` : null;
 }
 
 /** The recognizer of the first route (in the order given: the routes that ship, best first) that runs a model. */
 export function chooseRecognizer(
-  _models: readonly PackModel[],
-  _language: SpeechLanguage,
-  _routes: readonly CaptionRoute[],
+  models: readonly PackModel[],
+  language: SpeechLanguage,
+  routes: readonly CaptionRoute[],
 ): CaptionRecognizer | null {
+  for (const route of routes)
+    for (const model of models) {
+      const engine = route.make(model, language);
+      if (engine) return { route: route.id, modelId: model.id, engine };
+    }
   return null;
 }
 
 /** Route W's file: the model's one whisper.cpp file, when Drashti knows it by its SHA-256 (cap-whisper's list). */
-export function whisperModelFile(_model: PackModel, _known: (sha256: string) => boolean): string | null {
-  return null;
+export function whisperModelFile(model: PackModel, known: (sha256: string) => boolean): string | null {
+  const [file, ...more] = model.files;
+  return model.format === 'whisper-ggml' && file && more.length === 0 && known(file.sha256)
+    ? file.path
+    : null;
 }

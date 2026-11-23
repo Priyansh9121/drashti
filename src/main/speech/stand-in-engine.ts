@@ -5,18 +5,21 @@ import type { SpeechEngine } from './hub';
  * A stand-in for the captions engine, for tests only (Session 55, Part 10): the test switch DRASHTI_TEST_SPEECH,
  * ignored by a packaged Drashti, names placeholder phrases ("alpha beta|gamma delta"), and this "hears" them in turn,
  * one every `everyMs`, each first half-heard and then whole. No sound, no model, no program: the hub, the captions
- * and the screens run as they do with the real engine.
+ * and the screens run as they do with the real engine. Once (DRASHTI_TEST_SPEECH_ONCE, alpha.22): each phrase is heard
+ * one time and then nothing more, so an end-to-end test can correct a settled caption before a newer one replaces it.
  */
 export function createStandInEngine(
   phrases: readonly string[],
   everyMs = 1_500,
-  _options: { once?: boolean } = {},
+  options: { once?: boolean } = {},
 ): SpeechEngine {
   return {
     start(language, to) {
       to.state({ phase: 'listening', language });
       let n = 0;
       const timer = setInterval(() => {
+        // Once (DRASHTI_TEST_SPEECH_ONCE): each phrase one time, then still listening but hearing nothing more.
+        if (options.once && n >= phrases.length) return;
         const text = phrases[n % Math.max(1, phrases.length)] ?? '';
         n += 1;
         const words = text

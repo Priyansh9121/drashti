@@ -116,6 +116,8 @@ export class CaptionsService {
   private readonly feed: CaptionsFeed;
   /** Today's feed or caption AI's flow, when caption AI is wired in (null: today's feed alone). */
   private readonly paths: CaptionPaths | null;
+  /** What caption AI's recognizer is while it runs. */
+  private recognizer: { route: string; modelId: string } | null = null;
   private switch: CaptionsSwitch;
   private tuning: CaptionsTuning;
   private readonly models: LanguageModelStore;
@@ -140,17 +142,27 @@ export class CaptionsService {
         start: (language, to) => {
           // Caption AI: the speaker's language, and its checked model from the pack (never a download).
           if (this.useAi()) {
-            const problem =
-              language === 'auto'
-                ? 'Caption AI listens for one language: choose the speaker’s language.'
-                : this.deps.aiPath?.recognizer(language)
-                  ? null
-                  : `Caption AI has no checked model for ${LANGUAGE_NAMES[language]}: import the model pack (Help › Caption and Translation Models…).`;
-            if (problem !== null) {
-              to.state({ phase: 'failed', message: problem });
+            if (language === 'auto') {
+              to.state({
+                phase: 'failed',
+                message: 'Caption AI listens for one language: choose the speaker’s language.',
+              });
               return () => undefined;
             }
-            return this.deps.engine.start(language, to);
+            const recognizer = this.deps.aiPath?.recognizer(language) ?? null;
+            if (recognizer === null) {
+              to.state({
+                phase: 'failed',
+                message: `Caption AI has no checked model for ${LANGUAGE_NAMES[language]}: import the model pack (Help › Caption and Translation Models…).`,
+              });
+              return () => undefined;
+            }
+            this.recognizer = { route: recognizer.route, modelId: recognizer.modelId };
+            const stop = recognizer.engine.start(language, to);
+            return () => {
+              this.recognizer = null;
+              stop();
+            };
           }
           // A model of its own chosen for the language (alpha.22) is used only when it is here and checked: never
           // the general model in its place.
@@ -226,7 +238,7 @@ export class CaptionsService {
 
   /** The route and pack model caption AI listens with now, or null (today's captions). Never a word. */
   aiRecognizer(): { route: string; modelId: string } | null {
-    return null;
+    return this.recognizer;
   }
 
   /** The admin turned caption AI on or off: while captions run, the other path takes over at once. */
