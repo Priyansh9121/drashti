@@ -5602,6 +5602,7 @@ function start(): void {
       ? {
           installed: () => true,
           available: (from, to) => from !== to,
+          unknownModel: () => false,
           translate: (source, from, to) => standInTranslator.translate(source, from, to),
           cancel: () => undefined,
         }

@@ -40,13 +40,54 @@ export const INDICTRANS2_FILES = [
   'target_vocabulary.json',
   'source.spm',
 ] as const;
+type IndicTransFile = (typeof INDICTRANS2_FILES)[number];
+
+/**
+ * The conversions this Drashti runs (a22-review-mt A14): x74's int8 conversions of IndicTrans2's distilled models for
+ * CTranslate2 4.9.1, with each model's own SentencePiece source model, every file by its SHA-256. A pack's own list
+ * only vouches for itself; these parsers (CTranslate2's model reader, nlohmann json, protobuf-lite) then read only
+ * files whose bytes are known. Another conversion needs a new Drashti.
+ */
+export const KNOWN_INDICTRANS2_MODELS: Readonly<Record<Route, Readonly<Record<IndicTransFile, string>>>> = {
+  'en-indic': {
+    'model.bin': '5fae4eadf678b5547b774e31f8019dbbdda65f47ac22da470475781e24f59353',
+    'config.json': '8f6496adfc930cbfecbe8281112197705c488fab47d34b4829b06d7f478909af',
+    'source_vocabulary.json': 'f404c39242ac4035f66d7da979136aab758a2f7de929fa7a87c7912797489d54',
+    'target_vocabulary.json': '44b9a6330ffcd1902f2da87a8cfbabc4ef9a2385acc62e5818633eef9dea0262',
+    'source.spm': '3cedc5cbcc740369b76201942a0f096fec7287fee039b55bdb956f301235b914',
+  },
+  'indic-en': {
+    'model.bin': '063a70cf116082e0949a2657cda85c667c82f26f7e24c1afa97b68f05ec614d3',
+    'config.json': '8f6496adfc930cbfecbe8281112197705c488fab47d34b4829b06d7f478909af',
+    'source_vocabulary.json': '2ff49c008d38db52374040405d7e44d15b5397355307defdb2896b4b0135a7bf',
+    'target_vocabulary.json': '7dabfabf69dd1cf567dac17f01528f0e38e71bbf0ba78287cb60697ca1346a39',
+    'source.spm': 'ac9257c8e76b8b607705b959cc3d075656ea33032f7a974e467b8941df6e98d4',
+  },
+  'indic-indic': {
+    'model.bin': '9bd1bf44ed13e82cd05b0fb93ede9c03d5ad730775cdb40cb5fd77c07a7f50a1',
+    'config.json': '8f6496adfc930cbfecbe8281112197705c488fab47d34b4829b06d7f478909af',
+    'source_vocabulary.json': '2ff49c008d38db52374040405d7e44d15b5397355307defdb2896b4b0135a7bf',
+    'target_vocabulary.json': '44b9a6330ffcd1902f2da87a8cfbabc4ef9a2385acc62e5818633eef9dea0262',
+    'source.spm': 'ac9257c8e76b8b607705b959cc3d075656ea33032f7a974e467b8941df6e98d4',
+  },
+};
+
+type PackFile = { name: string; path: string; sha256: string };
+
+/** Whether a model's files are the known conversion for this direction family: every one by its SHA-256. */
+export function knownConversion(route: Route, files: readonly PackFile[]): boolean {
+  const known = KNOWN_INDICTRANS2_MODELS[route];
+  return INDICTRANS2_FILES.every((name) =>
+    files.some((f) => basename(f.path) === name && f.sha256 === known[name]),
+  );
+}
 
 /** What the engine needs of the model pack store (main/model-packs/store.ts). */
 export interface TranslationModels {
   forPurpose(purpose: ModelPurpose): readonly {
     id: string;
     format: string;
-    files: readonly { name: string; path: string }[];
+    files: readonly PackFile[];
   }[];
   acquire(id: string): Promise<{ release(): void } | null>;
 }
@@ -63,6 +104,8 @@ export interface TranslationEngineOptions {
   beam?: number;
   /** A loaded model is let go after this long unused. */
   idleMs?: number;
+  /** Whether a model's files are a conversion this Drashti runs (tests' stand-in models only replace it). */
+  checkFiles?: (route: Route, files: readonly PackFile[]) => boolean;
 }
 
 const purposeOf = (from: TranslationLanguage, to: TranslationLanguage): ModelPurpose =>
@@ -78,22 +121,33 @@ export class TranslationEngine implements Translator {
   constructor(private readonly o: TranslationEngineOptions) {}
 
   /** The model for a direction, when this copy of Drashti has the helper and a pack holds a whole one. */
+  /** The pack's models of this engine's format, with every file, offered for the direction. */
+  private candidates(from: TranslationLanguage, to: TranslationLanguage) {
+    if (from === to || this.o.program() === null) return [];
+    return this.o.models
+      .forPurpose(purposeOf(from, to))
+      .filter(
+        (m) =>
+          m.format === INDICTRANS2_FORMAT &&
+          INDICTRANS2_FILES.every((name) => m.files.some((f) => basename(f.path) === name)),
+      );
+  }
+
+  /** The model for a direction: one of the known conversions, for that direction's family. */
   private modelFor(from: TranslationLanguage, to: TranslationLanguage) {
-    if (from === to || this.o.program() === null) return null;
-    return (
-      this.o.models
-        .forPurpose(purposeOf(from, to))
-        .find(
-          (m) =>
-            m.format === INDICTRANS2_FORMAT &&
-            INDICTRANS2_FILES.every((name) => m.files.some((f) => basename(f.path) === name)),
-        ) ?? null
-    );
+    const route = routeFor(from, to);
+    const check = this.o.checkFiles ?? knownConversion;
+    return this.candidates(from, to).find((m) => check(route, m.files)) ?? null;
   }
 
   /** Whether Prepare translations can run for this direction. */
   available(from: TranslationLanguage, to: TranslationLanguage): boolean {
     return this.modelFor(from, to) !== null;
+  }
+
+  /** The pack offers a model of this format for the direction, but not one this Drashti knows. */
+  unknownModel(from: TranslationLanguage, to: TranslationLanguage): boolean {
+    return this.candidates(from, to).length > 0 && this.modelFor(from, to) === null;
   }
 
   /** Whether this copy of Drashti has the translation helper at all. */

@@ -26,6 +26,8 @@ export interface TranslationIpcDeps {
   engine: {
     installed(): boolean;
     available(from: TranslationLanguage, to: TranslationLanguage): boolean;
+    /** The pack offers a model for the direction that is not a conversion this Drashti runs. */
+    unknownModel(from: TranslationLanguage, to: TranslationLanguage): boolean;
     translate(source: string, from: TranslationLanguage, to: TranslationLanguage): Promise<string>;
     cancel(): void;
   };
@@ -40,6 +42,8 @@ export const ON_AIR =
 export const NOT_INSTALLED = 'This copy of Drashti has no translation engine.';
 export const NO_MODEL =
   'Prepare translations needs the offline translation model pack for this direction: ask the admin to import it (Help › Caption and Translation Models…).';
+export const UNKNOWN_MODEL =
+  'The imported pack’s translation model for this direction is not one this copy of Drashti runs. Ask the admin for the translation pack made for Drashti (Help \u203a Caption and Translation Models\u2026).';
 export const NOT_HERE = 'Translations are prepared in Pro Mode, from the Translation… dialog.';
 export const READY =
   'Prepare translations fills each empty translation with a draft from the offline engine. A named reader checks every draft before it can show.';
@@ -54,7 +58,15 @@ export function translationStatus(
   return {
     installed,
     available,
-    message: !installed ? NOT_INSTALLED : !available ? NO_MODEL : d.onAir() ? ON_AIR : READY,
+    message: !installed
+      ? NOT_INSTALLED
+      : !available
+        ? d.engine.unknownModel(from, to)
+          ? UNKNOWN_MODEL
+          : NO_MODEL
+        : d.onAir()
+          ? ON_AIR
+          : READY,
   };
 }
 
@@ -79,7 +91,8 @@ export function handleTranslation(d: TranslationIpcDeps): void {
       return { ok: false, message: 'Choose a text box’s source language and a different target.' };
     if (d.onAir()) return { ok: false, message: ON_AIR };
     if (!d.engine.installed()) return { ok: false, message: NOT_INSTALLED };
-    if (!d.engine.available(r.from, r.to)) return { ok: false, message: NO_MODEL };
+    if (!d.engine.available(r.from, r.to))
+      return { ok: false, message: d.engine.unknownModel(r.from, r.to) ? UNKNOWN_MODEL : NO_MODEL };
     try {
       return { ok: true, text: await d.engine.translate(r.source, r.from, r.to) };
     } catch (error) {

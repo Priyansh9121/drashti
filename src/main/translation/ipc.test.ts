@@ -135,11 +135,17 @@ describe('Prepare translations’ requests', () => {
           {
             id: 'en-indic',
             format: INDICTRANS2_FORMAT,
-            files: INDICTRANS2_FILES.map((name) => ({ name, path: `/p/en-indic/${name}` })),
+            files: INDICTRANS2_FILES.map((name) => ({
+              name,
+              path: `/p/en-indic/${name}`,
+              sha256: '0'.repeat(64),
+            })),
           },
         ],
         acquire: () => Promise.resolve({ release: () => undefined }),
       },
+      // A stand-in model, not x74's conversion: taken as known here.
+      checkFiles: () => true,
       createHelper: (program) =>
         new TranslationHelper({
           program,
@@ -158,6 +164,7 @@ describe('Prepare translations’ requests', () => {
       {
         installed: () => engine.installed(),
         available: (from, to) => engine.available(from, to),
+        unknownModel: (from, to) => engine.unknownModel(from, to),
         translate: (source, from, to) => engine.translate(source, from, to),
         cancel: () => {
           engine.cancel();
