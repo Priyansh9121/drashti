@@ -170,4 +170,22 @@ describe('checked saved translation output', () => {
     el.text = 'Cafe box.';
     expect(checkedTranslationView(slide(el), {}).elements).toHaveLength(1);
   });
+  it('does not let authored-language column reflow move a source/translation pair', () => {
+    const el = box();
+    const other = {
+      ...box(),
+      id: 'authored-hi',
+      text: 'Placeholder authored Hindi',
+      lang: 'hi' as const,
+      frame: { x: 100, y: 600, width: 1500, height: 120 },
+    };
+    delete other.translations;
+    delete other.translationDisplay;
+    const original = { ...slide(el), kirtan: true, elements: [el, other] };
+    const shown = languageView(checkedTranslationView(original, {}), ['gu']);
+    expect(shown.elements.find((value) => value.id === el.id)?.frame).toEqual(el.frame);
+    expect(shown.elements.find((value) => value.id === `${el.id}:translation:gu`)?.frame).toEqual(
+      el.translationDisplay?.area,
+    );
+  });
 });

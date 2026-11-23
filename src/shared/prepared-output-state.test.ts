@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { languageView } from './language-view';
 import { initialEngineState } from './engine/state';
 import { preparedOutputState, translationTop, translationBottom } from './prepared-output-state';
 import { checkTranslation, draftTranslation } from './prepared-translations';
@@ -120,5 +121,22 @@ describe('prepared output state', () => {
     expect(translationBottom(state, 1080, 'hall')).toBe(1080);
     state.captions.place = 'top';
     expect(translationBottom(state, 1080, 'stream')).toBe(1080);
+  });
+  it('Hide translation keeps the original on a kirtan output that selects only the target language', () => {
+    const state = initialEngineState();
+    state.next = {
+      kind: 'slide',
+      presentationId: 'p',
+      slideIndex: 0,
+      slide: { ...slide(), kirtan: true },
+      background: null,
+      itemId: null,
+      notes: '',
+    };
+    const hidden = preparedOutputState(Object.assign({}, state, { translationHidden: true }), {});
+    if (hidden.next?.kind !== 'slide') throw new Error('Missing next');
+    expect(
+      languageView(hidden.next.slide, ['gu']).elements.map((el) => (el.kind === 'text' ? el.text : '')),
+    ).toEqual(['Blue box.']);
   });
 });
