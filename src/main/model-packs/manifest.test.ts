@@ -160,7 +160,9 @@ describe('a model pack’s list (alpha.22, cap-pack)', () => {
     expect(refusal(pack([licence, { ...gu, licenceFile: 'licences/Apache-2.0.txt' }]))).toBe(
       'captions/gu-placeholder/model.bin names licences/Apache-2.0.txt as its licence’s text, which the pack does not hold as one. Nothing was installed: ask for a fresh copy of the pack.',
     );
-    expect(refusal(pack([licence, enIndic('a.bin', 1), { ...gu, licenceFile: enIndic('a.bin', 1).name }]))).toBe(
+    expect(
+      refusal(pack([licence, enIndic('a.bin', 1), { ...gu, licenceFile: enIndic('a.bin', 1).name }])),
+    ).toBe(
       'captions/gu-placeholder/model.bin names translation/en-indic/a.bin as its licence’s text, which the pack does not hold as one. Nothing was installed: ask for a fresh copy of the pack.',
     );
     expect(refusal(pack([{ ...licence, model: 'gu-placeholder' }, gu]))).toBe(
@@ -170,7 +172,9 @@ describe('a model pack’s list (alpha.22, cap-pack)', () => {
 
   it('needs one purpose and format for all of a model’s files, and each model in a folder of its own', () => {
     expect(
-      refusal(pack([licence, enIndic('a.bin', 1), { ...enIndic('b.bin', 2), purpose: ['translation-en-gu'] }])),
+      refusal(
+        pack([licence, enIndic('a.bin', 1), { ...enIndic('b.bin', 2), purpose: ['translation-en-gu'] }]),
+      ),
     ).toBe(
       'The files of the model en-indic-placeholder do not agree on its purpose and format. Nothing was installed: ask for a fresh copy of the pack.',
     );

@@ -31,7 +31,10 @@ function importPack(kind: 'folder' | 'zip') {
     takeStatus(r.status);
     if (r.ok)
       useModelPacks.setState({
-        notice: { tone: 'success', text: `${r.pack.name} is installed on this computer, every file checked.` },
+        notice: {
+          tone: 'success',
+          text: `${r.pack.name} is installed on this computer, every file checked.`,
+        },
       });
     else if (!r.cancelled) useModelPacks.setState({ notice: { tone: 'danger', text: r.message } });
   });
@@ -53,9 +56,10 @@ function PacksForm({ status }: { status: ModelPacksStatus }) {
     >
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Live captions and translation can use models from an offline pack that an admin brings on a drive or as
-          a zip. Drashti never downloads them. It checks every file against the pack’s list (its size and SHA-256)
-          before keeping it on this computer, outside the library and its backups. Import the pack on each Main.
+          Live captions and translation can use models from an offline pack that an admin brings on a drive or
+          as a zip. Drashti never downloads them. It checks every file against the pack’s list (its size and
+          SHA-256) before keeping it on this computer, outside the library and its backups. Import the pack on
+          each Main.
         </p>
         {status.problem && (
           <Notice tone="warning" data-testid="model-packs-problem">
@@ -151,8 +155,8 @@ function PacksForm({ status }: { status: ModelPacksStatus }) {
           }}
         >
           <p>
-            Its models and licences are removed from this computer. Live captions and translation can no longer use
-            them until the pack is imported again.
+            Its models and licences are removed from this computer. Live captions and translation can no
+            longer use them until the pack is imported again.
           </p>
         </ConfirmDialog>
       )}
@@ -202,7 +206,8 @@ function PackRow({ pack, onRemove }: { pack: InstalledPackView; onRemove: () => 
                 return;
               }
               void window.drashti.modelPacks.licence(pack.id, l.file).then((r) => {
-                if (r.ok) useModelPacks.setState({ licence: { packId: pack.id, file: l.file, text: r.text } });
+                if (r.ok)
+                  useModelPacks.setState({ licence: { packId: pack.id, file: l.file, text: r.text } });
                 else useModelPacks.setState({ notice: { tone: 'danger', text: r.message } });
               });
             }}
@@ -215,6 +220,7 @@ function PackRow({ pack, onRemove }: { pack: InstalledPackView; onRemove: () => 
         <pre
           className="max-h-48 overflow-auto rounded bg-panel-2 p-2 text-xs whitespace-pre-wrap"
           data-testid="model-pack-licence-text"
+          role="region"
           tabIndex={0}
           aria-label={`${licence.file} in ${pack.name}`}
         >

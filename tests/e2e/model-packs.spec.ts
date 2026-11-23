@@ -100,7 +100,9 @@ test('imports a pack, every file checked, kept outside the library; shows what i
     );
     const kept = readdirSync(join(userData, 'model-packs')).filter((n) => n.startsWith('placeholder-pack-'));
     expect(kept).toHaveLength(1);
-    expect(existsSync(join(userData, 'model-packs', kept[0] ?? '', 'captions', 'gu', 'model.bin'))).toBe(true);
+    expect(existsSync(join(userData, 'model-packs', kept[0] ?? '', 'captions', 'gu', 'model.bin'))).toBe(
+      true,
+    );
 
     // The licence's own text, from the copy kept.
     await pack.getByTestId('model-pack-licence').click();

@@ -32,13 +32,23 @@ export type ModelPurpose = CaptionPurpose | TranslationPurpose;
 export const LICENCE_PURPOSE = 'licence';
 export type FilePurpose = ModelPurpose | typeof LICENCE_PURPOSE;
 
-// Red (cap-pack): not built yet.
-export const MODEL_PURPOSES: readonly ModelPurpose[] = [];
+export const MODEL_PURPOSES: readonly ModelPurpose[] = [
+  ...PACK_LANGUAGES.map((l): ModelPurpose => `captions-${l}`),
+  ...PACK_LANGUAGES.flatMap((from) =>
+    PACK_LANGUAGES.filter((to) => to !== from).map((to): ModelPurpose => `translation-${from}-${to}`),
+  ),
+];
 
-export const isModelPurpose = (value: unknown): value is ModelPurpose => typeof value === 'symbol';
+export const isModelPurpose = (value: unknown): value is ModelPurpose =>
+  typeof value === 'string' && (MODEL_PURPOSES as readonly string[]).includes(value);
 
-/** A purpose in words. */
-export const purposeWords = (purpose: ModelPurpose): string => (purpose.length < 0 ? purpose : '');
+/** A purpose in words: "Captions in Gujarati", "Translation from English into Hindi". */
+export function purposeWords(purpose: ModelPurpose): string {
+  const [kind, a, b] = purpose.split('-') as [string, PackLanguage, PackLanguage | undefined];
+  return kind === 'captions'
+    ? `Captions in ${LANGUAGE_NAMES[a]}`
+    : `Translation from ${LANGUAGE_NAMES[a]} into ${LANGUAGE_NAMES[b ?? a]}`;
+}
 
 /**
  * The licences a pack's files may carry (SPDX names): free and open ones only (the owner's rule: nothing paid, free
@@ -55,8 +65,8 @@ export const OPEN_LICENCES = [
 ] as const;
 export type OpenLicence = (typeof OPEN_LICENCES)[number];
 
-/** The most files one pack may list, and the largest one file (a model is under a few GB). */
-export const MAX_PACK_FILES = 10_000;
+/** The most files one pack may list, and the largest one file (a model is a few files of up to a few GB). */
+export const MAX_PACK_FILES = 1000;
 export const MAX_PACK_FILE_BYTES = 64 * 1024 ** 3;
 /** The pack's list is small: more than this is not a Drashti model pack. */
 export const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
@@ -120,8 +130,7 @@ export interface InstalledPackView {
 }
 
 export type PackImportProgress =
-  | { phase: 'idle' }
-  | { phase: 'importing'; name: string | null; done: number; total: number };
+  { phase: 'idle' } | { phase: 'importing'; name: string | null; done: number; total: number };
 
 /** How the packs stand on this computer: what the dialog shows. */
 export interface ModelPacksStatus {

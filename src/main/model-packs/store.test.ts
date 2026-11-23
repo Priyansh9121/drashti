@@ -137,14 +137,23 @@ function packZip(p: Pack = {}, o: { prefix?: string; change?: (e: ZipWriterEntry
 
 const log = { info: vi.fn(), warn: vi.fn() };
 
-function storeIn(data: string, freeBytes: (folder: string) => Promise<number | null> = () => Promise.resolve(100 * GiB)) {
-  const store = new ModelPackStore({ root: join(data, 'model-packs'), log, freeBytes, now: () => 1_790_000_000_000 });
+function storeIn(
+  data: string,
+  freeBytes: (folder: string) => Promise<number | null> = () => Promise.resolve(100 * GiB),
+) {
+  const store = new ModelPackStore({
+    root: join(data, 'model-packs'),
+    log,
+    freeBytes,
+    now: () => 1_790_000_000_000,
+  });
   store.start();
   return store;
 }
 
 /** What the data folder's model-packs/ holds besides its list (nothing when there is no such folder yet). */
-const ours = (root: string) => (existsSync(root) ? readdirSync(root).filter((n) => n !== 'installed.json') : []);
+const ours = (root: string) =>
+  existsSync(root) ? readdirSync(root).filter((n) => n !== 'installed.json') : [];
 const only = <T>(list: T[]): T => {
   expect(list).toHaveLength(1);
   return list[0] as T;
@@ -172,7 +181,13 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
       licences: [{ file: 'licences/MIT.txt', licence: 'MIT' }],
     });
     expect(r.pack.models).toEqual([
-      { id: 'gu-placeholder', purposes: ['captions-gu'], format: 'whisper-ggml', licences: ['MIT'], bytes: 64 * 1024 },
+      {
+        id: 'gu-placeholder',
+        purposes: ['captions-gu'],
+        format: 'whisper-ggml',
+        licences: ['MIT'],
+        bytes: 64 * 1024,
+      },
       {
         id: 'en-indic-placeholder',
         purposes: ['translation-en-gu', 'translation-en-hi'],
@@ -199,7 +214,7 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
     expect(store.forPurpose('captions-hi')).toEqual([]);
     expect(store.model('no-such-model')).toBeNull();
     // The pack's own folder is left as it was.
-    expect(readdirSync(source).sort()).toEqual(['captions', 'licences', PACK_MANIFEST, 'translation']);
+    expect(readdirSync(source).sort()).toEqual(['captions', PACK_MANIFEST, 'licences', 'translation']);
 
     // Readable by this computer's user only (Windows keeps the data folder per user).
     if (process.platform !== 'win32') {
@@ -281,7 +296,10 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
     expect(readFileSync(store.model('en-indic-placeholder')?.files[0]?.path ?? '')).toEqual(
       EN_INDIC.files['translation/en-indic/model.bin'],
     );
-    const inFolder = await store.importPack(packZip({ release: '2026.11.2' }, { prefix: 'Placeholder pack/' }), 'zip');
+    const inFolder = await store.importPack(
+      packZip({ release: '2026.11.2' }, { prefix: 'Placeholder pack/' }),
+      'zip',
+    );
     expect(inFolder).toMatchObject({ ok: true, pack: { release: '2026.11.2' } });
 
     const link = packZip(
@@ -309,7 +327,8 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
     writeFileSync(notAZip, 'placeholder: not a zip');
     expect(await store.importPack(notAZip, 'zip')).toMatchObject({
       ok: false,
-      message: 'This zip does not open: it is damaged or not a zip. Nothing was installed: ask for a fresh copy of the pack.',
+      message:
+        'This zip does not open: it is damaged or not a zip. Nothing was installed: ask for a fresh copy of the pack.',
     });
     // The refusals left the pack installed before as it was.
     expect(only(store.status().packs).release).toBe('2026.11.2');
@@ -338,7 +357,10 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
     const store = storeIn(data);
     expect((await store.importPack(packFolder({ models: [GU] }), 'folder')).ok).toBe(true);
     expect(
-      await store.importPack(packFolder({ id: 'other-pack', name: 'Other placeholder models', models: [GU] }), 'folder'),
+      await store.importPack(
+        packFolder({ id: 'other-pack', name: 'Other placeholder models', models: [GU] }),
+        'folder',
+      ),
     ).toMatchObject({
       ok: false,
       message:
@@ -377,7 +399,8 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
     expect(only(store.status().packs).inUse).toBe(false);
 
     // Same size, other bytes, in the copy kept: the next run's first use finds it.
-    const config = store.model('en-indic-placeholder')?.files.find((f) => f.name.endsWith('config.json'))?.path ?? '';
+    const config =
+      store.model('en-indic-placeholder')?.files.find((f) => f.name.endsWith('config.json'))?.path ?? '';
     writeFileSync(config, '{"placeholder": 1234}\n');
     const next = storeIn(data);
     expect(await next.acquire('en-indic-placeholder')).toBeNull();
@@ -429,8 +452,14 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
     expect((await store.importPack(packFolder(), 'folder')).ok).toBe(true);
     const hold = await store.acquire('gu-placeholder');
     const old = hold?.model.files[0]?.path ?? '';
-    const newer: PlaceholderModel = { ...GU, files: { 'captions/gu/model.bin': Buffer.alloc(32 * 1024, 'newer gu ') } };
-    const r = await store.importPack(packFolder({ release: '2026.12.1', models: [newer, EN_INDIC] }), 'folder');
+    const newer: PlaceholderModel = {
+      ...GU,
+      files: { 'captions/gu/model.bin': Buffer.alloc(32 * 1024, 'newer gu ') },
+    };
+    const r = await store.importPack(
+      packFolder({ release: '2026.12.1', models: [newer, EN_INDIC] }),
+      'folder',
+    );
     expect(r).toMatchObject({ ok: true, pack: { release: '2026.12.1', inUse: false } });
     expect(only(store.status().packs).release).toBe('2026.12.1');
     const now = store.model('gu-placeholder')?.files[0]?.path ?? '';
@@ -449,7 +478,10 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
     const data = temp('data');
     const store = storeIn(data);
     expect((await store.importPack(packFolder(), 'folder')).ok).toBe(true);
-    expect(store.licenceText('placeholder-pack', 'licences/MIT.txt')).toEqual({ ok: true, text: LICENCE_TEXT });
+    expect(store.licenceText('placeholder-pack', 'licences/MIT.txt')).toEqual({
+      ok: true,
+      text: LICENCE_TEXT,
+    });
     expect(store.licenceText('placeholder-pack', 'captions/gu/model.bin')).toEqual({
       ok: false,
       message: 'That licence text is not in this pack: import the pack again.',
@@ -491,7 +523,9 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
     const folder = __dirname;
     for (const file of readdirSync(folder).filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts'))) {
       const text = readFileSync(join(folder, file), 'utf8');
-      expect(text, file).not.toMatch(/\bfetch\(|node:https?\b|node:net\b|\bnet\.request\b|XMLHttpRequest|WebSocket/u);
+      expect(text, file).not.toMatch(
+        /\bfetch\(|node:https?\b|node:net\b|\bnet\.request\b|XMLHttpRequest|WebSocket/u,
+      );
     }
   });
 });

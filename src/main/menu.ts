@@ -447,6 +447,16 @@ export function installMenu(actions: MenuActions): void {
         ? []
         : [
             { type: 'separator' } as MenuItemConstructorOptions,
+            // The offline caption and translation models (alpha.22): an admin's, beside the updates.
+            ...(actions.modelPacks
+              ? [
+                  {
+                    id: 'model-packs',
+                    label: 'Caption and Translation Models…',
+                    click: actions.modelPacks,
+                  } as MenuItemConstructorOptions,
+                ]
+              : []),
             { id: 'check-for-updates', label: 'Check for Updates…', click: actions.checkForUpdates },
           ]),
     ],

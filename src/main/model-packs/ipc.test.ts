@@ -21,7 +21,10 @@ afterEach(() => {
 function harness(picked: string | null = null) {
   const data = mkdtempSync(join(tmpdir(), 'drashti-model-packs-ipc-'));
   made.push(data);
-  const store = new ModelPackStore({ root: join(data, 'model-packs'), log: { info: vi.fn(), warn: vi.fn() } });
+  const store = new ModelPackStore({
+    root: join(data, 'model-packs'),
+    log: { info: vi.fn(), warn: vi.fn() },
+  });
   store.start();
   const handlers = new Map<string, (e: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
   const pick = vi.fn((_kind: 'folder' | 'zip') => Promise.resolve(picked));
