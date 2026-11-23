@@ -2,6 +2,7 @@ import type { DeckEffect, DeckEffectDirection, DeckMotion } from './deck';
 import type { Rect, RenderSlide, SlideElement, TextElement, TextRun } from './model';
 import { pptxFormula } from './pptx-formula';
 import { fitElements } from './slide-size';
+import { isPdfMark, pdfMarkTarget } from './pdf-mark-motion';
 
 type Size = Pick<RenderSlide, 'width' | 'height'>;
 
@@ -11,7 +12,9 @@ export function deckBackgroundTarget(shapeId: string): string {
 }
 
 export function deckElementTargets(element: SlideElement): readonly string[] {
-  const groups = element.sourceGroupIds ?? [];
+  const groups = isPdfMark(element)
+    ? [...(element.sourceGroupIds ?? []), pdfMarkTarget(element.id)]
+    : (element.sourceGroupIds ?? []);
   if (!element.sourceShapeId) return groups;
   const targets = [...groups, element.sourceShapeId];
   if (element.kind === 'shape' || element.kind === 'image')

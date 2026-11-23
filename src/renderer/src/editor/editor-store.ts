@@ -31,8 +31,8 @@ export type EditorGroup = 'words' | 'insert' | 'arrange' | 'design' | 'motion' |
  */
 export interface OutsideStep {
   outside: true;
-  undo: () => void;
-  redo: () => void;
+  undo: () => unknown;
+  redo: () => unknown;
 }
 
 /** A step for Undo: the document as it was before it, or a change outside the presentation. */
@@ -48,6 +48,7 @@ const COALESCE_MS = 1000;
 export interface EditorView {
   open: { presentationId: string; name: string } | null;
   loading: boolean;
+  outsideBusy: boolean;
   /** Why it could not open or save. */
   problem: string | null;
   doc: EditDoc | null;
@@ -108,6 +109,7 @@ export interface EditorView {
 const closed: EditorView = {
   open: null,
   loading: false,
+  outsideBusy: false,
   problem: null,
   doc: null,
   opened: null,
@@ -451,7 +453,7 @@ function validSelection(doc: EditDoc, slideId: string | null, ids: readonly stri
 /** A step for Undo: the new document, the old one remembered. `coalesce` joins steps with the same key. */
 export function commit(next: EditDoc, options: { coalesce?: string; select?: string[] } = {}): void {
   const s = useEditor.getState();
-  if (!s.doc || next === s.doc) return;
+  if (!s.doc || s.outsideBusy || next === s.doc) return;
   const changedSources = sourceContentChanges(s.doc, next);
   if (touchesPreparing(s, s.doc, next, changedSources)) {
     tell(PREPARING_NOTE);
@@ -517,14 +519,41 @@ export function endGesture(): void {
   });
 }
 
+function runOutside(step: OutsideStep, direction: 'undo' | 'redo', s: EditorView): void {
+  const advance = () =>
+    useEditor.setState(
+      direction === 'undo'
+        ? { past: s.past.slice(0, -1), future: [step, ...s.future], coalesce: null }
+        : { past: [...s.past, step], future: s.future.slice(1), coalesce: null },
+    );
+  try {
+    const result = step[direction]();
+    if (result instanceof Promise) {
+      const completion: Promise<unknown> = result;
+      useEditor.setState({ outsideBusy: true });
+      void completion.then(
+        (ok) => {
+          if (ok === true) advance();
+          useEditor.setState({ outsideBusy: false });
+        },
+        () => {
+          useEditor.setState({ outsideBusy: false });
+          tell('That change could not be undone or redone. Try again.');
+        },
+      );
+    } else advance();
+  } catch {
+    tell('That change could not be undone or redone. Try again.');
+  }
+}
+
 export function undo(): void {
   cancelSourceConversion();
   const s = useEditor.getState();
   const prev = s.past.at(-1);
-  if (!prev || !s.doc || s.editing) return;
+  if (!prev || !s.doc || s.editing || s.outsideBusy) return;
   if (isOutside(prev)) {
-    prev.undo();
-    useEditor.setState({ past: s.past.slice(0, -1), future: [prev, ...s.future], coalesce: null });
+    runOutside(prev, 'undo', s);
     return;
   }
   const slideId = findSlide(prev, s.slideId) ? s.slideId : (slidesOf(prev)[0]?.id ?? null);
@@ -543,10 +572,9 @@ export function redo(): void {
   cancelSourceConversion();
   const s = useEditor.getState();
   const next = s.future[0];
-  if (!next || !s.doc || s.editing) return;
+  if (!next || !s.doc || s.editing || s.outsideBusy) return;
   if (isOutside(next)) {
-    next.redo();
-    useEditor.setState({ past: [...s.past, next], future: s.future.slice(1), coalesce: null });
+    runOutside(next, 'redo', s);
     return;
   }
   const slideId = findSlide(next, s.slideId) ? s.slideId : (slidesOf(next)[0]?.id ?? null);
@@ -562,7 +590,7 @@ export function redo(): void {
 }
 
 /** A change made outside the presentation, now (Session 55, Part 17a): one step for Undo, nothing left to redo. */
-export function noteOutside(step: { undo: () => void; redo: () => void }): void {
+export function noteOutside(step: Pick<OutsideStep, 'undo' | 'redo'>): void {
   const s = useEditor.getState();
   useEditor.setState({
     past: [...s.past.slice(1 - HISTORY), { outside: true, ...step }],
