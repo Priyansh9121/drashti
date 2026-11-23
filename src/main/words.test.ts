@@ -33,7 +33,6 @@ describe('the show actions’ names', () => {
   });
 });
 
-
 describe('Save Diagnostics’ submenu name', () => {
   it('names the menu without an ellipsis in notices and the Manual heading', () => {
     const paths = [

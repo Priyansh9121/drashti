@@ -1190,7 +1190,7 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
       restored: false,
       code: 'copy-failed',
       message:
-        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).',
+        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again; if it stops again, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).',
     };
   }
 }
