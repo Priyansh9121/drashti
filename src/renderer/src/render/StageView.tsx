@@ -233,8 +233,7 @@ function StageFit({
       if (
         next === words &&
         !b.hasAttribute('data-stage-fit') &&
-        !next?.querySelector('[data-prepared-translation]') &&
-        (!next?.style.top || next.style.top === '0px')
+        !next?.querySelector('[data-prepared-translation]')
       )
         return;
       words = next;

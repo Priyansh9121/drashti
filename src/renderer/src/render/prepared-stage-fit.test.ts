@@ -27,7 +27,18 @@ function layout(sourceLines: number, translatedLines: number, fontSize = 100) {
       500 / (sourceLines + (!attached || target.style.display === 'none' ? 0 : translatedLines)),
     );
   };
-  return { root, box, fitOriginal, target, top, sourceSize: () => sourceSize, fits: () => fits };
+  return {
+    removeTranslation: () => {
+      attached = false;
+    },
+    root,
+    box,
+    fitOriginal,
+    target,
+    top,
+    sourceSize: () => sourceSize,
+    fits: () => fits,
+  };
 }
 
 describe('prepared stage words preserve the original fit and anchor', () => {
