@@ -2,6 +2,8 @@ import { translationsUnchanged } from '../../shared/prepared-translation-guard';
 import type { InsertPdfPagesResult, PdfPageSource, LinkPdfPageResult } from '../../shared/slide-edit';
 import type { IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
+import { keepPdfPages } from './pdf-page-copies';
+import { PDF_PAGES_ON_AIR } from '../../shared/pdf-work';
 import { IPC } from '../../shared/ipc';
 import { CUT, type Transition } from '../../shared/model';
 import { idSchema, transitionSchema } from '../../shared/model-schema';
@@ -62,6 +64,11 @@ export interface SlidesIpcDeps {
    * listed for Insert pages.
    */
   mayPrepareSource?: (event: IpcMainInvokeEvent, presentationId?: string) => boolean;
+  /**
+   * The stream on air or recording: Extract pages… to a new presentation, and its Undo and Redo, wait (PDF_PAGES_ON_AIR);
+   * opening, preparing and saving PDF pages go on.
+   */
+  onAir?: () => boolean;
   /** Only Main selects files through the native PDF dialog. */
   choosePdfFile?: (event: IpcMainInvokeEvent) => Promise<string | null>;
 }
@@ -112,6 +119,7 @@ export function registerSlidesIpc({
   mayPrepareSource = () => false,
   waitForPdfIdle = (signal) => Promise.resolve(!signal.aborted),
   showBusy = () => false,
+  onAir = () => false,
   choosePdfFile,
 }: SlidesIpcDeps): SlidesIpcController {
   const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
@@ -475,6 +483,41 @@ export function registerSlidesIpc({
     const checked = validateDocument(presentationId, doc, stamp, false);
     return checked.ok ? { ok: true, doc: checked.doc } : { ok: false, message: checked.message };
   };
+
+  const extracted = new Map<string, number>();
+  handle(IPC.library.extractPdfPages, (e, id, doc, stamp, rawPages) => {
+    if (!fromOperator(e) || !mayPrepareSource(e, typeof id === 'string' ? id : '')) return onlyOperator;
+    if (onAir()) return { ok: false as const, message: PDF_PAGES_ON_AIR };
+    const pages = z.array(z.number().int().min(0).max(399)).min(1).max(400).safeParse(rawPages);
+    if (!pages.success) return { ok: false as const, message: 'Choose the PDF pages to extract.' };
+    const checked = validateDocument(id, doc, stamp, false);
+    if (!checked.ok) return { ok: false as const, message: checked.message };
+    try {
+      const copy = keepPdfPages(db, presentations, checked.doc, pages.data);
+      extracted.set(copy.id, e.sender.id);
+      changed([copy.id]);
+      return { ok: true as const, ...copy };
+    } catch {
+      return {
+        ok: false as const,
+        message: 'Those PDF pages could not be extracted. Choose their page numbers again.',
+      };
+    }
+  });
+  handle(IPC.library.showExtractedPdf, (e, id, visible) => {
+    if (
+      !fromOperator(e) ||
+      !mayPrepareSource(e) ||
+      onAir() ||
+      typeof id !== 'string' ||
+      extracted.get(id) !== e.sender.id ||
+      typeof visible !== 'boolean'
+    )
+      return false;
+    const ids = visible ? presentations.restore([id]) : presentations.remove([id]);
+    changed(ids);
+    return ids.length === 1;
+  });
 
   handle(IPC.library.saveSlides, (e, presentationId, edited, stamp, force): SaveSlidesResult => {
     if (!fromOperator(e)) return onlyOperator;

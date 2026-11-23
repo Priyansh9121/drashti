@@ -12,6 +12,8 @@ Everything here is **local only**: requests are refused from addresses outside t
 
 **Import from a Link on the computer.** The operator’s desktop bridge checks a YouTube or Dropbox link for the small window, then Download supplies the edited name and chosen save folder. It saves and imports the media into the open playlist; Audio takes a YouTube video’s MP3. The remembered caption tick saves creator captions and the original automatic language as SRT files beside the media, plus a learning copy and `captions.json` in the chosen captions folder. Checks, downloads and captions wait on air or while recording. These desktop actions are handled by `links.look`, `links.pickFolder` (downloads or captions), `links.start` (name and captions options) and `links.view`; their detailed file contract is in README, “Import from a Link”.
 
+**PDF mark clicks** (alpha.21). The desktop editor keeps each mark’s optional click order with its shape. Slide composition uses the existing deck motion timeline, so the existing Next and Back commands and state feed carry each mark’s step to screens, nodes and phones. There is no new HTTP authoring route. PDF copies show all visible marks together.
+
 ## Basics
 
 - **Address:** `http://<computer>:8740` (the port is set in the Phones panel). Examples below use
@@ -622,6 +624,10 @@ Strict POSIX preparation establishes its priority inside a small system-shell la
 ### PDF parts in the slide editor
 
 In Pro Mode, `slideEditor.makeSlide` accepts the editor snapshot and stamp, a PDF `slideId`, a normalized `part`, and `place` (`playlist` or `library`). The optional `parts` array collects 1 to 400 `{ slideId, part }` entries in reading order. Without it the single-page action stays available. Main validates every page before drawing, prints one page at a time and draws each part at the hall's picture size. Collected pictures are limited to 128 MB. It keeps one presentation only after every part succeeds; the operator receives one `slideEditor.slideMade` event for Undo of the presentation and its playlist row. The original PDF stays unchanged. No batch is made while the stream is on air or recording.
+
+### PDF pages and hand-outs (alpha.21)
+
+The desktop editor offers page extraction, single-page replacement, splitting before a page, and one hand-out master. These are desktop actions, with no new network route. Main validates the entire editor document and its opened stamp before extracting selected zero-based page indices; the indices must be unique, increasing, in range, and at most 400. New presentations receive fresh stored identities while retaining their original page references. New PDF files use exclusive publication and cannot replace existing outputs or retained originals. On a volume without hard links (exFAT or FAT32 USB sticks, some network shares) a new PDF file is published as an exclusive copy instead, and its Undo and Redo check its bytes, size and times rather than its file number. Undo and Redo belong to the creating editor; a file changed elsewhere is left intact. The hand-out master resolves numbers against each current page order in the editor, stored presentation and PDF copy. While the stream is on air or recording, including its start and stop, `library.extractPdfPages`, `library.showExtractedPdf`, `library.showExtractedPdfCopy` and `library.exportPdf` with `pages` are refused with their own words (`library.pdfWorkAllowed` answers `false`), and an extraction to a new PDF being printed stops; a whole `library.exportPdf`, `slideEditor.makeSlide` without `parts`, `library.saveSlides` and page preparation go on. Printing remains at the lowest priority.
 
 ## Desktop notices and the local log
 
