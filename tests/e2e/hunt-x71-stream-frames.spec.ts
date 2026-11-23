@@ -73,6 +73,13 @@ test('H6 G-E1: encoder frames stay lit through owner-shaped video, dissolve, dec
     expect(started.ok).toBe(true);
     await expect.poll(async () => (await frames(program)).length).toBeGreaterThan(0);
     const first = (await frames(program))[0]?.t ?? 0;
+    const phaseFrames: Record<string, number> = {};
+    const captured = async (phase: string) => {
+      const before = (await frames(program)).length;
+      await expect.poll(async () => (await frames(program)).length).toBeGreaterThanOrEqual(before + 2);
+      phaseFrames[phase] = (await frames(program)).length;
+    };
+    await captured('video');
     const slides = await makeSlides(
       win,
       'Placeholder dissolve',
@@ -85,8 +92,10 @@ test('H6 G-E1: encoder frames stay lit through owner-shaped video, dissolve, dec
     await goLive(win, slides, 0);
     await goLive(win, slides, 1);
     await expect(program.locator('[data-layer="slide"][data-fading="true"]')).toHaveCount(0);
+    await captured('dissolve');
     await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: green } });
     await expect(program.getByTestId('pip-box')).toBeVisible();
+    await captured('pip');
     await goLive(win, deck, 0);
     await dispatch(win, { type: 'next' });
     await expect
@@ -99,10 +108,11 @@ test('H6 G-E1: encoder frames stay lit through owner-shaped video, dissolve, dec
           )?.step,
       )
       .toBe(1);
+    await captured('deck-click');
     await expect.poll(async () => (await frames(program)).length).toBeGreaterThan(100);
     const seen = (await frames(program)).filter((f) => f.t >= first);
     console.log(
-      `HUNT-x71 G-E1 frames=${String(seen.length)} minLight=${String(Math.min(...seen.map((f) => f.mean)))} black=${String(seen.filter((f) => f.mean < 0.02).length)}`,
+      `HUNT-x71 G-E1 phases=${JSON.stringify(phaseFrames)} frames=${String(seen.length)} minLight=${String(Math.min(...seen.map((f) => f.mean)))} black=${String(seen.filter((f) => f.mean < 0.02).length)}`,
     );
     expect(
       seen.filter((f) => f.mean < 0.02),
