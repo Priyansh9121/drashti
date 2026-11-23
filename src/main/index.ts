@@ -5387,9 +5387,9 @@ function start(): void {
       isLetIn() &&
       !simpleAccess() &&
       mode === 'pro' &&
-      !(streaming.inUse() || testOnAir) &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
+    onAir: () => streaming.inUse() || testOnAir,
     stamp: (presentationId) => {
       const row = libraryDb
         .prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
@@ -5423,7 +5423,7 @@ function start(): void {
     return { playlist: openPlaylistForSlides() };
   });
   const stopPdfOnAir = () => {
-    if (streaming.inUse() || testOnAir) pdfEditor.cancel();
+    if (streaming.inUse() || testOnAir) pdfEditor.cancelBatch();
   };
   pdfReadWaits.add(stopPdfOnAir);
   stops.add('PDF off-air guard', () => {

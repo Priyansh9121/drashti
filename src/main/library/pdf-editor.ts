@@ -27,6 +27,8 @@ export interface PdfEditorDeps {
     stamp: string,
   ): { ok: true; doc: EditDoc } | { ok: false; message: string };
   chooseOutput(event: IpcMainInvokeEvent, name: string): Promise<string | null>;
+  /** Whether the stream is on air or recording. */
+  onAir?: () => boolean;
   /** Make a slide… (alpha.21): the part of a one-page PDF just printed here, drawn at the hall's picture size. */
   drawPart?: (pdf: Uint8Array, part: PagePart, signal: AbortSignal) => Promise<PartPicture>;
   /** Make a slide…: the picture kept in the library as a one-slide presentation, in the open playlist when asked. */
@@ -68,7 +70,7 @@ export class PdfEditor {
     rawDoc: unknown,
     rawStamp: unknown,
   ): Promise<PdfCopyResult> {
-    if (this.stopped || this.active || !this.deps.allowed(event))
+    if (this.stopped || this.active || !this.deps.allowed(event) || this.onAir())
       return Promise.resolve(
         failed('A PDF copy is already being made, or this editor is no longer available.'),
       );
@@ -90,6 +92,7 @@ export class PdfEditor {
       !this.stopped &&
       !event.sender.isDestroyed() &&
       this.deps.allowed(event) &&
+      !this.onAir() &&
       this.deps.stamp(id.data) === rawStamp;
     const abort = () => controller.abort();
     event.sender.once('destroyed', abort);
@@ -203,7 +206,7 @@ export class PdfEditor {
   makeSlide(event: IpcMainInvokeEvent, raw: unknown): Promise<MakeSlideResult> {
     const drawPart = this.deps.drawPart;
     const keepSlide = this.deps.keepSlide;
-    if (this.stopped || this.active || !drawPart || !keepSlide || !this.deps.allowed(event))
+    if (this.stopped || this.active || !drawPart || !keepSlide || !this.deps.allowed(event) || this.onAir())
       return Promise.resolve(
         failed('Drashti is making a PDF copy or a slide already: try again in a moment.'),
       );
@@ -233,6 +236,7 @@ export class PdfEditor {
       !this.stopped &&
       !event.sender.isDestroyed() &&
       this.deps.allowed(event) &&
+      !this.onAir() &&
       this.deps.stamp(presentationId) === stamp;
     const abort = () => controller.abort();
     event.sender.once('destroyed', abort);
@@ -278,6 +282,15 @@ export class PdfEditor {
     });
     this.active = { abort: controller, done: done.then((made) => (made.ok ? { ok: true, name } : made)) };
     return done;
+  }
+
+  private onAir(): boolean {
+    return this.deps.onAir?.() === true;
+  }
+
+  /** The stream went on air or started recording. */
+  cancelBatch(): void {
+    this.cancel();
   }
 
   cancel(): void {

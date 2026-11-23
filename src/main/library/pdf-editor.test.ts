@@ -288,14 +288,21 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       }),
     );
     let allowed = true;
+    // The stream on air or recording (Main's streaming.inUse()), and where a PDF copy is saved when one is asked for.
+    let onAir = false;
+    let output: string | null = null;
     const editor = new PdfEditor({
       db: world.db,
       mediaDir: world.mediaDir,
       session,
       allowed: () => allowed,
+      onAir: () => onAir,
       stamp: (id) => stamp(world, id),
       validate: (...args) => slides.documentForExport(...args),
-      chooseOutput: () => Promise.reject(new Error('Make a slide never asks for a file.')),
+      chooseOutput: () =>
+        output === null
+          ? Promise.reject(new Error('Make a slide never asks for a file.'))
+          : Promise.resolve(output),
       drawPart,
       keepSlide,
     });
@@ -318,6 +325,7 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       before,
       kept,
       doc: result.doc,
+      stamp: result.stamp,
       editor,
       event,
       run,
@@ -328,6 +336,14 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       request,
       refuse: () => {
         allowed = false;
+      },
+      /** The stream goes on air (or starts recording), or comes off. */
+      goOnAir: (on = true) => {
+        onAir = on;
+      },
+      /** Save a PDF copy… is answered with this file. */
+      saveTo: (file: string) => {
+        output = file;
       },
       clean: async () => {
         try {
@@ -531,6 +547,91 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       t.drawPart.mockResolvedValueOnce({ ok: false, message: 'The page could not be drawn.' } as never);
       const made = await t.editor.makeSlide(t.event, t.request());
       expect(made).toEqual({ ok: false, message: 'The page could not be drawn.' });
+      expect(t.keepSlide).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+
+  // Main's off-air guard (x82's batch, 47412e65, reviewed in a21-review-x82): only a batch of parts waits for the stream
+  // to be off air; the single Make a slide… and Save a PDF copy… go on during a show, as they did before the batch.
+  it('the single Make a slide and Save a PDF copy go on while the stream is on air or recording, and a stream starting does not stop them', async () => {
+    const t = await opened();
+    try {
+      t.goOnAir();
+      expect(await t.editor.makeSlide(t.event, t.request())).toMatchObject({ ok: true });
+      // The stream starts while one is being made: Main's off-air hook stops a batch only.
+      t.goOnAir(false);
+      t.drawPart.mockImplementationOnce(() => {
+        t.goOnAir();
+        t.editor.cancelBatch();
+        return Promise.resolve({ ok: true as const, png: t.png });
+      });
+      expect(await t.editor.makeSlide(t.event, t.request())).toMatchObject({ ok: true });
+      // Save a PDF copy…, on air, and with the stream starting while it is printed.
+      t.saveTo(join(t.world.root, 'Placeholder copy on air.pdf'));
+      expect(await t.editor.export(t.event, t.imported.id, t.doc, t.stamp)).toEqual({
+        ok: true,
+        name: 'Placeholder copy on air.pdf',
+      });
+      t.goOnAir(false);
+      t.run.mockImplementationOnce(() => {
+        t.goOnAir();
+        t.editor.cancelBatch();
+        return Promise.resolve(t.printed);
+      });
+      t.saveTo(join(t.world.root, 'Placeholder copy as the stream starts.pdf'));
+      expect(await t.editor.export(t.event, t.imported.id, t.doc, t.stamp)).toEqual({
+        ok: true,
+        name: 'Placeholder copy as the stream starts.pdf',
+      });
+    } finally {
+      await t.clean();
+    }
+  });
+
+  it('a batch of parts is refused while the stream is on air or recording, in its own words, and nothing is drawn', async () => {
+    const t = await opened(true);
+    try {
+      const [first, second] = t.doc.groups.flatMap((g) => g.slides);
+      if (!first || !second) throw new Error('The generated PDF needs two pages.');
+      const parts = [
+        { slideId: first.id, part: { x: 0, y: 0, w: 1, h: 0.5 } },
+        { slideId: second.id, part: { x: 0, y: 0.5, w: 1, h: 0.5 } },
+      ];
+      t.goOnAir();
+      expect(await t.editor.makeSlide(t.event, t.request({ parts }))).toEqual({
+        ok: false,
+        message:
+          'No batch is made while the stream is on air or recording: make the slides once it has stopped.',
+      });
+      expect(t.run).not.toHaveBeenCalled();
+      expect(t.drawPart).not.toHaveBeenCalled();
+      expect(t.keepSlide).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+
+  it('a batch stops when the stream goes on air while it is made, says why, and keeps nothing', async () => {
+    const t = await opened(true);
+    try {
+      const [first, second] = t.doc.groups.flatMap((g) => g.slides);
+      if (!first || !second) throw new Error('The generated PDF needs two pages.');
+      const parts = [
+        { slideId: first.id, part: { x: 0, y: 0, w: 1, h: 0.5 } },
+        { slideId: second.id, part: { x: 0, y: 0.5, w: 1, h: 0.5 } },
+      ];
+      t.drawPart.mockImplementationOnce(() => {
+        t.goOnAir();
+        t.editor.cancelBatch();
+        return Promise.resolve({ ok: true as const, png: t.png });
+      });
+      expect(await t.editor.makeSlide(t.event, t.request({ parts }))).toEqual({
+        ok: false,
+        message:
+          'The slides were not made: the stream went on air or started recording. Make them again once it has stopped.',
+      });
       expect(t.keepSlide).not.toHaveBeenCalled();
     } finally {
       await t.clean();
