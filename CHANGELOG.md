@@ -8,6 +8,7 @@ Update after a sabha, and update Main and nodes together.
 
 - Read Words from a Page… (Library, New…): the Gujarati words of a scanned page, a picture or a PDF’s pages come into the words box, read on this computer with no internet, to read over before Make slides.
 - The operator window: the LIVE block (the picture, Back and Next, the levels) stands still while what is under it scrolls, in Pro and Simple Mode; at their narrowest the side columns still show the Wallpapers heading, a removal’s undo note and Back and Next whole; a notice’s Report this… and Dismiss are easier to hit.
+- Everything fits at its smallest size: a window’s or dialog’s title wraps instead of being cut, the QR code window’s words show whole, and the slide editor’s tools wrap in a small window.
 - Playback: a paused video’s row is no longer cramped (no Paused badge: its Play button says so, and the time bar keeps room for its times). Last 10 s is gone everywhere; a video’s last 10 seconds still turn amber, and the stage’s Video ends in stays.
 - Screens: what Drashti draws at the start to make the graphics chip ready is gone before a screen starts the show, so its first picture is whole.
 - Importing a picture or a video never waits on this computer’s answer about HEVC video: the answer now always comes.
