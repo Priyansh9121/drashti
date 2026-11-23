@@ -251,9 +251,11 @@ function QrSlideForm() {
               className="h-[180px] w-[180px] rounded-md border border-dashed border-line"
             />
           )}
+          {/* The words whole, as the slide has them (shrunk to fit there; alpha.21's fit pass: a long link was cut
+              after four lines here, and a link's unbroken words ran past the box). */}
           {fits && wordsUnder && (
             <figcaption
-              className="line-clamp-4 max-w-full text-center text-sm break-words text-white"
+              className="max-w-full text-center text-sm [overflow-wrap:anywhere] text-white"
               data-testid="qr-words"
             >
               {words}
