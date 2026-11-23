@@ -42,7 +42,9 @@ function ScreensNow() {
   const look = groupLookIn(state?.look, groupId);
   // This device's own zoom is the whole difference from the kept look (D2), so the live zoom is left out.
   const drawn = useMemo(() => (state ? { ...state, liveZoom: null } : null), [state]);
-  return drawn ? <Scene state={drawn} canvas={CANVAS} scaling="fit" look={look} /> : null;
+  return drawn ? (
+    <Scene state={drawn} canvas={CANVAS} scaling="fit" look={look} translationGroupId={groupId} />
+  ) : null;
 }
 
 /** What the screens show now, larger and sharp, zoomed on this device; and (D2) put on the screens. */

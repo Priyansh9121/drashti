@@ -9,6 +9,8 @@
  * picture, although the page had sent its first frame at once.
  */
 
+import type { WorkerStatus } from './worker/protocol';
+
 /** No picture from the stream's page for this long, while wanted: it is given its port again. */
 export const NO_PICTURE_MS = 5000;
 /** The longest wait between two new ports. */
@@ -19,12 +21,29 @@ export class PictureWatch {
   /** When this worker's first status with its encoder chosen came (null: not yet). */
   private chosenAt: number | null = null;
   private tries = 0;
+  /** The worker's encoder stopped and its words stand ("Trying to start it again"; x71's take). */
+  private restarting = false;
 
   constructor(private readonly firstWaitMs = NO_PICTURE_MS) {}
 
   /** A new worker started (it chooses its encoder afresh). */
   newWorker(): void {
     this.chosenAt = null;
+    this.restarting = false;
+  }
+
+  /**
+   * The worker's encoder stopped and another starts (its words in the worker's error, an encoder chosen): true once,
+   * as those words come, for the page to be given its port again at once. A page given a new port sends its newest
+   * picture straight away (program/capture.ts), the fresh picture the next encoder's words wait for: a still slide sends
+   * no other. It also brings back a capture or port that went with the encoder. Once until the words go, so an encoder
+   * that keeps failing to start does not have the page given a port each time.
+   */
+  encoderRestarting(status: Pick<WorkerStatus, 'encoder' | 'encoding' | 'error'>): boolean {
+    const now = status.encoder !== null && status.error !== null;
+    const began = now && !this.restarting;
+    this.restarting = now;
+    return began;
   }
 
   /** The stream's page was given a new port to the encoder, now. */
@@ -53,4 +72,23 @@ export class PictureWatch {
     this.tries++;
     return wait;
   }
+}
+
+/**
+ * What the watch hears from a worker's status: `wanted` (live or recording wanted, the stream's page ready) and `now`
+ * are Main's own. Only a lasting fault holds the watch: no encoder works on this computer. An encoder starting again
+ * (x71: its words are in the error until a fresh picture is encoded) is none: the page may need its port again with it.
+ */
+export function heardFrom(
+  status: Pick<WorkerStatus, 'encoder' | 'encoding' | 'error'>,
+  wanted: boolean,
+  now: number,
+): Parameters<PictureWatch['heard']>[0] {
+  return {
+    wanted,
+    encoderChosen: status.encoder !== null,
+    encoding: status.encoding,
+    failed: status.encoder === null && status.error !== null,
+    now,
+  };
 }

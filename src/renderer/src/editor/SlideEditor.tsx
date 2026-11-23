@@ -24,6 +24,7 @@ import {
   ArrowLeftRight,
   Download,
   LayoutTemplate,
+  Languages,
   ListPlus,
   Palette,
   Redo2,
@@ -71,6 +72,8 @@ import {
 import { ArrangeGroup, DesignGroup, InsertGroup, MotionGroup, SlidesGroup } from './Ribbon';
 import { activeText, finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
 import { WordsGroup } from './WordsGroup';
+import { TranslationDialog } from './TranslationDialog';
+import { useMode } from '../operator/mode-store';
 import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
@@ -122,6 +125,8 @@ export function SlideEditor({ platform }: { platform: string }) {
 const renderSlide = renderEditedSlide;
 
 function Editor({ platform, name }: { platform: string; name: string }) {
+  const translationReadOnly = useMode((state) => state.mode !== 'pro');
+  const [translating, setTranslating] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const sourceWarningId = useId();
@@ -433,6 +438,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         void window.drashti.slideEditor.showKey(e.key);
         return;
       }
+      if (translating) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -481,7 +487,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mac, saveWhenReady]);
+  }, [mac, saveWhenReady, translating]);
 
   return (
     <div
@@ -536,6 +542,22 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             <span className={WORDS_WHEN_ROOM}>Redo</span>
           </Button>
         </Tooltip>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!doc}
+          icon={Languages}
+          aria-label={translationReadOnly ? 'Translation status…' : 'Translate…'}
+          title={translationReadOnly ? 'Translation status…' : 'Translate…'}
+          onClick={() => {
+            finishTextEditing();
+            setTranslating(true);
+          }}
+        >
+          <span className={WORDS_WHEN_ROOM}>
+            {translationReadOnly ? 'Translation status…' : 'Translate…'}
+          </span>
+        </Button>
         {!pdfRowVisible && (
           <Button
             size="sm"
@@ -582,6 +604,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           {dirty ? 'Save' : 'Done'}
         </Button>
       </header>
+      {translating && (
+        <TranslationDialog readOnly={translationReadOnly} onClose={() => setTranslating(false)} />
+      )}
       {pdfPending === 'save-copy' && !pdfRowVisible && (
         <p
           className="border-b border-line px-3 py-1 text-xs text-muted"

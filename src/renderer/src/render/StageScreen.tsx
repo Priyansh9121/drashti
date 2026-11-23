@@ -1,3 +1,8 @@
+import {
+  preparedOutputState,
+  translationBottom,
+  translationTop,
+} from '../../../shared/prepared-output-state';
 import type { EngineState } from '../../../shared/engine/state';
 import type { LiveGroupLook } from '../../../shared/looks';
 import type { Size } from '../../../shared/scaling';
@@ -47,11 +52,13 @@ function StageOver({ state, canvas, banner }: { state: EngineState; canvas: Size
  * browser and the operator's stage preview all draw it with this.
  */
 export function StageScreen({
-  state,
+  state: sourceState,
   look,
   canvas,
   clockStyle,
   hall,
+  translationOutputId,
+  translationGroupId,
 }: {
   state: EngineState;
   look: LiveGroupLook;
@@ -64,7 +71,23 @@ export function StageScreen({
    * (Session 53; never the Standard stage screen, screensStateNote), and left out while not known.
    */
   hall?: HallPicture | null;
+  translationOutputId?: string;
+  translationGroupId?: string | null;
 }) {
+  const state = preparedOutputState(sourceState, {
+    ...(translationGroupId ? { groupId: translationGroupId } : {}),
+    ...(translationOutputId ? { outputId: translationOutputId } : {}),
+    blockedAbove: translationTop(
+      sourceState,
+      sourceState.layers.slide?.slide.height ?? canvas.height,
+      'stage',
+    ),
+    blockedBelow: translationBottom(
+      sourceState,
+      sourceState.layers.slide?.slide.height ?? canvas.height,
+      'stage',
+    ),
+  });
   const shows = stageShows(state.stage);
   if (shows === 'audience')
     return (

@@ -1,9 +1,11 @@
+import { redactNames } from './library-redaction';
+
 /*
  * A line in the log for every show command and every operator request (alpha.21, logs for 100+ installs (a), the
  * owner's "for all users there should be a log of everythiing as we expect more than 100, if someone has issue, i
  * should identify and troubleshoot based in logs"): its name, its ids, numbers and choices, and what came of it, from
  * the operator window, a phone, Companion, OSC or a script alike (the engine hears them all); and every notice the
- * operator is shown. Never content: no words, titles or names (a notice's names in quotes are blanked). A burst of
+ * operator is shown. Never content: no words, titles or names (a notice’s library names and names in quotes are blanked). A burst of
  * the same one (a slider, a drag) is one line, then one line a second at most counting the rest. Lines are written a
  * turn after the command was answered, together, never in its way.
  */
@@ -11,6 +13,8 @@
 export interface CommandLogDeps {
   /** One line into the log (log.info). */
   write(line: string): void;
+  /** Read at each notice, so names added or renamed since the last notice are protected too. */
+  libraryNames(): readonly string[];
   now(): number;
   setTimer(ms: number, run: () => void): () => void;
 }
@@ -174,9 +178,16 @@ export class CommandLog {
     this.heard(`Request: ${channel}`, `: ${said}`, said);
   }
 
-  /** A notice the operator was shown, its names in quotes blanked. */
+  /** A notice the operator was shown: library names blanked as in diagnostics, then any names in quotes. */
   notice(text: string): void {
-    this.add(`Notice: ${blankQuoted(text.replace(/\s+/gu, ' ').trim())}`);
+    let safe: string;
+    try {
+      safe = redactNames(text, this.d.libraryNames());
+    } catch {
+      // A closed or unreadable library must never let its names into the raw log.
+      safe = '[words unavailable]';
+    }
+    this.add(`Notice: ${blankQuoted(safe.replace(/\s+/gu, ' ').trim())}`);
   }
 
   /** Every line waiting, written now (the window closing, Drashti quitting). */
