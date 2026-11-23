@@ -73,11 +73,20 @@ export interface OwnModelCaptionAiOptions {
 
 /**
  * Caption AI on for the speaker's language when it has a model of its own (Route W on Drashti's whisper engine);
- * "as heard", Sanskrit and a language without one keep today's captions. Red: not built yet.
+ * "as heard", Sanskrit and a language without one keep today's captions.
  */
-export function ownModelCaptionAi(_o: OwnModelCaptionAiOptions): {
+export function ownModelCaptionAi(o: OwnModelCaptionAiOptions): {
   on(): boolean;
   recognizer(language: SpeechLanguage): CaptionRecognizer | null;
 } {
-  return { on: () => false, recognizer: () => null };
+  return {
+    on: () => {
+      const language = o.language();
+      return language !== 'auto' && o.ownModel(language) !== null;
+    },
+    recognizer: (language) => {
+      const own = o.ownModel(language);
+      return own ? { route: 'whisper', modelId: own.id, engine: o.engine } : null;
+    },
+  };
 }

@@ -305,6 +305,8 @@ export class CaptionsService {
     const s = parseCaptionSettings(settings);
     this.deps.repo.set(s);
     this.hub.setLanguage(s.language);
+    // Caption AI follows the speaker's language at once (a language with its own model, or not).
+    this.paths?.reselect();
     this.feed.refresh();
     this.tell();
     return this.view();
@@ -532,6 +534,8 @@ export class CaptionsService {
   /** Listening starts again (a model or the timing changed), when it is on. */
   private relisten(): void {
     if (!this.switch.on || this.closed) return;
+    // A language's own model chosen or taken away: caption AI or today's captions take over (listening again).
+    if (this.paths?.reselect()) return;
     this.hub.setOn(false);
     this.hub.setOn(true);
   }

@@ -124,8 +124,11 @@ export interface CaptionPath {
 }
 
 export interface CaptionPaths extends CaptionPath {
-  /** The admin changed which one is chosen: while captions run, the other one takes over at once. */
-  reselect(): void;
+  /**
+   * What is chosen may have changed (the speaker's language, its own model, the admin's switch): while captions run,
+   * the other one takes over at once. True when it did (listening started again).
+   */
+  reselect(): boolean;
 }
 
 /**
@@ -156,14 +159,15 @@ export function chooseCaptionPath(
       (running ?? chosen()).refresh();
     },
     reselect() {
-      if (!running) return;
+      if (!running) return false;
       const next = chosen();
-      if (next === running) return;
+      if (next === running) return false;
       running.stop();
       running = null;
       listenAgain();
       running = next;
       next.start();
+      return true;
     },
   };
 }
