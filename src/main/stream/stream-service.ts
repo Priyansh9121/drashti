@@ -644,7 +644,7 @@ export class StreamService {
     const win = this.deps.createStreamSound();
     this.streamSound = win;
     this.soundReady = false;
-    this.deps.log('info', "The stream's sound page opens");
+    this.deps.log('info', 'The stream’s sound page opens');
     win.webContents.on('did-finish-load', () => {
       if (this.streamSound !== win) return;
       this.soundReady = true;
@@ -666,10 +666,10 @@ export class StreamService {
         this.inputs = { ...this.inputs, sound: 'failed' };
         this.deps.log(
           'warn',
-          `The stream's sound page stopped (${details.reason}) for the sixth time in a minute: it stays stopped until Try again`,
+          `The stream’s sound page stopped (${details.reason}) for the sixth time in a minute: it stays stopped until Try again`,
         );
       } else {
-        this.deps.log('warn', `The stream's sound page stopped (${details.reason}); starting it again`);
+        this.deps.log('warn', `The stream’s sound page stopped (${details.reason}); starting it again`);
         setTimeout(() => {
           this.updateSound();
         }, 500);
