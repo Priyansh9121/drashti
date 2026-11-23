@@ -9,6 +9,7 @@ import {
 } from '../../shared/captions';
 import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
 import type { Heard } from '../../shared/speech';
+import { CaptionPrototype } from './caption-prototype';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
 import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
@@ -39,6 +40,8 @@ export interface CaptionsServiceDeps {
   /** The engine's setCaptions. */
   show: (captions: CaptionsShown | null) => void;
   onFinalPhrase?: (phrase: Heard) => void;
+  /** Separate private operator review; never included in the existing status. */
+  prototypeChanged?: (review: CaptionReview) => void;
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
@@ -47,6 +50,7 @@ export interface CaptionsServiceDeps {
 export class CaptionsService {
   readonly hub: SpeechHubControl;
   private readonly feed: CaptionsFeed;
+  private readonly prototype: CaptionPrototype;
   private switch: CaptionsSwitch;
   private download: CaptionsDownload;
   private downloading: { controller: AbortController; promise: Promise<void> } | null = null;
@@ -56,6 +60,11 @@ export class CaptionsService {
   private telling: NodeJS.Timeout | null = null;
 
   constructor(private readonly deps: CaptionsServiceDeps) {
+    this.prototype = new CaptionPrototype({
+      settings: () => this.settings(),
+      show: deps.show,
+      changed: (review) => deps.prototypeChanged?.(review),
+    });
     this.switch = readCaptionsSwitch(deps.userData, deps.platform, deps.arch);
     this.hub = createSpeechHub({
       engine: {
@@ -101,10 +110,24 @@ export class CaptionsService {
         };
   }
 
-  prototypeView(): CaptionReview { return { on: false, sessionId: null, current: null, previous: null, busy: false, omitted: 0 }; }
-  setPrototypeOn(_on: boolean): void {}
-  advancePrototype(): void {}
-  correctPrototype(_correction: CaptionCorrection): boolean { return false; }
+  prototypeView(): CaptionReview { return this.prototype.view(); }
+
+  setPrototypeOn(on: boolean): void {
+    if (this.closed || on === this.prototype.view().on) return;
+    if (on) {
+      this.turnOff();
+      this.prototype.setOn(true);
+    } else {
+      this.prototype.setOn(false);
+      if (this.switch.on) void this.turnOn();
+    }
+    this.tell();
+  }
+
+  advancePrototype(): void { if (!this.closed) this.prototype.advance(); }
+  restartPrototype(): void { if (!this.closed && this.prototype.view().on) this.prototype.restart(); }
+  correctPrototype(correction: CaptionCorrection): boolean { return !this.closed && this.prototype.correct(correction); }
+  dismissPrototype(key: Omit<CaptionCorrection, 'text'>): boolean { return !this.closed && this.prototype.dismiss(key); }
 
   selectedModel(): CaptionModelId {
     return this.switch.model;
@@ -131,6 +154,7 @@ export class CaptionsService {
   }
 
   async setOn(on: boolean): Promise<CaptionsStatus> {
+    if (this.prototype.view().on) this.prototype.setOn(false);
     const next = { ...this.switch, on };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
@@ -158,7 +182,12 @@ export class CaptionsService {
 
   setSettings(settings: CaptionSettings): CaptionsStatus {
     const s = parseCaptionSettings(settings);
+    const languageChanged = s.language !== this.settings().language;
     this.deps.repo.set(s);
+    if (this.prototype.view().on) {
+      if (languageChanged) this.prototype.restart();
+      else this.prototype.refresh();
+    }
     this.hub.setLanguage(s.language);
     this.feed.refresh();
     this.tell();
@@ -184,6 +213,7 @@ export class CaptionsService {
 
   close(): void {
     this.closed = true;
+    this.prototype.setOn(false);
     this.downloading?.controller.abort();
     this.feed.stop();
     this.hub.close();
@@ -191,7 +221,7 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (this.deps.engineProblem() !== null) return;
+    if (this.closed || this.prototype.view().on || this.deps.engineProblem() !== null) return;
     this.hub.setOn(true);
     this.feed.start();
     await this.fetchModel();
@@ -212,6 +242,7 @@ export class CaptionsService {
     const id = this.switch.model;
     if (
       this.closed ||
+      this.prototype.view().on ||
       !this.switch.on ||
       this.streamInUse ||
       this.deps.engineProblem() !== null ||

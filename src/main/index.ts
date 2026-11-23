@@ -451,6 +451,7 @@ import type { StreamStatus } from '../shared/stream';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
+import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
@@ -3724,6 +3725,7 @@ function start(): void {
       engine.setCaptions(shown);
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
+    prototypeChanged: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
     changed: (view) => {
       videoCaptionBand = view.settings;
       engine.refreshVideoCaptions();
@@ -3737,6 +3739,7 @@ function start(): void {
     captionsStreamUseChanged = undefined;
     captions.close();
   });
+  registerCaptionPrototypeIpc({ fromOperator: e => fromOperator(e) && !simpleNow(), captions });
   handle(IPC.captions.view, () => captions.view());
   handle(IPC.captions.setOn, (e, on) =>
     fromOperator(e) && typeof on === 'boolean' ? captions.setOn(on) : captions.view(),

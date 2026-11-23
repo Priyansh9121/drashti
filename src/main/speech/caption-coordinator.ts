@@ -25,6 +25,7 @@ const identity = (a: Pick<CaptionRevision, 'sessionId' | 'phraseId' | 'revision'
 
 /** Bounded memory only. Source revisions and asynchronous replies have independent validation. */
 export class CaptionCoordinator {
+  private version = 0;
   private sessionId: string | null = null;
   private current: CaptionRevision | null = null;
   private previous: CaptionRevision | null = null;
@@ -100,6 +101,7 @@ export class CaptionCoordinator {
 
   view(): CaptionReview {
     return {
+      version: this.version,
       on: this.sessionId !== null,
       sessionId: this.sessionId,
       current: this.current ? { ...this.current } : null,
@@ -113,7 +115,7 @@ export class CaptionCoordinator {
     return this.visible && this.current !== null && this.current.status !== 'provisional' && identity(key, this.current);
   }
 
-  private notify(): void { this.options.changed(this.view()); }
+  private notify(): void { this.version += 1; this.options.changed(this.view()); }
 
   private clear(): void {
     this.visible = false;
@@ -164,7 +166,7 @@ export class CaptionCoordinator {
       for (let at = 0; at < letters.length; at += max) pieces.push(letters.slice(at, at + max).join(''));
       return pieces;
     });
-    this.options.show({ ...settings, language: translated ? clause.targetLanguage : clause.sourceLanguage, lines: captionLines(words, max) });
+    this.options.show({ ...settings, fit: true, language: translated ? clause.targetLanguage : clause.sourceLanguage, lines: captionLines(words, max) });
   }
 
   private pump(): void {

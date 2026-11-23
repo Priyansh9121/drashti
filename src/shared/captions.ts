@@ -64,6 +64,8 @@ export function parseCaptionSettings(raw: unknown): CaptionSettings {
  * sets it; null when nothing is being said (or captions are off). Never kept: the recovery file leaves it out.
  */
 export interface CaptionsShown {
+  /** Phase D clause bands fit their measured width; absent for the existing roll-up path. */
+  fit?: true;
   lines: string[];
   /** The spoken language. Sanskrit captions use Gujarati letters. */
   language: SpeechLanguage;

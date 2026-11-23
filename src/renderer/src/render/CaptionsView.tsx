@@ -1,7 +1,8 @@
-import { useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { CAPTION_TEXT_HEIGHT, type CaptionScreen } from '../../../shared/captions';
 import { captionBandFor } from '../../../shared/video-caption-display';
 import { useVideoCaptionClock } from './useVideoCaptionClock';
+import { fittedCaptionFont } from './caption-fit';
 import { useCaptionAvoidance } from './caption-avoidance';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Size } from '../../../shared/scaling';
@@ -28,6 +29,7 @@ export function CaptionsView({
   videoRoot?: RefObject<HTMLDivElement | null>;
 }) {
   const band = useRef<HTMLDivElement>(null);
+  const textBand = useRef<HTMLDivElement>(null);
   const actual = useVideoCaptionClock(state, screen, videoRoot);
   const captions = captionBandFor(state, screen, actual);
   useCaptionAvoidance(
@@ -39,13 +41,30 @@ export function CaptionsView({
     captions?.lines.join('\n') ?? '',
     state.layers,
   );
+  const px = Math.round(canvas.height * CAPTION_TEXT_HEIGHT[captions?.size ?? 'medium']);
+  useLayoutEffect(() => {
+    const element = textBand.current;
+    if (!captions?.fit || !element) return;
+    const fit = () => {
+      element.style.fontSize = `${String(px)}px`;
+      const lines = [...element.children] as HTMLElement[];
+      const widest = Math.max(0, ...lines.map(line => line.scrollWidth));
+      const available = Math.max(0, (lines[0]?.clientWidth ?? 0) - 1);
+      element.style.fontSize = `${String(fittedCaptionFont(px, available, widest))}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    // Observe the outside width; changing the text's font must not schedule a fitting loop.
+    if (band.current) observer.observe(band.current);
+    document.fonts.addEventListener('loadingdone', fit);
+    return () => { observer.disconnect(); document.fonts.removeEventListener('loadingdone', fit); };
+  }, [captions?.fit, captions?.lines.join('\n'), px, canvas.width]);
   if (!captions) return null;
   const baseLanguage = captions.language.split('-')[0];
   const language: Lang =
     captions.language === 'sa-Gujr'
       ? 'sa-gu'
       : ((['en', 'gu', 'hi', 'sa'] as const).find((lang) => lang === baseLanguage) ?? 'en');
-  const px = Math.round(canvas.height * CAPTION_TEXT_HEIGHT[captions.size]);
   const edge = Math.round(canvas.height * 0.04) + (captions.place === 'bottom' ? lift : 0);
   return (
     <div
@@ -68,6 +87,7 @@ export function CaptionsView({
       }}
     >
       <div
+        ref={textBand}
         style={{
           background: 'rgba(0, 0, 0, 0.75)',
           color: '#ffffff',
