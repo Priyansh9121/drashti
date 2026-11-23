@@ -15,6 +15,30 @@ export function cuePresentation(
   let finished = false;
   let stopped = false;
   let callback = 0;
+  // The decoder's first frame is in, but the compositor does not hold it yet: it is read as it is presented.
+  let readWhenPresented = false;
+  /**
+   * The decoder's actual PTS of the frame the element holds now: a trim can lie between source frames, so no frame rate
+   * is assumed. 'later' where Chromium has no frame for the element yet (InvalidStateError: on a loaded computer its
+   * loadeddata can come before the compositor has that frame, a21-s5b-1123-124303-84026); 'failed' for anything else.
+   */
+  const read = (): 'read' | 'later' | 'failed' => {
+    try {
+      const frame = new VideoFrame(video);
+      try {
+        decoded = frame.timestamp;
+      } finally {
+        frame.close();
+      }
+      return 'read';
+    } catch (error) {
+      return error instanceof DOMException && error.name === 'InvalidStateError' ? 'later' : 'failed';
+    }
+  };
+  const fail = () => {
+    stop();
+    failed?.();
+  };
   const release = () => {
     if (
       stopped ||
@@ -32,6 +56,14 @@ export function cuePresentation(
     callback = 0;
     if (stopped) return;
     presented = frame.mediaTime;
+    if (readWhenPresented) {
+      readWhenPresented = false;
+      // Presented now, so the compositor holds it: a refusal now is a real one.
+      if (read() !== 'read') {
+        fail();
+        return;
+      }
+    }
     release();
     if (!finished) callback = video.requestVideoFrameCallback(onPresented);
   };
@@ -43,19 +75,10 @@ export function cuePresentation(
   return {
     decoded: () => {
       if (stopped || finished) return;
-      try {
-        // A trim can lie between source frames: use the decoder's actual PTS, not an assumed frame rate.
-        const frame = new VideoFrame(video);
-        try {
-          decoded = frame.timestamp;
-        } finally {
-          frame.close();
-        }
-        release();
-      } catch {
-        stop();
-        failed?.();
-      }
+      const result = read();
+      if (result === 'read') release();
+      else if (result === 'later') readWhenPresented = true;
+      else fail();
     },
     stop,
   };
