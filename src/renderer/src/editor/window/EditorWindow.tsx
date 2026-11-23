@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { slideEditorTitle, SLIDE_EDITOR_TITLE } from '../../../../shared/slide-edit';
+import { connectMode } from '../../operator/mode-store';
 import { connectEngine } from '../../engine/engine-store';
 import { loadMedia, selectPresentation } from '../../library/library-store';
 import { connectPictureLooks } from '../../render/picture-looks';
@@ -25,6 +26,7 @@ export function EditorWindow() {
   const dirty = useEditor(editorHasChanges);
 
   useEffect(() => {
+    connectMode();
     connectEngine();
     connectScreens();
     connectInputsList();

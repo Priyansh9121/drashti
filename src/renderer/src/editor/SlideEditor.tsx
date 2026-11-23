@@ -71,6 +71,8 @@ import {
 import { ArrangeGroup, DesignGroup, InsertGroup, MotionGroup, SlidesGroup } from './Ribbon';
 import { activeText, finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
 import { WordsGroup } from './WordsGroup';
+import { TranslationDialog } from './TranslationDialog';
+import { useMode } from '../operator/mode-store';
 import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
@@ -112,6 +114,8 @@ const WORDS_WHEN_ROOM = 'hidden @[60rem]/editor-top:inline';
 const READ_WHEN = 'nothing is up and the stream is neither on air nor recording';
 
 export function SlideEditor({ platform }: { platform: string }) {
+  const translationReadOnly = useMode((state) => state.mode !== 'pro');
+  const [translating, setTranslating] = useState(false);
   const open = useEditor((s) => s.open);
   if (!open) return <Loading label="Opening the slides…" className="h-screen" />;
   return <Editor key={open.presentationId} platform={platform} name={open.name} />;
@@ -519,6 +523,17 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             <span className={WORDS_WHEN_ROOM}>Redo</span>
           </Button>
         </Tooltip>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!doc}
+          onClick={() => {
+            finishTextEditing();
+            setTranslating(true);
+          }}
+        >
+          {translationReadOnly ? 'Translation status…' : 'Translate…'}
+        </Button>
         {!pdfRowVisible && (
           <Button
             size="sm"
@@ -565,6 +580,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           {dirty ? 'Save' : 'Done'}
         </Button>
       </header>
+      {translating && (
+        <TranslationDialog readOnly={translationReadOnly} onClose={() => setTranslating(false)} />
+      )}
       {pdfPending === 'save-copy' && !pdfRowVisible && (
         <p
           className="border-b border-line px-3 py-1 text-xs text-muted"
