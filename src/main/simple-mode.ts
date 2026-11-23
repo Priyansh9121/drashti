@@ -47,6 +47,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // Writing and saving slides from words are Pro Mode's.
   IPC.library.saveWords,
   IPC.library.newFromWords,
+  // Book OCR (alpha.21): New presentation's Read Words from a Page… is part of it (Simple Mode starts no reading, so
+  // it has none to stop: its Stop Reading answers that nothing was stopped).
+  IPC.library.readWordsChoose,
+  IPC.library.readWords,
+  IPC.library.stopReadingWords,
   // New › QR code… (Session 55, Part 8): Pro Mode's; so are its window's logo and Download… (Q60-28).
   IPC.library.newQrSlide,
   IPC.library.pickQrLogo,
@@ -546,6 +551,7 @@ export function simpleModeRefusals(
   // These answer in shapes of their own: no files picked, and the sound output as it is.
   answers.set(IPC.media.rowTrim, () => null);
   answers.set(IPC.library.pickImportPaths, () => []);
+  answers.set(IPC.library.stopReadingWords, () => false);
   answers.set(IPC.wallpapers.pickFiles, () => []);
   // Nothing made from what was dropped, saying why.
   answers.set(IPC.playlists.createSmartFrom, () => ({ made: [], files: [], problems: [words()] }));

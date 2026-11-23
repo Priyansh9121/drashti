@@ -47,6 +47,7 @@ import type {
   ShastraTree,
 } from './shastra';
 import type { AccessView } from './access';
+import type { ReadWordsChoice, ReadWordsProgress, ReadWordsResult } from './read-words';
 import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
@@ -476,6 +477,13 @@ export interface DrashtiBridge {
     saveWords(presentationId: string, text: string): Promise<SaveWordsResult>;
     /** A new presentation from pasted words, in the default look. */
     newFromWords(name: string, text: string): Promise<NewFromWordsResult>;
+    /** Book OCR (alpha.21): choose pictures or a PDF to read the words of (the system's dialog). */
+    readWordsChoose(): Promise<ReadWordsChoice>;
+    /** Read the chosen pictures, or the chosen PDF's pages `fromPage` to `toPage` (from 1). */
+    readWords(fromPage: number | null, toPage: number | null): Promise<ReadWordsResult>;
+    /** Stop the reading going on (true when there was one). */
+    stopReadingWords(): Promise<boolean>;
+    onReadWordsProgress(listener: (payload: { progress: ReadWordsProgress | null }) => void): () => void;
     /**
      * New › QR code… (Session 55, Part 8): one slide, a large code of the link or words and the words under it; since
      * alpha.20 (Q60-28) with the logo in the middle and without the words, as the window asks.

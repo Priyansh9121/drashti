@@ -1,5 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NodeView } from '../../src/shared/nodes';
@@ -103,6 +104,8 @@ export async function pairNode(main: MainRun, node: NodeRun): Promise<string> {
   } catch (error) {
     // With Main's own lines about its link (its warnings and the worker's own output), then the same failure.
     console.log(`Main's node link, from its log:\n${linkTrouble(main.userData).join('\n') || '(none)'}`);
+    if (process.platform === 'win32')
+      console.log(`What holds port ${String(main.port)}:\n${portHolders(main.port)}`);
     throw error;
   }
   await typePairing(node.page, main.port, code);
@@ -115,6 +118,30 @@ export async function pairNode(main: MainRun, node: NodeRun): Promise<string> {
 
 export function nodesStatus(win: Page) {
   return win.evaluate(() => (globalThis as PageGlobals).drashti.nodes.status());
+}
+
+/**
+ * On Windows, for a link that did not listen: what holds its port now (netstat, and each holder's program), and the
+ * ports Windows keeps back from programs (its excluded ranges) and hands out itself (its dynamic range).
+ */
+function portHolders(port: number): string {
+  const run = (cmd: string, args: string[]) => {
+    try {
+      return execFileSync(cmd, args, { encoding: 'utf8', timeout: 20_000, windowsHide: true });
+    } catch (error) {
+      return `(${cmd} failed: ${(error as Error).message})`;
+    }
+  };
+  const held = run('netstat', ['-ano'])
+    .split(/\r?\n/u)
+    .filter((l) => l.includes(`:${String(port)} `));
+  const pids = [...new Set(held.map((l) => l.trim().split(/\s+/u).at(-1) ?? ''))].filter((p) =>
+    /^\d+$/u.test(p),
+  );
+  const who = pids.map((pid) => run('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH']).trim());
+  const kept = run('netsh', ['int', 'ipv4', 'show', 'excludedportrange', 'protocol=tcp']);
+  const range = run('netsh', ['int', 'ipv4', 'show', 'dynamicport', 'tcp']);
+  return [...(held.length ? held : ['(netstat: nothing on it)']), ...who, kept, range].join('\n');
 }
 
 /** Main's log lines about its node link not listening or stopping (none carries a code or a token), oldest first. */

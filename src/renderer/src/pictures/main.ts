@@ -132,8 +132,8 @@ async function draw(): Promise<void> {
         // Comments are notes, not part of the picture.
         annotationMode: AnnotationMode.DISABLE,
       }).promise;
-      // ...in the middle of the picture, black either side.
-      ctx.fillStyle = '#000000';
+      // ...in the middle of the picture, black either side (white for reading its words: book OCR, alpha.21).
+      ctx.fillStyle = job.onWhite ? '#ffffff' : '#000000';
       ctx.fillRect(0, 0, job.width, job.height);
       ctx.drawImage(sheet, at.x, at.y);
       const png = await canvasPng(canvas);
