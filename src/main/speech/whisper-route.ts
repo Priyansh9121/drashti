@@ -7,6 +7,8 @@ import type { SpeechEngine } from './hub';
  * whisper engine (whisper-engine.ts) exactly as today's captions run theirs. The file must be one Drashti knows by its
  * SHA-256 (cap-whisper's list). The pack holds the model while it is heard (it is checked again when first used
  * and cannot be removed under the engine); a model the pack no longer has, or one changed since, is never loaded.
+ * The hold is given back only once whisper-server has exited after a stop (alpha.23), as Route C's is: Windows cannot
+ * remove a file a program still has open.
  */
 
 /** What Route W needs of the pack's store (cap-pack's ModelPackStore). */
@@ -27,8 +29,11 @@ export interface WhisperRouteOptions {
    * timestamps or not (the tuned models were trained without them).
    */
   known(sha256: string): WhisperModelUse | null;
-  /** Drashti's whisper engine on this file (index.ts: createWhisperEngine with the stream's sound and the timing). */
-  engine(file: string, use: WhisperModelUse): SpeechEngine;
+  /**
+   * Drashti's whisper engine on this file (index.ts: createWhisperEngine with the stream's sound and the timing). It
+   * calls `exited` once after its stop, when its program has exited (at once when none runs), never before the stop.
+   */
+  engine(file: string, use: WhisperModelUse, exited: () => void): SpeechEngine;
 }
 
 const UNCHECKED =
@@ -64,15 +69,20 @@ export function createWhisperRoute(o: WhisperRouteOptions): CaptionRoute {
                 return;
               }
               hold = held;
-              stopEngine = o.engine(file, known).start(language, to);
+              // Given back once, when the engine's program has gone after the stop below.
+              const giveBack = (): void => {
+                const was = hold;
+                hold = null;
+                was?.release();
+              };
+              stopEngine = o.engine(file, known, giveBack).start(language, to);
             });
           return () => {
             stopped = true;
             abort.abort();
-            stopEngine?.();
+            const stop = stopEngine;
             stopEngine = null;
-            hold?.release();
-            hold = null;
+            stop?.();
           };
         },
       };

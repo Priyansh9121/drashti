@@ -3928,9 +3928,18 @@ function start(): void {
       const entry = languageModels.known().find((e) => e.sha256 === sha256);
       return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
     },
-    engine: (file, use) =>
+    // The pack's file is given back once whisper-server has exited (alpha.23); the stand-in runs no program.
+    engine: (file, use, exited) =>
       testSpeech !== undefined
-        ? speechEngine
+        ? {
+            start: (language, to) => {
+              const stop = speechEngine.start(language, to);
+              return () => {
+                stop();
+                exited();
+              };
+            },
+          }
         : createWhisperEngine({
             program: () => whisperProgram,
             model: () => file,
@@ -3940,6 +3949,7 @@ function start(): void {
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,
+            onExited: exited,
           }),
   });
   // Route C (alpha.22, cap-ship-c / Codex x94): AI4Bharat's IndicConformer (CTC) from the pack on Drashti's helper

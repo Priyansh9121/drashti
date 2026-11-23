@@ -63,6 +63,12 @@ export interface WhisperEngineOptions {
   restMs?: number;
   /** The admin's caption words for the language listened in (alpha.22), given to whisper.cpp as its prompt. */
   hints?: CaptionHints;
+  /**
+   * Told once after each stop, when the program that start ran has exited, or at once when none is running
+   * (alpha.23: Route W gives the pack's model file back only then, as Windows cannot remove a file a program still has
+   * open). Never told while listening. Left out (today's captions): nothing is told.
+   */
+  onExited?: () => void;
 }
 
 const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
@@ -269,6 +275,14 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       // The noise floor, learnt as it goes: speech is well above it.
       let floor = 300;
       const finals: Growing[] = [];
+      // This start's programs not yet exited (a rest's earlier one may still be going), and whether a stop was told.
+      let running = 0;
+      let toldExited = false;
+      const tellExited = (): void => {
+        if (!stopped || running > 0 || toldExited) return;
+        toldExited = true;
+        o.onExited?.();
+      };
 
       const end = (): void => {
         closeSound?.();
@@ -492,6 +506,19 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         withTimestamps = o.timestamps?.(language) ?? true;
         const started = run(program, args);
         child = started;
+        running += 1;
+        let gone = false;
+        const exited = (): void => {
+          if (gone) return;
+          gone = true;
+          running -= 1;
+          tellExited();
+        };
+        started.once('exit', exited);
+        // A program that never started has no exit to come.
+        started.once('error', () => {
+          if (started.pid === undefined) exited();
+        });
         started.once('exit', (code) => {
           if (child !== started || stopped) return;
           child = null;
@@ -548,6 +575,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         if (rest) clearTimeout(rest);
         rest = null;
         end();
+        tellExited();
       };
     },
   };

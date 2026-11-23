@@ -29,14 +29,14 @@ function setup(o: { held?: PackModel | null; exitLater?: boolean } = {}) {
         }),
     },
     known: (sha) => (sha === KNOWN ? { fallback: false, timestamps: false } : null),
-    engine: (file, use, exited?: () => void): SpeechEngine => ({
+    engine: (file, use, exited): SpeechEngine => ({
       start(language, to) {
         ran.push({ file, fallback: use.fallback, timestamps: use.timestamps, language });
         to.state({ phase: 'listening', language });
         return () => {
           released.push('engine');
-          if (o.exitLater) exits.push(() => exited?.());
-          else exited?.();
+          if (o.exitLater) exits.push(exited);
+          else exited();
         };
       },
     }),
