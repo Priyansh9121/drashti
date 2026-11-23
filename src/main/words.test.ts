@@ -32,3 +32,20 @@ describe('the show actions’ names', () => {
     expect(found).toEqual([]);
   });
 });
+
+describe('Save Diagnostics’ submenu name', () => {
+  it('names the menu without an ellipsis in notices and the Manual heading', () => {
+    const paths = [
+      'src/main/media/snapshot.ts',
+      'src/main/gpu-stops.ts',
+      'src/main/nodes/link-server.ts',
+      'src/main/crash-journal.ts',
+      'src/main/plain-errors.ts',
+      'src/main/backup/worker.ts',
+      'src/main/index.ts',
+      'docs/manual/help.md',
+    ];
+    for (const path of paths)
+      expect(readFileSync(join(app, path), 'utf8'), path).not.toContain('Save Diagnostics…');
+  });
+});

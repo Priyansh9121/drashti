@@ -177,8 +177,8 @@ test('Simple Mode has it too, its own chapter first; Report this… on a notice 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('group').first()).toHaveAccessibleName('Simple Mode');
   await expect(dialog.getByTestId('report-notice')).toContainText(words);
-  await expect(dialog.getByRole('checkbox', { name: 'Save Diagnostics…', exact: true })).toBeChecked();
-  await dialog.getByLabel('What went wrong with Save Diagnostics…?').fill('Placeholder: nothing was saved.');
+  await expect(dialog.getByRole('checkbox', { name: 'Save Diagnostics', exact: true })).toBeChecked();
+  await dialog.getByLabel('What went wrong with Save Diagnostics?').fill('Placeholder: nothing was saved.');
   await dialog.getByRole('button', { name: 'Review…' }).click();
   await expect(dialog.getByTestId('report-review-text')).toContainText(
     `The notice Drashti showed: “${words}”`,
@@ -186,7 +186,7 @@ test('Simple Mode has it too, its own chapter first; Report this… on a notice 
   await dialog.getByRole('button', { name: 'Send' }).click();
   await expect(dialog.getByText(/^Sent: the admin has it\./u)).toBeVisible();
   const [admin] = await mailsSince(access, before, 2);
-  expect(admin?.subject).toMatch(/^Drashti problem: Save Diagnostics… \(R-/u);
+  expect(admin?.subject).toMatch(/^Drashti problem: Save Diagnostics \(R-/u);
   expect(admin?.body).toContain(', in Simple Mode');
   expect(admin?.body).toContain(`The notice Drashti showed: “${words}”`);
   expect(admin?.attachments ?? []).toEqual([]);
