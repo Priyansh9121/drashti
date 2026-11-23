@@ -1,0 +1,40 @@
+import { expect, test } from '@playwright/test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, slideEditorWindow } from './helpers';
+
+// Local implementation uses unit tests. Run these on Mac and Windows only after alpha.21 PUBLISHED.
+test('prepared translations require named review, survive reopening, and source edits require re-check', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  const file = join(mkdtempSync(join(tmpdir(), 'drashti-translation-')), 'Placeholder translation.txt');
+  writeFileSync(file, '[One]\nThe blue box is empty.\n');
+  await importAndGetIds(win, [file]);
+  await openLibrary(win);
+  await win.getByTestId('presentation-row').filter({ hasText: 'Placeholder translation' }).click();
+  await win.getByTestId('edit-slides').click();
+  const { ed } = await slideEditorWindow(app);
+  await ed.getByRole('button', { name: 'Translate…', exact: true }).click();
+  const review = ed.getByRole('dialog', { name: 'Translation' });
+  await expect(review).toContainText('No engine installed');
+  await expect(review.getByRole('button', { name: 'Prepare translations', exact: true })).toBeDisabled();
+  await review.getByLabel('Source language').selectOption('en');
+  await review.getByLabel('Target language').selectOption('gu');
+  await review.getByLabel('Translation words').first().fill('Placeholder Q7');
+  await expect(review.getByRole('button', { name: 'Mark checked', exact: true }).first()).toBeDisabled();
+  await review.getByLabel('Reader name').fill('Reader Q');
+  await review.getByRole('button', { name: 'Mark checked', exact: true }).first().click();
+  await expect(review.getByTestId('translation-review-state').first()).toHaveText('Checked by Reader Q');
+  await review.getByLabel('Translation words').first().fill('Placeholder R8');
+  await expect(review.getByTestId('translation-review-state').first()).toHaveText('Unchecked');
+  await review.getByRole('button', { name: 'Mark checked', exact: true }).first().click();
+  await review.getByRole('button', { name: 'Done', exact: true }).click();
+  await ed.getByTestId('save-slides').click();
+  await win.getByTestId('edit-slides').click();
+  const reopened = await slideEditorWindow(app);
+  await reopened.ed.getByRole('button', { name: 'Translate…', exact: true }).click();
+  await expect(reopened.ed.getByLabel('Translation words').first()).toHaveValue('Placeholder R8');
+  await expect(reopened.ed.getByTestId('translation-review-state').first()).toHaveText('Checked by Reader Q');
+  await app.close();
+});
