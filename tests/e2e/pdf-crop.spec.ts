@@ -11,7 +11,7 @@ import {
   slideEditorWindow,
 } from './helpers';
 import { openGeneratedPdf, PDF_PAGES, savePdfCopy, usePdfTools } from './pdf-tools-fixtures';
-import { inspectPdf } from './pdf-export-oracle';
+import { inspectPdf, inspectPdfContentWords } from './pdf-export-oracle';
 import { near, pixels } from './pixels';
 
 for (const [choice, indices] of [
@@ -56,13 +56,14 @@ for (const [choice, indices] of [
       const output = join(s.folder, 'Placeholder cropped copy.pdf');
       await savePdfCopy(s.app, s.ed, output);
       const copied = await inspectPdf(output);
+      const contentWords = await inspectPdfContentWords(output);
       expect(copied).toHaveLength(3);
       for (const [i, paper] of PDF_PAGES.entries()) {
         const cropped = (indices as readonly number[]).includes(i);
         expect(copied[i]?.width).toBeCloseTo(paper.width * (cropped ? 0.5 : 1), 1);
         expect(copied[i]?.height).toBeCloseTo(paper.height * (cropped ? 0.5 : 1), 1);
         // This footer is outside the kept top-left quarter: still searchable underneath its CropBox.
-        expect(copied[i]?.words).toContain(paper.marker);
+        expect(contentWords[i]?.replace(/\s/gu, '')).toContain(paper.marker.replace(/\s/gu, ''));
       }
       await s.editor.getByTestId('save-slides').click();
       await slideEditorClosed(s.app);
@@ -209,7 +210,9 @@ test('Turn page right turns the crop with the full page, Undo restores it, and t
     const pages = await inspectPdf(output);
     expect(pages[0]?.width).toBeCloseTo(240, 1);
     expect(pages[0]?.height).toBeCloseTo(240, 1);
-    expect(pages[0]?.words).toContain(PDF_PAGES[0].marker);
+    expect((await inspectPdfContentWords(output))[0]?.replace(/\s/gu, '')).toContain(
+      PDF_PAGES[0].marker.replace(/\s/gu, ''),
+    );
     await s.editor.getByTestId('save-slides').click();
     await slideEditorClosed(s.app);
     await setUpScreen(s.win, 'Placeholder crop hall', 0);

@@ -1,3 +1,4 @@
+import { pdfOperatorWords } from '../../src/main/library/testing/pdf-operator-words';
 import { nodePdfAssets } from '../../src/main/import/testing/pdfjs-assets';
 /* Independent PDF.js read/render oracle, intended tests/e2e/pdf-export-oracle.ts.
  * Validate this setup in its own oracle spec BEFORE relying on feature RED.
@@ -159,4 +160,24 @@ export function maximumDifference(left: readonly number[], right: readonly numbe
     if (other === undefined) throw new Error('Fixture pixel data is incomplete.');
     return Math.max(worst, Math.abs(value - other));
   }, 0);
+}
+
+/** Independent full paint-content readback: unlike getTextContent, this includes words outside CropBox. */
+export async function inspectPdfContentWords(file: string): Promise<string[]> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const root = dirname(require.resolve('pdfjs-dist/package.json'));
+  const loading = pdfjs.getDocument({
+    data: new Uint8Array(readFileSync(file)),
+    useWorkerFetch: false,
+    useSystemFonts: false,
+    ...nodePdfAssets(root),
+  });
+  try {
+    const doc = await loading.promise;
+    const words: string[] = [];
+    for (let n = 1; n <= doc.numPages; n++) words.push(await pdfOperatorWords(await doc.getPage(n)));
+    return words;
+  } finally {
+    await loading.destroy();
+  }
 }

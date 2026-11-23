@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { pdfOperatorWords } from './testing/pdf-operator-words';
 import { makeTestPdf } from '../import/testing/make-pdf';
 import { cropPdfCopy } from '../../shared/pdf-crop-copy';
 it('writes a true CropBox, retaining MediaBox, content outside it and every uncropped page', async () => {
@@ -22,12 +23,13 @@ it('writes a true CropBox, retaining MediaBox, content outside it and every uncr
     expect(first.getViewport({ scale: 1 }).width).toBe(200);
     expect(first.getViewport({ scale: 1 }).height).toBe(120);
     expect(second.view).toEqual([0, 0, 600, 400]);
+    expect(await pdfOperatorWords(first)).toContain('Placeholder outside crop');
     expect(
       (await first.getTextContent()).items
         .filter((i) => 'str' in i)
         .map((i) => ('str' in i ? i.str : ''))
         .join(' '),
-    ).toContain('Placeholder outside crop');
+    ).not.toContain('Placeholder outside crop');
     // PDF.js public view honors CropBox; the saved page still has its original media extents in the output.
     expect(new TextDecoder().decode(copy)).toMatch(/\/MediaBox\s*\[\s*0\s+0\s+400\s+600\s*\]/);
   } finally {
@@ -74,3 +76,31 @@ for (const [rotation, view] of [
     }
   });
 }
+
+it('the independent operator-list oracle reads retained words that CropBox hides from text extraction', async () => {
+  const paint = 'BT /F1 18 Tf 40 40 Td (Placeholder hidden words) Tj ET';
+  const bodies = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 600] /CropBox [100 420 300 540] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${paint.length} >>\nstream\n${paint}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let source = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  for (const [i, body] of bodies.entries()) {
+    offsets.push(source.length);
+    source += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  }
+  const xref = source.length;
+  source += `xref\n0 6\n0000000000 65535 f \n${offsets.map((n) => `${String(n).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  const loading = getDocument({ data: new TextEncoder().encode(source), useSystemFonts: false });
+  try {
+    const page = await (await loading.promise).getPage(1);
+    expect(page.view).toEqual([100, 420, 300, 540]);
+    expect((await page.getTextContent()).items).toHaveLength(0);
+    expect(await pdfOperatorWords(page)).toBe('Placeholder hidden words');
+  } finally {
+    await loading.destroy();
+  }
+});
