@@ -1,6 +1,12 @@
 import {
   CAPTION_MODELS,
+  isLanguageModelLanguage,
+  LANGUAGE_MODEL_LANGUAGES,
   parseCaptionSettings,
+  parseCaptionTiming,
+  type CaptionTiming,
+  type LanguageModelLanguage,
+  type LanguageModelView,
   type CaptionModelId,
   type CaptionSettings,
   type CaptionsDownload,
@@ -17,8 +23,21 @@ import {
   type ClauseSink,
 } from './caption-flow';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
-import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
+import {
+  readCaptionsSwitch,
+  readCaptionsTuning,
+  writeCaptionsSwitch,
+  writeCaptionsTuning,
+  type CaptionsSwitch,
+  type CaptionsTuning,
+} from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
+import {
+  languageName,
+  LanguageModelRefused,
+  type LanguageModelCheck,
+  type LanguageModelEntry,
+} from './language-models';
 
 export type { CaptionsStatus } from '../../shared/captions';
 
@@ -62,6 +81,8 @@ export interface CaptionsServiceDeps {
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
+  /** The language models on this computer (alpha.22; main/speech/language-models.ts). None known when left out. */
+  languageModels?: LanguageModelStore;
 }
 
 const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
@@ -71,12 +92,37 @@ const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
   en: 'English',
 });
 
+/** A model of its own per language on this computer (alpha.22): what Drashti knows, and each file's check. */
+export interface LanguageModelStore {
+  /** The models this copy of Drashti knows (by SHA-256). */
+  known(): readonly LanguageModelEntry[];
+  /** The quick check before each use. */
+  check(entry: LanguageModelEntry): LanguageModelCheck;
+  /** The file checked whole again (stamped again when it is still the same). */
+  verify(entry: LanguageModelEntry): Promise<LanguageModelCheck>;
+  /** Add a file the admin chose for `language`: its entry, or LanguageModelRefused with what to say. */
+  add(language: LanguageModelLanguage, source: string): Promise<LanguageModelEntry>;
+}
+
+const NO_LANGUAGE_MODELS: LanguageModelStore = {
+  known: () => [],
+  check: () => 'missing',
+  verify: () => Promise.resolve('missing'),
+  add: () => Promise.reject(new LanguageModelRefused('This copy of Drashti knows no language models.')),
+};
+
 export class CaptionsService {
   readonly hub: SpeechHubControl;
   private readonly feed: CaptionsFeed;
   /** Today's feed or caption AI's flow, when caption AI is wired in (null: today's feed alone). */
   private readonly paths: CaptionPaths | null;
   private switch: CaptionsSwitch;
+  private tuning: CaptionsTuning;
+  private readonly models: LanguageModelStore;
+  /** A file being checked or added, per language (alpha.22). */
+  private readonly checking = new Set<LanguageModelLanguage>();
+  /** Why a file was not added, per language, until the next change there (alpha.22). */
+  private readonly notices = new Map<LanguageModelLanguage, string>();
   private download: CaptionsDownload;
   private downloading: { controller: AbortController; promise: Promise<void> } | null = null;
   private streamInUse = false;
@@ -86,6 +132,8 @@ export class CaptionsService {
 
   constructor(private readonly deps: CaptionsServiceDeps) {
     this.switch = readCaptionsSwitch(deps.userData, deps.platform, deps.arch);
+    this.tuning = readCaptionsTuning(deps.userData);
+    this.models = deps.languageModels ?? NO_LANGUAGE_MODELS;
     this.hub = createSpeechHub({
       engine: {
         // The model first: without it the hub is held (no-model) until it is downloaded.
@@ -100,6 +148,16 @@ export class CaptionsService {
                   : `Caption AI has no checked model for ${LANGUAGE_NAMES[language]}: import the model pack (Help › Caption and Translation Models…).`;
             if (problem !== null) {
               to.state({ phase: 'failed', message: problem });
+              return () => undefined;
+            }
+            return this.deps.engine.start(language, to);
+          }
+          // A model of its own chosen for the language (alpha.22) is used only when it is here and checked: never
+          // the general model in its place.
+          const own = this.ownModel(language);
+          if (own !== null) {
+            if (own.phase !== 'ready') {
+              to.state({ phase: 'failed', message: own.message });
               return () => undefined;
             }
             return this.deps.engine.start(language, to);
@@ -194,6 +252,8 @@ export class CaptionsService {
       engine: engineProblem === null,
       engineProblem,
       trial: true,
+      languageModels: LANGUAGE_MODEL_LANGUAGES.map((language) => this.languageModelView(language)),
+      timing: this.tuning.timing,
     };
   }
 
@@ -343,6 +403,186 @@ export class CaptionsService {
       this.downloading = null;
       this.tell();
     }
+  }
+
+  /* ---- a model per language and live timing (alpha.22) ---- */
+
+  /**
+   * The model of its own that hears this language now, here and checked, or null: the general model does (none
+   * chosen, "as heard", Sanskrit), or nothing does (the chosen one is not ready: listening says why).
+   */
+  languageModelFor(language: SpeechLanguage | 'auto'): LanguageModelEntry | null {
+    const own = this.ownModel(language);
+    return own?.phase === 'ready' ? own.entry : null;
+  }
+
+  /**
+   * Why the model for this language may not be used now (its own model chosen but not here, changed or unknown),
+   * or null: asked again before every start of the engine.
+   */
+  modelProblem(language: SpeechLanguage | 'auto'): string | null {
+    const own = this.ownModel(language);
+    return own === null || own.phase === 'ready' ? null : own.message;
+  }
+
+  /** The live timing on this computer. */
+  timing(): CaptionTiming {
+    return this.tuning.timing;
+  }
+
+  /** Choose the model for a language (a known id), or the general model (null). */
+  setLanguageModel(language: LanguageModelLanguage, id: string | null): CaptionsStatus {
+    if (!isLanguageModelLanguage(language)) return this.view();
+    if (id !== null && !this.known(language).some((entry) => entry.id === id)) return this.view();
+    this.notices.delete(language);
+    this.choose(language, id);
+    this.tell();
+    return this.view();
+  }
+
+  /** Add a model file the admin chose for a language: checked, copied in, and chosen for it. */
+  async addLanguageModel(language: LanguageModelLanguage, source: string): Promise<CaptionsStatus> {
+    if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
+    if (this.streamInUse) {
+      this.notices.set(language, 'Add a model file when the stream and recording have stopped.');
+      this.tell();
+      return this.view();
+    }
+    this.notices.delete(language);
+    this.checking.add(language);
+    this.tell();
+    try {
+      const entry = await this.models.add(language, source);
+      this.deps.log.info(`Captions: the ${entry.id} model was added for ${languageName(language)}.`);
+      this.checking.delete(language);
+      this.choose(language, entry.id, true);
+    } catch (error) {
+      this.checking.delete(language);
+      const message =
+        error instanceof LanguageModelRefused ? error.message : 'Drashti could not add that model file.';
+      this.notices.set(language, message);
+      this.deps.log.warn(`Captions: a model file for ${languageName(language)} was not added.`);
+    }
+    this.tell();
+    return this.view();
+  }
+
+  /** Check the chosen model's file whole again (after it was found changed). */
+  async checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus> {
+    if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
+    const id = this.tuning.languageModels[language];
+    const entry = this.known(language).find((e) => e.id === id);
+    if (!entry) return this.view();
+    this.notices.delete(language);
+    this.checking.add(language);
+    this.tell();
+    const result = await this.models.verify(entry).catch((): LanguageModelCheck => 'missing');
+    this.checking.delete(language);
+    this.deps.log.info(`Captions: the ${entry.id} model was checked again (${result}).`);
+    if (result === 'ready' && this.hearing(language)) this.relisten();
+    this.tell();
+    return this.view();
+  }
+
+  /** Keep the live timing on this computer; listening starts again with it. */
+  setTiming(timing: CaptionTiming): CaptionsStatus {
+    const next = { ...this.tuning, timing: parseCaptionTiming(timing) };
+    writeCaptionsTuning(this.deps.userData, next);
+    this.tuning = next;
+    this.relisten();
+    this.tell();
+    return this.view();
+  }
+
+  private known(language: LanguageModelLanguage): LanguageModelEntry[] {
+    return this.models.known().filter((entry) => entry.language === language);
+  }
+
+  /** Whether listening is on and hears this language now. */
+  private hearing(language: LanguageModelLanguage): boolean {
+    return this.switch.on && this.settings().language === language;
+  }
+
+  private choose(language: LanguageModelLanguage, id: string | null, always = false): void {
+    const was = this.tuning.languageModels[language] ?? null;
+    if (was === id && !always) return;
+    const languageModels: CaptionsTuning['languageModels'] = {};
+    for (const each of LANGUAGE_MODEL_LANGUAGES) {
+      const chosen = each === language ? id : (this.tuning.languageModels[each] ?? null);
+      if (chosen !== null) languageModels[each] = chosen;
+    }
+    const next = { ...this.tuning, languageModels };
+    writeCaptionsTuning(this.deps.userData, next);
+    this.tuning = next;
+    if (this.hearing(language)) this.relisten();
+  }
+
+  /** Listening starts again (a model or the timing changed), when it is on. */
+  private relisten(): void {
+    if (!this.switch.on || this.closed) return;
+    this.hub.setOn(false);
+    this.hub.setOn(true);
+  }
+
+  /** The model of its own chosen for this language, and how it stands; null when none is chosen. */
+  private ownModel(
+    language: SpeechLanguage | 'auto',
+  ): { entry: LanguageModelEntry | null; phase: LanguageModelView['phase']; message: string } | null {
+    if (!isLanguageModelLanguage(language)) return null;
+    const id = this.tuning.languageModels[language];
+    if (id === undefined) return null;
+    const name = languageName(language);
+    const entry = this.known(language).find((e) => e.id === id) ?? null;
+    if (!entry)
+      return {
+        entry,
+        phase: 'unknown',
+        message: `The model chosen for ${name} is not one this copy of Drashti knows, so captions do not use it. Choose another model for ${name}.`,
+      };
+    if (this.checking.has(language)) return { entry, phase: 'checking', message: 'Checking the file…' };
+    switch (this.models.check(entry)) {
+      case 'ready':
+        return { entry, phase: 'ready', message: '' };
+      case 'missing':
+        return {
+          entry,
+          phase: 'missing',
+          message: `The ${name} model is not on this computer: add its file in File › Live Captions….`,
+        };
+      case 'changed':
+        return {
+          entry,
+          phase: 'changed',
+          message: `The ${name} model’s file has changed since Drashti checked it, so captions do not use it. Check it again, or add its file again.`,
+        };
+    }
+  }
+
+  private languageModelView(language: LanguageModelLanguage): LanguageModelView {
+    const known = this.known(language).map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      bytes: entry.bytes,
+      here: this.models.check(entry) === 'ready',
+    }));
+    const own = this.ownModel(language);
+    const notice = this.notices.get(language) ?? null;
+    const checking = this.checking.has(language);
+    if (own === null)
+      return {
+        language,
+        known,
+        chosen: null,
+        phase: checking ? 'checking' : 'general',
+        message: checking ? 'Checking the file…' : notice,
+      };
+    return {
+      language,
+      known,
+      chosen: this.tuning.languageModels[language] ?? null,
+      phase: own.phase,
+      message: notice ?? (own.phase === 'ready' ? null : own.message),
+    };
   }
 
   /** Tell the dialog now. */

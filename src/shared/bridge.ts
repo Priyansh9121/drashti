@@ -105,7 +105,13 @@ import type {
   OpeningResult,
   OpeningView,
 } from './opening';
-import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
+import type {
+  CaptionModelId,
+  CaptionSettings,
+  CaptionsStatus,
+  CaptionTiming,
+  LanguageModelLanguage,
+} from './captions';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -380,6 +386,13 @@ export interface DrashtiBridge {
     setModel(model: CaptionModelId): Promise<CaptionsStatus>;
     setSettings(settings: CaptionSettings): Promise<CaptionsStatus>;
     retry(): Promise<CaptionsStatus>;
+    /** A model of its own for a language (alpha.22): one Drashti knows, or the general model (null). */
+    setLanguageModel(language: LanguageModelLanguage, id: string | null): Promise<CaptionsStatus>;
+    /** Add a model file for a language (alpha.22): Drashti asks for the file and checks it. */
+    addLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
+    checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
+    /** The live timing on this computer (alpha.22). */
+    setTiming(timing: CaptionTiming): Promise<CaptionsStatus>;
     onChanged(listener: (view: CaptionsStatus) => void): () => void;
     /** File > Live Captions… was chosen. */
     onOpen(listener: () => void): () => void;

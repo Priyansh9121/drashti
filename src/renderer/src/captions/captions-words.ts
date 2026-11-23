@@ -1,4 +1,9 @@
-import type { CaptionsStatus } from '../../../shared/captions';
+import type {
+  CaptionsStatus,
+  CaptionTiming,
+  LanguageModelLanguage,
+  LanguageModelView,
+} from '../../../shared/captions';
 
 /* The Live captions dialog's words (Session 55, Part 10). */
 
@@ -41,3 +46,59 @@ export function downloadText(view: CaptionsStatus): string {
       return d.message ?? 'The model could not be downloaded.';
   }
 }
+
+/* ---- a model per language and live timing (alpha.22) ---- */
+
+export const LANGUAGE_NAMES: Readonly<Record<LanguageModelLanguage, string>> = Object.freeze({
+  gu: 'Gujarati',
+  hi: 'Hindi',
+  en: 'English',
+});
+
+/** Which model hears a language, or what to do about it. */
+export function languageModelText(model: LanguageModelView): string {
+  if (model.message !== null) return model.message;
+  const name = LANGUAGE_NAMES[model.language];
+  switch (model.phase) {
+    case 'general':
+      return `The general model hears ${name}.`;
+    case 'ready':
+      return `${name}’s own model hears ${name} when the speaker’s language is ${name}. It is on this computer and checked.`;
+    case 'checking':
+      return 'Checking the file…';
+    case 'missing':
+      return `The ${name} model is not on this computer: add its file.`;
+    case 'changed':
+      return `The ${name} model’s file has changed since Drashti checked it, so captions do not use it.`;
+    case 'unknown':
+      return `The model chosen for ${name} is not one this copy of Drashti knows.`;
+  }
+}
+
+export const STEP_NAMES: Readonly<Record<CaptionTiming['stepMs'], string>> = Object.freeze({
+  1500: 'Every 1.5 seconds (standard)',
+  1000: 'Every second (quicker; needs a faster computer)',
+});
+
+export const PAUSE_NAMES: Readonly<Record<CaptionTiming['pauseMs'], string>> = Object.freeze({
+  700: 'A pause of 0.7 seconds (standard)',
+  500: 'A pause of 0.5 seconds (quicker; may split a sentence)',
+});
+
+export const LONGEST_NAMES: Readonly<Record<CaptionTiming['longestMs'], string>> = Object.freeze({
+  12000: '12 seconds (standard)',
+  8000: '8 seconds',
+  6000: '6 seconds (long sentences show sooner)',
+});
+
+export const SPEECH_LEVEL_NAMES: Readonly<Record<CaptionTiming['speech'], string>> = Object.freeze({
+  standard: 'Standard',
+  'quiet-room': 'Quiet room: hears softer speech',
+  'noisy-hall': 'Noisy hall: needs louder speech',
+});
+
+export const THREAD_NAMES: Readonly<Record<CaptionTiming['threads'], string>> = Object.freeze({
+  4: '4 (standard)',
+  2: '2 (for a computer with two cores)',
+  1: '1 (the lightest)',
+});

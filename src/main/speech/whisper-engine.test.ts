@@ -2,9 +2,11 @@ import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DEFAULT_CAPTION_TIMING, type CaptionTiming } from '../../shared/captions';
 import type { Heard, SpeechState } from '../../shared/speech';
 import {
   createWhisperEngine,
+  isSpeech,
   SAMPLE_RATE,
   wavOf,
   wordsOf,
@@ -60,6 +62,41 @@ describe('what the engine heard (whisper-server’s verbose_json)', () => {
     expect(words[1]).toMatchObject({ startAt: 500, endAt: 2_000 });
   });
 
+  it('ends a word at a token that is only a space (Gujarati: whisper has no space-joined Gujarati tokens)', () => {
+    const reply = {
+      segments: [
+        {
+          no_speech_prob: 0,
+          words: [
+            { word: ' આ', start: 0.1, end: 0.2, probability: 0.9 },
+            { word: 'ગ', start: 0.2, end: 0.3, probability: 0.9 },
+            { word: ' ', start: 0.3, end: 0.3, probability: 0.9 },
+            { word: 'બસ', start: 0.4, end: 0.6, probability: 0.9 },
+          ],
+        },
+      ],
+    };
+    expect(wordsOf(reply, 0, 1_000).map((w) => w.text)).toEqual(['આગ', 'બસ']);
+  });
+
+  it('gives every word its whole clip when the model is decoded without timestamps (no made-up word times)', () => {
+    const reply = {
+      segments: [
+        {
+          words: [
+            { word: ' alpha', start: 0, end: 0, probability: 0.9 },
+            { word: ' beta', start: 0, end: 0, probability: 0.8 },
+          ],
+        },
+      ],
+    };
+    const words = wordsOf(reply, 10_000, 12_000, undefined, true);
+    expect(words.map((w) => [w.text, w.startAt, w.endAt])).toEqual([
+      ['alpha', 10_000, 12_000],
+      ['beta', 10_000, 12_000],
+    ]);
+  });
+
   it('reads the supported language the engine wrote in', () => {
     expect(writtenIn({ language: 'gujarati' })).toBe('gu');
     expect(writtenIn({ language: 'hindi' })).toBe('hi');
@@ -84,7 +121,9 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
   const servers: Server[] = [];
   const asked: string[] = [];
   const requestPaths: string[] = [];
+  const spawned: string[][] = [];
   const spawn = (_program: string, args: string[]): ChildProcess => {
+    spawned.push(args);
     const port = Number(args[args.indexOf('--port') + 1]);
     const requestPath = args.includes('--request-path')
       ? (args[args.indexOf('--request-path') + 1] ?? '')
@@ -135,7 +174,7 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
     };
     return child;
   };
-  return { spawn, asked, requestPaths, close: () => servers.forEach((s) => s.close()) };
+  return { spawn, asked, requestPaths, spawned, close: () => servers.forEach((s) => s.close()) };
 }
 
 /** Sound: a burst of tone (`ms` long) then quiet, as 100 ms chunks timed on the real clock. */
@@ -346,5 +385,178 @@ describe('the captions engine (Part 10)', () => {
     stops.push(missing.start('en', { heard: () => undefined, state: (s) => none.push(s) }));
     await waitFor(() => none.length > 0);
     expect(none[0]).toEqual({ phase: 'failed', message: 'This copy of Drashti has no captions engine.' });
+  });
+});
+
+describe('what counts as speech (alpha.22: the speech level)', () => {
+  it('standard, as captions always heard: well above the noise, and at least a plain speaking level', () => {
+    expect(isSpeech(450, 100, 'standard')).toBe(true);
+    expect(isSpeech(350, 100, 'standard')).toBe(false);
+    expect(isSpeech(850, 300, 'standard')).toBe(false);
+    expect(isSpeech(950, 300, 'standard')).toBe(true);
+  });
+
+  it('a quiet room hears softer speech; a noisy hall asks for louder speech', () => {
+    expect(isSpeech(250, 100, 'quiet-room')).toBe(true);
+    expect(isSpeech(250, 100, 'standard')).toBe(false);
+    expect(isSpeech(700, 100, 'noisy-hall')).toBe(false);
+    expect(isSpeech(900, 100, 'noisy-hall')).toBe(true);
+    expect(isSpeech(1_100, 300, 'noisy-hall')).toBe(false);
+  });
+});
+
+describe('the engine with a model per language and live timing (alpha.22)', () => {
+  it('reads the model for the speaker’s language and the timing once at each start: threads, step, pause, longest phrase', async () => {
+    const server = standIn();
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const modelsAsked: string[] = [];
+    let timingReads = 0;
+    const timing: CaptionTiming = {
+      ...DEFAULT_CAPTION_TIMING,
+      threads: 2,
+      // Shorter than any choice, so the test is quick: the longest phrase cuts a phrase still being spoken.
+      longestMs: 1_000 as unknown as CaptionTiming['longestMs'],
+      stepMs: 60_000 as unknown as CaptionTiming['stepMs'],
+    };
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: (language) => {
+        modelsAsked.push(language);
+        return `/placeholder/${language}.bin`;
+      },
+      fallback: () => true,
+      timing: () => {
+        timingReads += 1;
+        return timing;
+      },
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+    });
+    stops.push(
+      engine.start('gu', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    const args = server.spawned[0] ?? [];
+    expect(args[args.indexOf('-m') + 1]).toBe('/placeholder/gu.bin');
+    expect(args[args.indexOf('-t') + 1]).toBe('2');
+    expect(modelsAsked).toEqual(['gu']);
+    // Spoken on without a pause: the longest phrase ends it anyway, with no partial before (the step is long).
+    await sound.play(1_600, 0);
+    await waitFor(() => heard.some((h) => h.final));
+    expect(heard.filter((h) => !h.final)).toEqual([]);
+    expect(heard.find((h) => h.final)).toMatchObject({ id: 's1', language: 'gu' });
+    expect(server.asked.every((l) => l === 'gu')).toBe(true);
+    expect(timingReads).toBe(1);
+  });
+
+  it('keeps the timing it always had when none is given', async () => {
+    const server = standIn();
+    const states: SpeechState[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound: bursts(),
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+    });
+    stops.push(engine.start('en', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    const args = server.spawned[0] ?? [];
+    expect(args[args.indexOf('-t') + 1]).toBe('4');
+  });
+});
+
+describe('a model that may not be used is never loaded (alpha.22)', () => {
+  it('says why at a start, and starts no program', async () => {
+    const server = standIn();
+    const states: SpeechState[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/gu.bin',
+      modelProblem: (language) => (language === 'gu' ? 'Placeholder: the Gujarati model has changed.' : null),
+      fallback: () => true,
+      sound: bursts(),
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+    });
+    stops.push(engine.start('gu', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
+    await waitFor(() => states.length > 0);
+    expect(states).toEqual([{ phase: 'failed', message: 'Placeholder: the Gujarati model has changed.' }]);
+    expect(server.spawned).toEqual([]);
+  });
+});
+
+describe('a language model decoded without timestamps (alpha.22: the tuned models)', () => {
+  it('asks for no timestamps, and its phrase ends when the clip ends', async () => {
+    const server = standIn();
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const fields: (string | null)[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/gu.bin',
+      fallback: () => true,
+      timestamps: (language) => language !== 'gu',
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      stepMs: 3_000,
+      pauseMs: 300,
+      fetch: (url, options) => {
+        if (options?.body instanceof FormData)
+          fields.push(options.body.get('no_timestamps') as string | null);
+        return fetch(url, options);
+      },
+    });
+    stops.push(
+      engine.start('gu', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    await sound.play(1_200, 500);
+    await waitFor(() => heard.some((h) => h.final));
+    expect(fields.length).toBeGreaterThan(0);
+    expect(fields.every((f) => f === 'true')).toBe(true);
+    const final = heard.find((h) => h.final);
+    expect(final?.words.every((w) => w.startAt === final.startAt && w.endAt === final.endAt)).toBe(true);
+    expect(final && final.endAt - final.startAt).toBeGreaterThan(900);
+  });
+
+  it('sends no such field for a model with timestamps (the general models)', async () => {
+    const server = standIn();
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const fields: (string | null)[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      stepMs: 3_000,
+      pauseMs: 300,
+      fetch: (url, options) => {
+        if (options?.body instanceof FormData)
+          fields.push(options.body.get('no_timestamps') as string | null);
+        return fetch(url, options);
+      },
+    });
+    stops.push(
+      engine.start('en', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    await sound.play(1_200, 500);
+    await waitFor(() => heard.some((h) => h.final));
+    expect(fields.length).toBeGreaterThan(0);
+    expect(fields.every((f) => f === null)).toBe(true);
   });
 });

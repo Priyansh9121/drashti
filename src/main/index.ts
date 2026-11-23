@@ -46,6 +46,7 @@ import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
+import type { SpeechLanguage } from '../shared/speech';
 import { formatBytes, formatClock } from '../shared/format';
 import type { ImportOptions, ImportResult } from '../shared/import';
 import { loadedBooks } from '../shared/import';
@@ -462,12 +463,18 @@ import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
+import { knownLanguageModels, languageModelFile, languageModelStore } from './speech/language-models';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
 import { registerVideoCaptionIpc } from './video-captions/ipc';
-import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
+import {
+  isCaptionModel,
+  isLanguageModelLanguage,
+  parseCaptionSettings,
+  parseCaptionTiming,
+} from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
@@ -3608,6 +3615,8 @@ function start(): void {
   // Given once the YouTube service is made, below the stream service.
   let youtubeService: YouTubeService | undefined = undefined;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
+  // File › Speaker's Language is built again when the language changes (alpha.22): set once the menu is made.
+  let captionsMenuChanged: () => void = () => undefined;
   let conversionActivityChanged: (() => void) | undefined;
   // Trim's background work (Session 57: finished cuts checked, accepted cuts carried on, unused cuts swept), told
   // when the stream changes.
@@ -3794,11 +3803,17 @@ function start(): void {
     arch: process.arch,
   });
   const captionsData = app.getPath('userData');
+  // A model of its own per language (alpha.22): the ones this copy knows (tests: DRASHTI_TEST_SPEECH_MODELS).
+  const languageModels = languageModelStore(
+    captionsData,
+    knownLanguageModels(packaged() ? undefined : sw('DRASHTI_TEST_SPEECH_MODELS')),
+  );
   const captionsEngineProblem =
     testSpeech !== undefined
       ? null
       : (whisperProblem(process.platform, process.getSystemVersion()) ??
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
+  let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
     platform: process.platform,
@@ -3809,8 +3824,20 @@ function start(): void {
         ? createStandInEngine(testSpeech.split('|'))
         : createWhisperEngine({
             program: () => whisperProgram,
-            model: () => modelFile(captionsData, captions.selectedModel()),
-            fallback: () => captions.selectedModel() !== 'turbo',
+            // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
+            model: (language) => {
+              const own = captions.languageModelFor(language);
+              return own
+                ? languageModelFile(captionsData, own.id)
+                : modelFile(captionsData, captions.selectedModel());
+            },
+            // Asked before every start of the program: a language's own model not ready is never loaded.
+            modelProblem: (language) => captions.modelProblem(language),
+            fallback: (language) =>
+              captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
+            // The tuned language models are decoded without timestamps (alpha.22).
+            timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
+            timing: () => captions.timing(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             log,
           }),
@@ -3827,7 +3854,13 @@ function start(): void {
       videoCaptionBand = view.settings;
       engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
+      // File › Speaker's Language ticks the language as it is (alpha.22).
+      if (view.settings.language !== speakerLanguageTicked) {
+        speakerLanguageTicked = view.settings.language;
+        captionsMenuChanged();
+      }
     },
+    languageModels,
     log,
   });
   captionsStreamUseChanged = (inUse) => captions.setStreamInUse(inUse);
@@ -3847,6 +3880,35 @@ function start(): void {
     fromOperator(e) ? captions.setSettings(parseCaptionSettings(settings)) : captions.view(),
   );
   handle(IPC.captions.retry, (e) => (fromOperator(e) ? captions.retry() : captions.view()));
+  // A model of its own per language and the live timing (alpha.22).
+  handle(IPC.captions.setLanguageModel, (e, language, id) =>
+    fromOperator(e) && isLanguageModelLanguage(language) && (id === null || typeof id === 'string')
+      ? captions.setLanguageModel(language, id)
+      : captions.view(),
+  );
+  handle(IPC.captions.addLanguageModel, async (e, language) => {
+    if (!fromOperator(e) || !isLanguageModelLanguage(language)) return captions.view();
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    const options = {
+      title: 'Add a Captions Model',
+      buttonLabel: 'Add Model',
+      properties: ['openFile'] as 'openFile'[],
+      filters: [{ name: 'Captions models (ggml)', extensions: ['bin'] }],
+    };
+    const picked = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    const file = picked.canceled ? undefined : picked.filePaths[0];
+    return file === undefined ? captions.view() : captions.addLanguageModel(language, file);
+  });
+  handle(IPC.captions.checkLanguageModel, (e, language) =>
+    fromOperator(e) && isLanguageModelLanguage(language)
+      ? captions.checkLanguageModel(language)
+      : captions.view(),
+  );
+  handle(IPC.captions.setTiming, (e, timing) =>
+    fromOperator(e) ? captions.setTiming(parseCaptionTiming(timing)) : captions.view(),
+  );
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
@@ -9261,6 +9323,11 @@ function start(): void {
     return (await shell.openPath(file)) === '';
   });
   reports.start();
+  captionsMenuChanged = () => {
+    setImmediate(() => {
+      rebuildMenu();
+    });
+  };
   rebuildMenu = () => {
     // Not let in (a self-test, or stopped, Session 54): Quit and the editing keys only.
     if (!isLetIn()) {
@@ -9442,6 +9509,14 @@ function start(): void {
     },
     liveCaptions: () => {
       if (mode === 'pro') sendToOperator(IPC.captions.open, { at: Date.now() });
+    },
+    // File › Speaker's Language (alpha.22): the language live captions listen for, chosen as the speakers change.
+    speakerLanguage: {
+      language: captions.view().settings.language,
+      choose: (language) => {
+        if (mode === 'pro') captions.setSettings({ ...captions.view().settings, language });
+        rebuildMenu();
+      },
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
