@@ -43,6 +43,8 @@ export function composeSlide(
               const canvas = masterCanvas ?? slide;
               const sx = slide.width / canvas.width,
                 sy = slide.height / canvas.height;
+              // Each edge's box follows its paper; its words grow or shrink by the paper's narrower change, so they
+              // keep their size against their box (a watermark on a portrait page of a landscape PDF stays one line).
               return {
                 ...el,
                 everyScreen: true,
@@ -52,7 +54,7 @@ export function composeSlide(
                   width: original.frame.width * sx,
                   height: original.frame.height * sy,
                 },
-                style: { ...el.style, fontSize: original.style.fontSize * sy },
+                style: { ...el.style, fontSize: original.style.fontSize * Math.min(sx, sy) },
               };
             }),
             ...own.elements,

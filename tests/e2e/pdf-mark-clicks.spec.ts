@@ -71,22 +71,30 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
       elements.map((element) => element.getAttribute('data-deck-motion-target')?.replace(/^pdf-mark:/u, '')),
     );
     expect(markIds).toHaveLength(2);
+    // The phone draws the hall's own slide (Scene): each saved mark, by its exact element ID, is there inside its click
+    // target, unseen (opacity 0) until its click and seen after it, as on the hall. (The first run, a21-take-pdf
+    // 220811-90705, showed the phone's live picture without the marks at click 0, the elements present at opacity 0.)
     const phoneMarks = markIds.map((id) => {
       if (!id) throw new Error('Saved PDF mark target has no element ID.');
-      return remote.getByTestId('remote-live').locator(`[data-element="${id}"]`);
+      return remote.getByTestId('remote-live').locator(`[data-deck-motion-target="pdf-mark:${id}"]`);
     });
-    for (const mark of phoneMarks) await expect(mark).toHaveCount(0);
+    for (const [index, mark] of phoneMarks.entries()) {
+      await expect(mark.locator(`[data-element="${markIds[index] ?? ''}"]`)).toHaveCount(1);
+      await expect(mark).toHaveCSS('opacity', '0');
+    }
     for (const n of [1, 2]) {
       await remote.getByTestId('remote-next-button').click();
       await expect.poll(step).toEqual({ index: 0, step: n });
       await expect(targets.nth(n - 1)).toHaveCSS('opacity', '1');
-      for (const [index, mark] of phoneMarks.entries()) await expect(mark).toHaveCount(index < n ? 1 : 0);
+      for (const [index, mark] of phoneMarks.entries())
+        await expect(mark).toHaveCSS('opacity', index < n ? '1' : '0');
       if (n === 1) await expect(targets.nth(1)).toHaveCSS('opacity', '0');
     }
     await remote.getByTestId('remote-back').click();
     await expect.poll(step).toEqual({ index: 0, step: 1 });
     await expect(targets.nth(1)).toHaveCSS('opacity', '0');
-    for (const [index, mark] of phoneMarks.entries()) await expect(mark).toHaveCount(index === 0 ? 1 : 0);
+    for (const [index, mark] of phoneMarks.entries())
+      await expect(mark).toHaveCSS('opacity', index === 0 ? '1' : '0');
     s.unchanged();
   } finally {
     await phone?.close();
