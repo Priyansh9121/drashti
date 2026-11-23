@@ -657,7 +657,10 @@ float language-masked CTC scores (blank 256). Tokens are 256 UTF-8 pieces and `<
 `ic-ctc --pcm-serve` reads private stdin frames: uint32 little-endian PCM byte count (positive, even, at most
 384,000) then that many mono 16 kHz signed-16 little-endian bytes. It reports readiness with protocolVersion 1, sampleRate 16000, channels 1 and sampleFormat s16le, then one bounded
 UTF-8 JSON line per clip: language, text, words (`w`, start/end seconds), coarse 40 ms timing, null confidence and
-aggregate durations. Main alone maps sample offsets to capture times. There is one decode in flight, at most two
+aggregate durations. Each word also has `c`, the mean over its CTC frames of the top token's posterior (0-1; the
+reply-level `confidence` stays null). Main alone maps sample offsets to capture times. A reply whose every word is
+one syllable (one letter or digit with its vowel signs) AND below `NOISE_CONFIDENCE` (0.5) is noise or hum
+(`noiseOnly`): a growing phrase is sent empty, a whole one is dropped; a reply without `c` is never called noise. There is one decode in flight, at most two
 queued finals; a stopped session kills the helper and discards its replies. Readiness is bounded by 90 seconds,
 no answer by 8 seconds terminates the helper; normal lag/rest guards remain. No PCM files, sockets or text logs.
 

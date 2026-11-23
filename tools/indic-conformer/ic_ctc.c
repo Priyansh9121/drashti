@@ -1,5 +1,7 @@
 /* Drashti Route C. Adapted from cap-route-c trial helper, 23 Nov 2026.
- * NeMo log-mel + greedy language-masked CTC, 40ms coarse token times, null confidence.
+ * NeMo log-mel + greedy language-masked CTC, 40ms coarse token times; each word's confidence "c" is the mean, over
+ * the frames its tokens were emitted on, of the top token's posterior (softmax of the 257 scores); the reply-level
+ * "confidence" stays null.
  * Models/frontend/tokens come only from a checked imported pack; no acoustic weights here.
  */
 #include <math.h>
@@ -172,21 +174,26 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
   int Tp = (int)dims[1];
   if (dims[0] != 1 || dims[1] < 1 || dims[1] > 1201 || dims[2] != NTOK) die("invalid output shape");
   int cap_ids = 4 * Tp + 16, nid = 0; int *ids = malloc(sizeof(int) * cap_ids), *fr = malloc(sizeof(int) * cap_ids), *fe = malloc(sizeof(int) * cap_ids);
-  { /* greedy CTC */
+  double *ps = malloc(sizeof(double) * cap_ids); int *pn = malloc(sizeof(int) * cap_ids);
+  if (!ids || !fr || !fe || !ps || !pn) die("allocation failed");
+  { /* greedy CTC; each emitted token keeps the sum and count of its frames' top posteriors */
     int prev = BLANK;
     for (int t = 0; t < Tp; t++) {
       const float *r = lp + (size_t)t * NTOK; int best = 0;
       if (!isfinite(r[0])) die("non-finite logits");
       for (int k = 1; k < NTOK; k++) if (!isfinite(r[k])) die("non-finite logits"); else if (r[k] > r[best]) best = k;
-      if (best != prev && best != BLANK && nid < cap_ids) { ids[nid] = best; fr[nid] = fe[nid] = t; nid++; }
-      else if (best != BLANK && best == prev && nid > 0) fe[nid - 1] = t; /* a repeated frame extends the token */
+      double z = 0; /* softmax of the scores at the top one: 1 / sum(exp(r[k] - r[best])) */
+      for (int k = 0; k < NTOK; k++) z += exp((double)r[k] - (double)r[best]);
+      double p = 1.0 / z;
+      if (best != prev && best != BLANK && nid < cap_ids) { ids[nid] = best; fr[nid] = fe[nid] = t; ps[nid] = p; pn[nid] = 1; nid++; }
+      else if (best != BLANK && best == prev && nid > 0) { fe[nid - 1] = t; ps[nid - 1] += p; pn[nid - 1]++; } /* a repeated frame extends the token */
       prev = best;
     }
   }
   double td = now_ms();
   /* text: pieces joined, U+2581 -> space (the fork's ids_to_text); a word starts at a piece beginning with U+2581 */
   size_t cap = 4096, tl = 0; char *text = calloc(cap, 1);
-  static char words[1024][256]; static double ws[1024], we[1024]; int nw = -1;
+  static char words[1024][256]; static double ws[1024], we[1024], wp[1024]; static int wn[1024]; int nw = -1;
   for (int i = 0; i < nid; i++) {
     const char *pc = m->tok[ids[i]];
     int newword = !strncmp(pc, "\xe2\x96\x81", 3);
@@ -195,7 +202,8 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
       if (!strncmp(s, "\xe2\x96\x81", 3)) { text[tl++] = ' '; s += 3; } else text[tl++] = *s++;
     }
     text[tl] = 0;
-    if (newword || nw < 0) { if (nw >= 1023) die("word count exceeds bounds"); nw++; words[nw][0] = 0; ws[nw] = fr[i] * 0.04; }
+    if (newword || nw < 0) { if (nw >= 1023) die("word count exceeds bounds"); nw++; words[nw][0] = 0; ws[nw] = fr[i] * 0.04; wp[nw] = 0; wn[nw] = 0; }
+    wp[nw] += ps[i]; wn[nw] += pn[i];
     if (strlen(words[nw]) + strlen(newword ? pc + 3 : pc) >= sizeof words[nw]) die("word exceeds protocol bounds");
     strcat(words[nw], newword ? pc + 3 : pc);
     we[nw] = (fe[i] + 1) * 0.04;
@@ -208,13 +216,13 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
   printf(",\"language\":\"%s\",\"decoder\":\"%s\",\"text\":", m->code, "ctc"); json_str(stdout, shown);
   printf(",\"words\":[");
   int emitted = 0;
-  for (int w = 0; w <= nw; w++) { if (!words[w][0]) continue; if (emitted++) fputc(',', stdout); printf("{\"w\":"); json_str(stdout, words[w]); printf(",\"start\":%.2f,\"end\":%.2f}", ws[w], we[w]); }
+  for (int w = 0; w <= nw; w++) { if (!words[w][0]) continue; if (emitted++) fputc(',', stdout); printf("{\"w\":"); json_str(stdout, words[w]); printf(",\"start\":%.2f,\"end\":%.2f,\"c\":%.3f}", ws[w], we[w], wn[w] > 0 ? wp[w] / wn[w] : 0.0); }
   printf("],\"timing\":\"coarse: token frames (40 ms)\",\"confidence\":null,\"audio_s\":%.3f,\"frames\":%d,\"enc_frames\":%d,\"frontend_ms\":%.1f,\"infer_ms\":%.1f,\"decode_ms\":%.1f,\"rtf\":%.4f,\"threads\":%d}\n",
          secs, T, Tp, tb - ta, tc - tb, td - tc, secs > 0 ? (td - ta) / 1e3 / secs : 0, threads);
   fflush(stdout);
   ort->ReleaseValue(vin[0]); ort->ReleaseValue(vin[1]);
   for (int k = 0; k < 3; k++) if (vout[k]) ort->ReleaseValue(vout[k]);
-  free(ids); free(fr); free(fe); free(text); free(feat); free(x);
+  free(ids); free(fr); free(fe); free(ps); free(pn); free(text); free(feat); free(x);
 }
 
 

@@ -75,6 +75,9 @@ export function parseIndicReply(value: unknown, language: IndicLanguage): IndicR
       typeof item.end !== 'number'
     )
       return invalid();
+    // The word's confidence (cap-integration's helper): 0-1, or none at all (an older helper gives none).
+    const c: unknown = 'c' in item ? item.c : null;
+    if (c !== null && (typeof c !== 'number' || !Number.isFinite(c) || c < 0 || c > 1)) return invalid();
     const w = item.w.normalize('NFC');
     bytes += Buffer.byteLength(w);
     const controls = Array.from(w).some((char) => {
@@ -95,7 +98,7 @@ export function parseIndicReply(value: unknown, language: IndicLanguage): IndicR
       return invalid();
     // The tokenizer's unknown symbol is a decoder marker, never a word for the hall screen.
     const display = w.replaceAll('<unk>', '');
-    if (display) words.push({ w: display, start: item.start, end: item.end, c: null });
+    if (display) words.push({ w: display, start: item.start, end: item.end, c });
     previous = item.start;
   }
   return { language, words };
@@ -122,13 +125,24 @@ export function indicWords(
   });
 }
 
-/** Below this confidence a word of one syllable may be noise (Route C's own CTC posteriors). Red: not measured yet. */
+/**
+ * Below this confidence a word of one syllable may be noise (the helper's mean top posterior over the word's CTC
+ * frames). Measured on the int8 and full models (cap-integration, 24 Nov): generated noise and hum gave one-syllable
+ * words at 0.06-0.40; synthetic short answers (હા, ના, જી, જય, છે, हाँ, जी, है, ना, जय) 0.56-1.00.
+ */
 export const NOISE_CONFIDENCE = 0.5;
+
+/** One syllable: one letter or digit, with its vowel signs and marks (હ, છે, है, हाँ). */
+const oneSyllable = (word: string): boolean => (word.match(/[\p{L}\p{N}]/gu)?.length ?? 0) <= 1;
 
 /**
  * A phrase Route C made out of noise or hum (cap-route-c: generated noise and hum give one-syllable "words" such as
- * હ, છે, म, है, આ; silence gives none). Red: not decided yet.
+ * હ, છે, म, है, આ; silence gives none): every word one syllable AND heard with low confidence. A short answer heard
+ * clearly (હા, जी) is speech, and without the helper's confidence nothing is called noise.
  */
 export function noiseOnly(words: readonly { w: string; c: number | null }[]): boolean {
-  return words.length < 0;
+  return (
+    words.length > 0 &&
+    words.every((word) => word.c !== null && word.c < NOISE_CONFIDENCE && oneSyllable(word.w))
+  );
 }

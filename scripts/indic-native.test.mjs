@@ -122,6 +122,8 @@ for (const trailingSeparator of [false, true]) {
       assert.equal(lines.length, 2);
       assert.equal(lines[1].text, 'shape shape box');
       assert.equal(lines[1].confidence, null);
+      // Each word carries the helper's confidence in it: the mean top posterior over its CTC frames, 0-1.
+      for (const word of lines[1].words) assert.ok(typeof word.c === 'number' && word.c >= 0 && word.c <= 1);
       assert.equal(lines[1].language, 'gu');
       assert.deepEqual(
         lines[1].words.map((w) => w.w),

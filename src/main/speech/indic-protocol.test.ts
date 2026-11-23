@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { indicWords, NOISE_CONFIDENCE, noiseOnly, parseIndicReply, pcmFrame, routeCFiles } from './indic-protocol';
+import {
+  indicWords,
+  NOISE_CONFIDENCE,
+  noiseOnly,
+  parseIndicReply,
+  pcmFrame,
+  routeCFiles,
+} from './indic-protocol';
 
 describe('IndicConformer private pipe and checked pack', () => {
   it('frames little-endian PCM without a recording or a path', () => {
@@ -65,5 +72,14 @@ describe('IndicConformer private pipe and checked pack', () => {
     // One word heard clearly is enough to show the phrase.
     expect(noiseOnly([...phrase('હ', low), ...phrase('છે', high)])).toBe(false);
     expect(noiseOnly([])).toBe(false);
+  });
+  it('sits between what noise and hum gave and what short answers gave (measured, int8 and full models)', () => {
+    const heard = (...words: [string, number][]) => words.map(([w, c]) => ({ w, c }));
+    // The highest one-syllable noise and hum words measured, Gujarati and Hindi.
+    expect(noiseOnly(heard(['હ', 0.24], ['છે', 0.4]))).toBe(true);
+    expect(noiseOnly(heard(['म', 0.1], ['है', 0.31]))).toBe(true);
+    // The lowest short answers measured (a synthetic voice's જય heard as જે; हाँ while still growing).
+    expect(noiseOnly(heard(['જે', 0.56]))).toBe(false);
+    expect(noiseOnly(heard(['हाँ', 0.68]))).toBe(false);
   });
 });

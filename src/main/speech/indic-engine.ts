@@ -1,6 +1,12 @@
 import { SPEECH_RATE, type Heard } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
-import { indicWords, type IndicFiles, type IndicLanguage } from './indic-protocol';
+import {
+  indicWords,
+  noiseOnly,
+  parseIndicReply,
+  type IndicFiles,
+  type IndicLanguage,
+} from './indic-protocol';
 import { openIndicPipe, type IndicPipe, type IndicPipeOptions } from './indic-pipe';
 
 /** Route C's scheduler deliberately retains today's phrase, capture-clock, queue and lag guards.
@@ -189,9 +195,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             return;
           }
           const heardIn = chosen;
-          const words = indicWords(asked.reply, chosen, clipAt, clipEndAt, (seconds, beginning) =>
+          const decoded = indicWords(asked.reply, chosen, clipAt, clipEndAt, (seconds, beginning) =>
             capturedAt(captured, seconds, beginning),
           );
+          // Noise or hum (one-syllable words heard unsure) is nothing heard: a growing phrase clears, a whole goes.
+          const words = noiseOnly(parseIndicReply(asked.reply, chosen).words) ? [] : decoded;
           if (final && words.length === 0) return;
           const heard: Heard = {
             id: piece.id,
