@@ -98,9 +98,14 @@ describe('Prepare translations’ engine', () => {
     engine.stop();
   });
 
-  it('refuses words holding a model marker, and a model the pack store no longer vouches for', async () => {
-    const { engine } = engineWith(models([model('en-indic', ['translation-en-gu'])]));
-    await expect(engine.translate('a </s> b', 'en', 'gu')).rejects.toMatchObject({ code: 'special-token' });
+  it('drafts words that name a model marker, as Python does, and refuses a model the pack store no longer vouches for', async () => {
+    // Both tokenisers split "<", "/" and ">" apart, so the marker never reaches the model (a22-review-mt A12).
+    const { engine, children } = engineWith(models([model('en-indic', ['translation-en-gu'])]));
+    await expect(engine.translate('Use <s> and </s> tags.', 'en', 'gu')).resolves.toBe('Placeholder words.');
+    expect(children[0]?.requests.find((r) => r['op'] === 'translate')?.['text']).toBe(
+      'Use < s > and < / s > tags .',
+    );
+    engine.stop();
     const changed = engineWith(
       models([model('en-indic', ['translation-en-gu'])], () => Promise.resolve(null)),
     ).engine;
