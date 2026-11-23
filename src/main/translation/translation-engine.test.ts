@@ -191,4 +191,30 @@ describe('Prepare translations’ engine', () => {
     expect(release).toHaveBeenCalledTimes(1);
     expect(children[0]?.requests.filter((r) => r['op'] === 'load')).toEqual([]);
   });
+
+  it('refuses a draft the model cut at its length limit, as this box only (a22-review-mt A9)', async () => {
+    const store = models([model('en-indic', ['translation-en-gu'])]);
+    // 256 tokens and no end token: the model stopped mid-sentence.
+    const { engine } = engineWith(store, () => Array.from({ length: 256 }, () => '\u2581x'));
+    await expect(engine.translate('A long placeholder line.', 'en', 'gu')).rejects.toMatchObject({
+      code: 'too-long',
+    });
+    engine.stop();
+  });
+
+  it('sends only well-formed text the helper can read, and refuses a line too long for one request (a22-review-mt A10)', async () => {
+    const store = models([model('en-indic', ['translation-en-gu'])]);
+    const { engine, children } = engineWith(store);
+    // A broken emoji (a lone surrogate) is drafted, not refused; the helper never sees the lone surrogate.
+    await expect(engine.translate('Placeholder \ud83d words.', 'en', 'gu')).resolves.toBe(
+      'Placeholder words.',
+    );
+    const sent = children[0]?.requests.find((r) => r['op'] === 'translate');
+    expect(String(sent?.['text'])).not.toMatch(/[\ud800-\udfff]/u);
+    // About 60 KB of Gujarati in one line: too long for one request, this box only; the helper keeps running.
+    const long = '\u0a95'.repeat(21_000);
+    await expect(engine.translate(long, 'gu', 'en')).rejects.toMatchObject({ code: 'too-long' });
+    expect(children[0]?.killed).toBe(false);
+    engine.stop();
+  });
 });
