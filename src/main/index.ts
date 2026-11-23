@@ -273,6 +273,7 @@ import { READING_PAGE } from './ocr/read-words';
 import { registerReadWordsIpc } from './ocr/read-words-ipc';
 import { startReader } from './ocr/reader-process';
 import { builtOcrFiles } from './ocr/ocr-files';
+import { ocrSelfTest } from './ocr/ocr-selftest';
 import { READ_WORDS_PICTURES } from '../shared/read-words';
 import { KirtanBundleExporter } from './import/kirtan-bundle-export-service';
 import { registerKirtanBundleIpc } from './library/kirtan-bundle-ipc';
@@ -1565,12 +1566,20 @@ function start(): void {
             process.platform,
           )
         : null;
+      // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
+      const ocr = await ocrSelfTest({
+        files: builtOcrFiles(__dirname),
+        tempDir: () => fsPromises.mkdtemp(join(tmpdir(), 'drashti-ocr-selftest-')),
+        startReader: (pages, said) =>
+          startReader(join(__dirname, 'ocr-worker.js'), builtOcrFiles(__dirname), pages, said),
+      });
       const result = {
         ...ffmpeg,
         ffmpegPassed: ffmpeg.passed,
         youtube,
         whisper,
-        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true),
+        ocr,
+        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true) && ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);

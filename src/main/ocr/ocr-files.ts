@@ -16,6 +16,9 @@ export const OCR_SOURCES: Readonly<OcrFiles> = {
   model: 'resources/ocr/Gujarati.traineddata',
 };
 
+/** The model's SHA-256: tessdata_best's own file, as the engine trial read with (resources/ocr/SOURCE.txt). */
+export const OCR_MODEL_SHA256 = '82f06ffd7c0db4232e00af1b8c90b596c28b49a77453d9a54ce5b99a16b3e0a5';
+
 /** The folder beside the main bundle the build copies them into. */
 export const OCR_FOLDER = 'ocr';
 

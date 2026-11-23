@@ -29,6 +29,9 @@
 // On Windows (Session 58, X2b) the installed captions engine must decode a generated clip with Drashti's smallest
 // model, its Visual C++ libraries loaded from its own folder, never the system's (scripts/whisper-decode-check.mjs).
 //
+// Book OCR (alpha.21): the installed app's FFmpeg self-test also reads a blank page with its reading process and its own
+// model (tessdata_best's Gujarati, by its SHA-256), from inside the installed app (src/main/ocr/ocr-selftest.ts).
+//
 //   node scripts/check-installers.mjs
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -220,6 +223,12 @@ function within(path, dir) {
   return real(path).startsWith(real(dir) + sep);
 }
 
+/** A file inside the app's archive, as the archive itself (Node sees app.asar as one file). */
+function asarFile(path) {
+  const at = path.indexOf(`app.asar${sep}`);
+  return at >= 0 ? path.slice(0, at + 'app.asar'.length) : path;
+}
+
 /** The watchdog self-test's first checks: the app started, opened an output and showed the first slide. */
 const STARTED = [
   'an output window is open',
@@ -244,6 +253,12 @@ async function starts(name, command, args, appDir, emulated = false) {
   else pass(name, `starts, and runs its own FFmpeg (${f.version}; streams with ${f.chosen ?? 'nothing'})`);
   if (f && !f.whisper?.passed) fail(name, f.whisper?.detail ?? 'no bundled captions engine startup result');
   else if (f?.whisper) pass(name, f.whisper.detail);
+  // Book OCR (alpha.21): it reads with its own model (tessdata_best's Gujarati, its SHA-256), from inside the app.
+  const o = f?.ocr;
+  if (f && !o?.passed) fail(name, o?.detail ?? 'its self-test says nothing of book OCR');
+  else if (o && !within(asarFile(o.model), appDir))
+    fail(name, `it read words with a model from outside the installed app: ${String(o.model)}`);
+  else if (o) pass(name, o.detail);
   // YouTube's two programs (Session 25c): its own yt-dlp and Deno run, and Deno is sandboxed.
   const y = f?.youtube;
   if (f && !y) fail(name, 'its self-test says nothing of yt-dlp and Deno');

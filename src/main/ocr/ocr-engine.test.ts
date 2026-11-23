@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { OCR_MODEL, openReader, tidyRead } from './ocr-engine';
 import { sourceOcrFiles } from './ocr-files';
+import { blankPng } from './ocr-selftest';
 import {
   LETTERS_FOUND_AT_LEAST,
   LETTERS_RIGHT_AT_LEAST,
@@ -83,6 +84,11 @@ describe('reading a page’s words with Tesseract inside Drashti', () => {
     expect(letterScore(PAGE_ONE.join('\n'), await reader.read(page())).found).toBeGreaterThanOrEqual(
       LETTERS_FOUND_AT_LEAST,
     );
+  });
+
+  it('reads the self-test’s blank page (ocr-selftest.ts) to the end, as no words', async () => {
+    const reader = await openReader(sourceOcrFiles(root));
+    expect(tidyRead(await reader.read(new Uint8Array(blankPng(64))))).toBe('');
   });
 
   it('is the Gujarati script model', () => {

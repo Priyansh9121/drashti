@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { builtOcrFiles, OCR_FOLDER, ocrBuildFiles, sourceOcrFiles } from './ocr-files';
+import { builtOcrFiles, OCR_FOLDER, OCR_MODEL_SHA256, ocrBuildFiles, sourceOcrFiles } from './ocr-files';
 
 /*
  * Book OCR's files (alpha.21, the owner's Q60-58): the model committed in resources/ocr/ is tessdata_best's own
@@ -19,6 +19,7 @@ describe('book OCR’s files', () => {
     expect(createHash('sha256').update(model).digest('hex')).toBe(
       '82f06ffd7c0db4232e00af1b8c90b596c28b49a77453d9a54ce5b99a16b3e0a5',
     );
+    expect(OCR_MODEL_SHA256).toBe('82f06ffd7c0db4232e00af1b8c90b596c28b49a77453d9a54ce5b99a16b3e0a5');
     expect(readFileSync(join(root, 'resources', 'ocr', 'LICENSE-tessdata_best.txt'), 'utf8')).toContain(
       'Apache License',
     );
