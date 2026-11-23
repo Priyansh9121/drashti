@@ -91,6 +91,16 @@ describe('caption AI routes', () => {
       engine: whisperEngine,
     });
     expect(ai.recognizer('hi')).toBeNull();
+    // A Route C model of its own (IndicConformer) says so.
+    const conformer = ownModelCaptionAi({
+      language: () => 'gu',
+      ownModel: () => ({ id: 'gu-conformer-placeholder', format: 'indicconformer-ctc-onnx-v1' }),
+      engineFor: () => whisperEngine,
+    });
+    expect(conformer.recognizer('gu')).toMatchObject({
+      route: 'conformer',
+      modelId: 'gu-conformer-placeholder',
+    });
     language = 'hi';
     expect(ai.on()).toBe(false);
     language = 'auto';

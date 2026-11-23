@@ -66,7 +66,7 @@ export interface OwnModelCaptionAiOptions {
   /** The speaker's language now (the library's captions settings). */
   language(): SpeechLanguage | 'auto';
   /** That language's own model, chosen on this computer and checked (CaptionsService.languageModelFor), or null. */
-  ownModel(language: SpeechLanguage | 'auto'): { id: string } | null;
+  ownModel(language: SpeechLanguage | 'auto'): { id: string; format?: string } | null;
   /** The recognizer for that model (Route W on the pack's file, held while heard), or null when it cannot be had. */
   engineFor(model: { id: string }): SpeechEngine | null;
 }
