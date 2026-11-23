@@ -254,3 +254,21 @@ describe('phase D prototype alongside the existing captions service', () => {
     service.close();
   });
 });
+
+it('cancels the rehearsal at an access stop without restarting Whisper or downloads', async () => {
+  vi.useFakeTimers();
+  try {
+    const { service, started, downloads, shown } = setup();
+    await service.setOn(true);
+    service.setPrototypeOn(true);
+    service.advancePrototype(); service.advancePrototype();
+    service.cancelPrototype();
+    expect(service.prototypeView().on).toBe(false);
+    expect(service.prototypeView().current).toBeNull();
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)).toBeNull();
+    expect(started).toEqual(['auto']);
+    expect(downloads).toEqual(['small']);
+    service.close();
+  } finally { vi.useRealTimers(); }
+});

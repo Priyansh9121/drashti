@@ -124,6 +124,8 @@ export class CaptionsService {
     this.tell();
   }
 
+  cancelPrototype(): void {}
+
   advancePrototype(): void { if (!this.closed) this.prototype.advance(); }
   restartPrototype(): void { if (!this.closed && this.prototype.view().on) this.prototype.restart(); }
   correctPrototype(correction: CaptionCorrection): boolean { return !this.closed && this.prototype.correct(correction); }
