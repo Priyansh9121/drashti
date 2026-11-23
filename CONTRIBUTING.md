@@ -21,7 +21,8 @@ Tailwind 4, SQLite (better-sqlite3), Vitest, Playwright, electron-builder and pn
 ## Set up from a fresh clone
 
 You need **Git**, **Node.js 22.12 or later** (`engines` in `package.json`) and **pnpm 12** (`packageManager`:
-pnpm 12.6.0, which corepack gives you). No compiler is needed for the app itself: better-sqlite3 ships prebuilt
+pnpm 12.6.0, which corepack gives you). If Node did not include Corepack, install Corepack first, or use the
+pinned pnpm version below. No compiler is needed for the app itself: better-sqlite3 ships prebuilt
 binaries for both systems. Drashti runs on macOS 13 or later and on Windows 10 or 11 (64-bit).
 
 macOS (Terminal):
@@ -29,7 +30,7 @@ macOS (Terminal):
 ```bash
 git clone https://github.com/Priyansh9121/drashti.git
 cd drashti
-corepack enable pnpm        # or: npm install -g pnpm@12
+corepack enable pnpm        # or: npm install -g pnpm@12.6.0
 pnpm install
 pnpm hooks                  # once: the secret scan before every push
 ```
@@ -39,7 +40,7 @@ Windows (PowerShell):
 ```powershell
 git clone https://github.com/Priyansh9121/drashti.git
 cd drashti
-corepack enable pnpm        # or: npm install -g pnpm@12
+corepack enable pnpm        # or: npm install -g pnpm@12.6.0
 pnpm install
 pnpm hooks                  # once: the secret scan before every push
 ```
@@ -63,7 +64,12 @@ node scripts/fetch-video-out.mjs         # Send to other software: built from pi
                                          # (the Mac's clang, or Visual Studio's compiler on Windows)
 ```
 
+Windows captions also need the Visual Studio x64 C++ and OpenMP redistribution files; the fetch script stages
+them beside Whisper. Build the video-out helper on the system it is for: Mac on Mac, Windows on Windows.
+
 On an Apple-silicon Mac, `--target darwin-x64` fetches the Intel Mac's copy too, for packaging both.
+
+After setup, run `pnpm typecheck` and `pnpm test`, then `pnpm dev`. The access step below is needed to use the window.
 
 ## Commands
 
@@ -85,8 +91,9 @@ README's "Commands" has them all, and the switches (`DRASHTI_*`) under "Switches
 ## Tests
 
 - **Unit tests:** `pnpm test`, or one folder or file: `pnpm test src/main/engine`. They run inside Electron's own
-  Node (`scripts/vitest-electron.mjs`), so they use the Node, V8 and native modules the app ships with. The FFmpeg
-  tests are skipped where FFmpeg has not been fetched; on CI's Mac and Windows a missing FFmpeg fails them.
+  Node (`scripts/vitest-electron.mjs`), so they use the Node, V8 and native modules the app ships with. Some FFmpeg
+  tests skip where FFmpeg has not been fetched; others need it to make their fixtures and fail without it. Fetch
+  FFmpeg before running the full suite; on CI's Mac and Windows a missing FFmpeg fails the checks.
 - **End-to-end tests** start the real app with Playwright. The whole suite runs on CI. On a computer someone is using,
   run one spec at a time, after a build: `pnpm build`, then `pnpm exec playwright test tests/e2e/smoke.spec.ts`. Runs
   outside CI are quiet: Drashti never comes to the front, covers the screen or makes a sound, and the few tests that
@@ -103,6 +110,20 @@ README's "Commands" has them all, and the switches (`DRASHTI_*`) under "Switches
   its retry fails the run (`failOnFlakyTests`), and so does a `.only` left in.
 
 ## Branches and pull requests
+
+Start a branch from the current working branch:
+
+```bash
+git fetch origin
+git switch phase1
+git pull --ff-only origin phase1
+git switch -c your-change
+```
+
+After the failing test and fix are committed, run `pnpm typecheck`, `pnpm lint` and the tests for the changed
+feature. Send the branch to your fork (or the repository if the maintainer has given you write access), then open
+a pull request with **base: phase1**. Say what changed, the test that failed before the fix, and what you checked
+on each system. If you could check only one system, say so and ask the maintainer for the other CI result.
 
 - **`phase1`** is the working branch. Start every branch from it, and open every pull request against it.
 - **`main` moves only at a release**: the maintainer moves it to the release commit. Never open a pull request
