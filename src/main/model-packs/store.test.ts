@@ -23,7 +23,7 @@ import {
   type PackFile,
 } from '../../shared/model-packs';
 import { makeZip, type ZipWriterEntry } from '../import/testing/zip-writer';
-import { ModelPackStore } from './store';
+import { insideFolder, ModelPackStore } from './store';
 
 /** One read that fails the way a busy or briefly locked disk does (EIO), for the next file read only. */
 const readFault = vi.hoisted(() => ({ next: false }));
@@ -569,5 +569,22 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
         /\bfetch\(|node:https?\b|node:net\b|\bnet\.request\b|XMLHttpRequest|WebSocket/u,
       );
     }
+  });
+});
+
+describe('a pack’s files stay inside its folder (alpha.23, the review)', () => {
+  it('takes a pack at the top of a drive or a disk, such as a USB stick’s E:\\', () => {
+    expect(insideFolder('E:\\', 'E:\\captions\\gu\\model.onnx', 'win32')).toBe(true);
+    expect(insideFolder('e:\\', 'E:\\Captions\\model.onnx', 'win32')).toBe(true);
+    expect(insideFolder('/', '/captions/model.onnx', 'darwin')).toBe(true);
+    expect(insideFolder('E:\\Packs\\gu', 'E:\\Packs\\gu\\model.onnx', 'win32')).toBe(true);
+  });
+
+  it('refuses a file outside it: another drive, a folder named alike, the folder itself', () => {
+    expect(insideFolder('E:\\', 'F:\\captions\\model.onnx', 'win32')).toBe(false);
+    expect(insideFolder('E:\\Packs', 'E:\\Packs2\\model.onnx', 'win32')).toBe(false);
+    expect(insideFolder('/Volumes/Packs', '/Volumes/Packs2/model.onnx', 'darwin')).toBe(false);
+    expect(insideFolder('/Volumes/Packs', '/Volumes/Packs', 'darwin')).toBe(false);
+    expect(insideFolder('/srv/Packs', '/srv/packs/model.onnx', 'linux')).toBe(false);
   });
 });
