@@ -83,6 +83,8 @@ export interface MakeSlideRequest {
   slideId: string;
   part: PagePart;
   place: MadeSlidePlace;
+  /** Collected parts in the operator's reading order; absent for the original single-page action. */
+  parts?: { slideId: string; part: PagePart }[];
 }
 
 /** The slide made (its presentation's name, and the playlist it went into, or null for the library only), or why not. */

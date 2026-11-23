@@ -5283,7 +5283,7 @@ function start(): void {
   });
   /** Make a slide…'s keeping (set below, where the open playlist is known). */
   let keepPageSlide: (
-    png: Uint8Array,
+    png: Uint8Array | Uint8Array[],
     name: string,
     place: MadeSlidePlace,
   ) => Promise<MakeSlideResult> = () =>
@@ -6161,12 +6161,22 @@ function start(): void {
   keepPageSlide = async (png, name, place) => {
     // The picture's file is named as its slide is (Media lists it by that name).
     const file = `${cutText(name.replace(/[\\/:*?"<>|]/gu, ' ').trim(), 120) || 'Page'}.png`;
-    const mediaId = await keepMadePicture(png, file, 'drashti-page-slide-');
-    if (mediaId === null) return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+    const pictures = Array.isArray(png) ? png : [png];
+    const mediaIds: string[] = [];
+    for (const [index, picture] of pictures.entries()) {
+      const mediaId = await keepMadePicture(
+        picture,
+        pictures.length === 1 ? file : `${String(index + 1)} ${file}`,
+        'drashti-page-slide-',
+      );
+      if (mediaId === null)
+        return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+      mediaIds.push(mediaId);
+    }
     const libraryId = presentations.ensureLibrary('Default');
     const size = pictureSize(screenRepo.allScreens(), screenRepo.firstGroup('audience'));
     const madeName = presentations.uniqueName(libraryId, name);
-    const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaId, size));
+    const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaIds, size));
     contentChanged([id]);
     const playlist = place === 'playlist' ? openPlaylistForSlides() : null;
     const [itemId = null] = playlist
