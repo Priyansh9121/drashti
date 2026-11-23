@@ -1,3 +1,4 @@
+import { pdfParagraphs } from './pdf-paragraphs';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { NativePathCommand, ShapeElement, SlideElement } from './model';
 
@@ -1015,5 +1016,5 @@ export async function editablePdfPage(
     issues.push(
       'Some stroked or complex source drawings stay as separate pictures. They can be moved or removed; their control points cannot be edited.',
     );
-  return { width: base.width, height: base.height, elements, assets, issues };
+  return { width: base.width, height: base.height, elements: pdfParagraphs(elements), assets, issues };
 }
