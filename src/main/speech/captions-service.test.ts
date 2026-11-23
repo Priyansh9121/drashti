@@ -214,7 +214,10 @@ describe('live captions as an admin turns them on (Part 10)', () => {
 });
 
 describe('phase D prototype alongside the existing captions service', () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(Date.UTC(2026, 10, 23, 9)); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 23, 9));
+  });
   afterEach(() => vi.useRealTimers());
   it('uses no real engine or model download and clears its words before the normal path resumes', async () => {
     const { service, started, downloads, shown } = setup();
@@ -242,7 +245,8 @@ describe('phase D prototype alongside the existing captions service', () => {
     await service.setOn(true);
     service.setPrototypeOn(true);
     say('Normal path must be stopped');
-    service.advancePrototype(); service.advancePrototype();
+    service.advancePrototype();
+    service.advancePrototype();
     const old = service.prototypeView().current!;
     service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'hi' });
     expect(service.prototypeView().current).toBeNull();
@@ -261,12 +265,32 @@ it('cancels the rehearsal at an access stop without restarting Whisper or downlo
     const { service, started, downloads, shown } = setup();
     await service.setOn(true);
     service.setPrototypeOn(true);
-    service.advancePrototype(); service.advancePrototype();
+    service.advancePrototype();
+    service.advancePrototype();
     service.cancelPrototype();
     expect(service.prototypeView().on).toBe(false);
     expect(service.prototypeView().current).toBeNull();
     vi.advanceTimersByTime(300);
     expect(shown.at(-1)).toBeNull();
+    expect(started).toEqual(['auto']);
+    expect(downloads).toEqual(['small']);
+    service.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('starts a fresh prototype session when the selected normal model changes, without loading it', async () => {
+  vi.useFakeTimers();
+  try {
+    const { service, started, downloads } = setup();
+    await service.setOn(true);
+    service.setPrototypeOn(true);
+    service.advancePrototype(); service.advancePrototype();
+    const old = service.prototypeView().sessionId;
+    await service.setModel('turbo');
+    expect(service.prototypeView().sessionId).not.toBe(old);
+    expect(service.prototypeView().current).toBeNull();
     expect(started).toEqual(['auto']);
     expect(downloads).toEqual(['small']);
     service.close();
