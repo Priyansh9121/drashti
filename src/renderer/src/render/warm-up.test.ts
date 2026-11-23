@@ -14,7 +14,7 @@ import { MOVEMENTS } from '../../../shared/looks';
 import { TRANSITION_KINDS } from '../../../shared/model';
 import { OPENING_START_HOLD_MS } from '../../../shared/opening';
 import { deckTransitionFrame, deckWipeShows, wipeSlideMask } from './transition-frame';
-import { type WarmScene, WARM_UP_LONGEST_MS, warmScenes } from './WarmUp';
+import { handOverWarmUp, type WarmScene, type WarmUpEnd, WARM_UP_LONGEST_MS, warmScenes } from './WarmUp';
 
 /*
  * The GPU's warm-up (render/WarmUp.tsx; tests/e2e/warm-up.spec.ts looks at it drawn): before a screen with a graphics
@@ -371,5 +371,57 @@ describe('the warm-up and the opening (Session 59)', () => {
     // later. On CI's Mac the warm-up reached its cap, and the opening moved for 17 frames while that step still ran
     // (opening-timing.spec.ts:243, Session 59's final quick check).
     expect(OPENING_START_HOLD_MS).toBeGreaterThan(WARM_UP_LONGEST_MS);
+  });
+});
+
+/** A compositor's retirement acknowledged by hand, so parent readiness can be checked before and after it. */
+function watchHandOver(how: WarmUpEnd, drewFrame: boolean) {
+  const events: string[] = [];
+  let finishRetiring = () => {
+    events.push('no retirement requested');
+  };
+  handOverWarmUp({
+    how,
+    drewFrame,
+    retire: (ready) => {
+      events.push('empty');
+      finishRetiring = () => {
+        events.push('retired');
+        ready();
+      };
+    },
+    ready: () => {
+      events.push('parent-ready');
+    },
+  });
+  return {
+    events,
+    finishRetiring: () => {
+      finishRetiring();
+    },
+  };
+}
+
+describe('retiring warm-up pictures before the parent draws', () => {
+  it('a normally drawn warm-up cannot publish parent-ready while its drawing is still held by the compositor', () => {
+    const hand = watchHandOver('drawn', true);
+    expect(hand.events, 'first remove the warm-up drawing, keeping the show covered').toEqual(['empty']);
+    hand.finishRetiring();
+    expect(hand.events).toEqual(['empty', 'retired', 'parent-ready']);
+  });
+
+  it('keeps the same retirement barrier for caps, cuts and drawing errors', () => {
+    for (const how of ['cap', 'cut', 'error'] as const) {
+      const hand = watchHandOver(how, true);
+      expect(hand.events, how).toEqual(['empty']);
+      hand.finishRetiring();
+      expect(hand.events, how).toEqual(['empty', 'retired', 'parent-ready']);
+    }
+  });
+
+  it('a page unseen or with no drawing to release remains ready immediately', () => {
+    expect(watchHandOver('unseen', true).events).toEqual(['parent-ready']);
+    for (const how of ['drawn', 'cap', 'cut', 'error', 'unseen'] as const)
+      expect(watchHandOver(how, false).events, how).toEqual(['parent-ready']);
   });
 });

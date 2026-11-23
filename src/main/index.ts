@@ -163,6 +163,7 @@ import {
   lockChannels,
   refusalFor,
   setGiveWay,
+  tellRequests,
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
@@ -186,8 +187,12 @@ import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJournal } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
-import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
-import { log, logFiles, startLogCopy, startLogFile } from './log';
+import { type CrashFilesChoice, type GraphicsInfo, writeDiagnosticsFile } from './diagnostics';
+import { log, logDays, logFilesOf, onLogDaysChanged, setLogHeader, startLogCopy, startLogFile } from './log';
+import { CommandLog, requestLogged } from './log-commands';
+import { type DiagnosticsWho, installId } from './log-who';
+import { type LogPeriod, periodDays, periodText } from '../shared/log-period';
+import { computerName } from './access/identity';
 import {
   cannotPlayNotice,
   cannotStartInTimeNotice,
@@ -269,6 +274,12 @@ import { Revisions } from './library/revisions';
 import { styleNewText, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerWordsIpc } from './library/words-ipc';
+import { READING_PAGE } from './ocr/read-words';
+import { registerReadWordsIpc } from './ocr/read-words-ipc';
+import { startReader } from './ocr/reader-process';
+import { builtOcrFiles } from './ocr/ocr-files';
+import { ocrSelfTest } from './ocr/ocr-selftest';
+import { READ_WORDS_PICTURES } from '../shared/read-words';
 import { KirtanBundleExporter } from './import/kirtan-bundle-export-service';
 import { registerKirtanBundleIpc } from './library/kirtan-bundle-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
@@ -405,6 +416,8 @@ import {
   readQuickBar,
 } from '../shared/quick-bar';
 import { QR_TEXT_MAX, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
+import { pageSlidePresentation } from './library/page-slide';
+import type { MadeSlidePlace, MakeSlideResult, SlidePlace } from '../shared/page-part';
 import { QrService } from './library/qr-service';
 import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
@@ -412,7 +425,7 @@ import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
-import { runReportIntake, runReportJob } from './report/report-worker-run';
+import { runDiagnosticsText, runReportIntake, runReportJob } from './report/report-worker-run';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
 import {
@@ -508,6 +521,37 @@ if (userDataOverride) app.setPath('userData', userDataOverride);
 else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
 // The log goes to a rotating file in the data folder too (see log.ts), from the start.
 startLogFile(join(app.getPath('userData'), 'logs'));
+// This install's own id (alpha.21, logs for 100+ installs (b)), kept in the data folder; each new log file names it,
+// with the version, the system and this computer, at its head.
+const install = installId(app.getPath('userData'));
+setLogHeader(
+  () =>
+    `Drashti ${app.getVersion()} on ${process.platform} ${osRelease()} ${process.arch}, computer “${computerName()}”, install ${install.id}${install.kept ? '' : ' (not kept: the data folder could not be written)'}`,
+);
+/**
+ * Every show command, operator request and notice in the log (alpha.21, logs (a)): names, ids and numbers, never
+ * words; written a turn after each was answered.
+ */
+const commandLog = new CommandLog({
+  write: (line) => {
+    log.info(line);
+  },
+  now: () => Date.now(),
+  setTimer: (ms, run) => {
+    const t = setTimeout(run, ms);
+    return () => {
+      clearTimeout(t);
+    };
+  },
+});
+tellRequests({
+  logged: requestLogged,
+  tell: (channel, outcome, error) => {
+    commandLog.request(channel, outcome, error);
+  },
+});
+/** The log files of a period's days, oldest first (Save Diagnostics and Report a Problem, alpha.21 logs (c)). */
+const periodLogFiles = (period: LogPeriod, now: number) => logFilesOf(periodDays(period, now));
 // Tests only (never a packaged Drashti): every line into the test's own folder as well, kept when it fails (alpha.21).
 const testLogCopy = packaged() ? undefined : sw('DRASHTI_TEST_LOG_COPY');
 if (testLogCopy) startLogCopy(testLogCopy);
@@ -1459,7 +1503,13 @@ function startNodeMode(): void {
       crashJournal: () => crashJournal.entries(),
       chooseCrashFiles,
       savedText: savedDiagnosticsText,
-      logFiles,
+      // The log of a period (alpha.21, logs (c)), the days kept, this install (logs (b)), and the file made off the
+      // node's own thread by a report worker.
+      logFilesOf: periodLogFiles,
+      logDays,
+      installId: install.id,
+      computer: computerName,
+      makeText: (job) => runDiagnosticsText(job),
       desktop: () => app.getPath('desktop'),
     },
     // Help › Report a Problem… on a node (x49): handed to its Main.
@@ -1506,6 +1556,7 @@ function startNodeMode(): void {
     installNodeMenu({
       priority: priorityItem(() => nodeMenu()),
       saveDiagnostics: node.saveDiagnostics,
+      logDays,
       reportProblem: node.reportProblem,
       diagnostics: diagnostics
         ? {
@@ -1519,6 +1570,10 @@ function startNodeMode(): void {
     });
   };
   nodeMenu();
+  // Help › Save Diagnostics › One Day, built again when the days kept change (alpha.21, logs (c)), a turn later.
+  onLogDaysChanged(() => {
+    setImmediate(nodeMenu);
+  });
   if (nodeSelfTest)
     void node.runSelfTest().then((result) => {
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
@@ -1560,12 +1615,20 @@ function start(): void {
             process.platform,
           )
         : null;
+      // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
+      const ocr = await ocrSelfTest({
+        files: builtOcrFiles(__dirname),
+        tempDir: () => fsPromises.mkdtemp(join(tmpdir(), 'drashti-ocr-selftest-')),
+        startReader: (pages, said) =>
+          startReader(join(__dirname, 'ocr-worker.js'), builtOcrFiles(__dirname), pages, said),
+      });
       const result = {
         ...ffmpeg,
         ffmpegPassed: ffmpeg.passed,
         youtube,
         whisper,
-        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true),
+        ocr,
+        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true) && ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);
@@ -1968,6 +2031,45 @@ function start(): void {
   // has closed (seen on CI Windows: "The database connection is not open" from an auto-advance at quit).
   stops.add('engine timers', () => {
     engine.dispose();
+    commandLog.flush();
+  });
+  // Every show command in the log, whoever sent it (the window, a phone, Companion, OSC, a script, or the show itself:
+  // a slide moving on by itself), and what came of it (alpha.21, logs for 100+ installs (a)): written a turn later.
+  const dispatchNow = engine.dispatch.bind(engine);
+  let dispatching = 0;
+  engine.dispatch = (command) => {
+    dispatching++;
+    let result: ReturnType<typeof dispatchNow>;
+    try {
+      result = dispatchNow(command);
+    } finally {
+      dispatching--;
+    }
+    try {
+      commandLog.show(command, result);
+    } catch {
+      // The log is never in a show command's way.
+    }
+    return result;
+  };
+  // And what the show did by itself (a slide moving on, a message's time up, what a restart put back): the parts that
+  // changed, never what they hold.
+  let showBefore = engine.current;
+  engine.onChange((state) => {
+    const was = showBefore;
+    showBefore = state;
+    if (dispatching > 0) return;
+    const parts = (Object.keys(state.layers) as (keyof typeof state.layers)[]).filter(
+      (k) => state.layers[k] !== was.layers[k],
+    ) as string[];
+    if (state.live !== was.live) parts.unshift('live');
+    if (state.blackout !== was.blackout) parts.push('black-out');
+    if (state.wallpaper !== was.wallpaper) parts.push('wallpaper');
+    try {
+      if (parts.length > 0) commandLog.changedByItself(engine.rev, parts);
+    } catch {
+      // Nor in the show's own changes'.
+    }
   });
 
   // ---- video inputs (Session 50) ----------------------------------------------------
@@ -2895,14 +2997,14 @@ function start(): void {
     ended: (how) => {
       controlsBefore = null;
       if (how === 'kept') return;
-      sendToPage(operatorWindow, IPC.app.notice, {
-        text:
-          how === 'went-back'
-            ? 'The screens went back to how they were before the change.'
-            : how === 'went-back-by-itself'
-              ? 'Nothing was pressed, so the screens went back to how they were before the change.'
-              : COULD_NOT_GO_BACK,
-      });
+      const text =
+        how === 'went-back'
+          ? 'The screens went back to how they were before the change.'
+          : how === 'went-back-by-itself'
+            ? 'Nothing was pressed, so the screens went back to how they were before the change.'
+            : COULD_NOT_GO_BACK;
+      commandLog.notice(text);
+      sendToPage(operatorWindow, IPC.app.notice, { text });
     },
     remember: (changes) => {
       if (changes) waitingFile.keep(changes);
@@ -3394,6 +3496,8 @@ function start(): void {
   // ---- imports ----------------------------------------------------------------
   // The window's page, not just the window: at quit the page goes first (Session 20).
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
+    // Every notice in the log (alpha.21, logs (a)), its names in quotes blanked.
+    if (channel === IPC.app.notice) commandLog.notice((payload as EventContract[typeof IPC.app.notice]).text);
     sendToPage(operatorWindow, channel, payload);
   };
   // A watched folder can finish its first look before the operator window subscribes.
@@ -4135,6 +4239,36 @@ function start(): void {
     return null;
   });
   handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
+  // ---- book OCR (alpha.21, the owner's Q60-58: "A, Tesseract inside") ----------------------------------
+  // New presentation's Read Words from a Page…: scanned pictures, or a PDF's pages drawn by the pictures window, read
+  // by Tesseract inside Drashti in a reading process of their own (src/main/ocr/), never on Main's thread.
+  const readWords = registerReadWordsIpc({
+    fromOperator,
+    choose: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Choose scanned pages to read the words of',
+        buttonLabel: 'Read Words',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Scanned pages (pictures or a PDF)', extensions: [...READ_WORDS_PICTURES, 'pdf'] }],
+      });
+      return picked.canceled ? null : picked.filePaths;
+    },
+    drawPages: (pdf, outDir, pages, signal) =>
+      pdfPictures.drawForReading(pdf, outDir, pages, READING_PAGE, signal),
+    startReader: (pages, said) =>
+      startReader(join(__dirname, 'ocr-worker.js'), builtOcrFiles(__dirname), pages, said),
+    tempDir: () => fsPromises.mkdtemp(join(tmpdir(), 'drashti-read-words-')),
+    progress: (progress) => {
+      sendToOperator(IPC.library.readWordsProgress, { progress });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  stops.add('reading words', () => {
+    readWords.stop();
+  });
   // ---- the guides inside Drashti (Sessions 31–36) -------------------------------------------------
   // Read from the files beside the app, for the operator window only. Simple Mode is given the operator's
   // and the presenter's guides: the admin's and the setup day's are about setting Drashti up, Pro Mode's.
@@ -5235,6 +5369,13 @@ function start(): void {
       sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
+  /** Make a slide…'s keeping (set below, where the open playlist is known). */
+  let keepPageSlide: (
+    png: Uint8Array,
+    name: string,
+    place: MadeSlidePlace,
+  ) => Promise<MakeSlideResult> = () =>
+    Promise.resolve({ ok: false, message: 'Drashti is still starting: try again in a moment.' });
   const pdfEditor = new PdfEditor({
     db: libraryDb,
     mediaDir,
@@ -5267,8 +5408,18 @@ function start(): void {
         : await dialog.showSaveDialog(options);
       return chosen.canceled ? null : chosen.filePath;
     },
+    // Make a slide… (alpha.21): the part drawn from the page just printed, at the size a PDF's pages are imported at.
+    drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
+    keepSlide: ({ png, name, place }) => keepPageSlide(png, name, place),
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
+  // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
+  // operator window) asks; Pro Mode only, as Save a PDF copy is.
+  handle(IPC.slideEditor.makeSlide, (e, request) => pdfEditor.makeSlide(e, request));
+  handle(IPC.slideEditor.slidePlace, (e): SlidePlace => {
+    if (!(fromOperator(e) || editorWindow.isPage(e.sender)) || mode !== 'pro') return { playlist: null };
+    return { playlist: openPlaylistForSlides() };
+  });
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
   cancelSourceEdits = () => {
@@ -5323,6 +5474,29 @@ function start(): void {
     if (done.ok) log.info('QR code: a code was saved where the operator chose');
     return done;
   });
+  /**
+   * A picture Drashti made (a QR code, a PDF page's part) kept in the library through an import as any picture is,
+   * from a temporary file: its media id, or null.
+   */
+  const keepMadePicture = async (
+    png: Uint8Array,
+    fileName: string,
+    prefix: string,
+  ): Promise<string | null> => {
+    const dir = await fsPromises.mkdtemp(join(tmpdir(), prefix));
+    try {
+      const file = join(dir, fileName);
+      await fsPromises.writeFile(file, png);
+      const done = await importPaths([file], {});
+      const made = done.ok
+        ? importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target
+        : undefined;
+      return made?.kind === 'media' ? made.id : null;
+    } finally {
+      // Gone once the import has its copy (Windows may hold it a moment: the system empties its temporary folder).
+      await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  };
   // New › QR code… (Session 55, Part 8, G): the code made offline, since alpha.20 in the QR worker and read back first
   // (with the logo in the middle when the window asks, Q60-28), kept as a picture in the library through an import as
   // any picture is, and one slide holding it large, with the words under it unless the window leaves them off.
@@ -5340,22 +5514,7 @@ function start(): void {
       typeof options === 'object' && options !== null ? options : {};
     const made = await qr.slidePicture(code, asked.logo === true);
     if (!made.ok) return { ok: false, message: made.message };
-    const png = made.png;
-    const dir = await fsPromises.mkdtemp(join(tmpdir(), 'drashti-qr-'));
-    const mediaId = await (async (): Promise<string | null> => {
-      try {
-        const file = join(dir, 'QR code.png');
-        await fsPromises.writeFile(file, png);
-        const done = await importPaths([file], {});
-        const made = done.ok
-          ? importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target
-          : undefined;
-        return made?.kind === 'media' ? made.id : null;
-      } finally {
-        // Gone once the import has its copy (Windows may hold it a moment: the system empties its temporary folder).
-        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
-      }
-    })();
+    const mediaId = await keepMadePicture(made.png, 'QR code.png', 'drashti-qr-');
     if (mediaId === null) return { ok: false, message: 'The code’s picture could not be kept: try again.' };
     const libraryId = presentations.ensureLibrary('Default');
     const look = themeLook(themes.themeOrDefault(null), 1920, 1080);
@@ -6072,6 +6231,45 @@ function start(): void {
   const phoneDevices = new DeviceRepo(db);
   /** The playlist open in Pro Mode's window, as it says (Session 55, Part 8: a phone's Add photos go there). */
   let openInPro: string | null = null;
+  /** Make a slide… (alpha.21): the playlist a made slide can go into, Pro Mode's open one (a playlist, not a folder). */
+  const openPlaylistForSlides = (): { id: string; name: string } | null => {
+    if (mode !== 'pro' || openInPro === null) return null;
+    const row = libraryDb
+      .prepare(
+        'SELECT id, name FROM playlists WHERE id = ? AND deleted_at IS NULL AND is_folder = 0 AND is_template = 0',
+      )
+      .get(openInPro) as { id: string; name: string } | undefined;
+    return row ?? null;
+  };
+  /**
+   * Make a slide… (alpha.21): the part of a PDF page, drawn at the hall's picture size, kept in the library as a
+   * picture (an import, as any picture is), a presentation of one slide holding it, and a row at the end of the open
+   * playlist when asked; the operator window is told, for its Undo.
+   */
+  keepPageSlide = async (png, name, place) => {
+    // The picture's file is named as its slide is (Media lists it by that name).
+    const file = `${cutText(name.replace(/[\\/:*?"<>|]/gu, ' ').trim(), 120) || 'Page'}.png`;
+    const mediaId = await keepMadePicture(png, file, 'drashti-page-slide-');
+    if (mediaId === null) return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+    const libraryId = presentations.ensureLibrary('Default');
+    const size = pictureSize(screenRepo.allScreens(), screenRepo.firstGroup('audience'));
+    const madeName = presentations.uniqueName(libraryId, name);
+    const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaId, size));
+    contentChanged([id]);
+    const playlist = place === 'playlist' ? openPlaylistForSlides() : null;
+    const [itemId = null] = playlist
+      ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
+      : [];
+    if (itemId !== null) playlistsChanged();
+    sendToOperator(IPC.slideEditor.slideMade, { presentationId: id, name: madeName, itemId });
+    log.info(`Library: a slide made from a PDF page${itemId !== null ? ', in the open playlist' : ''}`);
+    return {
+      ok: true,
+      presentationId: id,
+      name: madeName,
+      playlist: itemId !== null && playlist ? playlist.name : null,
+    };
+  };
   const phoneFiles = new PhoneFiles({
     db: libraryDb,
     settings,
@@ -6524,6 +6722,7 @@ function start(): void {
       snapshot: () => withoutCaptions(engine.snapshot()),
       state: () => stateWithoutCaptions(engine.current),
       rev: () => engine.rev,
+      acceptsPress: (rev, session) => engine.acceptsPress(rev, session),
       session: engine.session,
     },
     runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
@@ -8761,6 +8960,23 @@ function start(): void {
   // or a recording is on.
   const reportRetry = packaged() ? undefined : swMs('DRASHTI_TEST_REPORT_RETRY_MS');
   const reportShowFiles = !packaged() && sw('DRASHTI_TEST_REPORT_SHOW') === 'log';
+  /**
+   * Who and what makes a diagnostics file here (alpha.21, logs for 100+ installs (b)): this computer as the Access
+   * List names it, its ids (given by their first letters only), this install, its role and mode, and the period.
+   */
+  const diagnosticsWho = (period: LogPeriod, now: Date): DiagnosticsWho => {
+    const computer = behind?.client?.computer() ?? null;
+    const view = accessState();
+    return {
+      computer: computer?.name ?? computerName(),
+      computerId: computer?.id ?? null,
+      installId: install.id,
+      grantId: behind?.service.grant()?.grantId ?? null,
+      role: isLetIn() ? { mode: view.mode === 'simple' ? 'simple' : 'pro', owner: view.owner } : null,
+      made: simpleNow() ? 'simple' : 'pro',
+      period: periodText(period, now.getTime()),
+    };
+  };
   const reports = new ReportService({
     dir: join(userDataDir, 'reports'),
     dbFile: libraryFile(),
@@ -8772,18 +8988,23 @@ function start(): void {
     from: () => (simpleNow() ? 'simple' : 'pro'),
     onAir: () => streaming.inUse() || testOnAir,
     crashFiles: () => crashFiles(crashFilesDir),
-    diagnostics: async (crashIncluded) => ({
-      app: appInfo(),
-      displays: listDisplays(),
-      screens: screens.snapshot(),
-      sound: audioOutput.status,
-      watchdog: watchdogHistory,
-      crashJournal: crashJournal.entries(),
-      crashFiles: { files: crashFiles(crashFilesDir), included: crashIncluded, kept: crashFilesKept },
-      logFiles: logFiles(),
-      now: new Date(),
-      graphics: await readGraphics(),
-    }),
+    diagnostics: async (crashIncluded, period) => {
+      const now = new Date();
+      return {
+        app: appInfo(),
+        displays: listDisplays(),
+        screens: screens.snapshot(),
+        sound: audioOutput.status,
+        watchdog: watchdogHistory,
+        crashJournal: crashJournal.entries(),
+        crashFiles: { files: crashFiles(crashFilesDir), included: crashIncluded, kept: crashFilesKept },
+        logFiles: periodLogFiles(period, now.getTime()),
+        now,
+        graphics: await readGraphics(),
+        who: diagnosticsWho(period, now),
+      };
+    },
+    logDays,
     makeFiles: (job) => runReportJob(job),
     // A paired node's report (x49): read, checked and written by a report worker, off Main's thread.
     intake: (job) => runReportIntake(job),
@@ -8910,6 +9131,13 @@ function start(): void {
     }
     installMenu(menuActions());
   };
+  // Help › Save Diagnostics › One Day lists the days the log keeps: built again when they change (a new day, one gone),
+  // a turn later, never inside the log line that changed them.
+  onLogDaysChanged(() => {
+    setImmediate(() => {
+      rebuildMenu();
+    });
+  });
   // ---- View > Show Books, Templates and Kirtan Details (Session 26a) -------------------------------
   // Hidden, not deleted: their code, data and the remote's library stay; the same item brings them back.
   const extrasShown = () => settings.get('showExtras') === true;
@@ -9210,25 +9438,40 @@ function start(): void {
       },
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
-    saveDiagnostics: () => {
+    logDays,
+    // Help › Save Diagnostics (alpha.21, logs (c)): the log of the period chosen; the file is made by a report worker,
+    // off Main's thread (a period's log can be days long), and written here.
+    saveDiagnostics: (period) => {
       void (async () => {
         try {
           const crash = await chooseCrashFiles();
           if (!crash) return;
-          const file = saveDiagnostics(app.getPath('desktop'), {
-            app: appInfo(),
-            displays: listDisplays(),
-            screens: screens.snapshot(),
-            sound: audioOutput.status,
-            db: libraryDb,
-            watchdog: watchdogHistory,
-            crashJournal: crashJournal.entries(),
-            crashFiles: crash,
-            logFiles: logFiles(),
-            now: new Date(),
-            graphics: await readGraphics(),
+          const now = new Date();
+          const made = await runDiagnosticsText({
+            kind: 'diagnostics-text',
+            main: {
+              input: {
+                app: appInfo(),
+                displays: listDisplays(),
+                screens: screens.snapshot(),
+                sound: audioOutput.status,
+                watchdog: watchdogHistory,
+                crashJournal: crashJournal.entries(),
+                crashFiles: crash,
+                logFiles: periodLogFiles(period, now.getTime()),
+                now,
+                graphics: await readGraphics(),
+                who: diagnosticsWho(period, now),
+              },
+              dbFile: libraryFile(),
+            },
+            node: null,
           });
-          log.info(`Diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
+          if (!made.ok) throw new Error(made.message);
+          const file = writeDiagnosticsFile(app.getPath('desktop'), now, made.text, crash);
+          log.info(
+            `Diagnostics saved to the Desktop (the log of ${periodText(period, now.getTime())})${crash.included ? ', with the crash files' : ''}`,
+          );
           sendToOperator(IPC.app.notice, { text: savedDiagnosticsText(file, crash) });
         } catch (error) {
           log.error('Could not save diagnostics', error);

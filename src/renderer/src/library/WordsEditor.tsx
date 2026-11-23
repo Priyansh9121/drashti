@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { TrackSlide } from '../../../shared/kirtans';
 import { parseLyrics } from '../../../shared/lyrics';
 import type { Lang, TranslitSource } from '../../../shared/model';
@@ -9,13 +9,29 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, linesChanged, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
-import { Textarea, TextInput } from '../ui/Field';
+import { NumberInput, Textarea, TextInput } from '../ui/Field';
+import { ScanText } from '../ui/icons';
+import { Progress } from '../ui/Progress';
 import { htmlLang } from '../render/lang';
 import { Notice } from '../ui/Notice';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { plural } from '../ui/text';
 import type { TrackChoice, TrackWords, WordsMode } from './words-store';
-import { cellText, closeWords, hasChanges, saveWords, trackEdits, typeLine, useWords } from './words-store';
+import {
+  cellText,
+  closeWords,
+  forgetPdfPages,
+  hasChanges,
+  readingProgress,
+  readPdfPages,
+  readWordsFromPage,
+  saveWords,
+  stopReading,
+  trackEdits,
+  typeLine,
+  typePdfPages,
+  useWords,
+} from './words-store';
 
 /** How many groups and slides the words make, as the operator types. */
 function Count({ text }: { text: string }) {
@@ -146,6 +162,101 @@ function ByLanguage({ tracks, shown }: { tracks: TrackWords; shown: TrackChoice 
   );
 }
 
+/** How far a reading has got, in words. */
+function readingWords(progress: ReturnType<typeof useWords.getState>['readProgress']): string {
+  if (!progress) return 'Starting to read…';
+  if (progress.stage === 'drawing')
+    return progress.pages === 1
+      ? 'Getting the page ready…'
+      : `Getting ${String(progress.pages)} pages ready…`;
+  if (progress.stage === 'starting') return 'Starting to read…';
+  return `Reading page ${String(progress.page)} of ${String(progress.pages)}…`;
+}
+
+/**
+ * New presentation's Read Words from a Page… (book OCR, alpha.21; the owner's Q60-58): scanned pictures, or a PDF's
+ * pages, read by Drashti itself (Tesseract, no internet) into the words below, to be read over before Make slides.
+ */
+function ReadWordsRow() {
+  const { pdfPages, reading, readProgress, readNote } = useWords();
+  // How far a reading has got, while one goes on.
+  useEffect(
+    () => window.drashti.library.onReadWordsProgress(({ progress }) => readingProgress(progress)),
+    [],
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Button size="sm" icon={ScanText} disabled={reading} onClick={() => void readWordsFromPage()}>
+          Read Words from a Page…
+        </Button>
+        <span className="text-xs text-muted">
+          A scanned page’s Gujarati words, from a picture or a PDF, read by Drashti itself (no internet). Best
+          done before the show, not while slides are changing on the screens.
+        </span>
+      </div>
+      {pdfPages && !reading && (
+        <div
+          role="group"
+          aria-label="Pages to read"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-line px-3 py-2 text-sm"
+        >
+          <span className="min-w-0 truncate font-medium">“{pdfPages.name}”</span>
+          <span className="text-muted">from page</span>
+          <NumberInput
+            aria-label="From page"
+            min={1}
+            max={400}
+            className="w-20"
+            value={pdfPages.from}
+            onChange={(e) => {
+              typePdfPages({ from: e.target.value });
+            }}
+          />
+          <span className="text-muted">to page</span>
+          <NumberInput
+            aria-label="To page"
+            min={1}
+            max={400}
+            className="w-20"
+            value={pdfPages.to}
+            onChange={(e) => {
+              typePdfPages({ to: e.target.value });
+            }}
+          />
+          <Button size="sm" variant="primary" onClick={() => void readPdfPages()}>
+            Read These Pages
+          </Button>
+          <Button size="sm" onClick={forgetPdfPages}>
+            Not Now
+          </Button>
+        </div>
+      )}
+      {reading && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2 text-sm">
+          <span className="text-muted" aria-live="polite">
+            {readingWords(readProgress)}
+          </span>
+          <Progress
+            value={readProgress?.fraction ?? 0}
+            label="Reading words"
+            className="min-w-32 flex-1"
+            data-testid="read-words-progress"
+          />
+          <Button size="sm" onClick={stopReading}>
+            Stop Reading
+          </Button>
+        </div>
+      )}
+      {readNote && !reading && (
+        <Notice tone={readNote.tone} compact>
+          <span data-testid="read-words-note">{readNote.text}</span>
+        </Notice>
+      )}
+    </div>
+  );
+}
+
 /**
  * The words editor: [Verse 1] lines start groups, blank lines split slides.
  * Saving keeps the look, backgrounds and cues of slides still there. A
@@ -239,6 +350,7 @@ export function WordsEditor({ platform }: { platform: string }) {
           }}
         />
       )}
+      {open.mode === 'new' && <ReadWordsRow />}
       {tracks && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Tabs<WordsMode>

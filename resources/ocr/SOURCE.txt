@@ -1,0 +1,13 @@
+Gujarati.traineddata: Tesseract's best Gujarati script model, from the Tesseract OCR project's tessdata_best.
+
+Source:  https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/e12c65a915945e4c28e237a9b52bc4a8f39a0cec/script/Gujarati.traineddata
+         (tessdata_best at commit e12c65a915945e4c28e237a9b52bc4a8f39a0cec, 9 Mar 2024; the file is unchanged since
+         commit a2f7ced76ba114aadb48fee27f2ace1213453f22, 10 Mar 2018)
+Size:    7,074,537 bytes
+SHA-256: 82f06ffd7c0db4232e00af1b8c90b596c28b49a77453d9a54ce5b99a16b3e0a5
+Git:     blob 071dbf3233ee9dd58b1daf725123b41e3c268903
+Licence: Apache License 2.0 (LICENSE-tessdata_best.txt, tessdata_best's own LICENSE at the same commit)
+Copyright: the Tesseract OCR project's authors (https://github.com/tesseract-ocr/tessdata_best)
+
+Drashti reads words from scanned pages with it (book OCR, alpha.21): it is built into the app (out/main/ocr/) and
+read from there, never downloaded while Drashti runs. src/main/ocr/ocr-model.test.ts checks its SHA-256.

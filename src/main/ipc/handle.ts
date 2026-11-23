@@ -87,6 +87,47 @@ export function hearHandled(listener: ((channel: string, ms: number) => void) | 
   heard = listener;
 }
 
+/**
+ * The log of every operator request (alpha.21, logs for 100+ installs (a)): told, for each channel `logged` says,
+ * how each request went (done, not done, refused, failed). Never its arguments or its answer.
+ */
+let told: {
+  logged: (channel: string) => boolean;
+  tell: (channel: string, outcome: string, error?: unknown) => void;
+} | null = null;
+const loggedChannels = new Map<string, boolean>();
+
+export function tellRequests(listener: typeof told): void {
+  told = listener;
+  loggedChannels.clear();
+}
+
+/** The listener, for a channel it logs; null for any other (asked once a channel). */
+function tellerFor(channel: string): ((outcome: string, error?: unknown) => void) | null {
+  const t = told;
+  if (!t) return null;
+  let logged = loggedChannels.get(channel);
+  if (logged === undefined) {
+    logged = t.logged(channel);
+    loggedChannels.set(channel, logged);
+  }
+  return logged
+    ? (outcome, error) => {
+        try {
+          t.tell(channel, outcome, error);
+        } catch {
+          // The log is never in a request's way.
+        }
+      }
+    : null;
+}
+
+/** How an answer went: an `{ ok: false }` answer is not done. */
+const outcomeOf = (answer: unknown): string =>
+  answer !== null && typeof answer === 'object' && (answer as { ok?: unknown }).ok === false
+    ? 'not done'
+    : 'done';
+
 function note(channel: string, started: number): void {
   const ms = performance.now() - started;
   if (ms > (handlerTimes.get(channel) ?? 0)) handlerTimes.set(channel, ms);
@@ -107,14 +148,39 @@ export function handle<C extends InvokeChannel>(
     if (!isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })) {
       throw new Error(`Refused ${channel} from ${url || 'an unknown frame'}`);
     }
-    if (access && !access(channel, event)) throw new Error(STOPPED_REFUSAL);
+    const tell = tellerFor(channel);
+    if (access && !access(channel, event)) {
+      tell?.('refused (not let in)');
+      throw new Error(STOPPED_REFUSAL);
+    }
     const refusal = refusalFor(channel, args);
-    if (refusal) return refusal();
+    if (refusal) {
+      tell?.('refused (Simple Mode)');
+      return refusal();
+    }
     const run = () => {
       const started = performance.now();
-      const result = handler(event, ...args);
+      let result: InvokeResult<C> | Promise<InvokeResult<C>>;
+      try {
+        result = handler(event, ...args);
+      } catch (error) {
+        tell?.('failed', error);
+        throw error;
+      }
       // Time the synchronous part: that is what blocks the main process.
       note(channel, started);
+      if (tell) {
+        if (result instanceof Promise)
+          void result.then(
+            (answer: unknown) => {
+              tell(outcomeOf(answer));
+            },
+            (error: unknown) => {
+              tell('failed', error);
+            },
+          );
+        else tell(outcomeOf(result));
+      }
       return result;
     };
     const waiting = giveWay?.(channel) ?? null;

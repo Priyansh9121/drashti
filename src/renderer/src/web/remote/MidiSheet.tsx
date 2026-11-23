@@ -80,7 +80,10 @@ function Devices({ midi, busy }: { midi: RemoteMidi; busy: boolean }) {
               key={name ?? ''}
               size="lg"
               wrap
-              className={cx('min-h-12 w-full justify-start', on && 'ring-2 ring-accent')}
+              className={cx(
+                'h-auto min-h-12 w-full justify-start py-2 text-left',
+                on && 'ring-2 ring-accent',
+              )}
               variant={on ? 'strong' : 'secondary'}
               aria-pressed={on}
               disabled={busy}

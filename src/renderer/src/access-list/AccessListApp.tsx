@@ -292,9 +292,11 @@ export function AccessListApp() {
       />
     );
 
-  // Below 640 × 420 (200% zoom in a small window), the window scrolls rather than squeezing the list away.
+  // Below 600 × 360 (larger text in a small window), the window scrolls rather than squeezing the list away. Less than
+  // the window's own least (640 × 420 with its frame: 624 × 381 inside on Windows, 640 × 388 on a Mac), so at its least
+  // it never scrolls (alpha.21's fit pass: at 640 wide, on Windows it scrolled sideways and the Mode column ran off).
   return (
-    <div className="flex h-full min-h-[420px] min-w-[640px] flex-col bg-ink text-fg">
+    <div className="flex h-full min-h-[360px] min-w-[600px] flex-col bg-ink text-fg">
       <header
         className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line bg-panel px-4 py-2.5"
         data-testid="access-header"

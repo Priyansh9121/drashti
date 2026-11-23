@@ -16,7 +16,7 @@ export function runEngineCommand(
     return { ok: false, error: 'forbidden', message: 'Only the operator window can control the show' };
   if (seen !== undefined) {
     const checked = engineSeenSchema.safeParse(seen);
-    if (!checked.success || checked.data.session !== engine.session || checked.data.rev !== engine.rev)
+    if (!checked.success || !engine.acceptsPress(checked.data.rev, checked.data.session))
       return {
         ok: false,
         error: 'forbidden',
