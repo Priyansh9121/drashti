@@ -16,6 +16,7 @@
 //   {"hello":"drashti-translate","protocol":1,"ctranslate2":"4.9.1","sentencepiece":"0.2.1"}.
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
@@ -245,7 +246,8 @@ std::optional<long> integer(const Object& o, const char* key, long lo, long hi) 
   const auto it = o.find(key);
   if (it == o.end() || it->second.kind != Value::Kind::Number) return std::nullopt;
   const double v = it->second.n;
-  if (v != static_cast<double>(static_cast<long>(v)) || v < lo || v > hi) return std::nullopt;
+  // In range and whole first: converting an out-of-range double (1e300, NaN) to long is undefined behaviour.
+  if (!(v >= static_cast<double>(lo) && v <= static_cast<double>(hi)) || v != std::floor(v)) return std::nullopt;
   return static_cast<long>(v);
 }
 bool is_language_tag(const std::string& tag) {
