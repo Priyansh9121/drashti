@@ -1,4 +1,5 @@
 import type { NodeVideoCueReport } from '../../shared/nodes';
+import { PAIRED_SEATS_NOTICE } from '../network/paired-seats';
 import { randomInt } from 'node:crypto';
 import type { NodeReportAnswer } from '../../shared/report';
 import { cutText } from '../../shared/text';
@@ -84,7 +85,13 @@ export interface NodeServiceDeps {
   addresses(): string[];
   /** Listen on every interface, or on this computer only (tests). */
   bind: string;
-  engine: { snapshot(): EngineSnapshotMessage; state(): EngineState; rev(): number; session: string };
+  engine: {
+    snapshot(): EngineSnapshotMessage;
+    state(): EngineState;
+    rev(): number;
+    acceptsPress(rev: number, session: string): boolean;
+    session: string;
+  };
   /** What a node should copy, in order. */
   wanted(state: EngineState, everything: boolean): MediaWant[];
   /** Main’s common show-action layer: current access and Simple Mode are checked there again. */
@@ -106,6 +113,7 @@ export interface NodeServiceDeps {
   /** How Main's own outputs draw, for the dashboard. */
   localOutputs(): NodeOutputStatus[];
   log(level: 'info' | 'warn', message: string): void;
+  notice?(text: string): void;
   now(): number;
   /** Tests: listen on this port instead of the setting's. */
   portOverride?: number | null;
@@ -439,6 +447,9 @@ export class NodeService implements EngineTransport {
         for (const w of waiters) w(m.stats);
         return;
       }
+      case 'busy':
+        this.deps.notice?.(PAIRED_SEATS_NOTICE);
+        return;
       case 'log':
         if (m.level === 'warn') this.deps.log('warn', `Nodes: ${m.message}`);
         else this.deps.log('info', `Nodes: ${m.message}`);
@@ -819,7 +830,7 @@ export class NodeService implements EngineTransport {
       }
       return answer;
     };
-    if (request.session !== this.deps.engine.session || request.rev !== this.deps.engine.rev())
+    if (!this.deps.engine.acceptsPress(request.rev, request.session))
       return remember({
         id,
         status: 'stale',

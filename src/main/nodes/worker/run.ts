@@ -61,6 +61,7 @@ export function runLinkWorker(send: (message: FromLinkWorker) => void): (message
     resync: () => {
       send({ type: 'resync' });
     },
+    busy: () => send({ type: 'busy' }),
     log: (level, message) => {
       send({ type: 'log', level, message });
     },

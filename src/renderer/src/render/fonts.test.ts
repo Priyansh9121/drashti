@@ -71,7 +71,59 @@ describe('fonts at a page’s start', () => {
     const { preloadStudioFonts } = await import('./studio-fonts');
     preloadStudioFonts();
     preloadStudioFonts();
-    expect(asked).toHaveLength(STUDIO.reduce((n, c) => n + c.families.length * c.weights.length, 0));
+    // One at a time (a21): all of them once the last has come.
+    const total = STUDIO.reduce((n, c) => n + c.families.length * c.weights.length, 0);
+    await vi.waitFor(() => {
+      expect(asked).toHaveLength(total);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(asked).toHaveLength(total);
+    expect(new Set(asked.map(familyOf))).toEqual(new Set(STUDIO.flatMap((c) => c.families)));
+  });
+
+  it('asks for the studio’s faces one at a time, the next once the last has come (or failed) and the page is idle (a21: all at once, their loads held the operator window ~0.4 s just after its first show, and a live Next waited)', async () => {
+    const waiting: { font: string; settle: (ok: boolean) => void }[] = [];
+    const idle: (() => void)[] = [];
+    vi.stubGlobal('location', { protocol: 'file:' });
+    vi.stubGlobal('document', {
+      fonts: {
+        load: (font: string) =>
+          new Promise<never[]>((resolve, reject) => {
+            waiting.push({
+              font,
+              settle: (ok) => {
+                if (ok) resolve([]);
+                else reject(new Error('Placeholder face that could not be read'));
+              },
+            });
+          }),
+      },
+    });
+    vi.stubGlobal('requestIdleCallback', (callback: () => void) => idle.push(callback));
+    const runIdle = () => {
+      for (let callback = idle.shift(); callback; callback = idle.shift()) callback();
+    };
+    const total = STUDIO.reduce((n, c) => n + c.families.length * c.weights.length, 0);
+    const { preloadStudioFonts } = await import('./studio-fonts');
+    preloadStudioFonts();
+    const asked: string[] = [];
+    for (let came = 0; came < total; came++) {
+      runIdle();
+      expect(
+        waiting.map((w) => w.font),
+        `faces asked for at once, ${String(came)} come`,
+      ).toHaveLength(1);
+      const face = waiting.shift();
+      if (!face) break;
+      asked.push(face.font);
+      // Now and then one cannot be read: the next comes all the same.
+      face.settle(came % 7 !== 3);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(waiting, 'nothing more is asked for until the page is idle').toHaveLength(0);
+    }
+    runIdle();
+    expect(waiting).toHaveLength(0);
+    expect(new Set(asked).size).toBe(total);
     expect(new Set(asked.map(familyOf))).toEqual(new Set(STUDIO.flatMap((c) => c.families)));
   });
 

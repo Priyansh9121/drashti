@@ -6,6 +6,7 @@ import { KEYMAP, toAccelerator } from '../shared/keymap';
 import type { OperatorMode } from '../shared/mode';
 import type { ScreenSwitch, ScreenSwitches } from '../shared/screen-switches';
 import { SETUP_TOOLS, TOOLS_MENU, type ToolsMenuItem } from '../shared/setup-tools';
+import { type LogPeriod, periodChoices } from '../shared/log-period';
 
 /** The main process's priority on Windows (Session 16): ticked is above normal, the default. */
 export interface PriorityItem {
@@ -57,8 +58,13 @@ export interface MenuActions {
   redo: { run: () => void };
   /** Turns off outputs covering the operator window (the keymap's uncoverControls). */
   uncoverControls: { accelerator: string | null; run: () => void };
-  /** Help > Save diagnostics: one file on the Desktop to send after a problem. */
-  saveDiagnostics: () => void;
+  /**
+   * Help › Save Diagnostics (alpha.21, logs (c)): one file on the Desktop to send after a problem, with the log of the
+   * period chosen: Today, Yesterday, the last 7 days, or one earlier day kept.
+   */
+  saveDiagnostics: (period: LogPeriod) => void;
+  /** The days the log keeps, newest first (Save Diagnostics › One Day lists the earlier ones); none when left out. */
+  logDays?: () => readonly string[];
   /** Help › Report a Problem… (x49, both modes): tell the admin where a problem is and what it is. */
   reportProblem: () => void;
   /** File > Import from a Link… (Session 25b, Pro Mode): YouTube or Dropbox. */
@@ -158,6 +164,47 @@ function toolsMenu(open: (item: ToolsMenuItem) => void): MenuItemConstructorOpti
         },
       },
     ]),
+  };
+}
+
+/** A menu's words for a period: each word's first letter a capital, as menus write them. */
+const menuWords = (label: string) => label.replace(/\b([a-z])/gu, (m) => m.toUpperCase());
+
+/**
+ * Help › Save Diagnostics (alpha.21, logs for 100+ installs (c), the owner's "Yes, that plan"): Today… (its id the one
+ * Save Diagnostics… had, save-diagnostics), Yesterday…, The Last 7 Days…, and One Day with each earlier day the log
+ * keeps, newest first. Each asks first about crash files, when any are kept, as Save Diagnostics… did.
+ */
+export function saveDiagnosticsMenu(
+  save: (period: LogPeriod) => void,
+  days: readonly string[],
+  now: number = Date.now(),
+): MenuItemConstructorOptions {
+  const choices = periodChoices(days, now);
+  const id = (p: LogPeriod) => (p === 'today' ? 'save-diagnostics' : `save-diagnostics-${p}`);
+  const entry = (c: { period: LogPeriod; label: string }): MenuItemConstructorOptions => ({
+    id: id(c.period),
+    label: `${menuWords(c.label)}…`,
+    click: () => {
+      save(c.period);
+    },
+  });
+  const earlier = choices.slice(3);
+  return {
+    id: 'save-diagnostics-menu',
+    label: 'Save Diagnostics',
+    submenu: [
+      ...choices.slice(0, 3).map(entry),
+      ...(earlier.length > 0
+        ? [
+            {
+              id: 'save-diagnostics-day',
+              label: 'One Day',
+              submenu: earlier.map(entry),
+            } as MenuItemConstructorOptions,
+          ]
+        : []),
+    ],
   };
 }
 
@@ -389,7 +436,7 @@ export function installMenu(actions: MenuActions): void {
           ]),
       // Help › Report a Problem… (x49, the owner's Q60-38): in both modes, just above Save Diagnostics….
       { id: 'report-problem', label: 'Report a Problem…', click: actions.reportProblem },
-      { id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics },
+      saveDiagnosticsMenu(actions.saveDiagnostics, actions.logDays?.() ?? []),
       // Simple Mode never sees updates.
       ...(simple
         ? []
@@ -421,8 +468,10 @@ export function installMenu(actions: MenuActions): void {
 export interface NodeMenuActions {
   /** File > Run Ahead of Other Programs (Windows only; Session 16): null elsewhere. */
   priority: PriorityItem | null;
-  /** Help > Save Diagnostics…: one file on the Desktop, as on Main (without the library). */
-  saveDiagnostics: () => void;
+  /** Help › Save Diagnostics: one file on the Desktop, as on Main (without the library), of the period chosen. */
+  saveDiagnostics: (period: LogPeriod) => void;
+  /** The days the log keeps, newest first. */
+  logDays?: () => readonly string[];
   /** Help › Report a Problem… (x49): handed to the Main the node follows. */
   reportProblem: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: the node's watchdog self-test and the manual crash buttons. */
@@ -451,7 +500,7 @@ export function installNodeMenu(actions: NodeMenuActions): void {
       role: 'help',
       submenu: [
         { id: 'report-problem', label: 'Report a Problem…', click: actions.reportProblem },
-        { id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics },
+        saveDiagnosticsMenu(actions.saveDiagnostics, actions.logDays?.() ?? []),
       ],
     },
   ];

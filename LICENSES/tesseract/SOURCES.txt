@@ -1,0 +1,43 @@
+The licence texts of the libraries compiled into tesseract.js-core 7.0.0's WebAssembly, each fetched as it is from its
+own project at the commit tesseract.js-core v7.0.0 pins in its third_party folder
+(https://github.com/naptha/tesseract.js-core/tree/v7.0.0/third_party), on 23 Nov 2026, the owner's "A, fetch them".
+
+leptonica-license.txt  (Leptonica: BSD 2-clause style)
+  URL:     https://raw.githubusercontent.com/DanBloomberg/leptonica/4af068b56a9674da915debea4ed7e1b9885b17e8/leptonica-license.txt
+  Commit:  4af068b56a9674da915debea4ed7e1b9885b17e8
+  SHA-256: 87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806
+
+libjpeg-README.txt  (libjpeg, the Independent JPEG Group's: its licence is this README's LEGAL ISSUES)
+  URL:     https://raw.githubusercontent.com/LuaDist/libjpeg/6c0fcb8ddee365e7abc4d332662b06900612e923/README
+  Commit:  6c0fcb8ddee365e7abc4d332662b06900612e923
+  SHA-256: c791da525733040e622ed257c7b096b8f5191b332604ead0c6bc2b54cbd8e0d1
+
+giflib-COPYING.txt  (giflib: MIT)
+  URL:     https://raw.githubusercontent.com/mirrorer/giflib/fa37672085ce4b3d62c51627ab3c8cf2dda8009a/COPYING
+  Commit:  fa37672085ce4b3d62c51627ab3c8cf2dda8009a
+  SHA-256: 0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e
+
+libpng-LICENSE.txt  (libpng: the PNG Reference Library licence)
+  URL:     https://raw.githubusercontent.com/glennrp/libpng/a37d4836519517bdce6cb9d956092321eca3e73b/LICENSE
+  Commit:  a37d4836519517bdce6cb9d956092321eca3e73b
+  SHA-256: 33ba4e187d8b0c8d7ab2bc2e522bb095219e03089e9aa0122b4fb9eb2b7de82b
+
+libtiff-COPYRIGHT.txt  (libtiff: its BSD-style licence)
+  URL:     https://gitlab.com/libtiff/libtiff/-/raw/b51bb157123264e26d34c09cc673d213aea61fc7/COPYRIGHT
+  Commit:  b51bb157123264e26d34c09cc673d213aea61fc7
+  SHA-256: fbd6fed7938541d2c809c0826225fc85e551fdbfa8732b10f0c87e0847acafd7
+
+libwebp-COPYING.txt  (libwebp: BSD 3-clause)
+  URL:     https://raw.githubusercontent.com/webmproject/libwebp/20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c/COPYING
+  Commit:  20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c
+  SHA-256: 5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf
+
+zlib-README.txt  (zlib: the zlib licence, in this README's Copyright notice)
+  URL:     https://raw.githubusercontent.com/madler/zlib/21767c654d31d2dccdde4330529775c6c5fd5389/README
+  Commit:  21767c654d31d2dccdde4330529775c6c5fd5389
+  SHA-256: fc2c3368901700f0acdeb1d8afeaca5923296768ec6824ecdf627aac396001fd
+
+openlibm-LICENSE.md.txt  (openlibm: MIT and BSD-style; its LICENSE.md, named .txt here so it stays byte for byte)
+  URL:     https://raw.githubusercontent.com/JuliaMath/openlibm/ae2d91698508701c83cab83714d42a1146dccf85/LICENSE.md
+  Commit:  ae2d91698508701c83cab83714d42a1146dccf85
+  SHA-256: b1843fbf5b03f519a5f0a44fce751bdd1022ae7148614923f9d6293e17a18b17

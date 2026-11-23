@@ -26,6 +26,7 @@ import {
   type ReportRow,
   type ReportStateView,
 } from '../../shared/report';
+import { type LogPeriod, periodRange } from '../../shared/log-period';
 import { cutText } from '../../shared/text';
 import type { AccessClient } from '../access/client';
 import type { CrashFile } from '../crash-files';
@@ -64,8 +65,13 @@ export interface ReportServiceDeps {
   onAir(): boolean;
   /** The crash files kept on this computer, newest first. */
   crashFiles(): CrashFile[];
-  /** Save Diagnostics' input (without the library, which the worker opens), crash files said as ticked or not. */
-  diagnostics(crashIncluded: boolean): Promise<ReportDiagnosticsInput>;
+  /**
+   * Save Diagnostics' input (without the library, which the worker opens), crash files said as ticked or not, with
+   * the log of the period chosen (alpha.21, logs (c)).
+   */
+  diagnostics(crashIncluded: boolean, period: LogPeriod): Promise<ReportDiagnosticsInput>;
+  /** The days the log keeps, newest first (the periods offered). */
+  logDays(): readonly string[];
   /** The report worker: the files made in the report's folder. */
   makeFiles(job: ReportFilesJob): Promise<ReportFilesMade>;
   /** The report worker: a node's report read, checked and written into the reports' folder (x49; tests: here). */
@@ -91,8 +97,8 @@ export interface ReportServiceDeps {
     main(): string | null;
     /** The report handed to Main: Main's answer, or null when Main could not be reached. */
     handOver(body: Uint8Array, stop: AbortSignal): Promise<NodeReportAnswer | null>;
-    /** The node's own Save Diagnostics input, crash files said as ticked or not. */
-    diagnostics(crashIncluded: boolean): NodeDiagnosticsInput;
+    /** The node's own Save Diagnostics input, crash files said as ticked or not, of the period chosen. */
+    diagnostics(crashIncluded: boolean, period: LogPeriod): NodeDiagnosticsInput;
   };
 }
 
@@ -201,6 +207,7 @@ export class ReportService {
       computer: this.d.node ? this.d.node.self().name : (client?.computer().name ?? 'This computer'),
       via: this.d.node ? this.d.node.main() : null,
       crash: crash.length > 0 ? { count: crash.length, bytes: crash.reduce((n, f) => n + f.bytes, 0) } : null,
+      logDays: [...this.d.logDays()],
       picture: picture
         ? { thumb: picture.thumb, width: picture.picture.width, height: picture.picture.height }
         : null,
@@ -244,9 +251,10 @@ export class ReportService {
         stamp: fileStamp(new Date(now)),
         diagnostics:
           draft.diagnostics && !node
-            ? { input: await this.d.diagnostics(draft.crashFiles), dbFile: this.d.dbFile }
+            ? { input: await this.d.diagnostics(draft.crashFiles, draft.period), dbFile: this.d.dbFile }
             : null,
-        nodeDiagnostics: draft.diagnostics && node ? node.diagnostics(draft.crashFiles) : null,
+        nodeDiagnostics: draft.diagnostics && node ? node.diagnostics(draft.crashFiles, draft.period) : null,
+        errorsWithin: periodRange(draft.period, now),
         picture: draft.picture ? (this.held?.picture ?? null) : null,
         crash: draft.crashFiles
           ? this.d.crashFiles().map((f) => ({ path: f.path, name: f.name, bytes: f.bytes }))

@@ -1,6 +1,6 @@
 # Drashti's local API (v1)
 
-This document describes the local network API shipped in **1.0.0-alpha.20**, including screen geometry and video-caption state. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
+This document describes the local network API shipped in **1.0.0-alpha.21**, including screen geometry and video-caption state; since alpha.21 the skip command takes `back` and `forward` only. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
 
 **Desktop controls in alpha.20.** The [Drashti Manual](manual/start.md#using-this-manual) gives the operating steps. Media information, the Resume offer, A-B repeat, frame steps, Snapshot, playlist Find/timing/M3U, appearances, YouTube scheduling, QR downloads and sending the picture to other software do not add HTTP routes here. Existing Remote playback and audio-playlist actions keep their contracts below. [Report a Problem](manual/help.md#report-a-problem) uses the [access service](access-setup.md#11-putting-in-a-change-later-always-the-same-deployment); a node hands its report to Main. It is separate from the local v1 API.
 
@@ -347,6 +347,8 @@ The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep the
 
 ## The state feed (WebSocket)
 
+Paired devices keep their places when new devices are waiting. A new request may receive `503` with a plain busy message; wait before pairing another device. Pairing, tokens and the feed’s hello remain as described below.
+
 `ws://<computer>:8740/api/v1/feed` (Remote and Stage devices). The first message must say who the device is, within five seconds:
 
 ```js
@@ -610,3 +612,7 @@ Edit Video’s prepared IDs retain immutable recipe history. Main resolves sourc
 `CopyOptions.inspect(info)` reads the source header in that worker; `false` means no output is needed, and a string refuses with a next step. `stdout(chunk)` consumes bounded streamed analysis, `finish(tmp)` writes its reduced artifact after FFmpeg closes, and `validate(info)` checks an encoded file before publication. Header reads collect stderr through `close`, including WebM alpha metadata. `preparePublish(tmp, signal)` keeps asynchronous hashing, copying and registration inside the same serialized worker; its caller must pass the abort signal into that work. `beforePublish` remains the final synchronous source/revision guard. `background` lets a queued user request precede speculative work, and `estimatedBytes` reserves a bounded artifact’s known size while retaining the 2 GB reserve. Existing callers keep their own gate choices. None of these hooks adds screen drawing or work per frame.
 
 Strict POSIX preparation establishes its priority inside a small system-shell launch gate: it reads its own niceness, lowers it when needed, verifies below-normal priority, then execs FFmpeg under the same PID and streams. A refused or unchanged priority exits before reading media. The parent never mistakes a completed short header process for a priority refusal. Windows retains its native verified setter. This changes no queue, activity, process-collection, partial-removal or publication boundary.
+
+### PDF parts in the slide editor
+
+In Pro Mode, `slideEditor.makeSlide` accepts the editor snapshot and stamp, a PDF `slideId`, a normalized `part`, and `place` (`playlist` or `library`). The optional `parts` array collects 1 to 400 `{ slideId, part }` entries in reading order. Without it the single-page action stays available. Main validates every page before drawing, prints one page at a time and draws each part at the hall's picture size. Collected pictures are limited to 128 MB. It keeps one presentation only after every part succeeds; the operator receives one `slideEditor.slideMade` event for Undo of the presentation and its playlist row. The original PDF stays unchanged. No batch is made while the stream is on air or recording.

@@ -75,6 +75,7 @@ import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
+import { MakeSlideDialog, type MakeSlideBase } from './MakeSlideDialog';
 import type { PdfPendingAction } from './PdfTools';
 import { SourceLinkDialog } from './SourceLinkDialog';
 import { SourceIssues } from './SourceIssues';
@@ -101,6 +102,9 @@ const GROUPS: readonly TabItem<EditorGroup>[] = [
   { id: 'motion', label: 'Motion', icon: Sparkles },
   { id: 'slides', label: 'Slides', icon: LayoutTemplate },
 ];
+
+/** Undo's and Redo's words, shown where the top has room for them (alpha.21: a 60rem top). */
+const WORDS_WHEN_ROOM = 'hidden @[60rem]/editor-top:inline';
 
 /**
  * When Drashti reads a page's or slide's words and shapes for editing (Session 58, PD-2): one phrase for the Preparing
@@ -157,6 +161,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const [pickingBusy, setPickingBusy] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
   const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
+  // Make a slide… (alpha.21): the page as the editor had it when the dialog opened.
+  const [makingSlide, setMakingSlide] = useState<MakeSlideBase | null>(null);
   const [linking, setLinking] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const insertBase = useRef<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const pdfJob = useRef(false);
@@ -330,6 +336,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     setPdfPending('insert-pages');
     setInserting(insertBase.current);
   };
+  const openMakeSlide = () => {
+    if (pdfJob.current || exportBusy) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId || now.sourceConversion || !isPdfPage(now.doc, now.slideId)) return;
+    pdfJob.current = true;
+    useEditor.setState({ pdfTool: null });
+    tell(null);
+    setMakingSlide({ doc: now.doc, slideId: now.slideId, stamp: now.stamp });
+  };
+  const closeMakeSlide = () => {
+    pdfJob.current = false;
+    setMakingSlide(null);
+  };
   const openSourceLink = () => {
     if (pdfJob.current || exportBusy) return;
     finishTextEditing();
@@ -471,7 +491,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       data-testid="slide-editor"
       className="flex h-screen flex-col bg-ink text-fg focus:outline-none"
     >
-      <header className="flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5">
+      {/* Undo's and Redo's words only from a 60rem top (alpha.21's fit pass: at the window's least on Windows, 884 px
+          inside, the top was 905 px and Save ran off the window); their icons alone narrower, named either way. */}
+      <header className="@container/editor-top flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5">
         <h1 id={titleId} className="min-w-24 flex-[1_1_8rem] text-sm font-bold">
           <Truncate text={`Slides of “${name}”`} />
         </h1>
@@ -491,13 +513,27 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         />
         <Tooltip content="Undo the last change" kbd={`${mod}Z`} side="bottom">
-          <Button size="sm" variant="ghost" icon={Undo2} disabled={!canUndo} onClick={undoAny}>
-            Undo
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Undo2}
+            aria-label="Undo"
+            disabled={!canUndo}
+            onClick={undoAny}
+          >
+            <span className={WORDS_WHEN_ROOM}>Undo</span>
           </Button>
         </Tooltip>
         <Tooltip content="Redo the change you undid" kbd={mac ? '⇧⌘Z' : 'Ctrl+Y'} side="bottom">
-          <Button size="sm" variant="ghost" icon={Redo2} disabled={!canRedo} onClick={redoAny}>
-            Redo
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Redo2}
+            aria-label="Redo"
+            disabled={!canRedo}
+            onClick={redoAny}
+          >
+            <span className={WORDS_WHEN_ROOM}>Redo</span>
           </Button>
         </Tooltip>
         {!pdfRowVisible && (
@@ -604,6 +640,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 deletePage: !!doc && slidesOf(doc).length > 1,
                 insertPages: !!doc,
                 saveCopy: !!doc,
+                makeSlide: !!doc,
               }}
               activeTool={pdfTool}
               underlined={underlined}
@@ -621,6 +658,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onSaveCopy={() => {
                 void savePdfCopy();
               }}
+              onMakeSlide={openMakeSlide}
             />
           )}
         </div>
@@ -763,6 +801,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         />
       )}
+      {makingSlide && <MakeSlideDialog base={makingSlide} onClose={closeMakeSlide} onMade={tell} />}
       {inserting && (
         <PdfInsertDialog
           presentationId={inserting.doc.presentationId}

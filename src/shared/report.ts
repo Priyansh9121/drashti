@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ACCESS_REPORT, ACCESS_TOKEN_ALPHABET } from './access-protocol';
 import { formatBytes } from './format';
+import { isLogPeriod, type LogPeriod } from './log-period';
 import { cutText } from './text';
 
 /*
@@ -247,6 +248,8 @@ export interface ReportDraft {
   diagnostics: boolean;
   crashFiles: boolean;
   picture: boolean;
+  /** The diagnostics' log of (alpha.21, logs (c)): Today, Yesterday, the last 7 days or one day. */
+  period: LogPeriod;
 }
 
 /** A draft as the window sends it, read by the main process (anything else is refused). */
@@ -266,6 +269,8 @@ const draftSchema = z.object({
   diagnostics: z.boolean(),
   crashFiles: z.boolean(),
   picture: z.boolean(),
+  // Left out (a window from before alpha.21's logs): Today, as Save Diagnostics… was.
+  period: z.custom<LogPeriod>((v) => isLogPeriod(v)).default('today'),
 });
 
 /** The window's draft, or null when it is not one. */
@@ -286,6 +291,8 @@ export type ReportOpened =
       computer: string;
       /** The crash files kept on this computer (null: none). */
       crash: { count: number; bytes: number } | null;
+      /** The days the log keeps, newest first (alpha.21, logs (c)): the periods offered for the diagnostics. */
+      logDays: string[];
       /** The window as it was when Report a Problem opened (a small copy), or null. */
       picture: { thumb: string; width: number; height: number } | null;
       /** On a node (x49): the Main it is paired with, through which its reports go; null on Main. */

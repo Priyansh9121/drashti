@@ -96,6 +96,10 @@ test('Help › Report a Problem…: two features with their own words, the diagn
     .fill('Placeholder: it runs on.');
   await dialog.getByLabel('What went wrong with Markers?').fill('Placeholder: a marker is lost.');
   await dialog.getByRole('checkbox', { name: /^Diagnostics/u }).click();
+  // Its log of a chosen period (alpha.21, logs (c)): Today at first; the last 7 days here.
+  const period = dialog.getByLabel('Its log of');
+  await expect(period).toHaveValue('today');
+  await period.selectOption('last-7-days');
   await dialog.getByRole('checkbox', { name: /^A picture of this window/u }).click();
   await expect(dialog.getByText(`Your Gmail (${PLACEHOLDER_PERSON})`)).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'Report a Problem', '[role="dialog"]');
@@ -133,6 +137,14 @@ test('Help › Report a Problem…: two features with their own words, the diagn
   expect(diagnostics).toContain('== Drashti diagnostics ==');
   expect(diagnostics).toContain('== Graphics ==');
   expect(diagnostics).not.toContain(secretName);
+  // Who and what made it, and the period chosen (alpha.21, logs (b) and (c)); never the Gmail let in.
+  expect(diagnostics).toMatch(
+    /^Install id: [0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/mu,
+  );
+  expect(diagnostics).toMatch(/^Access-list entry: grant [0-9a-f]{8}… /mu);
+  expect(diagnostics).toMatch(/^Role: Pro$/mu);
+  expect(diagnostics).toMatch(/^Log: The last 7 days, \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/mu);
+  expect(diagnostics).not.toContain(PLACEHOLDER_PERSON);
   const picture = pngSize(Buffer.from(files[1]?.base64 ?? '', 'base64'));
   expect(picture.width).toBeGreaterThan(400);
   expect(Math.max(picture.width, picture.height)).toBeLessThanOrEqual(1920);
@@ -273,9 +285,13 @@ test('a node’s Report a Problem… goes through the Main it is paired with (Q6
   expect(admin?.body).toContain('Placeholder: the node’s screen lags.');
   const files = admin?.attachments ?? [];
   expect(files.map((f) => f.type)).toEqual(['text/plain']);
-  expect(Buffer.from(files[0]?.base64 ?? '', 'base64').toString('utf8')).toContain(
-    '== Drashti diagnostics (node) ==',
-  );
+  const nodeFile = Buffer.from(files[0]?.base64 ?? '', 'base64').toString('utf8');
+  expect(nodeFile).toContain('== Drashti diagnostics (node) ==');
+  // Who and what (alpha.21, logs (b)): the node, its install and the Main it follows.
+  expect(nodeFile).toMatch(/^Made in: the node$/mu);
+  expect(nodeFile).toMatch(/^Install id: [0-9A-HJKMNP-TV-Z]{4}-/mu);
+  expect(nodeFile).toMatch(/^Access-list entry: none: a node, following Main “/mu);
+  expect(nodeFile).toMatch(/^Log: Today, /mu);
   expect(note?.to).toBe(PLACEHOLDER_PERSON);
   await node.app.close();
   await main.app.close();
