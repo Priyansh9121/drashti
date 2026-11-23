@@ -200,11 +200,15 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
     strcat(words[nw], newword ? pc + 3 : pc);
     we[nw] = (fe[i] + 1) * 0.04;
   }
+  while (tl > 0 && text[tl - 1] == ' ') text[--tl] = 0;
+  const char *shown = text;
+  while (*shown == ' ') shown++;
   double secs = (double)n / SR;
   printf("{\"file\":"); json_str(stdout, name);
-  printf(",\"language\":\"%s\",\"decoder\":\"%s\",\"text\":", m->code, "ctc"); json_str(stdout, text[0] == ' ' ? text + 1 : text);
+  printf(",\"language\":\"%s\",\"decoder\":\"%s\",\"text\":", m->code, "ctc"); json_str(stdout, shown);
   printf(",\"words\":[");
-  for (int w = 0; w <= nw; w++) { if (w) fputc(',', stdout); printf("{\"w\":"); json_str(stdout, words[w]); printf(",\"start\":%.2f,\"end\":%.2f}", ws[w], we[w]); }
+  int emitted = 0;
+  for (int w = 0; w <= nw; w++) { if (!words[w][0]) continue; if (emitted++) fputc(',', stdout); printf("{\"w\":"); json_str(stdout, words[w]); printf(",\"start\":%.2f,\"end\":%.2f}", ws[w], we[w]); }
   printf("],\"timing\":\"coarse: token frames (40 ms)\",\"confidence\":null,\"audio_s\":%.3f,\"frames\":%d,\"enc_frames\":%d,\"frontend_ms\":%.1f,\"infer_ms\":%.1f,\"decode_ms\":%.1f,\"rtf\":%.4f,\"threads\":%d}\n",
          secs, T, Tp, tb - ta, tc - tb, td - tc, secs > 0 ? (td - ta) / 1e3 / secs : 0, threads);
   fflush(stdout);
