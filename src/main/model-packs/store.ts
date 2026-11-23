@@ -149,7 +149,11 @@ const hex16 = () => randomBytes(8).toString('hex');
  * folders do not tell a name's case apart). The top of a drive or a disk ("E:\\", "/") already ends in its separator
  * (alpha.23, the review: a pack on a USB stick's top was refused as a link).
  */
-export function insideFolder(top: string, real: string, platform: NodeJS.Platform = process.platform): boolean {
+export function insideFolder(
+  top: string,
+  real: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
   const separator = platform === 'win32' ? '\\' : '/';
   const fold = (p: string) => (platform === 'linux' ? p : p.toLowerCase());
   const folder = top.endsWith(separator) ? top : top + separator;

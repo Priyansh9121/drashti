@@ -1,7 +1,7 @@
 import type { CaptionTiming } from '../../shared/captions';
 import { SPEECH_RATE, type Heard } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
-import { isSpeech } from './whisper-engine';
+import { isSpeech } from './speech-level';
 import {
   indicWords,
   noiseOnly,

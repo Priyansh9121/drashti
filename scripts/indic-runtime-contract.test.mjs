@@ -81,6 +81,9 @@ test('the helper checks every allocation before using it: it says so and exits, 
     const after = source.slice(allocation.index);
     const checked = after.search(new RegExp(`!${name}\\b`, 'u'));
     const used = after.search(new RegExp(`\\b${name}\\s*\\[|\\(${name}\\s*\\+`, 'u'));
-    assert.ok(checked >= 0 && (used < 0 || checked < used), `${name} is used before its allocation is checked`);
+    assert.ok(
+      checked >= 0 && (used < 0 || checked < used),
+      `${name} is used before its allocation is checked`,
+    );
   }
 });

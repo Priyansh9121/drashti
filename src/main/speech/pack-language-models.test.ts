@@ -112,5 +112,4 @@ describe('a language’s own captions model, from the pack only', () => {
     expect(p.released).toEqual(['pack-gu']);
     expect(await packLanguageModelStore([ENTRY], pack({ held: false }).store).verify(ENTRY)).toBe('changed');
   });
-
 });

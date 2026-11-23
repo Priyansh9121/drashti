@@ -144,12 +144,14 @@ describe('a model pack’s list (alpha.22, cap-pack)', () => {
     );
   });
 
-  it.each([['captions/console/model.bin'], ['captions/com10/model.bin'], ['captions/nullable/model.txt'], ['captions/auxiliary/a.b']])(
-    'takes a name that only begins like a Windows device name (%s)',
-    (name) => {
-      expect(checkManifest(pack([licence, { ...gu, name }])).ok).toBe(true);
-    },
-  );
+  it.each([
+    ['captions/console/model.bin'],
+    ['captions/com10/model.bin'],
+    ['captions/nullable/model.txt'],
+    ['captions/auxiliary/a.b'],
+  ])('takes a name that only begins like a Windows device name (%s)', (name) => {
+    expect(checkManifest(pack([licence, { ...gu, name }])).ok).toBe(true);
+  });
 
   it('refuses a file named twice (in any case: Mac and Windows folders do not tell them apart), and its own list', () => {
     expect(refusal(pack([licence, gu, { ...gu, name: 'CAPTIONS/gu-placeholder/Model.bin' }]))).toBe(

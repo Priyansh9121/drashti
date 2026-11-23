@@ -7,6 +7,7 @@ import { SPEECH_RATE, type Heard, type HeardWord, type SpeechLanguage } from '..
 import type { CaptionHints } from './caption-hints';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
+import { isSpeech } from './speech-level';
 
 /*
  * The captions engine (Session 55, Part 10): whisper.cpp's server (whisper-server.exe on Windows, from whisper.cpp's
@@ -78,23 +79,8 @@ const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
   ['english', 'en'],
 ]);
 
-/**
- * How loud sound must be to count as speech (alpha.22's speech level): at least `least` (16-bit RMS) and `over` times
- * the noise floor learnt as it goes. Standard is what captions always used (about 38 dB below full scale, and about
- * 10 dB over the noise); a quiet room hears speech 6 dB softer, a noisy hall asks for it 6 dB louder.
- */
-const SPEECH_LEVELS: Readonly<Record<CaptionTiming['speech'], { least: number; over: number }>> =
-  Object.freeze({
-    standard: { least: 400, over: 3 },
-    'quiet-room': { least: 200, over: 2 },
-    'noisy-hall': { least: 800, over: 4 },
-  });
-
-/** Whether a chunk of this level is speech, over a noise floor of `floor`. */
-export function isSpeech(level: number, floor: number, speech: CaptionTiming['speech']): boolean {
-  const { least, over } = SPEECH_LEVELS[speech];
-  return level > Math.max(least, floor * over);
-}
+/** Whether a chunk is speech (alpha.22's speech level; its own module so Route C shares it, alpha.23). */
+export { isSpeech };
 
 /** A free port on 127.0.0.1 for the engine. */
 async function freePort(): Promise<number> {

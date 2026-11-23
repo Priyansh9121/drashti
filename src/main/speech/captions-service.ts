@@ -34,11 +34,7 @@ import {
   type CaptionsTuning,
 } from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
-import {
-  languageName,
-  type LanguageModelCheck,
-  type LanguageModelEntry,
-} from './language-models';
+import { languageName, type LanguageModelCheck, type LanguageModelEntry } from './language-models';
 
 export type { CaptionsStatus } from '../../shared/captions';
 

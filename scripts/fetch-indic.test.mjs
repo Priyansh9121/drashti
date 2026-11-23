@@ -31,7 +31,11 @@ test('the staged libraries must have the pinned target size (alpha.23, the revie
   assert.equal(typeof fetchIndic.verifyOrtFiles, 'function');
   const root = mkdtempSync(join(tmpdir(), 'drashti-ort-files-'));
   try {
-    const target = { rid: 'win-x64', files: ['onnxruntime.dll', 'onnxruntime_providers_shared.dll'], bytes: 7 };
+    const target = {
+      rid: 'win-x64',
+      files: ['onnxruntime.dll', 'onnxruntime_providers_shared.dll'],
+      bytes: 7,
+    };
     writeFileSync(join(root, 'onnxruntime.dll'), 'four');
     writeFileSync(join(root, 'onnxruntime_providers_shared.dll'), 'two');
     fetchIndic.verifyOrtFiles(root, target);
