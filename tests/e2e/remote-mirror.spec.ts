@@ -441,8 +441,9 @@ test('from a phone, as from the operator window: media with its skips, the stage
 /** The sizes the mirror is laid out for: a phone, a tablet upright and a tablet held sideways. */
 const SIZES = [
   { name: 'a phone', width: 375, height: 812, layout: 'phone', mobile: true },
-  // Held sideways, a phone keeps its tabs (D5 review): as wide as a small tablet, far too short for its columns.
-  { name: 'a phone held sideways', width: 844, height: 390, layout: 'phone', mobile: true },
+  // Held sideways, a phone keeps its tabs (D5 review): as wide as a small tablet, far too short for its columns; since
+  // alpha.21 with Back, Next and the tabs at the middle's side.
+  { name: 'a phone held sideways', width: 844, height: 390, layout: 'sideways', mobile: true },
   { name: 'a tablet', width: 768, height: 1024, layout: 'wide', mobile: true },
   { name: 'a tablet held sideways', width: 1024, height: 768, layout: 'landscape', mobile: true },
 ] as const;
@@ -450,6 +451,13 @@ const SIZES = [
 /** The places each layout has: the tabs to press, Media among them. */
 const PLACES = {
   phone: [
+    'remote-tab-show',
+    'remote-tab-playlist',
+    'remote-tab-library',
+    'remote-library-media',
+    'remote-tab-more',
+  ],
+  sideways: [
     'remote-tab-show',
     'remote-tab-playlist',
     'remote-tab-library',
@@ -555,7 +563,9 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           await expect(page.getByTestId('remote')).toHaveAttribute('data-layout', size.layout);
           // Where the live column and More are in sight: always beside each other on a tablet; a tab each on a phone.
           const liveShown = (place: string) =>
-            size.layout !== 'phone' || place === 'remote-tab-show' || place === 'remote-panel-show';
+            (size.layout !== 'phone' && size.layout !== 'sideways') ||
+            place === 'remote-tab-show' ||
+            place === 'remote-panel-show';
           const moreShown = (place: string) =>
             size.layout === 'wide' || place === 'remote-tab-more' || place === 'remote-panel-more';
           for (const place of PLACES[size.layout]) {
@@ -579,7 +589,8 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
             expect.soft(await offTheSide(page), `off the side: ${place} on ${at}`).toEqual([]);
           }
           // The clears fill the width: three to a row on a phone, more where there is room.
-          if (size.layout === 'phone') await page.getByTestId('remote-tab-show').click();
+          if (size.layout === 'phone' || size.layout === 'sideways')
+            await page.getByTestId('remote-tab-show').click();
           const tops = await page
             .getByTestId('remote-actions')
             .getByRole('button')

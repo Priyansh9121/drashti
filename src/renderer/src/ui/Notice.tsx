@@ -68,6 +68,8 @@ export function Notice({
     <div
       role={announce === 'none' ? undefined : announce}
       data-motion={arriving}
+      // On the phones' pages its words are 16 px, as every word there (app.css, body.web [data-notice]).
+      data-notice
       className={cx(
         'flex items-start gap-2 rounded-md border border-l-4',
         compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm',

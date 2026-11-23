@@ -64,7 +64,7 @@ function SharedItems({ playlist, list }: { playlist: SharedPlaylist; list: Playl
       >
         Shared playlists
       </Button>
-      <h3 className="truncate text-base font-bold text-fg" data-testid="remote-shared-name">
+      <h3 className="text-base font-bold break-words text-fg" data-testid="remote-shared-name">
         {playlist.name}
       </h3>
       {/* A file being opened (its presentations read first), or one Drashti could not give. */}

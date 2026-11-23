@@ -40,6 +40,8 @@ const LINK = '/macros/s/stand-in/link';
 const PAGE = '/macros/s/stand-in/page';
 const RUN = '/macros/s/stand-in/run';
 const ECHO = '/macros/echo';
+/** The tag Code.js's page_ adds to Link.html's page (`addMetaTag('viewport', …)`), as Apps Script writes it. */
+const VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">';
 /** Where GitHub Pages serves the link page (core.js's own address, https://priyansh9121.github.io/drashti/access/). */
 const LINK_PAGE_PATH = '/drashti/access/';
 /** Google's answers may be read by a page on any site (the link page's calls). */
@@ -276,7 +278,8 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
         const page = core.linkPage(list.env, Object.fromEntries(url.searchParams.entries()));
         const html = renderTemplate(readFileSync(join(ACCESS_LIST_DIR, 'Link.html'), 'utf8'), page);
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(html.replace('<head>', `<head>${scriptRun(`${base}${RUN}`)}`));
+        // With the viewport tag Code.js's page_ adds (addMetaTag), as Apps Script serves it to a phone.
+        res.end(html.replace('<head>', `<head>${VIEWPORT}${scriptRun(`${base}${RUN}`)}`));
         return;
       }
       if (req.method === 'POST' && url.pathname === RUN) {

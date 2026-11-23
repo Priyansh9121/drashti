@@ -17,12 +17,16 @@ const at = (width: number, height: number) => (query: string) => {
 
 describe('the remote’s layout at each size', () => {
   it('lays a phone out in tabs, upright or held sideways', () => {
+    expect(layoutFor(at(360, 740))).toBe('phone');
     expect(layoutFor(at(375, 812))).toBe('phone');
     expect(layoutFor(at(390, 844))).toBe('phone');
-    // Held sideways, an iPhone or a Pixel is as wide as a small tablet, but far too short for its columns.
-    expect(layoutFor(at(844, 390))).toBe('phone');
-    expect(layoutFor(at(932, 430))).toBe('phone');
-    expect(layoutFor(at(915, 412))).toBe('phone');
+    expect(layoutFor(at(430, 932))).toBe('phone');
+    // Held sideways, an iPhone or a Pixel is as wide as a small tablet, but far too short for its columns; and too
+    // short for Back, Next and the tabs under the middle (alpha.21): they go to its side.
+    expect(layoutFor(at(740, 360))).toBe('sideways');
+    expect(layoutFor(at(844, 390))).toBe('sideways');
+    expect(layoutFor(at(932, 430))).toBe('sideways');
+    expect(layoutFor(at(915, 412))).toBe('sideways');
   });
 
   it('puts a tablet upright’s playlist or library beside the show, and a tablet held sideways in columns', () => {

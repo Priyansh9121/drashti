@@ -25,16 +25,19 @@ function TimerRow({ timer, shown }: { timer: TimerState; shown: boolean }) {
   const id = encodeURIComponent(timer.id);
   return (
     <li
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2"
+      className="relative flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2"
       data-testid="remote-timer"
       data-timer-id={timer.id}
       data-running={running ? 'true' : undefined}
     >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-base text-fg">
-          {timer.name}
-          <span className="sr-only">, {TIMER_KIND_NAMES[timer.kind]}</span>
-        </span>
+      {/* Its name and time keep 10rem, the buttons going under them where there is no more room: squeezed beside
+          them, a name was cut and the time lay over Start (alpha.21, the fit pass). */}
+      <span className="min-w-40 flex-1 text-base">
+        {/* The kind's words for a screen reader after the name, outside its cut line, in the row's own box: within
+            the line, past a long name's end, they reached past the phone's side and made the page scroll (alpha.21,
+            the fit pass). */}
+        <span className="block truncate text-base text-fg">{timer.name}</span>
+        <span className="sr-only">, {TIMER_KIND_NAMES[timer.kind]}</span>
         <span className="block font-mono text-2xl text-fg">
           <TimerText timer={timer} />
         </span>

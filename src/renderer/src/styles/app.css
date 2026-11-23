@@ -1082,6 +1082,15 @@ html:has(> body.web),
 html:has(> body.stage-display) {
   overscroll-behavior: none;
 }
+/*
+ * A notice's words on the phones' pages: 16 px, as every word there (docs/design.md §16; alpha.21, the fit pass: the
+ * window's 14 px, or 12 px compact, were the one place a phone's words were smaller). Outside the layers, so it wins
+ * over the notice's own size class.
+ */
+body.web [data-notice] {
+  font-size: var(--text-base, 1rem);
+  line-height: var(--text-base--line-height, 1.5);
+}
 /* A floor, in the base layer: a control's own larger minimum (Back and Next's 64 px) still wins. */
 @layer base {
   body.web
