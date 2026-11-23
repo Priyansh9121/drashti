@@ -53,6 +53,8 @@ export function placeholderCaptionPack(): PlaceholderCaptionPack {
         purpose: ['captions-gu'],
         model: 'placeholder-gu-pack',
         format: 'whisper-ggml',
+        // A pack credits each model (cap-pack refuses one that does not).
+        attribution: 'Placeholder Gujarati model, made by the tests',
         licenceFile: 'licences/Apache-2.0.txt',
       },
     ],
