@@ -120,3 +120,11 @@ export function indicWords(
     return { text: word.w, startAt: began, endAt: ended, confidence: null };
   });
 }
+
+/**
+ * A phrase Route C made out of noise or hum (cap-route-c: generated noise and hum give one-syllable "words" such as
+ * હ, છે, म, है, આ; silence gives none): every word is one syllable. Red: not decided yet.
+ */
+export function noiseOnly(words: readonly { text: string }[]): boolean {
+  return words.length < 0;
+}

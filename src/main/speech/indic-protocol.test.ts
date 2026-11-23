@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { indicWords, pcmFrame, routeCFiles } from './indic-protocol';
+import { indicWords, noiseOnly, pcmFrame, routeCFiles } from './indic-protocol';
 
 describe('IndicConformer private pipe and checked pack', () => {
   it('frames little-endian PCM without a recording or a path', () => {
@@ -36,5 +36,14 @@ describe('IndicConformer private pipe and checked pack', () => {
     expect(routeCFiles(model, 'hi')).toBeNull();
     expect(routeCFiles({ ...model, files: model.files.slice(0, 2) }, 'gu')).toBeNull();
     expect(routeCFiles({ ...model, format: 'whisper-ggml' }, 'gu')).toBeNull();
+  });
+  it('knows a phrase made of noise or hum: every word one syllable (cap-route-c’s generated noise and hum)', () => {
+    const phrase = (text: string) => text.split(' ').map((w) => ({ text: w }));
+    // What Route C heard in 10 s of generated noise and hum, Gujarati and Hindi, int8 and full (cap-route-c, 5b).
+    for (const heard of ['બ છે', 'હ છે', 'હ', 'म', 'है', 'म है', 'आ']) expect(noiseOnly(phrase(heard))).toBe(true);
+    // Words of more than one syllable, or any one of them in the phrase: speech, kept.
+    for (const heard of ['આકાર', 'લીલું ખોખું', 'છે આકાર', 'नमस्ते', 'क्ष', 'है आकार'])
+      expect(noiseOnly(phrase(heard))).toBe(false);
+    expect(noiseOnly([])).toBe(false);
   });
 });
