@@ -10,10 +10,11 @@ import {
   operatorReady,
   type PageGlobals,
 } from './helpers';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SIMPLE_ACCESS_LOCKED_REFUSAL } from '../../src/shared/mode';
+import type { AccessStandIn } from '../access-standin';
 import { makeTestImage } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -59,6 +60,51 @@ const tryAll = (win: Page) =>
       look: await said(() => d.engine.dispatch({ type: 'swapPip' })),
     };
   });
+
+/**
+ * Each call the stand-in list hears and answers, with the test's own moments, by this computer's clock: read beside
+ * Main's access lines (its log's own times) when a test fails.
+ */
+function watchStandIn(s: AccessStandIn): {
+  mark: (what: string) => void;
+  lines: (userData: string) => string[];
+} {
+  const marks: string[] = [];
+  const mark = (what: string) => marks.push(`${new Date().toISOString()} test: ${what}`);
+  const handle = s.list.handle.bind(s.list);
+  s.list.handle = (text: string) => {
+    let op: string;
+    try {
+      const raw = (JSON.parse(text) as { op?: unknown }).op;
+      op = typeof raw === 'string' ? raw : 'a link page call';
+    } catch {
+      op = 'not JSON';
+    }
+    mark(`the stand-in list heard ${op}`);
+    const answered = handle(text);
+    mark(`the stand-in list answered ${op}`);
+    return answered;
+  };
+  const lines = (userData: string) => {
+    let main: string[];
+    try {
+      main = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
+        .split('\n')
+        .filter((l) => /Access:|Pro access again|Simple access|Switched|priority/u.test(l));
+    } catch (error) {
+      main = [`(Main's log could not be read: ${String(error)})`];
+    }
+    return [...marks, ...main].sort();
+  };
+  return { mark, lines };
+}
+
+/** Main's Chromium network log from now, in the test's own folder: kept only when the test fails. */
+async function keepNetworkLog(app: ElectronApplication): Promise<void> {
+  await app.evaluate(async ({ netLog }, file) => {
+    await netLog.startLogging(file, { captureMode: 'default' });
+  }, test.info().outputPath('network-log.json'));
+}
 
 test('Simple access: Simple Mode only, with no way to Pro Mode in the window, the View menu or the main process; the owner giving Pro, Pro Mode comes back by itself, and Simple again drops it to Simple Mode', async () => {
   test.setTimeout(150_000);
@@ -118,7 +164,11 @@ test('Simple access: Simple Mode only, with no way to Pro Mode in the window, th
 
 test('Pro access: Simple Mode the operator chose stays when the owner gives Simple and then Pro again; and its Pro Mode is back with Pro access', async () => {
   test.setTimeout(150_000);
-  const { app, access: s } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON } });
+  const { app, access: s, userData } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON } });
+  // A failure says when each call reached the stand-in list, beside the test's own moments and Main's access lines, and
+  // keeps Main's Chromium network log (alpha.20.1's final5, CI's Windows: Pro again not heard in 25 s, its cause unseen).
+  const said = watchStandIn(s);
+  await keepNetworkLog(app);
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -129,9 +179,11 @@ test('Pro access: Simple Mode the operator chose stays when the owner gives Simp
     await expect(simple).toBeVisible();
     await expect(win.getByTestId('simple-leave')).toBeVisible();
     // Simple access: the way out goes at the next check.
+    said.mark('the owner gives Simple');
     s.setMode(SIMPLE_PERSON, 'simple');
     await expect(win.getByTestId('simple-leave')).toHaveCount(0, { timeout: 25_000 });
     // Pro again: the way out is back, and Simple Mode stays, the operator's own choice.
+    said.mark('the owner gives Pro');
     s.setMode(SIMPLE_PERSON, 'pro');
     await expect(win.getByTestId('simple-leave')).toBeVisible({ timeout: 25_000 });
     await holdStill(
@@ -139,7 +191,18 @@ test('Pro access: Simple Mode the operator chose stays when the owner gives Simp
       3000,
       'Simple Mode chosen by the operator stays',
     );
+  } catch (error) {
+    said.mark('failed');
+    console.log(
+      `The access, as the test, the stand-in list and Main saw it:\n${said.lines(userData).join('\n')}`,
+    );
+    throw error;
   } finally {
+    await app
+      .evaluate(async ({ netLog }) => {
+        await netLog.stopLogging();
+      })
+      .catch(() => undefined);
     await app.close();
   }
 });

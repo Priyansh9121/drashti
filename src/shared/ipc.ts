@@ -66,6 +66,7 @@ import type {
   ShastraTree,
 } from './shastra';
 import type { AccessView } from './access';
+import type { ReadWordsChoice, ReadWordsProgress, ReadWordsResult } from './read-words';
 import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
@@ -475,6 +476,15 @@ export const IPC = {
     /** The rest change presentations (operator window only). */
     saveWords: 'library:save-words',
     newFromWords: 'library:new-from-words',
+    /**
+     * Book OCR (alpha.21): New presentation's Read Words from a Page…: choose pictures or a PDF, read their words (a
+     * PDF's pages asked for), and stop a reading (operator window only).
+     */
+    readWordsChoose: 'library:read-words-choose',
+    readWords: 'library:read-words',
+    stopReadingWords: 'library:stop-reading-words',
+    /** main -> operator: how a reading of words goes (null: it has ended). */
+    readWordsProgress: 'library:read-words-progress',
     /** New › QR code… (Session 55, Part 8, G): a link or words as one slide, the code large and the words under it. */
     newQrSlide: 'library:new-qr-slide',
     /** The QR code… window's choices (Q60-28): the logo kept for the middle, Logo in the middle, the words under it. */
@@ -1535,6 +1545,12 @@ export interface InvokeContract {
   [IPC.library.words]: { args: [presentationId: string]; result: WordsResult };
   [IPC.library.saveWords]: { args: [presentationId: string, text: string]; result: SaveWordsResult };
   [IPC.library.newFromWords]: { args: [name: string, text: string]; result: NewFromWordsResult };
+  [IPC.library.readWordsChoose]: { args: []; result: ReadWordsChoice };
+  [IPC.library.readWords]: {
+    args: [fromPage: number | null, toPage: number | null];
+    result: ReadWordsResult;
+  };
+  [IPC.library.stopReadingWords]: { args: []; result: boolean };
   [IPC.library.newQrSlide]: { args: [text: string, options?: QrSlideOptions]; result: NewFromWordsResult };
   [IPC.library.qrChoices]: { args: []; result: QrChoices };
   [IPC.library.pickQrLogo]: { args: []; result: QrPicked };
@@ -2045,6 +2061,7 @@ export interface EventContract {
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
+  [IPC.library.readWordsProgress]: { progress: ReadWordsProgress | null };
   [IPC.library.automaticImportNotice]: AutomaticImportNotice;
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.library.extrasChanged]: { on: boolean };

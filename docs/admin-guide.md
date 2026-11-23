@@ -720,3 +720,11 @@ On computers with at most two logical processor cores, or software video decodin
 Leave at least 2 GB free after copies and exports. Saved-edits exports use the full-quality original with the saved choices, once ready; Original exports use its original picture and sound. Neither uses a lighter playing copy. **Vertical 9:16** keeps the middle in a 1080 × 1920 frame; choose WebM to keep transparency. The system's **Save as…** chooses a new file, keeping the original even if its name is chosen. **Also add the clip to Media** adds only a checked, finished file.
 
 An accepted export stays across closing the editor or restarting Drashti; **Stop export** removes its unfinished file. Exports wait for the show, stream and recording to be idle, like the other preparation. See **Library › Exporting a clip, including vertical video** in the Manual.
+
+## 29. Words from scanned pages
+
+Since alpha.21, **New…**'s **Read Words from a Page…** reads the Gujarati words of a scanned page (a picture, or a PDF's pages) into the words box, for the operator to read over before **Make slides**. Nothing needs installing, and no internet is used: Drashti carries Tesseract (the free OCR engine, Apache 2.0) as its WebAssembly build, tesseract.js 7.0.0, and Tesseract's own best Gujarati script model (`Gujarati.traineddata` from tessdata_best, 7 MB, Apache 2.0), about 10 MB in all, the same on the Mac and Windows. `LICENSES/tesseract` holds the licences and where each file came from.
+
+- **How well it reads.** Tried on real booklet pages before it was built in, it found 96 to 99 of every 100 Gujarati letters, and about 1 in 10 to 20 of what it wrote was wrong or extra: a vowel sign, or a mark from the page's border. A clean, straight scan at 150 to 300 pixels an inch reads best. Words in other scripts on the page can come out wrong.
+- **Where it runs.** In a process of its own, started for a reading and closed after it, at the lowest priority, never on the show's own thread. A PDF's pages are drawn first by the same hidden window that draws an imported PDF. Even so it takes a few seconds a page: it is for preparing slides, before the sabha, not while slides are changing on the screens.
+- **The log** has a line for each reading: how many pages, how many letters and how long it took, or why nothing was read.
