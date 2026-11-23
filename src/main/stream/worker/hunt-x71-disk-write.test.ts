@@ -1,3 +1,4 @@
+import type * as FileSystem from 'node:fs';
 import { finished } from 'node:stream/promises';
 import { mkdtempSync, rmSync, type WriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,7 +9,7 @@ import type { WorkerStatus } from './protocol';
 
 const disk = vi.hoisted(() => ({ failOpen: false }));
 vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
+  const actual = await importOriginal<typeof FileSystem>();
   return {
     ...actual,
     openSync: (...args: Parameters<typeof actual.openSync>) => {

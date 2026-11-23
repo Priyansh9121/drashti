@@ -1,3 +1,4 @@
+import type * as ChildProcesses from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, type WriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ import type { WorkerStatus } from './protocol';
 
 const processes = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:child_process')>()),
+  ...(await importOriginal<typeof ChildProcesses>()),
   spawn: processes.spawn,
 }));
 
