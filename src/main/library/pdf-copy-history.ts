@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { link, lstat, readFile, realpath, rename, unlink } from 'node:fs/promises';
+import { lstat, readFile, realpath, rename, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { PdfCopyReceipt } from './pdf-copy-file';
+import { publishExclusive, type PdfCopyReceipt } from './pdf-copy-file';
 import type { BigIntStats } from 'node:fs';
 interface Copy {
   path: string;
@@ -9,13 +9,16 @@ interface Copy {
   identity: BigIntStats;
   hash: string;
   visible: boolean;
+  /** On a volume without hard links (PdfCopyReceipt.copied): a renamed file gets a new number there. */
+  copied: boolean;
 }
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-const same = (a: BigIntStats, b: BigIntStats) =>
+/** The same file: on a volume without hard links its number is not compared (it changes with its name there). */
+const same = (a: BigIntStats, b: BigIntStats, numbered = true) =>
   a.isFile() &&
   !a.isSymbolicLink() &&
   a.dev === b.dev &&
-  a.ino === b.ino &&
+  (!numbered || a.ino === b.ino) &&
   a.size === b.size &&
   a.mtimeNs === b.mtimeNs;
 
@@ -42,6 +45,7 @@ export class PdfCopyHistory {
       identity,
       hash,
       visible: true,
+      copied: expected.copied === true,
     });
     while (this.copies.size > 200) {
       const oldest = this.copies.entries().next().value;
@@ -67,9 +71,9 @@ export class PdfCopyHistory {
   private async matches(copy: Copy, path: string): Promise<boolean> {
     try {
       return (
-        same(copy.identity, await lstat(path, { bigint: true })) &&
+        same(copy.identity, await lstat(path, { bigint: true }), !copy.copied) &&
         digest(await readFile(path)) === copy.hash &&
-        same(copy.identity, await lstat(path, { bigint: true }))
+        same(copy.identity, await lstat(path, { bigint: true }), !copy.copied)
       );
     } catch {
       return false;
@@ -82,8 +86,17 @@ export class PdfCopyHistory {
     try {
       if (visible) {
         if (!(await this.matches(copy, copy.hidden)) || !current()) return false;
-        // link is exclusive: a file placed at the output name is never overwritten by Redo.
-        await link(copy.hidden, copy.path);
+        // Exclusive (a link, or a copy where the volume has none): a file placed at the output name is never
+        // overwritten by Redo. A copy is a new file: its bytes are checked and it is the one Undo takes away next.
+        if (await publishExclusive(copy.hidden, copy.path)) {
+          const before = copy.identity;
+          copy.identity = await lstat(copy.path, { bigint: true });
+          copy.copied = true;
+          if (!(await this.matches(copy, copy.path))) {
+            copy.identity = before;
+            return false;
+          }
+        }
         copy.visible = true;
         try {
           await unlink(copy.hidden);
@@ -97,7 +110,7 @@ export class PdfCopyHistory {
       await rename(copy.path, copy.hidden);
       if (!(await this.matches(copy, copy.hidden))) {
         try {
-          await link(copy.hidden, copy.path);
+          await publishExclusive(copy.hidden, copy.path);
           await unlink(copy.hidden);
         } catch {
           /* Keep unknown bytes at the private name if another output appeared. */

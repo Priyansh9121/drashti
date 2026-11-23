@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { link, lstat, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
+import { copyFile, link, lstat, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -22,6 +23,11 @@ export interface PdfCopyRequest {
 export interface PdfCopyReceipt {
   identity: BigIntStats;
   hash: string;
+  /**
+   * Published as an exclusive copy: the volume has no hard links (exFAT and FAT32 USB sticks, some network shares),
+   * where a file's number also changes when it is renamed, so Undo checks its bytes, size and times, not its number.
+   */
+  copied?: boolean;
 }
 export interface PdfCopyControl {
   /** Main/test-only interleaving seam; this path never crosses IPC. */
@@ -91,6 +97,22 @@ async function checked<T>(request: PdfCopyRequest, action: () => Promise<T>): Pr
 }
 function codeIs(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code;
+}
+/** What link() answers on a volume without hard links (exFAT, FAT32, some shares) on macOS, Windows and Linux. */
+const NO_HARD_LINKS = ['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'EXDEV', 'EINVAL', 'EISDIR', 'ENOSYS'];
+/**
+ * Puts `from`'s bytes at `to` only while nothing is there: a hard link where the volume has them, else an exclusive
+ * copy (COPYFILE_EXCL, never over an existing file). True when it copied: the file at `to` is then a file of its own.
+ */
+export async function publishExclusive(from: string, to: string): Promise<boolean> {
+  try {
+    await link(from, to);
+    return false;
+  } catch (error) {
+    if (!NO_HARD_LINKS.some((code) => codeIs(error, code))) throw error;
+  }
+  await copyFile(from, to, constants.COPYFILE_EXCL);
+  return true;
 }
 async function maybeStat(file: string, request: PdfCopyRequest): Promise<BigIntStats | null> {
   try {
@@ -379,13 +401,20 @@ export async function writePdfCopy(
     if (!finalStaged.isFile() || finalStaged.isSymbolicLink() || !sameFile(owned, finalStaged)) corrupt();
     stopped(request);
     if (request.newOnly) {
-      await link(staged, target.file);
+      const copied = await publishExclusive(staged, target.file);
       committed = true;
       try {
         await unlink(staged);
       } catch {
         /* Publication already committed; never report a failed copy after it. */
       }
+      // A copy is a file of its own: its receipt is the published file (Undo's keep checks its bytes against it).
+      if (copied)
+        return {
+          identity: await lstat(target.file, { bigint: true }).catch(() => finalStaged),
+          hash,
+          copied: true,
+        };
     } else await rename(staged, target.file);
     // No throwing admission check after this successful commit boundary.
     committed = true;
