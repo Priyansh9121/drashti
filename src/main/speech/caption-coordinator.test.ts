@@ -3,9 +3,9 @@ import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/capti
 import type { CaptionRevision, CaptionTranslation, CaptionTranslationPort } from '../../shared/caption-coordinator';
 import { CaptionCoordinator } from './caption-coordinator';
 
-function setup(translation?: CaptionTranslationPort) {
+function setup(translation?: CaptionTranslationPort, output?: 'source' | 'translation') {
   const shown: (CaptionsShown | null)[] = [];
-  const coordinator = new CaptionCoordinator({ settings: () => DEFAULT_CAPTION_SETTINGS, show: c => shown.push(c), changed: vi.fn(), ...(translation ? { translation } : {}) });
+  const coordinator = new CaptionCoordinator({ settings: () => DEFAULT_CAPTION_SETTINGS, show: c => shown.push(c), changed: vi.fn(), ...(translation ? { translation } : {}), ...(output ? { output } : {}) });
   const sessionId = coordinator.start();
   const clause = (text: string, revision = 1, status: CaptionRevision['status'] = 'provisional', phraseId = 's1'): CaptionRevision => ({ sessionId, phraseId, revision, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: text, startAt: Date.now() - 1_000, endAt: Date.now(), status });
   return { coordinator, clause, shown, last: () => shown.at(-1) ?? null };
@@ -113,4 +113,46 @@ describe('phase D caption coordinator', () => {
     expect(c.accept(clause('Final again', 2, 'settled'))).toBe(false);
     expect(c.view().current?.sourceText).toBe('Settled');
   });
+  it('publishes only matching translated revisions and replaces a corrected translation whole', async () => {
+    const port = deferredPort();
+    const { coordinator: c, clause, last } = setup(port, 'translation');
+    c.accept(clause('A blue box', 1, 'settled'));
+    expect(last()).toBeNull();
+    port.finish(0, 'पहला नमूना');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toMatchObject({ lines: ['पहला नमूना'], language: 'hi' });
+    expect(c.correct({ ...clause(''), text: 'A green box' })).toBe(true);
+    expect(last()).toBeNull();
+    port.finish(1, 'दूसरा नमूना');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()?.lines).toEqual(['दूसरा नमूना']);
+    c.accept(clause('Next provisional', 1, 'provisional', 's2'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()?.lines).toEqual(['दूसरा नमूना']);
+    c.accept(clause('Next stable', 2, 'settled', 's2'));
+    port.finish(2, 'Wrong target', { targetLanguage: 'en' });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()?.lines).toEqual(['दूसरा नमूना']);
+  });
+
+  it('never repaints a late translation after expiry or dismissal, and contains a failed port', async () => {
+    const port = deferredPort();
+    const { coordinator: c, clause, last } = setup(port, 'translation');
+    c.accept(clause('A blue box', 1, 'settled'));
+    vi.advanceTimersByTime(6_000);
+    port.finish(0, 'Expired words');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toBeNull();
+    c.accept(clause('A green box', 1, 'settled', 's2'));
+    c.dismiss(clause('', 1, 'settled', 's2'));
+    port.finish(1, 'Dismissed words');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toBeNull();
+    const failed = setup({ translate: () => { throw new Error('Placeholder failure'); } }, 'translation');
+    expect(() => failed.coordinator.accept(failed.clause('A round shape', 1, 'settled'))).not.toThrow();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(failed.coordinator.view()).toMatchObject({ busy: false, omitted: 1 });
+    expect(failed.last()).toBeNull();
+  });
+
 });
