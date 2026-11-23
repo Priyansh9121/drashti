@@ -19,7 +19,8 @@ export interface Size {
 }
 
 /** Each of Drashti's windows the sweep opens, by its page. */
-export type WindowPage = 'index.html' | 'slide-editor.html' | 'access-list.html' | 'lock.html';
+export type WindowPage =
+  'index.html' | 'slide-editor.html' | 'access-list.html' | 'lock.html' | 'lower-thirds.html' | 'zoom.html';
 
 /** The smallest content Drashti allows a window of its: its least size less its frame, on this system. */
 export function smallestContent(app: ElectronApplication, page: WindowPage): Promise<Size> {
