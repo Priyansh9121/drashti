@@ -717,8 +717,8 @@ Leave at least 2 GB free after copies and exports. Saved-edits exports use the f
 
 An accepted export stays across closing the editor or restarting Drashti; **Stop export** removes its unfinished file. Exports wait for the show, stream and recording to be idle, like the other preparation. See **Library › Exporting a clip, including vertical video** in the Manual.
 
-## 29. Looking after video cues and crossfades
+## 29. Looking after video cues
 
-Cue and playlist Crossfade are Pro Mode controls. Crossfade is off until an operator saves a nonzero length in the playlist’s ⋯ menu. Allow the next video to prepare before it is needed. The cue waits for the first frame on the local playing pages and connected audience screens on paired computers. A disconnected screen joins by the usual file-copy and first-frame rules when it returns. An output that reloads loses its earlier ready acknowledgement. A failed cue keeps the live picture and sound as they were; Cancel and cue the video again after checking it in Media.
+Cue is a Pro Mode control. Allow the next video to prepare before it is needed. The cue waits for the first frame on the local playing pages and connected audience screens on paired computers. A disconnected screen joins by the usual file-copy and first-frame rules when it returns. An output that reloads loses its earlier ready acknowledgement. A failed cue keeps the live picture and sound as they were; Cancel and cue the video again after checking it in Media.
 
-Crossfades use two playing videos for the overlap. The length is limited to half the shorter video to keep that limit through a sequence. The hall and stream use their existing sound levels and mutes; the stream hears Drashti’s own sound only when that profile includes it. Playlist seconds are kept with the library. Manual cues recover paused with new readiness checks after an unexpected restart, and a scheduled Go saved before its moment cannot become an audible start on recovery. No source file is rewritten.
+Manual cues recover paused with new readiness checks after an unexpected restart, and a scheduled Go saved before its moment cannot become an audible start on recovery. No source file is rewritten.
