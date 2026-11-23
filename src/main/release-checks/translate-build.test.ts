@@ -101,4 +101,14 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     // Full run 45221762761 (24 Nov 2026): "Compatibility with CMake < 3.5 has been removed" at cpu_features.
     expect(read('scripts/fetch-translate.mjs')).toContain("'-DCMAKE_POLICY_VERSION_MINIMUM=3.5'");
   });
+
+  it('holds only the helper's own code to -Werror: the libraries' headers are system headers on a Mac', () => {
+    // Full run 45221762761 (24 Nov 2026): CI's newer clang warns in CTranslate2's bundled half.hpp and json.hpp
+    // (-Wdeprecated-literal-operator), which -Werror turned into a failed build.
+    const script = read('scripts/fetch-translate.mjs');
+    const helper = script.split("name: 'drashti-translate',")[1]?.split('});')[0] ?? '';
+    expect(helper).toContain("'-Werror'");
+    expect(helper).toContain("`-isystem${join(ct2, 'include')}`");
+    expect(helper).not.toMatch(/`-I\$\{/u);
+  });
 });
