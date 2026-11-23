@@ -8,7 +8,6 @@ import { LogOut } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
 import { openWelcome } from '../setup/Welcome';
 import { Columns } from '../operator/Layout';
-import { LiveColumn } from '../operator/LiveColumn';
 import { LivePreview } from '../operator/LivePreview';
 import { NextBack } from '../operator/NextBack';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -58,15 +57,10 @@ export function PracticeShow({ platform, run }: { platform: string; run: (action
         left={<TryTheKeys platform={platform} />}
         middle={<PracticeSlides />}
         right={
-          <LiveColumn
-            still={
-              <>
-                <LivePreview />
-                <NextBack platform={platform} run={run} />
-              </>
-            }
-            rest={null}
-          />
+          <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
+            <LivePreview />
+            <NextBack platform={platform} run={run} />
+          </aside>
         }
       />
     </>

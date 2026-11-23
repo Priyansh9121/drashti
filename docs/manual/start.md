@@ -19,7 +19,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 ## The first start
 
-**What it is.** A new library opens with a welcome: Drashti's lamp lights, then three choices. **Try a practice show first** puts five placeholder slides on this screen only, so you can learn the keys safely. Notices stand at the foot of LIVE as in a show; a stack scrolls there, so no notice covers a control.
+**What it is.** A new library opens with a welcome: Drashti's lamp lights, then three choices. **Try a practice show first** puts five placeholder slides on this screen only, so you can learn the keys safely.
 
 **When you would use it.** The first time Drashti opens on a computer, or to teach a new volunteer.
 
