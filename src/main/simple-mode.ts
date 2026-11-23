@@ -247,17 +247,34 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.drop.setOn,
   IPC.drop.importAnyway,
   // Live captions (Session 55, Part 10): set in Pro Mode only; Simple Mode's screens show them as they are.
+  IPC.captions.prototypeView,
+  IPC.captions.setPrototypeOn,
+  IPC.captions.advancePrototype,
+  IPC.captions.restartPrototype,
+  IPC.captions.correctPrototype,
+  IPC.captions.dismissPrototype,
   IPC.captions.view,
   IPC.captions.setOn,
   IPC.captions.setModel,
   IPC.captions.setSettings,
   IPC.captions.retry,
+  // A model per language and the live timing (alpha.22): Pro Mode's too.
+  IPC.captions.setLanguageModel,
+  IPC.captions.addLanguageModel,
+  IPC.captions.checkLanguageModel,
+  IPC.captions.setTiming,
   // Caption and translation models (alpha.22, cap-pack): Help › Caption and Translation Models… is Pro Mode's.
   IPC.modelPacks.view,
   IPC.modelPacks.import,
   IPC.modelPacks.cancel,
   IPC.modelPacks.remove,
   IPC.modelPacks.licence,
+  // Caption words (alpha.22): kept in Pro Mode only, like the rest of live captions.
+  IPC.captionWords.view,
+  IPC.captionWords.set,
+  IPC.captionWords.import,
+  IPC.captionWords.export,
+  IPC.captionWords.setHints,
   // A file deleted from the library and put back (the audio playlists' own changes are bounded since Session 56, below).
   IPC.media.remove,
   // Snapshot (alpha.20, the time bar's ⋯) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).

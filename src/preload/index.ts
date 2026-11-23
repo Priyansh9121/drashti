@@ -194,6 +194,13 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  captionWords: {
+    view: () => invoke(IPC.captionWords.view),
+    set: (words) => invoke(IPC.captionWords.set, words),
+    importFile: () => invoke(IPC.captionWords.import),
+    exportFile: () => invoke(IPC.captionWords.export),
+    setHints: (language, on) => invoke(IPC.captionWords.setHints, language, on),
+  },
   videoCaptions: {
     view: (mediaId) => invoke(IPC.videoCaptions.view, mediaId),
     select: (mediaId, trackId) => invoke(IPC.videoCaptions.select, mediaId, trackId),
@@ -201,11 +208,22 @@ const bridge: DrashtiBridge = {
     onChanged: (listener) => on(IPC.videoCaptions.changed, listener),
   },
   captions: {
+    prototypeView: () => invoke(IPC.captions.prototypeView),
+    setPrototypeOn: (on) => invoke(IPC.captions.setPrototypeOn, on),
+    advancePrototype: () => invoke(IPC.captions.advancePrototype),
+    restartPrototype: () => invoke(IPC.captions.restartPrototype),
+    correctPrototype: (correction) => invoke(IPC.captions.correctPrototype, correction),
+    dismissPrototype: (identity) => invoke(IPC.captions.dismissPrototype, identity),
+    onPrototypeChanged: (listener) => on(IPC.captions.prototypeChanged, listener),
     view: () => invoke(IPC.captions.view),
     setOn: (value) => invoke(IPC.captions.setOn, value),
     setModel: (model) => invoke(IPC.captions.setModel, model),
     setSettings: (settings) => invoke(IPC.captions.setSettings, settings),
     retry: () => invoke(IPC.captions.retry),
+    setLanguageModel: (language, id) => invoke(IPC.captions.setLanguageModel, language, id),
+    addLanguageModel: (language) => invoke(IPC.captions.addLanguageModel, language),
+    checkLanguageModel: (language) => invoke(IPC.captions.checkLanguageModel, language),
+    setTiming: (timing) => invoke(IPC.captions.setTiming, timing),
     onChanged: (listener) => on(IPC.captions.changed, listener),
     onOpen: (listener) =>
       on(IPC.captions.open, () => {

@@ -241,6 +241,54 @@ describe('File › Live Captions… (Session 55, Part 10)', () => {
   });
 });
 
+describe('File › Speaker’s Language (alpha.22)', () => {
+  it.each(PLATFORMS)(
+    'sets the language captions listen for, the chosen one ticked, beside Live Captions…, in Pro Mode only (%s)',
+    (platform) => {
+      const chosen: string[] = [];
+      on(platform, () => {
+        const made = actions('pro');
+        installMenu({
+          ...made.a,
+          liveCaptions: nothing,
+          speakerLanguage: { language: 'gu', choose: (language) => chosen.push(language) },
+        });
+      });
+      const file = built.at(-1)?.find((m) => m.label === 'File')?.submenu;
+      const ids = Array.isArray(file) ? file.map((i) => i.id) : [];
+      expect(ids.indexOf('speaker-language')).toBe(ids.indexOf('live-captions') + 1);
+      expect(item('speaker-language')).toMatchObject({ label: 'Speaker’s Language' });
+      const choices = ['auto', 'gu', 'hi', 'sa', 'en'].map((id) => item(`speaker-language-${id}`));
+      expect(choices.map((c) => c?.label)).toEqual([
+        'As Heard (Gujarati, Hindi, Sanskrit or English)',
+        'Gujarati',
+        'Hindi',
+        'Sanskrit',
+        'English',
+      ]);
+      expect(choices.map((c) => c?.type)).toEqual(['radio', 'radio', 'radio', 'radio', 'radio']);
+      expect(choices.map((c) => c?.checked)).toEqual([false, true, false, false, false]);
+      (item('speaker-language-hi')?.click as (() => void) | undefined)?.();
+      (item('speaker-language-auto')?.click as (() => void) | undefined)?.();
+      expect(chosen).toEqual(['hi', 'auto']);
+      // Simple Mode has no File menu; nor is it there where there are no live captions.
+      on(platform, () => {
+        const made = actions('simple');
+        installMenu({
+          ...made.a,
+          liveCaptions: nothing,
+          speakerLanguage: { language: 'gu', choose: nothing },
+        });
+      });
+      expect(item('speaker-language')).toBeUndefined();
+      on(platform, () => {
+        installMenu({ ...actions('pro').a, speakerLanguage: null });
+      });
+      expect(item('speaker-language')).toBeUndefined();
+    },
+  );
+});
+
 describe('Help › Caption and Translation Models… (alpha.22, cap-pack)', () => {
   it.each(PLATFORMS)(
     'opens the models dialog, just above Check for Updates…, in Pro Mode only (%s)',

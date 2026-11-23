@@ -1,6 +1,6 @@
 # Drashti's local API (v1)
 
-This document describes the local network API shipped in **1.0.0-alpha.21**, including screen geometry and video-caption state; since alpha.21 the skip command takes `back` and `forward` only. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
+This document describes the local network API shipped in **1.0.0-alpha.22**, including screen geometry and video-caption state; since alpha.21 the skip command takes `back` and `forward` only. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
 
 **Desktop controls in alpha.20.** The [Drashti Manual](manual/start.md#using-this-manual) gives the operating steps. Media information, the Resume offer, A-B repeat, frame steps, Snapshot, playlist Find/timing/M3U, appearances, YouTube scheduling, QR downloads and sending the picture to other software do not add HTTP routes here. Existing Remote playback and audio-playlist actions keep their contracts below. [Report a Problem](manual/help.md#report-a-problem) uses the [access service](access-setup.md#11-putting-in-a-change-later-always-the-same-deployment); a node hands its report to Main. It is separate from the local v1 API.
 
@@ -447,6 +447,14 @@ A phone or a script may clear a video input and take the box off, and since Sess
 - **Video captions** (version 29): `videoCaptions` is a map by media id, carrying the selected track for the first captioned video up (background, then slide video, then picture-in-picture). A value has `track` (`id`, `language`, `automatic`, `name`, `cues`), `size` and `place`; each cue has source-file `startMs`, exclusive `endMs` and plain `text`. Cues are sorted and do not overlap. Every output uses its own presented video frames and seek/pause events to choose the line; the engine never sends a separate advancing caption clock. The audience and stream draw the existing band; the stage draws none, and live speech steps aside while a video's captions are selected. Black-out, Wallpaper and Clear all take video tracks out of the active state. Saved states from 28 and its supported predecessors still read whole. This is library content; the live-speech `captions` field stays private.
 - **A video's own shape** (version 30, alpha.20): `videoShapes`, a map by media id of the videos on the screens and coming next (and the picture-in-picture box's going out) that are drawn in a shape of their own, chosen in Sound and picture…: `"16:9"`, `"4:3"`, `"1:1"` or `"21:9"`. Every screen and node draws such a video (the background's, a slide's or the picture-in-picture box's) in a box of that shape, fitted or filling as its layer's `fit` says (one stretched to its place takes the place's shape), the picture stretched to the box. Left out until a video has one; a video as its file says is left out of it. Only the engine sets it; a page may leave it alone. Saved states from 29 and its supported predecessors still read whole.
 
+Caption corrections (alpha.22) have a separate, Pro Mode operator-only bridge: `drashti.captions.prototypeView()`, `correctPrototype({ sessionId, phraseId, revision, text })`, `dismissPrototype({ sessionId, phraseId, revision })` and `onPrototypeChanged(listener)`, for the phrase on the screens while a language's own model is heard. (`setPrototypeOn(on)`, `advancePrototype()` and `restartPrototype()` drive a manual placeholder recognizer used by tests; the operator's dialog does not offer it.) Review responses contain only the current and previous clause in memory, with a monotonically increasing `version`; an older response must not replace a newer review. The existing `captions.view()` status contains no recognized or corrected words. Other pages receive no review, and Simple Mode refuses every prototype request. There is no new HTTP action or event. Off, restart and language changes invalidate the session; corrections require the exact current revision. The test-only placeholder recognizer is manually advanced, uses fixed English words and never opens audio, a model or a download. Corrections do not feed the sound draft.
+
+The main-process `CaptionTranslationPort` in `shared/caption-coordinator.ts` accepts settled/corrected revisions with a protocol version, session/input/generation, clause ID/sequence/revision, exact NFC source SHA-256, request ID, explicit source/target languages and route/model/processor/glossary identity. Replies must echo that retained request identity and carry a status and nullable numerical processing duration. Capture times from a legacy `Heard` envelope are mapped once into Main's monotonic session clock; trusted stabilizer observations use that clock directly. Source text is bounded to 4,096 UTF-8 bytes, target text to 8,192. An operator correction pins its clause and preserves its original clear and paint deadlines. The first-paint deadline is the earlier of capture end plus 4.5 seconds and first settlement plus 2.5 seconds; results stop being accepted 350 ms earlier. These are prototype admission budgets, not measured latency claims.
+
+`CaptionStabilizer` supplies provisional previews and nonoverlapping stable clauses: at least five unchanged words across observations 500 ms apart, or a final boundary. A committed frontier keeps final from repeating an already settled prefix; forced overlap requires exact parent scalar ranges. Changed settled words use a coordinator correction, never a second hub final. Unsupported or ambiguous events are omitted without guessing.
+
+The coordinator admits one active translation request and only the newest pending revision. Superseded work is aborted; held, mismatched or late replies cannot publish. A connected translation port requires an explicit background-work lease; the default is closed. The production prototype connects no translator and makes no claim that L8/native cancellation, combined performance or actual translated paint has been admitted. Overlong translated clauses are omitted whole rather than shortened to fit; the source preview retains its two-line roll-up. This private contract does not expand live-caption routing.
+
 The desktop operator bridge has `drashti.videoCaptions.view(mediaId)`, `select(mediaId, trackId | null)`, `add(mediaId)` and `onChanged(listener)`. `view` returns `{ tracks, selected }` with summaries only. `select` and `add` return `{ ok: true, view, notice? }` or `{ ok: false, message }`. `add` opens a native SRT/WebVTT file dialog and reads the chosen file in the import utility process; no page supplies a path or caption words. Choices and parsed words are kept in the library (migration 084); changing a selection refreshes the active band without restarting or seeking its video. There is no new HTTP action for choosing or adding a caption file.
 
 ## OSC control over UDP
@@ -636,6 +644,56 @@ The sender persists at most 20 reports, expires them after 7 days, accepts 10 in
 The separate `access-list/error-reports/` Apps Script project authenticates `{v:1,installId,payload,mac}`. HMAC-SHA256 uses the per-install secret as UTF-8 text over `drashti-errors-v1\n` + install id + `\n` + the exact payload text. The receiver validates every report field and rejects unknown fields before storage, then uses ScriptLock, a deterministic Drive filename and a Sheet id check to tolerate lost responses/partial writes. There is no email. A new report produces one row and one scrubbed JSON log file. Only Google’s HTTPS `/macros/echo` response redirect is followed, using GET with no POST body; the acknowledgement must name the exact report id.
 
 `captureWith` receives a lazy diagnostic factory: consent/access/rate/queue checks run before any metadata read. Suppressed errors only increment a bounded in-memory counter; idle wakes, normal state writes and `dispose` flush it once. An abrupt kill before that flush can lose suppressed-count increments, not accepted queued reports or the persisted daily reservation. No per-error disk write or diagnostic collection occurs after the cap.
+
+## Native Gujarati/Hindi recogniser (main process only)
+
+`createIndicEngine` implements `SpeechEngine`, selected only by the caption integration’s explicit model choice.
+`acquire(language, signal)` obtains and holds cap-pack’s checked model through native process exit; `routeCFiles`
+accepts only `indicconformer-ctc-onnx-v1`, exactly one purpose (`captions-gu` or `captions-hi`), with `model.onnx`, `tokens.txt` and
+`frontend.bin`. The graph takes `[1,80,T]` float features and `[1]` int64 length; its first output is `[1,T/4,257]`
+float language-masked CTC scores (blank 256). Tokens are 256 UTF-8 pieces and `<blank>` last; the front end is
+80 × 257 little-endian float32 Slaney mel weights, matching the export. No Python or model-supplied code runs.
+
+`ic-ctc --pcm-serve` reads private stdin frames: uint32 little-endian PCM byte count (positive, even, at most
+384,000) then that many mono 16 kHz signed-16 little-endian bytes. It reports readiness with protocolVersion 1, sampleRate 16000, channels 1 and sampleFormat s16le, then one bounded
+UTF-8 JSON line per clip: language, text, words (`w`, start/end seconds), coarse 40 ms timing, null confidence and
+aggregate durations. Each word also has `c`, the mean over its CTC frames of the top token's posterior (0-1; the
+reply-level `confidence` stays null). Main alone maps sample offsets to capture times. A reply whose every word is
+one syllable (one letter or digit with its vowel signs) AND below `NOISE_CONFIDENCE` (0.5) is noise or hum
+(`noiseOnly`): a growing phrase is sent empty, a whole one is dropped; a reply without `c` is never called noise. There is one decode in flight, at most two
+queued finals; a stopped session kills the helper and discards its replies. Readiness is bounded by 90 seconds,
+no answer by 8 seconds terminates the helper; normal lag/rest guards remain. No PCM files, sockets or text logs.
+
+Build each target on its own system with `scripts/fetch-indic.mjs` (pinned Microsoft release, exact size and SHA-256),
+or build locally against an already verified extraction with `scripts/build-indic.mjs` and `DRASHTI_ORT_ROOT` /
+`DRASHTI_INDIC_OUT`. Local linked `vendor` destinations are refused. `findIndic` locates the bundled helper; models
+stay in cap-pack’s per-computer store. Runtime notices ship with the helper and under `licenses/onnxruntime/`.
+
+`indicProblem(platform, systemVersion)` checks this runtime’s actual macOS 13.4 minimum; pass it as the recogniser’s
+`problem()` preflight so older Macs get a plain reason before loading a model. Production startup uses `--admit`: the
+helper waits for the private four bytes `GO01` before model loading, sent only after background priority is set.
+
+`workGate { allowed(), listen(changed) }` is Main’s read-only authoritative background-work lease for protected mode. Without it,
+or while it is closed/unknown, the recogniser loads no model and performs no inference. Revocation cancels native
+compute immediately without awaiting exit and invalidates pending results; a later opening starts fresh. For protected mode the main
+integration must adapt L8’s public signal, never infer permission from an elapsed timer. Tests provide an explicit
+stand-in gate. The ordinary Whisper path is outside this new engine and remains unchanged.
+
+`createIndicRoute({ store, ...engineOptions })` directly matches cap-integration’s `CaptionRoute.make(model, language)`.
+It matches the selected reference to full checked metadata through `store.model`, pins the model-file SHA-256s, then obtains a fresh hold through
+`store.acquire` at start. Changed identity or purpose releases the hold without starting native work. The resolver
+accepts the shared language type and returns null for every language other than Gujarati or Hindi.
+
+Main may explicitly select `admission: 'below-show'` for continuous ASR under the integration’s scheduling policy.
+This does not bypass native priority admission or any lag, queue, model, generation or cancellation guard. If a
+`workGate` is supplied it remains authoritative, including when closed or broken. With neither explicit admission
+nor a gate the recogniser stays closed. Main/lead owns the ASR policy choice; translation’s lease is separate.
+
+Phrases carry the speech hub’s ids, `s1, s2…` in each listening, as Whisper’s engine gives them; the hub turns any
+other id away. `ic-ctc --runtime`, alone, starts ONNX Runtime beside the helper without any model and prints
+`{"runtime":"1.23.2","api":23}`. The packaged self-test (`DRASHTI_SELFTEST=ffmpeg`, `scripts/check-ffmpeg.mjs
+--packaged`, `scripts/check-installers.mjs`) requires that answer, with the runtime’s libraries beside the helper (on
+Windows its two DLLs and the app-local Microsoft runtime).
 
 ## Prepared translations (desktop, alpha.21)
 

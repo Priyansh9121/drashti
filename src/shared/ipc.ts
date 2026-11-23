@@ -1,3 +1,4 @@
+import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 
 import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
@@ -45,7 +46,13 @@ import type {
   OpeningResult,
   OpeningView,
 } from './opening';
-import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
+import type {
+  CaptionModelId,
+  CaptionSettings,
+  CaptionsStatus,
+  CaptionTiming,
+  LanguageModelLanguage,
+} from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
 import type {
   TranslationDraftRequest,
@@ -53,6 +60,8 @@ import type {
   TranslationEngineStatus,
   TranslationLanguage,
 } from './prepared-translations';
+import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
+import type { SpeechLanguage } from './speech';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -369,6 +378,18 @@ export const IPC = {
     open: 'opening:open',
   },
   /**
+   * Caption words (alpha.22, shared/caption-words.ts): the admin's names and terms for live captions, in Pro Mode
+   * only. The list as the Caption Words dialog shows it; a change sends the whole list; Import… and Export… a CSV.
+   */
+  captionWords: {
+    view: 'captionwords:view',
+    set: 'captionwords:set',
+    import: 'captionwords:import',
+    export: 'captionwords:export',
+    /** A language's switch: its words go to the captions engine as hints (Gujarati off until turned on). */
+    setHints: 'captionwords:set-hints',
+  },
+  /**
    * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
    * only how captions stand, and the lines to draw through the engine's state.
    */
@@ -379,6 +400,13 @@ export const IPC = {
     changed: 'videocaptions:changed',
   },
   captions: {
+    prototypeView: 'captions:prototype-view',
+    setPrototypeOn: 'captions:prototype-set-on',
+    advancePrototype: 'captions:prototype-advance',
+    restartPrototype: 'captions:prototype-restart',
+    correctPrototype: 'captions:prototype-correct',
+    dismissPrototype: 'captions:prototype-dismiss',
+    prototypeChanged: 'captions:prototype-changed',
     view: 'captions:view',
     /** Turn captions on or off on this computer (the model downloads once when first turned on). */
     setOn: 'captions:set-on',
@@ -387,6 +415,14 @@ export const IPC = {
     setSettings: 'captions:set-settings',
     /** Try the model's download again (after no internet). */
     retry: 'captions:retry',
+    /** A model of its own for a language (alpha.22): choose one Drashti knows (or the general model, null). */
+    setLanguageModel: 'captions:set-language-model',
+    /** Add a model file for a language (alpha.22): main asks for the file, checks it, and keeps a copy. */
+    addLanguageModel: 'captions:add-language-model',
+    /** Check a language's chosen model file whole again (alpha.22). */
+    checkLanguageModel: 'captions:check-language-model',
+    /** The live timing on this computer (alpha.22). */
+    setTiming: 'captions:set-timing',
     /** main -> operator: how captions stand changed (a download's progress too). */
     changed: 'captions:changed',
     /** main -> operator: File > Live Captions… was chosen. */
@@ -1531,11 +1567,29 @@ export interface InvokeContract {
     args: [mediaId: string, bytes: Uint8Array];
     result: { ok: true } | { ok: false; message: string };
   };
+  [IPC.captions.prototypeView]: { args: []; result: CaptionReview | null };
+  [IPC.captions.setPrototypeOn]: { args: [on: boolean]; result: CaptionReview | null };
+  [IPC.captions.advancePrototype]: { args: []; result: CaptionReview | null };
+  [IPC.captions.restartPrototype]: { args: []; result: CaptionReview | null };
+  [IPC.captions.correctPrototype]: { args: [correction: CaptionCorrection]; result: boolean };
+  [IPC.captions.dismissPrototype]: { args: [identity: Omit<CaptionCorrection, 'text'>]; result: boolean };
+  [IPC.captionWords.view]: { args: []; result: CaptionWordsView };
+  [IPC.captionWords.set]: { args: [words: CaptionWord[]]; result: CaptionWordsResult };
+  [IPC.captionWords.import]: { args: []; result: CaptionWordsResult };
+  [IPC.captionWords.export]: { args: []; result: CaptionWordsResult };
+  [IPC.captionWords.setHints]: { args: [language: SpeechLanguage, on: boolean]; result: CaptionWordsResult };
   [IPC.captions.view]: { args: []; result: CaptionsStatus };
   [IPC.captions.setOn]: { args: [on: boolean]; result: CaptionsStatus };
   [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };
   [IPC.captions.setSettings]: { args: [settings: CaptionSettings]; result: CaptionsStatus };
   [IPC.captions.retry]: { args: []; result: CaptionsStatus };
+  [IPC.captions.setLanguageModel]: {
+    args: [language: LanguageModelLanguage, id: string | null];
+    result: CaptionsStatus;
+  };
+  [IPC.captions.addLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
+  [IPC.captions.checkLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
+  [IPC.captions.setTiming]: { args: [timing: CaptionTiming]; result: CaptionsStatus };
   [IPC.modelPacks.view]: { args: []; result: ModelPacksStatus };
   [IPC.modelPacks.import]: { args: [kind: 'folder' | 'zip']; result: PackImportResult };
   [IPC.modelPacks.cancel]: { args: []; result: boolean };
@@ -2140,6 +2194,7 @@ export interface EventContract {
   [IPC.opening.screens]: { at: number };
   [IPC.opening.open]: { at: number };
   [IPC.videoCaptions.changed]: { mediaId: string; view: VideoCaptionChoice };
+  [IPC.captions.prototypeChanged]: CaptionReview;
   [IPC.captions.changed]: CaptionsStatus;
   [IPC.captions.open]: { at: number };
   [IPC.modelPacks.changed]: ModelPacksStatus;

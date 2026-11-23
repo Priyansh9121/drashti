@@ -124,6 +124,8 @@ jobs:
         with:
           path: ~/.cache/drashti/ffmpeg-ci
           key: ffmpeg-ci-linux-x64-${{ steps.ci-ffmpeg-pin.outputs.sha256 }}
+      - name: Native caption protocol and generated fixture contracts (no model or runtime downloads)
+        run: node --experimental-strip-types --experimental-loader ./scripts/node-types-loader.mjs --test scripts/indic-*-contract.test.mjs scripts/fetch-indic.test.mjs scripts/indic-fixture.test.mjs scripts/indic-crt.test.mjs
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
 
@@ -183,6 +185,9 @@ jobs:
       - name: Build video out for Intel Macs too (both Mac builds are packaged here)
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-video-out.mjs --target darwin-x64
+      - name: Build the approved native IndicConformer runtime (no model download)
+        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions')
+        run: node scripts/fetch-indic.mjs
       - name: Unit tests (inside Electron's Node)
         if: env.QUICK != 'true'
         run: pnpm test
@@ -323,6 +328,9 @@ jobs:
       - name: Build the translation engine for Intel Macs too
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-translate.mjs --target darwin-x64
+      - name: Build IndicConformer for Intel Macs too
+        if: runner.os == 'macOS' && env.QUICK != 'true'
+        run: node scripts/fetch-indic.mjs --target darwin-x64
       - name: Package installers
         if: env.QUICK != 'true'
         run: pnpm exec electron-builder --publish never
@@ -410,6 +418,9 @@ jobs:
         run: node scripts/fetch-video-out.mjs
       - name: Video out sends a picture that a receiver on this runner reads back
         run: node scripts/check-video-out.mjs
+      # Route C's helper: tests/e2e/indic-captions.spec.ts runs it in whichever part it falls in (no model download).
+      - name: Build the approved native IndicConformer runtime (no model download)
+        run: node scripts/fetch-indic.mjs
       - name: Cache Playwright's browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -493,6 +504,9 @@ jobs:
         run: node scripts/fetch-video-out.mjs
       - name: Video out sends a picture that a receiver on this runner reads back
         run: node scripts/check-video-out.mjs
+      # Route C's helper: tests/e2e/indic-captions.spec.ts runs it in whichever part it falls in (no model download).
+      - name: Build the approved native IndicConformer runtime (no model download)
+        run: node scripts/fetch-indic.mjs
       - name: Cache Playwright's browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

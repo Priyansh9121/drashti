@@ -75,6 +75,11 @@ jobs:
       - name: Fetch the live captions engine for Intel Macs too
         if: runner.os == 'macOS'
         run: node scripts/fetch-whisper.mjs --target darwin-x64
+      - name: Build the approved native IndicConformer runtime (no models)
+        run: node scripts/fetch-indic.mjs
+      - name: Build IndicConformer for Intel Macs too
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-indic.mjs --target darwin-x64
       # Video out (x30): Syphon on a Mac, Spout on Windows, compiled here from their sources at one pinned commit, each
       # file checked against its own SHA-256 first (one that does not match fails the release); never from a cache.
       - name: Build video out (Syphon or Spout)

@@ -95,7 +95,15 @@ export function computerName(name: string = hostname()): string {
   return clean === '' ? 'This computer' : cutText(clean, 60);
 }
 
-/** This computer, as each call to the list names it. */
-export function accessComputer(id: string, version: string, platform: NodeJS.Platform): AccessComputer {
-  return { id, name: computerName(), version, platform };
+/**
+ * This computer, as each call to the list names it. `name`: the tests' placeholder name (DRASHTI_TEST_COMPUTER_NAME,
+ * never when packaged), else this computer's host name.
+ */
+export function accessComputer(
+  id: string,
+  version: string,
+  platform: NodeJS.Platform,
+  name?: string,
+): AccessComputer {
+  return { id, name: name === undefined ? computerName() : computerName(name), version, platform };
 }
