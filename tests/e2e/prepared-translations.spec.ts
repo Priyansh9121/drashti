@@ -64,9 +64,7 @@ async function check(review: Locator, words: string, language = 'gu') {
 async function save(app: ElectronApplication, ed: Page, review: Locator) {
   await review.getByRole('button', { name: 'Done', exact: true }).click();
   await ed.getByTestId('save-slides').click();
-  const keep = ed.getByRole('button', { name: 'Save changes', exact: true });
-  // The live-save question is covered separately; this fixture is edited off air.
-  await expect(keep).toHaveCount(0);
+  // Edited off air: no live-save question (covered separately), so Save closes the window at once.
   await slideEditorClosed(app);
 }
 async function output(app: ElectronApplication, id: string): Promise<Page> {
@@ -136,7 +134,7 @@ test('prepared translations require named review, survive restart, and source ed
 });
 
 test('hall, explicit screen Off and stage use their own saved checked targets; Simple Mode cannot approve over raw IPC', async () => {
-  const { app } = await launchApp({ DRASHTI_EXTRA_DISPLAYS: '2' });
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
   const hall = await setUpScreen(win, 'Placeholder Hall', 0);
   const off = await setUpScreen(win, 'Placeholder Off', 1);
