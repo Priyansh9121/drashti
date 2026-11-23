@@ -46,6 +46,7 @@ import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
+import type { SpeechLanguage } from '../shared/speech';
 import { formatBytes, formatClock } from '../shared/format';
 import type { ImportOptions, ImportResult } from '../shared/import';
 import { loadedBooks } from '../shared/import';
@@ -460,16 +461,36 @@ import type { FrameGrid } from '../shared/video-cue';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
+import { CaptionCoordinator } from './speech/caption-coordinator';
+import { ownModelCaptionAi } from './speech/caption-routes';
+import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
+import { knownLanguageModels } from './speech/language-models';
+import { packFileFor, packLanguageModelStore } from './speech/pack-language-models';
+import { createWhisperRoute } from './speech/whisper-route';
+import { createIndicRoute } from './speech/indic-route';
+import { handleModelPacks } from './model-packs/ipc';
+import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
+import { findIndic, indicProblem } from './speech/indic-place';
+import { indicSelfTest } from './speech/indic-selftest';
+import windowsRuntimeLibraries from '../shared/whisper-windows-runtime.json';
 import { CaptionSettingsRepo } from './db/captions';
+import { CaptionWordsRepo } from './db/caption-words';
+import { CAPTION_HINTS_ON } from '../shared/caption-words';
+import { CaptionWordsService } from './speech/caption-words-service';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
 import { registerVideoCaptionIpc } from './video-captions/ipc';
-import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
+import {
+  isCaptionModel,
+  isLanguageModelLanguage,
+  parseCaptionSettings,
+  parseCaptionTiming,
+} from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
@@ -1454,6 +1475,7 @@ async function startMain(selfTest: boolean): Promise<void> {
     lock = await prepareTheLock({
       version: appVersion(),
       selfTest,
+      ...(testComputerName === undefined ? {} : { computerName: testComputerName }),
       background: () => appearance.background(),
       fromOperator,
       operatorWindow: () => operatorWindow,
@@ -1645,6 +1667,20 @@ function start(): void {
             process.platform,
           )
         : null;
+      // Route C (alpha.22): its helper starts beside its own ONNX Runtime, without any model, pack or sound.
+      const indic = packaged()
+        ? await indicSelfTest({
+            path: findIndic({
+              packaged: true,
+              resourcesPath: process.resourcesPath,
+              appPath: app.getAppPath(),
+              platform: process.platform,
+              arch: process.arch,
+            }),
+            platform: process.platform,
+            windowsRuntime: Object.keys(windowsRuntimeLibraries),
+          })
+        : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
       const ocr = await ocrSelfTest({
         files: builtOcrFiles(__dirname),
@@ -1657,8 +1693,14 @@ function start(): void {
         ffmpegPassed: ffmpeg.passed,
         youtube,
         whisper,
+        indic,
         ocr,
-        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true) && ocr.passed,
+        passed:
+          ffmpeg.passed &&
+          youtube.passed &&
+          (whisper?.passed ?? true) &&
+          (indic?.passed ?? true) &&
+          ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);
@@ -3670,6 +3712,8 @@ function start(): void {
   // Given once the YouTube service is made, below the stream service.
   let youtubeService: YouTubeService | undefined = undefined;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
+  // File › Speaker's Language is built again when the language changes (alpha.22): set once the menu is made.
+  let captionsMenuChanged: () => void = () => undefined;
   let conversionActivityChanged: (() => void) | undefined;
   // Trim's background work (Session 57: finished cuts checked, accepted cuts carried on, unused cuts swept), told
   // when the stream changes.
@@ -3736,6 +3780,7 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      slideEditor?.send(IPC.stream.changed, status);
       automaticErrorRuntime?.stream(status.live.state, status.live.message);
       if (stream?.inUse()) automaticReports.cancel();
       else void automaticReports.wake();
@@ -3866,27 +3911,169 @@ function start(): void {
     platform: process.platform,
     arch: process.arch,
   });
+  // ---- caption and translation models (alpha.22, cap-pack) ---------------------------------------------------
+  // An offline pack an admin imports (Help › Caption and Translation Models…, Pro Mode), every file checked, kept in
+  // the data folder's model-packs/ (outside the library and its backups). Never fetched; nothing uses it until a
+  // caption or translation engine asks (modelPacks.model / acquire): today's captions are as they were.
+  const modelPacks = new ModelPackStore({ root: join(app.getPath('userData'), 'model-packs'), log });
+  modelPacks.start();
+  modelPacks.onChanged((status) => {
+    sendToOperator(IPC.modelPacks.changed, status);
+  });
+  stops.add('model packs', () => {
+    modelPacks.close();
+  });
   const captionsData = app.getPath('userData');
+  // A model of its own per language (alpha.22): the ones this copy knows (tests: DRASHTI_TEST_SPEECH_MODELS), and
+  // only from the offline model pack above (the lead's Q-CAPI-2 A): no file comes in any other way.
+  const languageModels = packLanguageModelStore(
+    knownLanguageModels(packaged() ? undefined : sw('DRASHTI_TEST_SPEECH_MODELS')),
+    modelPacks,
+  );
+  // Caption words (alpha.22): the admin's names and terms, kept in the library (File › Live Captions… › Caption
+  // Words…, Pro Mode). The engine is given the first ones as hints; each phrase heard goes through the spelling fixer.
+  const captionWords = new CaptionWordsService({
+    repo: new CaptionWordsRepo(opened.db),
+    pickImport: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Import Caption Words',
+        buttonLabel: 'Import',
+        properties: ['openFile'],
+        filters: [{ name: 'Caption words (CSV)', extensions: ['csv', 'txt'] }],
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    pickExport: async (defaultName) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export Caption Words',
+        defaultPath: defaultName,
+        buttonLabel: 'Export',
+        filters: [{ name: 'Caption words (CSV)', extensions: ['csv'] }],
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
+    log,
+  });
   const captionsEngineProblem =
     testSpeech !== undefined
       ? null
       : (whisperProblem(process.platform, process.getSystemVersion()) ??
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
+  let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
+  const captionSettingsRepo = new CaptionSettingsRepo(opened.db);
+  const speechEngine =
+    testSpeech !== undefined
+      ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
+        createStandInEngine(testSpeech.split('|'), undefined, {
+          once: sw('DRASHTI_TEST_SPEECH_ONCE') !== undefined,
+        })
+      : createWhisperEngine({
+          program: () => whisperProgram,
+          // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
+          model: (language) => {
+            const own = captions.languageModelFor(language);
+            // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
+            const file =
+              own && (own.format ?? 'whisper-ggml') === 'whisper-ggml'
+                ? packFileFor(modelPacks, own)?.path
+                : undefined;
+            return file ?? modelFile(captionsData, captions.selectedModel());
+          },
+          // Asked before every start of the program: a language's own model not ready is never loaded.
+          modelProblem: (language) => captions.modelProblem(language),
+          fallback: (language) =>
+            captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
+          // The tuned language models are decoded without timestamps (alpha.22).
+          timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
+          timing: () => captions.timing(),
+          sound: { open: (chunk) => streaming.listenSound(chunk) },
+          // The admin's caption words as hints (cap-glossary).
+          hints: captionWords.hints,
+          log,
+        });
+  // Route W (alpha.22, cap-integration): a Gujarati, Hindi or English model of its own from the pack, on Drashti's
+  // whisper engine (the stand-in in tests), decoded as that model needs (no timestamps for the tuned ones).
+  const whisperRoute = createWhisperRoute({
+    store: modelPacks,
+    known: (sha256) => {
+      const entry = languageModels.known().find((e) => e.sha256 === sha256);
+      return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
+    },
+    engine: (file, use) =>
+      testSpeech !== undefined
+        ? speechEngine
+        : createWhisperEngine({
+            program: () => whisperProgram,
+            model: () => file,
+            fallback: () => use.fallback,
+            timestamps: () => use.timestamps,
+            timing: () => captions.timing(),
+            sound: { open: (chunk) => streaming.listenSound(chunk) },
+            hints: captionWords.hints,
+            log,
+          }),
+  });
+  // Route C (alpha.22, cap-ship-c / Codex x94): AI4Bharat's IndicConformer (CTC) from the pack on Drashti's helper
+  // and ONNX Runtime 1.23.2, below the show and without a transition gate (the lead's x94 gate A, as Route W).
+  const indicProgram = findIndic({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const conformerRoute = createIndicRoute({
+    store: modelPacks,
+    program: () => indicProgram,
+    problem: () =>
+      indicProblem(process.platform, process.getSystemVersion()) ??
+      (indicProgram === null
+        ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
+        : null),
+    admission: 'below-show',
+    // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
+    threads: 2,
+    sound: { open: (chunk) => streaming.listenSound(chunk) },
+    log,
+  });
+  // Caption AI (alpha.22, cap-integration): a speaker's language with a model of its own is heard through the
+  // captions coordinator (Codex x90): one clause at a time in at most two lines, provisional while heard, settled
+  // when final. As heard, Sanskrit and a language without its own model keep today's captions exactly.
+  const captionCoordinator = new CaptionCoordinator({
+    settings: () => parseCaptionSettings(captionSettingsRepo.get()),
+    show: (shown) => {
+      engine.setCaptions(shown);
+    },
+    // The operator's review panel (Codex x90's) shows caption AI's phrase while it runs, for a correction.
+    changed: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
+  });
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
     platform: process.platform,
     arch: process.arch,
-    repo: new CaptionSettingsRepo(opened.db),
-    engine:
-      testSpeech !== undefined
-        ? createStandInEngine(testSpeech.split('|'))
-        : createWhisperEngine({
-            program: () => whisperProgram,
-            model: () => modelFile(captionsData, captions.selectedModel()),
-            fallback: () => captions.selectedModel() !== 'turbo',
-            sound: { open: (chunk) => streaming.listenSound(chunk) },
-            log,
-          }),
+    repo: captionSettingsRepo,
+    engine: speechEngine,
+    aiPath: {
+      ...ownModelCaptionAi({
+        language: () => parseCaptionSettings(captionSettingsRepo.get()).language,
+        ownModel: (language) => captions.languageModelFor(language),
+        // Route W: the pack's file, checked again by the pack when first heard and held while heard.
+        engineFor: (own) => {
+          const entry = languageModels.known().find((e) => e.id === own.id);
+          const found = entry ? packFileFor(modelPacks, entry) : null;
+          const packed = found ? modelPacks.model(found.modelId) : null;
+          if (!entry || !packed) return null;
+          // Route W runs whisper.cpp's files; Route C AI4Bharat's IndicConformer (the stand-in in tests).
+          if ((entry.format ?? 'whisper-ggml') === 'whisper-ggml')
+            return whisperRoute.make(packed, entry.language);
+          const routeC = conformerRoute.make(packed, entry.language);
+          return routeC && testSpeech !== undefined ? speechEngine : routeC;
+        },
+      }),
+      coordinator: captionCoordinator,
+    },
     engineProblem: () => captionsEngineProblem,
     modelReady: (id) =>
       testSpeech !== undefined || modelReady(modelFile(captionsData, id), MODEL_SOURCES[id]),
@@ -3896,11 +4083,19 @@ function start(): void {
       engine.setCaptions(shown);
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
+    prototypeChanged: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
+    spell: (phrase) => captionWords.fix(phrase),
     changed: (view) => {
       videoCaptionBand = view.settings;
       engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
+      // File › Speaker's Language ticks the language as it is (alpha.22).
+      if (view.settings.language !== speakerLanguageTicked) {
+        speakerLanguageTicked = view.settings.language;
+        captionsMenuChanged();
+      }
     },
+    languageModels,
     log,
   });
   captionsStreamUseChanged = (inUse) => captions.setStreamInUse(inUse);
@@ -3908,6 +4103,22 @@ function start(): void {
   stops.add('captions', () => {
     captionsStreamUseChanged = undefined;
     captions.close();
+  });
+  // The placeholder rehearsal's controls only where it is not packaged (tests): never in a shipped Drashti (review).
+  // A pack imported or removed chooses caption AI's path or today's again at once, and the dialog's rows follow
+  // (review S2): no turning captions off and on after importing mid-show.
+  let packsShown = '';
+  modelPacks.onChanged((status) => {
+    // Only when the packs themselves changed (an import's progress is not a change of model).
+    const packs = JSON.stringify(status.packs);
+    if (packs === packsShown) return;
+    packsShown = packs;
+    captions.aiPathChanged();
+  });
+  registerCaptionPrototypeIpc({
+    fromOperator: (e) => fromOperator(e) && !simpleNow(),
+    captions,
+    rehearsal: !packaged(),
   });
   handle(IPC.captions.view, () => captions.view());
   handle(IPC.captions.setOn, (e, on) =>
@@ -3920,6 +4131,74 @@ function start(): void {
     fromOperator(e) ? captions.setSettings(parseCaptionSettings(settings)) : captions.view(),
   );
   handle(IPC.captions.retry, (e) => (fromOperator(e) ? captions.retry() : captions.view()));
+  // A model of its own per language and the live timing (alpha.22).
+  handle(IPC.captions.setLanguageModel, (e, language, id) =>
+    fromOperator(e) && isLanguageModelLanguage(language) && (id === null || typeof id === 'string')
+      ? captions.setLanguageModel(language, id)
+      : captions.view(),
+  );
+  handle(IPC.captions.addLanguageModel, async (e, language) => {
+    if (!fromOperator(e) || !isLanguageModelLanguage(language)) return captions.view();
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    const options = {
+      title: 'Add a Captions Model',
+      buttonLabel: 'Add Model',
+      properties: ['openFile'] as 'openFile'[],
+      filters: [{ name: 'Captions models (ggml)', extensions: ['bin'] }],
+    };
+    const picked = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    const file = picked.canceled ? undefined : picked.filePaths[0];
+    return file === undefined ? captions.view() : captions.addLanguageModel(language, file);
+  });
+  handle(IPC.captions.checkLanguageModel, (e, language) =>
+    fromOperator(e) && isLanguageModelLanguage(language)
+      ? captions.checkLanguageModel(language)
+      : captions.view(),
+  );
+  handle(IPC.captions.setTiming, (e, timing) =>
+    fromOperator(e) ? captions.setTiming(parseCaptionTiming(timing)) : captions.view(),
+  );
+
+  handleModelPacks({
+    handle,
+    fromOperator,
+    store: modelPacks,
+    pick: async (kind) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: kind === 'zip' ? 'Import a Model Pack (Zip)' : 'Import a Model Pack (Folder)',
+        message: 'Choose the caption and translation model pack the admin was given.',
+        buttonLabel: 'Import',
+        properties: kind === 'zip' ? ['openFile'] : ['openDirectory'],
+        ...(kind === 'zip' ? { filters: [{ name: 'Zip', extensions: ['zip'] }] } : {}),
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+  });
+  const captionWordsElsewhere = () => ({
+    ok: false,
+    view: captionWords.view(),
+    message: 'Only the operator window can do that.',
+  });
+  handle(IPC.captionWords.view, (e) =>
+    fromOperator(e)
+      ? captionWords.view()
+      : { words: [], hinted: { gu: 0, hi: 0, sa: 0, en: 0 }, hintsOn: { ...CAPTION_HINTS_ON } },
+  );
+  handle(IPC.captionWords.set, (e, words) =>
+    fromOperator(e) ? captionWords.set(words) : captionWordsElsewhere(),
+  );
+  handle(IPC.captionWords.import, (e) =>
+    fromOperator(e) ? captionWords.importFile() : captionWordsElsewhere(),
+  );
+  handle(IPC.captionWords.setHints, (e, language, on) =>
+    fromOperator(e) ? captionWords.setHints(language, on) : captionWordsElsewhere(),
+  );
+  handle(IPC.captionWords.export, (e) =>
+    fromOperator(e) ? captionWords.exportFile() : captionWordsElsewhere(),
+  );
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
@@ -5533,6 +5812,8 @@ function start(): void {
     // After the requested PDF pages have opened, the reading behind ends its job whenever the show needs the computer
     // (anything up, or the stream on air or recording), and waits here, outside every queue, until the show is idle.
     showBusy: () => !pdfReadIdle(),
+    // Extract pages… to a new presentation and its Undo/Redo wait off air (x85); everything else here goes on.
+    onAir: () => streaming.inUse() || testOnAir,
     waitForPdfIdle: (signal) => {
       if (signal.aborted || pdfReadIdle()) return Promise.resolve(!signal.aborted);
       return new Promise<boolean>((resolve) => {
@@ -5604,7 +5885,6 @@ function start(): void {
     drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
     keepSlide: ({ png, name, place }, current) => keepPageSlide(png, name, place, current),
   });
-  handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
   // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
   // operator window) asks; Pro Mode only, as Save a PDF copy is.
   handle(IPC.slideEditor.makeSlide, (e, request) => pdfEditor.makeSlide(e, request));
@@ -5619,6 +5899,18 @@ function start(): void {
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
   });
+  handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
+  handle(
+    IPC.library.pdfWorkAllowed,
+    (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !streaming.inUse() &&
+      !testOnAir &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+  );
+  handle(IPC.library.showExtractedPdfCopy, (e, id, visible) => pdfEditor.showExtractedCopy(e, id, visible));
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
   cancelSourceEdits = () => {
@@ -9375,6 +9667,11 @@ function start(): void {
     return (await shell.openPath(file)) === '';
   });
   reports.start();
+  captionsMenuChanged = () => {
+    setImmediate(() => {
+      rebuildMenu();
+    });
+  };
   rebuildMenu = () => {
     // Not let in (a self-test, or stopped, Session 54): Quit and the editing keys only.
     if (!isLetIn()) {
@@ -9556,6 +9853,17 @@ function start(): void {
     },
     liveCaptions: () => {
       if (mode === 'pro') sendToOperator(IPC.captions.open, { at: Date.now() });
+    },
+    // File › Speaker's Language (alpha.22): the language live captions listen for, chosen as the speakers change.
+    speakerLanguage: {
+      language: captions.view().settings.language,
+      choose: (language) => {
+        if (mode === 'pro') captions.setSettings({ ...captions.view().settings, language });
+        rebuildMenu();
+      },
+    },
+    modelPacks: () => {
+      if (mode === 'pro') sendToOperator(IPC.modelPacks.open, { at: Date.now() });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
@@ -9965,6 +10273,8 @@ function start(): void {
     'access effects',
     followAccess({
       stopShow: () => {
+        // The captions rehearsal ends first, without starting live captions again (Codex x90's access-stop rule).
+        captions.cancelPrototype();
         engine.stop();
       },
       stream: streaming,

@@ -156,12 +156,13 @@ async function brightest(page: Page): Promise<number> {
  * mistaken for the warm-up's drawing (X12 wide: 12 border pixels, maximum 191, while every interior pixel was 0).
  * Nothing else is ignored or allowed a colour difference. The whole audience output and every captured frame are still
  * checked against absolute zero below. Decode in Node, never on a show page (X17).
- * One allowance, the LIVE picture's only (a21, the owner's B): its box's own antialiased corner pixels, where the box
+ * The neutral chip fixture uses an exact comparison: black UI colours cancel its own antialiased edge contribution.
+ * One allowance in the normal UI, the LIVE picture's only (a21, the owner's B): its box's own antialiased corner pixels, where the box
  * alone (the warm-up hidden) is neither black nor anything else of the warm-up's, may differ by 2 levels at most. On
  * CI's Mac Chromium composes those pixels a level or two apart from frame to frame, in black frames too
  * (warm-up.spec:428's flaky failure, reports/a21-flaky-mac.md); a real leak there (the native copies': up to 30) fails.
  */
-async function differenceFromBlack(page: Page, scope: string): Promise<number> {
+async function differenceFromBlack(page: Page, scope: string, exact = false): Promise<number> {
   const selector = `${scope} [data-warm-up]`;
   const clip = await page.locator(selector).first().boundingBox();
   if (!clip) throw new Error('the warm-up has no visible box');
@@ -190,7 +191,7 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   try {
     blackPng = await page.screenshot({ scale: 'css', clip });
     black = decodePng(blackPng);
-    if (scope === '[data-testid="live-preview"]') {
+    if (scope === '[data-testid="live-preview"]' && !exact) {
       // The box alone: the warm-up's black group and its final cover hidden too.
       const inner = await page.evaluate((scope) => {
         const box = document.querySelector<HTMLElement>(scope);
@@ -247,6 +248,18 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
       },
       { scope, opacity },
     );
+  }
+  if (exact) {
+    let nonblack = 0;
+    for (let i = 0; i < black.rgba.length; i += 4)
+      if (
+        black.rgba[i] !== 0 ||
+        black.rgba[i + 1] !== 0 ||
+        black.rgba[i + 2] !== 0 ||
+        black.rgba[i + 3] !== 255
+      )
+        nonblack++;
+    expect(nonblack, 'the entire neutral UI reference is opaque black, including every border pixel').toBe(0);
   }
   const center = (Math.floor(black.height / 2) * black.width + Math.floor(black.width / 2)) * 4;
   expect([...black.rgba.slice(center, center + 4)], 'the reference is opaque black').toEqual([0, 0, 0, 255]);
@@ -322,7 +335,13 @@ const BOLD_APART: Record<string, string> = {
 };
 
 /** What a page's warm-up draws, part-way, and that all of it is black. */
-async function expectWarmUp(page: Page, scope: string, what: string, ticker = true): Promise<void> {
+async function expectWarmUp(
+  page: Page,
+  scope: string,
+  what: string,
+  ticker = true,
+  exact = false,
+): Promise<void> {
   await expect(page.locator(`${scope} [data-warm-up="during"]`), what).toHaveCount(1, { timeout: 30_000 });
   // Every frame of a transition that runs ten seconds, drawn by its own clock: part-way when looked at.
   await expect
@@ -426,7 +445,7 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   expect(hiding.finalOpacity, `${what}: the final cover also keeps the GPU drawing underneath`).toBe('0.999');
   expect(hiding.finalBackground, `${what}: the final cover is black`).toBe('rgb(0, 0, 0)');
   // The audience sees none of it. Keep the geometry and the exact frame if the cover ever fails.
-  const light = await differenceFromBlack(page, scope);
+  const light = await differenceFromBlack(page, scope, exact);
   if (light !== 0) {
     const geometry = await page.evaluate((scope) => {
       const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
@@ -517,6 +536,35 @@ test('before a screen first draws the show it draws every kind in both Movements
   expect(Object.keys(await studioFonts(program)), 'the stream’s page’s start: the studio’s fonts').toEqual([
     'unloaded',
   ]);
+  await app.close();
+});
+
+test('where Chromium draws with a graphics chip the LIVE picture’s warm-up is unseen to its rounded corners, its native Cover copies drawn', async () => {
+  test.setTimeout(180_000);
+  // The native copies of a deck's wide and 4:3 Cover (X12 wide) are drawn only where Chromium draws with a chip (a21:
+  // on CI's Mac they showed at the LIVE box's four rounded corners, 42 pixels up to 30 levels, while the test above,
+  // without a chip, never drew them).
+  const { app } = await launchApp({ ...HOLD, ...WITH_A_CHIP, DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await expect(win.locator('[data-testid="live-preview"] [data-warm-ui-cover]')).toHaveCount(2, {
+    timeout: 30_000,
+  });
+  // Keep every rounded clip, border width, transform and warm-up surface intact. Only the UI's colours change:
+  // black against black has no antialiased border contribution that can vary between captures. The native copies'
+  // blue leak still has its original geometry and must fail an EXACT comparison (no corner allowance).
+  await win.evaluate(() => {
+    const box = document.querySelector<HTMLElement>('[data-testid="live-preview"]');
+    if (!box) throw new Error('no LIVE picture');
+    box.style.borderColor = '#000';
+    // The card's inset highlight keeps its geometry and alpha; its white is neutralised too.
+    box.style.boxShadow = getComputedStyle(box).boxShadow.replace(
+      /rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*([\d.]+))?\s*\)/gu,
+      (_colour, alpha: string | undefined) => `rgba(0, 0, 0, ${alpha ?? '1'})`,
+    );
+    for (let at: HTMLElement | null = box; at; at = at.parentElement) at.style.backgroundColor = '#000';
+  });
+  await expectWarmUp(win, '[data-testid="live-preview"]', 'the LIVE picture with a chip', true, true);
   await app.close();
 });
 

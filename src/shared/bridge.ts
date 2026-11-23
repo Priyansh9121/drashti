@@ -1,3 +1,4 @@
+import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 
 import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
@@ -105,7 +106,16 @@ import type {
   OpeningResult,
   OpeningView,
 } from './opening';
-import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
+import type {
+  CaptionModelId,
+  CaptionSettings,
+  CaptionsStatus,
+  CaptionTiming,
+  LanguageModelLanguage,
+} from './captions';
+import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
+import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
+import type { SpeechLanguage } from './speech';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -368,6 +378,18 @@ export interface DrashtiBridge {
     /** File › Opening… was chosen. */
     onOpen(listener: () => void): () => void;
   };
+  /** Caption words (alpha.22, operator window; Pro Mode): the admin's names and terms for live captions. */
+  captionWords: {
+    view(): Promise<CaptionWordsView>;
+    /** The whole list after a change (each word checked again in the main process). */
+    set(words: CaptionWord[]): Promise<CaptionWordsResult>;
+    /** Import… a CSV file the admin chooses: its words are added to the list. */
+    importFile(): Promise<CaptionWordsResult>;
+    /** Export… the list as a CSV file where the admin chooses. */
+    exportFile(): Promise<CaptionWordsResult>;
+    /** A language's switch: its words go to the captions engine as hints (Gujarati off until turned on). */
+    setHints(language: SpeechLanguage, on: boolean): Promise<CaptionWordsResult>;
+  };
   /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
   videoCaptions: {
     view(mediaId: string): Promise<VideoCaptionChoice>;
@@ -376,13 +398,42 @@ export interface DrashtiBridge {
     onChanged(listener: (change: { mediaId: string; view: VideoCaptionChoice }) => void): () => void;
   };
   captions: {
+    /** Ephemeral, operator-only phase D rehearsal; never part of captions status or the network API. */
+    prototypeView(): Promise<CaptionReview | null>;
+    setPrototypeOn(on: boolean): Promise<CaptionReview | null>;
+    advancePrototype(): Promise<CaptionReview | null>;
+    restartPrototype(): Promise<CaptionReview | null>;
+    correctPrototype(correction: CaptionCorrection): Promise<boolean>;
+    dismissPrototype(identity: Omit<CaptionCorrection, 'text'>): Promise<boolean>;
+    onPrototypeChanged(listener: (review: CaptionReview) => void): () => void;
     view(): Promise<CaptionsStatus>;
     setOn(on: boolean): Promise<CaptionsStatus>;
     setModel(model: CaptionModelId): Promise<CaptionsStatus>;
     setSettings(settings: CaptionSettings): Promise<CaptionsStatus>;
     retry(): Promise<CaptionsStatus>;
+    /** A model of its own for a language (alpha.22): one Drashti knows, or the general model (null). */
+    setLanguageModel(language: LanguageModelLanguage, id: string | null): Promise<CaptionsStatus>;
+    /** Add a model file for a language (alpha.22): Drashti asks for the file and checks it. */
+    addLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
+    checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
+    /** The live timing on this computer (alpha.22). */
+    setTiming(timing: CaptionTiming): Promise<CaptionsStatus>;
     onChanged(listener: (view: CaptionsStatus) => void): () => void;
     /** File > Live Captions… was chosen. */
+    onOpen(listener: () => void): () => void;
+  };
+  /**
+   * Caption and translation models (alpha.22, cap-pack; operator window, Pro Mode): the offline packs on this
+   * computer. The pack's folder or zip is chosen in main's own dialog; never fetched.
+   */
+  modelPacks: {
+    view(): Promise<ModelPacksStatus>;
+    import(kind: 'folder' | 'zip'): Promise<PackImportResult>;
+    cancel(): Promise<boolean>;
+    remove(packId: string): Promise<PackRemoveResult>;
+    licence(packId: string, file: string): Promise<PackLicenceResult>;
+    onChanged(listener: (status: ModelPacksStatus) => void): () => void;
+    /** Help › Caption and Translation Models… was chosen. */
     onOpen(listener: () => void): () => void;
   };
   /** Audio playlists (Session 14, operator window). */
@@ -522,7 +573,16 @@ export interface DrashtiBridge {
     insertPdfPages(presentationId: string, stamp: string, sourceId: string): Promise<InsertPdfPagesResult>;
     insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
-    exportPdf(presentationId: string, doc: EditDoc, stamp: string): Promise<PdfCopyResult>;
+    exportPdf(presentationId: string, doc: EditDoc, stamp: string, pages?: number[]): Promise<PdfCopyResult>;
+    extractPdfPages(
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      pages: number[],
+    ): Promise<{ ok: true; id: string; name: string } | { ok: false; message: string }>;
+    showExtractedPdf(id: string, visible: boolean): Promise<boolean>;
+    showExtractedPdfCopy(id: string, visible: boolean): Promise<boolean>;
+    pdfWorkAllowed(): Promise<boolean>;
     /**
      * Put edited slides back as one change (Undo brings back the copy kept
      * before it). Refused when the presentation changed since `stamp`, unless forced.
@@ -1135,6 +1195,12 @@ export interface DrashtiBridge {
     slidePlace(): Promise<SlidePlace>;
     /** The operator window: a slide was made in the editor's window (one change for its Undo). */
     onSlideMade(listener: (made: SlideMade) => void): () => void;
+    /**
+     * The stream's state, read only (x85's Extract, Replace, Split and Hand-out wait while it is on air or recording):
+     * the editor's narrower bridge (ARCH-7) has none of the stream's controls.
+     */
+    streamStatus(): Promise<StreamStatus>;
+    onStreamChanged(listener: (status: StreamStatus) => void): () => void;
   };
   lowerThirds: {
     list(): Promise<LowerThird[]>;

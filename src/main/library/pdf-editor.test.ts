@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { linkSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -633,6 +641,67 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
           'The slides were not made: the stream went on air or started recording. Make them again once it has stopped.',
       });
       expect(t.keepSlide).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+
+  // x85's Extract pages… to a new PDF (alpha.21, taken from alpha.22) waits for the stream to be off air, as a batch of
+  // parts does, in its own words (the lead's QA21-TAKEPDF-1 A: nothing that works on air today stops working); the
+  // whole Save a PDF copy… goes on (above).
+  it('Extract pages to a new PDF is refused on air in its own words, and stops when the stream starts while it is printed', async () => {
+    const t = await opened(true);
+    try {
+      const onAir = join(t.world.root, 'Placeholder extracted on air.pdf');
+      t.saveTo(onAir);
+      t.goOnAir();
+      expect(await t.editor.export(t.event, t.imported.id, t.doc, t.stamp, [0])).toEqual({
+        ok: false,
+        message:
+          'No pages are extracted while the stream is on air or recording: extract them once it has stopped.',
+      });
+      expect(t.run).not.toHaveBeenCalled();
+      expect(existsSync(onAir)).toBe(false);
+      t.goOnAir(false);
+      const starting = join(t.world.root, 'Placeholder extracted as the stream starts.pdf');
+      t.saveTo(starting);
+      t.run.mockImplementationOnce(() => {
+        t.goOnAir();
+        t.editor.cancelBatch();
+        return Promise.resolve(t.printed);
+      });
+      expect(await t.editor.export(t.event, t.imported.id, t.doc, t.stamp, [0])).toEqual({
+        ok: false,
+        message:
+          'The pages were not extracted: the stream went on air or started recording. Extract them again once it has stopped.',
+      });
+      expect(existsSync(starting)).toBe(false);
+    } finally {
+      await t.clean();
+    }
+  });
+
+  it('Undo and Redo of an extracted PDF wait while the stream is on air or recording', async () => {
+    const t = await opened(true);
+    try {
+      const file = join(t.world.root, 'Placeholder extracted pages.pdf');
+      t.saveTo(file);
+      const made = await t.editor.export(t.event, t.imported.id, t.doc, t.stamp, [0]);
+      expect(made).toMatchObject({ ok: true, name: 'Placeholder extracted pages.pdf' });
+      const undoId = made.ok ? made.undoId : undefined;
+      if (!undoId) throw new Error('The extracted PDF has no Undo.');
+      t.goOnAir();
+      expect(await t.editor.showExtractedCopy(t.event, undoId, false)).toBe(false);
+      expect(existsSync(file)).toBe(true);
+      t.goOnAir(false);
+      expect(await t.editor.showExtractedCopy(t.event, undoId, false)).toBe(true);
+      expect(existsSync(file)).toBe(false);
+      t.goOnAir();
+      expect(await t.editor.showExtractedCopy(t.event, undoId, true)).toBe(false);
+      expect(existsSync(file)).toBe(false);
+      t.goOnAir(false);
+      expect(await t.editor.showExtractedCopy(t.event, undoId, true)).toBe(true);
+      expect(existsSync(file)).toBe(true);
     } finally {
       await t.clean();
     }
