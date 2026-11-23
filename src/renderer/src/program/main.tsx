@@ -247,6 +247,7 @@ function Program() {
                 movement={streamLook.movement}
                 canvas={CANVAS}
                 camera={camera}
+                translationGroupId={context.groupId}
               />
             </PlacedInParent>
           </ClockStyleContext.Provider>

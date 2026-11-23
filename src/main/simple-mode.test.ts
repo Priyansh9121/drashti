@@ -91,6 +91,8 @@ describe('Simple Mode locks', () => {
       'cueVideo',
       'goVideoCue',
       'cancelVideoCue',
+      // Prepared translations: hide and restore remain Pro Mode's.
+      'setTranslationHidden',
       'showPip',
       'swapPip',
       'placePip',

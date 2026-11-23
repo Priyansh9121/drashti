@@ -43,7 +43,7 @@ import type { ToStreamWorker, WorkerStatus } from './worker/protocol';
 import { NO_SOUND_MS, type NoSound, NoSoundWatch } from './no-sound';
 import { bytesPerHourAt, freeBytesOf, recordingWarning } from './recording-drive';
 import { type SoundQuit, SoundRecording } from './sound-recording';
-import { PictureWatch } from './picture-watch';
+import { heardFrom, PictureWatch } from './picture-watch';
 import { RestartCap } from './restart-cap';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -986,13 +986,14 @@ export class StreamService {
    * flooded; a picture resets the wait.
    */
   private checkPicture(status: WorkerStatus): void {
-    const wait = this.pictureWatch.heard({
-      wanted: this.videoInUse() && this.programReady,
-      encoderChosen: status.encoder !== null,
-      encoding: status.encoding,
-      failed: Boolean(status.error),
-      now: this.deps.now(),
-    });
+    const wanted = this.videoInUse() && this.programReady;
+    // The encoder stopped and another starts: the page sends its newest picture to it at once (picture-watch.ts).
+    if (this.pictureWatch.encoderRestarting(status) && wanted) {
+      this.deps.log('info', "The stream's encoder starts again: its page is given the encoder again");
+      this.pairEncoder();
+      return;
+    }
+    const wait = this.pictureWatch.heard(heardFrom(status, wanted, this.deps.now()));
     if (wait === null) return;
     this.deps.log(
       'warn',

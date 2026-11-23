@@ -1,3 +1,4 @@
+import { translationReviewProps } from './translation-review';
 import type { Lang, TextRun, Transition } from '../../shared/model';
 import { transitionSchema } from '../../shared/model-schema';
 import { type BoxWords, langsOfBoxes } from '../../shared/tracks';
@@ -278,7 +279,7 @@ export function writeContent(db: Db, rows: ContentRows): void {
       e.width,
       e.height,
       e.rotation,
-      propsWithCopy(e, copy),
+      e.kind === 'text' ? translationReviewProps(e) : propsWithCopy(e, copy),
     );
   const cue = db.prepare(
     'INSERT INTO slide_cues (id, slide_id, position, kind, label, media_id, props) VALUES (?, ?, ?, ?, ?, ?, ?)',

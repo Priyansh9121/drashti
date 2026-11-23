@@ -224,6 +224,8 @@ export const OOPS_STEPS = 20;
 
 /** What was on the screens before one of the operator's changes: Oops puts it back (Session 55). */
 interface OopsStep {
+  /** This step changes only secondary translated words, never a source layer. */
+  translationHidden?: boolean;
   live: LiveCursor;
   layers: Layers;
   /** A Repeat Slides playlist going round then: it goes round again. */
@@ -3305,6 +3307,8 @@ export class ShowEngine {
             error: 'nothing-to-put-back',
             message: 'There is nothing for Oops to put back.',
           };
+        if (step.translationHidden !== undefined)
+          return { ok: true, actions: [{ type: 'translationHidden/set', hidden: step.translationHidden }] };
         return {
           ok: true,
           actions: [
@@ -3330,6 +3334,8 @@ export class ShowEngine {
           ],
         };
       }
+      case 'setTranslationHidden':
+        return { ok: true, actions: [{ type: 'translationHidden/set', hidden: command.hidden }] };
       case 'setBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: command.on }] };
       case 'toggleBlackout':
@@ -3597,8 +3603,16 @@ export class ShowEngine {
     const moved = next.layers !== prev.layers || next.live !== prev.live;
     // Oops (Session 55): what was up before each of the operator's own changes (a command's: never a slide moving on
     // by itself, a file's length learned or an audio playlist's next track), never before an Oops.
-    if (moved && cause !== null && cause !== 'oops') {
-      this.oopsSteps.push({ live: prev.live, layers: prev.layers, repeat: prev.repeat });
+    const translationChanged =
+      cause === 'setTranslationHidden' &&
+      (prev.translationHidden ?? false) !== (next.translationHidden ?? false);
+    if ((moved || translationChanged) && cause !== null && cause !== 'oops') {
+      this.oopsSteps.push({
+        live: prev.live,
+        layers: prev.layers,
+        repeat: prev.repeat,
+        ...(translationChanged ? { translationHidden: prev.translationHidden ?? false } : {}),
+      });
       if (this.oopsSteps.length > OOPS_STEPS) this.oopsSteps.shift();
     }
     if ((cause === 'next' || cause === 'nextItem') && moved) {

@@ -718,6 +718,8 @@ export interface CuedNext {
 }
 
 export interface EngineState {
+  /** Pro Mode may hide checked translations independently of original words. */
+  translationHidden?: boolean;
   version: typeof ENGINE_STATE_VERSION;
   live: LiveCursor;
   layers: Layers;

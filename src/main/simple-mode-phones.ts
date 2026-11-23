@@ -183,6 +183,7 @@ export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, Command
   // Its F9 only (no phone sends it).
   oops: 'simple',
   setBlackout: 'simple',
+  setTranslationHidden: 'pro',
   toggleBlackout: 'simple',
   setWallpaper: 'simple',
   toggleWallpaper: 'simple',

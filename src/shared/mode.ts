@@ -98,6 +98,7 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'cueVideo',
   'goVideoCue',
   'cancelVideoCue',
+  'setTranslationHidden',
   'showPip',
   'swapPip',
   'placePip',

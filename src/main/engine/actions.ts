@@ -43,6 +43,7 @@ export type EngineAction =
   | { type: 'videoStart/set'; start: VideoStart | null }
   | { type: 'videoCue/set'; cue: VideoCue | null }
   | { type: 'videoCrossfade/set'; fade: VideoCrossfade | null }
+  | { type: 'translationHidden/set'; hidden: boolean }
   | {
       type: 'slide/show';
       presentationId: string;
