@@ -609,13 +609,14 @@ function SlideThumb({
             </div>
           </PlacedInParent>
         </div>
-        <span className="flex items-center gap-1.5 px-2 py-1.5 text-base">
+        <span className="flex items-start gap-1.5 px-2 py-1.5 text-base">
           <span
             aria-hidden="true"
-            className="h-3 w-1.5 shrink-0 rounded-sm"
+            className="mt-1.5 h-3 w-1.5 shrink-0 rounded-sm"
             style={{ background: s.group.color ?? '#4b5563' }}
           />
-          <span className="min-w-0 flex-1 truncate text-fg">
+          {/* Whole, on two lines where it must (alpha.21, the fit pass: beside LIVE a phone's tile cut "1 · Verse 1"). */}
+          <span className="min-w-0 flex-1 break-words text-fg">
             {s.position + 1} · {s.slide.label || s.group.name}
           </span>
           {live && <LiveBadge />}
@@ -1396,7 +1397,7 @@ function Layout() {
       {layout === 'landscape' ? (
         // Held sideways: the live picture, the notes and what comes next beside the slides.
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] gap-6 p-4">
-          <div className="min-h-0 space-y-4 overflow-y-auto" data-testid="remote-presenter">
+          <div className="relative min-h-0 space-y-4 overflow-y-auto" data-testid="remote-presenter">
             <LivePicture state={state} />
             <RemotePlaying state={state} />
             <LiveLines state={state} />
@@ -1409,7 +1410,7 @@ function Layout() {
           <div className="flex min-h-0 flex-col gap-3">
             <TabRow tabs={PANEL_TABS} testId="remote-panel" label="Beside the live picture" />
             <div
-              className="min-h-0 flex-1 overflow-y-auto"
+              className="relative min-h-0 flex-1 overflow-y-auto"
               role="tabpanel"
               aria-label={PANEL_TABS.find((t) => t.id === tab)?.label}
             >
@@ -1421,7 +1422,7 @@ function Layout() {
           </div>
         </main>
       ) : layout === 'wide' ? (
-        <main className="grid min-h-0 flex-1 grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] gap-6 overflow-y-auto p-4">
+        <main className="relative grid min-h-0 flex-1 grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] gap-6 overflow-y-auto p-4">
           <SidePanel />
           <div className="space-y-6">
             {show}
@@ -1434,7 +1435,7 @@ function Layout() {
           <div className="flex min-w-0 flex-1 flex-col">
             {notes}
             <main
-              className="min-h-0 flex-1 overflow-y-auto p-4"
+              className="relative min-h-0 flex-1 overflow-y-auto p-4"
               role="tabpanel"
               aria-label={TABS.find((t) => t.id === tab)?.label}
             >
@@ -1445,7 +1446,7 @@ function Layout() {
         </div>
       ) : (
         <main
-          className="min-h-0 flex-1 overflow-y-auto p-4"
+          className="relative min-h-0 flex-1 overflow-y-auto p-4"
           role="tabpanel"
           aria-label={TABS.find((t) => t.id === tab)?.label}
         >

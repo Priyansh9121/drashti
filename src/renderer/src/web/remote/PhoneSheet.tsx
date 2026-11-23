@@ -79,7 +79,7 @@ export function PhoneSheet({
           Close
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
+      <div className="relative min-h-0 flex-1 overflow-y-auto pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
         <div className="mx-auto max-w-3xl space-y-6">
           {notice && (
             <Notice
