@@ -4030,7 +4030,12 @@ function start(): void {
     captionsStreamUseChanged = undefined;
     captions.close();
   });
-  registerCaptionPrototypeIpc({ fromOperator: (e) => fromOperator(e) && !simpleNow(), captions });
+  // The placeholder rehearsal's controls only where it is not packaged (tests): never in a shipped Drashti (review).
+  registerCaptionPrototypeIpc({
+    fromOperator: (e) => fromOperator(e) && !simpleNow(),
+    captions,
+    rehearsal: !packaged(),
+  });
   handle(IPC.captions.view, () => captions.view());
   handle(IPC.captions.setOn, (e, on) =>
     fromOperator(e) && typeof on === 'boolean' ? captions.setOn(on) : captions.view(),

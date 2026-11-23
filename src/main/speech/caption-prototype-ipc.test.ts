@@ -34,7 +34,7 @@ function setup(allowed = true) {
     correctPrototype: vi.fn(() => true),
     dismissPrototype: vi.fn(() => true),
   };
-  registerCaptionPrototypeIpc({ fromOperator: () => allowed, captions });
+  registerCaptionPrototypeIpc({ fromOperator: () => allowed, captions, rehearsal: true });
   return {
     captions,
     view,
