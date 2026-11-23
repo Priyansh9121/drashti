@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { buildIndic } from './build-indic.mjs';
 import { makeIndicFixture } from './indic-fixture.mjs';
 
-test('native helper decodes generated PCM with real ORT and CTC blank/repeat rules', async () => {
+test('native helper decodes generated PCM with real ORT and CTC blank/repeat rules', async (context) => {
   const root = mkdtempSync(join(tmpdir(), 'drashti-indic-'));
   try {
     const fixture = makeIndicFixture();
@@ -18,6 +18,9 @@ test('native helper decodes generated PCM with real ORT and CTC blank/repeat rul
     ])
       writeFileSync(join(root, name), data);
     const program = buildIndic({ ort: process.env.DRASHTI_ORT_ROOT, output: join(root, 'bin') });
+    context.diagnostic(
+      `helper bytes: ${statSync(program).size}; target: ${process.env.DRASHTI_INDIC_TARGET ?? `${process.platform}-${process.arch}`}`,
+    );
     const p = spawn(
       program,
       [
