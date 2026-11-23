@@ -70,17 +70,17 @@ describe('the stream sound renderer', () => {
       const worker = { sendFrames: vi.fn(), stop: vi.fn() };
       (service as unknown as { worker: unknown }).worker = worker;
       sound.webContents.emit('did-finish-load');
-      const roles = () => sound.webContents.postMessage.mock.calls.map((c) => c[1]?.role);
+      const roles = () => sound.webContents.postMessage.mock.calls.map((c) => c[1].role);
       expect(roles()).toContain('encoder-audio');
       expect(roles()).toContain('speech');
       expect(picture.webContents.postMessage).not.toHaveBeenCalled();
       // Loading the picture later gives it only picture ports, never sound players' work.
       picture.webContents.emit('did-finish-load');
-      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1]?.role)).toContain('encoder');
-      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1]?.role)).not.toContain(
+      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).toContain('encoder');
+      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).not.toContain(
         'encoder-audio',
       );
-      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1]?.role)).not.toContain('speech');
+      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1].role)).not.toContain('speech');
       stop?.();
       (service as unknown as { worker: unknown }).worker = null;
     } finally {
