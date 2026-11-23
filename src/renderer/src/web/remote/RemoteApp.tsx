@@ -86,7 +86,7 @@ import { MusicList } from './MusicList';
 import { Playing } from './Playing';
 import { RemotePlaying } from './RemotePlaying';
 import { isRepeatPlaylist, startGoingRound } from './repeat';
-import { useLayout } from './layout';
+import { type RemoteLayout, useLayout } from './layout';
 import { PhoneToolsLayer } from './PhoneToolsLayer';
 import { PlaylistTab } from './PlaylistTab';
 import { QuickBar } from './QuickBar';
@@ -215,7 +215,13 @@ function useSwipes(): {
   };
 }
 
-function LivePicture({ state }: { state: EngineState | null }) {
+/**
+ * On a phone held sideways (alpha.21, the fit pass): the live picture no wider than lets it, with its heading, stand
+ * whole in the middle under the header (about 9.5rem of the screen's height), centred.
+ */
+const SIDEWAYS_PICTURE = { maxWidth: 'calc((100dvh - 9.5rem) * 16 / 9)' } as const;
+
+function LivePicture({ state, sideways = false }: { state: EngineState | null; sideways?: boolean }) {
   const hallLook = useHallLook(state);
   const { handlers, swiped, justSwiped } = useSwipes();
   // The switches as the store has them (one object until the next answer), put in words here.
@@ -244,7 +250,9 @@ function LivePicture({ state }: { state: EngineState | null }) {
         className={cx(
           'relative overflow-hidden rounded-lg border-2 bg-black [touch-action:pan-y_pinch-zoom] select-none',
           up && !state?.blackout ? 'border-live' : 'border-line-strong',
+          sideways && 'mx-auto',
         )}
+        style={sideways ? SIDEWAYS_PICTURE : undefined}
         data-testid="remote-live"
         data-a11y-picture
         aria-hidden="true"
@@ -1232,13 +1240,24 @@ const PANEL_TABS: { id: RemoteTab; label: string; icon: typeof Play }[] = [
   { id: 'more', label: 'More', icon: Timer },
 ];
 
-function TabRow({ tabs, testId, label }: { tabs: typeof TABS; testId: string; label: string }) {
+function TabRow({
+  tabs,
+  testId,
+  label,
+  square = false,
+}: {
+  tabs: typeof TABS;
+  testId: string;
+  label: string;
+  /** Two by two (a phone held sideways, beside the middle), not in one row. */
+  square?: boolean;
+}) {
   const tab = useRemote((s) => s.tab);
   return (
     <div
       role="tablist"
       aria-label={label}
-      className={cx('grid gap-2', tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3')}
+      className={cx('grid gap-2', square ? 'grid-cols-2' : tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3')}
     >
       {tabs.map((t) => {
         const TabIcon = t.icon;
@@ -1267,10 +1286,23 @@ function TabRow({ tabs, testId, label }: { tabs: typeof TABS; testId: string; la
   );
 }
 
-function BackNext({ wide }: { wide: boolean }) {
+/**
+ * Back and Next, and on a phone its tabs: under the middle, or on a phone held sideways at its side (alpha.21), Back
+ * over Next and the tabs two by two, where a thumb holding the phone reaches them, the middle keeping the height.
+ */
+function BackNext({ layout }: { layout: RemoteLayout }) {
+  const wide = layout === 'wide' || layout === 'landscape';
+  const sideways = layout === 'sideways';
   return (
-    <div className="shrink-0 border-t border-line bg-panel px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-      <div className="grid grid-cols-2 gap-3">
+    <div
+      className={
+        sideways
+          ? 'flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-l border-line bg-panel py-3 pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-3'
+          : 'shrink-0 border-t border-line bg-panel px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+      }
+      data-testid="remote-back-next"
+    >
+      <div className={cx('grid gap-3', sideways ? 'mt-auto grid-cols-1' : 'grid-cols-2')}>
         <Button
           size="xl"
           instant
@@ -1292,8 +1324,8 @@ function BackNext({ wide }: { wide: boolean }) {
         </Button>
       </div>
       {!wide && (
-        <div className="mt-3">
-          <TabRow tabs={TABS} testId="remote-tab" label="What to show" />
+        <div className={sideways ? undefined : 'mt-3'}>
+          <TabRow tabs={TABS} testId="remote-tab" label="What to show" square={sideways} />
         </div>
       )}
     </div>
@@ -1306,9 +1338,10 @@ function Layout() {
   const notice = useTapNotice((s) => s.text);
   const device = useFeed((s) => s.device);
   const layout = useLayout();
+  const sideways = layout === 'sideways';
   const show = (
     <div className="space-y-4">
-      <LivePicture state={state} />
+      <LivePicture state={state} sideways={sideways} />
       {/* The time bar for what plays (Session 54), as under LIVE in Drashti. */}
       <RemotePlaying state={state} />
       <LiveLines state={state} />
@@ -1321,17 +1354,9 @@ function Layout() {
       <Slides />
     </div>
   );
-  return (
-    // One screen: the header, a middle that scrolls, and Back and Next below it (nothing scrolls under them).
-    <div className="flex h-dvh flex-col bg-ink" data-testid="remote" data-layout={layout}>
-      <header className="flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4 py-3">
-        <Mark size={36} />
-        <div className="min-w-0 flex-1">
-          <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
-          <p className="truncate text-base text-muted">{device?.name ?? current()?.name ?? ''}</p>
-        </div>
-        <ConnectionChip />
-      </header>
+  // A tap's notice and Simple Mode's note: over the middle (on a phone held sideways, over its column alone).
+  const notes = (
+    <>
       {notice && (
         <div className="shrink-0 px-4 pt-3">
           <Notice tone="warning" onDismiss={() => useTapNotice.setState({ text: null })}>
@@ -1340,6 +1365,34 @@ function Layout() {
         </div>
       )}
       <SimpleNote />
+    </>
+  );
+  const tabbed = (
+    <>
+      {tab === 'show' && show}
+      {tab === 'playlist' && <PlaylistTab />}
+      {tab === 'library' && <LibraryPanel presentations={<Library />} />}
+      {tab === 'more' && <TimersAndMessages />}
+    </>
+  );
+  return (
+    // One screen: the header, a middle that scrolls, and Back and Next below it (nothing scrolls under them); on a
+    // phone held sideways, beside it.
+    <div className="flex h-dvh flex-col bg-ink" data-testid="remote" data-layout={layout}>
+      <header
+        className={cx(
+          'flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4',
+          sideways ? 'py-2' : 'py-3',
+        )}
+      >
+        <Mark size={36} />
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
+          <p className="truncate text-base text-muted">{device?.name ?? current()?.name ?? ''}</p>
+        </div>
+        <ConnectionChip />
+      </header>
+      {!sideways && notes}
       {layout === 'landscape' ? (
         // Held sideways: the live picture, the notes and what comes next beside the slides.
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] gap-6 p-4">
@@ -1375,19 +1428,31 @@ function Layout() {
             <TimersAndMessages />
           </div>
         </main>
+      ) : sideways ? (
+        // Held sideways: the middle the screen's whole height under the header, Back, Next and the tabs at its side.
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">
+            {notes}
+            <main
+              className="min-h-0 flex-1 overflow-y-auto p-4"
+              role="tabpanel"
+              aria-label={TABS.find((t) => t.id === tab)?.label}
+            >
+              {tabbed}
+            </main>
+          </div>
+          <BackNext layout={layout} />
+        </div>
       ) : (
         <main
           className="min-h-0 flex-1 overflow-y-auto p-4"
           role="tabpanel"
           aria-label={TABS.find((t) => t.id === tab)?.label}
         >
-          {tab === 'show' && show}
-          {tab === 'playlist' && <PlaylistTab />}
-          {tab === 'library' && <LibraryPanel presentations={<Library />} />}
-          {tab === 'more' && <TimersAndMessages />}
+          {tabbed}
         </main>
       )}
-      <BackNext wide={layout !== 'phone'} />
+      {!sideways && <BackNext layout={layout} />}
     </div>
   );
 }

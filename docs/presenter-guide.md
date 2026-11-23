@@ -46,7 +46,7 @@ On a phone, **Show**, **Playlist**, **Library** and **More** along the bottom ch
 
 ![The clears on a phone, in the operator's order with their keys: those with something to clear are lit](screenshots/phone-remote-clears.png)
 
-**On an iPad held sideways** (or a laptop): the live picture, your notes, what comes next and the clears are on the left, and the slides are on the right, with the Playlist, the Library and More (in two columns) a tab away above them; Back and Next run along the bottom. Held upright, the iPad shows the playlist or the library beside the show, and More under it. A phone held sideways keeps a phone's tabs, with Back and Next in reach.
+**On an iPad held sideways** (or a laptop): the live picture, your notes, what comes next and the clears are on the left, and the slides are on the right, with the Playlist, the Library and More (in two columns) a tab away above them; Back and Next run along the bottom. Held upright, the iPad shows the playlist or the library beside the show, and More under it. A phone held sideways keeps a phone's tabs, with Back, Next and the tabs at the right-hand side (since alpha.21), so the live picture and the rest have the screen's whole height.
 
 ![An iPad held sideways: the live picture and notes beside the slides](screenshots/tablet-remote-sideways.png)
 
