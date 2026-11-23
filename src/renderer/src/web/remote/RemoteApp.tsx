@@ -216,6 +216,7 @@ function useSwipes(): {
 }
 
 function LivePicture({ state }: { state: EngineState | null }) {
+  const translationGroupId = useRemote((s) => s.hall?.groupId ?? null);
   const hallLook = useHallLook(state);
   const { handlers, swiped, justSwiped } = useSwipes();
   // The switches as the store has them (one object until the next answer), put in words here.
@@ -251,7 +252,15 @@ function LivePicture({ state }: { state: EngineState | null }) {
         {...handlers}
       >
         <PlacedInParent content={CANVAS} mode="fit" className="relative aspect-video w-full">
-          {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
+          {state && (
+            <Scene
+              state={state}
+              canvas={CANVAS}
+              scaling="fit"
+              look={hallLook}
+              translationGroupId={translationGroupId}
+            />
+          )}
         </PlacedInParent>
         <LookOverlay ignore={justSwiped} />
         {/* The page turned: said for a moment over the picture (the buttons say it to a screen reader). */}

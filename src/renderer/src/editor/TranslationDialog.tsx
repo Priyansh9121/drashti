@@ -14,7 +14,7 @@ import { renderEditedSlide } from '../../../shared/slide-design';
 import { LANG_NAMES } from '../../../shared/themes';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
-import { Field, Input, Select, Textarea } from '../ui/Field';
+import { Field, TextInput as Input, Select, Textarea } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import { useScreens } from '../screens/screens-store';
 import { PlacedInParent } from '../render/Placed';
@@ -167,9 +167,10 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
                     value={route?.groups[group.id] ?? ''}
                     disabled={readOnly}
                     onChange={(event) => {
-                      const next = { ...route?.groups };
-                      if (event.target.value === '') delete next[group.id];
-                      else next[group.id] = choice(event.target.value);
+                      const next = Object.fromEntries(
+                        Object.entries(route?.groups ?? {}).filter(([id]) => id !== group.id),
+                      );
+                      if (event.target.value !== '') next[group.id] = choice(event.target.value);
                       routeChange(route?.choice ?? 'off', next, route?.outputs ?? {});
                     }}
                   >
@@ -182,9 +183,10 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
                       value={route?.outputs[screen.id] ?? ''}
                       disabled={readOnly}
                       onChange={(event) => {
-                        const next = { ...route?.outputs };
-                        if (event.target.value === '') delete next[screen.id];
-                        else next[screen.id] = choice(event.target.value);
+                        const next = Object.fromEntries(
+                          Object.entries(route?.outputs ?? {}).filter(([id]) => id !== screen.id),
+                        );
+                        if (event.target.value !== '') next[screen.id] = choice(event.target.value);
                         routeChange(route?.choice ?? 'off', route?.groups ?? {}, next);
                       }}
                     >
@@ -313,7 +315,7 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
               className="relative aspect-video overflow-hidden rounded bg-black"
               data-testid="translation-preview"
             >
-              <PlacedInParent content={rendered} mode="fit">
+              <PlacedInParent content={rendered} mode="fit" className="absolute inset-0">
                 <SlideView slide={checkedTranslationView(rendered, {})} />
               </PlacedInParent>
             </div>

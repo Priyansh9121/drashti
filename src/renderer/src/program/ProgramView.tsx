@@ -40,12 +40,13 @@ function CameraVideo({ stream }: { stream: MediaStream | null }) {
  * hall's own Scene, ./full-frame.ts, a video input behind included while a box is up).
  */
 export function ProgramView({
-  state,
+  state: sourceState,
   layout,
   languages,
   movement = 'calm',
   canvas,
   camera,
+  translationGroupId,
 }: {
   state: EngineState;
   layout: StreamLayout;
@@ -54,11 +55,11 @@ export function ProgramView({
   movement?: Movement;
   canvas: Size;
   camera: MediaStream | null;
+  translationGroupId?: string | null;
 }) {
-  const streamGroup = Object.entries(state.look.groups).find(([, group]) => group.role === 'stream')?.[0];
-  state = preparedOutputState(state, {
-    ...(streamGroup ? { groupId: streamGroup } : {}),
-    blockedBelow: translationBottom(state, state.layers.slide?.slide.height ?? canvas.height),
+  const state = preparedOutputState(sourceState, {
+    ...(translationGroupId ? { groupId: translationGroupId } : {}),
+    blockedBelow: translationBottom(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height),
   });
   const captionRoot = useRef<HTMLDivElement>(null);
   const picture = programPicture(state, layout, languages);
@@ -69,6 +70,7 @@ export function ProgramView({
       <div data-testid="program-picture" data-kind="scene">
         <Scene
           state={state}
+          translationGroupId={translationGroupId}
           canvas={canvas}
           scaling="fit"
           look={{ ...DEFAULT_LIVE_GROUP_LOOK, languages, movement }}
@@ -98,6 +100,7 @@ export function ProgramView({
               as the Slides layout draws them; a video input (Session 50) only with a box up. */}
           <Scene
             state={hall}
+            translationGroupId={translationGroupId}
             canvas={canvas}
             scaling="fit"
             look={{ ...DEFAULT_LIVE_GROUP_LOOK, layers: FULL_FRAME_LAYERS, languages, movement }}

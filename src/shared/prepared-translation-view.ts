@@ -119,3 +119,20 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
   );
   return clear.length ? { ...slide, elements: [...slide.elements, ...clear] } : slide;
 }
+
+/** Public playback carries checked pairs only, and never the local reader's name. */
+export function playbackTranslationSlide(slide: RenderSlide): RenderSlide {
+  let changed = false;
+  const elements = slide.elements.map((el) => {
+    if (el.kind !== 'text' || !el.translations?.length) return el;
+    changed = true;
+    const translations = el.translations
+      .filter(
+        (value) =>
+          translationSourceSupported(el, value.sourceLanguage) && checkedText(value, translationSource(el)),
+      )
+      .map((value) => ({ ...value, reader: 'Checked' }));
+    return { ...el, translations };
+  });
+  return changed ? { ...slide, elements } : slide;
+}

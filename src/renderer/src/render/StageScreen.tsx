@@ -48,12 +48,13 @@ function StageOver({ state, canvas, banner }: { state: EngineState; canvas: Size
  * browser and the operator's stage preview all draw it with this.
  */
 export function StageScreen({
-  state,
+  state: sourceState,
   look,
   canvas,
   clockStyle,
   hall,
   translationOutputId,
+  translationGroupId,
 }: {
   state: EngineState;
   look: LiveGroupLook;
@@ -67,11 +68,12 @@ export function StageScreen({
    */
   hall?: HallPicture | null;
   translationOutputId?: string;
+  translationGroupId?: string | null;
 }) {
-  state = preparedOutputState(state, {
-    ...(look.translationGroupId ? { groupId: look.translationGroupId } : {}),
+  const state = preparedOutputState(sourceState, {
+    ...(translationGroupId ? { groupId: translationGroupId } : {}),
     ...(translationOutputId ? { outputId: translationOutputId } : {}),
-    blockedBelow: translationBottom(state, state.layers.slide?.slide.height ?? canvas.height),
+    blockedBelow: translationBottom(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height),
   });
   const shows = stageShows(state.stage);
   if (shows === 'audience')

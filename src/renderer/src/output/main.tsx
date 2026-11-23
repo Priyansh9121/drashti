@@ -353,6 +353,7 @@ function Output() {
                         canvas={canvas}
                         hall={context.hall}
                         translationOutputId={context.screenId}
+                        translationGroupId={context.groupId}
                       />
                     ) : (
                       <HallScene
@@ -361,7 +362,8 @@ function Output() {
                         scaling={scaling}
                         look={look}
                         matte={matte}
-                        translationOutputId={context.screenId}
+                        translationOutputId={context?.screenId}
+                        translationGroupId={context?.groupId}
                       />
                     )}
                   </OwnLayers.Provider>

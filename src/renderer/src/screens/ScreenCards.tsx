@@ -173,6 +173,8 @@ function ProjectorPreview({ group }: { group: ScreenGroupConfig | null }) {
               state={state}
               canvas={canvas}
               scaling={screen?.scaling ?? 'fit'}
+              translationGroupId={group.id}
+              translationOutputId={screen?.id}
               {...(look ? { look } : {})}
             />
           </PlacedInParent>
@@ -337,6 +339,7 @@ function StillProgram({ groupId, layout }: { groupId: string | null; layout: Str
               movement={streamLook.movement}
               canvas={CANVAS}
               camera={null}
+              translationGroupId={groupId}
             />
           </PlacedInParent>
         </SceneBoundary>

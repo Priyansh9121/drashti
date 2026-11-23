@@ -133,6 +133,7 @@ export function ControllerView({ view }: { view: SharedView }) {
                           canvas={canvas}
                           scaling={view.scaling}
                           look={look}
+                          translationGroupId={view.groupId}
                           annotate
                           captions={false}
                         />

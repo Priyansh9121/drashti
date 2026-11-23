@@ -2,8 +2,10 @@ import type { EngineState, SlideLayer } from './engine/state';
 import type { RenderSlide } from './model';
 import { checkedTranslationView, type TranslationDestination } from './prepared-translation-view';
 
+const originalSlides = new WeakMap<RenderSlide, RenderSlide>();
 const cache = new WeakMap<RenderSlide, Map<string, RenderSlide>>();
 function outputSlide(slide: RenderSlide, destination: TranslationDestination): RenderSlide {
+  slide = originalSlides.get(slide) ?? slide;
   const key = JSON.stringify(destination);
   let views = cache.get(slide);
   if (!views) {
@@ -13,6 +15,7 @@ function outputSlide(slide: RenderSlide, destination: TranslationDestination): R
   let view = views.get(key);
   if (!view) {
     view = checkedTranslationView(slide, destination);
+    if (view !== slide) originalSlides.set(view, slide);
     if (views.size >= 256) views.clear();
     views.set(key, view);
   }

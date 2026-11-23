@@ -114,8 +114,6 @@ const WORDS_WHEN_ROOM = 'hidden @[60rem]/editor-top:inline';
 const READ_WHEN = 'nothing is up and the stream is neither on air nor recording';
 
 export function SlideEditor({ platform }: { platform: string }) {
-  const translationReadOnly = useMode((state) => state.mode !== 'pro');
-  const [translating, setTranslating] = useState(false);
   const open = useEditor((s) => s.open);
   if (!open) return <Loading label="Opening the slides…" className="h-screen" />;
   return <Editor key={open.presentationId} platform={platform} name={open.name} />;
@@ -125,6 +123,8 @@ export function SlideEditor({ platform }: { platform: string }) {
 const renderSlide = renderEditedSlide;
 
 function Editor({ platform, name }: { platform: string; name: string }) {
+  const translationReadOnly = useMode((state) => state.mode !== 'pro');
+  const [translating, setTranslating] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const sourceWarningId = useId();

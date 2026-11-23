@@ -1,3 +1,4 @@
+import { playbackTranslationSlide } from '../../shared/prepared-translation-view';
 import type { Statement } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { MediaFit } from '../../shared/engine/state';
@@ -1008,7 +1009,7 @@ export class DbSlideSource implements SlideSource {
       arrangementId: played.arrangementId,
       slides: played.slides.map((o) => ({
         id: o.slide.id,
-        slide: o.slide.slide,
+        slide: playbackTranslationSlide(o.slide.slide),
         cues: o.slide.cues,
         notes: o.slide.notes,
         transition: o.slide.transition,

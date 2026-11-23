@@ -379,7 +379,7 @@ function MainSlot({
  * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black with none chosen).
  */
 export const Scene = memo(function Scene({
-  state,
+  state: sourceState,
   canvas,
   scaling,
   annotate = false,
@@ -390,6 +390,7 @@ export const Scene = memo(function Scene({
   captions = true,
   picturesFirst = place === 'stream',
   translationOutputId,
+  translationGroupId,
 }: {
   state: EngineState;
   canvas: Size;
@@ -419,16 +420,15 @@ export const Scene = memo(function Scene({
    */
   picturesFirst?: boolean;
   translationOutputId?: string;
+  translationGroupId?: string | null;
 }) {
   const sourceHeight =
-    (state.layers.slide?.slide.height ?? state.next?.kind === 'slide')
-      ? (state.layers.slide?.slide.height ??
-        (state.next?.kind === 'slide' ? state.next.slide.height : canvas.height))
-      : canvas.height;
-  state = preparedOutputState(state, {
-    ...(look.translationGroupId ? { groupId: look.translationGroupId } : {}),
+    sourceState.layers.slide?.slide.height ??
+    (sourceState.next?.kind === 'slide' ? sourceState.next.slide.height : canvas.height);
+  const state = preparedOutputState(sourceState, {
+    ...(translationGroupId ? { groupId: translationGroupId } : {}),
     ...(translationOutputId ? { outputId: translationOutputId } : {}),
-    blockedBelow: translationBottom(state, sourceHeight),
+    blockedBelow: translationBottom(sourceState, sourceHeight),
   });
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
