@@ -342,7 +342,9 @@ export async function addLanguageModelFile(o: {
     mkdirSync(folder, { recursive: true });
     const free = await (o.freeBytes ?? freeBytesOf)(folder);
     if (free === null)
-      throw new LanguageModelRefused('Drashti could not check the free space for the model.');
+      throw new LanguageModelRefused(
+        'Drashti could not check the free space for the model: check the drive, then add it again.',
+      );
     const short = KEEP_FREE_BYTES + entry.bytes - free;
     if (short > 0)
       throw new LanguageModelRefused(
