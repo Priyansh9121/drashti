@@ -228,18 +228,20 @@ static FILE *open_utf8(const char *path) {
 #endif
 }
 static int ic_main(int argc, char **argv) {
-  const char *code = NULL, *model = NULL, *tokens = NULL, *frontend = NULL; int threads = 1, serve = 0;
+  const char *code = NULL, *model = NULL, *tokens = NULL, *frontend = NULL; int threads = 1, serve = 0, admit = 0;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--lang") && i + 3 < argc && !code) { code = argv[++i]; model = argv[++i]; tokens = argv[++i]; }
     else if (!strcmp(argv[i], "--frontend") && i + 1 < argc) frontend = argv[++i];
     else if (!strcmp(argv[i], "--threads") && i + 1 < argc) threads = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--pcm-serve")) serve = 1;
+    else if (!strcmp(argv[i], "--admit")) admit = 1;
     else die("invalid arguments");
   }
   if (!serve || !code || (strcmp(code,"gu") && strcmp(code,"hi")) || !frontend || threads < 1 || threads > 2) die("invalid configuration");
 #ifdef _WIN32
   _setmode(_fileno(stdin), _O_BINARY);
 #endif
+  if (admit) { char go[4]; if (fread(go, 1, 4, stdin) != 4 || memcmp(go, "GO01", 4)) die("load not admitted"); }
   fb = malloc(sizeof(float) * NMEL * NBIN); if (!fb) die("allocation failed");
   FILE *f = open_utf8(frontend);
   if (!f || fread(fb, sizeof(float), NMEL * NBIN, f) != NMEL * NBIN || fgetc(f) != EOF) die("frontend dimensions");
