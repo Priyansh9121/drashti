@@ -34,7 +34,7 @@ import type { Icon } from '../ui/icons';
 import type { MenuPlace } from '../ui/Menu';
 import { Menu, menuBelow } from '../ui/Menu';
 import { Toggle } from '../ui/Toggle';
-import { Cluster, Divider } from './RibbonParts';
+import { Cluster, Divider, GROUP_ROW } from './RibbonParts';
 import { SystemFontOptions } from './FontOptions';
 import { commit, useEditor, useEditorLook } from './editor-store';
 import type { BoxPatch, TextPatch } from './ops';
@@ -341,7 +341,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
   };
   const fontKnown = shown.font === null || (LOWER_THIRD_FONTS as readonly string[]).includes(shown.font);
   return (
-    <div className="flex min-w-0 items-start" data-testid="words-group">
+    <div className={GROUP_ROW} data-testid="words-group">
       <Cluster name="Font">
         <Select
           aria-label="Font"

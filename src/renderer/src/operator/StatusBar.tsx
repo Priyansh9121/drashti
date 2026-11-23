@@ -1,6 +1,7 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { showReport } from '../help/report-store';
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { useEngine } from '../engine/engine-store';
 import type { AppInfo } from '../../../shared/app-info';
@@ -20,6 +21,7 @@ import { Truncate } from '../ui/Truncate';
 import { cx } from '../ui/cx';
 import { useArrival, useLeaving } from '../ui/motion';
 import { useNotice, useTaskProgress } from './actions';
+import { useNoticePlace } from './notice-place';
 import { ScreensSummary } from './StatusLine';
 import { SwitchedOffStatus } from './ScreenSwitches';
 import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
@@ -347,37 +349,59 @@ function LinkConversionStatus() {
 /**
  * Things to tell the operator (a restore, saved diagnostics, a command that failed, a file played at the even
  * loudness): small and see-through, in the window's bottom-right corner, just above the bars at its foot (the owner,
- * 11 Nov 2026; until then a card in the window's flow, Sessions 31–36, A9). It takes no room, so nothing moves as one
- * comes and goes, and it is never in the way: a click on it reaches what is under it, and a control the keyboard is on
- * stays in sight through it (WCAG 2.4.11); only its Dismiss takes a click.
+ * 11 Nov 2026; until then a card in the window's flow, Sessions 31–36, A9). Nothing moves as one comes and goes, and
+ * it is never in the way: since alpha.21 it stands at the live column's foot (LiveColumn), taking its room from what
+ * scrolls under the LIVE block, so no control is ever under it (floating over the column, a long one had covered the
+ * levels' Sound on and Audio's buttons); a click on its card reaches what is under it, only its buttons take one. With
+ * no live column (the practice show), it floats in the corner over the window as before, a control the keyboard is on
+ * staying in sight through it (WCAG 2.4.11).
  */
 export function NoticeArea() {
   const notice = useNotice((s) => s.text);
   const imports = useImportNotices((s) => s.notices);
   const canFindMissing = useMode((s) => s.mode === 'pro');
+  const place = useNoticePlace((s) => s.place);
   if (!notice && imports.length === 0) return null;
   const shown = imports.slice(0, 4);
   const more = imports.length - shown.length;
+  const cards = (
+    <>
+      {shown.length > 0 && (
+        <div data-testid="import-notice-stack" className="flex w-full flex-col items-end gap-1">
+          {more > 0 && (
+            <div className="flex items-center gap-2 rounded-md bg-panel-3/75 px-2 py-1 text-xs text-fg">
+              <span>{plural(more, 'more import notice')}</span>
+              <Button size="sm" className="pointer-events-auto h-5" onClick={dismissAllImportNotices}>
+                Dismiss all
+              </Button>
+            </div>
+          )}
+          {shown.map((item) => (
+            <ImportNoticeLine key={item.id} item={item} canFindMissing={canFindMissing} />
+          ))}
+        </div>
+      )}
+      {notice && <NoticeCard key={notice} notice={notice} />}
+    </>
+  );
+  if (place)
+    return createPortal(
+      <div
+        className="pointer-events-none flex flex-col items-end gap-1 px-3 pt-1 pb-2"
+        data-testid="notice-area"
+      >
+        {cards}
+      </div>,
+      place,
+    );
   return (
-    // An anchor with no height on the bars' top edge: the notices stand over the bottom of the columns.
+    // An anchor with no height on the bars' top edge: the notices stand over the bottom of the window.
     <div className="relative z-30 h-0 shrink-0">
-      <div className="pointer-events-none absolute right-3 bottom-2 flex w-[min(38rem,calc(100vw-1.5rem))] flex-col items-end gap-1">
-        {shown.length > 0 && (
-          <div data-testid="import-notice-stack" className="flex w-full flex-col items-end gap-1">
-            {more > 0 && (
-              <div className="flex items-center gap-2 rounded-md bg-panel-3/75 px-2 py-1 text-xs text-fg">
-                <span>{plural(more, 'more import notice')}</span>
-                <Button size="sm" className="pointer-events-auto h-5" onClick={dismissAllImportNotices}>
-                  Dismiss all
-                </Button>
-              </div>
-            )}
-            {shown.map((item) => (
-              <ImportNoticeLine key={item.id} item={item} canFindMissing={canFindMissing} />
-            ))}
-          </div>
-        )}
-        {notice && <NoticeCard key={notice} notice={notice} />}
+      <div
+        className="pointer-events-none absolute right-3 bottom-2 flex w-[min(38rem,calc(100vw-1.5rem))] flex-col items-end gap-1"
+        data-testid="notice-area"
+      >
+        {cards}
       </div>
     </div>
   );

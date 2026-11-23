@@ -72,7 +72,7 @@ import {
 } from './ops';
 import { NewTimerSlideDialog } from './NewTimerSlide';
 import { finishTextEditing } from './TextBoxEditor';
-import { Cluster, Divider } from './RibbonParts';
+import { Cluster, Divider, GROUP_ROW } from './RibbonParts';
 import { InsertTools } from './InsertTools';
 import { ArrangeTools } from './ArrangeTools';
 import { TimerForm } from '../operator/TimerForm';
@@ -191,7 +191,7 @@ export function InsertGroup({
     return { x: r.left, y: r.bottom + 4 };
   };
   return (
-    <div className="flex min-w-0 items-start" data-testid="insert-group">
+    <div className={GROUP_ROW} data-testid="insert-group">
       <Cluster name="On the slide">
         <Tool icon={Type} testId="add-text" disabled={!slide} onClick={addText}>
           Text box
@@ -327,7 +327,7 @@ export function ArrangeGroup() {
     if (s.doc && s.slideId) commit(arrange(s.doc, s.slideId, s.selection, how));
   };
   return (
-    <div className="flex min-w-0 items-start" data-testid="arrange-group">
+    <div className={GROUP_ROW} data-testid="arrange-group">
       <Cluster name={single ? 'Line up with the slide' : 'Line up'}>
         {(
           [
@@ -413,7 +413,7 @@ export function DesignGroup() {
   };
   const off = !slide;
   return (
-    <div className="flex min-w-0 items-start" data-testid="design-group">
+    <div className={GROUP_ROW} data-testid="design-group">
       <Cluster name="A colour behind it">
         <input
           type="checkbox"
@@ -497,7 +497,7 @@ export function MotionGroup() {
   const [seconds, setSeconds] = useState<string | null>(null);
   const [taking, setTaking] = useState<string | null>(null);
   return (
-    <div className="flex min-w-0 items-start" data-testid="motion-group">
+    <div className={GROUP_ROW} data-testid="motion-group">
       <Cluster name="Comes on with">
         <div className="flex flex-col gap-1">
           <Select
@@ -636,7 +636,7 @@ export function SlidesGroup() {
     return value && useEditor.getState().doc?.master ? { ...value, background: null } : value;
   };
   return (
-    <div className="flex min-w-0 items-start" data-testid="slides-group">
+    <div className={GROUP_ROW} data-testid="slides-group">
       <Cluster name="New">
         <IconButton
           icon={Plus}

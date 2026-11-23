@@ -189,6 +189,26 @@ function levelsAlone(was: SoundState | undefined, now: SoundState | undefined): 
   return sameData(rest, restNow);
 }
 
+/** Metadata alone may update a copy of the show without invalidating a press made from that copy. */
+function pressMetadataOnly(prev: EngineState, next: EngineState): boolean {
+  // A first length report can create the entire videoFiles map or one of its entries.
+  const marks = (files: EngineState['videoFiles']) =>
+    Object.fromEntries(
+      Object.entries(files ?? {})
+        .map(([id, { durationMs: _length, ...rest }]) => [id, rest] as const)
+        .filter(([, rest]) => Object.keys(rest).length > 0),
+    );
+  return diffState(prev, next, () => true).every(
+    ({ path }) =>
+      path[0] === 'captions' ||
+      (path[0] === 'sound' && ['gains', 'silent', 'levels'].includes(path[1] ?? '')) ||
+      (path[0] === 'videoFiles' && sameData(marks(prev.videoFiles), marks(next.videoFiles))) ||
+      (path[0] === 'layers' &&
+        (path[1] === 'background' || path[1] === 'audio') &&
+        path.at(-1) === 'durationMs'),
+  );
+}
+
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
 const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousItem', 'oops']);
 
@@ -495,9 +515,8 @@ export class ShowEngine {
   };
   private revision = 0;
   /**
-   * The revision of the last change that was more than live captions (Session 55, Part 10): a phone's Next sent with
-   * the revision it saw still goes when only the captions changed since (they change every second or so while
-   * someone speaks).
+   * The last change a press depends on. Copies still follow every revision, but captions, levels and video
+   * measurement/length metadata alone do not make a press from an older copy stale.
    */
   private showRevision = 0;
   /** This run of the engine: its revisions start from 0 (snapshots say which run they are from). */
@@ -918,6 +937,11 @@ export class ShowEngine {
       };
   }
 
+  /** A press may have missed metadata, but never a show change, a future revision or another engine run. */
+  acceptsPress(rev: number, session: string = this.session): boolean {
+    return session === this.session && rev >= this.showRevision && rev <= this.revision;
+  }
+
   snapshot(): EngineSnapshotMessage {
     return {
       kind: 'snapshot',
@@ -938,7 +962,7 @@ export class ShowEngine {
     // run of the engine (Session 53: a page's copy from before Drashti restarted, whatever the number): nothing.
     if (
       command.type === 'next' &&
-      ((command.rev !== undefined && (command.rev < this.showRevision || command.rev > this.revision)) ||
+      ((command.rev !== undefined && !this.acceptsPress(command.rev, command.session)) ||
         (command.session !== undefined && command.session !== this.session))
     )
       return this.unchanged();
@@ -3732,7 +3756,10 @@ export class ShowEngine {
     const captionsOnly = ops.every(
       (op) => op.path[0] === 'captions' || (op.path[0] === 'sound' && levelsAlone(prev.sound, next.sound)),
     );
-    if (!captionsOnly) this.showRevision = this.revision;
+    // Bookkeeping also preserves undo history for real changes (a failed video removed, the next music track).
+    // Exempt only metadata; any real change produced during this same apply still invalidates an older press.
+    const metadataOnly = this.bookkeeping && cause === null && pressMetadataOnly(prev, next);
+    if (!captionsOnly && !metadataOnly) this.showRevision = this.revision;
     this.transport.broadcast({
       kind: 'patch',
       version: ENGINE_STATE_VERSION,

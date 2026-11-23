@@ -4,6 +4,7 @@ import { defineConfig } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
+import { ocrBuildFiles } from './src/main/ocr/ocr-files';
 
 /**
  * React Fast Refresh injects an inline script in development only. Allow it
@@ -40,8 +41,25 @@ function pdfjsData(): Plugin {
   };
 }
 
+/**
+ * Book OCR's reader (alpha.21, the owner's Q60-58: "A, Tesseract inside"): Tesseract's WebAssembly build and its
+ * Gujarati model copied as they are beside the main bundle into ocr/ (src/main/ocr/ocr-files.ts), read from there by
+ * the reading process: nothing is fetched while Drashti runs.
+ */
+function ocrData(): Plugin {
+  return {
+    name: 'drashti-ocr-data',
+    apply: 'build',
+    generateBundle() {
+      for (const [fileName, from] of ocrBuildFiles())
+        this.emitFile({ type: 'asset', fileName, source: readFileSync(resolve(from)) });
+    },
+  };
+}
+
 export default defineConfig({
   main: {
+    plugins: [ocrData()],
     build: {
       rollupOptions: {
         // The workers are bundles of their own, started as utility processes.
@@ -67,6 +85,9 @@ export default defineConfig({
           // The QR worker (Q60-28): a QR code's pictures, drawn and read back off Main's thread, one code at a time
           // (src/main/library/qr-worker.ts).
           'qr-worker': resolve('src/main/library/qr-worker.ts'),
+          // The reading process (book OCR, alpha.21): a page's words read by Tesseract inside Drashti, one reading at a
+          // time, at the lowest priority (src/main/ocr/ocr-worker.ts).
+          'ocr-worker': resolve('src/main/ocr/ocr-worker.ts'),
           // The report worker (x49, Help › Report a Problem…): a report's files, made off Main's thread, below normal
           // priority (src/main/report/report-worker.ts).
           'report-worker': resolve('src/main/report/report-worker.ts'),
