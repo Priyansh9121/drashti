@@ -211,9 +211,10 @@ describe('Prepare translations’ engine', () => {
     );
     const sent = children[0]?.requests.find((r) => r['op'] === 'translate');
     expect(String(sent?.['text'])).not.toMatch(/[\ud800-\udfff]/u);
-    // About 60 KB of Gujarati in one line: too long for one request, this box only; the helper keeps running.
-    const long = '\u0a95'.repeat(21_000);
-    await expect(engine.translate(long, 'gu', 'en')).rejects.toMatchObject({ code: 'too-long' });
+    // About 65 KB in one line: too long for one request, this box only; the helper keeps running.
+    await expect(engine.translate('word '.repeat(13_000), 'en', 'gu')).rejects.toMatchObject({
+      code: 'too-long',
+    });
     expect(children[0]?.killed).toBe(false);
     engine.stop();
   });
