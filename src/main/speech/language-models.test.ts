@@ -187,7 +187,41 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
         175_209_663,
         '8d436e4bcceae1e5021df902d7db87c130ee7cf4810dbd6fa8edd8038595f33e',
       ],
+      // Route C (cap-route-c's IndicConformer CTC exports, cap-pack's packs): Gujarati and Hindi, 8-bit and full.
+      [
+        'gu-indicconformer-ctc-int8',
+        'gu',
+        197_297_864,
+        '52d70bb2b311e9acf44fa868f5f75c3ab21e49885ed89f77ade4c2f011a32307',
+      ],
+      [
+        'hi-indicconformer-ctc-int8',
+        'hi',
+        197_297_864,
+        '02ef118807cbf4eda797cebab30703757ec920e328acdcf067227220ef0afeed',
+      ],
+      [
+        'gu-indicconformer-ctc',
+        'gu',
+        493_034_563,
+        '7f5e83cd55d7832d671db1c9bd9299ea37cea6e5f8b79d2981fecb7c58537766',
+      ],
+      [
+        'hi-indicconformer-ctc',
+        'hi',
+        493_034_563,
+        'fdeb04da4f5a9abc0b4a6f0d3900848776629331c23d64a92ddd466bddb3ecf0',
+      ],
     ]);
+    // Route C's models are known in IndicConformer's format (never loaded by whisper.cpp).
+    expect(LANGUAGE_MODELS.filter((m) => m.format === 'indicconformer-ctc-onnx-v1').map((m) => m.id)).toEqual(
+      [
+        'gu-indicconformer-ctc-int8',
+        'hi-indicconformer-ctc-int8',
+        'gu-indicconformer-ctc',
+        'hi-indicconformer-ctc',
+      ],
+    );
     expect(LANGUAGE_MODELS.every((m) => !m.timestamps)).toBe(true);
     expect(LANGUAGE_MODELS.filter((m) => m.fallback).map((m) => m.language)).toEqual([
       'hi',
