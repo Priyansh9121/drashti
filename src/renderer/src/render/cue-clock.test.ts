@@ -161,6 +161,34 @@ describe("the page's silent graph at rest", () => {
   });
 });
 
+describe("the page's silent graph while it starts or rests (a21-review, a22-cue)", () => {
+  it('is asked to rest when its last cue stops while it is still starting, so it never runs on with its constant', () => {
+    const context = new Context(),
+      v = new Element();
+    // Resting since an earlier cue: this cue asks it to run, and it is still starting when the cue is cancelled.
+    context.state = 'suspended';
+    const stop = cueClock(v.media(), graphOf(context));
+    expect(context.resumed).toBe(1);
+    stop();
+    // Its start-up finishes after the stop: it must already have been asked to rest again.
+    context.start();
+    expect(context.suspended).toBe(1);
+    expect(v.muted).toBe(true);
+  });
+
+  it('is asked to run again by a new cue that comes while its rest is still on the way', () => {
+    const context = new Context(),
+      first = new Element(),
+      next = new Element();
+    cueClock(first.media(), graphOf(context))();
+    expect(context.suspended).toBe(1);
+    // The rest has been asked but not taken effect yet: the graph still says it runs.
+    context.state = 'running';
+    cueClock(next.media(), graphOf(context));
+    expect(context.resumed).toBe(1);
+  });
+});
+
 describe("the page's silent graph", () => {
   it("renders on the output device's own audio thread, with a gain of nothing before its destination, and is asked to run", () => {
     const made: AudioContextOptions[] = [];
