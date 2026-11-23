@@ -31,6 +31,17 @@ for (const policy of ['protected', 'below-show'] as const) {
     let sound: ((samples: Int16Array, endAt: number, startAt?: number) => void) | undefined;
     let soundClosed = false;
     let ready: (() => void) | undefined, release: (() => void) | undefined;
+    // A phrase the hub turns away or an engine that fails ends the test at once with its reason (counts, never words).
+    let stopped: ((reason: Error) => void) | undefined;
+    const trouble = new Promise<never>((_, fail) => {
+      stopped = fail;
+    });
+    const log = {
+      info: () => undefined,
+      warn: (message: string) => {
+        stopped?.(new Error(message));
+      },
+    };
     const listening = new Promise<void>((done) => {
       ready = done;
     });
@@ -64,12 +75,12 @@ for (const policy of ['protected', 'below-show'] as const) {
           };
         },
       },
-      log: { info: () => undefined, warn: () => undefined },
+      log,
     });
     const engine = route.make({ ...pack, id: 'generated' }, 'gu');
     expect(engine).not.toBeNull();
     if (!engine) throw new Error('Generated recognition route missing');
-    const hub = createSpeechHub({ engine, log: { info: () => undefined, warn: () => undefined } });
+    const hub = createSpeechHub({ engine, log });
     const phrases: Heard[] = [];
     let heard: ((phrase: Heard) => void) | undefined;
     const final = new Promise<Heard>((done) => {
@@ -77,6 +88,7 @@ for (const policy of ['protected', 'below-show'] as const) {
     });
     const unwatch = hub.onState((state) => {
       if (state.phase === 'listening') ready?.();
+      if (state.phase === 'failed') stopped?.(new Error(`Engine failed: ${state.message}`));
     });
     const unlisten = hub.listen('generated-route-c', (phrase) => {
       phrases.push(phrase);
@@ -87,11 +99,11 @@ for (const policy of ['protected', 'below-show'] as const) {
       expect(sound).toBeUndefined();
       hub.setLanguage('gu');
       hub.setOn(true);
-      await listening;
+      await Promise.race([listening, trouble]);
       const start = Date.now() - 800;
       sound?.(new Int16Array(1600).fill(5000), start + 100, start);
       for (let i = 1; i <= 7; i += 1) sound?.(new Int16Array(1600), start + (i + 1) * 100, start + i * 100);
-      const phrase = await final;
+      const phrase = await Promise.race([final, trouble]);
       expect(phrase.text).toBe('shape shape box');
       expect(phrase.language).toBe('gu');
       expect(phrase.words.map((word) => word.confidence)).toEqual([null, null, null]);
