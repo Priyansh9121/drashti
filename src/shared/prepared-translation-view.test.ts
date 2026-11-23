@@ -101,7 +101,9 @@ describe('checked saved translation output', () => {
     delete el.runs;
     const value = el.translations?.[0];
     if (!value) throw new Error('Missing fixture translation');
-    value.text = 'કિ કી કું';
+    el.translations = [
+      checkTranslation(draftTranslation('Blue box.', 'en', 'gu', 'કિ કી કું'), 'Blue box.', 'Reader Q'),
+    ];
     expect(checkedTranslationView(slide(el), {}).elements[1]).toMatchObject({ text: 'કિ કી કું' });
   });
 });

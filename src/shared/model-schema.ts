@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { reviewFingerprint } from './prepared-translations';
 import type {
   Darken,
   ElementMotion,
@@ -254,6 +255,7 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
 const preparedTranslationSchema = z
   .object({
     sourceFingerprint: z.string().max(120_002),
+    reviewFingerprint: z.string().max(300_000).nullable(),
     sourceLanguage: z.enum(['gu', 'hi', 'en']),
     targetLanguage: z.enum(['gu', 'hi', 'en']),
     text: z.string().max(20_000),
@@ -263,7 +265,11 @@ const preparedTranslationSchema = z
   .strict()
   .refine((value) => value.sourceLanguage !== value.targetLanguage, 'Choose another target language.')
   .refine(
-    (value) => value.state !== 'checked' || (value.reader !== null && value.text.trim() !== ''),
+    (value) =>
+      value.state !== 'checked' ||
+      (value.reader !== null &&
+        value.text.trim() !== '' &&
+        value.reviewFingerprint === reviewFingerprint(value)),
     'A checked translation needs words and a named reader.',
   );
 const preparedTranslationsSchema = z

@@ -1,6 +1,6 @@
 import type { Rect, RenderSlide, TextElement } from './model';
 import type { TranslationLanguage } from './prepared-translations';
-import { checkedText } from './prepared-translations';
+import { checkedText, translationForSource } from './prepared-translations';
 
 export type TranslationChoice = 'off' | TranslationLanguage;
 export interface TranslationDisplay {
@@ -135,4 +135,17 @@ export function playbackTranslationSlide(slide: RenderSlide): RenderSlide {
     return { ...el, translations };
   });
   return changed ? { ...slide, elements } : slide;
+}
+
+export function refreshTranslationReview(el: TextElement): TextElement {
+  if (!el.translations?.length) return el;
+  const translations = el.translations.map((value) => {
+    const current = translationForSource(value, translationSource(el));
+    return translationSourceSupported(el, value.sourceLanguage)
+      ? current
+      : { ...current, state: 'needs-recheck' as const, reader: null, reviewFingerprint: null };
+  });
+  return translations.every((value, index) => value === el.translations?.[index])
+    ? el
+    : { ...el, translations };
 }

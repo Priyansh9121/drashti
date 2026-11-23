@@ -1,4 +1,4 @@
-import { playbackTranslationSlide } from '../../shared/prepared-translation-view';
+import { playbackTranslationSlide, refreshTranslationReview } from '../../shared/prepared-translation-view';
 import type { Statement } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { MediaFit } from '../../shared/engine/state';
@@ -178,7 +178,11 @@ export function elementFromRow(row: ElementRow): SlideElement | null {
     ...(row.rotation ? { rotation: row.rotation } : {}),
   };
   const parsed = slideElementSchema.safeParse(candidate);
-  return parsed.success ? parsed.data : null;
+  return parsed.success
+    ? parsed.data.kind === 'text'
+      ? refreshTranslationReview(parsed.data)
+      : parsed.data
+    : null;
 }
 
 export interface NewSlide {

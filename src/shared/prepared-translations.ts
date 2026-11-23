@@ -7,10 +7,17 @@ export interface PreparedTranslation {
   text: string;
   state: 'unchecked' | 'checked' | 'needs-recheck';
   reader: string | null;
+  /** Lossless identity of the exact source/result/language pair the reader approved. */
+  reviewFingerprint: string | null;
 }
 
 // A lossless fingerprint avoids collisions and works identically in every renderer.
 export const sourceFingerprint = (source: string): string => JSON.stringify(source);
+
+export const reviewFingerprint = (
+  value: Pick<PreparedTranslation, 'sourceFingerprint' | 'sourceLanguage' | 'targetLanguage' | 'text'>,
+): string =>
+  JSON.stringify([value.sourceFingerprint, value.sourceLanguage, value.targetLanguage, value.text]);
 
 export function draftTranslation(
   source: string,
@@ -25,13 +32,15 @@ export function draftTranslation(
     text,
     state: 'unchecked',
     reader: null,
+    reviewFingerprint: null,
   };
 }
 
 export function translationForSource(value: PreparedTranslation, source: string): PreparedTranslation {
-  return value.sourceFingerprint === sourceFingerprint(source)
+  if (value.sourceFingerprint === sourceFingerprint(source)) return value;
+  return value.state === 'needs-recheck' && value.reader === null && value.reviewFingerprint === null
     ? value
-    : { ...value, state: 'needs-recheck', reader: null };
+    : { ...value, state: 'needs-recheck', reader: null, reviewFingerprint: null };
 }
 
 export function checkTranslation(
@@ -42,12 +51,14 @@ export function checkTranslation(
   if (!reader.trim() || !value.text.trim() || value.sourceFingerprint !== sourceFingerprint(source)) {
     throw new Error('Check the current source and translation with a named reader.');
   }
-  return { ...value, state: 'checked', reader: reader.trim() };
+  return { ...value, state: 'checked', reader: reader.trim(), reviewFingerprint: reviewFingerprint(value) };
 }
 
 export function checkedText(value: PreparedTranslation, source: string): string | null {
   return value.state === 'checked' &&
     value.reader?.trim() &&
+    value.text.trim() &&
+    value.reviewFingerprint === reviewFingerprint(value) &&
     value.sourceFingerprint === sourceFingerprint(source)
     ? value.text
     : null;
