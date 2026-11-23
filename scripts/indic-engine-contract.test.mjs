@@ -322,3 +322,29 @@ test('native lag uses the original sixty-second rest before reloading', async (c
     stop();
   }
 });
+
+test('queued PCM from a closed input subscription cannot enter a reopened generation', async () => {
+  let allowed = true, changed, ready, twice;
+  const first = new Promise((done) => { ready = done; });
+  const second = new Promise((done) => { twice = done; });
+  const captures = [];
+  let decodes = 0, starts = 0;
+  const engine = createIndicEngine({
+    workGate: { allowed: () => allowed, listen: (to) => { changed = to; return () => {}; } },
+    program: () => '/native', acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: { open: (to) => { captures.push(to); return () => {}; } },
+    open: async () => ({ decode: async () => { decodes += 1; return { language: 'gu', words: [] }; }, close() {} }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', { heard() {}, state: (state) => { if (state.phase === 'listening') { starts += 1; if (starts === 1) ready(); else twice(); } } });
+  try {
+    await first; allowed = false; changed(); allowed = true; changed(); await second;
+    const start = Date.now() - 800;
+    captures[0](new Int16Array(1600).fill(5000), start + 100, start);
+    for (let i = 1; i <= 7; i += 1) captures[0](new Int16Array(1600), start + (i + 1) * 100, start + i * 100);
+    assert.equal(decodes, 0);
+    captures[1](new Int16Array(1600).fill(5000), start + 100, start);
+    for (let i = 1; i <= 7; i += 1) captures[1](new Int16Array(1600), start + (i + 1) * 100, start + i * 100);
+    assert.equal(decodes, 1);
+  } finally { stop(); }
+});
