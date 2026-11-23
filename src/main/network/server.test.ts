@@ -1315,3 +1315,42 @@ it('admits a paired device after waiting feeds from many loopback addresses', as
     for (const socket of sockets) socket.destroy();
   }
 });
+
+it('keeps paired places when public announcement links are waiting for answers', async () => {
+  const { port, host, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+  const token = 'test-made-up-public-poster-token-0000000000';
+  const poster: DeviceAuth & { poster: true } = {
+    id: 'placeholder-public-poster',
+    name: 'Placeholder poster link',
+    kind: 'announcements',
+    tokenHash: hashToken(token),
+    poster: true,
+  };
+  network.addDevice(poster);
+  let classified: () => void = () => undefined;
+  const answers: ((value: Awaited<ReturnType<ServerHost['request']>>) => void)[] = [];
+  host.request = () =>
+    new Promise((resolve) => {
+      answers.push(resolve);
+      classified();
+    });
+  const attempts: Promise<unknown>[] = [];
+  try {
+    for (let i = 0; i < 8; i++) {
+      const entered = new Promise<void>((resolve) => {
+        classified = resolve;
+      });
+      const attempt = call(port, '/api/v1/announcements/placeholder', { headers: bearer(token) });
+      const done = attempt.then(
+        () => undefined,
+        () => undefined,
+      );
+      attempts.push(done);
+      await Promise.race([entered, done]);
+    }
+    expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
+  } finally {
+    for (const answer of answers) answer({ status: 200, body: { ok: true } });
+    await Promise.all(attempts);
+  }
+});
