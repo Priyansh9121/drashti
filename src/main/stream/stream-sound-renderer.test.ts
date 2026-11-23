@@ -32,21 +32,30 @@ function page(id: number) {
 }
 
 function setup() {
-  const picture = page(101), sound = page(102);
+  const picture = page(101),
+    sound = page(102);
   const createProgram = vi.fn(() => picture as unknown as BrowserWindow);
   const createStreamSound = vi.fn(() => sound as unknown as BrowserWindow);
   const profile = {
-    id: 'placeholder', preset: 'good', camera: null,
+    id: 'placeholder',
+    preset: 'good',
+    camera: null,
     sound: { id: 'generated-input', label: 'Generated input' },
-    mixOwnSound: true, soundDelayMs: 250,
+    mixOwnSound: true,
+    soundDelayMs: 250,
   };
   const service = new StreamService({
     profiles: { get: () => profile },
     settings: { get: () => profile.id },
     screens: { streamGroup: () => null },
-    createProgram, createStreamSound,
-    sendToOperator: vi.fn(), platform: 'win32', fakeDevices: true,
-    ffmpegPath: () => null, now: Date.now, log: vi.fn(),
+    createProgram,
+    createStreamSound,
+    sendToOperator: vi.fn(),
+    platform: 'win32',
+    fakeDevices: true,
+    ffmpegPath: () => null,
+    now: Date.now,
+    log: vi.fn(),
   } as unknown as StreamServiceDeps);
   return { service, picture, sound, createStreamSound };
 }
@@ -69,10 +78,14 @@ describe('the stream sound renderer', () => {
       // Loading the picture later gives it only picture ports, never sound players' work.
       picture.webContents.emit('did-finish-load');
       expect(picture.webContents.postMessage.mock.calls.map((c) => c[1]?.role)).toContain('encoder');
-      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1]?.role)).not.toContain('encoder-audio');
+      expect(picture.webContents.postMessage.mock.calls.map((c) => c[1]?.role)).not.toContain(
+        'encoder-audio',
+      );
       expect(picture.webContents.postMessage.mock.calls.map((c) => c[1]?.role)).not.toContain('speech');
       stop?.();
       (service as unknown as { worker: unknown }).worker = null;
-    } finally { service.close(); }
+    } finally {
+      service.close();
+    }
   });
 });
