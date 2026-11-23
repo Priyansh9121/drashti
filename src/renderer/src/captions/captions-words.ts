@@ -67,7 +67,7 @@ export function languageModelText(model: LanguageModelView): string {
     case 'checking':
       return 'Checking the file…';
     case 'missing':
-      return `The ${name} model is not on this computer: add its file.`;
+      return `The ${name} model is not on this computer: import the model pack that holds it.`;
     case 'changed':
       return `The ${name} model’s file has changed since Drashti checked it, so captions do not use it.`;
     case 'unknown':

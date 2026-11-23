@@ -638,13 +638,13 @@ export class CaptionsService {
         return {
           entry,
           phase: 'missing',
-          message: `The ${name} model is not on this computer: add its file in File › Live Captions….`,
+          message: `The ${name} model is not on this computer: import the model pack that holds it (Help › Caption and Translation Models…).`,
         };
       case 'changed':
         return {
           entry,
           phase: 'changed',
-          message: `The ${name} model’s file has changed since Drashti checked it, so captions do not use it. Check it again, or add its file again.`,
+          message: `The ${name} model’s file has changed since Drashti checked it, so captions do not use it. Check it again, or import the model pack again (Help › Caption and Translation Models…).`,
         };
     }
   }
