@@ -172,7 +172,12 @@ describe('Prepare translations’ requests', () => {
       },
     );
     const result = await call(IPC.slideEditor.translationDraft, request);
-    expect(result).toEqual({ ok: false, message: 'The translation engine stopped.' });
+    // What stopped it is for the log; the operator gets the one next step alpha.21's notices give (review nit).
+    expect(result).toEqual({
+      ok: false,
+      message:
+        'The translation engine stopped. If it happens again, choose Help \u203a Report a Problem\u2026 (or Help \u203a Save Diagnostics).',
+    });
     expect(log.warn).toHaveBeenCalledWith('Translation: the engine stopped (exit 139).');
     engine.stop();
   });
@@ -189,5 +194,22 @@ describe('Prepare translations’ requests', () => {
       message: UNKNOWN_MODEL,
     });
     expect(translate).not.toHaveBeenCalled();
+  });
+
+  it('says the stream went on air when that is what stopped a draft (review nit)', async () => {
+    let air = false;
+    const { call } = setUp(
+      { onAir: () => air },
+      {
+        translate: () => {
+          air = true;
+          return Promise.reject(new HelperError('cancelled', 'Stopped.'));
+        },
+      },
+    );
+    await expect(call(IPC.slideEditor.translationDraft, request)).resolves.toEqual({
+      ok: false,
+      message: ON_AIR,
+    });
   });
 });
