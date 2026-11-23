@@ -13,6 +13,7 @@ import { findSlide, mapElements } from './ops';
 import { finishTextEditing } from './TextBoxEditor';
 import { Cluster, Divider } from './RibbonParts';
 import { emptyClicks } from './empty-clicks';
+import { PdfMarkMotion } from './PdfMarkMotion';
 
 const EFFECTS = {
   in: [
@@ -170,6 +171,7 @@ export function MotionTools() {
   const ids = useEditor((s) => s.selection);
   const preview = useEditor((s) => s.previewAt);
   const slide = doc ? findSlide(doc, slideId) : undefined;
+  if (slide?.documentPage?.ext === 'pdf') return <PdfMarkMotion />;
   if (doc && slide?.deck?.motion)
     return <ImportedMotion deck={slide.deck} elements={renderEditedSlide(doc, slide).elements} />;
   const selected = slide?.elements.filter((el) => ids.includes(el.id)) ?? [];

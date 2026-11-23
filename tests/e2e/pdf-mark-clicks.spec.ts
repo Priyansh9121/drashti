@@ -1,11 +1,14 @@
 import { expect, test } from '@playwright/test';
-import { type PageGlobals, slideEditorClosed } from './helpers';
+import { type PageGlobals, outputPage, outputReady, setUpScreen, slideEditorClosed } from './helpers';
 import { openGeneratedPdf, usePdfTools } from './pdf-tools-fixtures';
 
 test('PDF marks have an undoable click order that survives saving and drives Next', async () => {
   const s = await openGeneratedPdf();
   try {
-    for (const [tool, top] of [['Highlight', 0.2], ['Draw', 0.6]] as const) {
+    for (const [tool, top] of [
+      ['Highlight', 0.2],
+      ['Draw', 0.6],
+    ] as const) {
       await usePdfTools(s.ed);
       await s.ed.getByRole('button', { name: tool, exact: true }).click();
       const box = await s.editor.getByTestId('editor-slide').boundingBox();
@@ -29,20 +32,37 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
     await s.editor.getByTestId('save-slides').click();
     await slideEditorClosed(s.app);
     s.unchanged();
-    await s.win.evaluate((id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 }), s.id);
-    const step = () => s.win.evaluate(async () => {
-      const live = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide;
-      return { index: live?.slideIndex, step: live?.step };
-    });
+    await setUpScreen(s.win, 'Placeholder hall', 0);
+    const out = await outputPage(s.app);
+    await outputReady(out);
+    await s.win.evaluate(
+      (id) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId: id,
+          slideIndex: 0,
+        }),
+      s.id,
+    );
+    const step = () =>
+      s.win.evaluate(async () => {
+        const live = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide;
+        return { index: live?.slideIndex, step: live?.step };
+      });
     await expect.poll(step).toEqual({ index: 0, step: 0 });
+    const targets = out.locator('[data-deck-motion-target^="pdf-mark:"]');
+    await expect(targets).toHaveCount(2);
+    await expect(targets.nth(0)).toHaveCSS('opacity', '0');
+    await expect(targets.nth(1)).toHaveCSS('opacity', '0');
     for (const n of [1, 2]) {
       await s.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
       await expect.poll(step).toEqual({ index: 0, step: n });
+      await expect(targets.nth(n - 1)).toHaveCSS('opacity', '1');
+      if (n === 1) await expect(targets.nth(1)).toHaveCSS('opacity', '0');
     }
     await s.win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'back' }));
     await expect.poll(step).toEqual({ index: 0, step: 1 });
-    await s.win.getByTestId('edit-slides').click();
-    // Reopening is covered by the saved engine timeline above; the original is byte-for-byte unchanged.
+    await expect(targets.nth(1)).toHaveCSS('opacity', '0');
     s.unchanged();
   } finally {
     await s.app.close();
