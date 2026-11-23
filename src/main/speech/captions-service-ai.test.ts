@@ -284,4 +284,29 @@ describe('caption AI in the captions service', () => {
     expect(t.coordinator.view().on).toBe(false);
     t.service.close();
   });
+
+  it('while caption AI runs, the operator’s review shows its phrase and a correction goes to the screens', async () => {
+    const t = setup({ ai: true, pack: { gu: GU } });
+    t.choose('gu');
+    await t.service.setOn(true);
+    t.say('લીલું ખોખુ', true, 's1');
+    vi.advanceTimersByTime(300);
+    const review = t.service.prototypeView();
+    expect(review.on).toBe(true);
+    expect(review.current).toMatchObject({ phraseId: 's1', status: 'settled', sourceText: 'લીલું ખોખું' });
+    const current = review.current;
+    if (!current) throw new Error('No phrase to correct');
+    expect(
+      t.service.correctPrototype({
+        sessionId: current.sessionId,
+        phraseId: current.phraseId,
+        revision: current.revision,
+        text: 'વાદળી ખોખું',
+      }),
+    ).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(t.lines()).toEqual(['વાદળી ખોખું']);
+    expect(t.service.prototypeView().current).toMatchObject({ status: 'corrected' });
+    t.service.close();
+  });
 });
