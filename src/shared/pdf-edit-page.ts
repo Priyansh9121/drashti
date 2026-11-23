@@ -1,3 +1,4 @@
+import { pdfTextSpan } from './pdf-text-span';
 import { pdfWordFont, PDF_WORD_FONT_NOTE } from './pdf-word-font';
 import { pdfParagraphs } from './pdf-paragraphs';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
@@ -820,13 +821,7 @@ export async function editablePdfPage(
     const shape = nativePdfPath(index, path.commands, call, scale, path.fillRule);
     if (shape) native.set(index, shape);
   }
-  const textItems = new Map<string, { indices: number[]; next: number }>();
-  for (const [index, item] of content.items.entries()) {
-    if (!('str' in item)) continue;
-    const same = textItems.get(item.str);
-    if (same) same.indices.push(index);
-    else textItems.set(item.str, { indices: [index], next: 0 });
-  }
+  const usedTextItems = new Set<number>();
   const issues = [PDF_WORD_FONT_NOTE];
   for (const [index, values] of calls) {
     if (outlinedText.has(index)) continue;
@@ -850,9 +845,8 @@ export async function editablePdfPage(
       values.some((v) => v.composite !== 'source-over' || v.font !== first.font || v.fill !== first.fill)
     )
       continue;
-    const same = textItems.get(words);
-    const itemIndex = same?.indices[same.next];
-    const item = itemIndex === undefined ? undefined : content.items[itemIndex];
+    const matched = pdfTextSpan(content.items, words, usedTextItems);
+    const item = matched?.item;
     let size: number, textWidth: number, x: number, y: number;
     if (item && 'str' in item) {
       const a = matrixOf(base.transform),
@@ -870,7 +864,7 @@ export async function editablePdfPage(
       textWidth = item.width;
       x = tx[4];
       y = tx[5] - size * (content.styles[item.fontName]?.ascent ?? 0.8);
-      if (same) same.next++;
+      for (const itemIndex of matched?.indices ?? []) usedTextItems.add(itemIndex);
     } else {
       if (
         !px ||

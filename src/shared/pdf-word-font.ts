@@ -1,12 +1,13 @@
 import type { Lang } from './model';
-import { detectLang, scriptOf } from './text-runs';
+import { scriptOf } from './text-runs';
 
 /** PDF subsets are not installed fonts. Editable words use the same bundled fonts on every output and in print. */
 export function pdfWordFont(words: string): { family: string; lang: Lang } {
   const script = scriptOf(words);
   return {
     family: script === 'gu' ? 'Noto Sans Gujarati' : script === 'hi' ? 'Noto Sans Devanagari' : 'Noto Sans',
-    lang: detectLang(words) ?? 'en',
+    // A PDF supplies a script, not an English/transliteration track. Keep every bundled script in its fallback stack.
+    lang: script === 'gu' ? 'gu' : script === 'hi' ? 'hi' : 'en',
   };
 }
 
