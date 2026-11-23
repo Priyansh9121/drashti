@@ -4,7 +4,7 @@ import type { Page, Worker as BrowserWorker } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { PageGlobals } from './helpers';
+import { windowShowing, type PageGlobals } from './helpers';
 import { dispatch, snapshot } from './time-bar-helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
@@ -137,6 +137,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     const setup = await setupVideoCue(true);
     running = setup;
     const { app, win, hall, stream, audio, ids, dir } = setup;
+    const streamSound = await windowShowing(
+      app,
+      (p) => p.url().includes('stream-sound.html'),
+      'stream sound',
+    );
     tracePath = join(dir, 's5-drawing-trace.json');
     const mainPid = await app.evaluate(() => process.pid);
     if (process.platform === 'win32')
@@ -218,7 +223,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       await d.playlists.setPlayOptions(id, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
       return { id, first: rows.ids[0] ?? '' };
     }, ids);
-    captureWorker = stream.workers().find((worker) => worker.url().includes('encoder-audio-worker')) ?? null;
+    captureWorker =
+      streamSound.workers().find((worker) => worker.url().includes('encoder-audio-worker')) ?? null;
     if (!captureWorker) throw new Error('No native PCM worker for the capture cause observation');
     await captureWorker.evaluate(() => {
       const original = Object.getOwnPropertyDescriptor(AudioData.prototype, 'close');
@@ -285,12 +291,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         },
       };
     });
-    await beginCueDiagnostics([hall, win, stream, audio]);
+    await beginCueDiagnostics([hall, win, stream, audio, streamSound]);
     // A sound player that ran out of decoded sound while it played (its 'waiting' after 'playing', not a jump's):
     // a hole in that page's sound. Recorded on the stream's page and, to compare, the hall's audio player.
     const underflowWatch = (page: Page) =>
       page.evaluate(() => {
         const seen: { at: number; key: string; currentTime: number; readyState: number }[] = [];
+        const jumps: { at: number; key: string }[] = [];
+        (globalThis as { s5SoundJumps?: typeof jumps }).s5SoundJumps = jumps;
         const playing = new WeakSet<EventTarget>();
         const own = (target: EventTarget | null): target is HTMLAudioElement =>
           target instanceof HTMLAudioElement && target.dataset['key'] !== undefined;
@@ -304,7 +312,10 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         document.addEventListener(
           'seeking',
           (e) => {
-            if (own(e.target)) playing.delete(e.target);
+            if (own(e.target)) {
+              playing.delete(e.target);
+              jumps.push({ at: Date.now(), key: e.target.dataset['key'] ?? '' });
+            }
           },
           true,
         );
@@ -325,7 +336,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         );
         (globalThis as { s5SoundUnderflows?: typeof seen }).s5SoundUnderflows = seen;
       });
-    await Promise.all([stream, audio].map(underflowWatch));
+    await Promise.all([streamSound, audio].map(underflowWatch));
     const decoderProcesses = await app.evaluate(
       ({ BrowserWindow }, pages) =>
         pages.map(({ role, url }) => ({
@@ -338,6 +349,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         { role: 'hall', url: hall.url() },
         { role: 'LIVE', url: win.url() },
         { role: 'stream', url: stream.url() },
+        { role: 'stream sound', url: streamSound.url() },
         { role: 'sound', url: audio.url() },
       ],
     );
@@ -431,7 +443,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       }
     }
     const audioPictureTracks = await Promise.all(
-      [audio, stream].map((page) =>
+      [audio, streamSound].map((page) =>
         page.evaluate(() =>
           [...document.querySelectorAll<HTMLAudioElement>('audio[data-kind="video"]')].map((el) => {
             const tracks = (
@@ -453,7 +465,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         ),
       ),
     );
-    const streamSoundAhead = await stream.evaluate(() =>
+    const streamSoundAhead = await streamSound.evaluate(() =>
       [...document.querySelectorAll<HTMLAudioElement>('audio[data-key]')].map((el) => ({
         asked: el.dataset['soundAhead'] ?? null,
         latencyHint: (el as HTMLAudioElement & { latencyHint?: number }).latencyHint ?? null,
@@ -467,12 +479,15 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       return (
         count +
         (trace.traceEvents ?? []).filter(
-          (e) => e.pid === soundPid && e.ph === 'X' && e.name === 'vpx_codec_decode',
+          (e) =>
+            (e.pid === soundPid || e.pid === decoderProcesses.find((p) => p.role === 'stream sound')?.pid) &&
+            e.ph === 'X' &&
+            e.name === 'vpx_codec_decode',
         ).length
       );
     }, 0);
     const [streamUnderflows, soundUnderflows] = await Promise.all(
-      [stream, audio].map((page) =>
+      [streamSound, audio].map((page) =>
         page.evaluate(
           () =>
             (
@@ -481,6 +496,18 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
               }
             ).s5SoundUnderflows ?? null,
         ),
+      ),
+    );
+    const streamSoundJumps = await streamSound.evaluate(
+      () => (globalThis as { s5SoundJumps?: { at: number; key: string }[] }).s5SoundJumps ?? [],
+    );
+    const fadeJumps = streamSoundJumps.filter((jump) =>
+      actions.some(
+        (action) =>
+          action.action === 'crossfade' &&
+          action.engineAt !== undefined &&
+          jump.at >= action.engineAt &&
+          jump.at < action.engineAt + 2000,
       ),
     );
     await retainCapture();
@@ -559,6 +586,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       actions,
       soundUnderflows: { stream: streamUnderflows, sound: soundUnderflows },
       streamSoundAhead,
+      streamSoundJumps,
+      fadeJumps,
       encodedFrames: media.videoFrames,
       blackFrames: black,
       blackFrameIndices,
@@ -596,6 +625,13 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         asked: '1',
         latencyHint: 1,
       });
+    expect(fadeJumps, 'stream sound never jumps during a fade behind picture decoding').toEqual([]);
+    const streamSoundPid = decoderProcesses.find((p) => p.role === 'stream sound')?.pid;
+    expect(streamSoundPid).toBeGreaterThan(0);
+    expect(streamSoundPid, 'sound has its own renderer and media thread').not.toBe(
+      decoderProcesses.find((p) => p.role === 'stream')?.pid,
+    );
+    expect(await stream.locator('audio').count(), 'picture renderer owns no sound players').toBe(0);
     expect(soundPid).toBeGreaterThan(0);
     for (const page of audioPictureTracks) {
       expect(page.length, 'the generated video sounds are playing').toBeGreaterThan(0);
