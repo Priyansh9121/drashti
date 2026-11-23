@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { expect, it } from 'vitest';
 
-it.each(['new tab', 'interrupted tab setup'] as const)(
+it.each(['new tab', 'interrupted empty tab', 'interrupted tab setup'] as const)(
   'runs the pasted adapter with local services and preserves leading-zero numeric ids after %s',
   (setup) => {
     // A failed first request can leave the header but never reach the text formats.
@@ -72,7 +72,7 @@ it.each(['new tab', 'interrupted tab setup'] as const)(
       SpreadsheetApp: {
         openById: (id: string) => {
           expect(id).toBe('fake-sheet');
-          return { getSheetByName: () => (rows.length ? sheet : null), insertSheet: () => sheet };
+          return { getSheetByName: () => (rows.length || setup === 'interrupted empty tab' ? sheet : null), insertSheet: () => sheet };
         },
         flush: () => undefined,
       },
@@ -141,6 +141,7 @@ it.each(['new tab', 'interrupted tab setup'] as const)(
     expect(JSON.parse(post(event))).toEqual({ ok: true, id: '0'.repeat(31) + '1' });
     expect(JSON.parse(post(event))).toEqual({ ok: true, id: '0'.repeat(31) + '1' });
     expect(rows).toHaveLength(2);
+    expect(rows[0]?.slice(0, 2)).toEqual(['Install id', 'Report id']);
     expect(files.size).toBe(1);
     expect(releases).toBe(2);
     expect(rows[1]?.slice(4, 12)).toEqual([
