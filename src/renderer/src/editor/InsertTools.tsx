@@ -244,10 +244,9 @@ function CropDialog({ el, slideId, onClose }: { el: MediaElement; slideId: strin
         Drag the frame, or its sides and corners, over the part to keep. Other slides keep their picture.
       </p>
       <div
-        ref={area}
         data-testid="slide-crop-frame"
         data-a11y-picture
-        className="relative mx-auto touch-none overflow-hidden rounded-md border border-line bg-black"
+        className="relative mx-auto touch-none rounded-md border border-line bg-black"
         style={{
           aspectRatio: `${String(whole.width)} / ${String(whole.height)}`,
           width: `min(100%, ${String(Math.round((CROP_AREA_HEIGHT * whole.width) / whole.height))}px)`,
@@ -261,16 +260,18 @@ function CropDialog({ el, slideId, onClose }: { el: MediaElement; slideId: strin
         >
           <ElementView el={uncropped} media="still" />
         </PlacedInParent>
-        <CropBox
-          frame={area}
-          picture={{ left: 0, top: 0, width: 100, height: 100 }}
-          crop={crop}
-          change={setCrop}
-          shape={shape}
-          turned={whole}
-          testId="slide-crop-box"
-          describedBy={CROP_READOUT_ID}
-        />
+        <div ref={area} className="absolute inset-0">
+          <CropBox
+            frame={area}
+            picture={{ left: 0, top: 0, width: 100, height: 100 }}
+            crop={crop}
+            change={setCrop}
+            shape={shape}
+            turned={whole}
+            testId="slide-crop-box"
+            describedBy={CROP_READOUT_ID}
+          />
+        </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <CropShapes

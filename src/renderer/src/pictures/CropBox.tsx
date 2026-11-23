@@ -104,14 +104,26 @@ export function CropBox({
     e.preventDefault();
     change((was) => dragCrop(was, e.shiftKey ? (d[0] !== 0 ? 'e' : 's') : 'move', d[0], d[1], shape, turned));
   };
+  const below = box.top + box.height;
+  const after = box.left + box.width;
+  // Outside the part kept, darker: four parts of the frame (no shadow), so a frame that shows the handles whole at
+  // its edges (it clips nothing) is darkened only within itself.
+  const outside: PercentBox[] = [
+    { left: 0, top: 0, width: 100, height: box.top },
+    { left: 0, top: below, width: 100, height: 100 - below },
+    { left: 0, top: box.top, width: box.left, height: box.height },
+    { left: after, top: box.top, width: 100 - after, height: box.height },
+  ];
   return (
     <>
-      {/* Outside the part kept: darker. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute"
-        style={{ ...placed(box), boxShadow: '0 0 0 9999px rgb(0 0 0 / 0.6)' }}
-      />
+      {outside.map((part, i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          className="pointer-events-none absolute bg-black/60"
+          style={placed(part)}
+        />
+      ))}
       <div
         role="button"
         tabIndex={0}
