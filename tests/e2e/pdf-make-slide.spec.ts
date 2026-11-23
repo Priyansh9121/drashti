@@ -27,7 +27,7 @@ async function madePicture(win: Page, name: string, at: [number, number][]) {
       const slides = edit.doc.groups.flatMap((g) => g.slides);
       const pictures = slides.flatMap((s) => s.elements.filter((el) => el.kind === 'image'));
       const picture = pictures[0];
-      if (slides.length !== 1 || pictures.length !== 1 || !picture || picture.kind !== 'image')
+      if (slides.length !== 1 || pictures.length !== 1 || picture?.kind !== 'image')
         throw new Error(`Expected one slide holding one picture, found ${String(slides.length)} slides.`);
       const img = new Image();
       img.crossOrigin = 'anonymous';
