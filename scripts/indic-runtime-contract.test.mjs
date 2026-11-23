@@ -39,3 +39,34 @@ test('a language-masked CTC graph cannot claim both Gujarati and Hindi', () => {
   assert.equal(routeCFiles(pack, 'gu'), null);
   assert.equal(routeCFiles(pack, 'hi'), null);
 });
+
+test('Indic unknown-token markers never reach displayed words, while malformed replies still fail', () => {
+  assert.deepEqual(
+    indicWords(
+      {
+        language: 'gu',
+        words: [
+          { w: '<unk>', start: 0, end: 0.04 },
+          { w: 'sha<unk>pe', start: 0.04, end: 0.08 },
+          { w: '<unk>', start: 0.08, end: 0.12 },
+          { w: 'box', start: 0.12, end: 0.16 },
+        ],
+      },
+      'gu',
+      1000,
+      2000,
+    ),
+    [
+      { text: 'shape', startAt: 1040, endAt: 1080, confidence: null },
+      { text: 'box', startAt: 1120, endAt: 1160, confidence: null },
+    ],
+  );
+  assert.throws(
+    () => indicWords({ language: 'gu', words: [{ w: '', start: 0, end: 0.04 }] }, 'gu', 0, 1000),
+    /Invalid recogniser reply/,
+  );
+  assert.throws(
+    () => indicWords({ language: 'gu', words: [{ w: '<unk>', start: 0, end: 13 }] }, 'gu', 0, 1000),
+    /Invalid recogniser reply/,
+  );
+});
