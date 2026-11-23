@@ -463,6 +463,9 @@ import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { handleModelPacks } from './model-packs/ipc';
+import { findTranslateHelper } from './translation/helper-place';
+import { handleTranslation } from './translation/ipc';
+import { TranslationEngine } from './translation/translation-engine';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
@@ -5565,6 +5568,40 @@ function start(): void {
   pdfReadWaits.add(stopPdfOnAir);
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
+  });
+  // Prepare translations (alpha.22, a22-mt): drafts from the offline engine (drashti-translate with a model pack's
+  // IndicTrans2 model) for the Translation… dialog only; a named reader checks each before it can show. Pro Mode, off
+  // air: what is under way stops when the stream goes on air. Nothing runs until the dialog asks.
+  const translateProgram = findTranslateHelper({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const translationEngine = new TranslationEngine({
+    program: () => translateProgram,
+    models: modelPacks,
+    log,
+  });
+  const translationOnAir = () => streaming.inUse() || testOnAir;
+  handleTranslation({
+    handle,
+    mayDraft: (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+    onAir: translationOnAir,
+    engine: translationEngine,
+  });
+  const stopTranslationOnAir = () => {
+    if (translationOnAir()) translationEngine.cancel();
+  };
+  pdfReadWaits.add(stopTranslationOnAir);
+  stops.add('translation engine', () => {
+    pdfReadWaits.delete(stopTranslationOnAir);
+    translationEngine.stop();
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
   handle(

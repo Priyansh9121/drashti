@@ -47,6 +47,12 @@ import type {
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
+import type {
+  TranslationDraftRequest,
+  TranslationDraftResult,
+  TranslationEngineStatus,
+  TranslationLanguage,
+} from './prepared-translations';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -900,6 +906,13 @@ export const IPC = {
     slidePlace: 'slideeditor:slide-place',
     /** main -> operator: a slide was made from a PDF page (for its Undo). */
     slideMade: 'slideeditor:slide-made',
+    /**
+     * Prepare translations (alpha.22, a22-mt): the offline engine's state for a direction, one text box's draft, and
+     * stopping it. Pro Mode's, off air only; drafts are never shown before a named reader checks them.
+     */
+    translationStatus: 'slideeditor:translation-status',
+    translationDraft: 'slideeditor:translation-draft',
+    translationCancel: 'slideeditor:translation-cancel',
   },
   /** OSC settings belong only to this computer's operator window, in Pro Mode. */
   osc: { status: 'osc:status', configure: 'osc:configure', changed: 'osc:changed' },
@@ -1881,6 +1894,15 @@ export interface InvokeContract {
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.makeSlide]: { args: [request: MakeSlideRequest]; result: MakeSlideResult };
   [IPC.slideEditor.slidePlace]: { args: []; result: SlidePlace };
+  [IPC.slideEditor.translationStatus]: {
+    args: [from: TranslationLanguage, to: TranslationLanguage];
+    result: TranslationEngineStatus;
+  };
+  [IPC.slideEditor.translationDraft]: {
+    args: [request: TranslationDraftRequest];
+    result: TranslationDraftResult;
+  };
+  [IPC.slideEditor.translationCancel]: { args: []; result: boolean };
   [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.osc.status]: { args: []; result: OscStatus };
   [IPC.osc.configure]: { args: [settings: OscSettings]; result: OscResult };

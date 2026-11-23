@@ -1,0 +1,203 @@
+import { basename, dirname } from 'node:path';
+import type { ModelPurpose } from '../../shared/model-packs';
+import type { TranslationLanguage, Translator } from '../../shared/prepared-translations';
+import {
+  TAG_OF,
+  decodeTokens,
+  holdsSpecialToken,
+  postprocess,
+  preprocess,
+  restoreSourceClockSpacing,
+  routeFor,
+  type Route,
+} from './indictrans-text';
+import { HelperError, TranslationHelper } from './translation-helper';
+
+/*
+ * Prepare translations' engine (alpha.22, a22-mt, from Codex x92's job; x79's design, x74's trial): IndicTrans2's
+ * distilled models (int8, CTranslate2) from an imported model pack, through drashti-translate. It only ever makes
+ * DRAFTS for the Translation… dialog: a named reader checks each one before it can show (x83's rule), and nothing
+ * here ever reaches a screen. Off until both the helper (in this copy of Drashti) and a pack's model for the chosen
+ * direction are there. Each line of a text box is translated on its own, so lines stay lines.
+ */
+
+/** The pack format of an IndicTrans2 model converted for CTranslate2 (int8) with its source SentencePiece model. */
+export const INDICTRANS2_FORMAT = 'indictrans2-ct2-int8';
+/** The files such a model holds, in its own folder. */
+export const INDICTRANS2_FILES = [
+  'model.bin',
+  'config.json',
+  'source_vocabulary.json',
+  'target_vocabulary.json',
+  'source.spm',
+] as const;
+
+/** What the engine needs of the model pack store (main/model-packs/store.ts). */
+export interface TranslationModels {
+  forPurpose(purpose: ModelPurpose): readonly {
+    id: string;
+    format: string;
+    files: readonly { name: string; path: string }[];
+  }[];
+  acquire(id: string): Promise<{ release(): void } | null>;
+}
+
+export interface TranslationEngineOptions {
+  /** The helper program in this copy of Drashti, or null when it has none. */
+  program: () => string | null;
+  models: TranslationModels;
+  log: { info(line: string): void; warn(line: string): void };
+  createHelper?: (program: string) => TranslationHelper;
+  /** x74's choice: two threads. */
+  threads?: number;
+  /** Prepared drafts use the careful search (beam 5): the reader's grades were better into Gujarati with it. */
+  beam?: number;
+  /** A loaded model is let go after this long unused. */
+  idleMs?: number;
+}
+
+const purposeOf = (from: TranslationLanguage, to: TranslationLanguage): ModelPurpose =>
+  `translation-${from}-${to}`;
+
+export class TranslationEngine implements Translator {
+  private helper: TranslationHelper | null = null;
+  private loaded: { route: Route; modelId: string; hold: { release(): void } } | null = null;
+  private queue: Promise<unknown> = Promise.resolve();
+  private idle: NodeJS.Timeout | null = null;
+  private generation = 0;
+
+  constructor(private readonly o: TranslationEngineOptions) {}
+
+  /** The model for a direction, when this copy of Drashti has the helper and a pack holds a whole one. */
+  private modelFor(from: TranslationLanguage, to: TranslationLanguage) {
+    if (from === to || this.o.program() === null) return null;
+    return (
+      this.o.models
+        .forPurpose(purposeOf(from, to))
+        .find(
+          (m) =>
+            m.format === INDICTRANS2_FORMAT &&
+            INDICTRANS2_FILES.every((name) => m.files.some((f) => basename(f.path) === name)),
+        ) ?? null
+    );
+  }
+
+  /** Whether Prepare translations can run for this direction. */
+  available(from: TranslationLanguage, to: TranslationLanguage): boolean {
+    return this.modelFor(from, to) !== null;
+  }
+
+  /** Whether this copy of Drashti has the translation helper at all. */
+  installed(): boolean {
+    return this.o.program() !== null;
+  }
+
+  /** A draft translation of the source, line by line. Throws a HelperError with plain words when it cannot. */
+  translate(source: string, from: TranslationLanguage, to: TranslationLanguage): Promise<string> {
+    const generation = this.generation;
+    const run = this.queue.then(async () => {
+      if (generation !== this.generation) throw new HelperError('cancelled', 'Stopped.');
+      const out: string[] = [];
+      for (const line of source.split(/\r\n|\n|\r/u)) {
+        if (generation !== this.generation) throw new HelperError('cancelled', 'Stopped.');
+        out.push(line.trim() === '' ? line : await this.translateLine(line, from, to));
+      }
+      return out.join('\n');
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /** Stop what is under way and anything waiting (the helper ends: a careful search cannot stop mid-sentence). */
+  cancel(): void {
+    this.generation += 1;
+    this.stopHelper();
+  }
+
+  /** Let the model and the helper go (closing Drashti, or nothing to do for a while). */
+  stop(): void {
+    this.generation += 1;
+    this.stopHelper();
+  }
+
+  private stopHelper(): void {
+    if (this.idle) clearTimeout(this.idle);
+    this.idle = null;
+    this.helper?.stop();
+    this.helper = null;
+    this.loaded?.hold.release();
+    this.loaded = null;
+  }
+
+  private async translateLine(
+    line: string,
+    from: TranslationLanguage,
+    to: TranslationLanguage,
+  ): Promise<string> {
+    if (holdsSpecialToken(line))
+      throw new HelperError(
+        'special-token',
+        'These words hold a model marker (such as </s>) and cannot be translated.',
+      );
+    const prepared = preprocess(line, from);
+    const route = routeFor(from, to);
+    const helper = await this.ready(route, from, to);
+    const tokens = await helper.translate(route, TAG_OF[from], TAG_OF[to], prepared.text, this.o.beam ?? 5);
+    this.restartIdle();
+    return restoreSourceClockSpacing(line, postprocess(decodeTokens(tokens), to, prepared.placeholders));
+  }
+
+  private async ready(
+    route: Route,
+    from: TranslationLanguage,
+    to: TranslationLanguage,
+  ): Promise<TranslationHelper> {
+    const program = this.o.program();
+    const model = this.modelFor(from, to);
+    if (program === null || model === null)
+      throw new HelperError(
+        'not-installed',
+        'Translation is not installed: ask the admin to import the offline model pack (Help › Caption and Translation Models…).',
+      );
+    if (!this.helper?.running) {
+      this.stopHelper();
+      const helper = (this.o.createHelper ?? ((p) => new TranslationHelper({ program: p, log: this.o.log })))(
+        program,
+      );
+      await helper.start();
+      this.helper = helper;
+    }
+    if (this.loaded?.route !== route || this.loaded.modelId !== model.id) {
+      this.loaded?.hold.release();
+      this.loaded = null;
+      const hold = await this.o.models.acquire(model.id);
+      if (!hold)
+        throw new HelperError(
+          'model-changed',
+          'The translation model on this computer changed or is incomplete. Import the model pack again.',
+        );
+      const file = (name: string) => model.files.find((f) => basename(f.path) === name)?.path ?? '';
+      try {
+        await this.helper.load(route, dirname(file('model.bin')), file('source.spm'), this.o.threads ?? 2);
+      } catch (error) {
+        hold.release();
+        throw error;
+      }
+      this.loaded = { route, modelId: model.id, hold };
+      this.o.log.info(`Translation: loaded ${model.id} for ${route}.`);
+    }
+    return this.helper;
+  }
+
+  private restartIdle(): void {
+    if (this.idle) clearTimeout(this.idle);
+    this.idle = setTimeout(
+      () => {
+        this.o.log.info('Translation: the model was let go after a quiet while.');
+        this.stopHelper();
+      },
+      this.o.idleMs ?? 5 * 60_000,
+    );
+    this.idle.unref();
+  }
+}

@@ -107,6 +107,12 @@ import type {
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
+import type {
+  TranslationDraftRequest,
+  TranslationDraftResult,
+  TranslationEngineStatus,
+  TranslationLanguage,
+} from './prepared-translations';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -1154,6 +1160,12 @@ export interface DrashtiBridge {
     slidePlace(): Promise<SlidePlace>;
     /** The operator window: a slide was made in the editor's window (one change for its Undo). */
     onSlideMade(listener: (made: SlideMade) => void): () => void;
+    /** Prepare translations (alpha.22): whether the offline engine can draft this direction here. */
+    translationStatus(from: TranslationLanguage, to: TranslationLanguage): Promise<TranslationEngineStatus>;
+    /** One text box's draft (Pro Mode, off air): a named reader checks it before it can show. */
+    translationDraft(request: TranslationDraftRequest): Promise<TranslationDraftResult>;
+    /** Stop Prepare translations. */
+    translationCancel(): Promise<boolean>;
     /**
      * The stream's state, read only (x85's Extract, Replace, Split and Hand-out wait while it is on air or recording):
      * the editor's narrower bridge (ARCH-7) has none of the stream's controls.
