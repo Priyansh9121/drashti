@@ -19,7 +19,7 @@ it('gives every output the cropped aspect and clips a full page translated under
 it('fits the same cropped page in hall and thumbnail frames', () => {
   const shown = cropRenderedPage(page, crop);
   for (const size of [{width:1920,height:1080},{width:160,height:90}]) {
-    const html = renderToStaticMarkup(createElement(Placed, { content: shown, frame: size, mode: 'fit', children: createElement(SlideView, {slide:shown,media:'still'}) }));
+    const html = renderToStaticMarkup(createElement(Placed, { content: shown, box: size, mode: 'fit', children: createElement(SlideView, {slide:shown,media:'still'}) }));
     expect(html).toContain('data-page-crop=""');
     expect(html).toContain('overflow:hidden');
   }
