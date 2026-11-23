@@ -481,19 +481,25 @@ export class StreamPipeline {
       reader.push(chunk.toString());
     });
     child.stdin.on('error', () => undefined);
-    child.on('error', (error) => {
-      this.log('warn', `The encoder could not start: ${error.message}`);
-    });
-    child.on('exit', (code) => {
+    const failed = (message: string) => {
       if (this.encodeProcess !== child) return;
       this.encodeProcess = null;
+      child.stdin.end();
       if (this.stopping) return;
-      this.log('warn', `The encoder stopped (code ${String(code)}); starting it again`);
+      this.log('warn', message);
+      this.error = 'The encoder stopped. Trying to start it again.';
       this.holdRecording();
       this.reconnectForNewEncoder();
+      this.report();
       setTimeout(() => {
         this.maybeStartEncoder();
       }, 1000);
+    };
+    child.on('error', (error) => {
+      failed(`The encoder could not start: ${error.message}`);
+    });
+    child.on('exit', (code) => {
+      failed(`The encoder stopped (code ${String(code)}); starting it again`);
     });
     child.stdin.write(this.writer.header());
     // Sound keeps the clock; without any for a moment, silence takes its place.
@@ -577,6 +583,11 @@ export class StreamPipeline {
 
   private toConsumers(cluster: MkvCluster): void {
     this.hooks.cluster?.(cluster);
+    // Starting a process alone is not recovery: wait for encoded pictures after fresh Program input.
+    if (this.error && this.programSinceStart && this.header && pictureStart(cluster)) {
+      this.error = null;
+      this.report();
+    }
     // A recording held while the encoder was down goes on, in a new file, from the new encoder's first picture
     // once the stream's page has sent something since it started (programSinceStart).
     if (this.rollWaiting && this.programSinceStart && this.header && pictureStart(cluster)) {
