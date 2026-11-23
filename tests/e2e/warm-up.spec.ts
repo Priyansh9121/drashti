@@ -248,6 +248,18 @@ async function differenceFromBlack(page: Page, scope: string, exact = false): Pr
       { scope, opacity },
     );
   }
+  if (exact) {
+    let nonblack = 0;
+    for (let i = 0; i < black.rgba.length; i += 4)
+      if (
+        black.rgba[i] !== 0 ||
+        black.rgba[i + 1] !== 0 ||
+        black.rgba[i + 2] !== 0 ||
+        black.rgba[i + 3] !== 255
+      )
+        nonblack++;
+    expect(nonblack, 'the entire neutral UI reference is opaque black, including every border pixel').toBe(0);
+  }
   const center = (Math.floor(black.height / 2) * black.width + Math.floor(black.width / 2)) * 4;
   expect([...black.rgba.slice(center, center + 4)], 'the reference is opaque black').toEqual([0, 0, 0, 255]);
   let difference = 0;
