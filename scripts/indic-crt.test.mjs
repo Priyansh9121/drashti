@@ -16,8 +16,17 @@ test('the existing signed CRT is copied unchanged beside both native engines', a
     for (const name of Object.keys(libraries)) writeFileSync(join(source, name), Buffer.from([0, 127, 255]));
     await copyRuntime({ electronPlatformName: 'win32', appOutDir, packager: { projectDir: root } });
     for (const name of Object.keys(libraries)) {
-      for (const engine of ['whisper', 'indic']) assert.deepEqual(readFileSync(join(appOutDir, 'resources', engine, name)), Buffer.from([0, 127, 255]));
+      for (const engine of ['whisper', 'indic'])
+        assert.deepEqual(
+          readFileSync(join(appOutDir, 'resources', engine, name)),
+          Buffer.from([0, 127, 255]),
+        );
     }
-    await assert.rejects(copyRuntime({ electronPlatformName: 'win32', appOutDir, packager: { projectDir: root } }), { code: 'EEXIST' });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+    await assert.rejects(
+      copyRuntime({ electronPlatformName: 'win32', appOutDir, packager: { projectDir: root } }),
+      { code: 'EEXIST' },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
