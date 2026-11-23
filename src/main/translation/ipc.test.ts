@@ -1,7 +1,9 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { IPC } from '../../shared/ipc';
-import { HelperError } from './translation-helper';
+import { fakeHelper } from '../testing/fake-translate-helper';
+import { INDICTRANS2_FILES, INDICTRANS2_FORMAT, TranslationEngine } from './translation-engine';
+import { HelperError, TranslationHelper } from './translation-helper';
 import {
   NOT_HERE,
   NOT_INSTALLED,
@@ -113,5 +115,40 @@ describe('Prepare translations’ requests', () => {
     const { call, cancel } = setUp();
     await expect(call(IPC.slideEditor.translationCancel)).resolves.toBe(true);
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('says only that the engine stopped when the helper dies (an Intel Mac where it cannot run): no other advice', async () => {
+    const log = { info: vi.fn(), warn: vi.fn() };
+    const engine = new TranslationEngine({
+      program: () => '/x/drashti-translate',
+      log,
+      models: {
+        forPurpose: () => [
+          {
+            id: 'en-indic',
+            format: INDICTRANS2_FORMAT,
+            files: INDICTRANS2_FILES.map((name) => ({ name, path: `/p/en-indic/${name}` })),
+          },
+        ],
+        acquire: () => Promise.resolve({ release: () => undefined }),
+      },
+      createHelper: (program) =>
+        new TranslationHelper({
+          program,
+          log,
+          lowerPriority: () => undefined,
+          spawn: () =>
+            fakeHelper((r, child) => {
+              if (r['op'] !== 'translate') return `{"id":${String(r['id'])},"ok":true}`;
+              child.emit('exit', 139);
+              return null;
+            }),
+        }),
+    });
+    const { call } = setUp({}, engine);
+    const result = await call(IPC.slideEditor.translationDraft, request);
+    expect(result).toEqual({ ok: false, message: 'The translation engine stopped.' });
+    expect(log.warn).toHaveBeenCalledWith('Translation: the engine stopped (exit 139).');
+    engine.stop();
   });
 });

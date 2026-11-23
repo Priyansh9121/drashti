@@ -84,4 +84,16 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     expect(source).toContain(`constexpr int kProtocol = ${String(HELPER_PROTOCOL)};`);
     expect(read('tools/translate/CMakeLists.txt')).toContain('set(WITH_MKL OFF');
   });
+
+  it('has the Intel program refuse only under Rosetta: on a real Intel Mac it runs as any other', () => {
+    const source = read('tools/translate/drashti-translate.cc');
+    const gate = source.slice(source.indexOf('bool under_rosetta()'), source.indexOf('struct Route'));
+    expect(gate).toMatch(/#if defined\(__APPLE__\) && defined\(__x86_64__\)/u);
+    expect(gate).toContain(
+      'sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) == 0 && translated == 1',
+    );
+    expect(gate).toMatch(/#else\n\s+return false;\n#endif/u);
+    expect(source.match(/under_rosetta\(\)/gu)).toHaveLength(2);
+    expect(source).toContain('if (under_rosetta()) return fail(o, "translated");');
+  });
 });
