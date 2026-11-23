@@ -11,6 +11,7 @@ import { ImportRepo } from './db/imports';
 import { type CrashFile, copyCrashFiles, crashFilesLines, KEEP_CRASH_FILES } from './crash-files';
 import { type CrashEntry, JOURNAL_ENTRIES } from './crash-journal';
 import { scrub } from './log';
+import { type DiagnosticsWho, whoLines } from './log-who';
 
 /*
  * Help > Save diagnostics: one plain-text file an operator can send after a
@@ -36,6 +37,8 @@ export interface DiagnosticsInput {
   now: Date;
   /** How Chromium draws here (Session 60, the owner's Q60-37); absent where nothing was read. */
   graphics?: GraphicsInfo;
+  /** Who and what made the file (alpha.21, logs (b)): its computer, access-list entry and role, install, period. */
+  who: DiagnosticsWho;
 }
 
 /**
@@ -59,8 +62,11 @@ export interface CrashFilesChoice {
   kept?: boolean;
 }
 
-/** At most this much of the log (the newest part). */
-const LOG_BYTES = 1_500_000;
+/**
+ * At most this much of the log (the newest part): since alpha.21 a chosen period's (logs (c)), up to 7 days; a report
+ * keeps its own smaller part of it (report-files.ts, fitDiagnostics).
+ */
+const LOG_BYTES = 16_000_000;
 const HIDDEN = '[library name]';
 
 const count = (db: Db, sql: string) => (db.prepare(sql).get() as { n: number }).n;
@@ -151,13 +157,17 @@ function graphicsSection(graphics: GraphicsInfo | undefined): string {
   return section('Graphics', lines);
 }
 
-/** The versions and the system, the first section of either file. */
-function aboutSection(title: string, app: DiagnosticsInput['app'], now: Date): string {
+/**
+ * The first section of either file: when it was saved, the versions and the system, then who and what made it
+ * (alpha.21, logs (b): its computer, its ids by their start, its install, role, where made, time zone, the log's period).
+ */
+function aboutSection(title: string, app: DiagnosticsInput['app'], now: Date, who: DiagnosticsWho): string {
   const cpu = cpus();
   return section(title, [
     `Saved: ${now.toISOString()}`,
     `Drashti ${app.version}; Electron ${app.electron}, Chrome ${app.chrome}, Node ${app.node}`,
     `System: ${app.platform} ${release()} ${app.arch}; ${cpu.length} × ${cpu[0]?.model ?? 'CPU'}; ${Math.round(totalmem() / 1024 ** 3)} GB memory`,
+    ...whoLines(who, now),
   ]);
 }
 
@@ -194,9 +204,10 @@ function crashSections(journal: readonly CrashEntry[], crash: CrashFilesChoice):
 
 /**
  * The file on the Desktop; with crash files ticked, a folder holding the file and the crash files.
- * Returns the file's path, or the folder's.
+ * Returns the file's path, or the folder's. (alpha.21: Save Diagnostics' text is made in the report worker, then
+ * written here by Main.)
  */
-function writeDiagnostics(dir: string, now: Date, text: string, crash: CrashFilesChoice): string {
+export function writeDiagnosticsFile(dir: string, now: Date, text: string, crash: CrashFilesChoice): string {
   const name = `Drashti diagnostics ${fileStamp(now)}`;
   if (!crash.included || crash.files.length === 0) {
     const file = join(dir, `${name}.txt`);
@@ -210,16 +221,21 @@ function writeDiagnostics(dir: string, now: Date, text: string, crash: CrashFile
   return folder;
 }
 
-/** The log, oldest file first, keeping the newest part. */
+/** The log, oldest file first, keeping the newest part (read newest first, so a long period reads no more than it keeps). */
 function logSection(logFiles: readonly string[]): string {
-  let logText = '';
+  const parts: string[] = [];
+  let bytes = 0;
   for (const file of [...logFiles].reverse()) {
+    if (bytes > LOG_BYTES) break;
     try {
-      logText += readFileSync(file, 'utf8');
+      const text = readFileSync(file, 'utf8');
+      parts.unshift(text);
+      bytes += text.length;
     } catch {
-      // A file rotated away meanwhile.
+      // A file removed meanwhile (its day gone).
     }
   }
+  let logText = parts.join('');
   if (logText.length > LOG_BYTES) logText = `…\n${logText.slice(-LOG_BYTES)}`;
   return section(
     'Log',
@@ -234,7 +250,7 @@ function logSection(logFiles: readonly string[]): string {
 export function diagnosticsText(input: DiagnosticsInput): string {
   const { app, db } = input;
   const parts: string[] = [];
-  parts.push(aboutSection('Drashti diagnostics', app, input.now));
+  parts.push(aboutSection('Drashti diagnostics', app, input.now, input.who));
   parts.push(displaysSection(input.displays));
   parts.push(graphicsSection(input.graphics));
   const states = new Map(input.screens.status.map((s) => [s.screenId, s.state]));
@@ -291,7 +307,7 @@ export function diagnosticsText(input: DiagnosticsInput): string {
  */
 export function saveDiagnostics(dir: string, input: DiagnosticsInput): string {
   const text = scrub(redactNames(diagnosticsText(input), libraryNames(input.db)));
-  return writeDiagnostics(dir, input.now, text, input.crashFiles);
+  return writeDiagnosticsFile(dir, input.now, text, input.crashFiles);
 }
 
 /** A node's screen, as Main gave it, and how it stands on the node. */
@@ -333,12 +349,14 @@ export interface NodeDiagnosticsInput {
   crashFiles: CrashFilesChoice;
   logFiles: readonly string[];
   now: Date;
+  /** Who and what made the file (alpha.21, logs (b)). */
+  who: DiagnosticsWho;
 }
 
 /** The node's whole file. */
 export function nodeDiagnosticsText(input: NodeDiagnosticsInput): string {
   const parts: string[] = [];
-  parts.push(aboutSection('Drashti diagnostics (node)', input.app, input.now));
+  parts.push(aboutSection('Drashti diagnostics (node)', input.app, input.now, input.who));
   parts.push(displaysSection(input.displays));
   const main = input.main;
   const clock = input.clock;
@@ -389,5 +407,5 @@ export function nodeDiagnosticsText(input: NodeDiagnosticsInput): string {
 
 /** Write the node's file to `dir` (the Desktop); returns its path (a folder's, with crash files ticked). */
 export function saveNodeDiagnostics(dir: string, input: NodeDiagnosticsInput): string {
-  return writeDiagnostics(dir, input.now, scrub(nodeDiagnosticsText(input)), input.crashFiles);
+  return writeDiagnosticsFile(dir, input.now, scrub(nodeDiagnosticsText(input)), input.crashFiles);
 }
