@@ -1,0 +1,206 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CaptionReview } from '../../shared/caption-coordinator';
+import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/captions';
+import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
+import { CaptionCoordinator } from './caption-coordinator';
+import { createCaptionFlow, type CaptionSpelling } from './caption-flow';
+import { createSpeechHub } from './hub';
+
+/*
+ * Caption AI's path end to end in the main process (cap-integration): a stand-in recognizer -> the real speech hub
+ * -> this flow (the glossary's fixer on the way) -> Codex x90's coordinator -> the lines the screens draw. Neutral
+ * placeholder words only (coloured boxes and shapes); no sound, no model, no download.
+ */
+
+/** A stand-in for cap-glossary's fixer: one near-miss Gujarati spelling put right, nothing else touched. */
+const SPELLING: CaptionSpelling = {
+  fix: (text, language) =>
+    language === 'gu'
+      ? text
+          .split(' ')
+          .map((word) => (word === 'ખોખુ' ? 'ખોખું' : word))
+          .join(' ')
+      : text,
+};
+
+function setup(o: { spelling?: CaptionSpelling; language?: SpeechLanguage } = {}) {
+  let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
+  const starts: string[] = [];
+  const hub = createSpeechHub({
+    engine: {
+      start(language, to) {
+        starts.push(language);
+        out = to;
+        to.state({ phase: 'listening', language });
+        return () => {
+          out = null;
+        };
+      },
+    },
+    log: { info: () => undefined, warn: () => undefined },
+    lingerMs: 0,
+  });
+  const shown: (CaptionsShown | null)[] = [];
+  const reviews: CaptionReview[] = [];
+  const coordinator = new CaptionCoordinator({
+    settings: () => DEFAULT_CAPTION_SETTINGS,
+    show: (c) => shown.push(c),
+    changed: (r) => reviews.push(r),
+  });
+  const finals: Heard[] = [];
+  const flow = createCaptionFlow({
+    hub,
+    coordinator,
+    ...(o.spelling ? { spelling: o.spelling } : {}),
+    onFinalPhrase: (h) => finals.push(h),
+  });
+  hub.setLanguage(o.language ?? 'gu');
+  hub.setOn(true);
+  /** The recognizer hears these placeholder words, as a partial or final phrase. */
+  const say = (text: string, final: boolean, id = 's1', language: SpeechLanguage = o.language ?? 'gu') => {
+    const words = text.split(' ').filter((w) => w !== '');
+    const endAt = Date.now() - 500;
+    const startAt = endAt - Math.max(1, words.length) * 300;
+    out?.heard({
+      id,
+      final,
+      language,
+      languageConfidence: null,
+      words: words.map((w, i) => ({
+        text: w,
+        startAt: startAt + i * 300,
+        endAt: startAt + i * 300 + 250,
+        confidence: 0.9,
+      })),
+      text: words.join(' '),
+      startAt,
+      endAt,
+      heardAt: Date.now(),
+    });
+  };
+  return {
+    hub,
+    coordinator,
+    flow,
+    say,
+    starts,
+    finals,
+    shown,
+    reviews,
+    lines: () => shown.at(-1)?.lines ?? null,
+    current: () => coordinator.view().current,
+  };
+}
+
+describe('caption AI path: recognizer -> hub -> flow -> coordinator -> screens', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-23T10:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a phrase is provisional while heard, settled when final, corrected by the operator: two lines at most', () => {
+    const t = setup();
+    t.flow.start();
+    expect(t.starts).toEqual(['gu']);
+    t.say('લીલું ખોખું', false);
+    expect(t.lines()).toEqual(['લીલું ખોખું']);
+    expect(t.current()).toMatchObject({ phraseId: 's1', revision: 1, status: 'provisional', sourceLanguage: 'gu' });
+    t.say('લીલું ખોખું ગોળ આકાર પાસે છે', true);
+    vi.advanceTimersByTime(300);
+    expect(t.lines()).toEqual(['લીલું ખોખું ગોળ આકાર પાસે છે']);
+    expect(t.current()).toMatchObject({ revision: 2, status: 'settled' });
+    const settled = t.current()!;
+    expect(t.coordinator.correct({ ...settled, text: 'વાદળી ખોખું ગોળ આકાર પાસે છે' })).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(t.lines()).toEqual(['વાદળી ખોખું ગોળ આકાર પાસે છે']);
+    expect(t.current()).toMatchObject({ revision: 3, status: 'corrected' });
+    // A long phrase still fits the band: at most two lines of at most 40 letters (Medium).
+    t.say(Array.from({ length: 30 }, (_, i) => (i % 2 === 0 ? 'લીલું' : 'ખોખું')).join(' '), true, 's2');
+    vi.advanceTimersByTime(300);
+    expect(t.lines()!.length).toBeLessThanOrEqual(2);
+    for (const line of t.lines()!) expect([...line].length).toBeLessThanOrEqual(40);
+    expect(t.current()).toMatchObject({ phraseId: 's2', revision: 1, status: 'settled' });
+  });
+
+  it('the glossary puts a spelling right before the coordinator sees it, provisional and settled, in its own language only', () => {
+    const t = setup({ spelling: SPELLING });
+    t.flow.start();
+    t.say('લીલું ખોખુ', false);
+    expect(t.lines()).toEqual(['લીલું ખોખું']);
+    t.say('લીલું ખોખુ ગોળ આકાર', true);
+    vi.advanceTimersByTime(300);
+    expect(t.lines()).toEqual(['લીલું ખોખું ગોળ આકાર']);
+    expect(t.current()).toMatchObject({ sourceText: 'લીલું ખોખું ગોળ આકાર', status: 'settled' });
+    t.flow.stop();
+    // Hindi: the Gujarati word list is not asked to change it.
+    const h = setup({ spelling: SPELLING, language: 'hi' });
+    h.flow.start();
+    h.say('नीला ખોખુ', true);
+    expect(h.lines()).toEqual(['नीला ખોખુ']);
+  });
+
+  it('the same words heard again keep their revision; an empty partial is not passed on', () => {
+    const t = setup();
+    t.flow.start();
+    t.say('', false);
+    expect(t.current()).toBeNull();
+    t.say('લીલું', false);
+    t.say('લીલું', false);
+    expect(t.current()).toMatchObject({ revision: 1 });
+    t.say('લીલું ખોખું', false);
+    expect(t.current()).toMatchObject({ revision: 2 });
+    // The final with the very words of the last partial: settled, as its own revision.
+    t.say('લીલું ખોખું', true);
+    expect(t.current()).toMatchObject({ revision: 3, status: 'settled' });
+  });
+
+  it('listening that starts again (ids from s1 again) is a new session: the old one never shows again', () => {
+    const t = setup();
+    t.flow.start();
+    t.say('લીલું ખોખું', true);
+    const first = t.coordinator.view().sessionId;
+    expect(first).not.toBeNull();
+    // The language changes: the hub stops and starts the recognizer again, and its ids start from s1.
+    t.hub.setLanguage('hi');
+    expect(t.starts).toEqual(['gu', 'hi']);
+    const second = t.coordinator.view().sessionId;
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+    t.say('नीला डिब्बा', true, 's1', 'hi');
+    vi.advanceTimersByTime(300);
+    expect(t.lines()).toEqual(['नीला डिब्बा']);
+    expect(t.current()).toMatchObject({ sessionId: second, phraseId: 's1', sourceLanguage: 'hi' });
+  });
+
+  it('Sanskrit shows in Gujarati letters, as today', () => {
+    const t = setup({ language: 'sa' });
+    t.flow.start();
+    t.say('कखग', true, 's1', 'sa');
+    expect(t.lines()).toEqual(['કખગ']);
+  });
+
+  it('finals reach the recording draft exactly as today (the glossary and corrections do not change the draft)', () => {
+    const t = setup({ spelling: SPELLING });
+    t.flow.start();
+    t.say('લીલું ખોખુ', false);
+    expect(t.finals).toHaveLength(0);
+    t.say('લીલું ખોખુ', true);
+    expect(t.finals).toHaveLength(1);
+    expect(t.finals[0]).toMatchObject({ id: 's1', final: true, text: 'લીલું ખોખુ' });
+  });
+
+  it('stop takes the captions off at once and closes the session; nothing heard after it shows', () => {
+    const t = setup();
+    t.flow.start();
+    t.say('લીલું ખોખું', true);
+    expect(t.lines()).toEqual(['લીલું ખોખું']);
+    t.flow.stop();
+    expect(t.shown.at(-1)).toBeNull();
+    expect(t.coordinator.view()).toMatchObject({ on: false, current: null });
+    vi.advanceTimersByTime(10_000);
+    expect(t.shown.at(-1)).toBeNull();
+  });
+});
