@@ -323,7 +323,17 @@ test('portable export/import carries checked and unchecked prepared words with t
   await first.app.close();
   const second = await launchApp();
   const target = await operatorPage(second.app);
-  const [received] = await importAndGetIds(target, [bundle]);
+  const received = await target.evaluate(async (path) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const imported = await d.library.importPaths([path]);
+    if (!imported.ok) throw new Error(imported.message);
+    const report = await d.library.getImportReport(imported.run.id);
+    // A bundle's items are named by their entry inside it (<bundle>!/<entry>), not by the bundle alone.
+    return (
+      report?.items.find((item) => item.format === 'kirtan-bundle' && item.sourcePath.startsWith(`${path}!/`))
+        ?.target?.id ?? ''
+    );
+  }, bundle);
   expect(received).toBeTruthy();
   expect(received).not.toBe(id);
   const review = await editor(second.app, target);
