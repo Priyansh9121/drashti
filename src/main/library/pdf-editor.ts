@@ -27,7 +27,10 @@ export interface PdfEditorDeps {
     stamp: string,
   ): { ok: true; doc: EditDoc } | { ok: false; message: string };
   chooseOutput(event: IpcMainInvokeEvent, name: string): Promise<string | null>;
-  /** Whether the stream is on air or recording. */
+  /**
+   * Whether the stream is on air or recording: no batch of parts is made then (x82's Make slides from many parts),
+   * and one being made stops (cancelBatch). The single Make a slide… and Save a PDF copy… go on, as before the batch.
+   */
   onAir?: () => boolean;
   /** Make a slide… (alpha.21): the part of a one-page PDF just printed here, drawn at the hall's picture size. */
   drawPart?: (pdf: Uint8Array, part: PagePart, signal: AbortSignal) => Promise<PartPicture>;
@@ -42,6 +45,12 @@ export interface PdfEditorDeps {
   ) => Promise<MakeSlideResult>;
 }
 const failed = (message: string): { ok: false; message: string } => ({ ok: false, message });
+/** A batch of parts asked for while the stream is on air or recording (the single slide goes on). */
+const BATCH_ON_AIR =
+  'No batch is made while the stream is on air or recording: make the slides once it has stopped.';
+/** A batch stopped by the stream going on air or starting to record. */
+const BATCH_STOPPED =
+  'The slides were not made: the stream went on air or started recording. Make them again once it has stopped.';
 /** Make a slide…'s request, its document checked apart (editDocSchema) and against what is stored (validate). */
 const makeSlideSchema = z.object({
   presentationId: idSchema,
@@ -60,7 +69,7 @@ class PdfEditorError extends Error {}
 
 /** Save a separate PDF from a validated editor snapshot; never writes a presentation or revision. */
 export class PdfEditor {
-  private active: { abort: AbortController; done: Promise<PdfCopyResult> } | null = null;
+  private active: { abort: AbortController; done: Promise<PdfCopyResult>; batch?: boolean } | null = null;
   private stopped = false;
   constructor(private readonly deps: PdfEditorDeps) {}
 
@@ -70,7 +79,7 @@ export class PdfEditor {
     rawDoc: unknown,
     rawStamp: unknown,
   ): Promise<PdfCopyResult> {
-    if (this.stopped || this.active || !this.deps.allowed(event) || this.onAir())
+    if (this.stopped || this.active || !this.deps.allowed(event))
       return Promise.resolve(
         failed('A PDF copy is already being made, or this editor is no longer available.'),
       );
@@ -92,7 +101,6 @@ export class PdfEditor {
       !this.stopped &&
       !event.sender.isDestroyed() &&
       this.deps.allowed(event) &&
-      !this.onAir() &&
       this.deps.stamp(id.data) === rawStamp;
     const abort = () => controller.abort();
     event.sender.once('destroyed', abort);
@@ -206,7 +214,7 @@ export class PdfEditor {
   makeSlide(event: IpcMainInvokeEvent, raw: unknown): Promise<MakeSlideResult> {
     const drawPart = this.deps.drawPart;
     const keepSlide = this.deps.keepSlide;
-    if (this.stopped || this.active || !drawPart || !keepSlide || !this.deps.allowed(event) || this.onAir())
+    if (this.stopped || this.active || !drawPart || !keepSlide || !this.deps.allowed(event))
       return Promise.resolve(
         failed('Drashti is making a PDF copy or a slide already: try again in a moment.'),
       );
@@ -214,6 +222,7 @@ export class PdfEditor {
     if (!asked.success)
       return Promise.resolve(failed('Choose a part of the page, and where the slide goes, then try again.'));
     const { presentationId, doc: rawDoc, stamp, slideId, part, place, parts } = asked.data;
+    if (parts && this.onAir()) return Promise.resolve(failed(BATCH_ON_AIR));
     const checked = editDocSchema.safeParse(rawDoc);
     if (!checked.success || checked.data.presentationId !== presentationId)
       return Promise.resolve(failed('Reopen the editor before making a slide.'));
@@ -231,13 +240,21 @@ export class PdfEditor {
     if (selected.some(({ slide, group }) => !slide || !group || slide.documentPage?.ext !== 'pdf'))
       return Promise.resolve(failed('Choose a PDF page for every part, then make the slides again.'));
     const controller = new AbortController();
-    const current = () =>
-      !controller.signal.aborted &&
-      !this.stopped &&
-      !event.sender.isDestroyed() &&
-      this.deps.allowed(event) &&
-      !this.onAir() &&
-      this.deps.stamp(presentationId) === stamp;
+    // A batch stops once the stream is on air or recording, and says so (BATCH_STOPPED); one slide goes on.
+    let stoppedOnAir = false;
+    const current = () => {
+      if (parts && this.onAir()) {
+        stoppedOnAir = true;
+        return false;
+      }
+      return (
+        !controller.signal.aborted &&
+        !this.stopped &&
+        !event.sender.isDestroyed() &&
+        this.deps.allowed(event) &&
+        this.deps.stamp(presentationId) === stamp
+      );
+    };
     const abort = () => controller.abort();
     event.sender.once('destroyed', abort);
     const whole = part.x <= 0 && part.y <= 0 && part.w >= 1 && part.h >= 1;
@@ -276,11 +293,17 @@ export class PdfEditor {
         if (error instanceof PdfEditorError) return failed(error.message);
         return failed('The slide could not be made. Try again in a moment.');
       }
-    })().finally(() => {
-      event.sender.removeListener('destroyed', abort);
-      if (this.active?.abort === controller) this.active = null;
-    });
-    this.active = { abort: controller, done: done.then((made) => (made.ok ? { ok: true, name } : made)) };
+    })()
+      .then((made) => (!made.ok && parts && (stoppedOnAir || this.onAir()) ? failed(BATCH_STOPPED) : made))
+      .finally(() => {
+        event.sender.removeListener('destroyed', abort);
+        if (this.active?.abort === controller) this.active = null;
+      });
+    this.active = {
+      abort: controller,
+      done: done.then((made) => (made.ok ? { ok: true, name } : made)),
+      batch: parts !== undefined,
+    };
     return done;
   }
 
@@ -288,9 +311,11 @@ export class PdfEditor {
     return this.deps.onAir?.() === true;
   }
 
-  /** The stream went on air or started recording. */
+  /** The stream went on air or started recording: a batch of parts being made stops; nothing else does. */
   cancelBatch(): void {
-    this.cancel();
+    if (!this.active?.batch) return;
+    this.active.abort.abort();
+    this.deps.session.stop();
   }
 
   cancel(): void {
