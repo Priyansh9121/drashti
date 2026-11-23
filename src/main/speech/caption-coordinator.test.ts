@@ -1,28 +1,76 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/captions';
-import type { CaptionRevision, CaptionTranslation, CaptionTranslationPort, CaptionTranslationRequest } from '../../shared/caption-coordinator';
+import type {
+  CaptionRevision,
+  CaptionTranslation,
+  CaptionTranslationPort,
+  CaptionTranslationRequest,
+} from '../../shared/caption-coordinator';
 import { CaptionCoordinator } from './caption-coordinator';
 
 function setup(translation?: CaptionTranslationPort, output?: 'source' | 'translation') {
   const shown: (CaptionsShown | null)[] = [];
-  const coordinator = new CaptionCoordinator({ mayTranslate: () => true, clock: () => Date.now(), settings: () => DEFAULT_CAPTION_SETTINGS, show: c => shown.push(c), changed: vi.fn(), ...(translation ? { translation } : {}), ...(output ? { output } : {}) });
+  const coordinator = new CaptionCoordinator({
+    mayTranslate: () => true,
+    clock: () => Date.now(),
+    settings: () => DEFAULT_CAPTION_SETTINGS,
+    show: (c) => shown.push(c),
+    changed: vi.fn(),
+    ...(translation ? { translation } : {}),
+    ...(output ? { output } : {}),
+  });
   const sessionId = coordinator.start();
-  const clause = (text: string, revision = 1, status: CaptionRevision['status'] = 'provisional', phraseId = 's1'): CaptionRevision => ({ sessionId, phraseId, revision, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: text, startAt: Date.now() - 1_000, endAt: Date.now(), status });
+  const clause = (
+    text: string,
+    revision = 1,
+    status: CaptionRevision['status'] = 'provisional',
+    phraseId = 's1',
+  ): CaptionRevision => ({
+    sessionId,
+    phraseId,
+    revision,
+    sourceLanguage: 'en',
+    targetLanguage: 'hi',
+    sourceText: text,
+    startAt: Date.now() - 1_000,
+    endAt: Date.now(),
+    status,
+  });
   return { coordinator, clause, shown, last: () => shown.at(-1) ?? null };
 }
 
 function deferredPort() {
-  const requests: { clause: Readonly<CaptionTranslationRequest>; signal: AbortSignal; resolve: (r: CaptionTranslation) => void }[] = [];
-  const translate = vi.fn((clause: Readonly<CaptionTranslationRequest>, signal: AbortSignal) => new Promise<CaptionTranslation>(resolve => requests.push({ clause, signal, resolve })));
+  const requests: {
+    clause: Readonly<CaptionTranslationRequest>;
+    signal: AbortSignal;
+    resolve: (r: CaptionTranslation) => void;
+  }[] = [];
+  const translate = vi.fn(
+    (clause: Readonly<CaptionTranslationRequest>, signal: AbortSignal) =>
+      new Promise<CaptionTranslation>((resolve) => requests.push({ clause, signal, resolve })),
+  );
   const finish = (index: number, text: string, overrides: Partial<CaptionTranslation> = {}) => {
     const request = requests[index]!;
     request.resolve({ ...request.clause, text, status: 'ok', processingMs: 1, ...overrides });
   };
-  return { requests, translate, finish, identity: { modelIdentity: 'placeholder@1', routeId: 'en-hi-placeholder', processorId: 'placeholder@1', glossaryRevision: 'none' } };
+  return {
+    requests,
+    translate,
+    finish,
+    identity: {
+      modelIdentity: 'placeholder@1',
+      routeId: 'en-hi-placeholder',
+      processorId: 'placeholder@1',
+      glossaryRevision: 'none',
+    },
+  };
 }
 
 describe('phase D caption coordinator', () => {
-  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-23T09:00:00Z')); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-23T09:00:00Z'));
+  });
   afterEach(() => vi.useRealTimers());
 
   it('replaces a provisional clause atomically; rejects old revisions and rolled-away phrases', () => {
@@ -108,7 +156,9 @@ describe('phase D caption coordinator', () => {
     const { coordinator: c, clause } = setup();
     expect(c.accept({ ...clause('Wrong'), endAt: NaN })).toBe(false);
     expect(c.accept({ ...clause('Wrong'), startAt: Date.now() + 1 })).toBe(false);
-    expect(c.accept({ ...clause('Wrong'), endAt: Date.now() - 11_000, startAt: Date.now() - 12_000 })).toBe(false);
+    expect(c.accept({ ...clause('Wrong'), endAt: Date.now() - 11_000, startAt: Date.now() - 12_000 })).toBe(
+      false,
+    );
     expect(c.accept(clause('Settled', 1, 'settled'))).toBe(true);
     expect(c.accept(clause('Final again', 2, 'settled'))).toBe(false);
     expect(c.view().current?.sourceText).toBe('Settled');
@@ -148,7 +198,15 @@ describe('phase D caption coordinator', () => {
     port.finish(1, 'Dismissed words');
     await vi.advanceTimersByTimeAsync(300);
     expect(last()).toBeNull();
-    const failed = setup({ identity: port.identity, translate: () => { throw new Error('Placeholder failure'); } }, 'translation');
+    const failed = setup(
+      {
+        identity: port.identity,
+        translate: () => {
+          throw new Error('Placeholder failure');
+        },
+      },
+      'translation',
+    );
     expect(() => failed.coordinator.accept(failed.clause('A round shape', 1, 'settled'))).not.toThrow();
     await vi.advanceTimersByTimeAsync(0);
     expect(failed.coordinator.view()).toMatchObject({ busy: false, omitted: 1 });
@@ -169,7 +227,14 @@ describe('phase D caption coordinator', () => {
     const { coordinator: c, clause, last } = setup(port, 'translation');
     c.accept(clause('A blue box', 1, 'settled'));
     const request = port.requests[0]!.clause;
-    expect(request).toMatchObject({ protocolVersion: 1, sourceKind: 'speech-clause', clauseId: 's1', clauseSequence: 1, paintDeadlineAt: Date.now() + 2_500, clearAt: Date.now() + 6_000 });
+    expect(request).toMatchObject({
+      protocolVersion: 1,
+      sourceKind: 'speech-clause',
+      clauseId: 's1',
+      clauseSequence: 1,
+      paintDeadlineAt: Date.now() + 2_500,
+      clearAt: Date.now() + 6_000,
+    });
     expect(request.sourceHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(request.requestId).not.toBe(request.sessionId);
     vi.advanceTimersByTime(1_000);
@@ -243,7 +308,13 @@ describe('phase D caption coordinator', () => {
   it('requires an explicit background lease before a connected translation port can run', () => {
     const port = deferredPort();
     const { clause } = setup();
-    const c = new CaptionCoordinator({ clock: () => Date.now(), settings: () => DEFAULT_CAPTION_SETTINGS, show: vi.fn(), changed: vi.fn(), translation: port });
+    const c = new CaptionCoordinator({
+      clock: () => Date.now(),
+      settings: () => DEFAULT_CAPTION_SETTINGS,
+      show: vi.fn(),
+      changed: vi.fn(),
+      translation: port,
+    });
     const sessionId = c.start();
     c.accept({ ...clause('A blue box', 1, 'settled'), sessionId });
     expect(port.requests).toHaveLength(0);
@@ -266,13 +337,63 @@ describe('phase D caption coordinator', () => {
   it('starts pending stable work when the authoritative lease explicitly opens', () => {
     const port = deferredPort();
     let allowed = false;
-    const c = new CaptionCoordinator({ clock: () => Date.now(), mayTranslate: () => allowed, settings: () => DEFAULT_CAPTION_SETTINGS, show: vi.fn(), changed: vi.fn(), translation: port });
+    const c = new CaptionCoordinator({
+      clock: () => Date.now(),
+      mayTranslate: () => allowed,
+      settings: () => DEFAULT_CAPTION_SETTINGS,
+      show: vi.fn(),
+      changed: vi.fn(),
+      translation: port,
+    });
     const sessionId = c.start();
-    c.accept({ sessionId, phraseId: 's1', revision: 1, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: 'A blue box', startAt: Date.now(), endAt: Date.now(), status: 'settled' });
+    c.accept({
+      sessionId,
+      phraseId: 's1',
+      revision: 1,
+      sourceLanguage: 'en',
+      targetLanguage: 'hi',
+      sourceText: 'A blue box',
+      startAt: Date.now(),
+      endAt: Date.now(),
+      status: 'settled',
+    });
     expect(port.requests).toHaveLength(0);
     allowed = true;
     c.setTranslationHeld(false);
     expect(port.requests).toHaveLength(1);
+    c.stop();
+  });
+  it('requires a new session for a source/target change and rejects unsupported AI languages', () => {
+    const { coordinator: c, clause } = setup();
+    expect(c.accept({ ...clause('Unsupported'), sourceLanguage: 'sa' } as CaptionRevision)).toBe(false);
+    expect(c.accept(clause('A blue box', 1, 'settled'))).toBe(true);
+    expect(c.accept({ ...clause('A green box', 1, 'settled', 's2'), sourceLanguage: 'gu' })).toBe(false);
+    const sessionId = c.start();
+    expect(c.accept({ ...clause('A green box', 1, 'settled'), sessionId, sourceLanguage: 'gu' })).toBe(true);
+  });
+
+  it('retains its own immutable parent range rather than a caller-mutable reference', () => {
+    const { coordinator: c, clause } = setup();
+    const input = { ...clause('A blue box'), parent: { enginePhraseId: 's1', observationSequence: 1, rangeStart: 0, rangeEnd: 10, timingPrecision: 'phrase' as const } };
+    c.accept(input);
+    input.parent.rangeStart = 5;
+    expect(c.view().current?.parent?.rangeStart).toBe(0);
+  });
+
+  it('invalidates the output-policy epoch before applying a new audience choice', async () => {
+    const port = deferredPort();
+    let audience = true;
+    const c = new CaptionCoordinator({ clock: () => Date.now(), mayTranslate: () => true, settings: () => ({ ...DEFAULT_CAPTION_SETTINGS, audience }), show: vi.fn(), changed: vi.fn(), translation: port, output: 'translation' });
+    const sessionId = c.start();
+    c.accept({ sessionId, phraseId: 's1', revision: 1, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: 'A blue box', startAt: Date.now(), endAt: Date.now(), status: 'settled' });
+    const first = port.requests[0]!.clause;
+    audience = false;
+    c.refresh();
+    expect(port.requests[0]!.signal.aborted).toBe(true);
+    port.finish(0, 'Old audience policy');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(port.requests[1]!.clause.outputPolicyEpoch).toBeGreaterThan(first.outputPolicyEpoch);
+    expect(port.requests[1]!.clause.paintDeadlineAt).toBe(first.paintDeadlineAt);
     c.stop();
   });
 
