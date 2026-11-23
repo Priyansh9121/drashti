@@ -189,6 +189,7 @@ describe("the page's silent graph", () => {
           });
           return node;
         },
+        createConstantSource: () => ({ offset: { value: 1 }, connect: (to: unknown) => to, start: () => undefined }),
         resume: () => {
           resumed++;
           return Promise.resolve();
@@ -203,6 +204,52 @@ describe("the page's silent graph", () => {
     expect(nodes[0]?.gain).toBe(0);
     expect(nodes[0]?.to).toEqual([destination]);
     expect(resumed).toBe(1);
+  });
+
+  it('never counts as silent: an inaudible constant goes to its output while it runs (QA21-S5-3, the owner: A)', () => {
+    // Chromium moves an output that has rendered nothing but zeros for 30 s to a stand-in sink paced by a thread-pool
+    // timer (SilentSinkSuspender), as slow as sinkId 'none' was on CI's Mac: a cue held over 30 s then started 45-102 ms
+    // late there (a21-s5-1123-152334-44457). A constant below half a 24-bit output's step is not silence to that check,
+    // yet every 16- or 24-bit output still receives exactly 0: nothing can be heard.
+    const constants: { offset: number; to: unknown[]; started: number }[] = [];
+    const destination = { name: 'destination' };
+    const graph = createSilentGraph(
+      () =>
+        ({
+          state: 'running',
+          destination,
+          createGain: () => ({ gain: { value: 1 }, connect: (to: unknown) => to }),
+          createConstantSource: () => {
+            const made = { offset: 1, to: [] as unknown[], started: 0 };
+            constants.push(made);
+            return {
+              offset: {
+                get value() {
+                  return made.offset;
+                },
+                set value(v: number) {
+                  made.offset = v;
+                },
+              },
+              connect(to: unknown) {
+                made.to.push(to);
+                return to;
+              },
+              start() {
+                made.started++;
+              },
+            };
+          },
+          resume: () => Promise.resolve(),
+        }) as unknown as AudioContext,
+    );
+    expect(graph).not.toBeNull();
+    expect(constants).toHaveLength(1);
+    const level = constants[0]?.offset ?? 0;
+    expect(level).toBeGreaterThan(0);
+    expect(level).toBeLessThan(2 ** -24);
+    expect(constants[0]?.to).toEqual([destination]);
+    expect(constants[0]?.started).toBe(1);
   });
 
   it('is none where Web Audio cannot be had', () => {
