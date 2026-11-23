@@ -381,8 +381,10 @@ export class StreamPipeline {
       if (message.data.byteLength !== expected) return;
       this.lastFrame = Buffer.from(message.data);
       this.programSinceStart = true;
-      this.pictureSinceStart = true;
       this.maybeStartEncoder();
+      // A fresh picture, also when it started the encoder just now (it is that encoder's first picture: a still slide
+      // sends no other); set after the start, which counts afresh from its own first picture.
+      this.pictureSinceStart = true;
       return;
     }
     this.programSinceStart = true;
