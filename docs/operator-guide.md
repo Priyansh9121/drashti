@@ -77,6 +77,11 @@ Do these about 30 minutes before the sabha starts.
 
 **Live captions (Trial).** They start off and can slow the screens while on. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Sanskrit captions use Gujarati letters. Tell the admin if they are wrong or lag behind. **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
 
+**Gujarati and Hindi recognition models (Trial).** A model pack can provide a separate local recognition engine for
+Gujarati or Hindi. Choose the speaker’s language and its imported model before rehearsal. It does not choose a
+language automatically. If that model is missing or stops, no other model takes its place. Turn this option off to
+return to ordinary live captions. Rehearse with the mixer and the screens before using automatic words in a show.
+
 **Record the sabha.** Open **Record** in **Stream** in Pro Mode, or under **LIVE** in Simple Mode. Pick **Record sound** to save the chosen sound input as a 16 kHz mono WAV file. If Live captions is on, a timed caption draft is saved beside the sound. **Record video** saves the stream’s chosen layout and takes about 3 GB an hour at the Good internet setting. Both choices work off air or while the stream is on air. In Pro Mode, choose the folder in **Stream settings** or from the **Record** menu. Press the recording’s **Stop** button when finished.
 
 ## 2. Running the sabha
@@ -537,8 +542,3 @@ For a clip, choose start and end under **Trim**, then **Preparation and export**
 **Export clip…** opens **Save as…** for a new file. The accepted export waits while anything is up, streaming or recording, and stays across closing the editor or restarting Drashti. Open the editor again for progress, **Stop export** or **Show the file**. The original stays unchanged. The Manual's **Library › Exporting a clip, including vertical video** has the steps.
 
 ![Edit Video's Preparation and export choices for a vertical clip](screenshots/manual-edit-video-export.png)
-
-**Gujarati and Hindi recognition models (Trial).** A model pack can provide a separate local recognition engine for
-Gujarati or Hindi. Choose the speaker’s language and its imported model before rehearsal. It does not choose a
-language automatically. If that model is missing or stops, no other model takes its place. Turn this option off to
-return to ordinary live captions. Rehearse with the mixer and the screens before using automatic words in a show.
