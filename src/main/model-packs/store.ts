@@ -296,7 +296,7 @@ export class ModelPackStore {
       for (const f of model.files) {
         const s = statSync(f.path);
         const known = this.verified.get(f.path);
-        if (known && known.size === s.size && known.mtimeMs === s.mtimeMs) continue;
+        if (known?.size === s.size && known.mtimeMs === s.mtimeMs) continue;
         if (s.size !== f.bytes || (await sha256Of(f.path, signal)) !== f.sha256) {
           this.damaged.add(pack.dir);
           this.deps.log.warn(`Model packs: ${pack.dir} changed since it was checked (model ${id})`);
@@ -516,7 +516,7 @@ export class ModelPackStore {
         licence: f.licence,
       })),
       licences: [...m.licences],
-      attributions: [],
+      attributions: [...m.attributions],
     };
   }
 
@@ -546,7 +546,7 @@ export class ModelPackStore {
         purposes: [...m.purposes],
         format: m.format,
         licences: [...m.licences],
-        attributions: [],
+        attributions: [...m.attributions],
         bytes: m.bytes,
       })),
       licences: (c?.licenceTexts ?? []).map((f) => ({ file: f.name, licence: f.licence })),
@@ -669,7 +669,7 @@ export class ModelPackStore {
         (e) => /^[^/]+\/[^/]+$/u.test(named(e)) && named(e).endsWith(`/${PACK_MANIFEST}`),
       );
       if (inFolder.length !== 1 || !inFolder[0]) throw new Refusal(NO_LIST);
-      prefix = named(inFolder[0]).slice(0, -PACK_MANIFEST.length);
+      prefix = `${named(inFolder[0]).split('/')[0] ?? ''}/`;
     }
     // A name the zip holds twice is no file at all (which one would be meant?).
     const byName = new Map<string, ZipEntry | null>();

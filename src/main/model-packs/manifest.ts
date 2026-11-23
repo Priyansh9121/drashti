@@ -28,6 +28,8 @@ export interface CheckedModel {
   folder: string;
   files: PackFile[];
   licences: string[];
+  /** Who made it and where it is from, each once, in the list's order. */
+  attributions: string[];
   bytes: number;
 }
 
@@ -60,7 +62,7 @@ const licenceName = (licence: string) =>
     : 'a licence Drashti does not know';
 
 /** The folder a file is in, by "/" ('' at the pack's top). */
-const folderOf = (name: string) => (name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : '');
+const folderOf = (name: string) => (name.includes('/') ? name.replace(/\/[^/]*$/u, '') : '');
 
 /** The deepest folder two folders share. */
 function sharedFolder(a: string, b: string): string {
@@ -123,7 +125,12 @@ export function checkManifest(raw: unknown): ManifestCheck {
     if (file.purpose.includes(LICENCE_PURPOSE)) {
       if (file.purpose.length > 1)
         return refuse(`${file.name} is given as a licence’s text and as a model at once. ${FRESH}`);
-      if (file.model !== undefined || file.format !== undefined || file.licenceFile !== undefined)
+      if (
+        file.model !== undefined ||
+        file.format !== undefined ||
+        file.licenceFile !== undefined ||
+        file.attribution !== undefined
+      )
         return refuse(
           `${file.name} is a licence’s text, so it belongs to no model and has no format. ${FRESH}`,
         );
@@ -137,6 +144,10 @@ export function checkManifest(raw: unknown): ManifestCheck {
     if (file.model === undefined || file.format === undefined || file.licenceFile === undefined)
       return refuse(
         `${file.name} does not say which model it belongs to, its format and its licence’s text. ${FRESH}`,
+      );
+    if (file.attribution === undefined)
+      return refuse(
+        `${file.name} does not say who made it and where it is from (its attribution). Nothing was installed: ask for a pack that credits each model, as its licence asks.`,
       );
     if (!licenceTexts.has(file.licenceFile))
       return refuse(
@@ -152,6 +163,7 @@ export function checkManifest(raw: unknown): ManifestCheck {
         folder: folderOf(file.name),
         files: [file],
         licences: [file.licence],
+        attributions: [file.attribution],
         bytes: file.bytes,
       });
       continue;
@@ -165,6 +177,7 @@ export function checkManifest(raw: unknown): ManifestCheck {
     model.folder = sharedFolder(model.folder, folderOf(file.name));
     model.files.push(file);
     if (!model.licences.includes(file.licence)) model.licences.push(file.licence);
+    if (!model.attributions.includes(file.attribution)) model.attributions.push(file.attribution);
     model.bytes += file.bytes;
   }
   if (models.size === 0)

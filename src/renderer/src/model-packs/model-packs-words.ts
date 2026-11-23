@@ -31,8 +31,8 @@ export function packLine(pack: InstalledPackView, locale?: string): string {
 /** What a model is for, in words. */
 export const modelPurposes = (model: PackModelView): string => model.purposes.map(purposeWords).join('; ');
 
-/** Who made a model and where it is from. Red (attribution): not built yet. */
-export const modelCredit = (model: PackModelView): string => model.id.slice(0, 0);
+/** Who made a model and where it is from, as the pack credits it (its licence asks for it). */
+export const modelCredit = (model: PackModelView): string => `By ${model.attributions.join('; ')}`;
 
 /** A model's line: its size, its format and its licences. */
 export const modelLine = (model: PackModelView): string =>

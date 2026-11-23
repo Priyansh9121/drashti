@@ -5,7 +5,7 @@ import { Button } from '../ui/Button';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
-import { importingText, modelLine, modelPurposes, packLine } from './model-packs-words';
+import { importingText, modelCredit, modelLine, modelPurposes, packLine } from './model-packs-words';
 import { closeModelPacks, connectModelPacks, takeStatus, useModelPacks } from './model-packs-store';
 
 /*
@@ -188,6 +188,9 @@ function PackRow({ pack, onRemove }: { pack: InstalledPackView; onRemove: () => 
             <span className="text-muted">
               {' '}
               ({m.id}: {modelLine(m)})
+            </span>
+            <span className="block text-muted" data-testid="model-pack-credit">
+              {modelCredit(m)}
             </span>
           </li>
         ))}

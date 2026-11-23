@@ -30,7 +30,7 @@ function harness(picked: string | null = null) {
   const pick = vi.fn((_kind: 'folder' | 'zip') => Promise.resolve(picked));
   handleModelPacks({
     handle: (channel, handler) => {
-      handlers.set(channel, handler as (e: IpcMainInvokeEvent, ...args: unknown[]) => unknown);
+      handlers.set(channel, handler);
     },
     fromOperator: (e) => (e as unknown as { operator: boolean }).operator,
     store,
