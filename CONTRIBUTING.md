@@ -28,7 +28,7 @@ binaries for both systems. Drashti runs on macOS 13 or later and on Windows 10 o
 macOS (Terminal):
 
 ```bash
-git clone https://github.com/Priyansh9121/drashti.git
+git clone --branch phase1 https://github.com/Priyansh9121/drashti.git
 cd drashti
 corepack enable pnpm        # or: npm install -g pnpm@12.6.0
 pnpm install
@@ -38,7 +38,7 @@ pnpm hooks                  # once: the secret scan before every push
 Windows (PowerShell):
 
 ```powershell
-git clone https://github.com/Priyansh9121/drashti.git
+git clone --branch phase1 https://github.com/Priyansh9121/drashti.git
 cd drashti
 corepack enable pnpm        # or: npm install -g pnpm@12.6.0
 pnpm install
