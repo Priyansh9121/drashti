@@ -422,6 +422,17 @@ interface NativeCoverCopies {
   copies: NativeCoverCopy[];
 }
 
+/** The inner rounded corner (CSS px) of the nearest box that clips `el`, or 0 where none is rounded. */
+function clippingCorner(el: HTMLElement): number {
+  for (let at = el.parentElement; at; at = at.parentElement) {
+    const css = getComputedStyle(at);
+    if (css.overflowX === 'visible' && css.overflowY === 'visible') continue;
+    const inner = parseFloat(css.borderTopLeftRadius) - parseFloat(css.borderTopWidth);
+    if (inner > 0) return inner;
+  }
+  return 0;
+}
+
 /**
  * The LIVE picture's shaded render surfaces (X12 wide, traced on CI's Mac). A filtered picture or canvas was not
  * enough: the native JPEG and words must compose their RGBA surface outside the warm-up's opacity group, under
@@ -442,6 +453,12 @@ function primeNativeCovers(
   if (bounds.width <= 0 || bounds.height <= 0 || width <= 0 || height <= 0) return null;
   const sx = width / bounds.width;
   const sy = height / bounds.height;
+  // Clear of the LIVE box's rounded corners (a21): a copy drawn there showed in their antialiased edge (each layer under
+  // the box's rounded clip is clipped on its own, outside the black above it). A rounded clip of their own, twice the
+  // box's and 2 px more, keeps the copies rounded-clipped as the show's Cover is, and off the box's edge.
+  const corner = 2 * clippingCorner(root) + 2;
+  const rounded = `${String(corner * sx)}px / ${String(corner * sy)}px`;
+  if (root.style.borderRadius !== rounded) root.style.borderRadius = rounded;
   let made = previous;
   if (made?.root !== root || made.width !== width || made.height !== height) {
     const keys = ['deck-cover-wide/calm/off-grid', 'deck-cover-four-three/calm/off-grid'];
