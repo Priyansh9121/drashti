@@ -6,12 +6,18 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Update after a sabha, and update Main and nodes together.
 
-- The operator window: the LIVE block (the picture, Back and Next, the levels) stands still while what is under it scrolls, in Pro and Simple Mode; at their narrowest the side columns still show the Wallpapers heading, a removal’s undo note and Back and Next whole; a notice’s Report this… and Dismiss are easier to hit.
-- Playback: a paused video’s row is no longer cramped (no Paused badge: its Play button says so, and the time bar keeps room for its times). Last 10 s is gone everywhere; a video’s last 10 seconds still turn amber, and the stage’s Video ends in stays.
-- Screens: what Drashti draws at the start to make the graphics chip ready is gone before a screen starts the show, so its first picture is whole.
+- Read Words from a Page… (Library, New…): the Gujarati words of a scanned page, a picture or a PDF’s pages come into the words box, read on this computer with no internet, to read over before Make slides.
+- PDF pages › Make a slide… (Pro Mode, the slide editor): a slide from a PDF page or from the part you drag a frame over, or Add this part across pages, then one slide each in one go (not while on air), into the open playlist or the library. Crop picture is dragged with a frame: no numbers to type.
+- The operator window fits at every size, in both modes: the LIVE block (the picture, Back and Next, the levels) stays still while the rest scrolls; the narrowest side columns keep the Wallpapers heading, an undo note and Back and Next whole; a notice stands at the live column’s foot, never over its controls, with Report this… and Dismiss easier to hit.
+- Everything fits at its smallest size: titles wrap instead of being cut; the QR code window, the slide editor’s tools, the Lower Thirds templates (name and star under the picture) and long names show whole; on a phone the remote held sideways has its own layout with the live picture whole, and no page scrolls sideways.
+- Playback: a paused video’s row has no Paused badge (its Play button says so) and room for its times. Last 10 s is gone; a video’s last 10 seconds still turn amber, and the stage’s Video ends in stays.
+- Quicker to answer: the operator window as a show starts (the Lower Thirds fonts load one at a time while it is idle), and a press from a phone, a controller or the window right after a video goes up is no longer refused.
+- Screens: a show’s first picture is whole: what Drashti draws to ready the graphics chip is gone before it starts.
 - Importing a picture or a video never waits on this computer’s answer about HEVC video: the answer now always comes.
 - Edit Video…: Also add the clip to Media stands on its own line above Export clip….
-- On a busy computer, Save as MP4… no longer says FFmpeg could not find its clean frames, a failed conversion always gives FFmpeg’s reason, and a deck imported with PowerPoint or Keynote is read whole: Drashti waits for all a helper program wrote.
+- On a busy computer, Save as MP4… no longer fails to find its clean frames, a failed conversion always gives FFmpeg’s reason, and a deck imported with PowerPoint or Keynote is read whole.
+- Logs for many computers: Drashti keeps one log a day for 30 days; every report names its computer, access entry, role, version and system; Help › Save Diagnostics saves Today…, Yesterday…, The Last 7 Days… or One Day.
+- Safer: Drashti checks more strictly that every request it answers comes from one of its own windows. The admin guide says when Request Access works again after Too many tries for now.
 
 ## 1.0.0-alpha.20.1 (22 Nov 2026)
 

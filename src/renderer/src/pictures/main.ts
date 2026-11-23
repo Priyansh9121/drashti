@@ -3,6 +3,7 @@ import { drawEditablePdf } from './editable-main';
 import { pageTextOf } from './page-text';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
+import { partDrawing } from '../../../shared/page-part';
 import type { PictureAssetKind } from '../../../shared/pictures';
 import { fitPage, inShare, tidyNotes } from '../../../shared/pictures';
 
@@ -100,6 +101,24 @@ async function draw(): Promise<void> {
     try {
       const page = await doc.getPage(i + 1);
       const base = page.getViewport({ scale: 1 });
+      if (job.part) {
+        // Make a slide… (alpha.21): only the part, as large as fits in the canvas size, on the page's own white.
+        const d = partDrawing(job.part, base, job);
+        canvas.width = d.width;
+        canvas.height = d.height;
+        await page.render({
+          canvas,
+          canvasContext: ctx,
+          viewport: page.getViewport({ scale: d.scale }),
+          transform: [1, 0, 0, 1, -d.dx, -d.dy],
+          intent: 'print',
+          annotationMode: AnnotationMode.DISABLE,
+        }).promise;
+        const png = await canvasPng(canvas);
+        page.cleanup();
+        if (!(await window.drashti.pictures.page({ index: i, png, notes: '' }))) break;
+        continue;
+      }
       const at = fitPage(base.width, base.height, job.width, job.height);
       // The page on white (as it prints), with its content...
       sheet.width = at.w;
@@ -113,8 +132,8 @@ async function draw(): Promise<void> {
         // Comments are notes, not part of the picture.
         annotationMode: AnnotationMode.DISABLE,
       }).promise;
-      // ...in the middle of the picture, black either side.
-      ctx.fillStyle = '#000000';
+      // ...in the middle of the picture, black either side (white for reading its words: book OCR, alpha.21).
+      ctx.fillStyle = job.onWhite ? '#ffffff' : '#000000';
       ctx.fillRect(0, 0, job.width, job.height);
       ctx.drawImage(sheet, at.x, at.y);
       const png = await canvasPng(canvas);

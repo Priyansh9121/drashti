@@ -63,6 +63,25 @@ The library holds everything on this computer that can go on the screens: presen
 
 ![New… from words: placeholder lines in the words editor](../screenshots/new-from-words.png)
 
+## Read words from a scanned page
+
+**What it is.** In **New…**, **Read Words from a Page…** reads the Gujarati words of a scanned page, a picture or a PDF's pages, into the words box. Drashti reads them itself, with no internet.
+
+**When you would use it.** For a kirtan that is in a printed book or a scanned PDF, not typed anywhere yet.
+
+**How:**
+
+1. Open the **Library**, press **New…**, then **Read Words from a Page…**.
+2. Choose the page's picture (PNG, JPEG, TIFF, WebP, GIF or BMP), several pictures, or a PDF. Pictures are read at once, in the order of their names.
+3. For a PDF, type the pages to read, **from page** and **to page** (20 at most), and press **Read These Pages**.
+4. Wait for the bar to fill: a few seconds a page. **Stop Reading** stops it and adds nothing.
+5. Read the words over against the page and put them right: a vowel sign or a mark from the page's border can come out wrong. Add [Verse 1] lines and blank lines where slides should start.
+6. Give it a **Name** and press **Make slides**.
+
+It is for preparing slides: read pages before the sabha, not while slides are changing on the screens.
+
+![New…: Read Words from a Page… above the words](../screenshots/new-from-words.png)
+
 ## Books
 
 **What it is.** A passage from a book, found by its reference or by its words, shown as slides. The **Books** tab shows while **View › Show Books, Templates and Kirtan Details** is ticked.

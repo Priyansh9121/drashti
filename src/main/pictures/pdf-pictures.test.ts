@@ -292,3 +292,86 @@ describe('the size pictures are made at', () => {
     expect(pictureSize([screen('hall', 99_999, 10)], 'hall')).toEqual({ width: 7680, height: 180 });
   });
 });
+
+describe('Make a slide… (alpha.21): a part of a page drawn by the same window', () => {
+  it('asks one window for that part of the first page at the hall’s size, and hands back its PNG', async () => {
+    const t = setup([], { wide: () => true, atOnce: 3 });
+    const part = { x: 0, y: 0, w: 0.25, h: 0.5 };
+    const drawn = t.pictures.drawPart(new TextEncoder().encode('%PDF-1.4 printed page'), part);
+    const w = await t.opened();
+    const job = t.pictures.job(t.sender(w.webContents.id));
+    // One window even while several may draw at once; the first page only; the part, fitted into the hall's size.
+    expect(t.windows).toHaveLength(1);
+    expect(job).toMatchObject({ width: 1920, height: 1080, maxPages: 1, part });
+    expect(Buffer.from(job?.data ?? []).toString()).toBe('%PDF-1.4 printed page');
+    expect(await t.pictures.page(t.sender(w.webContents.id), { index: 0, png: PNG, notes: '' })).toBe(true);
+    t.pictures.done(t.sender(w.webContents.id), { total: 1, failed: [] });
+    const result = await drawn;
+    expect(result).toEqual({ ok: true, png: new Uint8Array(PNG) });
+    expect(w.destroyed).toBe(true);
+  });
+
+  it('says why when the window could not draw it', async () => {
+    const t = setup();
+    const drawn = t.pictures.drawPart(new TextEncoder().encode('%PDF-1.4 printed page'), {
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1,
+    });
+    const w = await t.opened();
+    t.pictures.done(t.sender(w.webContents.id), { total: 1, failed: [0] });
+    const result = await drawn;
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('drawing pages for reading their words (book OCR, alpha.21)', () => {
+  it('draws only the pages asked for, by one window even when several may, at the reading size on white', async () => {
+    const t = setup([], { wide: () => true, atOnce: 3 });
+    const out = join(t.dir, 'read');
+    const drawn = t.pictures.drawForReading(t.pdf, out, [1, 2], { width: 2480, height: 3508 });
+    const w = await t.opened();
+    const sender = t.sender(w.webContents.id);
+    expect(t.windows).toHaveLength(1);
+    expect(t.pictures.job(sender)).toMatchObject({
+      width: 2480,
+      height: 3508,
+      share: { pages: [1, 2] },
+      onWhite: true,
+    });
+    // A page not asked for is not kept.
+    await t.pictures.page(sender, { index: 0, png: PNG, notes: '' });
+    await t.pictures.page(sender, { index: 2, png: PNG, notes: '' });
+    await t.pictures.page(sender, { index: 1, png: PNG, notes: '' });
+    t.pictures.done(sender, { total: 5, failed: [] });
+    expect(await drawn).toEqual({
+      ok: true,
+      width: 2480,
+      height: 3508,
+      pages: [
+        { index: 1, file: join(out, 'page-0002.png'), notes: '' },
+        { index: 2, file: join(out, 'page-0003.png'), notes: '' },
+      ],
+      total: 5,
+      failed: [],
+    });
+    expect(existsSync(join(out, 'page-0001.png'))).toBe(false);
+  });
+
+  it('past the end of the document: no pages and its total, not a failure; an import still fails with none', async () => {
+    const t = setup();
+    const drawn = t.pictures.drawForReading(t.pdf, join(t.dir, 'read'), [3], { width: 2480, height: 3508 });
+    const w = await t.opened();
+    t.pictures.done(t.sender(w.webContents.id), { total: 3, failed: [] });
+    expect(await drawn).toMatchObject({ ok: true, pages: [], total: 3, failed: [] });
+    // A whole document drawn as before: none drawn is still a failure.
+    const whole = t.pictures.draw(t.pdf, join(t.dir, 'pages'));
+    for (let i = 0; i < 100 && t.windows.length < 2; i++) await new Promise((r) => setTimeout(r, 5));
+    const second = t.windows.at(-1);
+    if (!second) throw new Error('no window');
+    expect(t.pictures.job(t.sender(second.webContents.id))).not.toHaveProperty('onWhite');
+    t.pictures.done(t.sender(second.webContents.id), { total: 3, failed: [0, 1, 2] });
+    expect(await whole).toEqual({ ok: false, message: 'No page could be drawn.' });
+  });
+});

@@ -77,6 +77,12 @@ test("a node's Save Diagnostics writes the link, its screens and its copies, and
     expect(file).toMatch(/^Drashti diagnostics \d{4}-\d{2}-\d{2} \d{2}-\d{2}\.txt$/u);
     const text = readFileSync(join(desktop, file ?? ''), 'utf8');
     expect(text).toContain('== Drashti diagnostics (node) ==');
+    // Who and what made it (alpha.21, logs for 100+ installs (b)): the node, its install, the Main it follows.
+    expect(text).toMatch(/^Computer: \S/mu);
+    expect(text).toMatch(/^Install id: [0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/mu);
+    expect(text).toMatch(/^Access-list entry: none: a node, following Main “.+”$/mu);
+    expect(text).toMatch(/^Made in: the node$/mu);
+    expect(text).toMatch(/^Log: Today, \d{4}-\d{2}-\d{2}$/mu);
     expect(text).toContain('== Displays ==');
     expect(text).toMatch(/Follows Main ".+" at 127\.0\.0\.1 port \d+, paired /u);
     expect(text).toContain('Link: online since');

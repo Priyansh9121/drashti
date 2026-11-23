@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import type { NodeHealth, ToNode } from '../../shared/nodes';
-import { versionMismatch } from '../../shared/nodes';
+import { NODE_PROTOCOL, versionMismatch } from '../../shared/nodes';
 import {
   LinkClient,
   openMediaFromMain,
@@ -362,4 +363,37 @@ describe('the node link', () => {
     });
     expect(host.reports).toHaveLength(1);
   });
+});
+
+it('keeps a place for a paired node while new node feeds await pairing', async () => {
+  const { port, server: link } = await start();
+  const token = 'test-made-up-seat-node-token-0000000000';
+  link.setNodes([{ id: 'seat-node', name: 'Placeholder node', tokenHash: hashToken(token) }]);
+  const opened: WebSocket[] = [];
+  const open = () =>
+    new Promise<WebSocket>((resolve, reject) => {
+      const ws = new WebSocket(`wss://127.0.0.1:${String(port)}/node/v1/feed`, { rejectUnauthorized: false });
+      opened.push(ws);
+      ws.once('open', () => resolve(ws));
+      ws.on('error', reject);
+    });
+  try {
+    for (let i = 0; i < 120; i++) await open();
+    const node = await open();
+    const welcome = new Promise<ToNode>((resolve) =>
+      node.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToNode)),
+    );
+    node.send(
+      JSON.stringify({
+        type: 'hello',
+        token,
+        version: VERSION,
+        protocol: NODE_PROTOCOL,
+        engine: ENGINE_STATE_VERSION,
+      }),
+    );
+    expect(await welcome).toMatchObject({ type: 'welcome', node: { id: 'seat-node' } });
+  } finally {
+    for (const ws of opened) ws.terminate();
+  }
 });

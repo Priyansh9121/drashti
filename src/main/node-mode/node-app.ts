@@ -51,7 +51,9 @@ import { missingFontsIn } from '../../shared/screens';
 import { hallPictureOfScreens } from '../../shared/stage-layouts';
 import type { CrashFile } from '../crash-files';
 import type { CrashFilesChoice, DiagnosticsInput, NodeDiagnosticsInput } from '../diagnostics';
-import { saveNodeDiagnostics } from '../diagnostics';
+import { writeDiagnosticsFile } from '../diagnostics';
+import { blankQuoted } from '../log-commands';
+import { type LogPeriod, periodText } from '../../shared/log-period';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
 import { CHECK_EVERY_MS, OutputHeartbeat } from '../outputs/heartbeat';
@@ -80,7 +82,12 @@ import { isReportId, readReportDraft } from '../../shared/report';
 import type { GuideFiles } from '../guides';
 import { readManual } from '../manual-service';
 import { capturedPixelOrder } from '../library/pixel-order';
-import type { ReportFilesJob, ReportFilesMade } from '../report/report-files';
+import type {
+  DiagnosticsTextJob,
+  DiagnosticsTextMade,
+  ReportFilesJob,
+  ReportFilesMade,
+} from '../report/report-files';
 import { type HeldPicture, ReportService } from '../report/report-service';
 import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
@@ -134,7 +141,14 @@ export interface NodeAppDeps {
     chooseCrashFiles: () => Promise<CrashFilesChoice | null>;
     /** What the notice says once it is saved. */
     savedText: (path: string, crash: CrashFilesChoice) => string;
-    logFiles: () => string[];
+    /** The log files of a period's days, oldest first, and the days kept, newest first (alpha.21, logs (c)). */
+    logFilesOf: (period: LogPeriod, now: number) => string[];
+    logDays: () => readonly string[];
+    /** This install's own id, and this computer's name as the Access List would show it (alpha.21, logs (b)). */
+    installId: string;
+    computer: () => string;
+    /** Save Diagnostics' text, made by a report worker off the node's own thread. */
+    makeText: (job: DiagnosticsTextJob) => Promise<DiagnosticsTextMade>;
     desktop: () => string;
   };
   /**
@@ -154,7 +168,8 @@ export interface NodeAppDeps {
 export interface NodeAppHandle {
   /** A self-test's end is not the quit an update waits for. */
   holdUpdate: () => void;
-  saveDiagnostics: () => void;
+  /** Help › Save Diagnostics (alpha.21, logs (c)): of the period chosen. */
+  saveDiagnostics: (period: LogPeriod) => void;
   /** Help › Report a Problem… (x49): the node's window opens it. */
   reportProblem: () => void;
   runSelfTest: () => Promise<SelfTestResult>;
@@ -319,6 +334,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   let notice: string | null = null;
   let noticeTimer: NodeJS.Timeout | null = null;
   const say = (text: string) => {
+    // Every notice in the log (alpha.21, logs (a)), its names in quotes blanked.
+    log.info(`Notice: ${blankQuoted(text.replace(/\s+/gu, ' ').trim())}`);
     notice = text;
     if (noticeTimer) clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => {
@@ -1239,15 +1256,16 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   log.info(`Node: started${paired ? ` following Main “${paired.main.name}”` : ' (not paired yet)'}`);
 
   // ---- diagnostics (Session 17) ---------------------------------------------------------------------
-  const saveDiagnostics = () => {
+  const saveDiagnostics = (period: LogPeriod) => {
     void (async () => {
       const crash = await deps.diagnostics.chooseCrashFiles().catch(() => null);
-      if (crash) writeDiagnostics(crash);
+      if (crash) await writeDiagnostics(crash, period);
     })();
   };
-  /** The node's diagnostics as they stand now (Save Diagnostics, and a report's: x49). */
-  const nodeDiagnosticsInput = (crash: CrashFilesChoice): NodeDiagnosticsInput => {
+  /** The node's diagnostics as they stand now, with the log of the period chosen (Save Diagnostics, and a report's). */
+  const nodeDiagnosticsInput = (crash: CrashFilesChoice, period: LogPeriod): NodeDiagnosticsInput => {
     const status = manager.status();
+    const now = new Date();
     const displays = listDisplays();
     return {
       app: deps.diagnostics.app(),
@@ -1286,14 +1304,31 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       watchdog: deps.diagnostics.watchdogHistory(),
       crashJournal: deps.diagnostics.crashJournal(),
       crashFiles: crash,
-      logFiles: deps.diagnostics.logFiles(),
-      now: new Date(),
+      logFiles: deps.diagnostics.logFilesOf(period, now.getTime()),
+      now,
+      // Who and what made it (alpha.21, logs (b)): a node has no entry of its own on the access list.
+      who: {
+        computer: deps.diagnostics.computer(),
+        computerId: null,
+        installId: deps.diagnostics.installId,
+        grantId: null,
+        role: null,
+        made: 'node',
+        main: paired?.main.name ?? null,
+        period: periodText(period, now.getTime()),
+      },
     };
   };
-  const writeDiagnostics = (crash: CrashFilesChoice) => {
+  const writeDiagnostics = async (crash: CrashFilesChoice, period: LogPeriod) => {
     try {
-      const file = saveNodeDiagnostics(deps.diagnostics.desktop(), nodeDiagnosticsInput(crash));
-      log.info(`Node: diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
+      const input = nodeDiagnosticsInput(crash, period);
+      // Made by a report worker, off the node's own thread (a period's log can be days long), then written here.
+      const made = await deps.diagnostics.makeText({ kind: 'diagnostics-text', main: null, node: input });
+      if (!made.ok) throw new Error(made.message);
+      const file = writeDiagnosticsFile(deps.diagnostics.desktop(), input.now, made.text, crash);
+      log.info(
+        `Node: diagnostics saved to the Desktop (the log of ${periodText(period, input.now.getTime())})${crash.included ? ', with the crash files' : ''}`,
+      );
       say(deps.diagnostics.savedText(file, crash));
     } catch (error) {
       log.error('Node: could not save diagnostics', error);
@@ -1314,6 +1349,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     onAir: () => false,
     crashFiles: () => deps.reports.crashFiles(),
     diagnostics: () => Promise.reject(new Error('A node has its own diagnostics.')),
+    logDays: () => deps.diagnostics.logDays(),
     makeFiles: (job) => deps.reports.makeFiles(job),
     now: () => Date.now(),
     setTimer: (ms, run) => {
@@ -1337,8 +1373,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         paired && client
           ? postReportToMain(paired.main, client.host, paired.token, body, stop)
           : Promise.resolve(null),
-      diagnostics: (crashIncluded) =>
-        nodeDiagnosticsInput({ files: deps.reports.crashFiles(), included: crashIncluded }),
+      diagnostics: (crashIncluded, period) =>
+        nodeDiagnosticsInput({ files: deps.reports.crashFiles(), included: crashIncluded }, period),
     },
   });
   deps.atQuit('reports', () => {

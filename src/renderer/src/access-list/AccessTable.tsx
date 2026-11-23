@@ -48,7 +48,8 @@ const WIDTHS: Record<AccessColumn, number> = {
   shows: 80,
   streams: 88,
   recordings: 104,
-  imports: 84,
+  // "Imports" whole beside its sort arrow (alpha.21's fit pass: at 84 it was cut by 2 px).
+  imports: 88,
   note: 280,
 };
 const TABLE_WIDTH = Object.values(WIDTHS).reduce((a, b) => a + b, 0);
