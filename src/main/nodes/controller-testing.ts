@@ -4,13 +4,13 @@ import { openDatabase } from '../db/database';
 import { NodeRepo } from '../db/nodes';
 import { ScreenRepo } from '../db/screens';
 import { SettingsRepo } from '../db/settings';
-import { ShowEngine } from '../engine/show-engine';
+import { ShowEngine, type EngineOptions } from '../engine/show-engine';
 import { makeSource } from '../engine/testing';
 import { NodeService, type NodeServiceDeps } from './node-service';
 import type { LinkWorker } from './link-worker';
 import type { FromLinkWorker, ToLinkWorker } from './worker/protocol';
 
-export function controllerTest() {
+export function controllerTest(options: EngineOptions = {}) {
   const db = openDatabase(':memory:');
   const nodes = new NodeRepo(db);
   const screens = new ScreenRepo(db);
@@ -33,6 +33,8 @@ export function controllerTest() {
       broadcast: (message) => service.broadcast(message),
     },
     () => ++now,
+    undefined,
+    options,
   );
   const deps: NodeServiceDeps = {
     nodes,
@@ -65,6 +67,7 @@ export function controllerTest() {
       snapshot: () => engine.snapshot(),
       state: () => engine.current,
       rev: () => engine.rev,
+      acceptsPress: (rev, session) => engine.acceptsPress(rev, session),
       session: engine.session,
     },
     runShowAction: (command: EngineCommand) => {
