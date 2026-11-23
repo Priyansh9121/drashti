@@ -341,7 +341,7 @@ describe('a model per language and live timing (alpha.22)', () => {
     service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'gu' });
     expect(started).toEqual(['auto']);
     const message =
-      'The Gujarati model’s file has changed since Drashti checked it, so captions do not use it. Check it again, or add its file again.';
+      'The Gujarati model’s file has changed since Drashti checked it, so captions do not use it. Check it again, or import the model pack again (Help › Caption and Translation Models…).';
     expect(service.view().speech).toEqual({ phase: 'failed', message });
     expect(service.view().languageModels[0]).toMatchObject({ phase: 'changed', message });
     expect(service.languageModelFor('gu')).toBeNull();
@@ -365,7 +365,8 @@ describe('a model per language and live timing (alpha.22)', () => {
     await service.setOn(true);
     service.setLanguageModel('gu', 'placeholder-gu');
     service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'gu' });
-    const message = 'The Gujarati model is not on this computer: add its file in File › Live Captions….';
+    const message =
+      'The Gujarati model is not on this computer: import the model pack that holds it (Help › Caption and Translation Models…).';
     expect(service.view().speech).toEqual({ phase: 'failed', message });
     expect(service.view().languageModels[0]).toMatchObject({ phase: 'missing', message });
     expect(started).toEqual(['auto']);

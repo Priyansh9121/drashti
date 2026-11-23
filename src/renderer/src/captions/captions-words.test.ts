@@ -93,6 +93,9 @@ describe('a model per language and live timing in the dialog (alpha.22)', () => 
       'Hindi’s own model hears Hindi when the speaker’s language is Hindi. It is on this computer and checked.',
     );
     expect(languageModelText(model({ phase: 'checking' }))).toBe('Checking the file…');
+    expect(languageModelText(model({ phase: 'missing', chosen: 'placeholder-gu' }))).toBe(
+      'The Gujarati model is not on this computer: import the model pack that holds it.',
+    );
     expect(
       languageModelText(model({ phase: 'changed', chosen: 'placeholder-gu', message: 'Placeholder.' })),
     ).toBe('Placeholder.');
