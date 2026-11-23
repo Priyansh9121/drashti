@@ -24,6 +24,7 @@ const ENTRIES: Record<BridgePage, string> = {
   pdf: 'pictures/main.ts',
   'pdf-export': 'pdf-export/main.tsx',
   sharpen: 'sharpen/main.ts',
+  'display-copy': 'sharpen/display-main.ts',
   gallery: 'gallery/main.tsx',
   zoom: 'zoom/main.tsx',
   lock: 'access/main.tsx',
@@ -71,6 +72,12 @@ function groupsUsed(files: Iterable<string>): string[] {
 }
 
 describe('a narrower bridge (ARCH-7)', () => {
+  it('keeps the sharpening window to its own group: only the display copies' worker has theirs (QA22-L8-2)', () => {
+    expect(PAGE_GROUPS.sharpen).toEqual(['sharpen']);
+    expect(PAGE_GROUPS['display-copy']).toEqual(['displayCopies']);
+    expect(pageOf('file:///x/out/renderer/display-copy.html')).toBe('display-copy');
+  });
+
   it('gives each page exactly the groups its code uses, walked from its entry', () => {
     for (const [page, entry] of Object.entries(ENTRIES) as [BridgePage, string][])
       expect(groupsUsed(reached(join(RENDERER, entry))), page).toEqual([...PAGE_GROUPS[page]].sort());
