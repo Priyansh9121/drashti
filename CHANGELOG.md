@@ -6,8 +6,9 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Update after a sabha, and update Main and nodes together.
 
-- Read Words from a Page… (Library, New…): the Gujarati words of a scanned page, a picture or a PDF’s pages come into the words box, read on this computer with no internet, to read over before Make slides.
-- PDF pages › Make a slide… (Pro Mode, the slide editor): a slide from a PDF page or from the part you drag a frame over, or Add this part across pages, then one slide each in one go (not while on air), into the open playlist or the library. Crop picture is dragged with a frame: no numbers to type.
+- Read Words from a Page… (Library, New…): a scanned page’s, a picture’s or a PDF’s Gujarati words come into the words box, read with no internet, to check before Make slides.
+- PDF pages (Pro Mode, the slide editor): Make a slide… from a page, a part you drag a frame over, or parts of several pages at once (not on air); Extract pages… (to a presentation or a new PDF), Replace page…, Split… and Hand-out… (page numbers, header, footer, watermark), with Undo, wait while on air or recording; an edited paragraph wraps as one box, new Gujarati and Hindi letters use Drashti’s own fonts, Find and replace searches the pages, and a mark can come in with Next. Crop picture is dragged with a frame.
+- Edit slides… › Translate… (Pro Mode): a Gujarati, Hindi or English translation written under a text box’s words shows on the screens you choose once a named reader has checked it; Off at first, and no translation engine yet.
 - The operator window fits at every size, in both modes: the LIVE block (the picture, Back and Next, the levels) stays still while the rest scrolls; the narrowest side columns keep the Wallpapers heading, an undo note and Back and Next whole; a notice stands at the live column’s foot, never over its controls, with Report this… and Dismiss easier to hit.
 - Everything fits at its smallest size: titles wrap instead of being cut; the QR code window, the slide editor’s tools, the Lower Thirds templates (name and star under the picture) and long names show whole; on a phone the remote held sideways has its own layout with the live picture whole, and no page scrolls sideways.
 - Playback: a paused video’s row has no Paused badge (its Play button says so) and room for its times. Last 10 s is gone; a video’s last 10 seconds still turn amber, and the stage’s Video ends in stays.
@@ -17,8 +18,9 @@ Update after a sabha, and update Main and nodes together.
 - Importing a picture or a video never waits on this computer’s answer about HEVC video: the answer now always comes.
 - Edit Video…: Also add the clip to Media stands on its own line above Export clip….
 - On a busy computer, Save as MP4… no longer fails to find its clean frames, a failed conversion always gives FFmpeg’s reason, and a deck imported with PowerPoint or Keynote is read whole.
-- Logs for many computers: Drashti keeps one log a day for 30 days; every report names its computer, access entry, role, version and system; Help › Save Diagnostics saves Today…, Yesterday…, The Last 7 Days… or One Day.
-- Automatic error reports, off until the access list’s owner turns them on for a computer (Help › Automatic Error Reports…): after an error notice, a crash or a failed stream, a short coded report (never slide words, names, email addresses or crash files) goes to the owner’s own private Sheet and Drive folder, at most 10 a day, never while streaming or recording.
+- A full or failing disk: a recording stops with a notice, never still saying Recording, while the stream goes on; a stopped video encoder is started again, the recording going on in a new part; slides from words keep the words and say to free space.
+- Logs for many computers: one log a day, kept 30 days; every report names its computer, access entry, role, version and system; Help › Save Diagnostics saves Today…, Yesterday…, The Last 7 Days… or One Day, and notices name it so; the log blanks a notice’s library names.
+- Automatic error reports, off until the access list’s owner turns them on (Help › Automatic Error Reports…): after an error, a crash or a failed stream, a short coded report (no slide words, names, email addresses or crash files) goes to the owner’s own Sheet and Drive folder, at most 10 a day, never while on air or recording.
 - Safer: Drashti checks more strictly that every request it answers comes from one of its own windows. The admin guide says when Request Access works again after Too many tries for now.
 
 ## 1.0.0-alpha.20.1 (22 Nov 2026)
