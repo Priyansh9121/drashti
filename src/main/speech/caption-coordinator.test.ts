@@ -434,8 +434,10 @@ describe('phase D caption coordinator', () => {
     // Heard times are Date.now(); the coordinator's own clock is monotonic. A time sync (or a Mac waking from
     // sleep) moves one against the other mid-session: phrases must still show (review M1).
     vi.useRealTimers();
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
     vi.setSystemTime(new Date('2026-11-23T09:00:00Z'));
+    // A minute into the run on both clocks (a fresh test worker's performance.now() is under a phrase's length).
+    vi.advanceTimersByTime(60_000);
     const shown: (CaptionsShown | null)[] = [];
     const c = new CaptionCoordinator({
       mayTranslate: () => false,
