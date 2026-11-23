@@ -11,7 +11,7 @@ export interface PreparedTranslation {
   reviewFingerprint: string | null;
 }
 
-// A lossless fingerprint avoids collisions and works identically in every renderer.
+// Lossless encoding of the app’s canonical NFC source avoids collisions across renderers.
 export const sourceFingerprint = (source: string): string => JSON.stringify(source.normalize('NFC'));
 
 export const reviewFingerprint = (

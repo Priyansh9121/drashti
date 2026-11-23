@@ -170,14 +170,26 @@ export function elementFromRow(row: ElementRow): SlideElement | null {
     return null;
   }
   if (typeof props !== 'object' || props === null) return null;
-  const candidate = {
+  const candidate: Record<string, unknown> = {
     ...props,
     id: row.id,
     kind: row.kind,
     frame: { x: row.x, y: row.y, width: row.width, height: row.height },
     ...(row.rotation ? { rotation: row.rotation } : {}),
   };
-  const parsed = slideElementSchema.safeParse(candidate);
+  let parsed = slideElementSchema.safeParse(candidate);
+  // Optional translation metadata must never remove otherwise valid original words.
+  // The editor's write boundary still refuses malformed attachments in full.
+  if (
+    !parsed.success &&
+    row.kind === 'text' &&
+    ('translations' in candidate || 'translationDisplay' in candidate)
+  ) {
+    const original = { ...candidate };
+    delete original['translations'];
+    delete original['translationDisplay'];
+    parsed = slideElementSchema.safeParse(original);
+  }
   return parsed.success
     ? parsed.data.kind === 'text'
       ? refreshTranslationReview(parsed.data)
