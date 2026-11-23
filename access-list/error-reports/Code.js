@@ -46,6 +46,10 @@ function errorEnv_() {
           'OS release',
         ]);
         sheet.setFrozenRows(1);
+        // IDs and versions are text, even when all digits: preserve leading zeroes and exact duplicate keys.
+        sheet.getRange('A:B').setNumberFormat('@');
+        sheet.getRange('E:L').setNumberFormat('@');
+        sheet.getRange('S:V').setNumberFormat('@');
       }
     }
     return sheet;
