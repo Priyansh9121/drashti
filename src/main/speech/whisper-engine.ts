@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { constants, setPriority } from 'node:os';
 import { SPEECH_RATE, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
+import type { CaptionHints } from './caption-hints';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
 
@@ -43,6 +44,8 @@ export interface WhisperEngineOptions {
   maxMs?: number;
   /** Held this long when it could not keep up, then tried again. */
   restMs?: number;
+  /** The admin's caption words for the language listened in (alpha.22), given to whisper.cpp as its prompt. */
+  hints?: CaptionHints;
 }
 
 const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
@@ -240,6 +243,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         form.append('language', language);
         // The decode already reports its language. Asking for probabilities runs detection again.
         form.append('no_language_probabilities', 'true');
+        // The admin's caption words, as whisper.cpp's initial prompt (at most 200 bytes): none, none sent.
+        const prompt = o.hints?.for(language).prompt ?? '';
+        if (prompt !== '') form.append('prompt', prompt);
         const began = Date.now();
         const response = await get(`${address}/inference`, {
           method: 'POST',

@@ -5,7 +5,8 @@
  * answers as whisper.cpp's whisper-server does (the program Drashti runs on Windows), for what Drashti asks:
  *   GET  /health     200 {"status":"ok"} (the model is loaded before it listens)
  *   POST /inference  multipart/form-data: file (a 16 kHz mono 16-bit WAV), language ("auto" or a code),
- *                    temperature, temperature_inc, no_language_probabilities; the reply is whisper-server's
+ *                    temperature, temperature_inc, no_language_probabilities, and prompt (the admin's caption
+ *                    words, at most 200 bytes, as whisper's initial prompt: alpha.22); the reply is whisper-server's
  *                    verbose_json: language, language_probabilities, segments with their words (tokens).
  * It listens on 127.0.0.1 only, one request at a time, and writes nothing it hears anywhere (no log, no file).
  * Both routes need a private --request-path prefix chosen by Drashti for this process.
@@ -349,6 +350,9 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
   if (field(ps, n, "temperature_inc")) text_of(field(ps, n, "temperature_inc"), temperature_inc, sizeof temperature_inc);
   if (field(ps, n, "no_language_probabilities"))
     text_of(field(ps, n, "no_language_probabilities"), no_probs, sizeof no_probs);
+  /* Drashti sends at most 200 bytes; anything longer is cut here, never read past. */
+  char prompt[512] = "";
+  if (field(ps, n, "prompt")) text_of(field(ps, n, "prompt"), prompt, sizeof prompt);
   int count = 0;
   float *pcm = samples_of((const unsigned char *)file->data, file->size, &count);
   if (!pcm) {
@@ -369,6 +373,7 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
   wp.detect_language = false;
   wp.temperature = strtof(temperature, NULL);
   wp.temperature_inc = strtof(temperature_inc, NULL);
+  if (prompt[0] != 0) wp.initial_prompt = prompt;
   if (whisper_full(ctx, wp, pcm, count) != 0) {
     free(pcm);
     reply(fd, 500, "{\"error\":\"failed to process audio\"}");
