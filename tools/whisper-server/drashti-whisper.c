@@ -358,9 +358,6 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
   if (field(ps, n, "temperature_inc")) text_of(field(ps, n, "temperature_inc"), temperature_inc, sizeof temperature_inc);
   if (field(ps, n, "no_language_probabilities"))
     text_of(field(ps, n, "no_language_probabilities"), no_probs, sizeof no_probs);
-  /* Drashti sends at most 200 bytes; anything longer is cut here, never read past. */
-  char prompt[512] = "";
-  if (field(ps, n, "prompt")) text_of(field(ps, n, "prompt"), prompt, sizeof prompt);
   int count = 0;
   float *pcm = samples_of((const unsigned char *)file->data, file->size, &count);
   if (!pcm) {
@@ -381,7 +378,6 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
   wp.detect_language = false;
   wp.temperature = strtof(temperature, NULL);
   wp.temperature_inc = strtof(temperature_inc, NULL);
-  if (prompt[0] != 0) wp.initial_prompt = prompt;
   /* A model trained without timestamps (alpha.22, the tuned Gujarati and Hindi ones): <|notimestamps|>, and no
      token times (whisper-server leaves them off then too); Drashti gives such words their whole clip. */
   if (strcmp(no_times, "true") == 0) {
