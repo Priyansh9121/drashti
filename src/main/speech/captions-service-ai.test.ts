@@ -33,7 +33,15 @@ const SPELLING: CaptionSpelling = (h) => {
   return { ...h, words, text: words.map((w) => w.text).join(' ') };
 };
 
-function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<SpeechLanguage, string>> } = {}) {
+function setup(
+  o: {
+    ai?: boolean;
+    aiWired?: boolean;
+    pack?: Partial<Record<SpeechLanguage, string>>;
+    /** The caption words' fixer given to the service (cap-glossary's spell), not to caption AI's path. */
+    spellInService?: boolean;
+  } = {},
+) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-ai-'));
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS, audience: true };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
@@ -101,8 +109,9 @@ function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<Speec
               return { route: 'whisper', modelId, engine: made.get(modelId) ?? recognizer(modelId) };
             },
             coordinator,
-            spelling: SPELLING,
+            ...(o.spellInService ? {} : { spelling: SPELLING }),
           },
+          ...(o.spellInService ? { spell: SPELLING } : {}),
         }
       : deps,
   );
@@ -309,6 +318,16 @@ describe('caption AI in the captions service', () => {
     vi.advanceTimersByTime(300);
     expect(t.lines()).toEqual(['વાદળી ખોખું']);
     expect(t.service.prototypeView().current).toMatchObject({ status: 'corrected' });
+    t.service.close();
+  });
+
+  it('the caption words’ fixer given to the service (cap-glossary’s) puts a spelling right on caption AI’s path too', async () => {
+    const t = setup({ ai: true, pack: { gu: GU }, spellInService: true });
+    t.choose('gu');
+    await t.service.setOn(true);
+    t.say('લીલું ખોખુ', true, 's1');
+    vi.advanceTimersByTime(300);
+    expect(t.lines()).toEqual(['લીલું ખોખું']);
     t.service.close();
   });
 });
