@@ -71,23 +71,27 @@ test('a newly typed Gujarati letter uses bundled Noto on the page and stays sear
     );
     expect(fonts.some((family) => family.includes('Noto Sans Gujarati'))).toBe(true);
     // Independent shaped-glyph reference from the bundled font, not the source subset or PDF text map.
-    const reference = await s.ed.evaluate((text) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 240;
-      canvas.height = 60;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('No reference canvas');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#000000';
-      ctx.font = '400 12px "Noto Sans Gujarati"';
-      ctx.fillText(text, 20, 30);
-      return {
-        pixels: [...ctx.getImageData(0, 0, canvas.width, canvas.height).data],
-        width: canvas.width,
-        height: canvas.height,
-      };
-    }, letters);
+    const fontSize = await rendered.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+    const reference = await s.ed.evaluate(
+      ({ text, fontSize }) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 240;
+        canvas.height = 60;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('No reference canvas');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#000000';
+        ctx.font = `400 ${fontSize}px "Noto Sans Gujarati"`;
+        ctx.fillText(text, 20, 30);
+        return {
+          pixels: [...ctx.getImageData(0, 0, canvas.width, canvas.height).data],
+          width: canvas.width,
+          height: canvas.height,
+        };
+      },
+      { text: letters, fontSize },
+    );
     await usePdfTools(s.ed);
     const output = join(s.folder, 'Placeholder Gujarati copy.pdf');
     await savePdfCopy(s.app, s.ed, output);
