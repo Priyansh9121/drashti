@@ -386,7 +386,13 @@ it('validates the final cropped viewport while printing and normalizing the comp
   const s = setup({ width: 480, height: 320 }, false, 1, { x: 0.25, y: 0.125, w: 0.5, h: 0.75 });
   expect(await s.session.print(s.own, s.job.id, 0)).toBeInstanceOf(Uint8Array);
   expect(await s.session.normalized(s.own, s.job.id, 0, metadata)).toBeInstanceOf(Uint8Array);
-  expect(s.normalize.mock.calls[0]?.[2]).toEqual({ width: 480, height: 320 });
+  expect(s.normalize.mock.calls[0]?.[2]).toEqual({
+    id: 'placeholder-page',
+    width: 480,
+    height: 320,
+    background: '#ffffff',
+    elements: [],
+  });
   expect(
     s.session.done(s.own, {
       id: s.job.id,
