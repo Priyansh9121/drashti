@@ -92,3 +92,8 @@ test('H6 G-E2: a local listener gone for two minutes reports reconnecting while 
     if (app.process().exitCode === null) await app.close();
   }
 });
+
+test.afterEach(() => {
+  const info = test.info();
+  console.log(`HUNT-x71 case=${info.title} status=${String(info.status)}`);
+});

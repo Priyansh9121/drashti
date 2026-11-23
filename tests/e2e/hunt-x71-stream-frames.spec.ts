@@ -125,3 +125,8 @@ test('H6 G-E1: encoder frames stay lit through owner-shaped video, dissolve, dec
     await app.close();
   }
 });
+
+test.afterEach(() => {
+  const info = test.info();
+  console.log(`HUNT-x71 case=${info.title} status=${String(info.status)}`);
+});

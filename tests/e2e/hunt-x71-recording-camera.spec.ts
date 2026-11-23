@@ -130,3 +130,8 @@ test('H6 G-E3: a camera track ending on air reports missing without interrupting
     }
   }
 });
+
+test.afterEach(() => {
+  const info = test.info();
+  console.log(`HUNT-x71 case=${info.title} status=${String(info.status)}`);
+});
