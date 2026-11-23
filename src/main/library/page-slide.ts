@@ -1,4 +1,5 @@
 import type { NewPresentation } from '../db/presentations';
+import type { MediaElement } from '../../shared/model';
 
 /*
  * Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): a PDF page, or the part of
@@ -13,9 +14,21 @@ export function pageSlidePresentation(
   mediaId: string,
   size: { width: number; height: number },
 ): NewPresentation & { width: number; height: number } {
-  void libraryId;
-  void name;
-  void mediaId;
-  void size;
-  throw new Error('not yet');
+  const page: MediaElement = {
+    id: 'page',
+    kind: 'image',
+    frame: { x: 0, y: 0, width: size.width, height: size.height },
+    mediaId,
+    fit: 'fit',
+  };
+  return {
+    libraryId,
+    name,
+    width: size.width,
+    height: size.height,
+    groups: [{ name: '', color: null, slides: [{ elements: [page], background: '#000000' }] }],
+    arrangements: [],
+    selectedArrangement: null,
+    source: { kind: 'drashti', path: null, ref: null, importedAt: null },
+  };
 }

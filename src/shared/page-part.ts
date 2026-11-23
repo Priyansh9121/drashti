@@ -53,17 +53,23 @@ export function partDrawing(
   page: { width: number; height: number },
   room: { width: number; height: number },
 ): PartDrawing {
-  void part;
-  void page;
-  void room;
-  throw new Error('not yet');
+  const w = Math.max(part.w * page.width, Number.MIN_VALUE);
+  const h = Math.max(part.h * page.height, Number.MIN_VALUE);
+  const scale = Math.min(room.width / w, room.height / h);
+  return {
+    scale,
+    width: Math.max(1, Math.round(w * scale)),
+    height: Math.max(1, Math.round(h * scale)),
+    dx: part.x * page.width * scale,
+    dy: part.y * page.height * scale,
+  };
 }
+
+/** A presentation's name is at most this long. */
+const NAME_MAX = 200;
 
 /** The made slide's name: the presentation's, its page's number, and "(part)" for a part of it. */
 export function madeSlideName(presentation: string, pageNumber: number, whole: boolean): string {
-  void presentation;
-  void pageNumber;
-  void whole;
-  void cutText;
-  throw new Error('not yet');
+  const end = `, page ${String(pageNumber)}${whole ? '' : ' (part)'}`;
+  return `${cutText(presentation.trim(), NAME_MAX - end.length, '…')}${end}`;
 }

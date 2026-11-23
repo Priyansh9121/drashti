@@ -115,7 +115,9 @@ test('Make a slide… makes a slide of the part of a PDF page dragged out, sharp
     expect(made.frame).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
     expect(near(made.colours[0], [179, 38, 26]), `red block ${JSON.stringify(made.colours[0])}`).toBe(true);
     expect(near(made.colours[1], [48, 28, 64]), `first stripe ${JSON.stringify(made.colours[1])}`).toBe(true);
-    expect(near(made.colours[2], [18, 59, 79]), `second stripe ${JSON.stringify(made.colours[2])}`).toBe(true);
+    expect(near(made.colours[2], [18, 59, 79]), `second stripe ${JSON.stringify(made.colours[2])}`).toBe(
+      true,
+    );
     unchanged();
 
     // One Undo in the operator window takes the row and the presentation away.
@@ -127,7 +129,9 @@ test('Make a slide… makes a slide of the part of a PDF page dragged out, sharp
       .poll(() =>
         win.evaluate(
           async (name) =>
-            (await (globalThis as PageGlobals).drashti.library.listPresentations()).some((p) => p.name === name),
+            (await (globalThis as PageGlobals).drashti.library.listPresentations()).some(
+              (p) => p.name === name,
+            ),
           name,
         ),
       )

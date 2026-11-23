@@ -48,7 +48,9 @@ describe('shownCrop and keptCrop', () => {
 describe('cropReadout', () => {
   it('says what is taken off each side, in whole percent', () => {
     expect(cropReadout({ x: 0, y: 0, w: 1, h: 1 })).toBe('Taken off: left 0%, top 0%, right 0%, bottom 0%');
-    expect(cropReadout({ x: 0, y: 0, w: 0.4975, h: 1 })).toBe('Taken off: left 0%, top 0%, right 50%, bottom 0%');
+    expect(cropReadout({ x: 0, y: 0, w: 0.4975, h: 1 })).toBe(
+      'Taken off: left 0%, top 0%, right 50%, bottom 0%',
+    );
     expect(cropReadout({ x: 0.25, y: 0.1, w: 0.5, h: 0.4 })).toBe(
       'Taken off: left 25%, top 10%, right 25%, bottom 50%',
     );
