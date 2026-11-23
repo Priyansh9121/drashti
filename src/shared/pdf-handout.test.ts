@@ -76,6 +76,31 @@ describe('PDF hand-out one master', () => {
     expect(header.frame.y).toBeCloseTo(12.5, 8);
     expect(numbers.frame.y + numbers.frame.height).toBeCloseTo(487.5, 8);
   });
+  // pdf-pages-handout.spec:136 on CI's Mac and Windows (a21-take-pdf-1123-220811-90705): on the portrait page of a
+  // landscape PDF the watermark's letters grew by the paper's height while its box narrowed by its width, so
+  // "Placeholder draft" broke onto two lines. Words keep their size against their box on every paper.
+  it('keeps each hand-out box’s words in proportion to the box on a portrait page of a landscape master', () => {
+    const doc = pdfHandout(fixture(), {
+      header: 'Placeholder header',
+      footer: 'Placeholder footer',
+      watermark: 'Placeholder draft',
+      numbers: true,
+    });
+    const portrait = required(required(doc.groups[0]).slides[1]);
+    portrait.pageSize = { width: 300, height: 500 };
+    const rendered = renderEditedSlide(doc, portrait);
+    for (const key of ['header', 'footer', 'watermark', 'numbers']) {
+      const master = required(doc.master?.elements.find((e) => e.name === `PDF hand-out ${key}`));
+      const drawn = required(rendered.elements.find((e) => e.name === `PDF hand-out ${key}`));
+      if (master.kind !== 'text' || drawn.kind !== 'text') throw new Error('A hand-out box is not text.');
+      expect(drawn.style.fontSize / drawn.frame.width, key).toBeLessThanOrEqual(
+        master.style.fontSize / master.frame.width + 1e-9,
+      );
+      expect(drawn.style.fontSize / drawn.frame.height, key).toBeLessThanOrEqual(
+        master.style.fontSize / master.frame.height + 1e-9,
+      );
+    }
+  });
   it('preserves existing master elements and resolves numbers again after page reordering', () => {
     let doc = pdfHandout(fixture(), { header: '', footer: '', watermark: '', numbers: true });
     const existing = {
