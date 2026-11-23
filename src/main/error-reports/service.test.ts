@@ -49,6 +49,43 @@ function setup() {
   return { service, deps, configure, sent, state, dir };
 }
 describe('automatic error reports', () => {
+  it('never collects diagnostics while off or capped', () => {
+    const s = setup();
+    let collected = 0;
+    const collect = () => {
+      collected++;
+      return incident();
+    };
+    expect(s.service.captureWith(collect)).toBe(false);
+    expect(collected).toBe(0);
+    s.configure();
+    s.service.enable(true);
+    for (let i = 0; i < 10; i++) expect(s.service.captureWith(collect)).toBe(true);
+    for (let i = 0; i < 100; i++) expect(s.service.captureWith(collect)).toBe(false);
+    expect(collected).toBe(10);
+  });
+
+  it('flushes coalesced dropped counts on idle wake and normal close, with no later send from the closed service', async () => {
+    const s = setup();
+    s.configure();
+    s.service.enable(true);
+    s.state.received = false;
+    for (let i = 0; i < 11; i++) s.service.capture(incident());
+    await s.service.wake();
+    const file = join(s.dir, 'state.json');
+    const saved = (): { dropped: number } => JSON.parse(readFileSync(file, 'utf8')) as { dropped: number };
+    expect(saved().dropped).toBe(1);
+    for (let i = 0; i < 5; i++) expect(s.service.capture(incident())).toBe(false);
+    expect(saved().dropped).toBe(1);
+    s.service.dispose();
+    expect(saved().dropped).toBe(6);
+    await s.service.wake();
+    expect(s.sent).toHaveLength(1);
+    expect(s.service.capture(incident())).toBe(false);
+    expect(s.service.enable(true)).toBe(false);
+    expect(s.configure()).toBe(false);
+  });
+
   it('does not rewrite the outbox for an error storm after the cap, and counts those errors in the next report', () => {
     const s = setup();
     s.configure();
