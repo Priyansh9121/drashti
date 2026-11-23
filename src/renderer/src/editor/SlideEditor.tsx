@@ -470,7 +470,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mac, saveWhenReady]);
+  }, [mac, saveWhenReady, translating]);
 
   return (
     <div

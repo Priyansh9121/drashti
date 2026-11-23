@@ -192,13 +192,19 @@ test('hall, explicit screen Off and stage use their own saved checked targets; S
     const box = opened.doc.groups[0]?.slides[0]?.elements.find((element) => element.kind === 'text');
     if (box?.kind !== 'text' || !box.translationDisplay) throw new Error('Missing translation setup');
     box.translationDisplay.choice = 'off';
+    const list = await d.playlists.create('Placeholder translation playlist', null, false);
+    if (!list.ok || !list.ids[0]) throw new Error('No placeholder playlist');
+    const added = await d.playlists.addItems(list.ids[0], null, [
+      { kind: 'presentation', presentationId: pid },
+    ]);
+    if (!added.ok) throw new Error(added.message);
     const mode = await d.app.setMode('simple');
     if (!mode.ok) throw new Error(mode.message);
     return d.library.saveSlides(pid, opened.doc, opened.stamp, false);
   }, id);
   expect(refused.ok).toBe(false);
   if (refused.ok) throw new Error('Simple Mode changed a translation');
-  expect(refused.message).toContain('Pro Mode');
+  expect(refused.message).toBe('Use Pro Mode to change or check translations.');
   await expect(hallPage.getByTestId('output-root')).toContainText('Placeholder Gujarati Q7');
   await app.close();
 });
@@ -223,4 +229,60 @@ test('translation review fits the least editor size, keeps focus and readable sc
   await expect(review).toHaveCount(0);
   await expect(ed.getByRole('button', { name: 'Translate…', exact: true })).toBeFocused();
   await app.close();
+});
+
+test('portable export/import carries checked and unchecked prepared words with their remapped source', async () => {
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  const id = await fixture(win);
+  const opened = await editor(first.app, win);
+  await check(opened.review, 'Placeholder Q7');
+  await opened.review.getByLabel('Target language', { exact: true }).selectOption('hi');
+  await opened.review.getByLabel('Translation words', { exact: true }).first().fill('Placeholder R8');
+  await expect(opened.review.getByTestId('translation-review-state').first()).toHaveText('Unchecked');
+  await opened.review.getByText('Where checked translations show', { exact: true }).click();
+  await opened.review.getByLabel('Presentation translation', { exact: true }).selectOption('gu');
+  await save(first.app, opened.ed, opened.review);
+  const bundle = join(
+    mkdtempSync(join(tmpdir(), 'drashti-translation-bundle-')),
+    'Placeholder prepared.drashti-kirtans',
+  );
+  await first.app.evaluate(({ dialog }, file) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: file });
+  }, bundle);
+  const exported = await win.evaluate(async (pid) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const details = await d.kirtans.setDetails(pid, {
+      category: null,
+      kavi: null,
+      raag: null,
+      occasions: [],
+      audioMediaId: null,
+    });
+    if (!details.ok) throw new Error(details.message);
+    return d.kirtans.exportBundle({ presentationIds: [pid], includeMedia: false });
+  }, id);
+  expect(exported.ok).toBe(true);
+  await first.app.close();
+  const second = await launchApp();
+  const target = await operatorPage(second.app);
+  const [received] = await importAndGetIds(target, [bundle]);
+  expect(received).toBeTruthy();
+  expect(received).not.toBe(id);
+  const review = await editor(second.app, target);
+  await expect(review.review.getByLabel('Translation words', { exact: true }).first()).toHaveValue(
+    'Placeholder Q7',
+  );
+  await expect(review.review.getByTestId('translation-review-state').first()).toHaveText(
+    'Checked by Reader Q',
+  );
+  await expect(review.review.getByTestId('translation-preview')).toContainText('Placeholder Q7');
+  await review.review.getByLabel('Target language', { exact: true }).selectOption('hi');
+  await expect(review.review.getByLabel('Translation words', { exact: true }).first()).toHaveValue(
+    'Placeholder R8',
+  );
+  await expect(review.review.getByTestId('translation-review-state').first()).toHaveText('Unchecked');
+  await expect(review.review.getByTestId('translation-preview')).not.toContainText('Placeholder R8');
+  await expect(review.review).toContainText('No engine installed');
+  await second.app.close();
 });
