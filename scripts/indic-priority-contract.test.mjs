@@ -33,3 +33,79 @@ test('native model load is admitted only after priority is established', async (
     pipe.close();
   }
 });
+
+test('a failed priority assignment never admits load and closes its child', async () => {
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    kill() {
+      this.killed = true;
+    },
+    pid: 1,
+  });
+  const writes = [];
+  child.stdin.on('data', (data) => writes.push(data));
+  await assert.rejects(
+    openIndicPipe({
+      program: '/fake',
+      language: 'gu',
+      files: { model: '/model', tokens: '/tokens', frontend: '/frontend' },
+      spawn: () => child,
+      priority: () => {
+        throw new Error('priority');
+      },
+    }),
+    /priority/,
+  );
+  assert.deepEqual(writes, []);
+  assert.equal(child.killed, true);
+});
+
+test('a private request is rejected on close and no late reply is reused', async () => {
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    kill() {},
+    pid: 1,
+  });
+  const opening = openIndicPipe({
+    program: '/fake',
+    language: 'gu',
+    files: { model: '/model', tokens: '/tokens', frontend: '/frontend' },
+    spawn: () => child,
+    priority() {},
+  });
+  child.stdout.emit('data', Buffer.from('{"ready":true}\n'));
+  const pipe = await opening;
+  const pending = pipe.decode(new Int16Array([1, 2]));
+  const cancelled = assert.rejects(pending, /closed/);
+  assert.throws(() => pipe.decode(new Int16Array([3, 4])), /busy/);
+  pipe.close();
+  child.stdout.emit('data', Buffer.from('{"language":"gu","words":[]}\n'));
+  await cancelled;
+  assert.throws(() => pipe.decode(new Int16Array([5, 6])), /closed/);
+});
+
+test('malformed UTF-8 and output over 64KiB close the child without forwarding text', async () => {
+  for (const bytes of [Buffer.from([0xff, 10]), Buffer.alloc(65537, 32)]) {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      kill() {
+        this.killed = true;
+      },
+      pid: 1,
+    });
+    const opening = openIndicPipe({
+      program: '/fake',
+      language: 'gu',
+      files: { model: '/model', tokens: '/tokens', frontend: '/frontend' },
+      spawn: () => child,
+      priority() {},
+    });
+    const rejected = assert.rejects(opening, /protocol/);
+    child.stdout.emit('data', bytes);
+    await rejected;
+    assert.equal(child.killed, true);
+  }
+});
