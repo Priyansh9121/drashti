@@ -217,15 +217,34 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       writeFileSync(world.source, bytes);
       hash = createHash('sha256').update(bytes).digest('hex');
     }
-    const imported = await world.importPdf(many ? {
-      drawPdf: (_pdf, outDir) => {
-        mkdirSync(outDir, { recursive: true });
-        const file = join(outDir, 'page.png');
-        writeFileSync(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'));
-        return Promise.resolve({ ok: true as const, width: 1920, height: 1080,
-          pages: [{ index: 0, file }, { index: 1, file }], total: 2, failed: [] });
-      },
-    } : {});
+    const imported = await world.importPdf(
+      many
+        ? {
+            drawPdf: (_pdf, outDir) => {
+              mkdirSync(outDir, { recursive: true });
+              const file = join(outDir, 'page.png');
+              writeFileSync(
+                file,
+                Buffer.from(
+                  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+                  'base64',
+                ),
+              );
+              return Promise.resolve({
+                ok: true as const,
+                width: 1920,
+                height: 1080,
+                pages: [
+                  { index: 0, file, notes: '' },
+                  { index: 1, file, notes: '' },
+                ],
+                total: 2,
+                failed: [],
+              });
+            },
+          }
+        : {},
+    );
     const presentations = new PresentationRepo(world.db);
     const revisions = new Revisions();
     const kept = vi.spyOn(revisions, 'keep');
@@ -386,7 +405,9 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
         parts.map(({ part }) => [t.printed, part]),
       );
       expect(t.keepSlide).toHaveBeenCalledExactlyOnceWith({
-        png: [t.png, t.png, t.png], name: `${t.doc.name}, 3 parts`, place: 'playlist',
+        png: [t.png, t.png, t.png],
+        name: `${t.doc.name}, 3 parts`,
+        place: 'playlist',
       });
       expect(t.presentations.content(t.imported.id)).toEqual(t.before);
       expect(t.kept).not.toHaveBeenCalled();
@@ -406,8 +427,17 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       expect(t.run).not.toHaveBeenCalled();
       t.drawPart.mockResolvedValueOnce({ ok: true, png: t.png });
       t.drawPart.mockResolvedValueOnce({ ok: false, message: 'Placeholder second part failed.' } as never);
-      expect(await t.editor.makeSlide(t.event, t.request({ parts: [{ slideId, part }, { slideId, part }] })))
-        .toEqual({ ok: false, message: 'Placeholder second part failed.' });
+      expect(
+        await t.editor.makeSlide(
+          t.event,
+          t.request({
+            parts: [
+              { slideId, part },
+              { slideId, part },
+            ],
+          }),
+        ),
+      ).toEqual({ ok: false, message: 'Placeholder second part failed.' });
       expect(t.keepSlide).not.toHaveBeenCalled();
     } finally {
       await t.clean();

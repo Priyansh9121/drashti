@@ -50,15 +50,30 @@ test('collected PDF parts cross pages, reorder and remove, make one presentation
       }
       return { count: slides.length, sizes, canvas: [result.doc.width, result.doc.height] };
     }, name);
-    expect(made).toEqual({ count: 2, sizes: [[720, 1080], [1620, 1080]], canvas: [1920, 1080] });
+    expect(made).toEqual({
+      count: 2,
+      sizes: [
+        [720, 1080],
+        [1620, 1080],
+      ],
+      canvas: [1920, 1080],
+    });
     unchanged();
     const notice = win.getByTestId('undo-removal');
     await expect(notice).toContainText(name);
     await notice.getByRole('button', { name: /Undo/u }).click();
     await expect(rows.filter({ hasText: name })).toHaveCount(0);
-    await expect.poll(() => win.evaluate(async (name) =>
-      (await (globalThis as PageGlobals).drashti.library.listPresentations()).some((p) => p.name === name), name,
-    )).toBe(false);
+    await expect
+      .poll(() =>
+        win.evaluate(
+          async (name) =>
+            (await (globalThis as PageGlobals).drashti.library.listPresentations()).some(
+              (p) => p.name === name,
+            ),
+          name,
+        ),
+      )
+      .toBe(false);
   } finally {
     await app.close();
   }
