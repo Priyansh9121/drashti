@@ -5,12 +5,14 @@ function layout(sourceLines: number, translatedLines: number, fontSize = 100) {
   let sourceSize = fontSize;
   let fits = 0;
   const target = { style: { display: '' } };
+  let attached = true;
   const style = { top: '0px', position: '' };
-  const height = () => (sourceLines + (target.style.display === 'none' ? 0 : translatedLines)) * sourceSize;
+  const height = () =>
+    (sourceLines + (!attached || target.style.display === 'none' ? 0 : translatedLines)) * sourceSize;
   const top = () => (500 - height()) / 2 + Number.parseFloat(style.top);
   const root = {
     style,
-    querySelectorAll: () => [target],
+    querySelectorAll: () => (attached ? [target] : []),
     getBoundingClientRect: () => ({ top: top(), bottom: top() + height() }),
     scrollWidth: 400,
   } as unknown as HTMLElement;
@@ -22,7 +24,7 @@ function layout(sourceLines: number, translatedLines: number, fontSize = 100) {
     fits += 1;
     sourceSize = Math.min(
       fontSize,
-      500 / (sourceLines + (target.style.display === 'none' ? 0 : translatedLines)),
+      500 / (sourceLines + (!attached || target.style.display === 'none' ? 0 : translatedLines)),
     );
   };
   return { root, box, fitOriginal, target, top, sourceSize: () => sourceSize, fits: () => fits };
@@ -52,6 +54,19 @@ describe('prepared stage words preserve the original fit and anchor', () => {
       expect(value.top()).toBe(150);
       expect(value.target.style.display).toBe('');
       expect(value.fits()).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('removes a previous centring correction when Hide removes the translated element', () => {
+    vi.stubGlobal('getComputedStyle', () => ({ fontSize: '100px' }));
+    try {
+      const value = layout(2, 1);
+      expect(fitStageTranslations(value.root, value.box, value.fitOriginal)).toBe(true);
+      value.removeTranslation();
+      expect(fitStageTranslations(value.root, value.box, value.fitOriginal)).toBe(true);
+      expect(value.top()).toBe(150);
+      expect(value.sourceSize()).toBe(100);
     } finally {
       vi.unstubAllGlobals();
     }
