@@ -146,10 +146,27 @@ test('readiness without protocol and audio-format negotiation is refused', async
 
 test('a stalled native request reports lag at the existing eight-second bound', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
-  const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), kill() {}, pid: 1 });
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    kill() {},
+    pid: 1,
+  });
   const reasons = [];
-  const opening = openIndicPipe({ program: '/fake', language: 'gu', files: { model: '/model', tokens: '/tokens', frontend: '/frontend' }, spawn: () => child, priority() {}, failed: (reason) => reasons.push(reason) });
-  child.stdout.emit('data', Buffer.from('{"ready":true,"protocolVersion":1,"sampleRate":16000,"channels":1,"sampleFormat":"s16le"}\n'));
+  const opening = openIndicPipe({
+    program: '/fake',
+    language: 'gu',
+    files: { model: '/model', tokens: '/tokens', frontend: '/frontend' },
+    spawn: () => child,
+    priority() {},
+    failed: (reason) => reasons.push(reason),
+  });
+  child.stdout.emit(
+    'data',
+    Buffer.from(
+      '{"ready":true,"protocolVersion":1,"sampleRate":16000,"channels":1,"sampleFormat":"s16le"}\n',
+    ),
+  );
   const pipe = await opening;
   const pending = pipe.decode(new Int16Array([1, 2]));
   const rejected = assert.rejects(pending, /lag/);

@@ -321,8 +321,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             threads: o.threads ?? 1,
             signal: abort.signal,
             onExit: letGo,
-            failed: () => {
-              if (!ended() && !resting() && mine === generation) fail();
+            failed: (reason) => {
+              if (!ended() && !resting() && mine === generation) {
+                if (reason === 'recogniser lag') hold();
+                else fail();
+              }
             },
           });
           if (ended() || mine !== generation || !allowed()) {

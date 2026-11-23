@@ -282,24 +282,43 @@ test('an opening callback during failed gate registration cannot admit a model',
 
 test('native lag uses the original sixty-second rest before reloading', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
-  let fail, ready, starts = 0;
-  const listening = new Promise((done) => { ready = done; });
+  let fail,
+    ready,
+    starts = 0;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
   const states = [];
   const engine = createIndicEngine({
     workGate: { allowed: () => true, listen: () => () => {} },
-    program: () => '/native', acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    program: () => '/native',
+    acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
     sound: { open: () => () => {} },
-    open: async (options) => { starts += 1; fail = options.failed; return { decode: async () => ({}), close() {} }; },
+    open: async (options) => {
+      starts += 1;
+      fail = options.failed;
+      return { decode: async () => ({}), close() {} };
+    },
     log: { info() {}, warn() {} },
   });
-  const stop = engine.start('gu', { heard() {}, state: (state) => { states.push(state); if (state.phase === 'listening') ready(); } });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      states.push(state);
+      if (state.phase === 'listening') ready();
+    },
+  });
   try {
     await listening;
     fail('recogniser lag');
     assert.deepEqual(states.at(-1), { phase: 'held', reason: 'busy' });
-    context.mock.timers.tick(59999); await Promise.resolve();
+    context.mock.timers.tick(59999);
+    await Promise.resolve();
     assert.equal(starts, 1);
-    context.mock.timers.tick(1); await Promise.resolve();
+    context.mock.timers.tick(1);
+    await Promise.resolve();
     assert.equal(starts, 2);
-  } finally { stop(); }
+  } finally {
+    stop();
+  }
 });

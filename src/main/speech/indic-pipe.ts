@@ -15,7 +15,7 @@ export interface IndicPipeOptions {
   signal?: AbortSignal;
   spawn?: (program: string, args: string[]) => ChildProcess;
   priority?: (child: ChildProcess) => void;
-  failed?: () => void;
+  failed?: (reason: string) => void;
   onExit?: () => void;
 }
 
@@ -50,7 +50,7 @@ export function openIndicPipe(o: IndicPipeOptions): Promise<IndicPipe> {
       if (child) child.kill();
       else markExited?.();
       if (!ready) reject(new Error(reason));
-      o.failed?.();
+      o.failed?.(reason);
     };
     const onAbort = (): void => {
       failed('closed');
