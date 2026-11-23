@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
-import { PresentationRepo, DbSlideSource } from '../db/presentations';
+import { PresentationRepo, DbSlideSource, elementFromRow } from '../db/presentations';
 import { editDocOf, applySlideEdit } from './slides';
 import { editDocSchema } from '../../shared/slide-edit';
 import {
@@ -32,6 +32,34 @@ const box = (): TextElement => ({
   translations: [reviewed()],
 });
 describe('saved prepared translations', () => {
+  it('keeps valid original words when optional saved translation metadata is malformed, while still refusing invalid originals', () => {
+    const db = openDatabase(':memory:');
+    try {
+      const repo = new PresentationRepo(db);
+      const id = repo.insert({
+        libraryId: repo.ensureLibrary('Default'),
+        name: 'Placeholder',
+        groups: [{ name: 'One', slides: [{ elements: [box()] }] }],
+      });
+      const row = required(required(repo.content(id)).elements[0]);
+      const props = JSON.parse(row.props) as Record<string, unknown>;
+      for (const invalid of [
+        { translations: [{ ...reviewed(), text: 'Altered unchecked placeholder' }] },
+        { translations: [reviewed(), reviewed()] },
+        { translationDisplay: { choice: 'unknown' } },
+      ]) {
+        const output = elementFromRow({ ...row, props: JSON.stringify({ ...props, ...invalid }) });
+        expect(output).toMatchObject({ kind: 'text', text: source, lang: 'en', style: box().style });
+        if (output?.kind !== 'text') throw new Error('Original was lost');
+        expect(output.translations).toBeUndefined();
+        expect(output.translationDisplay).toBeUndefined();
+      }
+      expect(elementFromRow({ ...row, props: JSON.stringify({ ...props, text: 42 }) })).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
   it('keeps review through SQLite, validated editor round trips and Undo, but holds changed source', () => {
     const db = openDatabase(':memory:');
     try {
