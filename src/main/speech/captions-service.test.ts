@@ -27,6 +27,7 @@ function languageStore() {
     sha256: 'a'.repeat(64),
     licence: 'MIT',
     fallback: true,
+    timestamps: false,
   };
   let phase: 'ready' | 'missing' | 'changed' = 'missing';
   let onDisk: 'ready' | 'missing' | 'changed' = 'missing';
@@ -338,6 +339,9 @@ describe('a model per language and live timing (alpha.22)', () => {
     expect(service.view().speech).toEqual({ phase: 'failed', message });
     expect(service.view().languageModels[0]).toMatchObject({ phase: 'changed', message });
     expect(service.languageModelFor('gu')).toBeNull();
+    // The engine asks again before each start (a restart after a rest too).
+    expect(service.modelProblem('gu')).toBe(message);
+    expect(service.modelProblem('hi')).toBeNull();
     // Checked again whole and still changed: still not used.
     await service.checkLanguageModel('gu');
     expect(started).toEqual(['auto']);

@@ -62,6 +62,41 @@ describe('what the engine heard (whisper-server’s verbose_json)', () => {
     expect(words[1]).toMatchObject({ startAt: 500, endAt: 2_000 });
   });
 
+  it('ends a word at a token that is only a space (Gujarati: whisper has no space-joined Gujarati tokens)', () => {
+    const reply = {
+      segments: [
+        {
+          no_speech_prob: 0,
+          words: [
+            { word: ' આ', start: 0.1, end: 0.2, probability: 0.9 },
+            { word: 'ગ', start: 0.2, end: 0.3, probability: 0.9 },
+            { word: ' ', start: 0.3, end: 0.3, probability: 0.9 },
+            { word: 'બસ', start: 0.4, end: 0.6, probability: 0.9 },
+          ],
+        },
+      ],
+    };
+    expect(wordsOf(reply, 0, 1_000).map((w) => w.text)).toEqual(['આગ', 'બસ']);
+  });
+
+  it('gives every word its whole clip when the model is decoded without timestamps (no made-up word times)', () => {
+    const reply = {
+      segments: [
+        {
+          words: [
+            { word: ' alpha', start: 0, end: 0, probability: 0.9 },
+            { word: ' beta', start: 0, end: 0, probability: 0.8 },
+          ],
+        },
+      ],
+    };
+    const words = wordsOf(reply, 10_000, 12_000, undefined, true);
+    expect(words.map((w) => [w.text, w.startAt, w.endAt])).toEqual([
+      ['alpha', 10_000, 12_000],
+      ['beta', 10_000, 12_000],
+    ]);
+  });
+
   it('reads the supported language the engine wrote in', () => {
     expect(writtenIn({ language: 'gujarati' })).toBe('gu');
     expect(writtenIn({ language: 'hindi' })).toBe('hi');
@@ -433,5 +468,97 @@ describe('the engine with a model per language and live timing (alpha.22)', () =
     await waitFor(() => states.some((s) => s.phase === 'listening'));
     const args = server.spawned[0] ?? [];
     expect(args[args.indexOf('-t') + 1]).toBe('4');
+  });
+});
+
+describe('a model that may not be used is never loaded (alpha.22)', () => {
+  it('says why at a start, and starts no program', async () => {
+    const server = standIn();
+    const states: SpeechState[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/gu.bin',
+      modelProblem: (language) => (language === 'gu' ? 'Placeholder: the Gujarati model has changed.' : null),
+      fallback: () => true,
+      sound: bursts(),
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+    });
+    stops.push(engine.start('gu', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
+    await waitFor(() => states.length > 0);
+    expect(states).toEqual([{ phase: 'failed', message: 'Placeholder: the Gujarati model has changed.' }]);
+    expect(server.spawned).toEqual([]);
+  });
+});
+
+describe('a language model decoded without timestamps (alpha.22: the tuned models)', () => {
+  it('asks for no timestamps, and its phrase ends when the clip ends', async () => {
+    const server = standIn();
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const fields: (string | null)[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/gu.bin',
+      fallback: () => true,
+      timestamps: (language) => language !== 'gu',
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      stepMs: 3_000,
+      pauseMs: 300,
+      fetch: (url, options) => {
+        if (options?.body instanceof FormData)
+          fields.push(options.body.get('no_timestamps') as string | null);
+        return fetch(url, options);
+      },
+    });
+    stops.push(
+      engine.start('gu', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    await sound.play(1_200, 500);
+    await waitFor(() => heard.some((h) => h.final));
+    expect(fields.length).toBeGreaterThan(0);
+    expect(fields.every((f) => f === 'true')).toBe(true);
+    const final = heard.find((h) => h.final);
+    expect(final && final.words.every((w) => w.startAt === final.startAt && w.endAt === final.endAt)).toBe(
+      true,
+    );
+    expect(final && final.endAt - final.startAt).toBeGreaterThan(900);
+  });
+
+  it('sends no such field for a model with timestamps (the general models)', async () => {
+    const server = standIn();
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const fields: (string | null)[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      stepMs: 3_000,
+      pauseMs: 300,
+      fetch: (url, options) => {
+        if (options?.body instanceof FormData)
+          fields.push(options.body.get('no_timestamps') as string | null);
+        return fetch(url, options);
+      },
+    });
+    stops.push(
+      engine.start('en', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    await sound.play(1_200, 500);
+    await waitFor(() => heard.some((h) => h.final));
+    expect(fields.length).toBeGreaterThan(0);
+    expect(fields.every((f) => f === null)).toBe(true);
   });
 });

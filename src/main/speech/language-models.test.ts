@@ -51,6 +51,7 @@ function placeholders() {
       sha256: sha(gujarati),
       licence: 'MIT',
       fallback: true,
+      timestamps: true,
     },
     {
       id: 'placeholder-hi',
@@ -60,6 +61,7 @@ function placeholders() {
       sha256: sha(hindi),
       licence: 'MIT',
       fallback: true,
+      timestamps: false,
     },
   ];
   const plenty = () => Promise.resolve(100 * 1024 ** 3);
@@ -86,9 +88,14 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
         { ...good, id: 'placeholder-short', sha256: 'abc' },
         { ...good, id: 'placeholder-gu', sha256: 'd'.repeat(64) },
         { ...good, id: 'placeholder-same-file', sha256: 'a'.repeat(64) },
+        { ...good, id: 'placeholder-odd-stamps', sha256: 'f'.repeat(64), timestamps: 'no' },
         'nonsense',
       ]),
-    ).toEqual([good]);
+    ).toEqual([{ ...good, timestamps: true }]);
+    // A tuned model decoded without timestamps says so.
+    expect(parseLanguageModelList([{ ...good, timestamps: false }])).toEqual([
+      { ...good, timestamps: false },
+    ]);
     expect(parseLanguageModelList({ not: 'a list' })).toEqual([]);
   });
 
