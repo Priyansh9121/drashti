@@ -654,7 +654,7 @@ export class StreamPipeline {
         'warn',
         `The recording could not be written: ${error instanceof Error ? error.message : String(error)}`,
       );
-      this.stopRecording('The recording stopped: the file could not be written.');
+      this.stopRecording(this.recordingWriteFailure(error));
       return;
     }
     this.openOn(file, fd);
@@ -664,7 +664,7 @@ export class StreamPipeline {
     const out = createWriteStream(file, { fd });
     out.on('error', (error) => {
       this.log('warn', `The recording could not be written: ${error.message}`);
-      this.stopRecording('The recording stopped: the file could not be written.');
+      this.stopRecording(this.recordingWriteFailure(error));
     });
     this.recordFile = out;
     this.recordFd = fd;
@@ -711,7 +711,8 @@ export class StreamPipeline {
           'warn',
           `The recording could not be written: ${error instanceof Error ? error.message : String(error)}`,
         );
-        break;
+        this.failRecording(this.recordingWriteFailure(error));
+        return;
       }
       this.recordFile?.end();
       this.part = n;
@@ -719,6 +720,13 @@ export class StreamPipeline {
       return;
     }
     this.failRecording('The recording stopped: the file could not be written.');
+  }
+
+  private recordingWriteFailure(error: unknown): string {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
+    return code === 'ENOSPC'
+      ? 'The recording stopped: the disk is full.'
+      : 'The recording stopped: the file could not be written.';
   }
 
   /** The next part could not be made: the recording ends here, saying why (the stream goes on). */
