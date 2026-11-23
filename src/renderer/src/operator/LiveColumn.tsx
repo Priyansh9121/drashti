@@ -11,10 +11,22 @@ export const LIVE_REST_MIN_PX = 140;
 /**
  * The notices' most (alpha.21, the review of the fit pass: four import notices, one more and a notice pushed Back and
  * Next out of CI's 1024 × 645 window, and in a shorter one cut off the last card's Dismiss): the room under the LIVE
- * block and no more than 40 % of the column, but always this much, about one notice; past it they scroll on their own.
+ * block and no more than 40 % of the column, but always the last card whole (and this much at least); past it they
+ * scroll on their own, from their end, so the last card is the one in sight.
  */
 export const NOTICES_MIN_PX = 72;
 const NOTICES_SHARE = 0.4;
+
+/** The last card's height in the notices' place (a notice, or an import's line), with the place's own room around it. */
+function lastCard(place: HTMLElement): number {
+  const area = place.firstElementChild;
+  const last = [
+    ...place.querySelectorAll('[data-testid="operator-notice"], [data-testid="import-notice"]'),
+  ].at(-1);
+  if (!(area instanceof HTMLElement) || !(last instanceof HTMLElement)) return 0;
+  const style = getComputedStyle(area);
+  return last.offsetHeight + Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+}
 
 /**
  * The live column (alpha.20.2, the owner's "this stays still everything else is scrollable in this window"): the
@@ -41,6 +53,7 @@ export function LiveColumn({ still, rest }: { still: ReactNode; rest: ReactNode 
     const choose = () => {
       const most = Math.max(
         NOTICES_MIN_PX,
+        lastCard(f),
         Math.min(c.clientHeight * NOTICES_SHARE, c.clientHeight - b.offsetHeight),
       );
       f.style.maxHeight = `${String(Math.floor(most))}px`;
@@ -51,10 +64,14 @@ export function LiveColumn({ still, rest }: { still: ReactNode; rest: ReactNode 
     seen.observe(c);
     seen.observe(b);
     seen.observe(f);
+    // A notice coming or going, which may not change the place's own size once it is at its most.
+    const told = new MutationObserver(choose);
+    told.observe(f, { childList: true, subtree: true });
     // The notices' place while this column is up.
     useNoticePlace.setState({ place: f });
     return () => {
       seen.disconnect();
+      told.disconnect();
       if (useNoticePlace.getState().place === f) useNoticePlace.setState({ place: null });
     };
   }, []);
@@ -86,8 +103,13 @@ export function LiveColumn({ still, rest }: { still: ReactNode; rest: ReactNode 
           {rest}
         </div>
       </div>
-      {/* The notices (operator/StatusBar.tsx, NoticeArea), when there are any. */}
-      <div ref={foot} className="shrink-0 overflow-x-hidden overflow-y-auto" data-testid="notice-place" />
+      {/* The notices (operator/StatusBar.tsx, NoticeArea), when there are any: from their end (column-reverse), so the
+          last card is in sight when they scroll. */}
+      <div
+        ref={foot}
+        className="flex shrink-0 flex-col-reverse overflow-x-hidden overflow-y-auto"
+        data-testid="notice-place"
+      />
     </aside>
   );
 }
