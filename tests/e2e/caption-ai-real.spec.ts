@@ -26,7 +26,9 @@ import { captionClips, characterErrorRate, fakeMicrophoneFile, plainText, type P
  * input: the stream's own sound graph, its speech tap and its port to Main carry it, as they carry a mixer's feed.
  *
  * The pack is fetched by CI (scripts/fetch-caption-models.mjs, cap-winci; never in git or an installer); this spec only
- * reads the fetched copy, offline, and fails (never skips) where it is not there.
+ * reads the fetched copy, offline, and fails (never skips) where it is not there. The parts leave it out
+ * (playwright.config.ts): CI runs it in a step of its own with DRASHTI_E2E_REAL_CAPTIONS=1 (ci.yml, "End-to-end and
+ * installers"). Nothing here needs today's Whisper engine: Route C is the only recogniser this test asks for.
  */
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };

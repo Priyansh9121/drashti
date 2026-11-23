@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  // Caption AI's real recogniser (alpha.23, cap-realc) needs alpha.22's real caption packs, which CI fetches in a step
+  // of its own in the "End-to-end and installers" job (ci.yml): the parts leave it out, that step names it.
+  testIgnore: process.env['DRASHTI_E2E_REAL_CAPTIONS'] === '1' ? [] : ['**/caption-ai-real.spec.ts'],
   // One temporary folder for the run, removed at the end (tests/global-setup.ts).
   globalSetup: './tests/global-setup.ts',
   timeout: 90_000,

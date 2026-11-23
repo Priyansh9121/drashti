@@ -186,7 +186,7 @@ jobs:
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-video-out.mjs --target darwin-x64
       - name: Build the approved native IndicConformer runtime (no model download)
-        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions')
+        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions') || contains(inputs.specs, 'caption-ai-real')
         run: node scripts/fetch-indic.mjs
       - name: Unit tests (inside Electron's Node)
         if: env.QUICK != 'true'
@@ -244,10 +244,32 @@ jobs:
           done
           echo "$failed of ${REPEAT:-1} runs failed"
           [ "$failed" -eq 0 ]
+      # Caption AI's real recogniser (alpha.23, cap-realc; lead 2's QR-2 A): alpha.22's two caption packs, from their
+      # pinned zips and checked by SHA-256 (scripts/fetch-caption-models.mjs; never in git or an installer), and the
+      # live captions engine, for tests/e2e/caption-ai-real.spec.ts alone. The parts leave that spec out
+      # (playwright.config.ts): it runs here once per system, after part 1, or in a quick check that names it.
+      - name: Cache the caption packs (caption AI's real recogniser)
+        if: env.QUICK != 'true' || contains(inputs.specs, 'caption-ai-real')
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti-caption-models
+          key: caption-models-${{ hashFiles('scripts/fetch-caption-models.mjs') }}
+      - name: Fetch the live captions engine and the caption packs (caption AI's real recogniser)
+        if: env.QUICK != 'true' || contains(inputs.specs, 'caption-ai-real')
+        shell: bash
+        run: |
+          node scripts/fetch-whisper.mjs
+          node scripts/fetch-caption-models.mjs pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
+      - name: Caption AI's real recogniser (Route C from alpha.22's packs, generated speech as the stream's sound)
+        if: env.QUICK != 'true'
+        env:
+          DRASHTI_E2E_REAL_CAPTIONS: '1'
+        run: pnpm exec playwright test tests/e2e/caption-ai-real.spec.ts
       - name: End-to-end quick check (the specs named, or the screenshots)
         if: env.QUICK == 'true' && (inputs.specs != '' || inputs.screenshots)
         shell: bash
         env:
+          DRASHTI_E2E_REAL_CAPTIONS: ${{ contains(inputs.specs, 'caption-ai-real') && '1' || '' }}
           SPECS: ${{ inputs.specs }}
           REPEAT: ${{ inputs.repeat }}
           QUIET: ${{ inputs.quiet }}
