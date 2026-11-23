@@ -6,6 +6,13 @@ import { cx } from '../ui/cx';
  * a cluster named under it (small) and for screen readers, thin lines between them.
  */
 
+/**
+ * A group's row of clusters: onto a second row where the window is narrower than they are, never scrolling sideways
+ * (alpha.21's fit pass: at the window's least, 900 wide with its frame, Words, Arrange and Motion ran 100 px and more
+ * past the window, out of reach but by scrolling the row).
+ */
+export const GROUP_ROW = 'flex min-w-0 flex-wrap items-start gap-y-1';
+
 /** A cluster of a group's tools. */
 export function Cluster({
   name,
