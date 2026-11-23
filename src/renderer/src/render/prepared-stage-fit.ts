@@ -1,11 +1,11 @@
 /** Fit original stage words first; secondary words may use only the space left below that anchor. */
 export function fitStageTranslations(root: HTMLElement, box: HTMLElement, fitOriginal: () => void): boolean {
+  root.style.top = '0px';
   const translations = [...root.querySelectorAll<HTMLElement>('[data-prepared-translation="true"]')];
   if (!translations.length) {
     fitOriginal();
     return true;
   }
-  root.style.top = '0px';
   for (const el of translations) el.style.display = 'none';
   fitOriginal();
   const originalTop = root.getBoundingClientRect().top;
