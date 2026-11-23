@@ -347,6 +347,8 @@ The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep the
 
 ## The state feed (WebSocket)
 
+Paired devices keep their places when new devices are waiting. A new request may receive `503` with a plain busy message; wait before pairing another device. Pairing, tokens and the feed’s hello remain as described below.
+
 `ws://<computer>:8740/api/v1/feed` (Remote and Stage devices). The first message must say who the device is, within five seconds:
 
 ```js

@@ -6602,6 +6602,7 @@ function start(): void {
       if (level === 'warn') log.warn(message);
       else log.info(message);
     },
+    notice: (text) => sendToOperator(IPC.app.notice, { text }),
     now: Date.now,
   });
   network = net;
@@ -6805,6 +6806,7 @@ function start(): void {
             ]
           : [],
       ),
+    notice: (text) => sendToOperator(IPC.app.notice, { text }),
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
       else log.info(message);
