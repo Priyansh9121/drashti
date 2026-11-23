@@ -1,3 +1,4 @@
+import { translationsUnchanged } from '../../shared/prepared-translation-guard';
 import type { InsertPdfPagesResult, PdfPageSource, LinkPdfPageResult } from '../../shared/slide-edit';
 import type { IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
@@ -47,6 +48,8 @@ export interface SlidesIpcDeps {
   /** Slides saved (Session 55, Part 17a: from the slide editor's window): the operator window's Undo puts them back. */
   saved?: (saved: SlidesSaved) => void;
   /** Main selects secure production adapters; omitted readers never fall back to Node canvas. */
+  /** Main is the authority: omitted callbacks refuse translation changes. */
+  mayChangeTranslations?: () => boolean;
   sourceReader?: SourceReader;
   sourceWrite?: SourceWrite;
   waitForPdfIdle?: (signal: AbortSignal) => Promise<boolean>;
@@ -110,6 +113,7 @@ export function registerSlidesIpc({
   lookFor,
   changed,
   saved,
+  mayChangeTranslations = () => false,
   sourceReader,
   sourceWrite,
   mayPrepareSource = () => false,
@@ -519,6 +523,11 @@ export function registerSlidesIpc({
     if (!fromOperator(e)) return onlyOperator;
     const checked = validateDocument(presentationId, edited, stamp, force);
     if (!checked.ok) return checked;
+    if (
+      !mayChangeTranslations() &&
+      !translationsUnchanged(editDocOf(checked.before, checked.now.name).doc, checked.doc)
+    )
+      return { ok: false, message: 'Use Pro Mode to change or check translations.' };
     cancelSourcePreparation(checked.id);
     // Its words in one form, NFC, exactly as in the validated export document.
     const after = applySlideEdit(checked.before, checked.doc);
