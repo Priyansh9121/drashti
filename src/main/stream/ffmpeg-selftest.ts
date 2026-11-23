@@ -30,7 +30,9 @@ function run(path: string, args: string[]): Promise<string> {
     child.on('error', () => {
       resolve('');
     });
-    child.on('exit', () => {
+    // Once it has exited and all it wrote has been read: at its exit alone, a busy computer may have read none of it
+    // (a21, after x58), and the check would say no version or no RTMPS.
+    child.on('close', () => {
       resolve(out);
     });
   });

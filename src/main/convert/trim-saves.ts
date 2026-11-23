@@ -71,7 +71,9 @@ export function keyframeOf(ffmpeg: string, file: string, atMs: number): Promise<
     child.on('error', () => {
       end(null);
     });
-    child.on('exit', () => {
+    // Once it has exited and all it wrote has been read: at its exit alone, a busy computer may have read none of the
+    // listing (a21, after x58), and Trim would say it found no clean frame.
+    child.on('close', () => {
       end(readKeyframes(text).keys[0] ?? null);
     });
   });

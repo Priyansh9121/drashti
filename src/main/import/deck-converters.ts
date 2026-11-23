@@ -170,6 +170,14 @@ export interface Ran {
   aborted: boolean;
 }
 
+/**
+ * How long a program's words are waited for once it has exited, when something else still holds its output open (a
+ * program it left running, such as a leftover soffice). Its words are read when it has exited AND its stdout and
+ * stderr have ended ('close'): at its exit alone, a busy computer may have read none of them yet (a21, after x58's
+ * FFmpeg readers). Everything it wrote is already there to be read once it has exited.
+ */
+const AFTER_EXIT_MS = 2000;
+
 /** Run a program, giving up after `timeoutMs` or when `signal` says to stop. */
 export function run(
   command: string,
@@ -188,8 +196,15 @@ export function run(
     let stderr = '';
     let timedOut = false;
     let aborted = false;
-    child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+    let settled = false;
+    let afterExit: ReturnType<typeof setTimeout> | undefined;
+    // Once it has answered, what a leftover still writes there is read and let go.
+    child.stdout.on('data', (d: Buffer) => {
+      if (!settled) stdout += d.toString();
+    });
+    child.stderr.on('data', (d: Buffer) => {
+      if (!settled) stderr += d.toString();
+    });
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill();
@@ -200,7 +215,10 @@ export function run(
     };
     signal?.addEventListener('abort', stop);
     const done = (code: number | null, error?: Error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      clearTimeout(afterExit);
       signal?.removeEventListener('abort', stop);
       resolve({ code, stdout, stderr: stderr || (error?.message ?? ''), timedOut, aborted });
     };
@@ -208,6 +226,18 @@ export function run(
       done(null, error);
     });
     child.on('exit', (code) => {
+      // It has finished: its time limit and a stop no longer apply, only the reading of what it wrote.
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', stop);
+      afterExit = setTimeout(() => {
+        // After whatever the computer has read meanwhile (I/O comes before setImmediate's turn).
+        setImmediate(() => {
+          done(code);
+        });
+      }, AFTER_EXIT_MS);
+    });
+    // Exited, and all it wrote read.
+    child.on('close', (code) => {
       done(code);
     });
   });
