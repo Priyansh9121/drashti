@@ -96,4 +96,9 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     expect(source.match(/under_rosetta\(\)/gu)).toHaveLength(2);
     expect(source).toContain('if (under_rosetta()) return fail(o, "translated");');
   });
+
+  it('configures the Windows build for CMake 4, whose runners refuse the 3.0 and 3.1 minimums cpu_features and clog name', () => {
+    // Full run 45221762761 (24 Nov 2026): "Compatibility with CMake < 3.5 has been removed" at cpu_features.
+    expect(read('scripts/fetch-translate.mjs')).toContain("'-DCMAKE_POLICY_VERSION_MINIMUM=3.5'");
+  });
 });
