@@ -24,6 +24,24 @@ test('stream sound recovers independently, caps its sixth crash, and Try again p
         return { picture: page('/stream.html'), sound: page('/stream-sound.html') };
       });
     await expect.poll(async () => (await status()).inputs.sound).toBe('on');
+    const picturePage = app.windows().find((page) => page.url().includes('/stream.html'));
+    if (!picturePage) throw new Error('The generated picture page did not open');
+    const originalInputIds = await picturePage.evaluate(async () =>
+      (await navigator.mediaDevices.enumerateDevices())
+        .filter(
+          (device) =>
+            device.kind === 'audioinput' &&
+            device.deviceId !== '' &&
+            device.deviceId !== 'default' &&
+            device.deviceId !== 'communications',
+        )
+        .map((device) => device.deviceId)
+        .sort(),
+    );
+    expect(
+      (await status()).inputs.microphones.map((device) => device.id).sort(),
+      'the sound renderer preserves the original stream device-id namespace',
+    ).toEqual(originalInputIds);
     const before = await pages();
     expect(before.picture).not.toBeNull();
     expect(before.sound).not.toBeNull();

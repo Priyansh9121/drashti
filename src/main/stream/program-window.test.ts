@@ -1,5 +1,11 @@
+import type { Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { createProgramWindow, isStreamPage, streamPermissionAllowed } from './program-window';
+import {
+  applyStreamSessionSecurity,
+  createProgramWindow,
+  isStreamPage,
+  streamPermissionAllowed,
+} from './program-window';
 
 const { made } = vi.hoisted(() => ({
   made: [] as {
@@ -67,4 +73,44 @@ describe('the Program window', () => {
     // Without a graphics chip each frame was a whole picture copied into the main process, and the next waited for it.
     expect(made[0]?.painting).toBe(false);
   });
+});
+
+it('routes microphone permission to the sound renderer in the original stream session, without granting its camera or display capture', () => {
+  const handlers: {
+    request?: (
+      contents: WebContents,
+      permission: string,
+      answer: (allowed: boolean) => void,
+      details: { requestingUrl: string; mediaTypes: string[] },
+    ) => void;
+    display?: (request: { frame: { parent: null; url: string } }, answer: (grant: object) => void) => void;
+  } = {};
+  const session = {
+    setPermissionRequestHandler: (next: NonNullable<typeof handlers.request>) => {
+      handlers.request = next;
+    },
+    setPermissionCheckHandler: vi.fn(),
+    setDisplayMediaRequestHandler: (next: NonNullable<typeof handlers.display>) => {
+      handlers.display = next;
+    },
+  } as unknown as Session;
+  const picture = {} as WebContents,
+    sound = {} as WebContents;
+  const rules = {
+    isProgram: (contents: WebContents | null) => contents === picture,
+    isSound: (contents: WebContents | null) => contents === sound,
+  };
+  applyStreamSessionSecurity(session, rules);
+  if (!handlers.request || !handlers.display) throw new Error('The stream session did not install its rules');
+  const url = 'file:///generated/stream-sound.html';
+  const answer = vi.fn();
+  handlers.request(sound, 'media', answer, { requestingUrl: url, mediaTypes: ['audio'] });
+  expect(answer).toHaveBeenLastCalledWith(true);
+  handlers.request(sound, 'media', answer, { requestingUrl: url, mediaTypes: ['video'] });
+  expect(answer).toHaveBeenLastCalledWith(false);
+  handlers.request({} as WebContents, 'media', answer, { requestingUrl: url, mediaTypes: ['audio'] });
+  expect(answer).toHaveBeenLastCalledWith(false);
+  const capture = vi.fn();
+  handlers.display({ frame: { parent: null, url } }, capture);
+  expect(capture).toHaveBeenCalledWith({});
 });
