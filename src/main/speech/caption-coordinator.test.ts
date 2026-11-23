@@ -251,4 +251,29 @@ describe('phase D caption coordinator', () => {
     c.stop();
   });
 
+  it('does not retry an unchanged failed stable clause when more provisional words arrive', async () => {
+    const port = deferredPort();
+    const { coordinator: c, clause } = setup(port);
+    c.accept(clause('A blue box', 1, 'settled'));
+    port.finish(0, '', { status: 'error' });
+    await vi.advanceTimersByTimeAsync(0);
+    c.accept(clause('More source words', 1, 'provisional', 's2'));
+    c.accept(clause('More source words arrive', 2, 'provisional', 's2'));
+    expect(port.requests).toHaveLength(1);
+    expect(c.view().current?.sourceText).toBe('More source words arrive');
+  });
+
+  it('starts pending stable work when the authoritative lease explicitly opens', () => {
+    const port = deferredPort();
+    let allowed = false;
+    const c = new CaptionCoordinator({ clock: () => Date.now(), mayTranslate: () => allowed, settings: () => DEFAULT_CAPTION_SETTINGS, show: vi.fn(), changed: vi.fn(), translation: port });
+    const sessionId = c.start();
+    c.accept({ sessionId, phraseId: 's1', revision: 1, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: 'A blue box', startAt: Date.now(), endAt: Date.now(), status: 'settled' });
+    expect(port.requests).toHaveLength(0);
+    allowed = true;
+    c.setTranslationHeld(false);
+    expect(port.requests).toHaveLength(1);
+    c.stop();
+  });
+
 });
