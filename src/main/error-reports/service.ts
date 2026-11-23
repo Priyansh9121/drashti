@@ -20,6 +20,8 @@ const stateSchema = z
     enabled: z.boolean(),
     config: configSchema.nullable(),
     day: z.number().int(),
+    sentDay: z.number().int(),
+    sentIds: z.array(z.string().regex(/^[a-f0-9]{32}$/u)).max(ERROR_LIMITS.perDay),
     captured: z.number().int().min(0).max(ERROR_LIMITS.perDay),
     dropped: z.number().int().min(0).max(1_000_000_000),
     queue: z.array(reportSchema).max(ERROR_LIMITS.pending),
@@ -32,6 +34,8 @@ const fresh = (): State => ({
   config: null,
   day: 0,
   captured: 0,
+  sentDay: 0,
+  sentIds: [],
   dropped: 0,
   queue: [],
 });
@@ -160,6 +164,14 @@ export class ErrorReports {
         const report = this.state.queue[0];
         const config = this.state.config;
         if (!report || !config) return;
+        // Reserve each distinct report before posting. A lost receipt/disable/restart cannot reopen the budget.
+        const sentDay = Math.max(this.state.sentDay, Math.floor(this.d.now() / DAY));
+        const sentIds = sentDay === this.state.sentDay ? this.state.sentIds : [];
+        if (!sentIds.includes(report.id)) {
+          if (sentIds.length >= ERROR_LIMITS.perDay) return;
+          if (!this.save({ ...this.state, sentDay, sentIds: [...sentIds, report.id] })) return;
+        }
+
         const payload = JSON.stringify(report);
         const mac = createHmac('sha256', config.secret)
           .update(MAC_PREFIX + config.installId + '\n' + payload)
