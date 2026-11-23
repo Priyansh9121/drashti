@@ -19,8 +19,8 @@ function errorEnv_() {
     if (!sheet) {
       var book = SpreadsheetApp.openById(props.getProperty('SHEET_ID'));
       sheet = book.getSheetByName('Automatic errors');
-      if (!sheet) {
-        sheet = book.insertSheet('Automatic errors');
+      if (!sheet) sheet = book.insertSheet('Automatic errors');
+      if (sheet.getLastRow() === 0) {
         sheet.appendRow([
           'Install id',
           'Report id',

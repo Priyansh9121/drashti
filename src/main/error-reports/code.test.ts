@@ -72,7 +72,10 @@ it.each(['new tab', 'interrupted empty tab', 'interrupted tab setup'] as const)(
       SpreadsheetApp: {
         openById: (id: string) => {
           expect(id).toBe('fake-sheet');
-          return { getSheetByName: () => (rows.length || setup === 'interrupted empty tab' ? sheet : null), insertSheet: () => sheet };
+          return {
+            getSheetByName: () => (rows.length || setup === 'interrupted empty tab' ? sheet : null),
+            insertSheet: () => sheet,
+          };
         },
         flush: () => undefined,
       },
