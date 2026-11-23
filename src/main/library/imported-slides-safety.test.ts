@@ -1052,3 +1052,25 @@ describe('imported editor provenance and legacy safety', () => {
     }
   });
 });
+
+
+it('saves a crop-only PDF edit without converting source content, and reopens the same crop', async () => {
+  const w = originalWorld();
+  try {
+    const imported = await w.importPdf();
+    const repo = new PresentationRepo(w.db);
+    register(w, repo);
+    const opened = await open(imported.id);
+    const page = opened.doc.groups[0]?.slides[0];
+    if (!page?.documentPage) throw new Error('Generated page missing');
+    const crop = { x: 0.125, y: 0.25, w: 0.5, h: 0.5 };
+    page.documentPage.crop = crop;
+    expect((await save(imported.id, opened)).ok).toBe(true);
+    const stored = repo.content(imported.id)?.slides[0];
+    expect(documentPageFromJson(stored?.document_page)).toMatchObject({ crop });
+    expect(documentPageFromJson(stored?.document_page)?.edited).not.toBe(true);
+    const reopened = await open(imported.id);
+    expect(reopened.doc.groups[0]?.slides[0]?.documentPage?.crop).toEqual(crop);
+    originalsUnchanged(w);
+  } finally { w.clean(); }
+});
