@@ -260,10 +260,16 @@ export type PlaceholderMap = Map<string, string>;
 
 /**
  * The order the processor numbers one pattern's matches in. Python iterates a set (its order follows the hash
- * seed); Drashti numbers them in the order they first appear. Tests pass Python's recorded order instead.
+ * seed); Drashti numbers them longest first, ties in the order they first appear, which is one of Python's orders and
+ * the one where no placeholder cuts another ("example.org" inside "example.org/give", "1/12/2026" inside
+ * "11/12/2026"). Tests pass Python's recorded order instead.
  */
 export type PlaceholderOrder = (patternIndex: number, matches: string[]) => string[];
-const firstAppearance: PlaceholderOrder = (_i, matches) => [...new Set(matches)];
+const longestFirst: PlaceholderOrder = (_i, matches) =>
+  [...new Set(matches)]
+    .map((match, at) => ({ match, at, length: pyLen(match) }))
+    .sort((a, b) => b.length - a.length || a.at - b.at)
+    .map(({ match }) => match);
 
 function wrapWithPlaceholders(
   text: string,
@@ -331,7 +337,7 @@ export interface Prepared {
 }
 
 /** IndicProcessor(inference=True).preprocess_batch([sentence], src_lang, tgt_lang)[0], without the tags. */
-export function preprocess(sentence: string, from: Iso, order: PlaceholderOrder = firstAppearance): Prepared {
+export function preprocess(sentence: string, from: Iso, order: PlaceholderOrder = longestFirst): Prepared {
   const r = (processorRules ??= processor());
   sentence = puncNorm(sentence, r);
   sentence = Array.from(sentence, (c) => PROCESSOR_DIGITS.get(c) ?? c).join('');
