@@ -84,7 +84,9 @@ it('puts an automatic conversion back in the queue if a show starts as its encod
     const [first] = children;
     if (!first) throw new Error('The encoder did not start.');
     busy = 'Waits while the show is on, then carries on by itself.';
+    // As a real child: its exit, then 'close' once its output has ended (the conversion reads its words then: a21).
     first.child.emit('exit', 0);
+    first.child.emit('close', 0);
 
     await vi.waitFor(() => expect(service.list()[0]?.state).not.toBe('converting'));
     expect(service.list()[0]).toMatchObject({ state: 'waiting', note: busy, convertedId: null });
