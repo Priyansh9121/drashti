@@ -4,7 +4,7 @@
 
 ## The Help menu
 
-**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Keyboard Shortcuts…**, **Report a Problem…**, **Save Diagnostics** (the log of today, yesterday, the last 7 days or one day), **Caption and Translation Models…** (the admin's offline models for captions and translation, Pro Mode) and **Check for Updates…**.
+**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Keyboard Shortcuts…**, **Report a Problem…**, on the access-list owner's computer **Automatic Error Reports…** (the admin's guide, section 30), **Save Diagnostics** (the log of today, yesterday, the last 7 days or one day), **Caption and Translation Models…** (the admin's offline models for captions and translation, Pro Mode) and **Check for Updates…**.
 
 **When you would use it.** Whenever you need help, or after a problem.
 
@@ -62,7 +62,7 @@ It works in both modes and on a node. A node hands its report to the Main it is 
 
 ![Report a Problem…](../screenshots/manual-report-problem.png)
 
-## Save Diagnostics…
+## Save Diagnostics
 
 **What it is.** One file on the Desktop for whoever looks after Drashti, after a problem. It holds the versions, screens, sound and the log of the day or days you choose. Its first lines say which computer made it, its place on the access list, its role, this install's own id and the version, so whoever helps knows whose it is among many. On Main, **Graphics** also lists each graphics chip, its driver, how the computer draws and the video decoding it offers. The file holds no kirtan words, names, file paths or Gmail addresses; optional crash files can hold slide words.
 

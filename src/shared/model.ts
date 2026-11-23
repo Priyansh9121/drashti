@@ -4,6 +4,8 @@
  */
 
 import type { DeckSlide } from './deck';
+import type { TranslationDisplay } from './prepared-translation-view';
+import type { PreparedTranslation } from './prepared-translations';
 
 /**
  * Languages: English, Gujarati, Hindi (Devanagari), Roman transliteration,
@@ -272,6 +274,11 @@ export interface TextElement extends ElementBase {
    */
   everyScreen?: boolean;
   tableCell?: TableCell;
+  /** Saved source/result pairs; only a checked exact pair may reach an output. */
+  translations?: PreparedTranslation[];
+  translationDisplay?: TranslationDisplay;
+  /** Render-only marker; never accepted as authored slide content. */
+  preparedTranslation?: true;
 }
 
 /**
@@ -329,6 +336,12 @@ export type GradientFill =
 
 export interface ShapeElement extends ElementBase {
   kind: 'shape';
+  /** A PDF annotation; click order is opt-in and independent of the object's drawing order. */
+  pdfMark?: {
+    /** Older marks are ordinary shapes; choosing a click may leave the original tool unnamed. */
+    tool?: 'highlight' | 'underline' | 'strike' | 'draw' | 'cover';
+    clickOrder?: number;
+  };
   /** Left out: a rectangle (every shape before Session 7 was one). */
   shape?: ShapeKind;
   /** Required for a Drawing; its frame, turn and flips transform every point. */
@@ -435,6 +448,8 @@ export interface RenderSlide {
   fullSlide?: boolean;
   /** Resolved master elements: fixed in place when a kirtan's language columns close up. */
   masterElementIds?: string[];
+  /** Render-only fixed source and checked-translation boxes. */
+  translationAnchors?: string[];
   /** Darkening behind the words; left out for none (every slide made before it, Sessions 31–36). */
   darken?: Darken;
   elements: SlideElement[];

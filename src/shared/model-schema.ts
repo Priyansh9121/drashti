@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { reviewFingerprint } from './prepared-translations';
 import type {
   Darken,
   ElementMotion,
@@ -251,6 +252,34 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
   legacy: z.boolean().optional(),
 });
 
+const preparedTranslationSchema = z
+  .object({
+    sourceFingerprint: z.string().max(120_002),
+    reviewFingerprint: z.string().max(300_000).nullable(),
+    sourceLanguage: z.enum(['gu', 'hi', 'en']),
+    targetLanguage: z.enum(['gu', 'hi', 'en']),
+    text: z.string().max(20_000),
+    state: z.enum(['unchecked', 'checked', 'needs-recheck']),
+    reader: z.string().trim().min(1).max(120).nullable(),
+  })
+  .strict()
+  .refine((value) => value.sourceLanguage !== value.targetLanguage, 'Choose another target language.')
+  .refine(
+    (value) =>
+      value.state !== 'checked' ||
+      (value.reader !== null &&
+        value.text.trim() !== '' &&
+        value.reviewFingerprint === reviewFingerprint(value)),
+    'A checked translation needs words and a named reader.',
+  );
+const preparedTranslationsSchema = z
+  .array(preparedTranslationSchema)
+  .max(3)
+  .refine(
+    (values) => new Set(values.map((value) => value.targetLanguage)).size === values.length,
+    'A target language is listed twice.',
+  );
+
 export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion('kind', [
   z.object({
     ...elementPlacement,
@@ -264,6 +293,22 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     runs: z.array(textRunSchema).max(2000).optional(),
     opacity: num.min(0).max(1).optional(),
     everyScreen: z.boolean().optional(),
+    translations: preparedTranslationsSchema.optional(),
+    translationDisplay: z
+      .object({
+        sourceLanguage: z.enum(['gu', 'hi', 'en']).optional(),
+        choice: z.enum(['off', 'gu', 'hi', 'en']),
+        groups: z
+          .record(z.string().min(1).max(200), z.enum(['off', 'gu', 'hi', 'en']))
+          .refine((value) => Object.keys(value).length <= 100),
+        outputs: z
+          .record(z.string().min(1).max(200), z.enum(['off', 'gu', 'hi', 'en']))
+          .refine((value) => Object.keys(value).length <= 100),
+        area: rectSchema,
+        fontSize: num.min(1).max(1000),
+      })
+      .strict()
+      .optional(),
     tableCell: z
       .object({
         row: num.int().min(0).max(499),
@@ -278,6 +323,12 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       ...elementPlacement,
       id: idSchema,
       kind: z.literal('shape'),
+      pdfMark: z
+        .object({
+          tool: z.enum(['highlight', 'underline', 'strike', 'draw', 'cover']).optional(),
+          clickOrder: z.number().int().min(1).max(1_000_000).optional(),
+        })
+        .optional(),
       frame: rectSchema,
       rotation: rotationSchema,
       shape: z.enum(SHAPE_KINDS).optional(),

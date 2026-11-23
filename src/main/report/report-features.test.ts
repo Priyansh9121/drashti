@@ -53,8 +53,8 @@ describe('the features a report can name', () => {
 
   it('a notice’s own words name the feature it is about, or none when they name none', () => {
     const save = guessFeatures(features, 'Could not save diagnostics: see the log in the data folder.');
-    expect(save.best?.name).toBe('Save Diagnostics…');
-    expect(save.order[0]?.name).toBe('Save Diagnostics…');
+    expect(save.best?.name).toBe('Save Diagnostics');
+    expect(save.order[0]?.name).toBe('Save Diagnostics');
     expect(guessFeatures(features, 'Placeholder xyzzy plugh.').best).toBeNull();
   });
 });

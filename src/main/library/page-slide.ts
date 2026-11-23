@@ -11,22 +11,29 @@ import type { MediaElement } from '../../shared/model';
 export function pageSlidePresentation(
   libraryId: string,
   name: string,
-  mediaId: string,
+  mediaId: string | string[],
   size: { width: number; height: number },
 ): NewPresentation & { width: number; height: number } {
-  const page: MediaElement = {
+  const page = (id: string): MediaElement => ({
     id: 'page',
     kind: 'image',
     frame: { x: 0, y: 0, width: size.width, height: size.height },
-    mediaId,
+    mediaId: id,
     fit: 'fit',
-  };
+  });
+  const pictures = typeof mediaId === 'string' ? [mediaId] : mediaId;
   return {
     libraryId,
     name,
     width: size.width,
     height: size.height,
-    groups: [{ name: '', color: null, slides: [{ elements: [page], background: '#000000' }] }],
+    groups: [
+      {
+        name: '',
+        color: null,
+        slides: pictures.map((id) => ({ elements: [page(id)], background: '#000000' })),
+      },
+    ],
     arrangements: [],
     selectedArrangement: null,
     source: { kind: 'drashti', path: null, ref: null, importedAt: null },

@@ -22,6 +22,7 @@ describe('native page marks from actual pointer samples', () => {
       opacity: 1,
     });
     if (!mark?.path) throw new Error('Generated stroke did not contain a native path.');
+    expect(mark).toMatchObject({ pdfMark: { tool: 'draw' } });
     expect(mark.path.commands).toEqual([
       { op: 'M', x: 0, y: 0 },
       { op: 'L', x: 0.4, y: 1 },

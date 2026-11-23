@@ -11,6 +11,7 @@ import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { Field, Select } from '../ui/Field';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { findSlide } from './ops';
 
@@ -42,7 +43,12 @@ export function MakeSlideDialog({
   /** What to say once it is made (the editor's note). */
   onMade: (said: string) => void;
 }) {
-  const slide = findSlide(base.doc, base.slideId);
+  const pages = base.doc.groups.flatMap((g) => g.slides).filter((s) => s.documentPage?.ext === 'pdf');
+  const [slideId, setSlideId] = useState(base.slideId);
+  const [parts, setParts] = useState<{ id: number; slideId: string; part: CropRect }[]>([]);
+  const nextPart = useRef(1);
+  const dragging = useRef<number | null>(null);
+  const slide = findSlide(base.doc, slideId);
   const canvas = slideCanvas(slide, base.doc);
   const [part, setPart] = useState<CropRect>(FULL_CROP);
   const [shape, setShape] = useState<CropShape>('free');
@@ -62,10 +68,23 @@ export function MakeSlideDialog({
       live = false;
     };
   }, []);
+  const add = () => {
+    if (busy || !slide || parts.length >= 400) return;
+    const picked = { id: nextPart.current++, slideId, part: { ...part } };
+    setParts((was) => [...was, picked]);
+  };
+  const reorder = (from: number, to: number) => {
+    setParts((was) => {
+      const next = [...was];
+      const [picked] = next.splice(from, 1);
+      if (picked) next.splice(to, 0, picked);
+      return next;
+    });
+  };
   const playlist = place?.playlist ?? null;
   const choices: MadeSlidePlace[] = playlist ? ['playlist', 'library'] : ['library'];
   const make = async () => {
-    if (busy || !slide) return;
+    if (busy || !slide || place === null) return;
     setBusy(true);
     setProblem(null);
     try {
@@ -73,7 +92,8 @@ export function MakeSlideDialog({
         presentationId: base.doc.presentationId,
         doc: base.doc,
         stamp: base.stamp,
-        slideId: base.slideId,
+        slideId,
+        ...(parts.length ? { parts: parts.map(({ slideId, part }) => ({ slideId, part })) } : {}),
         part,
         place: into,
       });
@@ -98,7 +118,7 @@ export function MakeSlideDialog({
   return (
     <Dialog
       title="Make a slide"
-      subtitle="This page, or the part of it you drag out, as a slide of its own"
+      subtitle="This page, or parts collected across pages, as slides of their own"
       size="md"
       testId="make-slide"
       onClose={busy ? null : onClose}
@@ -108,7 +128,11 @@ export function MakeSlideDialog({
             Cancel
           </Button>
           <Button variant="primary" disabled={busy || !slide || place === null} onClick={() => void make()}>
-            {busy ? 'Making the slide…' : 'Make the slide'}
+            {busy
+              ? 'Making the slides…'
+              : parts.length
+                ? `Make ${String(parts.length)} slides`
+                : 'Make the slide'}
           </Button>
         </>
       }
@@ -117,10 +141,36 @@ export function MakeSlideDialog({
         Drag the frame, or its sides and corners, over the part to show. It is drawn from the page itself, as
         sharp as the hall’s screens show.
       </p>
+      <div className="mb-2 flex flex-wrap items-end gap-2">
+        <Field label="PDF page">
+          <Select
+            value={slideId}
+            disabled={busy}
+            onChange={(e) => {
+              setSlideId(e.target.value);
+              setPart(FULL_CROP);
+              setShape('free');
+            }}
+          >
+            {pages.map((page, i) => (
+              <option key={page.id} value={page.id}>
+                Page {i + 1}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Button disabled={busy || !slide || parts.length >= 400} onClick={add}>
+          Add this part
+        </Button>
+        <p role="status" className="text-xs text-muted">
+          {parts.length ? `${String(parts.length)} parts collected` : 'Enter on the frame adds this part.'}
+        </p>
+      </div>
       <div
         data-testid="make-slide-page"
         data-a11y-picture
-        className="relative mx-auto touch-none rounded-md border border-line bg-black"
+        aria-disabled={busy}
+        className={`relative mx-auto touch-none rounded-md border border-line bg-black ${busy ? 'pointer-events-none' : ''}`}
         style={{
           aspectRatio: `${String(canvas.width)} / ${String(canvas.height)}`,
           width: `min(100%, ${String(Math.round((PAGE_HEIGHT * canvas.width) / canvas.height))}px)`,
@@ -136,7 +186,17 @@ export function MakeSlideDialog({
             <SlideView slide={renderEditedSlide(base.doc, slide)} media="still" />
           </PlacedInParent>
         )}
-        <div ref={area} className="absolute inset-0">
+        <div
+          ref={area}
+          className="absolute inset-0"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.repeat) {
+              e.preventDefault();
+              e.stopPropagation();
+              add();
+            }
+          }}
+        >
           <CropBox
             frame={area}
             picture={{ left: 0, top: 0, width: 100, height: 100 }}
@@ -172,6 +232,83 @@ export function MakeSlideDialog({
           {cropReadout(part)}
         </p>
       </div>
+      {parts.length > 0 && (
+        <section aria-label="Collected parts" className="mt-3">
+          <p className="mb-1 text-xs text-muted">
+            Drag parts into reading order, or use Move earlier and Move later. Up to 400 parts.
+          </p>
+          <ol className="max-h-40 space-y-1 overflow-y-auto" aria-label="Parts in reading order">
+            {parts.map((picked, index) => {
+              const page = findSlide(base.doc, picked.slideId);
+              if (!page) return null;
+              const number = pages.findIndex((p) => p.id === picked.slideId) + 1;
+              return (
+                <li
+                  key={picked.id}
+                  data-testid="collected-part"
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-line p-1.5"
+                  onDragOver={(e) => {
+                    if (!busy && dragging.current !== null) e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const from = parts.findIndex((p) => p.id === dragging.current);
+                    if (!busy && from >= 0) reorder(from, index);
+                    dragging.current = null;
+                  }}
+                >
+                  <button
+                    type="button"
+                    draggable={!busy}
+                    disabled={busy}
+                    aria-label={`Drag part ${String(index + 1)}`}
+                    title="Drag to reorder"
+                    onDragStart={(e) => {
+                      dragging.current = picked.id;
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', String(picked.id));
+                    }}
+                    onDragEnd={() => {
+                      dragging.current = null;
+                    }}
+                    className="shrink-0 cursor-grab rounded border border-line bg-black"
+                  >
+                    <PartPreview doc={base.doc} slideId={picked.slideId} part={picked.part} />
+                  </button>
+                  <span className="min-w-0 flex-1 text-xs">
+                    Part {index + 1} · Page {number}
+                    <span className="block text-muted">{cropReadout(picked.part)}</span>
+                  </span>
+                  <Button
+                    size="sm"
+                    aria-label={`Move part ${String(index + 1)} earlier`}
+                    disabled={busy || index === 0}
+                    onClick={() => reorder(index, index - 1)}
+                  >
+                    Move earlier
+                  </Button>
+                  <Button
+                    size="sm"
+                    aria-label={`Move part ${String(index + 1)} later`}
+                    disabled={busy || index === parts.length - 1}
+                    onClick={() => reorder(index, index + 1)}
+                  >
+                    Move later
+                  </Button>
+                  <Button
+                    size="sm"
+                    aria-label={`Remove part ${String(index + 1)}`}
+                    disabled={busy}
+                    onClick={() => setParts((was) => was.filter((p) => p.id !== picked.id))}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
       <div className="mt-3">
         <p id="make-slide-into" className="mb-1 text-sm font-medium text-fg">
           Put it in
@@ -211,5 +348,34 @@ export function MakeSlideDialog({
         </p>
       )}
     </Dialog>
+  );
+}
+
+/** The collected part as it will look, clipped from the edited page, without the crop handles. */
+function PartPreview({ doc, slideId, part }: { doc: EditDoc; slideId: string; part: CropRect }) {
+  const slide = findSlide(doc, slideId);
+  if (!slide) return null;
+  const canvas = slideCanvas(slide, doc);
+  const scale = Math.min(80 / (canvas.width * part.w), 56 / (canvas.height * part.h));
+  return (
+    <span
+      data-a11y-picture
+      className="pointer-events-none relative block overflow-hidden"
+      style={{ width: canvas.width * part.w * scale, height: canvas.height * part.h * scale }}
+    >
+      <span
+        className="absolute block"
+        style={{
+          width: `${String(100 / part.w)}%`,
+          height: `${String(100 / part.h)}%`,
+          left: `${String((-100 * part.x) / part.w)}%`,
+          top: `${String((-100 * part.y) / part.h)}%`,
+        }}
+      >
+        <PlacedInParent fractional content={canvas} mode="fit" className="absolute inset-0">
+          <SlideView slide={renderEditedSlide(doc, slide)} media="still" />
+        </PlacedInParent>
+      </span>
+    </span>
   );
 }
