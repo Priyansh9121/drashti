@@ -77,4 +77,21 @@ describe('prepared output state', () => {
     if (off.next?.kind !== 'slide') throw new Error('Missing next');
     expect(off.next.slide.elements).toHaveLength(1);
   });
+  it('global Hide translation removes a previously projected target while leaving the source alone', () => {
+    const state = initialEngineState();
+    state.next = {
+      kind: 'slide',
+      presentationId: 'p',
+      slideIndex: 0,
+      slide: slide(),
+      background: null,
+      itemId: null,
+      notes: '',
+    };
+    const projected = preparedOutputState(state, {});
+    const result = preparedOutputState(Object.assign({}, projected, { translationHidden: true }), {});
+    if (result.next?.kind !== 'slide') throw new Error('Missing next');
+    expect(result.next.slide.elements).toHaveLength(1);
+    expect(result.next.slide.elements[0]).toBe(state.next.slide.elements[0]);
+  });
 });
