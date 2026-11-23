@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, statSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { buildIndic } from './build-indic.mjs';
@@ -22,6 +22,11 @@ test('native helper decodes generated PCM with real ORT and CTC blank/repeat rul
       output: join(root, 'bin'),
       target: process.env.DRASHTI_INDIC_TARGET,
     });
+    const target = process.env.DRASHTI_INDIC_TARGET ?? `${process.platform}-${process.arch}`;
+    const header = readFileSync(program);
+    if (target.startsWith('darwin'))
+      assert.equal(header.readUInt32LE(4), target.endsWith('arm64') ? 0x0100000c : 0x01000007);
+    else assert.equal(header.readUInt16LE(header.readUInt32LE(0x3c) + 4), 0x8664);
     context.diagnostic(
       `helper bytes: ${statSync(program).size}; target: ${process.env.DRASHTI_INDIC_TARGET ?? `${process.platform}-${process.arch}`}`,
     );
@@ -63,9 +68,9 @@ test('native helper decodes generated PCM with real ORT and CTC blank/repeat rul
     });
     const pcm = Buffer.alloc(3200);
     for (let i = 0; i < 1600; i += 1) pcm.writeInt16LE(Math.round(5000 * Math.sin(i * 0.2)), i * 2);
-    const header = Buffer.alloc(4);
-    header.writeUInt32LE(pcm.length);
-    p.stdin.end(Buffer.concat([header, pcm]));
+    const frameHeader = Buffer.alloc(4);
+    frameHeader.writeUInt32LE(pcm.length);
+    p.stdin.end(Buffer.concat([frameHeader, pcm]));
     assert.equal(await done, 0, errors);
     const lines = output
       .trim()
