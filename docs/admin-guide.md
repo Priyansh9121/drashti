@@ -1,6 +1,6 @@
 # The admin's guide: looking after Drashti
 
-These instructions describe **1.0.0-alpha.20**, including screen geometry, shared show view, YouTube scheduling, kirtan bundles, the new appearances and reporting a problem. Live captions stay off and marked Trial. Keep Main, nodes and phone pages on the matching build when updating.
+These instructions describe **1.0.0-alpha.21**, including the log kept a day at a time for 30 days and Save Diagnostics by day, telling many computers apart, Read Words from a Page…, a slide from PDF pages, and when Request Access works again after too many tries. Live captions stay off and marked Trial. Keep Main, nodes and phone pages on the matching build when updating.
 
 This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside the old presentation program are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`. **Help › Drashti Manual…** gives the short steps for each feature; **?** on a panel keeps its short help there, with **Open the manual** for its chapter.
 
