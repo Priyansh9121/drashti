@@ -230,6 +230,15 @@ test('the log has a line for every show command, operator request and notice, wi
     );
   await expect.poll(log).toMatch(/^\S+ \[info\] Show: toggleBlackout: done \(revision \d+\)$/mu);
   await expect.poll(log).toMatch(/^\S+ \[info\] Request: library:import-paths: done$/mu);
+  // A notice the operator is shown: its words, its names in quotes blanked (here, the diagnostics' own notice).
+  const desktop = mkdtempSync(join(tmpdir(), 'drashti-desktop-'));
+  await app.evaluate(({ app: electronApp }, dir) => {
+    electronApp.setPath('desktop', dir);
+  }, desktop);
+  await chooseMenuItem(app, 'save-diagnostics');
+  await expect
+    .poll(log)
+    .toMatch(/^\S+ \[info\] Notice: Diagnostics saved on the Desktop: Drashti diagnostics .+\.txt$/mu);
   const text = log();
   // The file's first line: its day, and who writes it.
   expect(text.split('\n')[0]).toMatch(
