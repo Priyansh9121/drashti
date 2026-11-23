@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -87,6 +87,38 @@ function generated(path: string, large = false) {
   expect(made.status, made.error?.message ?? made.stderr.toString()).toBe(0);
 }
 const digest = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
+/**
+ * Every control of Edit Video's export section stands at least 8 px clear of the others: its three choices, the
+ * Also add the clip to Media box and Export clip… (in alpha.20 the box ran right up to the button, with no gap).
+ */
+async function expectExportControlsApart(editor: Locator, what: string): Promise<void> {
+  const section = editor.getByTestId('video-clip-export');
+  await expect(section).toBeVisible();
+  const close = await section.evaluate((root) => {
+    const controls = [
+      ...root.querySelectorAll<HTMLElement>('select, button, label:has(> input[type="checkbox"])'),
+    ]
+      .filter((el) => !el.closest('ul'))
+      .map((el) => ({
+        name: ((el instanceof HTMLSelectElement ? el.labels[0]?.textContent : el.textContent) ?? '').trim(),
+        box: el.getBoundingClientRect(),
+      }))
+      .filter(({ box }) => box.width > 0 && box.height > 0);
+    const out: string[] = [];
+    for (const [i, a] of controls.entries())
+      for (const b of controls.slice(i + 1)) {
+        const gap = Math.max(
+          b.box.left - a.box.right,
+          a.box.left - b.box.right,
+          b.box.top - a.box.bottom,
+          a.box.top - b.box.bottom,
+        );
+        if (gap < 8) out.push(`“${a.name}” and “${b.name}” are ${gap.toFixed(1)} px apart`);
+      }
+    return out;
+  });
+  expect(close, what).toEqual([]);
+}
 
 test('idle lighter copies and vertical clip exports keep the originals and stop at the on-air gate', async () => {
   const { app, userData } = await launchApp({
@@ -200,6 +232,7 @@ test('idle lighter copies and vertical clip exports keep the originals and stop 
     await editor.getByLabel('Picture and sound').selectOption('original');
     await editor.getByLabel('Clip shape').selectOption('vertical');
     await editor.getByLabel('Also add the clip to Media').check();
+    await expectExportControlsApart(editor, 'the export section keeps its controls apart');
     await expectNoSeriousA11yIssues(win, 'clip export controls');
     await editor.getByRole('button', { name: 'Export clip…', exact: true }).click();
     await expect(editor.locator('[data-testid="clip-export-job"][data-state="waiting"]')).toBeVisible();
