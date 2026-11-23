@@ -138,7 +138,15 @@ test('the stage display in a browser matches the stage screen, and comes back af
     await expect(t.getByTestId('stage-current')).toHaveText('Placeholder stage line two');
     await dispatch(win, { type: 'setBlackout', on: true });
     await expect(t.getByTestId('stage-view')).toContainText('AUDIENCE SCREENS BLACK');
-    await expect.poll(async () => JSON.stringify(await said(t))).toBe(JSON.stringify(await said(output)));
+    // Both sides read again each try (as above): the clock may turn to the next minute between two readings.
+    await expect
+      .poll(async () => {
+        const [browser, screen] = await Promise.all([said(t), said(output)]);
+        return JSON.stringify(browser) === JSON.stringify(screen)
+          ? 'same'
+          : JSON.stringify({ browser, screen });
+      })
+      .toBe('same');
     await dispatch(win, { type: 'setBlackout', on: false });
     // No pictures on a stage display.
     await expect(t.locator('img, video')).toHaveCount(0);
