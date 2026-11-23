@@ -3,6 +3,7 @@ import type { SpeechEngine } from './hub';
 import {
   captionPurpose,
   chooseRecognizer,
+  ownModelCaptionAi,
   whisperModelFile,
   type CaptionRoute,
   type PackModel,
@@ -73,5 +74,26 @@ describe('caption AI routes', () => {
     expect(whisperModelFile(whisper('unknown', OTHER), known)).toBeNull();
     expect(whisperModelFile(whisper('two-files', KNOWN, 2), known)).toBeNull();
     expect(whisperModelFile(conformer('gu-conformer'), known)).toBeNull();
+  });
+
+  it('a language with a model of its own (cap-whisper’s) is heard by caption AI; "as heard" and others keep today’s', () => {
+    let language: 'gu' | 'hi' | 'auto' = 'gu';
+    const whisperEngine = engine('whisper');
+    const ai = ownModelCaptionAi({
+      language: () => language,
+      ownModel: (l) => (l === 'gu' ? { id: 'gu-own-placeholder' } : null),
+      engine: whisperEngine,
+    });
+    expect(ai.on()).toBe(true);
+    expect(ai.recognizer('gu')).toEqual({
+      route: 'whisper',
+      modelId: 'gu-own-placeholder',
+      engine: whisperEngine,
+    });
+    expect(ai.recognizer('hi')).toBeNull();
+    language = 'hi';
+    expect(ai.on()).toBe(false);
+    language = 'auto';
+    expect(ai.on()).toBe(false);
   });
 });
