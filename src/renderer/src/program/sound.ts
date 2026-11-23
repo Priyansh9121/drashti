@@ -15,6 +15,7 @@ import { startPlayback } from '../render/playback';
 import { failureState, findDevice, setSoundState } from './camera';
 import { useProgram } from './program-store';
 import { keepSoundAhead, STREAM_SOUND_AHEAD_S } from './sound-ahead';
+import { KEEP_OUTPUT_LEVEL } from '../render/cue-clock';
 import type { SpeechGraph } from './speech-tap';
 
 /*
@@ -72,6 +73,14 @@ export class StreamSound {
     this.delay.connect(this.mix);
     this.mix.connect(this.meter);
     this.mix.connect(this.out);
+    // Never silent to Chromium (as a cued picture's graph, render/cue-clock.ts, QA21-S5-3): its device output hears
+    // nothing else, and 30 s after the page opened Chromium moved the whole mix to a stand-in sink paced by a timer,
+    // 0.13-0.36 of real time on CI's Mac (a22-cue). This constant, below half a 24-bit step, keeps the device's own
+    // real-time thread pulling it; nothing reaches the mix, the encoder or a loudspeaker.
+    const keep = this.ctx.createConstantSource();
+    keep.offset.value = KEEP_OUTPUT_LEVEL;
+    keep.connect(this.ctx.destination);
+    keep.start();
     document.body.dataset['audio'] = this.ctx.state;
     this.ctx.addEventListener('statechange', () => {
       document.body.dataset['audio'] = this.ctx.state;
