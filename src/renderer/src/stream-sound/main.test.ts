@@ -11,8 +11,9 @@ const h = vi.hoisted(() => ({
   speech: vi.fn<(port: unknown, track: () => unknown, graph: () => unknown) => void>(),
   list: vi.fn(() => Promise.resolve()),
   connected: vi.fn(),
+  awake: vi.fn<(on: boolean) => void>(),
   state: { context: null as ProgramContext | null, sound: 'on' },
-  engineListener: null as ((view: { state: null; rev: number }) => void) | null,
+  engineListener: null as ((view: { state: unknown; rev: number }) => void) | null,
 }));
 vi.mock('../program/sound', () => ({
   StreamSound: class {
@@ -24,6 +25,7 @@ vi.mock('../program/sound', () => ({
     track = () => 'generated mix track';
     inputTrack = () => 'generated raw input';
     speechGraph = () => 'generated raw graph';
+    keepOutputAwake = h.awake;
   },
 }));
 vi.mock('../program/encoder-audio', () => ({
@@ -136,4 +138,42 @@ it('keeps the input, delay, raw captions tap, native encoder and four-reading pe
   contextChanged({ ...context, capturing: false, sound: null });
   await vi.waitFor(() => expect(h.input).toHaveBeenLastCalledWith(null));
   expect(h.stop).toHaveBeenCalledOnce();
+});
+
+it("keeps the mix's output awake only while its sound is in use or a cue waits (the lead, a22-cue)", async () => {
+  const context = {
+    sound: { id: 'generated', label: 'Generated input' },
+    soundDelayMs: 0,
+    mixOwnSound: false,
+    capturing: false,
+  } as ProgramContext;
+  let contextChanged = (_next: ProgramContext): void => undefined;
+  const page = Object.assign(new EventTarget(), {
+    drashti: {
+      output: { onTestClock: vi.fn() },
+      stream: {
+        page: {
+          onContext: (listener: typeof contextChanged) => {
+            contextChanged = listener;
+          },
+          context: () => Promise.resolve(context),
+        },
+      },
+    },
+  });
+  vi.stubGlobal('window', page);
+  vi.stubGlobal('navigator', { mediaDevices: new EventTarget() });
+  vi.stubGlobal('document', { body: { dataset: {} } });
+  await import('./main');
+  // Open for its preview alone: asleep.
+  await vi.waitFor(() => expect(h.awake).toHaveBeenLastCalledWith(false));
+  contextChanged({ ...context, soundInUse: true });
+  expect(h.awake).toHaveBeenLastCalledWith(true);
+  contextChanged({ ...context, soundInUse: false });
+  expect(h.awake).toHaveBeenLastCalledWith(false);
+  // A cue waits (its Go can come at any moment): awake; taken down: asleep again.
+  h.engineListener?.({ state: { videoCue: { id: 'generated cue' } }, rev: 2 });
+  expect(h.awake).toHaveBeenLastCalledWith(true);
+  h.engineListener?.({ state: { videoCue: null }, rev: 3 });
+  expect(h.awake).toHaveBeenLastCalledWith(false);
 });

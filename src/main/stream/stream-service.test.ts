@@ -287,3 +287,67 @@ describe('video out on the stream’s page (x30)', () => {
     stream.close();
   });
 });
+
+// The lead (24 Nov, a22-cue): the stream's sound keeps its output awake (an inaudible constant) only while its sound is
+// in use: live, recording, or heard by a sound tap (captions, sound recording); never for a page open only for its
+// preview or video out, so an idle Drashti holds no sound output open (a Mac's sleep, laptops).
+describe("the stream's sound in use", () => {
+  it('is said in the pages context only while a sound tap listens (or the stream is live or recording), and told to them as it changes', async () => {
+    const webContents = Object.assign(new EventEmitter(), {
+      id: 43,
+      isDestroyed: () => false,
+      postMessage: vi.fn(),
+      send: vi.fn(),
+    });
+    const program = Object.assign(new EventEmitter(), {
+      webContents,
+      isDestroyed: () => false,
+      getContentSize: () => [1920, 1080],
+      destroy: vi.fn(),
+    });
+    const sound = { id: 'generated-sound', label: 'Generated sound' };
+    const profile = { id: 'test-profile', preset: 'good', camera: null, sound };
+    const soundPages: BrowserWindow[] = [];
+    const stream = new StreamService({
+      profiles: { get: () => profile },
+      settings: { get: (key: string) => (key === 'stream.profileId' ? profile.id : undefined) },
+      screens: { streamGroup: () => null },
+      createProgram: vi.fn(() => program as unknown as BrowserWindow),
+      createStreamSound: () => {
+        const win = soundWindowFixture();
+        soundPages.push(win);
+        return win;
+      },
+      sendToOperator: vi.fn(),
+      platform: 'darwin',
+      mediaAccess: () => 'granted',
+      askMediaAccess: () => Promise.resolve(true),
+      fakeDevices: true,
+      ffmpegPath: () => null,
+      now: Date.now,
+      log: vi.fn(),
+    } as unknown as StreamServiceDeps);
+    const told = () =>
+      (soundPages[0]?.webContents.send as ReturnType<typeof vi.fn> | undefined)?.mock.calls
+        .filter(([channel]) => channel === IPC.stream.context)
+        .at(-1)?.[1] as ProgramContext | undefined;
+    // Open for its preview alone: nothing uses its sound.
+    stream.hold('a preview of its page', true);
+    await vi.waitFor(() => expect(soundPages).toHaveLength(1));
+    webContents.emit('did-finish-load');
+    await vi.waitFor(() => expect(told()).toBeDefined());
+    expect(stream.context().soundInUse).toBeFalsy();
+    expect(told()?.soundInUse).toBeFalsy();
+    // A sound tap listens (live captions): in use, and the sound page is told.
+    const stop = stream.listenSound(vi.fn());
+    expect(stop).not.toBeNull();
+    expect(stream.context().soundInUse).toBe(true);
+    await vi.waitFor(() => expect(told()?.soundInUse).toBe(true));
+    // It stops listening: not in use again, and told.
+    stop?.();
+    expect(stream.context().soundInUse).toBeFalsy();
+    await vi.waitFor(() => expect(told()?.soundInUse).toBeFalsy());
+    stream.hold('a preview of its page', false);
+    stream.close();
+  });
+});
