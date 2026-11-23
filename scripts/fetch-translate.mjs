@@ -391,9 +391,9 @@ export async function fetchTranslate(target, { jobs = availableParallelism() } =
   const pins = createHash('sha256')
     .update(SOURCES.map((s) => `${s.url} ${s.sha256}`).join('\n'))
     .update(readFileSync(helperSource))
-    .update(
-      target === 'win32-x64' ? readFileSync(windowsProject) : readFileSync(fileURLToPath(import.meta.url)),
-    )
+    // A changed build (this script, the Windows project) builds it again, as changed sources do.
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .update(readFileSync(windowsProject))
     .digest('hex');
   const recorded = existsSync(stamp) ? readFileSync(stamp, 'utf8') : '';
   if (existsSync(out) && stillAsUnpacked(recorded, outDir, pins)) return out;
