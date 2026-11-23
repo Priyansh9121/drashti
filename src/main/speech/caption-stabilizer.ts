@@ -43,7 +43,7 @@ interface Parent {
   latest: Clause | null;
 }
 const normalized = (text: string): string => text.normalize('NFC').trim().replace(/\s+/gu, ' ');
-const scalarLength = (text: string): number => [...text].length;
+const scalarLength = (text: string): number => Array.from(text).length;
 
 /** One bounded parent observation, one active clause and its latest committed range. No transcript/cache. */
 export class CaptionStabilizer {
@@ -93,13 +93,12 @@ export class CaptionStabilizer {
         const overlap = observation.overlap;
         if (
           !old ||
-          !overlap ||
-          overlap.previousEnginePhraseId !== old.observation.enginePhraseId ||
+          overlap?.previousEnginePhraseId !== old.observation.enginePhraseId ||
           !old.observation.final
         )
           return this.omit('ambiguous-overlap');
-        const before = [...old.observation.text];
-        const after = [...text];
+        const before = Array.from(old.observation.text);
+        const after = Array.from(text);
         const [from, to] = overlap.previousRange;
         const [start, end] = overlap.currentRange;
         if (
@@ -126,7 +125,7 @@ export class CaptionStabilizer {
         active: null,
         latest: null,
       };
-    } else if (old) {
+    } else {
       const frontierChanged =
         old.words.slice(0, old.frontier).join(' ') !== words.slice(0, old.frontier).join(' ');
       if (frontierChanged) {
@@ -146,30 +145,33 @@ export class CaptionStabilizer {
         this.emit(latest, 'corrected', obs, words);
       }
       old.since = words.map((word, index) =>
-        word === old.words[index] ? old.since[index]! : observation.observedAt,
+        word === old.words[index] ? (old.since[index] ?? observation.observedAt) : observation.observedAt,
       );
       old.words = words;
       old.observation = obs;
     }
-    const parent = this.parent!;
+    const parent = this.parent;
+    if (!parent) return false;
     if (observation.final) {
       if (parent.frontier < words.length) this.settle(words.length);
       return true;
     }
     let stableEnd = parent.frontier;
-    while (stableEnd < words.length && observation.observedAt - parent.since[stableEnd]! >= 500)
+    while (
+      stableEnd < words.length &&
+      observation.observedAt - (parent.since[stableEnd] ?? observation.observedAt) >= 500
+    )
       stableEnd += 1;
     if (stableEnd - parent.frontier >= 5) this.settle(stableEnd);
     if (parent.frontier < words.length) {
       const text = words.slice(parent.frontier).join(' ');
-      if (!parent.active)
-        parent.active = {
-          id: `s${String(this.nextClause++)}`,
-          revision: 0,
-          text: '',
-          from: parent.frontier,
-          to: words.length,
-        };
+      parent.active ??= {
+        id: `s${String(this.nextClause++)}`,
+        revision: 0,
+        text: '',
+        from: parent.frontier,
+        to: words.length,
+      };
       if (parent.active.text !== text) {
         parent.active.text = text;
         parent.active.to = words.length;
@@ -181,7 +183,8 @@ export class CaptionStabilizer {
   }
 
   private settle(to: number): void {
-    const parent = this.parent!;
+    const parent = this.parent;
+    if (!parent) return;
     const active = parent.active ?? {
       id: `s${String(this.nextClause++)}`,
       revision: 0,

@@ -7,7 +7,7 @@ describe('two-line clauses', () => {
     const lines = captionClauseLines(cluster.repeat(60), 31);
     expect(lines).toHaveLength(2);
     for (const line of lines) {
-      expect([...line].length).toBeLessThanOrEqual(31);
+      expect(Array.from(line).length).toBeLessThanOrEqual(31);
       expect(line.startsWith('ક')).toBe(true);
       expect(line.endsWith('િ')).toBe(true);
     }

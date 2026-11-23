@@ -10051,6 +10051,8 @@ function start(): void {
     'access effects',
     followAccess({
       stopShow: () => {
+        // The captions rehearsal ends first, without starting live captions again (Codex x90's access-stop rule).
+        captions.cancelPrototype();
         engine.stop();
       },
       stream: streaming,

@@ -290,7 +290,12 @@ export class CaptionsService {
     this.tell();
   }
 
-  cancelPrototype(): void {}
+  /** An access stop: the rehearsal ends at once, and nothing of the real captions starts again (no listening, no download). */
+  cancelPrototype(): void {
+    if (this.closed || !this.prototype.view().on) return;
+    this.prototype.setOn(false);
+    this.tell();
+  }
 
   advancePrototype(): void {
     if (!this.closed) this.prototype.advance();
@@ -350,7 +355,11 @@ export class CaptionsService {
     const next = { ...this.switch, model };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
-    if (this.switch.on) {
+    if (this.prototype.view().on) {
+      // The rehearsal starts a fresh session; the newly chosen model is not loaded while it runs.
+      this.prototype.restart();
+      this.download = this.modelState();
+    } else if (this.switch.on) {
       this.turnOff();
       await this.turnOn();
     } else this.download = this.modelState();

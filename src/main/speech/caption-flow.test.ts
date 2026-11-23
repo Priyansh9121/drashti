@@ -207,11 +207,14 @@ describe('caption AI path: recognizer -> hub -> flow -> coordinator -> screens',
     expect(t.current()).toMatchObject({ sessionId: second, phraseId: 's1', sourceLanguage: 'hi' });
   });
 
-  it('Sanskrit shows in Gujarati letters, as today', () => {
+  it('Sanskrit is not caption AI’s (Gujarati, Hindi and English are): nothing of it reaches the screens this way', () => {
+    // The lead's Q-CAPI-1 A: caption AI runs only for a language with a model of its own; Sanskrit has none and
+    // keeps today's captions (in Gujarati letters there). The coordinator refuses a Sanskrit clause.
     const t = setup({ language: 'sa' });
     t.flow.start();
     t.say('कखग', true, 's1', 'sa');
-    expect(t.lines()).toEqual(['કખગ']);
+    expect(t.lines()).toBeNull();
+    expect(t.current()).toBeNull();
   });
 
   it('finals reach the recording draft once, with the glossary’s spelling and their own times; corrections do not', () => {

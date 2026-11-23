@@ -4,6 +4,8 @@ export function fittedCaptionFont(base: number, available: number, measured: num
 }
 
 /** Reset a reused band before either the legacy or fitted path measures it. */
-export function prepareCaptionFont(_style: { fontSize: string }, _base: number, fit: boolean): boolean {
+export function prepareCaptionFont(style: { fontSize: string }, base: number, fit: boolean): boolean {
+  // A band reused after a fitted clause still carries the fitted size: back to the configured one first.
+  style.fontSize = `${String(base)}px`;
   return fit;
 }

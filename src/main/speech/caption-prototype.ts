@@ -2,6 +2,9 @@ import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coor
 import { CaptionStabilizer } from './caption-stabilizer';
 import { CaptionCoordinator, type CaptionCoordinatorOptions } from './caption-coordinator';
 
+/** Each manual update is its own short synthetic capture: never the time spent waiting for the next press. */
+const SYNTHETIC_CAPTURE_MS = 900;
+
 const EXAMPLES = [
   { partial: 'The blue box', settled: 'The green box is beside a round shape.' },
   { partial: 'An orange square', settled: 'Two orange squares stay near the blue circle.' },
@@ -13,7 +16,6 @@ export class CaptionPrototype {
   private recognizer: CaptionStabilizer | null = null;
   private readonly clock: () => number;
   private update = 0;
-  private beganAt = 0;
 
   constructor(options: CaptionCoordinatorOptions) {
     this.coordinator = new CaptionCoordinator(options);
@@ -34,10 +36,10 @@ export class CaptionPrototype {
     if (sessionId === null) return;
     const phrase = Math.floor(this.update / 2);
     const final = this.update % 2 === 1;
-    const example = EXAMPLES[phrase % EXAMPLES.length]!;
-    if (!final) this.beganAt = this.clock();
+    const example = EXAMPLES[phrase % EXAMPLES.length];
     const inputEpoch = this.coordinator.inputEpochId();
-    if (inputEpoch === null) return;
+    if (inputEpoch === null || !example) return;
+    const now = this.clock();
     this.recognizer?.observe({
       sessionId,
       inputEpoch,
@@ -45,9 +47,9 @@ export class CaptionPrototype {
       sequence: final ? 2 : 1,
       text: final ? example.settled : example.partial,
       final,
-      startAt: this.beganAt,
-      endAt: this.clock(),
-      observedAt: this.clock(),
+      startAt: now - SYNTHETIC_CAPTURE_MS,
+      endAt: now,
+      observedAt: now,
     });
     this.update += 1;
   }
@@ -55,9 +57,11 @@ export class CaptionPrototype {
   restart(): void {
     this.update = 0;
     const sessionId = this.coordinator.start();
+    const inputEpoch = this.coordinator.inputEpochId();
+    if (inputEpoch === null) return;
     this.recognizer = new CaptionStabilizer({
       sessionId,
-      inputEpoch: this.coordinator.inputEpochId()!,
+      inputEpoch,
       sourceLanguage: 'en',
       targetLanguage: 'hi',
       emit: (clause) => {

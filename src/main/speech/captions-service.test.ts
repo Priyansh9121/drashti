@@ -15,6 +15,12 @@ import { readCaptionsSwitch, readCaptionsTuning } from './captions-switch';
 import type { SpeechEngine } from './hub';
 import { LanguageModelRefused, type LanguageModelEntry } from './language-models';
 
+/** The value, or the test stops here with a plain reason (no non-null assertion). */
+function must<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error('Expected a value here');
+  return value;
+}
+
 /* Live captions as an admin turns them on (Part 10): a stand-in engine and download; placeholder words only. */
 
 /** A stand-in for the language models on this computer: one placeholder Gujarati model Drashti knows. */
@@ -447,7 +453,7 @@ describe('phase D prototype alongside the existing captions service', () => {
     say('Normal path must be stopped');
     service.advancePrototype();
     service.advancePrototype();
-    const old = service.prototypeView().current!;
+    const old = must(service.prototypeView().current);
     service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'hi' });
     expect(service.prototypeView().current).toBeNull();
     expect(service.correctPrototype({ ...old, text: 'Stale correction' })).toBe(false);

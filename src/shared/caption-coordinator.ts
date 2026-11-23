@@ -86,17 +86,20 @@ export interface CaptionReview {
   omitted: number;
 }
 
-/** Exact UTF-8 bounds and plain Unicode; unpaired surrogates are never repaired silently. */
+/**
+ * Exact UTF-8 bounds and plain Unicode: no NUL or other C0 control (but line breaks and tabs), no DEL, no C1 control
+ * (U+0080 to U+009F), and no unpaired surrogate (never repaired silently).
+ */
 export function validCaptionText(text: unknown, maxBytes: number): text is string {
   return (
     typeof text === 'string' &&
     text.length <= maxBytes &&
     text.trim().length > 0 &&
     new TextEncoder().encode(text).byteLength <= maxBytes &&
-    [...text].every((letter) => {
-      const code = letter.codePointAt(0)!;
+    Array.from(text).every((letter) => {
+      const code = letter.codePointAt(0) ?? 0;
       return (
-        (code >= 32 && code !== 127 && !(code >= 0xd800 && code <= 0xdfff)) ||
+        (code >= 32 && !(code >= 0x7f && code <= 0x9f) && !(code >= 0xd800 && code <= 0xdfff)) ||
         ['\n', '\r', '\t'].includes(letter)
       );
     })

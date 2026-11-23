@@ -10,7 +10,13 @@ import type {
 import { validCaptionText } from '../../shared/caption-coordinator';
 import { captionClauseLines, captionTranslationLines } from '../../shared/caption-clause-lines';
 import { CAPTION_LINE_CHARS, type CaptionsShown, type CaptionSettings } from '../../shared/captions';
-import { SPEECH_LANGUAGES } from '../../shared/speech';
+import type { SpeechLanguage } from '../../shared/speech';
+
+/**
+ * The languages caption AI hears and translates between (x89's contract: Gujarati, Hindi, English). Sanskrit and "as
+ * heard" stay with today's Whisper captions; they never reach the coordinator.
+ */
+const AI_LANGUAGES: readonly SpeechLanguage[] = ['gu', 'hi', 'en'];
 
 export interface CaptionCoordinatorOptions {
   settings(): CaptionSettings;
@@ -60,6 +66,12 @@ export class CaptionCoordinator {
     deadline: NodeJS.Timeout | null;
   } | null = null;
   private omitted = 0;
+  /** The session's one source and target: a change of either needs a new session. */
+  private pair: { source: SpeechLanguage; target: SpeechLanguage } | null = null;
+  /** A stable clause whose translation failed: not asked again until its words change. */
+  private failed: { sessionId: string; phraseId: string; revision: number } | null = null;
+  /** Where the words may be shown (the audience screens or not): a change starts a new output-policy epoch. */
+  private policyKey = '';
   private shownAt = Number.NEGATIVE_INFINITY;
   private trailing: NodeJS.Timeout | null = null;
   private expiry: NodeJS.Timeout | null = null;
@@ -83,12 +95,17 @@ export class CaptionCoordinator {
     this.captureOffset = this.clock() - Date.now();
     this.generation += 1;
     this.policyEpoch += 1;
+    this.policyKey = this.policyOf();
+    this.pair = null;
+    this.failed = null;
     this.notify();
     return this.sessionId;
   }
 
   stop(): void {
     this.sessionId = null;
+    this.pair = null;
+    this.failed = null;
     this.current = null;
     this.previous = null;
     this.highestPhrase = 0;
@@ -99,7 +116,7 @@ export class CaptionCoordinator {
   }
 
   accept(clause: CaptionRevision): boolean {
-    if (clause.sessionId !== this.sessionId || this.sessionId === null) return false;
+    if (this.sessionId === null || clause.sessionId !== this.sessionId) return false;
     const sequence = /^s([1-9]\d*)$/u.exec(clause.phraseId)?.[1];
     const number = Number(sequence);
     const now = this.clock();
@@ -111,8 +128,10 @@ export class CaptionCoordinator {
       number < this.highestPhrase ||
       !Number.isSafeInteger(clause.revision) ||
       clause.revision < 1 ||
-      !SPEECH_LANGUAGES.includes(clause.sourceLanguage) ||
-      !SPEECH_LANGUAGES.includes(clause.targetLanguage) ||
+      !AI_LANGUAGES.includes(clause.sourceLanguage) ||
+      !AI_LANGUAGES.includes(clause.targetLanguage) ||
+      (this.pair !== null &&
+        (clause.sourceLanguage !== this.pair.source || clause.targetLanguage !== this.pair.target)) ||
       !Number.isFinite(startAt) ||
       !Number.isFinite(endAt) ||
       startAt < 0 ||
@@ -127,8 +146,7 @@ export class CaptionCoordinator {
     if (!validCaptionText(sourceText, 4_096)) return false;
     if (number === this.highestPhrase) {
       if (
-        !this.current ||
-        this.current.status !== 'provisional' ||
+        this.current?.status !== 'provisional' ||
         clause.revision <= this.current.revision ||
         clause.sourceLanguage !== this.current.sourceLanguage ||
         clause.targetLanguage !== this.current.targetLanguage
@@ -140,8 +158,11 @@ export class CaptionCoordinator {
     this.highestPhrase = number;
     const firstSettledAt = clause.status === 'settled' ? now : null;
     const clearAt = now + 6_000;
+    this.pair ??= { source: clause.sourceLanguage, target: clause.targetLanguage };
     this.current = Object.freeze({
       ...clause,
+      // Its own frozen copy: the caller keeps no handle on what the coordinator holds.
+      ...(clause.parent ? { parent: Object.freeze({ ...clause.parent }) } : {}),
       sourceText,
       startAt,
       endAt,
@@ -175,6 +196,34 @@ export class CaptionCoordinator {
 
   /** ASR can revise a committed clause, but never overwrite an operator-pinned correction. */
   reviseAutomatic(clause: CaptionRevision): boolean {
+    // The settled clause before a provisional one is still eligible (for translation): revised in place, never
+    // painted again over the newer source.
+    const before = this.previous;
+    if (
+      before &&
+      this.visible &&
+      this.current?.status === 'provisional' &&
+      clause.sessionId === this.sessionId &&
+      clause.phraseId === before.phraseId &&
+      !before.pinned &&
+      before.status !== 'provisional' &&
+      clause.revision > before.revision &&
+      clause.status === 'corrected' &&
+      clause.sourceLanguage === before.sourceLanguage &&
+      clause.targetLanguage === before.targetLanguage &&
+      validCaptionText(clause.sourceText, 4_096)
+    ) {
+      const sourceText = textOf(clause.sourceText);
+      this.previous = Object.freeze({
+        ...before,
+        revision: clause.revision,
+        sourceText,
+        sourceHash: hashOf(sourceText),
+        status: 'corrected',
+      });
+      this.update();
+      return true;
+    }
     if (
       !this.current ||
       !this.visible ||
@@ -211,7 +260,11 @@ export class CaptionCoordinator {
 
   /** The eventual L8 consumer calls this before revoking work; no show action waits for cancellation. */
   setTranslationHeld(held: boolean): void {
-    if (this.held === held) return;
+    if (this.held === held) {
+      // The authoritative lease opened explicitly: start what waits (no new generation: nothing was revoked).
+      if (!held) this.pump();
+      return;
+    }
     this.held = held;
     this.generation += 1;
     this.abortFlight();
@@ -223,7 +276,28 @@ export class CaptionCoordinator {
   }
 
   refresh(): void {
+    const policy = this.policyOf();
+    if (this.sessionId !== null && policy !== this.policyKey) {
+      // Before the new audience choice applies: what was asked under the old one is dropped and asked again
+      // (with its original deadline), never shown.
+      this.policyKey = policy;
+      this.policyEpoch += 1;
+      this.abortFlight();
+      this.translated = null;
+      const eligible = this.eligible();
+      this.pending = eligible && !this.failedMatches(eligible) ? eligible : null;
+      this.pump();
+      this.notify();
+    }
     if (this.visible) this.paint();
+  }
+
+  private policyOf(): string {
+    return this.options.settings().audience ? 'audience' : 'stage-stream';
+  }
+
+  private failedMatches(clause: StoredClause): boolean {
+    return this.failed !== null && identity(this.failed, clause);
   }
 
   view(): CaptionReview {
@@ -300,6 +374,7 @@ export class CaptionCoordinator {
     this.pending =
       eligible &&
       !this.translatedMatches(eligible) &&
+      !this.failedMatches(eligible) &&
       (!this.flight || !identity(this.flight.clause, eligible))
         ? eligible
         : null;
@@ -459,13 +534,14 @@ export class CaptionCoordinator {
         'glossaryRevision',
       ] as const;
       if (
-        !reply ||
         keys.some((key) => reply[key] !== request[key]) ||
         reply.status !== 'ok' ||
         !validCaptionText(reply.text, 8_192) ||
         (reply.processingMs !== null && (!Number.isFinite(reply.processingMs) || reply.processingMs < 0))
       ) {
         this.omitted += 1;
+        // Not asked again while its words are unchanged (more provisional source arriving is no reason).
+        this.failed = { sessionId: clause.sessionId, phraseId: clause.phraseId, revision: clause.revision };
         return;
       }
       this.translated = { clause, reply: { ...reply, text: textOf(reply.text) }, painted: false };

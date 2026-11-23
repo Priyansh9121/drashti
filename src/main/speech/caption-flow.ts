@@ -1,5 +1,4 @@
 import type { CaptionCorrection, CaptionReview, CaptionRevision } from '../../shared/caption-coordinator';
-import { toGujaratiScript } from '../../shared/scripts';
 import type { Heard, SpeechState } from '../../shared/speech';
 import type { SpeechHub } from './speech-hub';
 
@@ -69,19 +68,15 @@ export function createCaptionFlow(options: CaptionFlowOptions): CaptionFlow {
 
   const heard = (given: Heard): void => {
     if (sessionId === null) return;
-    // The glossary first, on the words as the recognizer gave them; then, as today's feed, Sanskrit in Gujarati
-    // letters (the draft gets the same words).
+    // The glossary first, on the words as the recognizer gave them (the draft gets the same words). Caption AI
+    // hears Gujarati, Hindi and English only: Sanskrit stays with today's captions (the coordinator refuses it).
     const h = options.spelling ? options.spelling(given) : given;
-    const words =
-      h.language === 'sa'
-        ? h.words.map((word) => ({ ...word, text: toGujaratiScript(word.text).normalize('NFC') }))
-        : h.words;
-    const text = words
+    const text = h.words
       .map((w) => w.text)
       .join(' ')
       .normalize('NFC')
       .trim();
-    if (h.final) options.onFinalPhrase?.(h.language === 'sa' || h !== given ? { ...h, words, text } : h);
+    if (h.final) options.onFinalPhrase?.(h !== given ? { ...h, text } : h);
     if (text === '') return;
     const same = last !== null && last.id === h.id;
     if (same && last !== null && (last.final || (last.text === text && !h.final))) return;

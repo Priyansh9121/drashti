@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/captions';
 import { CaptionPrototype } from './caption-prototype';
 
+/** The value, or the test stops here with a plain reason (no non-null assertion). */
+function must<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error('Expected a value here');
+  return value;
+}
+
 function setup() {
   const shown: (CaptionsShown | null)[] = [];
   const p = new CaptionPrototype({
@@ -48,13 +54,13 @@ describe('manual placeholder recognizer prototype', () => {
     p.setOn(true);
     p.advance();
     p.advance();
-    const old = p.view().current!;
+    const old = must(p.view().current);
     p.restart();
     expect(p.view().sessionId).not.toBe(old.sessionId);
     p.advance();
     p.advance();
     expect(p.correct({ ...old, text: 'Stale edit' })).toBe(false);
-    const current = p.view().current!;
+    const current = must(p.view().current);
     expect(p.correct({ ...current, text: 'The red box is still.' })).toBe(true);
     vi.advanceTimersByTime(300);
     expect(last()?.lines).toEqual(['The red box is still.']);
@@ -82,7 +88,9 @@ it('passes recognizer observations through the scalar-range stabilizer', () => {
     enginePhraseId: 's1',
     observationSequence: 2,
     rangeStart: 0,
-    rangeEnd: 37,
+    // The whole settled sentence, 'The green box is beside a round shape.', is 38 code points (x90's red said 37,
+    // a miscount: its first case counts 'The blue box' as 12, end exclusive, the same way).
+    rangeEnd: 38,
     timingPrecision: 'phrase',
   });
   p.setOn(false);
@@ -99,7 +107,7 @@ it('treats a later manual update as a fresh synthetic event without pretending t
     p.advance();
     expect(p.view().on).toBe(true);
     expect(p.view().current?.status).toBe('settled');
-    expect(p.view().current!.endAt - p.view().current!.startAt).toBeLessThanOrEqual(1_000);
+    expect(must(p.view().current).endAt - must(p.view().current).startAt).toBeLessThanOrEqual(1_000);
     p.setOn(false);
   } finally {
     vi.useRealTimers();

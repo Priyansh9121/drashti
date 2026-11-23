@@ -20,13 +20,13 @@ export function CaptionPrototypeControls({
   take,
 }: {
   review: CaptionReview;
-  take(review: CaptionReview | null): void;
+  take: (review: CaptionReview | null) => void;
 }) {
   const [draft, setDraft] = useState<CaptionCorrection | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const current = review.current;
   const sameDraft =
-    draft && current && draft.sessionId === current.sessionId && draft.phraseId === current.phraseId;
+    current !== null && draft?.sessionId === current.sessionId && draft.phraseId === current.phraseId;
   const stale = !draft || !current || !sameDraft || draft.revision !== current.revision;
   const validDraft = draft !== null && captionCorrectionSchema.safeParse(draft).success;
   const perform = (pending: Promise<CaptionReview | null>) => {
@@ -107,7 +107,7 @@ export function CaptionPrototypeControls({
               </Button>
             </div>
           )}
-          {sameDraft && draft && (
+          {sameDraft && (
             <div className="space-y-2">
               <Field
                 label="Corrected phrase"

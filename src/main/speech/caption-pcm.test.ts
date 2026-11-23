@@ -8,6 +8,12 @@ import { CaptionStabilizer } from './caption-stabilizer';
 import { createSpeechHub } from './hub';
 import { createWhisperEngine, SAMPLE_RATE } from './whisper-engine';
 
+/** The value, or the test stops here with a plain reason (no non-null assertion). */
+function must<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error('Expected a value here');
+  return value;
+}
+
 /* Generated tone PCM -> existing engine/hub -> new stabilizer/coordinator. Decoder is a pure stand-in:
  * no program runs, no model/file is read, no microphone opens and no HTTP inference request is made.
  * The existing engine's free-port probe is loopback only. These words say nothing about ASR accuracy.
@@ -29,7 +35,7 @@ it('preserves generated PCM capture age through provisional and final clauses, t
   const sessionId = coordinator.start();
   const stabilizer = new CaptionStabilizer({
     sessionId,
-    inputEpoch: coordinator.inputEpochId()!,
+    inputEpoch: must(coordinator.inputEpochId()),
     sourceLanguage: 'en',
     targetLanguage: 'hi',
     emit: (clause) => {
@@ -136,7 +142,7 @@ it('preserves generated PCM capture age through provisional and final clauses, t
       expect(
         stabilizer.observe({
           sessionId,
-          inputEpoch: coordinator.inputEpochId()!,
+          inputEpoch: must(coordinator.inputEpochId()),
           enginePhraseId: phrase.id,
           sequence,
           text: phrase.text,

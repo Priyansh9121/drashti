@@ -4,6 +4,12 @@ import { IPC } from '../../shared/ipc';
 import { SIMPLE_MODE_LOCKED } from '../simple-mode';
 import { registerCaptionPrototypeIpc } from './caption-prototype-ipc';
 
+/** The value, or the test stops here with a plain reason (no non-null assertion). */
+function must<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error('Expected a value here');
+  return value;
+}
+
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
   handle: (name: string, fn: (...args: unknown[]) => unknown) => handlers.set(name, fn),
@@ -32,7 +38,7 @@ function setup(allowed = true) {
   return {
     captions,
     view,
-    call: (channel: string, ...args: unknown[]) => handlers.get(channel)!({}, ...args),
+    call: (channel: string, ...args: unknown[]) => must(handlers.get(channel))({}, ...args),
   };
 }
 const key = { sessionId: 'session', phraseId: 's1', revision: 1 };

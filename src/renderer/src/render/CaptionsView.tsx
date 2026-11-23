@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { CAPTION_TEXT_HEIGHT, type CaptionScreen } from '../../../shared/captions';
 import { captionBandFor } from '../../../shared/video-caption-display';
 import { useVideoCaptionClock } from './useVideoCaptionClock';
-import { fittedCaptionFont } from './caption-fit';
+import { fittedCaptionFont, prepareCaptionFont } from './caption-fit';
 import { useCaptionAvoidance } from './caption-avoidance';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Size } from '../../../shared/scaling';
@@ -46,9 +46,12 @@ export function CaptionsView({
   const captionText = captions?.lines.join('\n') ?? '';
   useLayoutEffect(() => {
     const element = textBand.current;
-    if (!fitEnabled || !element) return;
+    if (!element || !prepareCaptionFont(element.style, px, fitEnabled)) return;
+    let live = true;
     const fit = () => {
-      element.style.fontSize = `${String(px)}px`;
+      // A callback queued before this effect ended (a resize, fonts loading) changes nothing any more.
+      if (!live) return;
+      prepareCaptionFont(element.style, px, true);
       const lines = [...element.children] as HTMLElement[];
       const widest = Math.max(0, ...lines.map((line) => line.scrollWidth));
       const available = Math.max(0, (lines[0]?.clientWidth ?? 0) - 1);
@@ -60,6 +63,7 @@ export function CaptionsView({
     if (band.current) observer.observe(band.current);
     document.fonts.addEventListener('loadingdone', fit);
     return () => {
+      live = false;
       observer.disconnect();
       document.fonts.removeEventListener('loadingdone', fit);
     };

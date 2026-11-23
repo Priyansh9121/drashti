@@ -8,6 +8,12 @@ import type {
 } from '../../shared/caption-coordinator';
 import { CaptionCoordinator } from './caption-coordinator';
 
+/** The value, or the test stops here with a plain reason (no non-null assertion). */
+function must<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined) throw new Error('Expected a value here');
+  return value;
+}
+
 function setup(translation?: CaptionTranslationPort, output?: 'source' | 'translation') {
   const shown: (CaptionsShown | null)[] = [];
   const coordinator = new CaptionCoordinator({
@@ -50,7 +56,7 @@ function deferredPort() {
       new Promise<CaptionTranslation>((resolve) => requests.push({ clause, signal, resolve })),
   );
   const finish = (index: number, text: string, overrides: Partial<CaptionTranslation> = {}) => {
-    const request = requests[index]!;
+    const request = must(requests[index]);
     request.resolve({ ...request.clause, text, status: 'ok', processingMs: 1, ...overrides });
   };
   return {
@@ -112,7 +118,7 @@ describe('phase D caption coordinator', () => {
     const { coordinator: c, clause, last } = setup();
     c.accept(clause('x'.repeat(300), 1, 'settled'));
     expect(last()?.lines.length).toBeLessThanOrEqual(2);
-    for (const line of last()?.lines ?? []) expect([...line].length).toBeLessThanOrEqual(40);
+    for (const line of last()?.lines ?? []) expect(Array.from(line).length).toBeLessThanOrEqual(40);
     vi.advanceTimersByTime(6_000);
     expect(last()).toBeNull();
     expect(c.correct({ ...clause(''), text: 'Too late' })).toBe(false);
@@ -226,7 +232,7 @@ describe('phase D caption coordinator', () => {
     const port = deferredPort();
     const { coordinator: c, clause, last } = setup(port, 'translation');
     c.accept(clause('A blue box', 1, 'settled'));
-    const request = port.requests[0]!.clause;
+    const request = must(port.requests[0]).clause;
     expect(request).toMatchObject({
       protocolVersion: 1,
       sourceKind: 'speech-clause',
@@ -241,9 +247,9 @@ describe('phase D caption coordinator', () => {
     c.correct({ ...clause(''), text: 'A green box' });
     port.finish(0, 'Old result');
     await vi.advanceTimersByTimeAsync(0);
-    expect(port.requests[1]!.clause.paintDeadlineAt).toBe(request.paintDeadlineAt);
-    expect(port.requests[1]!.clause.sourceHash).not.toBe(request.sourceHash);
-    expect(port.requests[1]!.clause.requestId).not.toBe(request.requestId);
+    expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(request.paintDeadlineAt);
+    expect(must(port.requests[1]).clause.sourceHash).not.toBe(request.sourceHash);
+    expect(must(port.requests[1]).clause.requestId).not.toBe(request.requestId);
     port.finish(1, 'Wrong model', { modelIdentity: 'wrong@1' });
     await vi.advanceTimersByTimeAsync(300);
     expect(last()).toBeNull();
@@ -288,15 +294,15 @@ describe('phase D caption coordinator', () => {
     const port = deferredPort();
     const { coordinator: c, clause, last } = setup(port, 'translation');
     c.accept(clause('A blue box', 1, 'settled'));
-    const first = port.requests[0]!.clause;
+    const first = must(port.requests[0]).clause;
     c.setTranslationHeld(true);
-    expect(port.requests[0]!.signal.aborted).toBe(true);
+    expect(must(port.requests[0]).signal.aborted).toBe(true);
     expect(last()).toBeNull();
     c.setTranslationHeld(false);
     expect(port.requests).toHaveLength(1);
     port.finish(0, 'Cancelled generation');
     await vi.advanceTimersByTimeAsync(0);
-    const second = port.requests[1]!.clause;
+    const second = must(port.requests[1]).clause;
     expect(second.generation).toBeGreaterThan(first.generation);
     expect(second.requestId).not.toBe(first.requestId);
     expect(second.paintDeadlineAt).toBe(first.paintDeadlineAt);
@@ -365,7 +371,7 @@ describe('phase D caption coordinator', () => {
   });
   it('requires a new session for a source/target change and rejects unsupported AI languages', () => {
     const { coordinator: c, clause } = setup();
-    expect(c.accept({ ...clause('Unsupported'), sourceLanguage: 'sa' } as CaptionRevision)).toBe(false);
+    expect(c.accept({ ...clause('Unsupported'), sourceLanguage: 'sa' })).toBe(false);
     expect(c.accept(clause('A blue box', 1, 'settled'))).toBe(true);
     expect(c.accept({ ...clause('A green box', 1, 'settled', 's2'), sourceLanguage: 'gu' })).toBe(false);
     const sessionId = c.start();
@@ -413,14 +419,14 @@ describe('phase D caption coordinator', () => {
       endAt: Date.now(),
       status: 'settled',
     });
-    const first = port.requests[0]!.clause;
+    const first = must(port.requests[0]).clause;
     audience = false;
     c.refresh();
-    expect(port.requests[0]!.signal.aborted).toBe(true);
+    expect(must(port.requests[0]).signal.aborted).toBe(true);
     port.finish(0, 'Old audience policy');
     await vi.advanceTimersByTimeAsync(0);
-    expect(port.requests[1]!.clause.outputPolicyEpoch).toBeGreaterThan(first.outputPolicyEpoch);
-    expect(port.requests[1]!.clause.paintDeadlineAt).toBe(first.paintDeadlineAt);
+    expect(must(port.requests[1]).clause.outputPolicyEpoch).toBeGreaterThan(first.outputPolicyEpoch);
+    expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(first.paintDeadlineAt);
     c.stop();
   });
 });

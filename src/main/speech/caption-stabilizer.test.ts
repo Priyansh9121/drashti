@@ -95,8 +95,8 @@ describe('stable source frontier', () => {
         forcedContinuation: true,
         overlap: {
           previousEnginePhraseId: 's1',
-          previousRange: [[...first].length - [...overlap].length, [...first].length],
-          currentRange: [0, [...overlap].length],
+          previousRange: [Array.from(first).length - Array.from(overlap).length, Array.from(first).length],
+          currentRange: [0, Array.from(overlap).length],
         },
       }),
     ).toBe(true);
