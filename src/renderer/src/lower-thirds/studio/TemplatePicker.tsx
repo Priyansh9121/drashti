@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { findTemplates, TEMPLATE_QUICK_WORDS } from '../../../../shared/lower-third-search';
 import {
   BEST_LOWER_THIRD_TEMPLATES,
@@ -86,9 +86,13 @@ const TemplateTile = memo(function TemplateTile({
     TAGS.feel[feel] + ' feel',
     TAGS.speed[speed] + ' speed',
   ].join('. ');
+  const tileId = useId();
   return (
+    // The tile is the card: its picture (the button that chooses it), then its name with Favourite beside it, so the
+    // star never lies over the picture's button (alpha.21's fit pass). The name is the button's label: it names the
+    // button and choosing it by its name chooses the template too.
     <li
-      className="relative min-w-0"
+      className="flex min-w-0 flex-col rounded-lg border border-field bg-panel-2 hover:border-accent"
       onPointerEnter={(event) => {
         if (event.pointerType !== 'touch') onPlay(id);
       }}
@@ -100,8 +104,10 @@ const TemplateTile = memo(function TemplateTile({
       }}
     >
       <button
+        id={tileId}
         type="button"
-        className="w-full overflow-hidden rounded-lg border border-field bg-panel-2 text-left hover:border-accent"
+        className="block w-full overflow-hidden rounded-t-[calc(var(--radius-lg)-1px)] text-left"
+        aria-labelledby={`${tileId}-name`}
         data-testid="studio-template"
         data-template={id}
         data-style={template.input.look.style ?? 'box'}
@@ -124,20 +130,29 @@ const TemplateTile = memo(function TemplateTile({
           backdrop="picture"
           thumbnail={active ? 'play' : 'still'}
         />
-        <span className="block truncate px-3 py-2 text-sm font-medium">{name}</span>
       </button>
-      <IconButton
-        icon={Star}
-        label={'Favourite ' + name}
-        aria-pressed={favourite}
-        variant={favourite ? 'strong' : 'secondary'}
-        size="sm"
-        tooltipSide="bottom"
-        className={cx('absolute top-2 right-2', favourite && '[&_svg]:fill-current')}
-        onClick={() => {
-          onFavourite(id);
-        }}
-      />
+      <div className="flex min-w-0 items-center gap-1 py-1 pr-1 pl-3">
+        <label
+          id={`${tileId}-name`}
+          htmlFor={tileId}
+          title={name}
+          className="min-w-0 flex-1 cursor-pointer truncate py-1 text-sm font-medium"
+        >
+          {name}
+        </label>
+        <IconButton
+          icon={Star}
+          label={'Favourite ' + name}
+          aria-pressed={favourite}
+          variant={favourite ? 'strong' : 'secondary'}
+          size="sm"
+          tooltipSide="bottom"
+          className={cx('shrink-0', favourite && '[&_svg]:fill-current')}
+          onClick={() => {
+            onFavourite(id);
+          }}
+        />
+      </div>
     </li>
   );
 });
