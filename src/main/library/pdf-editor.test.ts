@@ -471,6 +471,20 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
     }
   });
 
+  it('gives the keeping operation a live guard so a mode change during import cannot publish the batch', async () => {
+    const t = await opened();
+    try {
+      await t.editor.makeSlide(t.event, t.request());
+      const guard = (t.keepSlide.mock.calls[0] as unknown as [unknown, () => boolean])[1];
+      expect(typeof guard).toBe('function');
+      expect(guard()).toBe(true);
+      t.refuse();
+      expect(guard()).toBe(false);
+    } finally {
+      await t.clean();
+    }
+  });
+
   it('says why when the part cannot be drawn, and keeps nothing', async () => {
     const t = await opened();
     try {
