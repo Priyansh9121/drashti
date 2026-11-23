@@ -4,6 +4,7 @@ import type { NodeReportAnswer } from '../../shared/report';
 import { RateGate } from '../rate-gate';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, statSync } from 'node:fs';
+import type { Socket } from 'node:net';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer, type Server } from 'node:https';
 import { type Duplex, Transform, type TransformCallback } from 'node:stream';
@@ -35,6 +36,13 @@ import {
 } from '../../shared/nodes-schema';
 import { isLocalAddress, isLoopback, plainAddress } from '../network/addresses';
 import { RateLimiter, WrongCodeLimiter } from '../network/limits';
+import {
+  connectionSeats,
+  PairedSeats,
+  PAIRED_SEATS_BUSY,
+  PAIRED_SEATS_NOTICE,
+  socketSeat,
+} from '../network/paired-seats';
 import { hashToken, newToken } from '../network/tokens';
 import { confirmation, pakeKey, sameConfirmation, startPake } from './pake';
 import type { ClockStyle } from '../../shared/format';
@@ -108,6 +116,7 @@ export interface LinkHost {
   /** This copy of the engine state fell behind: send a fresh snapshot. */
   resync(): void;
   log(level: 'info' | 'warn', message: string): void;
+  busy?(): void;
   /** A paired node's report (x49), for Main to send on: Main's answer, or null with none. */
   report?(nodeId: string, body: Uint8Array): Promise<NodeReportAnswer | null>;
 }
@@ -175,6 +184,8 @@ interface Client {
   address: string;
   node: LinkNode | null;
   alive: boolean;
+  socket: Duplex;
+  seat: string;
   controllerWindow?: { at: number; count: number };
 }
 
@@ -246,6 +257,43 @@ export class LinkServer {
   private heartbeat: NodeJS.Timeout | null = null;
   private counts: LinkStats = { feedBytes: 0, feedMessages: 0, mediaBytes: 0, since: Date.now() };
 
+  private busyNoted = false;
+  private readonly socketNodes = new Map<string, { ids: Set<string>; release(): void }>();
+  private readonly sockets = new PairedSeats<string>(connectionSeats(256, 32), () => this.capacityBusy());
+  private readonly feeds = new PairedSeats<Duplex>(
+    {
+      total: MAX_CLIENTS,
+      perAddress: MAX_CLIENTS_PER_ADDRESS,
+      open: 20,
+      openPerAddress: MAX_CLIENTS_PER_ADDRESS,
+      replaceWaitingAtAddressLimit: true,
+    },
+    () => this.capacityBusy(),
+  );
+  private readonly open = new Map<ServerResponse, string>();
+
+  private capacityBusy(): void {
+    if (this.busyNoted) return;
+    this.busyNoted = true;
+    this.host.busy?.();
+    this.host.log('warn', PAIRED_SEATS_NOTICE);
+  }
+
+  private protectResponse(req: IncomingMessage, res: ServerResponse, node: LinkNode): void {
+    const key = socketSeat(req.socket);
+    const known = this.socketNodes.get(key);
+    if (known) known.ids.add(node.id);
+    else {
+      this.socketNodes.set(key, { ids: new Set([node.id]), release: this.sockets.protect(key) });
+    }
+    this.open.set(res, node.id);
+    const done = () => {
+      this.open.delete(res);
+    };
+    res.once('finish', done);
+    res.once('close', done);
+  }
+
   constructor(private readonly host: LinkHost) {}
 
   get listening(): boolean {
@@ -254,6 +302,7 @@ export class LinkServer {
 
   start(options: LinkOptions): Promise<LinkStartResult> {
     this.options = options;
+    this.busyNoted = false;
     this.gate = new RateGate(options.bytesPerSecond);
     const server = createServer(
       { key: options.key, cert: options.cert, minVersion: 'TLSv1.3' },
@@ -265,6 +314,18 @@ export class LinkServer {
     server.requestTimeout = 0;
     server.keepAliveTimeout = 5000;
     server.on('tlsClientError', () => undefined);
+    server.on('connection', (socket: Socket) => {
+      const key = socketSeat(socket);
+      const address = plainAddress(socket.remoteAddress ?? '');
+      if (!this.sockets.add(key, isLoopback(address) ? key : address, () => socket.destroy())) {
+        socket.destroy();
+        return;
+      }
+      socket.once('close', () => {
+        this.sockets.remove(key);
+        this.socketNodes.delete(key);
+      });
+    });
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FEED_MESSAGE, clientTracking: false });
     server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
       this.onUpgrade(wss, req, socket, head);
@@ -298,8 +359,12 @@ export class LinkServer {
     const server = this.server;
     this.server = null;
     if (!server) return Promise.resolve();
+    this.sockets.closeWaiting();
     return new Promise((resolve) => {
       server.close(() => {
+        this.sockets.clear();
+        this.socketNodes.clear();
+        this.feeds.clear();
         resolve();
       });
       server.closeAllConnections();
@@ -318,6 +383,14 @@ export class LinkServer {
       if (!now) this.bye(c, 'revoked');
       else c.node = now;
     }
+    for (const [key, known] of this.socketNodes) {
+      for (const id of known.ids) if (!ids.has(id)) known.ids.delete(id);
+      if (known.ids.size === 0) {
+        this.socketNodes.delete(key);
+        known.release();
+      }
+    }
+    for (const [res, id] of this.open) if (!ids.has(id)) res.destroy();
   }
 
   setOffer(offer: { code: string; expiresAt: number } | null): void {
@@ -380,6 +453,12 @@ export class LinkServer {
         throw new HttpError(403, 'Only computers on this local network can reach Drashti.');
       // Nodes are Drashti itself, never a browser page.
       if (req.headers.origin !== undefined) throw new HttpError(403, 'Browsers are refused here.');
+      const node = this.authenticate(req);
+      if (node) this.protectResponse(req, res, node);
+      else if (this.sockets.openFull(socketSeat(req.socket))) {
+        this.capacityBusy();
+        throw new HttpError(503, PAIRED_SEATS_BUSY);
+      }
       if (!this.perAddress.take(address)) throw new HttpError(429, 'Too many requests: wait a moment.');
       const path = (req.url ?? '').split('?')[0] ?? '';
       if (path === NODE_PATHS.pairStart && req.method === 'POST') {
@@ -417,7 +496,7 @@ export class LinkServer {
         this.json(res, 500, {
           ok: false,
           message:
-            'Main could not answer that. Try again; if it happens again, choose Help › Report a Problem… on Main (or Save Diagnostics… when it can’t be sent).',
+            'Main could not answer that. Try again; if it happens again, choose Help › Report a Problem… on Main (or Save Diagnostics when it can’t be sent).',
         });
       }
     }
@@ -611,20 +690,19 @@ export class LinkServer {
       refuse(404, 'Not Found');
       return;
     }
-    // A node has an address of its own; this computer itself may run several (the performance
-    // check's simulated nodes, or a node beside Main to try it), within the overall limit.
-    const fromHere = [...this.clients].filter((c) => c.address === address).length;
-    if (this.clients.size >= MAX_CLIENTS || (!isLoopback(address) && fromHere >= MAX_CLIENTS_PER_ADDRESS)) {
+    const seat = socketSeat(req.socket);
+    if (!this.feeds.add(socket, isLoopback(address) ? seat : address, () => socket.destroy())) {
       refuse(503, 'Service Unavailable');
       return;
     }
+    socket.once('close', () => this.feeds.remove(socket));
     wss.handleUpgrade(req, socket, head, (ws) => {
-      this.onConnection(ws, address);
+      this.onConnection(ws, address, socket, seat);
     });
   }
 
-  private onConnection(ws: WebSocket, address: string): void {
-    const client: Client = { ws, address, node: null, alive: true };
+  private onConnection(ws: WebSocket, address: string, socket: Duplex, seat: string): void {
+    const client: Client = { ws, address, socket, seat, node: null, alive: true };
     this.clients.add(client);
     const hello = setTimeout(() => {
       if (!client.node) this.bye(client, 'unauthorized');
@@ -697,6 +775,11 @@ export class LinkServer {
           this.bye(other, 'replaced');
         }
       client.node = node;
+      this.sockets.protect(client.seat);
+      const http = this.socketNodes.get(client.seat);
+      this.socketNodes.delete(client.seat);
+      http?.release();
+      this.feeds.protect(client.socket);
       this.send(client, {
         type: 'welcome',
         main: { ...options.main, addresses: options.addresses },

@@ -39,6 +39,7 @@ import type {
  * stay a pure function.
  */
 export type EngineAction =
+  | { type: 'translationHidden/set'; hidden: boolean }
   | {
       type: 'slide/show';
       presentationId: string;

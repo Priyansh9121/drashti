@@ -5,7 +5,9 @@ import { IPC } from '../../shared/ipc';
 import type { NewFromWordsResult, RevisionResult, SaveWordsResult, WordsResult } from '../../shared/library';
 import { idSchema } from '../../shared/model-schema';
 import type { PresentationRepo } from '../db/presentations';
+import type { Db } from '../db/database';
 import { handle } from '../ipc/handle';
+import { log } from '../log';
 import type { Revisions } from './revisions';
 import type { NewSlideLook } from './words';
 import { applyWords, legacyFonts, presentationFromWords, wordsOf } from './words';
@@ -17,6 +19,7 @@ import { nfc } from '../../shared/nfc';
  */
 
 export interface WordsIpcDeps {
+  db: Db;
   presentations: PresentationRepo;
   revisions: Revisions;
   fromOperator: (event: IpcMainInvokeEvent) => boolean;
@@ -33,7 +36,23 @@ const wordsSchema = z.string().max(200_000);
 const nameSchema = cleanNameSchema(200);
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change presentations.' };
 
+/** A full drive must answer the editor, leaving its words and Save button available. */
+function writeWords<T>(save: () => T): T | { ok: false; message: string } {
+  try {
+    return save();
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
+    if (code !== 'SQLITE_FULL' && code !== 'ENOSPC') throw error;
+    log.error('Could not save presentation words: drive full.', error);
+    return {
+      ok: false,
+      message: 'This computer’s drive is full: free some space on it, then try again.',
+    };
+  }
+}
+
 export function registerWordsIpc({
+  db,
   presentations,
   revisions,
   fromOperator,
@@ -48,51 +67,60 @@ export function registerWordsIpc({
     return { ok: true, text: wordsOf(rows), legacyFonts: legacyFonts(rows) };
   });
 
-  handle(IPC.library.saveWords, (e, presentationId, text): SaveWordsResult => {
-    if (!fromOperator(e)) return onlyOperator;
-    const id = idSchema.safeParse(presentationId);
-    const words = wordsSchema.safeParse(text);
-    if (!id.success || !words.success) return { ok: false, message: 'Those words cannot be saved.' };
-    const before = presentations.content(id.data);
-    if (!before) return { ok: false, message: 'That presentation is no longer in the library.' };
-    const fonts = legacyFonts(before);
-    // Never write over text in a legacy font: it would come out garbled.
-    if (fonts.length > 0)
-      return {
-        ok: false,
-        message: `This presentation has text in a legacy font (${fonts.join(', ')}), which cannot be edited as plain text yet.`,
-      };
-    // In one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
-    const change = applyWords(before, nfc(words.data), lookFor(before.themeId, before));
-    if (!change) return { ok: false, message: 'There are no words to make slides from.' };
-    presentations.setContent(change.rows);
-    const revisionId = revisions.keep([before]);
-    changed([id.data]);
-    const { kept, changed: edited, added, removed } = change;
-    return { ok: true, revisionId, kept, changed: edited, added, removed };
-  });
+  handle(IPC.library.saveWords, (e, presentationId, text): SaveWordsResult =>
+    writeWords<SaveWordsResult>(() => {
+      if (!fromOperator(e)) return onlyOperator;
+      const id = idSchema.safeParse(presentationId);
+      const words = wordsSchema.safeParse(text);
+      if (!id.success || !words.success) return { ok: false, message: 'Those words cannot be saved.' };
+      const before = presentations.content(id.data);
+      if (!before) return { ok: false, message: 'That presentation is no longer in the library.' };
+      const fonts = legacyFonts(before);
+      // Never write over text in a legacy font: it would come out garbled.
+      if (fonts.length > 0)
+        return {
+          ok: false,
+          message: `This presentation has text in a legacy font (${fonts.join(', ')}), which cannot be edited as plain text yet.`,
+        };
+      // In one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
+      const change = applyWords(before, nfc(words.data), lookFor(before.themeId, before));
+      if (!change) return { ok: false, message: 'There are no words to make slides from.' };
+      presentations.setContent(change.rows);
+      const revisionId = revisions.keep([before]);
+      changed([id.data]);
+      const { kept, changed: edited, added, removed } = change;
+      return { ok: true, revisionId, kept, changed: edited, added, removed };
+    }),
+  );
 
   // A new presentation from words, the operator window's and a phone's alike (Session 54, the phone as a full Drashti).
-  const newFromWords = (name: unknown, text: unknown): NewFromWordsResult => {
-    const n = nameSchema.safeParse(name);
-    const words = wordsSchema.safeParse(text);
-    if (!n.success) return { ok: false, message: 'Give the presentation a name.' };
-    if (!words.success) return { ok: false, message: 'Those words cannot be saved.' };
-    const libraryId = presentations.ensureLibrary('Default');
-    const size = { width: 1920, height: 1080 };
-    const input = presentationFromWords(
-      libraryId,
-      presentations.uniqueName(libraryId, nfc(n.data)),
-      nfc(words.data),
-      lookFor(null, size),
-      size,
-    );
-    if (!input) return { ok: false, message: 'Paste or type the words first.' };
-    const id = presentations.insert(input);
-    styleNew(id);
-    changed([id]);
-    return { ok: true, id };
-  };
+  const newFromWords = (name: unknown, text: unknown): NewFromWordsResult =>
+    writeWords<NewFromWordsResult>(() => {
+      const n = nameSchema.safeParse(name);
+      const words = wordsSchema.safeParse(text);
+      if (!n.success) return { ok: false, message: 'Give the presentation a name.' };
+      if (!words.success) return { ok: false, message: 'Those words cannot be saved.' };
+      // Inserting and applying the default look are one save: neither may be left
+      // behind when the other runs out of space (or the app quits between them).
+      const id = db.transaction(() => {
+        const libraryId = presentations.ensureLibrary('Default');
+        const size = { width: 1920, height: 1080 };
+        const input = presentationFromWords(
+          libraryId,
+          presentations.uniqueName(libraryId, nfc(n.data)),
+          nfc(words.data),
+          lookFor(null, size),
+          size,
+        );
+        if (!input) return null;
+        const id = presentations.insert(input);
+        styleNew(id);
+        return id;
+      })();
+      if (id === null) return { ok: false, message: 'Paste or type the words first.' };
+      changed([id]);
+      return { ok: true, id };
+    });
   handle(IPC.library.newFromWords, (e, name, text): NewFromWordsResult =>
     fromOperator(e) ? newFromWords(name, text) : onlyOperator,
   );
