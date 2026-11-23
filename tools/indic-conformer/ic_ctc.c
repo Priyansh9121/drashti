@@ -204,7 +204,7 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
   printf("{\"file\":"); json_str(stdout, name);
   printf(",\"language\":\"%s\",\"decoder\":\"%s\",\"text\":", m->code, "ctc"); json_str(stdout, text[0] == ' ' ? text + 1 : text);
   printf(",\"words\":[");
-  for (int w = 0; w <= nw; w++) { printf(w ? "," : ""); printf("{\"w\":"); json_str(stdout, words[w]); printf(",\"start\":%.2f,\"end\":%.2f}", ws[w], we[w]); }
+  for (int w = 0; w <= nw; w++) { if (w) fputc(',', stdout); printf("{\"w\":"); json_str(stdout, words[w]); printf(",\"start\":%.2f,\"end\":%.2f}", ws[w], we[w]); }
   printf("],\"timing\":\"coarse: token frames (40 ms)\",\"confidence\":null,\"audio_s\":%.3f,\"frames\":%d,\"enc_frames\":%d,\"frontend_ms\":%.1f,\"infer_ms\":%.1f,\"decode_ms\":%.1f,\"rtf\":%.4f,\"threads\":%d}\n",
          secs, T, Tp, tb - ta, tc - tb, td - tc, secs > 0 ? (td - ta) / 1e3 / secs : 0, threads);
   fflush(stdout);
