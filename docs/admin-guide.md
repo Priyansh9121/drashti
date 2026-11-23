@@ -223,6 +223,8 @@ A click on a column's heading sorts by it, a second the other way (it opens with
 
 **When the library cannot be opened.** If Drashti says at start that it cannot open its library (a damaged file, say), it quits, and what to do comes from here: put the last backup back without that library.
 
+**If the drive fills during a words save.** Leave the editor open while freeing space on the computer’s drive, then save again. A failed new presentation is not kept half made. This differs from a library that cannot be opened at start (below).
+
 1. Open Drashti's data folder (section 3 says where: on a Mac `~/Library/Application Support/Drashti`, on Windows `%APPDATA%\Drashti`).
 2. Make a folder there named `Damaged library`, and move into it `drashti.sqlite` and every file whose name starts with `drashti.sqlite-`. Keep them: whoever looks after Drashti may want them.
 3. Start Drashti: it opens with an empty library.

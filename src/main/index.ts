@@ -5231,6 +5231,7 @@ function start(): void {
     libraryChanged(true);
   };
   const wordsChanges = registerWordsIpc({
+    db,
     presentations,
     revisions,
     fromOperator,

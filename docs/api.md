@@ -290,6 +290,8 @@ curl -s -X POST "$DRASHTI/api/v1/screens/keep" -H "Authorization: Bearer $TOKEN"
 
 **The library's changes** (Session 54, as the window makes them), a Remote's alone, Simple Mode refusing them as the window does (403). Things are named by their ids only, never a path or a file, at most 50 at once. Each answers with the ids it changed (`"ids"`), or a new presentation's `"id"`: a delete's Undo sends those ids back to its `restore`. The feed's `{"type":"changed","what":"presentations"}` or `"playlists"` says when to read the lists again.
 
+A new presentation from words is saved with its default look in one step. If the data drive fills, the request returns a refusal naming the full drive; it leaves no partly made presentation, and can be sent again after space is freed.
+
 | Request                               | Body                                                                                      | Does                                                                                                                       |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/v1/presentations/new`      | `{"name":"…","words":"…"}`                                                                | A presentation made from words, as **New…** makes one (a blank line between slides); answers its `"id"`.                   |
