@@ -5,9 +5,12 @@
 //                                                                 line "<id>=<the file>" per id
 //   node scripts/fetch-caption-models.mjs --sha256 <id>…          their pinned SHA-256s (CI's cache key)
 //   node scripts/fetch-caption-models.mjs --list                  the ids, with what each is and its licence
-// Each one is a fixed file at a fixed address: alpha.22's two caption packs as its release page carries them (made
-// from AI4Bharat's official IndicConformer checkpoints, each pack naming its checkpoint's SHA-256; their provenance:
+// Each one is a fixed file (its name, size and SHA-256 pinned here): alpha.22's two caption packs (made from
+// AI4Bharat's official IndicConformer checkpoints, each pack naming its checkpoint's SHA-256; their provenance:
 // docs/admin-guide.md and the packs' own lists), and the small captions model as main/speech/models.ts pins it. A
+// pack's address may be set (DRASHTI_CAPTION_PACK_URL_GU, DRASHTI_CAPTION_PACK_URL_HI) to another release page of
+// Drashti's own repository holding the same file (where the packs are put is the release lead's choice); empty, the
+// release page below. Any other address is refused before it is asked. A
 // download is tried three times (download-source.mjs), may be redirected only to the hosts its source names, and is
 // refused (and removed) unless its size and SHA-256 are the pinned ones. Kept in <cache>/<sha256>/<name>, so CI's
 // cache is keyed by the SHA-256s; a cached copy is checked again before every use.
@@ -22,8 +25,9 @@ import { readModelPin } from './whisper-decode-check.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** alpha.22's release page: the two caption packs were uploaded there with SHA256SUMS-packs.txt. */
-const RELEASE = 'https://github.com/Priyansh9121/drashti/releases/download/v1.0.0-alpha.22';
+/** Drashti's own release pages, and alpha.22's: the two caption packs go there with SHA256SUMS-packs.txt. */
+const RELEASES = '/Priyansh9121/drashti/releases/download/';
+const RELEASE = `https://github.com${RELEASES}v1.0.0-alpha.22`;
 /** GitHub sends a release file's download on to its own storage. */
 const GITHUB_HOSTS = Object.freeze([
   'github.com',
@@ -37,6 +41,8 @@ const pack = (language, name, bytes, sha256) =>
   Object.freeze({
     name,
     url: `${RELEASE}/${name}`,
+    urlSetting: `DRASHTI_CAPTION_PACK_URL_${language === 'Gujarati' ? 'GU' : 'HI'}`,
+    releases: RELEASES,
     hosts: GITHUB_HOSTS,
     bytes,
     sha256,
@@ -111,6 +117,41 @@ const fits = async (file, source) =>
   existsSync(file) && statSync(file).size === source.bytes && (await sha256Of(file)) === source.sha256;
 
 /**
+ * Where the source is fetched from: the address its setting gives (another release page of the same repository: one
+ * tag, then the same file name, nothing more), else its pinned one. An address set otherwise is refused.
+ */
+function addressOf(source, env) {
+  const set = source.urlSetting ? (env[source.urlSetting] ?? '').trim() : '';
+  if (!set) return source.url;
+  let parsed = null;
+  try {
+    parsed = new URL(set);
+  } catch {
+    parsed = null;
+  }
+  const releases = source.releases ?? '';
+  const rest =
+    releases && parsed?.pathname.startsWith(releases) ? parsed.pathname.slice(releases.length) : '';
+  const [tag = '', file = '', ...more] = rest.split('/');
+  if (
+    !parsed ||
+    parsed.protocol !== 'https:' ||
+    parsed.hostname !== 'github.com' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== '' ||
+    !/^[\w.-]{1,100}$/u.test(tag) ||
+    file !== source.name ||
+    more.length > 0
+  )
+    throw new Error(
+      `refused ${source.name}: ${source.urlSetting ?? ''} must be a release page of github.com${releases} with the same file name, not ${set}`,
+    );
+  return parsed.href;
+}
+
+/**
  * A fetch that goes only where the source allows: every address (the first and each redirect's) must be https at
  * one of its hosts, else the download is refused before that address is asked.
  */
@@ -137,13 +178,13 @@ function guarded(source, fetch) {
  */
 export async function fetchCaptionModel(
   id,
-  { cacheDir, fetch, pause, table = CAPTION_MODELS, checkout = root },
+  { cacheDir, fetch, pause, table = CAPTION_MODELS, checkout = root, env = process.env },
 ) {
   const source = Object.hasOwn(table, id) ? table[id] : undefined;
   if (!source) throw new Error(`unknown caption model "${id}" (known: ${Object.keys(table).join(', ')})`);
   refuseInsideCheckout(checkout, cacheDir);
-  if (!hostAllowed(source, source.url))
-    throw new Error(`refused ${source.name}: ${source.url} is not one of its hosts`);
+  const url = addressOf(source, env);
+  if (!hostAllowed(source, url)) throw new Error(`refused ${source.name}: ${url} is not one of its hosts`);
   const folder = join(cacheDir, source.sha256);
   const file = join(folder, source.name);
   if (await fits(file, source)) return file;
@@ -151,18 +192,18 @@ export async function fetchCaptionModel(
   mkdirSync(folder, { recursive: true });
   const partial = `${file}.partial`;
   rmSync(partial, { force: true });
-  process.stderr.write(`Downloading ${source.name} (${String(source.bytes)} bytes) from ${source.url}…\n`);
+  process.stderr.write(`Downloading ${source.name} (${String(source.bytes)} bytes) from ${url}…\n`);
   try {
-    await downloadSource({ name: source.name, url: source.url }, partial, guarded(source, fetch), pause);
+    await downloadSource({ name: source.name, url }, partial, guarded(source, fetch), pause);
     const bytes = statSync(partial).size;
     if (bytes !== source.bytes)
       throw new Error(
-        `${source.name} is ${String(bytes)} bytes, not the pinned ${String(source.bytes)} (${source.url}). It was removed and not used.`,
+        `${source.name} is ${String(bytes)} bytes, not the pinned ${String(source.bytes)} (${url}). It was removed and not used.`,
       );
     const got = await sha256Of(partial);
     if (got !== source.sha256)
       throw new Error(
-        `${source.name} does not match its pinned SHA-256: ${got}, expected ${source.sha256} (${source.url}). It was removed and not used.`,
+        `${source.name} does not match its pinned SHA-256: ${got}, expected ${source.sha256} (${url}). It was removed and not used.`,
       );
     renameSync(partial, file);
   } finally {
