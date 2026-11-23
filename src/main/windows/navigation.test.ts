@@ -26,7 +26,7 @@ describe('isAppUrl', () => {
     expect(isAppUrl('not a url', mac)).toBe(false);
   });
 
-  it('rejects a file address that leaves the renderer folder once decoded, or that names another computer', () => {
+  it('rejects a file address leaving the renderer folder once decoded, or on another computer', () => {
     const inMac = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/';
     const inWin = 'file:///C:/Program%20Files/Drashti/resources/app.asar/out/renderer/';
     // An encoded separator is not a dot segment to the address parser, but it is one once decoded.
@@ -36,13 +36,9 @@ describe('isAppUrl', () => {
     expect(isAppUrl(`${inWin}..%5c..%5Cx.html`, win)).toBe(false);
     expect(isAppUrl(`${inMac}index.html%00.png`, mac)).toBe(false);
     // A file address with a host is another computer's file (a network share on Windows).
-    expect(
-      isAppUrl('file://other-computer/Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/index.html', mac),
-    ).toBe(false);
+    expect(isAppUrl(`${inMac.replace('file:///', 'file://other-computer/')}index.html`, mac)).toBe(false);
     // Our own pages, as they are loaded, still pass (a localhost host is no host at all).
-    expect(
-      isAppUrl('file://localhost/Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/index.html', mac),
-    ).toBe(true);
+    expect(isAppUrl(`${inMac.replace('file:///', 'file://localhost/')}index.html`, mac)).toBe(true);
     expect(isAppUrl(`${inMac}output.html?screen=a#x`, mac)).toBe(true);
     expect(isAppUrl(`${inWin}stream.html`, win)).toBe(true);
   });
