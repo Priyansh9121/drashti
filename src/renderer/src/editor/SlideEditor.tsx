@@ -463,13 +463,14 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   // The window's keys: Save, Undo and Redo, Find, and zoom; typing in a field or a text box keeps its own keys.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (pdfPaused || useEditor.getState().sourceConversion) return;
+      if (useEditor.getState().sourceConversion) return;
       // The show's F-keys (Clear all, Oops, the Wallpaper...): the operator window acts on them (Session 55, 17a).
       if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && SHOW_F_KEYS.includes(e.key)) {
         e.preventDefault();
         void window.drashti.slideEditor.showKey(e.key);
         return;
       }
+      if (pdfPaused) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -895,7 +896,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                   };
                   noteOutside({ undo: () => show(false), redo: () => show(true) });
                 }
-                tell(`Saved PDF copy “${result.name}”.`);
+                tell(result.undoMessage ?? `Saved PDF copy “${result.name}”.`);
                 return null;
               }
               const result = await window.drashti.library.extractPdfPages(

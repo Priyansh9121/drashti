@@ -58,7 +58,9 @@ describe('PDF structural page operations', () => {
     if (!first) throw new Error('Generated first page missing.');
     delete first.documentPage;
     const parts = splitPdfPages(doc, 'two');
-    expect(parts?.map(part => part.groups.flatMap(group => group.slides.map(page => page.id)))).toEqual([['one'], ['two', 'three']]);
+    expect(parts?.map((part) => part.groups.flatMap((group) => group.slides.map((page) => page.id)))).toEqual(
+      [['one'], ['two', 'three']],
+    );
   });
   it('splits before the chosen page into two nonempty ordered parts sharing the master', () => {
     const before = fixture();

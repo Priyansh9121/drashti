@@ -33,7 +33,8 @@ export interface PdfPrintPage {
 }
 
 export type PdfCopyResult =
-  { ok: true; name: string; undoId?: string } | { ok: false; message: string; cancelled?: boolean };
+  | { ok: true; name: string; undoId?: string; undoMessage?: string }
+  | { ok: false; message: string; cancelled?: boolean };
 
 export interface PdfCopyFinished {
   id: string;

@@ -36,7 +36,7 @@ export function replacePdfPage(doc: EditDoc, id: string, page: EditSlide): EditD
 export function splitPdfPages(doc: EditDoc, id: string): [EditDoc, EditDoc] | null {
   const pages = slidesOf(doc);
   const at = pages.findIndex((page) => page.id === id);
-  if (at <= 0 || pages.some((page) => page.documentPage?.ext !== 'pdf')) return null;
+  if (at <= 0 || pages[at]?.documentPage?.ext !== 'pdf') return null;
   const first = selectPdfPages(
     doc,
     pages.slice(0, at).map((_, i) => i),

@@ -103,6 +103,7 @@ export class PdfEditor {
     signal: AbortSignal,
     extracted = false,
   ): Promise<PdfCopyResult> {
+    let publishedName: string | undefined;
     try {
       if (!current()) return failed('The editor changed. Reopen it before saving a PDF copy.');
       const output = await this.deps.chooseOutput(event, doc.name);
@@ -134,11 +135,19 @@ export class PdfEditor {
         signal,
         current,
       });
+      publishedName = basename(output);
       // Final rename is the writer's commit boundary; do not falsely report cancellation after publication.
       const undoId = extracted ? await this.copies.keep(output, receipt) : undefined;
       if (undoId) this.copyOwners.set(undoId, event.sender.id);
       return { ok: true, name: basename(output), ...(undoId ? { undoId } : {}) };
     } catch (error) {
+      if (publishedName)
+        return {
+          ok: true,
+          name: publishedName,
+          undoMessage:
+            'The new PDF was saved, but it changed before Undo could be prepared. The changed file is left alone.',
+        };
       if (error instanceof PdfEditorError) return failed(error.message);
       if (error instanceof PdfCopyError && (error.code === 'source-limit' || error.code === 'output-exists'))
         return failed(error.message);
