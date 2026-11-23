@@ -101,5 +101,7 @@ it('treats a later manual update as a fresh synthetic event without pretending t
     expect(p.view().current?.status).toBe('settled');
     expect(p.view().current!.endAt - p.view().current!.startAt).toBeLessThanOrEqual(1_000);
     p.setOn(false);
-  } finally { vi.useRealTimers(); }
+  } finally {
+    vi.useRealTimers();
+  }
 });

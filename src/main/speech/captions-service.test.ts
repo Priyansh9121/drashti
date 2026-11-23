@@ -286,7 +286,8 @@ it('starts a fresh prototype session when the selected normal model changes, wit
     const { service, started, downloads } = setup();
     await service.setOn(true);
     service.setPrototypeOn(true);
-    service.advancePrototype(); service.advancePrototype();
+    service.advancePrototype();
+    service.advancePrototype();
     const old = service.prototypeView().sessionId;
     await service.setModel('turbo');
     expect(service.prototypeView().sessionId).not.toBe(old);
@@ -294,5 +295,7 @@ it('starts a fresh prototype session when the selected normal model changes, wit
     expect(started).toEqual(['auto']);
     expect(downloads).toEqual(['small']);
     service.close();
-  } finally { vi.useRealTimers(); }
+  } finally {
+    vi.useRealTimers();
+  }
 });

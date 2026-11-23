@@ -56,7 +56,9 @@ describe('private prototype correction bridge', () => {
       {},
       { ...key, revision: -1, text: 'Placeholder' },
       { ...key, text: 'x'.repeat(4_097) },
-      { ...key, text: '\u0000bad' }, { ...key, text: '\u0085bad' }, { ...key, text: '\ud800' },
+      { ...key, text: '\u0000bad' },
+      { ...key, text: '\u0085bad' },
+      { ...key, text: '\ud800' },
     ])
       expect(call(IPC.captions.correctPrototype, wrong)).toBe(false);
     expect(captions.correctPrototype).not.toHaveBeenCalled();

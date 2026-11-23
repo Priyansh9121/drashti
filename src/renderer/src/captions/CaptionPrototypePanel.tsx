@@ -173,16 +173,27 @@ export function CaptionPrototypePanel() {
   useEffect(() => {
     let live = true;
     const receive = (next: CaptionReview | null) => {
-      if (live && next && typeof next.version === 'number') setReview(current => latestCaptionReview(current, next));
+      if (live && next && typeof next.version === 'number')
+        setReview((current) => latestCaptionReview(current, next));
     };
     const stop = window.drashti.captions.onPrototypeChanged(receive);
-    void window.drashti.captions.prototypeView().then(receive).catch(() => { if (live) setProblem(true); });
+    void window.drashti.captions
+      .prototypeView()
+      .then(receive)
+      .catch(() => {
+        if (live) setProblem(true);
+      });
     return () => {
       live = false;
       stop();
     };
   }, []);
-  if (problem) return <Notice tone="warning">The rehearsal controls could not be opened. Close Live captions and open it again.</Notice>;
+  if (problem)
+    return (
+      <Notice tone="warning">
+        The rehearsal controls could not be opened. Close Live captions and open it again.
+      </Notice>
+    );
   return review ? (
     <CaptionPrototypeControls key={review.sessionId ?? 'off'} review={review} take={take} />
   ) : null;
