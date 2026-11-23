@@ -40,6 +40,9 @@ function setup(
     pack?: Partial<Record<SpeechLanguage, string>>;
     /** The caption words' fixer given to the service (cap-glossary's spell), not to caption AI's path. */
     spellInService?: boolean;
+    /** Whether the general model is on this computer (default: the small one is), and how its download goes. */
+    general?: { ready: boolean };
+    download?: () => Promise<void>;
   } = {},
 ) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-ai-'));
@@ -87,10 +90,10 @@ function setup(
     },
     engine,
     engineProblem: () => null,
-    modelReady: (id: CaptionModelId) => id === 'small',
+    modelReady: (id: CaptionModelId) => (o.general ? o.general.ready : id === 'small'),
     download: async (id) => {
       downloads.push(id);
-      await Promise.resolve();
+      await (o.download ? o.download() : Promise.resolve());
     },
     show: (c) => shown.push(c),
     changed: () => undefined,
@@ -328,6 +331,50 @@ describe('caption AI in the captions service', () => {
     t.say('લીલું ખોખુ', true, 's1');
     vi.advanceTimersByTime(300);
     expect(t.lines()).toEqual(['લીલું ખોખું']);
+    t.service.close();
+  });
+
+  it('listening starts again while today’s captions run (the general model came): it follows the path running, never caption AI’s recognizer through today’s feed (review S2)', async () => {
+    let arrived: () => void = () => undefined;
+    const general = { ready: false };
+    const t = setup({
+      ai: false,
+      pack: { gu: GU },
+      general,
+      download: () =>
+        new Promise<void>((resolve) => {
+          arrived = resolve;
+        }),
+    });
+    t.choose('gu');
+    // Turning on waits for the download it starts.
+    const on = t.service.setOn(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.downloads).toEqual(['small']);
+    // Caption AI becomes possible (its model's pack checked) before the path is chosen again.
+    t.ai.on = true;
+    general.ready = true;
+    arrived();
+    await on;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.started.at(-1)).toEqual({ engine: 'today', language: 'gu' });
+    expect(t.service.aiRecognizer()).toBeNull();
+    // The path chosen again (a pack changed): caption AI's own recognizer, through its coordinator.
+    t.service.aiPathChanged();
+    expect(t.started.at(-1)).toEqual({ engine: GU, language: 'gu' });
+    t.service.close();
+  });
+
+  it('back to today’s captions from caption AI (as heard), the general model not here: it is downloaded then, not only on Retry (review)', async () => {
+    const general = { ready: false };
+    const t = setup({ ai: true, pack: { gu: GU }, general });
+    t.choose('gu');
+    await t.service.setOn(true);
+    expect(t.downloads).toEqual([]);
+    t.ai.on = false;
+    t.choose('auto');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.downloads).toEqual(['small']);
     t.service.close();
   });
 });
