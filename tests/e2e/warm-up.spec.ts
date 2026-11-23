@@ -556,6 +556,11 @@ test('where Chromium draws with a graphics chip the LIVE picture’s warm-up is 
     const box = document.querySelector<HTMLElement>('[data-testid="live-preview"]');
     if (!box) throw new Error('no LIVE picture');
     box.style.borderColor = '#000';
+    // The card's inset highlight keeps its geometry and alpha; its white is neutralised too.
+    box.style.boxShadow = getComputedStyle(box).boxShadow.replace(
+      /rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*([\d.]+))?\s*\)/gu,
+      (_colour, alpha: string | undefined) => `rgba(0, 0, 0, ${alpha ?? '1'})`,
+    );
     for (let at: HTMLElement | null = box; at; at = at.parentElement) at.style.backgroundColor = '#000';
   });
   // Red: reproduce the original square native-copy container, without changing any other warm-up drawing.
