@@ -338,11 +338,13 @@ export function macJobs(target, { ct2, spm }, work) {
       '-Wextra',
       '-Werror',
       ...ct2Defines,
-      `-I${join(ct2, 'include')}`,
-      `-I${spmSrc}`,
-      `-I${spmThird}`,
-      `-I${join(spmSrc, 'builtin_pb')}`,
-      `-I${join(spmThird, 'protobuf-lite')}`,
+      // The libraries' headers as system headers: -Werror is for our own code (a newer clang warns in their
+      // bundled half.hpp and json.hpp, full run 45221762761).
+      `-isystem${join(ct2, 'include')}`,
+      `-isystem${spmSrc}`,
+      `-isystem${spmThird}`,
+      `-isystem${join(spmSrc, 'builtin_pb')}`,
+      `-isystem${join(spmThird, 'protobuf-lite')}`,
       '-D_USE_INTERNAL_STRING_VIEW',
     ],
   });
