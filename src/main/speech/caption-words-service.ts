@@ -1,6 +1,7 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import {
   addCaptionWords,
+  isCaptionLanguage,
   CAPTION_WORDS_FILE_BYTES,
   captionWordsCsv,
   parseCaptionWords,
@@ -55,19 +56,29 @@ export class CaptionWordsService {
   private list: CaptionWord[];
   private fixer: (h: Heard) => Heard;
   private fixFailed = false;
+  private hintsOn: Record<SpeechLanguage, boolean>;
 
   constructor(private readonly deps: CaptionWordsDeps) {
     this.list = parseCaptionWords(deps.repo.get());
     this.fixer = spellingFixer(this.list);
-    this.hints = createCaptionHints(() => this.list);
+    this.hintsOn = deps.repo.hintsOn();
+    this.hints = createCaptionHints(
+      () => this.list,
+      () => this.hintsOn,
+    );
   }
 
   view(): CaptionWordsView {
-    return { words: this.list, hinted: this.hints.hinted(), hintsOn: this.deps.repo.hintsOn() };
+    return { words: this.list, hinted: this.hints.hinted(), hintsOn: { ...this.hintsOn } };
   }
 
-  /** Red first: a language's hints switch, not written yet. */
-  setHints(_language: unknown, _on: unknown): CaptionWordsResult {
+  /** A language's switch: whether its words go to the engine as hints (the fixer works either way). */
+  setHints(language: unknown, on: unknown): CaptionWordsResult {
+    if (!isCaptionLanguage(language) || typeof on !== 'boolean')
+      return { ok: false, view: this.view(), message: 'That is not a caption language’s switch.' };
+    this.deps.repo.setHintsOn(language, on);
+    this.hintsOn = this.deps.repo.hintsOn();
+    this.deps.log.info(`Caption words: hints for ${language} turned ${on ? 'on' : 'off'}.`);
     return { ok: true, view: this.view(), message: null };
   }
 

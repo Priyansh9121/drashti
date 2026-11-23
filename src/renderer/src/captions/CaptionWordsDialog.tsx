@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  CAPTION_HINTS_ON,
   CAPTION_WORD_LANGUAGE_NAMES,
   CAPTION_WORDS_PER_LANGUAGE,
   captionWordKey,
@@ -14,6 +15,7 @@ import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
 import { ArrowUp, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
+import { Toggle } from '../ui/Toggle';
 import { captionWordsHintText } from './caption-words-text';
 
 /*
@@ -91,6 +93,7 @@ function CaptionWordsDialog({
   const all = view?.words ?? [];
   const mine = all.filter((w) => w.language === language);
   const name = CAPTION_WORD_LANGUAGE_NAMES[language];
+  const hintsOn = view?.hintsOn[language] ?? CAPTION_HINTS_ON[language];
 
   const add = () => {
     const checked = checkCaptionWord(typed);
@@ -200,8 +203,22 @@ function CaptionWordsDialog({
           </Button>
         </form>
         <p className="text-sm text-muted" data-testid="caption-words-hints">
-          {captionWordsHintText(name, mine.length, view?.hinted[language] ?? 0, listening, language)}
+          {captionWordsHintText(name, mine.length, view?.hinted[language] ?? 0, listening, language, hintsOn)}
         </p>
+        <Toggle
+          checked={hintsOn}
+          label={`Give the captions engine the ${name} words as hints`}
+          data-testid="caption-words-hints-on"
+          onChange={(on) => {
+            take(window.drashti.captionWords.setHints(language, on));
+          }}
+        />
+        {language === 'gu' && !hintsOn && (
+          <p className="text-sm text-muted">
+            Off at first for Gujarati: in a trial on real speech, hints did not help Gujarati. Spellings are
+            fixed either way.
+          </p>
+        )}
         {mine.length > 0 && (
           <ul
             className="max-h-56 divide-y divide-line overflow-y-auto rounded-md border border-line"

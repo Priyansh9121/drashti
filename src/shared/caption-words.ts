@@ -79,7 +79,7 @@ export function captionWordKey(text: string, language: SpeechLanguage): string {
   return language === 'sa' ? toGujaratiScript(key) : key;
 }
 
-const isLanguage = (value: unknown): value is SpeechLanguage =>
+export const isCaptionLanguage = (value: unknown): value is SpeechLanguage =>
   (SPEECH_LANGUAGES as readonly unknown[]).includes(value);
 
 /**
@@ -120,7 +120,7 @@ export function parseCaptionWords(raw: unknown): CaptionWord[] {
     const fields = item as Record<string, unknown>;
     const language = fields['language'];
     const word = fields['word'];
-    if (!isLanguage(language) || typeof word !== 'string') continue;
+    if (!isCaptionLanguage(language) || typeof word !== 'string') continue;
     const c = checkCaptionWord(word);
     if (c.ok) checked.push({ language, word: c.word });
   }

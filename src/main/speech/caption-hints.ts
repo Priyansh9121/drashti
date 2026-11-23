@@ -1,4 +1,4 @@
-import type { CaptionWord } from '../../shared/caption-words';
+import { CAPTION_HINTS_ON, type CaptionWord } from '../../shared/caption-words';
 import { toDevanagari } from '../../shared/scripts';
 import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../shared/speech';
 
@@ -81,7 +81,7 @@ export function hintsOf(words: readonly CaptionWord[], language: SpeechLanguage 
 /** Hints from the list as it is now (`list()` is read each time; its answer is worked out again when it changes). */
 export function createCaptionHints(
   list: () => readonly CaptionWord[],
-  _hintsOn?: () => Readonly<Record<SpeechLanguage, boolean>>,
+  hintsOn: () => Readonly<Record<SpeechLanguage, boolean>> = () => CAPTION_HINTS_ON,
 ): CaptionHints {
   let seen: readonly CaptionWord[] | null = null;
   let cache = new Map<SpeechLanguage | 'auto', Hints>();
@@ -94,6 +94,8 @@ export function createCaptionHints(
     return words;
   };
   const hints = (language: SpeechLanguage | 'auto'): Hints => {
+    // The language's switch (Gujarati off until the admin turns it on): read at each piece, never cached.
+    if (language !== 'auto' && !hintsOn()[language]) return NONE;
     const words = now();
     let h = cache.get(language);
     if (!h) {
