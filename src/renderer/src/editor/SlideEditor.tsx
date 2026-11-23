@@ -470,7 +470,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         void window.drashti.slideEditor.showKey(e.key);
         return;
       }
-      if (pdfPaused) return;
+      if (pdfPaused || outsideBusy) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -519,7 +519,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mac, saveWhenReady, pdfPaused]);
+  }, [mac, saveWhenReady, pdfPaused, outsideBusy]);
 
   return (
     <div
@@ -985,6 +985,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
           }}
         />
+      )}
+      {outsideBusy && !pdfPaused && (
+        <Dialog
+          title="Finishing Undo or Redo"
+          testId="pdf-history-pending"
+          size="sm"
+          onTop
+          closeButton={false}
+          onClose={() => undefined}
+        >
+          <p role="status" className="text-sm">
+            Wait while the PDF change finishes.
+          </p>
+        </Dialog>
       )}
       {pdfPaused && (
         <Dialog
