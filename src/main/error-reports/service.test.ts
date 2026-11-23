@@ -137,6 +137,29 @@ describe('automatic error reports', () => {
     expect(s.sent).toEqual([]);
   });
 
+  it('expires reports that reach seven days while an earlier upload is in flight', async () => {
+    const s = setup();
+    s.configure();
+    s.service.enable(true);
+    expect(s.service.capture(incident())).toBe(true);
+    expect(s.service.capture(incident())).toBe(true);
+    const capturedAt = s.state.now;
+    s.state.now = capturedAt + 7 * 86_400_000 - 1;
+    s.deps.send = (_config, body) => {
+      s.sent.push(body);
+      // A receipt arrives after the queued reports' exact expiry boundary.
+      s.state.now = capturedAt + 7 * 86_400_000;
+      return Promise.resolve(true);
+    };
+    await s.service.wake();
+    expect(s.sent).toHaveLength(1);
+    expect(s.service.pending()).toBe(0);
+    const saved = JSON.parse(readFileSync(join(s.dir, 'state.json'), 'utf8')) as { queue: unknown[] };
+    expect(saved.queue).toEqual([]);
+    await new ErrorReports(s.deps).wake();
+    expect(s.sent).toHaveLength(1);
+  });
+
   it('does not reopen its daily allowance if the clock moves backwards', () => {
     const s = setup();
     s.state.now += 2 * 86_400_000;
