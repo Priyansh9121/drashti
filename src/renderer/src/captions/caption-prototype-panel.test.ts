@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { CaptionReview } from '../../../shared/caption-coordinator';
 import { CaptionPrototypeControls, latestCaptionReview } from './CaptionPrototypePanel';
 
-const view: CaptionReview = { on: false, version: 1, sessionId: null, current: null, previous: null, busy: false, omitted: 0 };
+const view: CaptionReview = { on: false, version: 1, canCorrect: false, sessionId: null, current: null, previous: null, busy: false, omitted: 0 };
 const clause = { sessionId: 'new-session', phraseId: 's1', revision: 1, sourceLanguage: 'en' as const, targetLanguage: 'hi' as const, sourceText: 'The blue box', startAt: 1, endAt: 2, status: 'provisional' as const };
 const render = (review: CaptionReview) => renderToStaticMarkup(createElement(CaptionPrototypeControls, { review, take: () => undefined }));
 describe('ephemeral operator correction panel', () => {
@@ -20,7 +20,7 @@ describe('ephemeral operator correction panel', () => {
     expect(provisional).toContain('Provisional');
     expect(provisional).toContain('The blue box');
     expect(provisional).not.toContain('Correct last phrase');
-    const settled = render({ ...view, on: true, sessionId: 'new-session', current: { ...clause, status: 'settled' } });
+    const settled = render({ ...view, canCorrect: true, on: true, sessionId: 'new-session', current: { ...clause, status: 'settled' } });
     expect(settled).toContain('Settled');
     expect(settled).toContain('Correct last phrase');
     expect(settled).toContain('Dismiss phrase');

@@ -21,5 +21,8 @@ export function captionClauseLines(text: string, max: number): string[] {
 
 /** A translation must fit whole, otherwise it is omitted, never silently shortened. */
 export function captionTranslationLines(text: string, max: number): string[] | null {
-  return captionClauseLines(text, max);
+  const words = text.trim().split(/\s+/u);
+  if (words.some(word => [...word].length > max)) return null;
+  const lines = captionLines(words, max, Number.MAX_SAFE_INTEGER);
+  return lines.length <= 2 ? lines : null;
 }

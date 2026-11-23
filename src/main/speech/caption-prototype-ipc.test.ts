@@ -8,7 +8,7 @@ const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({ handle: (name: string, fn: (...args: unknown[]) => unknown) => handlers.set(name, fn) }));
 beforeEach(() => handlers.clear());
 function setup(allowed = true) {
-  const view: CaptionReview = { on: true, version: 1, sessionId: 'session', current: null, previous: null, busy: false, omitted: 0 };
+  const view: CaptionReview = { on: true, version: 1, canCorrect: false, sessionId: 'session', current: null, previous: null, busy: false, omitted: 0 };
   const captions = { prototypeView: vi.fn(() => view), setPrototypeOn: vi.fn(), advancePrototype: vi.fn(), restartPrototype: vi.fn(), correctPrototype: vi.fn(() => true), dismissPrototype: vi.fn(() => true) };
   registerCaptionPrototypeIpc({ fromOperator: () => allowed, captions });
   return { captions, view, call: (channel: string, ...args: unknown[]) => handlers.get(channel)!({}, ...args) };

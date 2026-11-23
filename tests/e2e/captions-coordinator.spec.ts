@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
-import { chooseMenuItem, launchApp, NO_PLACEHOLDERS, operatorPage, operatorReady, outputPages, setUpScreen, type PageGlobals } from './helpers';
+import { chooseMenuItem, launchApp, NO_PLACEHOLDERS, operatorPage, operatorReady, outputPages, outputReady, setUpScreen, type PageGlobals } from './helpers';
 
 /* Alpha.22: written now; run only after alpha.21 PUBLISHED. Manual generated events, no sound/model/download. */
 test('the operator can rehearse provisional, settled and corrected clauses; stale edits never reach the hall', async () => {
@@ -11,7 +11,9 @@ test('the operator can rehearse provisional, settled and corrected clauses; stal
     const win = await operatorPage(app);
     await operatorReady(win);
     await setUpScreen(win, 'Main Hall', 0);
+    await expect.poll(() => outputPages(app).length).toBe(1);
     const hall = outputPages(app)[0]!;
+    await outputReady(hall);
     await chooseMenuItem(app, 'live-captions');
     const dialog = win.getByTestId('captions-dialog');
     await expect(dialog.getByTestId('captions-prototype-on')).toHaveAttribute('aria-checked', 'false');
@@ -31,6 +33,7 @@ test('the operator can rehearse provisional, settled and corrected clauses; stal
 
     // A draft open while the recognizer restarts must be refused, even though the phrase id repeats.
     const old = await win.evaluate(() => (globalThis as PageGlobals).drashti.captions.prototypeView());
+    if (!old?.current) throw new Error('No settled placeholder is available to correct.');
     await dialog.getByRole('button', { name: 'Correct last phrase…' }).click();
     await dialog.getByLabel('Corrected phrase').fill('Old session words');
     await dialog.getByRole('button', { name: 'Restart placeholders' }).click();

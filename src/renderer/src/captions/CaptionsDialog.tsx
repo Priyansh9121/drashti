@@ -19,6 +19,7 @@ import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
 import { Toggle } from '../ui/Toggle';
 import { closeCaptions, connectCaptions, takeCaptions, useCaptions } from './captions-store';
+import { CaptionPrototypePanel } from './CaptionPrototypePanel';
 import { captionsStateText, downloadText, megabytes } from './captions-words';
 
 /*
@@ -76,6 +77,7 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
           them on the stream and its video recording. Phones do not receive the captions. When you record
           sound with captions on, Drashti saves a timed draft beside the audio file.
         </p>
+        <CaptionPrototypePanel />
         <Toggle
           checked={view.on}
           label="Live captions on this computer (Trial). Can slow the screens while on."
