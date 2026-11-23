@@ -41,6 +41,7 @@
 #ifdef _WIN32
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
+#include <share.h>
 #include <windows.h>
 #endif
 
@@ -164,10 +165,10 @@ private:
         case 'r': out += '\r'; break;
         case 't': out += '\t'; break;
         case 'u': {
-          uint32_t cp;
+          uint32_t cp = 0;
           if (!hex4(cp)) return false;
           if (cp >= 0xD800 && cp <= 0xDBFF) {
-            uint32_t lo;
+            uint32_t lo = 0;
             if (!eat('\\') || !eat('u') || !hex4(lo) || lo < 0xDC00 || lo > 0xDFFF) return false;
             cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
           } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
@@ -278,7 +279,8 @@ bool read_file(const std::string& path, std::string& out, size_t max) {
   if (count <= 0) return false;
   std::wstring wide(static_cast<size_t>(count), L'\0');
   if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, &wide[0], count) != count) return false;
-  FILE* file = _wfopen(wide.c_str(), L"rb");
+  // _wfsopen, not _wfopen (deprecated by MSVC: C4996): shared as _wfopen shares it.
+  FILE* file = _wfsopen(wide.c_str(), L"rb", _SH_DENYNO);
 #else
   FILE* file = std::fopen(path.c_str(), "rb");
 #endif
@@ -336,7 +338,7 @@ void load(const Object& o) {
   } catch (const std::exception&) {
     return fail(o, "model-unreadable");
   }
-  routes[*route] = std::move(r);
+  routes.insert_or_assign(*route, std::move(r));
   const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - started)
                       .count();
