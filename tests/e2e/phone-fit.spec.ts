@@ -274,6 +274,23 @@ const faultsIn = (o: Rules) => {
       out.add(`“${words.slice(0, 60)}” is cut short`);
   }
 
+  // Never seen whole: a control, or the remote's live picture, taller than what scrolls it (the page, or a scroller).
+  for (const el of region.querySelectorAll(`${CONTROLS}, [data-testid="remote-live"]`)) {
+    if (unseen(el) || el.closest('[inert]') || (!el.matches('[data-testid="remote-live"]') && hidden(el)))
+      continue;
+    const tall = el.getBoundingClientRect().height;
+    for (let at = el.parentElement; at; at = at.parentElement) {
+      const y = at === document.body ? 'auto' : getComputedStyle(at).overflowY;
+      if (y !== 'auto' && y !== 'scroll') continue;
+      const room = at === document.body ? vh : at.clientHeight;
+      if (tall > room + 1)
+        out.add(
+          `${named(el)} is taller than what scrolls it (${px(tall)} > ${px(room)} px): it is never seen whole`,
+        );
+      break;
+    }
+  }
+
   // Targets (a tick box or radio counts with its label, which takes the tap too).
   for (const el of region.querySelectorAll(TARGETS)) {
     if (hidden(el)) continue;
@@ -370,7 +387,7 @@ class Sweep {
         sized(size),
         await this.page.evaluate(() =>
           Math.round(
-            document.querySelector('[data-testid="remote"] > main')?.getBoundingClientRect().height ?? 0,
+            document.querySelector('[data-testid="remote"] main')?.getBoundingClientRect().height ?? 0,
           ),
         ),
       );
@@ -585,8 +602,19 @@ for (const engine of ENGINES)
       const sweep = new Sweep(p, { ...DRASHTI_PAGE, remote: true });
       for (const size of SIZES) {
         await p.setViewportSize(size);
+        // Laid out again for the new size (its media queries answer as the size changes).
+        await p.evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+            }),
+        );
+        // A tablet upright has the playlist or the library beside the show; a phone, upright or sideways, tabs.
         const layout = size.width >= 768 && size.height > 500 ? 'wide' : 'phone';
-        await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', layout);
+        await expect(p.getByTestId('remote')).toHaveAttribute(
+          'data-layout',
+          layout === 'wide' ? 'wide' : /^(phone|sideways)$/u,
+        );
         for (const view of remoteViews(layout, playlistId)) {
           await view.open(p);
           await sweep.look(size, view.name);
