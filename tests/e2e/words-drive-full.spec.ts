@@ -27,7 +27,13 @@ for (const code of ['SQLITE_FULL', 'ENOSPC']) {
         };
         sample.close();
         const run = prototype.run;
-        const control = { active: true, failures: 0, restore: () => { prototype.run = run; } };
+        const control = {
+          active: true,
+          failures: 0,
+          restore: () => {
+            prototype.run = run;
+          },
+        };
         prototype.run = function (...args: unknown[]) {
           if (control.active && /^\s*INSERT INTO presentations\b/iu.test(this.source)) {
             control.failures++;
@@ -42,16 +48,21 @@ for (const code of ['SQLITE_FULL', 'ENOSPC']) {
       await expect(editor.getByRole('alert')).toContainText(/drive.*full|space/iu);
       await expect(editor.getByTestId('words-text')).toHaveValue(words);
       await expect(save).toBeEnabled();
-      expect(await app.evaluate(() => {
-        const control = (globalThis as { x87WordsDisk?: { active: boolean; failures: number } }).x87WordsDisk;
-        if (!control) throw new Error('The disk fault was not installed');
-        control.active = false;
-        return control.failures;
-      })).toBe(1);
+      expect(
+        await app.evaluate(() => {
+          const control = (globalThis as { x87WordsDisk?: { active: boolean; failures: number } })
+            .x87WordsDisk;
+          if (!control) throw new Error('The disk fault was not installed');
+          control.active = false;
+          return control.failures;
+        }),
+      ).toBe(1);
       await save.click();
       await expect(editor).toHaveCount(0);
       await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(name);
-      await expect(win.getByTestId('presentation-list').getByRole('button', { name: new RegExp(`^${name}`, 'u') })).toHaveCount(1);
+      await expect(
+        win.getByTestId('presentation-list').getByRole('button', { name: new RegExp(`^${name}`, 'u') }),
+      ).toHaveCount(1);
     } finally {
       await app.evaluate(() => {
         (globalThis as { x87WordsDisk?: { restore(): void } }).x87WordsDisk?.restore();
