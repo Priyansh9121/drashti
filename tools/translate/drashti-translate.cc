@@ -337,7 +337,7 @@ void load(const Object& o) {
     return fail(o, "model-unreadable");
   }
   routes[*route] = std::move(r);
-  const long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+  const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - started)
                       .count();
   reply("{" + id_part(o) + ",\"ok\":true,\"route\":\"" + *route + "\",\"loadMs\":" + std::to_string(ms) +
@@ -380,7 +380,7 @@ void translate(const Object& o) {
     return fail(o, "translate-failed");
   }
   if (cancel_requested.load()) return fail(o, "cancelled");
-  const long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+  const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - started)
                       .count();
   std::string out = "{" + id_part(o) + ",\"ok\":true,\"sourceTokens\":" + std::to_string(source.size()) +
