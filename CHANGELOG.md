@@ -12,11 +12,13 @@ Update after a sabha, and update Main and nodes together.
 - Everything fits at its smallest size: titles wrap instead of being cut; the QR code window, the slide editor’s tools, the Lower Thirds templates (name and star under the picture) and long names show whole; on a phone the remote held sideways has its own layout with the live picture whole, and no page scrolls sideways.
 - Playback: a paused video’s row has no Paused badge (its Play button says so) and room for its times. Last 10 s is gone; a video’s last 10 seconds still turn amber, and the stage’s Video ends in stays.
 - Quicker to answer: the operator window as a show starts (the Lower Thirds fonts load one at a time while it is idle), and a press from a phone, a controller or the window right after a video goes up is no longer refused.
+- Paired phones, stage tablets and nodes keep their places while new devices wait.
 - Screens: a show’s first picture is whole: what Drashti draws to ready the graphics chip is gone before it starts.
 - Importing a picture or a video never waits on this computer’s answer about HEVC video: the answer now always comes.
 - Edit Video…: Also add the clip to Media stands on its own line above Export clip….
 - On a busy computer, Save as MP4… no longer fails to find its clean frames, a failed conversion always gives FFmpeg’s reason, and a deck imported with PowerPoint or Keynote is read whole.
 - Logs for many computers: Drashti keeps one log a day for 30 days; every report names its computer, access entry, role, version and system; Help › Save Diagnostics saves Today…, Yesterday…, The Last 7 Days… or One Day.
+- Automatic error reports, off until the access list’s owner turns them on for a computer (Help › Automatic Error Reports…): after an error notice, a crash or a failed stream, a short coded report (never slide words, names, email addresses or crash files) goes to the owner’s own private Sheet and Drive folder, at most 10 a day, never while streaming or recording.
 - Safer: Drashti checks more strictly that every request it answers comes from one of its own windows. The admin guide says when Request Access works again after Too many tries for now.
 
 ## 1.0.0-alpha.20.1 (22 Nov 2026)
