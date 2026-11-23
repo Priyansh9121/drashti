@@ -17,7 +17,11 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 const SECTIONS = [
   { title: 'Audio', id: 'audio', shows: (s: Locator) => s.getByTestId('music-panel') },
   { title: 'Stage screen', id: 'stage', shows: (s: Locator) => s.getByTestId('stage-preview') },
-  { title: 'Messages', id: 'messages', shows: (s: Locator) => s.getByRole('button', { name: 'New message' }) },
+  {
+    title: 'Messages',
+    id: 'messages',
+    shows: (s: Locator) => s.getByRole('button', { name: 'New message' }),
+  },
   { title: 'Timers', id: 'timers', shows: (s: Locator) => s.getByTestId('open-calendar') },
   { title: 'Lower Thirds', id: 'lower-thirds', shows: (s: Locator) => s.getByTestId('lower-third-new') },
   { title: 'Show a Window', id: 'show-a-window', shows: (s: Locator) => s.getByTestId('show-a-window') },
