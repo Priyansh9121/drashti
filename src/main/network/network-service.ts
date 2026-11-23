@@ -1,3 +1,4 @@
+import { playbackTranslationSlide } from '../../shared/prepared-translation-view';
 import { PAIRED_SEATS_NOTICE } from './paired-seats';
 import type { OscAction } from '../osc/mapping';
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
@@ -1205,7 +1206,20 @@ export class NetworkService implements EngineTransport {
       case 'presentation': {
         const id = idSchema.safeParse(args['presentationId']);
         const doc = id.success ? this.deps.reads.presentation(id.data) : null;
-        return doc ? ok({ presentation: doc }) : deny(404, 'There is no such presentation.');
+        return doc
+          ? ok({
+              presentation: {
+                ...doc,
+                groups: doc.groups.map((group) => ({
+                  ...group,
+                  slides: group.slides.map((item) => ({
+                    ...item,
+                    slide: playbackTranslationSlide(item.slide),
+                  })),
+                })),
+              },
+            })
+          : deny(404, 'There is no such presentation.');
       }
       case 'presentations': {
         const offset = wholeNumber(args['offset'], 0, 0, 1_000_000);

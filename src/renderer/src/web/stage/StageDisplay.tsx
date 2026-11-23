@@ -83,7 +83,14 @@ export function StageDisplay() {
           {/* Drashti's way of writing the time (Sessions 31–36, I18N-8), its timers' clocks too. */}
           <ClockStyleContext.Provider value={clockStyle}>
             <PreviewsContext.Provider value={previews}>
-              <StageScreen state={state} look={look} canvas={CANVAS} clockStyle={clockStyle} hall={hall} />
+              <StageScreen
+                state={state}
+                look={look}
+                canvas={CANVAS}
+                clockStyle={clockStyle}
+                hall={hall}
+                translationGroupId={groupId}
+              />
             </PreviewsContext.Provider>
           </ClockStyleContext.Provider>
         </PlacedInParent>
