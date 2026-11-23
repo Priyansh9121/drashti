@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { languageView } from './language-view';
 import type { RenderSlide, TextElement } from './model';
-import { checkedTranslationView, translationChoiceFor } from './prepared-translation-view';
+import {
+  checkedTranslationView,
+  translationChoiceFor,
+  translationFits,
+  playbackTranslationSlide,
+} from './prepared-translation-view';
 import { checkTranslation, draftTranslation } from './prepared-translations';
 const box = (): TextElement => ({
   id: 'q',
@@ -105,5 +111,31 @@ describe('checked saved translation output', () => {
       checkTranslation(draftTranslation('Blue box.', 'en', 'gu', 'કિ કી કું'), 'Blue box.', 'Reader Q'),
     ];
     expect(checkedTranslationView(slide(el), {}).elements[1]).toMatchObject({ text: 'કિ કી કું' });
+  });
+  it('never relies on breaking a long word, never inherits vertical source styling, and holds invisible sources', () => {
+    expect(translationFits('Q'.repeat(20), { x: 0, y: 0, width: 1500, height: 150 }, 48)).toBe(false);
+    const el = box();
+    el.style.writingMode = 'vertical-rl';
+    const shown = checkedTranslationView(slide(el), {});
+    expect(shown.elements[1]).toMatchObject({
+      kind: 'text',
+      style: { fontFamily: null, fontSize: 48, lineHeight: 1.45 },
+    });
+    const translation = shown.elements[1];
+    if (translation?.kind !== 'text') throw new Error('Missing translation');
+    expect(translation.style.writingMode).toBeUndefined();
+    el.opacity = 0;
+    expect(checkedTranslationView(slide(el), {}).elements).toHaveLength(1);
+  });
+  it('keeps the source above its translation even when a kirtan group filters source language out', () => {
+    const shown = languageView(checkedTranslationView({ ...slide(), kirtan: true }, {}), ['gu']);
+    expect(shown.elements.map((el) => (el.kind === 'text' ? el.text : ''))).toEqual([
+      'Blue box.',
+      'Placeholder Q',
+    ]);
+  });
+  it('reuses the sanitized playback slide across reads', () => {
+    const original = slide();
+    expect(playbackTranslationSlide(original)).toBe(playbackTranslationSlide(original));
   });
 });
