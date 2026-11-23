@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -161,7 +169,9 @@ describe('fetchCaptionModel', () => {
   });
 
   it('refuses an address that is not https before asking anything', async () => {
-    const plain = { placeholder: { ...SOURCE, url: 'http://downloads.example.org/r/1/placeholder-pack.zip' } };
+    const plain = {
+      placeholder: { ...SOURCE, url: 'http://downloads.example.org/r/1/placeholder-pack.zip' },
+    };
     await expect(
       fetchCaptionModel('placeholder', { cacheDir, table: plain, fetch: stand({}), pause }),
     ).rejects.toThrow(/refused/u);
@@ -172,9 +182,9 @@ describe('fetchCaptionModel', () => {
     await expect(
       fetchCaptionModel('turbo', { cacheDir, table: TABLE, fetch: stand({}), pause }),
     ).rejects.toThrow(/unknown/u);
-    await expect(
-      fetchCaptionModel('toString', { cacheDir, fetch: stand({}), pause }),
-    ).rejects.toThrow(/unknown/u);
+    await expect(fetchCaptionModel('toString', { cacheDir, fetch: stand({}), pause })).rejects.toThrow(
+      /unknown/u,
+    );
     expect(asked).toEqual([]);
   });
 
@@ -182,7 +192,12 @@ describe('fetchCaptionModel', () => {
     const other = Buffer.from(BODY.toString().replace('Placeholder', 'Elsewhere!!'));
     expect(other.length).toBe(BODY.length);
     await expect(
-      fetchCaptionModel('placeholder', { cacheDir, table: TABLE, fetch: stand({ [SOURCE.url]: ok(other) }), pause }),
+      fetchCaptionModel('placeholder', {
+        cacheDir,
+        table: TABLE,
+        fetch: stand({ [SOURCE.url]: ok(other) }),
+        pause,
+      }),
     ).rejects.toThrow(/SHA-256/u);
     const folder = join(cacheDir, SOURCE.sha256);
     expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([]);
@@ -191,7 +206,12 @@ describe('fetchCaptionModel', () => {
   it('refuses a download of another size, and keeps nothing', async () => {
     const longer = Buffer.concat([BODY, Buffer.from('!')]);
     await expect(
-      fetchCaptionModel('placeholder', { cacheDir, table: TABLE, fetch: stand({ [SOURCE.url]: ok(longer) }), pause }),
+      fetchCaptionModel('placeholder', {
+        cacheDir,
+        table: TABLE,
+        fetch: stand({ [SOURCE.url]: ok(longer) }),
+        pause,
+      }),
     ).rejects.toThrow(/bytes/u);
     const folder = join(cacheDir, SOURCE.sha256);
     expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([]);
@@ -236,7 +256,9 @@ describe('fetchCaptionModel', () => {
   it('gives up after three tries when the source does not answer, leaving nothing behind', async () => {
     const silent = (url: string): Promise<Response> => {
       asked.push(url);
-      return Promise.reject(new TypeError('fetch failed', { cause: new Error('Connect Timeout Error (placeholder)') }));
+      return Promise.reject(
+        new TypeError('fetch failed', { cause: new Error('Connect Timeout Error (placeholder)') }),
+      );
     };
     await expect(
       fetchCaptionModel('placeholder', { cacheDir, table: TABLE, fetch: silent, pause }),
