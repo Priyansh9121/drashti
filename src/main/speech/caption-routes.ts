@@ -87,7 +87,10 @@ export function ownModelCaptionAi(o: OwnModelCaptionAiOptions): {
     recognizer: (language) => {
       const own = o.ownModel(language);
       const engine = own ? o.engineFor(own) : null;
-      return own && engine ? { route: 'whisper', modelId: own.id, engine } : null;
+      if (!own || !engine) return null;
+      // Route C's IndicConformer or Route W's whisper.cpp, as the model's format says (for the dialog, never words).
+      const route = own.format === 'indicconformer-ctc-onnx-v1' ? 'conformer' : 'whisper';
+      return { route, modelId: own.id, engine };
     },
   };
 }
