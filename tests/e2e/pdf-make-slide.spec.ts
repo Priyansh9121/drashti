@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { openLibrary } from './helpers';
+import { closeLibrary, openLibrary } from './helpers';
 import { openNewPlaylist } from './hall-looks';
 import { openGeneratedPdf, usePdfTools } from './pdf-tools-fixtures';
 
@@ -68,6 +68,8 @@ const near = (colour: number[] | undefined, [r, g, b]: [number, number, number])
 test('Make a slide… makes a slide of the part of a PDF page dragged out, sharp at the hall’s size, in the open playlist; Undo takes it away', async () => {
   const { app, win, ed, unchanged } = await openGeneratedPdf();
   try {
+    // The library's sheet (open since the PDF was chosen in it) shut, so the playlists show in the left column.
+    await closeLibrary(win);
     const list = await openNewPlaylist(win, 'Placeholder made slides');
     await usePdfTools(ed);
     await ed.getByRole('button', { name: 'Make a slide…', exact: true }).click();
@@ -145,6 +147,8 @@ test('Make a slide… makes a slide of the part of a PDF page dragged out, sharp
 test('Make a slide… of the whole page into the library only leaves the open playlist as it was', async () => {
   const { app, win, ed, unchanged } = await openGeneratedPdf();
   try {
+    // The library's sheet (open since the PDF was chosen in it) shut, so the playlists show in the left column.
+    await closeLibrary(win);
     await openNewPlaylist(win, 'Placeholder untouched playlist');
     await usePdfTools(ed);
     await ed.getByRole('button', { name: 'Make a slide…', exact: true }).click();
