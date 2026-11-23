@@ -20,7 +20,7 @@ describe('Main enforces prepared translation review bounds', () => {
     try {
       const presentations = new PresentationRepo(db);
       const source = 'The blue box is empty.';
-      const el: TextElement = { id: 'e', kind: 'text', text: source, lang: 'en', frame: { x: 0, y: 0, width: 600, height: 100 }, style: DEFAULT_THEME.text.style, translations: [draftTranslation(source, 'en', 'gu', 'Placeholder Q7')] };
+      const el: TextElement = { id: 'e', kind: 'text', text: source, lang: 'en', frame: { x: 0, y: 0, width: 600, height: 100 }, style: themeLook(DEFAULT_THEME, 1920, 1080).style, translations: [draftTranslation(source, 'en', 'gu', 'Placeholder Q7')] };
       const id = presentations.insert({ libraryId: presentations.ensureLibrary('Default'), name: 'Placeholder', groups: [{ name: 'One', slides: [{ elements: [el] }] }] });
       const mode = { pro: false };
       registerSlidesIpc({ db, presentations, settings: new SettingsRepo(db), revisions: new Revisions(), fromOperator: () => true, mayChangeTranslations: () => mode.pro, lookFor: (_theme, size) => themeLook(DEFAULT_THEME, size.width, size.height), changed: () => undefined });
