@@ -82,9 +82,13 @@ test('Make a slide… makes a slide of the part of a PDF page dragged out, sharp
     const whole = await part.boundingBox();
     const corner = await part.locator('[data-edge="se"]').boundingBox();
     if (!whole || !corner) throw new Error('The page has no box to drag.');
-    await ed.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+    // Moved from where it is held by three quarters of the page across and half of it up (the handle's middle
+    // is on the inside of the frame's 2-pixel line, not on its outside: CI's Windows read 49% when aimed at
+    // the outside).
+    const from = { x: corner.x + corner.width / 2, y: corner.y + corner.height / 2 };
+    await ed.mouse.move(from.x, from.y);
     await ed.mouse.down();
-    await ed.mouse.move(whole.x + whole.width * 0.25, whole.y + whole.height * 0.5, { steps: 10 });
+    await ed.mouse.move(from.x - whole.width * 0.75, from.y - whole.height * 0.5, { steps: 10 });
     await ed.mouse.up();
     await expect(dialog.getByTestId('crop-readout')).toContainText('right 75%');
     await expect(dialog.getByTestId('crop-readout')).toContainText('bottom 50%');

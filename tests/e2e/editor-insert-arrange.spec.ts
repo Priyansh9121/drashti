@@ -132,9 +132,12 @@ test('Insert keeps a cropped picture, a video and a sound on this slide across s
     const whole = await kept.boundingBox();
     const east = await kept.locator('[data-edge="e"]').boundingBox();
     if (!whole || !east) throw new Error('The crop has no box to drag.');
-    await ed.mouse.move(east.x + east.width / 2, east.y + east.height / 2);
+    // Moved from where it is held by half the picture's width (the handle's middle is on the inside of the
+    // frame's line, not on its outside).
+    const from = { x: east.x + east.width / 2, y: east.y + east.height / 2 };
+    await ed.mouse.move(from.x, from.y);
     await ed.mouse.down();
-    await ed.mouse.move(whole.x + whole.width / 2, east.y + east.height / 2, { steps: 8 });
+    await ed.mouse.move(from.x - whole.width / 2, from.y, { steps: 8 });
     await ed.mouse.up();
     const readout = cropping.getByTestId('crop-readout');
     await expect(readout).toContainText('right 50%');
