@@ -197,14 +197,16 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
   for (int i = 0; i < nid; i++) {
     const char *pc = m->tok[ids[i]];
     int newword = !strncmp(pc, "\xe2\x96\x81", 3);
+    /* An over-long phrase is cut at a piece, never the helper's exit (review S3): the text's 4 KB and 1,024 words. */
+    if (tl + strlen(pc) + 2 >= cap || ((newword || nw < 0) && nw >= 1023)) break;
     for (const char *s = pc; *s;) {
-      if (tl + 2 >= cap) die("text exceeds protocol bounds");
       if (!strncmp(s, "\xe2\x96\x81", 3)) { text[tl++] = ' '; s += 3; } else text[tl++] = *s++;
     }
     text[tl] = 0;
-    if (newword || nw < 0) { if (nw >= 1023) die("word count exceeds bounds"); nw++; words[nw][0] = 0; ws[nw] = fr[i] * 0.04; wp[nw] = 0; wn[nw] = 0; }
+    if (newword || nw < 0) { nw++; words[nw][0] = 0; ws[nw] = fr[i] * 0.04; wp[nw] = 0; wn[nw] = 0; }
+    /* A word over 255 bytes is cut at a piece too; the pieces after it in that word are left out. */
+    if (strlen(words[nw]) + strlen(newword ? pc + 3 : pc) >= sizeof words[nw]) continue;
     wp[nw] += ps[i]; wn[nw] += pn[i];
-    if (strlen(words[nw]) + strlen(newword ? pc + 3 : pc) >= sizeof words[nw]) die("word exceeds protocol bounds");
     strcat(words[nw], newword ? pc + 3 : pc);
     we[nw] = (fe[i] + 1) * 0.04;
   }
