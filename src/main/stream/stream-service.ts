@@ -982,9 +982,14 @@ export class StreamService {
    * flooded; a picture resets the wait.
    */
   private checkPicture(status: WorkerStatus): void {
-    const wait = this.pictureWatch.heard(
-      heardFrom(status, this.videoInUse() && this.programReady, this.deps.now()),
-    );
+    const wanted = this.videoInUse() && this.programReady;
+    // The encoder stopped and another starts: the page sends its newest picture to it at once (picture-watch.ts).
+    if (this.pictureWatch.encoderRestarting(status) && wanted) {
+      this.deps.log('info', "The stream's encoder starts again: its page is given the encoder again");
+      this.pairEncoder();
+      return;
+    }
+    const wait = this.pictureWatch.heard(heardFrom(status, wanted, this.deps.now()));
     if (wait === null) return;
     this.deps.log(
       'warn',

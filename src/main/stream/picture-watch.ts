@@ -21,12 +21,29 @@ export class PictureWatch {
   /** When this worker's first status with its encoder chosen came (null: not yet). */
   private chosenAt: number | null = null;
   private tries = 0;
+  /** The worker's encoder stopped and its words stand ("Trying to start it again"; x71's take). */
+  private restarting = false;
 
   constructor(private readonly firstWaitMs = NO_PICTURE_MS) {}
 
   /** A new worker started (it chooses its encoder afresh). */
   newWorker(): void {
     this.chosenAt = null;
+    this.restarting = false;
+  }
+
+  /**
+   * The worker's encoder stopped and another starts (its words in the worker's error, an encoder chosen): true once,
+   * as those words come, for the page to be given its port again at once. A page given a new port sends its newest
+   * picture straight away (program/capture.ts), the fresh picture the next encoder's words wait for: a still slide sends
+   * no other. It also brings back a capture or port that went with the encoder. Once until the words go, so an encoder
+   * that keeps failing to start does not have the page given a port each time.
+   */
+  encoderRestarting(status: Pick<WorkerStatus, 'encoder' | 'encoding' | 'error'>): boolean {
+    const now = status.encoder !== null && status.error !== null;
+    const began = now && !this.restarting;
+    this.restarting = now;
+    return began;
   }
 
   /** The stream's page was given a new port to the encoder, now. */
