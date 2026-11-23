@@ -16,7 +16,11 @@ import {
 
 /* Alpha.22: written now; run only after alpha.21 PUBLISHED. Manual generated events, no sound/model/download. */
 test('the operator can rehearse provisional, settled and corrected clauses; stale edits never reach the hall', async () => {
-  const { app } = await launchApp({ ...NO_PLACEHOLDERS, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const { app } = await launchApp({
+    ...NO_PLACEHOLDERS,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_SPEECH: 'Normal placeholder words',
+  });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -31,7 +35,10 @@ test('the operator can rehearse provisional, settled and corrected clauses; stal
     await dialog.getByTestId('captions-audience').click();
     await dialog.getByTestId('captions-on').click();
     await expect(hall.getByTestId('captions')).toHaveText('Normal placeholder words');
-    const normalFont = await hall.getByTestId('captions').locator(':scope > div').evaluate(element => getComputedStyle(element).fontSize);
+    const normalFont = await hall
+      .getByTestId('captions')
+      .locator(':scope > div')
+      .evaluate((element) => getComputedStyle(element).fontSize);
     await dialog.getByTestId('captions-prototype-on').click();
     await expect(hall.getByTestId('captions')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Next placeholder update' }).click();

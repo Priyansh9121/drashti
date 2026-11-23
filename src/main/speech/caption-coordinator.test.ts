@@ -374,7 +374,16 @@ describe('phase D caption coordinator', () => {
 
   it('retains its own immutable parent range rather than a caller-mutable reference', () => {
     const { coordinator: c, clause } = setup();
-    const input = { ...clause('A blue box'), parent: { enginePhraseId: 's1', observationSequence: 1, rangeStart: 0, rangeEnd: 10, timingPrecision: 'phrase' as const } };
+    const input = {
+      ...clause('A blue box'),
+      parent: {
+        enginePhraseId: 's1',
+        observationSequence: 1,
+        rangeStart: 0,
+        rangeEnd: 10,
+        timingPrecision: 'phrase' as const,
+      },
+    };
     c.accept(input);
     input.parent.rangeStart = 5;
     expect(c.view().current?.parent?.rangeStart).toBe(0);
@@ -383,9 +392,27 @@ describe('phase D caption coordinator', () => {
   it('invalidates the output-policy epoch before applying a new audience choice', async () => {
     const port = deferredPort();
     let audience = true;
-    const c = new CaptionCoordinator({ clock: () => Date.now(), mayTranslate: () => true, settings: () => ({ ...DEFAULT_CAPTION_SETTINGS, audience }), show: vi.fn(), changed: vi.fn(), translation: port, output: 'translation' });
+    const c = new CaptionCoordinator({
+      clock: () => Date.now(),
+      mayTranslate: () => true,
+      settings: () => ({ ...DEFAULT_CAPTION_SETTINGS, audience }),
+      show: vi.fn(),
+      changed: vi.fn(),
+      translation: port,
+      output: 'translation',
+    });
     const sessionId = c.start();
-    c.accept({ sessionId, phraseId: 's1', revision: 1, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: 'A blue box', startAt: Date.now(), endAt: Date.now(), status: 'settled' });
+    c.accept({
+      sessionId,
+      phraseId: 's1',
+      revision: 1,
+      sourceLanguage: 'en',
+      targetLanguage: 'hi',
+      sourceText: 'A blue box',
+      startAt: Date.now(),
+      endAt: Date.now(),
+      status: 'settled',
+    });
     const first = port.requests[0]!.clause;
     audience = false;
     c.refresh();
@@ -396,5 +423,4 @@ describe('phase D caption coordinator', () => {
     expect(port.requests[1]!.clause.paintDeadlineAt).toBe(first.paintDeadlineAt);
     c.stop();
   });
-
 });
