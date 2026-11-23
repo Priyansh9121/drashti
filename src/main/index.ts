@@ -472,6 +472,9 @@ import { createWhisperRoute } from './speech/whisper-route';
 import { handleModelPacks } from './model-packs/ipc';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
+import { findIndic } from './speech/indic-place';
+import { indicSelfTest } from './speech/indic-selftest';
+import windowsRuntimeLibraries from '../shared/whisper-windows-runtime.json';
 import { CaptionSettingsRepo } from './db/captions';
 import { CaptionWordsRepo } from './db/caption-words';
 import { CaptionWordsService } from './speech/caption-words-service';
@@ -1650,6 +1653,20 @@ function start(): void {
             process.platform,
           )
         : null;
+      // Route C (alpha.22): its helper starts beside its own ONNX Runtime, without any model, pack or sound.
+      const indic = packaged()
+        ? await indicSelfTest({
+            path: findIndic({
+              packaged: true,
+              resourcesPath: process.resourcesPath,
+              appPath: app.getAppPath(),
+              platform: process.platform,
+              arch: process.arch,
+            }),
+            platform: process.platform,
+            windowsRuntime: Object.keys(windowsRuntimeLibraries),
+          })
+        : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
       const ocr = await ocrSelfTest({
         files: builtOcrFiles(__dirname),
@@ -1662,8 +1679,14 @@ function start(): void {
         ffmpegPassed: ffmpeg.passed,
         youtube,
         whisper,
+        indic,
         ocr,
-        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true) && ocr.passed,
+        passed:
+          ffmpeg.passed &&
+          youtube.passed &&
+          (whisper?.passed ?? true) &&
+          (indic?.passed ?? true) &&
+          ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);

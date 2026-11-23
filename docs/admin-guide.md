@@ -715,6 +715,16 @@ A model whose file has changed since the pack checked it is not used, and captio
 
 **What stays private.** Drashti works out captions on this computer. The words are kept out of logs. They can appear in the video picture and in the timed draft saved beside a sound recording. Turn **Live captions on this computer** off to stop listening.
 
+**Imported Gujarati and Hindi recognition models (Trial).** The separate recognition engine uses Microsoft ONNX
+Runtime 1.23.2 (MIT), included for Apple silicon, Intel Mac and Windows x64. Acoustic models are not in the installer
+and this engine never downloads one. Import a checked caption model pack, then choose its model for the speaker’s
+explicit Gujarati or Hindi language. Keep this option off until rehearsal. A missing, unsuitable or stopped model
+shows a reason; it never selects another recogniser automatically. Its token-frame times are coarse (40 ms), and it
+provides no confidence estimate. Turning it off leaves ordinary live captions as before. This engine adds no sound
+recording or saved transcript. An operator’s existing sound recording and timed caption draft remain separate.
+
+The optional Gujarati and Hindi recognition engine needs macOS 13.4 or later on either kind of Mac.
+
 ## 26. Kirtan bundles between mandirs
 
 **Library > Export kirtan bundle…** (Pro Mode) saves the chosen kirtans in one `.drashti-kirtans` file. **Include media files** adds the pictures, videos and recordings they use; leave it unticked to share the words and slides alone. Drashti sends nothing by itself. Share the file privately through an existing message, email or shared folder, then import it through the other computer's Library. No new account or paid service is needed. Keep real content out of source repositories and CI.

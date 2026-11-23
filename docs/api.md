@@ -645,6 +645,53 @@ The separate `access-list/error-reports/` Apps Script project authenticates `{v:
 
 `captureWith` receives a lazy diagnostic factory: consent/access/rate/queue checks run before any metadata read. Suppressed errors only increment a bounded in-memory counter; idle wakes, normal state writes and `dispose` flush it once. An abrupt kill before that flush can lose suppressed-count increments, not accepted queued reports or the persisted daily reservation. No per-error disk write or diagnostic collection occurs after the cap.
 
+## Native Gujarati/Hindi recogniser (main process only)
+
+`createIndicEngine` implements `SpeechEngine`, selected only by the caption integration’s explicit model choice.
+`acquire(language, signal)` obtains and holds cap-pack’s checked model through native process exit; `routeCFiles`
+accepts only `indicconformer-ctc-onnx-v1`, exactly one purpose (`captions-gu` or `captions-hi`), with `model.onnx`, `tokens.txt` and
+`frontend.bin`. The graph takes `[1,80,T]` float features and `[1]` int64 length; its first output is `[1,T/4,257]`
+float language-masked CTC scores (blank 256). Tokens are 256 UTF-8 pieces and `<blank>` last; the front end is
+80 × 257 little-endian float32 Slaney mel weights, matching the export. No Python or model-supplied code runs.
+
+`ic-ctc --pcm-serve` reads private stdin frames: uint32 little-endian PCM byte count (positive, even, at most
+384,000) then that many mono 16 kHz signed-16 little-endian bytes. It reports readiness with protocolVersion 1, sampleRate 16000, channels 1 and sampleFormat s16le, then one bounded
+UTF-8 JSON line per clip: language, text, words (`w`, start/end seconds), coarse 40 ms timing, null confidence and
+aggregate durations. Main alone maps sample offsets to capture times. There is one decode in flight, at most two
+queued finals; a stopped session kills the helper and discards its replies. Readiness is bounded by 90 seconds,
+no answer by 8 seconds terminates the helper; normal lag/rest guards remain. No PCM files, sockets or text logs.
+
+Build each target on its own system with `scripts/fetch-indic.mjs` (pinned Microsoft release, exact size and SHA-256),
+or build locally against an already verified extraction with `scripts/build-indic.mjs` and `DRASHTI_ORT_ROOT` /
+`DRASHTI_INDIC_OUT`. Local linked `vendor` destinations are refused. `findIndic` locates the bundled helper; models
+stay in cap-pack’s per-computer store. Runtime notices ship with the helper and under `licenses/onnxruntime/`.
+
+`indicProblem(platform, systemVersion)` checks this runtime’s actual macOS 13.4 minimum; pass it as the recogniser’s
+`problem()` preflight so older Macs get a plain reason before loading a model. Production startup uses `--admit`: the
+helper waits for the private four bytes `GO01` before model loading, sent only after background priority is set.
+
+`workGate { allowed(), listen(changed) }` is Main’s read-only authoritative background-work lease for protected mode. Without it,
+or while it is closed/unknown, the recogniser loads no model and performs no inference. Revocation cancels native
+compute immediately without awaiting exit and invalidates pending results; a later opening starts fresh. For protected mode the main
+integration must adapt L8’s public signal, never infer permission from an elapsed timer. Tests provide an explicit
+stand-in gate. The ordinary Whisper path is outside this new engine and remains unchanged.
+
+`createIndicRoute({ store, ...engineOptions })` directly matches cap-integration’s `CaptionRoute.make(model, language)`.
+It matches the selected reference to full checked metadata through `store.model`, pins the model-file SHA-256s, then obtains a fresh hold through
+`store.acquire` at start. Changed identity or purpose releases the hold without starting native work. The resolver
+accepts the shared language type and returns null for every language other than Gujarati or Hindi.
+
+Main may explicitly select `admission: 'below-show'` for continuous ASR under the integration’s scheduling policy.
+This does not bypass native priority admission or any lag, queue, model, generation or cancellation guard. If a
+`workGate` is supplied it remains authoritative, including when closed or broken. With neither explicit admission
+nor a gate the recogniser stays closed. Main/lead owns the ASR policy choice; translation’s lease is separate.
+
+Phrases carry the speech hub’s ids, `s1, s2…` in each listening, as Whisper’s engine gives them; the hub turns any
+other id away. `ic-ctc --runtime`, alone, starts ONNX Runtime beside the helper without any model and prints
+`{"runtime":"1.23.2","api":23}`. The packaged self-test (`DRASHTI_SELFTEST=ffmpeg`, `scripts/check-ffmpeg.mjs
+--packaged`, `scripts/check-installers.mjs`) requires that answer, with the runtime’s libraries beside the helper (on
+Windows its two DLLs and the app-local Microsoft runtime).
+
 ## Prepared translations (desktop, alpha.21)
 
 The existing `library.slidesForEdit` / `library.saveSlides` document carries optional text-element `translations` (at most three distinct targets, `gu`, `hi`, `en`) and `translationDisplay`. Each saved pair has NFC-normalized `sourceFingerprint`, source/target tags, text (at most 20,000 characters), `state` (`unchecked`, `checked`, `needs-recheck`), a local reader name and `reviewFingerprint`. The latter binds approval to the exact source/result/language pair; modifying words cannot retain a valid check. Source changes across all normal content-write paths retain the old words with review held. Undo may restore an exact previously checked pair.

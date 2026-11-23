@@ -1,0 +1,7 @@
+Microsoft ONNX Runtime 1.23.2, MIT.
+Official native C/C++ distribution: Microsoft.ML.OnnxRuntime 1.23.2 on NuGet.
+https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/1.23.2
+https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.23.2/microsoft.ml.onnxruntime.1.23.2.nupkg
+123,371,574 bytes; SHA-256 25fe172f7fcdf34f2b5b02c8b997f6b88abc282956849d4af4335af23d0c4e4a.
+Only native CPU libraries and our own helper are redistributed; models are not in installers.
+The unmodified Microsoft MIT licence and complete package ThirdPartyNotices accompany the runtime.
