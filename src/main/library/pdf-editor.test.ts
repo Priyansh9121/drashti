@@ -366,6 +366,20 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
     };
   }
 
+  it('carries crop-only source pages to the PDF copy without converting or dropping underlying content', async () => {
+    const t = await opened();
+    try {
+      const page = t.doc.groups[0]?.slides[0];
+      if (!page?.documentPage) throw new Error('Generated page missing');
+      const crop = { x: 0.125, y: 0.25, w: 0.5, h: 0.5 };
+      page.documentPage.crop = crop;
+      t.saveTo(join(t.world.root, 'Placeholder cropped.pdf'));
+      expect((await t.editor.export(t.event, t.imported.id, t.doc, t.stamp)).ok).toBe(true);
+      expect(t.run.mock.calls[0]?.[0].pages).toEqual([{kind:'original',sourceId:t.hash,page:0,crop}]);
+      expect(readFileSync(t.world.source)).toEqual(t.world.bytes);
+    } finally { await t.clean(); }
+  });
+
   it('prints that one page as it now looks, draws the part dragged out, and keeps it with its name and place', async () => {
     const t = await opened();
     try {
