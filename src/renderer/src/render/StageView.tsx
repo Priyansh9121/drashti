@@ -129,6 +129,7 @@ export function StageText({
             whiteSpace: 'pre-wrap',
             overflowWrap: 'anywhere',
             fontFamily: fontFamilyFor(el.style.fontFamily, el.lang),
+            ...(el.preparedTranslation ? { lineHeight: 1.45 } : {}),
           }}
         >
           {el.runs && el.runs.length > 0
@@ -151,7 +152,6 @@ export function StageText({
         <p
           key={el.id}
           data-stage-element={el.id}
-          data-prepared-translation={el.preparedTranslation ? 'true' : undefined}
           data-stage-timer={el.timerId}
           style={{ margin: '0 0 0.35em', whiteSpace: 'nowrap' }}
         >

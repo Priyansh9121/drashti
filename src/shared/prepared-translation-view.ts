@@ -119,7 +119,7 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
         align: el.style.align,
         lineHeight: 1.45,
         shrinkToFit: false,
-        shadow: el.style.shadow,
+        shadow: false,
         verticalAlign: 'top',
       },
       everyScreen: true,
@@ -148,10 +148,8 @@ const playbackCache = new WeakMap<RenderSlide, RenderSlide>();
 export function playbackTranslationSlide(slide: RenderSlide): RenderSlide {
   const cached = playbackCache.get(slide);
   if (cached) return cached;
-  let changed = false;
   const elements = slide.elements.map((el) => {
     if (el.kind !== 'text' || !el.translations?.length) return el;
-    changed = true;
     const translations = el.translations
       .filter(
         (value) =>
@@ -160,7 +158,7 @@ export function playbackTranslationSlide(slide: RenderSlide): RenderSlide {
       .map((value) => ({ ...value, reader: 'Checked' }));
     return { ...el, translations };
   });
-  const result = changed ? { ...slide, elements } : slide;
+  const result = elements.some((el, index) => el !== slide.elements[index]) ? { ...slide, elements } : slide;
   playbackCache.set(slide, result);
   return result;
 }

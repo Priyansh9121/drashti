@@ -82,7 +82,7 @@ export function lowerThirdOf(
     lines: boxLines(el)
       .filter((line) => line.legacy || lineText(line).trim() !== '')
       .map((line): LowerThirdLine => ({
-        lang: line.lang,
+        lang: el.preparedTranslation ? el.lang : line.lang,
         runs: line.runs,
         boxFont: el.style.fontFamily,
         ...(el.preparedTranslation ? { preparedTranslation: true } : {}),

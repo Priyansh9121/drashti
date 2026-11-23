@@ -51,7 +51,8 @@ describe('prepared output state', () => {
       notes: '',
     };
     const shown = preparedOutputState(state, {});
-    if (shown.next?.kind !== 'slide' || state.next.kind !== 'slide') throw new Error('Missing fixture next');
+    expect(state.next.kind).toBe('slide');
+    if (shown.next?.kind !== 'slide') throw new Error('Missing fixture next');
     expect(shown.next.slide.elements).toHaveLength(2);
     expect(state.next.slide.elements).toHaveLength(1);
     const tick = preparedOutputState({ ...state }, {});
