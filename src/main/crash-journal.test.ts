@@ -100,7 +100,7 @@ describe('the crash journal (Sessions 31–36, ROB-6)', () => {
     expect(journalNotice([], hhmm)).toBeNull();
     const one = [{ n: 1, at: at(41).toISOString(), what: 'the GPU process crashed (code 11)' }];
     expect(journalNotice(one, hhmm)).toBe(
-      'While Drashti last ran, a problem was noted at 18:41: the GPU process crashed (code 11). To tell the admin, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).',
+      'While Drashti last ran, a problem was noted at 18:41: the GPU process crashed (code 11). To tell the admin, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).',
     );
     const three = [
       { n: 1, at: at(30).toISOString(), what: 'output “Main Hall” crashed' },
@@ -108,7 +108,7 @@ describe('the crash journal (Sessions 31–36, ROB-6)', () => {
       ...one.map((e) => ({ ...e, n: 3 })),
     ];
     expect(journalNotice(three, hhmm)).toBe(
-      'While Drashti last ran, 3 problems were noted; the last at 18:41: the GPU process crashed (code 11). To tell the admin, choose Help › Report a Problem… (or Save Diagnostics… when it can’t be sent).',
+      'While Drashti last ran, 3 problems were noted; the last at 18:41: the GPU process crashed (code 11). To tell the admin, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).',
     );
   });
 
