@@ -124,6 +124,8 @@ jobs:
         with:
           path: ~/.cache/drashti/ffmpeg-ci
           key: ffmpeg-ci-linux-x64-${{ steps.ci-ffmpeg-pin.outputs.sha256 }}
+      - name: Native caption protocol and generated fixture contracts (no model or runtime downloads)
+        run: node --experimental-strip-types --experimental-loader ./scripts/node-types-loader.mjs --test scripts/indic-*-contract.test.mjs scripts/fetch-indic.test.mjs scripts/indic-fixture.test.mjs scripts/indic-crt.test.mjs
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
 
