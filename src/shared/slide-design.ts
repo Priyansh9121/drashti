@@ -1,5 +1,5 @@
 import { nativeDeckMotion } from './deck';
-import { numberedPdfMaster, PDF_HANDOUT_PREFIX } from './pdf-handout';
+import { hasPdfPageNumbers, numberedPdfMaster, PDF_HANDOUT_PREFIX } from './pdf-handout';
 import { slidesOf } from './slide-edit';
 import type { RenderSlide, SlideDesign } from './model';
 import type { EditDoc, EditSlide } from './slide-edit';
@@ -35,9 +35,9 @@ export function composeSlide(
           elements: [
             ...fitElements(masterElements, masterCanvas ?? slide, slide).map((el) => {
               if (el.kind !== 'text') return el;
+              if (!el.name?.startsWith(PDF_HANDOUT_PREFIX)) return { ...el, everyScreen: true };
               const original = masterElements.find((element) => element.id === el.id);
-              if (original?.kind !== 'text' || !el.name?.startsWith(PDF_HANDOUT_PREFIX))
-                return { ...el, everyScreen: true };
+              if (original?.kind !== 'text') return { ...el, everyScreen: true };
               const canvas = masterCanvas ?? slide;
               const sx = slide.width / canvas.width,
                 sy = slide.height / canvas.height;
@@ -77,7 +77,7 @@ export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
     doc.master?.id === slide.id ? null : doc.master,
     slide.cues.some((c) => c.kind === 'background'),
     slideCanvas(doc.master ?? undefined, doc),
-    slidesOf(doc).findIndex((page) => page.id === slide.id),
+    hasPdfPageNumbers(doc.master) ? slidesOf(doc).findIndex((page) => page.id === slide.id) : undefined,
   );
 }
 

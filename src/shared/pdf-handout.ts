@@ -66,11 +66,17 @@ export function pdfHandout(doc: EditDoc, values: PdfHandout): EditDoc {
   };
 }
 
+export function hasPdfPageNumbers(master: EditSlide | null | undefined): boolean {
+  return !!master?.elements.some(
+    (element) => element.kind === 'text' && element.name === `${PDF_HANDOUT_PREFIX}numbers`,
+  );
+}
+
 export function numberedPdfMaster(
   master: EditSlide | null | undefined,
   page?: number,
 ): EditSlide | null | undefined {
-  if (!master || page === undefined) return master;
+  if (!master || page === undefined || !hasPdfPageNumbers(master)) return master;
   return {
     ...master,
     elements: master.elements.map((element) =>
