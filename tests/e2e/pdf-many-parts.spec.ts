@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectNoSeriousA11yIssues } from './a11y';
+import { expectNoSeriousA11yIssues, settled } from './a11y';
 import type { PageGlobals } from './helpers';
 import { closeLibrary } from './helpers';
 import { openNewPlaylist } from './hall-looks';
@@ -15,8 +15,10 @@ test('collected PDF parts cross pages, reorder and remove, make one presentation
     const dialog = ed.getByTestId('make-slide');
     // A small part of page 1 must be drawn afresh at the hall's size, rather than cropped from its thumbnail.
     const box = dialog.getByTestId('make-slide-box');
-    // Hover's actionability check waits for the opening dialog's scale animation to finish before measuring.
-    await box.hover();
+    // Measured once the opening dialog has finished rising (its scale): a box measured part-way, at ~99% of its
+    // size, moved the side 74.5% of the way (a21-pdf-1123-192421-87421: 'right 74%' on both systems, both tries;
+    // hover's stability check passed part-way through the rise).
+    await settled(ed);
     const whole = await box.boundingBox();
     const corner = await box.locator('[data-edge="se"]').boundingBox();
     if (!whole || !corner) throw new Error('No crop frame');
