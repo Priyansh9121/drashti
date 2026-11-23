@@ -392,28 +392,50 @@ test('queued PCM from a closed input subscription cannot enter a reopened genera
 });
 
 test('explicit below-show admission supports continuous ASR without pretending to have a transition lease', async () => {
-  let listening = false, opened = 0;
+  let listening = false,
+    opened = 0;
   const engine = createIndicEngine({
-    admission: 'below-show', program: () => '/native',
+    admission: 'below-show',
+    program: () => '/native',
     acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
     sound: { open: () => () => {} },
-    open: async () => { opened += 1; return { decode: async () => ({}), close() {} }; },
+    open: async () => {
+      opened += 1;
+      return { decode: async () => ({}), close() {} };
+    },
     log: { info() {}, warn() {} },
   });
-  const stop = engine.start('gu', { heard() {}, state: (state) => { if (state.phase === 'listening') listening = true; } });
+  const stop = engine.start('gu', {
+    heard() {},
+    state: (state) => {
+      if (state.phase === 'listening') listening = true;
+    },
+  });
   try {
-    await Promise.resolve(); await Promise.resolve();
-    assert.equal(listening, true); assert.equal(opened, 1);
-  } finally { stop(); }
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(listening, true);
+    assert.equal(opened, 1);
+  } finally {
+    stop();
+  }
 });
 
 test('a provided closed gate remains authoritative over explicit below-show admission', async () => {
   let acquired = false;
   const engine = createIndicEngine({
-    admission: 'below-show', workGate: { allowed: () => false, listen: () => () => {} },
-    program: () => '/native', acquire: () => { acquired = true; return null; },
-    sound: { open: () => null }, log: { info() {}, warn() {} },
+    admission: 'below-show',
+    workGate: { allowed: () => false, listen: () => () => {} },
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: { open: () => null },
+    log: { info() {}, warn() {} },
   });
   const stop = engine.start('gu', { heard() {}, state() {} });
-  await Promise.resolve(); stop(); assert.equal(acquired, false);
+  await Promise.resolve();
+  stop();
+  assert.equal(acquired, false);
 });

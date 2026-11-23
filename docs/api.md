@@ -668,3 +668,8 @@ Main refuses translation authoring, approval and route changes through `saveSlid
 It matches the selected reference to full checked metadata through `store.model`, pins the model-file SHA-256s, then obtains a fresh hold through
 `store.acquire` at start. Changed identity or purpose releases the hold without starting native work. The resolver
 accepts the shared language type and returns null for every language other than Gujarati or Hindi.
+
+Main may explicitly select `admission: 'below-show'` for continuous ASR under the integration’s scheduling policy.
+This does not bypass native priority admission or any lag, queue, model, generation or cancellation guard. If a
+`workGate` is supplied it remains authoritative, including when closed or broken. With neither explicit admission
+nor a gate the recogniser stays closed. Main/lead owns the ASR policy choice; translation’s lease is separate.

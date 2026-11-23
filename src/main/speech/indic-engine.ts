@@ -10,6 +10,8 @@ import { openIndicPipe, type IndicPipe, type IndicPipeOptions } from './indic-pi
 export interface IndicEngineOptions {
   program(): string | null;
   problem?: () => string | null;
+  /** Explicit continuous-ASR policy; still requires native below-show priority. A provided gate always wins. */
+  admission?: 'below-show';
   /** Read-only authoritative show/background lease. Absent or unknown is closed. Never derive this from a timer. */
   workGate?: { allowed(): boolean; listen(changed: () => void): () => void };
   /** Acquire a checked imported model; release only once native work has stopped. Never an installer model. */
@@ -70,7 +72,8 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         return () => undefined;
       }
       const gate = o.workGate;
-      if (!gate) {
+      const belowShow = o.admission === 'below-show';
+      if (!gate && !belowShow) {
         to.state({
           phase: 'failed',
           message: 'Recognition is not ready on this computer yet.',
@@ -79,7 +82,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       }
       const allowed = (): boolean => {
         try {
-          return gate.allowed();
+          return gate ? gate.allowed() : belowShow;
         } catch {
           return false;
         }
@@ -344,17 +347,18 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       let stopGate: () => void;
       let observing = false;
       try {
-        stopGate = gate.listen(() => {
-          if (stopped || !observing) return;
-          if (!allowed()) {
-            gateHeld = true;
-            end();
-            to.state({ phase: 'held', reason: 'busy' });
-          } else if (gateHeld) {
-            gateHeld = false;
-            if (!busy) void begin();
-          }
-        });
+        stopGate =
+          gate?.listen(() => {
+            if (stopped || !observing) return;
+            if (!allowed()) {
+              gateHeld = true;
+              end();
+              to.state({ phase: 'held', reason: 'busy' });
+            } else if (gateHeld) {
+              gateHeld = false;
+              if (!busy) void begin();
+            }
+          }) ?? (() => undefined);
       } catch {
         to.state({ phase: 'failed', message: 'Recognition is not ready on this computer yet.' });
         return () => undefined;
