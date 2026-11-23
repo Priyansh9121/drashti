@@ -141,5 +141,7 @@ it('fails an import whose worker was never seen, or one already running before t
     inOrder: false,
   });
   // A creation time after the import was ready is not a time the test could have seen: no order is proven.
-  expect(importProcessOrder({ end: 5000, ready: 5900 }, [{ pid: 1, creationTime: 6100 }]).inOrder).toBe(false);
+  expect(importProcessOrder({ end: 5000, ready: 5900 }, [{ pid: 1, creationTime: 6100 }]).inOrder).toBe(
+    false,
+  );
 });
