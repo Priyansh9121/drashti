@@ -5,6 +5,7 @@ import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
 import { CaptionCoordinator } from './caption-coordinator';
 import { createCaptionFlow, type CaptionSpelling } from './caption-flow';
 import { createSpeechHub } from './hub';
+import { spellingFixer } from './spelling-fixer';
 
 /*
  * Caption AI's path end to end in the main process (cap-integration): a stand-in recognizer -> the real speech hub
@@ -149,6 +150,26 @@ describe('caption AI path: recognizer -> hub -> flow -> coordinator -> screens',
     h.flow.start();
     h.say('नीला ખોખુ', true);
     expect(h.lines()).toEqual(['नीला ખોખુ']);
+  });
+
+  it('with cap-glossary’s own fixer: a caption word heard a letter off is spelt as written, provisional, settled and in the draft; Hindi untouched', () => {
+    // cap-glossary's invented placeholder word ("Zentrova" in Gujarati letters), heard with one letter off.
+    const word = 'ઝેન્ટ્રોવા';
+    const fixer = spellingFixer([{ language: 'gu', word }]);
+    const t = setup({ spelling: fixer });
+    t.flow.start();
+    t.say('લીલું ઝેન્ટરોવા', false);
+    expect(t.lines()).toEqual([`લીલું ${word}`]);
+    t.say('લીલું ઝેન્ટરોવા ગોળ આકાર', true);
+    vi.advanceTimersByTime(300);
+    expect(t.lines()).toEqual([`લીલું ${word} ગોળ આકાર`]);
+    expect(t.current()).toMatchObject({ revision: 2, status: 'settled' });
+    expect(t.finals.map((f) => f.text)).toEqual([`લીલું ${word} ગોળ આકાર`]);
+    t.flow.stop();
+    const h = setup({ spelling: fixer, language: 'hi' });
+    h.flow.start();
+    h.say('नीला ઝેન્ટરોવા', true);
+    expect(h.lines()).toEqual(['नीला ઝેન્ટરોવા']);
   });
 
   it('the same words heard again keep their revision; an empty partial is not passed on', () => {
