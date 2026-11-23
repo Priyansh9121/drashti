@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { linkSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { linkSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -204,10 +205,27 @@ describe('real PDF editor copy source protection', () => {
 
 describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti slide', () => {
   /** The real imported generated PDF opened in the real editor validator, and a PdfEditor around fakes at its edges. */
-  async function opened() {
+  async function opened(many = false) {
     const restoreLocation = fixtureLocation();
     const world = originalWorld();
-    const imported = await world.importPdf();
+    let hash = world.hash;
+    if (many) {
+      const bytes = makeTestPdf([
+        { width: 960, height: 540, color: [40, 80, 120], text: 'Placeholder first page' },
+        { width: 540, height: 960, color: [80, 120, 40], text: 'Placeholder second page' },
+      ]);
+      writeFileSync(world.source, bytes);
+      hash = createHash('sha256').update(bytes).digest('hex');
+    }
+    const imported = await world.importPdf(many ? {
+      drawPdf: (_pdf, outDir) => {
+        mkdirSync(outDir, { recursive: true });
+        const file = join(outDir, 'page.png');
+        writeFileSync(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'));
+        return Promise.resolve({ ok: true as const, width: 1920, height: 1080,
+          pages: [{ index: 0, file }, { index: 1, file }], total: 2, failed: [] });
+      },
+    } : {});
     const presentations = new PresentationRepo(world.db);
     const revisions = new Revisions();
     const kept = vi.spyOn(revisions, 'keep');
@@ -275,6 +293,7 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
     const before = presentations.content(imported.id);
     return {
       world,
+      hash,
       imported,
       presentations,
       before,
@@ -316,7 +335,7 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       });
       // One page planned: the unchanged page from the retained original (a changed page would be printed natively).
       expect(t.run).toHaveBeenCalledOnce();
-      expect(t.run.mock.calls[0]?.[0].pages).toEqual([{ kind: 'original', sourceId: t.world.hash, page: 0 }]);
+      expect(t.run.mock.calls[0]?.[0].pages).toEqual([{ kind: 'original', sourceId: t.hash, page: 0 }]);
       // Its part drawn from those bytes; the picture kept as a slide in the open playlist.
       expect(t.drawPart).toHaveBeenCalledOnce();
       expect(t.drawPart.mock.calls[0]?.slice(0, 2)).toEqual([t.printed, { x: 0, y: 0, w: 0.25, h: 0.5 }]);
@@ -345,7 +364,7 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
   });
 
   it('collects ordered parts across pages into one keep operation, printing each page only once', async () => {
-    const t = await opened();
+    const t = await opened(true);
     try {
       const pages = t.doc.groups.flatMap((g) => g.slides);
       const first = pages[0];
@@ -360,8 +379,8 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       expect(made.ok).toBe(true);
       expect(t.run).toHaveBeenCalledTimes(2);
       expect(t.run.mock.calls.map((call) => call[0].pages)).toEqual([
-        [{ kind: 'original', sourceId: t.world.hash, page: 1 }],
-        [{ kind: 'original', sourceId: t.world.hash, page: 0 }],
+        [{ kind: 'original', sourceId: t.hash, page: 1 }],
+        [{ kind: 'original', sourceId: t.hash, page: 0 }],
       ]);
       expect(t.drawPart.mock.calls.map((call) => call.slice(0, 2))).toEqual(
         parts.map(({ part }) => [t.printed, part]),
