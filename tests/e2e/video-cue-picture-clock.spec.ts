@@ -123,9 +123,10 @@ async function probeClock(
             currentTime: v.currentTime,
           });
           v.dataset['clockFrames'] = JSON.stringify(frames);
-          if (frame.mediaTime > initial + 0.001)
+          if (frame.mediaTime > initial + 0.001) {
             v.dataset['clockMotion'] = String(Date.now() + frame.expectedDisplayTime - performance.now());
-          else v.requestVideoFrameCallback(observe);
+            v.dataset['clockMotionMedia'] = String(frame.mediaTime);
+          } else v.requestVideoFrameCallback(observe);
         };
         v.requestVideoFrameCallback(observe);
       });
@@ -135,15 +136,21 @@ async function probeClock(
     const bg = (await snapshot(win)).layers.background;
     if (bg?.kind !== 'media' || !bg.seek) throw new Error('No scheduled Go for the clock experiment');
     goAt = bg.seek.at;
-    const motion: number[] = [];
+    const motion: { at: number; mediaTime: number }[] = [];
     for (const page of pages) {
       const v = page.locator(`video[data-media-id="${id}"]`).first();
       await expect(v).toHaveAttribute('data-clock-motion', /[1-9]/);
-      motion.push(Number(await v.getAttribute('data-clock-motion')));
+      motion.push({
+        at: Number(await v.getAttribute('data-clock-motion')),
+        mediaTime: Number(await v.getAttribute('data-clock-motion-media')),
+      });
     }
-    for (const at of motion) {
+    for (const { at, mediaTime } of motion) {
       expect(at - goAt).toBeGreaterThanOrEqual(0);
-      expect(at - goAt, 'first motion within one 30 fps frame').toBeLessThanOrEqual(1000 / 30);
+      // The start (QA21-S5-1, "A, measure the start"): the first moving frame's display time less its media time past
+      // the 1 s trim.
+      const start = at - (mediaTime - 1) * 1000;
+      expect(start - goAt, 'starts within one 30 fps frame of Go').toBeLessThanOrEqual(1000 / 30);
     }
   } finally {
     const rows = await Promise.all(

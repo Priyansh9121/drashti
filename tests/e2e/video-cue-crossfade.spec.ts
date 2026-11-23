@@ -8,6 +8,8 @@ import { setupVideoCue, cueReady } from './video-cue-helpers';
 import { decodePng } from './png-decode';
 
 const video = (page: Page, id: string) => page.locator(`video[data-media-id="${id}"]`).first();
+/** The cued video's trim (its start point): the frame Cue holds and Go starts from. */
+const TRIM_MS = 1000;
 
 test('Cue holds the first trimmed frame privately, then Go uses its loaded frame at one shared engine moment', async () => {
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
@@ -16,9 +18,9 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
   try {
     const id = ids[1] ?? '';
     await win.evaluate(
-      (id) =>
-        (globalThis as PageGlobals).drashti.media.setMarkers(id, { startMs: 1000, endMs: 7000, markers: [] }),
-      id,
+      ({ id, startMs }) =>
+        (globalThis as PageGlobals).drashti.media.setMarkers(id, { startMs, endMs: 7000, markers: [] }),
+      { id, startMs: TRIM_MS },
     );
     await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#205020' } });
     expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
@@ -53,6 +55,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
           v.dataset['cueCallbacks'] = JSON.stringify(callbacks);
           if (frame.mediaTime > initial + 0.001) {
             v.dataset['firstMotionAt'] = String(Date.now() + frame.expectedDisplayTime - performance.now());
+            v.dataset['firstMotionMedia'] = String(frame.mediaTime);
             v.dataset['firstMotionCallbackAt'] = String(Date.now());
           } else v.requestVideoFrameCallback(presented);
         };
@@ -132,13 +135,20 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     const bg = (await snapshot(win)).layers.background;
     if (bg?.kind !== 'media' || !bg.seek) throw new Error('No scheduled Go');
     pixelGoAt = bg.seek.at;
-    const motion: { page: string; at: number; callbackAt: number; polledAt: number; callbacks: unknown }[] =
-      [];
+    const motion: {
+      page: string;
+      at: number;
+      mediaTime: number;
+      callbackAt: number;
+      polledAt: number;
+      callbacks: unknown;
+    }[] = [];
     for (const [index, page] of [hall, win, stream].entries()) {
       await expect(video(page, id)).toHaveAttribute('data-first-motion-at', /[1-9]/);
       motion.push({
         page: ['hall', 'LIVE', 'stream'][index] ?? '',
         at: Number(await video(page, id).getAttribute('data-first-motion-at')),
+        mediaTime: Number(await video(page, id).getAttribute('data-first-motion-media')),
         callbackAt: Number(await video(page, id).getAttribute('data-first-motion-callback-at')),
         polledAt: Number(await video(page, id).getAttribute('data-polled-motion-at')),
         callbacks: JSON.parse((await video(page, id).getAttribute('data-cue-callbacks')) ?? '[]'),
@@ -149,9 +159,14 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
       body: Buffer.from(JSON.stringify({ goAt: bg.seek.at, motion })),
       contentType: 'application/json',
     });
-    for (const { at } of motion) {
+    for (const { at, mediaTime } of motion) {
+      // Never moving before Go: no moved frame is on the screen before the engine's moment.
       expect(at - bg.seek.at).toBeGreaterThanOrEqual(0);
-      expect(at - bg.seek.at, 'first motion within one 30 fps frame').toBeLessThanOrEqual(1000 / 30);
+      // Starts within one 30 fps frame of Go (QA21-S5-1, the owner's "A, measure the start"): the start is the first
+      // moving frame's display time less its media time past the trim. That frame is itself one frame after the trim,
+      // so its own display time is a frame later than the start even when the start is exact.
+      const start = at - (mediaTime - TRIM_MS / 1000) * 1000;
+      expect(start - bg.seek.at, 'starts within one 30 fps frame of Go').toBeLessThanOrEqual(1000 / 30);
     }
     await expect(sound).toHaveJSProperty('paused', false);
   } finally {
