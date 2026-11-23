@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
-import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 import { headingProblems, layoutPicture, liveRowProblems } from './operator-layout';
 
 /*
@@ -52,14 +52,8 @@ for (const mode of ['pro', 'simple'] as const) {
         // Check a fresh layout and the narrowest remembered column, at each window size and in both modes.
         await splitter.press(columnWidth === 380 ? 'Enter' : 'Home');
         await expect(splitter).toHaveAttribute('aria-valuenow', String(columnWidth));
-        // The column's own top (since alpha.21 what scrolls is inside it: LiveColumn).
-        await win.getByRole('complementary', { name: 'Live', exact: true }).evaluate((el) => {
-          for (const part of [
-            el,
-            ...el.querySelectorAll('[data-testid="live-scroll"], [data-testid="live-rest"]'),
-          ])
-            part.scrollTop = 0;
-        });
+        // The column from its top (since alpha.21 what scrolls is inside it: LiveColumn).
+        await liveColumnToTop(win.getByRole('complementary', { name: 'Live', exact: true }));
         await expect(win.getByTestId('show-back')).toBeInViewport({ ratio: 1 });
         await expect(win.getByTestId('show-next')).toBeInViewport({ ratio: 1 });
         await expect(win.getByTestId('next-up')).toHaveAccessibleName(/^Next up: .+/u);
