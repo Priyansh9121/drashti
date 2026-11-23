@@ -1364,7 +1364,7 @@ it('keeps paired places when public announcement links are waiting for answers',
 it('waits for a served page file to close before shutdown completes', async () => {
   const { port, server: network } = await start();
   // A response can finish before Windows releases the file handle. Hold that close event explicitly.
-  const page = new PassThrough({ autoDestroy: false });
+  const page = new PassThrough({ autoDestroy: false, emitClose: false });
   vi.mocked(createReadStream).mockReturnValueOnce(page as ReturnType<typeof createReadStream>);
   page.end('<!doctype html><title>pair</title>');
   expect((await call(port, '/pair')).status).toBe(200);
