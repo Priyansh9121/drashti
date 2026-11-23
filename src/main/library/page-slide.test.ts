@@ -36,4 +36,24 @@ describe('pageSlidePresentation', () => {
     expect([made.width, made.height]).toEqual([3840, 2160]);
     expect(made.groups[0]?.slides[0]?.elements[0]?.frame).toEqual({ x: 0, y: 0, width: 3840, height: 2160 });
   });
+  it('keeps every collected picture on its own slide in the chosen order', () => {
+    const made = pageSlidePresentation('library-1', 'Placeholder parts', ['media-2', 'media-1'], {
+      width: 1920,
+      height: 1080,
+    });
+    const slides = made.groups[0]?.slides ?? [];
+    expect(slides).toHaveLength(2);
+    expect(slides.map((slide) => slide.elements)).toEqual(
+      ['media-2', 'media-1'].map((mediaId) => [
+        {
+          id: 'page',
+          kind: 'image',
+          mediaId,
+          fit: 'fit',
+          frame: { x: 0, y: 0, width: 1920, height: 1080 },
+        },
+      ]),
+    );
+    expect(slides.map((slide) => slide.background)).toEqual(['#000000', '#000000']);
+  });
 });
