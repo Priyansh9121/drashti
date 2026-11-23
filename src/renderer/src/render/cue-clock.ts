@@ -60,6 +60,8 @@ export function pageSilentGraph(): SilentGraph | null {
 const sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
 /** How many cued pictures use (or wait for) each graph: with none, it rests (suspended) until the next cue. */
 const users = new WeakMap<AudioContext, number>();
+/** A graph asked to rest whose rest may still be on the way (it can still say it runs). */
+const resting = new WeakSet<AudioContext>();
 
 /**
  * Pull a cued picture's sound through the page's silent graph and unmute it there (its clock then starts with its
@@ -71,8 +73,12 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
   if (!silent) return () => undefined;
   const { context, sink } = silent;
   users.set(context, (users.get(context) ?? 0) + 1);
-  // Resting since its last cue: asked to run again (it does a moment later: the route waits for that, below).
-  if (context.state === 'suspended') void context.resume().catch(() => undefined);
+  // Resting since its last cue, or its rest still on the way (a21-review, a22-cue): asked to run again (it does a
+  // moment later: the route waits for that, below).
+  if (context.state === 'suspended' || resting.has(context)) {
+    resting.delete(context);
+    void context.resume().catch(() => undefined);
+  }
   let stopped = false;
   let routed: MediaElementAudioSourceNode | null = null;
   const route = () => {
@@ -108,7 +114,11 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
     }
     const left = (users.get(context) ?? 1) - 1;
     users.set(context, left);
-    // Nothing cued uses it now: no device time spent on silence until the next cue.
-    if (left === 0 && context.state === 'running') void context.suspend().catch(() => undefined);
+    // Nothing cued uses it now: no device time spent on silence, and its constant off the output, until the next cue.
+    // Asked whatever it says now: a graph still starting would otherwise run on, holding the output (a21-review).
+    if (left === 0 && context.state !== 'closed') {
+      resting.add(context);
+      void context.suspend().catch(() => undefined);
+    }
   };
 }
