@@ -1,4 +1,4 @@
-import { preparedOutputState, translationBottom } from '../../../shared/prepared-output-state';
+import { preparedOutputState, translationBottom, translationTop } from '../../../shared/prepared-output-state';
 import { useEffect, useMemo, useRef } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Lang } from '../../../shared/model';
@@ -61,7 +61,8 @@ export function ProgramView({
     ...(translationGroupId ? { groupId: translationGroupId } : {}),
     canvas,
     scaling: 'fit',
-    blockedBelow: translationBottom(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height),
+    blockedAbove: translationTop(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height, 'stream', layout === 'camera'),
+    blockedBelow: translationBottom(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height, 'stream', layout === 'camera'),
   });
   const captionRoot = useRef<HTMLDivElement>(null);
   const picture = programPicture(state, layout, languages);

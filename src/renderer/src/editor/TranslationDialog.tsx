@@ -78,7 +78,7 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
     defaultChoice: TranslationChoice,
     groupRoutes: Record<string, TranslationChoice>,
     outputRoutes: Record<string, TranslationChoice>,
-  ) => change(() => commit(routePreparedWords(doc, defaultChoice, groupRoutes, outputRoutes)));
+  ) => change(() => commit(routePreparedWords(doc, defaultChoice, groupRoutes, outputRoutes, from)));
   const shown = doc.groups.flatMap((group) => group.slides).find((slide) => slide.id === preview);
   const rendered = shown ? renderEditedSlide(doc, shown) : null;
   const checked = rows.filter(({ element }) =>

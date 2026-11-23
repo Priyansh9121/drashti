@@ -76,12 +76,10 @@ export function editPreparedWords(
     return {
       ...el,
       translations: [...(el.translations ?? []).filter((item) => item.targetLanguage !== to), value],
-      translationDisplay:
-        el.translationDisplay ??
-        defaultTranslationDisplay(
-          el,
-          slideCanvas(preparedRows(doc).find((row) => row.slide.id === slideId)?.slide, doc).height,
-        ),
+      translationDisplay: {
+        ...(el.translationDisplay ?? defaultTranslationDisplay(el, slideCanvas(preparedRows(doc).find((row) => row.slide.id === slideId)?.slide, doc).height)),
+        sourceLanguage: from,
+      },
     };
   });
 }
@@ -115,6 +113,7 @@ export function routePreparedWords(
   choice: TranslationChoice,
   groups: Record<string, TranslationChoice>,
   outputs: Record<string, TranslationChoice>,
+  sourceLanguage?: TranslationLanguage,
 ): EditDoc {
   let next = doc;
   for (const { slide, element } of preparedRows(doc))
@@ -122,6 +121,7 @@ export function routePreparedWords(
       ...el,
       translationDisplay: {
         ...(el.translationDisplay ?? defaultTranslationDisplay(el, slideCanvas(slide, doc).height)),
+        ...(sourceLanguage && translationSourceSupported(el, sourceLanguage) ? { sourceLanguage } : {}),
         choice,
         groups: { ...groups },
         outputs: { ...outputs },

@@ -296,6 +296,7 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     translations: preparedTranslationsSchema.optional(),
     translationDisplay: z
       .object({
+        sourceLanguage: z.enum(['gu', 'hi', 'en']).optional(),
         choice: z.enum(['off', 'gu', 'hi', 'en']),
         groups: z
           .record(z.string().min(1).max(200), z.enum(['off', 'gu', 'hi', 'en']))

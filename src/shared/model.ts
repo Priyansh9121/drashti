@@ -442,6 +442,8 @@ export interface RenderSlide {
   fullSlide?: boolean;
   /** Resolved master elements: fixed in place when a kirtan's language columns close up. */
   masterElementIds?: string[];
+  /** Render-only fixed source and checked-translation boxes. */
+  translationAnchors?: string[];
   /** Darkening behind the words; left out for none (every slide made before it, Sessions 31–36). */
   darken?: Darken;
   elements: SlideElement[];

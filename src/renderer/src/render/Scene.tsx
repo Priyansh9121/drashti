@@ -1,4 +1,4 @@
-import { preparedOutputState, translationBottom } from '../../../shared/prepared-output-state';
+import { preparedOutputState, translationBottom, translationTop } from '../../../shared/prepared-output-state';
 import type { CSSProperties, ReactNode, ComponentProps } from 'react';
 import {
   Fragment,
@@ -759,7 +759,8 @@ export const Scene = memo(function Scene(props: ComponentProps<typeof SceneBody>
       preparedOutputState(props.state, {
         ...(props.translationGroupId ? { groupId: props.translationGroupId } : {}),
         ...(props.translationOutputId ? { outputId: props.translationOutputId } : {}),
-        blockedBelow: translationBottom(props.state, sourceHeight),
+        blockedBelow: translationBottom(props.state, sourceHeight, props.place ?? 'hall'),
+        blockedAbove: translationTop(props.state, sourceHeight, props.place ?? 'hall'),
         canvas: props.canvas,
         scaling: props.scaling,
       }),
@@ -770,6 +771,7 @@ export const Scene = memo(function Scene(props: ComponentProps<typeof SceneBody>
       sourceHeight,
       props.canvas,
       props.scaling,
+      props.place,
     ],
   );
   return <SceneBody {...props} state={state} />;

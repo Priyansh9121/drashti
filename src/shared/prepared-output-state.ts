@@ -1,3 +1,5 @@
+import { captionsFor, type CaptionScreen, type CaptionPlace } from './captions';
+import { playingNow } from './engine/playing';
 import type { EngineState, SlideLayer } from './engine/state';
 import type { RenderSlide } from './model';
 import { checkedTranslationView, type TranslationDestination } from './prepared-translation-view';
@@ -6,7 +8,7 @@ const originalSlides = new WeakMap<RenderSlide, RenderSlide>();
 const cache = new WeakMap<RenderSlide, Map<string, RenderSlide>>();
 function outputSlide(slide: RenderSlide, destination: TranslationDestination, hidden = false): RenderSlide {
   slide = originalSlides.get(slide) ?? slide;
-  if (hidden) return slide;
+  destination = { ...destination, hidden };
   const key = JSON.stringify(destination);
   let views = cache.get(slide);
   if (!views) {
@@ -49,12 +51,22 @@ export function preparedOutputState(state: EngineState, destination: Translation
   };
 }
 
-/** Reserve competing bands. Video subtitles keep their own precedence and never share translation space. */
-export function translationBottom(state: EngineState, height: number): number {
+/** Reserve a selected video's band throughout playback, including gaps between cues. */
+function captionPlace(state: EngineState, screen: CaptionScreen): CaptionPlace | undefined {
+  const video = playingNow(state).find(
+    (p) => p.ref.layer !== 'audio' && !p.sound && !p.clock.seek?.waiting && state.videoCaptions?.[p.mediaId],
+  );
+  if (video) return screen === 'stage' ? undefined : state.videoCaptions?.[video.mediaId]?.place;
+  return captionsFor(state.captions, screen)?.place;
+}
+export function translationTop(state: EngineState, height: number, screen: CaptionScreen = 'hall', messagesAtTop = false): number {
+  return captionPlace(state, screen) === 'top' || (messagesAtTop && state.layers.messages.length > 0) ? height * 0.3 : 0;
+}
+/** Reserve competing bands on the output that actually draws them. */
+export function translationBottom(state: EngineState, height: number, screen: CaptionScreen = 'hall', messagesAtTop = false): number {
   let edge = height;
   if (state.layers.ticker) edge = Math.min(edge, height * 0.9);
-  if (state.layers.messages.length || state.layers.lowerThird) edge = Math.min(edge, height * 0.7);
-  if (state.captions?.lines.length || Object.keys(state.videoCaptions ?? {}).length)
-    edge = Math.min(edge, height * 0.65);
+  if ((!messagesAtTop && state.layers.messages.length) || state.layers.lowerThird) edge = Math.min(edge, height * 0.7);
+  if (captionPlace(state, screen) === 'bottom') edge = Math.min(edge, height * 0.65);
   return edge;
 }

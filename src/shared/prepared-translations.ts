@@ -12,7 +12,7 @@ export interface PreparedTranslation {
 }
 
 // A lossless fingerprint avoids collisions and works identically in every renderer.
-export const sourceFingerprint = (source: string): string => JSON.stringify(source);
+export const sourceFingerprint = (source: string): string => JSON.stringify(source.normalize('NFC'));
 
 export const reviewFingerprint = (
   value: Pick<PreparedTranslation, 'sourceFingerprint' | 'sourceLanguage' | 'targetLanguage' | 'text'>,
