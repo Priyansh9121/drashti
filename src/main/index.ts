@@ -187,7 +187,7 @@ import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJournal } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
-import { type CrashFilesChoice, type GraphicsInfo, writeDiagnosticsFile } from './diagnostics';
+import { type CrashFilesChoice, type GraphicsInfo, libraryNames, writeDiagnosticsFile } from './diagnostics';
 import { log, logDays, logFilesOf, onLogDaysChanged, setLogHeader, startLogCopy, startLogFile } from './log';
 import { CommandLog, requestLogged } from './log-commands';
 import { type DiagnosticsWho, installId } from './log-who';
@@ -533,6 +533,7 @@ setLogHeader(
  * words; written a turn after each was answered.
  */
 const commandLog = new CommandLog({
+  libraryNames: () => (db ? libraryNames(db) : []),
   write: (line) => {
     log.info(line);
   },
