@@ -75,6 +75,7 @@ function setup(
     shown?: { addresses: string[]; localName: string };
     /** The log's lines, for a test that reads them. */
     logs?: string[];
+    notices?: string[];
   } = {},
 ) {
   const db = openDatabase(':memory:');
@@ -211,6 +212,7 @@ function setup(
     // Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026).
     simple: () => (options.locked === true ? ONE : null),
     changed: (s) => statuses.push(s),
+    notice: (text) => options.notices?.push(text),
     log: (_level, line) => {
       options.logs?.push(line);
     },
@@ -1367,4 +1369,25 @@ describe('OSC uses the API action layer without a paired phone', () => {
     ).toBe(403);
     await t.service.close();
   });
+});
+
+it('shows the general paired-device notice from its worker without changing network state', () => {
+  const notices: string[] = [];
+  const t = setup({ notices });
+  t.service.setOn(true);
+  t.fromWorker({ type: 'started', result: { ok: true, port: 8740 } });
+  t.fromWorker({ type: 'busy' });
+  expect(notices).toEqual(['Drashti is busy with new connections. Paired devices keep their places.']);
+  expect(t.service.status().state).toBe('listening');
+});
+
+it('identifies public poster links separately from individually paired announcement devices', () => {
+  const t = setup();
+  t.service.setOn(true);
+  t.fromWorker({ type: 'started', result: { ok: true, port: 8740 } });
+  const personal = t.service.pairForCheck('announcements', 'Placeholder paired announcer');
+  t.service.makePoster();
+  const last = t.sent.filter((message) => message.type === 'devices').at(-1);
+  expect(last?.devices.some((device) => device.poster === true)).toBe(true);
+  expect(last?.devices.find((device) => device.id === personal.id)?.poster === true).toBe(false);
 });
