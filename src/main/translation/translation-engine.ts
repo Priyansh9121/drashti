@@ -72,7 +72,11 @@ export const KNOWN_INDICTRANS2_MODELS: Readonly<Record<Route, Readonly<Record<In
   },
 };
 
-type PackFile = { name: string; path: string; sha256: string };
+interface PackFile {
+  name: string;
+  path: string;
+  sha256: string;
+}
 
 /** Whether a model's files are the known conversion for this direction family: every one by its SHA-256. */
 export function knownConversion(route: Route, files: readonly PackFile[]): boolean {

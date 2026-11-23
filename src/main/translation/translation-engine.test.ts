@@ -192,6 +192,8 @@ describe('Prepare translations’ engine', () => {
       program: () => '/x/drashti-translate',
       models: models([model('en-indic', ['translation-en-gu'])]),
       log,
+      // A stand-in model, not x74's conversion: taken as known here.
+      checkFiles: () => true,
       createHelper: (p) =>
         new TranslationHelper({
           program: p,
