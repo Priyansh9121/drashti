@@ -75,13 +75,15 @@ afterEach(() => {
 });
 
 describe('the pinned caption models', () => {
-  it("pins exactly alpha.22's two caption packs and the small captions model", () => {
+  it("pins exactly alpha.22's two caption packs (their own prerelease page) and the small captions model", () => {
     expect(Object.keys(CAPTION_MODELS).sort()).toEqual([
       'pack-gu-indicconformer-int8',
       'pack-hi-indicconformer-int8',
       'whisper-small',
     ]);
-    const release = 'https://github.com/Priyansh9121/drashti/releases/download/v1.0.0-alpha.22/';
+    // The owner (24 Nov 2026): "Yes, prerelease page": a page of their own, never Latest, holding only the two zips
+    // and SHA256SUMS-packs.txt.
+    const release = 'https://github.com/Priyansh9121/drashti/releases/download/caption-packs-2026-11-24/';
     const gu = CAPTION_MODELS['pack-gu-indicconformer-int8'];
     expect(gu).toMatchObject({
       name: 'drashti-captions-gu-indicconformer-ctc-int8.zip',

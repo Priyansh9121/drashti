@@ -149,11 +149,12 @@ export function errorRates(
   heard: string,
 ): { words: number; wordErrors: number; chars: number; charErrors: number } {
   const hyp = scoreWords(heard);
-  const hypChars = [...hyp.join(' ')];
+  // Characters are code points, as the trial scorer counts them.
+  const hypChars = Array.from(hyp.join(' '));
   let best: { words: number; wordErrors: number; chars: number; charErrors: number } | null = null;
   for (const reference of references) {
     const ref = scoreWords(reference);
-    const refChars = [...ref.join(' ')];
+    const refChars = Array.from(ref.join(' '));
     const r = {
       words: ref.length,
       wordErrors: editDistance(ref, hyp),

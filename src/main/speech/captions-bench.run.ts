@@ -16,6 +16,7 @@
  *   DRASHTI_CAPTIONS_BENCH_STOP   alongside: rounds go on until this file appears (the Performance check is over)
  *   DRASHTI_CAPTIONS_BENCH_MINUTES alongside: at most this long (default 40)
  *   DRASHTI_CAPTION_MODELS_CACHE  the models' cache (default ~/.cache/drashti/caption-models)
+ *   DRASHTI_CAPTIONS_BENCH_INDIC, DRASHTI_CAPTIONS_BENCH_WHISPER  the engine programs, when not in vendor/ (a local try)
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -86,12 +87,7 @@ function pcmOf(file: string): Int16Array {
     const size = b.readUInt32LE(at + 4);
     if (id === 'fmt ') format = b.subarray(at + 8, at + 8 + size);
     if (id === 'data') {
-      if (
-        !format ||
-        format.readUInt16LE(2) !== 1 ||
-        format.readUInt32LE(4) !== RATE ||
-        format.readUInt16LE(14) !== 16
-      )
+      if (format?.readUInt16LE(2) !== 1 || format.readUInt32LE(4) !== RATE || format.readUInt16LE(14) !== 16)
         throw new Error(`not 16 kHz mono 16-bit: ${file}`);
       const copy = Buffer.from(b.subarray(at + 8, at + 8 + size));
       return new Int16Array(copy.buffer, copy.byteOffset, Math.floor(copy.length / 2));
@@ -324,7 +320,11 @@ it('captions bench', async () => {
     platform: process.platform,
     arch: process.arch,
   };
-  const programs: Programs = { indic: findIndic(place), whisper: findWhisper(place), files };
+  const programs: Programs = {
+    indic: env['DRASHTI_CAPTIONS_BENCH_INDIC'] ?? findIndic(place),
+    whisper: env['DRASHTI_CAPTIONS_BENCH_WHISPER'] ?? findWhisper(place),
+    files,
+  };
   const manifest = JSON.parse(readFileSync(join(FIXTURE, 'manifest.json'), 'utf8')) as BenchManifest;
   const clipsFor = (language: 'gu' | 'hi' | 'en'): Clip[] => {
     if (language !== 'en')

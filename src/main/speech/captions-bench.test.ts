@@ -92,7 +92,7 @@ describe('scoring (as the trial scorer: NFC, case folded, digits as digits, punc
     expect(r).toMatchObject({ words: 5, wordErrors: 0 });
     const wrong = errorRates(['the bus is ready'], 'the bus was ready now');
     expect(wrong).toMatchObject({ words: 4, wordErrors: 2 });
-    expect(wrong.chars).toBe([...'the bus is ready'].length);
+    expect(wrong.chars).toBe('the bus is ready'.length);
     expect(wrong.charErrors).toBeGreaterThan(0);
     expect(errorRates(['the bus is ready'], '')).toMatchObject({ words: 4, wordErrors: 4 });
   });
