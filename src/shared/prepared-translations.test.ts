@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { draftTranslation, checkTranslation, translationForSource, checkedText, StandInTranslator, noTranslator } from './prepared-translations';
+import {
+  draftTranslation,
+  checkTranslation,
+  translationForSource,
+  checkedText,
+  StandInTranslator,
+  noTranslator,
+} from './prepared-translations';
 
 describe('prepared translation review', () => {
   it('holds drafts and changed source, preserving words for review', () => {
