@@ -427,7 +427,7 @@ import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
 import { ErrorReports } from './error-reports/service';
 import { ErrorReportRuntime } from './error-reports/runtime';
-import { automaticIdentity, diagnosticInstallId } from './error-reports/identity';
+import { automaticIdentity } from './error-reports/identity';
 import { manageErrorReports } from './error-reports/admin';
 import { sendErrorReport } from './error-reports/transport';
 import { electronTransport as errorReportTransport } from './access/electron-transport';
@@ -3510,7 +3510,8 @@ function start(): void {
     liveWriter.markClean();
   });
 
-  // alpha.22 automatic reports: separate consent/outbox; a typed identity seam for alpha.21 diagnostics.
+  // Automatic error reports (alpha.21): their own consent and outbox, off until the owner turns them on; only the typed
+  // ids of the diagnostics files (log-who.ts) cross into them.
   const automaticReports = new ErrorReports({
     dir: join(userDataDir, 'automatic-error-reports'),
     now: Date.now,
@@ -3541,12 +3542,13 @@ function start(): void {
         kept.value.grantId !== grant.grantId
       )
         return null;
+      // The same ids a diagnostics file names (diagnosticsWho, alpha.21 logs (b)), whole, and never its names or words.
       return automaticIdentity(
         {
           computerId: computer.id,
-          installId: diagnosticInstallId(userDataDir),
+          installId: install.id,
           grantId: grant.grantId,
-          role: { mode: accessState().mode, owner: accessState().owner },
+          role: isLetIn() ? { mode: accessState().mode, owner: accessState().owner } : null,
           made: simpleNow() ? 'simple' : 'pro',
         },
         { version: app.getVersion(), platform: process.platform, arch: process.arch, release: osRelease() },
