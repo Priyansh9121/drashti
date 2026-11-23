@@ -85,7 +85,7 @@ describe('caption words as the admin keeps them', () => {
   it('imports a file’s words onto the end of the list, saying what it added and which lines it could not read', async () => {
     const { service, picks, logs } = setup([{ language: 'en', word: 'Zentrova' }]);
     const file = join(dir, 'words.csv');
-    writeFileSync(file, `﻿Language,Word\r\nEnglish,Zentrova\r\nGujarati,${GU}\r\nFrench,Velmorin\r\n`);
+    writeFileSync(file, `\uFEFFLanguage,Word\r\nEnglish,Zentrova\r\nGujarati,${GU}\r\nFrench,Velmorin\r\n`);
     picks.open = file;
     const result = await service.importFile();
     expect(result.view.words).toEqual([
@@ -137,7 +137,9 @@ describe('caption words as the admin keeps them', () => {
     const result = await service.exportFile();
     expect(result).toMatchObject({ ok: true, message: 'Saved 2 words.' });
     expect(picks.saveNames).toEqual(['Caption words.csv']);
-    expect(readFileSync(picks.save, 'utf8')).toBe(`﻿Language,Word\r\nEnglish,Zentrova\r\nGujarati,${GU}\r\n`);
+    expect(readFileSync(picks.save, 'utf8')).toBe(
+      `\uFEFFLanguage,Word\r\nEnglish,Zentrova\r\nGujarati,${GU}\r\n`,
+    );
     const other = setup();
     other.picks.open = picks.save;
     expect((await other.service.importFile()).view.words).toEqual(service.view().words);

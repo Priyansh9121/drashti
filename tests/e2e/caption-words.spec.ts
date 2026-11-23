@@ -110,7 +110,9 @@ test('caption words: a word heard close to one shows as written; kept in the lib
     }, saved);
     await words.getByTestId('caption-words-export').click();
     await expect(words.getByTestId('caption-words-said')).toHaveText('Saved 2 words.');
-    expect(readFileSync(saved, 'utf8')).toBe('﻿Language,Word\r\nEnglish,Person Q7\r\nEnglish,Zentrova\r\n');
+    expect(readFileSync(saved, 'utf8')).toBe(
+      '\uFEFFLanguage,Word\r\nEnglish,Person Q7\r\nEnglish,Zentrova\r\n',
+    );
 
     // Import…: a file's words added to the list, and the line it could not read named.
     const list = join(folder, 'more words.csv');

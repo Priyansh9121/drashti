@@ -668,7 +668,7 @@ When **Language** is one language, the captions engine is given that language's 
 
 A word heard a letter or two away from an entry is shown as the entry is written, in the phrase's own language and only as a whole word. Words of 4 letters or fewer must match exactly. Up to 8 letters allow one change, up to 13 allow two, and longer ones three. A word heard stays as it is when it is the entry with an ending added, when two entries are as close, or, in English, when the entry has a capital letter and the word heard has none. Check the list in rehearsal: an entry close to an everyday word can change that word.
 
-**Export…** saves the list as a CSV file, a language and an entry on each line, to bring it to another Main. **Import…** adds a file's entries to the list, keeps the ones already there, and names a line it could not read. A spreadsheet can make the file: save it as CSV UTF-8.
+**Export…** saves the list as a CSV file, a language and an entry on each line, to bring it to another Main. **Import…** adds a file's entries to the list, keeps the ones already there, and names a line it could not read. The file may instead have a column for each language, named in its first line, such as `Gujarati,Hindi,English`, with one term on each row in its spellings. A spreadsheet can make either kind: save it as CSV UTF-8.
 
 ![Live captions listening with the Gujarati trial warning](screenshots/captions-gujarati-trial.png)
 

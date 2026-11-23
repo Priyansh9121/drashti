@@ -34,7 +34,7 @@ export const CAPTION_WORD_LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string
 export type CheckedCaptionWord = { ok: true; word: string } | { ok: false; message: string };
 
 /** Gujarati's and Hindi's joiners (ZWNJ, ZWJ): kept as typed, left out when comparing. */
-const JOINERS = /[‌‍]/gu;
+const JOINERS = /[\u200c\u200d]/gu;
 /** Hidden signs other than the joiners, and control characters. */
 const HIDDEN = /[\p{Cc}\p{Cf}]/u;
 /** A word's ends: a letter or a digit at its start, and a letter, a sign (a vowel sign, a virama) or a digit at its end. */
@@ -116,7 +116,7 @@ export function parseCaptionWords(raw: unknown): CaptionWord[] {
 /** The list as its file: UTF-8 with the byte-order mark (so a spreadsheet reads the letters right), a heading line. */
 export function captionWordsCsv(words: readonly CaptionWord[]): string {
   const rows = words.map((w) => `${CAPTION_WORD_LANGUAGE_NAMES[w.language]},${w.word}\r\n`);
-  return `﻿Language,Word\r\n${rows.join('')}`;
+  return `\uFEFFLanguage,Word\r\n${rows.join('')}`;
 }
 
 const languageOf = (field: string): SpeechLanguage | null => {
@@ -142,7 +142,7 @@ export function readCaptionWordsCsv(text: string): {
 } {
   const words: CaptionWord[] = [];
   const problems: { line: number; message: string }[] = [];
-  const lines = text.replace(/^﻿/u, '').split(/\r\n|\n|\r/u);
+  const lines = text.replace(/^\uFEFF/u, '').split(/\r\n|\n|\r/u);
   let first = true;
   lines.forEach((raw, i) => {
     const line = raw.trim();

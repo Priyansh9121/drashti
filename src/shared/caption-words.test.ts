@@ -24,9 +24,9 @@ describe('a caption word as the admin types it', () => {
     expect(checkCaptionWord('  Person   Q7 ')).toEqual({ ok: true, word: 'Person Q7' });
     expect(checkCaptionWord(GU)).toEqual({ ok: true, word: GU });
     // Decomposed letters are kept composed.
-    expect(checkCaptionWord('Café Zeta')).toEqual({ ok: true, word: 'Café Zeta' });
+    expect(checkCaptionWord('Cafe\u0301 Zeta')).toEqual({ ok: true, word: 'Café Zeta' });
     // Gujarati's and Hindi's joiners stay as typed.
-    expect(checkCaptionWord('क्‍ष')).toEqual({ ok: true, word: 'क्‍ष' });
+    expect(checkCaptionWord('क्\u200dष')).toEqual({ ok: true, word: 'क्\u200dष' });
   });
 
   it('refuses what the captions or the list’s file cannot hold, saying why', () => {
@@ -49,7 +49,7 @@ describe('a caption word as the admin types it', () => {
 describe('the same word, as Drashti compares them', () => {
   it('ignores case, the joiners and the script of Sanskrit (Gujarati or Devanagari letters)', () => {
     expect(captionWordKey('ZENTROVA', 'en')).toBe(captionWordKey('zentrova', 'en'));
-    expect(captionWordKey('क्‍ष', 'hi')).toBe(captionWordKey('क्ष', 'hi'));
+    expect(captionWordKey('क्\u200dष', 'hi')).toBe(captionWordKey('क्ष', 'hi'));
     expect(captionWordKey('वेल्मोरिन', 'sa')).toBe(captionWordKey('વેલ્મોરિન', 'sa'));
     // Hindi and Gujarati are their own languages: their letters stay their own.
     expect(captionWordKey('वेल्मोरिन', 'hi')).not.toBe(captionWordKey('વેલ્મોરિન', 'hi'));
@@ -104,12 +104,42 @@ describe('the list as kept and sent', () => {
 });
 
 describe('the list’s file (CSV)', () => {
+  it('takes a column for each language too, as a list of terms in several spellings is made, one term a row', () => {
+    const read = readCaptionWordsCsv(
+      [
+        'Gujarati,Hindi,English',
+        `${GU},${HI},Zentrova`,
+        `,${HI}2,`,
+        'ઝેન્ટ્રોવા3,,Person Q7',
+        'Velmorin, Velmoran ,Zeta,Beta',
+        ',,Alpha Beta Gamma Delta',
+      ].join('\r\n'),
+    );
+    expect(read.words).toEqual([
+      { language: 'gu', word: GU },
+      { language: 'hi', word: HI },
+      { language: 'en', word: 'Zentrova' },
+      { language: 'hi', word: `${HI}2` },
+      { language: 'gu', word: 'ઝેન્ટ્રોવા3' },
+      { language: 'en', word: 'Person Q7' },
+    ]);
+    expect(read.problems).toEqual([
+      { line: 5, message: 'More words than the first line has languages.' },
+      { line: 6, message: 'At most three words in one entry.' },
+    ]);
+    // One column: a plain list under its language's name.
+    expect(readCaptionWordsCsv(`Hindi\n${HI}\nवेल्मोरान\n`).words).toEqual([
+      { language: 'hi', word: HI },
+      { language: 'hi', word: 'वेल्मोरान' },
+    ]);
+  });
+
   it('is UTF-8 with a mark Excel reads, a heading, and each language named', () => {
     const csv = captionWordsCsv([
       { language: 'gu', word: GU },
       { language: 'en', word: 'Person Q7' },
     ]);
-    expect(csv).toBe(`﻿Language,Word\r\nGujarati,${GU}\r\nEnglish,Person Q7\r\n`);
+    expect(csv).toBe(`\uFEFFLanguage,Word\r\nGujarati,${GU}\r\nEnglish,Person Q7\r\n`);
   });
 
   it('reads back what it wrote', () => {

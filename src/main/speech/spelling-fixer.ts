@@ -38,7 +38,7 @@ const INDIC: ReadonlySet<SpeechLanguage> = new Set(['gu', 'hi', 'sa']);
 const EDGES = /^([^\p{L}\p{M}\p{N}]*)(.*?)([^\p{L}\p{M}\p{N}]*)$/su;
 const TRAILING_MARKS = /\p{M}+$/u;
 const CAPITAL = /^\p{Lu}/u;
-const DEVANAGARI = /[ऀ-ॿ]/u;
+const DEVANAGARI = /[\u0900-\u097f]/u;
 
 /** How many changes a caption word of this many letters allows: none up to four, then one, two up to 13, three. */
 export function allowedEdits(letters: number): number {
