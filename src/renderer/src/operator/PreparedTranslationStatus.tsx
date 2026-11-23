@@ -3,7 +3,7 @@ import type { EngineState } from '../../../shared/engine/state';
 import type { ScreenGroupConfig } from '../../../shared/screens';
 import { translationProblems } from '../../../shared/prepared-translation-status';
 import { checkedTranslationView } from '../../../shared/prepared-translation-view';
-import { translationBottom } from '../../../shared/prepared-output-state';
+import { translationBottom, translationTop } from '../../../shared/prepared-output-state';
 import { lowerThirdOf } from '../../../shared/program';
 import { useScreens } from '../screens/screens-store';
 import { useStream } from '../stream/stream-store';
@@ -18,24 +18,43 @@ export function PreparedTranslationStatus({ state }: { state: EngineState | null
   const pro = useMode((value) => value.mode === 'pro');
   const slide = state?.layers.slide?.slide;
   const hidden = state?.translationHidden === true;
-  const blockedBelow = state && slide ? translationBottom(state, slide.height) : 0;
+  const height = slide?.height ?? 1080;
+  const hallBottom = state ? translationBottom(state, height) : height;
+  const hallTop = state ? translationTop(state, height) : 0;
+  const stageBottom = state ? translationBottom(state, height, 'stage') : height;
+  const stageTop = state ? translationTop(state, height, 'stage') : 0;
+  const streamBottom = state ? translationBottom(state, height, 'stream', streamLayout === 'camera') : height;
+  const streamTop = state ? translationTop(state, height, 'stream', streamLayout === 'camera') : 0;
   const problems = useMemo(() => {
     if (!slide || hidden) return [];
-    const destinations = groups.flatMap((group) =>
-      group.screens.length
+    const destinations = groups.flatMap((group) => {
+      const bands =
+        group.role === 'stage'
+          ? { blockedAbove: stageTop, blockedBelow: stageBottom }
+          : group.role === 'stream'
+            ? { blockedAbove: streamTop, blockedBelow: streamBottom }
+            : { blockedAbove: hallTop, blockedBelow: hallBottom };
+      return group.screens.length
         ? group.screens.map((screen) => ({
             name: screen.name,
             role: group.role,
             where: {
               groupId: group.id,
               outputId: screen.id,
-              canvas: { width: screen.canvasWidth, height: screen.canvasHeight },
-              scaling: screen.scaling,
-              blockedBelow,
+              ...(group.role === 'stage'
+                ? {}
+                : {
+                    canvas:
+                      group.role === 'stream'
+                        ? { width: 1920, height: 1080 }
+                        : { width: screen.canvasWidth, height: screen.canvasHeight },
+                    scaling: group.role === 'stream' ? ('fit' as const) : screen.scaling,
+                  }),
+              ...bands,
             },
           }))
-        : [{ name: group.name, role: group.role, where: { groupId: group.id, blockedBelow } }],
-    );
+        : [{ name: group.name, role: group.role, where: { groupId: group.id, ...bands } }];
+    });
     const messages = destinations.flatMap(({ name, role, where }) => {
       const words = translationProblems(slide, where).map((message) => `${name}: ${message}`);
       if (role === 'stream' && streamLayout === 'camera') {
@@ -50,7 +69,18 @@ export function PreparedTranslationStatus({ state }: { state: EngineState | null
       return words;
     });
     return [...new Set(messages)];
-  }, [slide, groups, hidden, blockedBelow, streamLayout]);
+  }, [
+    slide,
+    groups,
+    hidden,
+    hallBottom,
+    hallTop,
+    stageBottom,
+    stageTop,
+    streamBottom,
+    streamTop,
+    streamLayout,
+  ]);
   const configured = slide?.elements.some(
     (el) =>
       el.kind === 'text' &&

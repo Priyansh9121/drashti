@@ -8,6 +8,7 @@ import { renderEditedSlide } from '../../../shared/slide-design';
 import { checkedTranslationView } from '../../../shared/prepared-translation-view';
 import { preparedOutputState } from '../../../shared/prepared-output-state';
 import { translationProblems } from '../../../shared/prepared-translation-status';
+import { languageView } from '../../../shared/language-view';
 import { programPicture } from '../../../shared/program';
 import { useEngine } from '../engine/engine-store';
 import { MovingLowerThird } from '../render/LowerThird';
@@ -75,7 +76,12 @@ export function TranslationPreview({
       notes: next.notes,
     };
   const projected = preparedOutputState(state, where);
-  const drawing = <SlideView slide={checkedTranslationView(rendered, where)} media="still" />;
+  const drawing = (
+    <SlideView
+      slide={languageView(checkedTranslationView(rendered, where), group?.languages ?? null)}
+      media="still"
+    />
+  );
   let picture: ReactNode = (
     <PlacedInParent content={rendered} mode={screen?.scaling ?? 'fit'} className="absolute inset-0">
       {drawing}

@@ -77,7 +77,11 @@ export function editPreparedWords(
       ...el,
       translations: [...(el.translations ?? []).filter((item) => item.targetLanguage !== to), value],
       translationDisplay: {
-        ...(el.translationDisplay ?? defaultTranslationDisplay(el, slideCanvas(preparedRows(doc).find((row) => row.slide.id === slideId)?.slide, doc).height)),
+        ...(el.translationDisplay ??
+          defaultTranslationDisplay(
+            el,
+            slideCanvas(preparedRows(doc).find((row) => row.slide.id === slideId)?.slide, doc).height,
+          )),
         sourceLanguage: from,
       },
     };

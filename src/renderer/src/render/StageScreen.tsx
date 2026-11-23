@@ -1,4 +1,8 @@
-import { preparedOutputState, translationBottom, translationTop } from '../../../shared/prepared-output-state';
+import {
+  preparedOutputState,
+  translationBottom,
+  translationTop,
+} from '../../../shared/prepared-output-state';
 import type { EngineState } from '../../../shared/engine/state';
 import type { LiveGroupLook } from '../../../shared/looks';
 import type { Size } from '../../../shared/scaling';
@@ -73,8 +77,16 @@ export function StageScreen({
   const state = preparedOutputState(sourceState, {
     ...(translationGroupId ? { groupId: translationGroupId } : {}),
     ...(translationOutputId ? { outputId: translationOutputId } : {}),
-    blockedAbove: translationTop(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height, 'stage'),
-    blockedBelow: translationBottom(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height, 'stage'),
+    blockedAbove: translationTop(
+      sourceState,
+      sourceState.layers.slide?.slide.height ?? canvas.height,
+      'stage',
+    ),
+    blockedBelow: translationBottom(
+      sourceState,
+      sourceState.layers.slide?.slide.height ?? canvas.height,
+      'stage',
+    ),
   });
   const shows = stageShows(state.stage);
   if (shows === 'audience')

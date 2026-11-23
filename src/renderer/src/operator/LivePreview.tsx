@@ -95,7 +95,9 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   const shownAs = audience?.look.languages
     ? { name: audience.name, languages: audience.look.languages }
     : null;
-  const audienceOutputId = useScreens((value) => value.snapshot?.groups.find((group) => group.role === 'audience')?.screens[0]?.id);
+  const audienceOutputId = useScreens(
+    (value) => value.snapshot?.groups.find((group) => group.role === 'audience')?.screens[0]?.id,
+  );
   const first = useScreens((s) => s.snapshot?.groups.flatMap((g) => g.screens)[0]);
   useEffect(() => {
     connectDrawingMode();

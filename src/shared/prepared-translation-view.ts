@@ -136,7 +136,11 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
     if (el.kind !== 'text' || el.hidden || el.opacity === 0) continue;
     const display = el.translationDisplay;
     const sourceLanguage = sourceLanguageOf(el);
-    const enabled = display && [display.choice, ...Object.values(display.groups), ...Object.values(display.outputs)].some((choice) => choice !== 'off');
+    const enabled =
+      display &&
+      [display.choice, ...Object.values(display.groups), ...Object.values(display.outputs)].some(
+        (choice) => choice !== 'off',
+      );
     if (enabled && sourceLanguage && translationSourceSupported(el, sourceLanguage)) paired.add(el.id);
     if (destination.hidden) continue;
     const choice = translationChoiceFor(el.translationDisplay, destination.groupId, destination.outputId);
@@ -200,7 +204,10 @@ export function playbackTranslationSlide(slide: RenderSlide): RenderSlide {
       )
       .map((value) => ({ ...value, reader: 'Checked' }));
     const sourceLanguage = sourceLanguageOf(el);
-    const translationDisplay = el.translationDisplay && sourceLanguage ? { ...el.translationDisplay, sourceLanguage } : el.translationDisplay;
+    const translationDisplay =
+      el.translationDisplay && sourceLanguage
+        ? { ...el.translationDisplay, sourceLanguage }
+        : el.translationDisplay;
     return { ...el, translations, translationDisplay };
   });
   const result = elements.some((el, index) => el !== slide.elements[index]) ? { ...slide, elements } : slide;

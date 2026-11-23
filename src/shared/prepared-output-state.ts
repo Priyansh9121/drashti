@@ -59,14 +59,27 @@ function captionPlace(state: EngineState, screen: CaptionScreen): CaptionPlace |
   if (video) return screen === 'stage' ? undefined : state.videoCaptions?.[video.mediaId]?.place;
   return captionsFor(state.captions, screen)?.place;
 }
-export function translationTop(state: EngineState, height: number, screen: CaptionScreen = 'hall', messagesAtTop = false): number {
-  return captionPlace(state, screen) === 'top' || (messagesAtTop && state.layers.messages.length > 0) ? height * 0.3 : 0;
+export function translationTop(
+  state: EngineState,
+  height: number,
+  screen: CaptionScreen = 'hall',
+  messagesAtTop = false,
+): number {
+  return captionPlace(state, screen) === 'top' || (messagesAtTop && state.layers.messages.length > 0)
+    ? height * 0.3
+    : 0;
 }
 /** Reserve competing bands on the output that actually draws them. */
-export function translationBottom(state: EngineState, height: number, screen: CaptionScreen = 'hall', messagesAtTop = false): number {
+export function translationBottom(
+  state: EngineState,
+  height: number,
+  screen: CaptionScreen = 'hall',
+  messagesAtTop = false,
+): number {
   let edge = height;
   if (state.layers.ticker) edge = Math.min(edge, height * 0.9);
-  if ((!messagesAtTop && state.layers.messages.length) || state.layers.lowerThird) edge = Math.min(edge, height * 0.7);
+  if ((!messagesAtTop && state.layers.messages.length) || state.layers.lowerThird)
+    edge = Math.min(edge, height * 0.7);
   if (captionPlace(state, screen) === 'bottom') edge = Math.min(edge, height * 0.65);
   return edge;
 }

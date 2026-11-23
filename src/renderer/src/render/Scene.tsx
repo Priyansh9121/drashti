@@ -1,4 +1,8 @@
-import { preparedOutputState, translationBottom, translationTop } from '../../../shared/prepared-output-state';
+import {
+  preparedOutputState,
+  translationBottom,
+  translationTop,
+} from '../../../shared/prepared-output-state';
 import type { CSSProperties, ReactNode, ComponentProps } from 'react';
 import {
   Fragment,
