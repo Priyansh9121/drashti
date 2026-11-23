@@ -12,6 +12,7 @@ Update after a sabha, and update Main and nodes together.
 - Importing a picture or a video never waits on this computer’s answer about HEVC video: the answer now always comes.
 - Edit Video…: Also add the clip to Media stands on its own line above Export clip….
 - On a busy computer, Save as MP4… no longer says FFmpeg could not find its clean frames, a failed conversion always gives FFmpeg’s reason, and a deck imported with PowerPoint or Keynote is read whole: Drashti waits for all a helper program wrote.
+- Safer: Drashti checks more strictly that every request it answers comes from one of its own windows. The admin guide says when Request Access works again after Too many tries for now.
 
 ## 1.0.0-alpha.20.1 (22 Nov 2026)
 
