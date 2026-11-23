@@ -269,6 +269,11 @@ import { Revisions } from './library/revisions';
 import { styleNewText, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerWordsIpc } from './library/words-ipc';
+import { READING_PAGE } from './ocr/read-words';
+import { registerReadWordsIpc } from './ocr/read-words-ipc';
+import { startReader } from './ocr/reader-process';
+import { builtOcrFiles } from './ocr/ocr-files';
+import { READ_WORDS_PICTURES } from '../shared/read-words';
 import { KirtanBundleExporter } from './import/kirtan-bundle-export-service';
 import { registerKirtanBundleIpc } from './library/kirtan-bundle-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
@@ -4135,6 +4140,36 @@ function start(): void {
     return null;
   });
   handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
+  // ---- book OCR (alpha.21, the owner's Q60-58: "A, Tesseract inside") ----------------------------------
+  // New presentation's Read Words from a Page…: scanned pictures, or a PDF's pages drawn by the pictures window, read
+  // by Tesseract inside Drashti in a reading process of their own (src/main/ocr/), never on Main's thread.
+  const readWords = registerReadWordsIpc({
+    fromOperator,
+    choose: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Choose scanned pages to read the words of',
+        buttonLabel: 'Read Words',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Scanned pages (pictures or a PDF)', extensions: [...READ_WORDS_PICTURES, 'pdf'] }],
+      });
+      return picked.canceled ? null : picked.filePaths;
+    },
+    drawPages: (pdf, outDir, pages, signal) =>
+      pdfPictures.drawForReading(pdf, outDir, pages, READING_PAGE, signal),
+    startReader: (pages, said) =>
+      startReader(join(__dirname, 'ocr-worker.js'), builtOcrFiles(__dirname), pages, said),
+    tempDir: () => fsPromises.mkdtemp(join(tmpdir(), 'drashti-read-words-')),
+    progress: (progress) => {
+      sendToOperator(IPC.library.readWordsProgress, { progress });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  stops.add('reading words', () => {
+    readWords.stop();
+  });
   // ---- the guides inside Drashti (Sessions 31–36) -------------------------------------------------
   // Read from the files beside the app, for the operator window only. Simple Mode is given the operator's
   // and the presenter's guides: the admin's and the setup day's are about setting Drashti up, Pro Mode's.
