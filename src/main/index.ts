@@ -6634,6 +6634,7 @@ function start(): void {
       snapshot: () => withoutCaptions(engine.snapshot()),
       state: () => stateWithoutCaptions(engine.current),
       rev: () => engine.rev,
+      acceptsPress: (rev, session) => engine.acceptsPress(rev, session),
       session: engine.session,
     },
     runShowAction: (command, who) => net.runShowAction({ op: 'command', args: command }, who),
