@@ -87,12 +87,15 @@ function write(level: Level, message: string, detail?: unknown): void {
 }
 
 /** Keep the log in files too, in `dir` (made if needed), about 2 MB each, the last 5. */
-export function startLogFile(dir: string, options: { maxBytes?: number; keep?: number } = {}): void {
+export function startLogFile(
+  dir: string,
+  options: { maxBytes?: number; keep?: number; partBytes?: number; totalBytes?: number; days?: number; now?: () => number } = {},
+): void {
   mkdirSync(dir, { recursive: true });
   const current = numbered(dir, 0);
   sink = {
     dir,
-    maxBytes: options.maxBytes ?? 2 * 1024 * 1024,
+    maxBytes: options.partBytes ?? options.maxBytes ?? 2 * 1024 * 1024,
     keep: Math.max(2, options.keep ?? 5),
     size: existsSync(current) ? statSync(current).size : 0,
   };
@@ -117,6 +120,21 @@ export function logFiles(): string[] {
   const s = sink;
   if (!s) return [];
   return Array.from({ length: s.keep }, (_, n) => numbered(s.dir, n)).filter((f) => existsSync(f));
+}
+
+/** Red stubs (alpha.21, one file a day): not yet. */
+export function logDays(): string[] {
+  return [];
+}
+export function logFilesOf(days: readonly string[]): string[] {
+  return days.length > 0 ? [] : [];
+}
+export function setLogHeader(header: (() => string) | null): void {
+  void header;
+}
+export function onLogDaysChanged(listener: () => void): () => void {
+  void listener;
+  return () => undefined;
 }
 
 export const log = {
