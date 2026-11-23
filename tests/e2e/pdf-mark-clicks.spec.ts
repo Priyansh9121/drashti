@@ -18,10 +18,13 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
       await s.ed.mouse.move(box.x + box.width * 0.7, box.y + box.height * (top + 0.1), { steps: 8 });
       await s.ed.mouse.up();
       await s.ed.getByRole('tab', { name: 'Motion', exact: true }).click();
+      const timedMotion = s.ed.getByTestId('motion-element-in');
+      await expect(timedMotion).toBeEnabled();
       const onClick = s.ed.getByRole('checkbox', { name: 'Comes in on click', exact: true });
       await expect(onClick).not.toBeChecked();
       await onClick.check();
       await expect(onClick).toBeChecked();
+      await expect(timedMotion).toBeDisabled();
     }
     const order = s.ed.getByRole('list', { name: 'PDF mark order', exact: true });
     await expect(order.getByRole('listitem')).toHaveText(['Click 1 · Highlight', 'Click 2 · Draw']);

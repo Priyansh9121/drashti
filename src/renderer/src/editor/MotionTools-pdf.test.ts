@@ -5,10 +5,11 @@ import type { EditDoc } from '../../../shared/slide-edit';
 import { MotionTools } from './MotionTools';
 import { useEditor } from './editor-store';
 import { newSlide } from './ops';
+import type * as EditorStore from './editor-store';
 
 // Read the current real editor state in server rendering, where Zustand normally uses its initial snapshot.
 vi.mock('./editor-store', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./editor-store')>();
+  const actual = await importOriginal<typeof EditorStore>();
   return {
     ...actual,
     useEditor: Object.assign(
@@ -72,8 +73,8 @@ it('keeps the existing PDF timed-motion tools beside the opt-in click control', 
   const html = renderToStaticMarkup(createElement(MotionTools));
   expect(html).toContain('Comes in on click');
   for (const phase of ['in', 'emphasis', 'out']) {
-    const control = html.match(
-      new RegExp(`<select[^>]*data-testid="motion-element-${phase}"[^>]*>`, 'u'),
+    const control = new RegExp(`<select[^>]*data-testid="motion-element-${phase}"[^>]*>`, 'u').exec(
+      html,
     )?.[0];
     expect(control).toBeDefined();
     expect(control).not.toContain('disabled=""');
@@ -84,8 +85,8 @@ it('disables timed-motion editing while the selected mark is built by Next', () 
   useEditor.setState({ doc: fixture(1) });
   const html = renderToStaticMarkup(createElement(MotionTools));
   for (const phase of ['in', 'emphasis', 'out']) {
-    const control = html.match(
-      new RegExp(`<select[^>]*data-testid="motion-element-${phase}"[^>]*>`, 'u'),
+    const control = new RegExp(`<select[^>]*data-testid="motion-element-${phase}"[^>]*>`, 'u').exec(
+      html,
     )?.[0];
     expect(control).toBeDefined();
     expect(control).toContain('disabled=""');

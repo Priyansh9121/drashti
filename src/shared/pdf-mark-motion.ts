@@ -46,5 +46,15 @@ export function withPdfMarkMotion(slide: RenderSlide): RenderSlide {
       })),
     },
   };
-  return { ...slide, deck };
+  return {
+    ...slide,
+    // A mark waiting for Next must not finish its old timed fade before that click.
+    // Keep the saved timing intact, so turning the click choice off restores it.
+    elements: slide.elements.map((element) => {
+      if (!isPdfMark(element) || element.pdfMark.clickOrder === undefined || !element.motion) return element;
+      const { motion: _timed, ...mark } = element;
+      return mark;
+    }),
+    deck,
+  };
 }

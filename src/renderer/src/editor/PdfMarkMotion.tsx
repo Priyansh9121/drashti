@@ -40,7 +40,7 @@ export function PdfMarkMotion() {
           Comes in on click
         </label>
         <p className="max-w-52 text-2xs text-muted">
-          Select a mark to choose when it appears. Next shows one mark at a time; Back hides it again.
+          Next shows one mark at a time; Back hides it. Turn this off for timed motion.
         </p>
       </Cluster>
       <Cluster name="Mark order">

@@ -5,7 +5,7 @@ import { settledDeckElements } from './deck-motion';
 import { slideElementSchema } from './model-schema';
 import { composeSlide } from './slide-design';
 const mark = (id: string, clickOrder?: number) => {
-  return slideElementSchema.parse({
+  const element = slideElementSchema.parse({
     id,
     kind: 'shape',
     shape: 'rectangle',
@@ -15,6 +15,8 @@ const mark = (id: string, clickOrder?: number) => {
     opacity: 0.32,
     pdfMark: { tool: 'highlight', clickOrder },
   });
+  if (element.kind !== 'shape') throw new Error('Generated mark must be a shape.');
+  return element;
 };
 
 describe('PDF marks use the shared deck click timeline', () => {
@@ -36,6 +38,19 @@ describe('PDF marks use the shared deck click timeline', () => {
       in: { kind: 'fade', delayMs: 0, durationMs: 600 },
       out: { kind: 'fade', delayMs: 2000, durationMs: 600 },
     });
+    const automatic = composeSlide(
+      {
+        id: 'page',
+        width: 480,
+        height: 320,
+        background: null,
+        elements: [{ ...element, pdfMark: { tool: 'highlight' as const } }],
+      },
+      undefined,
+      null,
+    );
+    expect(automatic.deck).toBeUndefined();
+    expect(automatic.elements[0]?.motion).toEqual(element.motion);
   });
   it('keeps mark identity and optional click order through storage validation', () => {
     expect(mark('generated-mark', 2)).toMatchObject({
