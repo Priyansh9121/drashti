@@ -8,6 +8,65 @@ import { windowShowing, type PageGlobals } from './helpers';
 import { dispatch, snapshot } from './time-bar-helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
+import { type PlaybackClock, playbackBounds, playbackOffset, playbackPosition } from '../../src/shared/media';
+import type { VideoCrossfade } from '../../src/shared/video-cue';
+
+/** Where one stream sound played (its element on the stream's sound page), every 50 ms. */
+interface SoundStep {
+  t: number;
+  key: string;
+  at: number;
+  rate: number;
+  duration: number;
+  /** Jumping: silent until it lands. */
+  seeking: boolean;
+}
+
+/** How long into a fade its sounds have to be back in step (QA22-FADE-1), and how close then (ms). */
+const FADE_CLOSED_AFTER_MS = 1500;
+const FADE_CLOSED_WITHIN_MS = 50;
+/** The most a stream sound may be off its clock at any moment of a fade (the owner: "up to ~0.1 s"). */
+const FADE_MOST_OFF_MS = 100;
+
+/**
+ * QA22-FADE-1 (the owner: "Correct by speed"): each of a fade's two stream sounds, how far it was from its own clock
+ * at each step from the moment the crossfade was asked until the fade's end (ms; + ahead, - behind).
+ */
+function fadeOffsets(
+  steps: SoundStep[],
+  askedAt: number,
+  fade: VideoCrossfade,
+  to: PlaybackClock & { mediaId: string },
+): { role: 'out' | 'in'; key: string; offsets: { t: number; ms: number; rate: number }[] }[] {
+  const end = fade.at + fade.durationMs;
+  const sounds = [
+    { role: 'out' as const, clock: fade.from, mediaId: fade.from.mediaId },
+    { role: 'in' as const, clock: to, mediaId: to.mediaId },
+  ];
+  return sounds.map(({ role, clock, mediaId }) => {
+    const key = `background:${mediaId}@${String(clock.startedAt)}`;
+    const timing: PlaybackClock = {
+      startedAt: clock.startedAt,
+      loop: clock.loop,
+      clip: clock.clip,
+      seek: clock.seek,
+    };
+    const offsets = steps
+      .filter(
+        (s) => s.key === key && s.t >= askedAt && s.t < end && Number.isFinite(s.duration) && s.duration > 0,
+      )
+      .map((s) => {
+        const { start, end: last } = playbackBounds(timing.clip, s.duration);
+        const expected = playbackPosition(timing, s.duration, s.t);
+        return {
+          t: s.t - fade.at,
+          ms: Math.round(playbackOffset(s.at, expected, last - start, timing.loop) * 1000),
+          rate: s.rate,
+        };
+      });
+    return { role, key, offsets };
+  });
+}
 
 /**
  * Diagnostics only (a22-cue): each renderer's scheduling class now (Windows: its priority class; macOS: ps's
@@ -363,6 +422,32 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         (globalThis as { s5SoundUnderflows?: typeof seen }).s5SoundUnderflows = seen;
       });
     await Promise.all([streamSound, audio].map(underflowWatch));
+    // QA22-FADE-1: where each stream sound plays, every 50 ms (read against its clock afterwards, by fadeOffsets).
+    await streamSound.evaluate(() => {
+      const steps: {
+        t: number;
+        key: string;
+        at: number;
+        rate: number;
+        duration: number;
+        seeking: boolean;
+      }[] = [];
+      (globalThis as { s5SoundSteps?: typeof steps }).s5SoundSteps = steps;
+      setInterval(() => {
+        if (steps.length > 60_000) return;
+        for (const el of document.querySelectorAll<HTMLAudioElement>('audio[data-key^="background:"]'))
+          steps.push({
+            t: Date.now(),
+            key: el.dataset['key'] ?? '',
+            at: el.currentTime,
+            rate: el.playbackRate,
+            duration: el.duration,
+            seeking: el.seeking,
+          });
+      }, 50);
+    });
+    const fadeClocks: { askedAt: number; fade: VideoCrossfade; to: PlaybackClock & { mediaId: string } }[] =
+      [];
     const decoderProcesses = await app.evaluate(
       ({ BrowserWindow }, pages) =>
         pages.map(({ role, url }) => ({
@@ -408,9 +493,12 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           'data-state',
           'ready',
         );
+        // The outgoing sound's clock and the fade's length before the crossfade (QA22-FADE-1's offsets).
+        let fadeBefore: Awaited<ReturnType<typeof snapshot>> | null = null;
         if (mode === 'crossfade') {
           await dispatch(win, { type: 'playItem', playlistId: playlist.id, itemId: playlist.first });
           await cueReady(win);
+          fadeBefore = await snapshot(win);
         }
         if (mode === 'cue') {
           const began = Date.now();
@@ -447,9 +535,29 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           actions.push({ at: Date.now(), round, mode, action: 'Go', engineAt: armed?.at });
         }
         if (mode === 'crossfade') {
+          const askedAt = Date.now();
           await dispatch(win, { type: 'next' });
-          const fade = (await snapshot(win)).videoCrossfade;
+          const after = await snapshot(win);
+          const fade = after.videoCrossfade;
           actions.push({ at: Date.now(), round, mode, action: 'crossfade', engineAt: fade?.at });
+          // Both sounds' clocks as the engine set them (QA22-FADE-1's offsets): the outgoing is the background before,
+          // the incoming starts at the fade's moment (its seek). Not from the fade alone: on a slow computer this
+          // snapshot can come after the 2 s fade is over (its pair gone, as in a22-cue-1124-020305-89756).
+          const from = fadeBefore?.layers.background,
+            to = after.layers.background,
+            durationMs = fade?.durationMs ?? fadeBefore?.videoCue?.automatic?.durationMs;
+          if (
+            from?.kind === 'media' &&
+            from.media === 'video' &&
+            to?.kind === 'media' &&
+            to.seek &&
+            durationMs
+          )
+            fadeClocks.push({
+              askedAt,
+              fade: { id: fade?.id ?? '', from: { ...from, media: 'video' }, at: to.seek.at, durationMs },
+              to,
+            });
           classes.push({ round, at: Date.now(), classes: schedulingClasses(decoderProcesses) });
         }
         const pages = await sampling,
@@ -540,6 +648,24 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           jump.at < action.engineAt + 2000,
       ),
     );
+    // QA22-FADE-1: each fade's two sounds against their clocks, and any moment of a fade a sound was still jumping
+    // (a jump begun before the fade that lands inside it is a silence in the fade too: CI Windows, 1.9 s).
+    const soundSteps = await streamSound.evaluate(
+      () => (globalThis as { s5SoundSteps?: SoundStep[] }).s5SoundSteps ?? [],
+    );
+    const fadeSteps = fadeClocks.map(({ askedAt, fade, to }) => ({
+      at: fade.at,
+      durationMs: fade.durationMs,
+      sounds: fadeOffsets(soundSteps, askedAt, fade, to),
+      silent: soundSteps
+        .filter((s) => s.seeking && s.t >= fade.at && s.t < fade.at + fade.durationMs)
+        .filter(
+          (s) =>
+            s.key === `background:${fade.from.mediaId}@${String(fade.from.startedAt)}` ||
+            s.key === `background:${to.mediaId}@${String(to.startedAt)}`,
+        )
+        .map((s) => ({ t: s.t - fade.at, key: s.key })),
+    }));
     await retainCapture();
     const ended = await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.stream.end({ confirmed: true }),
@@ -619,6 +745,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       streamSoundAhead,
       streamSoundJumps,
       fadeJumps,
+      fadeSteps,
       encodedFrames: media.videoFrames,
       blackFrames: black,
       blackFrameIndices,
@@ -657,6 +784,26 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         latencyHint: 1,
       });
     expect(fadeJumps, 'stream sound never jumps during a fade behind picture decoding').toEqual([]);
+    // QA22-FADE-1 (the owner: "Correct by speed"): a stream sound out of step in a fade is brought back by speed:
+    // never silent in a jump, never more than ~0.1 s off its clock, and back within 0.05 s 1.5 s into the fade.
+    expect(fadeSteps.length, 'every crossfade round had its two sounds’ clocks').toBe(3);
+    for (const fade of fadeSteps) {
+      expect(fade.silent, 'no stream sound is still jumping (silent) at any moment of a fade').toEqual([]);
+      for (const sound of fade.sounds) {
+        expect(
+          sound.offsets.length,
+          `the ${sound.role} sound is seen through the fade`,
+        ).toBeGreaterThanOrEqual(20);
+        expect(
+          Math.max(...sound.offsets.map((o) => Math.abs(o.ms))),
+          `the ${sound.role} sound stays within ${String(FADE_MOST_OFF_MS)} ms of its clock through the fade`,
+        ).toBeLessThanOrEqual(FADE_MOST_OFF_MS);
+        expect(
+          sound.offsets.filter((o) => o.t >= FADE_CLOSED_AFTER_MS && Math.abs(o.ms) > FADE_CLOSED_WITHIN_MS),
+          `the ${sound.role} sound is back within ${String(FADE_CLOSED_WITHIN_MS)} ms of its clock ${String(FADE_CLOSED_AFTER_MS)} ms into the fade`,
+        ).toEqual([]);
+      }
+    }
     const streamSoundPid = decoderProcesses.find((p) => p.role === 'stream sound')?.pid;
     expect(streamSoundPid).toBeGreaterThan(0);
     expect(streamSoundPid, 'sound has its own renderer and media thread').not.toBe(
