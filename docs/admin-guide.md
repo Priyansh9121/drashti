@@ -719,8 +719,9 @@ A model whose file has changed since the pack checked it is not used, and captio
 Runtime 1.23.2 (MIT), included for Apple silicon, Intel Mac and Windows x64. Acoustic models are not in the installer
 and this engine never downloads one. Import a checked caption model pack, then choose its model for the speaker’s
 explicit Gujarati or Hindi language. Keep this option off until rehearsal. A missing, unsuitable or stopped model
-shows a reason; it never selects another recogniser automatically. Its token-frame times are coarse (40 ms), and it
-provides no confidence estimate. Turning it off leaves ordinary live captions as before. This engine adds no sound
+shows a reason; it never selects another recogniser automatically. Its token-frame times are coarse (40 ms). It
+rates how sure it is of each word, and uses that only to leave out a very short phrase it is unsure of (noise or
+hum); the words on the screens carry no rating. Turning it off leaves ordinary live captions as before. This engine adds no sound
 recording or saved transcript. An operator’s existing sound recording and timed caption draft remain separate.
 
 The optional Gujarati and Hindi recognition engine needs macOS 13.4 or later on either kind of Mac.
