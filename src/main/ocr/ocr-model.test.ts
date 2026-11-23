@@ -30,6 +30,34 @@ describe('book OCR’s files', () => {
     );
   });
 
+  it('the compiled-in libraries’ licence texts are each as its project has it, by the SHA-256 SOURCES.txt gives', () => {
+    const dir = join(root, 'LICENSES', 'tesseract');
+    const listed = [
+      ...readFileSync(join(dir, 'SOURCES.txt'), 'utf8').matchAll(
+        /^(\S+)\s+\(.*\n\s+URL:\s+(\S+)\n\s+Commit:\s+([0-9a-f]{40})\n\s+SHA-256:\s+([0-9a-f]{64})$/gmu,
+      ),
+    ].map(([, file = '', url = '', commit = '', sha = '']) => ({ file, url, commit, sha }));
+    expect(listed.map((l) => l.file)).toEqual([
+      'leptonica-license.txt',
+      'libjpeg-README.txt',
+      'giflib-COPYING.txt',
+      'libpng-LICENSE.txt',
+      'libtiff-COPYRIGHT.txt',
+      'libwebp-COPYING.txt',
+      'zlib-README.txt',
+      'openlibm-LICENSE.md.txt',
+    ]);
+    for (const { file, url, commit, sha } of listed) {
+      expect(url, file).toContain(`/${commit}/`);
+      expect(
+        createHash('sha256')
+          .update(readFileSync(join(dir, file)))
+          .digest('hex'),
+        file,
+      ).toBe(sha);
+    }
+  });
+
   it('Tesseract’s WebAssembly build is there to be copied: the SIMD, LSTM-only loader and its WebAssembly', () => {
     const files = sourceOcrFiles(root);
     for (const file of [files.core, files.wasm, files.model])
