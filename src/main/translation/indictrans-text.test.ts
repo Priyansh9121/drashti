@@ -77,6 +77,29 @@ describe('IndicTrans2 text pipeline, against x74’s Python', () => {
     );
   });
 
+  it('numbers a longer match before one it holds, so no placeholder cuts another (a22-review-mt A4)', () => {
+    // Python iterates a set here, so some of its runs corrupt these; Drashti never does: longest first.
+    const echo = (source: string, lang: Iso) => {
+      const prepared = preprocess(source, lang);
+      return { text: prepared.text, back: postprocess(prepared.text, lang, prepared.placeholders) };
+    };
+    const web = echo('Visit example.org or example.org/give today.', 'en');
+    expect(web.text).not.toContain('give');
+    expect(web.back).toBe('Visit example.org or example.org/give today.');
+    expect(echo('1/12/2026 to 11/12/2026', 'en').back).toBe('1/12/2026 to 11/12/2026');
+    expect(echo('2026-11-2 and 2026-11-24', 'en').back).toBe('2026-11-2 and 2026-11-24');
+    const gujarati = echo(
+      '\u0aa4\u0abe\u0ab0\u0ac0\u0a96 \u0ae7/\u0ae7\u0ae8/\u0ae8\u0ae6\u0ae8\u0aec \u0aa5\u0ac0 \u0ae7\u0ae7/\u0ae7\u0ae8/\u0ae8\u0ae6\u0ae8\u0aec',
+      'gu',
+    );
+    expect(gujarati.back.split(' ')).toEqual([
+      '\u0aa4\u0abe\u0ab0\u0ac0\u0a96',
+      '1/12/2026',
+      '\u0aa5\u0ac0',
+      '11/12/2026',
+    ]);
+  });
+
   it('picks the model for each direction', () => {
     expect(routeFor('en', 'gu')).toBe('en-indic');
     expect(routeFor('hi', 'en')).toBe('indic-en');
