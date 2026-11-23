@@ -13,15 +13,18 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
       file,
       `
       const ports = []; let port, frames = 0, started = 0, previous = 0, longest = 0, ready = false;
+      // Diagnostics only (a22-cue, the Mac's one 38.9 ms gap in a21-s5-1123-152334-44457): each gap over 20 ms, on the
+      // wall clock, to set beside the drawing page's long frame.
+      let gaps = [], previousWall = 0;
       const send = (message) => process.parentPort.postMessage(message);
       process.parentPort.on('message', (event) => {
         if (event.data === 'begin') {
-          frames = 0; longest = 0; started = previous = performance.now();
+          frames = 0; longest = 0; gaps = []; started = previous = performance.now(); previousWall = Date.now();
           send({ kind: 'begun' });
         } else if (event.data === 'finish') {
           const now = performance.now();
           send({ kind: 'result', frames, elapsed: now - started,
-            longestGap: Math.max(longest, now - previous) });
+            longestGap: Math.max(longest, now - previous), gaps, begunAt: Date.now() - (now - started) });
         } else if (event.ports[0]) {
           port = event.ports[0]; ports.push(port);
           port.on('message', ({ data }) => {
@@ -29,7 +32,9 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
             const now = performance.now();
             frames += data.frames;
             longest = Math.max(longest, now - previous);
+            if (started > 0 && now - previous > 20) gaps.push({ at: Date.now(), after: previousWall, ms: now - previous, frames: data.frames });
             previous = now;
+            previousWall = Date.now();
             if (!ready) { ready = true; send({ kind: 'ready' }); }
           });
           port.start();
@@ -88,10 +93,12 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
       probe.send('begin');
       await begun;
     });
-    await stream.evaluate(() => {
+    const longFrame = await stream.evaluate(() => {
+      const from = Date.now();
       const at = performance.now();
       // Deliberately occupy this renderer, as the retained S5 long frames do. This is the cause under test.
       while (performance.now() - at < 500) Math.sqrt(performance.now());
+      return { from, to: Date.now() };
     });
     const result = await app.evaluate(async () => {
       const probe = (
@@ -108,7 +115,7 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
       return await result;
     });
     await test.info().attach('s5-pcm-queue.json', {
-      body: Buffer.from(JSON.stringify(result)),
+      body: Buffer.from(JSON.stringify({ ...result, longFrame })),
       contentType: 'application/json',
     });
     const elapsed = result['elapsed'] ?? 0;
