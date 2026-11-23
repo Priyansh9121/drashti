@@ -804,7 +804,7 @@ Controller actions use that same authenticated node feed, with no pairing, certi
 
 Main's callback is synchronous, with no acknowledgement wait. The link worker bounds action traffic; Main keeps at most 128 results per paired controller, and removes them when it is removed. The second computer allows its own node window to ask, keeps at most eight outstanding requests, and stops waiting after four seconds without resending. A dropped link or removed permission discards pending replies; reconnection takes a fresh show snapshot and never sends an old press. The UI changes only from Main's ordered engine feed, never optimistically from a button or an action reply. Detailed other-operator presence and attribution remain part (c).
 
-## Prepared translations (alpha.22)
+## Prepared translations (alpha.21)
 
 The translation dialog belongs to Edit slides in Pro Mode. It compares source and target words, takes a local reader name and offers an explicit check of that exact pair. It reports No engine installed; a test stand-in never supplies production library words. New presentations have translation Off. Simple Mode reads saved status and plays checked data, with authoring, approval and route changes refused in Main.
 

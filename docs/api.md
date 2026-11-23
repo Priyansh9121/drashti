@@ -607,7 +607,7 @@ Strict POSIX preparation establishes its priority inside a small system-shell la
 
 In Pro Mode, `slideEditor.makeSlide` accepts the editor snapshot and stamp, a PDF `slideId`, a normalized `part`, and `place` (`playlist` or `library`). The optional `parts` array collects 1 to 400 `{ slideId, part }` entries in reading order. Without it the single-page action stays available. Main validates every page before drawing, prints one page at a time and draws each part at the hall's picture size. Collected pictures are limited to 128 MB. It keeps one presentation only after every part succeeds; the operator receives one `slideEditor.slideMade` event for Undo of the presentation and its playlist row. The original PDF stays unchanged. No batch is made while the stream is on air or recording.
 
-## Prepared translations (desktop, alpha.22)
+## Prepared translations (desktop, alpha.21)
 
 The existing `library.slidesForEdit` / `library.saveSlides` document carries optional text-element `translations` (at most three distinct targets, `gu`, `hi`, `en`) and `translationDisplay`. Each saved pair has NFC-normalized `sourceFingerprint`, source/target tags, text (at most 20,000 characters), `state` (`unchecked`, `checked`, `needs-recheck`), a local reader name and `reviewFingerprint`. The latter binds approval to the exact source/result/language pair; modifying words cannot retain a valid check. Source changes across all normal content-write paths retain the old words with review held. Undo may restore an exact previously checked pair.
 
