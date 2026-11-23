@@ -2,6 +2,7 @@ import { videoOverlapMs } from '../../shared/video-crossfade';
 import { type SavedVideoCue, restoredVideoCue } from '../recovery/video-cue';
 import {
   type FrameGrid,
+  goOnStreamFrame,
   type CuedVideo,
   type VideoCue,
   VIDEO_GO_LEAD_MS,
@@ -744,7 +745,12 @@ export class ShowEngine {
           message: 'That video row changed: Cancel and cue it again.',
         };
     }
-    const at = Math.max(this.now() + VIDEO_GO_LEAD_MS, automatic && !early ? (cue.automatic?.at ?? 0) : 0);
+    // A manual Go is placed on the stream's own frames when its page has told them (a21-s5): every page still starts
+    // at this one moment, and the stream's first frame after it already moves. An automatic one keeps its moment.
+    const earliest = this.now() + VIDEO_GO_LEAD_MS;
+    const at = automatic
+      ? Math.max(earliest, early ? 0 : (cue.automatic?.at ?? 0))
+      : goOnStreamFrame(earliest, this.options.videoGoFrames?.() ?? null);
     const background = { ...cue.background, seek: { at, toMs: cue.background.clip?.startMs ?? 0 } };
     const from = this.state.layers.background;
     const fade =

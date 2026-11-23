@@ -102,14 +102,20 @@ describe('S5 video cue in the show engine', () => {
   it("Go is placed the margin before one of the stream's frames when the stream's page has told its grid", () => {
     const grid = { at: 11_990.5, periodMs: 1000 / 30 };
     let now = 10_000;
-    const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => now, new MemoryPlaylistSource(), {
-      schedule: () => () => undefined,
-      mediaLength: () => 10_000,
-      mediaKind: () => 'video',
-      mediaMarkers: () => ({ startMs: 500, endMs: 8000, markers: [] }),
-      videoCueParticipants: () => ['hall', 'live', 'audio', 'stream'],
-      videoGoFrames: () => grid,
-    });
+    const engine = new ShowEngine(
+      makeSource(),
+      new RecordingTransport(),
+      () => now,
+      new MemoryPlaylistSource(),
+      {
+        schedule: () => () => undefined,
+        mediaLength: () => 10_000,
+        mediaKind: () => 'video',
+        mediaMarkers: () => ({ startMs: 500, endMs: 8000, markers: [] }),
+        videoCueParticipants: () => ['hall', 'live', 'audio', 'stream'],
+        videoGoFrames: () => grid,
+      },
+    );
     engine.dispatch({ type: 'cueVideo', mediaId: 'second' });
     const cue = engine.current.videoCue;
     if (!cue) throw new Error('No cue');

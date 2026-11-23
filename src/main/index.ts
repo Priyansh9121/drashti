@@ -435,6 +435,7 @@ import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
+import type { FrameGrid } from '../shared/video-cue';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
@@ -1889,6 +1890,8 @@ function start(): void {
     }
     return kept;
   };
+  // The stream page's frame grid, told while a cue waits (S5, a21-s5): a manual Go is placed on its frames.
+  let streamFrames: (FrameGrid & { told: number }) | null = null;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1935,6 +1938,13 @@ function start(): void {
         const program = streaming.programContents();
         if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`, `sound:${program.id}`);
         return ids;
+      },
+      videoGoFrames: () => {
+        const program = streaming.programContents();
+        // Only a grid the stream's page told in the last 3 s (it tells once a second while a cue waits).
+        if (!streamFrames || !program || program.isDestroyed() || Date.now() - streamFrames.told > 3000)
+          return null;
+        return { at: streamFrames.at, periodMs: streamFrames.periodMs };
       },
 
       sourceMediaId: (id) => editedPlaying.sourceId(id),
@@ -8009,6 +8019,19 @@ function start(): void {
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);
+    return null;
+  });
+  handle(IPC.stream.pageFrames, (e, grid: unknown) => {
+    const told = grid as Partial<FrameGrid> | null;
+    if (
+      streaming.isProgram(e.sender) &&
+      typeof told?.at === 'number' &&
+      Number.isFinite(told.at) &&
+      typeof told.periodMs === 'number' &&
+      told.periodMs >= 10 &&
+      told.periodMs <= 100
+    )
+      streamFrames = { at: told.at, periodMs: told.periodMs, told: Date.now() };
     return null;
   });
 

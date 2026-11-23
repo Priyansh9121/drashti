@@ -52,9 +52,15 @@ export interface FrameGrid {
  */
 export const STREAM_FRAME_MARGIN_MS = 20;
 
-/** Not yet (the red): Go at its earliest, wherever the stream's frames fall. */
-export function goOnStreamFrame(earliest: number, _grid: FrameGrid | null): number {
-  return earliest;
+/**
+ * The Go at or after `earliest` that is the margin before one of the stream's frames: the first frame at least the
+ * margin after `earliest`, less the margin (so at most one frame later than `earliest`). No grid, or one that makes
+ * no sense (a period outside 10-100 ms): `earliest`.
+ */
+export function goOnStreamFrame(earliest: number, grid: FrameGrid | null): number {
+  if (!grid || !Number.isFinite(grid.at) || !(grid.periodMs >= 10 && grid.periodMs <= 100)) return earliest;
+  const frames = Math.ceil((earliest + STREAM_FRAME_MARGIN_MS - grid.at) / grid.periodMs);
+  return grid.at + frames * grid.periodMs - STREAM_FRAME_MARGIN_MS;
 }
 
 /** Files retained through the shared future Go moment. */

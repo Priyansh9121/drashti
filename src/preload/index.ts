@@ -587,6 +587,7 @@ const bridge: DrashtiBridge = {
       context: () => invoke(IPC.stream.pageContext),
       onContext: (listener) => on(IPC.stream.context, listener),
       reportInputs: (inputs) => invoke(IPC.stream.pageInputs, inputs),
+      reportFrames: (grid) => invoke(IPC.stream.pageFrames, grid),
     },
   },
   youtube: {
