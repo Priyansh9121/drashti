@@ -212,3 +212,45 @@ describe('live captions as an admin turns them on (Part 10)', () => {
     expect(downloads).toEqual([]);
   });
 });
+
+describe('phase D prototype alongside the existing captions service', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(Date.UTC(2026, 10, 23, 9)); });
+  afterEach(() => vi.useRealTimers());
+  it('uses no real engine or model download and clears its words before the normal path resumes', async () => {
+    const { service, started, downloads, shown } = setup();
+    service.start();
+    expect(service.prototypeView().on).toBe(false);
+    service.setPrototypeOn(true);
+    service.advancePrototype();
+    service.advancePrototype();
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)?.lines).toEqual(['The green box moves beside a round shape.']);
+    expect(started).toEqual([]);
+    expect(downloads).toEqual([]);
+    expect(JSON.stringify(service.view())).not.toContain('green box');
+    expect(service.view().on).toBe(false);
+    service.setPrototypeOn(false);
+    expect(service.prototypeView()).toMatchObject({ on: false, current: null, previous: null });
+    expect(shown.at(-1)).toBeNull();
+    await service.setOn(true);
+    expect(downloads).toEqual(['small']);
+    expect(started).toEqual(['auto']);
+    service.close();
+  });
+  it('stops Whisper while the prototype is selected; settings/language changes clear edits, and off is immediate', async () => {
+    const { service, started, shown, say } = setup();
+    await service.setOn(true);
+    service.setPrototypeOn(true);
+    say('Normal path must be stopped');
+    service.advancePrototype(); service.advancePrototype();
+    const old = service.prototypeView().current!;
+    service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'hi' });
+    expect(service.prototypeView().current).toBeNull();
+    expect(service.correctPrototype({ ...old, text: 'Stale correction' })).toBe(false);
+    await service.setOn(false);
+    expect(service.prototypeView().on).toBe(false);
+    expect(shown.at(-1)).toBeNull();
+    expect(started).toEqual(['auto']);
+    service.close();
+  });
+});

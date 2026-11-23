@@ -7,6 +7,7 @@ import {
   type CaptionsShown,
   type CaptionsStatus,
 } from '../../shared/captions';
+import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
 import type { Heard } from '../../shared/speech';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
 import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
@@ -99,6 +100,11 @@ export class CaptionsService {
               : null,
         };
   }
+
+  prototypeView(): CaptionReview { return { on: false, sessionId: null, current: null, previous: null, busy: false, omitted: 0 }; }
+  setPrototypeOn(_on: boolean): void {}
+  advancePrototype(): void {}
+  correctPrototype(_correction: CaptionCorrection): boolean { return false; }
 
   selectedModel(): CaptionModelId {
     return this.switch.model;
