@@ -163,6 +163,7 @@ import {
   lockChannels,
   refusalFor,
   setGiveWay,
+  tellRequests,
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
@@ -186,8 +187,12 @@ import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJournal } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
-import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
-import { log, logFiles, startLogCopy, startLogFile } from './log';
+import { type CrashFilesChoice, type GraphicsInfo, writeDiagnosticsFile } from './diagnostics';
+import { log, logDays, logFilesOf, onLogDaysChanged, setLogHeader, startLogCopy, startLogFile } from './log';
+import { CommandLog, requestLogged } from './log-commands';
+import { type DiagnosticsWho, installId } from './log-who';
+import { type LogPeriod, periodDays, periodText } from '../shared/log-period';
+import { computerName } from './access/identity';
 import {
   cannotPlayNotice,
   cannotStartInTimeNotice,
@@ -420,7 +425,7 @@ import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
-import { runReportIntake, runReportJob } from './report/report-worker-run';
+import { runDiagnosticsText, runReportIntake, runReportJob } from './report/report-worker-run';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
 import {
@@ -516,6 +521,37 @@ if (userDataOverride) app.setPath('userData', userDataOverride);
 else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
 // The log goes to a rotating file in the data folder too (see log.ts), from the start.
 startLogFile(join(app.getPath('userData'), 'logs'));
+// This install's own id (alpha.21, logs for 100+ installs (b)), kept in the data folder; each new log file names it,
+// with the version, the system and this computer, at its head.
+const install = installId(app.getPath('userData'));
+setLogHeader(
+  () =>
+    `Drashti ${app.getVersion()} on ${process.platform} ${osRelease()} ${process.arch}, computer “${computerName()}”, install ${install.id}${install.kept ? '' : ' (not kept: the data folder could not be written)'}`,
+);
+/**
+ * Every show command, operator request and notice in the log (alpha.21, logs (a)): names, ids and numbers, never
+ * words; written a turn after each was answered.
+ */
+const commandLog = new CommandLog({
+  write: (line) => {
+    log.info(line);
+  },
+  now: () => Date.now(),
+  setTimer: (ms, run) => {
+    const t = setTimeout(run, ms);
+    return () => {
+      clearTimeout(t);
+    };
+  },
+});
+tellRequests({
+  logged: requestLogged,
+  tell: (channel, outcome, error) => {
+    commandLog.request(channel, outcome, error);
+  },
+});
+/** The log files of a period's days, oldest first (Save Diagnostics and Report a Problem, alpha.21 logs (c)). */
+const periodLogFiles = (period: LogPeriod, now: number) => logFilesOf(periodDays(period, now));
 // Tests only (never a packaged Drashti): every line into the test's own folder as well, kept when it fails (alpha.21).
 const testLogCopy = packaged() ? undefined : sw('DRASHTI_TEST_LOG_COPY');
 if (testLogCopy) startLogCopy(testLogCopy);
@@ -1467,7 +1503,13 @@ function startNodeMode(): void {
       crashJournal: () => crashJournal.entries(),
       chooseCrashFiles,
       savedText: savedDiagnosticsText,
-      logFiles,
+      // The log of a period (alpha.21, logs (c)), the days kept, this install (logs (b)), and the file made off the
+      // node's own thread by a report worker.
+      logFilesOf: periodLogFiles,
+      logDays,
+      installId: install.id,
+      computer: computerName,
+      makeText: (job) => runDiagnosticsText(job),
       desktop: () => app.getPath('desktop'),
     },
     // Help › Report a Problem… on a node (x49): handed to its Main.
@@ -1514,6 +1556,7 @@ function startNodeMode(): void {
     installNodeMenu({
       priority: priorityItem(() => nodeMenu()),
       saveDiagnostics: node.saveDiagnostics,
+      logDays,
       reportProblem: node.reportProblem,
       diagnostics: diagnostics
         ? {
@@ -1527,6 +1570,10 @@ function startNodeMode(): void {
     });
   };
   nodeMenu();
+  // Help › Save Diagnostics › One Day, built again when the days kept change (alpha.21, logs (c)), a turn later.
+  onLogDaysChanged(() => {
+    setImmediate(nodeMenu);
+  });
   if (nodeSelfTest)
     void node.runSelfTest().then((result) => {
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
@@ -1984,6 +2031,45 @@ function start(): void {
   // has closed (seen on CI Windows: "The database connection is not open" from an auto-advance at quit).
   stops.add('engine timers', () => {
     engine.dispose();
+    commandLog.flush();
+  });
+  // Every show command in the log, whoever sent it (the window, a phone, Companion, OSC, a script, or the show itself:
+  // a slide moving on by itself), and what came of it (alpha.21, logs for 100+ installs (a)): written a turn later.
+  const dispatchNow = engine.dispatch.bind(engine);
+  let dispatching = 0;
+  engine.dispatch = (command) => {
+    dispatching++;
+    let result: ReturnType<typeof dispatchNow>;
+    try {
+      result = dispatchNow(command);
+    } finally {
+      dispatching--;
+    }
+    try {
+      commandLog.show(command, result);
+    } catch {
+      // The log is never in a show command's way.
+    }
+    return result;
+  };
+  // And what the show did by itself (a slide moving on, a message's time up, what a restart put back): the parts that
+  // changed, never what they hold.
+  let showBefore = engine.current;
+  engine.onChange((state) => {
+    const was = showBefore;
+    showBefore = state;
+    if (dispatching > 0) return;
+    const parts = (Object.keys(state.layers) as (keyof typeof state.layers)[]).filter(
+      (k) => state.layers[k] !== was.layers[k],
+    ) as string[];
+    if (state.live !== was.live) parts.unshift('live');
+    if (state.blackout !== was.blackout) parts.push('black-out');
+    if (state.wallpaper !== was.wallpaper) parts.push('wallpaper');
+    try {
+      if (parts.length > 0) commandLog.changedByItself(engine.rev, parts);
+    } catch {
+      // Nor in the show's own changes'.
+    }
   });
 
   // ---- video inputs (Session 50) ----------------------------------------------------
@@ -2911,14 +2997,14 @@ function start(): void {
     ended: (how) => {
       controlsBefore = null;
       if (how === 'kept') return;
-      sendToPage(operatorWindow, IPC.app.notice, {
-        text:
-          how === 'went-back'
-            ? 'The screens went back to how they were before the change.'
-            : how === 'went-back-by-itself'
-              ? 'Nothing was pressed, so the screens went back to how they were before the change.'
-              : COULD_NOT_GO_BACK,
-      });
+      const text =
+        how === 'went-back'
+          ? 'The screens went back to how they were before the change.'
+          : how === 'went-back-by-itself'
+            ? 'Nothing was pressed, so the screens went back to how they were before the change.'
+            : COULD_NOT_GO_BACK;
+      commandLog.notice(text);
+      sendToPage(operatorWindow, IPC.app.notice, { text });
     },
     remember: (changes) => {
       if (changes) waitingFile.keep(changes);
@@ -3410,6 +3496,8 @@ function start(): void {
   // ---- imports ----------------------------------------------------------------
   // The window's page, not just the window: at quit the page goes first (Session 20).
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
+    // Every notice in the log (alpha.21, logs (a)), its names in quotes blanked.
+    if (channel === IPC.app.notice) commandLog.notice((payload as EventContract[typeof IPC.app.notice]).text);
     sendToPage(operatorWindow, channel, payload);
   };
   // A watched folder can finish its first look before the operator window subscribes.
@@ -8872,6 +8960,23 @@ function start(): void {
   // or a recording is on.
   const reportRetry = packaged() ? undefined : swMs('DRASHTI_TEST_REPORT_RETRY_MS');
   const reportShowFiles = !packaged() && sw('DRASHTI_TEST_REPORT_SHOW') === 'log';
+  /**
+   * Who and what makes a diagnostics file here (alpha.21, logs for 100+ installs (b)): this computer as the Access
+   * List names it, its ids (given by their first letters only), this install, its role and mode, and the period.
+   */
+  const diagnosticsWho = (period: LogPeriod, now: Date): DiagnosticsWho => {
+    const computer = behind?.client?.computer() ?? null;
+    const view = accessState();
+    return {
+      computer: computer?.name ?? computerName(),
+      computerId: computer?.id ?? null,
+      installId: install.id,
+      grantId: behind?.service.grant()?.grantId ?? null,
+      role: isLetIn() ? { mode: view.mode === 'simple' ? 'simple' : 'pro', owner: view.owner } : null,
+      made: simpleNow() ? 'simple' : 'pro',
+      period: periodText(period, now.getTime()),
+    };
+  };
   const reports = new ReportService({
     dir: join(userDataDir, 'reports'),
     dbFile: libraryFile(),
@@ -8883,18 +8988,23 @@ function start(): void {
     from: () => (simpleNow() ? 'simple' : 'pro'),
     onAir: () => streaming.inUse() || testOnAir,
     crashFiles: () => crashFiles(crashFilesDir),
-    diagnostics: async (crashIncluded) => ({
-      app: appInfo(),
-      displays: listDisplays(),
-      screens: screens.snapshot(),
-      sound: audioOutput.status,
-      watchdog: watchdogHistory,
-      crashJournal: crashJournal.entries(),
-      crashFiles: { files: crashFiles(crashFilesDir), included: crashIncluded, kept: crashFilesKept },
-      logFiles: logFiles(),
-      now: new Date(),
-      graphics: await readGraphics(),
-    }),
+    diagnostics: async (crashIncluded, period) => {
+      const now = new Date();
+      return {
+        app: appInfo(),
+        displays: listDisplays(),
+        screens: screens.snapshot(),
+        sound: audioOutput.status,
+        watchdog: watchdogHistory,
+        crashJournal: crashJournal.entries(),
+        crashFiles: { files: crashFiles(crashFilesDir), included: crashIncluded, kept: crashFilesKept },
+        logFiles: periodLogFiles(period, now.getTime()),
+        now,
+        graphics: await readGraphics(),
+        who: diagnosticsWho(period, now),
+      };
+    },
+    logDays,
     makeFiles: (job) => runReportJob(job),
     // A paired node's report (x49): read, checked and written by a report worker, off Main's thread.
     intake: (job) => runReportIntake(job),
@@ -9021,6 +9131,13 @@ function start(): void {
     }
     installMenu(menuActions());
   };
+  // Help › Save Diagnostics › One Day lists the days the log keeps: built again when they change (a new day, one gone),
+  // a turn later, never inside the log line that changed them.
+  onLogDaysChanged(() => {
+    setImmediate(() => {
+      rebuildMenu();
+    });
+  });
   // ---- View > Show Books, Templates and Kirtan Details (Session 26a) -------------------------------
   // Hidden, not deleted: their code, data and the remote's library stay; the same item brings them back.
   const extrasShown = () => settings.get('showExtras') === true;
@@ -9321,25 +9438,40 @@ function start(): void {
       },
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
-    saveDiagnostics: () => {
+    logDays,
+    // Help › Save Diagnostics (alpha.21, logs (c)): the log of the period chosen; the file is made by a report worker,
+    // off Main's thread (a period's log can be days long), and written here.
+    saveDiagnostics: (period) => {
       void (async () => {
         try {
           const crash = await chooseCrashFiles();
           if (!crash) return;
-          const file = saveDiagnostics(app.getPath('desktop'), {
-            app: appInfo(),
-            displays: listDisplays(),
-            screens: screens.snapshot(),
-            sound: audioOutput.status,
-            db: libraryDb,
-            watchdog: watchdogHistory,
-            crashJournal: crashJournal.entries(),
-            crashFiles: crash,
-            logFiles: logFiles(),
-            now: new Date(),
-            graphics: await readGraphics(),
+          const now = new Date();
+          const made = await runDiagnosticsText({
+            kind: 'diagnostics-text',
+            main: {
+              input: {
+                app: appInfo(),
+                displays: listDisplays(),
+                screens: screens.snapshot(),
+                sound: audioOutput.status,
+                watchdog: watchdogHistory,
+                crashJournal: crashJournal.entries(),
+                crashFiles: crash,
+                logFiles: periodLogFiles(period, now.getTime()),
+                now,
+                graphics: await readGraphics(),
+                who: diagnosticsWho(period, now),
+              },
+              dbFile: libraryFile(),
+            },
+            node: null,
           });
-          log.info(`Diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
+          if (!made.ok) throw new Error(made.message);
+          const file = writeDiagnosticsFile(app.getPath('desktop'), now, made.text, crash);
+          log.info(
+            `Diagnostics saved to the Desktop (the log of ${periodText(period, now.getTime())})${crash.included ? ', with the crash files' : ''}`,
+          );
           sendToOperator(IPC.app.notice, { text: savedDiagnosticsText(file, crash) });
         } catch (error) {
           log.error('Could not save diagnostics', error);

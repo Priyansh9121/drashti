@@ -8,7 +8,14 @@ import { openDatabase } from '../db/database';
 import { PresentationRepo } from '../db/presentations';
 import { diagnosticsText, libraryNames, redactNames } from '../diagnostics';
 import { scrub } from '../log';
-import { fitDiagnostics, makeReportFiles, recentErrors, type ReportDiagnosticsInput } from './report-files';
+import type { DiagnosticsWho } from '../log-who';
+import {
+  fitDiagnostics,
+  makeDiagnosticsText,
+  makeReportFiles,
+  recentErrors,
+  type ReportDiagnosticsInput,
+} from './report-files';
 
 /*
  * A report's files (x49, Help › Report a Problem…), as the report worker makes them off Main's thread: the diagnostics
@@ -19,6 +26,16 @@ import { fitDiagnostics, makeReportFiles, recentErrors, type ReportDiagnosticsIn
 
 const MB = 1024 * 1024;
 const NOW = new Date(Date.UTC(2026, 10, 20, 9, 0, 0));
+/** Who made the file (alpha.21, logs (b)): made-up ids. */
+const WHO: DiagnosticsWho = {
+  computer: 'Placeholder Hall Mac',
+  computerId: 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00',
+  installId: '7K3P-Q2XM-4H9A',
+  grantId: '0a1b2c3d4e5f60718293a4b5c6d7e8f9',
+  role: { mode: 'pro', owner: false },
+  made: 'pro',
+  period: 'Today, 2026-11-20',
+};
 
 function library(dir: string): string {
   const file = join(dir, 'library.db');
@@ -63,6 +80,7 @@ function inputFor(dir: string): ReportDiagnosticsInput {
     logFiles: [log],
     now: NOW,
     graphics: { featureStatus: { gpu_compositing: 'enabled' }, info: { gpuDevice: [] } },
+    who: WHO,
   };
 }
 
@@ -179,5 +197,89 @@ describe('the diagnostics in a report', () => {
     expect(errors.every((e) => e.includes('[error]'))).toBe(true);
     expect(errors.at(-1)?.length).toBeLessThanOrEqual(REPORT_LIMITS.errorLetters);
     expect(recentErrors('no log here', now)).toEqual([]);
+  });
+});
+
+describe('a chosen period’s diagnostics (alpha.21, logs for 100+ installs (c))', () => {
+  it('give the email the error and warning lines within the period’s days, not only the last day’s', () => {
+    const day = (d: number, h: number) => new Date(2026, 10, d, h).toISOString();
+    const text = [
+      '== Log ==',
+      `${day(18, 9)} [error] Placeholder: the 18th's error`,
+      `${day(19, 9)} [error] Placeholder: the 19th's error`,
+      `${day(19, 10)} [info] Placeholder: the 19th's info`,
+      `${day(19, 23)} [warn] Placeholder: the 19th's late warning`,
+      `${day(20, 8)} [error] Placeholder: today's error`,
+      '',
+    ].join('\n');
+    const now = new Date(2026, 10, 20, 9).getTime();
+    const yesterday = { from: new Date(2026, 10, 19).getTime(), to: new Date(2026, 10, 20).getTime() };
+    expect(recentErrors(text, now, yesterday).map((l) => l.slice(l.indexOf(' ') + 1))).toEqual([
+      "[error] Placeholder: the 19th's error",
+      "[warn] Placeholder: the 19th's late warning",
+    ]);
+  });
+
+  it('Save Diagnostics’ file is made as a report’s, off Main’s thread: names blanked, who and what, the period’s log', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-diagnostics-text-'));
+    const dbFile = library(dir);
+    const input = inputFor(dir);
+    const made = makeDiagnosticsText(
+      { kind: 'diagnostics-text', main: { input, dbFile }, node: null },
+      { openDb: (file) => openDatabase(file) },
+    );
+    if (!made.ok) throw new Error(made.message);
+    const db = openDatabase(dbFile);
+    expect(made.text).toBe(scrub(redactNames(diagnosticsText({ ...input, db }), libraryNames(db))));
+    db.close();
+    expect(made.text).toContain('Install id: 7K3P-Q2XM-4H9A');
+    expect(made.text).toContain('Log: Today, 2026-11-20');
+    expect(made.text).toContain('Placeholder: a warning');
+    expect(made.text).not.toContain('Placeholder Report Secret');
+  });
+
+  it('a node’s too (it has no library)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-diagnostics-text-'));
+    const input = inputFor(dir);
+    const made = makeDiagnosticsText(
+      {
+        kind: 'diagnostics-text',
+        main: null,
+        node: {
+          app: input.app,
+          displays: [],
+          screens: [],
+          main: null,
+          link: { state: 'offline', why: null, since: NOW.getTime() },
+          clock: null,
+          rev: 0,
+          fromSaved: false,
+          media: {
+            wanted: 0,
+            ready: 0,
+            bytesWanted: 0,
+            bytesReady: 0,
+            copying: null,
+            missingNow: 0,
+            problem: null,
+          },
+          watchdog: [],
+          crashJournal: [],
+          crashFiles: { files: [], included: false },
+          logFiles: input.logFiles,
+          now: NOW,
+          who: { ...WHO, computerId: null, grantId: null, role: null, made: 'node', main: null },
+        },
+      },
+      {
+        openDb: () => {
+          throw new Error('a node has no library');
+        },
+      },
+    );
+    if (!made.ok) throw new Error(made.message);
+    expect(made.text).toContain('== Drashti diagnostics (node) ==');
+    expect(made.text).toContain('Access-list entry: none: a node, not paired');
+    expect(made.text).toContain('Placeholder: a warning');
   });
 });
