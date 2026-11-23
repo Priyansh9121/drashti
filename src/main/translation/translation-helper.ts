@@ -275,6 +275,8 @@ function messageFor(code: string): string {
       return 'This text is too long for one translation. Split it into shorter lines.';
     case 'cancelled':
       return 'Stopped.';
+    case 'translated':
+      return 'On this Mac, Prepare translations needs Drashti for Apple silicon: this copy is for Intel Macs. Install the Apple silicon copy, or write translations by hand.';
     case 'model-unreadable':
     case 'tokenizer-unreadable':
       return 'The translation model could not be read. Import the model pack again.';

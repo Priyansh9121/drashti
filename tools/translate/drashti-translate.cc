@@ -33,6 +33,10 @@
 #include <ctranslate2/translator.h>
 #include <sentencepiece_processor.h>
 
+#if defined(__APPLE__) && defined(__x86_64__)
+#include <sys/sysctl.h>
+#endif
+
 namespace {
 
 constexpr int kProtocol = 1;
@@ -246,6 +250,18 @@ bool is_language_tag(const std::string& tag) {
 }
 bool is_route(const std::string& r) { return r == "en-indic" || r == "indic-en" || r == "indic-indic"; }
 
+// The Intel Mac program run by Rosetta on Apple silicon: ruy's cache query crashes there at the first matrix
+// product (seen 24 Nov 2026), so it loads nothing and says why. The Apple silicon program is for those Macs.
+bool under_rosetta() {
+#if defined(__APPLE__) && defined(__x86_64__)
+  int translated = 0;
+  size_t size = sizeof translated;
+  return sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) == 0 && translated == 1;
+#else
+  return false;
+#endif
+}
+
 struct Route {
   std::unique_ptr<ctranslate2::Translator> translator;
   sentencepiece::SentencePieceProcessor spm;
@@ -261,6 +277,7 @@ void load(const Object& o) {
   const std::string* spm = str(o, "spm", 4096);
   const auto threads = integer(o, "threads", 1, 16);
   if (!route || !is_route(*route) || !model || !spm || !threads) return fail(o, "bad-request");
+  if (under_rosetta()) return fail(o, "translated");
   const auto started = std::chrono::steady_clock::now();
   auto r = std::make_unique<Route>();
   if (!r->spm.Load(*spm).ok()) return fail(o, "tokenizer-unreadable");
