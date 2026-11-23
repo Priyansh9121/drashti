@@ -609,6 +609,10 @@ Strict POSIX preparation establishes its priority inside a small system-shell la
 
 In Pro Mode, `slideEditor.makeSlide` accepts the editor snapshot and stamp, a PDF `slideId`, a normalized `part`, and `place` (`playlist` or `library`). The optional `parts` array collects 1 to 400 `{ slideId, part }` entries in reading order. Without it the single-page action stays available. Main validates every page before drawing, prints one page at a time and draws each part at the hall's picture size. Collected pictures are limited to 128 MB. It keeps one presentation only after every part succeeds; the operator receives one `slideEditor.slideMade` event for Undo of the presentation and its playlist row. The original PDF stays unchanged. No batch is made while the stream is on air or recording.
 
+## Desktop notices and the local log
+
+A notice shown by Main is logged with the current library’s names blanked as in diagnostics, including names without quotes. Names in quotes are blanked too. If the library’s names cannot be read, the log says only that the notice’s words are unavailable. The operator still sees the original notice. This does not change the HTTP API or the state feed.
+
 ## Automatic error reports (alpha.21, main process)
 
 `main/error-reports/service.ts` owns a separate `automatic-error-reports/state.json`, outside the library and its backups. It is off by default. `configure` and `enable` require the current access-list owner; configuration changes clear the queue and require consent again. No new renderer IPC or HTTP command can configure or enable it. The native Help control imports a private per-install setup JSON and asks for a separate Turn On action. Production sends use Electron’s cookie-free transport; development/CI main processes cannot call a real receiver.
