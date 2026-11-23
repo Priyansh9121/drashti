@@ -31,6 +31,13 @@ describe('the log file', () => {
     );
   });
 
+  it('blanks any e-mail address, whatever wrote the line (alpha.21, logs (b): never a Gmail address in a log or a diagnostics file)', () => {
+    expect(scrub('let in placeholder.person@gmail.com on placeholder-mac')).toBe('let in [email] on placeholder-mac');
+    expect(scrub('Placeholder.Owner+drashti@Example.org, and more')).toBe('[email], and more');
+    // Not an address: left as it is.
+    expect(scrub('rtmp://127.0.0.1:1935/live and user@host')).toBe('rtmp://127.0.0.1:1935/live and user@host');
+  });
+
   it('with a test’s copy, writes every line there too, whole and scrubbed, however the files rotate (alpha.21: a failed test keeps its Drashti’s log)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-log-'));
     const copy = join(mkdtempSync(join(tmpdir(), 'drashti-test-out-')), 'a', 'drashti-1.log');

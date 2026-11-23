@@ -11,6 +11,7 @@ import { ImportRepo } from './db/imports';
 import { type CrashFile, copyCrashFiles, crashFilesLines, KEEP_CRASH_FILES } from './crash-files';
 import { type CrashEntry, JOURNAL_ENTRIES } from './crash-journal';
 import { scrub } from './log';
+import type { DiagnosticsWho } from './log-who';
 
 /*
  * Help > Save diagnostics: one plain-text file an operator can send after a
@@ -36,6 +37,8 @@ export interface DiagnosticsInput {
   now: Date;
   /** How Chromium draws here (Session 60, the owner's Q60-37); absent where nothing was read. */
   graphics?: GraphicsInfo;
+  /** Who and what made the file (alpha.21, logs (b)): its computer, access-list entry and role, install, period. */
+  who: DiagnosticsWho;
 }
 
 /**
@@ -333,6 +336,8 @@ export interface NodeDiagnosticsInput {
   crashFiles: CrashFilesChoice;
   logFiles: readonly string[];
   now: Date;
+  /** Who and what made the file (alpha.21, logs (b)). */
+  who: DiagnosticsWho;
 }
 
 /** The node's whole file. */
