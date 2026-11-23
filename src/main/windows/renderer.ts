@@ -8,6 +8,7 @@ export type RendererPage =
   | 'audio'
   | 'gallery'
   | 'stream'
+  | 'stream-sound'
   | 'node'
   | 'pdf'
   | 'pdf-export'

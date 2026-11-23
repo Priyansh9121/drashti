@@ -1,3 +1,4 @@
+import { streamSoundPage } from './stream-helpers';
 import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnostics';
 import { outputReady } from './helpers';
 import { expect, test } from '@playwright/test';
@@ -193,6 +194,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
 test('Crossfade in the playlist blends both pictures and sounds without black on hall, LIVE and stream', async () => {
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
   try {
+    const streamSound = await streamSoundPage(app);
     const made = await win.evaluate(async (ids) => {
       const d = (globalThis as PageGlobals).drashti;
       const created = await d.playlists.create('Placeholder crossfade', null, false);
@@ -216,7 +218,7 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     await cueReady(win);
     const pages = [hall, win, stream];
     // Observe real moving updates; holding a test clock cannot prove smooth playback or sound.
-    for (const page of [...pages, audio])
+    for (const page of [...pages, audio, streamSound])
       await page.evaluate(() => {
         const trace: { t: number; gains: number[] }[] = [],
           polledTrace: typeof trace = [];
@@ -274,7 +276,7 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     expect(blue).toBeLessThanOrEqual(36 + 107 * expected(after) + 12);
     await expect.poll(async () => (await snapshot(win)).videoCrossfade ?? null).toBeNull();
     const observers = await Promise.all(
-      [...pages, audio].map((page) =>
+      [...pages, audio, streamSound].map((page) =>
         page.evaluate(() => {
           const observed = globalThis as {
             s5Fade?: { t: number; gains: number[] }[];
@@ -288,7 +290,7 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
       body: Buffer.from(JSON.stringify({ fade, observers })),
       contentType: 'application/json',
     });
-    for (const page of [...pages, audio]) {
+    for (const page of [...pages, audio, streamSound]) {
       const trace = await page.evaluate(
         () => (globalThis as { s5Fade?: { t: number; gains: number[] }[] }).s5Fade ?? [],
       );

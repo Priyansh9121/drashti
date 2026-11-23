@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
-import { freePort, setUpStream, streamPage, testFfmpeg } from './stream-helpers';
+import { freePort, setUpStream, streamPage, streamSoundPage, testFfmpeg } from './stream-helpers';
 
 test('Record sound off air saves generated audio and adds a draft only when captions run', async () => {
   test.setTimeout(90_000);
@@ -95,9 +95,9 @@ test('Simple Mode records locally with the Pro Mode folder and cannot change it'
     await simple.getByRole('button', { name: 'Record', exact: true }).click();
     await expect(menu.getByRole('menuitem')).toHaveText(['Record sound', 'Record video']);
 
-    // Make the new Program receive its saved input before the fake devices are listed.
+    // Make the new sound page receive its saved input before the fake devices are listed.
     const delayedDevices = await app.context().addInitScript(() => {
-      if (!location.pathname.endsWith('/stream.html')) return;
+      if (!location.pathname.endsWith('/stream-sound.html')) return;
       const devices = navigator.mediaDevices;
       const enumerate = devices.enumerateDevices.bind(devices);
       const ready = new Promise<void>((resolve) => {
@@ -112,9 +112,10 @@ test('Simple Mode records locally with the Pro Mode folder and cannot change it'
     await menu.getByRole('menuitem', { name: 'Record sound', exact: true }).click();
     const program = await streamPage(app);
     const programRoot = program.getByTestId('program-root');
-    await expect(program.locator('html')).toHaveAttribute('data-test-devices-delayed', 'yes');
+    const soundPage = await streamSoundPage(app);
+    await expect(soundPage.locator('html')).toHaveAttribute('data-test-devices-delayed', 'yes');
     await expect(programRoot).toHaveAttribute('data-layout', /^(camera|slides)$/u);
-    await program.evaluate(() => window.dispatchEvent(new Event('drashti-test-list-devices')));
+    await soundPage.evaluate(() => window.dispatchEvent(new Event('drashti-test-list-devices')));
     await delayedDevices.dispose();
     await expect(programRoot).toHaveAttribute('data-sound', 'on');
     await expect.poll(status).toMatchObject({

@@ -256,6 +256,8 @@ For a video whose first picture is late or which cannot play, see the Drashti Ma
 
 **The stream's picture has stopped.** A red notice under the header says so when the stream's own page kept failing (six times in a minute), in Simple Mode too: the stream shows its last picture. Press **Try again**; if it stops again, tell whoever looks after Drashti.
 
+**The stream’s sound has stopped.** If its sound keeps failing, a red notice says so while the picture keeps going. Press **Try again** to restart its sound; if it stops again, tell whoever looks after Drashti.
+
 **A red notice says Drashti couldn’t read the playlists, this playlist, a presentation or what the screens are showing.** The screens keep what they show. Press **Try again** on the notice; it goes by itself once Drashti can read it. Until then Simple Mode’s **Next** says it has nothing to start, and while Drashti can’t read what the screens are showing (it asks again by itself for a few seconds first), Next, Back and the clears wait. If Try again doesn’t work, tell whoever looks after Drashti.
 
 **The stream says Reconnecting.** Do nothing: Drashti tries again by itself and the recording carries on. The hall's screens are not affected. If it also says **the stream server's certificate could not be checked**, waiting will not help: tell whoever looks after Drashti (the admin guide, section 12).

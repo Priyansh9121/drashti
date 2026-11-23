@@ -1,3 +1,4 @@
+import { streamSoundPage } from './stream-helpers';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -147,7 +148,7 @@ test('the Program: the camera with the words in the stream’s languages, or the
   await app.close();
 });
 
-test('only the stream’s page may use the camera and microphone; the operator window sees cameras alone, never a microphone', async () => {
+test('the stream picture opens its camera and its sound renderer opens its microphone; the operator never opens a microphone', async () => {
   const { app } = await launchApp(FAKE);
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -156,7 +157,7 @@ test('only the stream’s page may use the camera and microphone; the operator w
   await useFakeInputs(win);
   await expect(program.getByTestId('program-root')).toHaveAttribute('data-camera', 'on');
 
-  const ask = (page: Page, selected: { cameraId: string; microphoneId: string } | null = null) =>
+  const ask = (page: Page, selected: { cameraId?: string; microphoneId?: string } | null = null) =>
     page.evaluate(async (selected) => {
       const all = await navigator.mediaDevices.enumerateDevices();
       const devices = all
@@ -167,13 +168,15 @@ test('only the stream’s page may use the camera and microphone; the operator w
       // stays unchanged; the allowed probe never falls back to a real/default input or voice processing.
       const constraints: MediaStreamConstraints = selected
         ? {
-            video: { deviceId: { exact: selected.cameraId } },
-            audio: {
-              deviceId: { exact: selected.microphoneId },
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
-            },
+            video: selected.cameraId ? { deviceId: { exact: selected.cameraId } } : false,
+            audio: selected.microphoneId
+              ? {
+                  deviceId: { exact: selected.microphoneId },
+                  echoCancellation: false,
+                  noiseSuppression: false,
+                  autoGainControl: false,
+                }
+              : false,
           }
         : { video: true, audio: true };
       const asked = await navigator.mediaDevices.getUserMedia(constraints).then(
@@ -208,9 +211,15 @@ test('only the stream’s page may use the camera and microphone; the operator w
   const cameraId = inputs.cameras[0]?.id;
   const microphoneId = inputs.microphones[0]?.id;
   if (!cameraId || !microphoneId) throw new Error('The generated camera and microphone are missing');
-  const stream = await ask(program, { cameraId, microphoneId });
+  const stream = await ask(program, { cameraId });
   expect(stream.labels.length).toBeGreaterThan(0);
   expect(stream.asked).toBe('granted');
+  const soundPage = await streamSoundPage(app);
+  const sound = await ask(soundPage, { microphoneId });
+  expect(sound.sounds.length).toBeGreaterThan(0);
+  expect(sound.asked).toBe('granted');
+  expect(sound.shared).toBe('refused');
+  expect((await ask(soundPage, { cameraId })).asked).not.toBe('granted');
   await app.close();
 });
 

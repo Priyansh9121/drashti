@@ -290,6 +290,8 @@ export interface StreamStatus {
    * so, with Try again (stream.tryAgain), in Pro and Simple Mode. The stream keeps its last picture.
    */
   pageStopped: boolean;
+  /** The separate stream sound page reached its crash cap; the same Try again restarts it. */
+  soundPageStopped?: true;
 }
 
 /** One place the stream goes, as the operator sees it (Session 28): the profile's own has the id ''. */

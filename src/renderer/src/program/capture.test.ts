@@ -207,10 +207,7 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
   vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia } });
   vi.stubGlobal('MediaStreamTrackProcessor', Processor);
   const capture = await import('./capture');
-  capture.startCapture(
-    () => -100,
-    () => null,
-  );
+  capture.startCapture();
   if (onScreen) showOnScreen(capture);
   const deliver = (port: EncoderPort, role: 'encoder' | 'video-out' = 'encoder') => {
     const event = new Event('message');
