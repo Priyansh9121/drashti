@@ -20,6 +20,8 @@ const ENTRIES: Record<BridgePage, string> = {
   output: 'output/main.tsx',
   audio: 'audio/main.ts',
   stream: 'program/main.tsx',
+  // The stream's sound page (alpha.22, Codex x86): its own renderer for the stream's sound.
+  'stream-sound': 'stream-sound/main.ts',
   node: 'node/main.tsx',
   pdf: 'pictures/main.ts',
   'pdf-export': 'pdf-export/main.tsx',
@@ -86,6 +88,9 @@ describe('a narrower bridge (ARCH-7)', () => {
     // Vite's root in development is the operator window's page.
     expect(pageOf('http://localhost:5173/')).toBe('index');
     expect(pageOf('http://localhost:5173/audio.html')).toBe('audio');
+    // The stream's sound page (a22-cue): without its groups it had no bridge at all on CI (a22-cue-1124-010916-72036:
+    // no microphone listed, no Cue readiness from it).
+    expect(pageOf('file:///x/out/renderer/stream-sound.html')).toBe('stream-sound');
     expect(pageOf('file:///x/out/renderer/remote.html')).toBeNull();
     expect(pageOf('about:blank')).toBeNull();
     expect(pageOf('not an address')).toBeNull();
