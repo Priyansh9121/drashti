@@ -1,6 +1,9 @@
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../operator/Layout', () => ({ Columns: ({ right }: { right: ReactNode }) => createElement('div', null, right) }));
+vi.mock('./practice-store', () => ({ usePractice: (select: (state: unknown) => unknown) => select({ source: { playlist: null, slides: [], labels: [] }, practice: { index: 0 } }), runPractice: vi.fn(), stopPractice: vi.fn() }));
 
 vi.mock('../operator/LivePreview', () => ({ LivePreview: () => createElement('div', { 'data-testid': 'practice-live-picture' }) }));
 vi.mock('../operator/NextBack', () => ({ NextBack: () => createElement('button', { 'data-testid': 'practice-next' }, 'Next') }));
