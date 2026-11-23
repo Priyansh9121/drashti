@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { CaptionWord } from '../../shared/caption-words';
-import type { Heard } from '../../shared/speech';
+import { CAPTION_HINTS_ON, type CaptionWord } from '../../shared/caption-words';
+import type { Heard, SpeechLanguage } from '../../shared/speech';
 import { CaptionWordsService } from './caption-words-service';
 
 /*
@@ -23,6 +23,7 @@ afterEach(() => {
 
 function setup(kept: CaptionWord[] = []) {
   let stored = kept;
+  let hintsOn: Partial<Record<SpeechLanguage, boolean>> = {};
   const logs: string[] = [];
   const picks: { open: string | null; save: string | null; saveNames: string[] } = {
     open: null,
@@ -35,6 +36,10 @@ function setup(kept: CaptionWord[] = []) {
       set: (w) => {
         stored = [...w];
       },
+      hintsOn: () => ({ ...CAPTION_HINTS_ON, ...hintsOn }),
+      setHintsOn: (language, on) => {
+        hintsOn = { ...hintsOn, [language]: on };
+      },
     },
     pickImport: () => Promise.resolve(picks.open),
     pickExport: (name) => {
@@ -43,7 +48,7 @@ function setup(kept: CaptionWord[] = []) {
     },
     log: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
   });
-  return { service, logs, picks, stored: () => stored };
+  return { service, logs, picks, stored: () => stored, hintsOn: () => hintsOn };
 }
 
 const heard = (text: string, language: Heard['language'] = 'en'): Heard => ({
@@ -65,6 +70,7 @@ describe('caption words as the admin keeps them', () => {
     expect(service.view()).toEqual({
       words: [{ language: 'en', word: 'Zentrova' }],
       hinted: { gu: 0, hi: 0, sa: 0, en: 1 },
+      hintsOn: { gu: false, hi: true, sa: true, en: true },
     });
     const result = service.set([
       { language: 'en', word: ' Velmorin ' },
@@ -78,8 +84,29 @@ describe('caption words as the admin keeps them', () => {
     ]);
     expect(service.fix(heard('Zentroba Velmorim')).text).toBe('Zentroba Velmorin');
     expect(service.hints.for('en').prompt).toBe('Velmorin');
+    // Gujarati's hints are off until the admin turns them on; its spellings are fixed either way.
+    expect(service.hints.for('gu').prompt).toBe('');
+    expect(result.view.hinted).toEqual({ gu: 0, hi: 0, sa: 0, en: 1 });
+  });
+
+  it('gives a language’s words to the engine as hints only while its switch is on: Gujarati off at first', () => {
+    const { service, hintsOn } = setup([
+      { language: 'gu', word: GU },
+      { language: 'en', word: 'Zentrova' },
+    ]);
+    expect(service.hints.for('gu').prompt).toBe('');
+    expect(service.fix(heard('ઝેન્ટરોવા', 'gu')).text).toBe(GU);
+    const on = service.setHints('gu', true);
+    expect(on.view.hintsOn.gu).toBe(true);
+    expect(on.view.hinted.gu).toBe(1);
+    expect(hintsOn()).toEqual({ gu: true });
     expect(service.hints.for('gu').prompt).toBe(GU);
-    expect(result.view.hinted).toEqual({ gu: 1, hi: 0, sa: 0, en: 1 });
+    expect(service.setHints('en', false).view.hinted.en).toBe(0);
+    expect(service.hints.for('en').prompt).toBe('');
+    // Anything else is refused, and changes nothing.
+    expect(service.setHints('fr', true)).toMatchObject({ ok: false });
+    expect(service.setHints('hi', 'yes')).toMatchObject({ ok: false });
+    expect(hintsOn()).toEqual({ gu: true, en: false });
   });
 
   it('imports a file’s words onto the end of the list, saying what it added and which lines it could not read', async () => {

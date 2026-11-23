@@ -126,6 +126,12 @@ test('caption words: a word heard close to one shows as written; kept in the lib
     );
     await words.getByTestId('caption-words-language').selectOption('gu');
     await expect(words.getByTestId('caption-word')).toHaveText([GU]);
+    // Gujarati's hints start off (they did not help Gujarati on real speech); its spellings are fixed either way.
+    await expect(words.getByTestId('caption-words-hints-on')).toHaveAttribute('aria-checked', 'false');
+    await words.getByTestId('caption-words-hints-on').click();
+    await expect(words.getByTestId('caption-words-hints-on')).toHaveAttribute('aria-checked', 'true');
+    await words.getByTestId('caption-words-hints-on').click();
+    await expect(words.getByTestId('caption-words-hints-on')).toHaveAttribute('aria-checked', 'false');
     await expect(words.getByTestId('caption-words-hints')).toHaveText(
       '1 Gujarati word, used when captions listen for Gujarati.',
     );

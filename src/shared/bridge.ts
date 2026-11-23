@@ -115,6 +115,7 @@ import type {
 } from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
 import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
+import type { SpeechLanguage } from './speech';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -385,6 +386,8 @@ export interface DrashtiBridge {
     importFile(): Promise<CaptionWordsResult>;
     /** Export… the list as a CSV file where the admin chooses. */
     exportFile(): Promise<CaptionWordsResult>;
+    /** A language's switch: its words go to the captions engine as hints (Gujarati off until turned on). */
+    setHints(language: SpeechLanguage, on: boolean): Promise<CaptionWordsResult>;
   };
   /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
   videoCaptions: {

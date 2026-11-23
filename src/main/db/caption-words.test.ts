@@ -66,6 +66,23 @@ describe('caption words in the library', () => {
     db.close();
   });
 
+  it('keeps each language’s hints switch: Gujarati off and the others on until changed', () => {
+    const file = join(dir, 'library.sqlite');
+    const db = openDatabase(file);
+    const repo = new CaptionWordsRepo(db);
+    expect(repo.hintsOn()).toEqual({ gu: false, hi: true, sa: true, en: true });
+    repo.setHintsOn('gu', true);
+    repo.setHintsOn('en', false);
+    expect(repo.hintsOn()).toEqual({ gu: true, hi: true, sa: true, en: false });
+    db.close();
+    const again = openDatabase(file);
+    expect(new CaptionWordsRepo(again).hintsOn()).toEqual({ gu: true, hi: true, sa: true, en: false });
+    expect(() =>
+      again.prepare("INSERT INTO caption_word_hints (language, hints) VALUES ('fr', 1)").run(),
+    ).toThrow(/CHECK/);
+    again.close();
+  });
+
   it('keeps only words it can use: checked, without repeats, at most 200 a language', () => {
     const db = openDatabase(join(dir, 'library.sqlite'));
     const repo = new CaptionWordsRepo(db);

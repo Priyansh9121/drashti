@@ -13,12 +13,14 @@ export function captionWordsHintText(
   hinted: number,
   listening: SpeechLanguage | 'auto',
   language: SpeechLanguage,
+  on = true,
 ): string {
   if (count === 0) return `No ${name} caption words yet.`;
   const words = plural(count, `${name} word`);
   if (listening === 'auto')
     return `${words}. With the language left as heard, spellings are fixed but the engine is given no hints.`;
   if (listening !== language) return `${words}, used when captions listen for ${name}.`;
+  if (!on) return `${words}. Hints for the captions engine are off for ${name}; spellings are still fixed.`;
   if (count === 1) return `${words}, given to the captions engine as a hint.`;
   if (hinted >= count) return `${words}, all given to the captions engine as hints.`;
   return `${words}. The first ${String(hinted)} fit in the captions engine’s hints, so put the most important first; all of them fix spellings.`;

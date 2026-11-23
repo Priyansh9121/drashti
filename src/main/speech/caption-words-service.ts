@@ -1,6 +1,7 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import {
   addCaptionWords,
+  isCaptionLanguage,
   CAPTION_WORDS_FILE_BYTES,
   captionWordsCsv,
   parseCaptionWords,
@@ -9,7 +10,7 @@ import {
   type CaptionWordsResult,
   type CaptionWordsView,
 } from '../../shared/caption-words';
-import type { Heard } from '../../shared/speech';
+import type { Heard, SpeechLanguage } from '../../shared/speech';
 import { plural } from '../../shared/text';
 import { createCaptionHints, type CaptionHints } from './caption-hints';
 import { spellingFixer } from './spelling-fixer';
@@ -22,7 +23,12 @@ import { spellingFixer } from './spelling-fixer';
  */
 
 export interface CaptionWordsDeps {
-  repo: { get(): CaptionWord[]; set(words: readonly CaptionWord[]): void };
+  repo: {
+    get(): CaptionWord[];
+    set(words: readonly CaptionWord[]): void;
+    hintsOn(): Record<SpeechLanguage, boolean>;
+    setHintsOn(language: SpeechLanguage, on: boolean): void;
+  };
   /** The system's Open and Save dialogs; null when cancelled. */
   pickImport: () => Promise<string | null>;
   pickExport: (defaultName: string) => Promise<string | null>;
@@ -50,15 +56,30 @@ export class CaptionWordsService {
   private list: CaptionWord[];
   private fixer: (h: Heard) => Heard;
   private fixFailed = false;
+  private hintsOn: Record<SpeechLanguage, boolean>;
 
   constructor(private readonly deps: CaptionWordsDeps) {
     this.list = parseCaptionWords(deps.repo.get());
     this.fixer = spellingFixer(this.list);
-    this.hints = createCaptionHints(() => this.list);
+    this.hintsOn = deps.repo.hintsOn();
+    this.hints = createCaptionHints(
+      () => this.list,
+      () => this.hintsOn,
+    );
   }
 
   view(): CaptionWordsView {
-    return { words: this.list, hinted: this.hints.hinted() };
+    return { words: this.list, hinted: this.hints.hinted(), hintsOn: { ...this.hintsOn } };
+  }
+
+  /** A language's switch: whether its words go to the engine as hints (the fixer works either way). */
+  setHints(language: unknown, on: unknown): CaptionWordsResult {
+    if (!isCaptionLanguage(language) || typeof on !== 'boolean')
+      return { ok: false, view: this.view(), message: 'That is not a caption language’s switch.' };
+    this.deps.repo.setHintsOn(language, on);
+    this.hintsOn = this.deps.repo.hintsOn();
+    this.deps.log.info(`Caption words: hints for ${language} turned ${on ? 'on' : 'off'}.`);
+    return { ok: true, view: this.view(), message: null };
   }
 
   /** The list, whole, as the dialog sends it after a change: each word checked again. */

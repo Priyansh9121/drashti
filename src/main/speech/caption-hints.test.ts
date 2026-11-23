@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CaptionWord } from '../../shared/caption-words';
+import { CAPTION_HINTS_ON, type CaptionWord } from '../../shared/caption-words';
 import { createCaptionHints, HINT_PROMPT_TOKENS, HINT_WORDS, hintsOf, promptTokens } from './caption-hints';
 
 /*
@@ -86,6 +86,27 @@ describe('the hints for the language the engine is asked for', () => {
         'en',
       ).prompt.split(', ').length,
     ).toBeGreaterThan(30);
+  });
+
+  it('are off for Gujarati until the admin turns them on (a prompt did not help Gujarati on real speech), on for the others', () => {
+    expect(CAPTION_HINTS_ON).toEqual({ gu: false, hi: true, sa: true, en: true });
+    const list: CaptionWord[] = [
+      { language: 'gu', word: GU },
+      { language: 'hi', word: HI },
+    ];
+    let on = { ...CAPTION_HINTS_ON };
+    const hints = createCaptionHints(
+      () => list,
+      () => on,
+    );
+    expect(hints.for('gu')).toEqual({ words: [], prompt: '' });
+    expect(hints.for('hi').prompt).toBe(HI);
+    expect(hints.hinted()).toEqual({ gu: 0, hi: 1, sa: 0, en: 0 });
+    on = { ...on, gu: true, hi: false };
+    expect(hints.for('gu').prompt).toBe(GU);
+    expect(hints.for('hi')).toEqual({ words: [], prompt: '' });
+    // Without a switch given, the defaults.
+    expect(createCaptionHints(() => list).for('gu').prompt).toBe('');
   });
 
   it('are read from the list as it is now, and worked out again only when it changes', () => {
