@@ -847,6 +847,8 @@ export async function editablePdfPage(
       continue;
     const matched = pdfTextSpan(content.items, words, usedTextItems);
     const item = matched?.item;
+    // Every paint owns its occurrence, even when its rotation or clip keeps it as a picture.
+    for (const itemIndex of matched?.indices ?? []) usedTextItems.add(itemIndex);
     let size: number, textWidth: number, x: number, y: number;
     if (item && 'str' in item) {
       const a = matrixOf(base.transform),
@@ -864,7 +866,6 @@ export async function editablePdfPage(
       textWidth = item.width;
       x = tx[4];
       y = tx[5] - size * (content.styles[item.fontName]?.ascent ?? 0.8);
-      for (const itemIndex of matched?.indices ?? []) usedTextItems.add(itemIndex);
     } else {
       if (
         !px ||
