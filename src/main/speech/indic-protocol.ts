@@ -71,9 +71,14 @@ export function parseIndicReply(value: unknown, language: IndicLanguage): IndicR
       return invalid();
     const w = item.w.normalize('NFC');
     bytes += Buffer.byteLength(w);
+    const controls = Array.from(w).some((char) => {
+      const point = char.codePointAt(0) ?? 0;
+      return point < 0x20 || point === 0x7f || point === 0xfffd;
+    });
     if (
       !w ||
-      /\s|[\u0000-\u001f\u007f\ufffd]/u.test(w) ||
+      /\s/u.test(w) ||
+      controls ||
       bytes > 4096 ||
       !Number.isFinite(item.start) ||
       !Number.isFinite(item.end) ||

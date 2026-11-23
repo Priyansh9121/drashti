@@ -32,7 +32,7 @@ describe('the supervised recogniser pipe', () => {
     const pipe = await opening;
     expect(spawn.mock.calls[0]?.[1]).toContain('--pcm-serve');
     expect(spawn.mock.calls[0]?.[1]).toContain('--admit');
-    expect(p.stdin?.read()).toEqual(Buffer.from('GO01'));
+    expect((p.stdin as PassThrough).read() as unknown).toEqual(Buffer.from('GO01'));
     const request = pipe.decode(new Int16Array([1, 2]));
     expect(() => pipe.decode(new Int16Array([3]))).toThrow('busy');
     p.stdout?.emit('data', Buffer.from('{"language":"gu","words":[]}\n'));
