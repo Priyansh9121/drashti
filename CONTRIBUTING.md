@@ -7,9 +7,9 @@ This page is for developers: how to set Drashti up from a fresh clone, run it an
 presenter guides, the Drashti Manual (`docs/manual/`), the API (`docs/api.md`) and the UI's rules
 (`docs/design.md`).
 
-> **TODO (the owner): the licence.** The repository is public to read, but no licence has been chosen yet:
-> `package.json` says `"license": "UNLICENSED"` and there is no `LICENSE` file. The bundled programs and libraries
-> keep their own licences (`LICENSES/`, `third_party/`).
+> **Licence.** The repository is public to read, but Drashti has no open-source licence: `package.json` says
+> `"license": "UNLICENSED"` and there is no `LICENSE` file. Ask the maintainer before working on it. The bundled
+> programs and libraries keep their own licences (`LICENSES/`, `third_party/`).
 
 ## What Drashti is
 
@@ -171,5 +171,5 @@ place. Today there are two ways to work:
    run without it, and a self-test (`DRASHTI_SELFTEST`, README's "Switches") opens at once with its controls locked,
    never asking. The performance check is the exception: it runs only on a computer let in.
 
-> **TODO (the owner): source builds on a developer's computer.** Whether a development-only switch (never honoured by
-> a packaged Drashti) should open a source build without the list, or developers keep asking for access as above.
+> **Opening a source build.** It opens only on a computer the maintainer has let in through the access list, as
+> above: ask the maintainer.

@@ -170,7 +170,7 @@ The links work: the first release was published on 9 Oct 2026 (by hand, from the
 ## Working on Drashti
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for a fresh clone on Mac or Windows, tests, pull requests to `phase1`,
-and the access needed to open a source build. The licence and source-build access choices await the owner.
+and the access needed to open a source build. Ask the maintainer before working on Drashti.
 
 ## Setup
 
