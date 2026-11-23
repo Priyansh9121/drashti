@@ -9,7 +9,12 @@ import {
 import { TranslationHelper } from './translation-helper';
 
 const log = { info: vi.fn(), warn: vi.fn() };
-const model = (id: string, purposes: string[], format = INDICTRANS2_FORMAT, files = INDICTRANS2_FILES) => ({
+const model = (
+  id: string,
+  purposes: string[],
+  format = INDICTRANS2_FORMAT,
+  files: readonly string[] = INDICTRANS2_FILES,
+) => ({
   id,
   purposes,
   format,

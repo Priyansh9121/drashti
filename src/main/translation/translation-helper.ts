@@ -68,7 +68,7 @@ const replySchema = z.union([
 type Reply = z.infer<typeof replySchema>;
 
 const defaultSpawn = (program: string): HelperChild => {
-  const options = { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: false } as const;
+  const options = { stdio: 'pipe', windowsHide: true, shell: false } as const;
   // Keep the model's compute below the show, including while it loads.
   return process.platform === 'darwin'
     ? spawnChild('/usr/sbin/taskpolicy', ['-b', program], options)
