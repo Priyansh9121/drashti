@@ -99,6 +99,25 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
     expect(parseLanguageModelList({ not: 'a list' })).toEqual([]);
   });
 
+  it('knows a Route C model (IndicConformer, ONNX Runtime) by its format; a format no route runs is not known', () => {
+    const conformer = {
+      id: 'placeholder-gu-conformer',
+      language: 'gu',
+      name: 'Placeholder Gujarati (IndicConformer)',
+      bytes: 4_096,
+      sha256: 'e'.repeat(64),
+      licence: 'MIT',
+      fallback: false,
+      format: 'indicconformer-ctc-onnx-v1',
+    };
+    expect(
+      parseLanguageModelList([
+        conformer,
+        { ...conformer, id: 'placeholder-odd', sha256: '9'.repeat(64), format: 'odd' },
+      ]),
+    ).toEqual([{ ...conformer, timestamps: true }]);
+  });
+
   it('knows the tuned Gujarati and Hindi models by their exact size and SHA-256 (cap-route-w), decoded without timestamps, Gujarati without fallback; the list is well made', () => {
     expect(parseLanguageModelList(LANGUAGE_MODELS)).toEqual(LANGUAGE_MODELS);
     expect(LANGUAGE_MODELS.map((m) => [m.id, m.language, m.bytes, m.sha256])).toEqual([

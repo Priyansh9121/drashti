@@ -57,6 +57,19 @@ describe('a language’s own captions model, from the pack only', () => {
     expect(packLanguageModelStore([ENTRY], pack({ sha: 'b'.repeat(64) }).store).check(ENTRY)).toBe('missing');
   });
 
+  it('a known Route C model is here when the pack holds its model.onnx in IndicConformer’s format', () => {
+    const conformer: LanguageModelEntry = {
+      ...ENTRY,
+      id: 'gu-conformer',
+      format: 'indicconformer-ctc-onnx-v1',
+    };
+    expect(packFileFor(pack({ format: 'indicconformer-ctc-onnx-v1' }).store, conformer)).toEqual({
+      modelId: 'pack-gu',
+      path: '/placeholder/pack/gu.bin',
+    });
+    expect(packFileFor(pack().store, conformer)).toBeNull();
+  });
+
   it('checking again asks the pack to check its files (and gives the hold back); a changed pack says so', async () => {
     const p = pack();
     expect(await packLanguageModelStore([ENTRY], p.store).verify(ENTRY)).toBe('ready');

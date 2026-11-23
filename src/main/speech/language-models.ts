@@ -38,6 +38,11 @@ export interface LanguageModelEntry {
   fallback: boolean;
   /** Whether it is decoded with timestamps: false for a model trained without them (the vasista22 tunes). */
   timestamps: boolean;
+  /**
+   * Its format in the model pack, when it is not whisper.cpp's ('whisper-ggml', left out): Route C's IndicConformer
+   * ('indicconformer-ctc-onnx-v1', its SHA-256 the model.onnx file's). Red: not read yet.
+   */
+  format?: string;
 }
 
 /**
