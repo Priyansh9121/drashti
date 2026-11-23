@@ -60,6 +60,11 @@ describe('automatic error reports', () => {
     expect(collected).toBe(0);
     s.configure();
     s.service.enable(true);
+    expect(
+      s.service.captureWith(() => {
+        throw new Error('Placeholder diagnostic read failure');
+      }),
+    ).toBe(false);
     for (let i = 0; i < 10; i++) expect(s.service.captureWith(collect)).toBe(true);
     for (let i = 0; i < 100; i++) expect(s.service.captureWith(collect)).toBe(false);
     expect(collected).toBe(10);
@@ -97,7 +102,7 @@ describe('automatic error reports', () => {
     expect(statSync(file).mtimeMs).toBe(1000);
     s.state.now += 86_400_000;
     expect(s.service.capture(incident())).toBe(true);
-    const saved: { queue: { dropped: number }[] } = JSON.parse(readFileSync(file, 'utf8'));
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as { queue: { dropped: number }[] };
     expect(saved.queue.at(-1)?.dropped).toBe(100);
   });
 

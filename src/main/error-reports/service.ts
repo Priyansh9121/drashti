@@ -56,6 +56,8 @@ export class ErrorReports {
   private stop: AbortController | null = null;
   private revision = 0;
   private healthy = true;
+  private dirtyDrops = false;
+  private disposed = false;
   private readonly file: string;
 
   constructor(private readonly d: ErrorReportsDeps) {
@@ -73,7 +75,7 @@ export class ErrorReports {
 
   status(): { enabled: boolean; configured: boolean; pending: number; healthy: boolean } {
     return {
-      enabled: this.healthy && this.state.enabled,
+      enabled: !this.disposed && this.healthy && this.state.enabled,
       configured: this.state.config !== null,
       pending: this.pending(),
       healthy: this.healthy,
@@ -81,7 +83,7 @@ export class ErrorReports {
   }
 
   configure(input: unknown): boolean {
-    if (!this.d.owner() || !this.healthy) return false;
+    if (this.disposed || !this.d.owner() || !this.healthy) return false;
     const parsed = configSchema.safeParse(input);
     if (!parsed.success) return false;
     this.cancel();
@@ -90,13 +92,19 @@ export class ErrorReports {
   }
 
   enable(on: boolean): boolean {
-    if (!this.d.owner() || !this.healthy || (on && !this.state.config)) return false;
+    if (this.disposed || !this.d.owner() || !this.healthy || (on && !this.state.config)) return false;
     this.cancel();
     return this.save({ ...this.state, enabled: on, queue: on ? this.state.queue : [] });
   }
 
   capture(input: Incident): boolean {
-    if (!this.healthy || !this.state.enabled || !this.state.config || !this.d.letIn()) return false;
+    return this.captureWith(() => input);
+  }
+
+  /** Collect diagnostics only after consent, access and both caps have been checked. */
+  captureWith(make: () => Incident | null): boolean {
+    if (this.disposed || !this.healthy || !this.state.enabled || !this.state.config || !this.d.letIn())
+      return false;
     const now = this.d.now();
     const day = Math.max(this.state.day, Math.floor(now / DAY));
     const next = {
@@ -106,9 +114,18 @@ export class ErrorReports {
       queue: this.liveQueue(now),
     };
     if (next.captured >= ERROR_LIMITS.perDay || next.queue.length >= ERROR_LIMITS.pending) {
-      this.save({ ...next, dropped: Math.min(1_000_000_000, next.dropped + 1) });
+      // Suppressed errors never rewrite the outbox on Main. Coalesce counts until an idle wake/write/close.
+      this.state = { ...next, dropped: Math.min(1_000_000_000, next.dropped + 1) };
+      this.dirtyDrops = true;
       return false;
     }
+    let input: Incident | null;
+    try {
+      input = make();
+    } catch {
+      return false;
+    }
+    if (!input) return false;
     // Explicit projection: raw messages, stacks, names, paths and unknown event strings never enter the outbox.
     const events = input.events.slice(-ERROR_LIMITS.events).flatMap((event) => {
       const parsed = eventSchema.safeParse({ at: event.at, code: event.code, count: event.count });
@@ -157,6 +174,7 @@ export class ErrorReports {
     this.sending = true;
     const revision = this.revision;
     try {
+      if (this.dirtyDrops && !this.save(this.state)) return;
       const queue = this.liveQueue(this.d.now());
       if (queue.length !== this.state.queue.length && !this.save({ ...this.state, queue })) return;
       if (queue.length === 0) return;
@@ -193,6 +211,12 @@ export class ErrorReports {
     }
   }
 
+  dispose(): void {
+    this.cancel();
+    this.disposed = true;
+    if (this.healthy && this.dirtyDrops) this.save(this.state);
+  }
+
   /** Abort before streaming/recording starts or on shutdown. Consent and queued reports stay on disk. */
   cancel(): void {
     this.revision++;
@@ -200,7 +224,12 @@ export class ErrorReports {
   }
   private canSend(): boolean {
     return (
-      this.healthy && this.state.enabled && this.state.config !== null && this.d.letIn() && !this.d.onAir()
+      !this.disposed &&
+      this.healthy &&
+      this.state.enabled &&
+      this.state.config !== null &&
+      this.d.letIn() &&
+      !this.d.onAir()
     );
   }
   private liveQueue(now: number): State['queue'] {
@@ -214,6 +243,7 @@ export class ErrorReports {
       chmodSync(this.file + '.tmp', 0o600);
       renameSync(this.file + '.tmp', this.file);
       this.state = next;
+      this.dirtyDrops = false;
       return true;
     } catch {
       this.healthy = false;

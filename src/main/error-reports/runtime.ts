@@ -2,7 +2,7 @@ import type { ErrorEvent, ErrorIdentity, Incident } from './protocol';
 
 export interface ErrorRuntimeDeps {
   identity(): ErrorIdentity | null;
-  capture(incident: Incident): boolean;
+  capture(make: () => Incident | null): boolean;
   now(): number;
 }
 /** Thin seam for alpha.21 diagnostics: only these typed fields cross into automatic reporting. */
@@ -36,9 +36,11 @@ export class ErrorReportRuntime {
     this.streamProblem = problem;
   }
   private capture(trigger: Incident['trigger'], code: Incident['code']): void {
-    const identity = this.d.identity();
-    if (!identity) return;
-    this.event(code);
-    this.d.capture({ ...identity, trigger, code, events: [...this.events] });
+    this.d.capture(() => {
+      const identity = this.d.identity();
+      if (!identity) return null;
+      this.event(code);
+      return { ...identity, trigger, code, events: [...this.events] };
+    });
   }
 }

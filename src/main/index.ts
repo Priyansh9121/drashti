@@ -3422,8 +3422,8 @@ function start(): void {
   const errorAccessStore = new ErrorReportAccessStore(userDataDir);
   automaticErrorRuntime = new ErrorReportRuntime({
     now: Date.now,
-    capture: (incident) => {
-      const kept = automaticReports.capture(incident);
+    capture: (make) => {
+      const kept = automaticReports.captureWith(make);
       if (kept) void automaticReports.wake();
       return kept;
     },
@@ -3467,7 +3467,7 @@ function start(): void {
   stops.add('automatic reports', () => {
     clearInterval(automaticReportTimer);
     offAutomaticAccess();
-    automaticReports.cancel();
+    automaticReports.dispose();
     automaticErrorRuntime = null;
   });
   if (!startup.cleanQuit) automaticErrorRuntime.crash();

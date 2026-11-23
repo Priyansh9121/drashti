@@ -18,7 +18,9 @@ describe('automatic reporting event adapter', () => {
     const captured: Incident[] = [];
     const runtime = new ErrorReportRuntime({
       identity: () => identity,
-      capture: (incident) => {
+      capture: (make) => {
+        const incident = make();
+        if (!incident) return false;
         captured.push(incident);
         return true;
       },
@@ -47,7 +49,9 @@ describe('automatic reporting event adapter', () => {
     const captured: Incident[] = [];
     const runtime = new ErrorReportRuntime({
       identity: () => identity,
-      capture: (incident) => {
+      capture: (make) => {
+        const incident = make();
+        if (!incident) return false;
         captured.push(incident);
         return true;
       },
@@ -65,7 +69,9 @@ describe('automatic reporting event adapter', () => {
     let present = false;
     const runtime = new ErrorReportRuntime({
       identity: () => (present ? identity : null),
-      capture: (incident) => {
+      capture: (make) => {
+        const incident = make();
+        if (!incident) return false;
         captured.push(incident);
         return true;
       },
