@@ -35,6 +35,8 @@ export function buildIndic({ ort, output, target = `${process.platform}-${proces
       '-lonnxruntime',
       `-Wl,-rpath,${resolve(lib)}`,
       '-Wl,-rpath,@executable_path',
+      // Room for install_name_tool's longer library paths below (CI's Xcode 26 linker leaves too little otherwise).
+      '-Wl,-headerpad_max_install_names',
       '-o',
       binary,
     ];
