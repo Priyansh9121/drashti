@@ -522,7 +522,9 @@ export class CaptionsService {
     } catch (error) {
       this.checking.delete(language);
       const message =
-        error instanceof LanguageModelRefused ? error.message : 'Drashti could not add that model file.';
+        error instanceof LanguageModelRefused
+          ? error.message
+          : 'Drashti could not add that model file: check the file, then add it again.';
       this.notices.set(language, message);
       this.deps.log.warn(`Captions: a model file for ${languageName(language)} was not added.`);
     }

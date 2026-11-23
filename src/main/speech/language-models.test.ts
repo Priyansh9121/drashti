@@ -99,8 +99,85 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
     expect(parseLanguageModelList({ not: 'a list' })).toEqual([]);
   });
 
-  it('lists none of its own until a file is approved: the built-in list is well made', () => {
+  it('knows the tuned Gujarati and Hindi models by their exact size and SHA-256 (cap-route-w), decoded without timestamps, Gujarati without fallback; the list is well made', () => {
     expect(parseLanguageModelList(LANGUAGE_MODELS)).toEqual(LANGUAGE_MODELS);
+    expect(LANGUAGE_MODELS.map((m) => [m.id, m.language, m.bytes, m.sha256])).toEqual([
+      [
+        'gu-small-vasista22-f16',
+        'gu',
+        487_601_967,
+        '4352740b11928eef0743477d0729c3abda01c3f95f2e7802ad771beeeeb45c7a',
+      ],
+      [
+        'gu-small-vasista22-q8_0',
+        'gu',
+        264_464_607,
+        '44927c4860080a0122d6eac5d42a12b3b1e30c56d3bdeddc3850456bc303d215',
+      ],
+      [
+        'gu-small-vasista22-q5_1',
+        'gu',
+        190_085_487,
+        'e756347b8fb573b88a5625ad98dac9075746549fdf407260d321d077a73b094a',
+      ],
+      [
+        'gu-small-vasista22-q5_0',
+        'gu',
+        175_209_663,
+        '608a61708e73fd529025500487f77089909b05ad8966455314c6124cb272ecac',
+      ],
+      [
+        'gu-medium-vasista22-f16',
+        'gu',
+        1_533_763_059,
+        '591ddaff1202b383c53be6aa2b9cc8278a169f17e4f583ac57032a059282671f',
+      ],
+      [
+        'gu-medium-vasista22-q8_0',
+        'gu',
+        823_369_779,
+        'f1468ff2d0f69265feda6db834803919385e3f69885775ffd2aa40644e84157c',
+      ],
+      [
+        'gu-medium-vasista22-q5_0',
+        'gu',
+        539_212_467,
+        '0d539e6d025489e1412453f28852b46d806682b11afcefbee9e5aa1010375f5c',
+      ],
+      [
+        'hi-small-vasista22-f16',
+        'hi',
+        487_601_967,
+        '5d9f25596aad22c9a8a67de67632b5e8f0d1e43b26cdd0f26c1d628d7e953e91',
+      ],
+      [
+        'hi-small-vasista22-q8_0',
+        'hi',
+        264_464_607,
+        '0b2ff62094c004b0b180f47d6cb4aefec12d4d93ad3282058aa022827eb721e5',
+      ],
+      [
+        'hi-small-vasista22-q5_1',
+        'hi',
+        190_085_487,
+        '6813fed7ffa6c3fa14490c1f1788d2d8b6e3b7badf59a2f75fb4c5c21cf00f3f',
+      ],
+      [
+        'hi-small-vasista22-q5_0',
+        'hi',
+        175_209_663,
+        '8d436e4bcceae1e5021df902d7db87c130ee7cf4810dbd6fa8edd8038595f33e',
+      ],
+    ]);
+    expect(LANGUAGE_MODELS.every((m) => !m.timestamps)).toBe(true);
+    expect(LANGUAGE_MODELS.filter((m) => m.fallback).map((m) => m.language)).toEqual([
+      'hi',
+      'hi',
+      'hi',
+      'hi',
+    ]);
+    // Free and open only: the tunes' Apache-2.0 on OpenAI's MIT base.
+    expect(LANGUAGE_MODELS.every((m) => m.licence === 'Apache-2.0 (base model MIT)')).toBe(true);
   });
 
   it('keeps a language model in the data folder, under its id', () => {

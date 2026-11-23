@@ -7,7 +7,8 @@
  *   POST /inference  multipart/form-data: file (a 16 kHz mono 16-bit WAV), language ("auto" or a code),
  *                    temperature, temperature_inc, no_language_probabilities, no_timestamps ("true" for a model
  *                    trained without timestamps, as whisper-server reads it: alpha.22), and prompt (the admin's
- *                    caption words, at most 200 bytes, as whisper's initial prompt: alpha.22); the reply is whisper-server's
+ *                    caption words as whisper's initial prompt, as whisper-server reads it: alpha.22, cap-glossary);
+ *                    the reply is whisper-server's
  *                    verbose_json: language, language_probabilities, segments with their words (tokens).
  * It listens on 127.0.0.1 only, one request at a time, and writes nothing it hears anywhere (no log, no file).
  * Both routes need a private --request-path prefix chosen by Drashti for this process.
@@ -348,6 +349,10 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
   char language[16] = "en", temperature[32] = "0", temperature_inc[32] = "0.2", no_probs[16] = "false";
   char no_times[16] = "false";
   if (field(ps, n, "no_timestamps")) text_of(field(ps, n, "no_timestamps"), no_times, sizeof no_times);
+  /* The caption words' prompt: Drashti caps it by whisper's own prompt length (whisper.cpp keeps at most half its
+     text context); anything longer is cut here, never read past. */
+  char prompt[1024] = "";
+  if (field(ps, n, "prompt")) text_of(field(ps, n, "prompt"), prompt, sizeof prompt);
   if (field(ps, n, "language")) text_of(field(ps, n, "language"), language, sizeof language);
   if (field(ps, n, "temperature")) text_of(field(ps, n, "temperature"), temperature, sizeof temperature);
   if (field(ps, n, "temperature_inc")) text_of(field(ps, n, "temperature_inc"), temperature_inc, sizeof temperature_inc);
@@ -383,6 +388,7 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
     wp.no_timestamps = true;
     wp.token_timestamps = false;
   }
+  if (prompt[0] != 0) wp.initial_prompt = prompt;
   if (whisper_full(ctx, wp, pcm, count) != 0) {
     free(pcm);
     reply(fd, 500, "{\"error\":\"failed to process audio\"}");
