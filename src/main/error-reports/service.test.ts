@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -11,6 +11,9 @@ afterEach(() => {
 const incident = (): Incident => ({
   trigger: 'operator-error',
   code: 'operation-failed',
+  diagnosticsInstallId: '7K3P-Q2XM-4H9A',
+  mode: 'pro',
+  osRelease: '10.0.26100',
   computerId: 'c'.repeat(64),
   accessEntryId: 'a'.repeat(32),
   version: '1.0.0-alpha.22',
@@ -46,35 +49,60 @@ function setup() {
   return { service, deps, configure, sent, state, dir };
 }
 describe('automatic error reports', () => {
+  it('does not rewrite consent or the secret when an empty queue wakes while idle', async () => {
+    const s = setup(); s.configure(); s.service.enable(true);
+    const file = join(s.dir, 'state.json');
+    utimesSync(file, new Date(1000), new Date(1000));
+    await s.service.wake();
+    expect(statSync(file).mtimeMs).toBe(1000);
+    expect(s.sent).toEqual([]);
+  });
+
   it('does not reopen its daily allowance if the clock moves backwards', () => {
-    const s = setup(); s.state.now += 2 * 86_400_000;
-    s.configure(); s.service.enable(true);
+    const s = setup();
+    s.state.now += 2 * 86_400_000;
+    s.configure();
+    s.service.enable(true);
     for (let i = 0; i < 10; i++) expect(s.service.capture(incident())).toBe(true);
     s.state.now -= 86_400_000;
     expect(s.service.capture(incident())).toBe(false);
     expect(new ErrorReports(s.deps).capture(incident())).toBe(false);
   });
   it('fails closed on corrupt state instead of silently restoring consent or resetting limits', async () => {
-    const s = setup(); s.configure(); s.service.enable(true); s.service.capture(incident());
+    const s = setup();
+    s.configure();
+    s.service.enable(true);
+    s.service.capture(incident());
     writeFileSync(join(s.dir, 'state.json'), '{invalid');
     const restarted = new ErrorReports(s.deps);
     expect(restarted.status()).toEqual({ enabled: false, configured: false, pending: 0, healthy: false });
     expect(restarted.enable(true)).toBe(false);
     expect(restarted.capture(incident())).toBe(false);
-    await restarted.wake(); expect(s.sent).toEqual([]);
+    await restarted.wake();
+    expect(s.sent).toEqual([]);
   });
   it('aborts in-flight work on disable and never resurrects its queue after a late receipt', async () => {
-    const s = setup(); s.configure(); s.service.enable(true); s.service.capture(incident());
+    const s = setup();
+    s.configure();
+    s.service.enable(true);
+    s.service.capture(incident());
     let receive: ((received: boolean) => void) | undefined;
     let signal: AbortSignal | undefined;
-    s.deps.send = (_config, _body, stop) => { signal = stop; return new Promise(resolve => { receive = resolve; }); };
+    s.deps.send = (_config, _body, stop) => {
+      signal = stop;
+      return new Promise((resolve) => {
+        receive = resolve;
+      });
+    };
     const sending = s.service.wake();
     expect(signal?.aborted).toBe(false);
     expect(s.service.enable(false)).toBe(true);
     expect(signal?.aborted).toBe(true);
     if (!receive) throw new Error('The send did not begin');
-    receive(true); await sending;
-    expect(s.service.status().enabled).toBe(false); expect(s.service.pending()).toBe(0);
+    receive(true);
+    await sending;
+    expect(s.service.status().enabled).toBe(false);
+    expect(s.service.pending()).toBe(0);
     expect(new ErrorReports(s.deps).pending()).toBe(0);
   });
 
