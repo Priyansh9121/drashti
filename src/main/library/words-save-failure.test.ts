@@ -39,7 +39,7 @@ function setup() {
     changed,
     styleNew,
   });
-  const call = (channel: string, ...args: unknown[]) => handlers.get(channel)?.({} as never, ...args);
+  const call = (channel: string, ...args: unknown[]) => handlers.get(channel)?.({}, ...args);
   return { presentations, id, call, changed, styleNew };
 }
 
@@ -51,7 +51,7 @@ describe('words saved when the drive fills', () => {
     });
     expect(t.call(IPC.library.newFromWords, 'Placeholder new', 'Placeholder words')).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/drive.*full|space/iu),
+      message: expect.stringMatching(/drive.*full|space/iu) as unknown,
     });
     expect(t.changed).not.toHaveBeenCalled();
     expect(t.styleNew).not.toHaveBeenCalled();
@@ -65,9 +65,29 @@ describe('words saved when the drive fills', () => {
     });
     expect(t.call(IPC.library.saveWords, t.id, 'Placeholder replacement')).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/drive.*full|space/iu),
+      message: expect.stringMatching(/drive.*full|space/iu) as unknown,
     });
     expect(t.presentations.content(t.id)).toEqual(before);
+    expect(t.changed).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a new presentation if the drive fills while its look is saved', () => {
+    const t = setup();
+    const count = () => db?.prepare('SELECT count(*) FROM presentations').pluck().get();
+    const before = count();
+    t.styleNew.mockImplementation(() => {
+      throw Object.assign(new Error('database or disk is full'), { code: 'SQLITE_FULL' });
+    });
+    let result: unknown;
+    try {
+      result = t.call(IPC.library.newFromWords, 'Placeholder new', 'Placeholder words');
+    } catch {
+      // The old handler rejects too; the row count independently proves the partial save.
+    }
+    expect(count(), 'an unsuccessful save must not leave a second presentation to duplicate on retry').toBe(
+      before,
+    );
+    expect(result).toMatchObject({ ok: false });
     expect(t.changed).not.toHaveBeenCalled();
   });
 });
