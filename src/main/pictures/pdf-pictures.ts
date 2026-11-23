@@ -97,6 +97,8 @@ interface Drawing {
   /** The document's pages, as a window said. */
   total: number;
   stopped: boolean;
+  /** Book OCR (alpha.21): only the pages asked for; past the document's end, no pages and its total (not a failure). */
+  chosen?: boolean;
   finish(result: PicturesResult): void;
   /** The pages windows left, to be drawn by one window of their own (set as it starts). */
   catchUp?: (pages: number[]) => void;
@@ -173,11 +175,30 @@ export class PdfPictures {
     return run;
   }
 
+  /**
+   * Book OCR (alpha.21): only `pages` (from 0), by one window, each fitted into `size` on white, for reading their
+   * words. Pages past the document's end are not drawn: none at all answers no pages and the document's total.
+   */
+  drawForReading(
+    pdfPath: string,
+    outDir: string,
+    pages: readonly number[],
+    size: { width: number; height: number },
+    signal?: AbortSignal,
+  ): Promise<PicturesResult> {
+    const run = this.turn.then(() =>
+      this.drawNow(pdfPath, outDir, signal, false, { pages: [...pages], size }),
+    );
+    this.turn = run.catch(() => undefined);
+    return run;
+  }
+
   private async drawNow(
     pdfPath: string,
     outDir: string,
     signal?: AbortSignal,
     readPageText?: boolean,
+    reading?: { pages: number[]; size: { width: number; height: number } },
   ): Promise<PicturesResult> {
     if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
     let data: Buffer;
@@ -193,11 +214,12 @@ export class PdfPictures {
           'The PDF is too big to draw (over 500 MB): save it again with smaller pictures, or in parts, and import those.',
       };
     await mkdir(outDir, { recursive: true });
-    const { width, height } = this.deps.size();
+    const { width, height } = reading?.size ?? this.deps.size();
     const started = Date.now();
     // Several at once only while nothing is on the screens or the stream (Session 56), and a document not too big.
+    // A reading's few pages: one window.
     const atOnce =
-      data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
+      !reading && data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
         ? (this.deps.atOnce ?? windowsAtOnce(availableParallelism()))
         : 1;
     return new Promise<PicturesResult>((resolve) => {
@@ -231,11 +253,18 @@ export class PdfPictures {
         maxPages: MAX_PICTURE_PAGES,
         ...(readPageText ? { readPageText } : {}),
         ...(share ? { share } : {}),
+        ...(reading ? { onWhite: true } : {}),
       });
       const drawing: Drawing = {
         windows: opened.map((win, k) => ({
           win,
-          job: jobFor(opened.length > 1 ? { every: opened.length, from: k } : undefined),
+          job: jobFor(
+            reading
+              ? { pages: reading.pages }
+              : opened.length > 1
+                ? { every: opened.length, from: k }
+                : undefined,
+          ),
           done: false,
         })),
         outDir,
@@ -243,6 +272,7 @@ export class PdfPictures {
         failed: new Set(),
         total: 0,
         stopped: false,
+        ...(reading ? { chosen: true } : {}),
         finish: (result) => {
           finish(result);
         },
@@ -387,7 +417,7 @@ export class PdfPictures {
     }
     const pages = [...d.pages.entries()].sort((a, b) => a[0] - b[0]).map(([, p]) => p);
     const failed = [...d.failed].sort((a, b) => a - b);
-    if (pages.length === 0)
+    if (pages.length === 0 && !(d.chosen === true && d.total > 0))
       d.finish({ ok: false, message: d.total === 0 ? 'The PDF has no pages.' : 'No page could be drawn.' });
     else
       d.finish({ ok: true, width: mine.job.width, height: mine.job.height, pages, total: d.total, failed });

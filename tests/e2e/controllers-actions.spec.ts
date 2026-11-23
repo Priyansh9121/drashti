@@ -167,20 +167,53 @@ test('media playback is a separate grant and still runs on Main without sound on
     });
     await importAndGetIds(main.win, [file]);
     const nodeId = await pairNode(main, node);
-    await main.win.evaluate(async (nid) => {
+    const mediaId = await main.win.evaluate(async (nid) => {
       const d = (globalThis as PageGlobals).drashti;
-      const mediaId =
+      const id =
         (await d.library.listMedia()).find((m) => m.name.startsWith('Placeholder controlled clip'))?.id ?? '';
       await d.engine.dispatch({
         type: 'setBackground',
-        background: { kind: 'media', mediaId, media: 'video', fit: 'fit', loop: true },
+        background: { kind: 'media', mediaId: id, media: 'video', fit: 'fit', loop: true },
       });
       await d.nodes.setController(nid, true);
       await d.nodes.setControllerAreas(nid, ['media']);
+      return id;
     }, nodeId);
     const view = node.page.getByTestId('controller-view');
     await expect(view.getByTestId('controller-status')).toHaveText('Connected to Main');
     await expect(view.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+    // A press carries the revision its controller saw, and Main refuses one the show has moved past ("The show
+    // already moved"). Main's revision also moves by itself while a new video settles: its loudness measured after
+    // the import and its length learned as the audio player plays it (bookkeeping, no press). On CI's Mac one of
+    // them came between the controller seeing the pause and its Play, so Play was refused (a21-full2, run
+    // 45097059190). Each press waits until both are done and the controller shows Main's revision.
+    await expect
+      .poll(() =>
+        main.win.evaluate(
+          async (id) => (await (globalThis as PageGlobals).drashti.sound.file(id))?.measured,
+          mediaId,
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        main.win.evaluate(async () => {
+          const bg = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background;
+          return bg?.kind === 'media' && bg.durationMs !== undefined;
+        }),
+      )
+      .toBe(true);
+    const caughtUp = async (): Promise<void> => {
+      await expect
+        .poll(async () => {
+          const rev = await main.win.evaluate(
+            async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,
+          );
+          return (await view.getAttribute('data-rev')) === String(rev);
+        })
+        .toBe(true);
+    };
+    await caughtUp();
     await view.getByTestId('controller-pause-background').click();
     await expect
       .poll(() =>
@@ -190,6 +223,7 @@ test('media playback is a separate grant and still runs on Main without sound on
         }),
       )
       .toBe(true);
+    await caughtUp();
     await view.getByTestId('controller-resume-background').click();
     await expect
       .poll(() =>
