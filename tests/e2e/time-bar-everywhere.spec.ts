@@ -269,7 +269,7 @@ test('after a crash, a background the bar paused comes back held where it waited
     () => slideTiming(win2, slideId, true),
     'played on from its move after the restart',
   );
-  await expect(row(win2, 'background').getByTestId('time-bar-paused')).toBeVisible();
+  await expect(row(win2, 'background')).toHaveAttribute('data-paused', 'true');
   await second.app.close();
 });
 
@@ -347,7 +347,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   // whole seconds, as a countdown is: paused within its first second, -2:00:00).
   await row(win, 'background').getByRole('button', { name: 'Pause' }).click();
   const bg = row(win, 'background');
-  await expect(bg.getByTestId('time-bar-paused')).toBeVisible();
+  await expect(bg).toHaveAttribute('data-paused', 'true');
   await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-[12]:\d\d:\d\d$/);
 
   // Pro Mode: Next and Back where they were, in view; every row whole in the live column (scrolled to).
@@ -443,7 +443,7 @@ test('in Simple Mode a phone pauses, moves and plays a sound from a playlist; Me
     // Pause, while it plays, Simple Mode's own since Session 56); the phone's Play plays it on.
     await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
-    await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
+    await expect(row(win, 'audio')).toHaveAttribute('data-paused', 'true');
     await expect(win.getByTestId('time-bar-play')).toHaveCount(1);
     await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
     await phoneRow.getByRole('button', { name: 'Play' }).click();

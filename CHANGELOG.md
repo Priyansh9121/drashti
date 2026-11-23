@@ -2,14 +2,21 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.20 (20 Nov 2026)
+## 1.0.0-alpha.20.1 (22 Nov 2026)
+
+An update to alpha.20, best made after a sabha, on Main and its nodes together.
+
+- Importing a picture or a video is quick again: alpha.20 could make each import wait up to 15 s for this computer's answer about HEVC video.
+
+## 1.0.0-alpha.20 (22 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
 
 - Smoother: without a graphics chip a deck’s own Wipe sweeps in and its moves drop far fewer frames while streaming; with one, going live, recording or opening the stream no longer holds up the hall; on a Mac a 16:9 deck’s first Cover no longer stutters.
 - Playback: right-click a video or sound for Media information… and Sound and picture… (Pro Mode: its own bass, treble, voice boost, sound and caption delays and shape); videos above 4K or interlaced are converted by themselves; Resume at where a long file or an audio playlist stopped; when each file last played; the time bar’s ⋯ (Pro Mode): A-B repeat, frame steps, Snapshot; playlists: Shuffle, Repeat all, total and end time, Find, M3U.
-- A video never leaves the hall black: one that can’t show or fails comes off with its sound and a notice naming it and the screen (converted later when it can’t show); the Wallpaper or a cover stays until its first frame and comes back with no black frame; a file still copying into a folder waits until whole; LIVE stays lit while a slow video starts. A screen, LIVE or the sound that keeps failing on a video takes it off (on a slide, its slide) and is back at once, with a notice; with nothing to blame it says Stopped and tries again.
-- Edit Video… (Pro Mode, a video’s right-click menu): trim and jump by the file’s own time, choose its library picture, and keep the edits for its next showing; the file itself and a showing already up are never changed.
+- A video never leaves the hall black: one that can’t show or fails comes off with its sound and a notice naming it and the screen (converted later when it can’t show); the Wallpaper or a cover stays until its first frame and comes back with no black frame; a file still copying into a folder waits until whole; LIVE stays lit while a slow video starts, and one still loading gets 30 s before it is said not to have started in time. A screen, LIVE or the sound that keeps failing on a video takes it off (on a slide, its slide) and is back at once, with a notice; with nothing to blame it says Stopped and tries again.
+- Show a Stream Link… (Tools, More tools; Pro Mode): a live stream (HLS or YouTube live) on the hall’s screens with its sound; if it drops, its last picture stays while it reconnects, the Wallpaper after 20 s.
+- Edit Video… (Pro Mode, a video’s right-click menu): trim, framing (crop, zoom, turn, flip), colour, fades, speed, its sound track and talk noise reduction, made ready while idle for its next showing; its library picture; a waveform, scene markers, a lighter copy on a slow computer and short clips (vertical too); hover-scrubbing in Media; the file and a showing already up never change.
 - Appearances: easier on the eyes (Black as it was), 38 new ones in families, 28 that move gently (Moving: On / Off), search and favourites.
 - Audio and Video volume and mute switches under the live picture; Drashti always starts with the sound on.
 - A video’s captions (SRT, WebVTT) on the screens and the stream: CC by the time bar.

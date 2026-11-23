@@ -38,6 +38,8 @@ export interface RecoveryNotice {
   window?: string | null;
   /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
   pipWindow?: string | null;
+  /** A stream link that was the background (alpha.20, slice 8), by its name: never put back, only said. */
+  link?: string | null;
   /** The video input that was the background (Session 50), by name: put back (or, after a stop too long ago, said). */
   input?: string | null;
   /** A video input that was the background and was not there after the restart (Session 50), by name: only said. */
@@ -87,8 +89,10 @@ export function recoveryText(notice: RecoveryNotice): string {
   const window = notice.window ?? null;
   const boxWindow = notice.pipWindow ?? null;
   const gone = notice.slideGone ? ' The slide that was live is no longer in the library.' : '';
+  const link = notice.link ?? null;
   if (notice.putBack === false) {
     if (window !== null) parts.push(`the window “${window}”`);
+    if (link !== null) parts.push(`the stream link from “${link}”`);
     if (boxWindow !== null) parts.push(`the window “${boxWindow}” in the picture-in-picture box`);
     const when = stoppedWhen(notice.savedAt);
     const hours = String(RECOVERY_MAX_AGE_MS / 3_600_000);
@@ -106,6 +110,10 @@ export function recoveryText(notice: RecoveryNotice): string {
     window === null
       ? ''
       : ` The window “${window}” was on the screens and was not put back, as it may be gone: Show a Window… shows it again.`;
+  const linkNotBack =
+    link === null
+      ? ''
+      : ` The stream link from “${link}” was on the screens and was not put back: Show a Stream Link… shows it again.`;
   const boxNotBack =
     boxWindow === null
       ? ''
@@ -120,5 +128,5 @@ export function recoveryText(notice: RecoveryNotice): string {
     boxInputGone === null
       ? ''
       : ` The video input “${boxInputGone}” in the picture-in-picture box was not there after the restart, so the box was not put back.`;
-  return `${put}${gone}${notBack}${boxNotBack}${notThere}${boxNotThere}`;
+  return `${put}${gone}${notBack}${linkNotBack}${boxNotBack}${notThere}${boxNotThere}`;
 }

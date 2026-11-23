@@ -91,10 +91,14 @@ extraResources:
       - screenshots/manual-adjust-picture.png
       - screenshots/manual-captions.png
       - screenshots/manual-drop-folder.png
+      - screenshots/manual-edit-video-export.png
+      - screenshots/manual-edit-video-picture.png
+      - screenshots/manual-edit-video.png
       - screenshots/manual-events-out.png
       - screenshots/manual-guides.png
       - screenshots/manual-kirtan-bundle.png
       - screenshots/manual-levels.png
+      - screenshots/manual-media-information.png
       - screenshots/manual-messages.png
       - screenshots/manual-more-tools.png
       - screenshots/manual-opening.png
@@ -102,6 +106,8 @@ extraResources:
       - screenshots/manual-pip.png
       - screenshots/manual-qr.png
       - screenshots/manual-report-problem.png
+      - screenshots/manual-sound-picture.png
+      - screenshots/manual-stream-link.png
       - screenshots/manual-timers.png
       - screenshots/manual-video-out.png
       - screenshots/manual-window.png

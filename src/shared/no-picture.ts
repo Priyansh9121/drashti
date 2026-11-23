@@ -51,6 +51,87 @@ export const FIRST_FRAME_MS = 10_000;
 /** The code a page sends for a video with no first frame within FIRST_FRAME_MS (MediaError's own codes are 1 to 4). */
 export const NO_FIRST_FRAME = -1;
 
+/*
+ * Slow is not "cannot play" (Q60-51, the owner's "Yes, A" of 20 Nov 2026, from x52's A11: under a heavy load a file that
+ * plays fine was taken off at 10 s as "damaged"). FIRST_FRAME_MS is now how long a video may make NO progress at all
+ * (nothing more loaded, no frame decoded, no step in its readiness) before it is said to be unplayable; one that still
+ * loads or decodes gets up to SLOW_START_MS from going up, and is then said not to have started in time (NO_START_IN_TIME:
+ * the operator is told so, never "damaged"). The Wallpaper or cover stays meanwhile, never black (render/Scene.tsx).
+ */
+
+/** Still loading or decoding, with no first frame this long after it went up: it could not start in time. */
+export const SLOW_START_MS = 30_000;
+
+/** The code a page sends for a video still loading with no first frame within SLOW_START_MS. */
+export const NO_START_IN_TIME = -3;
+
+/** What a page sees of a video's start at a moment: how much it has loaded and decoded, and how ready it is. */
+export interface StartSample {
+  at: number;
+  /** The end of what it has buffered (ms into the file). */
+  loadedMs: number;
+  readyState: number;
+  /** Frames decoded so far (0 where the page cannot tell). */
+  decoded: number;
+  /** Times the element said it loaded more ('progress'). */
+  progressEvents: number;
+  /** Bytes of the file Main has sent the page so far (0 where the page cannot ask). */
+  served: number;
+}
+
+/** A video's start as watched: from when it waits, when it last moved on, and its last look. */
+export interface StartWatch {
+  since: number;
+  lastProgress: number;
+  last: StartSample | null;
+}
+
+export const startWatch = (since: number): StartWatch => ({ since, lastProgress: since, last: null });
+
+/** The watch after one more look: any more loaded, decoded or readier than before is progress. */
+export function startWatched(watch: StartWatch, sample: StartSample): StartWatch {
+  const was = watch.last;
+  const moved =
+    was !== null &&
+    (sample.loadedMs > was.loadedMs ||
+      sample.readyState > was.readyState ||
+      sample.decoded > was.decoded ||
+      sample.progressEvents > was.progressEvents ||
+      sample.served > was.served);
+  return { since: watch.since, lastProgress: moved ? sample.at : watch.lastProgress, last: sample };
+}
+
+/**
+ * At `now`, for a video whose first frame has not come: wait on; 'stalled' (no progress for FIRST_FRAME_MS: it cannot
+ * play, as before); or 'slow' (it still loads or decodes, but SLOW_START_MS has gone by since it went up).
+ */
+export function startVerdict(watch: StartWatch, now: number): 'wait' | 'stalled' | 'slow' {
+  if (now - watch.lastProgress >= FIRST_FRAME_MS) return 'stalled';
+  if (now - watch.since >= SLOW_START_MS) return 'slow';
+  return 'wait';
+}
+
+/**
+ * What the operator window says when a video on this computer's screens did not start in time (Q60-51): slow here, not
+ * damaged. `where` and `took` as for cannotPlayNotice.
+ */
+export function cannotStartInTimeNotice(
+  name: string,
+  where: string,
+  took: { background: boolean; slide: boolean; box: boolean } = {
+    background: true,
+    slide: false,
+    box: false,
+  },
+): string {
+  const what = took.background
+    ? 'so it came off the screens with its sound'
+    : took.slide
+      ? 'so it stopped where it was on the slide, with its sound'
+      : 'so the picture-in-picture box came off';
+  return `“${name}” could not start in time on ${where}, ${what}: this computer was too busy to start it in ${String(SLOW_START_MS / 1000)} seconds. Put it up again when less is playing.`;
+}
+
 /**
  * The code a node sends Main for a video whose picture it cannot draw (x36's sound only, as on Main; ledger G-A14): on a
  * node it keeps what it showed, and Main is told, as for any other showing a node's screen could not play.

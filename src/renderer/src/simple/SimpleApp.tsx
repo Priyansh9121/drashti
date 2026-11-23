@@ -31,6 +31,7 @@ import { EngineUnread } from '../operator/EngineUnread';
 import { JumpBox } from '../operator/JumpBox';
 import { LayerBar } from '../operator/LayerBar';
 import { Columns, LeftColumn } from '../operator/Layout';
+import { LiveColumn } from '../operator/LiveColumn';
 import { LivePreview } from '../operator/LivePreview';
 import { leaveSimpleMode } from '../operator/mode-store';
 import { useDoubleClickSwitch } from '../operator/mode-switch';
@@ -364,30 +365,42 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </main>
         }
         right={
-          // Positioned (Session 56), so what is placed in it out of the flow (Audio's lists' screen-reader status
-          // lines, select-many.tsx) is held and scrolled by the column, never runs past the window and scrolls the page.
-          <aside className="relative flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
-            <LivePreview />
-            {/* Oops's key (F9) still acts here; its button is Pro Mode's. */}
-            {/* What Next puts up, in words under them (Session 54: a file it misses named before it goes up). */}
-            <NextBack platform={platform} run={run} oops={false} canStart={items.some(playable)} caption />
-            {/* The time bar for what plays (Session 54), under Next and Back: Play while paused (question 14). */}
-            <PlayingBars className="px-3 pt-2" />
-            {/* Resume where it stopped (alpha.20; the owner's "Yes, all A" to Q60-39: Simple Mode has it too). */}
-            <ResumeOffers />
-            {/* Record (Session 56, the owner's item 19): sound or video, on air or off, under the time bar and above
+          // Pro Mode's live column (alpha.21): the LIVE block stands still, Audio scrolls under it (LiveColumn, which
+          // holds what is placed out of the flow in it: Session 56).
+          <LiveColumn
+            still={
+              <>
+                <LivePreview />
+                {/* Oops's key (F9) still acts here; its button is Pro Mode's. */}
+                {/* What Next puts up, in words under them (Session 54: a file it misses named before it goes up). */}
+                <NextBack
+                  platform={platform}
+                  run={run}
+                  oops={false}
+                  canStart={items.some(playable)}
+                  caption
+                />
+                {/* The time bar for what plays (Session 54), under Next and Back: Play while paused (question 14). */}
+                <PlayingBars className="px-3 pt-2" />
+                {/* Resume where it stopped (alpha.20; the owner's "Yes, all A" to Q60-39: Simple Mode has it too). */}
+                <ResumeOffers />
+                {/* Record (Session 56, the owner's item 19): sound or video, on air or off, under the time bar and above
                 Audio; its folder is chosen in Pro Mode. */}
-            <div className="px-3 pt-2">
-              <RecordButton />
-            </div>
-            {/* Audio (Session 56, the owner: "The Audio panel on the right, under LIVE and above Black-out, in the empty
-                space there"): Pro Mode's own, as under its LIVE; the column scrolls when the window is short. */}
-            <div className="mt-3 divide-y divide-line border-t border-line">
-              {/* The sound's Audio and Video levels and mutes (X33), as in Pro Mode: just above Audio. */}
-              <SoundLevels />
+                <div className="px-3 pt-2">
+                  <RecordButton />
+                </div>
+                {/* The sound's Audio and Video levels and mutes (X33), as in Pro Mode: the block's last. */}
+                <div className="mt-3 border-t border-line">
+                  <SoundLevels />
+                </div>
+              </>
+            }
+            rest={
+              // Audio (Session 56, the owner: "The Audio panel on the right, under LIVE and above Black-out, in the
+              // empty space there"): Pro Mode's own, as under its LIVE.
               <AudioGroup platform={platform} />
-            </div>
-          </aside>
+            }
+          />
         }
       />
       <NoticeArea />

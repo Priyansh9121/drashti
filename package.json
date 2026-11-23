@@ -1,7 +1,7 @@
 {
   "name": "drashti",
   "productName": "Drashti",
-  "version": "1.0.0-alpha.20",
+  "version": "1.0.0-alpha.20.1",
   "description": "Presentation software for BAPS mandirs",
   "private": true,
   "license": "UNLICENSED",
@@ -69,6 +69,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
+    "tesseract.js": "7.0.0",
+    "tesseract.js-core": "7.0.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.70.1",
     "uqr": "0.1.3",

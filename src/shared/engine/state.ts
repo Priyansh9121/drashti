@@ -76,7 +76,9 @@ import type { ShapeOverride } from '../video-shape';
 // needs no new number: a screen or node plays its `clip` and `loop` as ever; only Main reads the kept `ab`.)
 // 30 (alpha.20, x55, slice 6b): a video's own shape on the screens (`videoShapes`); an older page or node would draw it as
 // its file says, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
-export const ENGINE_STATE_VERSION = 30;
+// 31 (alpha.20, the playback set's slice 8): a stream link as the background (`kind: 'link'`), which an older node or
+// page does not know, so it says 'incompatible'. A state 30 or 29 saved is read whole (31 only adds to them).
+export const ENGINE_STATE_VERSION = 31;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -88,6 +90,7 @@ export const ENGINE_STATE_VERSION = 30;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 30 ||
     version === 29 ||
     version === 28 ||
     version === 27 ||
@@ -406,14 +409,34 @@ export interface InputBackground {
 }
 
 /**
+ * A stream link, live (alpha.20, the playback set's slice 8; the owner's Q60-39 P3 A): an HLS or YouTube live link the
+ * operator typed in Show a Stream Link…, received by the main process's own FFmpeg into a short local stream
+ * (src/main/live-link/), which each of this computer's audience screens, LIVE and Screens' cards play as a video, its
+ * sound in the hall at the Video level. Only the main process puts one up, once its local stream has begun: never a
+ * command from a window, a phone or the API. Drashti's own stream never carries it (the stream shows the Wallpaper
+ * meanwhile, with none of its sound), nor does a key and fill pair; output nodes show nothing of it and phones its name;
+ * and restart recovery never puts it back. A cover going on takes it off, as it takes a video off (one-at-a-time.ts).
+ */
+export interface LinkBackground {
+  kind: 'link';
+  /** Its local stream's id (its folder, and the drashti-media://live/<id>/ address): a new one each time one goes up. */
+  linkId: string;
+  /** Where it comes from, for the operator, a stage screen and a phone: "YouTube live", or the link's host. */
+  name: string;
+  /** When it went up (ms since the epoch, main-process clock): each screen plays it from then. */
+  startedAt: number;
+}
+
+/**
  * What the background layer shows: a colour, an image or video from the
- * media library, another app's window (Session 48) or a video input (Session 50). A slide's background cue sets
- * it (PLAN.md 4.3); it stays up on later slides until something replaces or clears it.
+ * media library, another app's window (Session 48), a video input (Session 50) or a stream link (alpha.20). A slide's
+ * background cue sets it (PLAN.md 4.3); it stays up on later slides until something replaces or clears it.
  */
 export type BackgroundLayer =
   | { kind: 'color'; color: string }
   | WindowBackground
   | InputBackground
+  | LinkBackground
   | (MediaBackground & {
       /**
        * When playback started (ms since the epoch, main-process clock). The

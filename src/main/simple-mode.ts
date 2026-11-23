@@ -176,6 +176,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // aside, Even loudness and Trim black and silence are bounded since Session 56, below.)
   IPC.media.saveTrim,
   IPC.media.stopSave,
+  // Edit Video: exports and manual preparation controls are Pro Mode’s. Status stays readable.
+  IPC.media.clipExport,
+  IPC.media.stopClipExport,
+  IPC.media.stopProxy,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
   IPC.media.savePicture,
@@ -258,6 +262,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.liveWindow.list,
   IPC.liveWindow.show,
   IPC.liveWindow.access,
+  // Show a Stream Link… (alpha.20, slice 8) is Pro Mode's; clearing a link (Clear background, Clear all) is not locked.
+  IPC.liveLink.show,
+  IPC.liveLink.stop,
+  IPC.liveLink.last,
   IPC.zoom.open,
   // The Access List's edits (Session 54, E4): Pro Mode's, as every change; reading it and saving its CSV are not.
   ...ACCESS_LIST_EDITS,
@@ -543,12 +551,16 @@ export function simpleModeRefusals(
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   // Nothing copied (alpha.20: the new secret's Copy, whose window Simple Mode never opens).
   answers.set(IPC.events.copySecret, () => false);
+  answers.set(IPC.media.stopClipExport, () => false);
+  answers.set(IPC.media.stopProxy, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).
   for (const c of ACCESS_LIST_EDITS) answers.set(c, () => ({ ...refused(), view: NO_VIEW }));
   answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: words() }));
   answers.set(IPC.liveWindow.access, () => null);
+  answers.set(IPC.liveLink.stop, () => null);
+  answers.set(IPC.liveLink.last, () => null);
   answers.set(IPC.zoom.open, () => null);
   return answers;
 }

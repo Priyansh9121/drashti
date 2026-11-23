@@ -37,9 +37,14 @@ Audio’s **+ › Import** accepts an M3U file as well as sounds. An M3U makes a
 1. Right-click the video or sound (in **Media**, a playlist or **Audio**), then choose **Sound and picture…**.
 2. Move **Bass** or **Treble**, or tick **Voice boost**; it is heard at once, in the hall and on the stream.
 3. Move **Sound delay** or **Caption delay** until they match the picture; **Reset** puts everything back.
-4. For a video drawn the wrong shape, choose its **Shape**: **16:9**, **4:3**, **1:1** or **21:9**; every screen and the stream show it at once.
+4. For a video drawn the wrong shape, choose its **Shape**: **16:9 (wide)**, **4:3**, **1:1 (square)** or **21:9 (cinema)**. **As the file says** restores its original shape.
+5. Changes are kept at once. Press **Done** when finished.
 
-![The Audio panel: its audio playlists, and Music steps aside for a video](../screenshots/music-panel.png)
+The whole picture is stretched to the chosen shape, then fitted to or filling its place as before. A video stretched to its place keeps that place's shape. The choice follows the file on every screen, node, **LIVE**, the picture-in-picture box and the stream, without starting it again.
+
+This does not crop a new copy. For framing and blurred fill saved for the next showing, see **Library › Edit Video**.
+
+![Sound and picture: a video's Shape below its tone and delay controls](../screenshots/manual-sound-picture.png)
 
 ## How loud: Audio and Video
 

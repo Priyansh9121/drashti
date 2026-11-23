@@ -279,8 +279,9 @@ function LivePicture({ state }: { state: EngineState | null }) {
           </span>
         </div>
       )}
-      {/* Another app's window (Session 48) or a video input (Session 50) as the background: named, and cleared
-          like any background; a phone can never choose one, nor draw it (it is on Main's computer). */}
+      {/* Another app's window (Session 48), a video input (Session 50) or a stream link (alpha.20) as the background:
+          named, and cleared like any background; a phone can never choose one, nor draw it (it is on Main's
+          computer). */}
       {named && (
         <div
           role="status"
@@ -1047,7 +1048,6 @@ function Music() {
             [
               ['back', 'Back 15 s'],
               ['forward', 'Forward 15 s'],
-              ['last', 'Last 10 s'],
             ] as const
           ).map(([jump, label]) => (
             <Button

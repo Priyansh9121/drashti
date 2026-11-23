@@ -426,6 +426,14 @@ const bridge: DrashtiBridge = {
     startCountdown: (time) => invoke(IPC.timers.startCountdown, time),
   },
   media: {
+    proxyStatus: (id, retry = false) => invoke(IPC.media.proxyStatus, id, retry),
+    stopProxy: (id) => invoke(IPC.media.stopProxy, id),
+    clipExport: (request) => invoke(IPC.media.clipExport, request),
+    clipExports: () => invoke(IPC.media.clipExports),
+    stopClipExport: (id) => invoke(IPC.media.stopClipExport, id),
+    showClipExport: (id) => invoke(IPC.media.showClipExport, id),
+    videoAnalysis: (mediaId, audioStream = 0, retry = false) =>
+      invoke(IPC.media.videoAnalysis, mediaId, audioStream, retry),
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
     convert: (mediaIds) => invoke(IPC.media.convert, mediaIds),
     retryConversion: (jobId) => invoke(IPC.media.retryConversion, jobId),
@@ -464,6 +472,7 @@ const bridge: DrashtiBridge = {
     noPicture: (mediaId, startedAt) => invoke(IPC.media.noPicture, mediaId, startedAt),
     cannotPlay: (mediaId, startedAt, code, words) =>
       invoke(IPC.media.cannotPlay, mediaId, startedAt, code, words),
+    served: (mediaId) => invoke(IPC.media.served, mediaId),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     details: (mediaId) => invoke(IPC.media.details, mediaId),
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
@@ -591,6 +600,14 @@ const bridge: DrashtiBridge = {
     schedule: (input) => invoke(IPC.youtube.schedule, input),
     useBroadcast: (profileId, broadcastId) => invoke(IPC.youtube.useBroadcast, profileId, broadcastId),
     endBroadcast: (profileId) => invoke(IPC.youtube.endBroadcast, profileId),
+  },
+  liveLink: {
+    show: (link) => invoke(IPC.liveLink.show, link),
+    stop: () => invoke(IPC.liveLink.stop),
+    status: () => invoke(IPC.liveLink.status),
+    last: () => invoke(IPC.liveLink.last),
+    join: (linkId) => invoke(IPC.liveLink.join, linkId),
+    onChanged: (listener) => on(IPC.liveLink.changed, listener),
   },
   liveWindow: {
     list: () => invoke(IPC.liveWindow.list),

@@ -7,7 +7,8 @@ import { kindLevel, musicAside, soundGain, StepAside } from '../../../shared/sou
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow } from '../render/clock';
 import { startPlayback } from '../render/playback';
-import { type Sound, soundMoved, soundsOf } from './sounds';
+import { startLinkSound } from './link-sound';
+import { hallSoundsOf, type Sound, soundMoved } from './sounds';
 
 /*
  * The audio player: the one place Drashti makes sound. A hidden window of
@@ -195,7 +196,8 @@ let sinkId = '';
 let chosen: AudioDevice | null = null;
 
 function play(state: EngineState | null): void {
-  const wanted = new Map((state ? soundsOf(state) : []).map((s) => [s.key, s]));
+  // The hall's sounds: a stream link's too (alpha.20), which the stream never mixes.
+  const wanted = new Map((state ? hallSoundsOf(state) : []).map((s) => [s.key, s]));
   for (const [key, player] of players) {
     if (wanted.has(key)) continue;
     players.delete(key);
@@ -215,8 +217,11 @@ function play(state: EngineState | null): void {
   for (const sound of wanted.values()) {
     const current = players.get(sound.key);
     if (current) {
-      // A jump, or new start or end points: it lands there at once, with its picture (Session 52).
-      const moved = soundMoved(current.sound, sound);
+      // A jump, or new start or end points: it lands there at once, with its picture (Session 52). A stream link's
+      // (alpha.20) joins again as its pictures do, all starting again together.
+      const moved =
+        soundMoved(current.sound, sound) ||
+        (sound.link !== undefined && sound.startedAt !== current.sound.startedAt);
       current.sound = sound;
       if (moved) current.resync();
       // Its tone (alpha.20), eased there while it plays.
@@ -275,6 +280,14 @@ function play(state: EngineState | null): void {
     // Its level before it makes a sound: the music already aside under a video playing, a file at its even loudness.
     const now = engineNow();
     setLevel(player, aside.levelAt(musicAside(useEngine.getState().state, now), now));
+    // A stream link's sound (alpha.20): its player joined with its pictures, on the engine's time as they are.
+    if (sound.link !== undefined) {
+      const linked = startLinkSound(el, sound.link);
+      player.stop = linked.stop;
+      player.resync = linked.resync;
+      players.set(sound.key, player);
+      continue;
+    }
     const playback = startPlayback(el, {
       mediaId: sound.mediaId,
       startedAt: sound.startedAt,

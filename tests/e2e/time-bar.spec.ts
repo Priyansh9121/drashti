@@ -165,7 +165,7 @@ test('the background video: a click on its bar moves it in step on two screens a
   await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
   const paused = (await backgroundTiming(win)).seek?.toMs ?? 0;
   await heldAt(copies, paused / 1000, 'paused');
-  await expect(bg.getByTestId('time-bar-paused')).toBeVisible();
+  await expect(bg).toHaveAttribute('data-paused', 'true');
   await letTimePass(win, 1500, 'paused, it waits');
   await heldAt(copies, paused / 1000, 'still paused');
   // Moved while paused: it waits at its new point.
@@ -179,7 +179,7 @@ test('the background video: a click on its bar moves it in step on two screens a
   await bg.getByRole('button', { name: 'Play' }).click();
   await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
   await inStep(copies, () => backgroundTiming(win), 'played on');
-  await expect(bg.getByTestId('time-bar-paused')).toHaveCount(0);
+  await expect(bg).not.toHaveAttribute('data-paused', 'true');
   await app.close();
 });
 
@@ -421,13 +421,13 @@ test('Simple Mode’s bar moves, pauses and plays what plays as Pro Mode’s (no
   });
   await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
   expect(Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - 1000)).toBeLessThan(500);
-  await expect(bg.getByTestId('time-bar-paused')).toBeVisible();
+  await expect(bg).toHaveAttribute('data-paused', 'true');
   await bg.getByTestId('time-bar-play').click();
   await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
-  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
+  await expect(row(win, 'audio')).toHaveAttribute('data-paused', 'true');
   await row(win, 'audio').getByTestId('time-bar-play').click();
   await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
-  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toHaveCount(0);
+  await expect(row(win, 'audio')).not.toHaveAttribute('data-paused', 'true');
   // Both playing: Pause on each row, no Play.
   await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
   await expect(win.getByTestId('time-bar-pause')).toHaveCount(2);

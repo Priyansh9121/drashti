@@ -236,7 +236,9 @@ function Row({ row, pro, repeating }: { row: PlayingRow; pro: boolean; repeating
     <div
       role="group"
       aria-label={ending ? `${row.name}, ending` : row.name}
-      className="flex min-w-0 items-center gap-1.5"
+      // Its time bar keeps room for its times: in a narrow column it goes to a line of its own (alpha.21, the owner's
+      // "look how cramped up the whole place is").
+      className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1"
       data-testid="time-bar-row"
       data-playing={row.which}
       data-paused={paused ? 'true' : undefined}
@@ -266,11 +268,12 @@ function Row({ row, pro, repeating }: { row: PlayingRow; pro: boolean; repeating
       <span className="w-[4.5rem] shrink-0 truncate text-xs text-muted" title={row.short}>
         {row.short}
       </span>
-      {paused && <Badge data-testid="time-bar-paused">Paused</Badge>}
+      {/* Paused: its Play button says so, with no word of its own (alpha.21, the owner's "remove where its written
+          paused, it takes up much space"); the row's data-paused says it to the tests. */}
       {repeating && <Badge data-testid="time-bar-ab">A-B</Badge>}
       {playing.ref.layer !== 'audio' && !playing.sound && <VideoCaptionButton mediaId={playing.mediaId} />}
       <TimeBar
-        className="min-w-0 flex-1"
+        className="min-w-40 flex-1"
         label={row.name}
         atMs={bar.atMs}
         durationMs={bar.durationMs}

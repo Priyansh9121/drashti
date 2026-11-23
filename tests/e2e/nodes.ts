@@ -77,7 +77,13 @@ export async function nodeCode(win: Page): Promise<string> {
     if (!r.ok || !r.status.pairing) throw new Error(r.ok ? 'no code' : r.message);
     return r.status.pairing.code;
   });
-  await expect.poll(async () => (await nodesStatus(win)).state).toBe('listening');
+  // A link that does not listen says why (alpha.20.1's full rerun, CI's Windows: "failed" for 20 s, its reason unseen).
+  await expect
+    .poll(async () => {
+      const s = await nodesStatus(win);
+      return s.state === 'failed' ? `failed: ${s.message ?? '(no message)'}` : s.state;
+    })
+    .toBe('listening');
   return code;
 }
 
@@ -91,7 +97,15 @@ export async function typePairing(page: Page, port: number, code: string): Promi
 
 /** Pair the node with Main and wait until it is online on both sides. Returns the node's id on Main. */
 export async function pairNode(main: MainRun, node: NodeRun): Promise<string> {
-  await typePairing(node.page, main.port, await nodeCode(main.win));
+  let code: string;
+  try {
+    code = await nodeCode(main.win);
+  } catch (error) {
+    // With Main's own lines about its link (its warnings and the worker's own output), then the same failure.
+    console.log(`Main's node link, from its log:\n${linkTrouble(main.userData).join('\n') || '(none)'}`);
+    throw error;
+  }
+  await typePairing(node.page, main.port, code);
   await expect(node.page.getByTestId('node-link-state')).toHaveText('Online', { timeout: 20_000 });
   await expect
     .poll(async () => (await nodesStatus(main.win)).nodes.find((n) => n.online)?.id ?? '')
@@ -101,6 +115,17 @@ export async function pairNode(main: MainRun, node: NodeRun): Promise<string> {
 
 export function nodesStatus(win: Page) {
   return win.evaluate(() => (globalThis as PageGlobals).drashti.nodes.status());
+}
+
+/** Main's log lines about its node link not listening or stopping (none carries a code or a token), oldest first. */
+function linkTrouble(userData: string): string[] {
+  const dir = join(userData, 'logs');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
+    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
+    .filter((l) => /Nodes:|node link/u.test(l))
+    .sort();
 }
 
 /**

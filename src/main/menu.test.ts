@@ -367,7 +367,7 @@ describe('Books (alpha.15): no menu says Shastra', () => {
 
 describe('Tools (Session 60, x36: the owner’s "A, More tools + menu")', () => {
   it.each(PLATFORMS)(
-    'is Pro Mode’s, between View and Window: the four setup tools, a line, then Lower Thirds, MIDI and OSC, each opening its window; Simple Mode has none (%s)',
+    'is Pro Mode’s, between View and Window: the setup tools (Show a Stream Link… after Show a Window…, alpha.20), a line, then Lower Thirds, MIDI and OSC, each opening its window; Simple Mode has none (%s)',
     (platform) => {
       const opened: string[] = [];
       on(platform, () => {
@@ -381,6 +381,7 @@ describe('Tools (Session 60, x36: the owner’s "A, More tools + menu")', () => 
       const list = Array.isArray(tools?.submenu) ? tools.submenu : [];
       expect(list.map((i) => (i.type === 'separator' ? '—' : `${i.id ?? ''} ${i.label ?? ''}`))).toEqual([
         'tools-show-a-window Show a Window…',
+        'tools-show-a-stream-link Show a Stream Link…',
         'tools-add-video-input Add a Video Input…',
         'tools-picture-in-picture Picture in Picture…',
         'tools-qr-code QR code…',
@@ -392,6 +393,7 @@ describe('Tools (Session 60, x36: the owner’s "A, More tools + menu")', () => 
       for (const entry of list) (entry.click as (() => void) | undefined)?.();
       expect(opened).toEqual([
         'show-a-window',
+        'show-a-stream-link',
         'add-video-input',
         'picture-in-picture',
         'qr-code',

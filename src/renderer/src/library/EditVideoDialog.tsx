@@ -1,3 +1,9 @@
+import { ClipExportPanel } from '../video-analysis/ClipExportPanel';
+import { ProxyInfo } from '../video-analysis/ProxyInfo';
+import type { MediaMarkers } from '../../../shared/markers';
+import { useAnalysis } from '../video-analysis/use-analysis';
+import { Waveform } from '../video-analysis/Waveform';
+import { SceneSuggestions } from '../video-analysis/SceneSuggestions';
 import { useEffect, useRef, useState } from 'react';
 import { mediaUrl, STILL_WIDTH } from '../../../shared/media';
 import type { SoundTrack } from '../../../shared/media-details';
@@ -83,7 +89,7 @@ async function thumbnail(video: HTMLVideoElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-const sections = ['Trim', 'Picture', 'Sound', 'Playback'] as const;
+const sections = ['Trim', 'Picture', 'Sound', 'Playback', 'Preparation and export'] as const;
 type Section = (typeof sections)[number];
 
 function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string }) {
@@ -99,7 +105,43 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
   const [jpeg, setJpeg] = useState<Uint8Array | undefined>();
   const [tracks, setTracks] = useState<SoundTrack[]>([]);
   const video = useRef<HTMLVideoElement>(null);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(kept.recipe) || jpeg !== undefined;
+  const [sceneBase, setSceneBase] = useState<MediaMarkers | null>(null);
+  const [sceneDraft, setSceneDraft] = useState<MediaMarkers | null>(null);
+  const analysisReading = useAnalysis(initial.mediaId, draft.audioTrack ?? 0);
+  const analysis = analysisReading.result?.ok ? analysisReading.result.analysis : null;
+  const sceneTimes =
+    sceneDraft?.markers
+      .filter((marker) => !sceneBase?.markers.some((saved) => saved.atMs === marker.atMs))
+      .map((marker) => marker.atMs) ?? [];
+  const dirty =
+    JSON.stringify(draft) !== JSON.stringify(kept.recipe) || jpeg !== undefined || sceneTimes.length > 0;
+  useEffect(() => {
+    let active = true;
+    void window.drashti.media.markers(initial.mediaId).then(
+      (points) => {
+        if (active) {
+          setSceneBase(points);
+          setSceneDraft(points);
+        }
+      },
+      () => {
+        if (active)
+          setProblem('The saved markers could not be read. Open this editor again before keeping scenes.');
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [initial.mediaId]);
+  const prepared = useRef<HTMLVideoElement>(null);
+  const [savedPreview, setSavedPreview] = useState(false);
+  const canPreviewSaved =
+    kept.state === 'ready' && kept.readyMediaId !== null && kept.readyMediaId !== initial.mediaId;
+  const showSaved = savedPreview && canPreviewSaved;
+  useEffect(() => {
+    const player = showSaved ? prepared.current : video.current;
+    return () => player?.pause();
+  }, [showSaved]);
   useEffect(
     () =>
       window.drashti.media.onVideoEdit((next) => {
@@ -121,6 +163,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
   }, [initial.mediaId]);
   const close = () => {
     video.current?.pause();
+    prepared.current?.pause();
     closeEditVideo();
   };
   const requestClose = () => {
@@ -162,6 +205,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
         revision: kept.revision,
         recipe: checked.data,
         ...(jpeg ? { thumbnailJpeg: jpeg } : {}),
+        ...(sceneTimes.length ? { sceneMarkers: sceneTimes } : {}),
       });
       if (!result.ok) {
         setProblem(result.message);
@@ -170,6 +214,12 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
       setKept(result.edit);
       setDraft(structuredClone(result.edit.recipe));
       setJpeg(undefined);
+      if (sceneDraft) setSceneBase(sceneDraft);
+      const points = await window.drashti.media.markers(initial.mediaId).catch(() => null);
+      if (points) {
+        setSceneBase(points);
+        setSceneDraft(points);
+      }
       refreshStill(result.edit.mediaId);
       return true;
     } catch {
@@ -242,6 +292,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
               onClick={() => {
                 setDraft(structuredClone(PLAIN_VIDEO_EDIT));
                 setJpeg(undefined);
+                setSceneDraft(sceneBase);
                 setProblem(null);
               }}
             >
@@ -285,92 +336,154 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
             </p>
           )}
           <div className="mx-auto w-full max-w-xl overflow-hidden rounded-md bg-black">
-            <video
-              ref={video}
-              data-testid="edit-video-preview"
-              aria-label="Private source preview"
-              crossOrigin="anonymous"
-              muted
-              playsInline
-              preload="auto"
-              src={mediaUrl(initial.mediaId)}
-              className="h-44 w-full object-contain"
-              onLoadedMetadata={(e) => {
-                const player = e.currentTarget;
-                if (Number.isFinite(player.duration)) setDuration(Math.round(player.duration * 1000));
-                player.currentTime = (initial.recipe.trim.startMs ?? 0) / 1000;
-              }}
-              onTimeUpdate={(e) => setPosition(Math.round(e.currentTarget.currentTime * 1000))}
-              onError={() =>
-                setProblem(
-                  'The source preview could not play. Check Media information, then try opening the video again.',
-                )
-              }
-            />
-          </div>
-          <p className="text-xs text-muted">
-            Private source preview · sound off · {videoEditTime(position)}
-            {duration === null ? '' : ` / ${videoEditTime(duration)}`}
-          </p>
-          <fieldset disabled={saving} className="space-y-3">
-            <div className="flex flex-wrap items-end gap-2">
-              <Field label="Go to time" hint="m:ss.mmm or h:mm:ss.mmm">
-                <TextInput
-                  value={jump}
-                  onChange={(e) => setJump(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    e.preventDefault();
-                    const ms = parseVideoEditTime(jump);
-                    if (ms === null || (duration !== null && ms > duration))
-                      setProblem('Type a time inside the video, such as 1:23.500.');
-                    else {
-                      setProblem(null);
-                      seek(ms);
-                    }
-                  }}
-                />
-              </Field>
-              <Button
-                onClick={() => {
-                  const ms = parseVideoEditTime(jump);
-                  if (ms === null || (duration !== null && ms > duration))
-                    setProblem('Type a time inside the video, such as 1:23.500.');
-                  else {
-                    setProblem(null);
-                    seek(ms);
-                  }
+            {showSaved ? (
+              <video
+                ref={prepared}
+                data-testid="edit-video-prepared-preview"
+                aria-label="Private saved edit preview"
+                controls
+                muted
+                playsInline
+                preload="auto"
+                src={mediaUrl(kept.readyMediaId ?? initial.mediaId)}
+                onError={() =>
+                  setProblem('The saved preview could not play. Press Prepare again to rebuild it.')
+                }
+                className="h-44 w-full object-contain"
+              />
+            ) : (
+              <video
+                ref={video}
+                data-testid="edit-video-preview"
+                aria-label="Private source preview"
+                crossOrigin="anonymous"
+                muted
+                playsInline
+                preload="auto"
+                src={mediaUrl(initial.mediaId)}
+                className="h-44 w-full object-contain"
+                onLoadedMetadata={(e) => {
+                  const player = e.currentTarget;
+                  if (Number.isFinite(player.duration)) setDuration(Math.round(player.duration * 1000));
+                  player.currentTime = (kept.recipe.trim.startMs ?? 0) / 1000;
                 }}
-              >
-                Jump
+                onTimeUpdate={(e) => setPosition(Math.round(e.currentTarget.currentTime * 1000))}
+                onError={() =>
+                  setProblem(
+                    'The source preview could not play. Check Media information, then try opening the video again.',
+                  )
+                }
+              />
+            )}
+          </div>
+          {canPreviewSaved && (
+            <div className="flex gap-2" role="group" aria-label="Private preview file">
+              <Button aria-pressed={!showSaved} onClick={() => setSavedPreview(false)}>
+                Source preview
+              </Button>
+              <Button aria-pressed={showSaved} onClick={() => setSavedPreview(true)}>
+                Preview saved edits
               </Button>
               <Button
+                disabled={saving || dirty}
                 onClick={() => {
-                  const player = video.current;
-                  if (player) {
-                    if (player.paused)
-                      void player
-                        .play()
-                        .catch(() => setProblem('The preview could not start. Try opening the video again.'));
-                    else player.pause();
-                  }
+                  setSavedPreview(false);
+                  void save();
                 }}
               >
-                Play / pause preview
+                Prepare again
               </Button>
             </div>
-            <Field label="Trim timeline">
-              <Slider
-                min={0}
-                max={duration ?? 1}
-                step={1}
-                value={Math.min(position, duration ?? 1)}
-                disabled={duration === null}
-                className="w-full"
-                format={videoEditTime}
-                onChange={(e) => seek(Number(e.currentTarget.value))}
-              />
-            </Field>
+          )}
+          <p className="text-xs text-muted">
+            {showSaved ? (
+              'Preview of the last saved edits. Save draft changes to prepare another preview.'
+            ) : (
+              <>
+                Private source preview · sound off · {videoEditTime(position)}
+                {duration === null ? '' : ` / ${videoEditTime(duration)}`}
+              </>
+            )}
+          </p>
+          <fieldset disabled={saving} className="space-y-3">
+            {!showSaved && (
+              <>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label="Go to time" hint="m:ss.mmm or h:mm:ss.mmm">
+                    <TextInput
+                      value={jump}
+                      onChange={(e) => setJump(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        const ms = parseVideoEditTime(jump);
+                        if (ms === null || (duration !== null && ms > duration))
+                          setProblem('Type a time inside the video, such as 1:23.500.');
+                        else {
+                          setProblem(null);
+                          seek(ms);
+                        }
+                      }}
+                    />
+                  </Field>
+                  <Button
+                    onClick={() => {
+                      const ms = parseVideoEditTime(jump);
+                      if (ms === null || (duration !== null && ms > duration))
+                        setProblem('Type a time inside the video, such as 1:23.500.');
+                      else {
+                        setProblem(null);
+                        seek(ms);
+                      }
+                    }}
+                  >
+                    Jump
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const player = video.current;
+                      if (player) {
+                        if (player.paused)
+                          void player
+                            .play()
+                            .catch(() =>
+                              setProblem('The preview could not start. Try opening the video again.'),
+                            );
+                        else player.pause();
+                      }
+                    }}
+                  >
+                    Play / pause preview
+                  </Button>
+                </div>
+                <Waveform
+                  analysis={analysis}
+                  startMs={draft.trim.startMs ?? 0}
+                  endMs={draft.trim.endMs ?? duration ?? analysis?.durationMs ?? 0}
+                  playheadMs={position}
+                />
+                {analysisReading.result && !analysisReading.result.ok && (
+                  <p role="alert" className="text-xs text-danger-fg">
+                    {analysisReading.result.message}
+                  </p>
+                )}
+                {(analysis?.state === 'failed' || (analysisReading.result && !analysisReading.result.ok)) && (
+                  <Button onClick={analysisReading.retry}>Retry analysis</Button>
+                )}
+                <Field label="Trim timeline">
+                  <Slider
+                    min={0}
+                    max={duration ?? 1}
+                    step={1}
+                    value={Math.min(position, duration ?? 1)}
+                    disabled={duration === null}
+                    className="w-full"
+                    format={videoEditTime}
+                    onChange={(e) => seek(Number(e.currentTarget.value))}
+                  />
+                </Field>
+              </>
+            )}
             <div className="flex flex-wrap gap-2" role="group" aria-label="Video edit sections">
               {sections.map((s) => (
                 <Button key={s} aria-pressed={section === s} onClick={() => setSection(s)}>
@@ -403,7 +516,27 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                   <p className="text-xs text-muted">
                     These times are in the source video. Existing playlist row trims stay with their row.
                   </p>
+                  {sceneDraft && (
+                    <SceneSuggestions
+                      key={kept.revision}
+                      analysis={analysis}
+                      points={sceneDraft}
+                      onChange={setSceneDraft}
+                    />
+                  )}
+                  {sceneTimes.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-muted">
+                      <p role="status">
+                        {sceneTimes.length} scene marker{sceneTimes.length === 1 ? '' : 's'} will be added on
+                        Save.
+                      </p>
+                      <Button size="sm" onClick={() => setSceneDraft(sceneBase)}>
+                        Clear kept scenes
+                      </Button>
+                    </div>
+                  )}
                   <Button
+                    disabled={showSaved}
                     onClick={() => {
                       void chooseThumb();
                     }}
@@ -592,6 +725,25 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                       ),
                     )}
                   </div>
+                </>
+              )}
+              {section === 'Preparation and export' && (
+                <>
+                  {kept.state === 'ready' && kept.readyMediaId ? (
+                    <ProxyInfo mediaId={kept.readyMediaId} />
+                  ) : (
+                    <p className="text-xs text-muted">
+                      Wait for the saved edits to be ready before checking their lighter playing copy.
+                    </p>
+                  )}
+                  <ClipExportPanel
+                    mediaId={initial.mediaId}
+                    startMs={draft.trim.startMs ?? 0}
+                    endMs={draft.trim.endMs ?? duration}
+                    revision={kept.revision}
+                    dirty={dirty}
+                    ready={kept.state === 'ready'}
+                  />
                 </>
               )}
             </section>

@@ -26,6 +26,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 const TOOLS: readonly { testId: string; name: string; dialog: string }[] = [
   { testId: 'show-a-window', name: 'Show a Window…', dialog: 'window-picker' },
+  { testId: 'show-a-stream-link', name: 'Show a Stream Link…', dialog: 'stream-link-dialog' },
   { testId: 'add-video-input', name: 'Add a Video Input…', dialog: 'video-input-dialog' },
   { testId: 'pip-open', name: 'Picture in Picture…', dialog: 'pip-dialog' },
   { testId: 'qr-code-open', name: 'QR code…', dialog: 'qr-dialog' },
@@ -111,7 +112,8 @@ test('the setup tools in More tools and a Tools menu: Show a Window…, Add a Vi
   for (const tool of TOOLS) await expect(win.getByTestId(tool.testId)).toHaveCount(0);
   await closeLibrary(win);
 
-  // More tools: the four under Lower Thirds and the MIDI controller, each with its line, each opening its window.
+  // More tools: the setup tools (Show a Stream Link… since alpha.20) under Lower Thirds and the MIDI controller, each with
+  // its line, each opening its window.
   await openMoreTools(win);
   const more = win.getByTestId('more-tools');
   const setup = more.getByTestId('setup-tools');
@@ -136,13 +138,14 @@ test('the setup tools in More tools and a Tools menu: Show a Window…, Add a Vi
   }
   await expectNoSeriousA11yIssues(win, 'More tools with the setup tools', '[data-testid="more-tools"]');
 
-  // The Tools menu, after View and before Window (Mac and Windows): the four, then Lower Thirds, MIDI and OSC.
+  // The Tools menu, after View and before Window (Mac and Windows): the setup tools, then Lower Thirds, MIDI and OSC.
   const { bar, tools } = await menus(app);
   expect(bar.indexOf('Tools'), 'a Tools menu').toBeGreaterThan(-1);
   expect(bar.indexOf('Tools')).toBe(bar.indexOf('View') + 1);
   expect(bar.indexOf('Window')).toBe(bar.indexOf('Tools') + 1);
   expect(tools).toEqual([
     'tools-show-a-window: Show a Window…',
+    'tools-show-a-stream-link: Show a Stream Link…',
     'tools-add-video-input: Add a Video Input…',
     'tools-picture-in-picture: Picture in Picture…',
     'tools-qr-code: QR code…',
@@ -152,6 +155,7 @@ test('the setup tools in More tools and a Tools menu: Show a Window…, Add a Vi
   ]);
   for (const [item, dialog] of [
     ['tools-show-a-window', 'window-picker'],
+    ['tools-show-a-stream-link', 'stream-link-dialog'],
     ['tools-add-video-input', 'video-input-dialog'],
     ['tools-picture-in-picture', 'pip-dialog'],
     ['tools-qr-code', 'qr-dialog'],

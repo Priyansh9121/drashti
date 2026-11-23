@@ -6,7 +6,8 @@ import { powershellEnv, powershellPath, runPowerShell } from './powershell';
 
 /*
  * Programs Drashti starts that can outlive it (Session 31, ROB-3): a conversion's FFmpeg, yt-dlp (with the
- * Deno and FFmpeg it starts), and a PowerPoint or Keynote Drashti itself started to save a deck as PDF.
+ * Deno and FFmpeg it starts), a PowerPoint or Keynote Drashti itself started to save a deck as PDF, and a stream
+ * link's FFmpeg (alpha.20, slice 8), which would receive the stream for nobody.
  * When Drashti quits they are stopped; when it is stopped dead (a crash, a power cut, a forced quit) they
  * carry on alone, an FFmpeg converting for nobody, a hidden PowerPoint holding a file.
  *
@@ -19,7 +20,7 @@ import { powershellEnv, powershellPath, runPowerShell } from './powershell';
  * it is (Session 54, C review).
  */
 
-export type ChildKind = 'conversion' | 'yt-dlp' | 'PowerPoint' | 'Keynote';
+export type ChildKind = 'conversion' | 'yt-dlp' | 'PowerPoint' | 'Keynote' | 'stream-link';
 
 export interface ChildEntry {
   pid: number;
@@ -44,7 +45,7 @@ const entrySchema = z.object({
   pid: z.number().int().positive(),
   startedAt: z.number(),
   path: z.string().min(1).max(4096),
-  what: z.enum(['conversion', 'yt-dlp', 'PowerPoint', 'Keynote']),
+  what: z.enum(['conversion', 'yt-dlp', 'PowerPoint', 'Keynote', 'stream-link']),
   group: z.boolean(),
   partFile: z.string().max(4096).optional(),
 });

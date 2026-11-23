@@ -164,6 +164,7 @@ export const saveVideoEditSchema: z.ZodType<SaveVideoEdit> = z
     mediaId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u),
     revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     recipe: videoEditRecipeSchema,
+    sceneMarkers: z.array(z.number().int().min(0).max(86_400_000)).max(50).optional(),
     thumbnailJpeg: z
       .instanceof(Uint8Array)
       .refine(

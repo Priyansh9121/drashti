@@ -84,7 +84,9 @@ it('puts an automatic conversion back in the queue if a show starts as its encod
     const [first] = children;
     if (!first) throw new Error('The encoder did not start.');
     busy = 'Waits while the show is on, then carries on by itself.';
+    // As a real child: its exit, then 'close' once its output has ended (the conversion reads its words then: a21).
     first.child.emit('exit', 0);
+    first.child.emit('close', 0);
 
     await vi.waitFor(() => expect(service.list()[0]?.state).not.toBe('converting'));
     expect(service.list()[0]).toMatchObject({ state: 'waiting', note: busy, convertedId: null });
@@ -136,7 +138,7 @@ it('lets a saved copy opt into the show gate while legacy saves still run', asyn
     expect(waiting).toHaveBeenCalledWith('Waits while the show is on, then carries on by itself.');
 
     const legacy = service.saveCopy(source, legacyPath, info, copy);
-    (await current(1)).child.emit('exit', 0);
+    (await current(1)).child.emit('close', 0);
     await expect(legacy.done).resolves.toEqual({ ok: true, copy: legacyPath });
 
     showBusy = false;
@@ -144,19 +146,19 @@ it('lets a saved copy opt into the show gate while legacy saves still run', asyn
     showBusy = true;
     service.activityChanged();
     expect(interrupted.kill).toHaveBeenCalledOnce();
-    interrupted.child.emit('exit', 0);
+    interrupted.child.emit('close', 0);
     await vi.waitFor(() => expect(existsSync(interrupted.part)).toBe(false));
     expect(existsSync(gatedPath)).toBe(false);
 
     showBusy = false;
     const finishing = await current(3);
     showBusy = true;
-    finishing.child.emit('exit', 0);
+    finishing.child.emit('close', 0);
     await vi.waitFor(() => expect(existsSync(finishing.part)).toBe(false));
     expect(existsSync(gatedPath)).toBe(false);
 
     showBusy = false;
-    (await current(4)).child.emit('exit', 0);
+    (await current(4)).child.emit('close', 0);
     await expect(trim.done).resolves.toEqual({ ok: true, copy: gatedPath });
   } finally {
     service.close();

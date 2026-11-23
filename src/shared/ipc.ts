@@ -1,4 +1,7 @@
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+
+import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
 import type { M3uResult } from './m3u';
@@ -158,6 +161,7 @@ import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { StreamLinkJoin, StreamLinkResult, StreamLinkStatus } from './live-link';
 import type { VideoOutResult, VideoOutSettings, VideoOutStatus } from './video-out';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
@@ -599,6 +603,11 @@ export const IPC = {
      * off with its sound, says so by its name and where, and logs the error's kind (unless a GPU process stopped then).
      */
     cannotPlay: 'media:cannot-play',
+    /**
+     * How many bytes of a library file Main has sent the pages so far (Q60-51): a video still coming in is loading, even
+     * where its page can tell nothing else.
+     */
+    served: 'media:served',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -606,6 +615,13 @@ export const IPC = {
      * at low priority, with the library's notes on it (the operator window's, Simple Mode's too; it changes nothing).
      */
     details: 'media:details',
+    videoAnalysis: 'media:video-analysis',
+    proxyStatus: 'media:proxy-status',
+    stopProxy: 'media:stop-proxy',
+    clipExport: 'media:clip-export',
+    clipExports: 'media:clip-clips',
+    stopClipExport: 'media:stop-clip-export',
+    showClipExport: 'media:show-clip-export',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
@@ -1041,6 +1057,21 @@ export const IPC = {
     endBroadcast: 'youtube:end-broadcast',
     /** main -> operator: YouTube's state here changed. */
     changed: 'youtube:changed',
+  },
+  /** Show a Stream Link… (alpha.20, the playback set's slice 8): an HLS or YouTube live link on the hall's screens. */
+  liveLink: {
+    /** Show a link the operator typed: up once its pictures come, or why not (operator window only; Pro Mode). */
+    show: 'livelink:show',
+    /** Stop the link connecting, or take the one up off (operator window only). */
+    stop: 'livelink:stop',
+    /** How the stream link stands (operator window). */
+    status: 'livelink:status',
+    /** The last link shown, for the window to offer again (operator window only; Pro Mode). */
+    last: 'livelink:last',
+    /** A screen's page or the audio player joins the link up: where its player starts, and when (any of Drashti's pages). */
+    join: 'livelink:join',
+    /** main -> operator: it changed (connecting, playing, reconnecting, the Wallpaper, ended, off). */
+    changed: 'livelink:changed',
   },
   /** Show a Window… (Session 48): another app's window as the hall's background. */
   liveWindow: {
@@ -1673,7 +1704,18 @@ export interface InvokeContract {
     args: [mediaId: string, startedAt: number, code: number, words: string];
     result: null;
   };
+  [IPC.media.served]: { args: [mediaId: string]; result: number };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
+  [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
+  [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };
+  [IPC.media.clipExport]: { args: [request: ClipExportRequest]; result: ClipExportResult };
+  [IPC.media.clipExports]: { args: []; result: ClipExportJob[] };
+  [IPC.media.stopClipExport]: { args: [jobId: string]; result: boolean };
+  [IPC.media.showClipExport]: { args: [jobId: string]; result: null };
+  [IPC.media.videoAnalysis]: {
+    args: [mediaId: string, audioStream: number | null, retry: boolean];
+    result: VideoAnalysisResult;
+  };
   [IPC.media.details]: { args: [mediaId: string]; result: MediaDetailsResult };
   [IPC.media.copyDetails]: { args: [text: string]; result: boolean };
   [IPC.media.resumePoint]: { args: [mediaId: string]; result: ResumePoint | null };
@@ -1888,6 +1930,11 @@ export interface InvokeContract {
   [IPC.youtube.schedule]: { args: [input: YouTubeScheduleInput]; result: YouTubeResult };
   [IPC.youtube.useBroadcast]: { args: [profileId: string, broadcastId: string]; result: YouTubeResult };
   [IPC.youtube.endBroadcast]: { args: [profileId: string]; result: YouTubeResult };
+  [IPC.liveLink.show]: { args: [link: string]; result: StreamLinkResult };
+  [IPC.liveLink.stop]: { args: []; result: null };
+  [IPC.liveLink.status]: { args: []; result: StreamLinkStatus };
+  [IPC.liveLink.last]: { args: []; result: string | null };
+  [IPC.liveLink.join]: { args: [linkId: string]; result: StreamLinkJoin | null };
   [IPC.liveWindow.list]: { args: []; result: WindowList };
   [IPC.liveWindow.show]: { args: [id: string]; result: LiveWindowResult };
   [IPC.liveWindow.access]: { args: []; result: null };
@@ -2058,6 +2105,7 @@ export interface EventContract {
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;
+  [IPC.liveLink.changed]: StreamLinkStatus;
   [IPC.liveWindow.changed]: LiveWindowStatus;
   [IPC.videoInputs.changed]: VideoInputsView;
   [IPC.videoInputs.statusChanged]: VideoInputStatus;
