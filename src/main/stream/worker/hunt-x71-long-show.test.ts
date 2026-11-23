@@ -31,29 +31,29 @@ describe('H6 long show timeline', () => {
       );
       reader.push(Buffer.concat([header, bytes]));
       const ticks = clusters[0]?.timestamp;
-      return ticks === undefined ? -1 : (ticks * reader.timestampScaleNs) / 1e6;
+      return ticks === undefined ? -1 : ticks * reader.timestampScaleNs;
     };
     const splitter = new MkvSplitter(
       () => undefined,
       (cluster) => {
-        // MkvWriter uses 10-microsecond ticks; timestamps become milliseconds only with the header scale.
-        const milliseconds = (cluster.timestamp * splitter.timestampScaleNs) / 1e6;
-        expect(milliseconds).toBeGreaterThan(previous);
-        previous = milliseconds;
-        last = milliseconds;
+        // Keep integer nanoseconds for exact differences; convert to milliseconds only for the end checks.
+        const nanoseconds = cluster.timestamp * splitter.timestampScaleNs;
+        expect(nanoseconds).toBeGreaterThan(previous);
+        previous = nanoseconds;
+        last = nanoseconds;
         count++;
         const out = consumerTake(recording, cluster, header);
         if (!out) throw new Error('The recording lost a cluster');
         given++;
         headers += out.filter((b) => b.equals(header)).length;
-        if (milliseconds >= 2 * 60 * 60 * 1000) {
-          if (joinedAt < 0) joinedAt = milliseconds;
+        if (nanoseconds >= 2 * 60 * 60 * 1e9) {
+          if (joinedAt < 0) joinedAt = nanoseconds;
           const late = consumerTake(lateListener, cluster, header);
           if (!late) throw new Error('The late listener lost a cluster');
           const time = readTime(late[late.length - 1] ?? Buffer.alloc(0));
           if (lateFirst < 0) lateFirst = time;
           lateLast = time;
-          expect(time).toBe(milliseconds - joinedAt);
+          expect(time).toBe(nanoseconds - joinedAt);
         }
       },
     );
@@ -82,13 +82,13 @@ describe('H6 long show timeline', () => {
     }
     flush();
     console.log(
-      `HUNT-x71 long-show frames=${String(end + 1)} clusters=${String(count)} lastMs=${String(last)} lateJoinMs=${String(joinedAt)} lateLastMs=${String(lateLast)}`,
+      `HUNT-x71 long-show frames=${String(end + 1)} clusters=${String(count)} lastMs=${String(last / 1e6)} lateJoinMs=${String(joinedAt / 1e6)} lateLastMs=${String(lateLast / 1e6)}`,
     );
-    expect(last).toBe(3 * 60 * 60 * 1000);
+    expect(last / 1e6).toBe(3 * 60 * 60 * 1000);
     expect(given).toBe(count);
     expect(headers).toBe(1);
     expect(lateFirst).toBe(0);
     expect(lateLast).toBe(last - joinedAt);
-    expect(lateLast).toBeGreaterThanOrEqual(60 * 60 * 1000 - 250);
+    expect(lateLast / 1e6).toBeGreaterThanOrEqual(60 * 60 * 1000 - 250);
   });
 });
