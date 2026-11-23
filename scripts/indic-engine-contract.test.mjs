@@ -198,3 +198,14 @@ test('revoking the background lease terminates compute and discards the pending 
   assert.equal(heard, 0);
   stop();
 });
+
+test('an unavailable background subscription fails closed without throwing into the show', () => {
+  let acquired = false;
+  const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => { throw new Error('unavailable'); } },
+    program: () => '/native', acquire: () => { acquired = true; return null; },
+    sound: { open: () => null }, log: { info() {}, warn() {} },
+  });
+  assert.doesNotThrow(() => engine.start('gu', { heard() {}, state() {} })());
+  assert.equal(acquired, false);
+});
