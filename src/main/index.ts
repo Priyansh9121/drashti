@@ -1443,6 +1443,7 @@ async function startMain(selfTest: boolean): Promise<void> {
     lock = await prepareTheLock({
       version: appVersion(),
       selfTest,
+      ...(testComputerName === undefined ? {} : { computerName: testComputerName }),
       background: () => appearance.background(),
       fromOperator,
       operatorWindow: () => operatorWindow,

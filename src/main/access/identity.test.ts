@@ -133,4 +133,10 @@ describe('the computer’s name', () => {
       platform: 'win32',
     });
   });
+  it('is the name a test gives instead (its placeholder), cleaned the same way', () => {
+    // The Manual's Report a Problem picture named this Mac (alpha.21's picture run, the OCR read-back).
+    expect(
+      accessComputer('a'.repeat(64), '1.0.0-alpha.21', 'darwin', 'Placeholder Mandir Mac.local').name,
+    ).toBe('Placeholder Mandir Mac');
+  });
 });
