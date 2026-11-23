@@ -377,6 +377,8 @@ function buildWindows({ ct2, spm }, work) {
     build,
     '-A',
     'x64',
+    // CMake 4 (CI's runner since 2026) refuses projects asking for less than 3.5: cpu_features asks 3.0, clog 3.1.
+    '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
     `-DCT2_SOURCE=${ct2}`,
     `-DSPM_SOURCE=${spm}`,
     `-DHELPER_SOURCE=${helperSource}`,
