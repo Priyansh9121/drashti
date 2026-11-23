@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CropRect } from './picture-look';
+import type { EditDoc } from './slide-edit';
 import { MIN_CROP } from './picture-look';
 import { cutText } from './text';
 
@@ -72,4 +73,32 @@ const NAME_MAX = 200;
 export function madeSlideName(presentation: string, pageNumber: number, whole: boolean): string {
   const end = `, page ${String(pageNumber)}${whole ? '' : ' (part)'}`;
   return `${cutText(presentation.trim(), NAME_MAX - end.length, '…')}${end}`;
+}
+
+/** The editor's Make the slide: its document as it is now (unsaved changes too), the page, the part and the place. */
+export interface MakeSlideRequest {
+  presentationId: string;
+  doc: EditDoc;
+  stamp: string;
+  slideId: string;
+  part: PagePart;
+  place: MadeSlidePlace;
+}
+
+/** The slide made (its presentation's name, and the playlist it went into, or null for the library only), or why not. */
+export type MakeSlideResult =
+  | { ok: true; presentationId: string; name: string; playlist: string | null }
+  | { ok: false; message: string };
+
+/** Where Make a slide… can put the slide now: the operator window's open playlist (Pro Mode), or none. */
+export interface SlidePlace {
+  playlist: { id: string; name: string } | null;
+}
+
+/** main -> the operator window: a slide was made (for its Undo: the row, then the presentation). */
+export interface SlideMade {
+  presentationId: string;
+  name: string;
+  /** The open playlist's new row, or null when it went into the library only. */
+  itemId: string | null;
 }

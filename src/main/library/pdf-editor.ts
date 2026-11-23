@@ -4,7 +4,9 @@ import { readFile, stat } from 'node:fs/promises';
 import { idSchema } from '../../shared/model-schema';
 import { editDocSchema, type EditDoc } from '../../shared/slide-edit';
 import { renderEditedSlide } from '../../shared/slide-design';
+import type { MadeSlidePlace, MakeSlideResult, PagePart } from '../../shared/page-part';
 import type { PdfCopyJob, PdfCopyResult } from '../../shared/pdf-copy';
+import type { PartPicture } from '../pictures/pdf-pictures';
 import { OriginalsStore, originalRelative } from '../import/originals-store';
 import type { Db } from '../db/database';
 import type { PdfCopySession } from './pdf-copy-session';
@@ -22,6 +24,10 @@ export interface PdfEditorDeps {
     stamp: string,
   ): { ok: true; doc: EditDoc } | { ok: false; message: string };
   chooseOutput(event: IpcMainInvokeEvent, name: string): Promise<string | null>;
+  /** Make a slide… (alpha.21): the part of a one-page PDF just printed here, drawn at the hall's picture size. */
+  drawPart?(pdf: Uint8Array, part: PagePart, signal: AbortSignal): Promise<PartPicture>;
+  /** Make a slide…: the picture kept in the library as a one-slide presentation, in the open playlist when asked. */
+  keepSlide?(made: { png: Uint8Array; name: string; place: MadeSlidePlace }): Promise<MakeSlideResult>;
 }
 const failed = (message: string): PdfCopyResult => ({ ok: false, message });
 class PdfEditorError extends Error {}
@@ -162,6 +168,13 @@ export class PdfEditor {
       }
     }
     return { pages, sources: [...sources].map(([id, data]) => ({ id, data })) };
+  }
+
+  /** Make a slide… (alpha.21). */
+  makeSlide(event: IpcMainInvokeEvent, raw: unknown): Promise<MakeSlideResult> {
+    void event;
+    void raw;
+    return Promise.resolve({ ok: false, message: 'not yet' });
   }
 
   cancel(): void {
