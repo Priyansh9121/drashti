@@ -4,7 +4,14 @@ import { describe, expect, it } from 'vitest';
 import { PdfTools, type PdfToolsProps } from './PdfTools';
 
 const PAGE_ACTIONS = ['Extract pages…', 'Replace page…', 'Split…', 'Hand-out…'];
-const GO_ON = ['Highlight', 'Underline', 'Turn page right', 'Insert pages…', 'Make a slide…', 'Save a PDF copy…'];
+const GO_ON = [
+  'Highlight',
+  'Underline',
+  'Turn page right',
+  'Insert pages…',
+  'Make a slide…',
+  'Save a PDF copy…',
+];
 
 function tools(change: Partial<PdfToolsProps> = {}): string {
   const act = () => undefined;
@@ -63,7 +70,9 @@ describe('PDF pages while the stream is on air or recording', () => {
     for (const name of PAGE_ACTIONS) expect(disabled(onAir, name), name).toBe(true);
     for (const name of GO_ON) expect(disabled(onAir, name), name).toBe(false);
     expect(onAir).toContain('data-testid="pdf-pages-wait"');
-    expect(onAir).toContain('Extract, Replace, Split and Hand-out wait until the stream and recording are off.');
+    expect(onAir).toContain(
+      'Extract, Replace, Split and Hand-out wait until the stream and recording are off.',
+    );
   });
 
   it('offers every page action once both are off, with no waiting note', () => {

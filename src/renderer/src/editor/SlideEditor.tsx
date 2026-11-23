@@ -77,7 +77,7 @@ import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
 import { MakeSlideDialog, type MakeSlideBase } from './MakeSlideDialog';
-import { pdfAcknowledged, pdfOffAir } from '../../../shared/pdf-work';
+import { PDF_PAGES_WAIT, pdfAcknowledged, pdfOffAir } from '../../../shared/pdf-work';
 import { PdfPagesDialog } from './PdfPagesDialog';
 import { PdfHandoutDialog } from './PdfHandoutDialog';
 import { replacePdfPage, splitPdfPages } from './pdf-pages';
@@ -190,8 +190,6 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       off();
     };
   }, []);
-  const pdfPaused =
-    !!doc && slidesOf(doc).some((page) => page.documentPage?.ext === 'pdf') && !pdfStreamOffAir;
   const [pageAction, setPageAction] = useState<'extract' | 'split' | 'handout' | null>(null);
   const [replacing, setReplacing] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
@@ -360,7 +358,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     } catch {
       /* Refuse when Main cannot confirm the stream is off air. */
     }
-    tell('PDF pages wait while the stream is on air or recording.');
+    tell(PDF_PAGES_WAIT);
     return false;
   };
   const beginPageAction = async (action: 'extract' | 'split' | 'handout') => {
@@ -490,7 +488,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         void window.drashti.slideEditor.showKey(e.key);
         return;
       }
-      if (pdfPaused || outsideBusy) return;
+      if (outsideBusy) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -539,7 +537,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mac, saveWhenReady, pdfPaused, outsideBusy]);
+  }, [mac, saveWhenReady, outsideBusy]);
 
   return (
     <div
@@ -708,6 +706,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               blocked={
                 loading || saving || outsideBusy || pickingBusy || pdfDrawing || sourceConversion !== null
               }
+              // Only x85's page actions wait while the stream is on air or recording (QA21-TAKEPDF-1 A); marks, Save,
+              // a single Make a slide… and Save a PDF copy… go on during a show.
+              pagesWait={!pdfStreamOffAir}
               onHighlight={() => choosePdfTool('highlight')}
               onUnderline={() => applyPdfMark('underline')}
               onStrikeThrough={() => applyPdfMark('strike')}
@@ -1025,7 +1026,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         />
       )}
-      {outsideBusy && !pdfPaused && (
+      {outsideBusy && (
         <Dialog
           title="Finishing Undo or Redo"
           testId="pdf-history-pending"
@@ -1036,20 +1037,6 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         >
           <p role="status" className="text-sm">
             Wait while the PDF change finishes.
-          </p>
-        </Dialog>
-      )}
-      {pdfPaused && (
-        <Dialog
-          title="PDF editing paused"
-          testId="pdf-off-air"
-          size="md"
-          onTop
-          closeButton={false}
-          onClose={() => undefined}
-        >
-          <p className="text-sm">
-            Stop the stream and recording before working on PDF pages. This editor resumes when both are off.
           </p>
         </Dialog>
       )}

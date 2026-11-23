@@ -2906,7 +2906,6 @@ function start(): void {
       settings.set('displaysNotUsed', value);
     },
   });
-  let cancelPdfPageWork: () => void = () => undefined;
   let stream: StreamService | null = null;
   // Show a Window… and the window for Zoom (Session 48): made with the stream, below.
   let liveWindows: LiveWindowService | null = null;
@@ -3576,7 +3575,6 @@ function start(): void {
     },
     statusChanged: (status) => {
       slideEditor?.send(IPC.stream.changed, status);
-      if (status.live.state !== 'off' || status.recording.state !== 'off') cancelPdfPageWork();
       youtubeService?.streamChanged(status);
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
@@ -5335,8 +5333,6 @@ function start(): void {
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
     mayPrepareSource: (e, presentationId) =>
-      !streaming.inUse() &&
-      !testOnAir &&
       mayEditSlides(presentationId) &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
@@ -5348,6 +5344,8 @@ function start(): void {
     // After the requested PDF pages have opened, the reading behind ends its job whenever the show needs the computer
     // (anything up, or the stream on air or recording), and waits here, outside every queue, until the show is idle.
     showBusy: () => !pdfReadIdle(),
+    // Extract pages… to a new presentation and its Undo/Redo wait off air (x85); everything else here goes on.
+    onAir: () => streaming.inUse() || testOnAir,
     waitForPdfIdle: (signal) => {
       if (signal.aborted || pdfReadIdle()) return Promise.resolve(!signal.aborted);
       return new Promise<boolean>((resolve) => {
@@ -5387,8 +5385,6 @@ function start(): void {
     mediaDir,
     session: pdfCopies,
     allowed: (e) =>
-      !streaming.inUse() &&
-      !testOnAir &&
       !stops.done &&
       documentQuit?.closing !== true &&
       isLetIn() &&
@@ -5454,7 +5450,6 @@ function start(): void {
     cancelPdfCopies();
   };
   drainSourceEdits = () => slideEdits.drainSourcePreparation();
-  cancelPdfPageWork = cancelSourceEdits;
   stops.add('editor source generations', cancelSourceEdits);
   // The QR code… window's logo and Download… (Q60-28): Choose a Picture… and Download… are the system's own dialogs,
   // and every picture of a code is made, and read back, in the QR worker, off Main's thread (library/qr-service.ts).

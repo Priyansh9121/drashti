@@ -13,6 +13,7 @@ import {
   Underline,
 } from '../ui/icons';
 import { Cluster, Divider, GROUP_ROW } from './RibbonParts';
+import { PDF_PAGES_WAIT_NOTE } from '../../../shared/pdf-work';
 
 export type PdfMarkTool = 'highlight' | 'underline' | 'strike' | 'draw' | 'cover';
 export type PdfPendingAction = 'insert-pages' | 'save-copy' | null;
@@ -63,6 +64,11 @@ export interface PdfToolsProps extends PdfToolCallbacks {
   pending: PdfPendingAction;
   /** Loading, library save, a source-warning dialog, or an unfinished page job. */
   blocked: boolean;
+  /**
+   * The stream is on air or recording (or the editor does not know yet): Extract pages…, Replace page…, Split… and
+   * Hand-out… wait, and a note says so; everything else here goes on during a show.
+   */
+  pagesWait?: boolean;
 }
 
 export function PdfTools({
@@ -72,6 +78,7 @@ export function PdfTools({
   struckThrough,
   pending,
   blocked,
+  pagesWait = false,
   onHighlight,
   onUnderline,
   onStrikeThrough,
@@ -198,16 +205,40 @@ export function PdfTools({
       </Cluster>
       <Divider />
       <Cluster name="Hand-out">
-        <Button size="sm" variant="ghost" disabled={busy || !onExtractPages} onClick={onExtractPages}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || pagesWait || !onExtractPages}
+          title={pagesWait ? PDF_PAGES_WAIT_NOTE : undefined}
+          onClick={onExtractPages}
+        >
           Extract pages…
         </Button>
-        <Button size="sm" variant="ghost" disabled={busy || !onReplacePage} onClick={onReplacePage}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || pagesWait || !onReplacePage}
+          title={pagesWait ? PDF_PAGES_WAIT_NOTE : undefined}
+          onClick={onReplacePage}
+        >
           Replace page…
         </Button>
-        <Button size="sm" variant="ghost" disabled={busy || !onSplit} onClick={onSplit}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || pagesWait || !onSplit}
+          title={pagesWait ? PDF_PAGES_WAIT_NOTE : undefined}
+          onClick={onSplit}
+        >
           Split…
         </Button>
-        <Button size="sm" variant="ghost" disabled={busy || !onHandout} onClick={onHandout}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || pagesWait || !onHandout}
+          title={pagesWait ? PDF_PAGES_WAIT_NOTE : undefined}
+          onClick={onHandout}
+        >
           Hand-out…
         </Button>
       </Cluster>
@@ -224,6 +255,11 @@ export function PdfTools({
           Save a PDF copy…
         </Button>
       </Cluster>
+      {pagesWait && (
+        <p className="ml-3 self-center text-xs text-muted" role="status" data-testid="pdf-pages-wait">
+          {PDF_PAGES_WAIT_NOTE}
+        </p>
+      )}
       {pending !== null && (
         <p className="ml-3 self-center text-xs text-muted" role="status" data-testid="pdf-pages-pending">
           {pending === 'insert-pages' ? 'Preparing the pages…' : 'Writing the PDF copy…'}

@@ -2,6 +2,7 @@ import type { InsertPdfPagesResult, PdfPageSource, LinkPdfPageResult } from '../
 import type { IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import { keepPdfPages } from './pdf-page-copies';
+import { PDF_PAGES_ON_AIR } from '../../shared/pdf-work';
 import { IPC } from '../../shared/ipc';
 import { CUT, type Transition } from '../../shared/model';
 import { idSchema, transitionSchema } from '../../shared/model-schema';
@@ -60,6 +61,11 @@ export interface SlidesIpcDeps {
    * listed for Insert pages.
    */
   mayPrepareSource?: (event: IpcMainInvokeEvent, presentationId?: string) => boolean;
+  /**
+   * The stream on air or recording: Extract pages… to a new presentation, and its Undo and Redo, wait (PDF_PAGES_ON_AIR);
+   * opening, preparing and saving PDF pages go on.
+   */
+  onAir?: () => boolean;
   /** Only Main selects files through the native PDF dialog. */
   choosePdfFile?: (event: IpcMainInvokeEvent) => Promise<string | null>;
 }
@@ -109,6 +115,7 @@ export function registerSlidesIpc({
   mayPrepareSource = () => false,
   waitForPdfIdle = (signal) => Promise.resolve(!signal.aborted),
   showBusy = () => false,
+  onAir = () => false,
   choosePdfFile,
 }: SlidesIpcDeps): SlidesIpcController {
   const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
@@ -476,6 +483,7 @@ export function registerSlidesIpc({
   const extracted = new Map<string, number>();
   handle(IPC.library.extractPdfPages, (e, id, doc, stamp, rawPages) => {
     if (!fromOperator(e) || !mayPrepareSource(e, typeof id === 'string' ? id : '')) return onlyOperator;
+    if (onAir()) return { ok: false as const, message: PDF_PAGES_ON_AIR };
     const pages = z.array(z.number().int().min(0).max(399)).min(1).max(400).safeParse(rawPages);
     if (!pages.success) return { ok: false as const, message: 'Choose the PDF pages to extract.' };
     const checked = validateDocument(id, doc, stamp, false);
@@ -496,6 +504,7 @@ export function registerSlidesIpc({
     if (
       !fromOperator(e) ||
       !mayPrepareSource(e) ||
+      onAir() ||
       typeof id !== 'string' ||
       extracted.get(id) !== e.sender.id ||
       typeof visible !== 'boolean'
@@ -510,11 +519,6 @@ export function registerSlidesIpc({
     if (!fromOperator(e)) return onlyOperator;
     const checked = validateDocument(presentationId, edited, stamp, force);
     if (!checked.ok) return checked;
-    if (
-      checked.doc.groups.some((group) => group.slides.some((slide) => slide.documentPage?.ext === 'pdf')) &&
-      !mayPrepareSource(e, checked.id)
-    )
-      return { ok: false, message: 'Wait until the stream and recording are off before saving PDF pages.' };
     cancelSourcePreparation(checked.id);
     // Its words in one form, NFC, exactly as in the validated export document.
     const after = applySlideEdit(checked.before, checked.doc);

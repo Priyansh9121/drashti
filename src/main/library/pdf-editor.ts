@@ -15,6 +15,7 @@ import { OriginalsStore, originalRelative } from '../import/originals-store';
 import type { Db } from '../db/database';
 import type { PdfCopySession } from './pdf-copy-session';
 import { PdfCopyHistory } from './pdf-copy-history';
+import { PDF_PAGES_ON_AIR, PDF_PAGES_STOPPED } from '../../shared/pdf-work';
 import { PdfCopyError, writePdfCopy } from './pdf-copy-file';
 
 export interface PdfEditorDeps {
@@ -30,8 +31,10 @@ export interface PdfEditorDeps {
   ): { ok: true; doc: EditDoc } | { ok: false; message: string };
   chooseOutput(event: IpcMainInvokeEvent, name: string): Promise<string | null>;
   /**
-   * Whether the stream is on air or recording: no batch of parts is made then (x82's Make slides from many parts),
-   * and one being made stops (cancelBatch). The single Make a slide… and Save a PDF copy… go on, as before the batch.
+   * Whether the stream is on air or recording: no batch of parts is made then (x82's Make slides from many parts), nor
+   * pages extracted to a new PDF or an extracted PDF's Undo and Redo (x85), and one being made stops (cancelBatch).
+   * The single Make a slide… and Save a PDF copy… go on, as before (QA21-TAKEPDF-1 A). The one off-air guard: Main's
+   * allowed() says nothing about the stream.
    */
   onAir?: () => boolean;
   /** Make a slide… (alpha.21): the part of a one-page PDF just printed here, drawn at the hall's picture size. */
@@ -71,6 +74,7 @@ class PdfEditorError extends Error {}
 
 /** Save a separate PDF from a validated editor snapshot; never writes a presentation or revision. */
 export class PdfEditor {
+  /** batch: a job that waits for the stream to be off air (a batch of parts, or pages extracted to a new PDF). */
   private active: { abort: AbortController; done: Promise<PdfCopyResult>; batch?: boolean } | null = null;
   private stopped = false;
   private historyWork: Promise<boolean> | null = null;
@@ -85,6 +89,8 @@ export class PdfEditor {
     rawStamp: unknown,
     rawPages?: unknown,
   ): Promise<PdfCopyResult> {
+    const extracting = rawPages !== undefined;
+    if (extracting && this.onAir()) return Promise.resolve(failed(PDF_PAGES_ON_AIR));
     if (this.stopped || this.active || this.historyWork || !this.deps.allowed(event))
       return Promise.resolve(
         failed('A PDF copy is already being made, or this editor is no longer available.'),
@@ -115,25 +121,34 @@ export class PdfEditor {
       };
     }
     const controller = new AbortController();
-    const current = () =>
-      !controller.signal.aborted &&
-      !this.stopped &&
-      !event.sender.isDestroyed() &&
-      this.deps.allowed(event) &&
-      this.deps.stamp(id.data) === rawStamp;
+    // Pages being extracted stop once the stream is on air or recording, and say so (PDF_PAGES_STOPPED).
+    let stoppedOnAir = false;
+    const current = () => {
+      if (extracting && this.onAir()) {
+        stoppedOnAir = true;
+        return false;
+      }
+      return (
+        !controller.signal.aborted &&
+        !this.stopped &&
+        !event.sender.isDestroyed() &&
+        this.deps.allowed(event) &&
+        this.deps.stamp(id.data) === rawStamp
+      );
+    };
     const abort = () => controller.abort();
     event.sender.once('destroyed', abort);
-    const done = this.make(
-      event,
-      structuredClone(snapshot),
-      current,
-      controller.signal,
-      rawPages !== undefined,
-    ).finally(() => {
-      event.sender.removeListener('destroyed', abort);
-      if (this.active?.abort === controller) this.active = null;
-    });
-    this.active = { abort: controller, done };
+    const done = this.make(event, structuredClone(snapshot), current, controller.signal, extracting)
+      .then((made) =>
+        !made.ok && !made.cancelled && extracting && (stoppedOnAir || this.onAir())
+          ? failed(PDF_PAGES_STOPPED)
+          : made,
+      )
+      .finally(() => {
+        event.sender.removeListener('destroyed', abort);
+        if (this.active?.abort === controller) this.active = null;
+      });
+    this.active = { abort: controller, done, batch: extracting };
     return done;
   }
 
@@ -350,7 +365,10 @@ export class PdfEditor {
     return this.deps.onAir?.() === true;
   }
 
-  /** The stream went on air or started recording: a batch of parts being made stops; nothing else does. */
+  /**
+   * The stream went on air or started recording: a batch of parts being made, or pages being extracted to a new PDF,
+   * stops; nothing else does.
+   */
   cancelBatch(): void {
     if (!this.active?.batch) return;
     this.active.abort.abort();
@@ -362,6 +380,7 @@ export class PdfEditor {
       this.stopped ||
       this.active ||
       this.historyWork ||
+      this.onAir() ||
       !this.deps.allowed(event) ||
       typeof id !== 'string' ||
       typeof visible !== 'boolean' ||
@@ -369,7 +388,7 @@ export class PdfEditor {
     )
       return Promise.resolve(false);
     const work = this.copies
-      .show(id, visible, () => !this.stopped && this.deps.allowed(event))
+      .show(id, visible, () => !this.stopped && !this.onAir() && this.deps.allowed(event))
       .finally(() => {
         if (this.historyWork === work) this.historyWork = null;
       });
