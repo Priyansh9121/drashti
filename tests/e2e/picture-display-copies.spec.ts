@@ -171,6 +171,7 @@ type DisplayCostMainGlobals = typeof globalThis & { drashtiDisplayCostMain?: Dis
 interface ImportProcessSeen {
   pid: number;
   creationTime: number;
+  sampledAt: number;
 }
 /** QA23-L8-4 A: Main's watch of the import's worker processes, run only from a dissolve's end to the import's ready. */
 interface ImportWatch {
@@ -248,14 +249,17 @@ async function recordDisplayCost(app: ElectronApplication): Promise<void> {
         cost.jobs.push({ ...mark, received: Date.now(), pid, priority });
       });
     };
-    // QA23-L8-4 A: the import's worker processes ("Drashti import"), each with the time it was made. Sampled every 20 ms
-    // only from a dissolve's end until its import is ready, never while the hall's frames are measured.
+    // QA23-L8-4 A: the import's worker processes ("Drashti import"), each with the time it was made and the moment it
+    // was listed. Sampled every 20 ms only from a dissolve's end until its import is ready, never while the hall's
+    // frames are measured.
     const seen = new Map<string, ImportProcessSeen>();
     let timer: ReturnType<typeof setInterval> | null = null;
     const sample = () => {
+      const sampledAt = Date.now();
       for (const m of app.getAppMetrics()) {
         if (m.type !== 'Utility' || m.name !== 'Drashti import') continue;
-        seen.set(`${String(m.pid)}@${String(m.creationTime)}`, { pid: m.pid, creationTime: m.creationTime });
+        const key = `${String(m.pid)}@${String(m.creationTime)}`;
+        if (!seen.has(key)) seen.set(key, { pid: m.pid, creationTime: m.creationTime, sampledAt });
       }
     };
     (globalThis as ImportWatchGlobals).drashtiImportWatch = {

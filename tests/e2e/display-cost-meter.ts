@@ -106,17 +106,36 @@ export function macDropVerdict(
 /**
  * QA23-L8-4 A (the owner, 24 Nov 2026: "A: check the import order"): an import started during a hall dissolve keeps its
  * fixed order. Its worker process (the "Drashti import" utility process) is made only once the dissolve has ended, and
- * the test sees it before the import is ready. `processes` are the import workers seen from the dissolve's end until the
- * import was ready, each with the time it was made, on the same clock as `end` and `ready`.
+ * the test sees it before the import is ready. `samples` are the import workers listed from the dissolve's end until the
+ * import was ready: each with the time it was made and the moment it was listed (`sampledAt`), on the same clock as
+ * `end` and `ready`. An entry dated after the moment it was listed is no time: Electron lists a process it cannot date
+ * (as a worker being stopped) with base::Time::Max. A worker never dated proves no order.
  */
 export function importProcessOrder(
   times: { end: number; ready: number },
-  processes: readonly { pid: number; creationTime: number }[],
+  samples: readonly { pid: number; creationTime: number; sampledAt?: number }[],
 ) {
-  const during = processes.filter((p) => p.creationTime < times.end);
-  const after = processes.filter((p) => p.creationTime >= times.end && p.creationTime <= times.ready);
+  const made = new Map<number, number | null>();
+  for (const sample of samples) {
+    const dated =
+      Number.isFinite(sample.creationTime) &&
+      (sample.sampledAt === undefined || sample.creationTime <= sample.sampledAt);
+    const known = made.get(sample.pid);
+    if (dated)
+      made.set(
+        sample.pid,
+        known === undefined || known === null ? sample.creationTime : Math.min(known, sample.creationTime),
+      );
+    else if (known === undefined) made.set(sample.pid, null);
+  }
+  const processes = [...made].map(([pid, creationTime]) => ({ pid, creationTime }));
+  const during = processes.filter((p) => p.creationTime !== null && p.creationTime < times.end);
+  const after = processes.filter(
+    (p) => p.creationTime !== null && p.creationTime >= times.end && p.creationTime <= times.ready,
+  );
   const startedDuring = during.length > 0;
   return {
+    processes,
     during,
     after,
     startedDuring,
