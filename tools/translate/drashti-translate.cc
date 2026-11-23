@@ -37,6 +37,12 @@
 #include <sys/sysctl.h>
 #endif
 
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace {
 
 constexpr int kProtocol = 1;
@@ -262,6 +268,37 @@ bool under_rosetta() {
 #endif
 }
 
+// A whole file by its UTF-8 path, at most `max` bytes. On Windows through the wide path (as CTranslate2 opens its own
+// files): SentencePiece's own Load opens a narrow one, which a user name outside the ANSI code page breaks.
+bool read_file(const std::string& path, std::string& out, size_t max) {
+#ifdef _WIN32
+  const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, nullptr, 0);
+  if (count <= 0) return false;
+  std::wstring wide(static_cast<size_t>(count), L'\0');
+  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, &wide[0], count) != count) return false;
+  FILE* file = _wfopen(wide.c_str(), L"rb");
+#else
+  FILE* file = std::fopen(path.c_str(), "rb");
+#endif
+  if (!file) return false;
+  out.clear();
+  char buffer[65536];
+  size_t got = 0;
+  bool ok = true;
+  while ((got = std::fread(buffer, 1, sizeof buffer, file)) > 0) {
+    out.append(buffer, got);
+    if (out.size() > max) {
+      ok = false;
+      break;
+    }
+  }
+  if (std::ferror(file)) ok = false;
+  std::fclose(file);
+  return ok;
+}
+
+constexpr size_t kMaxTokenizerModel = 64 * 1024 * 1024;
+
 struct Route {
   std::unique_ptr<ctranslate2::Translator> translator;
   sentencepiece::SentencePieceProcessor spm;
@@ -276,11 +313,15 @@ void load(const Object& o) {
   const std::string* model = str(o, "model", 4096);
   const std::string* spm = str(o, "spm", 4096);
   const auto threads = integer(o, "threads", 1, 16);
-  if (!route || !is_route(*route) || !model || !spm || !threads) return fail(o, "bad-request");
+  // An empty path is refused: SentencePiece would read standard input, the helper's own requests.
+  if (!route || !is_route(*route) || !model || model->empty() || !spm || spm->empty() || !threads)
+    return fail(o, "bad-request");
   if (under_rosetta()) return fail(o, "translated");
   const auto started = std::chrono::steady_clock::now();
   auto r = std::make_unique<Route>();
-  if (!r->spm.Load(*spm).ok()) return fail(o, "tokenizer-unreadable");
+  std::string proto;
+  if (!read_file(*spm, proto, kMaxTokenizerModel) || !r->spm.LoadFromSerializedProto(proto).ok())
+    return fail(o, "tokenizer-unreadable");
   try {
     ctranslate2::models::ModelLoader loader(*model);
     loader.device = ctranslate2::Device::CPU;
