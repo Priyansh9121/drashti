@@ -9,6 +9,7 @@ import {
   FIXTURE_FILES,
   FIXTURE_SHA256,
   LIMIT_MS,
+  LOAD_LIMIT_MS,
   SENTENCE,
   SENTENCE_PIECES,
   hashModel,
@@ -104,7 +105,12 @@ describe('the generated timing models (never a real one)', () => {
     const added = copyFixture();
     writeFileSync(join(added, 'shared_vocabulary.json'), '[]\n');
     expect(checkModel(added, 'tiny')).toEqual(['shared_vocabulary.json is not part of the generated model']);
-    expect(checkModel(copyFixture(), 'full')).toHaveLength(FIXTURE_FILES.length);
+    // The tiny model is not the full-size one (their settings and tokenizer files are the same).
+    expect(checkModel(copyFixture(), 'full')).toEqual([
+      'model.bin is not the generated full model’s',
+      'source_vocabulary.json is not the generated full model’s',
+      'target_vocabulary.json is not the generated full model’s',
+    ]);
     // Refused before any program starts: this "helper" does not exist, so starting it would fail otherwise.
     await expect(timeModel('/nonexistent/drashti-translate', changed, 'tiny', [])).rejects.toThrow(
       /is not the generated tiny model: model\.bin is not the generated tiny model’s/u,
@@ -145,8 +151,9 @@ describe('what the proof reads', () => {
       avx512f: false,
       dotprod: false,
     });
-    expect(readSystem('arm64', { 'machdep.cpu.brand_string': 'Apple M5', 'hw.optional.arm.FEAT_DotProd': '1' }))
-      .toMatchObject({ arch: 'arm64', avx2: false, dotprod: true });
+    expect(
+      readSystem('arm64', { 'machdep.cpu.brand_string': 'Apple M5', 'hw.optional.arm.FEAT_DotProd': '1' }),
+    ).toMatchObject({ arch: 'arm64', avx2: false, dotprod: true });
   });
 
   it('counts which ruy kernel ran from a sample of the helper (top of stack)', () => {
@@ -218,12 +225,18 @@ describe('the verdict', () => {
     expect(
       judge({ ...good, sample: { avx512: 0, avx2: 0, avx: 0, neon: 0, standard: 1200 } }).problems,
     ).toEqual(['ruy ran its reference C++ kernel while translating (1200 samples), never an AVX one']);
-    expect(judge({ ...good, tiny: { ...good.tiny, ok: false, problems: ['load: model-unreadable'] } }).problems).toEqual([
-      'tiny model: load: model-unreadable',
-    ]);
-    const slow = { ...good.full, runs: [good.full.runs[0], { beam: 5, ms: [9000, LIMIT_MS + 1], tokens: [256, 256] }] };
+    expect(
+      judge({ ...good, tiny: { ...good.tiny, ok: false, problems: ['load: model-unreadable'] } }).problems,
+    ).toEqual(['tiny model: load: model-unreadable']);
+    const slow = {
+      ...good.full,
+      runs: [...good.full.runs.slice(0, 1), { beam: 5, ms: [9000, LIMIT_MS + 1], tokens: [256, 256] }],
+    };
     expect(judge({ ...good, full: slow }).problems).toEqual([
       `a full-size sentence took ${String(LIMIT_MS + 1)} ms with the careful search (beam 5): over the app’s ${String(LIMIT_MS)} ms`,
+    ]);
+    expect(judge({ ...good, full: { ...good.full, loadMs: LOAD_LIMIT_MS } }).problems).toEqual([
+      `the full-size model took ${String(LOAD_LIMIT_MS)} ms to load: over the app’s ${String(LOAD_LIMIT_MS)} ms`,
     ]);
     expect(judge({ ...good, system: { ...good.system, avx2: false } }).green).toBe(false);
   });
@@ -256,7 +269,9 @@ describe('the one hand-started Intel job (performance.yml)', () => {
     );
     expect(job).toContain('    if: inputs.translate_intel\n');
     // The ordinary performance check is unchanged, and skipped when the Intel job is asked for (one job only).
-    expect(workflow).toMatch(/\n {2}performance:\n {4}name: [^\n]+\n {4}if: \$\{\{ !inputs\.translate_intel \}\}\n/u);
+    expect(workflow).toMatch(
+      /\n {2}performance:\n {4}name: [^\n]+\n {4}if: \$\{\{ !inputs\.translate_intel \}\}\n/u,
+    );
   });
 
   it('runs on GitHub’s free Intel Mac runner and builds the engine natively, as the release names it', () => {
@@ -266,8 +281,9 @@ describe('the one hand-started Intel job (performance.yml)', () => {
     expect(job).toContain(
       'run: node scripts/translate-timing.mjs proof vendor/translate/darwin-x64/drashti-translate --work "$RUNNER_TEMP/translate-timing"\n',
     );
-    // Nothing installed but Node: no pnpm install, no model pack, no cache.
-    expect(job).not.toMatch(/pnpm|actions\/cache|model-pack|\.mcp/u);
+    // Nothing fetched but the build's own pinned sources: the runner's own Node, no install, no model pack, no cache.
+    expect(job).toContain('node --version');
+    expect(job).not.toMatch(/pnpm|npm install|actions\/setup-node|actions\/cache|model-pack|\.mcp/u);
     expect(checkWorkflow(workflow, 'performance.yml')).toEqual([]);
   });
 });
