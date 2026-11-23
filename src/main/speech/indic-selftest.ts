@@ -25,7 +25,7 @@ function execRun(path: string, args: string[]): Promise<IndicRun> {
       resolve({
         ok: error === null,
         code: typeof error?.code === 'number' ? error.code : null,
-        out: String(out),
+        out,
       });
     });
   });
@@ -51,12 +51,13 @@ export async function indicSelfTest(o: IndicSelfTestOptions): Promise<{ passed: 
       detail: `The bundled Gujarati and Hindi recognition engine is missing its libraries (${missing.join(', ')}).`,
     };
   const ran = await (o.run ?? execRun)(o.path, ['--runtime']);
-  let runtime: unknown = null;
-  try {
-    runtime = (JSON.parse(ran.out.trim()) as { runtime?: unknown }).runtime;
-  } catch {
-    runtime = null;
-  }
+  const runtime = ((): unknown => {
+    try {
+      return (JSON.parse(ran.out.trim()) as { runtime?: unknown }).runtime;
+    } catch {
+      return null;
+    }
+  })();
   if (ran.ok && runtime === RUNTIME)
     return {
       passed: true,
