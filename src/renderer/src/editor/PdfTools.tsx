@@ -12,7 +12,7 @@ import {
   Trash2,
   Underline,
 } from '../ui/icons';
-import { Cluster, Divider } from './RibbonParts';
+import { Cluster, Divider, GROUP_ROW } from './RibbonParts';
 
 export type PdfMarkTool = 'highlight' | 'underline' | 'strike' | 'draw' | 'cover';
 export type PdfPendingAction = 'insert-pages' | 'save-copy' | null;
@@ -81,7 +81,9 @@ export function PdfTools({
 }: PdfToolsProps) {
   const busy = blocked || pending !== null;
   return (
-    <div className="flex min-w-0 items-start" data-testid="pdf-pages-group" aria-busy={pending !== null}>
+    // Onto a second row where the window is narrower than its clusters (alpha.21's fit pass, GROUP_ROW), never
+    // scrolling sideways: Make a slide… made the row wider than CI's 1024-pixel window.
+    <div className={GROUP_ROW} data-testid="pdf-pages-group" aria-busy={pending !== null}>
       <Cluster name="Mark this page">
         <Button
           size="sm"
