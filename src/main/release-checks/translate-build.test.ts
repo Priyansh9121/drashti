@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SOURCES, TARGETS } from '../../../scripts/fetch-translate.mjs';
@@ -13,6 +14,7 @@ import { HELPER_PROTOCOL } from '../translation/translation-helper';
 
 const root = join(__dirname, '..', '..', '..');
 const read = (path: string) => readFileSync(join(root, path), 'utf8');
+const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
 describe('the translation engine’s pinned sources and packaging (alpha.22)', () => {
   it('pins every source to an official GitHub download and its SHA-256', () => {
@@ -57,6 +59,84 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     }
     for (const pin of ['v4.9.1', '363f2522', '082deffc', '8a494eb1', '76fb40d9', 'v0.2.1'])
       expect(notice).toContain(pin);
+  });
+
+  it('keeps each project’s own licence file word for word, the port’s too (the owner’s QA22-MT-1 and QA22-MT-3)', () => {
+    // Each digest is the upstream file's own (line ends as LF, as this repository keeps text): CTranslate2
+    // 4.9.1 and its pinned ruy, cpuinfo (and its clog), cpu_features and spdlog (and its fmt 8.1.1);
+    // SentencePiece 0.2.1 and its own protobuf-lite, absl and darts-clone; the ported IndicTransToolkit 1.1.1,
+    // indic-nlp-library 0.92 and sacremoses 0.2.0 (their wheels' licence files), the IndicTrans2 models'
+    // repositories (AI4Bharat: the tokenizer's decode) and Hugging Face Transformers 4.51.3 (the clean-up after
+    // decoding).
+    const verbatim: Record<string, string> = {
+      'CTranslate2-LICENSE.txt': '54aa79d9fe3c09e67a16dcd95b9e88676405a6ec174efda31036983cf7672ecb',
+      'ruy-LICENSE.txt': 'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30',
+      'cpuinfo-LICENSE.txt': '8e7e60636c3aa0cb03571a1a841ce5697f9551ff92b3c426c2561613d15ade70',
+      'clog-LICENSE.txt': '68a14c3e79add023eecd83d611e73f05b8bf1d16852efeb7eb4033a96736da9e',
+      'cpu_features-LICENSE.txt': 'af272c1b4dd08dd61d43e001d3134119d03ca7a2b057a64f7355fdf27fbea3dd',
+      'spdlog-LICENSE.txt': '71cc245f2f8cf17920d815277cb52628b49866f3ba1ae1dcb865771c408caa51',
+      'fmt-LICENSE.txt': '825c9324e70f8c839c8ba910543dd4a7daee243b86ef960594c11381a19980b8',
+      'sentencepiece-LICENSE.txt': 'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30',
+      'protobuf-lite-LICENSE.txt': '6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d',
+      'abseil-LICENSE.txt': 'd3e2f59e1d71176dfdb555ece6a41f7a5aa0f52ff21211010ace314f57695f6b',
+      'darts-clone-LICENSE.txt': '155f59997298ee336602c49f9c1110f268ac394ca2197eb02647a3555935ad52',
+      'IndicTransToolkit-LICENSE.txt': '3be0a01dffc3eda371f1532a50116384d3b51695dbe30068c67419aa0923a715',
+      'indic-nlp-library-LICENSE.txt': '021fdfaed932285b958a25bc2e63b7b6e5097937320c3afc06f6ff480fb3de12',
+      'sacremoses-LICENSE.txt': 'efe03a5e303b216ad2008b100da2ac2fbe6aa3ca442f2cfb931227f996fd2ebe',
+      'IndicTrans2-LICENSE.txt': '383258420065a19d9fef0daf00d10792d3f8a5ccf783d94a91f5d6755386615b',
+      'transformers-LICENSE.txt': '77fd4710def9ec3c0f6225800e0235f15a425abd4a8b03559127fcd782612049',
+    };
+    const notice = read('LICENSES/translation/README.md');
+    for (const [file, digest] of Object.entries(verbatim)) {
+      const path = join(root, 'LICENSES', 'translation', file);
+      expect(existsSync(path), file).toBe(true);
+      expect(existsSync(path) ? sha256(path) : 'missing', file).toBe(digest);
+      expect(notice, file).toContain(`\`${file}\``);
+    }
+    // Every other file in the folder is the README or one of Drashti's two lists of compiled-in notices.
+    const others = readdirSync(join(root, 'LICENSES', 'translation')).filter((f) => !(f in verbatim));
+    expect(others.sort()).toEqual([
+      'README.md',
+      'ctranslate2-submodules-copyrights.txt',
+      'ctranslate2-third-party-headers.txt',
+    ]);
+  });
+
+  it('lists every copyright line of the pinned submodules’ compiled files, word for word (QA22-MT-3)', () => {
+    // From every file the two Mac builds compile (the compiler's own list of sources and headers) and the
+    // Windows build's own files (cpuinfo's x86/windows, spdlog's wincolor sink): each under its project's
+    // licence file.
+    const lines = read('LICENSES/translation/ctranslate2-submodules-copyrights.txt');
+    for (const words of [
+      '=== ruy, commit 363f2522 (Apache-2.0, ruy-LICENSE.txt)',
+      'Copyright 2019 Google LLC. All Rights Reserved.',
+      'Copyright 2020 Google LLC. All Rights Reserved.',
+      'Copyright 2021 Google LLC. All Rights Reserved.',
+      'Copyright 2022 Google LLC. All Rights Reserved.',
+      'Copyright 2020 The TensorFlow Authors. All Rights Reserved.',
+      '=== cpuinfo, commit 082deffc (BSD-2-Clause, cpuinfo-LICENSE.txt)',
+      'Copyright (c) Facebook, Inc. and its affiliates.',
+      '=== clog, bundled in cpuinfo (BSD-2-Clause, clog-LICENSE.txt)',
+      '=== cpu_features, commit 8a494eb1 (Apache-2.0, cpu_features-LICENSE.txt)',
+      'Copyright 2017 Google LLC',
+      'Copyright 2021 Google LLC',
+      'Copyright 2020 Intel Corporation',
+      'Copyright 2018 IBM.',
+      '=== spdlog, commit 76fb40d9 (MIT, spdlog-LICENSE.txt)',
+      'Copyright(c) 2015-present, Gabi Melman & spdlog contributors.',
+      'Copyright(c) 2016-2018 Gabi Melman.',
+      '=== fmt 8.1.1, bundled in spdlog (MIT, fmt-LICENSE.txt)',
+      'Copyright (c) 2012 - present, Victor Zverovich',
+      'Copyright (c) 2012 - 2016, Victor Zverovich',
+    ])
+      expect(lines, words).toContain(words);
+  });
+
+  it('ships the whole LICENSES folder in every installer, the translation notices with it', () => {
+    // The packaged list: electron-builder copies LICENSES/ to the app's resources as it is, with no filter.
+    expect(read('electron-builder.yml')).toMatch(
+      /\nextraResources:\n {2}- from: LICENSES\n {4}to: licenses\n(?! {4})/u,
+    );
   });
 
   it('keeps the notices of every MIT header CTranslate2 compiles in: half.hpp and json.hpp too (a22-review-mt A3)', () => {
