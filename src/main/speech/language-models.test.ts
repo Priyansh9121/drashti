@@ -229,8 +229,11 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
       'hi',
       'hi',
     ]);
-    // Free and open only: the tunes' Apache-2.0 on OpenAI's MIT base.
-    expect(LANGUAGE_MODELS.every((m) => m.licence === 'Apache-2.0 (base model MIT)')).toBe(true);
+    // Free and open only, each its exact licence: the tunes' Apache-2.0 on OpenAI's MIT base; Route C's IndicConformer
+    // AI4Bharat's MIT (cap-route-c, the licence text its packs carry).
+    const licenceOf = (m: (typeof LANGUAGE_MODELS)[number]) =>
+      m.format === 'indicconformer-ctc-onnx-v1' ? 'MIT' : 'Apache-2.0 (base model MIT)';
+    expect(LANGUAGE_MODELS.every((m) => m.licence === licenceOf(m))).toBe(true);
   });
 
   it('keeps a language model in the data folder, under its id', () => {
