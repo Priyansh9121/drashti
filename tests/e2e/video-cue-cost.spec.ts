@@ -108,6 +108,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
   const ffmpeg = testFfmpeg();
   if (!ffmpeg) throw new Error('The bundled encoder is required for S5 measuring');
   let running: Awaited<ReturnType<typeof setupVideoCue>> | null = null;
+  // Diagnostics only (a22-cue): the stream's sound page's record is kept too (its own sounds through each fade).
+  let soundRecord: Page | null = null;
   let receiver: ReturnType<typeof rtmpListener> | null = null;
   let tracing = false;
   let captureWorker: BrowserWorker | null = null;
@@ -291,7 +293,10 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         },
       };
     });
-    await beginCueDiagnostics([hall, win, stream, audio, streamSound]);
+    await beginCueDiagnostics([hall, win, stream, audio]);
+    // The sound page draws nothing: its event loop's lag is recorded too (diagnostics only, a22-cue).
+    await beginCueDiagnostics([streamSound], { lag: true });
+    soundRecord = streamSound;
     // A sound player that ran out of decoded sound while it played (its 'waiting' after 'playing', not a jump's):
     // a hole in that page's sound. Recorded on the stream's page and, to compare, the hall's audio player.
     const underflowWatch = (page: Page) =>
@@ -655,7 +660,10 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         );
         await info.attach('s5-drawing-trace.json', { path: tracePath, contentType: 'application/json' });
       }
-      await retainCueDiagnostics([running.hall, running.win, running.stream, running.audio], info);
+      await retainCueDiagnostics(
+        [running.hall, running.win, running.stream, running.audio, ...(soundRecord ? [soundRecord] : [])],
+        info,
+      );
     }
     receiver?.kill('SIGKILL');
     await running?.app.close();
