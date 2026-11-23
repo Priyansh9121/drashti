@@ -205,6 +205,11 @@ function pressMetadataOnly(prev: EngineState, next: EngineState): boolean {
       path[0] === 'captions' ||
       (path[0] === 'sound' && ['gains', 'silent', 'levels'].includes(path[1] ?? '')) ||
       (path[0] === 'videoFiles' && sameData(marks(prev.videoFiles), marks(next.videoFiles))) ||
+      // Cue (alpha.22): the pages' readiness of the same private cue; Go checks that readiness itself.
+      (path[0] === 'videoCue' &&
+        !!prev.videoCue &&
+        prev.videoCue.id === next.videoCue?.id &&
+        ['ready', 'required', 'error'].includes(path[1] ?? '')) ||
       (path[0] === 'layers' &&
         (path[1] === 'background' || path[1] === 'audio') &&
         path.at(-1) === 'durationMs'),
@@ -611,22 +616,28 @@ export class ShowEngine {
     const cue = this.state.videoCue;
     if (cue?.id !== cueId || !cue.required.includes(participant) || this.state.stopped)
       return this.unchanged();
-    return this.atOnce(() =>
-      this.apply([
-        {
-          type: 'videoCue/set',
-          cue: {
-            ...cue,
-            ...(ready
-              ? { ready: [...new Set([...cue.ready, participant])] }
-              : {
-                  error: 'The cued video could not load its first frame: Cancel and cue it again.',
-                  ready: cue.ready.filter((p) => p !== participant),
-                }),
+    // Bookkeeping, never the operator's change: a press read a moment before it still counts (x81's freshness check).
+    this.bookkeeping = true;
+    try {
+      return this.atOnce(() =>
+        this.apply([
+          {
+            type: 'videoCue/set',
+            cue: {
+              ...cue,
+              ...(ready
+                ? { ready: [...new Set([...cue.ready, participant])] }
+                : {
+                    error: 'The cued video could not load its first frame: Cancel and cue it again.',
+                    ready: cue.ready.filter((p) => p !== participant),
+                  }),
+            },
           },
-        },
-      ]),
-    );
+        ]),
+      );
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
   /** A page reloaded: its previous decoded frame no longer exists. */
@@ -635,8 +646,13 @@ export class ShowEngine {
     if (!cue) return;
     const required = [...new Set(this.options.videoCueParticipants?.() ?? cue.required)];
     const ready = cue.ready.filter((p) => p !== participant && required.includes(p));
-    if (!sameData(required, cue.required) || !sameData(ready, cue.ready))
+    if (sameData(required, cue.required) && sameData(ready, cue.ready)) return;
+    this.bookkeeping = true;
+    try {
       this.apply([{ type: 'videoCue/set', cue: { ...cue, required, ready } }]);
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
   private sameVideoMedia(first: string, second: string): boolean {
