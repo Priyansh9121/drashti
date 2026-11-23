@@ -23,7 +23,8 @@ import type { SpeechEngine } from './hub';
  * Placeholder words only; no sound, no model, no download.
  */
 
-const PACK_GU = { path: '/placeholder/pack/captions-gu.bin', sha256: 'a'.repeat(64) };
+/** The Gujarati model in the placeholder pack, as a route made its recognizer (Route W here; Route C plugs in alike). */
+const GU = 'gu-small-placeholder';
 
 const SPELLING: CaptionSpelling = (h) => {
   if (h.language !== 'gu') return h;
@@ -31,13 +32,12 @@ const SPELLING: CaptionSpelling = (h) => {
   return { ...h, words, text: words.map((w) => w.text).join(' ') };
 };
 
-function setup(
-  o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<SpeechLanguage, typeof PACK_GU>> } = {},
-) {
+function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<SpeechLanguage, string>> } = {}) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-ai-'));
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS, audience: true };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
-  const started: { language: string; model: unknown }[] = [];
+  /** Which recognizer started, in which language: today's engine, or the one a route made from a pack model. */
+  const started: { engine: string; language: string }[] = [];
   const shown: (CaptionsShown | null)[] = [];
   const downloads: string[] = [];
   const accepted: CaptionRevision[] = [];
@@ -52,18 +52,18 @@ function setup(
     accepted.push(clause);
     return accept(clause);
   };
-  // eslint-disable-next-line prefer-const -- the engine reads the service made below
-  let service: CaptionsService;
-  const engine: SpeechEngine = {
+  const recognizer = (name: string): SpeechEngine => ({
     start(language, to) {
-      started.push({ language, model: service.aiModel() });
+      started.push({ engine: name, language });
       out = to;
       to.state({ phase: 'listening', language });
       return () => {
         out = null;
       };
     },
-  };
+  });
+  const engine = recognizer('today');
+  const made = new Map<string, SpeechEngine>();
   const deps: CaptionsServiceDeps = {
     userData,
     platform: 'win32',
@@ -85,13 +85,18 @@ function setup(
     changed: () => undefined,
     log: { info: () => undefined, warn: () => undefined },
   };
-  service = new CaptionsService(
+  const service = new CaptionsService(
     (o.aiWired ?? true)
       ? {
           ...deps,
           aiPath: {
             on: () => ai.on,
-            model: (language) => o.pack?.[language] ?? null,
+            recognizer: (language) => {
+              const modelId = o.pack?.[language];
+              if (modelId === undefined) return null;
+              if (!made.has(modelId)) made.set(modelId, recognizer(modelId));
+              return { route: 'whisper', modelId, engine: made.get(modelId) ?? recognizer(modelId) };
+            },
             coordinator,
             spelling: SPELLING,
           },
@@ -173,19 +178,21 @@ describe('caption AI in the captions service', () => {
       ['લીલું ખોખુ', 'ગોળ'],
       ['ગોળ આકાર'],
     ]);
-    const t = setup({ ai: false, pack: { gu: PACK_GU } });
+    const t = setup({ ai: false, pack: { gu: GU } });
     await twoPhrases(t);
     expect(t.shown).toEqual(before);
     expect(t.accepted).toEqual([]);
     expect(t.coordinator.view().on).toBe(false);
-    expect(t.started.map((s) => s.model)).toEqual([null]);
+    expect(t.started).toEqual([{ engine: 'today', language: 'gu' }]);
+    expect(t.service.aiRecognizer()).toBeNull();
   });
 
-  it('on, Gujarati chosen, its checked model in the pack: the recognizer starts in Gujarati with it; one clause at a time, the glossary’s spelling', async () => {
-    const t = setup({ ai: true, pack: { gu: PACK_GU } });
+  it('on, Gujarati chosen, its checked model in the pack: the recognizer a route made from it starts in Gujarati; one clause at a time, the glossary’s spelling', async () => {
+    const t = setup({ ai: true, pack: { gu: GU } });
     t.choose('gu');
     await t.service.setOn(true);
-    expect(t.started).toEqual([{ language: 'gu', model: PACK_GU }]);
+    expect(t.started).toEqual([{ engine: GU, language: 'gu' }]);
+    expect(t.service.aiRecognizer()).toEqual({ route: 'whisper', modelId: GU });
     expect(t.service.view().speech).toEqual({ phase: 'listening', language: 'gu' });
     // No general model is fetched for caption AI: its models come from the pack.
     expect(t.downloads).toEqual([]);
@@ -210,7 +217,7 @@ describe('caption AI in the captions service', () => {
   });
 
   it('on, but no checked model for the language chosen, or "auto": no words, a plain reason, nothing downloaded', async () => {
-    const t = setup({ ai: true, pack: { gu: PACK_GU } });
+    const t = setup({ ai: true, pack: { gu: GU } });
     t.choose('hi');
     await t.service.setOn(true);
     expect(t.started).toEqual([]);
@@ -229,12 +236,12 @@ describe('caption AI in the captions service', () => {
     expect(t.shown.filter((c) => c !== null)).toEqual([]);
     // Gujarati chosen again: listening, with the pack's model.
     t.choose('gu');
-    expect(t.started).toEqual([{ language: 'gu', model: PACK_GU }]);
+    expect(t.started).toEqual([{ engine: GU, language: 'gu' }]);
     t.service.close();
   });
 
   it('turned off while listening: today’s captions take over at once and the coordinator’s session closes; on again, a new session', async () => {
-    const t = setup({ ai: true, pack: { gu: PACK_GU } });
+    const t = setup({ ai: true, pack: { gu: GU } });
     t.choose('gu');
     await t.service.setOn(true);
     t.say('લીલું ખોખુ', true, 's1');
@@ -243,7 +250,8 @@ describe('caption AI in the captions service', () => {
     t.ai.on = false;
     t.service.aiPathChanged();
     expect(t.coordinator.view().on).toBe(false);
-    expect(t.started.map((s) => s.model)).toEqual([PACK_GU, null]);
+    expect(t.started.map((s) => s.engine)).toEqual([GU, 'today']);
+    expect(t.service.aiRecognizer()).toBeNull();
     t.say('લીલું ખોખુ', true, 's1');
     vi.advanceTimersByTime(300);
     // Today's feed, as it is: the glossary's fixer is not part of it.

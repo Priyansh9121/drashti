@@ -8,6 +8,7 @@ import {
   type CaptionsStatus,
 } from '../../shared/captions';
 import type { Heard, SpeechLanguage } from '../../shared/speech';
+import type { CaptionRecognizer } from './caption-routes';
 import {
   chooseCaptionPath,
   createCaptionFlow,
@@ -46,26 +47,21 @@ export interface CaptionsServiceDeps {
   show: (captions: CaptionsShown | null) => void;
   onFinalPhrase?: (phrase: Heard) => void;
   /**
-   * Caption AI (alpha.22): when the admin chose it, the recognizer runs in the speaker's language with that
-   * language's checked model from the offline pack, and what it hears goes through the coordinator instead of
-   * today's feed. Not given, or off: today's captions exactly as before.
+   * Caption AI (alpha.22): when the admin chose it, the speaker's language is heard by a recognizer made from that
+   * language's checked model in the offline pack (Route W's whisper.cpp or Route C's IndicConformer: caption-routes.ts),
+   * and what it hears goes through the coordinator instead of today's feed. Not given, or off: today's captions
+   * exactly as before.
    */
   aiPath?: {
     on(): boolean;
-    /** The pack's checked captions model for this language, or null. */
-    model(language: SpeechLanguage): CaptionPackModel | null;
+    /** The recognizer for this language, from the pack's checked model, or null. */
+    recognizer(language: SpeechLanguage): CaptionRecognizer | null;
     coordinator: ClauseSink;
     spelling?: CaptionSpelling;
   };
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
-}
-
-/** A captions model from the offline pack: where it is and its SHA-256 (cap-pack checked it). */
-export interface CaptionPackModel {
-  path: string;
-  sha256: string;
 }
 
 const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
@@ -99,7 +95,7 @@ export class CaptionsService {
             const problem =
               language === 'auto'
                 ? 'Caption AI listens for one language: choose the speaker’s language.'
-                : this.deps.aiPath?.model(language)
+                : this.deps.aiPath?.recognizer(language)
                   ? null
                   : `Caption AI has no checked model for ${LANGUAGE_NAMES[language]}: import the model pack (Help › Caption and Translation Models…).`;
             if (problem !== null) {
@@ -170,11 +166,9 @@ export class CaptionsService {
     return this.deps.aiPath?.on() === true;
   }
 
-  /** The pack's model caption AI runs with now, or null (today's captions). */
-  aiModel(): CaptionPackModel | null {
-    const language = this.settings().language;
-    if (!this.useAi() || language === 'auto') return null;
-    return this.deps.aiPath?.model(language) ?? null;
+  /** The route and pack model caption AI listens with now, or null (today's captions). Never a word. */
+  aiRecognizer(): { route: string; modelId: string } | null {
+    return null;
   }
 
   /** The admin turned caption AI on or off: while captions run, the other path takes over at once. */
