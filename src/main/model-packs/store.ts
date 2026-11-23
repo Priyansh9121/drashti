@@ -322,9 +322,16 @@ export class ModelPackStore {
     } catch (error) {
       release();
       if (signal?.aborted) throw error;
-      this.damaged.add(pack.dir);
-      this.deps.log.warn(`Model packs: ${pack.dir} could not be checked (model ${id})`);
-      this.tell(true);
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
+        // A file gone: the pack is damaged until it is imported again.
+        this.damaged.add(pack.dir);
+        this.deps.log.warn(`Model packs: ${pack.dir} could not be checked (model ${id})`);
+        this.tell(true);
+      } else {
+        // Any other read error may pass (a busy disk, a moment's lock): not damage; checked again at the next use.
+        this.deps.log.warn(`Model packs: ${pack.dir} could not be checked now (${code ?? 'error'}, model ${id})`);
+      }
       return null;
     }
     if (!this.packs.some((p) => p.dir === pack.dir) && !this.retired.has(pack.dir)) {
