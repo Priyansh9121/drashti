@@ -25,9 +25,13 @@ import { readModelPin } from './whisper-decode-check.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Drashti's own release pages, and alpha.22's: the two caption packs go there with SHA256SUMS-packs.txt. */
+/**
+ * Drashti's own release pages, and the caption packs' own (the owner, 24 Nov 2026: "Yes, prerelease page"): a
+ * prerelease, never Latest (so the update check and the kit check never read it), holding only the two zips and
+ * SHA256SUMS-packs.txt.
+ */
 const RELEASES = '/Priyansh9121/drashti/releases/download/';
-const RELEASE = `https://github.com${RELEASES}v1.0.0-alpha.22`;
+const RELEASE = `https://github.com${RELEASES}caption-packs-2026-11-24`;
 /** GitHub sends a release file's download on to its own storage. */
 const GITHUB_HOSTS = Object.freeze([
   'github.com',
@@ -123,7 +127,7 @@ const fits = async (file, source) =>
 function addressOf(source, env) {
   const set = source.urlSetting ? (env[source.urlSetting] ?? '').trim() : '';
   if (!set) return source.url;
-  let parsed = null;
+  let parsed;
   try {
     parsed = new URL(set);
   } catch {

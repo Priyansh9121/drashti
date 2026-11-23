@@ -36,8 +36,11 @@ describe('the Performance workflow’s captions input', () => {
   });
 
   it('adds only steps that wait for it, so an ordinary run is unchanged', () => {
+    // Its own steps, by name (the Performance check's own step is checked in the next test).
     const mine = steps().filter((s) =>
-      /caption models|captions bench|captions-bench|fetch-whisper|fetch-indic/iu.test(s),
+      /name: (Cache the caption models|Fetch the live captions engine|Build the approved native IndicConformer runtime|Captions bench|Keep the captions bench)/u.test(
+        s,
+      ),
     );
     expect(mine.length).toBeGreaterThanOrEqual(7);
     for (const s of mine)

@@ -87,12 +87,7 @@ function pcmOf(file: string): Int16Array {
     const size = b.readUInt32LE(at + 4);
     if (id === 'fmt ') format = b.subarray(at + 8, at + 8 + size);
     if (id === 'data') {
-      if (
-        !format ||
-        format.readUInt16LE(2) !== 1 ||
-        format.readUInt32LE(4) !== RATE ||
-        format.readUInt16LE(14) !== 16
-      )
+      if (format?.readUInt16LE(2) !== 1 || format.readUInt32LE(4) !== RATE || format.readUInt16LE(14) !== 16)
         throw new Error(`not 16 kHz mono 16-bit: ${file}`);
       const copy = Buffer.from(b.subarray(at + 8, at + 8 + size));
       return new Int16Array(copy.buffer, copy.byteOffset, Math.floor(copy.length / 2));
