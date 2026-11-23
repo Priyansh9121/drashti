@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { placeholderComputer } from '../access-core';
 import { each, OWNERS_WINDOW, smallestContent, sweep, type Size } from './fit-sweep';
+import { networkOn } from './devices';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
@@ -19,6 +20,7 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
+  setUpScreen,
   slideEditorWindow,
   windowShowing,
 } from './helpers';
@@ -97,22 +99,25 @@ function operatorSweep(app: ElectronApplication, win: Page, sizes: readonly Size
 
 test('the operator window’s dialogs and sheets, each at the window’s least, at CI’s 1024 × 645 and at the owner’s 1410 × 900, with long placeholder names: nothing cut, over another or out of its box, nothing sideways, every target 24 px', async () => {
   test.setTimeout(900_000);
-  const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1' });
+  // The screens as windows of their own, so a screen set up never covers the operator window.
+  const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1', DRASHTI_WINDOWED_OUTPUTS: '1' });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
     const sizes = [await smallestContent(app, OPERATOR), CI_WINDOW, OWNERS_WINDOW];
     const { pictureId } = await longShow(win);
-    // A screens' group with a long name, so Screens shows its card.
-    await win.evaluate(async (name) => {
-      const created = await (globalThis as PageGlobals).drashti.screens.createGroup(name);
-      if (!created.ok) throw new Error(created.message);
-    }, LONG_GROUP);
+    // A screen with a long name on the first display, so Screens shows its group and its screen.
+    await setUpScreen(win, LONG_GROUP, 0);
     const dialog = operatorSweep(app, win, sizes);
     const menu = (id: string) => () => chooseMenuItem(app, id);
 
     // Help.
-    await dialog('Help › Drashti Manual…', win.getByTestId('manual'), menu('manual'));
+    const manual = win.getByTestId('manual');
+    await dialog('Help › Drashti Manual…', manual, menu('manual'), () => Promise.resolve());
+    await dialog('Help › Drashti Manual…, a search', manual, async () => {
+      await manual.getByRole('searchbox', { name: 'Search the manual' }).fill('screens');
+      await expect(manual.getByTestId('manual-results')).toBeVisible();
+    });
     const guides = win.getByTestId('guides');
     for (const tab of ['operator', 'presenter', 'admin', 'setup-day'])
       await dialog(
@@ -181,9 +186,20 @@ test('the operator window’s dialogs and sheets, each at the window’s least, 
     await dialog('Screens', win.getByRole('dialog', { name: 'Screens', exact: true }), () =>
       win.getByRole('button', { name: 'Screens', exact: true }).click(),
     );
-    await dialog('Phones and tablets', win.getByTestId('network-panel'), () =>
-      win.getByTestId('open-network').click(),
+    const phones = win.getByTestId('network-panel');
+    await dialog(
+      'Phones and tablets',
+      phones,
+      () => win.getByTestId('open-network').click(),
+      () => Promise.resolve(),
     );
+    // On, with a long-named phone being paired: its address, the code and the QR code.
+    await dialog('Phones and tablets, pairing a phone', phones, async () => {
+      await networkOn(win);
+      await phones.getByTestId('pair-name').fill('Placeholder phone with a long name for the stage');
+      await phones.getByTestId('pair-remote').click();
+      await expect(phones.getByTestId('pairing-offer')).toBeVisible();
+    });
 
     // The library's dialogs, for the long-named words and picture (each in the long-named playlist).
     const sheet = await openLibrary(win);
