@@ -8,6 +8,7 @@ import {
   type ReportStateView,
 } from '../../../shared/report';
 import { guessFeatures, reportFeatures, type ReportFeature } from '../../../shared/report-features';
+import { type LogPeriod, periodChoices } from '../../../shared/log-period';
 
 /*
  * Help › Report a Problem…'s window (x49, the owner's Q60-38 and his "Yes, all A" to Q60-42), in either mode: what the
@@ -34,6 +35,10 @@ interface ReportUi {
   /** The notice's words (Report this…), until taken out. */
   notice: string | null;
   diagnostics: boolean;
+  /** The diagnostics' log of (alpha.21, logs (c)): Today, Yesterday, the last 7 days or one day kept. */
+  period: LogPeriod;
+  /** The periods offered, worked out as the window opened (the days the log keeps, by that day). */
+  periods: { period: LogPeriod; label: string }[];
   crashFiles: boolean;
   picture: boolean;
   /** Made for Review (exactly what goes), or why not. */
@@ -50,6 +55,8 @@ const CLEAR = {
   chosen: [] as ChosenFeature[],
   notice: null as string | null,
   diagnostics: false,
+  period: 'today' as LogPeriod,
+  periods: [] as { period: LogPeriod; label: string }[],
   crashFiles: false,
   picture: false,
   prepared: null,
@@ -95,6 +102,7 @@ export async function showReport(from: { notice?: string; featureId?: string } =
     ...CLEAR,
     open: true,
     opened: opened.ok ? opened : null,
+    periods: periodChoices(opened.ok ? opened.logDays : [], Date.now()),
     error: opened.ok ? null : opened.message,
     notice: from.notice ?? null,
     chosen,
@@ -128,6 +136,11 @@ export function setTick(tick: 'diagnostics' | 'crashFiles' | 'picture', on: bool
   useReport.setState({ [tick]: on } as Pick<ReportUi, typeof tick>);
 }
 
+/** The diagnostics' log of this period (alpha.21, logs (c)). */
+export function setPeriod(period: LogPeriod): void {
+  useReport.setState({ period });
+}
+
 export function leaveNoticeOut(): void {
   useReport.setState({ notice: null });
 }
@@ -146,6 +159,7 @@ export function draftOf(s: ReportUi): ReportDraft {
     diagnostics: s.diagnostics,
     crashFiles: s.crashFiles && Boolean(s.opened?.crash),
     picture: s.picture && Boolean(s.opened?.picture),
+    period: s.period,
   };
 }
 

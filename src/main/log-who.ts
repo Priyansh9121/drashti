@@ -96,13 +96,13 @@ export function whoLines(who: DiagnosticsWho, now: Date): string[] {
       ? 'a node (it has no entry of its own: Main is let in)'
       : 'not let in';
   let entry: string;
-  if (who.grantId) entry = `grant ${idStart(who.grantId, 8)} (the Computers tab's Grant column starts so)`;
+  if (who.grantId) entry = `grant ${idStart(who.grantId, 8)} (the Computers tab’s Grant column starts so)`;
   else if (who.made === 'node')
     entry = who.main ? `none: a node, following Main “${who.main}”` : 'none: a node, not paired';
   else entry = 'none: not let in';
   return [
     `Computer: ${who.computer}`,
-    `Computer id: ${who.computerId ? `${idStart(who.computerId, 12)} (the Computers tab's Computer id column starts so)` : 'none'}`,
+    `Computer id: ${who.computerId ? `${idStart(who.computerId, 12)} (the Computers tab’s Computer id column starts so)` : 'none'}`,
     `Install id: ${who.installId}`,
     `Access-list entry: ${entry}`,
     `Role: ${role}`,

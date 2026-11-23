@@ -196,7 +196,13 @@ export function saveDiagnosticsMenu(
     submenu: [
       ...choices.slice(0, 3).map(entry),
       ...(earlier.length > 0
-        ? [{ id: 'save-diagnostics-day', label: 'One Day', submenu: earlier.map(entry) } as MenuItemConstructorOptions]
+        ? [
+            {
+              id: 'save-diagnostics-day',
+              label: 'One Day',
+              submenu: earlier.map(entry),
+            } as MenuItemConstructorOptions,
+          ]
         : []),
     ],
   };

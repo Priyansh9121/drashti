@@ -67,11 +67,11 @@ describe('who and what in a diagnostics file', () => {
       'Log',
     ]);
     expect(lines).toContain('Computer: Placeholder Hall Mac');
-    expect(lines).toContain(
-      "Computer id: c0ffee00c0ff… (the Computers tab's Computer id column starts so)",
-    );
+    expect(lines).toContain('Computer id: c0ffee00c0ff… (the Computers tab’s Computer id column starts so)');
     expect(lines).toContain('Install id: 7K3P-Q2XM-4H9A');
-    expect(lines).toContain("Access-list entry: grant 0a1b2c3d… (the Computers tab's Grant column starts so)");
+    expect(lines).toContain(
+      'Access-list entry: grant 0a1b2c3d… (the Computers tab’s Grant column starts so)',
+    );
     expect(lines).toContain('Role: Pro');
     expect(lines).toContain('Made in: Pro Mode');
     expect(lines.find((l) => l.startsWith('Time zone: '))).toMatch(/UTC[+-]\d{2}:\d{2}\)?$/u);

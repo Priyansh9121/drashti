@@ -48,6 +48,9 @@ const NOT_LOGGED = new Set([
   'library:take-automatic-import-notices',
   'media:no-picture',
   'media:cannot-play',
+  // Asked every second or few while their window is open (reads, though their verbs do not say so).
+  'media:clip-clips',
+  'accesslist:refresh',
 ]);
 
 /** Whether a request on this channel goes into the log (one that changes something). */
@@ -118,7 +121,7 @@ export function commandFields(command: Record<string, unknown>): string[] {
   return out;
 }
 
-type Result = { ok: true; changed: boolean; rev: number } | { ok: false; error: string };
+type Result = { ok: true; changed: boolean; rev: number } | { ok: false; error: string; message?: string };
 
 const outcomeOf = (r: Result) =>
   r.ok ? `${r.changed ? 'done' : 'nothing changed'} (revision ${String(r.rev)})` : `not done (${r.error})`;
@@ -150,10 +153,17 @@ export class CommandLog {
     );
   }
 
-  /** Red stub (alpha.21, logs (a)): not yet. */
+  /**
+   * A change the show made by itself (a slide moving on, a message's time up, what a restart put back): the parts that
+   * changed (the show's own names: slide, background, black-out…), never what they hold, and its revision.
+   */
   changedByItself(rev: number, parts: readonly string[]): void {
-    void rev;
-    void parts;
+    // A burst of the same parts (a timer's message coming and going) is one line, then a count.
+    this.heard(
+      `Show: changed by itself: ${parts.join(', ')}`,
+      ` (revision ${String(rev)})`,
+      `revision ${String(rev)}`,
+    );
   }
 
   /** An operator request that changes something (requestLogged), and how it went; a failure by its error's name. */

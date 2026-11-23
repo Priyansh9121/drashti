@@ -155,6 +155,11 @@ export default defineConfig(
             ['src/main/import/stand-in-converter.ts', 'hash.slice(0, ', 'a hash'],
             ['src/main/index.ts', "(a.mediaId ?? '-').slice(0, 8)", 'a media id’s start, for the log'],
             [
+              'src/main/log-who.ts',
+              'id.slice(0, letters)',
+              'an access-list id’s first hex letters, for diagnostics',
+            ],
+            [
               'src/renderer/src/network/NetworkPanel.tsx',
               'code.slice(0, 3)',
               'a pairing code, in two halves',

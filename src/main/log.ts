@@ -118,7 +118,7 @@ function moveToDay(dir: string, from: string, day: string): void {
 }
 
 /** Each file's first line names its day (headerLine). */
-const HEADER_DAY = /^\S+ \[info\] Drashti's log of (\d{4}-\d{2}-\d{2}) /u;
+const HEADER_DAY = /^\S+ \[info\] Drashti’s log of (\d{4}-\d{2}-\d{2}) /u;
 
 /** The day a file holds: as its first line names it, else (an earlier Drashti's) by when it was last written. */
 function fileDay(file: string): string {
@@ -178,14 +178,14 @@ function daysChanged(): void {
 
 /** The line that begins a new file: its day, and who writes it. */
 function headerLine(s: Sink): string {
-  let who = '';
+  let who: string;
   try {
     who = header ? `: ${header()}` : '';
   } catch {
     who = ': (who writes it could not be said)';
   }
   return scrub(
-    `${new Date(s.now()).toISOString()} [info] Drashti's log of ${s.day} (this computer's day; each line's time is UTC)${who}`,
+    `${new Date(s.now()).toISOString()} [info] Drashti’s log of ${s.day} (this computer’s day; each line’s time is UTC)${who}`,
   );
 }
 
@@ -209,7 +209,8 @@ function toFile(line: string): void {
     if (now >= s.dayEnds) nextFile(s, dayOf(now));
     else if (s.size > 0 && s.size + bytes > s.partBytes) nextFile(s, s.day);
     if (s.size === 0) {
-      const first = `${headerLine(s)}\n`;
+      const head = headerLine(s);
+      const first = `${head}\n`;
       appendFileSync(join(s.dir, FILE), first);
       s.size += Buffer.byteLength(first);
     }

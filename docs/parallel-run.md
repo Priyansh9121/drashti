@@ -348,13 +348,13 @@ If anything goes wrong (a screen went black, something froze, Drashti closed by 
 
 If whoever helps asks for a file, or you need to send one another way:
 
-1. In Drashti, choose **Help**, then **Save Diagnostics…** (on Windows, press **Alt** first to show the menu bar).
+1. In Drashti, choose **Help**, then **Save Diagnostics**, then the day it happened: **Today…**, **Yesterday…**, **The Last 7 Days…**, or **One Day** and the day (on Windows, press **Alt** first to show the menu bar).
 2. A file called "Drashti diagnostics" with the date and time appears on the **Desktop**. The live controls say where it went.
 3. Send that file to whoever looks after Drashti, with the time it happened and what you saw.
 
-The file holds the versions, the screen and sound setup, and Drashti's log. Main's **Graphics** section adds its graphics chips, drivers and the video decoding offered. It never holds kirtan words, presentation names or where your files are. If Drashti asks about crash files first, press **Save** with **Include crash files** left unticked, unless whoever looks after Drashti asks for them: they can hold words from slides.
+The file says which computer made it (its name, its place on the access list and its own install id), and holds the versions, the screen and sound setup, and Drashti's log of the days chosen. Main's **Graphics** section adds its graphics chips, drivers and the video decoding offered. It never holds kirtan words, presentation names or where your files are. If Drashti asks about crash files first, press **Save** with **Include crash files** left unticked, unless whoever looks after Drashti asks for them: they can hold words from slides.
 
-If the problem showed on the node's screens, do the same on the node: **Help**, then **Save Diagnostics…** there too (on Windows, press **Alt** first). The node's window says where its file went, and both files go to whoever looks after Drashti.
+If the problem showed on the node's screens, do the same on the node: **Help**, then **Save Diagnostics** and the day there too (on Windows, press **Alt** first). The node's window says where its file went, and both files go to whoever looks after Drashti.
 
 If Drashti closed by itself, start it again: it puts back what was on the screens (the slide, background, sound, timers, a timer for the audience, messages, lower thirds and the picture-in-picture box) and says so at the top. A video or a sound carries on where it would be by now, counting from its last jump or marker, between its start and end points. A video input, as the background or in the picture-in-picture box, is put back while it is still in **Media**; if a screen then finds no camera of that name, it comes off again (the box with it) within 20 seconds. Either way, the note at the top names an input that did not come back. Report the problem after that, with diagnostics if needed.
 

@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import { formatBytes } from '../../../shared/format';
+import type { LogPeriod } from '../../../shared/log-period';
 import { REPORT_LIMITS, reportStateWords, reportWhen, type ReportStateView } from '../../../shared/report';
 import { featureGroups } from '../../../shared/report-features';
 import { useMode } from '../operator/mode-store';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
-import { Field, Textarea, TextInput } from '../ui/Field';
+import { Field, Select, Textarea, TextInput } from '../ui/Field';
 import { Checkbox } from '../ui/Toggle';
 import {
   backToWrite,
@@ -14,6 +15,7 @@ import {
   refreshReports,
   review,
   send,
+  setPeriod,
   setQuery,
   setTick,
   setWords,
@@ -166,12 +168,30 @@ function WritePage() {
           Send with it
         </h3>
         <Checkbox
-          label="Diagnostics: the versions, the setup, the graphics, counts and the recent log, never words from the library."
+          label="Diagnostics: the versions, the setup, the graphics, counts and the log, never words from the library."
           checked={s.diagnostics}
           onChange={(e) => {
             setTick('diagnostics', e.target.checked);
           }}
         />
+        {s.diagnostics && (
+          // The log of a chosen period (alpha.21, logs for 100+ installs (c)): the days this computer keeps.
+          <Field label="Its log of" layout="inline" className="pl-6">
+            <Select
+              data-testid="report-log-period"
+              value={s.period}
+              onChange={(e) => {
+                setPeriod(e.target.value as LogPeriod);
+              }}
+            >
+              {s.periods.map((c) => (
+                <option key={c.period} value={c.period}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         {opened?.crash && (
           <Checkbox
             label={`Crash files: ${String(opened.crash.count)} (${formatBytes(opened.crash.bytes)}). Each holds what a part of Drashti had in memory when it crashed, which can include words from slides.`}

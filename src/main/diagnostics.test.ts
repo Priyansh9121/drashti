@@ -253,65 +253,65 @@ function nodeInputForWho(): NodeDiagnosticsInput {
 
 /** A node's diagnostics input: placeholder names. */
 function nodeInput(): { dir: string; input: NodeDiagnosticsInput } {
-    const dir = mkdtempSync(join(tmpdir(), 'drashti-node-diag-'));
-    const logFile = join(dir, 'drashti.log');
-    writeFileSync(logFile, '2026-10-08T10:00:00.000Z [info] Node: link online\n');
-    return {
-      dir,
-      input: {
-        app: { version: '1.0.0', electron: '44', chrome: '152', node: '24', platform: 'win32', arch: 'x64' },
-        displays: [],
-        screens: [
-          {
-            name: 'Placeholder lobby screen',
-            groupName: 'Lobby',
-            role: 'audience',
-            canvasWidth: 1920,
-            canvasHeight: 1080,
-            scaling: 'fit',
-            enabled: true,
-            state: 'showing',
-            display: 'Display 2',
-            droppedFrames: 3,
-            paintedRev: 41,
-          },
-        ],
-        main: {
-          name: 'Placeholder Main',
-          addresses: ['192.0.2.10'],
-          port: 8741,
-          pairedAt: '2026-10-08T09:00:00.000Z',
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-node-diag-'));
+  const logFile = join(dir, 'drashti.log');
+  writeFileSync(logFile, '2026-10-08T10:00:00.000Z [info] Node: link online\n');
+  return {
+    dir,
+    input: {
+      app: { version: '1.0.0', electron: '44', chrome: '152', node: '24', platform: 'win32', arch: 'x64' },
+      displays: [],
+      screens: [
+        {
+          name: 'Placeholder lobby screen',
+          groupName: 'Lobby',
+          role: 'audience',
+          canvasWidth: 1920,
+          canvasHeight: 1080,
+          scaling: 'fit',
+          enabled: true,
+          state: 'showing',
+          display: 'Display 2',
+          droppedFrames: 3,
+          paintedRev: 41,
         },
-        link: { state: 'online', why: null, since: Date.UTC(2026, 9, 8, 9, 1) },
-        clock: { offsetMs: -3.6, rttMs: 1.2, at: Date.UTC(2026, 9, 8, 10, 4) },
-        rev: 41,
-        fromSaved: false,
-        media: {
-          wanted: 14,
-          ready: 13,
-          bytesWanted: 30 * 1024 ** 2,
-          bytesReady: 28 * 1024 ** 2,
-          copying: null,
-          missingNow: 1,
-          problem: null,
-        },
-        watchdog: [{ at: '2026-10-08T10:02:00.000Z', window: 'node window', kind: 'reloaded', reason: null }],
-        crashJournal: [{ n: 1, at: '2026-10-08T10:01:00.000Z', what: 'the GPU process crashed (code 11)' }],
-        crashFiles: { files: [], included: false },
-        logFiles: [logFile],
-        now: new Date(2026, 9, 8, 10, 5),
-        who: {
-          computer: 'Placeholder Lobby PC',
-          computerId: null,
-          installId: 'Q2XM-4H9A-7K3P',
-          grantId: null,
-          role: null,
-          made: 'node',
-          main: 'Placeholder Main',
-          period: 'Yesterday, 2026-10-07',
-        },
+      ],
+      main: {
+        name: 'Placeholder Main',
+        addresses: ['192.0.2.10'],
+        port: 8741,
+        pairedAt: '2026-10-08T09:00:00.000Z',
       },
-    };
+      link: { state: 'online', why: null, since: Date.UTC(2026, 9, 8, 9, 1) },
+      clock: { offsetMs: -3.6, rttMs: 1.2, at: Date.UTC(2026, 9, 8, 10, 4) },
+      rev: 41,
+      fromSaved: false,
+      media: {
+        wanted: 14,
+        ready: 13,
+        bytesWanted: 30 * 1024 ** 2,
+        bytesReady: 28 * 1024 ** 2,
+        copying: null,
+        missingNow: 1,
+        problem: null,
+      },
+      watchdog: [{ at: '2026-10-08T10:02:00.000Z', window: 'node window', kind: 'reloaded', reason: null }],
+      crashJournal: [{ n: 1, at: '2026-10-08T10:01:00.000Z', what: 'the GPU process crashed (code 11)' }],
+      crashFiles: { files: [], included: false },
+      logFiles: [logFile],
+      now: new Date(2026, 9, 8, 10, 5),
+      who: {
+        computer: 'Placeholder Lobby PC',
+        computerId: null,
+        installId: 'Q2XM-4H9A-7K3P',
+        grantId: null,
+        role: null,
+        made: 'node',
+        main: 'Placeholder Main',
+        period: 'Yesterday, 2026-10-07',
+      },
+    },
+  };
 }
 
 describe("a node's diagnostics (Session 17)", () => {

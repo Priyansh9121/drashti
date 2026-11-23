@@ -99,7 +99,7 @@ describe('the log of every operator request (alpha.21, logs for 100+ installs (a
         told.push(`${channel} ${outcome}${error instanceof Error ? ` ${error.message}` : ''}`);
       },
     });
-    handle(IPC.playlists.rename, () => Promise.resolve({ ok: true }));
+    handle(IPC.playlists.rename, () => Promise.resolve({ ok: true as const, ids: [] }));
     handle(IPC.playlists.remove, () => ({ ok: false, message: 'Placeholder' }) as never);
     handle(IPC.playlists.create, () => {
       throw new Error('Placeholder sync failure');
@@ -141,9 +141,10 @@ describe('the log of every operator request (alpha.21, logs for 100+ installs (a
   });
 
   it('without a listener, a request runs as before', async () => {
-    handle(IPC.playlists.rename, () => Promise.resolve({ ok: true }));
+    handle(IPC.playlists.rename, () => Promise.resolve({ ok: true as const, ids: [] }));
     await expect(handlers.get(IPC.playlists.rename)?.(from('index.html'), 'pl-1', 'x')).resolves.toEqual({
       ok: true,
+      ids: [],
     });
   });
 });

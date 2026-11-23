@@ -102,16 +102,13 @@ export function periodText(period: LogPeriod, now: number): string {
 }
 
 /** The choices a window offers for the kept days (newest first): the named three, then each earlier kept day. */
-export function periodChoices(
-  kept: readonly string[],
-  now: number,
-): { period: LogPeriod; label: string }[] {
+export function periodChoices(kept: readonly string[], now: number): { period: LogPeriod; label: string }[] {
   const today = dayOf(now);
   const yesterday = dayBefore(now, 1);
   return [
-    { period: 'today' as LogPeriod, label: 'Today' },
-    { period: 'yesterday' as LogPeriod, label: 'Yesterday' },
-    { period: 'last-7-days' as LogPeriod, label: 'The last 7 days' },
+    { period: 'today', label: 'Today' },
+    { period: 'yesterday', label: 'Yesterday' },
+    { period: 'last-7-days', label: 'The last 7 days' },
     ...kept
       .filter((d) => d !== today && d !== yesterday && isLogPeriod(d))
       .map((d) => ({ period: d as LogPeriod, label: dayLabel(d, now) })),

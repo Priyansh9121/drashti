@@ -62,8 +62,11 @@ export interface CrashFilesChoice {
   kept?: boolean;
 }
 
-/** At most this much of the log (the newest part). */
-const LOG_BYTES = 1_500_000;
+/**
+ * At most this much of the log (the newest part): since alpha.21 a chosen period's (logs (c)), up to 7 days; a report
+ * keeps its own smaller part of it (report-files.ts, fitDiagnostics).
+ */
+const LOG_BYTES = 16_000_000;
 const HIDDEN = '[library name]';
 
 const count = (db: Db, sql: string) => (db.prepare(sql).get() as { n: number }).n;
@@ -201,9 +204,10 @@ function crashSections(journal: readonly CrashEntry[], crash: CrashFilesChoice):
 
 /**
  * The file on the Desktop; with crash files ticked, a folder holding the file and the crash files.
- * Returns the file's path, or the folder's.
+ * Returns the file's path, or the folder's. (alpha.21: Save Diagnostics' text is made in the report worker, then
+ * written here by Main.)
  */
-function writeDiagnostics(dir: string, now: Date, text: string, crash: CrashFilesChoice): string {
+export function writeDiagnosticsFile(dir: string, now: Date, text: string, crash: CrashFilesChoice): string {
   const name = `Drashti diagnostics ${fileStamp(now)}`;
   if (!crash.included || crash.files.length === 0) {
     const file = join(dir, `${name}.txt`);
@@ -217,16 +221,21 @@ function writeDiagnostics(dir: string, now: Date, text: string, crash: CrashFile
   return folder;
 }
 
-/** The log, oldest file first, keeping the newest part. */
+/** The log, oldest file first, keeping the newest part (read newest first, so a long period reads no more than it keeps). */
 function logSection(logFiles: readonly string[]): string {
-  let logText = '';
+  const parts: string[] = [];
+  let bytes = 0;
   for (const file of [...logFiles].reverse()) {
+    if (bytes > LOG_BYTES) break;
     try {
-      logText += readFileSync(file, 'utf8');
+      const text = readFileSync(file, 'utf8');
+      parts.unshift(text);
+      bytes += text.length;
     } catch {
-      // A file rotated away meanwhile.
+      // A file removed meanwhile (its day gone).
     }
   }
+  let logText = parts.join('');
   if (logText.length > LOG_BYTES) logText = `…\n${logText.slice(-LOG_BYTES)}`;
   return section(
     'Log',
@@ -298,7 +307,7 @@ export function diagnosticsText(input: DiagnosticsInput): string {
  */
 export function saveDiagnostics(dir: string, input: DiagnosticsInput): string {
   const text = scrub(redactNames(diagnosticsText(input), libraryNames(input.db)));
-  return writeDiagnostics(dir, input.now, text, input.crashFiles);
+  return writeDiagnosticsFile(dir, input.now, text, input.crashFiles);
 }
 
 /** A node's screen, as Main gave it, and how it stands on the node. */
@@ -398,5 +407,5 @@ export function nodeDiagnosticsText(input: NodeDiagnosticsInput): string {
 
 /** Write the node's file to `dir` (the Desktop); returns its path (a folder's, with crash files ticked). */
 export function saveNodeDiagnostics(dir: string, input: NodeDiagnosticsInput): string {
-  return writeDiagnostics(dir, input.now, scrub(nodeDiagnosticsText(input)), input.crashFiles);
+  return writeDiagnosticsFile(dir, input.now, scrub(nodeDiagnosticsText(input)), input.crashFiles);
 }

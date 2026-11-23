@@ -32,10 +32,14 @@ describe('the log file', () => {
   });
 
   it('blanks any e-mail address, whatever wrote the line (alpha.21, logs (b): never a Gmail address in a log or a diagnostics file)', () => {
-    expect(scrub('let in placeholder.person@gmail.com on placeholder-mac')).toBe('let in [email] on placeholder-mac');
+    expect(scrub('let in placeholder.person@gmail.com on placeholder-mac')).toBe(
+      'let in [email] on placeholder-mac',
+    );
     expect(scrub('Placeholder.Owner+drashti@Example.org, and more')).toBe('[email], and more');
     // Not an address: left as it is.
-    expect(scrub('rtmp://127.0.0.1:1935/live and user@host')).toBe('rtmp://127.0.0.1:1935/live and user@host');
+    expect(scrub('rtmp://127.0.0.1:1935/live and user@host')).toBe(
+      'rtmp://127.0.0.1:1935/live and user@host',
+    );
   });
 
   it('with a test’s copy, writes every line there too, whole and scrubbed, however the files rotate (alpha.21: a failed test keeps its Drashti’s log)', () => {
@@ -151,7 +155,8 @@ describe('the log, one file a day', () => {
     const dir = fresh();
     for (let d = 1; d <= 22; d++)
       writeFileSync(join(dir, `drashti-2026-11-${String(d).padStart(2, '0')}.log`), 'placeholder\n');
-    for (let d = 15; d <= 31; d++) writeFileSync(join(dir, `drashti-2026-10-${String(d)}.log`), 'placeholder\n');
+    for (let d = 15; d <= 31; d++)
+      writeFileSync(join(dir, `drashti-2026-10-${String(d)}.log`), 'placeholder\n');
     const now = at(23, 9);
     startLogFile(dir, { now: () => now });
     log.info('placeholder today');
@@ -164,7 +169,8 @@ describe('the log, one file a day', () => {
 
   it('keeps all the files together within the total size: the oldest go first, never the file being written', () => {
     const dir = fresh();
-    for (let d = 10; d <= 22; d++) writeFileSync(join(dir, `drashti-2026-11-${String(d)}.log`), 'x'.repeat(1000));
+    for (let d = 10; d <= 22; d++)
+      writeFileSync(join(dir, `drashti-2026-11-${String(d)}.log`), 'x'.repeat(1000));
     let now = at(23, 9);
     startLogFile(dir, { totalBytes: 5500, partBytes: 2000, now: () => now });
     log.info('placeholder today');
@@ -192,12 +198,12 @@ describe('the log, one file a day', () => {
     setLogHeader(() => 'placeholder header: Drashti 1.0.0 on a placeholder computer');
     log.info('placeholder first');
     expect(text(dir, 'drashti.log').split('\n')[0]).toMatch(
-      /^\S+ \[info\] Drashti's log of 2026-11-23 .*placeholder header: Drashti 1\.0\.0 on a placeholder computer$/u,
+      /^\S+ \[info\] Drashti’s log of 2026-11-23 .*placeholder header: Drashti 1\.0\.0 on a placeholder computer$/u,
     );
     const before = changes;
     now = at(24, 9);
     log.info('placeholder second day');
-    expect(text(dir, 'drashti.log').split('\n')[0]).toContain("Drashti's log of 2026-11-24");
+    expect(text(dir, 'drashti.log').split('\n')[0]).toContain('Drashti’s log of 2026-11-24');
     expect(changes).toBeGreaterThan(before);
     stop();
   });

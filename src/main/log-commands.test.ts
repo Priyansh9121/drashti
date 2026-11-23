@@ -146,7 +146,7 @@ describe('the log of every show command (alpha.21, logs (a))', () => {
     pass(2000);
     expect(lines[0]).toBe('Show: zoomLive zoom=1 x=0 y=0: done (revision 10)');
     expect(lines.filter((l) => l.startsWith('Show: zoomLive')).length).toBeLessThanOrEqual(3);
-    const counted = lines.filter((l) => / more in /u.test(l));
+    const counted = lines.filter((l) => l.includes(' more in '));
     expect(counted.length).toBeGreaterThan(0);
     expect(counted.reduce((n, l) => n + Number(/×(\d+) more/u.exec(l)?.[1] ?? 0), 0)).toBe(39);
     expect(counted.at(-1)).toMatch(

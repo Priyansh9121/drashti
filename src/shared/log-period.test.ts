@@ -43,7 +43,8 @@ describe('the log’s days and periods', () => {
   });
 
   it('takes only the three named periods or a real day', () => {
-    for (const p of ['today', 'yesterday', 'last-7-days', '2026-11-20', '2024-02-29']) expect(isLogPeriod(p), p).toBe(true);
+    for (const p of ['today', 'yesterday', 'last-7-days', '2026-11-20', '2024-02-29'])
+      expect(isLogPeriod(p), p).toBe(true);
     for (const p of ['tomorrow', '', '2026-02-30', '2026-13-01', '26-11-20', '2026-11-20T00:00', 3, null])
       expect(isLogPeriod(p), String(p)).toBe(false);
   });
@@ -74,7 +75,10 @@ describe('the log’s days and periods', () => {
 
   it('offers Today, Yesterday and the last 7 days, then each earlier day kept, newest first, as a person reads it', () => {
     const now = at(11, 23, 10);
-    const choices = periodChoices(['2026-11-23', '2026-11-22', '2026-11-21', '2026-11-18', '2025-12-30'], now);
+    const choices = periodChoices(
+      ['2026-11-23', '2026-11-22', '2026-11-21', '2026-11-18', '2025-12-30'],
+      now,
+    );
     expect(choices).toEqual([
       { period: 'today', label: 'Today' },
       { period: 'yesterday', label: 'Yesterday' },
