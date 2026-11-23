@@ -165,8 +165,10 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   const selector = `${scope} [data-warm-up]`;
   const clip = await page.locator(selector).first().boundingBox();
   if (!clip) throw new Error('the warm-up has no visible box');
-  const drawnPng = await page.screenshot({ scale: 'css', clip });
-  const drawn = decodePng(drawnPng);
+  // The LIVE picture in twelve frames, each against the black (its corners varied from frame to frame on CI's Mac).
+  const drawnPngs: Buffer[] = [];
+  for (let frame = 0; frame < (scope === '[data-testid="live-preview"]' ? 12 : 1); frame++)
+    drawnPngs.push(await page.screenshot({ scale: 'css', clip }));
   const opacity = await page.evaluate((scope) => {
     const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
     const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
@@ -246,37 +248,43 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
       { scope, opacity },
     );
   }
-  expect([drawn.width, drawn.height], 'the same entire warm-up box').toEqual([black.width, black.height]);
   const center = (Math.floor(black.height / 2) * black.width + Math.floor(black.width / 2)) * 4;
   expect([...black.rgba.slice(center, center + 4)], 'the reference is opaque black').toEqual([0, 0, 0, 255]);
   let difference = 0;
-  let at = 0;
-  let channels = 0;
-  for (let i = 0; i < drawn.rgba.length; i++) {
-    const raw = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
-    const delta = corners?.has(Math.floor(i / 4)) && raw <= 2 ? 0 : raw;
-    if (delta !== 0) channels++;
-    if (delta > difference) {
-      difference = delta;
-      at = i;
+  for (const [frame, drawnPng] of drawnPngs.entries()) {
+    const drawn = decodePng(drawnPng);
+    expect([drawn.width, drawn.height], 'the same entire warm-up box').toEqual([black.width, black.height]);
+    let most = 0;
+    let at = 0;
+    let channels = 0;
+    for (let i = 0; i < drawn.rgba.length; i++) {
+      const raw = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
+      const delta = corners?.has(Math.floor(i / 4)) && raw <= 2 ? 0 : raw;
+      if (delta !== 0) channels++;
+      if (delta > most) {
+        most = delta;
+        at = i;
+      }
     }
-  }
-  if (difference !== 0) {
-    const pixel = Math.floor(at / 4);
-    const first = pixel * 4;
-    await test.info().attach('warm-up-drawn-pane', { body: drawnPng, contentType: 'image/png' });
-    await test.info().attach('warm-up-black-reference', { body: blackPng, contentType: 'image/png' });
-    await test.info().attach('warm-up-pane-difference', {
-      body: JSON.stringify({
-        difference,
-        channels,
-        x: pixel % drawn.width,
-        y: Math.floor(pixel / drawn.width),
-        drawn: [...drawn.rgba.slice(first, first + 4)],
-        black: [...black.rgba.slice(first, first + 4)],
-      }),
-      contentType: 'application/json',
-    });
+    if (most > difference) {
+      difference = most;
+      const pixel = Math.floor(at / 4);
+      const first = pixel * 4;
+      await test.info().attach('warm-up-drawn-pane', { body: drawnPng, contentType: 'image/png' });
+      await test.info().attach('warm-up-black-reference', { body: blackPng, contentType: 'image/png' });
+      await test.info().attach('warm-up-pane-difference', {
+        body: JSON.stringify({
+          frame,
+          difference: most,
+          channels,
+          x: pixel % drawn.width,
+          y: Math.floor(pixel / drawn.width),
+          drawn: [...drawn.rgba.slice(first, first + 4)],
+          black: [...black.rgba.slice(first, first + 4)],
+        }),
+        contentType: 'application/json',
+      });
+    }
   }
   return difference;
 }
