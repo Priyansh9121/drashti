@@ -42,13 +42,56 @@ const trials = (imports: [number, number][], controls: [number, number][]) => [
 
 it('fails an import that dropped more frames: L8 before its worker waited for the dissolve (5e86c44f)', () => {
   // lead-1123-113215-2365, its fifth attempt: the import's worker process started during the dissolve.
-  const verdict = macDropVerdict(trials([[14, 8], [6, 5], [5, 27]], [[3, 4], [1, 8], [1, 13]]));
+  const verdict = macDropVerdict(
+    trials(
+      [
+        [14, 8],
+        [6, 5],
+        [5, 27],
+      ],
+      [
+        [3, 4],
+        [1, 8],
+        [1, 13],
+      ],
+    ),
+  );
   expect(verdict).toMatchObject({ importFirst: 25, controlFirst: 5, firstWorse: true, worse: true });
 });
 
 it('passes imports that drop no more than the controls within the margin: recorded L8 attempts', () => {
   // a22-l8-1124-012539-84279's first attempt, failed by the renderer-frame meter: the import dropped fewer frames.
-  expect(macDropVerdict(trials([[6, 29], [9, 8], [4, 25]], [[12, 35], [6, 16], [8, 19]])).worse).toBe(false);
+  expect(
+    macDropVerdict(
+      trials(
+        [
+          [6, 29],
+          [9, 8],
+          [4, 25],
+        ],
+        [
+          [12, 35],
+          [6, 16],
+          [8, 19],
+        ],
+      ),
+    ).worse,
+  ).toBe(false);
   // a22-l8-1123-222251-24517's first attempt, the largest import excess on record in a first second (15 vs 2).
-  expect(macDropVerdict(trials([[6, 8], [4, 6], [5, 13]], [[1, 4], [0, 4], [1, 7]])).worse).toBe(false);
+  expect(
+    macDropVerdict(
+      trials(
+        [
+          [6, 8],
+          [4, 6],
+          [5, 13],
+        ],
+        [
+          [1, 4],
+          [0, 4],
+          [1, 7],
+        ],
+      ),
+    ).worse,
+  ).toBe(false);
 });

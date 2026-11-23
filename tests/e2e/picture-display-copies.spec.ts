@@ -494,17 +494,23 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       // dropped fewer frames than the controls (81 against 123 in the first second, 318 against 360 after) while that
       // rule failed 2 attempts of 5. So the Mac judges the dropped frames themselves, within MAC_DROP_MARGIN; the rule's
       // pairs stay in the evidence. Windows keeps the rule unchanged.
-      expect(drops.firstWorse, 'Import dropped more of the hall’s frames in the dissolve’s first second.').toBe(false);
-      expect(drops.afterWorse, 'Import dropped more of the hall’s frames after the dissolve’s first second.').toBe(
-        false,
-      );
+      expect(
+        drops.firstWorse,
+        'Import dropped more of the hall’s frames in the dissolve’s first second.',
+      ).toBe(false);
+      expect(
+        drops.afterWorse,
+        'Import dropped more of the hall’s frames after the dissolve’s first second.',
+      ).toBe(false);
     } else {
       // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
       expect(
         allWorse.native.every(Boolean),
         'Import made the hall’s presented frames worse in all three pairs.',
       ).toBe(false);
-      expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(false);
+      expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(
+        false,
+      );
     }
   } finally {
     const unfinished = await app
