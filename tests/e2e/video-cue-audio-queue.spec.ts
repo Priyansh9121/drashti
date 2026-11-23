@@ -86,52 +86,61 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
       },
       { file, url: stream.url(), soundUrl: streamSound.url(), ipc: IPC.stream.port },
     );
-    await app.evaluate(async () => {
-      const probe = (
-        globalThis as {
-          s5PcmQueue?: { waitFor: (kind: string) => Promise<unknown>; send: (text: string) => void };
-        }
-      ).s5PcmQueue;
-      if (!probe) throw new Error('No generated PCM observer');
-      const begun = probe.waitFor('begun');
-      probe.send('begin');
-      await begun;
-    });
-    const longFrame = await stream.evaluate(() => {
-      const from = Date.now();
-      const at = performance.now();
-      // Deliberately occupy this renderer, as the retained S5 long frames do. This is the cause under test.
-      while (performance.now() - at < 500) Math.sqrt(performance.now());
-      return { from, to: Date.now() };
-    });
-    const result = await app.evaluate(async () => {
-      const probe = (
-        globalThis as {
-          s5PcmQueue?: {
-            waitFor: (kind: string) => Promise<Record<string, number>>;
-            send: (text: string) => void;
-          };
-        }
-      ).s5PcmQueue;
-      if (!probe) throw new Error('No generated PCM observer');
-      const result = probe.waitFor('result');
-      probe.send('finish');
-      return await result;
-    });
-    await test.info().attach('s5-pcm-queue.json', {
-      body: Buffer.from(JSON.stringify({ ...result, longFrame })),
-      contentType: 'application/json',
-    });
-    const elapsed = result['elapsed'] ?? 0;
-    expect(elapsed).toBeGreaterThanOrEqual(500);
-    expect(
-      (result['frames'] ?? 0) / 48,
-      '48 kHz PCM keeps its full duration through the long drawing frame',
-    ).toBeGreaterThanOrEqual(elapsed - 1000 / 30);
-    expect(
-      result['longestGap'],
-      'the encoder receives sound through the long drawing frame',
-    ).toBeLessThanOrEqual(1000 / 30);
+    /**
+     * One half-second long frame on this page's main thread, the PCM observed through it. The drawing page as before;
+     * the stream's sound page too since alpha.23, which owns the PCM now (a22-review-x86 S5: its event loop lagged up to
+     * 609 ms on CI's Windows in a crossfade).
+     */
+    const throughLongFrame = async (page: typeof stream, what: string, attachment: string) => {
+      await app.evaluate(async () => {
+        const probe = (
+          globalThis as {
+            s5PcmQueue?: { waitFor: (kind: string) => Promise<unknown>; send: (text: string) => void };
+          }
+        ).s5PcmQueue;
+        if (!probe) throw new Error('No generated PCM observer');
+        const begun = probe.waitFor('begun');
+        probe.send('begin');
+        await begun;
+      });
+      const longFrame = await page.evaluate(() => {
+        const from = Date.now();
+        const at = performance.now();
+        // Deliberately occupy this renderer, as the retained S5 long frames do. This is the cause under test.
+        while (performance.now() - at < 500) Math.sqrt(performance.now());
+        return { from, to: Date.now() };
+      });
+      const result = await app.evaluate(async () => {
+        const probe = (
+          globalThis as {
+            s5PcmQueue?: {
+              waitFor: (kind: string) => Promise<Record<string, number>>;
+              send: (text: string) => void;
+            };
+          }
+        ).s5PcmQueue;
+        if (!probe) throw new Error('No generated PCM observer');
+        const result = probe.waitFor('result');
+        probe.send('finish');
+        return await result;
+      });
+      await test.info().attach(attachment, {
+        body: Buffer.from(JSON.stringify({ ...result, longFrame })),
+        contentType: 'application/json',
+      });
+      const elapsed = result['elapsed'] ?? 0;
+      expect(elapsed).toBeGreaterThanOrEqual(500);
+      expect(
+        (result['frames'] ?? 0) / 48,
+        `${what}: 48 kHz PCM keeps its full duration through the long frame`,
+      ).toBeGreaterThanOrEqual(elapsed - 1000 / 30);
+      expect(
+        result['longestGap'],
+        `${what}: the encoder receives sound through the long frame`,
+      ).toBeLessThanOrEqual(1000 / 30);
+    };
+    await throughLongFrame(stream, 'drawing page', 's5-pcm-queue.json');
+    await throughLongFrame(streamSound, 'sound page', 's5-pcm-queue-sound-page.json');
   } finally {
     await app.evaluate(() => {
       const g = globalThis as { s5PcmQueue?: { stop: () => void } };

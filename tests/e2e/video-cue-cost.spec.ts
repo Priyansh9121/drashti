@@ -446,6 +446,24 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           });
       }, 50);
     });
+    // a22-review-x86 S7 (166383843's observer, here where it can run: the stream mixes its own sound): each fade's two
+    // crossfade gains on the stream's sound page, as each is written. The envelope follows the engine's time, never a
+    // player's own position, whatever QA22-FADE-1's speed does to the player.
+    await streamSound.evaluate(() => {
+      const trace: { t: number; gains: number[] }[] = [];
+      (globalThis as { s5SoundGains?: typeof trace }).s5SoundGains = trace;
+      new MutationObserver(() => {
+        if (trace.length > 20_000) return;
+        const gains = [...document.querySelectorAll<HTMLElement>('audio[data-crossfade-gain]')].map((el) =>
+          Number(el.dataset['crossfadeGain']),
+        );
+        if (gains.length === 2 && gains.every(Number.isFinite)) trace.push({ t: Date.now(), gains });
+      }).observe(document.body, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-crossfade-gain'],
+      });
+    });
     const fadeClocks: { askedAt: number; fade: VideoCrossfade; to: PlaybackClock & { mediaId: string } }[] =
       [];
     const decoderProcesses = await app.evaluate(
@@ -666,6 +684,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         )
         .map((s) => ({ t: s.t - fade.at, key: s.key })),
     }));
+    const soundGains = await streamSound.evaluate(
+      () => (globalThis as { s5SoundGains?: { t: number; gains: number[] }[] }).s5SoundGains ?? [],
+    );
+    const fadeGains = fadeClocks.map(({ fade }) => ({
+      at: fade.at,
+      durationMs: fade.durationMs,
+      gains: soundGains.filter((g) => g.t >= fade.at && g.t < fade.at + fade.durationMs),
+    }));
     await retainCapture();
     const ended = await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.stream.end({ confirmed: true }),
@@ -746,6 +772,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       streamSoundJumps,
       fadeJumps,
       fadeSteps,
+      fadeGains,
       encodedFrames: media.videoFrames,
       blackFrames: black,
       blackFrameIndices,
@@ -802,6 +829,24 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           sound.offsets.filter((o) => o.t >= FADE_CLOSED_AFTER_MS && Math.abs(o.ms) > FADE_CLOSED_WITHIN_MS),
           `the ${sound.role} sound is back within ${String(FADE_CLOSED_WITHIN_MS)} ms of its clock ${String(FADE_CLOSED_AFTER_MS)} ms into the fade`,
         ).toEqual([]);
+      }
+    }
+    // S7: the stream's own two sounds cross by the engine's fade, as the hall's audio player's do in the crossfade case.
+    for (const fade of fadeGains) {
+      expect(
+        fade.gains.length,
+        'the stream sound page’s crossfade gains are seen through each fade',
+      ).toBeGreaterThanOrEqual(10);
+      let previous = -1;
+      for (const frame of fade.gains) {
+        const incoming = frame.gains[1] ?? -1;
+        expect((frame.gains[0] ?? -1) + incoming, 'the two gains sum to one').toBeCloseTo(1, 2);
+        expect(incoming, 'the incoming gain only rises').toBeGreaterThanOrEqual(previous - 0.001);
+        expect(
+          Math.abs(incoming - Math.max(0, Math.min(1, (frame.t - fade.at) / fade.durationMs))),
+          'the incoming gain follows the engine’s fade (the sound page writes it every 50 ms)',
+        ).toBeLessThanOrEqual(0.04);
+        previous = incoming;
       }
     }
     const streamSoundPid = decoderProcesses.find((p) => p.role === 'stream sound')?.pid;

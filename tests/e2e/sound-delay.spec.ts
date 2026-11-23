@@ -16,7 +16,7 @@ import {
   outputReady,
   setUpScreen,
 } from './helpers';
-import { streamSoundPage, testFfmpeg } from './stream-helpers';
+import { streamPage, streamSoundPage, testFfmpeg } from './stream-helpers';
 import { audioPage, dispatch } from './time-bar-helpers';
 
 /*
@@ -154,14 +154,18 @@ test('a video’s sound +200 ms trails its picture by 0.2 s in the hall and on t
     await expect(dialog.getByTestId('sound-picture-soundDelayMs-words')).toHaveText(
       '+0.20 s: the sound comes 0.20 s later than the picture',
     );
-    for (const [what, page, selector] of [
-      ['the hall', audio, heard],
-      ['the stream', program, streamed],
+    // And the stream's own picture against its own sound (a22-review-x86 S6): two renderers since alpha.23, each on
+    // the engine's time, the stream's sound in a page of its own.
+    const streamPicture = await streamPage(app);
+    for (const [what, picturePage, page, selector] of [
+      ['the hall', hall, audio, heard],
+      ['the stream', hall, program, streamed],
+      ['the stream’s own picture', streamPicture, program, streamed],
     ] as const)
       await expect
-        .poll(async () => Math.abs(((await trailing(hall, picture, page, selector)) ?? 9) - 0.2), {
+        .poll(async () => Math.abs(((await trailing(picturePage, picture, page, selector)) ?? 9) - 0.2), {
           timeout: 20_000,
-          message: `${what}'s sound 0.2 s behind the picture`,
+          message: `${what}: the sound 0.2 s behind the picture`,
         })
         .toBeLessThan(0.05);
 
