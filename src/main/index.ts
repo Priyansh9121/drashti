@@ -384,11 +384,7 @@ import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
-import {
-  applyStreamSoundSecurity,
-  createStreamSoundWindow,
-  STREAM_SOUND_PARTITION,
-} from './stream/stream-sound-window';
+import { createStreamSoundWindow } from './stream/stream-sound-window';
 import { StreamPageWarmUp } from './stream/stream-warm';
 import { LiveWindowService } from './live-window/live-window-service';
 import { LiveLinkService } from './live-link/live-link-service';
@@ -1691,6 +1687,7 @@ function start(): void {
   const streamSession = session.fromPartition(STREAM_PARTITION);
   applyStreamSessionSecurity(streamSession, {
     isProgram: (contents) => stream?.isProgram(contents) ?? false,
+    isSound: (contents) => stream?.isStreamSound(contents) ?? false,
     log: permissionLog,
     logCapture: (line) => {
       log.info(line);
@@ -1699,11 +1696,8 @@ function start(): void {
     // Only a page that asked is given it (and only the screens' pages may ask: IPC.liveWindow.ask).
     liveWindow: (frame) => liveWindows?.grantFor(frame) ?? null,
   });
-  const streamSoundSession = session.fromPartition(STREAM_SOUND_PARTITION);
-  applyStreamSoundSecurity(streamSoundSession, (contents) => stream?.isStreamSound(contents) ?? false);
   // A hung window's JavaScript stack, for the log (Sessions 31–36, ROB-1): every session's own pages.
-  for (const pages of [session.defaultSession, audioSession, streamSession, streamSoundSession])
-    allowHangStacks(pages);
+  for (const pages of [session.defaultSession, audioSession, streamSession]) allowHangStacks(pages);
 
   // Tests only (never a packaged Drashti): write a library as an older Drashti kept it, then stop.
   const oldLibrary = sw('DRASHTI_SELFTEST_LIBRARY');
@@ -2589,7 +2583,6 @@ function start(): void {
   protocol.handle(MEDIA_SCHEME, serveMedia);
   audioSession.protocol.handle(MEDIA_SCHEME, serveMedia);
   streamSession.protocol.handle(MEDIA_SCHEME, serveMedia);
-  streamSoundSession.protocol.handle(MEDIA_SCHEME, serveMedia);
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();

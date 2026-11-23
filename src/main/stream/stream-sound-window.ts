@@ -1,9 +1,10 @@
-import { BrowserWindow, type Session, type WebContents } from 'electron';
+import { BrowserWindow } from 'electron';
+import { STREAM_PARTITION } from './stream-session';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 
-/** A separate session forces Chromium to keep this renderer apart from the picture renderer. */
-export const STREAM_SOUND_PARTITION = 'persist:drashti-stream-sound';
+/** A separate BrowserWindow owns the renderer; the existing session preserves saved microphone ids. */
+export const STREAM_SOUND_PARTITION = STREAM_PARTITION;
 
 export function streamSoundPermissionAllowed(
   permission: string,
@@ -23,32 +24,6 @@ export function streamSoundPermissionAllowed(
   } catch {
     return false;
   }
-}
-
-export function applyStreamSoundSecurity(
-  session: Session,
-  isOwn: (contents: WebContents | null) => boolean,
-): void {
-  session.setPermissionRequestHandler((contents, permission, callback, details) => {
-    callback(
-      streamSoundPermissionAllowed(
-        permission,
-        isOwn(contents),
-        details.requestingUrl,
-        'mediaTypes' in details ? (details.mediaTypes ?? []) : [],
-      ),
-    );
-  });
-  session.setPermissionCheckHandler((contents, permission, _origin, details) =>
-    streamSoundPermissionAllowed(
-      permission,
-      isOwn(contents),
-      details.requestingUrl ?? contents?.getURL() ?? '',
-    ),
-  );
-  session.setDisplayMediaRequestHandler((_request, callback) => {
-    callback({});
-  });
 }
 
 /** No pictures, output device or offscreen drawing: only the stream's input, mix, captions and PCM. */

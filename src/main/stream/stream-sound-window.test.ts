@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { STREAM_PARTITION } from './program-window';
+import { createProgramWindow, STREAM_PARTITION } from './program-window';
 import {
   createStreamSoundWindow,
   STREAM_SOUND_PARTITION,
@@ -16,7 +16,11 @@ const { made, load } = vi.hoisted(() => ({
 vi.mock('electron', () => ({
   BrowserWindow: vi.fn(function Window(options: (typeof made)[number]) {
     made.push(options);
-    return { webContents: { on: vi.fn() } };
+    return {
+      getContentSize: () => [1920, 1080],
+      setContentSize: vi.fn(),
+      webContents: { on: vi.fn(), stopPainting: vi.fn(), setFrameRate: vi.fn() },
+    };
   }),
 }));
 vi.mock('../windows/renderer', () => ({ loadPage: load }));
@@ -31,16 +35,19 @@ describe('the stream sound window', () => {
     );
   });
 
-  it('forces a different renderer session from pictures, stays unthrottled and loads only sound', () => {
+  it('creates a separate BrowserWindow for sound, stays unthrottled and loads no pictures', () => {
     made.length = 0;
+    const picture = createProgramWindow({ width: 1920, height: 1080 });
     const window = createStreamSoundWindow();
-    expect(made).toHaveLength(1);
-    expect(STREAM_SOUND_PARTITION).not.toBe(STREAM_PARTITION);
-    expect(made[0]).toMatchObject({
+    expect(window).not.toBe(picture);
+    expect(window.webContents).not.toBe(picture.webContents);
+    expect(made).toHaveLength(2);
+    expect(made[0]?.webPreferences.offscreen).toBeTruthy();
+    expect(made[1]).toMatchObject({
       show: false,
       webPreferences: { partition: STREAM_SOUND_PARTITION, backgroundThrottling: false },
     });
-    expect(made[0]?.webPreferences.offscreen).toBeUndefined();
+    expect(made[1]?.webPreferences.offscreen).toBeUndefined();
     expect(load).toHaveBeenCalledWith(window, 'stream-sound');
   });
   it('grants only its own microphone, on Mac and Windows page addresses; never camera, output or display capture', () => {

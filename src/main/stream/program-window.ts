@@ -1,4 +1,7 @@
 import { BrowserWindow, type Session, type WebContents, type WebFrameMain } from 'electron';
+import { streamSoundPermissionAllowed } from './stream-sound-window';
+import { STREAM_PARTITION } from './stream-session';
+export { STREAM_PARTITION } from './stream-session';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 import type { CaptureGrant } from '../live-window/live-window-service';
@@ -10,14 +13,12 @@ import type { CaptureGrant } from '../live-window/live-window-service';
  * the displays are doing. Its page captures itself (getDisplayMedia, allowed
  * for its own frame only) and hands the frames on to be encoded.
  *
- * It has a session of its own, the only one that may use a microphone (a
- * sound input): what it is allowed can never reach another window (Chromium
- * shares device information between the pages of one session). A camera it may
+ * Its persistent session is shared only with the separate stream sound window, preserving saved device ids.
+ * Permissions are granted by the window's role and page address. A camera it may
  * use as the stream's own; since Session 50 Drashti's own screen pages and the
  * operator window may open a video input too, video only (windows/security.ts).
  */
 
-export const STREAM_PARTITION = 'persist:drashti-stream';
 export const PROGRAM_FPS = 30;
 
 /** True for the address of the stream's page (from disk, or the development server). */
@@ -48,6 +49,8 @@ export function streamPermissionAllowed(
 export interface StreamSessionRules {
   /** True for the Program window's page. */
   isProgram(contents: WebContents | null): boolean;
+  /** The separate sound renderer, in this same device-id namespace. */
+  isSound?(contents: WebContents | null): boolean;
   /** Every permission asked for and checked (DRASHTI_LOG_PERMISSIONS). */
   log?(line: string): void;
   /** Each capture of the page's own picture, granted or refused: rare, so always kept (Session 18). */
@@ -67,13 +70,22 @@ export function applyStreamSessionSecurity(session: Session, rules: StreamSessio
   session.setPermissionRequestHandler((contents, permission, callback, details) => {
     const url = details.requestingUrl;
     const media = 'mediaTypes' in details ? (details.mediaTypes ?? []) : [];
-    const allowed = streamPermissionAllowed(permission, rules.isProgram(contents), url, media);
+    const allowed = rules.isSound?.(contents)
+      ? streamSoundPermissionAllowed(permission, true, url, media)
+      : streamPermissionAllowed(permission, rules.isProgram(contents), url, media);
     rules.log?.(`Stream permission ${allowed ? 'granted' : 'refused'}: ${permission} for ${url}`);
     callback(allowed);
   });
   session.setPermissionCheckHandler((contents, permission, _origin, details) => {
     const url = details.requestingUrl ?? contents?.getURL() ?? '';
-    const allowed = streamPermissionAllowed(permission, rules.isProgram(contents), url);
+    const allowed = rules.isSound?.(contents)
+      ? streamSoundPermissionAllowed(
+          permission,
+          true,
+          url,
+          details.mediaType === undefined ? [] : [details.mediaType],
+        )
+      : streamPermissionAllowed(permission, rules.isProgram(contents), url);
     rules.log?.(`Stream permission check ${allowed ? 'passed' : 'failed'}: ${permission} for ${url}`);
     return allowed;
   });
