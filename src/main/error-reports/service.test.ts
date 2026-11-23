@@ -49,6 +49,26 @@ function setup() {
   return { service, deps, configure, sent, state, dir };
 }
 describe('automatic error reports', () => {
+  it('sends at most ten queued reports per UTC day across restarts, even after a long outage', async () => {
+    const s = setup();
+    s.configure();
+    s.service.enable(true);
+    for (let i = 0; i < 10; i++) expect(s.service.capture(incident())).toBe(true);
+    s.state.now += 86_400_000;
+    for (let i = 0; i < 10; i++) expect(s.service.capture(incident())).toBe(true);
+    s.state.now += 86_400_000;
+    await s.service.wake();
+    expect(s.sent).toHaveLength(10);
+    expect(s.service.pending()).toBe(10);
+    const restarted = new ErrorReports(s.deps);
+    await restarted.wake();
+    expect(s.sent).toHaveLength(10);
+    s.state.now += 86_400_000;
+    await restarted.wake();
+    expect(s.sent).toHaveLength(20);
+    expect(restarted.pending()).toBe(0);
+  });
+
   it('does not rewrite consent or the secret when an empty queue wakes while idle', async () => {
     const s = setup();
     s.configure();
