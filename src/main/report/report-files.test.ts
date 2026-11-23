@@ -254,7 +254,15 @@ describe('a chosen period’s diagnostics (alpha.21, logs for 100+ installs (c))
           clock: null,
           rev: 0,
           fromSaved: false,
-          media: { wanted: 0, ready: 0, bytesWanted: 0, bytesReady: 0, copying: null, missingNow: 0, problem: null },
+          media: {
+            wanted: 0,
+            ready: 0,
+            bytesWanted: 0,
+            bytesReady: 0,
+            copying: null,
+            missingNow: 0,
+            problem: null,
+          },
           watchdog: [],
           crashJournal: [],
           crashFiles: { files: [], included: false },
@@ -263,9 +271,11 @@ describe('a chosen period’s diagnostics (alpha.21, logs for 100+ installs (c))
           who: { ...WHO, computerId: null, grantId: null, role: null, made: 'node', main: null },
         },
       },
-      { openDb: () => {
-        throw new Error('a node has no library');
-      } },
+      {
+        openDb: () => {
+          throw new Error('a node has no library');
+        },
+      },
     );
     if (!made.ok) throw new Error(made.message);
     expect(made.text).toContain('== Drashti diagnostics (node) ==');
