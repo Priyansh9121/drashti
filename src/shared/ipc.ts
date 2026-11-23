@@ -494,6 +494,8 @@ export const IPC = {
     slidesForEdit: 'library:slides-for-edit',
     saveSlides: 'library:save-slides',
     exportPdf: 'library:export-pdf',
+    extractPdfPages: 'library:extract-pdf-pages',
+    showExtractedPdf: 'library:show-extracted-pdf',
     pdfPageSources: 'library:pdf-page-sources',
     insertPdfPages: 'library:insert-pdf-pages',
     insertPdfFile: 'library:insert-pdf-file',
@@ -1634,8 +1636,16 @@ export interface InvokeContract {
   };
   [IPC.library.cancelPdfInsertion]: { args: [presentationId: string, stamp: string]; result: boolean };
   [IPC.library.exportPdf]: {
-    args: [presentationId: string, doc: EditDoc, stamp: string];
+    args: [presentationId: string, doc: EditDoc, stamp: string, pages?: number[]];
     result: PdfCopyResult;
+  };
+  [IPC.library.extractPdfPages]: {
+    args: [presentationId: string, doc: EditDoc, stamp: string, pages: number[]];
+    result: { ok: true; id: string; name: string } | { ok: false; message: string };
+  };
+  [IPC.library.showExtractedPdf]: {
+    args: [id: string, visible: boolean];
+    result: boolean;
   };
   [IPC.library.saveSlides]: {
     args: [presentationId: string, doc: EditDoc, stamp: string, force: boolean];

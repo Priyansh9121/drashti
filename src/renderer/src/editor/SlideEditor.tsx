@@ -42,6 +42,7 @@ import {
   cancelSourceConversion,
   closeSlideEditor,
   commit,
+  noteOutside,
   isDirty,
   keepEditing,
   requestClose,
@@ -75,6 +76,9 @@ import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
+import { PdfPagesDialog } from './PdfPagesDialog';
+import { PdfHandoutDialog } from './PdfHandoutDialog';
+import { replacePdfPage, splitPdfPages } from './pdf-pages';
 import type { PdfPendingAction } from './PdfTools';
 import { SourceLinkDialog } from './SourceLinkDialog';
 import { SourceIssues } from './SourceIssues';
@@ -155,6 +159,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const note = useEditor((s) => s.note);
   const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
   const [pickingBusy, setPickingBusy] = useState(false);
+  const [pageAction, setPageAction] = useState<'extract' | 'split' | 'handout' | null>(null);
+  const [replacing, setReplacing] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
   const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const [linking, setLinking] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
@@ -312,6 +318,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     showSlide(removed.show);
   };
   const closeInsertion = () => {
+    setReplacing(false);
     if (insertBase.current) revokeSourceContent(insertBase.current.slideId);
     insertBase.current = null;
     setLinking(null);
@@ -618,6 +625,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onRotateRight={rotatePdfPage}
               onDeletePage={deleteCurrentPdfPage}
               onInsertPages={openInsertion}
+              onReplacePage={() => { setReplacing(true); openInsertion(); }}
+              onExtractPages={() => { finishTextEditing(); setPageAction('extract'); }}
+              onSplit={doc && slidesOf(doc).findIndex(page => page.id === slideId) > 0 ? () => { finishTextEditing(); setPageAction('split'); } : undefined}
+              onHandout={() => { finishTextEditing(); setPageAction('handout'); }}
               onSaveCopy={() => {
                 void savePdfCopy();
               }}
@@ -763,8 +774,44 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         />
       )}
+      {pageAction === 'handout' && doc && <PdfHandoutDialog doc={doc} onKeep={next => commit(next, { select: [] })} onClose={() => setPageAction(null)} />}
+      {(pageAction === 'extract' || pageAction === 'split') && doc && slideId && <PdfPagesDialog
+        count={slidesOf(doc).length}
+        page={slidesOf(doc).findIndex(page => page.id === slideId)}
+        split={pageAction === 'split'}
+        onClose={() => setPageAction(null)}
+        onConfirm={async (pages, file) => {
+          const before = useEditor.getState();
+          if (!before.doc || !before.open || pdfJob.current || before.sourceConversion || before.pdfDrawing) return 'Finish the current page edit first.';
+          const original = before.doc;
+          pdfJob.current = true;
+          try {
+            if (file) {
+              const result = await window.drashti.library.exportPdf(original.presentationId, original, before.stamp, pages);
+              return result.ok ? null : result.message;
+            }
+            const result = await window.drashti.library.extractPdfPages(original.presentationId, original, before.stamp, pages);
+            if (!result.ok) return result.message;
+            const parts = pageAction === 'split' && before.slideId ? splitPdfPages(original, before.slideId) : null;
+            const head = parts ? parts[0] : original;
+            const show = (visible: boolean) => {
+              void window.drashti.library.showExtractedPdf(result.id, visible).then(ok => {
+                if (!ok) tell('The extracted presentation could not be changed. Try again while the stream is off air.');
+              }).catch(() => tell('The extracted presentation could not be changed.'));
+            };
+            noteOutside({
+              undo: () => { show(false); if (parts) useEditor.setState({ doc: original, slideId: before.slideId, selection: [] }); },
+              redo: () => { show(true); if (parts) useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] }); },
+            });
+            if (parts) useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] });
+            tell(`Made presentation “${result.name}”. Undo removes it.`);
+            return null;
+          } finally { pdfJob.current = false; }
+        }}
+      />}
       {inserting && (
         <PdfInsertDialog
+          replace={replacing}
           presentationId={inserting.doc.presentationId}
           stamp={inserting.stamp}
           onClose={closeInsertion}
@@ -773,6 +820,15 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             const now = useEditor.getState();
             if (base?.doc !== now.doc || now.stamp !== base.stamp) {
               tell('The slides changed while the pages were prepared. Choose Insert pages again.');
+              return;
+            }
+            if (replacing) {
+              const replacement = pages[0];
+              const next = replacement && replacePdfPage(base.doc, base.slideId, replacement);
+              if (!next || !replacement) { tell('That page could not replace this page.'); return; }
+              commit(next, { select: [] });
+              showSlide(replacement.id);
+              useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
               return;
             }
             let next = base.doc,

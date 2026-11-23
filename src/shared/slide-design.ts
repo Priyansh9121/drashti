@@ -1,4 +1,6 @@
 import { nativeDeckMotion } from './deck';
+import { numberedPdfMaster } from './pdf-handout';
+import { slidesOf } from './slide-edit';
 import type { RenderSlide, SlideDesign } from './model';
 import type { EditDoc, EditSlide } from './slide-edit';
 import { slideCanvas } from './document-page';
@@ -12,13 +14,14 @@ export function composeSlide(
   master: EditSlide | null | undefined,
   ownsBackground = false,
   masterCanvas?: Size,
+  pageIndex?: number,
 ): RenderSlide {
   const own = slide.elements.some((element) => element.hidden)
     ? { ...slide, elements: slide.elements.filter((element) => !element.hidden) }
     : slide;
   const nativeDeck = nativeDeckMotion(own.deck);
   if (own.deck && !nativeDeck) return own;
-  const behind = design?.skipMaster ? null : master;
+  const behind = design?.skipMaster ? null : numberedPdfMaster(master, pageIndex);
   const backdrop =
     design?.backdrop ?? (slide.background === null && !ownsBackground ? behind?.design?.backdrop : undefined);
   if (!design && !behind) return nativeDeck ? { ...own, fullSlide: true } : own;
@@ -57,6 +60,7 @@ export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
     doc.master?.id === slide.id ? null : doc.master,
     slide.cues.some((c) => c.kind === 'background'),
     slideCanvas(doc.master ?? undefined, doc),
+    slidesOf(doc).findIndex(page => page.id === slide.id),
   );
 }
 

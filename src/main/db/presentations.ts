@@ -470,6 +470,7 @@ export class PresentationRepo {
         master,
         (cuesBySlide.get(s.id) ?? []).some((c) => c.kind === 'background'),
         slideCanvas(master ?? undefined, p),
+        index,
       );
       const info: SlideInfo = {
         id: s.id,

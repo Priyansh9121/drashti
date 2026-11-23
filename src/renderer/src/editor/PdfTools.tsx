@@ -44,6 +44,10 @@ export interface PdfToolCallbacks {
   onDeletePage: () => void;
   onInsertPages?: () => void;
   onSaveCopy?: () => void;
+  onExtractPages?: () => void;
+  onReplacePage?: () => void;
+  onSplit?: () => void;
+  onHandout?: () => void;
 }
 
 export interface PdfToolsProps extends PdfToolCallbacks {
@@ -73,10 +77,14 @@ export function PdfTools({
   onDeletePage,
   onInsertPages,
   onSaveCopy,
+  onExtractPages,
+  onReplacePage,
+  onSplit,
+  onHandout,
 }: PdfToolsProps) {
   const busy = blocked || pending !== null;
   return (
-    <div className="flex min-w-0 items-start" data-testid="pdf-pages-group" aria-busy={pending !== null}>
+    <div className="flex min-w-0 flex-wrap items-start" data-testid="pdf-pages-group" aria-busy={pending !== null}>
       <Cluster name="Mark this page">
         <Button
           size="sm"
@@ -166,6 +174,13 @@ export function PdfTools({
         >
           Delete page
         </Button>
+      </Cluster>
+      <Divider />
+      <Cluster name="Hand-out">
+        <Button size="sm" variant="ghost" disabled={busy || !onExtractPages} onClick={onExtractPages}>Extract pages…</Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onReplacePage} onClick={onReplacePage}>Replace page…</Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onSplit} onClick={onSplit}>Split…</Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onHandout} onClick={onHandout}>Hand-out…</Button>
       </Cluster>
       <Divider />
       <Cluster name="Copy">

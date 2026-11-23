@@ -2,7 +2,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { basename, isAbsolute, join } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { idSchema } from '../../shared/model-schema';
-import { editDocSchema, type EditDoc } from '../../shared/slide-edit';
+import { editDocSchema, slidesOf, type EditDoc } from '../../shared/slide-edit';
 import { renderEditedSlide } from '../../shared/slide-design';
 import type { PdfCopyJob, PdfCopyResult } from '../../shared/pdf-copy';
 import { OriginalsStore, originalRelative } from '../import/originals-store';
@@ -37,6 +37,7 @@ export class PdfEditor {
     rawId: unknown,
     rawDoc: unknown,
     rawStamp: unknown,
+    rawPages?: unknown,
   ): Promise<PdfCopyResult> {
     if (this.stopped || this.active || !this.deps.allowed(event))
       return Promise.resolve(
@@ -54,6 +55,14 @@ export class PdfEditor {
       return Promise.resolve(failed('Reopen the editor before saving a PDF copy.'));
     const validated = this.deps.validate(id.data, checked.data, rawStamp);
     if (!validated.ok) return Promise.resolve(validated);
+    let snapshot = validated.doc;
+    if (rawPages !== undefined) {
+      const all = slidesOf(snapshot);
+      if (!Array.isArray(rawPages) || !rawPages.length || rawPages.length > 400 || rawPages.some((n, i) => !Number.isInteger(n) || n < 0 || n >= all.length || (i > 0 && n <= rawPages[i - 1])))
+        return Promise.resolve(failed('Choose valid PDF page numbers in reading order.'));
+      const ids = new Set(rawPages.map(n => all[n]!.id));
+      snapshot = { ...snapshot, groups: snapshot.groups.map(group => ({ ...group, slides: group.slides.filter(page => ids.has(page.id)) })).filter(group => group.slides.length) };
+    }
     const controller = new AbortController();
     const current = () =>
       !controller.signal.aborted &&
@@ -63,7 +72,7 @@ export class PdfEditor {
       this.deps.stamp(id.data) === rawStamp;
     const abort = () => controller.abort();
     event.sender.once('destroyed', abort);
-    const done = this.make(event, structuredClone(validated.doc), current, controller.signal).finally(() => {
+    const done = this.make(event, structuredClone(snapshot), current, controller.signal).finally(() => {
       event.sender.removeListener('destroyed', abort);
       if (this.active?.abort === controller) this.active = null;
     });
@@ -130,7 +139,7 @@ export class PdfEditor {
     for (const slide of slides) {
       if (!current()) throw new Error('Cancelled.');
       const ref = slide.documentPage;
-      if (ref?.ext === 'pdf' && !ref.edited) {
+      if (ref?.ext === 'pdf' && !ref.edited && (!doc.master || slide.design?.skipMaster)) {
         if (!sources.has(ref.sha256)) {
           const descriptor = retained.find(
             (original) => original.sha256 === ref.sha256 && original.ext === 'pdf',

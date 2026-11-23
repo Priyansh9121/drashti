@@ -5198,6 +5198,7 @@ function start(): void {
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
     mayPrepareSource: (e, presentationId) =>
+      !streaming.inUse() && !testOnAir &&
       mayEditSlides(presentationId) &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
@@ -5240,6 +5241,7 @@ function start(): void {
     mediaDir,
     session: pdfCopies,
     allowed: (e) =>
+      !streaming.inUse() && !testOnAir &&
       !stops.done &&
       documentQuit?.closing !== true &&
       isLetIn() &&
@@ -5268,7 +5270,7 @@ function start(): void {
       return chosen.canceled ? null : chosen.filePath;
     },
   });
-  handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
+  handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
   cancelSourceEdits = () => {
