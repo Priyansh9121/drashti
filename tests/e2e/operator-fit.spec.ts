@@ -173,7 +173,9 @@ const fitFaults = (win: Page) =>
     };
 
     const notices = [...document.querySelectorAll(NOTICES)].filter((n) => !hidden(n));
-    const noticeBoxes = notices.map((n) => boxOf(n.getBoundingClientRect()));
+    // What of each is in sight (the notices scroll in their own place when there are many: one scrolled away covers
+    // nothing).
+    const noticeBoxes = notices.map((n) => inSight(n.parentElement, boxOf(n.getBoundingClientRect())).seen);
 
     interface Part {
       el: Element;
@@ -260,7 +262,8 @@ const fitFaults = (win: Page) =>
       }
       if (a.control)
         noticeBoxes.forEach((n, k) => {
-          if (meet(a.seen, n)) out.add(`${a.region}: ${named(a.el)} is under ${named(notices[k] ?? a.el)}`);
+          if (n && meet(a.seen, n))
+            out.add(`${a.region}: ${named(a.el)} is under ${named(notices[k] ?? a.el)}`);
         });
     });
 
