@@ -31,10 +31,10 @@ function TimerRow({ timer, shown }: { timer: TimerState; shown: boolean }) {
       data-running={running ? 'true' : undefined}
     >
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-base text-fg">
-          {timer.name}
-          <span className="sr-only">, {TIMER_KIND_NAMES[timer.kind]}</span>
-        </span>
+        {/* The kind's words for a screen reader after the name, outside its cut line: within it, past a long name's
+            end, they reached past the phone's side and made the page scroll (alpha.21, the fit pass). */}
+        <span className="block truncate text-base text-fg">{timer.name}</span>
+        <span className="sr-only">, {TIMER_KIND_NAMES[timer.kind]}</span>
         <span className="block font-mono text-2xl text-fg">
           <TimerText timer={timer} />
         </span>

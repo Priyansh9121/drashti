@@ -679,9 +679,9 @@ function Slides() {
             (i.kind === 'shastra' && i.passageId === doc.id),
         ));
   return (
-    <section className="space-y-2" aria-labelledby="slides-title">
+    <section className="@container space-y-2" aria-labelledby="slides-title">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id="slides-title" className="min-w-0 flex-1 truncate text-base font-bold text-fg">
+        <h2 id="slides-title" className="min-w-48 flex-1 text-base font-bold break-words text-fg">
           {doc.name}
         </h2>
         {otherThanLive && (
@@ -718,7 +718,7 @@ function Slides() {
           Not on the screens. Tap a slide to put it up.
         </p>
       )}
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" data-testid="remote-slides">
+      <ul className="grid grid-cols-2 gap-2 @md:grid-cols-3 @3xl:grid-cols-4" data-testid="remote-slides">
         {order.slides.map((s) => (
           <SlideThumb
             key={`${s.position}`}

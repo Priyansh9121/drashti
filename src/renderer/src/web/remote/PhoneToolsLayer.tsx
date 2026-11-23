@@ -47,7 +47,7 @@ function MenuSheet({ title, entries }: { title: string; entries: MenuEntry[] }) 
         className="max-h-[80dvh] overflow-y-auto rounded-t-xl border-t border-line-strong bg-panel pt-3 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] shadow-overlay focus:outline-none"
       >
         <div className="mx-auto max-w-xl space-y-2">
-          <h2 id={titleId} className="truncate px-1 text-base font-bold text-fg" translate="no">
+          <h2 id={titleId} className="px-1 text-base font-bold break-words text-fg" translate="no">
             {title}
           </h2>
           <ul className="space-y-1.5">
