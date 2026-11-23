@@ -175,7 +175,7 @@ export function openIndicPipe(o: IndicPipeOptions): Promise<IndicPipe> {
         }
         request.resolve(value);
       });
-      child.stdin.write(Buffer.from('GO01')); 
+      child.stdin.write(Buffer.from('GO01'));
     } catch {
       failed('recogniser priority or start');
     }

@@ -11,7 +11,10 @@ import { openIndicPipe, type IndicPipe, type IndicPipeOptions } from './indic-pi
 export interface IndicEngineOptions {
   program(): string | null;
   /** Acquire a checked imported model; release only once native work has stopped. Never an installer model. */
-  acquire(language: IndicLanguage, signal?: AbortSignal): { files: IndicFiles; release(): void } | null | Promise<{ files: IndicFiles; release(): void } | null>;
+  acquire(
+    language: IndicLanguage,
+    signal?: AbortSignal,
+  ): { files: IndicFiles; release(): void } | null | Promise<{ files: IndicFiles; release(): void } | null>;
   sound: PcmSource;
   log: { info(message: string): void; warn(message: string): void };
   threads?: number;
@@ -47,7 +50,10 @@ interface Growing {
 }
 
 export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
-  const stepMs = 1_500, pauseMs = 700, maxMs = 12_000, restMs = 60_000;
+  const stepMs = 1_500,
+    pauseMs = 700,
+    maxMs = 12_000,
+    restMs = 60_000;
   return {
     start(language, to) {
       if (language !== 'gu' && language !== 'hi') {
@@ -73,19 +79,28 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       const finals: Growing[] = [];
       const end = (): void => {
         generation += 1;
-        closeSound?.(); closeSound = null;
+        closeSound?.();
+        closeSound = null;
         if (retrySound) clearTimeout(retrySound);
-        retrySound = null; phrase = null; finals.length = 0;
-        controller?.abort(); controller = null;
-        const was = pipe; pipe = null;
-        const letGo = release; release = null;
+        retrySound = null;
+        phrase = null;
+        finals.length = 0;
+        controller?.abort();
+        controller = null;
+        const was = pipe;
+        pipe = null;
+        const letGo = release;
+        release = null;
         was?.close();
         if (was?.exited && letGo) void was.exited.then(letGo);
         else if (was || o.open) letGo?.();
       };
       const fail = (): void => {
         end();
-        to.state({ phase: 'failed', message: 'The recognition model stopped. Turn captions off and on to try again.' });
+        to.state({
+          phase: 'failed',
+          message: 'The recognition model stopped. Turn captions off and on to try again.',
+        });
       };
       const ask = async (samples: Int16Array): Promise<{ reply: unknown; tookMs: number } | null> => {
         const current = pipe;
@@ -177,7 +192,8 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         const ms = (samples.length / SAMPLE_RATE) * 1000;
         const capturedStart = startAt ?? endAt - ms;
         if (
-          samples.length === 0 || samples.length > SAMPLE_RATE ||
+          samples.length === 0 ||
+          samples.length > SAMPLE_RATE ||
           !Number.isFinite(capturedStart) ||
           !Number.isFinite(endAt) ||
           capturedStart > endAt
@@ -212,7 +228,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         phrase.length += samples.length;
         phrase.endAt = endAt;
         phrase.quietMs = speech ? 0 : phrase.quietMs + ms;
-        if (phrase.quietMs >= pauseMs || phrase.length >= SAMPLE_RATE * 12 || endAt - phrase.startAt >= maxMs) {
+        if (
+          phrase.quietMs >= pauseMs ||
+          phrase.length >= SAMPLE_RATE * 12 ||
+          endAt - phrase.startAt >= maxMs
+        ) {
           finals.push(phrase);
           phrase = null;
           // More than two whole phrases waiting: the oldest is dropped (the hub would drop it as late anyway).
@@ -235,28 +255,62 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       const begin = async (): Promise<void> => {
         if (stopped) return;
         const program = o.program();
-        if (!program) { to.state({ phase: 'failed', message: 'This copy of Drashti has no Gujarati or Hindi recognition engine.' }); return; }
+        if (!program) {
+          to.state({
+            phase: 'failed',
+            message: 'This copy of Drashti has no Gujarati or Hindi recognition engine.',
+          });
+          return;
+        }
         const mine = ++generation;
-        const abort = new AbortController(); controller = abort;
+        const abort = new AbortController();
+        controller = abort;
         to.state({ phase: 'starting' });
         try {
           const held = await o.acquire(chosen, abort.signal);
-          if (ended() || mine !== generation) { held?.release(); return; }
-          if (!held) { to.state({ phase: 'held', reason: 'no-model' }); return; }
+          if (ended() || mine !== generation) {
+            held?.release();
+            return;
+          }
+          if (!held) {
+            to.state({ phase: 'held', reason: 'no-model' });
+            return;
+          }
           let heldHere = true;
-          const letGo = (): void => { if (heldHere) { heldHere = false; held.release(); } };
+          const letGo = (): void => {
+            if (heldHere) {
+              heldHere = false;
+              held.release();
+            }
+          };
           release = letGo;
-          const started = await (o.open ?? openIndicPipe)({ program, files: held.files, language: chosen, threads: o.threads ?? 1, signal: abort.signal, onExit: letGo, failed: () => { if (!ended() && !busy && mine === generation) fail(); } });
-          if (ended() || mine !== generation) { started.close(); return; }
+          const started = await (o.open ?? openIndicPipe)({
+            program,
+            files: held.files,
+            language: chosen,
+            threads: o.threads ?? 1,
+            signal: abort.signal,
+            onExit: letGo,
+            failed: () => {
+              if (!ended() && !busy && mine === generation) fail();
+            },
+          });
+          if (ended() || mine !== generation) {
+            started.close();
+            return;
+          }
           pipe = started;
           openSound();
-        } catch { if (!ended() && mine === generation) fail(); }
+        } catch {
+          if (!ended() && mine === generation) fail();
+        }
       };
       void begin();
       return () => {
         if (stopped) return;
         stopped = true;
-        if (rest) clearTimeout(rest); rest = null;
+        if (rest) clearTimeout(rest);
+        rest = null;
         end();
       };
     },

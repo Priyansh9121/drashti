@@ -17,7 +17,11 @@ test('imported Route C model decodes PCM through the native helper into the spee
     { name: 'model.onnx', data: fixture.model },
     { name: 'tokens.txt', data: fixture.tokens },
     { name: 'frontend.bin', data: fixture.frontend },
-  ].map(({ name, data }) => { const path = join(root, name); writeFileSync(path, data); return { name, path }; });
+  ].map(({ name, data }) => {
+    const path = join(root, name);
+    writeFileSync(path, data);
+    return { name, path };
+  });
   const pack = { format: 'indicconformer-ctc-onnx-v1', purposes: ['captions-gu'], files };
   const resolved = routeCFiles(pack, 'gu');
   expect(resolved).not.toBeNull();
@@ -25,24 +29,50 @@ test('imported Route C model decodes PCM through the native helper into the spee
   let sound: ((samples: Int16Array, endAt: number, startAt?: number) => void) | undefined;
   let soundClosed = false;
   let ready: (() => void) | undefined, release: (() => void) | undefined;
-  const listening = new Promise<void>((done) => { ready = done; });
-  const released = new Promise<void>((done) => { release = done; });
+  const listening = new Promise<void>((done) => {
+    ready = done;
+  });
+  const released = new Promise<void>((done) => {
+    release = done;
+  });
   const engine = createIndicEngine({
-    program: () => join(process.cwd(), 'vendor', 'indic', `${process.platform}-${process.arch}`, process.platform === 'win32' ? 'ic-ctc.exe' : 'ic-ctc'),
+    program: () =>
+      join(
+        process.cwd(),
+        'vendor',
+        'indic',
+        `${process.platform}-${process.arch}`,
+        process.platform === 'win32' ? 'ic-ctc.exe' : 'ic-ctc',
+      ),
     acquire: () => ({ files: resolved, release: () => release?.() }),
-    sound: { open: (to) => { sound = to; return () => { soundClosed = true; }; } },
+    sound: {
+      open: (to) => {
+        sound = to;
+        return () => {
+          soundClosed = true;
+        };
+      },
+    },
     log: { info() {}, warn() {} },
   });
   const hub = createSpeechHub({ engine, log: { info() {}, warn() {} } });
   const phrases: Heard[] = [];
   let heard: ((phrase: Heard) => void) | undefined;
-  const final = new Promise<Heard>((done) => { heard = done; });
-  const unwatch = hub.onState((state) => { if (state.phase === 'listening') ready?.(); });
-  const unlisten = hub.listen('generated-route-c', (phrase) => { phrases.push(phrase); if (phrase.final) heard?.(phrase); });
+  const final = new Promise<Heard>((done) => {
+    heard = done;
+  });
+  const unwatch = hub.onState((state) => {
+    if (state.phase === 'listening') ready?.();
+  });
+  const unlisten = hub.listen('generated-route-c', (phrase) => {
+    phrases.push(phrase);
+    if (phrase.final) heard?.(phrase);
+  });
   try {
     expect(hub.state()).toEqual({ phase: 'off' });
     expect(sound).toBeUndefined();
-    hub.setLanguage('gu'); hub.setOn(true);
+    hub.setLanguage('gu');
+    hub.setOn(true);
     await listening;
     const start = Date.now() - 800;
     sound?.(new Int16Array(1600).fill(5000), start + 100, start);
@@ -58,5 +88,9 @@ test('imported Route C model decodes PCM through the native helper into the spee
     await released;
     expect(soundClosed).toBe(true);
     expect(hub.state()).toEqual({ phase: 'off' });
-  } finally { unlisten(); unwatch(); hub.close(); }
+  } finally {
+    unlisten();
+    unwatch();
+    hub.close();
+  }
 });

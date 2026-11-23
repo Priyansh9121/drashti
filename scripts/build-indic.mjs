@@ -18,23 +18,64 @@ export function buildIndic({ ort, output, target = `${process.platform}-${proces
   let command, args;
   if (target.startsWith('darwin') && process.platform === 'darwin') {
     command = 'clang';
-    args = ['-O2', '-std=c11', '-Wall', '-Wextra', '-Werror', '-arch', target.endsWith('arm64') ? 'arm64' : 'x86_64', '-I', include, source, '-L', lib, '-lonnxruntime', `-Wl,-rpath,${resolve(lib)}`, '-Wl,-rpath,@executable_path', '-o', binary];
+    args = [
+      '-O2',
+      '-std=c11',
+      '-Wall',
+      '-Wextra',
+      '-Werror',
+      '-arch',
+      target.endsWith('arm64') ? 'arm64' : 'x86_64',
+      '-I',
+      include,
+      source,
+      '-L',
+      lib,
+      '-lonnxruntime',
+      `-Wl,-rpath,${resolve(lib)}`,
+      '-Wl,-rpath,@executable_path',
+      '-o',
+      binary,
+    ];
   } else if (target === 'win32-x64' && process.platform === 'win32') {
     command = 'cl.exe';
-    args = ['/nologo', '/O2', '/std:c11', '/MT', '/D_CRT_SECURE_NO_WARNINGS', `/I${include}`, source, `/Fe:${binary}`, `/Fo:${join(resolve(output), 'ic_ctc.obj')}`, '/link', `/LIBPATH:${lib}`, 'onnxruntime.lib'];
+    args = [
+      '/nologo',
+      '/O2',
+      '/std:c11',
+      '/MT',
+      '/D_CRT_SECURE_NO_WARNINGS',
+      `/I${include}`,
+      source,
+      `/Fe:${binary}`,
+      `/Fo:${join(resolve(output), 'ic_ctc.obj')}`,
+      '/link',
+      `/LIBPATH:${lib}`,
+      'onnxruntime.lib',
+    ];
   } else throw new Error('Build each helper on its own system');
   let result;
   if (process.platform === 'win32') {
     // Same Visual Studio discovery as the existing native helper. All paths are locally generated, never model text.
-    const quote = (value) => { if (/[\r\n"%]/u.test(value)) throw new Error('Unsafe build path'); return `"${value}"`; };
+    const quote = (value) => {
+      if (/[\r\n"%]/u.test(value)) throw new Error('Unsafe build path');
+      return `"${value}"`;
+    };
     const script = join(resolve(output), 'build-indic.cmd');
-    writeFileSync(script, `@echo off\r\ncall ${quote(vcvars())} >nul || exit /b 1\r\n${[command, ...args].map(quote).join(' ')}\r\n`);
+    writeFileSync(
+      script,
+      `@echo off\r\ncall ${quote(vcvars())} >nul || exit /b 1\r\n${[command, ...args].map(quote).join(' ')}\r\n`,
+    );
     result = spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', script], { stdio: 'inherit' });
   } else result = spawnSync(command, args, { stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error('IndicConformer native build failed');
   if (target.startsWith('darwin')) {
-    const patched = spawnSync('install_name_tool', ['-change', '@rpath/libonnxruntime.1.23.2.dylib', join(resolve(lib), 'libonnxruntime.dylib'), binary], { stdio: 'inherit' });
+    const patched = spawnSync(
+      'install_name_tool',
+      ['-change', '@rpath/libonnxruntime.1.23.2.dylib', join(resolve(lib), 'libonnxruntime.dylib'), binary],
+      { stdio: 'inherit' },
+    );
     if (patched.status !== 0) throw new Error('Native library path could not be set');
     const signed = spawnSync('codesign', ['--force', '--sign', '-', binary], { stdio: 'inherit' });
     if (signed.status !== 0) throw new Error('Native helper could not be signed');
@@ -43,5 +84,11 @@ export function buildIndic({ ort, output, target = `${process.platform}-${proces
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  console.log(buildIndic({ ort: process.env.DRASHTI_ORT_ROOT, output: process.env.DRASHTI_INDIC_OUT, target: process.argv[2] }));
+  console.log(
+    buildIndic({
+      ort: process.env.DRASHTI_ORT_ROOT,
+      output: process.env.DRASHTI_INDIC_OUT,
+      target: process.argv[2],
+    }),
+  );
 }
