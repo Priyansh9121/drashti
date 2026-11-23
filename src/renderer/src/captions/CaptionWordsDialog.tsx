@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CAPTION_WORD_LANGUAGE_NAMES,
   CAPTION_WORDS_PER_LANGUAGE,
@@ -92,8 +92,7 @@ function CaptionWordsDialog({
   const mine = all.filter((w) => w.language === language);
   const name = CAPTION_WORD_LANGUAGE_NAMES[language];
 
-  const add = (e: FormEvent) => {
-    e.preventDefault();
+  const add = () => {
     const checked = checkCaptionWord(typed);
     if (!checked.ok) {
       setError(checked.message);
@@ -176,7 +175,13 @@ function CaptionWordsDialog({
             Type Sanskrit words in Gujarati letters, as the screens show them.
           </p>
         )}
-        <form className="flex items-end gap-2" onSubmit={add}>
+        <form
+          className="flex items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add();
+          }}
+        >
           <Field label="Word or name" error={error} className="flex-1">
             <TextInput
               data-testid="caption-words-new"

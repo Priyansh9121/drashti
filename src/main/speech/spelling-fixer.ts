@@ -92,7 +92,7 @@ const pieceOf = (text: string): Piece => {
 /** The caption word a stretch heard is, or null: by its key, its first letter's capital, in its language. */
 function match(entries: readonly Entry[], heard: string, capital: boolean, indic: boolean): Entry | null {
   for (const e of entries) if (e.keyText === heard) return e.capital && !capital ? null : e;
-  const letters = [...heard];
+  const letters = Array.from(heard);
   const stem = heard.replace(TRAILING_MARKS, '');
   let best: Entry | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -123,7 +123,7 @@ export function spellingFixer(words: readonly CaptionWord[]): (h: Heard) => Hear
     const parts = w.word.split(' ');
     const entry: Entry = {
       parts,
-      key: [...keyText],
+      key: Array.from(keyText),
       keyText,
       stem: keyText.replace(TRAILING_MARKS, ''),
       capital: CAPITAL.test(w.word),

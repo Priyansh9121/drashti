@@ -155,6 +155,6 @@ describe('caption words as the admin keeps them', () => {
     const broken = { ...heard('Zentroba'), words: undefined } as unknown as Heard;
     expect(service.fix(broken)).toBe(broken);
     expect(service.fix(broken)).toBe(broken);
-    expect(logs.filter((l) => /spelling fixer failed/u.test(l))).toHaveLength(1);
+    expect(logs.filter((l) => l.includes('spelling fixer failed'))).toHaveLength(1);
   });
 });

@@ -41,7 +41,7 @@ const HIDDEN = /[\p{Cc}\p{Cf}]/u;
 const STARTS = /^[\p{L}\p{N}]/u;
 const ENDS = /[\p{L}\p{M}\p{N}]$/u;
 
-const lettersIn = (text: string): number => [...text].length;
+const lettersIn = (text: string): number => Array.from(text).length;
 
 /** A word as the admin typed it, as it is kept; or why it cannot be. */
 export function checkCaptionWord(text: string): CheckedCaptionWord {
@@ -167,7 +167,7 @@ export function readCaptionWordsCsv(text: string): {
         return;
       const named = fields.map(languageOf);
       if (named.every((l) => l !== null)) {
-        columns = named as SpeechLanguage[];
+        columns = named;
         return;
       }
     }
