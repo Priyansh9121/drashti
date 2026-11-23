@@ -161,7 +161,7 @@ async function brightest(page: Page): Promise<number> {
  * CI's Mac Chromium composes those pixels a level or two apart from frame to frame, in black frames too
  * (warm-up.spec:428's flaky failure, reports/a21-flaky-mac.md); a real leak there (the native copies': up to 30) fails.
  */
-async function differenceFromBlack(page: Page, scope: string): Promise<number> {
+async function differenceFromBlack(page: Page, scope: string, exact = false): Promise<number> {
   const selector = `${scope} [data-warm-up]`;
   const clip = await page.locator(selector).first().boundingBox();
   if (!clip) throw new Error('the warm-up has no visible box');
@@ -190,7 +190,7 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   try {
     blackPng = await page.screenshot({ scale: 'css', clip });
     black = decodePng(blackPng);
-    if (scope === '[data-testid="live-preview"]') {
+    if (scope === '[data-testid="live-preview"]' && !exact) {
       // The box alone: the warm-up's black group and its final cover hidden too.
       const inner = await page.evaluate((scope) => {
         const box = document.querySelector<HTMLElement>(scope);
@@ -322,7 +322,13 @@ const BOLD_APART: Record<string, string> = {
 };
 
 /** What a page's warm-up draws, part-way, and that all of it is black. */
-async function expectWarmUp(page: Page, scope: string, what: string, ticker = true): Promise<void> {
+async function expectWarmUp(
+  page: Page,
+  scope: string,
+  what: string,
+  ticker = true,
+  exact = false,
+): Promise<void> {
   await expect(page.locator(`${scope} [data-warm-up="during"]`), what).toHaveCount(1, { timeout: 30_000 });
   // Every frame of a transition that runs ten seconds, drawn by its own clock: part-way when looked at.
   await expect
@@ -426,7 +432,7 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
   expect(hiding.finalOpacity, `${what}: the final cover also keeps the GPU drawing underneath`).toBe('0.999');
   expect(hiding.finalBackground, `${what}: the final cover is black`).toBe('rgb(0, 0, 0)');
   // The audience sees none of it. Keep the geometry and the exact frame if the cover ever fails.
-  const light = await differenceFromBlack(page, scope);
+  const light = await differenceFromBlack(page, scope, exact);
   if (light !== 0) {
     const geometry = await page.evaluate((scope) => {
       const host = document.querySelector(scope)?.querySelector<HTMLElement>('[data-warm-up]');
@@ -531,7 +537,20 @@ test('where Chromium draws with a graphics chip the LIVE picture’s warm-up is 
   await expect(win.locator('[data-testid="live-preview"] [data-warm-ui-cover]')).toHaveCount(2, {
     timeout: 30_000,
   });
-  await expectWarmUp(win, '[data-testid="live-preview"]', 'the LIVE picture with a chip');
+  // Keep every rounded clip, border width, transform and warm-up surface intact. Only the UI's colours change:
+  // black against black has no antialiased border contribution that can vary between captures. The native copies'
+  // blue leak still has its original geometry and must fail an EXACT comparison (no corner allowance).
+  await win.evaluate(() => {
+    const box = document.querySelector<HTMLElement>('[data-testid="live-preview"]');
+    if (!box) throw new Error('no LIVE picture');
+    box.style.borderColor = '#000';
+    for (let at: HTMLElement | null = box; at; at = at.parentElement) at.style.backgroundColor = '#000';
+  });
+  // Red: reproduce the original square native-copy container, without changing any other warm-up drawing.
+  await win.addStyleTag({
+    content: '[data-testid="live-preview"] [data-warm-ui-drawing] { border-radius: 0 !important; }',
+  });
+  await expectWarmUp(win, '[data-testid="live-preview"]', 'the LIVE picture with a chip', true, true);
   await app.close();
 });
 
