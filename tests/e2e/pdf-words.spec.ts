@@ -59,3 +59,34 @@ test('a newly typed Gujarati letter uses bundled Noto on the page and stays sear
     await s.app.close();
   }
 });
+
+test('Find next and replacement span PDF pages, and Replace all undoes once', async () => {
+  const s = await openGeneratedPdf([
+    { width: 480, height: 320, marker: 'Placeholder alpha page one' },
+    { width: 480, height: 320, marker: 'Placeholder alpha page two' },
+  ]);
+  try {
+    await s.ed.keyboard.press(process.platform === 'darwin' ? 'Meta+f' : 'Control+f');
+    await s.editor.getByTestId('find-text').fill('alpha');
+    await expect(s.editor.getByTestId('find-count')).toHaveText('1 of 2');
+    await s.editor.getByTestId('find-next').click();
+    await expect(s.editor.getByTestId('find-count')).toHaveText('2 of 2');
+    await expect(s.editor.getByTestId('find-where')).toContainText('Page 2');
+    await s.editor.getByTestId('replace-text').fill('beta');
+    await s.editor.getByTestId('replace-one').click();
+    await expect(s.editor.getByTestId('editor-slide')).toContainText('Placeholder beta page two');
+    await s.editor.getByTestId('find-text').fill('Placeholder');
+    await s.editor.getByTestId('replace-text').fill('Generated');
+    await s.editor.getByTestId('replace-all').click();
+    await expect(s.editor.getByTestId('find-count')).toHaveText('None found');
+    await s.editor.getByTestId('find-close').click();
+    await s.ed.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+    await s.ed.keyboard.press(process.platform === 'darwin' ? 'Meta+f' : 'Control+f');
+    await s.editor.getByTestId('find-text').fill('Placeholder');
+    await expect(s.editor.getByTestId('find-count')).toHaveText('2 of 2');
+    await expect(s.editor.getByTestId('editor-slide')).toContainText('Placeholder beta page two');
+    s.unchanged();
+  } finally {
+    await s.app.close();
+  }
+});
