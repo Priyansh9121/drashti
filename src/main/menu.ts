@@ -84,6 +84,11 @@ export interface MenuActions {
   opening: () => void;
   /** File > Live Captions… (Session 55, Part 10; Pro Mode): left out where there is no such choice. */
   liveCaptions?: () => void;
+  /**
+   * Help › Caption and Translation Models… (alpha.22, cap-pack; Pro Mode only): the offline model packs on this
+   * computer. Left out where there is no such choice.
+   */
+  modelPacks?: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */

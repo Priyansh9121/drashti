@@ -111,6 +111,7 @@ import { EventsOutDialog } from '../events/EventsOutDialog';
 import { DropFolderDialog } from '../drop/DropFolderDialog';
 import { OpeningDialog } from '../opening/OpeningDialog';
 import { CaptionsDialog } from '../captions/CaptionsDialog';
+import { ModelPacksDialog } from '../model-packs/ModelPacksDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { LinkDialog } from '../links/LinkDialog';
 import { KeysSheet, showKeysSheet } from './KeysSheet';
@@ -508,6 +509,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <OpeningDialog />
       {/* File › Live Captions… (Session 55, Part 10). */}
       <CaptionsDialog />
+      {/* Help › Caption and Translation Models… (alpha.22, cap-pack). */}
+      <ModelPacksDialog />
       <UpdatesDialog />
       <KeysSheet platform={platform} />
       <ScreenSwitchAsk platform={platform} />

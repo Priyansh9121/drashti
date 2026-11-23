@@ -212,6 +212,18 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  modelPacks: {
+    view: () => invoke(IPC.modelPacks.view),
+    import: (kind) => invoke(IPC.modelPacks.import, kind),
+    cancel: () => invoke(IPC.modelPacks.cancel),
+    remove: (packId) => invoke(IPC.modelPacks.remove, packId),
+    licence: (packId, file) => invoke(IPC.modelPacks.licence, packId, file),
+    onChanged: (listener) => on(IPC.modelPacks.changed, listener),
+    onOpen: (listener) =>
+      on(IPC.modelPacks.open, () => {
+        listener();
+      }),
+  },
   music: {
     view: () => invoke(IPC.music.view),
     create: (name) => invoke(IPC.music.create, name),

@@ -455,6 +455,8 @@ import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
+import { handleModelPacks } from './model-packs/ipc';
+import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { VideoCaptionsRepo } from './db/video-captions';
@@ -3748,6 +3750,35 @@ function start(): void {
     fromOperator(e) ? captions.setSettings(parseCaptionSettings(settings)) : captions.view(),
   );
   handle(IPC.captions.retry, (e) => (fromOperator(e) ? captions.retry() : captions.view()));
+
+  // ---- caption and translation models (alpha.22, cap-pack) ---------------------------------------------------
+  // An offline pack an admin imports (Help › Caption and Translation Models…, Pro Mode), every file checked, kept in
+  // the data folder's model-packs/ (outside the library and its backups). Never fetched; nothing uses it until a
+  // caption or translation engine asks (modelPacks.model / acquire): today's captions are as they were.
+  const modelPacks = new ModelPackStore({ root: join(app.getPath('userData'), 'model-packs'), log });
+  modelPacks.start();
+  modelPacks.onChanged((status) => {
+    sendToOperator(IPC.modelPacks.changed, status);
+  });
+  stops.add('model packs', () => {
+    modelPacks.close();
+  });
+  handleModelPacks({
+    handle,
+    fromOperator,
+    store: modelPacks,
+    pick: async (kind) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: kind === 'zip' ? 'Import a Model Pack (Zip)' : 'Import a Model Pack (Folder)',
+        message: 'Choose the caption and translation model pack the admin was given.',
+        buttonLabel: 'Import',
+        properties: kind === 'zip' ? ['openFile'] : ['openDirectory'],
+        ...(kind === 'zip' ? { filters: [{ name: 'Zip', extensions: ['zip'] }] } : {}),
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+  });
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
@@ -9304,6 +9335,9 @@ function start(): void {
     },
     liveCaptions: () => {
       if (mode === 'pro') sendToOperator(IPC.captions.open, { at: Date.now() });
+    },
+    modelPacks: () => {
+      if (mode === 'pro') sendToOperator(IPC.modelPacks.open, { at: Date.now() });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });

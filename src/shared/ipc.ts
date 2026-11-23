@@ -46,6 +46,7 @@ import type {
   OpeningView,
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
+import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -384,6 +385,25 @@ export const IPC = {
     changed: 'captions:changed',
     /** main -> operator: File > Live Captions… was chosen. */
     open: 'captions:open',
+  },
+  /**
+   * Caption and translation models (alpha.22, cap-pack; shared/model-packs.ts): Help › Caption and Translation
+   * Models… (Pro Mode). An offline pack an admin chooses, checked file by file and kept on this computer; never
+   * fetched.
+   */
+  modelPacks: {
+    view: 'modelpacks:view',
+    /** Choose a pack's folder or zip (main's own dialog: the page never gives a path) and import it. */
+    import: 'modelpacks:import',
+    /** Stop the import under way. */
+    cancel: 'modelpacks:cancel',
+    remove: 'modelpacks:remove',
+    /** A licence's own text, from the copy kept. */
+    licence: 'modelpacks:get-licence',
+    /** main -> operator: how the packs stand changed (an import's progress too). */
+    changed: 'modelpacks:changed',
+    /** main -> operator: Help › Caption and Translation Models… was chosen. */
+    open: 'modelpacks:open',
   },
   /**
    * Updates (Session 14, shared/updates.ts): looking, downloading, installing
@@ -1499,6 +1519,11 @@ export interface InvokeContract {
   [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };
   [IPC.captions.setSettings]: { args: [settings: CaptionSettings]; result: CaptionsStatus };
   [IPC.captions.retry]: { args: []; result: CaptionsStatus };
+  [IPC.modelPacks.view]: { args: []; result: ModelPacksStatus };
+  [IPC.modelPacks.import]: { args: [kind: 'folder' | 'zip']; result: PackImportResult };
+  [IPC.modelPacks.cancel]: { args: []; result: boolean };
+  [IPC.modelPacks.remove]: { args: [packId: string]; result: PackRemoveResult };
+  [IPC.modelPacks.licence]: { args: [packId: string, file: string]; result: PackLicenceResult };
   [IPC.updates.view]: { args: []; result: UpdateView };
   [IPC.music.view]: { args: []; result: MusicView };
   [IPC.music.create]: { args: [name: string]; result: MusicResult };
@@ -2081,6 +2106,8 @@ export interface EventContract {
   [IPC.videoCaptions.changed]: { mediaId: string; view: VideoCaptionChoice };
   [IPC.captions.changed]: CaptionsStatus;
   [IPC.captions.open]: { at: number };
+  [IPC.modelPacks.changed]: ModelPacksStatus;
+  [IPC.modelPacks.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };
