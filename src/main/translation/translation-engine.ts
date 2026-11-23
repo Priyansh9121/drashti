@@ -168,8 +168,16 @@ export class TranslationEngine implements Translator {
       this.helper = helper;
     }
     if (this.loaded?.route !== route || this.loaded.modelId !== model.id) {
-      this.loaded?.hold.release();
+      // One model in memory at a time: the one before is let go in the helper, then by the pack store.
+      const before = this.loaded;
       this.loaded = null;
+      if (before) {
+        try {
+          await this.helper.unload(before.route);
+        } finally {
+          before.hold.release();
+        }
+      }
       const hold = await this.o.models.acquire(model.id);
       if (!hold)
         throw new HelperError(

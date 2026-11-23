@@ -151,6 +151,11 @@ export class TranslationHelper {
     );
   }
 
+  /** Let one model go (only one is kept loaded at a time). */
+  async unload(route: Route): Promise<void> {
+    await this.ask({ op: 'unload', route }, this.o.loadMs ?? 60_000);
+  }
+
   /** The model's output tokens for one prepared sentence. */
   async translate(route: Route, src: string, tgt: string, text: string, beam: number): Promise<string[]> {
     const reply = await this.ask(
