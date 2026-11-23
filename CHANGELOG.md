@@ -6,7 +6,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Update after a sabha, and update Main and nodes together.
 
-- Live captions (Trial): Gujarati and Hindi can be heard by a new, more accurate recognizer that runs on this computer itself (IndicConformer by AI4Bharat), from an offline model pack the admin imports (Help › Caption and Translation Models…). Their captions show one phrase at a time, which the operator can correct or take off; noise and hum heard as short one-syllable words are not shown. As heard, English, Sanskrit and other languages show captions as before.
+- Live captions (Trial): Gujarati and Hindi can be heard by a new, more accurate recognizer that runs on this computer itself (IndicConformer by AI4Bharat), from an offline model pack the admin imports (Help › Caption and Translation Models…). The Gujarati and Hindi packs are separate files on this release's page, never in the installer. Their captions show one phrase at a time, which the operator can correct or take off; noise and hum heard as short one-syllable words are not shown. As heard, English, Sanskrit and other languages show captions as before.
 - Gujarati words in live captions are no longer joined together, with the new recognizer or without it.
 - While Drashti starts, the corners of the LIVE picture stay exactly as they are: the graphics warm-up no longer tints them on computers with a graphics chip.
 
