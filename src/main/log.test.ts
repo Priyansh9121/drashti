@@ -294,6 +294,23 @@ describe('a file that cannot be moved (alpha.21, a21-review: Windows holds a fil
     expect(readdirSync(dir)).toEqual(['drashti.log']);
   });
 
+  it('a day fuller than a part, whose file cannot be moved, loses no line and is not tried again for every line', () => {
+    const dir = fresh();
+    startLogFile(dir, { partBytes: 300, now: () => at(23, 9) });
+    log.info('placeholder before it is held');
+    held.on = true;
+    held.tries = 0;
+    try {
+      for (let i = 0; i < 20; i++) log.info(`placeholder held line ${String(i)}`);
+    } finally {
+      held.on = false;
+    }
+    const all = text(dir);
+    for (let i = 0; i < 20; i++) expect(all).toContain(`placeholder held line ${String(i)}`);
+    expect(held.tries).toBe(1);
+    expect(all.split('\n').filter((l) => l.includes('could not be moved'))).toHaveLength(1);
+  });
+
   it('at midnight, no line is lost and the move is not tried again for every line; the next start moves it', () => {
     const dir = fresh();
     let now = at(23, 22);
