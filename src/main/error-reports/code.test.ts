@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { expect, it } from 'vitest';
 
-it('runs the pasted adapter with local services and preserves leading-zero numeric ids for duplicate detection', () => {
-  const rows: unknown[][] = [];
+it.each(['new tab', 'interrupted tab setup'] as const)(
+  'runs the pasted adapter with local services and preserves leading-zero numeric ids after %s',
+  (setup) => {
+  // A failed first request can leave the header but never reach the text formats.
+  const rows: unknown[][] = setup === 'interrupted tab setup' ? [['Install id', 'Report id']] : [];
   const files = new Map<string, { text: string; id: string }>();
   const key = 'd'.repeat(64);
   const installId = '0'.repeat(31) + '2';
@@ -147,4 +150,5 @@ it('runs the pasted adapter with local services and preserves leading-zero numer
     'crash',
     'process-crashed',
   ]);
-});
+  },
+);
