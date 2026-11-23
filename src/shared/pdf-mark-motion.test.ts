@@ -18,6 +18,25 @@ const mark = (id: string, clickOrder?: number) => {
 };
 
 describe('PDF marks use the shared deck click timeline', () => {
+  it('keeps a click mark from fading away on the slide clock before its click, retaining its saved timing', () => {
+    const element = {
+      ...mark('timed-mark', 1),
+      motion: {
+        in: { kind: 'fade' as const, delayMs: 0, durationMs: 600 },
+        out: { kind: 'fade' as const, delayMs: 2000, durationMs: 600 },
+      },
+    };
+    const slide = composeSlide(
+      { id: 'page', width: 480, height: 320, background: null, elements: [element] },
+      undefined,
+      null,
+    );
+    expect(slide.elements[0]).not.toHaveProperty('motion');
+    expect(element.motion).toEqual({
+      in: { kind: 'fade', delayMs: 0, durationMs: 600 },
+      out: { kind: 'fade', delayMs: 2000, durationMs: 600 },
+    });
+  });
   it('keeps mark identity and optional click order through storage validation', () => {
     expect(mark('generated-mark', 2)).toMatchObject({
       pdfMark: { tool: 'highlight', clickOrder: 2 },
