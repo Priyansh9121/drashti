@@ -7,7 +7,8 @@ import {
   type CaptionsShown,
   type CaptionsStatus,
 } from '../../shared/captions';
-import type { Heard } from '../../shared/speech';
+import type { Heard, SpeechLanguage } from '../../shared/speech';
+import type { CaptionSpelling, ClauseSink } from './caption-flow';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
 import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
@@ -38,9 +39,27 @@ export interface CaptionsServiceDeps {
   /** The engine's setCaptions. */
   show: (captions: CaptionsShown | null) => void;
   onFinalPhrase?: (phrase: Heard) => void;
+  /**
+   * Caption AI (alpha.22): when the admin chose it, the recognizer runs in the speaker's language with that
+   * language's checked model from the offline pack, and what it hears goes through the coordinator instead of
+   * today's feed. Not given, or off: today's captions exactly as before.
+   */
+  aiPath?: {
+    on(): boolean;
+    /** The pack's checked captions model for this language, or null. */
+    model(language: SpeechLanguage): CaptionPackModel | null;
+    coordinator: ClauseSink;
+    spelling?: CaptionSpelling;
+  };
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
+}
+
+/** A captions model from the offline pack: where it is and its SHA-256 (cap-pack checked it). */
+export interface CaptionPackModel {
+  path: string;
+  sha256: string;
 }
 
 export class CaptionsService {
@@ -99,6 +118,14 @@ export class CaptionsService {
               : null,
         };
   }
+
+  /** The pack's model caption AI runs with now, or null (today's captions). */
+  aiModel(): CaptionPackModel | null {
+    return null;
+  }
+
+  /** The admin turned caption AI on or off. */
+  aiPathChanged(): void {}
 
   selectedModel(): CaptionModelId {
     return this.switch.model;
