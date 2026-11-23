@@ -152,4 +152,14 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     expect(ruyJobs).toContain('...x86Ruy');
     expect(ct2Defines).toContain('...x86Ruy');
   });
+
+  it('checks a number\u2019s range before converting it, never after (a22-review-mt A11)', () => {
+    // "beam": 1e300 cast to long first is undefined behaviour.
+    const source = read('tools/translate/drashti-translate.cc');
+    const integer = source.split('std::optional<long> integer(')[1]?.split('\n}')[0] ?? '';
+    expect(integer).toContain(
+      'if (!(v >= static_cast<double>(lo) && v <= static_cast<double>(hi)) || v != std::floor(v))',
+    );
+    expect(integer.indexOf('std::floor')).toBeLessThan(integer.indexOf('static_cast<long>(v)'));
+  });
 });
