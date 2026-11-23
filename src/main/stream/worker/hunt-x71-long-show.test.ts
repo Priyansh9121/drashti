@@ -25,31 +25,35 @@ describe('H6 long show timeline', () => {
     let lateLast = -1;
     const readTime = (bytes: Buffer) => {
       const clusters: MkvCluster[] = [];
-      new MkvSplitter(
+      const reader = new MkvSplitter(
         () => undefined,
         (c) => clusters.push(c),
-      ).push(Buffer.concat([header, bytes]));
-      return clusters[0]?.timestamp ?? -1;
+      );
+      reader.push(Buffer.concat([header, bytes]));
+      const ticks = clusters[0]?.timestamp;
+      return ticks === undefined ? -1 : (ticks * reader.timestampScaleNs) / 1e6;
     };
     const splitter = new MkvSplitter(
       () => undefined,
       (cluster) => {
-        expect(cluster.timestamp).toBeGreaterThan(previous);
-        previous = cluster.timestamp;
-        last = cluster.timestamp;
+        // MkvWriter uses 10-microsecond ticks; timestamps become milliseconds only with the header scale.
+        const milliseconds = (cluster.timestamp * splitter.timestampScaleNs) / 1e6;
+        expect(milliseconds).toBeGreaterThan(previous);
+        previous = milliseconds;
+        last = milliseconds;
         count++;
         const out = consumerTake(recording, cluster, header);
         if (!out) throw new Error('The recording lost a cluster');
         given++;
         headers += out.filter((b) => b.equals(header)).length;
-        if (cluster.timestamp >= 2 * 60 * 60 * 1000) {
-          if (joinedAt < 0) joinedAt = cluster.timestamp;
+        if (milliseconds >= 2 * 60 * 60 * 1000) {
+          if (joinedAt < 0) joinedAt = milliseconds;
           const late = consumerTake(lateListener, cluster, header);
           if (!late) throw new Error('The late listener lost a cluster');
           const time = readTime(late[late.length - 1] ?? Buffer.alloc(0));
           if (lateFirst < 0) lateFirst = time;
           lateLast = time;
-          expect(time).toBe(cluster.timestamp - joinedAt);
+          expect(time).toBe(milliseconds - joinedAt);
         }
       },
     );
