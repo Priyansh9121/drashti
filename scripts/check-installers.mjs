@@ -253,6 +253,10 @@ async function starts(name, command, args, appDir, emulated = false) {
   else pass(name, `starts, and runs its own FFmpeg (${f.version}; streams with ${f.chosen ?? 'nothing'})`);
   if (f && !f.whisper?.passed) fail(name, f.whisper?.detail ?? 'no bundled captions engine startup result');
   else if (f?.whisper) pass(name, f.whisper.detail);
+  // Route C (alpha.22): its Gujarati and Hindi recognition helper starts beside its own ONNX Runtime (no model).
+  if (f && !f.indic?.passed)
+    fail(name, f.indic?.detail ?? 'no bundled Gujarati and Hindi recognition startup result');
+  else if (f?.indic) pass(name, f.indic.detail);
   // Book OCR (alpha.21): it reads with its own model (tessdata_best's Gujarati, its SHA-256), from inside the app.
   const o = f?.ocr;
   if (f && !o?.passed) fail(name, o?.detail ?? 'its self-test says nothing of book OCR');

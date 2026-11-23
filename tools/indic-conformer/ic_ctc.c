@@ -233,6 +233,16 @@ static FILE *open_utf8(const char *path) {
 }
 static int ic_main(int argc, char **argv) {
   const char *code = NULL, *model = NULL, *tokens = NULL, *frontend = NULL; int threads = 1, serve = 0, admit = 0;
+  if (argc == 2 && !strcmp(argv[1], "--runtime")) {
+    /* The packaged self-test: ONNX Runtime loads beside the helper and starts, without any model or input. */
+    const OrtApiBase *base = OrtGetApiBase();
+    ort = base->GetApi(ORT_API_VERSION); if (!ort) die("runtime API mismatch");
+    check(ort->CreateEnv(ORT_LOGGING_LEVEL_FATAL, "ic-ctc", &env));
+    printf("{\"runtime\":"); json_str(stdout, base->GetVersionString()); printf(",\"api\":%d}\n", ORT_API_VERSION);
+    fflush(stdout);
+    ort->ReleaseEnv(env);
+    return 0;
+  }
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--lang") && i + 3 < argc && !code) { code = argv[++i]; model = argv[++i]; tokens = argv[++i]; }
     else if (!strcmp(argv[i], "--frontend") && i + 1 < argc) frontend = argv[++i];

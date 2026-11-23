@@ -19,7 +19,8 @@ test('the helper reports its approved ONNX Runtime without any model (the packag
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        PATH: join(process.env.DRASHTI_ORT_ROOT, 'runtimes', 'win-x64', 'native') + delimiter + process.env.PATH,
+        PATH:
+          join(process.env.DRASHTI_ORT_ROOT, 'runtimes', 'win-x64', 'native') + delimiter + process.env.PATH,
       },
     });
     let output = '',

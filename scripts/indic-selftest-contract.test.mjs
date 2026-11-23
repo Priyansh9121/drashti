@@ -36,7 +36,12 @@ test('a Windows package missing an app-local library fails even if this machine 
   const dir = folder(['ic-ctc.exe', 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'msvcp140.dll']);
   try {
     const { asked, run } = answers({ ok: true, code: 0, out: '{"runtime":"1.23.2","api":23}\n' });
-    const result = await indicSelfTest({ path: join(dir, 'ic-ctc.exe'), platform: 'win32', windowsRuntime: crt, run });
+    const result = await indicSelfTest({
+      path: join(dir, 'ic-ctc.exe'),
+      platform: 'win32',
+      windowsRuntime: crt,
+      run,
+    });
     assert.equal(result.passed, false);
     assert.match(result.detail, /vcruntime140\.dll/u);
     assert.deepEqual(asked, []);
@@ -49,7 +54,12 @@ test('a Mac package without its ONNX Runtime library fails', async () => {
   const dir = folder(['ic-ctc']);
   try {
     const { asked, run } = answers({ ok: true, code: 0, out: '{"runtime":"1.23.2","api":23}\n' });
-    const result = await indicSelfTest({ path: join(dir, 'ic-ctc'), platform: 'darwin', windowsRuntime: crt, run });
+    const result = await indicSelfTest({
+      path: join(dir, 'ic-ctc'),
+      platform: 'darwin',
+      windowsRuntime: crt,
+      run,
+    });
     assert.equal(result.passed, false);
     assert.match(result.detail, /libonnxruntime\.dylib/u);
     assert.deepEqual(asked, []);
@@ -67,7 +77,10 @@ test('a complete Windows package starts the helper alone and needs the approved 
     assert.equal(passed.passed, true, passed.detail);
     assert.deepEqual(good.asked, [[path, ['--runtime']]]);
     const other = answers({ ok: true, code: 0, out: '{"runtime":"1.24.1","api":24}\n' });
-    assert.equal((await indicSelfTest({ path, platform: 'win32', windowsRuntime: crt, run: other.run })).passed, false);
+    assert.equal(
+      (await indicSelfTest({ path, platform: 'win32', windowsRuntime: crt, run: other.run })).passed,
+      false,
+    );
     const dll = answers({ ok: false, code: 0xc0000135, out: '' });
     const missing = await indicSelfTest({ path, platform: 'win32', windowsRuntime: crt, run: dll.run });
     assert.equal(missing.passed, false);
@@ -82,9 +95,15 @@ test('a Mac package that answers with the approved runtime passes; one that fail
   try {
     const path = join(dir, 'ic-ctc');
     const good = answers({ ok: true, code: 0, out: '{"runtime":"1.23.2","api":23}\n' });
-    assert.equal((await indicSelfTest({ path, platform: 'darwin', windowsRuntime: crt, run: good.run })).passed, true);
+    assert.equal(
+      (await indicSelfTest({ path, platform: 'darwin', windowsRuntime: crt, run: good.run })).passed,
+      true,
+    );
     const broken = answers({ ok: false, code: 134, out: '' });
-    assert.equal((await indicSelfTest({ path, platform: 'darwin', windowsRuntime: crt, run: broken.run })).passed, false);
+    assert.equal(
+      (await indicSelfTest({ path, platform: 'darwin', windowsRuntime: crt, run: broken.run })).passed,
+      false,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

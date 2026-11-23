@@ -463,6 +463,9 @@ import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { whisperSelfTest } from './speech/whisper-selftest';
+import { findIndic } from './speech/indic-place';
+import { indicSelfTest } from './speech/indic-selftest';
+import windowsRuntimeLibraries from '../shared/whisper-windows-runtime.json';
 import { CaptionSettingsRepo } from './db/captions';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
@@ -1634,6 +1637,20 @@ function start(): void {
             process.platform,
           )
         : null;
+      // Route C (alpha.22): its helper starts beside its own ONNX Runtime, without any model, pack or sound.
+      const indic = packaged()
+        ? await indicSelfTest({
+            path: findIndic({
+              packaged: true,
+              resourcesPath: process.resourcesPath,
+              appPath: app.getAppPath(),
+              platform: process.platform,
+              arch: process.arch,
+            }),
+            platform: process.platform,
+            windowsRuntime: Object.keys(windowsRuntimeLibraries),
+          })
+        : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
       const ocr = await ocrSelfTest({
         files: builtOcrFiles(__dirname),
@@ -1646,8 +1663,14 @@ function start(): void {
         ffmpegPassed: ffmpeg.passed,
         youtube,
         whisper,
+        indic,
         ocr,
-        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true) && ocr.passed,
+        passed:
+          ffmpeg.passed &&
+          youtube.passed &&
+          (whisper?.passed ?? true) &&
+          (indic?.passed ?? true) &&
+          ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);
