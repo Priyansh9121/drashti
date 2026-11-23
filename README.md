@@ -168,6 +168,11 @@ Drashti is free. Each computer has one link, and it always gives the newest rele
 
 The links work: the first release was published on 9 Oct 2026 (by hand, from the Release workflow: "Releases, signing and updates"), and every release after it carries the same names. A release's files, with `SHA256SUMS.txt` to check a download by hand, are at https://github.com/Priyansh9121/drashti/releases/latest. Its two Mac `.zip` files are what Drashti's own update installs: nobody needs to download them.
 
+## Working on Drashti
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for a fresh clone on Mac or Windows, tests, pull requests to `phase1`,
+and the access needed to open a source build. Ask the maintainer before working on Drashti.
+
 ## Setup
 
 You need **Node.js 22.12 or later** and **pnpm 12**. Nothing else: better-sqlite3 ships prebuilt Node-API binaries, so no compiler is needed on either OS.
