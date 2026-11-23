@@ -41,11 +41,130 @@ export interface LanguageModelEntry {
 }
 
 /**
- * The language models Drashti knows. None yet: an entry is added here, with its file's exact bytes and SHA-256 and
- * its licence, only once the owner has approved that exact file (x89's list). Until then every language is heard
- * by the general model, as before.
+ * The language models Drashti knows, each by its file's exact bytes and SHA-256. Since alpha.22: the Gujarati (small
+ * and medium) and Hindi (small) fine-tunes of Whisper by vasista22 (Speech Lab, IIT Madras; Apache-2.0 on OpenAI's MIT
+ * base), converted to ggml by whisper.cpp's own converter and quantized by its own quantizer (cap-route-w, 23 Nov
+ * 2026; ledger N/reports/cap-downloads-ledger.md; the q5_1 files are byte for byte Ukta's published ones). They were
+ * trained without timestamps. Gujarati without temperature fallback: with it the small model fell behind on 24 of 40
+ * clips, without it on none (cap-route-w's round 2). Which of them ships is decided by the real-speech numbers; a
+ * language with none chosen is heard by the general model, as before.
  */
-export const LANGUAGE_MODELS: readonly LanguageModelEntry[] = Object.freeze([]);
+const KNOWN: LanguageModelEntry[] = [
+  {
+    id: 'gu-small-vasista22-f16',
+    language: 'gu',
+    name: 'Gujarati tuned, small (full size)',
+    bytes: 487_601_967,
+    sha256: '4352740b11928eef0743477d0729c3abda01c3f95f2e7802ad771beeeeb45c7a',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: false,
+    timestamps: false,
+  },
+  {
+    id: 'gu-small-vasista22-q8_0',
+    language: 'gu',
+    name: 'Gujarati tuned, small (8-bit)',
+    bytes: 264_464_607,
+    sha256: '44927c4860080a0122d6eac5d42a12b3b1e30c56d3bdeddc3850456bc303d215',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: false,
+    timestamps: false,
+  },
+  {
+    id: 'gu-small-vasista22-q5_1',
+    language: 'gu',
+    name: 'Gujarati tuned, small (5-bit, q5_1)',
+    bytes: 190_085_487,
+    sha256: 'e756347b8fb573b88a5625ad98dac9075746549fdf407260d321d077a73b094a',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: false,
+    timestamps: false,
+  },
+  {
+    id: 'gu-small-vasista22-q5_0',
+    language: 'gu',
+    name: 'Gujarati tuned, small (5-bit, q5_0)',
+    bytes: 175_209_663,
+    sha256: '608a61708e73fd529025500487f77089909b05ad8966455314c6124cb272ecac',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: false,
+    timestamps: false,
+  },
+  {
+    id: 'gu-medium-vasista22-f16',
+    language: 'gu',
+    name: 'Gujarati tuned, medium (full size)',
+    bytes: 1_533_763_059,
+    sha256: '591ddaff1202b383c53be6aa2b9cc8278a169f17e4f583ac57032a059282671f',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: false,
+    timestamps: false,
+  },
+  {
+    id: 'gu-medium-vasista22-q8_0',
+    language: 'gu',
+    name: 'Gujarati tuned, medium (8-bit)',
+    bytes: 823_369_779,
+    sha256: 'f1468ff2d0f69265feda6db834803919385e3f69885775ffd2aa40644e84157c',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: false,
+    timestamps: false,
+  },
+  {
+    id: 'gu-medium-vasista22-q5_0',
+    language: 'gu',
+    name: 'Gujarati tuned, medium (5-bit)',
+    bytes: 539_212_467,
+    sha256: '0d539e6d025489e1412453f28852b46d806682b11afcefbee9e5aa1010375f5c',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: false,
+    timestamps: false,
+  },
+  {
+    id: 'hi-small-vasista22-f16',
+    language: 'hi',
+    name: 'Hindi tuned, small (full size)',
+    bytes: 487_601_967,
+    sha256: '5d9f25596aad22c9a8a67de67632b5e8f0d1e43b26cdd0f26c1d628d7e953e91',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: true,
+    timestamps: false,
+  },
+  {
+    id: 'hi-small-vasista22-q8_0',
+    language: 'hi',
+    name: 'Hindi tuned, small (8-bit)',
+    bytes: 264_464_607,
+    sha256: '0b2ff62094c004b0b180f47d6cb4aefec12d4d93ad3282058aa022827eb721e5',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: true,
+    timestamps: false,
+  },
+  {
+    id: 'hi-small-vasista22-q5_1',
+    language: 'hi',
+    name: 'Hindi tuned, small (5-bit, q5_1)',
+    bytes: 190_085_487,
+    sha256: '6813fed7ffa6c3fa14490c1f1788d2d8b6e3b7badf59a2f75fb4c5c21cf00f3f',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: true,
+    timestamps: false,
+  },
+  {
+    id: 'hi-small-vasista22-q5_0',
+    language: 'hi',
+    name: 'Hindi tuned, small (5-bit, q5_0)',
+    bytes: 175_209_663,
+    sha256: '8d436e4bcceae1e5021df902d7db87c130ee7cf4810dbd6fa8edd8038595f33e',
+    licence: 'Apache-2.0 (base model MIT)',
+    fallback: true,
+    timestamps: false,
+  },
+];
+
+export const LANGUAGE_MODELS: readonly LanguageModelEntry[] = Object.freeze(
+  KNOWN.map((entry) => Object.freeze(entry)),
+);
 
 export class LanguageModelRefused extends Error {}
 
