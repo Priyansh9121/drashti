@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { openGeneratedPdf } from './pdf-tools-fixtures';
+import { join } from 'node:path';
+import { inspectPdf, occurrences } from './pdf-export-oracle';
+import { openGeneratedPdf, savePdfCopy, usePdfTools } from './pdf-tools-fixtures';
 
 // Generated placeholder words only. First run after alpha.21 is published.
 test('PDF lines share one paragraph box and edited words wrap inside its width', async () => {
@@ -22,6 +24,36 @@ test('PDF lines share one paragraph box and edited words wrap inside its width',
     });
     expect(layout.lines).toBeGreaterThan(1);
     expect(layout.inside).toBe(true);
+    s.unchanged();
+  } finally {
+    await s.app.close();
+  }
+});
+
+
+test('a newly typed Gujarati letter uses bundled Noto on the page and stays searchable in the PDF copy', async () => {
+  const s = await openGeneratedPdf([{ width: 480, height: 320, marker: 'Placeholder source letters' }]);
+  try {
+    await expect(s.editor.getByTestId('editor-source-issues')).toContainText('Noto Sans Gujarati');
+    const box = s.editor.getByTestId('editor-slide').locator('[data-element]').filter({ hasText: 'Placeholder source letters' });
+    await box.dblclick();
+    const typing = s.editor.getByTestId('text-editing');
+    await expect(typing).toBeFocused();
+    await typing.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    const letters = 'કખગઘઙ ક્ષ';
+    await s.ed.keyboard.insertText(letters);
+    await expect(typing).toHaveText(letters);
+    await typing.press('Escape');
+    const rendered = s.editor.getByTestId('editor-slide').locator('[data-element]').filter({ hasText: letters });
+    await expect(rendered).toHaveCount(1);
+    const fonts = await rendered.locator('span').evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).fontFamily));
+    expect(fonts.some((family) => family.includes('Noto Sans Gujarati'))).toBe(true);
+    await usePdfTools(s.ed);
+    const output = join(s.folder, 'Placeholder Gujarati copy.pdf');
+    await savePdfCopy(s.app, s.ed, output);
+    const pages = await inspectPdf(output);
+    expect(pages).toHaveLength(1);
+    expect(occurrences(pages[0]?.words ?? '', letters)).toBe(1);
     s.unchanged();
   } finally {
     await s.app.close();
