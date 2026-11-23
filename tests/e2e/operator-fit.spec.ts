@@ -36,14 +36,15 @@ const COLUMNS = {
 } as const;
 
 const LONG = {
-  playlist: 'Placeholder Sunday Evening Sabha with a Long Name',
+  // Gujarati's marks above and below as the owner's own names have them (the word "placeholder" in its letters).
+  playlist: 'Placeholder પ્લેસહોલ્ડર Sunday Evening Sabha with a Long Name',
   presentation: 'Placeholder Opening Words over a Video with a Long Name',
   video: 'Placeholder Evening Talk Recording with a Long File Name.webm',
   picture: 'Placeholder Wide Picture of the Stage with a Long Name.png',
   tone: 'Placeholder Evening Music Track with a Long File Name.wav',
   audio: [
     'Placeholder Music Before the Sabha with a Long Name',
-    'Placeholder Music After the Sabha',
+    'Placeholder પ્લેસહોલ્ડર Music After the Sabha',
     'Placeholder Quiet Music',
   ],
   notice:
@@ -197,7 +198,8 @@ const fitFaults = (win: Page) =>
         }
         parts.push({ el, region: name, seen, control: el.matches(CONTROLS) });
       }
-      // Words of Drashti's own cut short with an ellipsis (a placeholder name may be).
+      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: this test's placeholders, and
+      // the library's seeded "Sample kirtan (placeholder)").
       for (const el of r.querySelectorAll('*')) {
         if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth + 1) continue;
         const style = getComputedStyle(el);
@@ -205,7 +207,7 @@ const fitFaults = (win: Page) =>
         const words = el.textContent.replace(/\s+/gu, ' ').trim();
         if (
           words !== '' &&
-          !words.includes('Placeholder') &&
+          !/placeholder/iu.test(words) &&
           inSight(el.parentElement, boxOf(el.getBoundingClientRect())).seen
         )
           out.add(`${name}: “${words.slice(0, 60)}” is cut short`);
