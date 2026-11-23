@@ -5,6 +5,7 @@ import { idSchema } from '../../shared/model-schema';
 import { editDocSchema, type EditDoc } from '../../shared/slide-edit';
 import { renderEditedSlide } from '../../shared/slide-design';
 import { z } from 'zod';
+import { cutText } from '../../shared/text';
 import type { MadeSlidePlace, MakeSlideResult, PagePart } from '../../shared/page-part';
 import { madeSlideName, pagePartSchema } from '../../shared/page-part';
 import type { PdfCopyJob, PdfCopyResult } from '../../shared/pdf-copy';
@@ -29,11 +30,14 @@ export interface PdfEditorDeps {
   /** Make a slide… (alpha.21): the part of a one-page PDF just printed here, drawn at the hall's picture size. */
   drawPart?: (pdf: Uint8Array, part: PagePart, signal: AbortSignal) => Promise<PartPicture>;
   /** Make a slide…: the picture kept in the library as a one-slide presentation, in the open playlist when asked. */
-  keepSlide?: (made: {
-    png: Uint8Array | Uint8Array[];
-    name: string;
-    place: MadeSlidePlace;
-  }) => Promise<MakeSlideResult>;
+  keepSlide?: (
+    made: {
+      png: Uint8Array | Uint8Array[];
+      name: string;
+      place: MadeSlidePlace;
+    },
+    current: () => boolean,
+  ) => Promise<MakeSlideResult>;
 }
 const failed = (message: string): { ok: false; message: string } => ({ ok: false, message });
 /** Make a slide…'s request, its document checked apart (editDocSchema) and against what is stored (validate). */
@@ -234,7 +238,7 @@ export class PdfEditor {
     event.sender.once('destroyed', abort);
     const whole = part.x <= 0 && part.y <= 0 && part.w >= 1 && part.h >= 1;
     const name = parts
-      ? `${doc.name.slice(0, 180)}, ${String(parts.length)} parts`
+      ? `${cutText(doc.name, 180, '…')}, ${String(parts.length)} parts`
       : madeSlideName(doc.name, (selected[0]?.at ?? 0) + 1, whole);
     const done = (async (): Promise<MakeSlideResult> => {
       try {
@@ -259,7 +263,7 @@ export class PdfEditor {
         if (!current()) return failed('The editor changed. Reopen it before making a slide.');
         const png = parts ? pngs : pngs[0];
         if (!png) throw new Error('Missing picture.');
-        return await keepSlide({ png, name, place });
+        return await keepSlide({ png, name, place }, current);
       } catch (error) {
         if (error instanceof PdfEditorError) return failed(error.message);
         return failed('The slide could not be made. Try again in a moment.');

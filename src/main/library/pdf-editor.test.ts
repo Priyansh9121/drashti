@@ -358,11 +358,14 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       // Its part drawn from those bytes; the picture kept as a slide in the open playlist.
       expect(t.drawPart).toHaveBeenCalledOnce();
       expect(t.drawPart.mock.calls[0]?.slice(0, 2)).toEqual([t.printed, { x: 0, y: 0, w: 0.25, h: 0.5 }]);
-      expect(t.keepSlide).toHaveBeenCalledWith({
-        png: t.png,
-        name: `${t.doc.name}, page 1 (part)`,
-        place: 'playlist',
-      });
+      expect(t.keepSlide).toHaveBeenCalledWith(
+        {
+          png: t.png,
+          name: `${t.doc.name}, page 1 (part)`,
+          place: 'playlist',
+        },
+        expect.any(Function),
+      );
       // The PDF's own presentation is not changed, and no revision is kept for it.
       expect(t.presentations.content(t.imported.id)).toEqual(t.before);
       expect(t.kept).not.toHaveBeenCalled();
@@ -372,11 +375,14 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
         t.request({ part: { x: 0, y: 0, w: 1, h: 1 }, place: 'library' }),
       );
       expect(whole.ok && whole.name).toBe(`${t.doc.name}, page 1`);
-      expect(t.keepSlide).toHaveBeenLastCalledWith({
-        png: t.png,
-        name: `${t.doc.name}, page 1`,
-        place: 'library',
-      });
+      expect(t.keepSlide).toHaveBeenLastCalledWith(
+        {
+          png: t.png,
+          name: `${t.doc.name}, page 1`,
+          place: 'library',
+        },
+        expect.any(Function),
+      );
     } finally {
       await t.clean();
     }
@@ -406,11 +412,14 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       expect(t.drawPart.mock.calls.map((call) => call.slice(0, 2))).toEqual(
         [parts[0], parts[2], parts[1]].map((p) => [t.printed, p?.part]),
       );
-      expect(t.keepSlide).toHaveBeenCalledExactlyOnceWith({
-        png: [pngs[0], pngs[2], pngs[1]],
-        name: `${t.doc.name}, 3 parts`,
-        place: 'playlist',
-      });
+      expect(t.keepSlide).toHaveBeenCalledExactlyOnceWith(
+        {
+          png: [pngs[0], pngs[2], pngs[1]],
+          name: `${t.doc.name}, 3 parts`,
+          place: 'playlist',
+        },
+        expect.any(Function),
+      );
       expect(t.presentations.content(t.imported.id)).toEqual(t.before);
       expect(t.kept).not.toHaveBeenCalled();
     } finally {
