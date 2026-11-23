@@ -867,7 +867,9 @@ export class ConvertService {
       child.on('error', () => {
         resolve(-1);
       });
-      child.on('exit', resolve);
+      // Once it has exited and all it wrote has been read: at its exit alone, a busy computer may not have read its
+      // last words yet, the reason a failure gives (a21, after x58).
+      child.on('close', resolve);
     });
     clearTimeout(limit);
     this.deps.children?.ended(child.pid);
