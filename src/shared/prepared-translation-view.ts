@@ -34,7 +34,7 @@ export function translationSource(el: TextElement): string {
 }
 export function translationSourceSupported(el: TextElement, language: TranslationLanguage): boolean {
   return (
-    !el.runs?.some((run) => run.legacy || (run.lang != null && run.lang !== language)) &&
+    !el.runs?.some((run) => run.legacy === true || (run.lang != null && run.lang !== language)) &&
     (el.lang == null || el.lang === language)
   );
 }
