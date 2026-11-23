@@ -549,24 +549,58 @@ test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show 
     // Templates, a template's slot and the Books show only with View › Show Books, Templates and Kirtan Details.
     await showExtras(win);
     const sizes = [await smallestContent(app, OPERATOR), CI_WINDOW, OWNERS_WINDOW];
-    await longShow(win);
-    // A timer, and a stage screens' group (whose settings in Screens lead to the stage layouts).
-    await win.evaluate(async () => {
-      const d = (globalThis as PageGlobals).drashti;
-      const created = await d.screens.createGroup('Placeholder stage with a long name for the stage screens');
-      if (!created.ok) throw new Error(created.message);
-      const stage = created.snapshot.groups.find((g) => g.name.startsWith('Placeholder stage'));
-      const set = await d.screens.setGroupRole(stage?.id ?? '', 'stage');
-      if (!set.ok) throw new Error(set.message);
-      const made = await d.timers.create({
-        name: 'Placeholder countdown with a long name for the audience and the stage',
-        kind: 'countdown',
-        durationMs: 300_000,
-        targetTime: null,
-        allowsOverrun: false,
-      });
-      if (!made.ok) throw new Error(made.message);
-    });
+    const { wordsId } = await longShow(win);
+    // The most a stage layout's name takes is 60 letters.
+    const longLayout = 'Placeholder stage layout with a long name for the stage';
+    // A timer, and a stage screens' group (whose settings in Screens lead to the stage layouts); the long-named words a
+    // dhun with long details (so the template's Dhun slot, the slot filled below, offers them), and a long-named stage
+    // layout with long words in a box.
+    await win.evaluate(
+      async ({ wordsId, longLayout }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const details = await d.kirtans.setDetails(wordsId, {
+          category: 'Dhun',
+          kavi: 'Placeholder kavi with a long name for the slot',
+          raag: 'Placeholder raag with a long name',
+          occasions: [],
+          audioMediaId: null,
+        });
+        if (!details.ok) throw new Error(details.message);
+        const layout = await d.stageLayouts.save(null, {
+          name: longLayout,
+          background: '#000000',
+          boxes: [
+            {
+              id: 'words',
+              kind: 'text',
+              frame: { x: 48, y: 48, width: 1824, height: 300 },
+              size: 56,
+              color: '#ffffff',
+              align: 'left',
+              label: '',
+              text: 'Placeholder words for the stage with a long line for the singers and the players',
+            },
+          ],
+        });
+        if (!layout.ok) throw new Error(layout.message);
+        const created = await d.screens.createGroup(
+          'Placeholder stage with a long name for the stage screens',
+        );
+        if (!created.ok) throw new Error(created.message);
+        const stage = created.snapshot.groups.find((g) => g.name.startsWith('Placeholder stage'));
+        const set = await d.screens.setGroupRole(stage?.id ?? '', 'stage');
+        if (!set.ok) throw new Error(set.message);
+        const made = await d.timers.create({
+          name: 'Placeholder countdown with a long name for the audience and the stage',
+          kind: 'countdown',
+          durationMs: 300_000,
+          targetTime: null,
+          allowsOverrun: false,
+        });
+        if (!made.ok) throw new Error(made.message);
+      },
+      { wordsId, longLayout },
+    );
     const dialog = operatorSweep(app, win, sizes);
     const menu = (id: string) => () => chooseMenuItem(app, id);
     const cancel = (root: Locator) => async () => {
@@ -589,6 +623,13 @@ test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show 
         await screens.getByTestId('edit-stage-layouts').click();
       },
       async () => {
+        // The long-named layout shown: its name in the list, its boxes and their words at the side.
+        await dialog(
+          'Screens › the stage layouts, a long-named layout',
+          layouts,
+          () => layouts.getByRole('button', { name: longLayout, exact: true }).click(),
+          () => Promise.resolve(),
+        );
         const template = win.getByTestId('stage-template-dialog');
         await dialog('the stage layouts’ New from a Template…', template, () =>
           layouts.getByTestId('stage-layout-from-template').click(),
