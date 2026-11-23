@@ -2906,6 +2906,7 @@ function start(): void {
       settings.set('displaysNotUsed', value);
     },
   });
+  let cancelPdfPageWork: () => void = () => undefined;
   let stream: StreamService | null = null;
   // Show a Window… and the window for Zoom (Session 48): made with the stream, below.
   let liveWindows: LiveWindowService | null = null;
@@ -3574,6 +3575,8 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      slideEditor?.send(IPC.stream.changed, status);
+      if (status.live.state !== 'off' || status.recording.state !== 'off') cancelPdfPageWork();
       youtubeService?.streamChanged(status);
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
@@ -5332,6 +5335,8 @@ function start(): void {
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
     mayPrepareSource: (e, presentationId) =>
+      !streaming.inUse() &&
+      !testOnAir &&
       mayEditSlides(presentationId) &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
@@ -5382,6 +5387,8 @@ function start(): void {
     mediaDir,
     session: pdfCopies,
     allowed: (e) =>
+      !streaming.inUse() &&
+      !testOnAir &&
       !stops.done &&
       documentQuit?.closing !== true &&
       isLetIn() &&
@@ -5414,7 +5421,6 @@ function start(): void {
     drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
     keepSlide: ({ png, name, place }, current) => keepPageSlide(png, name, place, current),
   });
-  handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
   // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
   // operator window) asks; Pro Mode only, as Save a PDF copy is.
   handle(IPC.slideEditor.makeSlide, (e, request) => pdfEditor.makeSlide(e, request));
@@ -5429,6 +5435,18 @@ function start(): void {
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
   });
+  handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
+  handle(
+    IPC.library.pdfWorkAllowed,
+    (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !streaming.inUse() &&
+      !testOnAir &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+  );
+  handle(IPC.library.showExtractedPdfCopy, (e, id, visible) => pdfEditor.showExtractedCopy(e, id, visible));
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
   cancelSourceEdits = () => {
@@ -5436,6 +5454,7 @@ function start(): void {
     cancelPdfCopies();
   };
   drainSourceEdits = () => slideEdits.drainSourcePreparation();
+  cancelPdfPageWork = cancelSourceEdits;
   stops.add('editor source generations', cancelSourceEdits);
   // The QR code… window's logo and Download… (Q60-28): Choose a Picture… and Download… are the system's own dialogs,
   // and every picture of a code is made, and read back, in the QR worker, off Main's thread (library/qr-service.ts).

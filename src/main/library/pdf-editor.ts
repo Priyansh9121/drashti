@@ -1,8 +1,9 @@
 import type { IpcMainInvokeEvent } from 'electron';
+import { pdfPageIndices } from '../../shared/pdf-page-selection';
 import { basename, isAbsolute, join } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { idSchema } from '../../shared/model-schema';
-import { editDocSchema, type EditDoc } from '../../shared/slide-edit';
+import { editDocSchema, slidesOf, type EditDoc } from '../../shared/slide-edit';
 import { renderEditedSlide } from '../../shared/slide-design';
 import { z } from 'zod';
 import { cutText } from '../../shared/text';
@@ -13,6 +14,7 @@ import type { PartPicture } from '../pictures/pdf-pictures';
 import { OriginalsStore, originalRelative } from '../import/originals-store';
 import type { Db } from '../db/database';
 import type { PdfCopySession } from './pdf-copy-session';
+import { PdfCopyHistory } from './pdf-copy-history';
 import { PdfCopyError, writePdfCopy } from './pdf-copy-file';
 
 export interface PdfEditorDeps {
@@ -71,6 +73,9 @@ class PdfEditorError extends Error {}
 export class PdfEditor {
   private active: { abort: AbortController; done: Promise<PdfCopyResult>; batch?: boolean } | null = null;
   private stopped = false;
+  private historyWork: Promise<boolean> | null = null;
+  private readonly copies = new PdfCopyHistory();
+  private readonly copyOwners = new Map<string, number>();
   constructor(private readonly deps: PdfEditorDeps) {}
 
   export(
@@ -78,8 +83,9 @@ export class PdfEditor {
     rawId: unknown,
     rawDoc: unknown,
     rawStamp: unknown,
+    rawPages?: unknown,
   ): Promise<PdfCopyResult> {
-    if (this.stopped || this.active || !this.deps.allowed(event))
+    if (this.stopped || this.active || this.historyWork || !this.deps.allowed(event))
       return Promise.resolve(
         failed('A PDF copy is already being made, or this editor is no longer available.'),
       );
@@ -95,6 +101,19 @@ export class PdfEditor {
       return Promise.resolve(failed('Reopen the editor before saving a PDF copy.'));
     const validated = this.deps.validate(id.data, checked.data, rawStamp);
     if (!validated.ok) return Promise.resolve(validated);
+    let snapshot = validated.doc;
+    if (rawPages !== undefined) {
+      const all = slidesOf(snapshot);
+      const chosen = pdfPageIndices(rawPages, all.length);
+      if (!chosen) return Promise.resolve(failed('Choose valid PDF page numbers in reading order.'));
+      const ids = new Set(all.filter((_, index) => chosen.includes(index)).map((page) => page.id));
+      snapshot = {
+        ...snapshot,
+        groups: snapshot.groups
+          .map((group) => ({ ...group, slides: group.slides.filter((page) => ids.has(page.id)) }))
+          .filter((group) => group.slides.length),
+      };
+    }
     const controller = new AbortController();
     const current = () =>
       !controller.signal.aborted &&
@@ -104,7 +123,13 @@ export class PdfEditor {
       this.deps.stamp(id.data) === rawStamp;
     const abort = () => controller.abort();
     event.sender.once('destroyed', abort);
-    const done = this.make(event, structuredClone(validated.doc), current, controller.signal).finally(() => {
+    const done = this.make(
+      event,
+      structuredClone(snapshot),
+      current,
+      controller.signal,
+      rawPages !== undefined,
+    ).finally(() => {
       event.sender.removeListener('destroyed', abort);
       if (this.active?.abort === controller) this.active = null;
     });
@@ -117,7 +142,9 @@ export class PdfEditor {
     doc: EditDoc,
     current: () => boolean,
     signal: AbortSignal,
+    extracted = false,
   ): Promise<PdfCopyResult> {
+    let publishedName: string | undefined;
     try {
       if (!current()) return failed('The editor changed. Reopen it before saving a PDF copy.');
       const output = await this.deps.chooseOutput(event, doc.name);
@@ -134,8 +161,9 @@ export class PdfEditor {
           "SELECT source_path FROM presentations WHERE source_kind = 'pictures' AND source_path IS NOT NULL",
         )
         .all() as { source_path: string }[];
-      await writePdfCopy({
+      const receipt = await writePdfCopy({
         bytes,
+        newOnly: extracted,
         outputPath: output,
         mediaDir: this.deps.mediaDir,
         protectedSources: [
@@ -148,11 +176,22 @@ export class PdfEditor {
         signal,
         current,
       });
+      publishedName = basename(output);
       // Final rename is the writer's commit boundary; do not falsely report cancellation after publication.
-      return { ok: true, name: basename(output) };
+      const undoId = extracted ? await this.copies.keep(output, receipt) : undefined;
+      if (undoId) this.copyOwners.set(undoId, event.sender.id);
+      return { ok: true, name: basename(output), ...(undoId ? { undoId } : {}) };
     } catch (error) {
+      if (publishedName)
+        return {
+          ok: true,
+          name: publishedName,
+          undoMessage:
+            'The new PDF was saved, but it changed before Undo could be prepared. The changed file is left alone.',
+        };
       if (error instanceof PdfEditorError) return failed(error.message);
-      if (error instanceof PdfCopyError && error.code === 'source-limit') return failed(error.message);
+      if (error instanceof PdfCopyError && (error.code === 'source-limit' || error.code === 'output-exists'))
+        return failed(error.message);
       return failed(
         'The PDF copy could not be saved safely. Choose a new file that is not one of the original files and not in Drashti’s own media folder.',
       );
@@ -171,7 +210,7 @@ export class PdfEditor {
     for (const slide of slides) {
       if (!current()) throw new Error('Cancelled.');
       const ref = slide.documentPage;
-      if (ref?.ext === 'pdf' && !ref.edited) {
+      if (ref?.ext === 'pdf' && !ref.edited && (!doc.master || slide.design?.skipMaster)) {
         if (!sources.has(ref.sha256)) {
           const descriptor = retained.find(
             (original) => original.sha256 === ref.sha256 && original.ext === 'pdf',
@@ -318,6 +357,26 @@ export class PdfEditor {
     this.deps.session.stop();
   }
 
+  showExtractedCopy(event: IpcMainInvokeEvent, id: unknown, visible: unknown): Promise<boolean> {
+    if (
+      this.stopped ||
+      this.active ||
+      this.historyWork ||
+      !this.deps.allowed(event) ||
+      typeof id !== 'string' ||
+      typeof visible !== 'boolean' ||
+      this.copyOwners.get(id) !== event.sender.id
+    )
+      return Promise.resolve(false);
+    const work = this.copies
+      .show(id, visible, () => !this.stopped && this.deps.allowed(event))
+      .finally(() => {
+        if (this.historyWork === work) this.historyWork = null;
+      });
+    this.historyWork = work;
+    return work;
+  }
+
   cancel(): void {
     this.active?.abort.abort();
     this.deps.session.stop();
@@ -327,5 +386,7 @@ export class PdfEditor {
     const active = this.active;
     this.cancel();
     if (active) await active.done;
+    if (this.historyWork) await this.historyWork;
+    await this.copies.stop();
   }
 }

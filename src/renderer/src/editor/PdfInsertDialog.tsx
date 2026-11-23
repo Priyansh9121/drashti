@@ -4,19 +4,23 @@ import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
+import { Field, TextInput } from '../ui/Field';
 
 /** Main owns file selection; both sources become one undoable insertion. */
 export function PdfInsertDialog({
   presentationId,
   stamp,
+  replace = false,
   onInserted,
   onClose,
 }: {
+  replace?: boolean;
   presentationId: string;
   stamp: string;
   onInserted: (pages: EditSlide[], issues: string[]) => void;
   onClose: () => void;
 }) {
+  const [pageNumber, setPageNumber] = useState('1');
   const [sources, setSources] = useState<PdfPageSource[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -59,7 +63,13 @@ export function PdfInsertDialog({
       if (!result) return;
       if (!mounted.current) return;
       if (result.ok) {
-        onInserted(result.pages, result.issues);
+        const index = Number(pageNumber) - 1;
+        const chosen = result.pages[index];
+        if (replace && (!Number.isInteger(index) || !chosen)) {
+          setProblem('Choose a page number in that PDF.');
+          return;
+        }
+        onInserted(replace && chosen ? [chosen] : result.pages, result.issues);
         onClose();
       } else if (!result.cancelled) setProblem(result.message);
     } catch {
@@ -72,7 +82,7 @@ export function PdfInsertDialog({
   };
   return (
     <Dialog
-      title="Insert PDF pages"
+      title={replace ? 'Replace PDF page' : 'Insert PDF pages'}
       testId="pdf-insert-dialog"
       size="md"
       onClose={onClose}
@@ -80,7 +90,7 @@ export function PdfInsertDialog({
         <>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" disabled={!selected || busy} onClick={() => void insert()}>
-            Insert pages
+            {replace ? 'Replace page' : 'Insert pages'}
           </Button>
         </>
       }
@@ -89,9 +99,20 @@ export function PdfInsertDialog({
         Choose a PDF file…
       </Button>
       <p className="my-3 text-sm text-muted">
-        Insert all pages of another PDF after this page. The PDF in the library stays as it is; Undo removes
-        this insertion.
+        {replace
+          ? 'Choose a PDF and the page to put here. Undo brings this page back. The original files stay as they are.'
+          : 'Insert all pages of another PDF after this page. The PDF in the library stays as it is; Undo removes this insertion.'}
       </p>
+      {replace && (
+        <Field label="Page number">
+          <TextInput
+            inputMode="numeric"
+            value={pageNumber}
+            disabled={busy}
+            onChange={(e) => setPageNumber(e.target.value)}
+          />
+        </Field>
+      )}
       {sources === null && !problem && <Loading label="Reading PDFs…" />}
       {sources?.length === 0 && (
         <p className="text-sm text-muted">

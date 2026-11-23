@@ -472,6 +472,14 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 ![Choose a PDF from the library or a separate file for page insertion](screenshots/pdf-insert.png)
 
+**Take pages out for a hand-out (alpha.22).** In **PDF pages › Extract pages…**, enter page numbers such as **1, 3-5**. They keep their reading order, with repeated numbers used once. Choose **New presentation** for a library copy, or **New PDF file** and a new file name. The pages stay here too. Undo removes the new presentation or PDF file; Redo restores it. A PDF changed outside Drashti is left alone, and Redo never replaces a file placed at its name.
+
+**Replace or split pages (alpha.22).** **Replace page…** puts one page from another library PDF or a chosen PDF file in place of this page. Enter its **Page number** before choosing the source; Undo brings the old page back. **Split…** splits before the chosen page: this editor keeps the first part and a new library presentation holds the rest. The first page cannot be a split point. Undo joins the parts again. Save keeps the first part in this presentation; the original files stay unchanged.
+
+**Numbers and words on every page (alpha.22).** **Hand-out…** adds a **Header**, **Footer**, **Watermark** and **Page numbers** to the one master. Leave a word field empty to remove it. **Keep hand-out** is one Undo step. The editor and **Save a PDF copy…** use the same master; numbers follow the current page order, including after moving, extracting or splitting pages. Other master objects stay in place. Check the copy before sharing it.
+
+**Wait until off air.** PDF page work pauses while the stream is starting, on air, reconnecting or ending, or a recording is starting or running. Stop the stream and recording before editing pages or making a PDF copy. Reading and printing run at the lowest priority. Let all pages finish preparing before changing the whole hand-out. If streaming interrupted preparation, reopen **Edit slides…** to prepare the remaining pages first.
+
 **Pages of different sizes.** A PDF page keeps its own paper size and turn: choose it before judging its canvas, rulers, alignment or thumbnail. Inserted pages keep their own sizes too. When **Slide size** resizes mixed pages, **Fit and centre the existing content** fits each from its own paper; with it off, objects keep their pixel positions and sizes. The shared master fits to each page without changing the master itself. Notes and editor guides stay off the audience picture, whatever the page's size.
 
 ![Portrait and landscape placeholder PDF pages with shared-master controls](screenshots/pdf-mixed-paper.png)

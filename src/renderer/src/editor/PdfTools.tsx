@@ -48,6 +48,10 @@ export interface PdfToolCallbacks {
   onInsertPages?: () => void;
   onSaveCopy?: () => void;
   onMakeSlide?: () => void;
+  onExtractPages?: () => void;
+  onReplacePage?: () => void;
+  onSplit?: () => void;
+  onHandout?: () => void;
 }
 
 export interface PdfToolsProps extends PdfToolCallbacks {
@@ -78,6 +82,10 @@ export function PdfTools({
   onInsertPages,
   onSaveCopy,
   onMakeSlide,
+  onExtractPages,
+  onReplacePage,
+  onSplit,
+  onHandout,
 }: PdfToolsProps) {
   const busy = blocked || pending !== null;
   return (
@@ -186,6 +194,21 @@ export function PdfTools({
           onClick={onMakeSlide}
         >
           Make a slide…
+        </Button>
+      </Cluster>
+      <Divider />
+      <Cluster name="Hand-out">
+        <Button size="sm" variant="ghost" disabled={busy || !onExtractPages} onClick={onExtractPages}>
+          Extract pages…
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onReplacePage} onClick={onReplacePage}>
+          Replace page…
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onSplit} onClick={onSplit}>
+          Split…
+        </Button>
+        <Button size="sm" variant="ghost" disabled={busy || !onHandout} onClick={onHandout}>
+          Hand-out…
         </Button>
       </Cluster>
       <Divider />

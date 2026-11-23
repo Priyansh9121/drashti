@@ -62,6 +62,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.exportPdf,
   // Make a slide… (alpha.21): a new presentation from a PDF page, as New › QR code… makes one.
   IPC.slideEditor.makeSlide,
+  IPC.library.extractPdfPages,
+  IPC.library.showExtractedPdf,
+  IPC.library.showExtractedPdfCopy,
+  IPC.library.pdfWorkAllowed,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
   // The single-letter keys (Session 37): Pro Mode's keys sheet turns them on or off.
@@ -552,6 +556,9 @@ export function simpleModeRefusals(
   answers.set(IPC.media.rowTrim, () => null);
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.library.stopReadingWords, () => false);
+  answers.set(IPC.library.pdfWorkAllowed, () => false);
+  answers.set(IPC.library.showExtractedPdf, () => false);
+  answers.set(IPC.library.showExtractedPdfCopy, () => false);
   answers.set(IPC.wallpapers.pickFiles, () => []);
   // Nothing made from what was dropped, saying why.
   answers.set(IPC.playlists.createSmartFrom, () => ({ made: [], files: [], problems: [words()] }));

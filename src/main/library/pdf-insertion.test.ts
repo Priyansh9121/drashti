@@ -582,3 +582,65 @@ describe('explicit legacy PDF reading-copy mapping', () => {
     }
   });
 });
+
+describe('extraction through the registered PDF editor boundary', () => {
+  it('extracts validated source pages, refuses stale and forged documents, and scopes Undo to the creating editor', async () => {
+    const t = await fixture();
+    try {
+      const opened = await call<EditSlidesResult>(IPC.library.slidesForEdit, event, t.target.id);
+      if (!opened.ok) throw new Error(opened.message);
+      const request = () =>
+        call<{ ok: boolean; id?: string }>(
+          IPC.library.extractPdfPages,
+          event,
+          t.target.id,
+          opened.doc,
+          opened.stamp,
+          [0],
+        );
+      t.access.pro = false;
+      expect((await request()).ok).toBe(false);
+      t.access.pro = true;
+      const copy = await request();
+      expect(copy.ok).toBe(true);
+      if (!copy.id) throw new Error('The extracted presentation was not returned.');
+      expect(t.presentations.content(copy.id)?.slides).toHaveLength(1);
+      expect(t.presentations.content(t.target.id)).toEqual(t.beforeTarget);
+      const other = { sender: { id: 202, isDestroyed: () => false } } as never;
+      expect(await call<boolean>(IPC.library.showExtractedPdf, other, copy.id, false)).toBe(false);
+      expect(await call<boolean>(IPC.library.showExtractedPdf, event, copy.id, false)).toBe(true);
+      expect(t.presentations.content(copy.id)).toBeNull();
+      expect(await call<boolean>(IPC.library.showExtractedPdf, event, copy.id, true)).toBe(true);
+      expect(
+        (
+          await call<{ ok: boolean }>(
+            IPC.library.extractPdfPages,
+            event,
+            t.target.id,
+            opened.doc,
+            'stale',
+            [0],
+          )
+        ).ok,
+      ).toBe(false);
+      const forged = structuredClone(opened.doc);
+      const ref = forged.groups.flatMap((g) => g.slides)[0]?.documentPage;
+      if (!ref) throw new Error('Generated source metadata missing.');
+      ref.sha256 = 'f'.repeat(64);
+      expect(
+        (
+          await call<{ ok: boolean }>(
+            IPC.library.extractPdfPages,
+            event,
+            t.target.id,
+            forged,
+            opened.stamp,
+            [0],
+          )
+        ).ok,
+      ).toBe(false);
+    } finally {
+      await t.close();
+    }
+  });
+});
