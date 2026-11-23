@@ -60,9 +60,14 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
           } else v.requestVideoFrameCallback(presented);
         };
         v.requestVideoFrameCallback(presented);
-        // Retain the old observer beside the native frame timestamp, to prove any polling delay.
+        // Retain the old observer beside the native frame timestamp, to prove any polling delay. Its animation frames'
+        // times show the page's own frame grid (the stream's page draws 30 a second, off screen), diagnostics only.
+        const ticks: number[] = [];
         const polled = () => {
           (globalThis as { s5Diagnostics?: { sample: () => void } }).s5Diagnostics?.sample();
+          ticks.push(Date.now());
+          if (ticks.length > 40) ticks.shift();
+          v.dataset['frameTicks'] = JSON.stringify(ticks);
           if (v.currentTime > initial + 0.001) v.dataset['polledMotionAt'] = String(Date.now());
           else requestAnimationFrame(polled);
         };
@@ -142,6 +147,8 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
       callbackAt: number;
       polledAt: number;
       callbacks: unknown;
+      clock: string | null;
+      ticks: unknown;
     }[] = [];
     for (const [index, page] of [hall, win, stream].entries()) {
       await expect(video(page, id)).toHaveAttribute('data-first-motion-at', /[1-9]/);
@@ -152,6 +159,8 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
         callbackAt: Number(await video(page, id).getAttribute('data-first-motion-callback-at')),
         polledAt: Number(await video(page, id).getAttribute('data-polled-motion-at')),
         callbacks: JSON.parse((await video(page, id).getAttribute('data-cue-callbacks')) ?? '[]'),
+        clock: await video(page, id).getAttribute('data-cue-clock'),
+        ticks: JSON.parse((await video(page, id).getAttribute('data-frame-ticks')) ?? '[]'),
       });
       await expect(video(page, id)).toHaveAttribute('data-prepared', 'yes');
     }
