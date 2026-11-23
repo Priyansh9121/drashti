@@ -246,7 +246,7 @@ export const REMOTE_COMMANDS = [
   // Picture in picture (Session 50): Take off only; setting one up, Swap and moving it are the operator's.
   'hidePip',
   // The mirror of the operator window (Session 54, D5): a lower third taken off, a timer alone on the screens, the
-  // stage message, and Back 15 s, Forward 15 s and Last 10 s.
+  // stage message, and Back 15 s and Forward 15 s.
   'hideLowerThird',
   'showTimer',
   // A timer for the audience shown and hidden (Session 55, Part 15).

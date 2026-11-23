@@ -230,13 +230,13 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     markerId: z.string().min(1).max(64),
   }),
   /**
-   * Back 15 s, Forward 15 s, or the last 10 s of the background video or the sound (Session 50), in step everywhere,
-   * never past the file's start or end points.
+   * Back 15 s or Forward 15 s on the background video or the sound (Session 50), in step everywhere, never past the
+   * file's start or end points (Last 10 s went in alpha.21: the owner's "remove last 10s whole concept").
    */
   z.object({
     type: z.literal('skip'),
     layer: z.enum(['background', 'audio']),
-    jump: z.enum(['back', 'forward', 'last']),
+    jump: z.enum(['back', 'forward']),
   }),
   /**
    * The time bar (Session 54, shared/engine/playing.ts): what plays moved to a point in its file (ms), never past its
@@ -323,7 +323,7 @@ export type EngineErrorCode =
   | 'no-picture'
   | 'unknown-input'
   | 'no-pip'
-  // Back 15 s, Forward 15 s, Last 10 s (Session 50): no video or sound there, or its length not known yet.
+  // Back 15 s, Forward 15 s (Session 50): no video or sound there, or its length not known yet.
   | 'nothing-playing'
   | 'no-length'
   /** Next on a deck's slide still being prepared (Session 56): it waits, saying so. */

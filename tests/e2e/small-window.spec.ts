@@ -107,7 +107,15 @@ test('Pro Mode at 1024 × 645: Audio stays inside the live column when it scroll
     (el) => el instanceof HTMLElement && el.closest('aside')?.contains(el.offsetParent) === true,
   );
   expect(staysInColumn).toBe(true);
-  expect(await live.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  // What scrolls has scrolled: the part under a still LIVE block, or the whole column in a window too short for one
+  // (alpha.21, LiveColumn).
+  expect(
+    await live.evaluate((el) =>
+      el instanceof HTMLElement && el.dataset['still'] === 'true'
+        ? (el.querySelector('[data-testid="live-rest"]')?.scrollTop ?? 0)
+        : el.scrollTop,
+    ),
+  ).toBeGreaterThan(0);
   expect(await win.evaluate(() => document.scrollingElement?.scrollHeight)).toBe(CI_WINDOW.height);
   await expect(win.getByRole('contentinfo', { name: 'Status' })).toBeInViewport({ ratio: 1 });
   await app.close();

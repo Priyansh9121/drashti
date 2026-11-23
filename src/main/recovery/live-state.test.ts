@@ -451,7 +451,7 @@ describe('restart recovery', () => {
     expect(engine.current.layers.timer).toEqual({ timerId: 't1', shownAt: 96_000 });
   });
 
-  it('keeps where a video and a sound last jumped to (a marker, Back 15 s, Forward 15 s, Last 10 s), so they come back from there (Session 51)', async () => {
+  it('keeps where a video and a sound last jumped to (a marker, Back 15 s, Forward 15 s), so they come back from there (Session 51)', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const video = {
       ...background,
@@ -514,13 +514,13 @@ describe('restart recovery', () => {
       type: 'playAudio',
       audio: { id: 'a', title: 'Placeholder', mediaId: 'tune', volume: 1, loop: false },
     });
-    // 8 s in: Forward 15 s on the video (0:18 to 0:33), Last 10 s on the sound (0:13 to 1:10).
+    // 8 s in: Forward 15 s on the video (0:18 to 0:33), and four times on the sound (0:13 to 1:13).
     clock.now += 8000;
     before.dispatch({ type: 'skip', layer: 'background', jump: 'forward' });
-    before.dispatch({ type: 'skip', layer: 'audio', jump: 'last' });
+    for (let i = 0; i < 4; i++) before.dispatch({ type: 'skip', layer: 'audio', jump: 'forward' });
     const was = before.current.layers;
     expect(was.background).toMatchObject({ clip: { startMs: 10_000 }, seek: { toMs: 33_000 } });
-    expect(was.audio).toMatchObject({ clip: { endMs: 80_000 }, seek: { toMs: 70_000 } });
+    expect(was.audio).toMatchObject({ clip: { endMs: 80_000 }, seek: { toMs: 73_000 } });
     await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
     // Drashti stops dead, and starts again 2 s later.
     clock.now += 2000;

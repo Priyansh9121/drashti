@@ -2,14 +2,14 @@ import type { PlaybackMarker } from '../../../../shared/markers';
 import { type SkipsShown, skipsOf } from '../../markers/skips';
 import { useEngine } from '../../engine/engine-store';
 import { Button } from '../../ui/Button';
-import { ArrowRightToLine, Bookmark, RotateCcw, RotateCw, type Icon } from '../../ui/icons';
+import { Bookmark, RotateCcw, RotateCw, type Icon } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
 import { useSimple } from './simple';
 
 /*
  * What is playing, under LIVE, as the operator window has it under Next and Back (MarkerJumps, Session 50): for the
- * background video and for a sound, Back 15 s, Forward 15 s and Last 10 s, then a jump to each of its file's markers
+ * background video and for a sound, Back 15 s and Forward 15 s (alpha.21: no Last 10 s), then a jump to each of its file's markers
  * (Session 14). Each moves every screen, the nodes and the stream in step (the engine's skip and jump, which keep to
  * the file's start and end points); the skips are dimmed until Drashti knows the file's length, a moment after it
  * starts. Session 54 (D5): until then the phone had the markers only, under More. An audio playlist's track has its
@@ -17,10 +17,9 @@ import { useSimple } from './simple';
  * picture.
  */
 
-const SKIPS: { jump: 'back' | 'forward' | 'last'; label: string; icon: Icon }[] = [
+const SKIPS: { jump: 'back' | 'forward'; label: string; icon: Icon }[] = [
   { jump: 'back', label: 'Back 15 s', icon: RotateCcw },
   { jump: 'forward', label: 'Forward 15 s', icon: RotateCw },
-  { jump: 'last', label: 'Last 10 s', icon: ArrowRightToLine },
 ];
 
 /** None, as one array (a selector answering a new one each time would never settle). */

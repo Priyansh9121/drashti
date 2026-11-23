@@ -660,10 +660,11 @@ describe('a sound or a picture the engine sends somewhere new: a skip or a jump 
       const v = new FakeMedia(40, { seekMs: 100 });
       const s = played(v, kind);
       runFor(v, 2000);
-      // Back 15 s to the start, Last 10 s, Back 15 s and Forward 15 s, as far apart as CI's trace has them (ms).
+      // Back 15 s to the start, a jump to 0:30 (a marker's; Last 10 s's before alpha.21), Back 15 s and Forward 15 s,
+      // as far apart as CI's trace has them (ms).
       const skips: [string, (ms: number) => number, number][] = [
         ['Back 15 s', (ms) => Math.max(0, ms - 15_000), 472],
-        ['Last 10 s', () => 30_000, 888],
+        ['a jump to 0:30', () => 30_000, 888],
         ['Back 15 s', (ms) => Math.max(0, ms - 15_000), 464],
         ['Forward 15 s', (ms) => ms + 15_000, 1500],
       ];

@@ -3,7 +3,7 @@ import { type AudioLayer, type BackgroundLayer, initialEngineState } from '../..
 import { skipsOf } from './skips';
 
 /*
- * Where Back 15 s, Forward 15 s and Last 10 s show (Session 50): under the live picture for the background
+ * Where Back 15 s and Forward 15 s show (Session 50): under the live picture for the background
  * video and a single sound; an audio playlist's track has them beside its Play and Pause, in the Music panel.
  * Dimmed until the file's length is known. Placeholder ids only.
  */

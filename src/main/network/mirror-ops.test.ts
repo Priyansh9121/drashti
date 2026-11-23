@@ -319,7 +319,7 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         { type: 'setStageMessage', text: 'Placeholder: five minutes' },
         { type: 'clearStageMessage' },
         { type: 'skip', layer: 'background', jump: 'forward' },
-        { type: 'skip', layer: 'audio', jump: 'last' },
+        { type: 'skip', layer: 'audio', jump: 'back' },
       ];
       // In Simple Mode: taking them off, as anything comes off the screens there. Back 15 s and the rest, which move
       // what plays, are Pro Mode's (Session 54's review: Simple Mode shows the time bar and moves nothing), and so are

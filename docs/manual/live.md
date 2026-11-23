@@ -98,7 +98,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 1. Press **Pause**, then **Play**, at the start of its row.
 2. Click or drag along the bar to move there on every screen at once.
-3. **Back 15 s**, **Forward 15 s** and **Last 10 s** jump the background video or a sound.
+3. **Back 15 s** and **Forward 15 s** jump the background video or a sound.
 4. With the keyboard on the bar, the arrow keys move 5 seconds, Home and End to its start and end.
 
 ![The time bars under Back and Next: a background video and the music](../screenshots/time-bar.png)

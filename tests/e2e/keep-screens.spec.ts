@@ -19,6 +19,9 @@ import {
   windowShowing,
 } from './helpers';
 
+/** The colour codes Playwright writes around an error's words on CI, taken out before the words are read. */
+const COLOUR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu');
+
 /*
  * Keep these screens? (Session 50; Priyansh: in Set Up Screens… he chose the display his controls are on as the
  * audience picture by mistake, and couldn't get back). After a change made by hand that puts an output on the
@@ -352,11 +355,24 @@ test('covering the controls: the output asks too, large, with its countdown; Esc
     await turnOn();
     out = await openOutput(app);
     await expect(out.getByTestId('keep-question')).toBeVisible();
-    // Sent without waiting for the answer: going back closes this very window.
-    await out.evaluate(() => {
-      void (globalThis as PageGlobals).drashti.output.keepAnswer(false);
+    // Sent without waiting for the answer: going back closes this very window, which can take the evaluate itself with
+    // it before it returns (CI's Mac, alpha.20's gate). Only that intended closure passes: the exact closed error, and
+    // the window closed, never crashed (as expected-studio-close.ts lets the Studio's own discard close pass).
+    let crashed = false;
+    out.once('crash', () => {
+      crashed = true;
     });
+    await out
+      .evaluate(() => {
+        void (globalThis as PageGlobals).drashti.output.keepAnswer(false);
+      })
+      .catch((error: unknown) => {
+        const words = error instanceof Error ? error.message.replace(COLOUR, '').split('\n')[0] : '';
+        if (crashed || words !== 'page.evaluate: Target page, context or browser has been closed')
+          throw error;
+      });
     await expect.poll(() => openOutputs(app)).toBe(0);
+    expect(crashed, 'the output closed itself, never crashed').toBe(false);
     await expect(question).toHaveCount(0);
     expect(await enabled()).toEqual([[screenId, false]]);
 

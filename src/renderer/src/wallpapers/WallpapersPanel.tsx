@@ -216,8 +216,10 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
         dropInto(e, null);
       }}
     >
-      <div className="flex h-9 shrink-0 items-center gap-1 px-3" data-strip="">
-        <h2 id={headingId} className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-sm font-bold">
+      {/* Import…'s words only where they fit beside the heading (alpha.21: the owner's column at its least cut the
+          heading to "Wallpap"); its icon alone narrower, named Import… either way. */}
+      <div className="@container/wallpapers flex h-9 shrink-0 items-center gap-1 px-3" data-strip="">
+        <h2 id={headingId} className="flex flex-1 items-center gap-1.5 px-1 text-sm font-bold">
           <WallpaperIcon size={15} aria-hidden="true" className="shrink-0 text-muted" />
           Wallpapers
         </h2>
@@ -226,9 +228,10 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
           icon={ImagePlus}
           data-testid="wallpapers-import"
           title="Bring pictures in as wallpapers"
+          aria-label="Import…"
           onClick={() => void importWallpapers()}
         >
-          Import…
+          <span className="hidden @[14rem]/wallpapers:inline">Import…</span>
         </Button>
         {help.button}
       </div>

@@ -72,6 +72,7 @@ import { ManualDialog } from '../help/ManualDialog';
 import { ReportDialog } from '../help/ReportDialog';
 import { showReport } from '../help/report-store';
 import { showManual } from '../help/manual-store';
+import { LiveColumn } from './LiveColumn';
 import { LivePreview } from './LivePreview';
 import { LibraryButton, LibrarySheet } from './LibrarySheet';
 import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
@@ -409,48 +410,58 @@ function ProApp({ info }: { info: AppInfo | null }) {
             <Middle platform={platform} />
           }
           right={
-            <aside className="relative flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
-              <LivePreview />
-              <NextBack platform={platform} run={run} />
-              {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
-              <PlayingBars className="px-3 pt-2" />
-              {/* Resume where it stopped (alpha.20): "Resume at …" for a long file's first 30 s. */}
-              <ResumeOffers />
-              <MarkerJumps />
-              {/* The chosen video input on the audience in one press (Session 55). */}
-              <InputOnAudience />
-              {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away
-                (Session 55: Props and Looks went). */}
-              <div className="mt-3 divide-y divide-line border-t border-line">
-                {/* The sound's Audio and Video levels and mutes (X33), just above Audio, seen with it folded too. */}
-                <SoundLevels />
-                {/* Audio, one part with Simple Mode's (Session 56). */}
-                <AudioGroup platform={platform} />
-                <StageMessageControl />
-                <MessagesPanel />
-                <TimersPanel />
-                <PanelGroup
-                  title="More tools"
-                  icon={Wrench}
-                  remember="more-tools"
-                  defaultOpen={false}
-                  help="tools"
-                  data-testid="more-tools"
-                >
-                  <LowerThirdsPanel nested platform={platform} />
-                  <div>
-                    <PanelNote>
-                      A MIDI controller’s pads can work Next, Back, Clear all and Black-out.
-                    </PanelNote>
-                    <MidiTool />
-                    <OscTool />
+            // The LIVE block stands still and what is under it scrolls (alpha.21, the owner's "this stays still
+            // everything else is scrollable in this window"): LiveColumn.
+            <LiveColumn
+              still={
+                <>
+                  <LivePreview />
+                  <NextBack platform={platform} run={run} />
+                  {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
+                  <PlayingBars className="px-3 pt-2" />
+                  {/* Resume where it stopped (alpha.20): "Resume at …" for a long file's first 30 s. */}
+                  <ResumeOffers />
+                  <MarkerJumps />
+                  {/* The chosen video input on the audience in one press (Session 55). */}
+                  <InputOnAudience />
+                  {/* The sound's Audio and Video levels and mutes (X33), the block's last, seen with Audio folded too. */}
+                  <div className="mt-3 border-t border-line">
+                    <SoundLevels />
                   </div>
-                  {/* Show a Window…, Add a Video Input…, Picture in Picture… and QR code… (Session 60, x36: the
+                </>
+              }
+              rest={
+                /* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away
+                (Session 55: Props and Looks went). */
+                <div className="divide-y divide-line">
+                  {/* Audio, one part with Simple Mode's (Session 56). */}
+                  <AudioGroup platform={platform} />
+                  <StageMessageControl />
+                  <MessagesPanel />
+                  <TimersPanel />
+                  <PanelGroup
+                    title="More tools"
+                    icon={Wrench}
+                    remember="more-tools"
+                    defaultOpen={false}
+                    help="tools"
+                    data-testid="more-tools"
+                  >
+                    <LowerThirdsPanel nested platform={platform} />
+                    <div>
+                      <PanelNote>
+                        A MIDI controller’s pads can work Next, Back, Clear all and Black-out.
+                      </PanelNote>
+                      <MidiTool />
+                      <OscTool />
+                    </div>
+                    {/* Show a Window…, Add a Video Input…, Picture in Picture… and QR code… (Session 60, x36: the
                       owner's "A, More tools + menu"), each with its line; the Tools menu opens them too. */}
-                  <SetupTools />
-                </PanelGroup>
-              </div>
-            </aside>
+                    <SetupTools />
+                  </PanelGroup>
+                </div>
+              }
+            />
           }
         />
       )}

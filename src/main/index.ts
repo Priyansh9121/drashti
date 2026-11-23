@@ -187,7 +187,7 @@ import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJour
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, type GraphicsInfo, saveDiagnostics } from './diagnostics';
-import { log, logFiles, startLogFile } from './log';
+import { log, logFiles, startLogCopy, startLogFile } from './log';
 import {
   cannotPlayNotice,
   cannotStartInTimeNotice,
@@ -508,6 +508,9 @@ if (userDataOverride) app.setPath('userData', userDataOverride);
 else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
 // The log goes to a rotating file in the data folder too (see log.ts), from the start.
 startLogFile(join(app.getPath('userData'), 'logs'));
+// Tests only (never a packaged Drashti): every line into the test's own folder as well, kept when it fails (alpha.21).
+const testLogCopy = packaged() ? undefined : sw('DRASHTI_TEST_LOG_COPY');
+if (testLogCopy) startLogCopy(testLogCopy);
 log.info(phaseLine('the main process running'));
 log.info(
   `Drashti ${app.getVersion()} (Electron ${process.versions.electron}, Chrome ${process.versions.chrome}, Node ${process.versions.node}) on ${process.platform} ${osRelease()} ${process.arch}`,

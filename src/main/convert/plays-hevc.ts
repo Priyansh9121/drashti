@@ -89,6 +89,40 @@ export async function askPlaysHevc(
   }
 }
 
+/**
+ * Both questions as the HEVC page asks them (hevc-page.ts): whether this computer plays HEVC, then its other kinds,
+ * each by `run` (a script in that page). The answer as Chromium gives it; the kinds after it, null when not asked or
+ * not told within `kindsMs`.
+ */
+export function askHevcQuestions(
+  run: (script: string) => Promise<unknown>,
+  script: string,
+  kindsScript: string | null,
+  kindsMs: number = HEVC_KINDS_MS,
+): { answer: Promise<boolean | null>; kinds: Promise<HevcKinds | null> } {
+  // The answer as soon as Chromium gives it: every import waits for it (import-service.ts). In alpha.20 it waited for
+  // the kinds too, and a kinds question that never came back held every import its whole wait (the owner's report of
+  // 22 Nov 2026: a photo over 5 s, a video over 10 s, every time).
+  const answer = askPlaysHevc(run, script);
+  const kinds = answer.then((plays) => {
+    if (kindsScript === null || plays === null) return null;
+    // Asked after it, never holding it, and not known if Chromium does not say them in time.
+    return new Promise<HevcKinds | null>((resolve) => {
+      const timer = setTimeout(() => {
+        resolve(null);
+      }, kindsMs);
+      void askHevcKinds(run, kindsScript).then((said) => {
+        clearTimeout(timer);
+        resolve(said);
+      });
+    });
+  });
+  return { answer, kinds };
+}
+
+/** The longest the HEVC page waits for Chromium to say the other kinds before they are not known. */
+export const HEVC_KINDS_MS = 10_000;
+
 /** The window's answer, as the imports wait for it: known from the start when a test gives it. */
 export class HevcAnswer {
   private answer: boolean | null;
@@ -122,9 +156,15 @@ export class HevcAnswer {
     for (const go of [...this.waiting]) go(this.answer);
   }
 
-  /** For an import about to start: the answer at once once told, else when told, or null after the wait. */
+  /** One import has waited the whole time without an answer: the others no longer wait (alpha.20's slow imports). */
+  private waitedOut = false;
+
+  /**
+   * For an import about to start: the answer at once once told, else when told, or null after the wait: one whole wait
+   * at most, after which imports go on at once (a later answer still counts).
+   */
   wait(): Promise<boolean | null> {
-    if (this.told) return Promise.resolve(this.answer);
+    if (this.told || this.waitedOut) return Promise.resolve(this.answer);
     return new Promise((resolve) => {
       const go = (answer: boolean | null) => {
         clearTimeout(timer);
@@ -132,6 +172,7 @@ export class HevcAnswer {
         resolve(answer);
       };
       const timer = setTimeout(() => {
+        this.waitedOut = true;
         go(this.answer);
       }, this.waitMs);
       this.waiting.add(go);

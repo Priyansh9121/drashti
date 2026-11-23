@@ -7,6 +7,7 @@ import {
   HEVC_KIND_TYPES,
   HEVC_KINDS_SCRIPT,
   HevcAnswer,
+  askHevcQuestions,
   hevcKindsScript,
   PLAYS_HEVC_SCRIPT,
   playsHevcScript,
@@ -123,6 +124,22 @@ describe('HEVC’s other kinds (Session 60, x36; the owner’s "Yes, A")', () =>
   });
 });
 
+describe('both questions, as the HEVC page asks them', () => {
+  it('gives the answer as soon as Chromium says it, and the other kinds never hold it (alpha.20: a kinds question that never came back held every import)', async () => {
+    const never = new Promise<unknown>(() => undefined);
+    const asked = askHevcQuestions(
+      (script) => (script === PLAYS_HEVC_SCRIPT ? Promise.resolve('probably') : never),
+      PLAYS_HEVC_SCRIPT,
+      HEVC_KINDS_SCRIPT,
+      50,
+    );
+    const late = (ms: number) => new Promise((resolve) => setTimeout(() => resolve('still waiting'), ms));
+    expect(await Promise.race([asked.answer, late(30)])).toBe(true);
+    // The kinds that never came back: not known, after their own wait.
+    expect(await Promise.race([asked.kinds, late(300)])).toBeNull();
+  });
+});
+
 describe('the answer, as imports wait for it (Session 51 review)', () => {
   it('given from the start (a test’s): no import waits', async () => {
     const given = new HevcAnswer(false);
@@ -145,6 +162,17 @@ describe('the answer, as imports wait for it (Session 51 review)', () => {
     const started = Date.now();
     expect(await answer.wait()).toBeNull();
     expect(Date.now() - started).toBeGreaterThanOrEqual(40);
+  });
+
+  it('not told within one whole wait: later imports go on at once, and a later answer still counts (alpha.20: every import waited 15 s)', async () => {
+    const answer = new HevcAnswer(null, 50);
+    expect(await answer.wait()).toBeNull();
+    // The window still has not said: the next import does not wait the whole time again.
+    const started = Date.now();
+    expect(await answer.wait()).toBeNull();
+    expect(Date.now() - started).toBeLessThan(25);
+    answer.tell(true);
+    expect(await answer.wait()).toBe(true);
   });
 
   it('the window could not say: imports go on at once from then on, and a later answer still counts', async () => {

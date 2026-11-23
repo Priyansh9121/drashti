@@ -113,7 +113,7 @@ export interface SavedLive {
 }
 
 /**
- * Where a video or a sound last jumped to (a marker, Back 15 s, Forward 15 s, Last 10 s): put back, it plays on
+ * Where a video or a sound last jumped to (a marker, Back 15 s, Forward 15 s): put back, it plays on
  * from there (Session 51); paused there by the time bar (Session 54), it waits there. Its start and end points and
  * markers are not read back: the library has them, and the engine takes them from it as it puts the file back
  * (show-engine.ts restore).

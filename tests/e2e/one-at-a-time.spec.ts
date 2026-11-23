@@ -305,7 +305,7 @@ test('Simple Mode: the video and the covers one at a time; Pause and Play under 
   await pause.click();
   await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
   await expect.poll(() => playingThere(hall, show.mediaId)).toBe('paused');
-  await expect(bg.getByTestId('time-bar-paused')).toBeVisible();
+  await expect(bg).toHaveAttribute('data-paused', 'true');
   await bg.getByRole('button', { name: 'Play', exact: true }).click();
   await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
   await expect.poll(() => playingThere(hall, show.mediaId)).toBe('playing');
