@@ -26,6 +26,19 @@ class Context extends EventTarget {
     this.state = 'running';
     this.dispatchEvent(new Event('statechange'));
   }
+  suspended = 0;
+  resumed = 0;
+  suspend(): Promise<void> {
+    this.suspended++;
+    this.state = 'suspended';
+    this.dispatchEvent(new Event('statechange'));
+    return Promise.resolve();
+  }
+  /** As a real context does, it runs a moment later (start()). */
+  resume(): Promise<void> {
+    this.resumed++;
+    return Promise.resolve();
+  }
 }
 
 class Element {
@@ -115,6 +128,34 @@ describe("a cued picture's clock", () => {
     context.start();
     expect(context.made).toHaveLength(0);
     expect(v.muted).toBe(true);
+  });
+});
+
+describe("the page's silent graph at rest", () => {
+  it('rests once no cued picture uses it, and is asked to run again for the next cue', () => {
+    const context = new Context(),
+      first = new Element(),
+      next = new Element();
+    cueClock(first.media(), graphOf(context))();
+    expect(context.suspended).toBe(1);
+    cueClock(next.media(), graphOf(context));
+    expect(context.resumed).toBe(1);
+    expect(next.muted).toBe(true);
+    context.start();
+    expect(next.muted).toBe(false);
+  });
+
+  it('keeps running while another cued picture still uses it or waits for it, and rests after the last', () => {
+    const context = new Context(),
+      one = new Element(),
+      two = new Element();
+    const stopOne = cueClock(one.media(), graphOf(context));
+    const stopTwo = cueClock(two.media(), graphOf(context));
+    stopOne();
+    stopOne();
+    expect(context.suspended).toBe(0);
+    stopTwo();
+    expect(context.suspended).toBe(1);
   });
 });
 
