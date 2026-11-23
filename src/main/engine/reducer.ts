@@ -275,6 +275,10 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       if (!was) return state;
       return { ...withLayers(state, { pip: null }), pipOff: { layer: was, at: action.at } };
     }
+    case 'translationHidden/set':
+      return (state.translationHidden ?? false) === action.hidden
+        ? state
+        : { ...state, translationHidden: action.hidden };
     case 'blackout/set':
       return state.blackout === action.on ? state : { ...state, blackout: action.on };
     case 'wallpaper/set':

@@ -4,8 +4,9 @@ import { checkedTranslationView, type TranslationDestination } from './prepared-
 
 const originalSlides = new WeakMap<RenderSlide, RenderSlide>();
 const cache = new WeakMap<RenderSlide, Map<string, RenderSlide>>();
-function outputSlide(slide: RenderSlide, destination: TranslationDestination): RenderSlide {
+function outputSlide(slide: RenderSlide, destination: TranslationDestination, hidden = false): RenderSlide {
   slide = originalSlides.get(slide) ?? slide;
+  if (hidden) return slide;
   const key = JSON.stringify(destination);
   let views = cache.get(slide);
   if (!views) {
@@ -25,12 +26,15 @@ function outputSlide(slide: RenderSlide, destination: TranslationDestination): R
 export function preparedOutputState(state: EngineState, destination: TranslationDestination): EngineState {
   const layer = (value: SlideLayer | null): SlideLayer | null => {
     if (!value) return value;
-    const slide = outputSlide(value.slide, destination);
+    const slide = outputSlide(value.slide, destination, state.translationHidden === true);
     return slide === value.slide ? value : { ...value, slide };
   };
   const slide = layer(state.layers.slide);
   const old = state.slideOff ? layer(state.slideOff.layer) : null;
-  const next = state.next?.kind === 'slide' ? outputSlide(state.next.slide, destination) : null;
+  const next =
+    state.next?.kind === 'slide'
+      ? outputSlide(state.next.slide, destination, state.translationHidden === true)
+      : null;
   if (
     slide === state.layers.slide &&
     old === (state.slideOff?.layer ?? null) &&
