@@ -16,6 +16,7 @@
  *   DRASHTI_CAPTIONS_BENCH_STOP   alongside: rounds go on until this file appears (the Performance check is over)
  *   DRASHTI_CAPTIONS_BENCH_MINUTES alongside: at most this long (default 40)
  *   DRASHTI_CAPTION_MODELS_CACHE  the models' cache (default ~/.cache/drashti/caption-models)
+ *   DRASHTI_CAPTIONS_BENCH_INDIC, DRASHTI_CAPTIONS_BENCH_WHISPER  the engine programs, when not in vendor/ (a local try)
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -324,7 +325,11 @@ it('captions bench', async () => {
     platform: process.platform,
     arch: process.arch,
   };
-  const programs: Programs = { indic: findIndic(place), whisper: findWhisper(place), files };
+  const programs: Programs = {
+    indic: env['DRASHTI_CAPTIONS_BENCH_INDIC'] ?? findIndic(place),
+    whisper: env['DRASHTI_CAPTIONS_BENCH_WHISPER'] ?? findWhisper(place),
+    files,
+  };
   const manifest = JSON.parse(readFileSync(join(FIXTURE, 'manifest.json'), 'utf8')) as BenchManifest;
   const clipsFor = (language: 'gu' | 'hi' | 'en'): Clip[] => {
     if (language !== 'en')
