@@ -136,6 +136,8 @@ export const GROUP_LAYERS = [
 
 /** A screen group's settings in the engine state, ready to draw. */
 export interface LiveGroupLook {
+  /** Stable destination identity, added by groupLookIn for prepared translations. */
+  translationGroupId?: string;
   layers: readonly GroupLayer[];
   languages: readonly Lang[] | null;
   slides: SlideStyle;
@@ -180,7 +182,8 @@ export function groupLookIn(
   look: LiveLook | null | undefined,
   groupId: string | null | undefined,
 ): LiveGroupLook {
-  return (groupId ? look?.groups[groupId] : undefined) ?? DEFAULT_LIVE_GROUP_LOOK;
+  const value = (groupId ? look?.groups[groupId] : undefined) ?? DEFAULT_LIVE_GROUP_LOOK;
+  return groupId ? { ...value, translationGroupId: groupId } : value;
 }
 
 /** Whether a group's screens draw this layer. */

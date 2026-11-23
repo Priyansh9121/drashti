@@ -1,3 +1,4 @@
+import { preparedOutputState, translationBottom } from '../../../shared/prepared-output-state';
 import type { EngineState } from '../../../shared/engine/state';
 import type { LiveGroupLook } from '../../../shared/looks';
 import type { Size } from '../../../shared/scaling';
@@ -52,6 +53,7 @@ export function StageScreen({
   canvas,
   clockStyle,
   hall,
+  translationOutputId,
 }: {
   state: EngineState;
   look: LiveGroupLook;
@@ -64,7 +66,13 @@ export function StageScreen({
    * (Session 53; never the Standard stage screen, screensStateNote), and left out while not known.
    */
   hall?: HallPicture | null;
+  translationOutputId?: string;
 }) {
+  state = preparedOutputState(state, {
+    ...(look.translationGroupId ? { groupId: look.translationGroupId } : {}),
+    ...(translationOutputId ? { outputId: translationOutputId } : {}),
+    blockedBelow: translationBottom(state, state.layers.slide?.slide.height ?? canvas.height),
+  });
   const shows = stageShows(state.stage);
   if (shows === 'audience')
     return (

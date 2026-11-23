@@ -1,3 +1,4 @@
+import { preparedOutputState, translationBottom } from '../../../shared/prepared-output-state';
 import { useEffect, useMemo, useRef } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Lang } from '../../../shared/model';
@@ -54,6 +55,11 @@ export function ProgramView({
   canvas: Size;
   camera: MediaStream | null;
 }) {
+  const streamGroup = Object.entries(state.look.groups).find(([, group]) => group.role === 'stream')?.[0];
+  state = preparedOutputState(state, {
+    ...(streamGroup ? { groupId: streamGroup } : {}),
+    blockedBelow: translationBottom(state, state.layers.slide?.slide.height ?? canvas.height),
+  });
   const captionRoot = useRef<HTMLDivElement>(null);
   const picture = programPicture(state, layout, languages);
   // The Camera layout's full-frame picture draws from the state without what that layout draws itself.

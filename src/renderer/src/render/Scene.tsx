@@ -1,3 +1,4 @@
+import { preparedOutputState, translationBottom } from '../../../shared/prepared-output-state';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   Fragment,
@@ -388,6 +389,7 @@ export const Scene = memo(function Scene({
   place = 'hall',
   captions = true,
   picturesFirst = place === 'stream',
+  translationOutputId,
 }: {
   state: EngineState;
   canvas: Size;
@@ -416,7 +418,18 @@ export const Scene = memo(function Scene({
    * page (Session 58, Q57-35) and the hall's screens (Session 59, X19, output/HallScene.tsx). Left out: the stream only.
    */
   picturesFirst?: boolean;
+  translationOutputId?: string;
 }) {
+  const sourceHeight =
+    (state.layers.slide?.slide.height ?? state.next?.kind === 'slide')
+      ? (state.layers.slide?.slide.height ??
+        (state.next?.kind === 'slide' ? state.next.slide.height : canvas.height))
+      : canvas.height;
+  state = preparedOutputState(state, {
+    ...(look.translationGroupId ? { groupId: look.translationGroupId } : {}),
+    ...(translationOutputId ? { outputId: translationOutputId } : {}),
+    blockedBelow: translationBottom(state, sourceHeight),
+  });
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);

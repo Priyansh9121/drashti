@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
-import { PresentationRepo } from '../db/presentations';
+import { PresentationRepo, DbSlideSource } from '../db/presentations';
 import { editDocOf, applySlideEdit } from './slides';
 import { editDocSchema } from '../../shared/slide-edit';
 import {
@@ -88,6 +88,32 @@ describe('saved prepared translations', () => {
       expect(editDocSchema.safeParse(doc).success).toBe(false);
       el.translations = [{ ...reviewed(), text: 'x'.repeat(20001) }];
       expect(editDocSchema.safeParse(doc).success).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+  it('sends only checked current pairs to the show, with no reader name or draft corpus', () => {
+    const db = openDatabase(':memory:');
+    try {
+      const repo = new PresentationRepo(db);
+      const el = box();
+      el.translations = [reviewed(), draftTranslation(source, 'en', 'hi', 'Private draft placeholder')];
+      const id = repo.insert({
+        libraryId: repo.ensureLibrary('Default'),
+        name: 'Placeholder',
+        groups: [{ name: 'One', slides: [{ elements: [el] }] }],
+      });
+      const output = new DbSlideSource(repo).order(id)?.slides[0]?.slide.elements[0];
+      if (output?.kind !== 'text') throw new Error('Missing source');
+      expect(output.translations).toHaveLength(1);
+      expect(output.translations?.[0]?.text).toBe('Placeholder Q7');
+      expect(JSON.stringify(output)).not.toContain('Reader Q');
+      expect(JSON.stringify(output)).not.toContain('Private draft placeholder');
+      expect(
+        editDocOf(required(repo.content(id)), 'Placeholder').doc.groups[0]?.slides[0]?.elements[0],
+      ).toMatchObject({
+        translations: [reviewed(), draftTranslation(source, 'en', 'hi', 'Private draft placeholder')],
+      });
     } finally {
       db.close();
     }

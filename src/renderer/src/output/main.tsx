@@ -347,9 +347,22 @@ function Output() {
                 <CanvasClip.Provider value={clip}>
                   <OwnLayers.Provider value={ownLayers}>
                     {stage ? (
-                      <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
+                      <StageScreen
+                        state={state}
+                        look={look}
+                        canvas={canvas}
+                        hall={context.hall}
+                        translationOutputId={context.screenId}
+                      />
                     ) : (
-                      <HallScene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+                      <HallScene
+                        state={state}
+                        canvas={canvas}
+                        scaling={scaling}
+                        look={look}
+                        matte={matte}
+                        translationOutputId={context.screenId}
+                      />
                     )}
                   </OwnLayers.Provider>
                 </CanvasClip.Provider>

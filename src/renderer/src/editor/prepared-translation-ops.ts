@@ -70,7 +70,7 @@ export function editPreparedWords(
       );
     const old = el.translations?.find((value) => value.targetLanguage === to);
     const value =
-      old && old.sourceLanguage === from
+      old?.sourceLanguage === from
         ? editTranslation(old, translationSource(el), text)
         : draftTranslation(translationSource(el), from, to, text);
     return {
