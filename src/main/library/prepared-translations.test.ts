@@ -69,7 +69,6 @@ describe('saved prepared translations', () => {
       reviewFingerprint: null,
       reader: null,
       state: 'unchecked',
-      reviewFingerprint: null,
     });
     const updated = editTranslation(reviewed(), 'Changed source.', 'Placeholder R8');
     expect(updated.sourceFingerprint).toBe(JSON.stringify('Changed source.'));

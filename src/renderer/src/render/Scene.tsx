@@ -389,8 +389,6 @@ const SceneBody = memo(function SceneBody({
   place = 'hall',
   captions = true,
   picturesFirst = place === 'stream',
-  translationOutputId,
-  translationGroupId,
 }: {
   state: EngineState;
   canvas: Size;
