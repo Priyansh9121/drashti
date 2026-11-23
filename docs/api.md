@@ -1,6 +1,6 @@
 # Drashti's local API (v1)
 
-This document describes the local network API shipped in **1.0.0-alpha.20**, including screen geometry and video-caption state. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
+This document describes the local network API shipped in **1.0.0-alpha.21**, including screen geometry and video-caption state; since alpha.21 the skip command takes `back` and `forward` only. It also describes the video Shape map, received stream-link state, and the separate desktop bridges for video preparation below. The paired controller uses the separate node link described below. Historical state changes say which versions introduced them. The desktop slide editor authors through its typed desktop bridge; it adds no HTTP authoring endpoint here.
 
 **Desktop controls in alpha.20.** The [Drashti Manual](manual/start.md#using-this-manual) gives the operating steps. Media information, the Resume offer, A-B repeat, frame steps, Snapshot, playlist Find/timing/M3U, appearances, YouTube scheduling, QR downloads and sending the picture to other software do not add HTTP routes here. Existing Remote playback and audio-playlist actions keep their contracts below. [Report a Problem](manual/help.md#report-a-problem) uses the [access service](access-setup.md#11-putting-in-a-change-later-always-the-same-deployment); a node hands its report to Main. It is separate from the local v1 API.
 
@@ -346,6 +346,8 @@ Rename's `name` is 1 to 200 characters once tabs and line breaks become spaces a
 The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep these screens?, a phone's ask, Media's video inputs, the cameras the computer lists, MIDI or (Session 55) the stage layouts changed: a Remote setting them up reads them again (`"screens"` still says the switches or the hall changed).
 
 ## The state feed (WebSocket)
+
+Paired devices keep their places when new devices are waiting. A new request may receive `503` with a plain busy message; wait before pairing another device. Pairing, tokens and the feed’s hello remain as described below.
 
 `ws://<computer>:8740/api/v1/feed` (Remote and Stage devices). The first message must say who the device is, within five seconds:
 
