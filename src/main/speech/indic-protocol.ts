@@ -92,7 +92,9 @@ export function parseIndicReply(value: unknown, language: IndicLanguage): IndicR
       item.end > 12.04
     )
       return invalid();
-    words.push({ w, start: item.start, end: item.end });
+    // The tokenizer's unknown symbol is a decoder marker, never a word for the hall screen.
+    const display = w.replaceAll('<unk>', '');
+    if (display) words.push({ w: display, start: item.start, end: item.end });
     previous = item.start;
   }
   return { language, words };
