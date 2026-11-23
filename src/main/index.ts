@@ -5312,6 +5312,7 @@ function start(): void {
   );
   const pdfReadIdle = () => !streaming.inUse() && nothingUp(engine.snapshot().state.layers);
   const slideEdits = registerSlidesIpc({
+    mayChangeTranslations: () => mode === 'pro',
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
       const options = {

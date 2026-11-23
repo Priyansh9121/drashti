@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { translationForSource } from '../../shared/prepared-translations';
 import type { SlideElement } from '../../shared/model';
 import type { EditCue, EditDoc } from '../../shared/slide-edit';
 import { editorGuidesFromJson, type EditorGuides } from '../../shared/editor-guides';
@@ -156,7 +157,18 @@ const MEDIA_KEYS = new Set([
   'pictureClip',
 ]);
 const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
-  text: new Set([...PLACEMENT_KEYS, 'text', 'lang', 'style', 'runs', 'opacity', 'everyScreen', 'tableCell']),
+  text: new Set([
+    ...PLACEMENT_KEYS,
+    'text',
+    'lang',
+    'style',
+    'runs',
+    'opacity',
+    'everyScreen',
+    'tableCell',
+    'translations',
+    'translationDisplay',
+  ]),
   shape: new Set([
     ...PLACEMENT_KEYS,
     'shape',
@@ -202,7 +214,16 @@ export function rowOf(
   old: ElementRow | undefined,
 ): ElementRow {
   const { kind, frame, rotation } = el;
-  const props = ownData(el);
+  const current =
+    el.kind === 'text' && el.translations
+      ? {
+          ...el,
+          translations: el.translations.map((value) =>
+            translationForSource(value, el.runs?.length ? el.runs.map((run) => run.text).join('') : el.text),
+          ),
+        }
+      : el;
+  const props = ownData(current);
   const was = old ? elementFromRow(old) : null;
   const unknown = old
     ? Object.fromEntries(Object.entries(parseObject(old.props)).filter(([k]) => !KNOWN[kind].has(k)))
