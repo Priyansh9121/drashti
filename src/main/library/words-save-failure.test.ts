@@ -32,6 +32,7 @@ function setup() {
   const changed = vi.fn();
   const styleNew = vi.fn();
   registerWordsIpc({
+    db,
     presentations,
     revisions: new Revisions(),
     fromOperator: () => true,
