@@ -355,10 +355,14 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       return () => {
         if (stopped) return;
         stopped = true;
-        stopGate();
         if (rest) clearTimeout(rest);
         rest = null;
         end();
+        try {
+          stopGate();
+        } catch {
+          /* Native work is already stopped; a detached observer cannot restart it. */
+        }
       };
     },
   };
