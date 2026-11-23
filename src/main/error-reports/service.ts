@@ -179,6 +179,9 @@ export class ErrorReports {
       if (queue.length !== this.state.queue.length && !this.save({ ...this.state, queue })) return;
       if (queue.length === 0) return;
       while (this.canSend() && revision === this.revision) {
+        // An awaited upload can cross another report's expiry boundary.
+        const live = this.liveQueue(this.d.now());
+        if (live.length !== this.state.queue.length && !this.save({ ...this.state, queue: live })) return;
         const report = this.state.queue[0];
         const config = this.state.config;
         if (!report || !config) return;
