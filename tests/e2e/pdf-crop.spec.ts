@@ -58,3 +58,29 @@ for (const [choice, indices] of [['This page',[0]],['Every page',[0,1,2]],['Odd 
   } finally { await s.app.close(); s.unchanged(); }
  });
 }
+
+test('Crop page waits through stream and recording transitions, and Main refusal uses crop words',async()=>{
+ const s=await openGeneratedPdf(undefined,undefined,{DRASHTI_TEST_ON_AIR_HOOK:'1'});
+ try {
+  await usePdfTools(s.ed);
+  const status=await s.win.evaluate(()=> (globalThis as import('./helpers').PageGlobals).drashti.stream.status());
+  const crop=s.ed.getByRole('button',{name:'Crop page…',exact:true});
+  for(const [live,recording] of [['starting','off'],['off','starting'],['off','off']] as const) {
+   await s.app.evaluate(({BrowserWindow},payload)=>{
+    const ed=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL()===payload.url);
+    if(!ed) throw new Error('Missing generated editor');
+    ed.webContents.send('stream:changed',payload.status);
+   },{url:s.ed.url(),status:{...status,live:{...status.live,state:live},recording:{...status.recording,state:recording}}});
+   if(live==='off'&&recording==='off') await expect(crop).toBeEnabled();
+   else { await expect(crop).toBeDisabled(); await expect(s.ed.getByTestId('pdf-crop-wait')).toHaveText('Crop page waits until the stream and recording are off.'); }
+  }
+  await s.app.evaluate(()=>{
+   const hook=(globalThis as {drashtiTestOnAir?:(on:boolean)=>void}).drashtiTestOnAir;
+   if(!hook) throw new Error('On-air hook missing'); hook(true);
+  });
+  await crop.click();
+  await expect(s.ed.getByTestId('pdf-crop-dialog')).toHaveCount(0);
+  await expect(s.ed.getByTestId('editor-note')).toHaveText('Crop page waits until the stream and recording are off.');
+  s.unchanged();
+ } finally {await s.app.close();s.unchanged();}
+});
