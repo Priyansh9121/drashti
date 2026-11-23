@@ -10,7 +10,6 @@ import {
   editTranslation,
 } from '../../shared/prepared-translations';
 import type { TextElement } from '../../shared/model';
-
 const source = 'The blue box is empty.';
 const reviewed = () =>
   checkTranslation(draftTranslation(source, 'en', 'gu', 'Placeholder Q7'), source, 'Reader Q');
@@ -32,7 +31,6 @@ const box = (): TextElement => ({
   },
   translations: [reviewed()],
 });
-
 describe('saved prepared translations', () => {
   it('keeps review through SQLite, validated editor round trips and Undo, but holds changed source', () => {
     const db = openDatabase(':memory:');
@@ -43,21 +41,23 @@ describe('saved prepared translations', () => {
         name: 'Placeholder',
         groups: [{ name: 'One', slides: [{ elements: [box()] }] }],
       });
-      const before = repo.content(id)!;
+      const before = required(repo.content(id));
       const doc = editDocSchema.parse(editDocOf(before, 'Placeholder').doc);
-      const el = doc.groups[0]!.slides[0]!.elements[0] as TextElement;
+      const el = required(required(doc.groups[0]).slides[0]).elements[0] as TextElement;
       expect(el.translations).toEqual([reviewed()]);
       el.text = 'The green box is empty.';
       repo.setContent(applySlideEdit(before, doc));
-      const changed = editDocOf(repo.content(id)!, 'Placeholder').doc.groups[0]!.slides[0]!
-        .elements[0] as TextElement;
+      const changed = required(
+        required(editDocOf(required(repo.content(id)), 'Placeholder').doc.groups[0]).slides[0],
+      ).elements[0] as TextElement;
       expect(changed.translations?.[0]?.state).toBe('needs-recheck');
       expect(changed.translations?.[0]?.text).toBe('Placeholder Q7');
-      expect(checkedText(changed.translations![0]!, changed.text)).toBeNull();
+      expect(checkedText(required(required(changed.translations)[0]), changed.text)).toBeNull();
       repo.setContent(before);
-      const undone = editDocOf(repo.content(id)!, 'Placeholder').doc.groups[0]!.slides[0]!
-        .elements[0] as TextElement;
-      expect(checkedText(undone.translations![0]!, source)).toBe('Placeholder Q7');
+      const undone = required(
+        required(editDocOf(required(repo.content(id)), 'Placeholder').doc.groups[0]).slides[0],
+      ).elements[0] as TextElement;
+      expect(checkedText(required(required(undone.translations)[0]), source)).toBe('Placeholder Q7');
     } finally {
       db.close();
     }
@@ -82,14 +82,19 @@ describe('saved prepared translations', () => {
         name: 'Placeholder',
         groups: [{ name: 'One', slides: [{ elements: [box()] }] }],
       });
-      const doc = editDocOf(repo.content(id)!, 'Placeholder').doc;
-      const el = doc.groups[0]!.slides[0]!.elements[0] as TextElement;
+      const doc = editDocOf(required(repo.content(id)), 'Placeholder').doc;
+      const el = required(required(doc.groups[0]).slides[0]).elements[0] as TextElement;
       el.translations = [reviewed(), reviewed()];
       expect(editDocSchema.safeParse(doc).success).toBe(false);
-      el.translations = [{ ...reviewed(), text: 'x'.repeat(20_001) }];
+      el.translations = [{ ...reviewed(), text: 'x'.repeat(20001) }];
       expect(editDocSchema.safeParse(doc).success).toBe(false);
     } finally {
       db.close();
     }
   });
 });
+
+function required<T>(value: T): NonNullable<T> {
+  if (value == null) throw new Error('Missing test fixture value');
+  return value;
+}

@@ -57,19 +57,19 @@ const doc = (): EditDoc => ({
     },
   ],
 });
-const el = (d: EditDoc) => d.groups[0]!.slides[0]!.elements[0] as TextElement;
+const el = (d: EditDoc) => required(required(d.groups[0]).slides[0]).elements[0] as TextElement;
 describe('Simple Mode translation bounds', () => {
   it('allows source edits with unchanged attachments, and removal, but no approval, authoring or routes', () => {
     const before = doc();
     const after = doc();
     el(after).text = 'Box changed.';
     expect(translationsUnchanged(before, after)).toBe(true);
-    el(after).translations![0]!.reader = 'Another reader';
+    required(required(el(after).translations)[0]).reader = 'Another reader';
     expect(translationsUnchanged(before, after)).toBe(false);
     el(after).translations = [];
     expect(translationsUnchanged(before, after)).toBe(false);
     const removed = doc();
-    removed.groups[0]!.slides[0]!.elements = [];
+    required(required(removed.groups[0]).slides[0]).elements = [];
     expect(translationsUnchanged(before, removed)).toBe(true);
     const added = doc();
     el(added).id = 'new';
@@ -78,7 +78,12 @@ describe('Simple Mode translation bounds', () => {
   it('does not accept a checked attachment moved to a different slide identity', () => {
     const before = doc();
     const after = doc();
-    after.groups[0]!.slides[0]!.id = 'different';
+    required(required(after.groups[0]).slides[0]).id = 'different';
     expect(translationsUnchanged(before, after)).toBe(false);
   });
 });
+
+function required<T>(value: T): NonNullable<T> {
+  if (value == null) throw new Error('Missing test fixture value');
+  return value;
+}
