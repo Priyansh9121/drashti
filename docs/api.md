@@ -565,7 +565,7 @@ Live captions (state 26, retained by state 27) are never sent in this API, to a 
 
 ## Desktop video recording status
 
-Video recording status reports `state: 'off'` and a disk-related `message` if the periodic disk flush fails. Main also sends that message as an operator notice. A full disk is named plainly. This stops the recording without ending the outgoing stream.
+Video recording status reports `state: 'off'` and a disk-related `message` if the periodic disk flush fails. Main also sends that message as an operator notice. A full disk is named plainly. This stops the recording without ending the outgoing stream. The same full-disk cause is reported for first-file, active-write and next-part ENOSPC errors. Encoder exit and spawn errors immediately report `encoding: false` and a worker `error`; Main exposes that cause in the live and recording messages. Restarting the process alone does not clear it: encoded pictures after fresh Program input do. A held recording resumes in a new part.
 
 ## Desktop kirtan bundles
 
