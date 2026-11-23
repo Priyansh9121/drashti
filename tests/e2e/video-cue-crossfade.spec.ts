@@ -18,7 +18,7 @@ const TRIM_MS = 1000;
  */
 async function cueThenGo(holdMs: number): Promise<void> {
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
-  await beginCueDiagnostics([hall, win, stream, audio]);
+  await beginCueDiagnostics([hall, win, stream, audio], { lag: true });
   let pixelGoAt: number | null = null;
   try {
     const id = ids[1] ?? '';
@@ -33,6 +33,8 @@ async function cueThenGo(holdMs: number): Promise<void> {
     await hall.reload();
     await outputReady(hall);
     await cueReady(win);
+    // Diagnostics only: the reloaded hall is observed afresh (its first page's record went with it).
+    await beginCueDiagnostics([hall], { lag: true });
     const cue = (await snapshot(win)).videoCue;
     if (!cue) throw new Error('No video cue');
     expect((await snapshot(win)).layers.background).toEqual({ kind: 'color', color: '#205020' });
@@ -172,6 +174,22 @@ async function cueThenGo(holdMs: number): Promise<void> {
       },
       { url: hall.url(), box },
     );
+    // Diagnostics only (a22-cue: the Mac's held cue got its Go late): how late the main process's event loop runs
+    // around Go, and when the click went.
+    await app.evaluate(() => {
+      const lags: { t: number; ms: number }[] = [];
+      let tickAt = Date.now();
+      const timer = setInterval(() => {
+        const now = Date.now();
+        if (now - tickAt > 35 && lags.length < 2000) lags.push({ t: now, ms: now - tickAt });
+        tickAt = now;
+      }, 20);
+      (globalThis as { s5MainLag?: { lags: typeof lags; stop: () => void } }).s5MainLag = {
+        lags,
+        stop: () => clearInterval(timer),
+      };
+    });
+    const clickAt = Date.now();
     await win.getByRole('button', { name: 'Go cued video', exact: true }).click();
     const bg = (await snapshot(win)).layers.background;
     if (bg?.kind !== 'media' || !bg.seek) throw new Error('No scheduled Go');
@@ -203,7 +221,7 @@ async function cueThenGo(holdMs: number): Promise<void> {
       await expect(video(page, id)).toHaveAttribute('data-prepared', 'yes');
     }
     await test.info().attach('s5-motion-observers.json', {
-      body: Buffer.from(JSON.stringify({ goAt: bg.seek.at, holdMs, motion })),
+      body: Buffer.from(JSON.stringify({ goAt: bg.seek.at, holdMs, clickAt, motion })),
       contentType: 'application/json',
     });
     for (const { at, mediaTime } of motion) {
@@ -230,6 +248,20 @@ async function cueThenGo(holdMs: number): Promise<void> {
     if (pixels)
       await test.info().attach('s5-native-cue-pixels.json', {
         body: Buffer.from(JSON.stringify({ goAt: pixelGoAt, ...pixels })),
+        contentType: 'application/json',
+      });
+    const mainLag = await app
+      .evaluate(() => {
+        const g = globalThis as { s5MainLag?: { lags: unknown; stop: () => void } };
+        g.s5MainLag?.stop();
+        const lags = g.s5MainLag?.lags ?? null;
+        delete g.s5MainLag;
+        return lags;
+      })
+      .catch(() => null);
+    if (mainLag)
+      await test.info().attach('s5-main-lag.json', {
+        body: Buffer.from(JSON.stringify({ goAt: pixelGoAt, lags: mainLag })),
         contentType: 'application/json',
       });
     await retainCueDiagnostics([hall, win, stream, audio], test.info());

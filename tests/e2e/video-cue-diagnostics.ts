@@ -1,9 +1,9 @@
 import type { Page, TestInfo } from '@playwright/test';
 
 /** Native evidence only: no player state, observer limit or acceptance bound is changed. */
-export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
+export async function beginCueDiagnostics(pages: Page[], options: { lag?: boolean } = {}): Promise<void> {
   for (const page of pages)
-    await page.evaluate(() => {
+    await page.evaluate((watchLag) => {
       const events: unknown[] = [],
         samples: unknown[] = [],
         contexts = new Set<AudioContext>();
@@ -105,6 +105,21 @@ export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
           });
       });
       observer.observe({ type: 'longtask', buffered: true });
+      // How late this page's own event loop runs (a22-cue: the Mac's held cue got its Go late): each 20 ms tick more
+      // than 35 ms after the last, and each change of the page's visibility.
+      let tickAt = Date.now();
+      const lag = watchLag
+        ? setInterval(() => {
+            const now = Date.now();
+            if (now - tickAt > 35 && events.length < 6000)
+              events.push({ t: now, event: 'lag', ms: now - tickAt });
+            tickAt = now;
+          }, 20)
+        : undefined;
+      document.addEventListener('visibilitychange', () =>
+        events.push({ t: Date.now(), event: 'visibility', state: document.visibilityState }),
+      );
+      events.push({ t: Date.now(), event: 'visibility', state: document.visibilityState });
       const sample = () => {
         if (samples.length >= 6000) return;
         samples.push({
@@ -128,10 +143,11 @@ export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
           if (reports === 'drashti') g.drashti = bridge;
           for (const name of names) document.removeEventListener(name, record, true);
           observer.disconnect();
+          if (lag !== undefined) clearInterval(lag);
           return { events, samples };
         },
       };
-    });
+    }, options.lag === true);
 }
 
 export async function retainCueDiagnostics(pages: Page[], info: TestInfo): Promise<void> {
