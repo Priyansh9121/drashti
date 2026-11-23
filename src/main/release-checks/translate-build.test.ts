@@ -40,6 +40,7 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
       'ctranslate2-third-party-headers.txt',
       'ruy-LICENSE.txt',
       'cpuinfo-LICENSE.txt',
+      'clog-LICENSE.txt',
       'cpu_features-LICENSE.txt',
       'spdlog-LICENSE.txt',
       'fmt-LICENSE.txt',
@@ -56,6 +57,25 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     }
     for (const pin of ['v4.9.1', '363f2522', '082deffc', '8a494eb1', '76fb40d9', 'v0.2.1'])
       expect(notice).toContain(pin);
+  });
+
+  it('keeps the notices of every MIT header CTranslate2 compiles in: half.hpp and json.hpp too (a22-review-mt A3)', () => {
+    const headers = read('LICENSES/translation/ctranslate2-third-party-headers.txt');
+    for (const words of [
+      '=== include/half_float/half.hpp',
+      'Copyright (c) 2012-2021 Christian Rau',
+      '=== include/nlohmann/json.hpp',
+      '2013-2022 Niels Lohmann',
+      '2008-2009 Bj\u00f6rn Hoehrmann',
+      '2009 Florian Loitsch',
+      '2016-2021 Evan Nemerson',
+      '2018 The Abseil Authors',
+      'Permission is hereby granted, free of charge',
+    ])
+      expect(headers, words).toContain(words);
+    const notice = read('LICENSES/translation/README.md');
+    expect(notice).toContain('half.hpp');
+    expect(notice).toContain('json.hpp');
   });
 
   it('puts the program alone in each installer, and starts it in each packaged app', () => {
