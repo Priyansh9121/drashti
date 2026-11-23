@@ -40,3 +40,11 @@ it('fits the same cropped page in hall and thumbnail frames', () => {
     expect(html).toContain('overflow:hidden');
   }
 });
+
+it('maps paper crops through a legacy screen-shaped source preview, excluding its letterbox', () => {
+  const legacy = { ...page, width: 1920, height: 1080 };
+  const shown = cropRenderedPage(legacy, crop, { width: 480, height: 320 });
+  expect(shown.width).toBe(810);
+  expect(shown.height).toBe(540);
+  expect(shown.pageCrop).toEqual({ x: 352.5, y: 270, width: 1920, height: 1080 });
+});
