@@ -207,7 +207,9 @@ describe('the summary and its verdict (live: first words and the final within 3 
     expect(s.why.join(' ')).toMatch(/dropped 2/u);
     expect(s.why.join(' ')).toMatch(/growth/u);
     const missing = run();
-    missing.heard = missing.heard.filter((h) => !(h.final && h.startAt === missing.plays[3]!.onsetAt + 50));
+    missing.heard = missing.heard.filter(
+      (h) => !(h.final && h.startAt === (missing.plays[3]?.onsetAt ?? 0) + 50),
+    );
     const m = summarize(missing);
     expect(m.missed).toBe(1);
     expect(m.why.join(' ')).toMatch(/missed 1/u);
