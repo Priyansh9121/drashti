@@ -74,8 +74,7 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await outputCaughtUp(false);
   // From here, the output's frames and the frame that painted each change, and Chromium's own record of the refreshes
   // it dropped (a21, QA21-FLAKY-1: tests/e2e/paint-frames.ts).
-  // Red (a21): every frame request asked outside a frame waits one frame more, as a paint a frame late would.
-  await watchPaintFrames(output, true);
+  await watchPaintFrames(output);
   const traceFile = join(test.info().outputDir, 'refreshes.trace.json');
   await startRefreshTrace(app, output);
 
@@ -182,8 +181,10 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   ).toEqual([]);
   // Updates reach a painted frame on the output within one 60 Hz frame (16.7 ms) of leaving
   // the main process. The median must meet that; the slow end too: the 12th of the 15 (about 3 in 4)
-  // within two frames (34 ms). A rare scheduling hiccup is tolerated, a stall is not.
-  const sorted = [...latencies].sort((a, b) => a - b);
+  // within two frames (34 ms). A rare scheduling hiccup is tolerated, a stall is not. Drashti's part: less any
+  // refresh Chromium itself dropped while the change waited (its trace says which: on CI's Mac its frame timer wakes
+  // late, a21), the owner's "A, yes" (QA21-FLAKY-1).
+  const sorted = parts.map((p) => p.drashti).sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] ?? Infinity;
   const slowEnd = sorted[11] ?? Infinity;
   const worst = sorted.at(-1) ?? Infinity;
