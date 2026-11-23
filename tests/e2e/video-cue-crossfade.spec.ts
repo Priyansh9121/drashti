@@ -1,5 +1,5 @@
 import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnostics';
-import { outputReady } from './helpers';
+import { letTimePass, outputReady } from './helpers';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { PageGlobals } from './helpers';
@@ -11,7 +11,12 @@ const video = (page: Page, id: string) => page.locator(`video[data-media-id="${i
 /** The cued video's trim (its start point): the frame Cue holds and Go starts from. */
 const TRIM_MS = 1000;
 
-test('Cue holds the first trimmed frame privately, then Go uses its loaded frame at one shared engine moment', async () => {
+/**
+ * Cue a trimmed video, hold it `holdMs` (an operator may cue minutes ahead: Chromium lets an output that has been
+ * silent for 30 s go to a stand-in sink, so a cue held past that is its own case), then Go: on hall, LIVE and the
+ * stream it starts within one 30 fps frame of the engine's moment and never moves before it.
+ */
+async function cueThenGo(holdMs: number): Promise<void> {
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
   await beginCueDiagnostics([hall, win, stream, audio]);
   let pixelGoAt: number | null = null;
@@ -31,12 +36,36 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     const cue = (await snapshot(win)).videoCue;
     if (!cue) throw new Error('No video cue');
     expect((await snapshot(win)).layers.background).toEqual({ kind: 'color', color: '#205020' });
+    if (holdMs > 0)
+      await letTimePass(
+        win,
+        holdMs,
+        "the operator's wait between Cue and Go, past Chromium's 30 s silent-output switch",
+      );
+    expect((await snapshot(win)).videoCue?.id).toBe(cue.id);
     for (const page of [hall, win, stream]) {
       await expect(video(page, id)).toHaveJSProperty('paused', true);
       expect(await video(page, id).evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(1, 2);
       await video(page, id).evaluate((v: HTMLVideoElement) => {
         v.dataset['prepared'] = 'yes';
         const initial = v.currentTime;
+        // Diagnostics only: when this player's rate is actually set (its event comes a task later).
+        const rate = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'playbackRate');
+        if (rate?.set) {
+          const sets: { at: number; rate: number }[] = [];
+          Object.defineProperty(v, 'playbackRate', {
+            configurable: true,
+            get(this: HTMLMediaElement) {
+              return rate.get?.call(this) as number;
+            },
+            set(this: HTMLMediaElement, value: number) {
+              sets.push({ at: Date.now(), rate: value });
+              v.dataset['rateSets'] = JSON.stringify(sets.slice(-12));
+              rate.set?.call(this, value);
+            },
+          });
+        }
+        let after = 0;
         const callbacks: {
           at: number;
           expected: number;
@@ -54,22 +83,29 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
           });
           v.dataset['cueCallbacks'] = JSON.stringify(callbacks);
           if (frame.mediaTime > initial + 0.001) {
-            v.dataset['firstMotionAt'] = String(Date.now() + frame.expectedDisplayTime - performance.now());
-            v.dataset['firstMotionMedia'] = String(frame.mediaTime);
-            v.dataset['firstMotionCallbackAt'] = String(Date.now());
+            if (after === 0) {
+              v.dataset['firstMotionAt'] = String(Date.now() + frame.expectedDisplayTime - performance.now());
+              v.dataset['firstMotionMedia'] = String(frame.mediaTime);
+              v.dataset['firstMotionCallbackAt'] = String(Date.now());
+            }
+            // Diagnostics only: the next frames too, to show how this page's frames follow the media's.
+            if (++after < 9) v.requestVideoFrameCallback(presented);
           } else v.requestVideoFrameCallback(presented);
         };
         v.requestVideoFrameCallback(presented);
         // Retain the old observer beside the native frame timestamp, to prove any polling delay. Its animation frames'
         // times show the page's own frame grid (the stream's page draws 30 a second, off screen), diagnostics only.
-        const ticks: number[] = [];
+        const ticks: number[][] = [];
+        let moving = 0;
         const polled = () => {
           (globalThis as { s5Diagnostics?: { sample: () => void } }).s5Diagnostics?.sample();
-          ticks.push(Date.now());
-          if (ticks.length > 40) ticks.shift();
+          ticks.push([Date.now(), v.currentTime]);
+          if (ticks.length > 48) ticks.shift();
           v.dataset['frameTicks'] = JSON.stringify(ticks);
-          if (v.currentTime > initial + 0.001) v.dataset['polledMotionAt'] = String(Date.now());
-          else requestAnimationFrame(polled);
+          if (v.currentTime > initial + 0.001) {
+            v.dataset['polledMotionAt'] ??= String(Date.now());
+            if (++moving < 9) requestAnimationFrame(polled);
+          } else requestAnimationFrame(polled);
         };
         requestAnimationFrame(polled);
       });
@@ -149,6 +185,7 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
       callbacks: unknown;
       clock: string | null;
       ticks: unknown;
+      rates: unknown;
     }[] = [];
     for (const [index, page] of [hall, win, stream].entries()) {
       await expect(video(page, id)).toHaveAttribute('data-first-motion-at', /[1-9]/);
@@ -161,11 +198,12 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
         callbacks: JSON.parse((await video(page, id).getAttribute('data-cue-callbacks')) ?? '[]'),
         clock: await video(page, id).getAttribute('data-cue-clock'),
         ticks: JSON.parse((await video(page, id).getAttribute('data-frame-ticks')) ?? '[]'),
+        rates: JSON.parse((await video(page, id).getAttribute('data-rate-sets')) ?? '[]'),
       });
       await expect(video(page, id)).toHaveAttribute('data-prepared', 'yes');
     }
     await test.info().attach('s5-motion-observers.json', {
-      body: Buffer.from(JSON.stringify({ goAt: bg.seek.at, motion })),
+      body: Buffer.from(JSON.stringify({ goAt: bg.seek.at, holdMs, motion })),
       contentType: 'application/json',
     });
     for (const { at, mediaTime } of motion) {
@@ -197,6 +235,14 @@ test('Cue holds the first trimmed frame privately, then Go uses its loaded frame
     await retainCueDiagnostics([hall, win, stream, audio], test.info());
     await app.close();
   }
+}
+
+test('Cue holds the first trimmed frame privately, then Go uses its loaded frame at one shared engine moment', () =>
+  cueThenGo(0));
+
+test('A cue held over half a minute still starts within one frame of Go', async () => {
+  test.setTimeout(150_000);
+  await cueThenGo(35_000);
 });
 
 test('Crossfade in the playlist blends both pictures and sounds without black on hall, LIVE and stream', async () => {
