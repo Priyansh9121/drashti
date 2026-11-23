@@ -432,7 +432,12 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
     try {
       const slideId = t.doc.groups[0]?.slides[0]?.id;
       const part = { x: 0, y: 0, w: 1, h: 1 };
-      for (const parts of [[], [{ slideId: 'missing', part }], [{ slideId, part: { ...part, w: 2 } }]]) {
+      for (const parts of [
+        [],
+        Array.from({ length: 401 }, () => ({ slideId, part })),
+        [{ slideId: 'missing', part }],
+        [{ slideId, part: { ...part, w: 2 } }],
+      ]) {
         expect((await t.editor.makeSlide(t.event, t.request({ parts }))).ok).toBe(false);
       }
       expect(t.run).not.toHaveBeenCalled();
@@ -474,6 +479,32 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
       expect((await t.editor.makeSlide(t.event, t.request())).ok).toBe(false);
       expect(t.run).not.toHaveBeenCalled();
       expect(t.drawPart).not.toHaveBeenCalled();
+      expect(t.keepSlide).not.toHaveBeenCalled();
+    } finally {
+      await t.clean();
+    }
+  });
+
+  it('refuses collected pictures over 128 MB without keeping a partial presentation', async () => {
+    const t = await opened();
+    try {
+      const slideId = t.doc.groups[0]?.slides[0]?.id;
+      const part = { x: 0, y: 0, w: 1, h: 1 };
+      const png = new Uint8Array(64 * 1024 * 1024 + 1);
+      t.drawPart.mockResolvedValue({ ok: true, png });
+      const made = await t.editor.makeSlide(
+        t.event,
+        t.request({
+          parts: [
+            { slideId, part },
+            { slideId, part },
+          ],
+        }),
+      );
+      expect(made).toEqual({
+        ok: false,
+        message: 'The collected pictures are larger than 128 MB. Make fewer parts at a time.',
+      });
       expect(t.keepSlide).not.toHaveBeenCalled();
     } finally {
       await t.clean();
