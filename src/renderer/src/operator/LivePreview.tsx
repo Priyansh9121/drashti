@@ -1,3 +1,4 @@
+import { PreparedTranslationStatus } from './PreparedTranslationStatus';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { usePractice, useShowRev, useShowState } from '../practice/practice-store';
 import { preloadFonts } from '../render/fonts';
@@ -88,6 +89,9 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
+  const translationGroupId = useScreens(
+    (value) => value.snapshot?.groups.find((group) => group.role === 'audience')?.id,
+  );
   const shownAs = audience?.look.languages
     ? { name: audience.name, languages: audience.look.languages }
     : null;
@@ -164,6 +168,8 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
               canvas={canvas}
               scaling={scaling}
               annotate
+              translationGroupId={translationGroupId}
+              translationOutputId={first?.id}
               {...(audience ? { look: audience.look } : {})}
             />
           )}
@@ -211,6 +217,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
             warm: the warm-up's last step there draws nothing but black). */}
         {warming && !chipless && <PanelWarmUp />}
       </div>
+      <PreparedTranslationStatus state={state} />
       <PipLiveStrip />
       {/* The time bar for what plays (Session 54), where a page asks for it under the picture. */}
       {bars && <PlayingBars />}

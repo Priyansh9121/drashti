@@ -24,6 +24,7 @@ import {
   ArrowLeftRight,
   Download,
   LayoutTemplate,
+  Languages,
   ListPlus,
   Palette,
   Redo2,
@@ -420,6 +421,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         void window.drashti.slideEditor.showKey(e.key);
         return;
       }
+      if (translating) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
@@ -527,12 +529,17 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           size="sm"
           variant="ghost"
           disabled={!doc}
+          icon={Languages}
+          aria-label={translationReadOnly ? 'Translation status…' : 'Translate…'}
+          title={translationReadOnly ? 'Translation status…' : 'Translate…'}
           onClick={() => {
             finishTextEditing();
             setTranslating(true);
           }}
         >
-          {translationReadOnly ? 'Translation status…' : 'Translate…'}
+          <span className={WORDS_WHEN_ROOM}>
+            {translationReadOnly ? 'Translation status…' : 'Translate…'}
+          </span>
         </Button>
         {!pdfRowVisible && (
           <Button

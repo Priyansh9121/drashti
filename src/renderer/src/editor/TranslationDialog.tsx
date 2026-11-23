@@ -4,7 +4,6 @@ import type { TextElement } from '../../../shared/model';
 import type { TranslationLanguage } from '../../../shared/prepared-translations';
 import { noTranslator, translationForSource } from '../../../shared/prepared-translations';
 import {
-  checkedTranslationView,
   translationLayoutProblem,
   translationSource,
   translationSourceSupported,
@@ -18,8 +17,7 @@ import { Dialog } from '../ui/Dialog';
 import { Field, TextInput as Input, Select, Textarea } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import { useScreens } from '../screens/screens-store';
-import { PlacedInParent } from '../render/Placed';
-import { SlideView } from '../render/SlideView';
+import { TranslationPreview } from './TranslationPreview';
 import { commit, useEditor } from './editor-store';
 import {
   approvePreparedWords,
@@ -310,19 +308,7 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
             </section>
           );
         })}
-        {rendered && (
-          <div>
-            <p className="mb-2 text-sm font-medium">Saved checked words only · presentation choice</p>
-            <div
-              className="relative aspect-video overflow-hidden rounded bg-black"
-              data-testid="translation-preview"
-            >
-              <PlacedInParent content={rendered} mode="fit" className="absolute inset-0">
-                <SlideView slide={checkedTranslationView(rendered, {})} />
-              </PlacedInParent>
-            </div>
-          </div>
-        )}
+        {shown && <TranslationPreview doc={doc} slide={shown} groups={groups} />}
       </div>
     </Dialog>
   );
