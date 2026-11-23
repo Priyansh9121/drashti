@@ -18,12 +18,12 @@ for (const code of ['SQLITE_FULL', 'ENOSPC']) {
       await editor.getByTestId('words-text').fill(words);
       await app.evaluate((electron, failureCode) => {
         const { createRequire } = process.getBuiltinModule('node:module');
-        const Database = createRequire(`${electron.app.getAppPath()}/package.json`)('better-sqlite3') as {
-          new (path: string): { prepare(sql: string): object; close(): void };
-        };
+        const Database = createRequire(`${electron.app.getAppPath()}/package.json`)('better-sqlite3') as new (
+          path: string,
+        ) => { prepare(sql: string): object; close(): void };
         const sample = new Database(':memory:');
         const prototype = Object.getPrototypeOf(sample.prepare('SELECT 1')) as {
-          run(this: { source: string }, ...args: unknown[]): unknown;
+          run: (this: { source: string }, ...args: unknown[]) => unknown;
         };
         sample.close();
         const run = prototype.run;
