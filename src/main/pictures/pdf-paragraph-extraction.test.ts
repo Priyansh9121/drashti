@@ -19,9 +19,9 @@ afterAll(() => {
   else Reflect.deleteProperty(globalThis, 'pdfjsWorker');
 });
 
-function paragraphPdf(): Uint8Array {
-  const content =
-    'BT /F1 12 Tf 20 180 Td (Placeholder first line) Tj 0 -16 Td (Placeholder second line) Tj 0 -16 Td (Last words) Tj ET';
+function paragraphPdf(
+  content = 'BT /F1 12 Tf 20 180 Td (Placeholder first line) Tj 0 -16 Td (Placeholder second line) Tj 0 -16 Td (Last words) Tj ET',
+): Uint8Array {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -99,6 +99,30 @@ it('reads editable words from an actual embedded Latin subset before Gujarati is
       { text: 'Placeholder source letters', style: { fontFamily: 'Noto Sans' } },
     ]);
     expect(result.assets).toHaveLength(0);
+  } finally {
+    await loading.destroy();
+  }
+});
+
+it('a rotated source word does not consume the next upright occurrence of the same word', async () => {
+  const bytes = paragraphPdf(
+    'BT /F1 12 Tf 0 1 -1 0 80 100 Tm (Placeholder) Tj ET BT /F1 12 Tf 1 0 0 1 20 180 Tm (Placeholder) Tj ET',
+  );
+  const root = dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'));
+  const loading = pdfjs.getDocument({
+    data: bytes,
+    useWorkerFetch: false,
+    useSystemFonts: false,
+    disableFontFace: true,
+    ...nodePdfAssets(root),
+  });
+  try {
+    const doc = await loading.promise;
+    const result = await editablePdfPage(doc, await doc.getPage(1), pdfjs.OPS);
+    const words = result.elements.filter((element) => element.kind === 'text');
+    expect(words).toHaveLength(1);
+    expect(words[0]).toMatchObject({ text: 'Placeholder', frame: { x: 20 } });
+    expect(result.assets).toHaveLength(1);
   } finally {
     await loading.destroy();
   }
