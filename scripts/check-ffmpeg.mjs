@@ -20,6 +20,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
+import { probeTranslate } from './translate-probe.mjs';
 
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
 const packaged = process.argv.includes('--packaged');
@@ -148,37 +149,22 @@ function checkVideoOut(label, command, args) {
   });
 }
 
-/** A packaged app's drashti-translate starts: it says hello (protocol 1) and stops by itself when its input ends. */
-function checkTranslate(label, command, args) {
+/**
+ * A packaged app's drashti-translate starts: it says hello (protocol 1), refuses what it must (scripts/translate-probe.mjs:
+ * a bad line, a line over 64 KiB, an unknown op, a sentence before any model, a missing model), answers cancel and
+ * quit, and exits 0. No model is needed.
+ */
+async function checkTranslate(label, command, args) {
   const program = command === 'arch' ? args[1] : command;
   if (!existsSync(program)) {
     console.log(`${label}: translation engine FAILED: no program at ${program}`);
-    return Promise.resolve(false);
+    return false;
   }
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-    let out = '';
-    child.stdout.on('data', (d) => (out += d.toString()));
-    child.stderr.on('data', (d) => (out += d.toString()));
-    child.stdin.end();
-    const limit = command === 'arch' ? EMULATED_TIMEOUT_MS : 60_000;
-    const timer = setTimeout(() => child.kill('SIGKILL'), limit);
-    child.on('exit', (code) => {
-      clearTimeout(timer);
-      const hello = (() => {
-        try {
-          return JSON.parse(out.split(/\r?\n/u)[0] ?? '');
-        } catch {
-          return null;
-        }
-      })();
-      const passed = code === 0 && hello?.hello === 'drashti-translate' && hello.protocol === 1;
-      console.log(
-        `${label}: translation engine ${passed ? 'OK' : `FAILED (exit ${String(code)})`}\n  ${program}\n  ${out.trim().split(/\r?\n/u).join('\n  ')}`,
-      );
-      resolve(passed);
-    });
-  });
+  const result = await probeTranslate(command, args, command === 'arch' ? EMULATED_TIMEOUT_MS : 60_000);
+  console.log(
+    `${label}: translation engine ${result.passed ? 'OK' : `FAILED (${result.problems.join('; ')})`}\n  ${program}\n  ${result.output.trim().split(/\r?\n/u).join('\n  ')}`,
+  );
+  return result.passed;
 }
 
 const targets = packaged
