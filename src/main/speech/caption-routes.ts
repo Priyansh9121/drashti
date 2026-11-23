@@ -60,3 +60,24 @@ export function whisperModelFile(model: PackModel, known: (sha256: string) => bo
     ? file.path
     : null;
 }
+
+/** What caption AI needs to hear a language with a model of its own (cap-whisper's, added and checked). */
+export interface OwnModelCaptionAiOptions {
+  /** The speaker's language now (the library's captions settings). */
+  language(): SpeechLanguage | 'auto';
+  /** That language's own model, chosen on this computer and checked (CaptionsService.languageModelFor), or null. */
+  ownModel(language: SpeechLanguage | 'auto'): { id: string } | null;
+  /** Drashti's whisper engine: it loads the language's own model itself. */
+  engine: SpeechEngine;
+}
+
+/**
+ * Caption AI on for the speaker's language when it has a model of its own (Route W on Drashti's whisper engine);
+ * "as heard", Sanskrit and a language without one keep today's captions. Red: not built yet.
+ */
+export function ownModelCaptionAi(_o: OwnModelCaptionAiOptions): {
+  on(): boolean;
+  recognizer(language: SpeechLanguage): CaptionRecognizer | null;
+} {
+  return { on: () => false, recognizer: () => null };
+}
