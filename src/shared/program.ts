@@ -29,6 +29,8 @@ import { hasElementMotion } from './element-motion';
 
 /** One line of the lower third: its runs, as the slide has them. */
 export interface LowerThirdLine {
+  /** A checked secondary line: kept whole, after every original has its place. */
+  preparedTranslation?: true;
   lang: Lang | null;
   runs: TextRun[];
   /** Its text box's font, for words typed in a legacy font (which need it to read). */
@@ -75,18 +77,37 @@ export function lowerThirdOf(
     return { lines: [], total: 0 };
   const shown = languageView(slide, languages);
   const source = slide.translitOf ?? translitSource(slide.elements);
-  const lines: LowerThirdLine[] = [];
-  for (const el of readingOrder(shown.elements))
-    for (const line of boxLines(el)) {
-      if (!line.legacy && lineText(line).trim() === '') continue;
-      lines.push({
-        lang: line.lang,
+  const entries = readingOrder(shown.elements).map((el) => ({
+    translated: el.preparedTranslation === true,
+    lines: boxLines(el)
+      .filter((line) => line.legacy || lineText(line).trim() !== '')
+      .map((line): LowerThirdLine => ({
+        lang: el.preparedTranslation ? el.lang : line.lang,
         runs: line.runs,
         boxFont: el.style.fontFamily,
+        ...(el.preparedTranslation ? { preparedTranslation: true } : {}),
         ...(line.lang === 'translit' && source ? { translitOf: source } : {}),
-      });
-    }
-  return { lines: lines.slice(0, LOWER_THIRD_MAX_LINES), total: lines.length };
+      })),
+  }));
+  const originalTotal = entries
+    .filter((entry) => !entry.translated)
+    .reduce((count, entry) => count + entry.lines.length, 0);
+  let spare = LOWER_THIRD_MAX_LINES - Math.min(LOWER_THIRD_MAX_LINES, originalTotal);
+  let originalShown = 0;
+  const lines: LowerThirdLine[] = [];
+  for (const entry of entries) {
+    if (entry.translated) {
+      if (entry.lines.length <= spare) {
+        lines.push(...entry.lines);
+        spare -= entry.lines.length;
+      }
+    } else
+      for (const line of entry.lines) {
+        if (originalShown < LOWER_THIRD_MAX_LINES) lines.push(line);
+        originalShown += 1;
+      }
+  }
+  return { lines, total: entries.reduce((count, entry) => count + entry.lines.length, 0) };
 }
 
 /** A slide's words for a lower third, in these languages (null: all of them), top to bottom. */

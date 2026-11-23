@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NO_PICTURE_MS, PictureWatch } from './picture-watch';
+import { heardFrom, NO_PICTURE_MS, PictureWatch } from './picture-watch';
 
 /* The stream's picture (Session 18): no picture from the stream's page while wanted, and the page is given a new port. */
 
@@ -52,6 +52,59 @@ describe('the stream’s picture', () => {
     expect(watch.heard(status(200_000, { wanted: false }))).toBeNull();
     expect(watch.heard(status(200_000, { encoderChosen: false }))).toBeNull();
     expect(watch.heard(status(200_000, { failed: true }))).toBeNull();
+  });
+
+  it('an encoder starting again is no lasting fault: the page is still given a new port after the wait (x71’s take)', () => {
+    // x71: an encoder that stops or cannot start puts its words in the worker's error at once, and another starts. If
+    // the page's capture or port went with it (a graphics process restarting can take both), only a new port brings
+    // its pictures back, so the watch goes on as it did before those words.
+    const encoder = { name: 'libx264', label: 'x264', hardware: false };
+    const restarting = { encoder, encoding: false, error: 'The encoder stopped. Trying to start it again.' };
+    const watch = new PictureWatch();
+    watch.newWorker();
+    watch.paired(0);
+    expect(watch.heard(heardFrom(restarting, true, 0))).toBeNull();
+    expect(watch.heard(heardFrom(restarting, true, NO_PICTURE_MS - 1))).toBeNull();
+    expect(watch.heard(heardFrom(restarting, true, NO_PICTURE_MS))).toBe(5000);
+    // No H.264 encoder works on this computer: that lasts, and no port is given for it.
+    const none = {
+      encoder: null,
+      encoding: false,
+      error: 'No H.264 encoder works on this computer, so it cannot stream or record.',
+    };
+    watch.paired(100_000);
+    expect(watch.heard(heardFrom(none, true, 200_000))).toBeNull();
+    expect(heardFrom(none, true, 200_000).failed).toBe(true);
+  });
+
+  it('an encoder starting again has the page given its port again at once, once while its words stand (x71’s take)', () => {
+    // CI a21-take-disk-1123-205441-17891 (Windows): the first encoder stopped 0.6 s after the page was given its port,
+    // the next started a second later from the held picture, and on a still Program no fresh one came, so Stream kept
+    // saying it was trying to start the encoder again while recording went on. A page given a new port sends its
+    // newest picture at once (program/capture.ts), the fresh one the next encoder's words wait for.
+    const watch = new PictureWatch();
+    const restarting = (status: Parameters<typeof heardFrom>[0]) => watch.encoderRestarting(status);
+    const encoder = { name: 'libx264', label: 'x264', hardware: false };
+    const words = 'The encoder stopped. Trying to start it again.';
+    const running = { encoder, encoding: true, error: null };
+    watch.newWorker();
+    expect(restarting(running)).toBe(false);
+    expect(restarting({ encoder, encoding: false, error: words })).toBe(true);
+    // The next one starting, or failing to start again, while the words stand: no more ports.
+    expect(restarting({ encoder, encoding: true, error: words })).toBe(false);
+    expect(restarting({ encoder, encoding: false, error: words })).toBe(false);
+    // A fresh picture encoded, the words gone: a later stop has the page given its port again.
+    expect(restarting(running)).toBe(false);
+    expect(restarting({ encoder, encoding: false, error: words })).toBe(true);
+    // No H.264 encoder works on this computer: not an encoder starting again.
+    watch.newWorker();
+    expect(
+      restarting({
+        encoder: null,
+        encoding: false,
+        error: 'No H.264 encoder works on this computer, so it cannot stream or record.',
+      }),
+    ).toBe(false);
   });
 
   it('the time the worker takes to choose its encoder is not counted as no picture (alpha.14’s gate on CI’s Mac)', () => {

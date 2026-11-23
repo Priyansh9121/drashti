@@ -102,7 +102,7 @@ test('a crash leaves a dump here; Diagnostics adds it only when ticked; the next
   const again = await relaunchApp(userData, { DRASHTI_TEST_CRASH_DUMPS: dumps });
   const next = await operatorPage(again.app);
   await expect(next.getByRole('alert').filter({ hasText: 'While Drashti last ran' })).toContainText(
-    /the audio player crashed \(\w+, (?:exit code \w+|signal \d+: SIG[A-Z]+)\); the watchdog brought it back\. To tell the admin, choose Help › Report a Problem… \(or Save Diagnostics… when it can’t be sent\)\./u,
+    /the audio player crashed \(\w+, (?:exit code \w+|signal \d+: SIG[A-Z]+)\); the watchdog brought it back\. To tell the admin, choose Help › Report a Problem… \(or Save Diagnostics when it can’t be sent\)\./u,
   );
   await again.app.close();
 });

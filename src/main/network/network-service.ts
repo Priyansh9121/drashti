@@ -1,3 +1,5 @@
+import { playbackTranslationSlide } from '../../shared/prepared-translation-view';
+import { PAIRED_SEATS_NOTICE } from './paired-seats';
 import type { OscAction } from '../osc/mapping';
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
 import { deckSlideAt } from '../../shared/deck-show';
@@ -222,6 +224,7 @@ export interface NetworkDeps {
   /** The status changed: the operator window is told. */
   changed(status: NetworkStatus): void;
   log(level: 'info' | 'warn', message: string): void;
+  notice?(text: string): void;
   now(): number;
   /**
    * Whether Drashti is let in (Session 54, access by Gmail): while it is not, every device's request, every pairing
@@ -712,6 +715,9 @@ export class NetworkService implements EngineTransport {
       case 'resync':
         worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
         return;
+      case 'busy':
+        this.deps.notice?.(PAIRED_SEATS_NOTICE);
+        return;
       case 'log':
         this.deps.log(m.level, `Network: ${m.message}`);
         return;
@@ -775,9 +781,13 @@ export class NetworkService implements EngineTransport {
   }
 
   private pushDevices(): void {
-    const devices: DeviceAuth[] = this.deps.devices
-      .list()
-      .map((d) => ({ id: d.id, name: d.name, kind: d.kind, tokenHash: d.tokenHash }));
+    const devices: DeviceAuth[] = this.deps.devices.list().map((d) => ({
+      id: d.id,
+      name: d.name,
+      kind: d.kind,
+      tokenHash: d.tokenHash,
+      ...(d.poster ? { poster: true } : {}),
+    }));
     this.worker?.send({ type: 'devices', devices });
   }
 
@@ -1196,7 +1206,20 @@ export class NetworkService implements EngineTransport {
       case 'presentation': {
         const id = idSchema.safeParse(args['presentationId']);
         const doc = id.success ? this.deps.reads.presentation(id.data) : null;
-        return doc ? ok({ presentation: doc }) : deny(404, 'There is no such presentation.');
+        return doc
+          ? ok({
+              presentation: {
+                ...doc,
+                groups: doc.groups.map((group) => ({
+                  ...group,
+                  slides: group.slides.map((item) => ({
+                    ...item,
+                    slide: playbackTranslationSlide(item.slide),
+                  })),
+                })),
+              },
+            })
+          : deny(404, 'There is no such presentation.');
       }
       case 'presentations': {
         const offset = wholeNumber(args['offset'], 0, 0, 1_000_000);

@@ -91,6 +91,8 @@ export interface MenuActions {
   logDays?: () => readonly string[];
   /** Help › Report a Problem… (x49, both modes): tell the admin where a problem is and what it is. */
   reportProblem: () => void;
+  /** Admin only: separate automatic-report consent, off by default. */
+  automaticErrorReports?: (() => void) | null;
   /** File > Import from a Link… (Session 25b, Pro Mode): YouTube or Dropbox. */
   importFromLink: () => void;
   /** File > Back Up Library… and Restore Library…. */
@@ -469,6 +471,16 @@ export function installMenu(actions: MenuActions): void {
           ]),
       // Help › Report a Problem… (x49, the owner's Q60-38): in both modes, just above Save Diagnostics….
       { id: 'report-problem', label: 'Report a Problem…', click: actions.reportProblem },
+      // Help › Automatic Error Reports… (alpha.21): the access-list owner's alone, on this computer.
+      ...(actions.automaticErrorReports
+        ? [
+            {
+              id: 'automatic-error-reports',
+              label: 'Automatic Error Reports…',
+              click: actions.automaticErrorReports,
+            } as MenuItemConstructorOptions,
+          ]
+        : []),
       saveDiagnosticsMenu(actions.saveDiagnostics, actions.logDays?.() ?? []),
       // Simple Mode never sees updates.
       ...(simple
