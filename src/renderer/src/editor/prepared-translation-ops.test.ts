@@ -6,6 +6,8 @@ import {
   editPreparedWords,
   approvePreparedWords,
   routePreparedWords,
+  draftTargets,
+  placeDraft,
 } from './prepared-translation-ops';
 const doc = (): EditDoc => ({
   presentationId: 'p',
@@ -98,5 +100,26 @@ describe('presentation prepared translation editing', () => {
     ];
     expect(() => editPreparedWords(original, 's', 'e', 'en', 'gu', 'Placeholder')).toThrow();
     expect(() => editPreparedWords(original, 'missing', 'e', 'en', 'gu', 'Placeholder')).toThrow();
+  });
+  it('Prepare translations fills only boxes with no words for the target, and never over words typed meanwhile', () => {
+    const original = doc();
+    expect(draftTargets(original, 'en', 'gu')).toEqual([{ slideId: 's', elementId: 'e', source: 'Box Q.' }]);
+    // A box in another language, or the same language both ways, gets no draft.
+    expect(draftTargets(original, 'gu', 'en')).toEqual([]);
+    expect(draftTargets(original, 'en', 'en')).toEqual([]);
+    const target = { slideId: 's', elementId: 'e', source: 'Box Q.' };
+    const drafted = placeDraft(original, target, 'en', 'gu', 'Draft Q');
+    expect(first(drafted).translations?.[0]).toMatchObject({
+      text: 'Draft Q',
+      state: 'unchecked',
+      reader: null,
+    });
+    // Words already there (written, edited or checked) are never replaced, nor is a draft for changed source words.
+    expect(draftTargets(drafted, 'en', 'gu')).toEqual([]);
+    expect(placeDraft(drafted, target, 'en', 'gu', 'Other draft')).toBe(drafted);
+    const checked = approvePreparedWords(drafted, 's', 'e', 'en', 'gu', 'Reader Q');
+    expect(placeDraft(checked, target, 'en', 'gu', 'Other draft')).toBe(checked);
+    expect(placeDraft(original, { ...target, source: 'Old words.' }, 'en', 'gu', 'Draft Q')).toBe(original);
+    expect(placeDraft(original, target, 'en', 'gu', '  ')).toBe(original);
   });
 });
