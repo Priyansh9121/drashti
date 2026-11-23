@@ -66,7 +66,7 @@ require(process.argv.at(-1));
       const status = () => win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
       await expect.poll(async () => (await status()).recording.file).toContain(' part 2.mkv');
       await expect.poll(async () => (await status()).recording.bytes).toBeGreaterThan(10000);
-      expect((await status()).error).toBeNull();
+      expect((await status()).recording.message).toBeNull();
     } finally {
       await app.close();
     }
