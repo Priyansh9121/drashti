@@ -45,6 +45,7 @@ const LONG_PICTURE = 'Placeholder darshan picture with a long file name for the 
 const LONG_VIDEO = 'Placeholder sabha video with a long file name for Edit Video and Media information';
 const LONG_LINK =
   'https://example.org/placeholder/a-long-link-for-the-sabha-hall-screens-the-stream-and-the-phones?words=many';
+const LONG_GROUP = 'Placeholder hall screens with a long name for the projector and the side screens';
 const LONG_GMAIL = 'placeholder.person.with.a.long.name.for.the.access.list@example.com';
 
 /** The long-named words and picture, in a long-named playlist; their library ids. */
@@ -102,6 +103,11 @@ test('the operator window’s dialogs and sheets, each at the window’s least, 
     await operatorReady(win);
     const sizes = [await smallestContent(app, OPERATOR), CI_WINDOW, OWNERS_WINDOW];
     const { pictureId } = await longShow(win);
+    // A screens' group with a long name, so Screens shows its card.
+    await win.evaluate(async (name) => {
+      const created = await (globalThis as PageGlobals).drashti.screens.createGroup(name);
+      if (!created.ok) throw new Error(created.message);
+    }, LONG_GROUP);
     const dialog = operatorSweep(app, win, sizes);
     const menu = (id: string) => () => chooseMenuItem(app, id);
 
