@@ -36,6 +36,7 @@ test('imported Route C model decodes PCM through the native helper into the spee
     release = done;
   });
   const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => undefined },
     program: () =>
       join(
         process.cwd(),

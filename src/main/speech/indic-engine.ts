@@ -11,6 +11,8 @@ import { openIndicPipe, type IndicPipe, type IndicPipeOptions } from './indic-pi
 export interface IndicEngineOptions {
   program(): string | null;
   problem?: () => string | null;
+  /** Read-only authoritative show/background lease. Absent or unknown is closed. Never derive this from a timer. */
+  workGate?: { allowed(): boolean; listen(changed: () => void): () => void };
   /** Acquire a checked imported model; release only once native work has stopped. Never an installer model. */
   acquire(
     language: IndicLanguage,
@@ -66,6 +68,21 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         to.state({ phase: 'failed', message: problem });
         return () => undefined;
       }
+      const gate = o.workGate;
+      if (!gate) {
+        to.state({
+          phase: 'failed',
+          message: 'Recognition is waiting for the show’s background-work protection.',
+        });
+        return () => undefined;
+      }
+      const allowed = (): boolean => {
+        try {
+          return gate.allowed() === true;
+        } catch {
+          return false;
+        }
+      };
       const chosen: IndicLanguage = language;
       const session = randomUUID();
       let stopped = false;
@@ -75,6 +92,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       let controller: AbortController | null = null;
       let closeSound: (() => void) | null = null;
       let busy = false;
+      let gateHeld = !allowed();
       let slowInARow = 0;
       let phrase: Growing | null = null;
       let count = 0;
@@ -144,7 +162,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       let working = false;
       /** Send the next piece: a whole phrase first, else the growing one if a step has passed. */
       const pump = async (): Promise<void> => {
-        if (working || stopped || busy) return;
+        if (working || stopped || busy || !allowed()) return;
         const final = finals.shift();
         const growing = final ? null : phrase;
         const piece = final ?? growing;
@@ -160,7 +178,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         const clipEndAt = piece.endAt;
         try {
           const asked = await ask(samples);
-          if (!asked || ended() || mine !== generation) return;
+          if (!asked || ended() || mine !== generation || !allowed()) return;
           const behind = Date.now() - clipEndAt;
           slowInARow = asked.tookMs > stepMs * 1.5 ? slowInARow + 1 : 0;
           if (slowInARow >= 3 || behind > 8_000) {
@@ -194,7 +212,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       };
 
       const chunk = (samples: Int16Array, endAt: number, startAt?: number): void => {
-        if (stopped || busy) return;
+        if (stopped || busy || !allowed()) return;
         const ms = (samples.length / SAMPLE_RATE) * 1000;
         const capturedStart = startAt ?? endAt - ms;
         if (
@@ -248,7 +266,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       };
 
       const openSound = (): void => {
-        if (stopped || busy) return;
+        if (stopped || busy || !allowed()) return;
         closeSound = o.sound.open(chunk);
         if (closeSound) {
           to.state({ phase: 'listening', language });
@@ -260,6 +278,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
 
       const begin = async (): Promise<void> => {
         if (stopped) return;
+        if (!allowed()) {
+          gateHeld = true;
+          to.state({ phase: 'held', reason: 'busy' });
+          return;
+        }
         const program = o.program();
         if (!program) {
           to.state({
@@ -274,7 +297,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         to.state({ phase: 'starting' });
         try {
           const held = await o.acquire(chosen, abort.signal);
-          if (ended() || mine !== generation) {
+          if (ended() || mine !== generation || !allowed()) {
             held?.release();
             return;
           }
@@ -301,7 +324,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
               if (!ended() && !busy && mine === generation) fail();
             },
           });
-          if (ended() || mine !== generation) {
+          if (ended() || mine !== generation || !allowed()) {
             started.close();
             return;
           }
@@ -311,10 +334,22 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           if (!ended() && mine === generation) fail();
         }
       };
+      const stopGate = gate.listen(() => {
+        if (stopped) return;
+        if (!allowed()) {
+          gateHeld = true;
+          end();
+          to.state({ phase: 'held', reason: 'busy' });
+        } else if (gateHeld) {
+          gateHeld = false;
+          if (!busy) void begin();
+        }
+      });
       void begin();
       return () => {
         if (stopped) return;
         stopped = true;
+        stopGate();
         if (rest) clearTimeout(rest);
         rest = null;
         end();

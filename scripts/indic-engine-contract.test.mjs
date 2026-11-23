@@ -6,6 +6,7 @@ test('unselected language cannot acquire a model or open sound', () => {
     opened = false,
     state;
   const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => {} },
     program: () => '/native',
     acquire: () => {
       acquired = true;
@@ -38,6 +39,7 @@ test('stop during asynchronous pack checking releases the late hold without star
   let releases = 0,
     opens = 0;
   const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => {} },
     program: () => '/native',
     acquire: () => hold,
     sound: {
@@ -76,6 +78,7 @@ test('late native inference cannot publish into a stopped session', async () => 
   let published = 0,
     releases = 0;
   const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => {} },
     program: () => '/native',
     acquire: () => ({
       files: { model: '/m', tokens: '/t', frontend: '/f' },
@@ -114,9 +117,84 @@ test('late native inference cannot publish into a stopped session', async () => 
 
 test('without an authoritative background-work gate no model can load', async () => {
   let acquired = false;
-  const engine = createIndicEngine({ program: () => '/native', acquire: () => { acquired = true; return null; }, sound: { open: () => null }, log: { info() {}, warn() {} } });
+  const engine = createIndicEngine({
+    program: () => '/native',
+    acquire: () => {
+      acquired = true;
+      return null;
+    },
+    sound: { open: () => null },
+    log: { info() {}, warn() {} },
+  });
   const stop = engine.start('gu', { heard() {}, state() {} });
   await Promise.resolve();
   stop();
   assert.equal(acquired, false);
+});
+
+test('revoking the background lease terminates compute and discards the pending result', async () => {
+  let allowed = true,
+    changed,
+    capture,
+    resolveDecode,
+    ready;
+  const listening = new Promise((done) => {
+    ready = done;
+  });
+  const decode = new Promise((done) => {
+    resolveDecode = done;
+  });
+  let closed = 0,
+    released = 0,
+    heard = 0;
+  const engine = createIndicEngine({
+    workGate: {
+      allowed: () => allowed,
+      listen: (to) => {
+        changed = to;
+        return () => {};
+      },
+    },
+    program: () => '/native',
+    acquire: () => ({
+      files: { model: '/m', tokens: '/t', frontend: '/f' },
+      release: () => {
+        released += 1;
+      },
+    }),
+    sound: {
+      open: (to) => {
+        capture = to;
+        return () => {};
+      },
+    },
+    open: async () => ({
+      decode: () => decode,
+      close: () => {
+        closed += 1;
+      },
+    }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', {
+    heard: () => {
+      heard += 1;
+    },
+    state: (state) => {
+      if (state.phase === 'listening') ready();
+    },
+  });
+  await listening;
+  const began = Date.now() - 800;
+  capture(new Int16Array(1600).fill(5000), began + 100, began);
+  for (let i = 1; i <= 7; i += 1) capture(new Int16Array(1600), began + (i + 1) * 100, began + i * 100);
+  allowed = false;
+  changed();
+  assert.equal(closed, 1);
+  assert.equal(released, 1);
+  resolveDecode({ language: 'gu', words: [{ w: 'shape', start: 0, end: 0.08 }] });
+  await decode;
+  await Promise.resolve();
+  assert.equal(heard, 0);
+  stop();
 });

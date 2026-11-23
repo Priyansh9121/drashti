@@ -8,6 +8,7 @@ describe('Route C behind the speech engine seam', () => {
       open = vi.fn(() => null);
     const state = vi.fn();
     const engine = createIndicEngine({
+      workGate: { allowed: () => true, listen: () => () => undefined },
       program: () => '/native',
       acquire,
       sound: { open },
@@ -26,6 +27,7 @@ describe('Route C behind the speech engine seam', () => {
     const states: SpeechState[] = [],
       phrases: Heard[] = [];
     const engine = createIndicEngine({
+      workGate: { allowed: () => true, listen: () => () => undefined },
       program: () => '/native',
       acquire: () => ({
         files: { model: '/pack/model.onnx', tokens: '/pack/tokens.txt', frontend: '/pack/frontend.bin' },
