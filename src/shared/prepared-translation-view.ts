@@ -1,3 +1,5 @@
+import { placeContent, type Size } from './scaling';
+import type { ScalingMode } from './screens';
 import type { Rect, RenderSlide, TextElement } from './model';
 import type { TranslationLanguage } from './prepared-translations';
 import { checkedText, translationForSource } from './prepared-translations';
@@ -12,6 +14,9 @@ export interface TranslationDisplay {
   fontSize: number;
 }
 export interface TranslationDestination {
+  canvas?: Size;
+  scaling?: ScalingMode;
+  blockedAbove?: number;
   groupId?: string;
   outputId?: string;
   /** Overlays reserve everything below this point in slide coordinates. */
@@ -87,6 +92,35 @@ export function translationLayoutProblem(
   return null;
 }
 
+/** Check the actual output canvas too: fill cropping and narrow fits must not cut or miniaturize words. */
+export function translationDestinationProblem(
+  slide: RenderSlide,
+  el: TextElement,
+  text: string,
+  destination: TranslationDestination,
+): string | null {
+  const base = translationLayoutProblem(slide, el, text, destination.blockedBelow);
+  if (base) return base;
+  const display = el.translationDisplay;
+  if (!display) return 'Reserve an area below the source words.';
+  if (display.area.y < (destination.blockedAbove ?? 0))
+    return 'Keep the translation clear of the caption band.';
+  if (!destination.canvas) return null;
+  const at = placeContent(slide, destination.canvas, destination.scaling ?? 'fit');
+  const left = at.x + display.area.x * at.scaleX;
+  const top = at.y + display.area.y * at.scaleY;
+  if (
+    left < 0 ||
+    top < 0 ||
+    left + display.area.width * at.scaleX > destination.canvas.width ||
+    top + display.area.height * at.scaleY > destination.canvas.height
+  )
+    return 'The translation is cropped on this screen. Reserve an area inside its visible picture.';
+  if (display.fontSize * Math.min(at.scaleX, at.scaleY) * 1080 < 36 * destination.canvas.height)
+    return 'The translation is too small on this screen. Use a wider picture or reserve a larger type size.';
+  return null;
+}
+
 /** Original content is never moved; unreviewed, mismatched or unsafe words add nothing. */
 export function checkedTranslationView(slide: RenderSlide, destination: TranslationDestination): RenderSlide {
   const additions: TextElement[] = [];
@@ -97,11 +131,7 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
     const value = el.translations?.find((item) => item.targetLanguage === choice);
     if (!value || !translationSourceSupported(el, value.sourceLanguage)) continue;
     const text = checkedText(value, translationSource(el));
-    if (
-      !text ||
-      translationLayoutProblem(slide, el, text, destination.blockedBelow) ||
-      !el.translationDisplay
-    )
+    if (!text || translationDestinationProblem(slide, el, text, destination) || !el.translationDisplay)
       continue;
     paired.add(el.id);
     additions.push({

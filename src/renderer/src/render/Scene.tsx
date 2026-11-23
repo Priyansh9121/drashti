@@ -760,8 +760,17 @@ export const Scene = memo(function Scene(props: ComponentProps<typeof SceneBody>
         ...(props.translationGroupId ? { groupId: props.translationGroupId } : {}),
         ...(props.translationOutputId ? { outputId: props.translationOutputId } : {}),
         blockedBelow: translationBottom(props.state, sourceHeight),
+        canvas: props.canvas,
+        scaling: props.scaling,
       }),
-    [props.state, props.translationGroupId, props.translationOutputId, sourceHeight],
+    [
+      props.state,
+      props.translationGroupId,
+      props.translationOutputId,
+      sourceHeight,
+      props.canvas,
+      props.scaling,
+    ],
   );
   return <SceneBody {...props} state={state} />;
 });

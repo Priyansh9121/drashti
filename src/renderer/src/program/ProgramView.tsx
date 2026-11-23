@@ -59,6 +59,8 @@ export function ProgramView({
 }) {
   const state = preparedOutputState(sourceState, {
     ...(translationGroupId ? { groupId: translationGroupId } : {}),
+    canvas,
+    scaling: 'fit',
     blockedBelow: translationBottom(sourceState, sourceState.layers.slide?.slide.height ?? canvas.height),
   });
   const captionRoot = useRef<HTMLDivElement>(null);
