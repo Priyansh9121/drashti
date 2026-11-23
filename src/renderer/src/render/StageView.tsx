@@ -81,7 +81,9 @@ const timerElements = (slide: RenderSlide) =>
 
 /** Smaller type for longer text: the size a slide's words start from (and never go above) on the Standard stage. */
 function sizeFor(slide: RenderSlide, base: number): number {
-  const chars = textElements(slide).reduce((n, e) => n + e.text.length, 0);
+  const chars = textElements(slide)
+    .filter((el) => !el.preparedTranslation)
+    .reduce((n, e) => n + e.text.length, 0);
   if (chars > 400) return Math.round(base * 0.45);
   if (chars > 240) return Math.round(base * 0.6);
   if (chars > 120) return Math.round(base * 0.78);
@@ -120,6 +122,7 @@ export function StageText({
         <p
           key={el.id}
           data-stage-element={el.id}
+          data-prepared-translation={el.preparedTranslation ? 'true' : undefined}
           lang={el.lang ? htmlLang(el.lang, source) : undefined}
           style={{
             margin: '0 0 0.35em',
@@ -148,6 +151,7 @@ export function StageText({
         <p
           key={el.id}
           data-stage-element={el.id}
+          data-prepared-translation={el.preparedTranslation ? 'true' : undefined}
           data-stage-timer={el.timerId}
           style={{ margin: '0 0 0.35em', whiteSpace: 'nowrap' }}
         >

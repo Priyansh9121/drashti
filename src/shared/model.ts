@@ -277,6 +277,8 @@ export interface TextElement extends ElementBase {
   /** Saved source/result pairs; only a checked exact pair may reach an output. */
   translations?: PreparedTranslation[];
   translationDisplay?: TranslationDisplay;
+  /** Render-only marker; never accepted as authored slide content. */
+  preparedTranslation?: true;
 }
 
 /**

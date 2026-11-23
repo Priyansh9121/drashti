@@ -108,6 +108,7 @@ export function checkedTranslationView(slide: RenderSlide, destination: Translat
       id: `${el.id}:translation:${choice}`,
       kind: 'text',
       text,
+      preparedTranslation: true,
       lang: value.targetLanguage,
       frame: el.translationDisplay.area,
       style: {
