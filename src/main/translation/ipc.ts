@@ -96,6 +96,9 @@ export function handleTranslation(d: TranslationIpcDeps): void {
     try {
       return { ok: true, text: await d.engine.translate(r.source, r.from, r.to) };
     } catch (error) {
+      // Stopped because the stream went on air (the PDF guard's hook cancelled it): say that, not just "Stopped".
+      if (error instanceof HelperError && error.code === 'cancelled' && d.onAir())
+        return { ok: false, message: ON_AIR };
       if (!(error instanceof HelperError))
         return {
           ok: false,

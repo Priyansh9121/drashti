@@ -120,7 +120,9 @@ export class TranslationHelper {
       // Its exit code is for the log; the operator is told only that it stopped (on an Intel Mac where it cannot
       // run, it ends at the first sentence: nothing else to advise).
       if (this.ended === null) this.o.log.warn(`Translation: the engine stopped (exit ${String(code)}).`);
-      this.end('The translation engine stopped.');
+      this.end(
+        'The translation engine stopped. If it happens again, choose Help \u203a Report a Problem\u2026 (or Help \u203a Save Diagnostics).',
+      );
     });
     try {
       if (child.pid !== undefined) (this.o.lowerPriority ?? defaultLowerPriority)(child.pid);
