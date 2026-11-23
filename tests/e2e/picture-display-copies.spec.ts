@@ -451,7 +451,10 @@ test('a large picture imported during a hall dissolve does not add sustained fra
         measured.p95 - control.p95 > oneMs ||
         measured.longest - control.longest > oneMs ||
         measured.over15 > control.over15;
-      allWorse.native.push(nativePair.worse);
+      // QA21-L8-1, the owner's "A, hall and renderer": the hall's presented frames (native presentation) and the
+      // renderer's frames (rAF) decide. Main's capture-callback times stay in the evidence below, deciding nothing: with
+      // no import at all they called a control worse than itself in 10 of 15 pairs on CI's Windows (a21-l8a's A/A).
+      allWorse.native.push(nativePair.presentationWorse);
       allWorse.raf.push(worse(rafImport, rafControl));
       const verdict = {
         subscribe,
@@ -474,7 +477,7 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
     expect(
       allWorse.native.every(Boolean),
-      'Import made native presentation or capture callback frames worse in all three pairs.',
+      'Import made the hall’s presented frames worse in all three pairs.',
     ).toBe(false);
     expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(false);
   } finally {
