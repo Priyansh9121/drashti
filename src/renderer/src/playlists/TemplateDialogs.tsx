@@ -224,10 +224,12 @@ function Choice({ p, first }: { p: PresentationSummary; first: boolean }) {
         className={`${rowClass({})} w-full px-2.5 py-1.5 text-left`}
         onClick={() => void fillSlot(p.id)}
       >
-        <span className="block truncate text-sm font-medium">{p.name}</span>
-        <span className="block truncate text-xs text-muted">
-          {details.length > 0 ? details.join(' · ') : p.libraryName}
-        </span>
+        {/* Long names and details cut neatly, whole on hover (alpha.21's fit pass). */}
+        <Truncate text={p.name} className="text-sm font-medium" />
+        <Truncate
+          text={details.length > 0 ? details.join(' · ') : p.libraryName}
+          className="text-xs text-muted"
+        />
       </button>
     </li>
   );
