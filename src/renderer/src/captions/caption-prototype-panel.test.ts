@@ -28,11 +28,10 @@ const clause = {
 const render = (review: CaptionReview) =>
   renderToStaticMarkup(createElement(CaptionPrototypeControls, { review, take: () => undefined }));
 describe('ephemeral operator correction panel', () => {
-  it('has an explicit off switch and explains the placeholder recognizer without exposing an off review', () => {
+  it('offers no placeholder rehearsal (the lead: Q-CAPI-4 A) and shows nothing of a review while caption AI is not listening', () => {
     const html = render({ ...view, current: clause });
-    expect(html).toContain('captions-prototype-on');
-    expect(html).toContain('aria-checked="false"');
-    expect(html).toContain('No sound input or model');
+    expect(html).not.toContain('captions-prototype-on');
+    expect(html.toLowerCase()).not.toContain('placeholder');
     expect(html).not.toContain('The blue box');
   });
   it('distinguishes provisional from settled words and offers corrections only for settled clauses', () => {
