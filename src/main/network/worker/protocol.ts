@@ -43,6 +43,7 @@ export interface WorkerAnswers {
 }
 
 export type FromNetworkWorker =
+  | { type: 'busy' }
   | { type: 'started'; result: StartResult }
   | { type: 'stopped' }
   | { type: 'ask'; id: number; question: WorkerQuestion }

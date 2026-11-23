@@ -66,6 +66,11 @@ export function PairPage() {
     if (known && !reason)
       void api<{ device: { kind: DeviceKind } }>('/api/v1/me').then((r) => {
         if (r.ok) location.replace(PAGE_OF[r.device.kind]);
+        else if (r.status === 503) setProblem(r.message);
+      });
+    else if (!known && !reason)
+      void api('/api/v1/me').then((r) => {
+        if (!r.ok && r.status === 503) setProblem(r.message);
       });
     // Once, as the page opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -50,6 +50,13 @@ import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
 import { engineForAlpha17Phone } from './phone-lower-third-motion';
 import { phoneRoutes } from './phone-routes';
+import {
+  connectionSeats,
+  PairedSeats,
+  PAIRED_SEATS_BUSY,
+  PAIRED_SEATS_NOTICE,
+  socketSeat,
+} from './paired-seats';
 
 /*
  * Drashti's network server: HTTP and WebSocket on one port. It runs in a
@@ -100,6 +107,8 @@ export interface ServerHost {
   /** This copy of the engine state fell behind: send a fresh snapshot. */
   resync(): void;
   log(level: 'info' | 'warn', message: string): void;
+  /** A general operator notice, once per run. */
+  busy?(): void;
   /** A file a phone added has all arrived and is what it should be (Session 54): the main process imports it. */
   arrived?(file: ArrivedFile): void;
 }
@@ -115,7 +124,7 @@ const MAX_CLIENTS = 100;
 const MAX_CLIENTS_PER_ADDRESS = 10;
 /**
  * Connections at once, pages, previews and feeds alike (Sessions 31–36, SEC-11), in all and from one
- * address: one more is closed at once. From one address there is room for 10 feeds and a browser's 6 page
+ * address, with places kept for paired devices. From one address there is room for 10 feeds and a browser's 6 page
  * fetches, and for the Performance check's 10 devices (each a feed and its fetches, all from this computer).
  */
 export const SOCKET_LIMITS = { total: 256, perAddress: 32 } as const;
@@ -131,6 +140,8 @@ interface Client {
   device: DeviceAuth | null;
   currentLowerThirdMotions: boolean;
   alive: boolean;
+  socket: Duplex;
+  seat: string;
 }
 
 interface Route {
@@ -403,6 +414,38 @@ export class NetworkServer {
   private media: MediaServing | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private lastConnected = '';
+  private busyNoted = false;
+  private readonly socketDevices = new Map<string, { ids: Set<string>; release(): void }>();
+  private sockets = new PairedSeats<string>(
+    connectionSeats(SOCKET_LIMITS.total, SOCKET_LIMITS.perAddress),
+    () => this.capacityBusy(),
+  );
+  private readonly feeds = new PairedSeats<Duplex>(
+    {
+      total: MAX_CLIENTS,
+      perAddress: MAX_CLIENTS_PER_ADDRESS,
+      open: 20,
+      openPerAddress: MAX_CLIENTS_PER_ADDRESS,
+      replaceWaitingAtAddressLimit: true,
+    },
+    () => this.capacityBusy(),
+  );
+
+  private capacityBusy(): void {
+    if (this.busyNoted) return;
+    this.busyNoted = true;
+    this.host.busy?.();
+    this.host.log('warn', PAIRED_SEATS_NOTICE);
+  }
+
+  private protectConnection(req: IncomingMessage, deviceId: string): void {
+    const key = socketSeat(req.socket);
+    const known = this.socketDevices.get(key);
+    if (known) known.ids.add(deviceId);
+    else {
+      this.socketDevices.set(key, { ids: new Set([deviceId]), release: this.sockets.protect(key) });
+    }
+  }
   /**
    * Whether Drashti is let in (Session 54, access by Gmail), as the main process says: until it says so, and once it
    * has stopped, every request is refused here, those this process answers itself (a picture, an original, a link,
@@ -447,20 +490,19 @@ export class NetworkServer {
     server.keepAliveTimeout = 5000;
     server.maxHeadersCount = 50;
     const limits = options.sockets ?? SOCKET_LIMITS;
-    server.maxConnections = limits.total;
-    const fromAddress = new Map<string, number>();
+    this.busyNoted = false;
+    this.sockets = new PairedSeats<string>(connectionSeats(limits.total, limits.perAddress), () =>
+      this.capacityBusy(),
+    );
     server.on('connection', (socket) => {
-      const address = socket.remoteAddress ?? '';
-      const count = (fromAddress.get(address) ?? 0) + 1;
-      if (count > limits.perAddress) {
+      const key = socketSeat(socket);
+      if (!this.sockets.add(key, socket.remoteAddress ?? '', () => socket.destroy())) {
         socket.destroy();
         return;
       }
-      fromAddress.set(address, count);
       socket.once('close', () => {
-        const left = (fromAddress.get(address) ?? 1) - 1;
-        if (left > 0) fromAddress.set(address, left);
-        else fromAddress.delete(address);
+        this.sockets.remove(key);
+        this.socketDevices.delete(key);
       });
     });
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FEED_MESSAGE, clientTracking: false });
@@ -501,8 +543,12 @@ export class NetworkServer {
     this.wss = null;
     this.updateConnected();
     if (!server) return Promise.resolve();
+    this.sockets.closeWaiting();
     return new Promise((resolve) => {
       server.close(() => {
+        this.sockets.clear();
+        this.socketDevices.clear();
+        this.feeds.clear();
         resolve();
       });
       server.closeAllConnections();
@@ -514,6 +560,13 @@ export class NetworkServer {
     this.devices = new Map(list.map((d) => [d.tokenHash, d]));
     const ids = new Map(list.map((d) => [d.id, d]));
     this.uploads?.keepDevices(new Set(ids.keys()));
+    for (const [key, known] of this.socketDevices) {
+      for (const id of known.ids) if (!ids.has(id)) known.ids.delete(id);
+      if (known.ids.size === 0) {
+        this.socketDevices.delete(key);
+        known.release();
+      }
+    }
     for (const c of this.clients) {
       if (!c.device) continue;
       const now = ids.get(c.device.id);
@@ -637,6 +690,13 @@ export class NetworkServer {
         this.json(res, 400, { ok: false, message: 'Drashti does not serve that path.' });
         return;
       }
+      const device = this.authenticate(req) ?? this.linked(req, segments);
+      if (device) this.protectConnection(req, device.id);
+      else if (this.letIn && this.sockets.openFull(socketSeat(req.socket))) {
+        this.capacityBusy();
+        this.json(res, 503, { ok: false, message: PAIRED_SEATS_BUSY });
+        return;
+      }
       void this.api(req, res, segments, address);
       return;
     }
@@ -647,6 +707,16 @@ export class NetworkServer {
     }
     if (!this.perAddress.take(address)) {
       this.json(res, 429, { ok: false, message: 'Too many requests: wait a moment.' });
+      return;
+    }
+    // Browser pages and their assets must still boot to read the saved pairing. Their API requests prove it.
+    if (
+      (path === '/' || path === '/pair') &&
+      !req.headers.accept?.includes('text/html') &&
+      this.sockets.openFull(socketSeat(req.socket))
+    ) {
+      this.capacityBusy();
+      this.json(res, 503, { ok: false, message: PAIRED_SEATS_BUSY });
       return;
     }
     this.serveFile(req, res, path);
@@ -820,6 +890,7 @@ export class NetworkServer {
       throw new HttpError(answer.status, answer.message);
     }
     this.addDevice(answer.device);
+    this.protectConnection(req, answer.device.id);
     this.json(res, 200, {
       ok: true,
       token: answer.token,
@@ -939,21 +1010,23 @@ export class NetworkServer {
       return;
     }
     const address = req.socket.remoteAddress ?? '';
-    const fromHere = [...this.clients].filter((c) => c.address === address).length;
-    if (!this.wss || this.clients.size >= MAX_CLIENTS || fromHere >= MAX_CLIENTS_PER_ADDRESS) {
+    if (!this.wss || !this.feeds.add(socket, address, () => socket.destroy())) {
       refuse(503, 'Service Unavailable');
       return;
     }
+    socket.once('close', () => this.feeds.remove(socket));
     this.wss.handleUpgrade(req, socket, head, (ws) => {
-      this.onConnection(ws, address);
+      this.onConnection(ws, address, socket, socketSeat(req.socket));
     });
   }
 
-  private onConnection(ws: WebSocket, address: string): void {
+  private onConnection(ws: WebSocket, address: string, socket: Duplex, seat: string): void {
     const client: Client = {
       id: randomUUID(),
       ws,
       address,
+      socket,
+      seat,
       device: null,
       currentLowerThirdMotions: false,
       alive: true,
@@ -1015,6 +1088,11 @@ export class NetworkServer {
       }
       clearTimeout(hello);
       client.device = device;
+      this.sockets.protect(client.seat);
+      const http = this.socketDevices.get(client.seat);
+      this.socketDevices.delete(client.seat);
+      http?.release();
+      this.feeds.protect(client.socket);
       client.currentLowerThirdMotions = message.lowerThirdMotions === PHONE_LOWER_THIRD_MOTIONS;
       this.send(client, { type: 'welcome', device: { name: device.name, kind: device.kind } });
       this.sendSnapshot(client);

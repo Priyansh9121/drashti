@@ -39,6 +39,7 @@ export interface LinkAnswers {
 }
 
 export type FromLinkWorker =
+  | { type: 'busy' }
   | { type: 'started'; result: LinkStartResult }
   | { type: 'stopped' }
   | { type: 'ask'; id: number; question: LinkQuestion }

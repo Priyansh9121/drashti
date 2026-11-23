@@ -1253,7 +1253,7 @@ it('admits a paired device after waiting feeds from many loopback addresses', as
   const { port, server: network } = await start();
   class LocalFeed extends EventEmitter {
     readonly OPEN = WebSocket.OPEN;
-    readyState = WebSocket.OPEN;
+    readyState: number = WebSocket.OPEN;
     readonly bufferedAmount = 0;
     readonly sent: ToDevice[] = [];
     send(text: string): void {

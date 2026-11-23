@@ -81,3 +81,18 @@ it('admits paired feeds up to the address cap by giving waiting feeds their plac
   expect(seats.add(12, '127.0.0.1', () => closed.push(12))).toBe(false);
   expect(closed).toEqual([8, 9]);
 });
+
+it('leaves room for ten devices saying hello together from this computer', () => {
+  const closed: number[] = [];
+  const seats = new PairedSeats<number>(
+    { total: 100, perAddress: 10, open: 20, openPerAddress: 10, replaceWaitingAtAddressLimit: true },
+    () => undefined,
+  );
+  for (let i = 0; i < 10; i++) expect(seats.add(i, '127.0.0.1', () => closed.push(i))).toBe(true);
+  expect(closed).toEqual([]);
+  expect(seats.add(10, '127.0.0.1', () => closed.push(10))).toBe(true);
+  expect(closed).toEqual([0]);
+  for (let i = 1; i <= 10; i++) seats.protect(i);
+  expect(seats.add(11, '127.0.0.1', () => closed.push(11))).toBe(false);
+  expect(closed).toEqual([0]);
+});

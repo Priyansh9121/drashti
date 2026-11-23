@@ -1,3 +1,4 @@
+import { PAIRED_SEATS_NOTICE } from './paired-seats';
 import type { OscAction } from '../osc/mapping';
 import { nativeDeckMotion, stepCount } from '../../shared/deck';
 import { deckSlideAt } from '../../shared/deck-show';
@@ -222,6 +223,7 @@ export interface NetworkDeps {
   /** The status changed: the operator window is told. */
   changed(status: NetworkStatus): void;
   log(level: 'info' | 'warn', message: string): void;
+  notice?(text: string): void;
   now(): number;
   /**
    * Whether Drashti is let in (Session 54, access by Gmail): while it is not, every device's request, every pairing
@@ -711,6 +713,9 @@ export class NetworkService implements EngineTransport {
         return;
       case 'resync':
         worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
+        return;
+      case 'busy':
+        this.deps.notice?.(PAIRED_SEATS_NOTICE);
         return;
       case 'log':
         this.deps.log(m.level, `Network: ${m.message}`);

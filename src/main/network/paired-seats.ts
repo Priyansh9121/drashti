@@ -4,6 +4,7 @@ export interface SeatLimits {
   perAddress: number;
   open: number;
   openPerAddress: number;
+  replaceWaitingAtAddressLimit?: boolean;
 }
 
 interface Seat<T> {
@@ -27,11 +28,16 @@ export class PairedSeats<T> {
     const here = all.filter((s) => s.address === address);
     const waiting = all.filter((s) => s.protected === 0);
     const waitingHere = waiting.filter((s) => s.address === address);
-    if (here.length >= this.limits.perAddress) {
+    const addressFull = here.length >= this.limits.perAddress;
+    if (
+      addressFull &&
+      this.limits.openPerAddress === this.limits.perAddress &&
+      !this.limits.replaceWaitingAtAddressLimit
+    ) {
       this.busy();
       return false;
     }
-    const local = waitingHere.length >= this.limits.openPerAddress;
+    const local = addressFull || waitingHere.length >= this.limits.openPerAddress;
     const full = all.length >= this.limits.total || waiting.length >= this.limits.open;
     if (local || full) {
       this.busy();
