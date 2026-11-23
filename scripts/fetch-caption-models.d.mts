@@ -11,6 +11,10 @@ export interface CaptionModelSource {
   licence: string;
   /** What it is, in a few words. */
   what: string;
+  /** The environment setting that may give another address for it (one per pack), checked as `releases` says. */
+  urlSetting?: string;
+  /** With a setting: the release pages' path an address set must be under (one tag, then the same file name). */
+  releases?: string;
 }
 export const CAPTION_MODELS: Readonly<Record<string, CaptionModelSource>>;
 export const DEFAULT_CACHE: string;
@@ -24,5 +28,7 @@ export function fetchCaptionModel(
     pause: (ms: number) => Promise<unknown>;
     table?: Readonly<Record<string, CaptionModelSource>>;
     checkout?: string;
+    /** Where the address settings are read (process.env when left out). */
+    env?: Readonly<Record<string, string | undefined>>;
   },
 ): Promise<string>;

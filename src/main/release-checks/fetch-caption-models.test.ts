@@ -269,3 +269,78 @@ describe('fetchCaptionModel', () => {
     expect(existsSync(folder) ? readdirSync(folder) : []).toEqual([]);
   });
 });
+
+describe("a pack's address setting (where the packs are put on Drashti's GitHub is the release lead's choice)", () => {
+  const RELEASES = '/Priyansh9121/drashti/releases/download/';
+  const PACK: CaptionModelSource = {
+    ...SOURCE,
+    url: `https://github.com${RELEASES}v1.0.0-alpha.22/placeholder-pack.zip`,
+    hosts: ['github.com', 'release-assets.githubusercontent.com'],
+    urlSetting: 'DRASHTI_CAPTION_PACK_URL_PLACEHOLDER',
+    releases: RELEASES,
+  };
+  const PACKS = { placeholder: PACK };
+
+  it('names one setting per pack, and none for the small model (models.ts is its only source)', () => {
+    expect(CAPTION_MODELS['pack-gu-indicconformer-int8']?.urlSetting).toBe('DRASHTI_CAPTION_PACK_URL_GU');
+    expect(CAPTION_MODELS['pack-hi-indicconformer-int8']?.urlSetting).toBe('DRASHTI_CAPTION_PACK_URL_HI');
+    expect(CAPTION_MODELS['pack-gu-indicconformer-int8']?.releases).toBe(RELEASES);
+    expect(CAPTION_MODELS['whisper-small']?.urlSetting).toBeUndefined();
+  });
+
+  it('downloads from the address set: another release page of the same repository, the same file name', async () => {
+    const elsewhere = `https://github.com${RELEASES}caption-packs-2026.11.24/placeholder-pack.zip`;
+    const path = await fetchCaptionModel('placeholder', {
+      cacheDir,
+      table: PACKS,
+      env: { DRASHTI_CAPTION_PACK_URL_PLACEHOLDER: elsewhere },
+      fetch: stand({ [elsewhere]: ok(BODY) }),
+      pause,
+    });
+    expect(asked).toEqual([elsewhere]);
+    expect(readFileSync(path)).toEqual(BODY);
+  });
+
+  it('uses the pinned address when the setting is empty', async () => {
+    await fetchCaptionModel('placeholder', {
+      cacheDir,
+      table: PACKS,
+      env: { DRASHTI_CAPTION_PACK_URL_PLACEHOLDER: '' },
+      fetch: stand({ [PACK.url]: ok(BODY) }),
+      pause,
+    });
+    expect(asked).toEqual([PACK.url]);
+  });
+
+  it.each([
+    ['another repository', `https://github.com/someone/drashti/releases/download/v1/placeholder-pack.zip`],
+    ['another file name', `https://github.com${RELEASES}v1.0.0-alpha.22/other-pack.zip`],
+    ['a folder inside the release', `https://github.com${RELEASES}v1/x/placeholder-pack.zip`],
+    ['another host', `https://downloads.example.org${RELEASES}v1/placeholder-pack.zip`],
+    ['plain http', `http://github.com${RELEASES}v1/placeholder-pack.zip`],
+    ['a query', `https://github.com${RELEASES}v1/placeholder-pack.zip?x=1`],
+    ['not an address', 'placeholder-pack.zip'],
+  ])('refuses an address set to %s before asking anything', async (_what, url) => {
+    await expect(
+      fetchCaptionModel('placeholder', {
+        cacheDir,
+        table: PACKS,
+        env: { DRASHTI_CAPTION_PACK_URL_PLACEHOLDER: url },
+        fetch: stand({ [url]: ok(BODY) }),
+        pause,
+      }),
+    ).rejects.toThrow(/refused/u);
+    expect(asked).toEqual([]);
+  });
+
+  it('never moves a model whose source names no setting', async () => {
+    await fetchCaptionModel('placeholder', {
+      cacheDir,
+      table: TABLE,
+      env: { DRASHTI_CAPTION_PACK_URL_PLACEHOLDER: `https://github.com${RELEASES}v1/placeholder-pack.zip` },
+      fetch: stand({ [SOURCE.url]: ok(BODY) }),
+      pause,
+    });
+    expect(asked).toEqual([SOURCE.url]);
+  });
+});
