@@ -40,6 +40,8 @@ export interface BehindTheLock {
 export async function prepareTheLock(o: {
   version: string;
   selfTest: boolean;
+  /** The tests' placeholder computer name (DRASHTI_TEST_COMPUTER_NAME, never when packaged): the list's name for it. */
+  computerName?: string;
   /** The appearance's window colour, for the lock window. */
   background: () => string;
   /** Whether a request comes from the operator window: a self-test keeps its controls locked. */
@@ -85,7 +87,7 @@ export async function prepareTheLock(o: {
         url: target.url,
         publicKey: target.publicKey,
         local: target.local,
-        computer: accessComputer(computer.id, o.version, process.platform),
+        computer: accessComputer(computer.id, o.version, process.platform, o.computerName),
         transport: electronTransport,
         // Never at or below the last one sent, whatever this computer's clock does (kept in the data folder); this
         // computer's clock when it cannot be kept, never a call that fails to go.

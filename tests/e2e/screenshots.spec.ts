@@ -3123,7 +3123,9 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
  */
 test('the Drashti Manual’s pictures: the manual, the guides, the levels, a timer’s and a message’s look, More tools and its tools, the File menu’s settings and a kirtan bundle (x37)', async () => {
   test.setTimeout(240_000);
-  const { app, userData } = await launchApp();
+  // A placeholder computer name: Report a Problem's review names the computer (alpha.21's picture run showed this
+  // Mac's own name there; the OCR read-back caught it).
+  const { app, userData } = await launchApp({ DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Mandir Mac' });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await running(win);
@@ -3253,7 +3255,8 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   await expect(report.getByTestId('report-review-text')).toContainText('The time bar');
   await expect(report.getByTestId('report-review-text')).toContainText('Markers');
   await expect(report.getByTestId('report-review-file')).toHaveCount(1);
-  // Review only: no Send press, attachment picture or real identity.
+  // Review only: no Send press, attachment picture or real identity (the computer named by the placeholder).
+  await expect(report.getByTestId('report-review-text')).toContainText('Computer: Placeholder Mandir Mac');
   await dialogShot('report-problem', 'manual-report-problem');
   await app.close();
 });
