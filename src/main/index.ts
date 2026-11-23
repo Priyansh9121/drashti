@@ -3520,7 +3520,7 @@ function start(): void {
   let youtubeService: YouTubeService | undefined = undefined;
   let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   // File › Speaker's Language is built again when the language changes (alpha.22): set once the menu is made.
-  let captionsMenuChanged: (() => void) | undefined;
+  let captionsMenuChanged: () => void = () => undefined;
   let conversionActivityChanged: (() => void) | undefined;
   // Trim's background work (Session 57: finished cuts checked, accepted cuts carried on, unused cuts swept), told
   // when the stream changes.
@@ -3732,8 +3732,12 @@ function start(): void {
                 ? languageModelFile(captionsData, own.id)
                 : modelFile(captionsData, captions.selectedModel());
             },
+            // Asked before every start of the program: a language's own model not ready is never loaded.
+            modelProblem: (language) => captions.modelProblem(language),
             fallback: (language) =>
               captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
+            // The tuned language models are decoded without timestamps (alpha.22).
+            timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
             timing: () => captions.timing(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             log,
@@ -3754,7 +3758,7 @@ function start(): void {
       // File › Speaker's Language ticks the language as it is (alpha.22).
       if (view.settings.language !== speakerLanguageTicked) {
         speakerLanguageTicked = view.settings.language;
-        captionsMenuChanged?.();
+        captionsMenuChanged();
       }
     },
     languageModels,

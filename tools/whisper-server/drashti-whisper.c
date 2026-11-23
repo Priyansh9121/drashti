@@ -5,7 +5,8 @@
  * answers as whisper.cpp's whisper-server does (the program Drashti runs on Windows), for what Drashti asks:
  *   GET  /health     200 {"status":"ok"} (the model is loaded before it listens)
  *   POST /inference  multipart/form-data: file (a 16 kHz mono 16-bit WAV), language ("auto" or a code),
- *                    temperature, temperature_inc, no_language_probabilities; the reply is whisper-server's
+ *                    temperature, temperature_inc, no_language_probabilities, no_timestamps ("true" for a model
+ *                    trained without timestamps, as whisper-server reads it: alpha.22); the reply is whisper-server's
  *                    verbose_json: language, language_probabilities, segments with their words (tokens).
  * It listens on 127.0.0.1 only, one request at a time, and writes nothing it hears anywhere (no log, no file).
  * Both routes need a private --request-path prefix chosen by Drashti for this process.
@@ -344,6 +345,8 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
     return;
   }
   char language[16] = "en", temperature[32] = "0", temperature_inc[32] = "0.2", no_probs[16] = "false";
+  char no_times[16] = "false";
+  if (field(ps, n, "no_timestamps")) text_of(field(ps, n, "no_timestamps"), no_times, sizeof no_times);
   if (field(ps, n, "language")) text_of(field(ps, n, "language"), language, sizeof language);
   if (field(ps, n, "temperature")) text_of(field(ps, n, "temperature"), temperature, sizeof temperature);
   if (field(ps, n, "temperature_inc")) text_of(field(ps, n, "temperature_inc"), temperature_inc, sizeof temperature_inc);
@@ -369,6 +372,12 @@ static void inference(int fd, const char *head, const char *body, size_t size) {
   wp.detect_language = false;
   wp.temperature = strtof(temperature, NULL);
   wp.temperature_inc = strtof(temperature_inc, NULL);
+  /* A model trained without timestamps (alpha.22, the tuned Gujarati and Hindi ones): <|notimestamps|>, and no
+     token times (whisper-server leaves them off then too); Drashti gives such words their whole clip. */
+  if (strcmp(no_times, "true") == 0) {
+    wp.no_timestamps = true;
+    wp.token_timestamps = false;
+  }
   if (whisper_full(ctx, wp, pcm, count) != 0) {
     free(pcm);
     reply(fd, 500, "{\"error\":\"failed to process audio\"}");

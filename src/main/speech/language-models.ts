@@ -36,6 +36,8 @@ export interface LanguageModelEntry {
   licence: string;
   /** Whether a failed piece is tried again warmer (whisper's fallback), as for the general models. */
   fallback: boolean;
+  /** Whether it is decoded with timestamps: false for a model trained without them (the vasista22 tunes). */
+  timestamps: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export function parseLanguageModelList(raw: unknown): LanguageModelEntry[] {
     if (typeof item !== 'object' || item === null) continue;
     const e = item as Record<string, unknown>;
     const { id, language, name, bytes, sha256, licence, fallback } = e;
+    const timestamps = e['timestamps'] ?? true;
     if (
       typeof id !== 'string' ||
       !ID.test(id) ||
@@ -71,11 +74,12 @@ export function parseLanguageModelList(raw: unknown): LanguageModelEntry[] {
       !SHA256.test(sha256) ||
       typeof licence !== 'string' ||
       licence.trim() === '' ||
-      typeof fallback !== 'boolean'
+      typeof fallback !== 'boolean' ||
+      typeof timestamps !== 'boolean'
     )
       continue;
     if (out.some((o) => o.id === id || o.sha256 === sha256)) continue;
-    out.push({ id, language, name, bytes, sha256, licence, fallback });
+    out.push({ id, language, name, bytes, sha256, licence, fallback, timestamps });
   }
   return out;
 }

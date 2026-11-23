@@ -524,9 +524,7 @@ describe('a language model decoded without timestamps (alpha.22: the tuned model
     expect(fields.length).toBeGreaterThan(0);
     expect(fields.every((f) => f === 'true')).toBe(true);
     const final = heard.find((h) => h.final);
-    expect(final && final.words.every((w) => w.startAt === final.startAt && w.endAt === final.endAt)).toBe(
-      true,
-    );
+    expect(final?.words.every((w) => w.startAt === final.startAt && w.endAt === final.endAt)).toBe(true);
     expect(final && final.endAt - final.startAt).toBeGreaterThan(900);
   });
 

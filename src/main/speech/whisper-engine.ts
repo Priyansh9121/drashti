@@ -30,8 +30,18 @@ export interface WhisperEngineOptions {
   program: () => string | null;
   /** The model file for the speaker's language (alpha.22: a language's own model, or the general one). */
   model: (language: SpeechLanguage | 'auto') => string;
+  /**
+   * Why the model for this language may not be used now (alpha.22: a language's own model missing, or changed since
+   * it was checked), or null. Asked before every start of the program, a restart after a rest too: never loaded then.
+   */
+  modelProblem?: (language: SpeechLanguage | 'auto') => string | null;
   /** Whether a failed piece is tried again warmer (whisper's fallback): off for the large model, which then loops less. */
   fallback: (language: SpeechLanguage | 'auto') => boolean;
+  /**
+   * Whether the model is decoded with timestamps (alpha.22): the tuned language models are not (they were trained
+   * with <|notimestamps|>), so the engine asks for none and gives their words the clip's times. Yes when left out.
+   */
+  timestamps?: (language: SpeechLanguage | 'auto') => boolean;
   /**
    * Live timing on this computer (alpha.22): read once at each start. Without it (or for a test, the fixed values
    * below), the timing captions always had.
@@ -134,25 +144,34 @@ export function wordsOf(
   clipAt: number,
   clipEndAt: number,
   captured?: (seconds: number, beginning: boolean) => number,
+  /** Decoded without timestamps (alpha.22: the tuned models): each word is given its whole clip, never made-up times. */
+  coarse = false,
 ): HeardWord[] {
   const words: { text: string; start: number; end: number; p: number[] }[] = [];
+  // A token that is only a space ends the word before it: whisper has no Gujarati tokens joined to a space before
+  // them, so between Gujarati words the space comes as a token of its own (alpha.22, cap-route-w's finding).
+  let spaced = false;
   for (const segment of reply.segments ?? []) {
     // Silence the engine still wrote something for.
     if ((segment.no_speech_prob ?? 0) > 0.6) continue;
     for (const token of segment.words ?? []) {
       const text = token.word;
-      if (text.trim() === '') continue;
+      if (text.trim() === '') {
+        spaced = true;
+        continue;
+      }
       const from = token.start ?? 0;
       const to = token.end ?? from;
       const start = captured ? captured(from, true) : clipAt + from * 1000;
       const end = captured ? captured(to, false) : clipAt + to * 1000;
       const last = words.at(-1);
       // A token without a space before it belongs to the word before it (a letter's second part, punctuation).
-      if (last && !/^\s/.test(text)) {
+      if (last && !spaced && !/^\s/.test(text)) {
         last.text += text;
         last.end = Math.max(last.end, end);
         last.p.push(token.probability ?? 1);
       } else words.push({ text: text.trim(), start, end, p: [token.probability ?? 1] });
+      spaced = false;
     }
   }
   const out: HeardWord[] = [];
@@ -162,8 +181,8 @@ export function wordsOf(
     const text = w.text.trim().normalize('NFC');
     // The engine's notes, not words: [BLANK_AUDIO], (music), ♪…
     if (text === '' || /^[[(*♪].*[\])*♪]$/u.test(text) || text.includes('�')) continue;
-    const startAt = Math.min(clipEndAt, Math.max(lastStart, w.start));
-    const endAt = Math.min(clipEndAt, Math.max(startAt, lastEnd, w.end));
+    const startAt = coarse ? clipAt : Math.min(clipEndAt, Math.max(lastStart, w.start));
+    const endAt = coarse ? clipEndAt : Math.min(clipEndAt, Math.max(startAt, lastEnd, w.end));
     const confidence = w.p.reduce((a, b) => a + b, 0) / w.p.length;
     out.push({ text, startAt, endAt, confidence: Math.min(1, Math.max(0, confidence)) });
     lastStart = startAt;
@@ -242,6 +261,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       let rest: NodeJS.Timeout | null = null;
       let retrySound: NodeJS.Timeout | null = null;
       let allowFallback = true;
+      let withTimestamps = true;
       const abort = new AbortController();
       // The noise floor, learnt as it goes: speech is well above it.
       let floor = 300;
@@ -266,6 +286,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         form.append('response_format', 'verbose_json');
         form.append('temperature', '0');
         if (!allowFallback) form.append('temperature_inc', '0');
+        if (!withTimestamps) form.append('no_timestamps', 'true');
         form.append('language', language);
         // The decode already reports its language. Asking for probabilities runs detection again.
         form.append('no_language_probabilities', 'true');
@@ -334,8 +355,12 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           }
           const heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
           if (heardIn === null) return;
-          const words = wordsOf(asked.reply, clipAt, clipEndAt, (seconds, beginning) =>
-            capturedAt(captured, seconds, beginning),
+          const words = wordsOf(
+            asked.reply,
+            clipAt,
+            clipEndAt,
+            (seconds, beginning) => capturedAt(captured, seconds, beginning),
+            !withTimestamps,
           );
           if (final && words.length === 0) return;
           const heard: Heard = {
@@ -424,6 +449,11 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           to.state({ phase: 'failed', message: 'This copy of Drashti has no captions engine.' });
           return;
         }
+        const problem = o.modelProblem?.(language) ?? null;
+        if (problem !== null) {
+          to.state({ phase: 'failed', message: problem });
+          return;
+        }
         to.state({ phase: 'starting' });
         const port = await freePort().catch(() => 0);
         if (stopped) return;
@@ -453,6 +483,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         // The Windows server has an optional public files directory. Drashti serves no files.
         if (process.platform === 'win32') args.push('--public', '');
         allowFallback = o.fallback(language);
+        withTimestamps = o.timestamps?.(language) ?? true;
         const started = run(program, args);
         child = started;
         started.once('exit', (code) => {

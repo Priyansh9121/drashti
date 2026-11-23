@@ -335,6 +335,15 @@ export class CaptionsService {
     return own?.phase === 'ready' ? own.entry : null;
   }
 
+  /**
+   * Why the model for this language may not be used now (its own model chosen but not here, changed or unknown),
+   * or null: asked again before every start of the engine.
+   */
+  modelProblem(language: SpeechLanguage | 'auto'): string | null {
+    const own = this.ownModel(language);
+    return own === null || own.phase === 'ready' ? null : own.message;
+  }
+
   /** The live timing on this computer. */
   timing(): CaptionTiming {
     return this.tuning.timing;
@@ -416,9 +425,11 @@ export class CaptionsService {
   private choose(language: LanguageModelLanguage, id: string | null, always = false): void {
     const was = this.tuning.languageModels[language] ?? null;
     if (was === id && !always) return;
-    const languageModels = { ...this.tuning.languageModels };
-    if (id === null) delete languageModels[language];
-    else languageModels[language] = id;
+    const languageModels: CaptionsTuning['languageModels'] = {};
+    for (const each of LANGUAGE_MODEL_LANGUAGES) {
+      const chosen = each === language ? id : (this.tuning.languageModels[each] ?? null);
+      if (chosen !== null) languageModels[each] = chosen;
+    }
     const next = { ...this.tuning, languageModels };
     writeCaptionsTuning(this.deps.userData, next);
     this.tuning = next;
