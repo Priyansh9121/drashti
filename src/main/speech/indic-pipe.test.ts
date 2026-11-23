@@ -6,20 +6,22 @@ import { openIndicPipe } from './indic-pipe';
 
 function child() {
   const p = new EventEmitter();
-  return Object.assign(p, {
+  const kill = vi.fn();
+  const process = Object.assign(p, {
     stdout: new PassThrough(),
     stdin: new PassThrough(),
     stderr: new PassThrough(),
-    kill: vi.fn(),
+    kill,
     pid: 123,
     exitCode: null,
   }) as unknown as ChildProcess;
+  return { process, kill };
 }
 const files = { model: '/pack/model.onnx', tokens: '/pack/tokens.txt', frontend: '/pack/frontend.bin' };
 
 describe('the supervised recogniser pipe', () => {
   it('waits for readiness, sends PCM, accepts one answer and kills on close', async () => {
-    const p = child();
+    const { process: p, kill } = child();
     const spawn = vi.fn((_program: string, _args: string[]) => p);
     const opening = openIndicPipe({
       program: '/helper',
@@ -43,10 +45,10 @@ describe('the supervised recogniser pipe', () => {
     p.stdout?.emit('data', Buffer.from('{"language":"gu","words":[]}\n'));
     await expect(request).resolves.toEqual({ language: 'gu', words: [] });
     pipe.close();
-    expect(p.kill).toHaveBeenCalledOnce();
+    expect(kill).toHaveBeenCalledOnce();
   });
   it('rejects pending work when stopped, then ignores a late answer', async () => {
-    const p = child();
+    const { process: p } = child();
     const opening = openIndicPipe({
       program: '/helper',
       files,
@@ -68,7 +70,7 @@ describe('the supervised recogniser pipe', () => {
     await rejected;
   });
   it('fails closed for oversized output or missing below-show priority', async () => {
-    const p = child();
+    const { process: p, kill } = child();
     const opening = openIndicPipe({
       program: '/helper',
       files,
@@ -79,8 +81,8 @@ describe('the supervised recogniser pipe', () => {
     const rejected = expect(opening).rejects.toThrow('protocol');
     p.stdout?.emit('data', Buffer.alloc(65537, 32));
     await rejected;
-    expect(p.kill).toHaveBeenCalledOnce();
-    const q = child();
+    expect(kill).toHaveBeenCalledOnce();
+    const { process: q, kill: killQ } = child();
     await expect(
       openIndicPipe({
         program: '/helper',
@@ -92,6 +94,6 @@ describe('the supervised recogniser pipe', () => {
         },
       }),
     ).rejects.toThrow('priority');
-    expect(q.kill).toHaveBeenCalledOnce();
+    expect(killQ).toHaveBeenCalledOnce();
   });
 });

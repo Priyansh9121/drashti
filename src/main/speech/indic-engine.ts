@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { SPEECH_RATE, type Heard } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
-import type { PcmSource } from './whisper-engine';
 import { indicWords, type IndicFiles, type IndicLanguage } from './indic-protocol';
 import { openIndicPipe, type IndicPipe, type IndicPipeOptions } from './indic-pipe';
 
@@ -18,7 +17,9 @@ export interface IndicEngineOptions {
     language: IndicLanguage,
     signal?: AbortSignal,
   ): { files: IndicFiles; release(): void } | null | Promise<{ files: IndicFiles; release(): void } | null>;
-  sound: PcmSource;
+  sound: {
+    open(chunk: (samples: Int16Array, endAt: number, startAt?: number) => void): (() => void) | null;
+  };
   log: { info(message: string): void; warn(message: string): void };
   threads?: number;
   open?: (options: IndicPipeOptions) => Promise<IndicPipe>;
@@ -78,7 +79,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       }
       const allowed = (): boolean => {
         try {
-          return gate.allowed() === true;
+          return gate.allowed();
         } catch {
           return false;
         }
@@ -92,6 +93,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       let controller: AbortController | null = null;
       let closeSound: (() => void) | null = null;
       let busy = false;
+      const resting = (): boolean => busy;
       let gateHeld = !allowed();
       let slowInARow = 0;
       let phrase: Growing | null = null;
@@ -186,7 +188,6 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             return;
           }
           const heardIn = chosen;
-          if (heardIn === null) return;
           const words = indicWords(asked.reply, chosen, clipAt, clipEndAt, (seconds, beginning) =>
             capturedAt(captured, seconds, beginning),
           );
@@ -204,7 +205,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           };
           to.heard(heard);
         } catch {
-          if (!ended() && !busy && mine === generation) fail();
+          if (!ended() && !resting() && mine === generation) fail();
         } finally {
           working = false;
           if (!ended()) setImmediate(() => void pump());
@@ -321,7 +322,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             signal: abort.signal,
             onExit: letGo,
             failed: () => {
-              if (!ended() && !busy && mine === generation) fail();
+              if (!ended() && !resting() && mine === generation) fail();
             },
           });
           if (ended() || mine !== generation || !allowed()) {

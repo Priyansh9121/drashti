@@ -54,9 +54,9 @@ test('imported Route C model decodes PCM through the native helper into the spee
         };
       },
     },
-    log: { info() {}, warn() {} },
+    log: { info: () => undefined, warn: () => undefined },
   });
-  const hub = createSpeechHub({ engine, log: { info() {}, warn() {} } });
+  const hub = createSpeechHub({ engine, log: { info: () => undefined, warn: () => undefined } });
   const phrases: Heard[] = [];
   let heard: ((phrase: Heard) => void) | undefined;
   const final = new Promise<Heard>((done) => {

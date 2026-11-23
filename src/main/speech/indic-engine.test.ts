@@ -12,9 +12,9 @@ describe('Route C behind the speech engine seam', () => {
       program: () => '/native',
       acquire,
       sound: { open },
-      log: { info() {}, warn() {} },
+      log: { info: () => undefined, warn: () => undefined },
     });
-    const stop = engine.start('auto', { heard() {}, state });
+    const stop = engine.start('auto', { heard: () => undefined, state });
     expect(acquire).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
     expect(state).toHaveBeenLastCalledWith(expect.objectContaining({ phase: 'failed' }));
@@ -39,7 +39,7 @@ describe('Route C behind the speech engine seam', () => {
           return () => undefined;
         },
       },
-      log: { info() {}, warn() {} },
+      log: { info: () => undefined, warn: () => undefined },
       open: () =>
         Promise.resolve({
           decode: () => Promise.resolve({ language: 'gu', words: [{ w: 'આકાર', start: 0, end: 0.08 }] }),
