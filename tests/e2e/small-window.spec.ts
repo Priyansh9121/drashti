@@ -52,8 +52,13 @@ for (const mode of ['pro', 'simple'] as const) {
         // Check a fresh layout and the narrowest remembered column, at each window size and in both modes.
         await splitter.press(columnWidth === 380 ? 'Enter' : 'Home');
         await expect(splitter).toHaveAttribute('aria-valuenow', String(columnWidth));
+        // The column's own top (since alpha.21 what scrolls is inside it: LiveColumn).
         await win.getByRole('complementary', { name: 'Live', exact: true }).evaluate((el) => {
-          el.scrollTop = 0;
+          for (const part of [
+            el,
+            ...el.querySelectorAll('[data-testid="live-scroll"], [data-testid="live-rest"]'),
+          ])
+            part.scrollTop = 0;
         });
         await expect(win.getByTestId('show-back')).toBeInViewport({ ratio: 1 });
         await expect(win.getByTestId('show-next')).toBeInViewport({ ratio: 1 });
@@ -113,7 +118,7 @@ test('Pro Mode at 1024 × 645: Audio stays inside the live column when it scroll
     await live.evaluate((el) =>
       el instanceof HTMLElement && el.dataset['still'] === 'true'
         ? (el.querySelector('[data-testid="live-rest"]')?.scrollTop ?? 0)
-        : el.scrollTop,
+        : (el.querySelector('[data-testid="live-scroll"]')?.scrollTop ?? 0),
     ),
   ).toBeGreaterThan(0);
   expect(await win.evaluate(() => document.scrollingElement?.scrollHeight)).toBe(CI_WINDOW.height);
