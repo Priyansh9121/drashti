@@ -369,3 +369,36 @@ it('bounds deeply nested protected Keynote packages before allocating an output'
     await expect(readFile(w.outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
     await noPrivateTemps(w.outputDir);
   }));
+
+describe('new extracted PDF publication', () => {
+  it('publishes exclusively and refuses an existing output without changing it', async () =>
+    inWorld(async (w) => {
+      await writePdfCopy({ ...w.request, newOnly: true });
+      expect(await readFile(w.outputPath)).toEqual(w.bytes);
+      const other = generatedPdf('Placeholder occupied output');
+      await writeFile(w.outputPath, other);
+      await expect(writePdfCopy({ ...w.request, newOnly: true })).rejects.toMatchObject({
+        code: 'output-exists',
+      });
+      expect(await readFile(w.outputPath)).toEqual(other);
+      await originalsUnchanged(w);
+      await noPrivateTemps(w.outputDir);
+    }));
+  it('leaves a file created while extraction is preparing intact', async () =>
+    inWorld(async (w) => {
+      const other = generatedPdf('Placeholder concurrent output');
+      await expect(
+        writePdfCopy(
+          { ...w.request, newOnly: true },
+          {
+            beforePublish: async () => {
+              await writeFile(w.outputPath, other);
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'output-exists' });
+      expect(await readFile(w.outputPath)).toEqual(other);
+      await noPrivateTemps(w.outputDir);
+      await originalsUnchanged(w);
+    }));
+});

@@ -4,7 +4,7 @@ import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
 import { CaseSensitive, ChevronDown, ChevronUp, WholeWord, X } from '../ui/icons';
 import { commit, select, showSlide, useEditor } from './editor-store';
-import { findMatches, matchContext, replaceMatches } from './find-replace';
+import { findMatches, matchContext, pdfFindStatus, replaceMatches } from './find-replace';
 import { finishTextEditing } from './TextBoxEditor';
 
 /*
@@ -17,6 +17,8 @@ import { finishTextEditing } from './TextBoxEditor';
 
 export function FindPanel({ onClose }: { onClose: () => void }) {
   const doc = useEditor((s) => s.doc);
+  const preparingPages = useEditor((s) => s.preparingSource);
+  const pageStatus = doc ? pdfFindStatus(doc, preparingPages) : '';
   const [query, setQuery] = useState('');
   const [replacement, setReplacement] = useState('');
   const [matchCase, setMatchCase] = useState(false);
@@ -24,8 +26,8 @@ export function FindPanel({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState(0);
   const [said, setSaid] = useState<string | null>(null);
   const matches = useMemo(
-    () => (doc ? findMatches(doc, query, { matchCase, wholeWords }) : []),
-    [doc, query, matchCase, wholeWords],
+    () => (doc ? findMatches(doc, query, { matchCase, wholeWords, preparingPages }) : []),
+    [doc, query, matchCase, wholeWords, preparingPages],
   );
   const numbers = useMemo(() => new Map(doc ? slidesOf(doc).map((s, i) => [s.id, i + 1]) : []), [doc]);
   // A new search starts at the slide shown (its first match there or after it); replacing keeps the place.
@@ -163,14 +165,21 @@ export function FindPanel({ onClose }: { onClose: () => void }) {
           Replace all
         </Button>
       </div>
+      {pageStatus && (
+        <p className="text-xs text-muted" role="status">
+          {pageStatus}
+        </p>
+      )}
       <p className="flex min-h-4 items-center gap-2 text-xs text-muted" aria-live="polite">
         <span data-testid="find-count" className="font-medium tabular-nums">
           {count}
         </span>
         {match && context && (
           <span className="min-w-0 truncate" data-testid="find-where">
-            {doc?.master?.id === match.slideId ? 'Master' : `Slide ${numbers.get(match.slideId) ?? ''}`}:{' '}
-            {context.before}
+            {doc?.master?.id === match.slideId
+              ? 'Master'
+              : `${doc?.groups.some((group) => group.slides.some((slide) => slide.id === match.slideId && slide.documentPage?.ext === 'pdf')) ? 'Page' : 'Slide'} ${numbers.get(match.slideId) ?? ''}`}
+            : {context.before}
             <mark className="rounded-sm bg-second/30 px-0.5 text-fg">{context.words}</mark>
             {context.after}
           </span>
