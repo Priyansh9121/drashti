@@ -138,4 +138,13 @@ describe('checked saved translation output', () => {
     const original = slide();
     expect(playbackTranslationSlide(original)).toBe(playbackTranslationSlide(original));
   });
+  it('holds secondary words cropped by a fill canvas or too small on a narrow output', () => {
+    const original = slide();
+    const fill = { groupId: 'hall', canvas: { width: 1024, height: 768 }, scaling: 'fill' as const };
+    const fit = { groupId: 'hall', canvas: { width: 1024, height: 768 }, scaling: 'fit' as const };
+    const narrow = { groupId: 'hall', canvas: { width: 360, height: 1080 }, scaling: 'fit' as const };
+    expect(checkedTranslationView(original, fill).elements).toEqual(original.elements);
+    expect(checkedTranslationView(original, fit).elements).toHaveLength(2);
+    expect(checkedTranslationView(original, narrow).elements).toEqual(original.elements);
+  });
 });
