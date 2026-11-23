@@ -79,6 +79,8 @@ Section 2 of `docs/parallel-run.md` has the same steps for the volunteers.
 2. Approved, the person gets an email from the owner's Gmail with a one-time **token**: 28 letters and digits in groups of four (`ABCD-EFGH-…`), and what they may use. Rejected, they are told so, by email and in the window.
 3. Under **I Have a Token**, type the Gmail and the **Token**, and press **Let This Computer In**. This computer is let in, and stays in for as long as the owner gave (below), or until the owner revokes that Gmail.
 
+If **Request Access** answers "Too many tries for now", requests work again from the next day (from 00:00 UTC).
+
 **Quit Drashti** is always there. The owner's own Gmail never uses **Request Access** (the list refuses it): the owner's computer is let in from the Sheet, with **Drashti › Let me in (the owner)…**, which emails the owner a token for **I Have a Token** (`docs/access-setup.md`, section 9).
 
 ![The lock screen once access is approved: I Have a Token, with the Gmail and the token from the email](screenshots/lock-token.png)
