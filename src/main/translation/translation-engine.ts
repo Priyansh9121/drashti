@@ -15,6 +15,12 @@ import { HelperError, TranslationHelper } from './translation-helper';
 import { pyStrip } from './python-text';
 
 const cancelled = (): HelperError => new HelperError('cancelled', 'Stopped.');
+const tooLong = (): HelperError =>
+  new HelperError('too-long', 'This text is too long for one translation. Split it into shorter lines.');
+/** The prepared words, with their JSON escapes, that one request may carry (the helper reads lines of 64 KiB). */
+export const MAX_REQUEST_TEXT_BYTES = 60_000;
+/** A lone surrogate (half of a broken emoji) as U+FFFD: the helper refuses text that is not well-formed. */
+const wellFormed = (text: string): string => text.replace(/[\ud800-\udfff]/gu, '\ufffd');
 
 /*
  * Prepare translations' engine (alpha.22, a22-mt, from Codex x92's job; x79's design, x74's trial): IndicTrans2's
@@ -151,13 +157,17 @@ export class TranslationEngine implements Translator {
         'special-token',
         'These words hold a model marker (such as </s>) and cannot be translated.',
       );
-    const prepared = preprocess(line, from);
+    const prepared = preprocess(wellFormed(line), from);
     // Nothing left to translate once prepared (only marks the pipeline drops): the line stays as it is.
     if (prepared.text === '') return line;
+    // Too long for one request: this box only, and the helper keeps running for the next box.
+    if (Buffer.byteLength(JSON.stringify(prepared.text), 'utf8') > MAX_REQUEST_TEXT_BYTES) throw tooLong();
     const route = routeFor(from, to);
     const helper = await this.ready(route, from, to, stopped);
     const tokens = await helper.translate(route, TAG_OF[from], TAG_OF[to], prepared.text, this.o.beam ?? 5);
     if (stopped()) throw cancelled();
+    // No end token: the model stopped at its length limit mid-sentence. Never a shortened draft that looks whole.
+    if (tokens.at(-1) !== '</s>') throw tooLong();
     this.restartIdle();
     return restoreSourceClockSpacing(line, postprocess(decodeTokens(tokens), to, prepared.placeholders));
   }
