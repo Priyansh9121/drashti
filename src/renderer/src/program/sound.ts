@@ -55,6 +55,15 @@ export class StreamSound {
   private readonly delay = this.ctx.createDelay(1.5);
   private readonly meter = this.ctx.createAnalyser();
   private readonly out = this.ctx.createMediaStreamDestination();
+  /**
+   * Never silent to Chromium while its sound is in use (as a cued picture's graph, render/cue-clock.ts, QA21-S5-3; the
+   * lead's limit, a22-cue): its device output hears nothing else, and 30 s after the page opened Chromium moved the
+   * whole mix to a stand-in sink paced by a timer, 0.13-0.45 of real time on CI's Mac. This constant, below half a
+   * 24-bit step, keeps the device's own real-time thread pulling it while connected; nothing reaches the mix, the
+   * encoder or a loudspeaker. Off (an idle page): no sound output is held open.
+   */
+  private readonly keep = this.ctx.createConstantSource();
+  private awake = false;
   private input: { key: string; stream: MediaStream; source: MediaStreamAudioSourceNode } | null = null;
   private own = new Map<string, OwnSound>();
   private ownOn = false;
@@ -73,19 +82,21 @@ export class StreamSound {
     this.delay.connect(this.mix);
     this.mix.connect(this.meter);
     this.mix.connect(this.out);
-    // Never silent to Chromium (as a cued picture's graph, render/cue-clock.ts, QA21-S5-3): its device output hears
-    // nothing else, and 30 s after the page opened Chromium moved the whole mix to a stand-in sink paced by a timer,
-    // 0.13-0.36 of real time on CI's Mac (a22-cue). This constant, below half a 24-bit step, keeps the device's own
-    // real-time thread pulling it; nothing reaches the mix, the encoder or a loudspeaker.
-    const keep = this.ctx.createConstantSource();
-    keep.offset.value = KEEP_OUTPUT_LEVEL;
-    keep.connect(this.ctx.destination);
-    keep.start();
+    this.keep.offset.value = KEEP_OUTPUT_LEVEL;
+    this.keep.start();
     document.body.dataset['audio'] = this.ctx.state;
     this.ctx.addEventListener('statechange', () => {
       document.body.dataset['audio'] = this.ctx.state;
     });
     void this.ctx.resume();
+  }
+
+  /** Keep the device output awake (live, recording, a sound tap listening, a cue waiting), or let it rest. */
+  keepOutputAwake(on: boolean): void {
+    if (on === this.awake) return;
+    this.awake = on;
+    if (on) this.keep.connect(this.ctx.destination);
+    else this.keep.disconnect();
   }
 
   /** The stream's sound as a track, for the encoder. */

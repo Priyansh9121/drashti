@@ -191,6 +191,12 @@ export interface ProgramContext {
   picture: boolean;
   /** Frames are wanted by the encoder (live or recording). */
   capturing: boolean;
+  /**
+   * The stream's sound is in use: live, recording, or a sound tap listening (live captions, sound recording). Only then
+   * (or while a cue waits) its sound page keeps its output awake with an inaudible constant (a22-cue, the lead's limit:
+   * an idle Drashti holds no sound output open). Left out: not in use.
+   */
+  soundInUse?: boolean;
   /** The operator is watching the preview (a port for it comes separately). */
   preview: boolean;
   /** Video out is on (x30): its port comes separately, and the page gives it each frame. Left out: off. */

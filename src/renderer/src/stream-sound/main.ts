@@ -14,8 +14,14 @@ let newest: ProgramContext | null = null;
 let inputsDone: Promise<void> = listDevices().catch(() => undefined);
 let meter: MessagePort | null = null;
 
+/** The mix's output kept awake only while its sound is in use or a cue waits (the lead's limit, a22-cue). */
+function keepAwake(state: { videoCue?: { error?: string } | null } | null): void {
+  sound.keepOutputAwake(newest?.soundInUse === true || (!!state?.videoCue && !state.videoCue.error));
+}
+
 function apply(context: ProgramContext): void {
   newest = context;
+  keepAwake(useEngine.getState().state);
   useProgram.setState({ context });
   sound.setDelay(context.soundDelayMs);
   sound.setOwnSound(context.mixOwnSound, useEngine.getState().state);
@@ -65,6 +71,7 @@ setInterval(() => {
 
 useEngine.subscribe(({ state, rev }) => {
   sound.setOwnSound(newest?.mixOwnSound ?? false, state);
+  keepAwake(state);
   document.body.dataset['rev'] = String(rev);
 });
 window.drashti.output.onTestClock(holdClock);

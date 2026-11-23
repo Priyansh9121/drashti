@@ -478,6 +478,7 @@ export class StreamService {
       mixOwnSound: this.pictureWanted() && profile.mixOwnSound,
       picture,
       capturing: this.videoInUse(),
+      ...(this.videoInUse() || this.soundListeners.size > 0 ? { soundInUse: true as const } : {}),
       preview: this.watchers.size > 0,
       ...(this.videoOutOn ? { videoOut: true as const } : {}),
       ...(this.deps.clockStyle ? { clockStyle: this.deps.clockStyle() } : {}),
@@ -1004,12 +1005,15 @@ export class StreamService {
     if (this.soundListeners.size === 1) {
       this.updateProgram();
       this.pairSpeech();
+      // Its sound is in use now (soundInUse): the pages are told.
+      this.contextChanged();
     }
     return () => {
       if (!this.soundListeners.delete(chunk) || this.soundListeners.size > 0) return;
       this.speechPort?.close();
       this.speechPort = null;
       this.updateProgram();
+      this.contextChanged();
     };
   }
 
