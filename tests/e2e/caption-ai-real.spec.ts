@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { fetchCaptionModel } from '../../scripts/fetch-caption-models.mjs';
 import { captionClips, characterErrorRate, fakeMicrophoneFile } from './caption-clips';
 import { routeCInTheApp } from './route-c-in-app';
 
@@ -12,8 +12,9 @@ import { routeCInTheApp } from './route-c-in-app';
  * (cap-winci's synthetic clips: never real speech, a recording or a microphone) as the stream's sound input
  * (route-c-in-app.ts). No stand-in engine.
  *
- * The packs are fetched by CI (scripts/fetch-caption-models.mjs, cap-winci; never in git or an installer); this spec only
- * reads the fetched copy, offline, and fails (never skips) where it is not there. The parts leave it out
+ * The packs are fetched by CI (scripts/fetch-caption-models.mjs, cap-winci: the prerelease page caption-packs-2026-11-24,
+ * SHA-256 pinned; never in git or an installer); this spec only reads the fetched copy, never downloading, and fails
+ * (never skips) where it is not there. The parts leave it out
  * (playwright.config.ts): CI runs it in a step of its own with DRASHTI_E2E_REAL_CAPTIONS=1 (ci.yml, "End-to-end and
  * installers"). Nothing here needs today's Whisper engine: Route C is the only recogniser this test asks for.
  */
@@ -44,28 +45,28 @@ const ROUTES = [
 /** Where CI keeps the fetched packs (ci.yml caches it; outside ~/.cache/drashti, which FFmpeg's cache saves whole). */
 const PACKS = join(homedir(), '.cache', 'drashti-caption-models');
 
-/** The pack zip CI fetched (cap-winci's script, offline: it checks the cached copy and never downloads). */
-function fetchedPack(id: string): string {
-  const run = spawnSync(
-    process.execPath,
-    ['scripts/fetch-caption-models.mjs', '--offline', '--cache', PACKS, id],
-    { encoding: 'utf8' },
-  );
-  const line = run.stdout
-    .split(/\r?\n/u)
-    .find((l) => l.startsWith(`${id}=`))
-    ?.slice(id.length + 1);
-  if (run.status !== 0 || !line)
+/**
+ * The pack zip CI fetched, checked again by its pinned size and SHA-256 (cap-winci's fetchCaptionModel). Read from the
+ * cache only: its fetch refuses, so a test never downloads, and a pack not fetched here fails with how to fetch it.
+ */
+async function fetchedPack(id: string): Promise<string> {
+  try {
+    return await fetchCaptionModel(id, {
+      cacheDir: PACKS,
+      fetch: () => Promise.reject(new Error('a test never downloads')),
+      pause: () => Promise.resolve(),
+    });
+  } catch (e) {
     throw new Error(
-      `The real caption pack ${id} is not fetched on this computer: run node scripts/fetch-caption-models.mjs --cache ${PACKS} ${id} first (CI does). ${run.stderr.trim()}`,
+      `The real caption pack ${id} is not fetched on this computer: run node scripts/fetch-caption-models.mjs --cache ${PACKS} ${id} first (CI does). ${(e as Error).message}`,
     );
-  return line;
+  }
 }
 
 for (const route of ROUTES) {
   test(`caption AI's real Route C (${route.name}): generated speech through the stream's sound input reaches the hall, the stage and the stream within the live limit, the stream's frames as before, and the pack goes only after the helper has stopped`, async () => {
     test.setTimeout(300_000);
-    const zip = fetchedPack(route.pack);
+    const zip = await fetchedPack(route.pack);
     const folder = test.info().outputPath('fake-microphone');
     mkdirSync(folder, { recursive: true });
     const wav = join(folder, `${route.language}-clips.wav`);
