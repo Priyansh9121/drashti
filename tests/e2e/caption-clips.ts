@@ -96,12 +96,77 @@ export function speechSpan(samples: Int16Array, rate: number): { startMs: number
   };
 }
 
-/** A clip where the fake microphone's file holds it (ms from the file's first sample). */
-export interface PlacedClip extends CaptionClip {
+/** A sound where the fake microphone's file holds it (ms from the file's first sample), and what it says. */
+export interface PlacedSound {
+  id: string;
+  text: string;
   startMs: number;
   speechStartMs: number;
   speechEndMs: number;
   endMs: number;
+}
+
+/** A clip where the fake microphone's file holds it. */
+export interface PlacedClip extends CaptionClip, PlacedSound {}
+
+/** A 16-bit PCM, one-channel WAV file of these samples. */
+function writeWav(out: string, rate: number, parts: readonly Int16Array[]): void {
+  const length = parts.reduce((n, p) => n + p.length, 0);
+  const data = Buffer.alloc(length * 2);
+  let i = 0;
+  for (const part of parts) for (const s of part) data.writeInt16LE(s, 2 * i++);
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVEfmt ', 8, 'ascii');
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36, 'ascii');
+  header.writeUInt32LE(data.length, 40);
+  writeFileSync(out, Buffer.concat([header, data]));
+}
+
+const chromiumPath = (out: string): void => {
+  if (!isAbsolute(out) || out.includes('%'))
+    throw new Error(`Chromium plays only an absolute path without '%': ${out}`);
+};
+
+/**
+ * Generated tone bursts (no voice at all) for the generated test model, which always "hears" `text`: `leadMs` of
+ * silence, then each burst (a 300 Hz tone at about -12 dBFS) and `gapMs` of silence after it, at 48 kHz.
+ */
+export function toneBurstsFile(
+  out: string,
+  o: { leadMs: number; gapMs: number; bursts: number; burstMs: number; text: string },
+): PlacedSound[] {
+  chromiumPath(out);
+  const rate = 48_000;
+  const silence = (ms: number) => new Int16Array(Math.round((ms / 1000) * rate));
+  const burst = Int16Array.from({ length: Math.round((o.burstMs / 1000) * rate) }, (_, i) =>
+    Math.round(8_000 * Math.sin((2 * Math.PI * 300 * i) / rate)),
+  );
+  const parts: Int16Array[] = [silence(o.leadMs)];
+  const placed: PlacedSound[] = [];
+  let at = o.leadMs;
+  for (let n = 1; n <= o.bursts; n++) {
+    placed.push({
+      id: `burst-${String(n)}`,
+      text: o.text,
+      startMs: at,
+      speechStartMs: at,
+      speechEndMs: at + o.burstMs,
+      endMs: at + o.burstMs,
+    });
+    parts.push(burst, silence(o.gapMs));
+    at += o.burstMs + o.gapMs;
+  }
+  writeWav(out, rate, parts);
+  return placed;
 }
 
 /**
@@ -113,8 +178,7 @@ export function fakeMicrophoneFile(
   clips: readonly CaptionClip[],
   o: { leadMs: number; gapMs: number },
 ): PlacedClip[] {
-  if (!isAbsolute(out) || out.includes('%'))
-    throw new Error(`Chromium plays only an absolute path without '%': ${out}`);
+  chromiumPath(out);
   const read = clips.map((c) => ({ clip: c, ...readWav(c.file) }));
   const rate = read[0]?.rate ?? 0;
   for (const r of read)
@@ -136,23 +200,7 @@ export function fakeMicrophoneFile(
     parts.push(r.samples, silence(o.gapMs));
     at += r.samples.length + (parts.at(-1)?.length ?? 0);
   }
-  const data = Buffer.alloc(at * 2);
-  let i = 0;
-  for (const part of parts) for (const s of part) data.writeInt16LE(s, 2 * i++);
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0, 'ascii');
-  header.writeUInt32LE(36 + data.length, 4);
-  header.write('WAVEfmt ', 8, 'ascii');
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(rate, 24);
-  header.writeUInt32LE(rate * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write('data', 36, 'ascii');
-  header.writeUInt32LE(data.length, 40);
-  writeFileSync(out, Buffer.concat([header, data]));
+  writeWav(out, rate, parts);
   return placed;
 }
 

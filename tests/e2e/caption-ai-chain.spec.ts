@@ -1,0 +1,57 @@
+import { expect, test } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { makeIndicFixture } from '../../scripts/indic-fixture.mjs';
+import { placeholderCaptionPack } from './caption-ai-fixtures';
+import { toneBurstsFile } from './caption-clips';
+import { routeCInTheApp } from './route-c-in-app';
+
+/*
+ * Route C's whole chain inside Drashti with no model downloaded (alpha.23, cap-realc): everything caption-ai-real.spec.ts
+ * runs (route-c-in-app.ts: the pack imported, findIndic, the store's real acquire, Drashti's helper with two threads
+ * below the show, the stream's sound graph, tap and port, the coordinator and three places), but the pack holds the
+ * generated test graph (scripts/indic-fixture.mjs, as indic-captions.spec.ts runs it), which "hears" its one phrase in
+ * whatever it is given. So the sound must decide when: the fake microphone's file holds generated tone bursts after a
+ * long silence (no voice, no recording), and each burst, and nothing before them, gives one settled phrase on time.
+ * A fake microphone still beeping (the file not played) is heard in the silence and fails.
+ *
+ * In its own CI step with caption-ai-real.spec.ts (DRASHTI_E2E_REAL_CAPTIONS=1, ci.yml): the parts leave both out.
+ */
+
+const LEAD_MS = 15_000;
+/** Longer than a phrase's six seconds on the screens, so each burst's phrase, the same words, is drawn anew. */
+const GAP_MS = 9_000;
+/** What the generated graph always decodes to (its tokens: "▁shape", "▁box"; the repeat across a blank is kept). */
+const HEARD = 'shape shape box';
+
+test('Route C’s whole chain in the app with the generated test model: each tone burst the stream’s sound input carries, and nothing before them, gives its phrase on the hall, the stage and the stream within the live limit; the stream’s frames as before; the pack goes only after the helper has stopped', async () => {
+  test.setTimeout(240_000);
+  const fixture = makeIndicFixture();
+  const pack = placeholderCaptionPack({
+    conformer: true,
+    files: {
+      model: fixture.model,
+      tokens: Buffer.from(fixture.tokens),
+      frontend: fixture.frontend,
+    },
+  });
+  const folder = test.info().outputPath('fake-microphone');
+  mkdirSync(folder, { recursive: true });
+  const wav = join(folder, 'tone-bursts.wav');
+  const sounds = toneBurstsFile(wav, { leadMs: LEAD_MS, gapMs: GAP_MS, bursts: 3, burstMs: 400, text: HEARD });
+  await routeCInTheApp({
+    name: 'caption-ai-chain',
+    language: 'gu',
+    model: 'placeholder-gu',
+    env: { DRASHTI_TEST_SPEECH_MODELS: pack.list },
+    pack: { kind: 'folder', path: pack.folder },
+    wav,
+    sounds,
+    leadMs: LEAD_MS,
+    gapMs: GAP_MS,
+    heard: (burst, heard) => {
+      expect(heard, `${burst.id}: the generated graph’s phrase`).toBe(HEARD);
+      return {};
+    },
+  });
+});
