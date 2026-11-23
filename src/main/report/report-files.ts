@@ -241,3 +241,24 @@ export function intakeNodeReport(job: NodeIntakeJob): NodeIntake {
   writeFileSync(join(folder, 'data.json'), JSON.stringify(data), 'utf8');
   return { ok: true, report, node: read.node };
 }
+
+// ---- Save Diagnostics' file, made in the report worker (alpha.21, logs (c)) ----
+
+/** Save Diagnostics' text: Main's (with the library's file, read only) or a node's. */
+export interface DiagnosticsTextJob {
+  kind: 'diagnostics-text';
+  main: { input: ReportDiagnosticsInput; dbFile: string } | null;
+  node: NodeDiagnosticsInput | null;
+}
+
+export type DiagnosticsTextMade = { ok: true; text: string } | { ok: false; message: string };
+
+/** Red stub: not yet. */
+export function makeDiagnosticsText(
+  job: DiagnosticsTextJob,
+  deps: Pick<ReportFilesDeps, 'openDb'>,
+): DiagnosticsTextMade {
+  void job;
+  void deps;
+  return { ok: false, message: 'not yet' };
+}
