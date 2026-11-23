@@ -82,11 +82,8 @@ describe('the stream’s picture', () => {
     // the next started a second later from the held picture, and on a still Program no fresh one came, so Stream kept
     // saying it was trying to start the encoder again while recording went on. A page given a new port sends its
     // newest picture at once (program/capture.ts), the fresh one the next encoder's words wait for.
-    // Absent before the take's fix: the red test fails at its first restart rather than at a type.
-    const watch = new PictureWatch() as PictureWatch & {
-      encoderRestarting?: (status: Parameters<typeof heardFrom>[0]) => boolean;
-    };
-    const restarting = (status: Parameters<typeof heardFrom>[0]) => watch.encoderRestarting?.(status) ?? false;
+    const watch = new PictureWatch();
+    const restarting = (status: Parameters<typeof heardFrom>[0]) => watch.encoderRestarting(status);
     const encoder = { name: 'libx264', label: 'x264', hardware: false };
     const words = 'The encoder stopped. Trying to start it again.';
     const running = { encoder, encoding: true, error: null };
