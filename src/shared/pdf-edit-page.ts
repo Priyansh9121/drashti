@@ -1,3 +1,4 @@
+import { pdfWordFont, PDF_WORD_FONT_NOTE } from './pdf-word-font';
 import { pdfParagraphs } from './pdf-paragraphs';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { NativePathCommand, ShapeElement, SlideElement } from './model';
@@ -826,9 +827,7 @@ export async function editablePdfPage(
     if (same) same.indices.push(index);
     else textItems.set(item.str, { indices: [index], next: 0 });
   }
-  const issues = [
-    'Edited PDF text uses Drashti’s available fonts; line breaks and spacing may differ from the source.',
-  ];
+  const issues = [PDF_WORD_FONT_NOTE];
   for (const [index, values] of calls) {
     if (outlinedText.has(index)) continue;
     const first = values[0],
@@ -903,14 +902,15 @@ export async function editablePdfPage(
       )
     )
       continue;
+    const font = pdfWordFont(words);
     native.set(index, {
       id: `pdf-text-${index}`,
       kind: 'text',
       text: words,
-      lang: null,
+      lang: font.lang,
       frame,
       style: {
-        fontFamily: 'Noto Sans',
+        fontFamily: font.family,
         fontSize: size,
         fontWeight: /bold|[6-9]00/u.test(first.font) ? 700 : 400,
         color: fill,
