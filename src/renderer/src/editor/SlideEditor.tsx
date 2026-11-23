@@ -102,6 +102,9 @@ const GROUPS: readonly TabItem<EditorGroup>[] = [
   { id: 'slides', label: 'Slides', icon: LayoutTemplate },
 ];
 
+/** Undo's and Redo's words, shown where the top has room for them (alpha.21: a 60rem top). */
+const WORDS_WHEN_ROOM = 'hidden @[60rem]/editor-top:inline';
+
 /**
  * When Drashti reads a page's or slide's words and shapes for editing (Session 58, PD-2): one phrase for the Preparing
  * chip, a slide's name in the list and the operator guide (operator-guide.md's PowerPoint and PDF paragraph).
@@ -471,7 +474,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       data-testid="slide-editor"
       className="flex h-screen flex-col bg-ink text-fg focus:outline-none"
     >
-      <header className="flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5">
+      {/* Undo's and Redo's words only from a 60rem top (alpha.21's fit pass: at the window's least on Windows, 884 px
+          inside, the top was 905 px and Save ran off the window); their icons alone narrower, named either way. */}
+      <header className="@container/editor-top flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5">
         <h1 id={titleId} className="min-w-24 flex-[1_1_8rem] text-sm font-bold">
           <Truncate text={`Slides of “${name}”`} />
         </h1>
@@ -491,13 +496,27 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         />
         <Tooltip content="Undo the last change" kbd={`${mod}Z`} side="bottom">
-          <Button size="sm" variant="ghost" icon={Undo2} disabled={!canUndo} onClick={undoAny}>
-            Undo
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Undo2}
+            aria-label="Undo"
+            disabled={!canUndo}
+            onClick={undoAny}
+          >
+            <span className={WORDS_WHEN_ROOM}>Undo</span>
           </Button>
         </Tooltip>
         <Tooltip content="Redo the change you undid" kbd={mac ? '⇧⌘Z' : 'Ctrl+Y'} side="bottom">
-          <Button size="sm" variant="ghost" icon={Redo2} disabled={!canRedo} onClick={redoAny}>
-            Redo
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Redo2}
+            aria-label="Redo"
+            disabled={!canRedo}
+            onClick={redoAny}
+          >
+            <span className={WORDS_WHEN_ROOM}>Redo</span>
           </Button>
         </Tooltip>
         {!pdfRowVisible && (
