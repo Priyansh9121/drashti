@@ -236,8 +236,21 @@ export class ModelPackStore {
       );
       this.listProblem = UNREADABLE_LIST;
       return;
+    } else if (this.setAsideBefore()) {
+      // A list set aside at an earlier start: still said, until the packs are imported again.
+      this.listProblem = UNREADABLE_LIST;
     }
-    this.sweep();
+    // Pack folders the list no longer names go only when the list was read: never for a missing one (review).
+    this.sweep(read.status === 'ok');
+  }
+
+  /** Whether an earlier start set an unreadable list aside. */
+  private setAsideBefore(): boolean {
+    try {
+      return readdirSync(this.root).some((name) => name.startsWith('installed.unreadable-'));
+    } catch {
+      return false;
+    }
   }
 
   close(): void {
@@ -587,8 +600,8 @@ export class ModelPackStore {
     });
   }
 
-  /** Clear an import cut short, and pack folders the list no longer names (only names Drashti makes). */
-  private sweep(): void {
+  /** Clear an import cut short, and (with a list read) pack folders it no longer names (only names Drashti makes). */
+  private sweep(unlisted: boolean): void {
     let names: string[];
     try {
       names = readdirSync(this.root);
@@ -597,7 +610,7 @@ export class ModelPackStore {
     }
     const listed = new Set(this.packs.map((p) => p.dir));
     for (const name of names)
-      if (INCOMING.test(name) || (PACK_FOLDER.test(name) && !listed.has(name)))
+      if (INCOMING.test(name) || (unlisted && PACK_FOLDER.test(name) && !listed.has(name)))
         void rm(join(this.root, name), { recursive: true, force: true }).catch(() => {
           this.deps.log.warn(`Model packs: ${name} could not be cleared yet`);
         });
