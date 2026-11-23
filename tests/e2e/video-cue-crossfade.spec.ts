@@ -298,7 +298,10 @@ test('A cue held over half a minute still starts within one frame of Go', async 
 test('Crossfade in the playlist blends both pictures and sounds without black on hall, LIVE and stream', async () => {
   const { app, win, hall, stream, audio, ids } = await setupVideoCue();
   try {
-    const streamSound = await streamSoundPage(app);
+    // The stream's own sound is not mixed here (its page is open for the preview alone), so its sound page has no
+    // crossfade gains to observe: the stream's sound through a crossfade is video-cue-cost.spec.ts's (its tones'
+    // overlap, no underflow, no jump in a fade), with the stream's own sound mixed.
+    await streamSoundPage(app);
     const made = await win.evaluate(async (ids) => {
       const d = (globalThis as PageGlobals).drashti;
       const created = await d.playlists.create('Placeholder crossfade', null, false);
@@ -322,7 +325,7 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     await cueReady(win);
     const pages = [hall, win, stream];
     // Observe real moving updates; holding a test clock cannot prove smooth playback or sound.
-    for (const page of [...pages, audio, streamSound])
+    for (const page of [...pages, audio])
       await page.evaluate(() => {
         const trace: { t: number; gains: number[] }[] = [],
           polledTrace: typeof trace = [];
@@ -380,7 +383,7 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
     expect(blue).toBeLessThanOrEqual(36 + 107 * expected(after) + 12);
     await expect.poll(async () => (await snapshot(win)).videoCrossfade ?? null).toBeNull();
     const observers = await Promise.all(
-      [...pages, audio, streamSound].map((page) =>
+      [...pages, audio].map((page) =>
         page.evaluate(() => {
           const observed = globalThis as {
             s5Fade?: { t: number; gains: number[] }[];
@@ -394,7 +397,7 @@ test('Crossfade in the playlist blends both pictures and sounds without black on
       body: Buffer.from(JSON.stringify({ fade, observers })),
       contentType: 'application/json',
     });
-    for (const page of [...pages, audio, streamSound]) {
+    for (const page of [...pages, audio]) {
       const trace = await page.evaluate(
         () => (globalThis as { s5Fade?: { t: number; gains: number[] }[] }).s5Fade ?? [],
       );
