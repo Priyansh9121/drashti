@@ -61,7 +61,7 @@ test('imported Route C model decodes PCM through the native helper into the spee
     },
     log: { info: () => undefined, warn: () => undefined },
   });
-  const engine = route.make({ id: 'generated' }, 'gu');
+  const engine = route.make({ ...pack, id: 'generated' }, 'gu');
   expect(engine).not.toBeNull();
   if (!engine) throw new Error('Generated recognition route missing');
   const hub = createSpeechHub({ engine, log: { info: () => undefined, warn: () => undefined } });

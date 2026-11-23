@@ -45,9 +45,9 @@ test('the shared route factory looks up full checked metadata from the selected 
     },
   });
   assert.equal(route.id, 'conformer');
-  assert.equal(route.make({ id: 'missing' }, 'gu'), null);
-  assert.equal(route.make({ id: 'chosen' }, 'en'), null);
-  const engine = route.make({ id: 'chosen' }, 'gu');
+  assert.equal(route.make({ ...pack, id: 'missing' }, 'gu'), null);
+  assert.equal(route.make({ ...pack, id: 'chosen' }, 'en'), null);
+  const engine = route.make({ ...pack, id: 'chosen' }, 'gu');
   assert.ok(engine);
   const stop = engine.start('gu', {
     heard() {},
@@ -85,7 +85,7 @@ test('changed or wrong-language held metadata is released without starting the h
       throw new Error('must not start');
     },
   });
-  const engine = route.make({ id: 'chosen' }, 'gu');
+  const engine = route.make({ ...pack, id: 'chosen' }, 'gu');
   const stop = engine.start('gu', {
     heard() {},
     state: (s) => {
@@ -121,7 +121,7 @@ test('a replacement model under the same id cannot silently change the selected 
       return { decode: async () => ({}), close() {} };
     },
   });
-  const engine = route.make({ id: 'chosen' }, 'gu');
+  const engine = route.make({ ...pack, id: 'chosen' }, 'gu');
   const stop = engine.start('gu', { heard() {}, state() {} });
   try {
     await Promise.resolve();
@@ -135,7 +135,11 @@ test('a replacement model under the same id cannot silently change the selected 
 
 test('a selected file reference cannot be replaced by different metadata returned for the same id', () => {
   const first = { ...pack, files: pack.files.map((file) => ({ ...file, sha256: '1'.repeat(64) })) };
-  const selected = { ...first, id: 'chosen', files: first.files.map((file) => ({ ...file, sha256: '2'.repeat(64) })) };
+  const selected = {
+    ...first,
+    id: 'chosen',
+    files: first.files.map((file) => ({ ...file, sha256: '2'.repeat(64) })),
+  };
   const route = createIndicRoute({ ...base, store: { model: () => first, acquire: async () => null } });
   assert.equal(route.make(selected, 'gu'), null);
 });

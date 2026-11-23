@@ -664,7 +664,7 @@ The existing `library.slidesForEdit` / `library.saveSlides` document carries opt
 
 Main refuses translation authoring, approval and route changes through `saveSlides` unless the current mode is Pro, even if a caller bypasses the editor. Simple Mode source editing remains bounded as before and invalidates review. There is no new HTTP generation or editing endpoint. Engine playback and phone presentation responses include checked current pairs only, with reader names removed. Original publication and Next require no inference or asynchronous translation work. The deterministic `Translator` stand-in is a test double only; production reports `No engine installed` and never writes its placeholders into a library.
 
-`createIndicRoute({ store, ...engineOptions })` directly matches cap-integration’s `CaptionRoute.make({id}, language)`.
-It reads full checked metadata through `store.model`, pins the model-file SHA-256s, then obtains a fresh hold through
+`createIndicRoute({ store, ...engineOptions })` directly matches cap-integration’s `CaptionRoute.make(model, language)`.
+It matches the selected reference to full checked metadata through `store.model`, pins the model-file SHA-256s, then obtains a fresh hold through
 `store.acquire` at start. Changed identity or purpose releases the hold without starting native work. The resolver
 accepts the shared language type and returns null for every language other than Gujarati or Hindi.
