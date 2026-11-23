@@ -382,8 +382,8 @@ describe('the engine with a model per language and live timing (alpha.22)', () =
       ...DEFAULT_CAPTION_TIMING,
       threads: 2,
       // Shorter than any choice, so the test is quick: the longest phrase cuts a phrase still being spoken.
-      longestMs: 1_000 as CaptionTiming['longestMs'],
-      stepMs: 60_000 as CaptionTiming['stepMs'],
+      longestMs: 1_000 as unknown as CaptionTiming['longestMs'],
+      stepMs: 60_000 as unknown as CaptionTiming['stepMs'],
     };
     const engine = createWhisperEngine({
       program: () => '/placeholder/whisper-server',

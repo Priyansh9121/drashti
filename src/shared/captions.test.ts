@@ -86,8 +86,8 @@ describe('live timing (alpha.22)', () => {
     expect(
       parseCaptionTiming({ stepMs: 1_000, pauseMs: 500, longestMs: 6_000, speech: 'quiet-room', threads: 1 }),
     ).toEqual({ stepMs: 1_000, pauseMs: 500, longestMs: 6_000, speech: 'quiet-room', threads: 1 });
-    expect(parseCaptionTiming({ stepMs: 100, pauseMs: '500', longestMs: 6_000, speech: 'x', threads: 3 })).toEqual(
-      { ...DEFAULT_CAPTION_TIMING, longestMs: 6_000 },
-    );
+    expect(
+      parseCaptionTiming({ stepMs: 100, pauseMs: '500', longestMs: 6_000, speech: 'x', threads: 3 }),
+    ).toEqual({ ...DEFAULT_CAPTION_TIMING, longestMs: 6_000 });
   });
 });

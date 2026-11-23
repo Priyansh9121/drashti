@@ -45,7 +45,13 @@ import type {
   OpeningResult,
   OpeningView,
 } from './opening';
-import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
+import type {
+  CaptionModelId,
+  CaptionSettings,
+  CaptionsStatus,
+  CaptionTiming,
+  LanguageModelLanguage,
+} from './captions';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -380,6 +386,14 @@ export const IPC = {
     setSettings: 'captions:set-settings',
     /** Try the model's download again (after no internet). */
     retry: 'captions:retry',
+    /** A model of its own for a language (alpha.22): choose one Drashti knows (or the general model, null). */
+    setLanguageModel: 'captions:set-language-model',
+    /** Add a model file for a language (alpha.22): main asks for the file, checks it, and keeps a copy. */
+    addLanguageModel: 'captions:add-language-model',
+    /** Check a language's chosen model file whole again (alpha.22). */
+    checkLanguageModel: 'captions:check-language-model',
+    /** The live timing on this computer (alpha.22). */
+    setTiming: 'captions:set-timing',
     /** main -> operator: how captions stand changed (a download's progress too). */
     changed: 'captions:changed',
     /** main -> operator: File > Live Captions… was chosen. */
@@ -1499,6 +1513,13 @@ export interface InvokeContract {
   [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };
   [IPC.captions.setSettings]: { args: [settings: CaptionSettings]; result: CaptionsStatus };
   [IPC.captions.retry]: { args: []; result: CaptionsStatus };
+  [IPC.captions.setLanguageModel]: {
+    args: [language: LanguageModelLanguage, id: string | null];
+    result: CaptionsStatus;
+  };
+  [IPC.captions.addLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
+  [IPC.captions.checkLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
+  [IPC.captions.setTiming]: { args: [timing: CaptionTiming]; result: CaptionsStatus };
   [IPC.updates.view]: { args: []; result: UpdateView };
   [IPC.music.view]: { args: []; result: MusicView };
   [IPC.music.create]: { args: [name: string]; result: MusicResult };

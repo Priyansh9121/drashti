@@ -274,7 +274,11 @@ describe('File › Speaker’s Language (alpha.22)', () => {
       // Simple Mode has no File menu; nor is it there where there are no live captions.
       on(platform, () => {
         const made = actions('simple');
-        installMenu({ ...made.a, liveCaptions: nothing, speakerLanguage: { language: 'gu', choose: nothing } });
+        installMenu({
+          ...made.a,
+          liveCaptions: nothing,
+          speakerLanguage: { language: 'gu', choose: nothing },
+        });
       });
       expect(item('speaker-language')).toBeUndefined();
       on(platform, () => {

@@ -6,9 +6,11 @@ import { describe, expect, it } from 'vitest';
 import {
   addLanguageModelFile,
   checkLanguageModel,
+  knownLanguageModels,
   LANGUAGE_MODELS,
   languageModelFile,
   LanguageModelRefused,
+  languageModelStore,
   parseLanguageModelList,
   verifyLanguageModel,
   type LanguageModelEntry,
@@ -210,5 +212,30 @@ describe('a language model is checked before it is used (alpha.22)', () => {
     });
     const file = languageModelFile(userData, entry.id);
     expect(checkLanguageModel(file, { ...entry, sha256: 'e'.repeat(64) })).toBe('changed');
+  });
+});
+
+describe('the language models as the captions service asks for them (alpha.22)', () => {
+  it('knows the built-in list, or only for a test the list its switch names (none from a damaged one)', () => {
+    const { dir, known } = placeholders();
+    expect(knownLanguageModels(undefined)).toBe(LANGUAGE_MODELS);
+    const list = join(dir, 'models.json');
+    writeFileSync(list, JSON.stringify(known));
+    expect(knownLanguageModels(list)).toEqual(known);
+    writeFileSync(list, '[{');
+    expect(knownLanguageModels(list)).toEqual([]);
+    expect(knownLanguageModels(join(dir, 'no-such.json'))).toEqual([]);
+  });
+
+  it('adds, checks and checks again in this computer’s data folder', async () => {
+    const { userData, files, known } = placeholders();
+    const store = languageModelStore(userData, known);
+    const gu = known[0];
+    if (!gu) throw new Error('no placeholder');
+    expect(store.known()).toBe(known);
+    expect(store.check(gu)).toBe('missing');
+    await expect(store.add('gu', files.gujarati)).resolves.toEqual(gu);
+    expect(store.check(gu)).toBe('ready');
+    await expect(store.verify(gu)).resolves.toBe('ready');
   });
 });

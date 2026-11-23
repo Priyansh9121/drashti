@@ -28,11 +28,15 @@ export interface PcmSource {
 export interface WhisperEngineOptions {
   /** The engine program, or null when this copy of Drashti has none. */
   program: () => string | null;
+  /** The model file for the speaker's language (alpha.22: a language's own model, or the general one). */
   model: (language: SpeechLanguage | 'auto') => string;
-  /** Live timing (alpha.22): not built yet (the red's stand-in). */
-  timing?: () => CaptionTiming;
   /** Whether a failed piece is tried again warmer (whisper's fallback): off for the large model, which then loops less. */
-  fallback: () => boolean;
+  fallback: (language: SpeechLanguage | 'auto') => boolean;
+  /**
+   * Live timing on this computer (alpha.22): read once at each start. Without it (or for a test, the fixed values
+   * below), the timing captions always had.
+   */
+  timing?: () => CaptionTiming;
   sound: PcmSource;
   log: { info(message: string): void; warn(message: string): void };
   threads?: number;
@@ -55,9 +59,22 @@ const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
   ['english', 'en'],
 ]);
 
-/** Whether a chunk's level is speech (alpha.22): not built yet (the red's stand-in). */
-export function isSpeech(_level: number, _floor: number, _speech: CaptionTiming['speech']): boolean {
-  throw new Error('not built yet');
+/**
+ * How loud sound must be to count as speech (alpha.22's speech level): at least `least` (16-bit RMS) and `over` times
+ * the noise floor learnt as it goes. Standard is what captions always used (about 38 dB below full scale, and about
+ * 10 dB over the noise); a quiet room hears speech 6 dB softer, a noisy hall asks for it 6 dB louder.
+ */
+const SPEECH_LEVELS: Readonly<Record<CaptionTiming['speech'], { least: number; over: number }>> =
+  Object.freeze({
+    standard: { least: 400, over: 3 },
+    'quiet-room': { least: 200, over: 2 },
+    'noisy-hall': { least: 800, over: 4 },
+  });
+
+/** Whether a chunk of this level is speech, over a noise floor of `floor`. */
+export function isSpeech(level: number, floor: number, speech: CaptionTiming['speech']): boolean {
+  const { least, over } = SPEECH_LEVELS[speech];
+  return level > Math.max(least, floor * over);
 }
 
 /** A free port on 127.0.0.1 for the engine. */
@@ -190,9 +207,6 @@ interface Growing {
 }
 
 export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
-  const stepMs = o.stepMs ?? 1_500;
-  const pauseMs = o.pauseMs ?? 700;
-  const maxMs = o.maxMs ?? 12_000;
   const restMs = o.restMs ?? 60_000;
   const readyMs = o.readyMs ?? 90_000;
   const get = o.fetch ?? fetch;
@@ -208,6 +222,13 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
 
   return {
     start(language, to) {
+      // The live timing, as it is now (alpha.22): a change starts listening again.
+      const timing = o.timing?.();
+      const stepMs = timing?.stepMs ?? o.stepMs ?? 1_500;
+      const pauseMs = timing?.pauseMs ?? o.pauseMs ?? 700;
+      const maxMs = timing?.longestMs ?? o.maxMs ?? 12_000;
+      const threads = timing?.threads ?? o.threads ?? 4;
+      const speechLevel = timing?.speech ?? 'standard';
       let stopped = false;
       // Read through a function: stop() changes it while a piece is awaited, which the type checker cannot see.
       const ended = (): boolean => stopped;
@@ -351,7 +372,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         let sum = 0;
         for (const s of samples) sum += s * s;
         const level = Math.sqrt(sum / Math.max(1, samples.length));
-        const speech = level > Math.max(400, floor * 3);
+        const speech = isSpeech(level, floor, speechLevel);
         if (!speech) floor = floor * 0.95 + level * 0.05;
         if (!phrase) {
           if (!speech) return;
@@ -419,7 +440,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         address = `http://127.0.0.1:${String(port)}${requestPath}`;
         const args = [
           '-m',
-          o.model(),
+          o.model(language),
           '--host',
           '127.0.0.1',
           '--port',
@@ -427,11 +448,11 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           '--request-path',
           requestPath,
           '-t',
-          String(o.threads ?? 4),
+          String(threads),
         ];
         // The Windows server has an optional public files directory. Drashti serves no files.
         if (process.platform === 'win32') args.push('--public', '');
-        allowFallback = o.fallback();
+        allowFallback = o.fallback(language);
         const started = run(program, args);
         child = started;
         started.once('exit', (code) => {

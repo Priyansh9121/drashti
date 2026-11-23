@@ -93,9 +93,9 @@ describe('a model per language and live timing in the dialog (alpha.22)', () => 
       'Hindi’s own model hears Hindi when the speaker’s language is Hindi. It is on this computer and checked.',
     );
     expect(languageModelText(model({ phase: 'checking' }))).toBe('Checking the file…');
-    expect(languageModelText(model({ phase: 'changed', chosen: 'placeholder-gu', message: 'Placeholder.' }))).toBe(
-      'Placeholder.',
-    );
+    expect(
+      languageModelText(model({ phase: 'changed', chosen: 'placeholder-gu', message: 'Placeholder.' })),
+    ).toBe('Placeholder.');
   });
 
   it('name every timing choice plainly, the timing captions always had first', () => {

@@ -2,8 +2,9 @@ import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   CAPTION_MODEL_IDS,
-  DEFAULT_CAPTION_TIMING,
   defaultModel,
+  LANGUAGE_MODEL_LANGUAGES,
+  parseCaptionTiming,
   type CaptionModelId,
   type CaptionTiming,
   type LanguageModelLanguage,
@@ -40,16 +41,49 @@ export function writeCaptionsSwitch(userData: string, value: CaptionsSwitch): vo
   renameSync(`${file}.writing`, file);
 }
 
-/** A model per language and the live timing on this computer (alpha.22): not built yet (the red's stand-in). */
+/**
+ * A model of its own per language, and the live timing (alpha.22): this computer's too, as its models and its speed
+ * are, so kept beside the switch in their own file (drashti-captions-tuning.json; the switch's file is unchanged).
+ * None chosen and the timing captions always had, until an admin changes them.
+ */
 export interface CaptionsTuning {
+  /** The model chosen for each language (its id in main/speech/language-models.ts); none: the general model. */
   languageModels: Partial<Record<LanguageModelLanguage, string>>;
   timing: CaptionTiming;
 }
 
-export function readCaptionsTuning(_userData: string): CaptionsTuning {
-  return { languageModels: {}, timing: { ...DEFAULT_CAPTION_TIMING, threads: 1 } };
+const TUNING_FILE = 'drashti-captions-tuning.json';
+const MODEL_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
+
+export function readCaptionsTuning(userData: string): CaptionsTuning {
+  let raw: { languageModels?: unknown; timing?: unknown } = {};
+  try {
+    raw = JSON.parse(readFileSync(join(userData, TUNING_FILE), 'utf8')) as typeof raw;
+  } catch {
+    // None yet, or damaged: the defaults.
+  }
+  const chosen =
+    typeof raw.languageModels === 'object' && raw.languageModels !== null
+      ? (raw.languageModels as Record<string, unknown>)
+      : {};
+  const languageModels: Partial<Record<LanguageModelLanguage, string>> = {};
+  for (const language of LANGUAGE_MODEL_LANGUAGES) {
+    const id = chosen[language];
+    if (typeof id === 'string' && MODEL_ID.test(id)) languageModels[language] = id;
+  }
+  return { languageModels, timing: parseCaptionTiming(raw.timing) };
 }
 
-export function writeCaptionsTuning(_userData: string, _value: CaptionsTuning): void {
-  // Not built yet.
+export function writeCaptionsTuning(userData: string, value: CaptionsTuning): void {
+  const file = join(userData, TUNING_FILE);
+  const languageModels: Partial<Record<LanguageModelLanguage, string>> = {};
+  for (const language of LANGUAGE_MODEL_LANGUAGES) {
+    const id = value.languageModels[language];
+    if (id !== undefined) languageModels[language] = id;
+  }
+  writeFileSync(
+    `${file}.writing`,
+    JSON.stringify({ languageModels, timing: parseCaptionTiming(value.timing) }, null, 2),
+  );
+  renameSync(`${file}.writing`, file);
 }
