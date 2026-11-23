@@ -808,10 +808,14 @@ async function paced(response: Response, mediaId: string | null): Promise<Respon
 // it, so nobody pauses the sabha's sound by pressing one. Keeping those controls up to date also took
 // the main process 60 to 180 ms each time a sound started on Windows (the performance check's trace).
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
-// Sound-only elements select no video track, avoiding unused software picture decoding (S5).
+// Sound-only elements select no video track, avoiding unused software picture decoding (S5). The stream's own sound
+// players keep a second of sound decoded ahead (a21-s5b, renderer/src/program/sound-ahead.ts): a page's pictures
+// decode on its one media thread too, and held it longer than the 0.2 s a player keeps at first.
 app.commandLine.appendSwitch(
   'enable-blink-features',
-  [app.commandLine.getSwitchValue('enable-blink-features'), 'AudioVideoTracks'].filter(Boolean).join(','),
+  [app.commandLine.getSwitchValue('enable-blink-features'), 'AudioVideoTracks', 'MediaLatencyHint']
+    .filter(Boolean)
+    .join(','),
 );
 
 // The show's own process first (Session 15): on a two-core PC with no graphics chip, the windows decoding
