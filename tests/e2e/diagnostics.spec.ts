@@ -199,7 +199,8 @@ test('the log has a line for every show command, operator request and notice, wi
   const win = await operatorPage(app);
   await operatorReady(win);
   const source = mkdtempSync(join(tmpdir(), 'drashti-log-lines-'));
-  const secretName = 'Placeholder Log Secret Name';
+  // A library name also present, unquoted, in the real diagnostics-saved notice.
+  const secretName = 'Drashti diagnostics';
   const secretWords = 'Placeholder log secret words 5521';
   const song = join(source, `${secretName}.pro6`);
   writeFileSync(
@@ -232,7 +233,7 @@ test('the log has a line for every show command, operator request and notice, wi
     );
   await expect.poll(log).toMatch(/^\S+ \[info\] Show: toggleBlackout: done \(revision \d+\)$/mu);
   await expect.poll(log).toMatch(/^\S+ \[info\] Request: library:import-paths: done$/mu);
-  // A notice the operator is shown: its words, its names in quotes blanked (here, the diagnostics' own notice).
+  // The real notice includes the library name without quotes: the raw local log must blank it too.
   const desktop = mkdtempSync(join(tmpdir(), 'drashti-desktop-'));
   await app.evaluate(({ app: electronApp }, dir) => {
     electronApp.setPath('desktop', dir);
@@ -240,7 +241,7 @@ test('the log has a line for every show command, operator request and notice, wi
   await chooseMenuItem(app, 'save-diagnostics');
   await expect
     .poll(log)
-    .toMatch(/^\S+ \[info\] Notice: Diagnostics saved on the Desktop: Drashti diagnostics .+\.txt$/mu);
+    .toMatch(/^\S+ \[info\] Notice: Diagnostics saved on the Desktop: \[library name\] .+\.txt$/mu);
   const text = log();
   // The file's first line: its day, and who writes it.
   expect(text.split('\n')[0]).toMatch(
@@ -248,6 +249,6 @@ test('the log has a line for every show command, operator request and notice, wi
   );
   // Reads are never logged; nor any word from the library, nor the Gmail let in.
   expect(text).not.toMatch(/Request: library:list-presentations/u);
-  for (const secret of [secretWords, PLACEHOLDER_PERSON]) expect(text, secret).not.toContain(secret);
+  for (const secret of [secretName, secretWords, PLACEHOLDER_PERSON]) expect(text, secret).not.toContain(secret);
   await app.close();
 });
