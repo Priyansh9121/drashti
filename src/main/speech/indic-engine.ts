@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { SPEECH_RATE, type Heard } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
 import { indicWords, type IndicFiles, type IndicLanguage } from './indic-protocol';
@@ -88,7 +87,6 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         }
       };
       const chosen: IndicLanguage = language;
-      const session = randomUUID();
       let stopped = false;
       const ended = (): boolean => stopped;
       let pipe: IndicPipe | null = null;
@@ -244,7 +242,8 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           if (!speech) return;
           count += 1;
           phrase = {
-            id: `${session}:${String(count)}`,
+            // The hub's phrase ids, as Whisper's engine gives them: s1, s2… in this listening.
+            id: `s${String(count)}`,
             samples: [],
             captured: [],
             length: 0,
