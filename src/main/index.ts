@@ -5371,9 +5371,10 @@ function start(): void {
   });
   /** Make a slide…'s keeping (set below, where the open playlist is known). */
   let keepPageSlide: (
-    png: Uint8Array,
+    png: Uint8Array | Uint8Array[],
     name: string,
     place: MadeSlidePlace,
+    current: () => boolean,
   ) => Promise<MakeSlideResult> = () =>
     Promise.resolve({ ok: false, message: 'Drashti is still starting: try again in a moment.' });
   const pdfEditor = new PdfEditor({
@@ -5388,6 +5389,7 @@ function start(): void {
       mode === 'pro' &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
+    onAir: () => streaming.inUse() || testOnAir,
     stamp: (presentationId) => {
       const row = libraryDb
         .prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
@@ -5410,7 +5412,7 @@ function start(): void {
     },
     // Make a slide… (alpha.21): the part drawn from the page just printed, at the size a PDF's pages are imported at.
     drawPart: (pdf, part, signal) => pdfPictures.drawPart(pdf, part, signal),
-    keepSlide: ({ png, name, place }) => keepPageSlide(png, name, place),
+    keepSlide: ({ png, name, place }, current) => keepPageSlide(png, name, place, current),
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
   // Make a slide… (alpha.21, the owner's "add a slide button to create a slide in drashti"): the editor's window (or the
@@ -5419,6 +5421,13 @@ function start(): void {
   handle(IPC.slideEditor.slidePlace, (e): SlidePlace => {
     if (!(fromOperator(e) || editorWindow.isPage(e.sender)) || mode !== 'pro') return { playlist: null };
     return { playlist: openPlaylistForSlides() };
+  });
+  const stopPdfOnAir = () => {
+    if (streaming.inUse() || testOnAir) pdfEditor.cancelBatch();
+  };
+  pdfReadWaits.add(stopPdfOnAir);
+  stops.add('PDF off-air guard', () => {
+    pdfReadWaits.delete(stopPdfOnAir);
   });
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
@@ -6246,20 +6255,43 @@ function start(): void {
    * picture (an import, as any picture is), a presentation of one slide holding it, and a row at the end of the open
    * playlist when asked; the operator window is told, for its Undo.
    */
-  keepPageSlide = async (png, name, place) => {
+  keepPageSlide = async (png, name, place, current) => {
+    const playlist = place === 'playlist' ? openPlaylistForSlides() : null;
+    const canKeep = () =>
+      current() &&
+      (place !== 'playlist' || (playlist !== null && openPlaylistForSlides()?.id === playlist.id));
+    const cancelled = {
+      ok: false as const,
+      message: 'The editor or open playlist changed. Choose where the slides go and try again.',
+    };
+    if (!canKeep()) return cancelled;
     // The picture's file is named as its slide is (Media lists it by that name).
     const file = `${cutText(name.replace(/[\\/:*?"<>|]/gu, ' ').trim(), 120) || 'Page'}.png`;
-    const mediaId = await keepMadePicture(png, file, 'drashti-page-slide-');
-    if (mediaId === null) return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+    const pictures = Array.isArray(png) ? png : [png];
+    const mediaIds: string[] = [];
+    for (const [index, picture] of pictures.entries()) {
+      if (!canKeep()) return cancelled;
+      const mediaId = await keepMadePicture(
+        picture,
+        pictures.length === 1 ? file : `${String(index + 1)} ${file}`,
+        'drashti-page-slide-',
+      );
+      if (mediaId === null)
+        return { ok: false, message: 'The slide’s picture could not be kept: try again.' };
+      mediaIds.push(mediaId);
+    }
+    if (!canKeep()) return cancelled;
     const libraryId = presentations.ensureLibrary('Default');
     const size = pictureSize(screenRepo.allScreens(), screenRepo.firstGroup('audience'));
     const madeName = presentations.uniqueName(libraryId, name);
-    const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaId, size));
+    const { id, itemId } = libraryDb.transaction(() => {
+      const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaIds, size));
+      const [itemId = null] = playlist
+        ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
+        : [];
+      return { id, itemId };
+    })();
     contentChanged([id]);
-    const playlist = place === 'playlist' ? openPlaylistForSlides() : null;
-    const [itemId = null] = playlist
-      ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
-      : [];
     if (itemId !== null) playlistsChanged();
     sendToOperator(IPC.slideEditor.slideMade, { presentationId: id, name: madeName, itemId });
     log.info(`Library: a slide made from a PDF page${itemId !== null ? ', in the open playlist' : ''}`);
