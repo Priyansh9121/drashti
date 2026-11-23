@@ -72,6 +72,21 @@ test('the admin sets up, separately opts in, captures a crash locally and turns 
   });
   await expect.poll(() => state(file)?.queue.length).toBe(1);
   expect(state(file)?.queue[0]?.code).toBe('process-crashed');
+  await run.app.evaluate(({ app }) => {
+    app.emit(
+      'child-process-gone',
+      {},
+      {
+        type: 'Utility',
+        reason: 'crashed',
+        exitCode: 1,
+        serviceName: 'placeholder',
+        name: 'Placeholder private utility',
+      },
+    );
+  });
+  await expect.poll(() => state(file)?.queue.length).toBe(2);
+  expect(state(file)?.queue[1]?.code).toBe('process-crashed');
   expect(
     await run.app.evaluate(
       () => (globalThis as typeof globalThis & { automaticReceiverCalls: number }).automaticReceiverCalls,

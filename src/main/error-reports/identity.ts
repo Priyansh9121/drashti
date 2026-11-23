@@ -37,7 +37,7 @@ export function automaticIdentity(
     computerId: who.computerId,
     accessEntryId: who.grantId,
     diagnosticsInstallId: who.installId,
-    mode: who.role.mode,
+    mode: who.made === 'node' ? who.role.mode : who.made,
     version: system.version,
     platform: system.platform,
     arch: system.arch,

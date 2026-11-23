@@ -594,7 +594,11 @@ app.on('before-quit', () => {
 });
 app.on('child-process-gone', (_event, details) => {
   const words = quitting ? null : childGoneWords(details);
-  if (words) crashJournal.add(words);
+  if (words) {
+    crashJournal.add(words);
+    // An intentionally killed utility is already in the local journal; it is not an automatic crash report.
+    if (details.reason !== 'killed') automaticErrorRuntime?.crash();
+  }
 });
 
 /** The GPU process's stops (Sessions 31–36, ROB-5): a second within 10 minutes is said. */
@@ -3440,7 +3444,7 @@ function start(): void {
           computerId: computer.id,
           installId: diagnosticInstallId(userDataDir),
           grantId: grant.grantId,
-          role: { mode: simpleNow() ? 'simple' : 'pro', owner: accessState().owner },
+          role: { mode: accessState().mode, owner: accessState().owner },
           made: simpleNow() ? 'simple' : 'pro',
         },
         { version: app.getVersion(), platform: process.platform, arch: process.arch, release: osRelease() },
