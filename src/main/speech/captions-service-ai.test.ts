@@ -44,6 +44,8 @@ function setup(o: { ai?: boolean; aiWired?: boolean; pack?: Partial<Record<Speec
   const accepted: CaptionRevision[] = [];
   const ai = { on: o.ai ?? false };
   const coordinator = new CaptionCoordinator({
+    // The test's clock (Date.now, faked): the coordinator maps capture times onto it (x90's monotonic mapping).
+    clock: () => Date.now(),
     settings: () => settings,
     show: (c) => shown.push(c),
     changed: () => undefined,

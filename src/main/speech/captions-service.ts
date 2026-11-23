@@ -259,8 +259,15 @@ export class CaptionsService {
     this.tell();
   }
 
+  /** The operator's review: caption AI's phrases while it runs (and no rehearsal does), else the rehearsal's. */
   prototypeView(): CaptionReview {
-    return this.prototype.view();
+    return (this.aiReview() ?? this.prototype).view();
+  }
+
+  /** Caption AI's coordinator while its flow runs and no placeholder rehearsal does, or null. */
+  private aiReview(): ClauseSink | null {
+    const ai = this.deps.aiPath;
+    return ai && this.paths?.usingAi() === true && !this.prototype.view().on ? ai.coordinator : null;
   }
 
   setPrototypeOn(on: boolean): void {
@@ -284,10 +291,10 @@ export class CaptionsService {
     if (!this.closed && this.prototype.view().on) this.prototype.restart();
   }
   correctPrototype(correction: CaptionCorrection): boolean {
-    return !this.closed && this.prototype.correct(correction);
+    return !this.closed && (this.aiReview() ?? this.prototype).correct(correction);
   }
   dismissPrototype(key: Omit<CaptionCorrection, 'text'>): boolean {
-    return !this.closed && this.prototype.dismiss(key);
+    return !this.closed && (this.aiReview() ?? this.prototype).dismiss(key);
   }
 
   selectedModel(): CaptionModelId {

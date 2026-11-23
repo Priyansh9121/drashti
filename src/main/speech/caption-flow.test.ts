@@ -40,6 +40,8 @@ function setup(o: { spelling?: CaptionSpelling; language?: SpeechLanguage } = {}
   const shown: (CaptionsShown | null)[] = [];
   const reviews: CaptionReview[] = [];
   const coordinator = new CaptionCoordinator({
+    // The test's clock (Date.now, faked): the coordinator maps capture times onto it (x90's monotonic mapping).
+    clock: () => Date.now(),
     settings: () => DEFAULT_CAPTION_SETTINGS,
     show: (c) => shown.push(c),
     changed: (r) => reviews.push(r),

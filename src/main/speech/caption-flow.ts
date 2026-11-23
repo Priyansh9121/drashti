@@ -1,4 +1,4 @@
-import type { CaptionRevision } from '../../shared/caption-coordinator';
+import type { CaptionCorrection, CaptionReview, CaptionRevision } from '../../shared/caption-coordinator';
 import { toGujaratiScript } from '../../shared/scripts';
 import type { Heard, SpeechState } from '../../shared/speech';
 import type { SpeechHub } from './speech-hub';
@@ -18,6 +18,10 @@ export interface ClauseSink {
   accept(clause: CaptionRevision): boolean;
   /** The settings changed: draw again. */
   refresh(): void;
+  /** The operator's review (x90's correction panel): the phrase shown now and the one before, never kept. */
+  view(): CaptionReview;
+  correct(correction: CaptionCorrection): boolean;
+  dismiss(key: Omit<CaptionCorrection, 'text'>): boolean;
 }
 
 /**
@@ -124,6 +128,8 @@ export interface CaptionPath {
 }
 
 export interface CaptionPaths extends CaptionPath {
+  /** Whether caption AI's flow is the one running now. */
+  usingAi(): boolean;
   /**
    * What is chosen may have changed (the speaker's language, its own model, the admin's switch): while captions run,
    * the other one takes over at once. True when it did (listening started again).
@@ -157,6 +163,9 @@ export function chooseCaptionPath(
     },
     refresh() {
       (running ?? chosen()).refresh();
+    },
+    usingAi() {
+      return running === ai;
     },
     reselect() {
       if (!running) return false;

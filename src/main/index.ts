@@ -3851,7 +3851,8 @@ function start(): void {
     show: (shown) => {
       engine.setCaptions(shown);
     },
-    changed: () => undefined,
+    // The operator's review panel (Codex x90's) shows caption AI's phrase while it runs, for a correction.
+    changed: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
   });
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
