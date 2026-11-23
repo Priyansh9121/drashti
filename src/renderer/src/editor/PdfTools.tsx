@@ -4,6 +4,7 @@ import {
   Download,
   FilePlus,
   Pencil,
+  Presentation,
   RotateCw,
   Square,
   SquarePen,
@@ -27,6 +28,8 @@ export interface PdfToolAvailability {
   deletePage: boolean;
   insertPages: boolean;
   saveCopy: boolean;
+  /** Make a slide… (alpha.21): this page, or a part of it, as a Drashti slide. */
+  makeSlide: boolean;
 }
 
 /**
@@ -44,6 +47,7 @@ export interface PdfToolCallbacks {
   onDeletePage: () => void;
   onInsertPages?: () => void;
   onSaveCopy?: () => void;
+  onMakeSlide?: () => void;
 }
 
 export interface PdfToolsProps extends PdfToolCallbacks {
@@ -73,6 +77,7 @@ export function PdfTools({
   onDeletePage,
   onInsertPages,
   onSaveCopy,
+  onMakeSlide,
 }: PdfToolsProps) {
   const busy = blocked || pending !== null;
   return (
@@ -165,6 +170,20 @@ export function PdfTools({
           onClick={onDeletePage}
         >
           Delete page
+        </Button>
+      </Cluster>
+      <Divider />
+      <Cluster name="Drashti slide">
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={Presentation}
+          disabled={busy || !available.makeSlide || !onMakeSlide}
+          data-testid="pdf-make-slide"
+          title="This page, or a part of it you drag out, as a slide of its own"
+          onClick={onMakeSlide}
+        >
+          Make a slide…
         </Button>
       </Cluster>
       <Divider />

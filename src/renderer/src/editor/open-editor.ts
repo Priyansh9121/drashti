@@ -1,5 +1,5 @@
 import { pushRemoval } from '../library/undo';
-import { selectPresentation, useLibrary } from '../library/library-store';
+import { loadLibrary, selectPresentation, useLibrary } from '../library/library-store';
 import { useNotice } from '../operator/actions';
 
 /*
@@ -20,7 +20,8 @@ export async function openSlideEditor(
 
 /** Slides saved in the editor's window: one change for Undo here, and the presentation shown takes them. */
 export function connectSlideEditorSaves(): () => void {
-  return window.drashti.slideEditor.onSaved(({ presentationId, name, revisionId }) => {
+  const offMade = connectMadeSlides();
+  const offSaved = window.drashti.slideEditor.onSaved(({ presentationId, name, revisionId }) => {
     pushRemoval({
       text: `Edited the slides of “${name}”`,
       restore: async () => {
@@ -29,5 +30,28 @@ export function connectSlideEditorSaves(): () => void {
       },
     });
     if (useLibrary.getState().selectedId === presentationId) void selectPresentation(presentationId);
+  });
+  return () => {
+    offSaved();
+    offMade();
+  };
+}
+
+/**
+ * A slide made in the editor's window from a PDF page (Make a slide…, alpha.21): one change for Undo here, which takes
+ * its row out of the playlist and the presentation out of the library (Undo of that, Deleted…'s, is not offered: it was
+ * never there before).
+ */
+function connectMadeSlides(): () => void {
+  return window.drashti.slideEditor.onSlideMade(({ presentationId, name, itemId }) => {
+    pushRemoval({
+      text: `Made the slide “${name}”`,
+      restore: async () => {
+        if (itemId !== null) await window.drashti.playlists.removeItems([itemId]);
+        await window.drashti.library.removePresentations([presentationId]);
+        await loadLibrary();
+      },
+    });
+    void loadLibrary();
   });
 }

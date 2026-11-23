@@ -2,8 +2,8 @@ import type { BrowserWindow, WebContents } from 'electron';
 import type { PdfJob, PdfPageReceipt, PreparedSource } from '../../shared/editable-source';
 import type { SourceRead } from '../documents/source-reader';
 import { EditablePdfSessions } from './editable-pdf-session';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { availableParallelism, constants, setPriority } from 'node:os';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { availableParallelism, constants, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   DrawnPicturePage,
@@ -21,6 +21,7 @@ import {
   PICTURE_ASSET_NAME,
   tidyNotes,
 } from '../../shared/pictures';
+import type { PagePart } from '../../shared/page-part';
 import type { ScreenConfig } from '../../shared/screens';
 import { fileProblem } from '../plain-errors';
 import { cutText } from '../../shared/text';
@@ -70,6 +71,9 @@ export const windowsAtOnce = (processors: number): number =>
 /** A PNG as the page hands it over: its signature, and at most this many bytes. */
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const MAX_PNG_BYTES = 64 * 1024 * 1024;
+
+/** A part of a page as a picture (Make a slide…), or why not. */
+export type PartPicture = { ok: true; png: Uint8Array } | { ok: false; message: string };
 
 export interface PdfPicturesDeps {
   /** A hidden window for drawing, its page loaded (the app's secure settings and preload). */
@@ -173,6 +177,35 @@ export class PdfPictures {
     return run;
   }
 
+  /**
+   * Make a slide… (alpha.21): the part of a one-page PDF (just printed by the PDF copy's window, Drashti's own) drawn
+   * as large as fits in the size the hall's pictures are made at, its shape kept: the PNG, or why not. In the same
+   * queue as every other drawing, one window, at the lowest priority.
+   */
+  drawPart(data: Uint8Array, part: PagePart, signal?: AbortSignal): Promise<PartPicture> {
+    const run = this.turn.then(async (): Promise<PartPicture> => {
+      if (data.length > MAX_PDF_BYTES)
+        return { ok: false, message: 'The page is too big to draw: save the PDF in parts and import those.' };
+      const outDir = await mkdtemp(join(tmpdir(), 'drashti-page-part-'));
+      try {
+        const drawn = await this.drawData(Buffer.from(data), outDir, signal, { part });
+        if (!drawn.ok) return drawn;
+        const file = drawn.pages.find((p) => p.index === 0)?.file;
+        if (!file)
+          return {
+            ok: false,
+            message:
+              'The page could not be drawn: try again, or save the PDF again from the program that made it.',
+          };
+        return { ok: true, png: new Uint8Array(await readFile(file)) };
+      } finally {
+        await rm(outDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    });
+    this.turn = run.catch(() => undefined);
+    return run;
+  }
+
   private async drawNow(
     pdfPath: string,
     outDir: string,
@@ -192,12 +225,23 @@ export class PdfPictures {
         message:
           'The PDF is too big to draw (over 500 MB): save it again with smaller pictures, or in parts, and import those.',
       };
+    return this.drawData(data, outDir, signal, readPageText ? { readPageText } : {});
+  }
+
+  private async drawData(
+    data: Buffer,
+    outDir: string,
+    signal: AbortSignal | undefined,
+    { readPageText, part }: { readPageText?: boolean; part?: PagePart },
+  ): Promise<PicturesResult> {
+    if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
     await mkdir(outDir, { recursive: true });
     const { width, height } = this.deps.size();
     const started = Date.now();
-    // Several at once only while nothing is on the screens or the stream (Session 56), and a document not too big.
+    // Several at once only while nothing is on the screens or the stream (Session 56), and a document not too big;
+    // a part of a page (Make a slide…) is one page, one window.
     const atOnce =
-      data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
+      !part && data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
         ? (this.deps.atOnce ?? windowsAtOnce(availableParallelism()))
         : 1;
     return new Promise<PicturesResult>((resolve) => {
@@ -228,9 +272,10 @@ export class PdfPictures {
         data: new Uint8Array(data),
         width,
         height,
-        maxPages: MAX_PICTURE_PAGES,
+        maxPages: part ? 1 : MAX_PICTURE_PAGES,
         ...(readPageText ? { readPageText } : {}),
         ...(share ? { share } : {}),
+        ...(part ? { part } : {}),
       });
       const drawing: Drawing = {
         windows: opened.map((win, k) => ({

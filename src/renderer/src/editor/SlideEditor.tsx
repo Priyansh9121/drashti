@@ -75,6 +75,7 @@ import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
+import { MakeSlideDialog, type MakeSlideBase } from './MakeSlideDialog';
 import type { PdfPendingAction } from './PdfTools';
 import { SourceLinkDialog } from './SourceLinkDialog';
 import { SourceIssues } from './SourceIssues';
@@ -157,6 +158,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const [pickingBusy, setPickingBusy] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
   const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
+  // Make a slide… (alpha.21): the page as the editor had it when the dialog opened.
+  const [makingSlide, setMakingSlide] = useState<MakeSlideBase | null>(null);
   const [linking, setLinking] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const insertBase = useRef<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const pdfJob = useRef(false);
@@ -329,6 +332,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     useEditor.setState({ pdfTool: null });
     setPdfPending('insert-pages');
     setInserting(insertBase.current);
+  };
+  const openMakeSlide = () => {
+    if (pdfJob.current || exportBusy) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId || now.sourceConversion || !isPdfPage(now.doc, now.slideId)) return;
+    pdfJob.current = true;
+    useEditor.setState({ pdfTool: null });
+    tell(null);
+    setMakingSlide({ doc: now.doc, slideId: now.slideId, stamp: now.stamp });
+  };
+  const closeMakeSlide = () => {
+    pdfJob.current = false;
+    setMakingSlide(null);
   };
   const openSourceLink = () => {
     if (pdfJob.current || exportBusy) return;
@@ -604,6 +621,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 deletePage: !!doc && slidesOf(doc).length > 1,
                 insertPages: !!doc,
                 saveCopy: !!doc,
+                makeSlide: !!doc,
               }}
               activeTool={pdfTool}
               underlined={underlined}
@@ -621,6 +639,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onSaveCopy={() => {
                 void savePdfCopy();
               }}
+              onMakeSlide={openMakeSlide}
             />
           )}
         </div>
@@ -763,6 +782,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         />
       )}
+      {makingSlide && <MakeSlideDialog base={makingSlide} onClose={closeMakeSlide} onMade={tell} />}
       {inserting && (
         <PdfInsertDialog
           presentationId={inserting.doc.presentationId}
