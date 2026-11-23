@@ -76,7 +76,11 @@ export function droppedFrames(frameTimesMs: readonly number[], startMs: number, 
  */
 export const MAC_DROP_MARGIN = { first: 15, afterRatio: 1.5, after: 15 } as const;
 
-/** The Mac's verdict of one attempt: its import trials' dropped frames against its control trials'. */
+/**
+ * One attempt's import trials' dropped frames against its control trials'. Since QA23-L8-4 A (the owner, 24 Nov 2026:
+ * "A: check the import order") it is recorded and reported on both systems and decides nothing: on CI's Mac this
+ * margin failed attempts with no import cost in about 1 in 10 (a22-l8's report, alpha.23 step 1).
+ */
 export function macDropVerdict(
   trials: readonly { importing: boolean; dropped: { first: number; after: number } }[],
 ) {
@@ -96,5 +100,27 @@ export function macDropVerdict(
     firstWorse,
     afterWorse,
     worse: firstWorse || afterWorse,
+  };
+}
+
+/**
+ * QA23-L8-4 A (the owner, 24 Nov 2026: "A: check the import order"): an import started during a hall dissolve keeps its
+ * fixed order. Its worker process (the "Drashti import" utility process) is made only once the dissolve has ended, and
+ * the test sees it before the import is ready. `processes` are the import workers seen from the dissolve's end until the
+ * import was ready, each with the time it was made, on the same clock as `end` and `ready`.
+ */
+export function importProcessOrder(
+  times: { end: number; ready: number },
+  processes: readonly { pid: number; creationTime: number }[],
+) {
+  const during = processes.filter((p) => p.creationTime < times.end);
+  const after = processes.filter((p) => p.creationTime >= times.end && p.creationTime <= times.ready);
+  const startedDuring = during.length > 0;
+  return {
+    during,
+    after,
+    startedDuring,
+    seen: processes.length > 0,
+    inOrder: !startedDuring && after.length > 0 && after.length === processes.length,
   };
 }

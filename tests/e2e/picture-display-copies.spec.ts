@@ -1,4 +1,10 @@
-import { droppedFrames, macDropVerdict, nativeCostPair, periods } from './display-cost-meter';
+import {
+  droppedFrames,
+  importProcessOrder,
+  macDropVerdict,
+  nativeCostPair,
+  periods,
+} from './display-cost-meter';
 import { beginNativeFeedback, type NativeFeedback } from './display-presentation-feedback';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
@@ -162,6 +168,16 @@ interface DisplayCostMain {
   mainPid: number;
 }
 type DisplayCostMainGlobals = typeof globalThis & { drashtiDisplayCostMain?: DisplayCostMain };
+interface ImportProcessSeen {
+  pid: number;
+  creationTime: number;
+}
+/** QA23-L8-4 A: Main's watch of the import's worker processes, run only from a dissolve's end to the import's ready. */
+interface ImportWatch {
+  start(): void;
+  stop(): ImportProcessSeen[];
+}
+type ImportWatchGlobals = typeof globalThis & { drashtiImportWatch?: ImportWatch };
 interface DisplayCostPage {
   frames: number[];
   start: number | null;
@@ -232,6 +248,29 @@ async function recordDisplayCost(app: ElectronApplication): Promise<void> {
         cost.jobs.push({ ...mark, received: Date.now(), pid, priority });
       });
     };
+    // QA23-L8-4 A: the import's worker processes ("Drashti import"), each with the time it was made. Sampled every 20 ms
+    // only from a dissolve's end until its import is ready, never while the hall's frames are measured.
+    const seen = new Map<string, ImportProcessSeen>();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const sample = () => {
+      for (const m of app.getAppMetrics()) {
+        if (m.type !== 'Utility' || m.name !== 'Drashti import') continue;
+        seen.set(`${String(m.pid)}@${String(m.creationTime)}`, { pid: m.pid, creationTime: m.creationTime });
+      }
+    };
+    (globalThis as ImportWatchGlobals).drashtiImportWatch = {
+      start: () => {
+        seen.clear();
+        sample();
+        timer ??= setInterval(sample, 20);
+      },
+      stop: () => {
+        if (timer) clearInterval(timer);
+        timer = null;
+        sample();
+        return [...seen.values()];
+      },
+    };
     for (const win of BrowserWindow.getAllWindows()) watchJobs(win);
     app.on('browser-window-created', (_event, win) => {
       watchJobs(win);
@@ -290,6 +329,7 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     page: DisplayCostPage;
     main: DisplayCostMain;
     imported: { start: number; ready: number; durationMs: number; id: string; hash: string } | null;
+    importProcesses: ImportProcessSeen[];
     nativeTimesUs: number[];
   }[] = [];
   const paired: unknown[] = [];
@@ -366,14 +406,29 @@ test('a large picture imported during a hall dissolve does not add sustained fra
               return { start, ready, durationMs: ready - start, id, hash: source.hash };
             })()
           : Promise.resolve(null);
-        const [imported] = await Promise.all([
-          importReady,
-          out.waitForFunction(
-            () => (globalThis as DisplayCostPageGlobals).drashtiDisplayCostPage?.end !== null,
-            undefined,
-            { timeout: 15_000 },
-          ),
-        ]);
+        const ended = out.waitForFunction(
+          () => (globalThis as DisplayCostPageGlobals).drashtiDisplayCostPage?.end !== null,
+          undefined,
+          { timeout: 15_000 },
+        );
+        // QA23-L8-4 A: Main watches the import's worker processes from the dissolve's end until the import is ready.
+        const watching = importing
+          ? ended.then(() =>
+              app.evaluate(() => {
+                const watch = (globalThis as ImportWatchGlobals).drashtiImportWatch;
+                if (!watch) throw new Error('The import process watch was not installed.');
+                watch.start();
+              }),
+            )
+          : Promise.resolve();
+        const [imported] = await Promise.all([importReady, ended, watching]);
+        const importProcesses = importing
+          ? await app.evaluate(() => {
+              const watch = (globalThis as ImportWatchGlobals).drashtiImportWatch;
+              if (!watch) throw new Error('The import process watch was not installed.');
+              return watch.stop();
+            })
+          : [];
         const page = await out.evaluate(() => (globalThis as DisplayCostPageGlobals).drashtiDisplayCostPage);
         const main = await app.evaluate(() => {
           const cost = (globalThis as DisplayCostMainGlobals).drashtiDisplayCostMain;
@@ -383,7 +438,15 @@ test('a large picture imported during a hall dissolve does not add sustained fra
         if (page?.start == null || page.end === null || !main)
           throw new Error('The actual dissolve interval was not recorded.');
         main.frames = main.frames.filter((t) => t >= (page.start ?? 0) && t <= (page.end ?? 0));
-        const trial = { pair, importing, page, main, imported, nativeTimesUs: [] as number[] };
+        const trial = {
+          pair,
+          importing,
+          page,
+          main,
+          imported,
+          importProcesses,
+          nativeTimesUs: [] as number[],
+        };
         trials.push(trial);
         expect(page.frames.length).toBeGreaterThan(2);
         expect(main.frames.length).toBeGreaterThan(2);
@@ -402,6 +465,18 @@ test('a large picture imported during a hall dissolve does not add sustained fra
             15_000,
           );
           expect(main.jobs.filter((job) => job.kind === 'decode-start')).toHaveLength(1);
+          // QA23-L8-4 A (the owner, 24 Nov 2026: "A: check the import order"): the import's worker process is made only
+          // once the dissolve has ended (L8 before its worker waited, 5e86c44f, made it 171-330 ms after the import
+          // call, during the dissolve: its one cost on record), and the test saw it before the import was ready.
+          const order = importProcessOrder({ end: page.end, ready: imported.ready }, importProcesses);
+          expect(
+            order.startedDuring,
+            'The import’s worker process started only after the dissolve ended.',
+          ).toBe(false);
+          expect(
+            order.inOrder,
+            'The import’s worker was seen, made after the dissolve and before ready.',
+          ).toBe(true);
           for (const job of main.jobs) {
             expect(job.pid).toBeGreaterThan(0);
             expect([main.mainPid, main.hallPid, operatorPid]).not.toContain(job.pid);
@@ -474,8 +549,8 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       paired.push(verdict);
       console.log('DISPLAY DISSOLVE PAIR ' + JSON.stringify(verdict));
     }
-    // The hall's dropped presented frames, import trials against control trials (the Mac's verdict below; recorded on
-    // both systems).
+    // The hall's dropped presented frames, import trials against control trials: recorded and reported on both systems,
+    // deciding nothing (QA23-L8-4 A, below).
     const drops = macDropVerdict(
       trials.map((trial) => ({
         importing: trial.importing,
@@ -487,22 +562,13 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     );
     paired.push({ drops, nativeAllWorse: allWorse.native, rafAllWorse: allWorse.raf });
     console.log('DISPLAY DISSOLVE DROPS ' + JSON.stringify(drops));
-    if (process.platform === 'darwin') {
-      // QA22-L8-3 B, the owner's choice of 24 Nov 2026 ("B: judge Mac by drops"): on CI's Mac the renderer-frame and
-      // presented-frame rule below failed a build that changed nothing measurable 4 times in 5 (a22-l8-1123-232027-49482)
-      // and passed the same L8 3 times in 3 (a22-l8-1123-232027-49623); in a22-l8-1124-012539-84279 the import trials
-      // dropped fewer frames than the controls (81 against 123 in the first second, 318 against 360 after) while that
-      // rule failed 2 attempts of 5. So the Mac judges the dropped frames themselves, within MAC_DROP_MARGIN; the rule's
-      // pairs stay in the evidence. Windows keeps the rule unchanged.
-      expect(
-        drops.firstWorse,
-        'Import dropped more of the hall’s frames in the dissolve’s first second.',
-      ).toBe(false);
-      expect(
-        drops.afterWorse,
-        'Import dropped more of the hall’s frames after the dissolve’s first second.',
-      ).toBe(false);
-    } else {
+    // QA23-L8-4 A, the owner's choice of 24 Nov 2026 ("A: check the import order"): on the Mac the verdict is the
+    // import's fixed order, checked in each import trial above on both systems: no display copy work and no import
+    // worker process during the dissolve. On CI's Mac the frame meters failed builds with no import cost: the rule below
+    // a build that changed nothing measurable 4 times in 5 (a22-l8-1123-232027-49482), and QA22-L8-3 B's drops margin
+    // about 1 attempt in 10 (35-41% of 5-repeat runs; a22-l8-1124-091901-78648, whose import worker started 275-304 ms
+    // after each dissolve). The drops and the rule's pairs stay in the evidence. Windows keeps the rule.
+    if (process.platform !== 'darwin') {
       // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
       expect(
         allWorse.native.every(Boolean),
