@@ -144,17 +144,19 @@ type Side = 'read' | 'own';
 
 const hex16 = () => randomBytes(8).toString('hex');
 
-/** Counts and hashes what passes, refusing more than `bytes`. */
 /**
  * Whether `real`, a file's real path, is inside the pack's folder `top`, in the platform's own way (Mac and Windows
- * folders do not tell a name's case apart).
+ * folders do not tell a name's case apart). The top of a drive or a disk ("E:\\", "/") already ends in its separator
+ * (alpha.23, the review: a pack on a USB stick's top was refused as a link).
  */
 export function insideFolder(top: string, real: string, platform: NodeJS.Platform = process.platform): boolean {
   const separator = platform === 'win32' ? '\\' : '/';
   const fold = (p: string) => (platform === 'linux' ? p : p.toLowerCase());
-  return fold(real).startsWith(fold(top + separator));
+  const folder = top.endsWith(separator) ? top : top + separator;
+  return fold(real).startsWith(fold(folder));
 }
 
+/** Counts and hashes what passes, refusing more than `bytes`. */
 function hashing(name: string, bytes: number, step: (n: number) => void) {
   const hash = createHash('sha256');
   let seen = 0;
