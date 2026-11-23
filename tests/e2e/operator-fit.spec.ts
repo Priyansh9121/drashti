@@ -9,7 +9,7 @@ import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
 import { makeTestImage, makeTestTone, makeTestVideo, setWebmDuration } from './test-media';
 import { dispatch, row, slideWithVideos } from './time-bar-helpers';
-import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 
 /*
  * The whole operator window fits (alpha.21, the owner's "dont like the design here. frontend issue." and "all good fit
@@ -51,6 +51,25 @@ const LONG = {
     'Placeholder notice: the diagnostics were saved to a folder with a long placeholder name on this computer, so this card is as tall as a long notice gets.',
 } as const;
 
+/** The slide clip's file, and the words over it (slideWithVideos). */
+const CLIP = 'Placeholder slide clip.webm';
+const SLIDE_WORDS = 'Placeholder words over the videos';
+
+/**
+ * The names an operator gave in this test, each as Drashti may show it (a file's with its type and without), and the
+ * library's two seeded presentations (src/main/db/seed.ts): the only words that may be cut short with an ellipsis (a
+ * notice's, the test's own included, may not).
+ */
+const NAMES: string[] = [
+  LONG.playlist,
+  LONG.presentation,
+  ...[LONG.video, LONG.picture, LONG.tone, CLIP].flatMap((file) => [file, file.replace(/\.[a-z0-9]+$/u, '')]),
+  ...LONG.audio,
+  SLIDE_WORDS,
+  'Language test slides',
+  'Sample kirtan (placeholder)',
+];
+
 /**
  * Everything that does not fit in the operator window as it is laid out now, each in words: a control, a heading or a
  * key hint cut (its contents run past it), cut off by what holds it, running out of its column, lying over another, or
@@ -59,7 +78,7 @@ const LONG = {
  * looked at, nor what is hidden from people (aria-hidden, unseen).
  */
 const fitFaults = (win: Page) =>
-  win.evaluate(() => {
+  win.evaluate((names) => {
     const out = new Set<string>();
     const REGIONS: [string, string][] = [
       ['the header', '[data-header]'],
@@ -198,8 +217,7 @@ const fitFaults = (win: Page) =>
         }
         parts.push({ el, region: name, seen, control: el.matches(CONTROLS) });
       }
-      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: this test's placeholders, and
-      // the library's seeded "Sample kirtan (placeholder)").
+      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: NAMES).
       for (const el of r.querySelectorAll('*')) {
         if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth + 1) continue;
         const style = getComputedStyle(el);
@@ -207,7 +225,7 @@ const fitFaults = (win: Page) =>
         const words = el.textContent.replace(/\s+/gu, ' ').trim();
         if (
           words !== '' &&
-          !/placeholder/iu.test(words) &&
+          !names.some((n) => words.includes(n)) &&
           inSight(el.parentElement, boxOf(el.getBoundingClientRect())).seen
         )
           out.add(`${name}: “${words.slice(0, 60)}” is cut short`);
@@ -266,7 +284,7 @@ const fitFaults = (win: Page) =>
       }
     }
     return [...out];
-  });
+  }, NAMES);
 
 /** axe's target-size findings (every target 24 px, or room around it): its words for each. */
 async function smallTargets(win: Page): Promise<string[]> {
@@ -343,7 +361,7 @@ async function fill(app: ElectronApplication, win: Page, mode: 'pro' | 'simple')
   // The background: two hours long (its time left the widest), paused.
   const long = await makeTestVideo(win, join(dir, LONG.video), { seconds: 4, hue: 20 });
   writeFileSync(long, setWebmDuration(readFileSync(long), 2 * 3600 * 1000));
-  const clip = await makeTestVideo(win, join(dir, 'Placeholder slide clip.webm'), { seconds: 8, hue: 200 });
+  const clip = await makeTestVideo(win, join(dir, CLIP), { seconds: 8, hue: 200 });
   const picture = await makeTestImage(win, join(dir, LONG.picture), { width: 320, height: 180 });
   const tone = makeTestTone(join(dir, LONG.tone), { seconds: 30, hz: 440 });
   const [longId = '', clipId = '', pictureId = '', toneId = ''] = await importAndGetIds(win, [
@@ -444,3 +462,58 @@ for (const mode of ['pro', 'simple'] as const)
       expect(findings).toEqual([]);
       await app.close();
     });
+
+/** Five refused files told by the main process, as a watched folder's automatic import tells them, and a notice. */
+const REFUSED = Array.from({ length: 5 }, (_, i) => ({
+  name: `Placeholder refused file ${String(i + 1)} with a long name.odt`,
+  reason: 'Drashti doesn’t read .odt files.',
+}));
+
+for (const mode of ['pro', 'simple'] as const)
+  test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode, the notices at their most (four import notices, one more and a notice): Back and Next stay in sight in CI's 1024 × 645, and every Dismiss can be reached whole, there and in Drashti's shortest window`, async () => {
+    test.setTimeout(120_000);
+    const { app } = await launchApp();
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    if (mode === 'simple') {
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+    }
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    await app.evaluate(
+      ({ BrowserWindow }, { refused, text }) => {
+        for (const w of BrowserWindow.getAllWindows()) {
+          if (!w.webContents.getURL().includes('index.html')) continue;
+          w.webContents.send('library:automatic-import-notice', { refused });
+          w.webContents.send('app:notice', { text });
+        }
+      },
+      { refused: REFUSED, text: LONG.notice },
+    );
+    const place = win.getByTestId('live-column').getByTestId('notice-place');
+    await expect(place.getByTestId('import-notice')).toHaveCount(4);
+    await expect(place.getByText('1 more import notice', { exact: true })).toBeVisible();
+    await expect(place.getByTestId('operator-notice')).toBeVisible();
+    const live = win.getByRole('complementary', { name: 'Live', exact: true });
+    // Drashti's shortest window: 540 px high (the window's least, App.tsx).
+    for (const size of [CI_WINDOW, { width: 1024, height: 540 }]) {
+      const where = `${String(size.width)} × ${String(size.height)}`;
+      await sizeOperatorWindow(app, win, size);
+      await liveColumnToTop(live);
+      if (size === CI_WINDOW)
+        for (const id of ['show-back', 'show-next'])
+          await expect(win.getByTestId(id), `${id} in sight at ${where}`).toBeInViewport({ ratio: 1 });
+      // Every Dismiss (the four lines', Dismiss all and the notice's), reached as a person does, whole.
+      const dismisses = place.getByRole('button', { name: /^Dismiss/u });
+      await expect(dismisses).toHaveCount(6);
+      for (const dismiss of await dismisses.all()) {
+        await dismiss.scrollIntoViewIfNeeded();
+        await expect(dismiss, `a Dismiss whole at ${where}`).toBeInViewport({ ratio: 1 });
+      }
+      // Reaching them moved nothing of LIVE: Back and Next still in sight.
+      if (size === CI_WINDOW)
+        for (const id of ['show-back', 'show-next'])
+          await expect(win.getByTestId(id), `${id} still in sight at ${where}`).toBeInViewport({ ratio: 1 });
+    }
+    await app.close();
+  });
