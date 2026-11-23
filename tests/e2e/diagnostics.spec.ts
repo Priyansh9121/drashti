@@ -249,6 +249,7 @@ test('the log has a line for every show command, operator request and notice, wi
   );
   // Reads are never logged; nor any word from the library, nor the Gmail let in.
   expect(text).not.toMatch(/Request: library:list-presentations/u);
-  for (const secret of [secretName, secretWords, PLACEHOLDER_PERSON]) expect(text, secret).not.toContain(secret);
+  for (const secret of [secretName, secretWords, PLACEHOLDER_PERSON])
+    expect(text, secret).not.toContain(secret);
   await app.close();
 });

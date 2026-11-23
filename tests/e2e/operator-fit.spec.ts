@@ -562,7 +562,11 @@ for (const size of [...SIZES, { width: 1024, height: 540 }])
       const heights = await live.evaluate((el) => {
         const foot = el.querySelector<HTMLElement>('[data-testid="notice-place"]');
         if (!foot) throw new Error('The notice foot is missing');
-        return { height: foot.clientHeight, most: Number.parseFloat(foot.style.maxHeight), all: foot.scrollHeight };
+        return {
+          height: foot.clientHeight,
+          most: Number.parseFloat(foot.style.maxHeight),
+          all: foot.scrollHeight,
+        };
       });
       expect(heights.height).toBeLessThanOrEqual(heights.most);
       expect(heights.all).toBeGreaterThan(heights.height);

@@ -240,7 +240,6 @@ describe('the log of every notice (alpha.21, logs (a))', () => {
   });
 });
 
-
 describe('notice names in the computer’s own log', () => {
   it('blanks unquoted library names before the log receives a line, using the current library', () => {
     const db = openDatabase(':memory:');
