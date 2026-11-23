@@ -107,7 +107,14 @@ export function ClipExportPanel({
           Vertical keeps the middle of the picture, filling a 9:16 frame without stretching.
         </p>
       )}
-      <Checkbox label="Also add the clip to Media" checked={add} onChange={(e) => setAdd(e.target.checked)} />
+      {/* A line of its own: inline, it ran right up to Export clip… with no gap (alpha.21). */}
+      <div>
+        <Checkbox
+          label="Also add the clip to Media"
+          checked={add}
+          onChange={(e) => setAdd(e.target.checked)}
+        />
+      </div>
       {needsSave && (
         <p className="text-xs text-muted">
           Save the edits and wait for preparation before exporting the edited clip.
