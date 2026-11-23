@@ -1,6 +1,6 @@
 import type { Lang, TextElement, TextRun } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
-import { editableSlidesOf } from '../../../shared/slide-edit';
+import { slidesOf, editableSlidesOf } from '../../../shared/slide-edit';
 import { detectLang, mergeRuns, scriptOf } from '../../../shared/text-runs';
 import { readingOrder } from '../../../shared/tracks';
 import { mapElements } from './ops';
@@ -62,7 +62,7 @@ export function findMatches(doc: EditDoc, query: string, options: FindOptions): 
   const pattern = patternOf(query, options);
   if (!pattern) return [];
   const out: Match[] = [];
-  for (const slide of editableSlidesOf(doc))
+  for (const slide of editableSlidesOf(doc).filter((slide) => !options.preparingPages?.has(slide.id)))
     for (const el of readingOrder(slide.elements)) {
       const legacy = legacySpans(el);
       for (const found of el.text.matchAll(pattern)) {
@@ -184,6 +184,12 @@ export function replaceMatches(doc: EditDoc, matches: readonly Match[], replacem
   return next;
 }
 
-export function pdfFindStatus(_doc: EditDoc, _preparing: ReadonlySet<string>): string {
-  return '';
+export function pdfFindStatus(doc: EditDoc, preparing: ReadonlySet<string>): string {
+  const count = slidesOf(doc).filter(
+    (slide) => slide.documentPage?.ext === 'pdf' && preparing.has(slide.id),
+  ).length;
+  if (!count) return '';
+  return count === 1
+    ? '1 PDF page is still preparing. Find searches its words when it is ready.'
+    : `${String(count)} PDF pages are still preparing. Find searches their words when they are ready.`;
 }

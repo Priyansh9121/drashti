@@ -128,10 +128,13 @@ export function generatedPdf(pages: readonly GeneratedPage[]): Buffer {
   return Buffer.concat(parts);
 }
 
-export async function openGeneratedPdf(pages: readonly GeneratedPage[] = PDF_PAGES) {
+export async function openGeneratedPdf(
+  pages: readonly GeneratedPage[] = PDF_PAGES,
+  makeBytes: (pages: readonly GeneratedPage[]) => Buffer = generatedPdf,
+) {
   const folder = mkdtempSync(join(tmpdir(), 'drashti-pdf-tools-'));
   const source = join(folder, 'Placeholder PDF tools.pdf');
-  const original = generatedPdf(pages);
+  const original = makeBytes(pages);
   writeFileSync(source, original);
   const digest = createHash('sha256').update(original).digest('hex');
   const unchanged = () => {

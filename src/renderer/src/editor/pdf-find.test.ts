@@ -6,12 +6,37 @@ import { newSlide } from './ops';
 import { commit, undo, useEditor } from './editor-store';
 
 const box = (id: string): TextElement => ({
-  id, kind: 'text', text: 'Placeholder alpha alpha', lang: 'en',
+  id,
+  kind: 'text',
+  text: 'Placeholder alpha alpha',
+  lang: 'en',
   frame: { x: 20, y: 20, width: 180, height: 40 },
-  style: { fontFamily: 'Noto Sans', fontSize: 12, fontWeight: 400, color: '#000000', align: 'left', verticalAlign: 'top', lineHeight: 1.2, shadow: false },
+  style: {
+    fontFamily: 'Noto Sans',
+    fontSize: 12,
+    fontWeight: 400,
+    color: '#000000',
+    align: 'left',
+    verticalAlign: 'top',
+    lineHeight: 1.2,
+    shadow: false,
+  },
 });
-const page = (id: string, page: number) => ({ ...newSlide(null), id, elements: [box(id + '-words')], documentPage: { sha256: 'a'.repeat(64), ext: 'pdf' as const, page } });
-const doc: EditDoc = { presentationId: 'placeholder', name: 'Placeholder PDF', width: 480, height: 320, transition: null, loop: false, groups: [{ id: 'g', name: '', color: null, slides: [page('one', 0), page('two', 1)] }] };
+const page = (id: string, page: number) => ({
+  ...newSlide(null),
+  id,
+  elements: [box(id + '-words')],
+  documentPage: { sha256: 'a'.repeat(64), ext: 'pdf' as const, page },
+});
+const doc: EditDoc = {
+  presentationId: 'placeholder',
+  name: 'Placeholder PDF',
+  width: 480,
+  height: 320,
+  transition: null,
+  loop: false,
+  groups: [{ id: 'g', name: '', color: null, slides: [page('one', 0), page('two', 1)] }],
+};
 const options = { matchCase: false, wholeWords: true };
 afterEach(() => vi.unstubAllGlobals());
 
@@ -27,7 +52,16 @@ describe('Find across editable PDF pages', () => {
   });
   it('replaces all pages in one Undo step, including their native conversion', () => {
     vi.stubGlobal('window', { drashti: {} });
-    useEditor.setState({ doc, saved: doc, past: [], future: [], preparingSource: new Set(), slideId: 'one', selection: [], sourceConversion: null });
+    useEditor.setState({
+      doc,
+      saved: doc,
+      past: [],
+      future: [],
+      preparingSource: new Set(),
+      slideId: 'one',
+      selection: [],
+      sourceConversion: null,
+    });
     commit(replaceMatches(doc, findMatches(doc, 'alpha', options), 'કખગઘઙ'));
     expect(useEditor.getState().past).toHaveLength(1);
     for (const slide of useEditor.getState().doc?.groups[0]?.slides ?? []) {
@@ -40,8 +74,13 @@ describe('Find across editable PDF pages', () => {
   });
   it('says when PDF pages are still preparing and excludes them from matches', () => {
     const preparingPages = new Set(['two']);
-    expect(pdfFindStatus(doc, preparingPages)).toBe('1 PDF page is still preparing. Find searches its words when it is ready.');
-    expect(findMatches(doc, 'alpha', { ...options, preparingPages }).map((match) => match.slideId)).toEqual(['one', 'one']);
+    expect(pdfFindStatus(doc, preparingPages)).toBe(
+      '1 PDF page is still preparing. Find searches its words when it is ready.',
+    );
+    expect(findMatches(doc, 'alpha', { ...options, preparingPages }).map((match) => match.slideId)).toEqual([
+      'one',
+      'one',
+    ]);
     expect(pdfFindStatus(doc, new Set())).toBe('');
   });
 });
