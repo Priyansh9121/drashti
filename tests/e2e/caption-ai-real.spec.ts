@@ -379,12 +379,13 @@ for (const route of ROUTES) {
         const cer = characterErrorRate(clip.text, heard);
         const finalText = own.at(-1)?.text ?? '';
         const row: Record<string, unknown> = { clip: clip.id, phrases: own.length, cer: Number(cer.toFixed(3)) };
-        for (const [name, { drawn }] of [
+        for (const [name, place] of [
           ['hall', watched[0]],
           ['stage', watched[1]],
           ['stream', watched[2]],
         ] as const) {
-          const shown = (await drawn?.())?.find(
+          if (!place) throw new Error(`No ${name} watched`);
+          const shown = (await place.drawn()).find(
             (d) => d.at >= soundAskedAt + clip.startMs && plainText(d.text) === plainText(finalText),
           );
           expect(shown, `${clip.id}: its settled phrase on the ${name}`).toBeDefined();
