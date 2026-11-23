@@ -1121,3 +1121,67 @@ describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
     expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
   });
 });
+
+// Admission is exercised over loopback; each accept is observed before the next device connects.
+describe('places for paired devices', () => {
+  it('admits paired HTTP and both device feeds while new connections are waiting', async () => {
+    const { port, server: network } = await start({ sockets: { total: 8, perAddress: 32 } });
+    const sockets: Socket[] = [];
+    const listener = Reflect.get(network, 'server') as import('node:http').Server;
+    try {
+      for (let i = 0; i < 8; i++) {
+        const accepted = new Promise<void>((resolve) => listener.once('connection', () => resolve()));
+        const { socket } = await socketTo(port);
+        sockets.push(socket);
+        await accepted;
+      }
+      expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
+      for (const token of [REMOTE_TOKEN, STAGE_TOKEN]) {
+        const { ws } = await feed(port);
+        try {
+          const welcome = new Promise<ToDevice>((resolve) =>
+            ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+          );
+          ws.send(JSON.stringify({ type: 'hello', token }));
+          expect(await welcome).toMatchObject({ type: 'welcome' });
+        } finally {
+          ws.terminate();
+        }
+      }
+    } finally {
+      for (const socket of sockets) socket.destroy();
+    }
+  });
+
+  it('keeps a paired feed and admits another paired device when the address has waiting feeds', async () => {
+    const { port } = await start();
+    const waiting: WebSocket[] = [];
+    const paired = await feed(port);
+    const welcome = new Promise<ToDevice>((resolve) =>
+      paired.ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+    );
+    paired.ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN }));
+    expect(await welcome).toMatchObject({ type: 'welcome' });
+    try {
+      for (let i = 0; i < 9; i++) waiting.push((await feed(port)).ws);
+      const stage = await feed(port);
+      try {
+        const admitted = new Promise<ToDevice>((resolve) =>
+          stage.ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+        );
+        stage.ws.send(JSON.stringify({ type: 'hello', token: STAGE_TOKEN }));
+        expect(await admitted).toMatchObject({ type: 'welcome' });
+        const clock = new Promise<ToDevice>((resolve) =>
+          paired.ws.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToDevice)),
+        );
+        paired.ws.send(JSON.stringify({ type: 'clock', t0: 76 }));
+        expect(await clock).toMatchObject({ type: 'clock', t0: 76 });
+      } finally {
+        stage.ws.terminate();
+      }
+    } finally {
+      paired.ws.terminate();
+      for (const ws of waiting) ws.terminate();
+    }
+  });
+});
