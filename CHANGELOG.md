@@ -2,6 +2,17 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.21 (24 Nov 2026)
+
+Update after a sabha, and update Main and nodes together.
+
+- The operator window: the LIVE block (the picture, Back and Next, the levels) stands still while what is under it scrolls, in Pro and Simple Mode; at their narrowest the side columns still show the Wallpapers heading, a removal’s undo note and Back and Next whole; a notice’s Report this… and Dismiss are easier to hit.
+- Playback: a paused video’s row is no longer cramped (no Paused badge: its Play button says so, and the time bar keeps room for its times). Last 10 s is gone everywhere; a video’s last 10 seconds still turn amber, and the stage’s Video ends in stays.
+- Screens: what Drashti draws at the start to make the graphics chip ready is gone before a screen starts the show, so its first picture is whole.
+- Importing a picture or a video never waits on this computer’s answer about HEVC video: the answer now always comes.
+- Edit Video…: Also add the clip to Media stands on its own line above Export clip….
+- On a busy computer, Save as MP4… no longer says FFmpeg could not find its clean frames, a failed conversion always gives FFmpeg’s reason, and a deck imported with PowerPoint or Keynote is read whole: Drashti waits for all a helper program wrote.
+
 ## 1.0.0-alpha.20.1 (22 Nov 2026)
 
 An update to alpha.20, best made after a sabha, on Main and its nodes together.
