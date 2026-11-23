@@ -269,6 +269,8 @@ Section 8 of `docs/parallel-run.md` has the steps: on the second computer choose
 
 ## 7. Phones and tablets
 
+**Paired devices always keep their places.** Pair the operator’s phones, stage tablets and nodes before the show. Drashti keeps places for them when new devices are waiting. If a new device says **Drashti is busy**, wait before pairing it, and check with the operator. Main shows a notice too. Public announcement links wait with new devices; an individually paired announcement device keeps its place. The hall’s screens carry on. This works the same on Mac and Windows; the usual connection limits still apply.
+
 Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **Let paired phones and tablets connect**, then **Pair a Remote / Stage / Announcements device** for each phone or tablet, and **Make a poster link** for announcements from anyone on the Wi-Fi. While they may connect, the header holds more than fits in a window under 1680 pixels wide: **Stream**, **Phones**, **Announcements** and **Simple Mode** then show their icons alone (**Phones** a phone), their tooltips saying what each is, while **Screens**, **Audience** and **Stage** keep their words.
 
 ![The Phones panel](screenshots/phones-panel.png)
