@@ -71,7 +71,13 @@ describe('fonts at a page’s start', () => {
     const { preloadStudioFonts } = await import('./studio-fonts');
     preloadStudioFonts();
     preloadStudioFonts();
-    expect(asked).toHaveLength(STUDIO.reduce((n, c) => n + c.families.length * c.weights.length, 0));
+    // One at a time (a21): all of them once the last has come.
+    const total = STUDIO.reduce((n, c) => n + c.families.length * c.weights.length, 0);
+    await vi.waitFor(() => {
+      expect(asked).toHaveLength(total);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(asked).toHaveLength(total);
     expect(new Set(asked.map(familyOf))).toEqual(new Set(STUDIO.flatMap((c) => c.families)));
   });
 

@@ -14,15 +14,46 @@ let started = false;
 /** Whether this page is one of Drashti's own windows (read from the app's files), not a phone's page. */
 const ownWindow = (): boolean => location.protocol === 'file:';
 
-/** Every face of the studio's fonts, asked for once (its later calls do nothing), in Drashti's own windows only. */
+/** How long a face waits for an idle moment at most, on a page that is never idle (an output drawing a busy show). */
+const IDLE_WAIT_MS = 200;
+
+/** `next` once the page is idle, or after IDLE_WAIT_MS at most. */
+function whenIdle(next: () => void): void {
+  if (typeof requestIdleCallback === 'function')
+    // eslint-disable-next-line no-restricted-syntax -- only paces asking for unwaited-for fonts: nothing drawn waits on it
+    requestIdleCallback(next, { timeout: IDLE_WAIT_MS });
+  // eslint-disable-next-line no-restricted-syntax -- the same, where there is no idle callback (a unit test)
+  else setTimeout(next, 0);
+}
+
+/**
+ * Every face of the studio's fonts, asked for once (its later calls do nothing), in Drashti's own windows only: one
+ * face at a time, the next once the last has come (or could not be read) and the page is idle. Asked for all at once,
+ * their loads took the page's main thread for ~0.4 s on CI's Mac (a21: in the operator window just after its first
+ * show, so a live Next waited 306 ms behind them; source-preparation-responsiveness.spec.ts:101); one at a time,
+ * anything the page must do waits for one face at most.
+ */
 export function preloadStudioFonts(): void {
   if (started || !ownWindow() || typeof document === 'undefined') return;
   started = true;
+  const faces: string[] = [];
   for (const choice of LOWER_THIRD_FONT_CHOICES)
     if (choice.bundled === 'studio')
       for (const family of choice.families)
-        for (const weight of choice.weights)
-          void document.fonts.load(`${String(weight)} 48px "${family}"`, FONT_SAMPLE).catch(() => undefined);
+        for (const weight of choice.weights) faces.push(`${String(weight)} 48px "${family}"`);
+  const ask = (at: number): void => {
+    const face = faces[at];
+    if (face === undefined) return;
+    const next = () => {
+      whenIdle(() => {
+        ask(at + 1);
+      });
+    };
+    document.fonts.load(face, FONT_SAMPLE).then(next, next);
+  };
+  whenIdle(() => {
+    ask(0);
+  });
 }
 
 /**
