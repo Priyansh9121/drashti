@@ -99,8 +99,26 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
     expect(parseLanguageModelList({ not: 'a list' })).toEqual([]);
   });
 
-  it('lists none of its own until a file is approved: the built-in list is well made', () => {
+  it('knows the tuned Gujarati and Hindi small models by their exact size and SHA-256 (cap-route-w), decoded without timestamps; the list is well made', () => {
     expect(parseLanguageModelList(LANGUAGE_MODELS)).toEqual(LANGUAGE_MODELS);
+    expect(LANGUAGE_MODELS.map((m) => [m.id, m.language, m.bytes, m.sha256, m.timestamps])).toEqual([
+      [
+        'gu-small-vasista22-f16',
+        'gu',
+        487_601_967,
+        '4352740b11928eef0743477d0729c3abda01c3f95f2e7802ad771beeeeb45c7a',
+        false,
+      ],
+      [
+        'hi-small-vasista22-f16',
+        'hi',
+        487_601_967,
+        '5d9f25596aad22c9a8a67de67632b5e8f0d1e43b26cdd0f26c1d628d7e953e91',
+        false,
+      ],
+    ]);
+    // Free and open only: the tunes' Apache-2.0 on OpenAI's MIT base.
+    expect(LANGUAGE_MODELS.every((m) => m.licence === 'Apache-2.0 (base model MIT)')).toBe(true);
   });
 
   it('keeps a language model in the data folder, under its id', () => {
