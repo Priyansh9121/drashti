@@ -207,6 +207,46 @@ test('Pro access: Simple Mode the operator chose stays when the owner gives Simp
   }
 });
 
+/**
+ * The next check that reaches the stand-in list is answered 503, as a check's connection on CI's Windows can fail at once
+ * (alpha.20.1's final5: net::ERR_NO_BUFFER_SPACE, its job's own log): Drashti hears no answer, and asks again at its next
+ * check, 15 s on (service.ts, as designed). The checks after it are answered.
+ */
+async function failTheNextCheck(s: AccessStandIn): Promise<void> {
+  const tries = s.tries;
+  s.mode = 'error';
+  await expect.poll(() => s.tries, { timeout: 25_000 }).toBeGreaterThan(tries);
+  s.mode = 'answer';
+}
+
+test('Pro access, the check after the owner gives Pro again with no answer (a connection that fails at once, as on CI’s Windows): the way out is back at the list’s next answer, and Simple Mode stays', async () => {
+  test.setTimeout(150_000);
+  const { app, access: s } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON } });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+    await expect(win.getByTestId('simple-mode')).toBeVisible();
+    await expect(win.getByTestId('simple-leave')).toBeVisible();
+    s.setMode(SIMPLE_PERSON, 'simple');
+    await expect(win.getByTestId('simple-leave')).toHaveCount(0, { timeout: 25_000 });
+    const changed = Date.now();
+    s.setMode(SIMPLE_PERSON, 'pro');
+    await failTheNextCheck(s);
+    // As the test above asks today: the way out back within 25 s of the owner's change.
+    await expect(win.getByTestId('simple-leave')).toBeVisible({
+      timeout: Math.max(1, 25_000 - (Date.now() - changed)),
+    });
+    await holdStill(
+      async () => (await modeOf(win)) === 'simple',
+      3000,
+      'Simple Mode chosen by the operator stays',
+    );
+  } finally {
+    await app.close();
+  }
+});
+
 test('Simple access refuses exactly what Simple Mode refuses (Session 55, Parts 18 and 19, one list): its playlist takes files, and nothing of a playlist that is Pro Mode’s, in words with no way to Pro Mode', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON }, mode: 'simple' });
