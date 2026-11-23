@@ -365,6 +365,12 @@ export interface CorrectionLimits {
 /** Pictures jump sooner and change speed more than sound, where a skip or a pitch change is heard. */
 export const PICTURE_LIMITS: CorrectionLimits = { jumpOver: 0.25, maxRateChange: 0.05 };
 export const SOUND_LIMITS: CorrectionLimits = { jumpOver: 0.5, maxRateChange: 0.02 };
+/**
+ * QA22-FADE-1 (alpha.23, the owner: "±8%, jump past 0.5 s"): the stream's own sound in a crossfade, out of step, is
+ * brought back by speed alone, up to 8% faster or slower with its pitch kept, and jumps only past half a second (a
+ * jump is silent until it lands: 30 ms on a Mac, up to 1.9 s on CI's two-core Windows). render/playback.ts's `ease`.
+ */
+export const FADE_SOUND_LIMITS: CorrectionLimits = { jumpOver: 0.5, maxRateChange: 0.08 };
 
 /**
  * How to bring a playing file back in step. Far out (a stall, a reload):

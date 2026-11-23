@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 import {
+  FADE_SOUND_LIMITS,
   mediaUrl,
   PICTURE_LIMITS,
   playbackOffset,
@@ -1228,5 +1229,131 @@ describe('a deck’s first clip whose first frame came in late, caught up on the
         playback();
       }
     }
+  });
+});
+
+describe('the stream’s own sound in a crossfade: brought back by speed, not a jump (QA22-FADE-1, alpha.23)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-10-06T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A sound `length` s long, as the stream's sound page plays a fade's two sounds (SOUND_LIMITS), eased while
+   * `fading` says so (program/sound.ts: while the sound carries its crossfade envelope). Every speed it is given is
+   * kept, and where the engine sends it.
+   */
+  const fadePlayed = (v: FakeMedia, fading: { now: boolean }, length = 30, loop = false) => {
+    const timing: { seek?: PlaybackSeek } = {};
+    const startedAt = Date.now();
+    const rates: number[] = [];
+    v.addEventListener('ratechange', () => rates.push(v.playbackRate));
+    const playback = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'fading',
+      startedAt,
+      audible: true,
+      limits: SOUND_LIMITS,
+      ease: () => (fading.now ? FADE_SOUND_LIMITS : null),
+      timing: () => ({ loop, ...timing }),
+    });
+    return {
+      stop: playback,
+      rates,
+      /** How far it is from the clock (seconds, + ahead). */
+      offset: () =>
+        playbackOffset(
+          v.currentTime,
+          playbackPosition({ startedAt, loop, ...timing }, length, Date.now()),
+          length,
+          loop,
+        ),
+      /** The engine sends it to `toMs` from now, and its page checks it at once (as program/sound.ts does). */
+      jumpTo: (toMs: number) => {
+        timing.seek = { at: Date.now(), toMs };
+        playback.resync();
+      },
+    };
+  };
+  const pitchKept = (v: FakeMedia) => (v as FakeMedia & { preservesPitch?: boolean }).preservesPitch;
+
+  it('one that starts 0.1 s late in a fade is never jumped: up to 8% faster, its pitch kept, within 50 ms in about a second, in step by 1.5 s', () => {
+    // CI's Windows (a22-cue-1124-023605-8880): the incoming sound started late and was aimed again at its start
+    // measurement; the jump took 1.87 s to land, silent all that time, and the fade's two tones never overlapped.
+    const v = new FakeMedia(30, { startLate: 100, seekMs: 1870 });
+    const s = fadePlayed(v, { now: true });
+    runFor(v, 1250);
+    expect(v.seeks, 'no jump at its start or after it').toBe(0);
+    expect(Math.abs(s.offset()), `${s.offset().toFixed(3)} s off 1.25 s in`).toBeLessThan(0.05);
+    runFor(v, 250);
+    expect(Math.abs(s.offset()), `${s.offset().toFixed(3)} s off 1.5 s in`).toBeLessThan(0.02);
+    expect(Math.max(...s.rates), 'faster than the 2% a sound eases by outside a fade').toBeGreaterThan(1.02);
+    expect(s.rates.every((r) => r === 0 || Math.abs(r - 1) <= FADE_SOUND_LIMITS.maxRateChange + 1e-9)).toBe(
+      true,
+    );
+    expect(pitchKept(v), 'its pitch kept while it plays faster').toBe(true);
+    runFor(v, 1000);
+    expect(v.playbackRate, 'back at 1x once in step').toBe(1);
+    expect(v.seeks).toBe(0);
+    s.stop();
+  });
+
+  it('one that lands a jump 0.08 s behind just before the fade is not aimed again inside it: eased back', () => {
+    // CI's Mac (a22-cue-1124-030305-96378): the outgoing sound was sent somewhere new 0.36 s before the fade, landed
+    // about 0.08 s behind, and its landing's measurement aimed it again 30 ms into the fade.
+    const v = new FakeMedia(30, { landOff: [-0.08] });
+    const fading = { now: false };
+    const s = fadePlayed(v, fading);
+    runFor(v, 2000);
+    const before = v.seeks;
+    s.jumpTo(5000);
+    runFor(v, 60);
+    fading.now = true;
+    runFor(v, 1500);
+    expect(v.seeks - before, 'only the jump the engine asked, none after its landing').toBe(1);
+    expect(Math.abs(s.offset()), `${s.offset().toFixed(3)} s off 1.5 s into the fade`).toBeLessThan(0.02);
+    s.stop();
+  });
+
+  it('a small move the engine sends in a fade is eased, not jumped; past half a second it still jumps', () => {
+    const v = new FakeMedia(30);
+    const s = fadePlayed(v, { now: true });
+    runFor(v, 2000);
+    // 0.2 s back from where it plays (2 s in).
+    s.jumpTo(1800);
+    runFor(v, 300);
+    expect(v.seeks, '0.2 s: by speed').toBe(0);
+    s.jumpTo(10_000);
+    runFor(v, 300);
+    expect(v.seeks, '8 s on: a jump').toBe(1);
+    runFor(v, 1000);
+    expect(Math.abs(s.offset())).toBeLessThan(2 / 30);
+    s.stop();
+  });
+
+  it('a loop still goes round by its jump in a fade', () => {
+    const v = new FakeMedia(2, { restart: 0.25 });
+    v.loop = true;
+    const s = fadePlayed(v, { now: true }, 2, true);
+    runFor(v, 2600);
+    expect(v.seeks, 'round once, by a jump aimed from the clock').toBeGreaterThanOrEqual(1);
+    expect(Math.abs(s.offset())).toBeLessThan(2 / 30);
+    s.stop();
+  });
+
+  it('out of a fade (no ease), a sound that starts 0.3 s late is aimed again at once, as before', () => {
+    const v = new FakeMedia(30, { startLate: 300 });
+    const s = fadePlayed(v, { now: false });
+    runFor(v, 1500);
+    expect(v.seeks).toBeGreaterThanOrEqual(1);
+    expect(Math.abs(s.offset())).toBeLessThan(2 / 30);
+    expect(Math.max(...s.rates.filter((r) => r > 0)), 'eased by at most 2%').toBeLessThanOrEqual(1.02);
+    s.stop();
   });
 });

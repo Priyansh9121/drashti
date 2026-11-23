@@ -82,6 +82,13 @@ export interface PlaybackOptions {
   /** When to jump, and how much the speed may change to catch up (pictures by default). */
   limits?: CorrectionLimits;
   /**
+   * QA22-FADE-1 (alpha.23; program/sound.ts alone asks: the stream's own sound in a crossfade), read at every check:
+   * while it gives limits, a playing file out of step is brought back by speed alone, its pitch kept: no re-aim after
+   * its start or a landing and no jump for a small move the engine sends. It jumps only when further off than those
+   * limits' `jumpOver`, and a loop still goes round at its end. Left out (every other caller), or null: as before.
+   */
+  ease?: () => CorrectionLimits | null;
+  /**
    * How it plays now (Session 14), read at every check so a change lands
    * without loading the file again: whether it loops, its start and end
    * points, and a jump to a marker (or the time bar's move, paused or not:
