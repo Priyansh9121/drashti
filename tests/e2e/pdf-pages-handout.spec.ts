@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { importAndGetIds, type PageGlobals } from './helpers';
+import { importAndGetIds, slideEditorClosed, type PageGlobals } from './helpers';
 import { openGeneratedPdf, savePdfCopy, usePdfTools, generatedPdf, PDF_PAGES } from './pdf-tools-fixtures';
 import { inspectPdf } from './pdf-export-oracle';
 
@@ -207,10 +207,16 @@ test('extracts selected pages to a new library presentation with reversible crea
   }
 });
 
-test('pauses every PDF page control during a generated stream or recording transition', async () => {
-  const s = await openGeneratedPdf();
+// QA21-TAKEPDF-1 A (the lead: nothing that works on air today may stop working): only the new page actions wait for
+// the stream and recording to be off; a mark, Save, a single Make a slide and Save a PDF copy go on during a show.
+test('on air, a mark, a single Make a slide, Save a PDF copy and Save go on, while Extract, Replace, Split and Hand-out wait', async () => {
+  const s = await openGeneratedPdf(undefined, undefined, { DRASHTI_TEST_ON_AIR_HOOK: '1' });
   try {
     await usePdfTools(s.ed);
+    const button = (name: string) => s.ed.getByRole('button', { name, exact: true });
+    // Split is offered from the second page on; this is the first.
+    const waiting = ['Extract pages…', 'Replace page…', 'Hand-out…'];
+    const goingOn = ['Highlight', 'Insert pages…', 'Make a slide…', 'Save a PDF copy…'];
     const status = await s.win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
     const send = async (live: 'off' | 'starting', recording: 'off' | 'starting') => {
       await s.app.evaluate(
@@ -236,14 +242,58 @@ test('pauses every PDF page control during a generated stream or recording trans
       ['off', 'starting'],
     ] as const) {
       await send(live, recording);
-      await expect(s.ed.getByTestId('pdf-off-air')).toBeVisible();
-      await expect(s.ed.getByTestId('pdf-off-air')).toContainText('Stop the stream and recording');
+      await expect(s.ed.getByTestId('pdf-pages-wait')).toContainText(
+        'Extract, Replace, Split and Hand-out wait until the stream and recording are off.',
+      );
+      for (const name of waiting) await expect(button(name), name).toBeDisabled();
+      for (const name of goingOn) await expect(button(name), name).toBeEnabled();
       await send('off', 'off');
-      await expect(s.ed.getByTestId('pdf-off-air')).toHaveCount(0);
-      await expect(s.ed.getByRole('button', { name: 'Extract pages…', exact: true })).toBeEnabled();
+      await expect(s.ed.getByTestId('pdf-pages-wait')).toHaveCount(0);
+      for (const name of [...waiting, ...goingOn]) await expect(button(name), name).toBeEnabled();
     }
-    await expect(s.editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
-    await expect(s.ed.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+
+    // Main on air (its test hook): Extract pages… is refused in its own words and opens nothing.
+    const onAir = (on: boolean) =>
+      s.app.evaluate((_electron, on) => {
+        const hook = (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir;
+        if (!hook) throw new Error('The on-air test hook is missing.');
+        hook(on);
+      }, on);
+    await onAir(true);
+    await button('Extract pages…').click();
+    await expect(s.ed.getByTestId('editor-note')).toContainText(
+      'Extract pages, Replace page, Split and Hand-out wait while the stream is on air or recording.',
+    );
+    await expect(s.ed.getByTestId('pdf-pages-dialog')).toHaveCount(0);
+
+    // A highlight drawn on the page, on air.
+    await button('Highlight').click();
+    const page = await s.editor.getByTestId('editor-slide').boundingBox();
+    if (!page) throw new Error('The generated PDF page has no canvas.');
+    await s.ed.mouse.move(page.x + page.width * 0.16, page.y + page.height * 0.28);
+    await s.ed.mouse.down();
+    await s.ed.mouse.move(page.x + page.width * 0.6, page.y + page.height * 0.4, { steps: 12 });
+    await s.ed.mouse.up();
+    // A single Make a slide… of the whole page, into the library, on air.
+    await button('Make a slide…').click();
+    const making = s.ed.getByTestId('make-slide');
+    await making.getByRole('radio', { name: 'The library only', exact: true }).check();
+    await making.getByRole('button', { name: 'Make the slide', exact: true }).click();
+    await expect(s.ed.getByTestId('editor-note')).toContainText('Made “Placeholder PDF tools, page 1”');
+    // Save a PDF copy…, on air.
+    await savePdfCopy(s.app, s.ed, join(s.folder, 'Placeholder copy on air.pdf'));
+    // Save, on air: the highlight is kept with the page.
+    await s.editor.getByTestId('save-slides').click();
+    await slideEditorClosed(s.app);
+    const highlights = await s.win.evaluate(async (id) => {
+      const edit = await (globalThis as PageGlobals).drashti.library.slidesForEdit(id);
+      if (!edit.ok) throw new Error(edit.message);
+      const first = edit.doc.groups.flatMap((g) => g.slides)[0];
+      return (first?.elements ?? []).filter((el) => el.kind === 'shape' && el.pdfMark?.tool === 'highlight')
+        .length;
+    }, s.id);
+    expect(highlights, 'the highlight drawn on air is saved with its page').toBe(1);
+    await onAir(false);
     s.unchanged();
   } finally {
     await s.app.close();

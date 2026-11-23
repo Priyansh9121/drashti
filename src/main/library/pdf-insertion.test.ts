@@ -59,7 +59,8 @@ async function fixture(
     const presentations = new PresentationRepo(w.db);
     const beforeTarget = presentations.content(target.id),
       beforeSource = presentations.content(source.id);
-    const access = { operator: true, pro: true };
+    // onAir: the stream on air or recording (Main's streaming.inUse()).
+    const access = { operator: true, pro: true, onAir: false };
     const revisions = new Revisions(),
       keep = vi.spyOn(revisions, 'keep');
     const changed: string[][] = [];
@@ -71,6 +72,7 @@ async function fixture(
       settings: new SettingsRepo(w.db),
       fromOperator: () => access.operator,
       mayPrepareSource: () => access.pro,
+      onAir: () => access.onAir,
       choosePdfFile,
       sourceReader: reads,
       sourceWrite: sourceWrite(w.db),
@@ -639,6 +641,57 @@ describe('extraction through the registered PDF editor boundary', () => {
           )
         ).ok,
       ).toBe(false);
+    } finally {
+      await t.close();
+    }
+  });
+
+  // x85's Extract pages… to a new presentation (alpha.21, taken from alpha.22) and its Undo and Redo wait for the stream
+  // to be off air in their own words; opening, preparing and saving PDF pages go on (QA21-TAKEPDF-1 A).
+  it('Extract pages to a new presentation, and its Undo and Redo, wait while the stream is on air or recording; saving goes on', async () => {
+    const t = await fixture();
+    try {
+      const opened = await call<EditSlidesResult>(IPC.library.slidesForEdit, event, t.target.id);
+      if (!opened.ok) throw new Error(opened.message);
+      const request = () =>
+        call<{ ok: boolean; id?: string; message?: string }>(
+          IPC.library.extractPdfPages,
+          event,
+          t.target.id,
+          opened.doc,
+          opened.stamp,
+          [0],
+        );
+      const made = t.changed.length;
+      t.access.onAir = true;
+      expect(await request()).toEqual({
+        ok: false,
+        message:
+          'No pages are extracted while the stream is on air or recording: extract them once it has stopped.',
+      });
+      expect(t.changed).toHaveLength(made);
+      t.access.onAir = false;
+      const copy = await request();
+      if (!copy.ok || !copy.id) throw new Error('The extracted presentation was not made off air.');
+      t.access.onAir = true;
+      expect(await call<boolean>(IPC.library.showExtractedPdf, event, copy.id, false)).toBe(false);
+      expect(t.presentations.content(copy.id)).not.toBeNull();
+      t.access.onAir = false;
+      expect(await call<boolean>(IPC.library.showExtractedPdf, event, copy.id, false)).toBe(true);
+      expect(t.presentations.content(copy.id)).toBeNull();
+      // A PDF presentation's own slides save during a show (its marks, words and pages).
+      t.access.onAir = true;
+      const again = await call<EditSlidesResult>(IPC.library.slidesForEdit, event, t.target.id);
+      if (!again.ok) throw new Error(again.message);
+      const saved = await call<{ ok: boolean }>(
+        IPC.library.saveSlides,
+        event,
+        t.target.id,
+        again.doc,
+        again.stamp,
+        false,
+      );
+      expect(saved).toMatchObject({ ok: true });
     } finally {
       await t.close();
     }
