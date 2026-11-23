@@ -261,7 +261,6 @@ async function cueThenGo(holdMs: number): Promise<void> {
         contentType: 'application/json',
       });
     if (tracing && mediaTrace) {
-      tracing = false;
       const kept = await app
         .evaluate(async ({ contentTracing }, path) => contentTracing.stopRecording(path), mediaTrace)
         .catch(() => null);
