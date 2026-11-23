@@ -19,3 +19,12 @@ export function indicCandidates(p: WhisperPlace): string[] {
 export function findIndic(p: WhisperPlace): string | null {
   return indicCandidates(p).find((path) => existsSync(path)) ?? null;
 }
+
+/** Both Microsoft 1.23.2 dylibs declare LC_BUILD_VERSION minos 13.4. */
+export function indicProblem(platform: NodeJS.Platform, version: string): string | null {
+  if (platform !== 'darwin') return null;
+  const [major = 0, minor = 0] = version.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  return major > 13 || (major === 13 && minor >= 4)
+    ? null
+    : 'This Gujarati or Hindi recognition engine needs macOS 13.4 or later.';
+}

@@ -750,3 +750,5 @@ explicit Gujarati or Hindi language. Keep this option off until rehearsal. A mis
 shows a reason; it never selects another recogniser automatically. Its token-frame times are coarse (40 ms), and it
 provides no confidence estimate. Turning it off leaves ordinary live captions as before. This engine adds no sound
 recording or saved transcript. An operator’s existing sound recording and timed caption draft remain separate.
+
+The optional Gujarati and Hindi recognition engine needs macOS 13.4 or later on either kind of Mac.

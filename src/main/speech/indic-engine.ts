@@ -10,6 +10,7 @@ import { openIndicPipe, type IndicPipe, type IndicPipeOptions } from './indic-pi
  * after an operator selects the imported pack's explicit Gujarati/Hindi model. No model is downloaded here. */
 export interface IndicEngineOptions {
   program(): string | null;
+  problem?: () => string | null;
   /** Acquire a checked imported model; release only once native work has stopped. Never an installer model. */
   acquire(
     language: IndicLanguage,
@@ -58,6 +59,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
     start(language, to) {
       if (language !== 'gu' && language !== 'hi') {
         to.state({ phase: 'failed', message: 'Choose Gujarati or Hindi for this recognition model.' });
+        return () => undefined;
+      }
+      const problem = o.problem?.();
+      if (problem) {
+        to.state({ phase: 'failed', message: problem });
         return () => undefined;
       }
       const chosen: IndicLanguage = language;

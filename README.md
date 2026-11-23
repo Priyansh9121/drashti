@@ -1313,3 +1313,5 @@ Electron only supports its latest three major versions with security fixes, so g
 The optional Gujarati and Hindi recognition engine uses Microsoft ONNX Runtime 1.23.2 (MIT) as a separate local
 program. Its models come only from an imported caption model pack, never the installer. It is off until chosen;
 ordinary live captions continue through the existing engine. See the admin guide for rehearsal and model import.
+
+The optional Gujarati and Hindi recognition engine needs macOS 13.4 or later on either kind of Mac.

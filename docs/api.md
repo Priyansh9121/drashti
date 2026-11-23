@@ -641,3 +641,7 @@ Build each target on its own system with `scripts/fetch-indic.mjs` (pinned Micro
 or build locally against an already verified extraction with `scripts/build-indic.mjs` and `DRASHTI_ORT_ROOT` /
 `DRASHTI_INDIC_OUT`. Local linked `vendor` destinations are refused. `findIndic` locates the bundled helper; models
 stay in cap-pack’s per-computer store. Runtime notices ship with the helper and under `licenses/onnxruntime/`.
+
+`indicProblem(platform, systemVersion)` checks this runtime’s actual macOS 13.4 minimum; pass it as the recogniser’s
+`problem()` preflight so older Macs get a plain reason before loading a model. Production startup uses `--admit`: the
+helper waits for the private four bytes `GO01` before model loading, sent only after background priority is set.
