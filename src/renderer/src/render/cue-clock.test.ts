@@ -119,7 +119,7 @@ describe("a cued picture's clock", () => {
 });
 
 describe("the page's silent graph", () => {
-  it('has no device and a gain of nothing before its destination, and is asked to run', () => {
+  it("renders on the output device's own audio thread, with a gain of nothing before its destination, and is asked to run", () => {
     const made: AudioContextOptions[] = [];
     const nodes: { gain: number; to: unknown[] }[] = [];
     let resumed = 0;
@@ -153,7 +153,9 @@ describe("the page's silent graph", () => {
       } as unknown as AudioContext;
     });
     expect(graph).not.toBeNull();
-    expect(made).toEqual([{ latencyHint: 'interactive', sinkId: { type: 'none' } }]);
+    // No sinkId 'none': that context is paced by a thread-pool timer, which ran at 0.24-0.49 of real time on CI's Mac
+    // (a21-s5-1123-121533-19312), so the picture's sound was pulled late and slow. The default output's own thread.
+    expect(made).toEqual([{ latencyHint: 'interactive' }]);
     expect(nodes).toHaveLength(1);
     expect(nodes[0]?.gain).toBe(0);
     expect(nodes[0]?.to).toEqual([destination]);
