@@ -1,4 +1,4 @@
-import { nativeCostPair, periods } from './display-cost-meter';
+import { droppedFrames, macDropVerdict, nativeCostPair, periods } from './display-cost-meter';
 import { beginNativeFeedback, type NativeFeedback } from './display-presentation-feedback';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
@@ -474,12 +474,38 @@ test('a large picture imported during a hall dissolve does not add sustained fra
       paired.push(verdict);
       console.log('DISPLAY DISSOLVE PAIR ' + JSON.stringify(verdict));
     }
-    // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
-    expect(
-      allWorse.native.every(Boolean),
-      'Import made the hall’s presented frames worse in all three pairs.',
-    ).toBe(false);
-    expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(false);
+    // The hall's dropped presented frames, import trials against control trials (the Mac's verdict below; recorded on
+    // both systems).
+    const drops = macDropVerdict(
+      trials.map((trial) => ({
+        importing: trial.importing,
+        dropped: droppedFrames(
+          trial.nativeTimesUs.map((t) => t / 1000 + nativeFeedback.anchorOffsetMs),
+          trial.page.start ?? 0,
+        ),
+      })),
+    );
+    paired.push({ drops, nativeAllWorse: allWorse.native, rafAllWorse: allWorse.raf });
+    console.log('DISPLAY DISSOLVE DROPS ' + JSON.stringify(drops));
+    if (process.platform === 'darwin') {
+      // QA22-L8-3 B, the owner's choice of 24 Nov 2026 ("B: judge Mac by drops"): on CI's Mac the renderer-frame and
+      // presented-frame rule below failed a build that changed nothing measurable 4 times in 5 (a22-l8-1123-232027-49482)
+      // and passed the same L8 3 times in 3 (a22-l8-1123-232027-49623); in a22-l8-1124-012539-84279 the import trials
+      // dropped fewer frames than the controls (81 against 123 in the first second, 318 against 360 after) while that
+      // rule failed 2 attempts of 5. So the Mac judges the dropped frames themselves, within MAC_DROP_MARGIN; the rule's
+      // pairs stay in the evidence. Windows keeps the rule unchanged.
+      expect(drops.firstWorse, 'Import dropped more of the hall’s frames in the dissolve’s first second.').toBe(false);
+      expect(drops.afterWorse, 'Import dropped more of the hall’s frames after the dissolve’s first second.').toBe(
+        false,
+      );
+    } else {
+      // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
+      expect(
+        allWorse.native.every(Boolean),
+        'Import made the hall’s presented frames worse in all three pairs.',
+      ).toBe(false);
+      expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(false);
+    }
   } finally {
     const unfinished = await app
       .evaluate(() => (globalThis as DisplayCostMainGlobals).drashtiDisplayCostMain)
