@@ -141,4 +141,11 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     expect(source).toMatch(/#ifdef _WIN32[\s\S]*MultiByteToWideChar\(CP_UTF8[\s\S]*_wfopen/u);
     expect(source).toContain('model->empty() || !spm || spm->empty()');
   });
+
+  it('compiles ruy\u2019s x86 fast paths into the Intel Mac build (a22-review-mt A2)', () => {
+    // ruy enables its AVX paths on its own only for Linux clang, GCC 9 and MSVC; Apple clang needs its switch, in every
+    // file that includes ruy (ruy itself and CTranslate2), or every int8 product runs ruy\u2019s reference C++.
+    const script = read('scripts/fetch-translate.mjs');
+    expect(script.match(/x86 \? \['-DRUY_FORCE_ENABLE_X86_ENHANCEMENTS'\] : \[\]/gu)).toHaveLength(2);
+  });
 });
