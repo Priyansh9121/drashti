@@ -25,6 +25,14 @@ test('collected PDF parts cross pages, reorder and remove, make one presentation
     await ed.mouse.up();
     await expect(dialog.getByTestId('crop-readout')).toContainText('right 75%');
     await expect(dialog.getByTestId('crop-readout')).toContainText('bottom 50%');
+    // Keep an exact quarter-by-half for the pixel-size oracle on either platform: the frame's arrows use
+    // hundredths, while a mouse's physical pixels may be rounded by the display scale.
+    await dialog.getByRole('button', { name: 'The whole page', exact: true }).click();
+    await box.focus();
+    for (let i = 0; i < 75; i++) await ed.keyboard.press('Shift+ArrowLeft');
+    for (let i = 0; i < 50; i++) await ed.keyboard.press('Shift+ArrowUp');
+    await expect(dialog.getByTestId('crop-readout')).toContainText('right 75%');
+    await expect(dialog.getByTestId('crop-readout')).toContainText('bottom 50%');
     await dialog.getByRole('button', { name: 'Add this part', exact: true }).click();
     await dialog.getByRole('combobox', { name: 'PDF page', exact: true }).selectOption({ label: 'Page 2' });
     await dialog.getByTestId('make-slide-box').focus();
