@@ -23,6 +23,14 @@ vi.mock('../windows/renderer', () => ({ loadPage: load }));
 vi.mock('../windows/web-preferences', () => ({ secureWebPreferences: () => ({}) }));
 
 describe('the stream sound window', () => {
+  it('keeps the existing stream device session so saved microphone ids are unchanged', () => {
+    made.length = 0;
+    createStreamSoundWindow();
+    expect(made[0]?.webPreferences.partition, 'saved inputs stay in the original device-id namespace').toBe(
+      STREAM_PARTITION,
+    );
+  });
+
   it('forces a different renderer session from pictures, stays unthrottled and loads only sound', () => {
     made.length = 0;
     const window = createStreamSoundWindow();
