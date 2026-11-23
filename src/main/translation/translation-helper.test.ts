@@ -138,4 +138,16 @@ describe('drashti-translate, the translation helper', () => {
     expect(helper.running).toBe(true);
     helper.stop();
   });
+
+  it('says plainly when the Intel copy runs under Rosetta, where its matrix library cannot run', async () => {
+    const child = fakeHelper((r) => `{"id":${String(r['id'])},"ok":false,"error":"translated"}`);
+    const helper = make(child);
+    await helper.start();
+    const error = await helper
+      .load('en-indic', '/m/en-indic', '/m/en-indic/source.spm', 2)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: 'translated' });
+    expect((error as Error).message).toMatch(/Apple silicon/u);
+    helper.stop();
+  });
 });
