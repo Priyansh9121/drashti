@@ -219,3 +219,19 @@ test('an unavailable background subscription fails closed without throwing into 
   assert.doesNotThrow(() => engine.start('gu', { heard() {}, state() {} })());
   assert.equal(acquired, false);
 });
+
+test('a broken gate unsubscribe cannot prevent native cancellation', async () => {
+  let ready, closed = 0;
+  const listening = new Promise((done) => { ready = done; });
+  const engine = createIndicEngine({
+    workGate: { allowed: () => true, listen: () => () => { throw new Error('unavailable'); } },
+    program: () => '/native', acquire: () => ({ files: { model: '/m', tokens: '/t', frontend: '/f' }, release() {} }),
+    sound: { open: () => () => {} },
+    open: async () => ({ decode: async () => ({}), close: () => { closed += 1; } }),
+    log: { info() {}, warn() {} },
+  });
+  const stop = engine.start('gu', { heard() {}, state: (state) => { if (state.phase === 'listening') ready(); } });
+  await listening;
+  assert.doesNotThrow(stop);
+  assert.equal(closed, 1);
+});
