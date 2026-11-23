@@ -141,4 +141,54 @@ describe('Prepare translations’ engine', () => {
     expect(children.length).toBeGreaterThanOrEqual(1);
     engine.stop();
   });
+
+  it('Stop while the helper is starting stops it: no model loads, nothing is drafted (a22-review-mt A7)', async () => {
+    let child: FakeChild | undefined;
+    const ok = (r: Record<string, unknown>) =>
+      r['op'] === 'translate'
+        ? `{"id":${String(r['id'])},"ok":true,"tokens":["\u2581x","</s>"]}`
+        : `{"id":${String(r['id'])},"ok":true}`;
+    const engine = new TranslationEngine({
+      program: () => '/x/drashti-translate',
+      models: models([model('en-indic', ['translation-en-gu'])]),
+      log,
+      createHelper: (p) =>
+        new TranslationHelper({
+          program: p,
+          log,
+          lowerPriority: () => undefined,
+          spawn: () => (child = fakeHelper(ok, '')),
+        }),
+    });
+    const pending = engine.translate('a b', 'en', 'gu');
+    await vi.waitFor(() => {
+      expect(child).toBeDefined();
+    });
+    engine.cancel();
+    child?.stdout.write(
+      '{"hello":"drashti-translate","protocol":1,"ctranslate2":"4.9.1","sentencepiece":"0.2.1"}\n',
+    );
+    await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+    expect(child?.killed).toBe(true);
+    expect(child?.requests.filter((r) => r['op'] === 'load')).toEqual([]);
+  });
+
+  it('Stop while the model is being checked lets the model go and says Stopped, not a fault (a22-review-mt A7)', async () => {
+    const release = vi.fn();
+    let checked: ((hold: { release(): void }) => void) | undefined;
+    const store = models(
+      [model('en-indic', ['translation-en-gu'])],
+      () => new Promise((resolve) => (checked = resolve)),
+    );
+    const { engine, children } = engineWith(store);
+    const pending = engine.translate('a b', 'en', 'gu');
+    await vi.waitFor(() => {
+      expect(checked).toBeDefined();
+    });
+    engine.cancel();
+    checked?.({ release });
+    await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(children[0]?.requests.filter((r) => r['op'] === 'load')).toEqual([]);
+  });
 });
