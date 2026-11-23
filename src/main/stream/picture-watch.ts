@@ -59,7 +59,8 @@ export class PictureWatch {
 
 /**
  * What the watch hears from a worker's status: `wanted` (live or recording wanted, the stream's page ready) and `now`
- * are Main's own.
+ * are Main's own. Only a lasting fault holds the watch: no encoder works on this computer. An encoder starting again
+ * (x71: its words are in the error until a fresh picture is encoded) is none: the page may need its port again with it.
  */
 export function heardFrom(
   status: Pick<WorkerStatus, 'encoder' | 'encoding' | 'error'>,
@@ -70,7 +71,7 @@ export function heardFrom(
     wanted,
     encoderChosen: status.encoder !== null,
     encoding: status.encoding,
-    failed: Boolean(status.error),
+    failed: status.encoder === null && status.error !== null,
     now,
   };
 }
