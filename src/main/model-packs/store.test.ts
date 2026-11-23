@@ -24,6 +24,22 @@ import {
 import { makeZip, type ZipWriterEntry } from '../import/testing/zip-writer';
 import { ModelPackStore } from './store';
 
+/** One read that fails the way a busy or briefly locked disk does (EIO), for the next file read only. */
+const readFault = vi.hoisted(() => ({ next: false }));
+vi.mock('node:fs', async (original) => {
+  const fs = await original<typeof import('node:fs')>();
+  return {
+    ...fs,
+    createReadStream: (...args: Parameters<typeof fs.createReadStream>) => {
+      if (readFault.next) {
+        readFault.next = false;
+        throw Object.assign(new Error('i/o error'), { code: 'EIO' });
+      }
+      return fs.createReadStream(...args);
+    },
+  };
+});
+
 /*
  * The offline model pack on this computer (alpha.22, cap-pack): imported from a folder or a zip an admin chooses,
  * every file checked against the pack's list (bytes and SHA-256) as it is copied; one file wrong refuses the whole
@@ -392,6 +408,18 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
 });
 
 describe('the packs on this computer (alpha.22, cap-pack)', () => {
+  it('a read that fails for a moment while checking again does not mark the pack damaged: the next use checks again (review)', async () => {
+    const data = temp('data');
+    expect((await storeIn(data).importPack(packFolder(), 'folder')).ok).toBe(true);
+    const store = storeIn(data);
+    readFault.next = true;
+    expect(await store.acquire('gu-placeholder')).toBeNull();
+    expect(only(store.status().packs).problem).toBeNull();
+    const hold = await store.acquire('gu-placeholder');
+    expect(hold?.model.id).toBe('gu-placeholder');
+    hold?.release();
+  });
+
   it('checks a model again before its first use; a file changed since makes the pack unusable until imported again', async () => {
     const data = temp('data');
     const store = storeIn(data);
