@@ -18,7 +18,7 @@ import {
   type PageGlobals,
 } from './helpers';
 
-// Run on Mac and Windows only after alpha.21 PUBLISHED. No local Electron/e2e run.
+// Prepared translations (alpha.21): CI on Mac and Windows; no local Electron/e2e run.
 const NAME = 'Placeholder translation';
 const SOURCE = 'The blue box is empty.';
 async function fixture(win: Page): Promise<string> {
