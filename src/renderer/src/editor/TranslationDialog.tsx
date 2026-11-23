@@ -94,10 +94,12 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
     setProblem(null);
     setPreparing({ done: 0, total: targets.length });
     const drafted: { target: (typeof targets)[number]; text: string }[] = [];
+    // Read through a function: Stop changes it while a draft is awaited, which the type checker cannot see.
+    const wasStopped = (): boolean => stopped.current;
     for (const [i, target] of targets.entries()) {
-      if (stopped.current) break;
+      if (wasStopped()) break;
       const draft = await window.drashti.slideEditor.translationDraft({ source: target.source, from, to });
-      if (stopped.current) break;
+      if (wasStopped()) break;
       if (!draft.ok) {
         setProblem(draft.message);
         // Only this box's words could not be drafted (too long, a model marker): go on with the next box.

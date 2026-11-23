@@ -44,4 +44,4 @@ export function pySplit(text: string): string[] {
 }
 
 /** Python's len(): code points, not UTF-16 units. */
-export const pyLen = (text: string): number => [...text].length;
+export const pyLen = (text: string): number => Array.from(text).length;

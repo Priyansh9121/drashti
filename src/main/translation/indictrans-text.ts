@@ -26,7 +26,7 @@ export function transliterate(text: string, from: 'gu' | 'hi', to: 'gu' | 'hi'):
   for (const c of text) {
     const offset = (c.codePointAt(0) ?? 0) - SCRIPT_START[from];
     out +=
-      offset >= 0 && offset <= 0x6f && c !== '।' && c !== '॥'
+      offset >= 0 && offset <= 0x6f && c !== '\u0964' && c !== '\u0965'
         ? String.fromCodePoint(SCRIPT_START[to] + offset)
         : c;
   }
@@ -36,61 +36,63 @@ export function transliterate(text: string, from: 'gu' | 'hi', to: 'gu' | 'hi'):
 function baseNormalize(text: string): string {
   // BaseNormalizer.normalize with remove_nuktas=False, nasals_mode='do_nothing', no chandras, no vowel endings.
   text = text
-    .replaceAll('﻿', '')
-    .replaceAll('￾', '')
-    .replaceAll('⁠', '')
-    .replaceAll('­', '')
-    .replaceAll('​', ' ')
-    .replaceAll(' ', ' ')
-    .replaceAll('‌', '')
-    .replaceAll('‍', '');
+    .replaceAll('\ufeff', '')
+    .replaceAll('\ufffe', '')
+    .replaceAll('\u2060', '')
+    .replaceAll('\u00ad', '')
+    .replaceAll('\u200b', ' ')
+    .replaceAll('\u00a0', ' ')
+    .replaceAll('\u200c', '')
+    .replaceAll('\u200d', '');
   // NormalizerI._normalize_punctuations
   return text
-    .replaceAll('﻿', '')
-    .replaceAll('„', '"')
-    .replaceAll('“', '"')
-    .replaceAll('”', '"')
-    .replaceAll('–', '-')
-    .replaceAll('—', ' - ')
-    .replaceAll('´', "'")
-    .replaceAll('‘', "'")
-    .replaceAll('‚', "'")
-    .replaceAll('’', "'")
+    .replaceAll('\ufeff', '')
+    .replaceAll('\u201e', '"')
+    .replaceAll('\u201c', '"')
+    .replaceAll('\u201d', '"')
+    .replaceAll('\u2013', '-')
+    .replaceAll('\u2014', ' - ')
+    .replaceAll('\u00b4', "'")
+    .replaceAll('\u2018', "'")
+    .replaceAll('\u201a', "'")
+    .replaceAll('\u2019', "'")
     .replaceAll("''", '"')
-    .replaceAll('´´', '"')
-    .replaceAll('…', '...');
+    .replaceAll('\u00b4\u00b4', '"')
+    .replaceAll('\u2026', '...');
 }
 
 /** IndicNormalizerFactory().get_normalizer(lang).normalize(text) for Hindi (Devanagari) and Gujarati. */
 export function indicNormalize(text: string, lang: 'gu' | 'hi'): string {
   text = baseNormalize(text);
   if (lang === 'hi') {
-    const nukta = '़';
+    const nukta = '\u093c';
     text = text
-      .replaceAll('ॲ', 'ए')
-      .replaceAll('ऩ', `न${nukta}`)
-      .replaceAll('ऱ', `र${nukta}`)
-      .replaceAll('ऴ', `ळ${nukta}`)
-      .replaceAll('क़', `क${nukta}`)
-      .replaceAll('ख़', `ख${nukta}`)
-      .replaceAll('ग़', `ग${nukta}`)
-      .replaceAll('ज़', `ज${nukta}`)
-      .replaceAll('ड़', `ड${nukta}`)
-      .replaceAll('ढ़', `ढ${nukta}`)
-      .replaceAll('फ़', `फ${nukta}`)
-      .replaceAll('य़', `य${nukta}`)
-      .replaceAll('|', '।');
-    return text.replace(/([ऀ-ॿ]):/gu, '$1ः');
+      .replaceAll('\u0972', '\u090f')
+      .replaceAll('\u0929', `\u0928${nukta}`)
+      .replaceAll('\u0931', `\u0930${nukta}`)
+      .replaceAll('\u0934', `\u0933${nukta}`)
+      .replaceAll('\u0958', `\u0915${nukta}`)
+      .replaceAll('\u0959', `\u0916${nukta}`)
+      .replaceAll('\u095a', `\u0917${nukta}`)
+      .replaceAll('\u095b', `\u091c${nukta}`)
+      .replaceAll('\u095c', `\u0921${nukta}`)
+      .replaceAll('\u095d', `\u0922${nukta}`)
+      .replaceAll('\u095e', `\u092b${nukta}`)
+      .replaceAll('\u095f', `\u092f${nukta}`)
+      .replaceAll('|', '\u0964');
+    return text.replace(/([\u0900-\u097f]):/gu, '$1\u0903');
   }
-  text = text.replaceAll('૤', '।').replaceAll('૥', '॥');
-  return text.replace(/([઀-૿]):/gu, '$1ઃ');
+  text = text.replaceAll('\u0ae4', '\u0964').replaceAll('\u0ae5', '\u0965');
+  return text.replace(/([\u0a80-\u0aff]):/gu, '$1\u0a83');
 }
 
 // Python's string.punctuation as indic_tokenize's character class reads it: its backslash escapes the "]" after
 // it, so a backslash itself never splits a word. Plus the Indic marks it lists.
 const PUNCTUATION = '!"#$%&\'()*+,-./:;<=>?@[]^_`{|}~';
 const escapeClass = (chars: string): string =>
-  [...chars].map((c) => `\\u{${c.codePointAt(0)?.toString(16)}}`).join('');
+  Array.from(chars)
+    .map((c) => `\\u{${c.codePointAt(0)?.toString(16)}}`)
+    .join('');
 const TOKENIZE_INDIC = g(
   `([${escapeClass(PUNCTUATION)}\\u0964\\u0965\\uaaf1\\uaaf0\\uabeb\\uabec\\uabed\\uabee\\uabef\\u1c7e\\u1c7f])`,
 );
@@ -156,28 +158,28 @@ for (let d = 1; d <= 9; d++)
     PROCESSOR_DIGITS.set(String.fromCodePoint(zero + d), String(d));
 
 const INDIC_FAILURE_CASES = [
-  'آی ڈی ',
-  'ꯑꯥꯏꯗꯤ',
-  'आईडी',
-  'आई . डी . ',
-  'आई . डी .',
-  'आई. डी. ',
-  'आई. डी.',
-  'आय. डी. ',
-  'आय. डी.',
-  'आय . डी . ',
+  '\u0622\u06cc \u0688\u06cc ',
+  '\uabd1\uabe5\uabcf\uabd7\uabe4',
+  '\u0906\u0908\u0921\u0940',
+  '\u0906\u0908 . \u0921\u0940 . ',
+  '\u0906\u0908 . \u0921\u0940 .',
+  '\u0906\u0908. \u0921\u0940. ',
+  '\u0906\u0908. \u0921\u0940.',
+  '\u0906\u092f. \u0921\u0940. ',
+  '\u0906\u092f. \u0921\u0940.',
+  '\u0906\u092f . \u0921\u0940 . ',
   // The toolkit's list misses a comma here, so these two entries are one string.
-  'आय . डी .आइ . डी . ',
-  'आइ . डी .',
-  'आइ. डी. ',
-  'आइ. डी.',
-  'ऐटि',
-  'آئی ڈی ',
-  'ᱟᱭᱰᱤ ᱾',
-  'आयडी',
-  'ऐडि',
-  'आइडि',
-  'ᱟᱭᱰᱤ',
+  '\u0906\u092f . \u0921\u0940 .\u0906\u0907 . \u0921\u0940 . ',
+  '\u0906\u0907 . \u0921\u0940 .',
+  '\u0906\u0907. \u0921\u0940. ',
+  '\u0906\u0907. \u0921\u0940.',
+  '\u0910\u091f\u093f',
+  '\u0622\u0626\u06cc \u0688\u06cc ',
+  '\u1c5f\u1c6d\u1c70\u1c64 \u1c7e',
+  '\u0906\u092f\u0921\u0940',
+  '\u0910\u0921\u093f',
+  '\u0906\u0907\u0921\u093f',
+  '\u1c5f\u1c6d\u1c70\u1c64',
 ];
 
 interface ProcessorRules {
@@ -207,21 +209,21 @@ function processor(): ProcessorRules {
       [g(`[${s}]*\\)`), ')'],
       [g(`[${s}]:[${s}]?`), ':'],
       [g(`[${s}];[${s}]?`), ';'],
-      [g('[`´‘‚’]'), "'"],
-      [g('[„“”«»]'), '"'],
-      [g('[–—]'), '-'],
+      [g('[`\u00b4\u2018\u201a\u2019]'), "'"],
+      [g('[\u201e\u201c\u201d\u00ab\u00bb]'), '"'],
+      [g('[\u2013\u2014]'), '-'],
       [g('\\.\\.\\.'), '...'],
-      [g(' %'), '%'],
-      [g('nº '), 'nº '],
-      [g(' ºC'), ' ºC'],
-      [g(' [?!;]'), (m: string) => pyStrip(m)],
-      [g(', '), ', '],
+      [g('\u00a0%'), '%'],
+      [g('n\u00ba\u00a0'), 'n\u00ba '],
+      [g('\u00a0\u00baC'), ' \u00baC'],
+      [g('\u00a0[?!;]'), (m: string) => pyStrip(m)],
+      [g(',\u00a0'), ', '],
     ],
     multispace: g('[ ]{2,}'),
     endBracket: g('\\) ([.!:?;,])'),
     digitSpacePercent: g(`([${d}]) %`),
     doubleQuotePunc: g('"([,.]+)'),
-    digitNbspDigit: g(`([${d}]) ([${d}])`),
+    digitNbspDigit: g(`([${d}])\u00a0([${d}])`),
     email: g('[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}'),
     // (?:[...]+)+ is written [...]+ : the same matches, without the nested quantifier's runaway backtracking.
     url: g(
@@ -328,14 +330,14 @@ export interface Prepared {
 export function preprocess(sentence: string, from: Iso, order: PlaceholderOrder = firstAppearance): Prepared {
   const r = (processorRules ??= processor());
   sentence = puncNorm(sentence, r);
-  sentence = [...sentence].map((c) => PROCESSOR_DIGITS.get(c) ?? c).join('');
+  sentence = Array.from(sentence, (c) => PROCESSOR_DIGITS.get(c) ?? c).join('');
   const wrapped = wrapWithPlaceholders(sentence, r, order);
   let processed: string;
   if (from === 'en') {
     processed = mosesTokenize(mosesNormalize(pyStrip(wrapped.text))).join(' ');
   } else {
     const joined = trivialTokenize(indicNormalize(pyStrip(wrapped.text), from)).join(' ');
-    processed = transliterate(joined, from, 'hi').replaceAll(' ् ', '्');
+    processed = transliterate(joined, from, 'hi').replaceAll(' \u094d ', '\u094d');
   }
   return { text: pyStrip(processed), placeholders: wrapped.map };
 }
@@ -356,14 +358,14 @@ const SPECIAL_TOKENS = new Set(['<s>', '</s>', '<unk>', '<pad>']);
 export function decodeTokens(tokens: readonly string[]): string {
   const kept = tokens.filter((t) => !SPECIAL_TOKENS.has(t));
   if (kept.length === 0) return '';
-  const text = pyStrip(kept.join('').replaceAll('▁', ' '));
+  const text = pyStrip(kept.join('').replaceAll('\u2581', ' '));
   return text
     .replaceAll(' .', '.')
     .replaceAll(' ?', '?')
     .replaceAll(' !', '!')
     .replaceAll(' ,', ',')
     .replaceAll(" ' ", "'")
-    .replaceAll(" n't", "n't")
+    .replaceAll(' n\u0027t', 'n\u0027t')
     .replaceAll(" 'm", "'m")
     .replaceAll(" 's", "'s")
     .replaceAll(" 've", "'ve")

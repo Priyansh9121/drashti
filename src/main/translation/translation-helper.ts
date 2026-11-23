@@ -208,12 +208,10 @@ export class TranslationHelper {
   }
 
   private read(chunk: string): void {
-    this.buffer += chunk;
-    for (;;) {
-      const at = this.buffer.indexOf('\n');
-      if (at < 0) break;
-      const line = this.buffer.slice(0, at);
-      this.buffer = this.buffer.slice(at + 1);
+    // Whole lines only: what follows the last line end waits for the rest of its line.
+    const lines = (this.buffer + chunk).split('\n');
+    this.buffer = lines.pop() ?? '';
+    for (const line of lines) {
       this.line(line);
       if (this.ended !== null) return;
     }

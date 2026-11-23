@@ -84,7 +84,11 @@ export function handleTranslation(d: TranslationIpcDeps): void {
       return { ok: true, text: await d.engine.translate(r.source, r.from, r.to) };
     } catch (error) {
       if (!(error instanceof HelperError))
-        return { ok: false, message: 'The translation engine could not draft this text.' };
+        return {
+          ok: false,
+          message:
+            'The translation engine could not draft this text. Write it by hand, or try Prepare translations again.',
+        };
       const thisBoxOnly = error.code === 'too-long' || error.code === 'special-token';
       return thisBoxOnly
         ? { ok: false, message: error.message, thisBoxOnly }

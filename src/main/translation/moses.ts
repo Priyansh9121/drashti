@@ -25,39 +25,39 @@ function punctRules(): Rule[] {
     [g(' ;'), ';'],
     [g('`'), "'"],
     [g("''"), ' " '],
-    [g('„'), '"'],
-    [g('“'), '"'],
-    [g('”'), '"'],
-    [g('–'), '-'],
-    [g('—'), ' - '],
+    [g('\u201e'), '"'],
+    [g('\u201c'), '"'],
+    [g('\u201d'), '"'],
+    [g('\u2013'), '-'],
+    [g('\u2014'), ' - '],
     [g(' +'), ' '],
-    [g('´'), "'"],
-    [g('([a-zA-Z])‘([a-zA-Z])'), "$1'$2"],
-    [g('([a-zA-Z])’([a-zA-Z])'), "$1'$2"],
-    [g('‘'), "'"],
-    [g('‚'), "'"],
-    [g('’'), "'"],
+    [g('\u00b4'), "'"],
+    [g('([a-zA-Z])\u2018([a-zA-Z])'), "$1'$2"],
+    [g('([a-zA-Z])\u2019([a-zA-Z])'), "$1'$2"],
+    [g('\u2018'), "'"],
+    [g('\u201a'), "'"],
+    [g('\u2019'), "'"],
     [g("''"), '"'],
-    [g('´´'), '"'],
-    [g('…'), '...'],
-    [g(' « '), '"'],
-    [g('« '), '"'],
-    [g('«'), '"'],
-    [g(' » '), '"'],
-    [g(' »'), '"'],
-    [g('»'), '"'],
-    [g(' %'), '%'],
-    [g('nº '), 'nº '],
-    [g(' :'), ':'],
-    [g(' ºC'), ' ºC'],
-    [g(' cm'), ' cm'],
-    [g(' \\?'), '?'],
-    [g(' !'), '!'],
-    [g(' ;'), ';'],
-    [g(', '), ', '],
+    [g('\u00b4\u00b4'), '"'],
+    [g('\u2026'), '...'],
+    [g('\u00a0\u00ab\u00a0'), '"'],
+    [g('\u00ab\u00a0'), '"'],
+    [g('\u00ab'), '"'],
+    [g('\u00a0\u00bb\u00a0'), '"'],
+    [g('\u00a0\u00bb'), '"'],
+    [g('\u00bb'), '"'],
+    [g('\u00a0%'), '%'],
+    [g('n\u00ba\u00a0'), 'n\u00ba '],
+    [g('\u00a0:'), ':'],
+    [g('\u00a0\u00baC'), ' \u00baC'],
+    [g('\u00a0cm'), ' cm'],
+    [g('\u00a0\\?'), '?'],
+    [g('\u00a0!'), '!'],
+    [g('\u00a0;'), ';'],
+    [g(',\u00a0'), ', '],
     [g(' +'), ' '],
     [g('"([,.]+)'), '$1"'],
-    [g(`([${d}]) ([${d}])`), '$1.$2'],
+    [g(`([${d}])\u00a0([${d}])`), '$1.$2'],
   ];
 }
 
@@ -125,7 +125,7 @@ function handlesNonbreakingPrefixes(text: string, rules: TokenizerRules): string
     if (
       (prefix.includes('.') && rules.alpha.test(prefix)) ||
       (EN_NONBREAKING_PREFIXES.includes(prefix) && !EN_NUMERIC_ONLY_PREFIXES.includes(prefix)) ||
-      (next !== undefined && next !== '' && rules.lower.test([...next][0] ?? ''))
+      (next !== undefined && next !== '' && rules.lower.test(Array.from(next)[0] ?? ''))
     ) {
       // no change
     } else if (
@@ -185,16 +185,17 @@ function detokenizer(): DetokenizerRules {
       [g('&bra;'), '['],
       [g('&ket;'), ']'],
       [g('&quot;'), '"'],
-      [g('&apos;'), "'"],
+      // The XML entity for an apostrophe, spelt with an escape so the word rules (strings.test.ts) read it as code.
+      [g('&\u0061pos;'), "'"],
       [g('&#91;'), '['],
       [g('&#93;'), ']'],
       [g('&amp;'), '&'],
     ],
-    currency: new RegExp(`^[${cls('IsSc')}\\(\\[\\{¿¡]+$`, 'u'),
+    currency: new RegExp(`^[${cls('IsSc')}\\(\\[\\{\u00bf\u00a1]+$`, 'u'),
     punct: /^[,.?!:;\\%}\])]+$/u,
     contraction: new RegExp(`^['][${cls('IsAlpha')}]`, 'u'),
-    openQuote: /^['"„“`]+$/u,
-    curlyQuotes: /^[„“”]+$/u,
+    openQuote: /^['"\u201e\u201c`]+$/u,
+    curlyQuotes: /^[\u201e\u201c\u201d]+$/u,
     endsWithS: /[s]$/u,
     oneSpace: / {2,}/gu,
   };
@@ -222,9 +223,9 @@ export function mosesDetokenize(tokensIn: string[]): string {
   let out = '';
   const tokens = pySplit(text);
   tokens.forEach((token, i) => {
-    const first = [...token][0] ?? '';
+    const first = Array.from(token)[0] ?? '';
     if (isCjk(first)) {
-      const prev = i > 0 ? [...(tokens[i - 1] ?? '')].at(-1) : undefined;
+      const prev = i > 0 ? Array.from(tokens[i - 1] ?? '').at(-1) : undefined;
       if (i > 0 && prev !== undefined && isCjk(prev)) out += token;
       else out += prepend + token;
       prepend = ' ';

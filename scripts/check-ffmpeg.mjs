@@ -165,12 +165,13 @@ function checkTranslate(label, command, args) {
     const timer = setTimeout(() => child.kill('SIGKILL'), limit);
     child.on('exit', (code) => {
       clearTimeout(timer);
-      let hello = null;
-      try {
-        hello = JSON.parse(out.split(/\r?\n/u)[0] ?? '');
-      } catch {
-        hello = null;
-      }
+      const hello = (() => {
+        try {
+          return JSON.parse(out.split(/\r?\n/u)[0] ?? '');
+        } catch {
+          return null;
+        }
+      })();
       const passed = code === 0 && hello?.hello === 'drashti-translate' && hello.protocol === 1;
       console.log(
         `${label}: translation engine ${passed ? 'OK' : `FAILED (exit ${String(code)})`}\n  ${program}\n  ${out.trim().split(/\r?\n/u).join('\n  ')}`,
