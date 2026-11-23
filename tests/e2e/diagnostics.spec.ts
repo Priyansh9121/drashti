@@ -51,7 +51,9 @@ async function periodItems(app: ElectronApplication): Promise<string[]> {
     const out: string[] = [];
     const walk = (items: Electron.MenuItem[]) => {
       for (const i of items) {
-        if (i.id.startsWith('save-diagnostics')) out.push(i.id);
+        // An item made by its role (the app menu, Edit, Window) has no id.
+        const id = i.id as string | undefined;
+        if (id?.startsWith('save-diagnostics')) out.push(id);
         if (i.submenu) walk(i.submenu.items);
       }
     };
