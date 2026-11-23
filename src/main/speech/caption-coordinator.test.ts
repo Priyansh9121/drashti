@@ -1,24 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/captions';
-import type { CaptionRevision, CaptionTranslation, CaptionTranslationPort } from '../../shared/caption-coordinator';
+import type { CaptionRevision, CaptionTranslation, CaptionTranslationPort, CaptionTranslationRequest } from '../../shared/caption-coordinator';
 import { CaptionCoordinator } from './caption-coordinator';
 
 function setup(translation?: CaptionTranslationPort, output?: 'source' | 'translation') {
   const shown: (CaptionsShown | null)[] = [];
-  const coordinator = new CaptionCoordinator({ settings: () => DEFAULT_CAPTION_SETTINGS, show: c => shown.push(c), changed: vi.fn(), ...(translation ? { translation } : {}), ...(output ? { output } : {}) });
+  const coordinator = new CaptionCoordinator({ clock: () => Date.now(), settings: () => DEFAULT_CAPTION_SETTINGS, show: c => shown.push(c), changed: vi.fn(), ...(translation ? { translation } : {}), ...(output ? { output } : {}) });
   const sessionId = coordinator.start();
   const clause = (text: string, revision = 1, status: CaptionRevision['status'] = 'provisional', phraseId = 's1'): CaptionRevision => ({ sessionId, phraseId, revision, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: text, startAt: Date.now() - 1_000, endAt: Date.now(), status });
   return { coordinator, clause, shown, last: () => shown.at(-1) ?? null };
 }
 
 function deferredPort() {
-  const requests: { clause: Readonly<CaptionRevision>; signal: AbortSignal; resolve: (r: CaptionTranslation) => void }[] = [];
-  const translate = vi.fn((clause: Readonly<CaptionRevision>, signal: AbortSignal) => new Promise<CaptionTranslation>(resolve => requests.push({ clause, signal, resolve })));
+  const requests: { clause: Readonly<CaptionTranslationRequest>; signal: AbortSignal; resolve: (r: CaptionTranslation) => void }[] = [];
+  const translate = vi.fn((clause: Readonly<CaptionTranslationRequest>, signal: AbortSignal) => new Promise<CaptionTranslation>(resolve => requests.push({ clause, signal, resolve })));
   const finish = (index: number, text: string, overrides: Partial<CaptionTranslation> = {}) => {
     const request = requests[index]!;
-    request.resolve({ sessionId: request.clause.sessionId, phraseId: request.clause.phraseId, revision: request.clause.revision, targetLanguage: 'hi', text, modelId: 'placeholder', routeId: 'placeholder', processingMs: 1, ...overrides });
+    request.resolve({ ...request.clause, text, status: 'ok', processingMs: 1, ...overrides });
   };
-  return { requests, translate, finish };
+  return { requests, translate, finish, identity: { modelIdentity: 'placeholder@1', routeId: 'en-hi-placeholder', processorId: 'placeholder@1', glossaryRevision: 'none' } };
 }
 
 describe('phase D caption coordinator', () => {
@@ -148,11 +148,57 @@ describe('phase D caption coordinator', () => {
     port.finish(1, 'Dismissed words');
     await vi.advanceTimersByTimeAsync(300);
     expect(last()).toBeNull();
-    const failed = setup({ translate: () => { throw new Error('Placeholder failure'); } }, 'translation');
+    const failed = setup({ identity: port.identity, translate: () => { throw new Error('Placeholder failure'); } }, 'translation');
     expect(() => failed.coordinator.accept(failed.clause('A round shape', 1, 'settled'))).not.toThrow();
     await vi.advanceTimersByTimeAsync(0);
     expect(failed.coordinator.view()).toMatchObject({ busy: false, omitted: 1 });
     expect(failed.last()).toBeNull();
+  });
+
+  it('does not extend the original clear time when an operator corrects a clause', () => {
+    const { coordinator: c, clause, last } = setup();
+    c.accept(clause('A blue box', 1, 'settled'));
+    vi.advanceTimersByTime(5_500);
+    c.correct({ ...clause(''), text: 'A green box' });
+    vi.advanceTimersByTime(500);
+    expect(last()).toBeNull();
+  });
+
+  it('uses the original earlier paint deadline and validates the complete retained request identity', async () => {
+    const port = deferredPort();
+    const { coordinator: c, clause, last } = setup(port, 'translation');
+    c.accept(clause('A blue box', 1, 'settled'));
+    const request = port.requests[0]!.clause;
+    expect(request).toMatchObject({ protocolVersion: 1, sourceKind: 'speech-clause', clauseId: 's1', clauseSequence: 1, paintDeadlineAt: Date.now() + 2_500, clearAt: Date.now() + 6_000 });
+    expect(request.sourceHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(request.requestId).not.toBe(request.sessionId);
+    vi.advanceTimersByTime(1_000);
+    c.correct({ ...clause(''), text: 'A green box' });
+    port.finish(0, 'Old result');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(port.requests[1]!.clause.paintDeadlineAt).toBe(request.paintDeadlineAt);
+    expect(port.requests[1]!.clause.sourceHash).not.toBe(request.sourceHash);
+    expect(port.requests[1]!.clause.requestId).not.toBe(request.requestId);
+    port.finish(1, 'Wrong model', { modelIdentity: 'wrong@1' });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toBeNull();
+  });
+
+  it('rejects results at the reserved paint cutoff and counts an omitted translation', async () => {
+    const port = deferredPort();
+    const { coordinator: c, clause, last } = setup(port, 'translation');
+    c.accept(clause('A blue box', 1, 'settled'));
+    vi.advanceTimersByTime(2_150);
+    port.finish(0, 'Too late to paint');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toBeNull();
+    expect(c.view().omitted).toBe(1);
+  });
+
+  it('bounds source by UTF-8 bytes rather than JavaScript string length', () => {
+    const { coordinator: c, clause } = setup();
+    expect(c.accept(clause('ક'.repeat(1_366), 1, 'settled'))).toBe(false);
+    expect(c.view().current).toBeNull();
   });
 
 });

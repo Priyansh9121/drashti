@@ -14,17 +14,52 @@ export interface CaptionRevision {
   status: 'provisional' | 'settled' | 'corrected';
 }
 
-export interface CaptionTranslation extends Pick<CaptionRevision, 'sessionId' | 'phraseId' | 'revision'> {
-  targetLanguage: SpeechLanguage;
-  text: string;
+export interface CaptionTranslationIdentity {
+  modelIdentity: string;
   routeId: string;
-  modelId: string;
-  processingMs: number;
+  processorId: string;
+  glossaryRevision: string;
 }
 
-/** Implemented by translation later; one active request, newest pending revision only. */
+export interface CaptionTranslationRequest extends CaptionRevision, CaptionTranslationIdentity {
+  protocolVersion: 1;
+  inputEpoch: string;
+  generation: number;
+  clauseId: string;
+  clauseSequence: number;
+  sourceHash: string;
+  requestId: string;
+  sourceKind: 'speech-clause';
+  outputPolicyEpoch: number;
+  asrIdentity: string;
+  firstSettledAt: number;
+  paintDeadlineAt: number;
+  clearAt: number;
+}
+
+export interface CaptionTranslation extends CaptionTranslationIdentity {
+  protocolVersion: 1;
+  sessionId: string;
+  inputEpoch: string;
+  generation: number;
+  clauseId: string;
+  clauseSequence: number;
+  phraseId: string;
+  revision: number;
+  sourceHash: string;
+  requestId: string;
+  sourceLanguage: SpeechLanguage;
+  targetLanguage: SpeechLanguage;
+  outputPolicyEpoch: number;
+  text: string;
+  status: 'ok' | 'cancelled' | 'expired' | 'held' | 'unavailable' | 'error';
+  processingMs: number | null;
+}
+
+/** Implemented by translation later. Abort must cancel native work and settle the request. */
 export interface CaptionTranslationPort {
-  translate(clause: Readonly<CaptionRevision>, signal: AbortSignal): Promise<CaptionTranslation>;
+  readonly identity: Readonly<CaptionTranslationIdentity>;
+  translate(clause: Readonly<CaptionTranslationRequest>, signal: AbortSignal): Promise<CaptionTranslation>;
 }
 
 export interface CaptionCorrection extends Pick<CaptionRevision, 'sessionId' | 'phraseId' | 'revision'> {
