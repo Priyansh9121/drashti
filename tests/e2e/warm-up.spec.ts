@@ -156,13 +156,16 @@ async function brightest(page: Page): Promise<number> {
  * mistaken for the warm-up's drawing (X12 wide: 12 border pixels, maximum 191, while every interior pixel was 0).
  * Nothing is ignored or allowed a colour difference. The whole audience output and every captured frame are still
  * checked against absolute zero below. Decode in Node, never on a show page (X17).
+ * The LIVE picture is looked at in twelve frames, each against the black (a21): on CI's Mac its box's antialiased
+ * corners came out a level or two off black in some drawn frames only (warm-up.spec:428's flaky failure).
  */
 async function differenceFromBlack(page: Page, scope: string): Promise<number> {
   const selector = `${scope} [data-warm-up]`;
   const clip = await page.locator(selector).first().boundingBox();
   if (!clip) throw new Error('the warm-up has no visible box');
-  const drawnPng = await page.screenshot({ scale: 'css', clip });
-  const drawn = decodePng(drawnPng);
+  const drawnPngs: Buffer[] = [];
+  for (let frame = 0; frame < (scope === '[data-testid="live-preview"]' ? 12 : 1); frame++)
+    drawnPngs.push(await page.screenshot({ scale: 'css', clip }));
   const opacity = await page.evaluate((scope) => {
     const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
     const drawing = tree?.querySelector<HTMLElement>('[data-warm-drawing]');
@@ -201,36 +204,42 @@ async function differenceFromBlack(page: Page, scope: string): Promise<number> {
       { scope, opacity },
     );
   }
-  expect([drawn.width, drawn.height], 'the same entire warm-up box').toEqual([black.width, black.height]);
   const center = (Math.floor(black.height / 2) * black.width + Math.floor(black.width / 2)) * 4;
   expect([...black.rgba.slice(center, center + 4)], 'the reference is opaque black').toEqual([0, 0, 0, 255]);
   let difference = 0;
-  let at = 0;
-  let channels = 0;
-  for (let i = 0; i < drawn.rgba.length; i++) {
-    const delta = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
-    if (delta !== 0) channels++;
-    if (delta > difference) {
-      difference = delta;
-      at = i;
+  for (const [frame, drawnPng] of drawnPngs.entries()) {
+    const drawn = decodePng(drawnPng);
+    expect([drawn.width, drawn.height], 'the same entire warm-up box').toEqual([black.width, black.height]);
+    let most = 0;
+    let at = 0;
+    let channels = 0;
+    for (let i = 0; i < drawn.rgba.length; i++) {
+      const delta = Math.abs((drawn.rgba[i] ?? 0) - (black.rgba[i] ?? 0));
+      if (delta !== 0) channels++;
+      if (delta > most) {
+        most = delta;
+        at = i;
+      }
     }
-  }
-  if (difference !== 0) {
-    const pixel = Math.floor(at / 4);
-    const first = pixel * 4;
-    await test.info().attach('warm-up-drawn-pane', { body: drawnPng, contentType: 'image/png' });
-    await test.info().attach('warm-up-black-reference', { body: blackPng, contentType: 'image/png' });
-    await test.info().attach('warm-up-pane-difference', {
-      body: JSON.stringify({
-        difference,
-        channels,
-        x: pixel % drawn.width,
-        y: Math.floor(pixel / drawn.width),
-        drawn: [...drawn.rgba.slice(first, first + 4)],
-        black: [...black.rgba.slice(first, first + 4)],
-      }),
-      contentType: 'application/json',
-    });
+    if (most > difference) {
+      difference = most;
+      const pixel = Math.floor(at / 4);
+      const first = pixel * 4;
+      await test.info().attach('warm-up-drawn-pane', { body: drawnPng, contentType: 'image/png' });
+      await test.info().attach('warm-up-black-reference', { body: blackPng, contentType: 'image/png' });
+      await test.info().attach('warm-up-pane-difference', {
+        body: JSON.stringify({
+          frame,
+          difference: most,
+          channels,
+          x: pixel % drawn.width,
+          y: Math.floor(pixel / drawn.width),
+          drawn: [...drawn.rgba.slice(first, first + 4)],
+          black: [...black.rgba.slice(first, first + 4)],
+        }),
+        contentType: 'application/json',
+      });
+    }
   }
   return difference;
 }
