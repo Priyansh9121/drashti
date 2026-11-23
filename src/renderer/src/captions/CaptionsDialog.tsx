@@ -188,9 +188,11 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
               A model of its own hears its language when the speaker’s language is set to it. Drashti uses
               only a model file it knows, checked before each use.
             </p>
-            {view.languageModels.map((m) => (
-              <LanguageModelRow key={m.language} model={m} />
-            ))}
+            {view.languageModels
+              .filter((m) => m.known.length > 0 || m.chosen !== null)
+              .map((m) => (
+                <LanguageModelRow key={m.language} model={m} />
+              ))}
           </div>
         )}
         <Toggle
