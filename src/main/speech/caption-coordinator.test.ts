@@ -219,16 +219,19 @@ describe('phase D caption coordinator', () => {
     expect(failed.last()).toBeNull();
   });
 
-  it('does not extend the original clear time when an operator corrects a clause', () => {
+  it('gives a correction its own clear time, from when the operator made it (the lead, review S1)', () => {
+    // Was: the correction kept the phrase's first clear time, so one made late showed for a moment only.
     const { coordinator: c, clause, last } = setup();
     c.accept(clause('A blue box', 1, 'settled'));
     vi.advanceTimersByTime(5_500);
     c.correct({ ...clause(''), text: 'A green box' });
     vi.advanceTimersByTime(500);
+    expect(last()?.lines).toEqual(['A green box']);
+    vi.advanceTimersByTime(5_500);
     expect(last()).toBeNull();
   });
 
-  it('uses the original earlier paint deadline and validates the complete retained request identity', async () => {
+  it('gives a correction its own paint deadline and validates the complete retained request identity', async () => {
     const port = deferredPort();
     const { coordinator: c, clause, last } = setup(port, 'translation');
     c.accept(clause('A blue box', 1, 'settled'));
@@ -247,7 +250,8 @@ describe('phase D caption coordinator', () => {
     c.correct({ ...clause(''), text: 'A green box' });
     port.finish(0, 'Old result');
     await vi.advanceTimersByTimeAsync(0);
-    expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(request.paintDeadlineAt);
+    // The correction's own deadline, from when it was made 1 s later (review S1: was the phrase's first one).
+    expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(request.paintDeadlineAt + 1_000);
     expect(must(port.requests[1]).clause.sourceHash).not.toBe(request.sourceHash);
     expect(must(port.requests[1]).clause.requestId).not.toBe(request.requestId);
     port.finish(1, 'Wrong model', { modelIdentity: 'wrong@1' });

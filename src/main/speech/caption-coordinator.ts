@@ -52,7 +52,6 @@ export class CaptionCoordinator {
   private generation = 0;
   private policyEpoch = 0;
   private held = false;
-  private captureOffset = 0;
   private current: StoredClause | null = null;
   private previous: StoredClause | null = null;
   private highestPhrase = 0;
@@ -92,7 +91,6 @@ export class CaptionCoordinator {
     this.stop();
     this.sessionId = randomUUID();
     this.inputEpoch = randomUUID();
-    this.captureOffset = this.clock() - Date.now();
     this.generation += 1;
     this.policyEpoch += 1;
     this.policyKey = this.policyOf();
@@ -120,8 +118,11 @@ export class CaptionCoordinator {
     const sequence = /^s([1-9]\d*)$/u.exec(clause.phraseId)?.[1];
     const number = Number(sequence);
     const now = this.clock();
-    const startAt = clause.startAt + (clause.timeDomain === 'main' ? 0 : this.captureOffset);
-    const endAt = clause.endAt + (clause.timeDomain === 'main' ? 0 : this.captureOffset);
+    // Heard times are Date.now(): mapped onto this clock as the two stand now, every time, so a wall-clock step (a
+    // time sync, a Mac waking) mid-session never strands a phrase outside the freshness window (review M1).
+    const offset = now - Date.now();
+    const startAt = clause.startAt + (clause.timeDomain === 'main' ? 0 : offset);
+    const endAt = clause.endAt + (clause.timeDomain === 'main' ? 0 : offset);
     if (
       !sequence ||
       !Number.isSafeInteger(number) ||
@@ -182,6 +183,9 @@ export class CaptionCoordinator {
       return false;
     const sourceText = textOf(correction.text);
     if (!validCaptionText(sourceText, 4_096)) return false;
+    // A correction shows for its own full time from when it was made (review S1).
+    const now = this.clock();
+    const clearAt = now + 6_000;
     this.current = Object.freeze({
       ...this.current,
       revision: this.current.revision + 1,
@@ -189,6 +193,8 @@ export class CaptionCoordinator {
       sourceHash: hashOf(sourceText),
       status: 'corrected',
       pinned: true,
+      clearAt,
+      paintDeadlineAt: Math.min(now + 2_500, clearAt),
     });
     this.update();
     return true;
