@@ -2,6 +2,14 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.22 (24 Nov 2026)
+
+Update after a sabha, and update Main and nodes together.
+
+- Live captions (Trial): Gujarati and Hindi can be heard by a new, more accurate recognizer that runs on this computer itself (IndicConformer by AI4Bharat), from an offline model pack the admin imports (Help › Caption and Translation Models…). Their captions show one phrase at a time, which the operator can correct or take off; noise and hum heard as short one-syllable words are not shown. As heard, English, Sanskrit and other languages show captions as before.
+- Gujarati words in live captions are no longer joined together, with the new recognizer or without it.
+- While Drashti starts, the corners of the LIVE picture stay exactly as they are: the graphics warm-up no longer tints them on computers with a graphics chip.
+
 ## 1.0.0-alpha.21 (24 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
