@@ -155,6 +155,18 @@ test('the quick bar: hidden when empty; a picture, a slide row, a video row and 
   await expectFits(win, 'the quick bar at 1024 × 645');
   await expectNoSeriousA11yIssues(win, 'the quick bar', '[data-testid="quick-bar"]');
 
+  // Drashti reads a new video's loudness by itself 2 s after its import (the sound pass), and once it is read Main's
+  // revision moves if that video is up (it has no sound: bookkeeping, no press). On CI's Windows it came between the
+  // two reads of the revision around Alt+7 below (run 45210200993). The clip is measured before anything goes up.
+  await expect
+    .poll(() =>
+      win.evaluate(
+        async (id) => (await (globalThis as PageGlobals).drashti.sound.file(id))?.measured,
+        videoId,
+      ),
+    )
+    .toBe(true);
+
   // Alt+2 (Option+2 on a Mac): the slide, up from its playlist row, so Next goes on from it.
   await win.keyboard.press('Alt+Digit2');
   await expect
