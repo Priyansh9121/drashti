@@ -234,7 +234,11 @@ export class ImportedSlides {
     try {
       const bySource = new Map<string, EditSlide[]>();
       for (const slide of slides)
-        if (!slide.documentPage.edited && !(slide.deck?.motion && slide.deck.steps.length === 0)) {
+        if (
+          slide.documentPage &&
+          !slide.documentPage.edited &&
+          !(slide.deck?.motion && slide.deck.steps.length === 0)
+        ) {
           const ref = slide.documentPage;
           const key = `${ref.sha256}.${ref.ext}`;
           const list = bySource.get(key) ?? [];
