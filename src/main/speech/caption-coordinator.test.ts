@@ -5,7 +5,7 @@ import { CaptionCoordinator } from './caption-coordinator';
 
 function setup(translation?: CaptionTranslationPort, output?: 'source' | 'translation') {
   const shown: (CaptionsShown | null)[] = [];
-  const coordinator = new CaptionCoordinator({ clock: () => Date.now(), settings: () => DEFAULT_CAPTION_SETTINGS, show: c => shown.push(c), changed: vi.fn(), ...(translation ? { translation } : {}), ...(output ? { output } : {}) });
+  const coordinator = new CaptionCoordinator({ mayTranslate: () => true, clock: () => Date.now(), settings: () => DEFAULT_CAPTION_SETTINGS, show: c => shown.push(c), changed: vi.fn(), ...(translation ? { translation } : {}), ...(output ? { output } : {}) });
   const sessionId = coordinator.start();
   const clause = (text: string, revision = 1, status: CaptionRevision['status'] = 'provisional', phraseId = 's1'): CaptionRevision => ({ sessionId, phraseId, revision, sourceLanguage: 'en', targetLanguage: 'hi', sourceText: text, startAt: Date.now() - 1_000, endAt: Date.now(), status });
   return { coordinator, clause, shown, last: () => shown.at(-1) ?? null };
@@ -199,6 +199,56 @@ describe('phase D caption coordinator', () => {
     const { coordinator: c, clause } = setup();
     expect(c.accept(clause('ક'.repeat(1_366), 1, 'settled'))).toBe(false);
     expect(c.view().current).toBeNull();
+  });
+
+  it('keeps an operator correction pinned against later automatic changes', () => {
+    const { coordinator: c, clause } = setup();
+    c.accept(clause('A blue box', 1, 'settled'));
+    c.correct({ ...clause(''), text: 'A green box' });
+    expect(c.reviseAutomatic(clause('A red box', 3, 'corrected'))).toBe(false);
+    expect(c.view().current).toMatchObject({ revision: 2, sourceText: 'A green box' });
+  });
+
+  it('revises the still-eligible settled prefix without replaying it over the next provisional source', () => {
+    const { coordinator: c, clause, last } = setup();
+    c.accept(clause('A blue box', 1, 'settled'));
+    c.accept(clause('Next provisional words', 1, 'provisional', 's2'));
+    expect(c.reviseAutomatic(clause('A green box', 2, 'corrected'))).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(last()?.lines).toEqual(['Next provisional words']);
+    expect(c.view().previous).toMatchObject({ revision: 2, sourceText: 'A green box' });
+  });
+
+  it('cancels on a background hold and resumes with a new generation and the original deadline', async () => {
+    const port = deferredPort();
+    const { coordinator: c, clause, last } = setup(port, 'translation');
+    c.accept(clause('A blue box', 1, 'settled'));
+    const first = port.requests[0]!.clause;
+    c.setTranslationHeld(true);
+    expect(port.requests[0]!.signal.aborted).toBe(true);
+    expect(last()).toBeNull();
+    c.setTranslationHeld(false);
+    expect(port.requests).toHaveLength(1);
+    port.finish(0, 'Cancelled generation');
+    await vi.advanceTimersByTimeAsync(0);
+    const second = port.requests[1]!.clause;
+    expect(second.generation).toBeGreaterThan(first.generation);
+    expect(second.requestId).not.toBe(first.requestId);
+    expect(second.paintDeadlineAt).toBe(first.paintDeadlineAt);
+    port.finish(1, 'नमूना');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()?.lines).toEqual(['नमूना']);
+  });
+
+  it('requires an explicit background lease before a connected translation port can run', () => {
+    const port = deferredPort();
+    const { clause } = setup();
+    const c = new CaptionCoordinator({ clock: () => Date.now(), settings: () => DEFAULT_CAPTION_SETTINGS, show: vi.fn(), changed: vi.fn(), translation: port });
+    const sessionId = c.start();
+    c.accept({ ...clause('A blue box', 1, 'settled'), sessionId });
+    expect(port.requests).toHaveLength(0);
+    expect(c.view().current?.sourceText).toBe('A blue box');
+    c.stop();
   });
 
 });
