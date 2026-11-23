@@ -465,6 +465,7 @@ import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/mo
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { CaptionWordsRepo } from './db/caption-words';
+import { CAPTION_HINTS_ON } from '../shared/caption-words';
 import { CaptionWordsService } from './speech/caption-words-service';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
@@ -3883,13 +3884,18 @@ function start(): void {
     message: 'Only the operator window can do that.',
   });
   handle(IPC.captionWords.view, (e) =>
-    fromOperator(e) ? captionWords.view() : { words: [], hinted: { gu: 0, hi: 0, sa: 0, en: 0 } },
+    fromOperator(e)
+      ? captionWords.view()
+      : { words: [], hinted: { gu: 0, hi: 0, sa: 0, en: 0 }, hintsOn: { ...CAPTION_HINTS_ON } },
   );
   handle(IPC.captionWords.set, (e, words) =>
     fromOperator(e) ? captionWords.set(words) : captionWordsElsewhere(),
   );
   handle(IPC.captionWords.import, (e) =>
     fromOperator(e) ? captionWords.importFile() : captionWordsElsewhere(),
+  );
+  handle(IPC.captionWords.setHints, (e, language, on) =>
+    fromOperator(e) ? captionWords.setHints(language, on) : captionWordsElsewhere(),
   );
   handle(IPC.captionWords.export, (e) =>
     fromOperator(e) ? captionWords.exportFile() : captionWordsElsewhere(),

@@ -47,6 +47,7 @@ import type {
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
+import type { SpeechLanguage } from './speech';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -371,6 +372,8 @@ export const IPC = {
     set: 'captionwords:set',
     import: 'captionwords:import',
     export: 'captionwords:export',
+    /** A language's switch: its words go to the captions engine as hints (Gujarati off until turned on). */
+    setHints: 'captionwords:set-hints',
   },
   /**
    * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
@@ -1509,6 +1512,7 @@ export interface InvokeContract {
   [IPC.captionWords.set]: { args: [words: CaptionWord[]]; result: CaptionWordsResult };
   [IPC.captionWords.import]: { args: []; result: CaptionWordsResult };
   [IPC.captionWords.export]: { args: []; result: CaptionWordsResult };
+  [IPC.captionWords.setHints]: { args: [language: SpeechLanguage, on: boolean]; result: CaptionWordsResult };
   [IPC.captions.view]: { args: []; result: CaptionsStatus };
   [IPC.captions.setOn]: { args: [on: boolean]; result: CaptionsStatus };
   [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };

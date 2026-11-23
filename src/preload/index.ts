@@ -199,6 +199,7 @@ const bridge: DrashtiBridge = {
     set: (words) => invoke(IPC.captionWords.set, words),
     importFile: () => invoke(IPC.captionWords.import),
     exportFile: () => invoke(IPC.captionWords.export),
+    setHints: (language, on) => invoke(IPC.captionWords.setHints, language, on),
   },
   videoCaptions: {
     view: (mediaId) => invoke(IPC.videoCaptions.view, mediaId),

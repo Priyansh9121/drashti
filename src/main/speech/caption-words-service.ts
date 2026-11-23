@@ -9,7 +9,7 @@ import {
   type CaptionWordsResult,
   type CaptionWordsView,
 } from '../../shared/caption-words';
-import type { Heard } from '../../shared/speech';
+import type { Heard, SpeechLanguage } from '../../shared/speech';
 import { plural } from '../../shared/text';
 import { createCaptionHints, type CaptionHints } from './caption-hints';
 import { spellingFixer } from './spelling-fixer';
@@ -22,7 +22,12 @@ import { spellingFixer } from './spelling-fixer';
  */
 
 export interface CaptionWordsDeps {
-  repo: { get(): CaptionWord[]; set(words: readonly CaptionWord[]): void };
+  repo: {
+    get(): CaptionWord[];
+    set(words: readonly CaptionWord[]): void;
+    hintsOn(): Record<SpeechLanguage, boolean>;
+    setHintsOn(language: SpeechLanguage, on: boolean): void;
+  };
   /** The system's Open and Save dialogs; null when cancelled. */
   pickImport: () => Promise<string | null>;
   pickExport: (defaultName: string) => Promise<string | null>;
@@ -58,7 +63,12 @@ export class CaptionWordsService {
   }
 
   view(): CaptionWordsView {
-    return { words: this.list, hinted: this.hints.hinted() };
+    return { words: this.list, hinted: this.hints.hinted(), hintsOn: this.deps.repo.hintsOn() };
+  }
+
+  /** Red first: a language's hints switch, not written yet. */
+  setHints(_language: unknown, _on: unknown): CaptionWordsResult {
+    return { ok: true, view: this.view(), message: null };
   }
 
   /** The list, whole, as the dialog sends it after a change: each word checked again. */

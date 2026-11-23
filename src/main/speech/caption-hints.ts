@@ -79,7 +79,10 @@ export function hintsOf(words: readonly CaptionWord[], language: SpeechLanguage 
 }
 
 /** Hints from the list as it is now (`list()` is read each time; its answer is worked out again when it changes). */
-export function createCaptionHints(list: () => readonly CaptionWord[]): CaptionHints {
+export function createCaptionHints(
+  list: () => readonly CaptionWord[],
+  _hintsOn?: () => Readonly<Record<SpeechLanguage, boolean>>,
+): CaptionHints {
   let seen: readonly CaptionWord[] | null = null;
   let cache = new Map<SpeechLanguage | 'auto', Hints>();
   const now = (): readonly CaptionWord[] => {

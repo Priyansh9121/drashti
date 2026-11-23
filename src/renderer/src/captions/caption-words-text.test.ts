@@ -17,6 +17,12 @@ describe('the Caption Words dialog’s line about hints', () => {
     );
   });
 
+  it('says when the hints are switched off for the language (Gujarati at first), spellings still fixed', () => {
+    expect(captionWordsHintText('Gujarati', 3, 0, 'gu', 'gu', false)).toBe(
+      '3 Gujarati words. Hints for the captions engine are off for Gujarati; spellings are still fixed.',
+    );
+  });
+
   it('says when they are not used now: another language chosen, or the language left as heard', () => {
     expect(captionWordsHintText('Hindi', 2, 2, 'gu', 'hi')).toBe(
       '2 Hindi words, used when captions listen for Hindi.',

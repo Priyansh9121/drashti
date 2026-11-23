@@ -24,6 +24,18 @@ export const CAPTION_WORD_PARTS = 3;
 /** The list's file is small: at most this many bytes are read. */
 export const CAPTION_WORDS_FILE_BYTES = 256 * 1024;
 
+/**
+ * Whether a language's caption words go to the captions engine as hints, until the admin changes it: off for
+ * Gujarati (cap-drive-learn, 24 Nov: a prompt did not help Gujarati on real speech), on for the others. The spelling
+ * fixer works for every language either way.
+ */
+export const CAPTION_HINTS_ON: Readonly<Record<SpeechLanguage, boolean>> = Object.freeze({
+  gu: false,
+  hi: true,
+  sa: true,
+  en: true,
+});
+
 export const CAPTION_WORD_LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
   gu: 'Gujarati',
   hi: 'Hindi',
@@ -201,6 +213,8 @@ export function readCaptionWordsCsv(text: string): {
 export interface CaptionWordsView {
   words: CaptionWord[];
   hinted: Record<SpeechLanguage, number>;
+  /** Each language's switch: its words go to the engine as hints. */
+  hintsOn: Record<SpeechLanguage, boolean>;
 }
 
 /** A change's answer: the list as it is now, and a sentence for the admin (what an import added, or why not). */

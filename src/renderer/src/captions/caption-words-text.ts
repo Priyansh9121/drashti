@@ -13,6 +13,7 @@ export function captionWordsHintText(
   hinted: number,
   listening: SpeechLanguage | 'auto',
   language: SpeechLanguage,
+  _on = true,
 ): string {
   if (count === 0) return `No ${name} caption words yet.`;
   const words = plural(count, `${name} word`);
