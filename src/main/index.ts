@@ -6196,11 +6196,14 @@ function start(): void {
     const libraryId = presentations.ensureLibrary('Default');
     const size = pictureSize(screenRepo.allScreens(), screenRepo.firstGroup('audience'));
     const madeName = presentations.uniqueName(libraryId, name);
-    const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaIds, size));
+    const { id, itemId } = libraryDb.transaction(() => {
+      const id = presentations.insert(pageSlidePresentation(libraryId, madeName, mediaIds, size));
+      const [itemId = null] = playlist
+        ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
+        : [];
+      return { id, itemId };
+    })();
     contentChanged([id]);
-    const [itemId = null] = playlist
-      ? playlists.addItems(playlist.id, null, [{ kind: 'presentation', presentationId: id }])
-      : [];
     if (itemId !== null) playlistsChanged();
     sendToOperator(IPC.slideEditor.slideMade, { presentationId: id, name: madeName, itemId });
     log.info(`Library: a slide made from a PDF page${itemId !== null ? ', in the open playlist' : ''}`);

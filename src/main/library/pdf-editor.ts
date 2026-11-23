@@ -244,6 +244,7 @@ export class PdfEditor {
       try {
         if (!current()) return failed('The editor changed. Reopen it before making a slide.');
         const pngs: Uint8Array[] = new Array<Uint8Array>(selected.length);
+        let pictureBytes = 0;
         // One page printed at a time, all its parts drawn before moving on. Output keeps the chosen order.
         for (const id of new Set(selected.map((picked) => picked.slideId))) {
           const picked = selected.find((p) => p.slideId === id);
@@ -257,6 +258,9 @@ export class PdfEditor {
             if (!current()) return failed('The editor changed. Reopen it before making the slides.');
             const drawn = await drawPart(bytes, item.part, controller.signal);
             if (!drawn.ok) return failed(drawn.message);
+            pictureBytes += drawn.png.byteLength;
+            if (pictureBytes > 128 * 1024 * 1024)
+              return failed('The collected pictures are larger than 128 MB. Make fewer parts at a time.');
             pngs[index] = drawn.png;
           }
         }
