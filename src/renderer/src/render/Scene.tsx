@@ -1,4 +1,9 @@
-import type { CSSProperties, ReactNode } from 'react';
+import {
+  preparedOutputState,
+  translationBottom,
+  translationTop,
+} from '../../../shared/prepared-output-state';
+import type { CSSProperties, ReactNode, ComponentProps } from 'react';
 import {
   Fragment,
   memo,
@@ -377,7 +382,7 @@ function MainSlot({
  * style, by its role and its languages in Screens). The stream leaves the ticker out (`ticker`). With nothing up,
  * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black with none chosen).
  */
-export const Scene = memo(function Scene({
+const SceneBody = memo(function SceneBody({
   state,
   canvas,
   scaling,
@@ -416,6 +421,8 @@ export const Scene = memo(function Scene({
    * page (Session 58, Q57-35) and the hall's screens (Session 59, X19, output/HallScene.tsx). Left out: the stream only.
    */
   picturesFirst?: boolean;
+  translationOutputId?: string;
+  translationGroupId?: string | null;
 }) {
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
@@ -744,4 +751,32 @@ export const Scene = memo(function Scene({
       </div>
     </ScreenPictures.Provider>
   );
+});
+
+/** Project checked words before entering the existing scene's memoized drawing paths. */
+export const Scene = memo(function Scene(props: ComponentProps<typeof SceneBody>) {
+  const sourceHeight =
+    props.state.layers.slide?.slide.height ??
+    (props.state.next?.kind === 'slide' ? props.state.next.slide.height : props.canvas.height);
+  const state = useMemo(
+    () =>
+      preparedOutputState(props.state, {
+        ...(props.translationGroupId ? { groupId: props.translationGroupId } : {}),
+        ...(props.translationOutputId ? { outputId: props.translationOutputId } : {}),
+        blockedBelow: translationBottom(props.state, sourceHeight, props.place ?? 'hall'),
+        blockedAbove: translationTop(props.state, sourceHeight, props.place ?? 'hall'),
+        canvas: props.canvas,
+        scaling: props.scaling,
+      }),
+    [
+      props.state,
+      props.translationGroupId,
+      props.translationOutputId,
+      sourceHeight,
+      props.canvas,
+      props.scaling,
+      props.place,
+    ],
+  );
+  return <SceneBody {...props} state={state} />;
 });

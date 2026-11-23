@@ -609,6 +609,10 @@ Strict POSIX preparation establishes its priority inside a small system-shell la
 
 In Pro Mode, `slideEditor.makeSlide` accepts the editor snapshot and stamp, a PDF `slideId`, a normalized `part`, and `place` (`playlist` or `library`). The optional `parts` array collects 1 to 400 `{ slideId, part }` entries in reading order. Without it the single-page action stays available. Main validates every page before drawing, prints one page at a time and draws each part at the hall's picture size. Collected pictures are limited to 128 MB. It keeps one presentation only after every part succeeds; the operator receives one `slideEditor.slideMade` event for Undo of the presentation and its playlist row. The original PDF stays unchanged. No batch is made while the stream is on air or recording.
 
+## Desktop notices and the local log
+
+A notice shown by Main is logged with the current library’s names blanked as in diagnostics, including names without quotes. Names in quotes are blanked too. If the library’s names cannot be read, the log says only that the notice’s words are unavailable. The operator still sees the original notice. This does not change the HTTP API or the state feed.
+
 ## Automatic error reports (alpha.21, main process)
 
 `main/error-reports/service.ts` owns a separate `automatic-error-reports/state.json`, outside the library and its backups. It is off by default. `configure` and `enable` require the current access-list owner; configuration changes clear the queue and require consent again. No new renderer IPC or HTTP command can configure or enable it. The native Help control imports a private per-install setup JSON and asks for a separate Turn On action. Production sends use Electron’s cookie-free transport; development/CI main processes cannot call a real receiver.
@@ -621,7 +625,7 @@ The separate `access-list/error-reports/` Apps Script project authenticates `{v:
 
 `captureWith` receives a lazy diagnostic factory: consent/access/rate/queue checks run before any metadata read. Suppressed errors only increment a bounded in-memory counter; idle wakes, normal state writes and `dispose` flush it once. An abrupt kill before that flush can lose suppressed-count increments, not accepted queued reports or the persisted daily reservation. No per-error disk write or diagnostic collection occurs after the cap.
 
-### Native Gujarati/Hindi recogniser (main process only)
+## Native Gujarati/Hindi recogniser (main process only)
 
 `createIndicEngine` implements `SpeechEngine`, selected only by the caption integration’s explicit model choice.
 `acquire(language, signal)` obtains and holds cap-pack’s checked model through native process exit; `routeCFiles`
@@ -651,3 +655,11 @@ or while it is closed/unknown, the recogniser loads no model and performs no inf
 compute immediately without awaiting exit and invalidates pending results; a later opening starts fresh. The main
 integration must adapt L8’s public signal, never infer permission from an elapsed timer. Tests provide an explicit
 stand-in gate. The ordinary Whisper path is outside this new engine and remains unchanged.
+
+## Prepared translations (desktop, alpha.21)
+
+The existing `library.slidesForEdit` / `library.saveSlides` document carries optional text-element `translations` (at most three distinct targets, `gu`, `hi`, `en`) and `translationDisplay`. Each saved pair has NFC-normalized `sourceFingerprint`, source/target tags, text (at most 20,000 characters), `state` (`unchecked`, `checked`, `needs-recheck`), a local reader name and `reviewFingerprint`. The latter binds approval to the exact source/result/language pair; modifying words cannot retain a valid check. Source changes across all normal content-write paths retain the old words with review held. Undo may restore an exact previously checked pair.
+
+`translationDisplay` contains an optional explicit `sourceLanguage`, `choice` (`off` or a target), bounded stable-ID `groups` and `outputs` overrides, a deliberately reserved slide-coordinate `area` and `fontSize`. Resolution is output override, group override, presentation choice, then Off. Output Off always wins; an explicit saved target can show checked words while the presentation choice is Off. The dialog applies presentation choices across its editable text boxes; attachments remain with those boxes through normal persistence and bundle ID remapping. There is no migration and no default translation data inserted into existing presentations.
+
+Main refuses translation authoring, approval and route changes through `saveSlides` unless the current mode is Pro, even if a caller bypasses the editor. Simple Mode source editing remains bounded as before and invalidates review. There is no new HTTP generation or editing endpoint. Engine playback and phone presentation responses include checked current pairs only, with reader names removed. Original publication and Next require no inference or asynchronous translation work. The deterministic `Translator` stand-in is a test double only; production reports `No engine installed` and never writes its placeholders into a library.

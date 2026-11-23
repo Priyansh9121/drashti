@@ -106,6 +106,7 @@ export const AudienceBox = memo(function AudienceBox({
                   canvas={view.canvas}
                   scaling={view.scaling}
                   look={view.look}
+                  translationGroupId={view.groupId}
                   // The stage screen draws live captions once, over all of it (Session 55, Part 10).
                   captions={false}
                 />

@@ -162,6 +162,7 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
    */
   z.object({ type: z.literal('oops') }),
   z.object({ type: z.literal('setBlackout'), on: z.boolean() }),
+  z.object({ type: z.literal('setTranslationHidden'), hidden: z.boolean() }),
   z.object({ type: z.literal('toggleBlackout') }),
   /**
    * The Wallpaper (Session 55, Part 13, in the Logo's place): the chosen wallpaper instead of the picture on the
