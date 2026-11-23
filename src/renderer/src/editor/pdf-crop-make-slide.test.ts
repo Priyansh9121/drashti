@@ -31,8 +31,8 @@ it('Make a slide previews and measures its part on the page already cropped for 
   const html = renderToStaticMarkup(
     createElement(MakeSlideDialog, {
       base: { doc, slideId: 'page', stamp: 'generated' },
-      onClose: () => {},
-      onMade: () => {},
+      onClose: vi.fn(),
+      onMade: vi.fn(),
     }),
   );
   expect(html).toMatch(/data-testid="make-slide-page"[^>]*style="aspect-ratio:240 \/ 240;/);

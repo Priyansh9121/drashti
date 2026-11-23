@@ -36,7 +36,7 @@ export function turnPdfPageRight(doc: EditDoc, slideId: string): EditDoc {
       ...(source.crop
         ? {
             crop: {
-              x: 1 - source.crop.y - source.crop.h,
+              x: Math.max(0, Math.round((1 - source.crop.y - source.crop.h) * 1e10) / 1e10),
               y: source.crop.x,
               w: source.crop.h,
               h: source.crop.w,

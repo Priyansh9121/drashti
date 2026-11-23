@@ -197,6 +197,8 @@ describe('checked translations on cropped PDF pages', () => {
     el.frame = { x: 600, y: 200, width: 600, height: 120 };
     if (!el.translationDisplay) throw new Error('Generated translation display missing');
     el.translationDisplay.area = { x, y: 340, width: 600, height: 150 };
+    el.translationDisplay.fontSize = 24;
+    expect(translationFits('Placeholder Q', el.translationDisplay.area, 24)).toBe(true);
     return cropRenderedPage(slide(el), { x: 0.25, y: 0.1, w: 0.5, h: 0.6 });
   };
   it('retains checked words inside the crop using their original page coordinates', () => {

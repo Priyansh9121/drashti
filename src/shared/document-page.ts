@@ -96,3 +96,13 @@ export function slideCanvas(
 ): PageSize {
   return slide?.pageSize ?? editingCanvas(slide?.documentPage, fallback);
 }
+
+/** Legacy source playback fits the paper inside a screen-shaped canvas; native pages already own their paper. */
+export function sourcePaperForCrop(
+  page: DocumentPageRef | undefined,
+  nativeSize: PageSize | undefined,
+): PageSize | undefined {
+  if (nativeSize || page?.edited || !page?.crop || page.width === undefined || page.height === undefined)
+    return undefined;
+  return editingCanvas(page, { width: page.width, height: page.height });
+}

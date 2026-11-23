@@ -234,11 +234,7 @@ export class ImportedSlides {
     try {
       const bySource = new Map<string, EditSlide[]>();
       for (const slide of slides)
-        if (
-          slide.documentPage &&
-          !slide.documentPage.edited &&
-          !(slide.deck?.motion && slide.deck.steps.length === 0)
-        ) {
+        if (!slide.documentPage.edited && !(slide.deck?.motion && slide.deck.steps.length === 0)) {
           const ref = slide.documentPage;
           const key = `${ref.sha256}.${ref.ext}`;
           const list = bySource.get(key) ?? [];
@@ -926,9 +922,12 @@ export class ImportedSlides {
         slide.design = saved.design;
         const crop = slide.documentPage.crop;
         const { crop: _savedCrop, ...keptPage } = saved.documentPage ?? originalRef;
-        slide.documentPage = { ...keptPage, ...(crop ? { crop } : {}) };
+        const paper = slideCanvas(original, cached?.doc ?? doc);
+        slide.documentPage = {
+          ...keptPage,
+          ...(crop ? { crop, width: paper.width, height: paper.height, rotation: 0 } : {}),
+        };
         if (
-          slide.documentPage &&
           !slide.documentPage.edited &&
           !saved.pageSize &&
           (before.width !== doc.width || before.height !== doc.height)

@@ -8,6 +8,7 @@ it('editor thumbnails compose cropped geometry while full-page editing and print
     label: '',
     notes: '',
     background: null,
+    darken: null,
     enabled: true,
     transition: null,
     autoAdvanceMs: null,

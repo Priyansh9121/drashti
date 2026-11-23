@@ -128,9 +128,7 @@ test('Crop page waits through stream and recording transitions, and Main refusal
   const s = await openGeneratedPdf(undefined, undefined, { DRASHTI_TEST_ON_AIR_HOOK: '1' });
   try {
     await usePdfTools(s.ed);
-    const status = await s.win.evaluate(() =>
-      (globalThis as import('./helpers').PageGlobals).drashti.stream.status(),
-    );
+    const status = await s.win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
     const crop = s.ed.getByRole('button', { name: 'Crop page…', exact: true });
     for (const [live, recording] of [
       ['starting', 'off'],
@@ -233,7 +231,9 @@ test('Turn page right turns the crop with the full page, Undo restores it, and t
     await expect(kept).toHaveCSS('overflow', 'hidden');
     const page = await kept.boundingBox();
     const screen = await out.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-    if (!page || !screen) throw new Error('Missing hall crop viewport');
+    if (!page) throw new Error('Missing hall crop viewport');
+    expect(screen.width).toBeGreaterThan(0);
+    expect(screen.height).toBeGreaterThan(0);
     expect(page.width).toBeCloseTo(Math.min(screen.width, screen.height), 0);
     expect(page.height).toBeCloseTo(Math.min(screen.width, screen.height), 0);
     s.unchanged();

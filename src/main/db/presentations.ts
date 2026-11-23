@@ -29,6 +29,7 @@ import type { ContentRows } from './content';
 import { readContent, transitionFromJson, transitionToJson, writeContent } from './content';
 import {
   documentCanvas,
+  sourcePaperForCrop,
   slideCanvas,
   documentPageFromJson,
   pageSizeFromJson,
@@ -471,6 +472,8 @@ export class PresentationRepo {
         })
       : [];
     slides.forEach((s, index) => {
+      const documentPage = documentPageFromJson(s.document_page);
+      const pageSize = pageSizeFromJson(s.page_size);
       const darken = darkenFromJson(s.darken);
       // A deck's slide (Session 54, C2): left out for every other slide, as darkening is.
       const deck = deckFromJson(s.deck);
@@ -478,7 +481,7 @@ export class PresentationRepo {
         composeSlide(
           {
             id: s.id,
-            ...(pageSizeFromJson(s.page_size) ?? documentCanvas(documentPageFromJson(s.document_page), p)),
+            ...(pageSize ?? documentCanvas(documentPage, p)),
             background: s.background,
             // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
             ...(darken ? { darken } : {}),
@@ -491,7 +494,8 @@ export class PresentationRepo {
           slideCanvas(master ?? undefined, p),
           index,
         ),
-        documentPageFromJson(s.document_page)?.crop,
+        documentPage?.crop,
+        sourcePaperForCrop(documentPage, pageSize),
       );
       const info: SlideInfo = {
         id: s.id,

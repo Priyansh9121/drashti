@@ -77,14 +77,16 @@ export function translationLayoutProblem(
   const display = el.translationDisplay;
   if (!display) return 'Reserve an area below the source words.';
   const { area, fontSize } = display;
+  const origin = slide.pageCrop ?? { x: 0, y: 0 };
   if (
     el.rotation ||
     el.motion ||
     slide.deck ||
-    area.x < 0 ||
+    area.x < origin.x ||
+    area.y < origin.y ||
     area.y < el.frame.y + el.frame.height ||
-    area.x + area.width > slide.width ||
-    area.y + area.height > Math.min(slide.height, blockedBelow)
+    area.x - origin.x + area.width > slide.width ||
+    area.y - origin.y + area.height > Math.min(slide.height, blockedBelow)
   )
     return 'Keep the translation below its source and inside the clear slide area.';
   if (fontSize < (36 * slide.height) / 1080 || !translationFits(text, area, fontSize))
@@ -105,12 +107,13 @@ export function translationDestinationProblem(
   if (base) return base;
   const display = el.translationDisplay;
   if (!display) return 'Reserve an area below the source words.';
-  if (display.area.y < (destination.blockedAbove ?? 0))
+  const origin = slide.pageCrop ?? { x: 0, y: 0 };
+  if (display.area.y - origin.y < (destination.blockedAbove ?? 0))
     return 'Keep the translation clear of the caption band.';
   if (!destination.canvas) return null;
   const at = placeContent(slide, destination.canvas, destination.scaling ?? 'fit');
-  const left = at.x + display.area.x * at.scaleX;
-  const top = at.y + display.area.y * at.scaleY;
+  const left = at.x + (display.area.x - origin.x) * at.scaleX;
+  const top = at.y + (display.area.y - origin.y) * at.scaleY;
   if (
     left < 0 ||
     top < 0 ||

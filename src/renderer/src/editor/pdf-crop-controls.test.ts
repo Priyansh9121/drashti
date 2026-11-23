@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { PdfTools } from './PdfTools';
 const props = {
   available: {
@@ -20,11 +20,11 @@ const props = {
   struckThrough: false,
   pending: null,
   blocked: false,
-  onUnderline: () => {},
-  onStrikeThrough: () => {},
-  onRotateRight: () => {},
-  onDeletePage: () => {},
-  onCropPage: () => {},
+  onUnderline: vi.fn(),
+  onStrikeThrough: vi.fn(),
+  onRotateRight: vi.fn(),
+  onDeletePage: vi.fn(),
+  onCropPage: vi.fn(),
 };
 it('offers Crop page and refuses it with its own words until stream and recording are off', () => {
   const off = renderToStaticMarkup(createElement(PdfTools, { ...props, pagesWait: false }));

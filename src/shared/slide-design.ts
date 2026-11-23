@@ -4,7 +4,7 @@ import { hasPdfPageNumbers, numberedPdfMaster, PDF_HANDOUT_PREFIX } from './pdf-
 import { slidesOf } from './slide-edit';
 import type { RenderSlide, SlideDesign } from './model';
 import type { EditDoc, EditSlide } from './slide-edit';
-import { slideCanvas } from './document-page';
+import { slideCanvas, sourcePaperForCrop } from './document-page';
 import { fitElements } from './slide-size';
 import type { Size } from './scaling';
 import { withPdfMarkMotion } from './pdf-mark-motion';
@@ -86,6 +86,7 @@ export function renderEditedSlide(doc: EditDoc, slide: EditSlide, wholePage = fa
       hasPdfPageNumbers(doc.master) ? slidesOf(doc).findIndex((page) => page.id === slide.id) : undefined,
     ),
     wholePage ? undefined : slide.documentPage?.crop,
+    sourcePaperForCrop(slide.documentPage, slide.pageSize),
   );
 }
 
