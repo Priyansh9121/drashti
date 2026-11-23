@@ -64,6 +64,9 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
     await expect(targets).toHaveCount(2);
     await expect(targets.nth(0)).toHaveCSS('opacity', '0');
     await expect(targets.nth(1)).toHaveCSS('opacity', '0');
+    const slideId = await out.locator('[data-slide]').last().getAttribute('data-slide');
+    if (!slideId) throw new Error('The hall has no live PDF page.');
+    await expect(remote.getByTestId('remote-live').locator(`[data-slide="${slideId}"]`)).toBeVisible();
     const markIds = await targets.evaluateAll((elements) =>
       elements.map((element) => element.getAttribute('data-deck-motion-target')?.replace(/^pdf-mark:/u, '')),
     );
