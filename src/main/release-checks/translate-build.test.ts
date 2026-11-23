@@ -131,4 +131,14 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     expect(helper).toContain("`-isystem${join(ct2, 'include')}`");
     expect(helper).not.toMatch(/`-I\$\{/u);
   });
+
+  it('reads the tokenizer model itself, through a wide path on Windows, and refuses an empty path (a22-review-mt A6)', () => {
+    // SentencePiece's own Load opens a narrow path on Windows (a user name outside the ANSI code page fails), and
+    // reads standard input for an empty name: the helper's own protocol channel.
+    const source = read('tools/translate/drashti-translate.cc');
+    expect(source).not.toMatch(/\.spm\.Load\(/u);
+    expect(source).toContain('LoadFromSerializedProto');
+    expect(source).toMatch(/#ifdef _WIN32[\s\S]*MultiByteToWideChar\(CP_UTF8[\s\S]*_wfopen/u);
+    expect(source).toContain('model->empty() || !spm || spm->empty()');
+  });
 });
