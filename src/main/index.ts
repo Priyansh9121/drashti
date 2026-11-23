@@ -459,6 +459,8 @@ import type { StreamStatus } from '../shared/stream';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
+import { CaptionCoordinator } from './speech/caption-coordinator';
+import { ownModelCaptionAi } from './speech/caption-routes';
 import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
@@ -3814,33 +3816,56 @@ function start(): void {
       : (whisperProblem(process.platform, process.getSystemVersion()) ??
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
+  const captionSettingsRepo = new CaptionSettingsRepo(opened.db);
+  const speechEngine =
+    testSpeech !== undefined
+      ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
+        createStandInEngine(testSpeech.split('|'), undefined, {
+          once: sw('DRASHTI_TEST_SPEECH_ONCE') !== undefined,
+        })
+      : createWhisperEngine({
+          program: () => whisperProgram,
+          // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
+          model: (language) => {
+            const own = captions.languageModelFor(language);
+            return own
+              ? languageModelFile(captionsData, own.id)
+              : modelFile(captionsData, captions.selectedModel());
+          },
+          // Asked before every start of the program: a language's own model not ready is never loaded.
+          modelProblem: (language) => captions.modelProblem(language),
+          fallback: (language) =>
+            captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
+          // The tuned language models are decoded without timestamps (alpha.22).
+          timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
+          timing: () => captions.timing(),
+          sound: { open: (chunk) => streaming.listenSound(chunk) },
+          log,
+        });
+  // Caption AI (alpha.22, cap-integration): a speaker's language with a model of its own is heard through the
+  // captions coordinator (Codex x90): one clause at a time in at most two lines, provisional while heard, settled
+  // when final. As heard, Sanskrit and a language without its own model keep today's captions exactly.
+  const captionCoordinator = new CaptionCoordinator({
+    settings: () => parseCaptionSettings(captionSettingsRepo.get()),
+    show: (shown) => {
+      engine.setCaptions(shown);
+    },
+    changed: () => undefined,
+  });
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
     platform: process.platform,
     arch: process.arch,
-    repo: new CaptionSettingsRepo(opened.db),
-    engine:
-      testSpeech !== undefined
-        ? createStandInEngine(testSpeech.split('|'))
-        : createWhisperEngine({
-            program: () => whisperProgram,
-            // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
-            model: (language) => {
-              const own = captions.languageModelFor(language);
-              return own
-                ? languageModelFile(captionsData, own.id)
-                : modelFile(captionsData, captions.selectedModel());
-            },
-            // Asked before every start of the program: a language's own model not ready is never loaded.
-            modelProblem: (language) => captions.modelProblem(language),
-            fallback: (language) =>
-              captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
-            // The tuned language models are decoded without timestamps (alpha.22).
-            timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
-            timing: () => captions.timing(),
-            sound: { open: (chunk) => streaming.listenSound(chunk) },
-            log,
-          }),
+    repo: captionSettingsRepo,
+    engine: speechEngine,
+    aiPath: {
+      ...ownModelCaptionAi({
+        language: () => parseCaptionSettings(captionSettingsRepo.get()).language,
+        ownModel: (language) => captions.languageModelFor(language),
+        engine: speechEngine,
+      }),
+      coordinator: captionCoordinator,
+    },
     engineProblem: () => captionsEngineProblem,
     modelReady: (id) =>
       testSpeech !== undefined || modelReady(modelFile(captionsData, id), MODEL_SOURCES[id]),
