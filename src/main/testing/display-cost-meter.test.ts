@@ -145,3 +145,35 @@ it('fails an import whose worker was never seen, or one already running before t
     false,
   );
 });
+
+// Electron's app.getAppMetrics() gives a process it cannot date (as a worker being stopped) the creation time
+// base::Time::Max: 9211727563254776 ms. Seen on CI's Mac in a22-l8-1124-102735-44394, once for each import worker.
+const NOT_DATED = 9_211_727_563_254_776;
+it('reads each worker by its dated samples: an entry dated after the moment it was sampled is no time', () => {
+  // a22-l8-1124-102735-44394 (the probe of 5e86c44f's worker start), its first try: worker 5003 made 56 ms into the
+  // dissolve, later listed not dated (times from the dissolve's start, which was 1795477334871.1).
+  const start = 1795477334871.1;
+  const probe = [
+    { pid: 5003, creationTime: 1795477334927.185 - start, sampledAt: 5040 },
+    { pid: 5003, creationTime: NOT_DATED - start, sampledAt: 7752 },
+  ];
+  expect(importProcessOrder({ end: 5015, ready: 7752 }, probe)).toMatchObject({
+    startedDuring: true,
+    inOrder: false,
+  });
+  // L8's order (a22-l8-1124-091901-78648's first import trial) with the same not-dated entry at the end.
+  const l8 = [
+    { pid: 6438, creationTime: 5291.3, sampledAt: 5300 },
+    { pid: 6438, creationTime: NOT_DATED - start, sampledAt: 5947.1 },
+  ];
+  expect(importProcessOrder({ end: 5016.7, ready: 5947.1 }, l8)).toMatchObject({
+    startedDuring: false,
+    seen: true,
+    inOrder: true,
+  });
+  // A worker only ever listed not dated proves no order.
+  expect(
+    importProcessOrder({ end: 5000, ready: 5900 }, [{ pid: 7, creationTime: NOT_DATED, sampledAt: 5600 }])
+      .inOrder,
+  ).toBe(false);
+});
