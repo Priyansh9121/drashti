@@ -11,13 +11,17 @@ var DrashtiErrors = (function () {
     'stream-stopped',
   ]);
   function object(v, keys) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+    var names = Object.keys(v).sort();
+    var expected = keys.split(',').sort();
     return (
-      v &&
-      typeof v === 'object' &&
-      !Array.isArray(v) &&
-      Object.keys(v).sort().join(',') === keys.split(',').sort().join(',')
+      names.length === expected.length &&
+      names.every(function (name, i) {
+        return name === expected[i];
+      })
     );
   }
+
   function number(n, max) {
     return Number.isSafeInteger(n) && n >= 0 && n <= max;
   }
