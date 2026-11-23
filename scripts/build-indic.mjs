@@ -21,6 +21,7 @@ export function buildIndic({ ort, output, target = `${process.platform}-${proces
     args = [
       '-O2',
       '-std=c11',
+      '-mmacosx-version-min=13.4',
       '-Wall',
       '-Wextra',
       '-Werror',
