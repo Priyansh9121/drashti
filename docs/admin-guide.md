@@ -742,3 +742,11 @@ Since alpha.21, automatic error reports can go to your own Sheet. They start **o
 With reporting on, an error notice delivered to the operator, a crashed process, a restart after an unexpected stop, or a failed stream can leave a report. Each holds the computer id and access entry id (whole, to find its row on the access list’s **Computers** tab), the install id its diagnostics files name (section 12), version, system, role, counts and coded log events. It sends no names, content, email addresses, passwords, pictures or raw crash files. These short reports help you match the problem to the computer’s fuller local log. A node continues to use **Report a Problem…** through Main; automatic reporting here is for Main.
 
 At most 10 reports are kept from a computer each UTC day. Up to 20 wait offline for 7 days, then expire. Nothing sends while streaming or recording. Turning reporting off clears what waits here and stops an upload in progress; a report already received stays in your Sheet and Drive until you remove it. **Report a Problem…** remains the operator’s way to add their own explanation and chosen files.
+
+**Imported Gujarati and Hindi recognition models (Trial).** The separate recognition engine uses Microsoft ONNX
+Runtime 1.23.2 (MIT), included for Apple silicon, Intel Mac and Windows x64. Acoustic models are not in the installer
+and this engine never downloads one. Import a checked caption model pack, then choose its model for the speaker’s
+explicit Gujarati or Hindi language. Keep this option off until rehearsal. A missing, unsuitable or stopped model
+shows a reason; it never selects another recogniser automatically. Its token-frame times are coarse (40 ms), and it
+provides no confidence estimate. Turning it off leaves ordinary live captions as before. This engine adds no sound
+recording or saved transcript. An operator’s existing sound recording and timed caption draft remain separate.

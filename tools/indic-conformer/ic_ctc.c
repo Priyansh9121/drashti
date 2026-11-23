@@ -9,16 +9,6 @@
 #include <string.h>
 #include <time.h>
 #ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
-#include <windows.h>
-#endif
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-#include "onnxruntime_c_api.h"
-#ifdef _WIN32
 #include <windows.h>
 #include <io.h>
 #include <fcntl.h>
@@ -27,6 +17,7 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+#include "onnxruntime_c_api.h"
 
 #define SR 16000
 #define NFFT 512
@@ -39,29 +30,16 @@
 
 static const OrtApi *ort;
 
-static FILE *xfopen(const char *path, const char *mode) { /* UTF-8 paths on Windows too */
-#ifdef _WIN32
-  wchar_t wp[4096], wm[8]; MultiByteToWideChar(CP_UTF8, 0, path, -1, wp, 4096); MultiByteToWideChar(CP_UTF8, 0, mode, -1, wm, 8);
-  return _wxfopen(wp, wm);
-#else
-  return fopen(path, mode);
-#endif
-}
 static void die(const char *m) { fprintf(stderr, "ic-ctc: %s\n", m); exit(2); }
 static void check(OrtStatus *s) {
   if (s) { fprintf(stderr, "ic-ctc: inference failed\n"); ort->ReleaseStatus(s); exit(3); }
 }
 static double now_ms(void) {
 #ifdef _WIN32
-  static LARGE_INTEGER f; LARGE_INTEGER c;
-  if (!f.QuadPart) QueryPerformanceFrequency(&f);
-  QueryPerformanceCounter(&c); return c.QuadPart * 1e3 / f.QuadPart;
-#else
-  #ifdef _WIN32
-  LARGE_INTEGER t, f; QueryPerformanceCounter(&t); QueryPerformanceFrequency(&f); return (double)t.QuadPart * 1e3 / (double)f.QuadPart;
+  LARGE_INTEGER t, f; QueryPerformanceCounter(&t); QueryPerformanceFrequency(&f);
+  return (double)t.QuadPart * 1e3 / (double)f.QuadPart;
 #else
   struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
-#endif
 #endif
 }
 
@@ -132,16 +110,17 @@ static float *fb;
 static FILE *open_utf8(const char *path);
 static void load_model(Model *m, const char *code, const char *path, const char *tokpath) {
   snprintf(m->code, sizeof m->code, "%s", code);
-  FILE *f = xopen_utf8(tokpath); if (!f) die("cannot open tokens");
+  FILE *f = open_utf8(tokpath); if (!f) die("cannot open tokens");
   char line[256]; int i = 0;
-  while (i < NTOK && fgets(line, sizeof line, f)) { line[strcspn(line, "\r\n")] = 0; m->tok[i] = strdup(line); if (!m->tok[i++]) die("allocation failed"); }
-  fclose(f);
+  while (i < NTOK && fgets(line, sizeof line, f)) {
+    if (!strchr(line, '\n') && !feof(f)) die("token exceeds bounds");
+    line[strcspn(line, "\r\n")] = 0;
+    m->tok[i] = strdup(line); if (!m->tok[i++]) die("allocation failed");
+  }
+  if (fgetc(f) != EOF) die("extra tokens"); fclose(f);
   if (i != NTOK || strcmp(m->tok[BLANK], "<blank>")) die("tokens file must have 256 pieces then <blank>");
   double t0 = now_ms();
 #ifdef _WIN32
-  { wchar_t wp[4096]; MultiByteToWideChar(CP_UTF8, 0, path, -1, wp, 4096); check(ort->CreateSession(env, wp, so, &m->sess)); }
-#else
-  #ifdef _WIN32
   int wn = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
   if (!wn) die("invalid model path");
   wchar_t *wp = malloc((size_t)wn * sizeof(wchar_t));
@@ -150,13 +129,13 @@ static void load_model(Model *m, const char *code, const char *path, const char 
 #else
   check(ort->CreateSession(env, path, so, &m->sess));
 #endif
-#endif
   m->load_ms = now_ms() - t0;
+  size_t ni; check(ort->SessionGetInputCount(m->sess, &ni));
+  if (ni != 2) die("model requires feature and length inputs");
   check(ort->SessionGetInputName(m->sess, 0, al, &m->in0)); check(ort->SessionGetInputName(m->sess, 1, al, &m->in1));
   check(ort->SessionGetOutputCount(m->sess, &m->nout));
-  if (m->nout > 3) m->nout = 3;
+  if (m->nout < 1 || m->nout > 3) die("invalid model outputs");
   for (size_t k = 0; k < m->nout; k++) check(ort->SessionGetOutputName(m->sess, k, al, &m->out[k]));
-
 }
 
 static void json_str(FILE *o, const char *s) {
@@ -172,11 +151,7 @@ static void json_str(FILE *o, const char *s) {
 
 /* Decodes one input and prints one JSON line. */
 static void decode(Model *m, const char *name, float *x, size_t n, int threads) {
-  if (!x || n < WIN) { /* unreadable, or under 25 ms: nothing to hear (the model needs a few frames) */
-    printf("{\"file\":"); json_str(stdout, name);
-    printf(",\"language\":\"%s\",\"text\":\"\",\"words\":[]%s%s%s,\"audio_s\":%.3f}\n", m->code, x ? "" : ",\"error\":\"", x ? "" : in_err, x ? "" : "\"", x ? (double)n / SR : 0.0);
-    fflush(stdout); free(x); return;
-  }
+  if (!x || n < WIN) die("PCM shorter than one window");
   double ta = now_ms(); int T;
   float *feat = logmel(x, n, fb, &T);
   double tb = now_ms();
@@ -201,6 +176,7 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
     int prev = BLANK;
     for (int t = 0; t < Tp; t++) {
       const float *r = lp + (size_t)t * NTOK; int best = 0;
+      if (!isfinite(r[0])) die("non-finite logits");
       for (int k = 1; k < NTOK; k++) if (!isfinite(r[k])) die("non-finite logits"); else if (r[k] > r[best]) best = k;
       if (best != prev && best != BLANK && nid < cap_ids) { ids[nid] = best; fr[nid] = fe[nid] = t; nid++; }
       else if (best != BLANK && best == prev && nid > 0) fe[nid - 1] = t; /* a repeated frame extends the token */
@@ -219,7 +195,7 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
       if (!strncmp(s, "\xe2\x96\x81", 3)) { text[tl++] = ' '; s += 3; } else text[tl++] = *s++;
     }
     text[tl] = 0;
-    if ((newword || nw < 0) && nw < 1023) { nw++; words[nw][0] = 0; ws[nw] = fr[i] * 0.04; }
+    if (newword || nw < 0) { if (nw >= 1023) die("word count exceeds bounds"); nw++; words[nw][0] = 0; ws[nw] = fr[i] * 0.04; }
     if (strlen(words[nw]) + strlen(newword ? pc + 3 : pc) >= sizeof words[nw]) die("word exceeds protocol bounds");
     strcat(words[nw], newword ? pc + 3 : pc);
     we[nw] = (fe[i] + 1) * 0.04;
@@ -251,7 +227,7 @@ static FILE *open_utf8(const char *path) {
   return fopen(path, "rb");
 #endif
 }
-int main(int argc, char **argv) {
+static int ic_main(int argc, char **argv) {
   const char *code = NULL, *model = NULL, *tokens = NULL, *frontend = NULL; int threads = 1, serve = 0;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--lang") && i + 3 < argc && !code) { code = argv[++i]; model = argv[++i]; tokens = argv[++i]; }
@@ -296,3 +272,19 @@ int main(int argc, char **argv) {
   ort->ReleaseMemoryInfo(mi); ort->ReleaseSessionOptions(so); ort->ReleaseEnv(env); free(fb);
   return 0;
 }
+
+#ifdef _WIN32
+int wmain(int argc, wchar_t **wide) {
+  char **args = calloc((size_t)argc, sizeof(char *)); if (!args) die("allocation failed");
+  for (int i = 0; i < argc; i++) {
+    int n = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide[i], -1, NULL, 0, NULL, NULL);
+    if (!n) die("invalid arguments");
+    args[i] = malloc((size_t)n); if (!args[i]) die("allocation failed");
+    WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide[i], -1, args[i], n, NULL, NULL);
+  }
+  int result = ic_main(argc, args);
+  for (int i = 0; i < argc; i++) free(args[i]); free(args); return result;
+}
+#else
+int main(int argc, char **argv) { return ic_main(argc, argv); }
+#endif

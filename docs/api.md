@@ -620,3 +620,24 @@ The sender persists at most 20 reports, expires them after 7 days, accepts 10 in
 The separate `access-list/error-reports/` Apps Script project authenticates `{v:1,installId,payload,mac}`. HMAC-SHA256 uses the per-install secret as UTF-8 text over `drashti-errors-v1\n` + install id + `\n` + the exact payload text. The receiver validates every report field and rejects unknown fields before storage, then uses ScriptLock, a deterministic Drive filename and a Sheet id check to tolerate lost responses/partial writes. There is no email. A new report produces one row and one scrubbed JSON log file. Only Google’s HTTPS `/macros/echo` response redirect is followed, using GET with no POST body; the acknowledgement must name the exact report id.
 
 `captureWith` receives a lazy diagnostic factory: consent/access/rate/queue checks run before any metadata read. Suppressed errors only increment a bounded in-memory counter; idle wakes, normal state writes and `dispose` flush it once. An abrupt kill before that flush can lose suppressed-count increments, not accepted queued reports or the persisted daily reservation. No per-error disk write or diagnostic collection occurs after the cap.
+
+### Native Gujarati/Hindi recogniser (main process only)
+
+`createIndicEngine` implements `SpeechEngine`, selected only by the caption integration’s explicit model choice.
+`acquire(language, signal)` obtains and holds cap-pack’s checked model through native process exit; `routeCFiles`
+accepts only `indicconformer-ctc-onnx-v1`, purpose `captions-gu` or `captions-hi`, with `model.onnx`, `tokens.txt` and
+`frontend.bin`. The graph takes `[1,80,T]` float features and `[1]` int64 length; its first output is `[1,T/4,257]`
+float language-masked CTC scores (blank 256). Tokens are 256 UTF-8 pieces and `<blank>` last; the front end is
+80 × 257 little-endian float32 Slaney mel weights, matching the export. No Python or model-supplied code runs.
+
+`ic-ctc --pcm-serve` reads private stdin frames: uint32 little-endian PCM byte count (positive, even, at most
+384,000) then that many mono 16 kHz signed-16 little-endian bytes. It reports `{"ready":true}`, then one bounded
+UTF-8 JSON line per clip: language, text, words (`w`, start/end seconds), coarse 40 ms timing, null confidence and
+aggregate durations. Main alone maps sample offsets to capture times. There is one decode in flight, at most two
+queued finals; a stopped session kills the helper and discards its replies. Readiness is bounded by 90 seconds,
+no answer by 8 seconds terminates the helper; normal lag/rest guards remain. No PCM files, sockets or text logs.
+
+Build each target on its own system with `scripts/fetch-indic.mjs` (pinned Microsoft release, exact size and SHA-256),
+or build locally against an already verified extraction with `scripts/build-indic.mjs` and `DRASHTI_ORT_ROOT` /
+`DRASHTI_INDIC_OUT`. Local linked `vendor` destinations are refused. `findIndic` locates the bundled helper; models
+stay in cap-pack’s per-computer store. Runtime notices ship with the helper and under `licenses/onnxruntime/`.

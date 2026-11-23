@@ -26,7 +26,7 @@ describe('Route C behind the speech engine seam', () => {
     });
     const stop = engine.start('gu', { heard: (h) => phrases.push(h), state: (s) => states.push(s) });
     await vi.waitFor(() => expect(states.at(-1)?.phase).toBe('listening'));
-    const began = Date.now();
+    const began = Date.now() - 800;
     chunk?.(new Int16Array(1600).fill(5000), began + 100, began);
     for (let i = 1; i <= 7; i += 1) chunk?.(new Int16Array(1600), began + (i + 1) * 100, began + i * 100);
     await vi.waitFor(() => expect(phrases).toHaveLength(1));

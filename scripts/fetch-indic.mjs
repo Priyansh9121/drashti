@@ -67,7 +67,7 @@ export async function fetchIndic(target, output = join('vendor', 'indic', target
   const program = buildIndic({ ort: unpacked, output, target });
   if (target.startsWith('darwin')) {
     // Microsoft's dylib id is versioned; ship the library next to the helper under its actual load name.
-    run('install_name_tool', ['-change', '@rpath/libonnxruntime.1.23.2.dylib', '@executable_path/libonnxruntime.dylib', program]);
+    run('install_name_tool', ['-change', join(resolve(native), 'libonnxruntime.dylib'), '@executable_path/libonnxruntime.dylib', program]);
     // Remove the build-machine rpath; the packaged process needs only its own directory.
     run('install_name_tool', ['-delete_rpath', resolve(native), program]);
     run('codesign', ['--force', '--sign', '-', join(output, 'libonnxruntime.dylib')]);

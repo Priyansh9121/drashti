@@ -183,6 +183,9 @@ jobs:
       - name: Build video out for Intel Macs too (both Mac builds are packaged here)
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-video-out.mjs --target darwin-x64
+      - name: Build the approved native IndicConformer runtime (no model download)
+        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions')
+        run: node scripts/fetch-indic.mjs
       - name: Unit tests (inside Electron's Node)
         if: env.QUICK != 'true'
         run: pnpm test
@@ -309,6 +312,9 @@ jobs:
       - name: Fetch the live captions engine for Intel Macs too
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-whisper.mjs --target darwin-x64
+      - name: Build IndicConformer for Intel Macs too
+        if: runner.os == 'macOS' && env.QUICK != 'true'
+        run: node scripts/fetch-indic.mjs --target darwin-x64
       - name: Package installers
         if: env.QUICK != 'true'
         run: pnpm exec electron-builder --publish never

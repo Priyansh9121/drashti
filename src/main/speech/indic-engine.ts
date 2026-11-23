@@ -11,7 +11,7 @@ import { openIndicPipe, type IndicPipe, type IndicPipeOptions } from './indic-pi
 export interface IndicEngineOptions {
   program(): string | null;
   /** Acquire a checked imported model; release only once native work has stopped. Never an installer model. */
-  acquire(language: IndicLanguage): { files: IndicFiles; release(): void } | null;
+  acquire(language: IndicLanguage, signal?: AbortSignal): { files: IndicFiles; release(): void } | null | Promise<{ files: IndicFiles; release(): void } | null>;
   sound: PcmSource;
   log: { info(message: string): void; warn(message: string): void };
   threads?: number;
@@ -77,8 +77,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         if (retrySound) clearTimeout(retrySound);
         retrySound = null; phrase = null; finals.length = 0;
         controller?.abort(); controller = null;
-        pipe?.close(); pipe = null;
-        release?.(); release = null;
+        const was = pipe; pipe = null;
+        const letGo = release; release = null;
+        was?.close();
+        if (was?.exited && letGo) void was.exited.then(letGo);
+        else if (was || o.open) letGo?.();
       };
       const fail = (): void => {
         end();
@@ -233,14 +236,17 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         if (stopped) return;
         const program = o.program();
         if (!program) { to.state({ phase: 'failed', message: 'This copy of Drashti has no Gujarati or Hindi recognition engine.' }); return; }
-        const held = o.acquire(chosen);
-        if (!held) { to.state({ phase: 'held', reason: 'no-model' }); return; }
-        release = held.release;
         const mine = ++generation;
         const abort = new AbortController(); controller = abort;
         to.state({ phase: 'starting' });
         try {
-          const started = await (o.open ?? openIndicPipe)({ program, files: held.files, language: chosen, threads: o.threads ?? 1, signal: abort.signal });
+          const held = await o.acquire(chosen, abort.signal);
+          if (ended() || mine !== generation) { held?.release(); return; }
+          if (!held) { to.state({ phase: 'held', reason: 'no-model' }); return; }
+          let heldHere = true;
+          const letGo = (): void => { if (heldHere) { heldHere = false; held.release(); } };
+          release = letGo;
+          const started = await (o.open ?? openIndicPipe)({ program, files: held.files, language: chosen, threads: o.threads ?? 1, signal: abort.signal, onExit: letGo, failed: () => { if (!ended() && !busy && mine === generation) fail(); } });
           if (ended() || mine !== generation) { started.close(); return; }
           pipe = started;
           openSound();

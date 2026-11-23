@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { buildIndic } from './build-indic.mjs';
 import { makeIndicFixture } from './indic-fixture.mjs';
 
@@ -13,7 +13,7 @@ test('native helper decodes generated PCM with real ORT and CTC blank/repeat rul
     const fixture = makeIndicFixture();
     for (const [name, data] of [['model.onnx', fixture.model], ['tokens.txt', fixture.tokens], ['frontend.bin', fixture.frontend]]) writeFileSync(join(root, name), data);
     const program = buildIndic({ ort: process.env.DRASHTI_ORT_ROOT, output: join(root, 'bin') });
-    const p = spawn(program, ['--lang', 'gu', join(root, 'model.onnx'), join(root, 'tokens.txt'), '--frontend', join(root, 'frontend.bin'), '--threads', '1', '--pcm-serve'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const p = spawn(program, ['--lang', 'gu', join(root, 'model.onnx'), join(root, 'tokens.txt'), '--frontend', join(root, 'frontend.bin'), '--threads', '1', '--pcm-serve'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PATH: join(process.env.DRASHTI_ORT_ROOT, 'runtimes', 'win-x64', 'native') + delimiter + process.env.PATH } });
     let output = '', errors = '';
     p.stdout.on('data', (data) => { output += data.toString(); });
     p.stderr.on('data', (data) => { errors += data.toString(); });

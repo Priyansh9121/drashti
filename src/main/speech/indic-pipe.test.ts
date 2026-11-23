@@ -13,7 +13,7 @@ const files = { model: '/pack/model.onnx', tokens: '/pack/tokens.txt', frontend:
 describe('the supervised recogniser pipe', () => {
   it('waits for readiness, sends PCM, accepts one answer and kills on close', async () => {
     const p = child();
-    const spawn = vi.fn(() => p);
+    const spawn = vi.fn((_program: string, _args: string[]) => p);
     const opening = openIndicPipe({ program: '/helper', files, language: 'gu', spawn, priority: () => undefined });
     p.stdout?.emit('data', Buffer.from('{"ready":true}\n'));
     const pipe = await opening;

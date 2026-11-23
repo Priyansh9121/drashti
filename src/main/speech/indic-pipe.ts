@@ -5,6 +5,7 @@ import { pcmFrame, type IndicFiles, type IndicLanguage } from './indic-protocol'
 export interface IndicPipe {
   decode(samples: Int16Array): Promise<unknown>;
   close(): void;
+  exited?: Promise<void>;
 }
 export interface IndicPipeOptions {
   program: string;
@@ -14,6 +15,8 @@ export interface IndicPipeOptions {
   signal?: AbortSignal;
   spawn?: (program: string, args: string[]) => ChildProcess;
   priority?: (child: ChildProcess) => void;
+  failed?: () => void;
+  onExit?: () => void;
 }
 
 /** A private, single-flight child. Never logs stdout/stderr, words or model-supplied errors. */
@@ -23,14 +26,20 @@ export function openIndicPipe(o: IndicPipeOptions): Promise<IndicPipe> {
     let pending: { resolve(value: unknown): void; reject(error: Error): void } | null = null;
     let buffered = Buffer.alloc(0);
     let child: ChildProcess | null = null;
+    let requestTimer: NodeJS.Timeout | null = null;
+    let markExited: (() => void) | null = null;
+    let exitMarked = false;
+    const exited = new Promise<void>((done) => { markExited = () => { if (exitMarked) return; exitMarked = true; done(); o.onExit?.(); }; });
     const failed = (reason: string): void => {
       if (ended) return;
       ended = true;
       clearTimeout(timer);
+      if (requestTimer) clearTimeout(requestTimer); requestTimer = null;
       o.signal?.removeEventListener('abort', onAbort);
       pending?.reject(new Error(reason)); pending = null;
-      child?.kill();
+      if (child) child.kill(); else markExited?.();
       if (!ready) reject(new Error(reason));
+      o.failed?.();
     };
     const onAbort = (): void => { failed('closed'); };
     const timer = setTimeout(() => { failed('recogniser readiness'); }, 90_000);
@@ -42,8 +51,8 @@ export function openIndicPipe(o: IndicPipeOptions): Promise<IndicPipe> {
         ? spawnChild('/usr/sbin/taskpolicy', ['-b', program, ...args], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
         : spawnChild(program, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }));
       child = run(o.program, args);
-      child.once('error', () => { failed('recogniser start'); });
-      child.once('exit', () => { failed('recogniser exit'); });
+      child.once('error', () => { markExited?.(); failed('recogniser start'); });
+      child.once('exit', () => { markExited?.(); failed('recogniser exit'); });
       if (!child.stdout || !child.stdin) { failed('recogniser pipes'); return; }
       const priority = o.priority ?? ((p: ChildProcess) => {
         if (p.pid === undefined) throw new Error('priority');
@@ -51,6 +60,7 @@ export function openIndicPipe(o: IndicPipeOptions): Promise<IndicPipe> {
       });
       // On the Mac taskpolicy applies background priority at launch, before ORT loads the model.
       if (o.priority || process.platform !== 'darwin') priority(child);
+      child.stdout.on('error', () => { failed('recogniser pipe'); });
       child.stdin.on('error', () => { failed('recogniser pipe'); });
       child.stdout.on('data', (data: Buffer) => {
         if (ended) return;
@@ -74,13 +84,16 @@ export function openIndicPipe(o: IndicPipeOptions): Promise<IndicPipe> {
               const frame = pcmFrame(samples);
               return new Promise((resolve, reject) => {
                 pending = { resolve, reject };
+                requestTimer = setTimeout(() => { failed('recogniser lag'); }, 8_000);
                 child?.stdin?.write(frame);
               });
             },
             close: onAbort,
+            exited,
           });
           return;
         }
+        if (requestTimer) clearTimeout(requestTimer); requestTimer = null;
         const request = pending; pending = null;
         if (!request) { failed('recogniser protocol'); return; }
         request.resolve(value);

@@ -537,3 +537,8 @@ For a clip, choose start and end under **Trim**, then **Preparation and export**
 **Export clip…** opens **Save as…** for a new file. The accepted export waits while anything is up, streaming or recording, and stays across closing the editor or restarting Drashti. Open the editor again for progress, **Stop export** or **Show the file**. The original stays unchanged. The Manual's **Library › Exporting a clip, including vertical video** has the steps.
 
 ![Edit Video's Preparation and export choices for a vertical clip](screenshots/manual-edit-video-export.png)
+
+**Gujarati and Hindi recognition models (Trial).** A model pack can provide a separate local recognition engine for
+Gujarati or Hindi. Choose the speaker’s language and its imported model before rehearsal. It does not choose a
+language automatically. If that model is missing or stops, no other model takes its place. Turn this option off to
+return to ordinary live captions. Rehearse with the mixer and the screens before using automatic words in a show.
