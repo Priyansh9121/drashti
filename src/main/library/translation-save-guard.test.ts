@@ -14,7 +14,7 @@ const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
   handle: (channel: string, fn: (...args: unknown[]) => unknown) => handlers.set(channel, fn),
 }));
-const call = <T>(channel: string, ...args: unknown[]) => required(handlers.get(channel))(...args) as T;
+const call = (channel: string, ...args: unknown[]): unknown => required(handlers.get(channel))(...args);
 describe('Main enforces prepared translation review bounds', () => {
   it('refuses Simple Mode approval over the real save channel, while allowing a source edit that holds the old translation', async () => {
     const db = openDatabase(':memory:');
@@ -46,29 +46,24 @@ describe('Main enforces prepared translation review bounds', () => {
         lookFor: (_theme, size) => themeLook(DEFAULT_THEME, size.width, size.height),
         changed: () => undefined,
       });
-      const opened = await call<Promise<EditSlidesResult> | EditSlidesResult>(
-        IPC.library.slidesForEdit,
-        {},
-        id,
-      );
+      const opened = await (call(IPC.library.slidesForEdit, {}, id) as
+        Promise<EditSlidesResult> | EditSlidesResult);
       if (!opened.ok) throw new Error(opened.message);
       const edited = structuredClone(opened.doc);
       const box = required(required(edited.groups[0]).slides[0]).elements[0] as TextElement;
       box.translations = [checkTranslation(required(required(box.translations)[0]), source, 'Reader Q')];
-      expect(
-        call<SaveSlidesResult>(IPC.library.saveSlides, {}, id, edited, opened.stamp, false),
-      ).toMatchObject({ ok: false, message: expect.stringContaining('Pro Mode') });
+      const refused = call(IPC.library.saveSlides, {}, id, edited, opened.stamp, false) as SaveSlidesResult;
+      expect(refused.ok).toBe(false);
+      if (refused.ok) throw new Error('Simple Mode approval succeeded');
+      expect(refused.message).toContain('Pro Mode');
       const sourceEdit = structuredClone(opened.doc);
       (required(required(sourceEdit.groups[0]).slides[0]).elements[0] as TextElement).text =
         'Changed blue box.';
-      expect(call<SaveSlidesResult>(IPC.library.saveSlides, {}, id, sourceEdit, opened.stamp, false).ok).toBe(
-        true,
-      );
-      const again = await call<Promise<EditSlidesResult> | EditSlidesResult>(
-        IPC.library.slidesForEdit,
-        {},
-        id,
-      );
+      expect(
+        (call(IPC.library.saveSlides, {}, id, sourceEdit, opened.stamp, false) as SaveSlidesResult).ok,
+      ).toBe(true);
+      const again = await (call(IPC.library.slidesForEdit, {}, id) as
+        Promise<EditSlidesResult> | EditSlidesResult);
       if (!again.ok) throw new Error(again.message);
       const held = required(required(again.doc.groups[0]).slides[0]).elements[0] as TextElement;
       expect(required(required(held.translations)[0]).state).toBe('needs-recheck');

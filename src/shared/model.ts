@@ -4,6 +4,7 @@
  */
 
 import type { DeckSlide } from './deck';
+import type { TranslationDisplay } from './prepared-translation-view';
 import type { PreparedTranslation } from './prepared-translations';
 
 /**
@@ -275,6 +276,7 @@ export interface TextElement extends ElementBase {
   tableCell?: TableCell;
   /** Saved source/result pairs; only a checked exact pair may reach an output. */
   translations?: PreparedTranslation[];
+  translationDisplay?: TranslationDisplay;
 }
 
 /**

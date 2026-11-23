@@ -288,6 +288,20 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     opacity: num.min(0).max(1).optional(),
     everyScreen: z.boolean().optional(),
     translations: preparedTranslationsSchema.optional(),
+    translationDisplay: z
+      .object({
+        choice: z.enum(['off', 'gu', 'hi', 'en']),
+        groups: z
+          .record(z.string().min(1).max(200), z.enum(['off', 'gu', 'hi', 'en']))
+          .refine((value) => Object.keys(value).length <= 100),
+        outputs: z
+          .record(z.string().min(1).max(200), z.enum(['off', 'gu', 'hi', 'en']))
+          .refine((value) => Object.keys(value).length <= 100),
+        area: rectSchema,
+        fontSize: num.min(1).max(1000),
+      })
+      .strict()
+      .optional(),
     tableCell: z
       .object({
         row: num.int().min(0).max(499),

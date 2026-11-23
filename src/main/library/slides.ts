@@ -167,6 +167,7 @@ const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
     'everyScreen',
     'tableCell',
     'translations',
+    'translationDisplay',
   ]),
   shape: new Set([
     ...PLACEMENT_KEYS,
