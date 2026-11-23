@@ -10,6 +10,7 @@ import {
   NO_MODEL,
   ON_AIR,
   READY,
+  UNKNOWN_MODEL,
   handleTranslation,
   type TranslationIpcDeps,
 } from './ipc';
@@ -22,7 +23,14 @@ function setUp(over: Partial<TranslationIpcDeps> = {}, engine: Partial<Translati
     handle: (channel, handler) => handlers.set(channel, handler),
     mayDraft: () => true,
     onAir: () => false,
-    engine: { installed: () => true, available: () => true, translate, cancel, ...engine },
+    engine: {
+      installed: () => true,
+      available: () => true,
+      unknownModel: () => false,
+      translate,
+      cancel,
+      ...engine,
+    },
     ...over,
   });
   const call = (channel: string, ...args: unknown[]) =>
@@ -160,5 +168,19 @@ describe('Prepare translations’ requests', () => {
     expect(result).toEqual({ ok: false, message: 'The translation engine stopped.' });
     expect(log.warn).toHaveBeenCalledWith('Translation: the engine stopped (exit 139).');
     engine.stop();
+  });
+
+  it('says when the pack holds a translation model this Drashti does not know (a22-review-mt A14)', async () => {
+    const { call, translate } = setUp({}, { available: () => false, unknownModel: () => true });
+    await expect(call(IPC.slideEditor.translationStatus, 'en', 'gu')).resolves.toEqual({
+      installed: true,
+      available: false,
+      message: UNKNOWN_MODEL,
+    });
+    await expect(call(IPC.slideEditor.translationDraft, request)).resolves.toEqual({
+      ok: false,
+      message: UNKNOWN_MODEL,
+    });
+    expect(translate).not.toHaveBeenCalled();
   });
 });

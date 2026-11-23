@@ -3,6 +3,7 @@ import { fakeHelper, type FakeChild } from '../testing/fake-translate-helper';
 import {
   INDICTRANS2_FILES,
   INDICTRANS2_FORMAT,
+  KNOWN_INDICTRANS2_MODELS,
   TranslationEngine,
   type TranslationModels,
 } from './translation-engine';
@@ -18,7 +19,11 @@ const model = (
   id,
   purposes,
   format,
-  files: files.map((name) => ({ name: `${id}/${name}`, path: `/packs/p/${id}/${name}` })),
+  files: files.map((name) => ({
+    name: `${id}/${name}`,
+    path: `/packs/p/${id}/${name}`,
+    sha256: '0'.repeat(64),
+  })),
 });
 
 function models(
@@ -43,6 +48,8 @@ function engineWith(
     models: store,
     log,
     idleMs: 60_000,
+    // Stand-in models: their files are not x74's conversions, so every one is taken as known here.
+    checkFiles: () => true,
     createHelper: (p) =>
       new TranslationHelper({
         program: p,
@@ -77,6 +84,34 @@ describe('Prepare translations’ engine', () => {
       models([model('p', ['translation-en-gu'], INDICTRANS2_FORMAT, ['model.bin'])]),
     ).engine;
     expect(partial.available('en', 'gu')).toBe(false);
+  });
+
+  it('runs only the IndicTrans2 conversions this Drashti knows, by every file’s SHA-256 (a22-review-mt A14)', () => {
+    const knownFiles = (route: keyof typeof KNOWN_INDICTRANS2_MODELS) =>
+      Object.entries(KNOWN_INDICTRANS2_MODELS[route]).map(([name, sha256]) => ({
+        name: `${route}/${name}`,
+        path: `/packs/p/${route}/${name}`,
+        sha256,
+      }));
+    const engineFor = (m: ReturnType<typeof model>) =>
+      new TranslationEngine({ program: () => '/x/drashti-translate', models: models([m]), log });
+    const real = { ...model('en-indic', ['translation-en-gu']), files: knownFiles('en-indic') };
+    expect(engineFor(real).available('en', 'gu')).toBe(true);
+    expect(engineFor(real).unknownModel('en', 'gu')).toBe(false);
+    // One file not the known one (another conversion, or a file only the pack's own list vouches for): not run.
+    const changed = {
+      ...real,
+      files: real.files.map((f) => (f.name.endsWith('model.bin') ? { ...f, sha256: 'f'.repeat(64) } : f)),
+    };
+    expect(engineFor(changed).available('en', 'gu')).toBe(false);
+    expect(engineFor(changed).unknownModel('en', 'gu')).toBe(true);
+    // The right files offered for another direction family: not run either.
+    expect(engineFor({ ...real, purposes: ['translation-gu-en'] }).available('gu', 'en')).toBe(false);
+    for (const route of ['en-indic', 'indic-en', 'indic-indic'] as const) {
+      expect(Object.keys(KNOWN_INDICTRANS2_MODELS[route]).sort()).toEqual([...INDICTRANS2_FILES].sort());
+      for (const sha of Object.values(KNOWN_INDICTRANS2_MODELS[route]))
+        expect(sha).toMatch(/^[0-9a-f]{64}$/u);
+    }
   });
 
   it('drafts each line on its own through the pack’s model, keeping empty lines, and holds the model while loaded', async () => {
