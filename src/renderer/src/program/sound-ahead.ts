@@ -8,7 +8,12 @@
  */
 export const STREAM_SOUND_AHEAD_S = 1;
 
-/** Give a player its decoded sound ahead; false where it keeps Chromium's own amount. */
-export function keepSoundAhead(_el: HTMLMediaElement): boolean {
-  return false;
+/**
+ * Give a player its decoded sound ahead (Chromium's latencyHint, main/index.ts turns it on): it plays from where it
+ * plays as before, it only decodes further on. False where the browser cannot be asked (it keeps its own amount).
+ */
+export function keepSoundAhead(el: HTMLMediaElement): boolean {
+  if (!('latencyHint' in el)) return false;
+  (el as HTMLMediaElement & { latencyHint: number }).latencyHint = STREAM_SOUND_AHEAD_S;
+  return true;
 }

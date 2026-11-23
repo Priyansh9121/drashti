@@ -453,6 +453,12 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         ),
       ),
     );
+    const streamSoundAhead = await stream.evaluate(() =>
+      [...document.querySelectorAll<HTMLAudioElement>('audio[data-key]')].map((el) => ({
+        asked: el.dataset['soundAhead'] ?? null,
+        latencyHint: (el as HTMLAudioElement & { latencyHint?: number }).latencyHint ?? null,
+      })),
+    );
     const soundPid = decoderProcesses.find((p) => p.role === 'sound')?.pid;
     const soundPictureDecodes = traceFiles.reduce((count, path) => {
       const trace = JSON.parse(readFileSync(path, 'utf8')) as {
@@ -552,6 +558,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       streamAt,
       actions,
       soundUnderflows: { stream: streamUnderflows, sound: soundUnderflows },
+      streamSoundAhead,
       encodedFrames: media.videoFrames,
       blackFrames: black,
       blackFrameIndices,
@@ -583,6 +590,12 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       longest,
       'both generated tones overlap continuously through the sound crossfade',
     ).toBeGreaterThanOrEqual(12);
+    expect(streamSoundAhead.length, 'the stream page plays its own sound').toBeGreaterThan(0);
+    for (const player of streamSoundAhead)
+      expect(player, 'each stream sound player keeps a second of sound decoded ahead').toEqual({
+        asked: '1',
+        latencyHint: 1,
+      });
     expect(soundPid).toBeGreaterThan(0);
     for (const page of audioPictureTracks) {
       expect(page.length, 'the generated video sounds are playing').toBeGreaterThan(0);
