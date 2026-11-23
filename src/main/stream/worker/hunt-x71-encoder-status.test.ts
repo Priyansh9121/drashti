@@ -119,4 +119,63 @@ describe('H6 encoder fault status', () => {
       }
     });
   }
+
+  it('a fresh picture that starts the next encoder clears the cause once encoded (a still slide sends no other)', async () => {
+    // The page, given its port again after the encoder stopped (picture-watch), sends its newest picture at once and
+    // nothing after it while the slide stands still. That picture starts the next encoder and is its first one.
+    vi.useFakeTimers();
+    const encoders: Encoder[] = [];
+    processes.spawn.mockImplementation(() => {
+      const child = new Encoder();
+      encoders.push(child);
+      return child;
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-x71-encoder-still-'));
+    const pipeline = new StreamPipeline({
+      status: () => undefined,
+      log: () => undefined,
+      freeBytes: () => 10 * 1024 ** 3,
+    });
+    const format = { width: 16, height: 16, format: 'I420' as const };
+    const frame = new Uint8Array((16 * 16 * 3) / 2).fill(96);
+    const files: WriteStream[] = [];
+    try {
+      await pipeline.start({
+        ffmpeg: 'generated-encoder',
+        platform: process.platform,
+        preset: { ...STREAM_PRESETS.weak, width: 16, height: 16 },
+        encoder: 'libx264',
+        caFile: null,
+      });
+      pipeline.fromProgram({ kind: 'format', ...format });
+      pipeline.fromProgram({ kind: 'video', data: frame.buffer });
+      pipeline.record(join(dir, 'Placeholder recording.mkv'), 2 * 1024 ** 3);
+      const firstFile = (pipeline as unknown as { recordFile: WriteStream | null }).recordFile;
+      if (firstFile) files.push(firstFile);
+      encoders[0]?.emit('exit', 1);
+      expect(pipeline.status().error).toContain('encoder');
+      pipeline.fromProgram({ kind: 'video', data: frame.buffer });
+      expect(encoders, 'the fresh picture starts the next encoder at once').toHaveLength(2);
+      const writer = new MkvWriter({ ...format, fps: 30 }, { sampleRate: 48000, channels: 2 });
+      const cluster = Buffer.concat(writer.block(VIDEO_TRACK, 0, Buffer.from(frame)));
+      cluster.fill(0, 4, 12);
+      cluster[4] = 1;
+      cluster.writeUIntBE(cluster.length - 12, 6, 6);
+      encoders[1]?.stdout.write(Buffer.concat([writer.header(), cluster]));
+      expect(pipeline.status().error, 'its first encoded picture was that fresh one').toBeNull();
+      const nextFile = (pipeline as unknown as { recordFile: WriteStream | null }).recordFile;
+      if (nextFile) files.push(nextFile);
+    } finally {
+      pipeline.stop();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      for (const file of files) await finished(file);
+      for (const child of encoders) {
+        child.stdin.destroy();
+        child.stdout.destroy();
+        child.stderr.destroy();
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
