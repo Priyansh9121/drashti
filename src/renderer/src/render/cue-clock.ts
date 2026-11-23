@@ -1,3 +1,15 @@
+/*
+ * A cued picture's clock (S5, QA21-S5-1, the owner's "A, measure the start"). Chromium plays a file that has sound on
+ * its sound renderer's clock, even muted on a screen: that clock starts once its sink has started and played out its
+ * delay, 34-79 ms after the rate goes to 1 on CI's Mac and Windows (x69's native records, the first moving frame less
+ * its media time past the trim), so a cued video began that late on every screen. Pulled by a Web Audio graph instead,
+ * its sound is taken as the graph renders and its clock starts with its rate: hall and LIVE within about 11 ms.
+ *
+ * Nothing is heard: the picture's sound goes only into the graph (that is what a media element source does), the graph
+ * multiplies it by nothing, and its context has no output device at all. Where no graph can be had (no Web Audio, a page
+ * whose graph never runs, a source that cannot be taken) the picture stays muted, on its own clock, as before.
+ */
+
 /** The one silent graph of this page that a cued picture's sound is pulled by (made on first use). */
 export interface SilentGraph {
   readonly context: AudioContext;
@@ -5,12 +17,72 @@ export interface SilentGraph {
   readonly sink: AudioNode;
 }
 
-/** Not yet (the red): no graph. */
-export function createSilentGraph(_make: (options: AudioContextOptions) => AudioContext): SilentGraph | null {
-  return null;
+/** A graph with no device (`sinkId: none`), whose every input is multiplied by nothing; null where none can be had. */
+export function createSilentGraph(make: (options: AudioContextOptions) => AudioContext): SilentGraph | null {
+  try {
+    // AudioContextOptions' sinkId (Chromium 110 on) is not in TypeScript's DOM types yet.
+    const context = make({ latencyHint: 'interactive', sinkId: { type: 'none' } } as AudioContextOptions);
+    const sink = context.createGain();
+    sink.gain.value = 0;
+    sink.connect(context.destination);
+    void context.resume().catch(() => undefined);
+    return { context, sink };
+  } catch {
+    return null;
+  }
 }
 
-/** A cued picture's clock (S5, QA21-S5-1). Not yet: the picture stays muted, on its sound renderer's own clock. */
-export function cueClock(_v: HTMLMediaElement, _graph: () => SilentGraph | null = () => null): () => void {
-  return () => undefined;
+let page: SilentGraph | null | undefined;
+
+/** This page's silent graph, made the first time a cued picture asks. */
+export function pageSilentGraph(): SilentGraph | null {
+  if (page === undefined)
+    page = typeof AudioContext === 'undefined' ? null : createSilentGraph((o) => new AudioContext(o));
+  return page;
+}
+
+/** An element can be a media element source once only, ever: it is kept for a later cue of the same element. */
+const sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+
+/**
+ * Pull a cued picture's sound through the page's silent graph and unmute it there (its clock then starts with its
+ * rate). Routed only while the picture is held (paused, or at rate 0 for its Go): never mid-play, where its sound would
+ * change clocks as the picture moves. Returns its stop: the sound let go of and the picture muted again.
+ */
+export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = pageSilentGraph): () => void {
+  const silent = graph();
+  if (!silent) return () => undefined;
+  const { context, sink } = silent;
+  let stopped = false;
+  let routed: MediaElementAudioSourceNode | null = null;
+  const route = () => {
+    if (stopped || routed || context.state !== 'running' || !(v.paused || v.playbackRate === 0)) return;
+    try {
+      const source = sources.get(v) ?? context.createMediaElementSource(v);
+      sources.set(v, source);
+      source.connect(sink);
+      routed = source;
+    } catch {
+      return;
+    }
+    // Only now, its sound going into the graph and nowhere else.
+    v.muted = false;
+    v.dataset['cueClock'] = 'graph';
+  };
+  const started = () => {
+    if (context.state !== 'running') return;
+    context.removeEventListener('statechange', started);
+    route();
+  };
+  if (context.state === 'running') route();
+  else context.addEventListener('statechange', started);
+  return () => {
+    stopped = true;
+    context.removeEventListener('statechange', started);
+    if (!routed) return;
+    v.muted = true;
+    delete v.dataset['cueClock'];
+    routed.disconnect();
+    routed = null;
+  };
 }

@@ -1,3 +1,4 @@
+import { cueClock } from './cue-clock';
 import { cuePresentation, PRIVATE_VIDEO_OPACITY } from './cue-presentation';
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
 import { reportVideoCue, reportLoadedVideoCue } from './video-cue-report';
@@ -165,12 +166,16 @@ function VideoSlot({
         });
     });
     playback.current = p;
+    // A cued picture starts on its Go, not 34-79 ms after it: its sound is pulled by this page's silent graph, so its
+    // clock starts with its rate (render/cue-clock.ts, QA21-S5-1). Every other picture plays muted, as before.
+    const unclock = layer.cueId ? cueClock(v) : null;
     return () => {
       settled = true;
       stopWatch();
       presentation?.stop();
       playback.current = null;
       p();
+      unclock?.();
     };
   }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch]);
   useEffect(() => {
