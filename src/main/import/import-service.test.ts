@@ -197,6 +197,50 @@ describe('ImportService', () => {
     await first;
   });
 
+  it('starts no worker process while a transition runs on the screens: the process itself starts only once it ends (alpha.21, Q60-60 A; a21-l8a: on CI’s Mac starting it during a dissolve cost the hall’s frames)', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    const { service, mocks, workers } = setup({ playsHevc: () => Promise.resolve(true), quiet: () => quiet });
+    const first = service.start(['/Placeholder picture.png']);
+    await Promise.resolve();
+    await Promise.resolve();
+    // It shows as waiting; no process is started while the dissolve runs.
+    expect(mocks.onProgress).toHaveBeenCalledWith(expect.objectContaining({ phase: 'queued' }));
+    expect(service.busy).toBe(true);
+    expect(workers).toHaveLength(0);
+    end();
+    await vi.waitFor(() => {
+      expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: true });
+    });
+    expect(workers).toHaveLength(1);
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+  });
+
+  it('never starts a worker for a run cancelled, or for Drashti quitting, while it waits for a transition to end (alpha.21, Q60-60 A)', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    const { service, mocks, workers } = setup({ quiet: () => quiet });
+    const first = service.start(['/Placeholder one.png']);
+    const second = service.start(['/Placeholder two.png']);
+    expect(workers).toHaveLength(0);
+    const [firstId = ''] = mocks.onProgress.mock.calls.map(([progress]) => progress.runId);
+    expect(service.cancel(firstId)).toBe(true);
+    await expect(first).resolves.toEqual({ ok: false, message: 'Cancelled before it started.' });
+    service.stop();
+    await expect(second).resolves.toEqual({ ok: false, message: 'Drashti is quitting.' });
+    end();
+    await quiet;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(workers).toHaveLength(0);
+    expect(mocks.failRun).not.toHaveBeenCalled();
+  });
+
   it('tells each import HEVC’s other kinds as the window said them with its answer, read as it starts (Session 60, x36)', async () => {
     let kinds: { main10: boolean; rext: boolean } | null = null;
     const { service, workers } = setup({ playsHevc: () => Promise.resolve(true), hevcKinds: () => kinds });
