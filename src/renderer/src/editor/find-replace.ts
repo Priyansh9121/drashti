@@ -19,6 +19,7 @@ import { withoutSourceFit } from '../../../shared/source-fit';
  */
 
 export interface FindOptions {
+  preparingPages?: ReadonlySet<string>;
   matchCase: boolean;
   wholeWords: boolean;
 }
@@ -181,4 +182,8 @@ export function replaceMatches(doc: EditDoc, matches: readonly Match[], replacem
     });
   }
   return next;
+}
+
+export function pdfFindStatus(_doc: EditDoc, _preparing: ReadonlySet<string>): string {
+  return '';
 }
