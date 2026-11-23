@@ -189,13 +189,15 @@ function MediaChoices() {
           No picture or video in Media{media.query ? ' by that name' : ''}.
         </p>
       ) : (
+        // A long name wraps and its button grows with it (h-auto): at a fixed 48 px a third line lay over the next
+        // row (alpha.21, the fit pass); the inputs and windows below, MIDI's devices and the library's playlists too.
         <ul className="space-y-2" aria-label="Pictures and videos in Media" data-testid="remote-pip-media">
           {shown.map((m) => (
             <li key={m.id}>
               <Button
                 size="lg"
                 wrap
-                className="min-h-12 w-full justify-start"
+                className="h-auto min-h-12 w-full justify-start py-2 text-left"
                 icon={m.kind === 'video' ? Video : Image}
                 data-testid="remote-pip-media-item"
                 data-media-id={m.id}
@@ -230,7 +232,7 @@ function InputChoices() {
           <Button
             size="lg"
             wrap
-            className="min-h-12 w-full justify-start"
+            className="h-auto min-h-12 w-full justify-start py-2 text-left"
             icon={Video}
             data-testid="remote-pip-input"
             onClick={() => {
@@ -276,7 +278,7 @@ function WindowChoices() {
               <Button
                 size="lg"
                 wrap
-                className="min-h-12 w-full justify-start"
+                className="h-auto min-h-12 w-full justify-start py-2 text-left"
                 icon={AppWindow}
                 data-testid="remote-pip-window"
                 onClick={() => {

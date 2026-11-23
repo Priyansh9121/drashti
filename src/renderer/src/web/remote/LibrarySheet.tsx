@@ -259,7 +259,7 @@ function Playlists({ say, deleted }: { say: Say; deleted: Deleted }) {
                   <Button
                     size="lg"
                     wrap
-                    className="min-h-12 min-w-0 flex-1 justify-start"
+                    className="h-auto min-h-12 min-w-0 flex-1 justify-start py-2 text-left"
                     aria-pressed={p.id === open}
                     data-testid="remote-library-playlist-open"
                     onClick={() => void showPlaylist(p.id)}
