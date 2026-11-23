@@ -54,7 +54,10 @@ export function CaptionsView({
       prepareCaptionFont(element.style, px, true);
       const lines = [...element.children] as HTMLElement[];
       const widest = Math.max(0, ...lines.map((line) => line.scrollWidth));
-      const available = Math.max(0, (lines[0]?.clientWidth ?? 0) - 1);
+      // The band shrinks to its text, so a line that fits is exactly as wide as its room: only a line wider than
+      // its room is fitted (to a pixel less, for rounding); one that fits keeps the configured size.
+      const room = lines[0]?.clientWidth ?? 0;
+      const available = Math.max(0, widest > room ? room - 1 : room);
       element.style.fontSize = `${String(fittedCaptionFont(px, available, widest))}px`;
     };
     fit();

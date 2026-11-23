@@ -104,16 +104,25 @@ test('the operator corrects or dismisses the phrase on the screens; an edit from
     }, before);
     expect(refused).toBe(false);
 
-    // As heard: today's captions, at their own configured size (no fitted size left on the band).
-    const normalFont = await hall
-      .getByTestId('captions')
-      .locator(':scope > div')
-      .evaluate((element) => getComputedStyle(element).fontSize);
+    // A short phrase keeps the configured size: only a line wider than its room is fitted.
+    const fontSize = () =>
+      hall
+        .getByTestId('captions')
+        .locator(':scope > div')
+        .evaluate((element) => getComputedStyle(element).fontSize);
+    const configured = await fontSize();
+    // A long correction is fitted (smaller); then as heard: today's captions at the configured size again, with no
+    // fitted size left on the band.
+    await dialog.getByRole('button', { name: 'Correct last phrase…' }).click();
+    await dialog.getByLabel('Corrected phrase').fill('W'.repeat(70));
+    await dialog.getByRole('button', { name: 'Apply correction' }).click();
+    await expect(hall.getByTestId('captions').locator(':scope > div > div')).toHaveCount(2);
+    await expect.poll(async () => parseFloat(await fontSize())).toBeLessThan(parseFloat(configured));
     await dialog.getByTestId('captions-language').selectOption('auto');
     await dialog.getByTestId('captions-on').click();
     await dialog.getByTestId('captions-on').click();
     await expect(hall.getByTestId('captions')).toContainText('લીલું ખોખું', { timeout: 15_000 });
-    await expect(hall.getByTestId('captions').locator(':scope > div')).toHaveCSS('font-size', normalFont);
+    await expect(hall.getByTestId('captions').locator(':scope > div')).toHaveCSS('font-size', configured);
     await dialog.getByTestId('captions-on').click();
     await expect(hall.getByTestId('captions')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
