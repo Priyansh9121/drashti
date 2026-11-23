@@ -15,9 +15,11 @@ const model = (sha256 = KNOWN): PackModel => ({
   files: [{ name: 'captions/gu/model.bin', path: '/placeholder/pack/captions/gu/model.bin', sha256 }],
 });
 
-function setup(o: { held?: PackModel | null } = {}) {
+function setup(o: { held?: PackModel | null; exitLater?: boolean } = {}) {
   const ran: { file: string; fallback: boolean; timestamps: boolean; language: string }[] = [];
   const released: string[] = [];
+  // The engine's program going (alpha.23): at once when stopped, or when the test says (exitLater).
+  const exits: (() => void)[] = [];
   let finish: (h: { model: PackModel; release(): void } | null) => void = () => undefined;
   const route = createWhisperRoute({
     store: {
@@ -27,11 +29,15 @@ function setup(o: { held?: PackModel | null } = {}) {
         }),
     },
     known: (sha) => (sha === KNOWN ? { fallback: false, timestamps: false } : null),
-    engine: (file, use): SpeechEngine => ({
+    engine: (file, use, exited?: () => void): SpeechEngine => ({
       start(language, to) {
         ran.push({ file, fallback: use.fallback, timestamps: use.timestamps, language });
         to.state({ phase: 'listening', language });
-        return () => released.push('engine');
+        return () => {
+          released.push('engine');
+          if (o.exitLater) exits.push(() => exited?.());
+          else exited?.();
+        };
       },
     }),
   });
@@ -39,7 +45,7 @@ function setup(o: { held?: PackModel | null } = {}) {
   const to = { heard: (_h: Heard) => undefined, state: (s: SpeechState) => states.push(s) };
   const hold = (m: PackModel | null = o.held === undefined ? model() : o.held) =>
     finish(m ? { model: m, release: () => released.push('pack') } : null);
-  return { route, ran, released, states, to, hold };
+  return { route, ran, released, states, to, hold, exits };
 }
 
 describe('Route W from the pack', () => {
@@ -67,6 +73,22 @@ describe('Route W from the pack', () => {
     await settle();
     expect(t.ran).toEqual([]);
     expect(t.states.at(-1)).toMatchObject({ phase: 'failed' });
+  });
+
+  it('gives the pack back only once the engine’s program has exited (alpha.23: Windows cannot remove an open file)', async () => {
+    const t = setup({ exitLater: true });
+    const stop = t.route.make(model(), 'gu')?.start('gu', t.to);
+    t.hold();
+    await settle();
+    expect(t.ran).toHaveLength(1);
+    stop?.();
+    // whisper-server told to go and still running: the pack still holds its file.
+    expect(t.released).toEqual(['engine']);
+    expect(t.exits).toHaveLength(1);
+    for (const go of t.exits) go();
+    expect(t.released).toEqual(['engine', 'pack']);
+    for (const go of t.exits) go();
+    expect(t.released).toEqual(['engine', 'pack']);
   });
 
   it('stopped before the pack answered: nothing starts and the hold is given back', async () => {
