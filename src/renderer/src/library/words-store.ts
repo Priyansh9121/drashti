@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { KirtanInfo, TrackEdit, TrackSlide } from '../../../shared/kirtans';
 import type { Lang } from '../../../shared/model';
+import type { ReadWordsProgress } from '../../../shared/read-words';
+import { READ_WORDS_STOPPED, readWordsDone } from '../../../shared/read-words';
 import { clickPresentation, loadLibrary, selectPresentation, useLibrary } from './library-store';
 import { pushRemoval } from './undo';
 
@@ -42,6 +44,13 @@ interface WordsView {
   loading: boolean;
   saving: boolean;
   problem: string | null;
+  /** Read Words from a Page… (book OCR, alpha.21): a PDF chosen, with the pages to read as typed. */
+  pdfPages: { name: string; from: string; to: string } | null;
+  /** A reading going on, and how far it has got (null until the reading process says). */
+  reading: boolean;
+  readProgress: ReadWordsProgress | null;
+  /** What the last reading did, or why it read nothing. */
+  readNote: { text: string; tone: 'success' | 'warning' } | null;
 }
 
 const closed: WordsView = {
@@ -57,6 +66,10 @@ const closed: WordsView = {
   loading: false,
   saving: false,
   problem: null,
+  pdfPages: null,
+  reading: false,
+  readProgress: null,
+  readNote: null,
 };
 
 export const useWords = create<WordsView>(() => closed);
@@ -120,7 +133,80 @@ export function newFromWords(): void {
 }
 
 export function closeWords(): void {
+  if (useWords.getState().reading) void window.drashti.library.stopReadingWords();
   useWords.setState(closed);
+}
+
+/**
+ * New presentation's Read Words from a Page… (book OCR, alpha.21): the system's dialog; pictures are read at once, a
+ * PDF asks which pages first.
+ */
+export async function readWordsFromPage(): Promise<void> {
+  const { open, reading } = useWords.getState();
+  if (open?.mode !== 'new' || reading) return;
+  useWords.setState({ readNote: null });
+  const choice = await window.drashti.library.readWordsChoose();
+  if (useWords.getState().open !== open) return;
+  if (!choice.ok) {
+    if ('message' in choice) useWords.setState({ readNote: { text: choice.message, tone: 'warning' } });
+    return;
+  }
+  if (choice.kind === 'pdf') {
+    useWords.setState({ pdfPages: { name: choice.name, from: '1', to: '1' } });
+    return;
+  }
+  useWords.setState({ pdfPages: null });
+  await readChosen(null, null);
+}
+
+/** The PDF's pages typed (From page, To page), as typed. */
+export function typePdfPages(pages: { from?: string; to?: string }): void {
+  useWords.setState((s) => (s.pdfPages ? { pdfPages: { ...s.pdfPages, ...pages } } : {}));
+}
+
+/** Read the chosen PDF's pages as typed. */
+export async function readPdfPages(): Promise<void> {
+  const { pdfPages } = useWords.getState();
+  if (!pdfPages) return;
+  await readChosen(Number(pdfPages.from), Number(pdfPages.to));
+}
+
+/** Not now: the PDF's pages row goes. */
+export function forgetPdfPages(): void {
+  useWords.setState({ pdfPages: null });
+}
+
+export function stopReading(): void {
+  if (useWords.getState().reading) void window.drashti.library.stopReadingWords();
+}
+
+/** A reading's progress, as the main process says it (only while one goes on). */
+export function readingProgress(progress: ReadWordsProgress | null): void {
+  if (useWords.getState().reading) useWords.setState({ readProgress: progress });
+}
+
+/** Read the chosen pages; their words go after what is in the box, a blank line between. */
+async function readChosen(fromPage: number | null, toPage: number | null): Promise<void> {
+  const { open } = useWords.getState();
+  useWords.setState({ reading: true, readProgress: null, readNote: null });
+  const result = await window.drashti.library.readWords(fromPage, toPage);
+  // Closed (or another opened) meanwhile: its words are not for this one.
+  if (useWords.getState().open !== open) return;
+  if (!result.ok) {
+    useWords.setState({
+      reading: false,
+      readProgress: null,
+      readNote: { text: result.stopped ? READ_WORDS_STOPPED : result.message, tone: 'warning' },
+    });
+    return;
+  }
+  useWords.setState((s) => ({
+    reading: false,
+    readProgress: null,
+    pdfPages: null,
+    text: s.text.trim() === '' ? result.text : `${s.text.trimEnd()}\n\n${result.text}`,
+    readNote: { text: readWordsDone(result.pages), tone: 'success' },
+  }));
 }
 
 /** Type in a cell of the By language view. */
