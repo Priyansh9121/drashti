@@ -110,7 +110,9 @@ export class CaptionsService {
         };
   }
 
-  prototypeView(): CaptionReview { return this.prototype.view(); }
+  prototypeView(): CaptionReview {
+    return this.prototype.view();
+  }
 
   setPrototypeOn(on: boolean): void {
     if (this.closed || on === this.prototype.view().on) return;
@@ -126,10 +128,18 @@ export class CaptionsService {
 
   cancelPrototype(): void {}
 
-  advancePrototype(): void { if (!this.closed) this.prototype.advance(); }
-  restartPrototype(): void { if (!this.closed && this.prototype.view().on) this.prototype.restart(); }
-  correctPrototype(correction: CaptionCorrection): boolean { return !this.closed && this.prototype.correct(correction); }
-  dismissPrototype(key: Omit<CaptionCorrection, 'text'>): boolean { return !this.closed && this.prototype.dismiss(key); }
+  advancePrototype(): void {
+    if (!this.closed) this.prototype.advance();
+  }
+  restartPrototype(): void {
+    if (!this.closed && this.prototype.view().on) this.prototype.restart();
+  }
+  correctPrototype(correction: CaptionCorrection): boolean {
+    return !this.closed && this.prototype.correct(correction);
+  }
+  dismissPrototype(key: Omit<CaptionCorrection, 'text'>): boolean {
+    return !this.closed && this.prototype.dismiss(key);
+  }
 
   selectedModel(): CaptionModelId {
     return this.switch.model;

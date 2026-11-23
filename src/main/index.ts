@@ -3739,7 +3739,7 @@ function start(): void {
     captionsStreamUseChanged = undefined;
     captions.close();
   });
-  registerCaptionPrototypeIpc({ fromOperator: e => fromOperator(e) && !simpleNow(), captions });
+  registerCaptionPrototypeIpc({ fromOperator: (e) => fromOperator(e) && !simpleNow(), captions });
   handle(IPC.captions.view, () => captions.view());
   handle(IPC.captions.setOn, (e, on) =>
     fromOperator(e) && typeof on === 'boolean' ? captions.setOn(on) : captions.view(),

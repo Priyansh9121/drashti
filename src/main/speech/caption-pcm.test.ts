@@ -32,18 +32,24 @@ it('preserves generated PCM capture age through provisional and final clauses, t
     inputEpoch: coordinator.inputEpochId()!,
     sourceLanguage: 'en',
     targetLanguage: 'hi',
-    emit: clause => { coordinator.accept(clause); },
+    emit: clause => { expect(coordinator.accept(clause)).toBe(true); },
     omitted: () => { throw new Error('The generated observation was invalid.'); },
   });
   let pcm: ((samples: Int16Array, endAt: number) => void) | null = null;
+  const soundPort = (): ((samples: Int16Array, endAt: number) => void) | null => pcm;
   let resolveListening: () => void = () => undefined;
-  const listening = new Promise<void>(resolve => { resolveListening = resolve; });
+  let rejectListening: (error: unknown) => void = () => undefined;
+  const listening = new Promise<void>((resolve, reject) => { resolveListening = resolve; rejectListening = reject; });
+  void listening.catch(() => undefined);
   let resolveFinal: (heard: Heard) => void = () => undefined;
-  const final = new Promise<Heard>(resolve => { resolveFinal = resolve; });
+  let rejectFinal: (error: unknown) => void = () => undefined;
+  const final = new Promise<Heard>((resolve, reject) => { resolveFinal = resolve; rejectFinal = reject; });
+  void final.catch(() => undefined);
   const heard: Heard[] = [];
   let sequence = 0;
   let inference = 0;
   const infer = vi.fn(async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    try {
     if (!init?.method) return new Response('{}', { status: 200 });
     const clip = (init.body as FormData).get('file');
     expect(clip).toBeInstanceOf(Blob);
@@ -54,6 +60,10 @@ it('preserves generated PCM capture age through provisional and final clauses, t
     inference += 1;
     const words = (inference === 1 ? 'The blue box' : 'The green box is beside a round shape.').split(' ');
     return new Response(JSON.stringify({ language: 'english', segments: [{ no_speech_prob: 0, words: words.map((word, index) => ({ word: ` ${word}`, start: index * 0.1, end: (index + 1) * 0.1, probability: 0.9 })) }] }), { status: 200 });
+    } catch (error) {
+      // The production engine contains transport errors; fixture assertions must still fail for their own reason.
+      rejectListening(error); rejectFinal(error); throw error;
+    }
   });
   const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null, kill: () => true }) as unknown as ChildProcess;
   const hub = createSpeechHub({
@@ -71,14 +81,19 @@ it('preserves generated PCM capture age through provisional and final clauses, t
   hub.setLanguage('en');
   const stopState = hub.onState(state => {
     if (state.phase === 'listening') resolveListening();
-    else if (state.phase !== 'starting') coordinator.stop();
+    else if (state.phase !== 'starting') {
+      if (state.phase === 'failed') { const error = new Error(state.message); rejectListening(error); rejectFinal(error); }
+      coordinator.stop();
+    }
   });
   const stopHeard = hub.listen('generated-caption-coordinator', phrase => {
+    try {
     heard.push(phrase);
     sequence += 1;
-    stabilizer.observe({ sessionId, inputEpoch: coordinator.inputEpochId()!, enginePhraseId: phrase.id, sequence,
-      text: phrase.text, final: phrase.final, startAt: phrase.startAt, endAt: phrase.endAt, observedAt: Date.now() });
+    expect(stabilizer.observe({ sessionId, inputEpoch: coordinator.inputEpochId()!, enginePhraseId: phrase.id, sequence,
+      text: phrase.text, final: phrase.final, startAt: phrase.startAt, endAt: phrase.endAt, observedAt: Date.now() })).toBe(true);
     if (phrase.final) resolveFinal(phrase);
+    } catch (error) { rejectFinal(error); throw error; }
   });
   try {
     hub.setOn(true);
@@ -88,7 +103,7 @@ it('preserves generated PCM capture age through provisional and final clauses, t
       await vi.advanceTimersByTimeAsync(100);
       const samples = new Int16Array(SAMPLE_RATE / 10);
       if (index < 20) for (let at = 0; at < samples.length; at += 1) samples[at] = Math.round(3_000 * Math.sin(at / 3));
-      const send: ((samples: Int16Array, endAt: number) => void) | null = pcm;
+      const send = soundPort();
       if (!send) throw new Error('The generated sound port did not open.');
       send(samples, Date.now());
     }

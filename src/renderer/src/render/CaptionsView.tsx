@@ -42,13 +42,15 @@ export function CaptionsView({
     state.layers,
   );
   const px = Math.round(canvas.height * CAPTION_TEXT_HEIGHT[captions?.size ?? 'medium']);
+  const fitEnabled = captions?.fit ?? false;
+  const captionText = captions?.lines.join('\n') ?? '';
   useLayoutEffect(() => {
     const element = textBand.current;
-    if (!captions?.fit || !element) return;
+    if (!fitEnabled || !element) return;
     const fit = () => {
       element.style.fontSize = `${String(px)}px`;
       const lines = [...element.children] as HTMLElement[];
-      const widest = Math.max(0, ...lines.map(line => line.scrollWidth));
+      const widest = Math.max(0, ...lines.map((line) => line.scrollWidth));
       const available = Math.max(0, (lines[0]?.clientWidth ?? 0) - 1);
       element.style.fontSize = `${String(fittedCaptionFont(px, available, widest))}px`;
     };
@@ -57,8 +59,11 @@ export function CaptionsView({
     // Observe the outside width; changing the text's font must not schedule a fitting loop.
     if (band.current) observer.observe(band.current);
     document.fonts.addEventListener('loadingdone', fit);
-    return () => { observer.disconnect(); document.fonts.removeEventListener('loadingdone', fit); };
-  }, [captions?.fit, captions?.lines.join('\n'), px, canvas.width]);
+    return () => {
+      observer.disconnect();
+      document.fonts.removeEventListener('loadingdone', fit);
+    };
+  }, [fitEnabled, captionText, px, canvas.width]);
   if (!captions) return null;
   const baseLanguage = captions.language.split('-')[0];
   const language: Lang =

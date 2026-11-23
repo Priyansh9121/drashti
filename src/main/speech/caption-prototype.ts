@@ -23,7 +23,10 @@ export class CaptionPrototype {
   setOn(on: boolean): void {
     if (on === this.view().on) return;
     if (on) this.restart();
-    else { this.recognizer = null; this.coordinator.stop(); }
+    else {
+      this.recognizer = null;
+      this.coordinator.stop();
+    }
   }
 
   advance(): void {
@@ -36,7 +39,8 @@ export class CaptionPrototype {
     const inputEpoch = this.coordinator.inputEpochId();
     if (inputEpoch === null) return;
     this.recognizer?.observe({
-      sessionId, inputEpoch,
+      sessionId,
+      inputEpoch,
       enginePhraseId: `s${String(phrase + 1)}`,
       sequence: final ? 2 : 1,
       text: final ? example.settled : example.partial,
@@ -52,8 +56,11 @@ export class CaptionPrototype {
     this.update = 0;
     const sessionId = this.coordinator.start();
     this.recognizer = new CaptionStabilizer({
-      sessionId, inputEpoch: this.coordinator.inputEpochId()!, sourceLanguage: 'en', targetLanguage: 'hi',
-      emit: clause => {
+      sessionId,
+      inputEpoch: this.coordinator.inputEpochId()!,
+      sourceLanguage: 'en',
+      targetLanguage: 'hi',
+      emit: (clause) => {
         if (clause.status === 'corrected') this.coordinator.reviseAutomatic(clause);
         else this.coordinator.accept(clause);
       },
@@ -62,8 +69,16 @@ export class CaptionPrototype {
     });
   }
 
-  correct(correction: CaptionCorrection): boolean { return this.coordinator.correct(correction); }
-  dismiss(key: Omit<CaptionCorrection, 'text'>): boolean { return this.coordinator.dismiss(key); }
-  refresh(): void { this.coordinator.refresh(); }
-  view(): CaptionReview { return this.coordinator.view(); }
+  correct(correction: CaptionCorrection): boolean {
+    return this.coordinator.correct(correction);
+  }
+  dismiss(key: Omit<CaptionCorrection, 'text'>): boolean {
+    return this.coordinator.dismiss(key);
+  }
+  refresh(): void {
+    this.coordinator.refresh();
+  }
+  view(): CaptionReview {
+    return this.coordinator.view();
+  }
 }
