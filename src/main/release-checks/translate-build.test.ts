@@ -102,7 +102,7 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
     expect(read('scripts/fetch-translate.mjs')).toContain("'-DCMAKE_POLICY_VERSION_MINIMUM=3.5'");
   });
 
-  it('holds only the helper's own code to -Werror: the libraries' headers are system headers on a Mac', () => {
+  it('holds only the helper’s own code to -Werror: the libraries’ headers are system headers on a Mac', () => {
     // Full run 45221762761 (24 Nov 2026): CI's newer clang warns in CTranslate2's bundled half.hpp and json.hpp
     // (-Wdeprecated-literal-operator), which -Werror turned into a failed build.
     const script = read('scripts/fetch-translate.mjs');
