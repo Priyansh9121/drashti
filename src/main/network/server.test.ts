@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { PassThrough, type Duplex } from 'node:stream';
 import { type IncomingMessage, request, type Server } from 'node:http';
@@ -6,7 +6,7 @@ import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32, inflateSync } from 'node:zlib';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { EngineMirror } from '../../shared/engine/mirror';
@@ -19,6 +19,11 @@ import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
 import { alpha17LowerThirdSchema } from '../../shared/testing/alpha17-lower-third';
 import { NetworkServer, type ServerHost, SOCKET_LIMITS } from './server';
 import { hashToken } from './tokens';
+
+vi.mock('node:fs', async (original) => {
+  const fs = await original<typeof import('node:fs')>();
+  return { ...fs, createReadStream: vi.fn(fs.createReadStream) };
+});
 
 /*
  * The network server on this computer only, with a stand-in for the main
@@ -1352,5 +1357,32 @@ it('keeps paired places when public announcement links are waiting for answers',
   } finally {
     for (const answer of answers) answer({ status: 200, body: { ok: true } });
     await Promise.all(attempts);
+  }
+});
+
+
+it('waits for a served page file to close before shutdown completes', async () => {
+  const { port, server: network } = await start();
+  // A response can finish before Windows releases the file handle. Hold that close event explicitly.
+  const page = new PassThrough({ autoDestroy: false });
+  vi.mocked(createReadStream).mockReturnValueOnce(page as ReturnType<typeof createReadStream>);
+  page.end('<!doctype html><title>pair</title>');
+  expect((await call(port, '/pair')).status).toBe(200);
+  const listener = Reflect.get(network, 'server') as Server;
+  const closed = new Promise<void>((resolve) => listener.once('close', resolve));
+  let stopped = false;
+  const stopping = network.stop().then(() => {
+    stopped = true;
+  });
+  try {
+    await closed;
+    // Flush the stop promise's continuation after the listener's close callback.
+    await Promise.resolve();
+    expect(page.destroyed).toBe(true);
+    expect(stopped).toBe(false);
+  } finally {
+    page.emit('close');
+    page.destroy();
+    await stopping;
   }
 });
