@@ -77,6 +77,39 @@ describe('the stream’s picture', () => {
     expect(heardFrom(none, true, 200_000).failed).toBe(true);
   });
 
+  it('an encoder starting again has the page given its port again at once, once while its words stand (x71’s take)', () => {
+    // CI a21-take-disk-1123-205441-17891 (Windows): the first encoder stopped 0.6 s after the page was given its port,
+    // the next started a second later from the held picture, and on a still Program no fresh one came, so Stream kept
+    // saying it was trying to start the encoder again while recording went on. A page given a new port sends its
+    // newest picture at once (program/capture.ts), the fresh one the next encoder's words wait for.
+    // Absent before the take's fix: the red test fails at its first restart rather than at a type.
+    const watch = new PictureWatch() as PictureWatch & {
+      encoderRestarting?: (status: Parameters<typeof heardFrom>[0]) => boolean;
+    };
+    const restarting = (status: Parameters<typeof heardFrom>[0]) => watch.encoderRestarting?.(status) ?? false;
+    const encoder = { name: 'libx264', label: 'x264', hardware: false };
+    const words = 'The encoder stopped. Trying to start it again.';
+    const running = { encoder, encoding: true, error: null };
+    watch.newWorker();
+    expect(restarting(running)).toBe(false);
+    expect(restarting({ encoder, encoding: false, error: words })).toBe(true);
+    // The next one starting, or failing to start again, while the words stand: no more ports.
+    expect(restarting({ encoder, encoding: true, error: words })).toBe(false);
+    expect(restarting({ encoder, encoding: false, error: words })).toBe(false);
+    // A fresh picture encoded, the words gone: a later stop has the page given its port again.
+    expect(restarting(running)).toBe(false);
+    expect(restarting({ encoder, encoding: false, error: words })).toBe(true);
+    // No H.264 encoder works on this computer: not an encoder starting again.
+    watch.newWorker();
+    expect(
+      restarting({
+        encoder: null,
+        encoding: false,
+        error: 'No H.264 encoder works on this computer, so it cannot stream or record.',
+      }),
+    ).toBe(false);
+  });
+
   it('the time the worker takes to choose its encoder is not counted as no picture (alpha.14’s gate on CI’s Mac)', () => {
     // CI's Mac, 3 Nov 2026 (run 41633894725): the page was given the encoder's port at once and sent its first frame;
     // the worker took 15 s to choose its encoder (VideoToolbox's test encode hung until its 15 s limit, then x264); its
