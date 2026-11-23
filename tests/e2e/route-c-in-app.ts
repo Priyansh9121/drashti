@@ -143,7 +143,11 @@ async function recordDrawn(p: Page): Promise<() => Promise<Drawn[]>> {
         .join(' ');
       if (seen.at(-1)?.text !== text) seen.push({ at: Date.now(), text });
     };
-    new MutationObserver(note).observe(document.body, { childList: true, subtree: true, characterData: true });
+    new MutationObserver(note).observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
     note();
   });
   return () =>
@@ -200,8 +204,11 @@ async function recordReview(win: Page): Promise<() => Promise<Reviewed[]>> {
   });
   return () =>
     win.evaluate(() => [
-      ...(globalThis as unknown as { reviewed: { at: number; phraseId: string; status: string; text: string }[] })
-        .reviewed,
+      ...(
+        globalThis as unknown as {
+          reviewed: { at: number; phraseId: string; status: string; text: string }[];
+        }
+      ).reviewed,
     ]);
 }
 
@@ -296,7 +303,11 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     );
     // The frame meters' first control: the stream with its sound input on, captions off.
     const controlFrom = Date.now();
-    await letTimePass(win, 3_000, 'the stream’s frames with its sound input on and captions off (the control)');
+    await letTimePass(
+      win,
+      3_000,
+      'the stream’s frames with its sound input on and captions off (the control)',
+    );
     const controlTo = Date.now();
 
     // Caption AI on: the language's own model (from the pack), the speaker's language, captions on the hall too.
@@ -337,7 +348,11 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       )
       .toBe(true);
     // The last one a moment to reach the places (each draws a settled phrase within the live limit, or fails).
-    await letTimePass(win, LIVE_LIMIT_MS, 'the last settled phrase drawn on every place, or its limit passed');
+    await letTimePass(
+      win,
+      LIVE_LIMIT_MS,
+      'the last settled phrase drawn on every place, or its limit passed',
+    );
 
     const review = await reviewed();
     // Nothing heard in the file's silence before its first sound: a beep, or a sound other than the file, would be.
@@ -347,14 +362,16 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     ).toBe(0);
     const settled = new Map<string, { at: number; text: string }>();
     for (const r of review)
-      if (r.status === 'settled' && !settled.has(r.phraseId)) settled.set(r.phraseId, { at: r.at, text: r.text });
+      if (r.status === 'settled' && !settled.has(r.phraseId))
+        settled.set(r.phraseId, { at: r.at, text: r.text });
     const phrases = [...settled.values()];
     const report: Record<string, unknown>[] = [];
     for (const [i, sound] of o.sounds.entries()) {
       const next = o.sounds[i + 1];
       // A phrase is this sound's when it settled after the sound began (the file at its earliest) and before the next.
       const own = phrases.filter(
-        (p) => p.at >= soundAskedAt + sound.speechStartMs && (!next || p.at < soundAskedAt + next.speechStartMs),
+        (p) =>
+          p.at >= soundAskedAt + sound.speechStartMs && (!next || p.at < soundAskedAt + next.speechStartMs),
       );
       expect(own.length, `${sound.id}: a settled phrase`).toBeGreaterThan(0);
       const finalText = own.at(-1)?.text ?? '';
@@ -373,7 +390,9 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
         const latest = (shown?.at ?? 0) - (soundAskedAt + sound.speechEndMs);
         row[`${name}Ms`] = Math.round(latest);
         row[`${name}AtLeastMs`] = Math.round((shown?.at ?? 0) - (soundOnAt + sound.speechEndMs));
-        expect(latest, `${sound.id} on the ${name}: within the live limit`).toBeLessThanOrEqual(LIVE_LIMIT_MS);
+        expect(latest, `${sound.id} on the ${name}: within the live limit`).toBeLessThanOrEqual(
+          LIVE_LIMIT_MS,
+        );
       }
       report.push(row);
     }

@@ -67,7 +67,9 @@ describe('the fake microphone’s sound file (tests only)', () => {
       expect(seam(false, env({ DRASHTI_TEST_FAKE_SOUND_FILE: file })), file).toBeNull();
     // Each system's own idea of an absolute path.
     expect(seam(false, env({ DRASHTI_TEST_FAKE_SOUND_FILE: '/placeholder/clips.wav' }), 'win32')).toBeNull();
-    expect(seam(false, env({ DRASHTI_TEST_FAKE_SOUND_FILE: 'C:\\placeholder\\clips.wav' }), 'darwin')).toBeNull();
+    expect(
+      seam(false, env({ DRASHTI_TEST_FAKE_SOUND_FILE: 'C:\\placeholder\\clips.wav' }), 'darwin'),
+    ).toBeNull();
   });
 
   it('says which of Chromium’s fake media switches are on (the packaged self-test requires none)', () => {
@@ -91,7 +93,9 @@ describe('the fake microphone’s sound file (tests only)', () => {
       on: [],
       detail: 'none: Chromium’s fake camera and microphone are off',
     });
-    const on = fakeMediaSelfTest((name) => name === CHROMIUM_FAKE_SOUND_FILE || name === CHROMIUM_FAKE_DEVICES);
+    const on = fakeMediaSelfTest(
+      (name) => name === CHROMIUM_FAKE_SOUND_FILE || name === CHROMIUM_FAKE_DEVICES,
+    );
     expect(on).toEqual({
       passed: false,
       on: [CHROMIUM_FAKE_DEVICES, CHROMIUM_FAKE_SOUND_FILE],

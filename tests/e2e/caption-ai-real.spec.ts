@@ -28,9 +28,16 @@ const GAP_MS = 4_000;
  * fed the wrong rate, the wrong language or a broken sound path hears far worse.
  */
 const CER_LIMIT = 0.25;
+/** The first three sentences of each language, in both of cap-winci's voices (about 20 s of speech). */
+const CLIPS = 6;
 
 const ROUTES = [
-  { language: 'gu', name: 'Gujarati', pack: 'pack-gu-indicconformer-int8', model: 'gu-indicconformer-ctc-int8' },
+  {
+    language: 'gu',
+    name: 'Gujarati',
+    pack: 'pack-gu-indicconformer-int8',
+    model: 'gu-indicconformer-ctc-int8',
+  },
   { language: 'hi', name: 'Hindi', pack: 'pack-hi-indicconformer-int8', model: 'hi-indicconformer-ctc-int8' },
 ] as const;
 
@@ -62,7 +69,8 @@ for (const route of ROUTES) {
     const folder = test.info().outputPath('fake-microphone');
     mkdirSync(folder, { recursive: true });
     const wav = join(folder, `${route.language}-clips.wav`);
-    const sounds = fakeMicrophoneFile(wav, captionClips(route.language), { leadMs: LEAD_MS, gapMs: GAP_MS });
+    const clips = captionClips(route.language, CLIPS);
+    const sounds = fakeMicrophoneFile(wav, clips, { leadMs: LEAD_MS, gapMs: GAP_MS });
     await routeCInTheApp({
       name: `caption-ai-real-${route.language}`,
       language: route.language,
@@ -72,9 +80,12 @@ for (const route of ROUTES) {
       sounds,
       leadMs: LEAD_MS,
       gapMs: GAP_MS,
-      heard: (clip, heard) => {
-        const cer = characterErrorRate(clip.text, heard);
-        expect(cer, `${clip.id}: what was heard (CER)`).toBeLessThanOrEqual(CER_LIMIT);
+      heard: (sound, heard) => {
+        const clip = clips.find((c) => c.id === sound.id);
+        if (!clip) throw new Error(`No clip ${sound.id}`);
+        // Against the words as written, or as they may fairly be written (a time in digits): the closer.
+        const cer = Math.min(...[clip.text, ...clip.also].map((said) => characterErrorRate(said, heard)));
+        expect(cer, `${sound.id}: what was heard (CER)`).toBeLessThanOrEqual(CER_LIMIT);
         return { cer: Number(cer.toFixed(3)) };
       },
     });

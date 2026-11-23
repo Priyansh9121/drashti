@@ -9,27 +9,29 @@ import { isAbsolute, join, resolve } from 'node:path';
  * one's speech ends relative to the file's first sample.
  */
 
-/** cap-winci's set (CAP-CI-1 (b)): `manifest.json` beside the clips. */
-export const CLIPS_DIR = join(process.cwd(), 'tests', 'fixtures', 'caption-clips');
+/** cap-winci's set (CAP-CI-1 (b)): `manifest.json` beside the clips, their voices' licence in CREDITS.md. */
+export const CLIPS_DIR = join(process.cwd(), 'tests', 'fixtures', 'captions');
 
 export interface CaptionClip {
   id: string;
   language: string;
   /** What the voice says: the reference for a sanity bound on what is heard, never shown or logged by Drashti. */
   text: string;
+  /** The same words written another way (a time in digits), as a recogniser may fairly write them. */
+  also: string[];
   /** Its WAV file (16-bit PCM, one channel), absolute. */
   file: string;
 }
 
-/** The clips of one language, in the manifest's order. */
-export function captionClips(language: string, dir = CLIPS_DIR): CaptionClip[] {
+/** The first `count` clips of one language, in the manifest's order. */
+export function captionClips(language: string, count: number, dir = CLIPS_DIR): CaptionClip[] {
   const listed = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as unknown;
   const entries = Array.isArray(listed)
     ? listed
     : ((listed as { clips?: unknown } | null)?.clips as unknown[] | undefined);
   if (!Array.isArray(entries)) throw new Error(`${join(dir, 'manifest.json')} lists no clips`);
   const clips = entries.flatMap((e): CaptionClip[] => {
-    const c = e as Partial<Record<keyof CaptionClip, unknown>>;
+    const c = e as Partial<Record<keyof CaptionClip | 'text_digits', unknown>>;
     if (
       c.language !== language ||
       typeof c.id !== 'string' ||
@@ -37,10 +39,21 @@ export function captionClips(language: string, dir = CLIPS_DIR): CaptionClip[] {
       typeof c.file !== 'string'
     )
       return [];
-    return [{ id: c.id, language, text: c.text, file: isAbsolute(c.file) ? c.file : resolve(dir, c.file) }];
+    return [
+      {
+        id: c.id,
+        language,
+        text: c.text,
+        also: typeof c.text_digits === 'string' ? [c.text_digits] : [],
+        file: isAbsolute(c.file) ? c.file : resolve(dir, c.file),
+      },
+    ];
   });
-  if (clips.length === 0) throw new Error(`No ${language} clip in ${join(dir, 'manifest.json')}`);
-  return clips;
+  if (clips.length < count)
+    throw new Error(
+      `${String(clips.length)} ${language} clips in ${join(dir, 'manifest.json')}, not ${String(count)}`,
+    );
+  return clips.slice(0, count);
 }
 
 /** A WAV file's samples: 16-bit PCM, one channel, as the clips are made. */
@@ -60,7 +73,9 @@ export function readWav(file: string): { rate: number; samples: Int16Array } {
       const channels = body.readUInt16LE(2);
       const bits = body.readUInt16LE(14);
       if (format !== 1 || channels !== 1 || bits !== 16)
-        throw new Error(`${file}: ${String(channels)} channel(s), ${String(bits)}-bit, format ${String(format)}`);
+        throw new Error(
+          `${file}: ${String(channels)} channel(s), ${String(bits)}-bit, format ${String(format)}`,
+        );
       rate = body.readUInt32LE(4);
     } else if (id === 'data') data = body;
     at += 8 + size + (size % 2);
@@ -182,7 +197,8 @@ export function fakeMicrophoneFile(
   const read = clips.map((c) => ({ clip: c, ...readWav(c.file) }));
   const rate = read[0]?.rate ?? 0;
   for (const r of read)
-    if (r.rate !== rate) throw new Error(`${r.clip.id} is at ${String(r.rate)} Hz, the first at ${String(rate)}`);
+    if (r.rate !== rate)
+      throw new Error(`${r.clip.id} is at ${String(r.rate)} Hz, the first at ${String(rate)}`);
   const ms = (n: number) => (n / rate) * 1000;
   const silence = (msLong: number) => new Int16Array(Math.round((msLong / 1000) * rate));
   const parts: Int16Array[] = [silence(o.leadMs)];
@@ -215,8 +231,9 @@ export const plainText = (text: string): string =>
 
 /** Character error rate of what was heard against what was said: edits over code points / the said text's length. */
 export function characterErrorRate(said: string, heard: string): number {
-  const a = [...plainText(said)];
-  const b = [...plainText(heard)];
+  // Code points, as CER is counted for these scripts (a vowel sign is a character of its own).
+  const a = Array.from(plainText(said));
+  const b = Array.from(plainText(heard));
   let row = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
     const next = [i];

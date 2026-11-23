@@ -38,7 +38,13 @@ test('Route C’s whole chain in the app with the generated test model: each ton
   const folder = test.info().outputPath('fake-microphone');
   mkdirSync(folder, { recursive: true });
   const wav = join(folder, 'tone-bursts.wav');
-  const sounds = toneBurstsFile(wav, { leadMs: LEAD_MS, gapMs: GAP_MS, bursts: 3, burstMs: 400, text: HEARD });
+  const sounds = toneBurstsFile(wav, {
+    leadMs: LEAD_MS,
+    gapMs: GAP_MS,
+    bursts: 3,
+    burstMs: 400,
+    text: HEARD,
+  });
   await routeCInTheApp({
     name: 'caption-ai-chain',
     language: 'gu',
