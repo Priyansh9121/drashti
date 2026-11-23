@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { BrowserWindow, WebContents } from 'electron';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { CropRect } from '../../shared/picture-look';
 import type { PdfPrintPage } from '../../shared/pdf-copy';
 import { PdfCopySession } from './pdf-copy-session';
 
@@ -45,7 +46,7 @@ class Window extends EventEmitter {
     this.emit('closed');
   }
 }
-function setup(size = { width: 480, height: 320 }, picture = false, displayScale = 1) {
+function setup(size = { width: 480, height: 320 }, picture = false, displayScale = 1, crop?: CropRect) {
   const win = new Window(displayScale);
   const admission = { allowed: true };
   const normalize = vi.fn(
@@ -71,7 +72,7 @@ function setup(size = { width: 480, height: 320 }, picture = false, displayScale
     ? session.picture(slide, {}, current, signal.signal)
     : session.run(
         {
-          pages: [{ kind: 'native', slide }],
+          pages: [{ kind: 'native', slide, ...(crop ? { crop } : {}) }],
           sources: [],
         },
         current,
@@ -379,4 +380,19 @@ it('still refuses an oversized 3840 by 2160 effect canvas before capture allocat
     s.session.stop();
     await s.result;
   }
+});
+
+it('validates the final cropped viewport while printing and normalizing the complete native page', async () => {
+  const s = setup({ width: 480, height: 320 }, false, 1, { x: 0.25, y: 0.125, w: 0.5, h: 0.75 });
+  expect(await s.session.print(s.own, s.job.id, 0)).toBeInstanceOf(Uint8Array);
+  expect(await s.session.normalized(s.own, s.job.id, 0, metadata)).toBeInstanceOf(Uint8Array);
+  expect(s.normalize.mock.calls[0]?.[2]).toEqual({ width: 480, height: 320 });
+  expect(
+    s.session.done(s.own, {
+      id: s.job.id,
+      data: new Uint8Array(bytes()),
+      pages: [{ width: 240, height: 240 }],
+    }),
+  ).toBe(true);
+  expect(await s.result).toEqual(new Uint8Array(bytes()));
 });
