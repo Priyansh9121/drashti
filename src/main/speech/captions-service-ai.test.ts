@@ -113,7 +113,11 @@ function setup(
               const modelId = o.pack?.[language];
               if (modelId === undefined) return null;
               if (!made.has(modelId)) made.set(modelId, recognizer(modelId));
-              return { route: o.route ?? 'whisper', modelId, engine: made.get(modelId) ?? recognizer(modelId) };
+              return {
+                route: o.route ?? 'whisper',
+                modelId,
+                engine: made.get(modelId) ?? recognizer(modelId),
+              };
             },
             coordinator,
             ...(o.spellInService ? {} : { spelling: SPELLING }),

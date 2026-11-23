@@ -70,6 +70,11 @@ export interface CaptionsServiceDeps {
    */
   aiPath?: {
     on(): boolean;
+    /**
+     * The route this language's own model runs on ('conformer', 'whisper'), without making its engine, or null.
+     * Route C ('conformer') needs no whisper-server (alpha.23); left out, every route is taken to need it.
+     */
+    route?(language: SpeechLanguage): string | null;
     /** The recognizer for this language, from the pack's checked model, or null. */
     recognizer(language: SpeechLanguage): CaptionRecognizer | null;
     coordinator: ClauseSink;
@@ -116,6 +121,8 @@ export class CaptionsService {
   private readonly paths: CaptionPaths | null;
   /** What caption AI's recognizer is while it runs. */
   private recognizer: { route: string; modelId: string } | null = null;
+  /** Whether captions were started (turnOn), not only switched on: whisper's problem can keep them from it. */
+  private listening = false;
   private readonly prototype: CaptionPrototype;
   private switch: CaptionsSwitch;
   private tuning: CaptionsTuning;
@@ -168,12 +175,25 @@ export class CaptionsService {
               });
               return () => undefined;
             }
+            // Route W runs on Drashti's whisper engine: what is wrong with it stops it as today's captions.
+            const problem = recognizer.route === 'conformer' ? null : this.deps.engineProblem();
+            if (problem !== null) {
+              to.state({ phase: 'failed', message: problem });
+              return () => undefined;
+            }
             this.recognizer = { route: recognizer.route, modelId: recognizer.modelId };
             const stop = recognizer.engine.start(language, to);
             return () => {
               this.recognizer = null;
               stop();
             };
+          }
+          // Today's captions need Drashti's whisper engine (reached here when caption AI on Route C, which needs
+          // none, was listening and the speaker's language changed).
+          const problem = this.deps.engineProblem();
+          if (problem !== null) {
+            to.state({ phase: 'failed', message: problem });
+            return () => undefined;
           }
           // A model of its own chosen for the language (alpha.22) is used only when it is here and checked: never
           // the general model in its place.
@@ -265,6 +285,7 @@ export class CaptionsService {
     const wasAi = this.paths.usingAi();
     this.paths.reselect();
     if (wasAi && !this.paths.usingAi() && this.switch.on) void this.fetchModel();
+    this.resume();
   }
 
   /** The operator's review: caption AI's phrases while it runs (and no rehearsal does), else the rehearsal's. */
@@ -315,7 +336,7 @@ export class CaptionsService {
   }
 
   view(): CaptionsStatus {
-    const engineProblem = this.deps.engineProblem();
+    const engineProblem = this.whisperProblem();
     return {
       on: this.switch.on,
       model: this.switch.model,
@@ -410,16 +431,33 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (this.closed || this.prototype.view().on || this.deps.engineProblem() !== null) return;
+    if (this.closed || this.prototype.view().on || this.whisperProblem() !== null) return;
+    this.listening = true;
     this.hub.setOn(true);
     this.feed.start();
     await this.fetchModel();
   }
 
   private turnOff(): void {
+    this.listening = false;
     this.stopDownload();
     this.feed.stop();
     this.hub.setOn(false);
+  }
+
+  /**
+   * What is wrong with Drashti's whisper engine, when what hears now needs it: today's captions and Route W do;
+   * a language whose own model runs on Route C does not (alpha.23, cap-realc).
+   */
+  private whisperProblem(): string | null {
+    const language = this.settings().language;
+    const route = this.useAi() && language !== 'auto' ? (this.deps.aiPath?.route?.(language) ?? null) : null;
+    return route === 'conformer' ? null : this.deps.engineProblem();
+  }
+
+  /** Captions are on but did not start (whisper's problem): a language that needs no whisper starts now. */
+  private resume(): void {
+    if (this.switch.on && !this.listening && !this.closed) void this.turnOn();
   }
 
   private stopDownload(): void {
@@ -580,6 +618,11 @@ export class CaptionsService {
   /** Listening starts again (a model or the timing changed), when it is on. */
   private relisten(): void {
     if (!this.switch.on || this.closed) return;
+    // Never started (whisper's problem): start now if what hears needs no whisper, else stay as it is.
+    if (!this.listening) {
+      this.resume();
+      return;
+    }
     // A language's own model chosen or taken away: caption AI or today's captions take over (listening again).
     const wasAi = this.paths?.usingAi() === true;
     if (this.paths?.reselect()) {
