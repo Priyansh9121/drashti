@@ -28,7 +28,12 @@ describe('the supervised recogniser pipe', () => {
       spawn,
       priority: () => undefined,
     });
-    p.stdout?.emit('data', Buffer.from('{"ready":true}\n'));
+    p.stdout?.emit(
+      'data',
+      Buffer.from(
+        '{"ready":true,"protocolVersion":1,"sampleRate":16000,"channels":1,"sampleFormat":"s16le"}\n',
+      ),
+    );
     const pipe = await opening;
     expect(spawn.mock.calls[0]?.[1]).toContain('--pcm-serve');
     expect(spawn.mock.calls[0]?.[1]).toContain('--admit');
@@ -49,7 +54,12 @@ describe('the supervised recogniser pipe', () => {
       spawn: () => p,
       priority: () => undefined,
     });
-    p.stdout?.emit('data', Buffer.from('{"ready":true}\n'));
+    p.stdout?.emit(
+      'data',
+      Buffer.from(
+        '{"ready":true,"protocolVersion":1,"sampleRate":16000,"channels":1,"sampleFormat":"s16le"}\n',
+      ),
+    );
     const pipe = await opening;
     const request = pipe.decode(new Int16Array([1]));
     const rejected = expect(request).rejects.toThrow('closed');

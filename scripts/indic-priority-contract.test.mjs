@@ -25,7 +25,12 @@ test('native model load is admitted only after priority is established', async (
       prioritised = true;
     },
   });
-  child.stdout.emit('data', Buffer.from('{"ready":true}\n'));
+  child.stdout.emit(
+    'data',
+    Buffer.from(
+      '{"ready":true,"protocolVersion":1,"sampleRate":16000,"channels":1,"sampleFormat":"s16le"}\n',
+    ),
+  );
   const pipe = await opening;
   try {
     assert.deepEqual(writes, [Buffer.from('GO01')]);
@@ -75,7 +80,12 @@ test('a private request is rejected on close and no late reply is reused', async
     spawn: () => child,
     priority() {},
   });
-  child.stdout.emit('data', Buffer.from('{"ready":true}\n'));
+  child.stdout.emit(
+    'data',
+    Buffer.from(
+      '{"ready":true,"protocolVersion":1,"sampleRate":16000,"channels":1,"sampleFormat":"s16le"}\n',
+    ),
+  );
   const pipe = await opening;
   const pending = pipe.decode(new Int16Array([1, 2]));
   const cancelled = assert.rejects(pending, /closed/);
@@ -111,8 +121,25 @@ test('malformed UTF-8 and output over 64KiB close the child without forwarding t
 });
 
 test('readiness without protocol and audio-format negotiation is refused', async () => {
-  const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), kill() {}, pid: 1 });
-  const opening = openIndicPipe({ program: '/fake', language: 'gu', files: { model: '/model', tokens: '/tokens', frontend: '/frontend' }, spawn: () => child, priority() {} });
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    kill() {},
+    pid: 1,
+  });
+  const opening = openIndicPipe({
+    program: '/fake',
+    language: 'gu',
+    files: { model: '/model', tokens: '/tokens', frontend: '/frontend' },
+    spawn: () => child,
+    priority() {},
+  });
   child.stdout.emit('data', Buffer.from('{"ready":true}\n'));
-  await assert.rejects(opening.then((pipe) => { pipe.close(); return pipe; }), /protocol/);
+  await assert.rejects(
+    opening.then((pipe) => {
+      pipe.close();
+      return pipe;
+    }),
+    /protocol/,
+  );
 });

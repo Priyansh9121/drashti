@@ -254,7 +254,7 @@ static int ic_main(int argc, char **argv) {
   check(ort->SetSessionGraphOptimizationLevel(so, ORT_ENABLE_ALL));
   check(ort->GetAllocatorWithDefaultOptions(&al)); check(ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mi));
   Model m = {0}; load_model(&m, code, model, tokens);
-  printf("{\"ready\":true}\n"); fflush(stdout);
+  printf("{\"ready\":true,\"protocolVersion\":1,\"sampleRate\":16000,\"channels\":1,\"sampleFormat\":\"s16le\"}\n"); fflush(stdout);
   unsigned char header[4]; size_t got;
   while ((got = fread(header, 1, 4, stdin)) != 0) {
     if (got != 4) die("truncated PCM header");

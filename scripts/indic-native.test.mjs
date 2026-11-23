@@ -64,7 +64,13 @@ test('native helper decodes generated PCM with real ORT and CTC blank/repeat rul
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line));
-    assert.deepEqual(lines[0], { ready: true });
+    assert.deepEqual(lines[0], {
+      ready: true,
+      protocolVersion: 1,
+      sampleRate: 16000,
+      channels: 1,
+      sampleFormat: 's16le',
+    });
     assert.equal(lines.length, 2);
     assert.equal(lines[1].text, 'shape shape box');
     assert.equal(lines[1].confidence, null);

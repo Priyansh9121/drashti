@@ -631,7 +631,7 @@ float language-masked CTC scores (blank 256). Tokens are 256 UTF-8 pieces and `<
 80 × 257 little-endian float32 Slaney mel weights, matching the export. No Python or model-supplied code runs.
 
 `ic-ctc --pcm-serve` reads private stdin frames: uint32 little-endian PCM byte count (positive, even, at most
-384,000) then that many mono 16 kHz signed-16 little-endian bytes. It reports `{"ready":true}`, then one bounded
+384,000) then that many mono 16 kHz signed-16 little-endian bytes. It reports readiness with protocolVersion 1, sampleRate 16000, channels 1 and sampleFormat s16le, then one bounded
 UTF-8 JSON line per clip: language, text, words (`w`, start/end seconds), coarse 40 ms timing, null confidence and
 aggregate durations. Main alone maps sample offsets to capture times. There is one decode in flight, at most two
 queued finals; a stopped session kills the helper and discards its replies. Readiness is bounded by 90 seconds,

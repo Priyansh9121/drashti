@@ -140,7 +140,15 @@ export function openIndicPipe(o: IndicPipeOptions): Promise<IndicPipe> {
             value === null ||
             !('ready' in value) ||
             value.ready !== true ||
-            Object.keys(value).length !== 1
+            !('protocolVersion' in value) ||
+            value.protocolVersion !== 1 ||
+            !('sampleRate' in value) ||
+            value.sampleRate !== 16000 ||
+            !('channels' in value) ||
+            value.channels !== 1 ||
+            !('sampleFormat' in value) ||
+            value.sampleFormat !== 's16le' ||
+            Object.keys(value).length !== 5
           ) {
             failed('recogniser protocol');
             return;
