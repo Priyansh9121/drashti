@@ -147,4 +147,27 @@ describe('checked saved translation output', () => {
     expect(checkedTranslationView(original, fit).elements).toHaveLength(2);
     expect(checkedTranslationView(original, narrow).elements).toEqual(original.elements);
   });
+  it('keeps original kirtan words when a selected saved target is missing or still unchecked', () => {
+    const original = { ...slide(), kirtan: true };
+    const missing = languageView(checkedTranslationView(original, { groupId: 'stage' }), ['hi']);
+    expect(missing.elements.map((el) => (el.kind === 'text' ? el.text : ''))).toEqual(['Blue box.']);
+    const el = box();
+    el.translations = [draftTranslation('Blue box.', 'en', 'gu', 'Placeholder unchecked')];
+    const publicSlide = playbackTranslationSlide({ ...slide(el), kirtan: true });
+    expect(JSON.stringify(publicSlide)).not.toContain('Placeholder unchecked');
+    const draft = languageView(checkedTranslationView(publicSlide, {}), ['gu']);
+    expect(draft.elements.map((value) => (value.kind === 'text' ? value.text : ''))).toEqual(['Blue box.']);
+  });
+  it('matches the app’s NFC source form after save while still holding a changed word', () => {
+    const source = 'Cafe\u0301 box.';
+    const canonical = source.normalize('NFC');
+    const el = box();
+    el.text = canonical;
+    el.translations = [
+      checkTranslation(draftTranslation(source, 'en', 'gu', 'Placeholder Q7'), canonical, 'Reader Q'),
+    ];
+    expect(checkedTranslationView(slide(el), {}).elements[1]).toMatchObject({ text: 'Placeholder Q7' });
+    el.text = 'Cafe box.';
+    expect(checkedTranslationView(slide(el), {}).elements).toHaveLength(1);
+  });
 });

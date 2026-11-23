@@ -228,6 +228,8 @@ test('translation review fits the least editor size, keeps focus and readable sc
   await ed.keyboard.press('Escape');
   await expect(review).toHaveCount(0);
   await expect(ed.getByRole('button', { name: 'Translate…', exact: true })).toBeFocused();
+  await ed.getByTestId('save-slides').click();
+  await slideEditorClosed(app);
   await app.close();
 });
 

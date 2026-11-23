@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { initialEngineState } from './engine/state';
-import { preparedOutputState } from './prepared-output-state';
+import { preparedOutputState, translationTop, translationBottom } from './prepared-output-state';
 import { checkTranslation, draftTranslation } from './prepared-translations';
 import type { RenderSlide } from './model';
 const slide = (): RenderSlide => ({
@@ -94,5 +94,31 @@ describe('prepared output state', () => {
     if (result.next?.kind !== 'slide') throw new Error('Missing next');
     expect(result.next.slide.elements).toHaveLength(1);
     expect(result.next.slide.elements[0]).toBe(state.next.slide.elements[0]);
+  });
+  it('reserves top captions only on the outputs that actually show them', () => {
+    const state = initialEngineState();
+    state.captions = {
+      lines: ['Placeholder heard Q7'],
+      language: 'en',
+      audience: false,
+      size: 'small',
+      place: 'top',
+    };
+    expect(translationTop(state, 1080, 'hall')).toBe(0);
+    expect(translationTop(state, 1080, 'stage')).toBe(324);
+    expect(translationTop(state, 1080, 'stream')).toBe(324);
+  });
+  it('does not reserve a bottom caption band for a top caption or a hall that does not show captions', () => {
+    const state = initialEngineState();
+    state.captions = {
+      lines: ['Placeholder heard Q7'],
+      language: 'en',
+      audience: false,
+      size: 'small',
+      place: 'bottom',
+    };
+    expect(translationBottom(state, 1080, 'hall')).toBe(1080);
+    state.captions.place = 'top';
+    expect(translationBottom(state, 1080, 'stream')).toBe(1080);
   });
 });
