@@ -40,3 +40,18 @@ export function fakeSoundSwitch(o: {
 export function fakeMediaSwitchesOn(has: (name: string) => boolean): string[] {
   return [CHROMIUM_FAKE_DEVICES, CHROMIUM_FAKE_SOUND_FILE, CHROMIUM_FAKE_UI].filter((name) => has(name));
 }
+
+/**
+ * The packaged self-test's part (DRASHTI_SELFTEST=ffmpeg, scripts/check-ffmpeg.mjs --packaged, started asking for the
+ * fake devices and the fake microphone's file): passed only when none of Chromium's fake media switches is on.
+ */
+export function fakeMediaSelfTest(has: (name: string) => boolean): {
+  passed: boolean;
+  on: string[];
+  detail: string;
+} {
+  const on = fakeMediaSwitchesOn(has);
+  return on.length === 0
+    ? { passed: true, on, detail: 'none: Chromium’s fake camera and microphone are off' }
+    : { passed: false, on, detail: `ON in this copy of Drashti: ${on.join(', ')}` };
+}

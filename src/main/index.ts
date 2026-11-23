@@ -124,7 +124,12 @@ import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
-import { CHROMIUM_FAKE_DEVICES, CHROMIUM_FAKE_SOUND_FILE, fakeSoundSwitch } from './fake-sound';
+import {
+  CHROMIUM_FAKE_DEVICES,
+  CHROMIUM_FAKE_SOUND_FILE,
+  fakeMediaSelfTest,
+  fakeSoundSwitch,
+} from './fake-sound';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
@@ -1679,6 +1684,9 @@ function start(): void {
             windowsRuntime: Object.keys(windowsRuntimeLibraries),
           })
         : null;
+      // The tests' seams (alpha.23, cap-realc): a packaged Drashti turns on none of Chromium's fake media switches,
+      // whatever its environment asks (scripts/check-ffmpeg.mjs --packaged starts it asking for the fake microphone).
+      const fakeMedia = packaged() ? fakeMediaSelfTest((name) => app.commandLine.hasSwitch(name)) : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
       const ocr = await ocrSelfTest({
         files: builtOcrFiles(__dirname),
@@ -1692,12 +1700,14 @@ function start(): void {
         youtube,
         whisper,
         indic,
+        fakeMedia,
         ocr,
         passed:
           ffmpeg.passed &&
           youtube.passed &&
           (whisper?.passed ?? true) &&
           (indic?.passed ?? true) &&
+          (fakeMedia?.passed ?? true) &&
           ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
