@@ -15,6 +15,8 @@ export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
       };
       const media = (v: HTMLMediaElement) => ({
         key: v.dataset['key'] ?? v.dataset['bgSlot'],
+        tag: v.tagName,
+        error: v.error ? { code: v.error.code, message: v.error.message } : null,
         media: v.dataset['mediaId'],
         at: v.currentTime,
         rate: v.playbackRate,
@@ -44,8 +46,55 @@ export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
         'stalled',
         'ratechange',
         'canplay',
+        'error',
+        'abort',
+        'emptied',
       ];
       for (const name of names) document.addEventListener(name, record, true);
+      // Which page said a cue ready or not (a21-s5b): each first-frame report this page sends, as it sends it.
+      const g = globalThis as {
+        drashti?: { engine?: { videoCueReady?: (...a: [string, string, boolean]) => Promise<unknown> } };
+      };
+      const bridge = g.drashti;
+      const send = bridge?.engine?.videoCueReady;
+      let reports: 'drashti' | 'none' = 'none';
+      if (bridge?.engine && send) {
+        const observed = {
+          ...bridge,
+          engine: {
+            ...bridge.engine,
+            videoCueReady: (cueId: string, kind: string, ready: boolean) => {
+              events.push({ t: Date.now(), event: 'cue-report', cueId, kind, ready });
+              return send(cueId, kind, ready);
+            },
+          },
+        };
+        try {
+          g.drashti = observed;
+          if (g.drashti === observed) reports = 'drashti';
+        } catch {
+          // A bridge that cannot be replaced: recorded below as not observed.
+        }
+      }
+      events.push({ t: Date.now(), event: 'cue-report-observer', observing: reports });
+      // A cued picture's frame read that throws (render/cue-presentation.ts reports the cue not ready then).
+      const NativeFrame = globalThis.VideoFrame;
+      const ObservedFrame = function (this: unknown, ...args: ConstructorParameters<typeof VideoFrame>) {
+        try {
+          return new NativeFrame(...args);
+        } catch (error) {
+          const source = args[0];
+          events.push({
+            t: Date.now(),
+            event: 'videoframe-error',
+            message: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+            ...(source instanceof HTMLMediaElement ? media(source) : {}),
+          });
+          throw error;
+        }
+      } as unknown as typeof VideoFrame;
+      ObservedFrame.prototype = NativeFrame.prototype;
+      globalThis.VideoFrame = ObservedFrame;
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries())
           events.push({
@@ -75,6 +124,8 @@ export async function beginCueDiagnostics(pages: Page[]): Promise<void> {
         sample,
         stop: () => {
           Object.defineProperty(BaseAudioContext.prototype, 'createGain', createGain);
+          globalThis.VideoFrame = NativeFrame;
+          if (reports === 'drashti') g.drashti = bridge;
           for (const name of names) document.removeEventListener(name, record, true);
           observer.disconnect();
           return { events, samples };
