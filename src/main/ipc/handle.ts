@@ -141,3 +141,8 @@ export function handleSync(channel: string, answer: () => unknown): void {
       : null;
   });
 }
+
+/** Red stub (alpha.21, logs (a)): not yet. */
+export function tellRequests(listener: unknown): void {
+  void listener;
+}

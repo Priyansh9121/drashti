@@ -146,8 +146,14 @@ export class CommandLog {
     this.heard(
       `Show: ${command.type}`,
       `${fields.length > 0 ? ` ${fields.join(' ')}` : ''}: ${outcomeOf(result)}`,
-      `${fields.join(' ')}: ${outcomeOf(result)}`,
+      fields.length > 0 ? `${fields.join(' ')}: ${outcomeOf(result)}` : outcomeOf(result),
     );
+  }
+
+  /** Red stub (alpha.21, logs (a)): not yet. */
+  changedByItself(rev: number, parts: readonly string[]): void {
+    void rev;
+    void parts;
   }
 
   /** An operator request that changes something (requestLogged), and how it went; a failure by its error's name. */

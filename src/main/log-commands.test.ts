@@ -55,8 +55,14 @@ describe('the log of every show command (alpha.21, logs (a))', () => {
     expect(lines).toEqual([
       'Show: goLive presentationId=p-0001 slideIndex=3 playlist.playlistId=pl-0002 playlist.itemId=it-0003: done (revision 41)',
     ]);
-    log.show({ type: 'next', rev: 41, session: 'placeholder-session' }, { ok: true, changed: false, rev: 41 });
-    log.show({ type: 'clearLayer', layer: 'background' }, { ok: false, error: 'forbidden', message: 'Placeholder' });
+    log.show(
+      { type: 'next', rev: 41, session: 'placeholder-session' },
+      { ok: true, changed: false, rev: 41 },
+    );
+    log.show(
+      { type: 'clearLayer', layer: 'background' },
+      { ok: false, error: 'forbidden', message: 'Placeholder' },
+    );
     pass(0);
     expect(lines.slice(1)).toEqual([
       'Show: next rev=41: nothing changed (revision 41)',
@@ -76,25 +82,56 @@ describe('the log of every show command (alpha.21, logs (a))', () => {
     log.show(
       {
         type: 'playAudio',
-        audio: { id: 'a-0001', title: 'Placeholder Secret Title', mediaId: 'md-0009', volume: 0.5, loop: true },
+        audio: {
+          id: 'a-0001',
+          title: 'Placeholder Secret Title',
+          mediaId: 'md-0009',
+          volume: 0.5,
+          loop: true,
+        },
       },
       { ok: true, changed: true, rev: 3 },
     );
-    log.show({ type: 'setStageMessage', text: 'Placeholder stage words', size: 'large' }, { ok: true, changed: true, rev: 4 });
     log.show(
-      { type: 'showLowerThird', lowerThird: { id: 'lt-0001', name: 'Placeholder Name', lines: ['Placeholder line'] } },
+      { type: 'setStageMessage', text: 'Placeholder stage words', size: 'large' },
+      { ok: true, changed: true, rev: 4 },
+    );
+    log.show(
+      {
+        type: 'showLowerThird',
+        lowerThird: { id: 'lt-0001', name: 'Placeholder Name', lines: ['Placeholder line'] },
+      },
       { ok: true, changed: true, rev: 5 },
     );
     log.show(
-      { type: 'playMusic', music: { playlistId: 'pl-9', name: 'Placeholder List', tracks: [{ mediaId: 'x', title: 'y' }, { mediaId: 'z', title: 'w' }] } },
+      {
+        type: 'playMusic',
+        music: {
+          playlistId: 'pl-9',
+          name: 'Placeholder List',
+          tracks: [
+            { mediaId: 'x', title: 'y' },
+            { mediaId: 'z', title: 'w' },
+          ],
+        },
+      },
       { ok: true, changed: true, rev: 6 },
     );
     pass(0);
     const all = lines.join('\n');
-    for (const secret of ['Placeholder secret words', 'Placeholder Secret Title', 'Placeholder stage words', 'Placeholder Name', 'Placeholder line', 'Placeholder List'])
+    for (const secret of [
+      'Placeholder secret words',
+      'Placeholder Secret Title',
+      'Placeholder stage words',
+      'Placeholder Name',
+      'Placeholder line',
+      'Placeholder List',
+    ])
       expect(all, secret).not.toContain(secret);
     expect(lines[0]).toBe('Show: showMessage message.id=m-0001: done (revision 2)');
-    expect(lines[1]).toBe('Show: playAudio audio.id=a-0001 audio.mediaId=md-0009 audio.volume=0.5 audio.loop=true: done (revision 3)');
+    expect(lines[1]).toBe(
+      'Show: playAudio audio.id=a-0001 audio.mediaId=md-0009 audio.volume=0.5 audio.loop=true: done (revision 3)',
+    );
     expect(lines[2]).toBe('Show: setStageMessage size=large: done (revision 4)');
     expect(lines[4]).toBe('Show: playMusic music.playlistId=pl-9 music.tracks=2 items: done (revision 6)');
   });
@@ -112,23 +149,67 @@ describe('the log of every show command (alpha.21, logs (a))', () => {
     const counted = lines.filter((l) => / more in /u.test(l));
     expect(counted.length).toBeGreaterThan(0);
     expect(counted.reduce((n, l) => n + Number(/×(\d+) more/u.exec(l)?.[1] ?? 0), 0)).toBe(39);
-    expect(counted.at(-1)).toMatch(/^Show: zoomLive ×\d+ more in [\d.]+ s \(the last: zoom=1\.975 x=0 y=0: done \(revision 49\)\)$/u);
+    expect(counted.at(-1)).toMatch(
+      /^Show: zoomLive ×\d+ more in [\d.]+ s \(the last: zoom=1\.975 x=0 y=0: done \(revision 49\)\)$/u,
+    );
     expect(lines).toContain('Show: next: done (revision 60)');
+  });
+});
+
+describe('the log of what the show did by itself (alpha.21, logs (a))', () => {
+  it('names what changed (the parts of the show, never what they hold) and the revision; a burst of the same is one line, then a count', () => {
+    const { log, lines, pass } = harness();
+    log.changedByItself(12, ['slide', 'background']);
+    pass(0);
+    expect(lines).toEqual(['Show: changed by itself: slide, background (revision 12)']);
+    log.changedByItself(13, ['messages']);
+    log.changedByItself(14, ['messages']);
+    pass(2000);
+    expect(lines.slice(1)).toEqual([
+      'Show: changed by itself: messages (revision 13)',
+      'Show: changed by itself: messages ×1 more in 0.0 s (the last: revision 14)',
+    ]);
   });
 });
 
 describe('the log of every operator request (alpha.21, logs (a))', () => {
   it('names each request that changes something, and how it went; reads and the window’s own bookkeeping are left out', () => {
-    for (const c of ['playlists:rename', 'stream:go-live', 'stream:end', 'screens:update-screen', 'library:import-paths', 'updates:download', 'media:convert'])
+    for (const c of [
+      'playlists:rename',
+      'stream:go-live',
+      'stream:end',
+      'screens:update-screen',
+      'library:import-paths',
+      'updates:download',
+      'media:convert',
+    ])
       expect(requestLogged(c), c).toBe(true);
-    for (const c of ['library:list-presentations', 'playlists:items', 'screens:get', 'stream:status', 'media:details', 'engine:command', 'engine:subscribe', 'output:report', 'app:render-error', 'pictures:page', 'nodes:thumbs'])
+    for (const c of [
+      'library:list-presentations',
+      'playlists:items',
+      'screens:get',
+      'stream:status',
+      'media:details',
+      'engine:command',
+      'engine:subscribe',
+      'output:report',
+      'app:render-error',
+      'media:clip-clips',
+      'accesslist:refresh',
+      'pictures:page',
+      'nodes:thumbs',
+    ])
       expect(requestLogged(c), c).toBe(false);
     const { log, lines, pass } = harness();
     log.request('playlists:rename', 'done');
     log.request('library:list-presentations', 'done');
     log.request('stream:go-live', 'not done');
     log.request('backups:run-now', 'refused (Simple Mode)');
-    log.request('media:convert', 'failed', new Error('Placeholder failure at /Users/someone/Placeholder.mov'));
+    log.request(
+      'media:convert',
+      'failed',
+      new Error('Placeholder failure at /Users/someone/Placeholder.mov'),
+    );
     pass(0);
     expect(lines).toEqual([
       'Request: playlists:rename: done',
