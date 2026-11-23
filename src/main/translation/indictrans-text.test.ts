@@ -64,11 +64,13 @@ describe('IndicTrans2 text pipeline, against x74’s Python', () => {
   });
 
   it('decodes output tokens exactly as the models’ tokenizer did (special tokens dropped, clean-up applied)', () => {
+    expect(fixture.decode.length).toBeGreaterThanOrEqual(150);
     const wrong = fixture.decode.filter((r) => decodeTokens(r.tokens) !== r.decoded);
     expect(wrong).toEqual([]);
   });
 
   it('repairs clock spacing only for the source’s own valid times, as clock_spacing.py did', () => {
+    expect(fixture.clock.length).toBeGreaterThanOrEqual(150);
     const wrong = fixture.clock.filter((r) => restoreSourceClockSpacing(r.source, r.translated) !== r.out);
     expect(wrong).toEqual([]);
   });
@@ -102,6 +104,32 @@ describe('IndicTrans2 text pipeline, against x74’s Python', () => {
       '\u0aa5\u0ac0',
       '11/12/2026',
     ]);
+  });
+
+  it('holds Python’s answers for the cases the review found missing (a22-review-mt, fixture gaps)', () => {
+    // Characters outside the BMP (surrogate pairs here), U+202F and U+2009, ten or more placeholders (ID1 meets
+    // ID10 when results are restored), one match inside another, and many "n't" forms and English prefixes.
+    const count = <T>(list: T[], test: (r: T) => boolean) => list.filter(test).length;
+    const astral = /[\u{10000}-\u{10ffff}]/u;
+    const nested = (order: string[][]) =>
+      order.some((found) => found.some((a) => found.some((b) => a !== b && b.includes(a))));
+    const many = (order: string[][]) => order.flat().length >= 10;
+    const { pre, post } = fixture;
+    expect(count(pre, (r) => astral.test(r.text))).toBeGreaterThanOrEqual(60);
+    expect(count(pre, (r) => r.text.includes(' '))).toBeGreaterThanOrEqual(30);
+    expect(count(pre, (r) => r.text.includes(' '))).toBeGreaterThanOrEqual(30);
+    expect(count(pre, (r) => /< ID1\d >/u.test(r.pre))).toBeGreaterThanOrEqual(25);
+    expect(count(pre, (r) => nested(r.order))).toBeGreaterThanOrEqual(45);
+    const english = pre.filter((r) => r.src === 'eng_Latn');
+    expect(count(english, (r) => /n't/iu.test(r.text))).toBeGreaterThanOrEqual(30);
+    expect(count(english, (r) => /\b(?:Mr|Mrs|Dr|Ms|Prof|No)\./u.test(r.text))).toBeGreaterThanOrEqual(18);
+    expect(count(post, (r) => astral.test(r.cand))).toBeGreaterThanOrEqual(80);
+    expect(count(post, (r) => /[  ]/u.test(r.cand))).toBeGreaterThanOrEqual(80);
+    expect(count(post, (r) => nested(r.order))).toBeGreaterThanOrEqual(45);
+    expect(count(post, (r) => many(r.order) && /ID ?1[0-4]/u.test(r.cand))).toBeGreaterThanOrEqual(30);
+    const toEnglish = post.filter((r) => r.tgt === 'eng_Latn');
+    expect(count(toEnglish, (r) => /n ?' ?t\b/u.test(r.cand))).toBeGreaterThanOrEqual(40);
+    expect(count(toEnglish, (r) => /\b(?:Mr|Mrs|Dr) ?\./u.test(r.cand))).toBeGreaterThanOrEqual(25);
   });
 
   it('picks the model for each direction', () => {
