@@ -12,6 +12,7 @@ import { Field, Select, TextInput } from '../ui/Field';
 import { Search } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
 import { EmptyState } from '../ui/States';
+import { Truncate } from '../ui/Truncate';
 import {
   addSlot,
   editSlot,
@@ -103,7 +104,7 @@ function SaveTemplate({ playlistId }: { playlistId: string }) {
           if (item.kind !== 'presentation')
             return (
               <li key={item.id} className="flex items-center gap-2 text-sm">
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                <Truncate text={item.label} className="flex-1" />
                 {/* A video input (Session 51) is kept as a picture or video is. */}
                 <span className="text-xs text-muted">
                   {item.kind === 'media' || item.kind === 'input' ? 'Kept' : 'A slot'}
@@ -113,7 +114,7 @@ function SaveTemplate({ playlistId }: { playlistId: string }) {
           const kirtan = kirtanOf.get(item.presentationId);
           return (
             <li key={item.id} className="flex items-center gap-2 text-sm" data-testid="template-item">
-              <span className="min-w-0 flex-1 truncate">{item.presentationName ?? item.label}</span>
+              <Truncate text={item.presentationName ?? item.label} className="flex-1" />
               <Select
                 aria-label={`${item.presentationName ?? item.label} in the template`}
                 className="h-8 w-56 text-xs"
