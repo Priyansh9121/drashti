@@ -394,6 +394,8 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
         { slideId: first.id, part: { x: 0, y: 0, w: 0.25, h: 0.5 } },
         { slideId: second.id, part: { x: 0, y: 0.5, w: 1, h: 0.5 } },
       ];
+      const pngs = [new Uint8Array([1]), new Uint8Array([2]), new Uint8Array([3])];
+      for (const png of pngs) t.drawPart.mockResolvedValueOnce({ ok: true, png });
       const made = await t.editor.makeSlide(t.event, t.request({ parts }));
       expect(made.ok).toBe(true);
       expect(t.run).toHaveBeenCalledTimes(2);
@@ -402,10 +404,10 @@ describe('Make a slide… (alpha.21): a PDF page, or a part of it, as a Drashti 
         [{ kind: 'original', sourceId: t.hash, page: 0 }],
       ]);
       expect(t.drawPart.mock.calls.map((call) => call.slice(0, 2))).toEqual(
-        parts.map(({ part }) => [t.printed, part]),
+        [parts[0], parts[2], parts[1]].map((p) => [t.printed, p?.part]),
       );
       expect(t.keepSlide).toHaveBeenCalledExactlyOnceWith({
-        png: [t.png, t.png, t.png],
+        png: [pngs[0], pngs[2], pngs[1]],
         name: `${t.doc.name}, 3 parts`,
         place: 'playlist',
       });
