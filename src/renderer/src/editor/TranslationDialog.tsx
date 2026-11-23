@@ -70,6 +70,8 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
   const [preparing, setPreparing] = useState<{ done: number; total: number } | null>(null);
   const stopped = useRef(false);
   useEffect(() => {
+    // Simple Mode only reads saved translations: it never asks for the engine.
+    if (readOnly) return;
     let current = true;
     void window.drashti.slideEditor.translationStatus(from, to).then((status) => {
       if (current) setEngine(status);
@@ -77,7 +79,7 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
     return () => {
       current = false;
     };
-  }, [from, to, preparing]);
+  }, [from, to, preparing, readOnly]);
   useEffect(
     () => () => {
       stopped.current = true;
@@ -91,8 +93,7 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
     stopped.current = false;
     setProblem(null);
     setPreparing({ done: 0, total: targets.length });
-    // One Undo takes every draft of this run back.
-    const coalesce = `translation:prepare:${String(Date.now())}`;
+    const drafted: { target: (typeof targets)[number]; text: string }[] = [];
     for (const [i, target] of targets.entries()) {
       if (stopped.current) break;
       const draft = await window.drashti.slideEditor.translationDraft({ source: target.source, from, to });
@@ -101,12 +102,14 @@ export function TranslationDialog({ onClose, readOnly }: { onClose: () => void; 
         setProblem(draft.message);
         // Only this box's words could not be drafted (too long, a model marker): go on with the next box.
         if (!draft.thisBoxOnly) break;
-      } else {
-        const latest = useEditor.getState().doc;
-        if (latest) commit(placeDraft(latest, target, from, to, draft.text), { coalesce });
-      }
+      } else drafted.push({ target, text: draft.text });
       setPreparing({ done: i + 1, total: targets.length });
     }
+    // The drafts made, put in together (Stop keeps those made before it): one Undo takes the run back. A box the
+    // operator typed into meanwhile keeps its words (placeDraft).
+    const latest = useEditor.getState().doc;
+    if (latest && drafted.length > 0)
+      commit(drafted.reduce((next, d) => placeDraft(next, d.target, from, to, d.text), latest));
     setPreparing(null);
   };
   const stopPreparing = () => {
