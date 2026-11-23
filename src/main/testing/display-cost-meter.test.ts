@@ -1,5 +1,10 @@
 import { expect, it } from 'vitest';
-import { droppedFrames, macDropVerdict, nativeCostPair } from '../../../tests/e2e/display-cost-meter';
+import {
+  droppedFrames,
+  importProcessOrder,
+  macDropVerdict,
+  nativeCostPair,
+} from '../../../tests/e2e/display-cost-meter';
 import { DISPLAY_COST_REPLAYS } from './display-cost-replay-fixture';
 
 for (const replay of DISPLAY_COST_REPLAYS) {
@@ -94,4 +99,47 @@ it('passes imports that drop no more than the controls within the margin: record
       ),
     ).worse,
   ).toBe(false);
+});
+
+// QA23-L8-4 A (the owner, 24 Nov 2026: "A: check the import order"): on the Mac the cost test is judged by the import's
+// fixed order. Times are ms from the dissolve's start; each worker's creation is its first event in the run's native
+// trace (the process was made at or before it).
+it("fails the recorded real cost: L8 before its worker waited, the import's worker started during the dissolve (5e86c44f)", () => {
+  // lead-1123-113215-2365, its first attempt: the three import trials' dissolve end, ready, and their worker.
+  for (const [end, ready, created] of [
+    [5012.6, 7368.0, 263.9],
+    [5032.9, 6641.0, 436.3],
+    [5017.0, 6379.6, 266.8],
+  ] as const) {
+    expect(importProcessOrder({ end, ready }, [{ pid: 7006, creationTime: created }])).toMatchObject({
+      startedDuring: true,
+      inOrder: false,
+    });
+  }
+});
+
+it("passes L8's recorded order: the import's worker started after the dissolve ended (a22-l8-1124-091901-78648)", () => {
+  // Its repeat 1, first try (failed by the drops margin): each worker started 275-304 ms after its dissolve ended.
+  for (const [end, ready, created] of [
+    [5016.7, 5947.1, 5291.3],
+    [5000.3, 5862.3, 5304.7],
+    [5017.3, 5849.6, 5295.8],
+  ] as const) {
+    expect(importProcessOrder({ end, ready }, [{ pid: 6438, creationTime: created }])).toMatchObject({
+      startedDuring: false,
+      seen: true,
+      inOrder: true,
+    });
+  }
+});
+
+it('fails an import whose worker was never seen, or one already running before the dissolve ended', () => {
+  expect(importProcessOrder({ end: 5000, ready: 5900 }, [])).toMatchObject({ seen: false, inOrder: false });
+  // A worker made before the trial (here 2 s before its dissolve) is still an import process during the dissolve.
+  expect(importProcessOrder({ end: 5000, ready: 5900 }, [{ pid: 1, creationTime: -2000 }])).toMatchObject({
+    startedDuring: true,
+    inOrder: false,
+  });
+  // A creation time after the import was ready is not a time the test could have seen: no order is proven.
+  expect(importProcessOrder({ end: 5000, ready: 5900 }, [{ pid: 1, creationTime: 6100 }]).inOrder).toBe(false);
 });
