@@ -44,8 +44,8 @@ export interface LanguageModelEntry {
    */
   format?: CaptionModelFormat;
   /**
-   * The model's other files, each pinned by name, size and SHA-256 (Route C: tokens.txt and frontend.bin). Red: not
-   * checked yet.
+   * The model's other files, each pinned by name, size and SHA-256 (Route C: tokens.txt and frontend.bin, which a
+   * Route C model must have: review M2).
    */
   companions?: readonly { name: string; bytes: number; sha256: string }[];
 }
@@ -189,6 +189,18 @@ const KNOWN: LanguageModelEntry[] = [
     fallback: false,
     timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
+    companions: [
+      {
+        name: 'tokens.txt',
+        bytes: 1_826,
+        sha256: '4949fb9c77c7d706c6cbe4339828076e497b02867d7864310c52ea1829645e90',
+      },
+      {
+        name: 'frontend.bin',
+        bytes: 82_240,
+        sha256: 'd6f2450a1bf5142d092aebbaac8dea32002945dc953b58aacfb70a5aa08e895a',
+      },
+    ],
   },
   {
     id: 'hi-indicconformer-ctc-int8',
@@ -200,6 +212,18 @@ const KNOWN: LanguageModelEntry[] = [
     fallback: false,
     timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
+    companions: [
+      {
+        name: 'tokens.txt',
+        bytes: 1_784,
+        sha256: 'e2bc7bca13b590fd2394504707326e3464d84ec3e70dcb0cf7f2be12e4e6f711',
+      },
+      {
+        name: 'frontend.bin',
+        bytes: 82_240,
+        sha256: 'd6f2450a1bf5142d092aebbaac8dea32002945dc953b58aacfb70a5aa08e895a',
+      },
+    ],
   },
   {
     id: 'gu-indicconformer-ctc',
@@ -211,6 +235,18 @@ const KNOWN: LanguageModelEntry[] = [
     fallback: false,
     timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
+    companions: [
+      {
+        name: 'tokens.txt',
+        bytes: 1_826,
+        sha256: '4949fb9c77c7d706c6cbe4339828076e497b02867d7864310c52ea1829645e90',
+      },
+      {
+        name: 'frontend.bin',
+        bytes: 82_240,
+        sha256: 'd6f2450a1bf5142d092aebbaac8dea32002945dc953b58aacfb70a5aa08e895a',
+      },
+    ],
   },
   {
     id: 'hi-indicconformer-ctc',
@@ -222,6 +258,18 @@ const KNOWN: LanguageModelEntry[] = [
     fallback: false,
     timestamps: false,
     format: 'indicconformer-ctc-onnx-v1',
+    companions: [
+      {
+        name: 'tokens.txt',
+        bytes: 1_784,
+        sha256: 'e2bc7bca13b590fd2394504707326e3464d84ec3e70dcb0cf7f2be12e4e6f711',
+      },
+      {
+        name: 'frontend.bin',
+        bytes: 82_240,
+        sha256: 'd6f2450a1bf5142d092aebbaac8dea32002945dc953b58aacfb70a5aa08e895a',
+      },
+    ],
   },
 ];
 
@@ -245,6 +293,10 @@ export function parseLanguageModelList(raw: unknown): LanguageModelEntry[] {
     const timestamps = e['timestamps'] ?? true;
     const format = e['format'];
     if (format !== undefined && !isCaptionModelFormat(format)) continue;
+    const companions = companionsOf(e['companions']);
+    if (companions === 'invalid') continue;
+    // A Route C model pins its tokens and front-end files: without them it is not known (review M2).
+    if (format === 'indicconformer-ctc-onnx-v1' && companions === null) continue;
     if (
       typeof id !== 'string' ||
       !ID.test(id) ||
@@ -273,7 +325,33 @@ export function parseLanguageModelList(raw: unknown): LanguageModelEntry[] {
       fallback,
       timestamps,
       ...(format ? { format } : {}),
+      ...(companions ? { companions } : {}),
     });
+  }
+  return out;
+}
+
+/** An entry's pinned other files: none, a well-made list, or invalid (the entry is then not known). */
+function companionsOf(raw: unknown): NonNullable<LanguageModelEntry['companions']> | null | 'invalid' {
+  if (raw === undefined) return null;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 8) return 'invalid';
+  const out: { name: string; bytes: number; sha256: string }[] = [];
+  for (const item of raw as unknown[]) {
+    if (typeof item !== 'object' || item === null) return 'invalid';
+    const { name, bytes, sha256 } = item as Record<string, unknown>;
+    if (
+      typeof name !== 'string' ||
+      !/^[a-z0-9][a-z0-9._-]{0,63}$/iu.test(name) ||
+      name === 'model.onnx' ||
+      out.some((o) => o.name === name) ||
+      typeof bytes !== 'number' ||
+      !Number.isSafeInteger(bytes) ||
+      bytes <= 0 ||
+      typeof sha256 !== 'string' ||
+      !SHA256.test(sha256)
+    )
+      return 'invalid';
+    out.push({ name, bytes, sha256 });
   }
   return out;
 }
