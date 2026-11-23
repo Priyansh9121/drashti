@@ -18,6 +18,7 @@ import { Field, Select } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
 import { Toggle } from '../ui/Toggle';
+import { CaptionWordsSection } from './CaptionWordsDialog';
 import { closeCaptions, connectCaptions, takeCaptions, useCaptions } from './captions-store';
 import { captionsStateText, downloadText, megabytes } from './captions-words';
 
@@ -159,6 +160,7 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
             Choosing one language is more accurate: as heard, Gujarati is often taken for Hindi.
           </p>
         )}
+        <CaptionWordsSection listening={settings.language} />
         <Toggle
           checked={settings.audience}
           label="Show them on the audience screens too"

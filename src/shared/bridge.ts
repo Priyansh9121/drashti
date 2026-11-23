@@ -106,6 +106,7 @@ import type {
   OpeningView,
 } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
+import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -366,6 +367,16 @@ export interface DrashtiBridge {
     saveCopy(mediaId: string, bytes: Uint8Array): Promise<{ ok: true } | { ok: false; message: string }>;
     /** File › Opening… was chosen. */
     onOpen(listener: () => void): () => void;
+  };
+  /** Caption words (alpha.22, operator window; Pro Mode): the admin's names and terms for live captions. */
+  captionWords: {
+    view(): Promise<CaptionWordsView>;
+    /** The whole list after a change (each word checked again in the main process). */
+    set(words: CaptionWord[]): Promise<CaptionWordsResult>;
+    /** Import… a CSV file the admin chooses: its words are added to the list. */
+    importFile(): Promise<CaptionWordsResult>;
+    /** Export… the list as a CSV file where the admin chooses. */
+    exportFile(): Promise<CaptionWordsResult>;
   };
   /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
   videoCaptions: {

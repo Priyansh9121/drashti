@@ -194,6 +194,12 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  captionWords: {
+    view: () => invoke(IPC.captionWords.view),
+    set: (words) => invoke(IPC.captionWords.set, words),
+    importFile: () => invoke(IPC.captionWords.import),
+    exportFile: () => invoke(IPC.captionWords.export),
+  },
   videoCaptions: {
     view: (mediaId) => invoke(IPC.videoCaptions.view, mediaId),
     select: (mediaId, trackId) => invoke(IPC.videoCaptions.select, mediaId, trackId),

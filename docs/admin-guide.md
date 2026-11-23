@@ -662,6 +662,14 @@ The download leaves about 2 GB free on the drive. It pauses when the stream or a
 
 **Language and where the words go.** Under **Language**, choose Gujarati, Hindi, Sanskrit or English if you know which one the speaker will use. **Gujarati, Hindi, Sanskrit or English, as heard** lets Drashti choose for each phrase. It leaves out phrases the model identifies as another language. Sanskrit uses Gujarati letters on screen and in the sound recording's caption draft. Drashti can mistake Gujarati for Hindi. Check the words in rehearsal, especially for Gujarati and Sanskrit. The stream and stage screens show captions. **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large. **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive live speech captions.
 
+**Caption words.** Names and terms a speaker says that captions get wrong can be listed under **Caption Words…** in the Live captions dialog. Spell each one as the captions should show it, under its language: Gujarati, Hindi, Sanskrit or English. Type Sanskrit words in Gujarati letters, as the screens show them. An entry is a word or a name of up to three words and 40 letters, without a comma or a double quote. Each language keeps up to 200 entries. The list is kept in the library, so it goes with the library's backups, and each change is kept at once.
+
+When **Language** is one language, the captions engine is given that language's first entries as hints. About 60 Gujarati or Hindi letters fit, or 200 English ones, so put the most important first with the arrow beside each entry; the dialog says how many fit. With **as heard**, no hints are given.
+
+A word heard a letter or two away from an entry is shown as the entry is written, in the phrase's own language and only as a whole word. Words of 4 letters or fewer must match exactly. Up to 8 letters allow one change, up to 13 allow two, and longer ones three. A word heard stays as it is when it is the entry with an ending added, when two entries are as close, or, in English, when the entry has a capital letter and the word heard has none. Check the list in rehearsal: an entry close to an everyday word can change that word.
+
+**Export…** saves the list as a CSV file, a language and an entry on each line, to bring it to another Main. **Import…** adds a file's entries to the list, keeps the ones already there, and names a line it could not read. A spreadsheet can make the file: save it as CSV UTF-8.
+
 ![Live captions listening with the Gujarati trial warning](screenshots/captions-gujarati-trial.png)
 
 ![Generated placeholder captions on a stage screen](screenshots/captions-stage.png)
