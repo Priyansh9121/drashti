@@ -41,6 +41,7 @@ export interface GeneratedPage {
   marker: string;
   oldWords?: string;
   rotation?: 0 | 90 | 180 | 270;
+  paragraphLines?: string[];
 }
 export interface GeneratedSourcePage extends GeneratedPage {
   oldWords: string;
@@ -100,6 +101,8 @@ export function generatedPdf(pages: readonly GeneratedPage[]): Buffer {
     if (page.oldWords)
       paint.push(`BT /F1 28 Tf 1 1 1 rg 24 ${page.height / 2} Td ${pdfString(page.oldWords)} Tj ET`);
     paint.push(`BT /F1 12 Tf 1 1 1 rg 24 24 Td ${pdfString(page.marker)} Tj ET`);
+    for (const [line, words] of (page.paragraphLines ?? []).entries())
+      paint.push(`BT /F1 12 Tf 1 1 1 rg 24 ${page.height - 90 - line * 16} Td ${pdfString(words)} Tj ET`);
     const contents = stream('', paint.join('\n'));
     kids.push(
       add(
@@ -125,10 +128,13 @@ export function generatedPdf(pages: readonly GeneratedPage[]): Buffer {
   return Buffer.concat(parts);
 }
 
-export async function openGeneratedPdf(pages: readonly GeneratedPage[] = PDF_PAGES) {
+export async function openGeneratedPdf(
+  pages: readonly GeneratedPage[] = PDF_PAGES,
+  makeBytes: (pages: readonly GeneratedPage[]) => Buffer = generatedPdf,
+) {
   const folder = mkdtempSync(join(tmpdir(), 'drashti-pdf-tools-'));
   const source = join(folder, 'Placeholder PDF tools.pdf');
-  const original = generatedPdf(pages);
+  const original = makeBytes(pages);
   writeFileSync(source, original);
   const digest = createHash('sha256').update(original).digest('hex');
   const unchanged = () => {
