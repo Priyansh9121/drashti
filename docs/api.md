@@ -668,14 +668,6 @@ compute immediately without awaiting exit and invalidates pending results; a lat
 integration must adapt L8’s public signal, never infer permission from an elapsed timer. Tests provide an explicit
 stand-in gate. The ordinary Whisper path is outside this new engine and remains unchanged.
 
-## Prepared translations (desktop, alpha.21)
-
-The existing `library.slidesForEdit` / `library.saveSlides` document carries optional text-element `translations` (at most three distinct targets, `gu`, `hi`, `en`) and `translationDisplay`. Each saved pair has NFC-normalized `sourceFingerprint`, source/target tags, text (at most 20,000 characters), `state` (`unchecked`, `checked`, `needs-recheck`), a local reader name and `reviewFingerprint`. The latter binds approval to the exact source/result/language pair; modifying words cannot retain a valid check. Source changes across all normal content-write paths retain the old words with review held. Undo may restore an exact previously checked pair.
-
-`translationDisplay` contains an optional explicit `sourceLanguage`, `choice` (`off` or a target), bounded stable-ID `groups` and `outputs` overrides, a deliberately reserved slide-coordinate `area` and `fontSize`. Resolution is output override, group override, presentation choice, then Off. Output Off always wins; an explicit saved target can show checked words while the presentation choice is Off. The dialog applies presentation choices across its editable text boxes; attachments remain with those boxes through normal persistence and bundle ID remapping. There is no migration and no default translation data inserted into existing presentations.
-
-Main refuses translation authoring, approval and route changes through `saveSlides` unless the current mode is Pro, even if a caller bypasses the editor. Simple Mode source editing remains bounded as before and invalidates review. There is no new HTTP generation or editing endpoint. Engine playback and phone presentation responses include checked current pairs only, with reader names removed. Original publication and Next require no inference or asynchronous translation work. The deterministic `Translator` stand-in is a test double only; production reports `No engine installed` and never writes its placeholders into a library.
-
 `createIndicRoute({ store, ...engineOptions })` directly matches cap-integration’s `CaptionRoute.make(model, language)`.
 It matches the selected reference to full checked metadata through `store.model`, pins the model-file SHA-256s, then obtains a fresh hold through
 `store.acquire` at start. Changed identity or purpose releases the hold without starting native work. The resolver
@@ -685,3 +677,17 @@ Main may explicitly select `admission: 'below-show'` for continuous ASR under th
 This does not bypass native priority admission or any lag, queue, model, generation or cancellation guard. If a
 `workGate` is supplied it remains authoritative, including when closed or broken. With neither explicit admission
 nor a gate the recogniser stays closed. Main/lead owns the ASR policy choice; translation’s lease is separate.
+
+Phrases carry the speech hub’s ids, `s1, s2…` in each listening, as Whisper’s engine gives them; the hub turns any
+other id away. `ic-ctc --runtime`, alone, starts ONNX Runtime beside the helper without any model and prints
+`{"runtime":"1.23.2","api":23}`. The packaged self-test (`DRASHTI_SELFTEST=ffmpeg`, `scripts/check-ffmpeg.mjs
+--packaged`, `scripts/check-installers.mjs`) requires that answer, with the runtime’s libraries beside the helper (on
+Windows its two DLLs and the app-local Microsoft runtime).
+
+## Prepared translations (desktop, alpha.21)
+
+The existing `library.slidesForEdit` / `library.saveSlides` document carries optional text-element `translations` (at most three distinct targets, `gu`, `hi`, `en`) and `translationDisplay`. Each saved pair has NFC-normalized `sourceFingerprint`, source/target tags, text (at most 20,000 characters), `state` (`unchecked`, `checked`, `needs-recheck`), a local reader name and `reviewFingerprint`. The latter binds approval to the exact source/result/language pair; modifying words cannot retain a valid check. Source changes across all normal content-write paths retain the old words with review held. Undo may restore an exact previously checked pair.
+
+`translationDisplay` contains an optional explicit `sourceLanguage`, `choice` (`off` or a target), bounded stable-ID `groups` and `outputs` overrides, a deliberately reserved slide-coordinate `area` and `fontSize`. Resolution is output override, group override, presentation choice, then Off. Output Off always wins; an explicit saved target can show checked words while the presentation choice is Off. The dialog applies presentation choices across its editable text boxes; attachments remain with those boxes through normal persistence and bundle ID remapping. There is no migration and no default translation data inserted into existing presentations.
+
+Main refuses translation authoring, approval and route changes through `saveSlides` unless the current mode is Pro, even if a caller bypasses the editor. Simple Mode source editing remains bounded as before and invalidates review. There is no new HTTP generation or editing endpoint. Engine playback and phone presentation responses include checked current pairs only, with reader names removed. Original publication and Next require no inference or asynchronous translation work. The deterministic `Translator` stand-in is a test double only; production reports `No engine installed` and never writes its placeholders into a library.
