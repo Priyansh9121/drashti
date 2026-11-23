@@ -26,3 +26,20 @@ test('wrong-sized and wrong-hash archives are rejected before extraction', () =>
     rmSync(root, { recursive: true, force: true });
   }
 });
+test('the staged libraries must have the pinned target size (alpha.23, the review: the sizes were unused)', async () => {
+  const fetchIndic = await import('./fetch-indic.mjs');
+  assert.equal(typeof fetchIndic.verifyOrtFiles, 'function');
+  const root = mkdtempSync(join(tmpdir(), 'drashti-ort-files-'));
+  try {
+    const target = { rid: 'win-x64', files: ['onnxruntime.dll', 'onnxruntime_providers_shared.dll'], bytes: 7 };
+    writeFileSync(join(root, 'onnxruntime.dll'), 'four');
+    writeFileSync(join(root, 'onnxruntime_providers_shared.dll'), 'two');
+    fetchIndic.verifyOrtFiles(root, target);
+    writeFileSync(join(root, 'onnxruntime_providers_shared.dll'), 'three');
+    assert.throws(() => fetchIndic.verifyOrtFiles(root, target), /size/);
+    rmSync(join(root, 'onnxruntime_providers_shared.dll'));
+    assert.throws(() => fetchIndic.verifyOrtFiles(root, target));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
