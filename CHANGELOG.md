@@ -18,6 +18,7 @@ Update after a sabha, and update Main and nodes together.
 - Edit Video…: Also add the clip to Media stands on its own line above Export clip….
 - On a busy computer, Save as MP4… no longer fails to find its clean frames, a failed conversion always gives FFmpeg’s reason, and a deck imported with PowerPoint or Keynote is read whole.
 - Logs for many computers: Drashti keeps one log a day for 30 days; every report names its computer, access entry, role, version and system; Help › Save Diagnostics saves Today…, Yesterday…, The Last 7 Days… or One Day.
+- Automatic error reports, off until the access list’s owner turns them on for a computer (Help › Automatic Error Reports…): after an error notice, a crash or a failed stream, a short coded report (never slide words, names, email addresses or crash files) goes to the owner’s own private Sheet and Drive folder, at most 10 a day, never while streaming or recording.
 - Safer: Drashti checks more strictly that every request it answers comes from one of its own windows. The admin guide says when Request Access works again after Too many tries for now.
 
 ## 1.0.0-alpha.20.1 (22 Nov 2026)
