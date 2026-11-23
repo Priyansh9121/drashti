@@ -351,19 +351,30 @@ it('captions bench', async () => {
       rmSync(dir, { recursive: true, force: true });
     }
   };
-  const clips = new Map(ask.candidates.map((c) => [c, clipsFor(candidateLanguage(c))]));
+  const clips = new Map<BenchCandidate, Clip[]>();
   const runs = new Map<BenchCandidate, CandidateRun>();
   const notes: string[] = [];
+  const failures: string[] = [];
   const stopFile = env['DRASHTI_CAPTIONS_BENCH_STOP'] ?? '';
   const until = Date.now() + Number(env['DRASHTI_CAPTIONS_BENCH_MINUTES'] ?? '40') * 60_000;
   for (let round = 1; ; round += 1) {
     for (const c of ask.candidates) {
-      const r = await runCandidate(c, clips.get(c) ?? [], programs);
+      let r: Awaited<ReturnType<typeof runCandidate>>;
+      try {
+        if (!clips.has(c)) clips.set(c, clipsFor(candidateLanguage(c)));
+        r = await runCandidate(c, clips.get(c) ?? [], programs);
+      } catch (error) {
+        // Said in the table, and the run fails at the end; the other candidates are still measured.
+        const why = error instanceof Error ? error.message : String(error);
+        notes.push(`${c} round ${String(round)}: FAILED: ${why}`);
+        failures.push(`${c}: ${why}`);
+        continue;
+      }
       notes.push(
         `${c} round ${String(round)}: feed lag at most ${String(r.feedLagMs)} ms${r.failed ? `; FAILED: ${r.failed}` : ''}`,
       );
-      expect(r.failed, `${c}: the engine failed`).toBeNull();
-      expect(r.engineStartMs, `${c}: the engine never listened`).not.toBeNull();
+      if (r.failed !== null) failures.push(`${c}: the engine failed: ${r.failed}`);
+      else if (r.engineStartMs === null) failures.push(`${c}: the engine never listened`);
       const was = runs.get(c);
       runs.set(
         c,
@@ -417,4 +428,5 @@ it('captions bench', async () => {
     )}\n`,
   );
   console.log(md);
+  expect(failures, 'every candidate measured').toEqual([]);
 }, 3_600_000);
