@@ -23,19 +23,23 @@ const armed = () => fs.existsSync(${JSON.stringify(arm)});
 const failure = () => { fs.writeFileSync(${JSON.stringify(hit)}, fault); return Object.assign(new Error('Generated disk fault'), { code: fault.endsWith('EIO') ? 'EIO' : 'ENOSPC' }); };
 const sync = fs.fdatasync;
 fs.fdatasync = function(fd, done) { if (armed() && fault.startsWith('sync-')) return done(failure()); return sync(fd, done); };
+// The recording's streams are opened on a descriptor (pipeline.ts), so their path is undefined: they are known by it.
+const recordings = new Set();
 const open = fs.openSync;
 fs.openSync = function(file, flags, ...rest) {
   if (armed() && String(file).endsWith('.mkv') && flags === 'wx' && (fault === 'open-ENOSPC' || (fault === 'part-ENOSPC' && String(file).includes(' part ')))) throw failure();
-  return open(file, flags, ...rest);
+  const fd = open(file, flags, ...rest);
+  if (String(file).endsWith('.mkv')) recordings.add(fd);
+  return fd;
 };
 const write = fs.WriteStream.prototype._write;
 fs.WriteStream.prototype._write = function(chunk, encoding, done) {
-  if (armed() && fault === 'write-ENOSPC' && String(this.path).endsWith('.mkv')) return done(failure());
+  if (armed() && fault === 'write-ENOSPC' && recordings.has(this.fd)) return done(failure());
   return write.call(this, chunk, encoding, done);
 };
 const writev = fs.WriteStream.prototype._writev;
 fs.WriteStream.prototype._writev = function(chunks, done) {
-  if (armed() && fault === 'write-ENOSPC' && String(this.path).endsWith('.mkv')) return done(failure());
+  if (armed() && fault === 'write-ENOSPC' && recordings.has(this.fd)) return done(failure());
   return writev.call(this, chunks, done);
 };
 require('node:module').syncBuiltinESMExports();
@@ -44,7 +48,8 @@ require(process.argv.at(-1));
     );
     const { app } = await launchApp({
       DRASHTI_TEST_FAKE_DEVICES: '1',
-      DRASHTI_TEST_RECORD_PART_BYTES: '100000',
+      // A still Program encodes at about 5 KB/s on CI's Mac (VideoToolbox): small parts, so the next one comes soon.
+      DRASHTI_TEST_RECORD_PART_BYTES: fault === 'part-ENOSPC' ? '20000' : '100000',
     });
     try {
       const win = await operatorPage(app);
@@ -66,9 +71,10 @@ require(process.argv.at(-1));
       if (fault !== 'open-ENOSPC') {
         await expect.poll(async () => (await status()).recording.bytes).toBeGreaterThan(10000);
         if (fault === 'part-ENOSPC') {
+          // The first part is read once a later part than its next has begun: by then it was ended and written out.
           await expect
             .poll(() => readdirSync(dir).filter((file) => file.endsWith('.mkv')).length)
-            .toBeGreaterThanOrEqual(2);
+            .toBeGreaterThanOrEqual(3);
           const file = readdirSync(dir).find((file) => file.endsWith('.mkv') && !file.includes(' part '));
           if (!file) throw new Error('No earlier recording part');
           earlier = { file: join(dir, file), bytes: readFileSync(join(dir, file)) };
