@@ -590,7 +590,7 @@ export class StreamService {
       this.deps.log('info', "The stream's page loaded");
       this.programReady = true;
       this.pairPreviews();
-      this.pairEncoder();
+      this.pairPictureEncoder();
       this.pairSoundMeter();
       this.changed();
       this.deps.programChanged?.();
@@ -1056,6 +1056,10 @@ export class StreamService {
   /** Give the worker a port to the stream's page for its frames and sound. */
   private pairEncoder(): void {
     this.pairEncoderSound();
+    this.pairPictureEncoder();
+  }
+
+  private pairPictureEncoder(): void {
     const program = this.program;
     const worker = this.worker;
     if (!worker || !pageAlive(program) || !this.programReady) return;
@@ -1092,7 +1096,7 @@ export class StreamService {
       'warn',
       `The stream has had no picture from its page for ${wait / 1000} s: connecting it again`,
     );
-    this.pairEncoder();
+    this.pairPictureEncoder();
   }
 
   /** Stop the worker when neither live nor recording is wanted. */
