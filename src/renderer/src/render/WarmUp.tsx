@@ -1144,6 +1144,29 @@ export function WarmUp({
   // every picture in it is decoded where the screen draws it; again a moment on (what is drawn again in part);
   // then done.
   const pulse = useRef<HTMLDivElement>(null);
+  // The LIVE box's rounded corners (a21): an opaque black square over the drawing at each, twice the box's inner corner
+  // and 2 px more, so the group's black there is exact. Over the drawing, the translucent cover's black rounded to a
+  // level now and then (see above), and the box's antialiased corners showed it in some frames on CI's Mac
+  // (warm-up.spec:428's flaky level or two); the black reference, with no drawing, never did.
+  const [cornerSquare, setCornerSquare] = useState<{ width: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = canvasHost.current;
+    if (page !== 'live' || !el) return;
+    const fit = () => {
+      const bounds = el.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      const side = 2 * clippingCorner(el) + 2;
+      const width = (side * el.offsetWidth) / bounds.width;
+      const height = (side * el.offsetHeight) / bounds.height;
+      setCornerSquare((was) => (was?.width === width && was.height === height ? was : { width, height }));
+    };
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+    };
+  }, [page, tree]);
   useEffect(() => {
     // Nothing more once it has ended (but its last step): a scene that failed as its step was drawn (Session 57) ends
     // it before this step's frames would begin, so the clock it let go stays free for the show.
@@ -1319,6 +1342,24 @@ export function WarmUp({
                   </div>
                 </WarmUpBoundary>
               )}
+              {cornerSquare &&
+                (['left', 'right'] as const).flatMap((x) =>
+                  (['top', 'bottom'] as const).map((y) => (
+                    <div
+                      key={`${x}-${y}`}
+                      data-warm-corner=""
+                      style={{
+                        position: 'absolute',
+                        [x]: 0,
+                        [y]: 0,
+                        width: cornerSquare.width,
+                        height: cornerSquare.height,
+                        background: '#000000',
+                        zIndex: 0,
+                      }}
+                    />
+                  )),
+                )}
               {/* Above the drawing, so a moved speck still asks for a frame; below the translucent black cover. */}
               <div
                 ref={pulse}
