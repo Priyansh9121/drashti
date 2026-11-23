@@ -330,7 +330,9 @@ export class ModelPackStore {
         this.tell(true);
       } else {
         // Any other read error may pass (a busy disk, a moment's lock): not damage; checked again at the next use.
-        this.deps.log.warn(`Model packs: ${pack.dir} could not be checked now (${code ?? 'error'}, model ${id})`);
+        this.deps.log.warn(
+          `Model packs: ${pack.dir} could not be checked now (${code ?? 'error'}, model ${id})`,
+        );
       }
       return null;
     }

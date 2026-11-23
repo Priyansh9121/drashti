@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type * as NodeFs from 'node:fs';
 import {
   appendFileSync,
   existsSync,
@@ -27,7 +28,7 @@ import { ModelPackStore } from './store';
 /** One read that fails the way a busy or briefly locked disk does (EIO), for the next file read only. */
 const readFault = vi.hoisted(() => ({ next: false }));
 vi.mock('node:fs', async (original) => {
-  const fs = await original<typeof import('node:fs')>();
+  const fs = await original<typeof NodeFs>();
   return {
     ...fs,
     createReadStream: (...args: Parameters<typeof fs.createReadStream>) => {
