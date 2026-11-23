@@ -178,7 +178,8 @@ function ct2Sources(ct2) {
     .map((f) => join(ct2, f));
 }
 
-async function buildMac(target, { ct2, spm }, work, parallel) {
+/** Every file the Mac build compiles, with its flags (exported for a quick front-end check of each kind). */
+export function macJobs(target, { ct2, spm }, work) {
   const x86 = TARGETS[target].arch === 'x86_64';
   const archFlags = ['-arch', TARGETS[target].arch, '-mmacosx-version-min=12.0'];
   const ruy = join(ct2, 'third_party', 'ruy');
@@ -242,6 +243,8 @@ async function buildMac(target, { ct2, spm }, work, parallel) {
       `-I${join(cpuFeatures, 'include')}`,
       `-I${join(cpuFeatures, 'include', 'internal')}`,
       '-DSTACK_LINE_READER_BUFFER_SIZE=1024',
+      // As its CMakeLists finds on a Mac.
+      '-DHAVE_SYSCTLBYNAME',
     ];
     for (const f of readdirSync(join(cpuFeatures, 'src')).filter(
       (n) => /^impl_.*\.c$/u.test(n) || ['filesystem.c', 'stack_line_reader.c', 'string_view.c'].includes(n),
@@ -292,7 +295,9 @@ async function buildMac(target, { ct2, spm }, work, parallel) {
     '-pthread',
     '-DHAVE_PTHREAD=1',
     '-D_USE_INTERNAL_STRING_VIEW',
-    '-D_FREEBSD',
+    // As SentencePiece's CMakeLists: its own folder ("third_party/absl/…" includes), its absl, its sources.
+    `-I${spm}`,
+    `-I${join(spmThird, 'absl')}`,
     `-I${gen}`,
     `-I${spmSrc}`,
     `-I${join(spmSrc, 'builtin_pb')}`,
@@ -341,6 +346,11 @@ async function buildMac(target, { ct2, spm }, work, parallel) {
       '-D_USE_INTERNAL_STRING_VIEW',
     ],
   });
+  return { jobs, archFlags };
+}
+
+async function buildMac(target, trees, work, parallel) {
+  const { jobs, archFlags } = macJobs(target, trees, work);
   const objects = await compileAll(jobs, join(work, 'obj'), archFlags, parallel);
   const exe = join(work, TARGETS[target].exe);
   run('clang++', [
