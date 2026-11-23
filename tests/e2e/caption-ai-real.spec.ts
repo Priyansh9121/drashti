@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { captionClips, characterErrorRate, fakeMicrophoneFile } from './caption-clips';
 import { routeCInTheApp } from './route-c-in-app';
@@ -33,18 +34,23 @@ const ROUTES = [
   { language: 'hi', name: 'Hindi', pack: 'pack-hi-indicconformer-int8', model: 'hi-indicconformer-ctc-int8' },
 ] as const;
 
+/** Where CI keeps the fetched packs (ci.yml caches it; outside ~/.cache/drashti, which FFmpeg's cache saves whole). */
+const PACKS = join(homedir(), '.cache', 'drashti-caption-models');
+
 /** The pack zip CI fetched (cap-winci's script, offline: it checks the cached copy and never downloads). */
 function fetchedPack(id: string): string {
-  const run = spawnSync(process.execPath, ['scripts/fetch-caption-models.mjs', '--offline', id], {
-    encoding: 'utf8',
-  });
+  const run = spawnSync(
+    process.execPath,
+    ['scripts/fetch-caption-models.mjs', '--offline', '--cache', PACKS, id],
+    { encoding: 'utf8' },
+  );
   const line = run.stdout
     .split(/\r?\n/u)
     .find((l) => l.startsWith(`${id}=`))
     ?.slice(id.length + 1);
   if (run.status !== 0 || !line)
     throw new Error(
-      `The real caption pack ${id} is not fetched on this computer: run node scripts/fetch-caption-models.mjs ${id} first (CI does). ${run.stderr.trim()}`,
+      `The real caption pack ${id} is not fetched on this computer: run node scripts/fetch-caption-models.mjs --cache ${PACKS} ${id} first (CI does). ${run.stderr.trim()}`,
     );
   return line;
 }

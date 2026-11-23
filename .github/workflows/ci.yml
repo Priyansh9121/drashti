@@ -262,7 +262,7 @@ jobs:
           key: caption-models-${{ hashFiles('scripts/fetch-caption-models.mjs') }}
       - name: Fetch the caption packs (caption AI's real recogniser)
         if: env.QUICK != 'true' || contains(inputs.specs, 'caption-ai-real')
-        run: node scripts/fetch-caption-models.mjs pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
+        run: node scripts/fetch-caption-models.mjs --cache ~/.cache/drashti-caption-models pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
       - name: Route C in the app (the generated test model, then alpha.22's packs; generated sound as the stream's input)
         if: env.QUICK != 'true'
         env:
