@@ -11,7 +11,16 @@
  * of real time on CI's Mac (a21-s5-1123-121533-19312), so the picture's sound was pulled late and slow. Where no graph
  * can be had (no Web Audio, a page whose graph never runs, a source that cannot be taken) the picture stays muted, on
  * its own clock, as before.
+ *
+ * Never silent to Chromium (QA21-S5-3, the owner: A): an output that has rendered only zeros for 30 s is moved to a
+ * stand-in sink paced by a thread-pool timer (SilentSinkSuspender), as slow as sinkId 'none' was, so a cue held past
+ * that started 45-102 ms late on CI's Mac (a21-s5-1123-152334-44457). The graph sends its output a constant below half a
+ * 24-bit output's step: not zeros to that check, yet every 16- or 24-bit output receives exactly 0. The graph runs only
+ * while a cued picture uses or waits for it (it rests otherwise), so the output is kept only then.
  */
+
+/** About -150 dB: below half a 24-bit step (2^-24), so no output can make a sound of it. */
+export const KEEP_OUTPUT_LEVEL = 2 ** -25;
 
 /** The one silent graph of this page that a cued picture's sound is pulled by (made on first use). */
 export interface SilentGraph {
@@ -27,6 +36,10 @@ export function createSilentGraph(make: (options: AudioContextOptions) => AudioC
     const sink = context.createGain();
     sink.gain.value = 0;
     sink.connect(context.destination);
+    const keep = context.createConstantSource();
+    keep.offset.value = KEEP_OUTPUT_LEVEL;
+    keep.connect(context.destination);
+    keep.start();
     void context.resume().catch(() => undefined);
     return { context, sink };
   } catch {
