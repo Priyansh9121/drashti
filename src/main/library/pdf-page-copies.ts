@@ -21,7 +21,6 @@ export function keepPdfPages(
       .map((group) => ({ ...group, slides: group.slides.filter((page) => ids.has(page.id)) }))
       .filter((group) => group.slides.length),
   };
-  if (slidesOf(chosen).some((page) => page.documentPage?.ext !== 'pdf')) throw new Error('Choose PDF pages.');
   return db.transaction(() => {
     const libraryId = (
       db
