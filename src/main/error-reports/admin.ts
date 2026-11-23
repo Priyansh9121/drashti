@@ -13,7 +13,8 @@ export async function manageErrorReports(
   if (!status.healthy) {
     await dialog.showMessageBox(parent, {
       type: 'error',
-      message: 'Automatic error reports could not read or save their settings.',
+      message:
+        'Automatic error reports could not read or save their settings. Check this computer’s data folder.',
       detail:
         'Reporting is off. Ask the admin to check this computer’s data folder before setting it up again.',
     });
@@ -56,7 +57,10 @@ export async function manageErrorReports(
       if (!stat.isFile() || stat.size > 4096) throw new Error('size');
       input = JSON.parse(await fs.readFile(path, 'utf8')) as unknown;
     } catch {
-      await dialog.showMessageBox(parent, { type: 'error', message: 'That setup file could not be read.' });
+      await dialog.showMessageBox(parent, {
+        type: 'error',
+        message: 'That setup file could not be read. Ask the admin for a new copy, then choose Set Up again.',
+      });
       return;
     }
     const configured = service.configure(input);
