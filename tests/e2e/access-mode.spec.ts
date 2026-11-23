@@ -61,6 +61,38 @@ const tryAll = (win: Page) =>
     };
   });
 
+/** After the list's answer, the window shows the change within this (it is told at once: a few seconds is plenty). */
+const FOLLOWS_MS = 5_000;
+
+/** The checks the stand-in list has answered (a check answered 503, or that never reached it, is not one). */
+const checksAnswered = (s: AccessStandIn) => s.calls.filter((op) => op === 'check').length;
+
+/** Main's line for each check it has made, answered or not ("Access: check 3: let in (9 ms)", service.ts). */
+const checkLines = (userData: string) =>
+  readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
+    .split('\n')
+    .filter((l) => /Access: check \d+: /u.test(l));
+
+/**
+ * The owner's change is in Drashti's hands once the list has answered a check after it: wait for that answer. Drashti
+ * checks every 15 s, and a check with no answer is asked again at the next, 15 s on (service.ts, as designed); on CI's
+ * Windows a check's connection can fail at once (alpha.20.1's final5: its job logged net::ERR_NO_BUFFER_SPACE, and
+ * access-mode.spec.ts:119 missed its 25 s). Each wait keeps the test's 25 s: Main's next check comes within 25 s of the
+ * change, and within 25 s of each check of Main's the list did not answer.
+ */
+async function listAnswersAfterTheChange(s: AccessStandIn, userData: string, change: string): Promise<void> {
+  const answered = checksAnswered(s);
+  while (checksAnswered(s) <= answered) {
+    const made = checkLines(userData).length;
+    await expect
+      .poll(() => checkLines(userData).length, {
+        timeout: 25_000,
+        message: `after the owner's ${change}: Main's next check within 25 s (of the change, or of its check with no answer)`,
+      })
+      .toBeGreaterThan(made);
+  }
+}
+
 /**
  * Each call the stand-in list hears and answers, with the test's own moments, by this computer's clock: read beside
  * Main's access lines (its log's own times) when a test fails.
@@ -108,7 +140,11 @@ async function keepNetworkLog(app: ElectronApplication): Promise<void> {
 
 test('Simple access: Simple Mode only, with no way to Pro Mode in the window, the View menu or the main process; the owner giving Pro, Pro Mode comes back by itself, and Simple again drops it to Simple Mode', async () => {
   test.setTimeout(150_000);
-  const { app, access: s } = await launchApp({}, undefined, {
+  const {
+    app,
+    access: s,
+    userData,
+  } = await launchApp({}, undefined, {
     as: { gmail: SIMPLE_PERSON },
     mode: 'simple',
   });
@@ -144,14 +180,16 @@ test('Simple access: Simple Mode only, with no way to Pro Mode in the window, th
 
     // The owner gives this Gmail Pro: at its next check (every 15 s), Pro Mode comes back by itself.
     s.setMode(SIMPLE_PERSON, 'pro');
-    await expect(simple).toHaveCount(0, { timeout: 25_000 });
+    await listAnswersAfterTheChange(s, userData, 'Pro');
+    await expect(simple).toHaveCount(0, { timeout: FOLLOWS_MS });
     expect(await modeOf(win)).toBe('pro');
     await expect(win.getByTestId('app-header')).toBeVisible();
     expect(await switchOffered(app)).toBe(true);
 
     // And Simple again: dropped to Simple Mode at that answer, with no way back.
     s.setMode(SIMPLE_PERSON, 'simple');
-    await expect(simple).toBeVisible({ timeout: 25_000 });
+    await listAnswersAfterTheChange(s, userData, 'Simple');
+    await expect(simple).toBeVisible({ timeout: FOLLOWS_MS });
     expect(await modeOf(win)).toBe('simple');
     await expect(win.getByTestId('simple-leave')).toHaveCount(0);
     expect(
@@ -181,11 +219,13 @@ test('Pro access: Simple Mode the operator chose stays when the owner gives Simp
     // Simple access: the way out goes at the next check.
     said.mark('the owner gives Simple');
     s.setMode(SIMPLE_PERSON, 'simple');
-    await expect(win.getByTestId('simple-leave')).toHaveCount(0, { timeout: 25_000 });
+    await listAnswersAfterTheChange(s, userData, 'Simple');
+    await expect(win.getByTestId('simple-leave')).toHaveCount(0, { timeout: FOLLOWS_MS });
     // Pro again: the way out is back, and Simple Mode stays, the operator's own choice.
     said.mark('the owner gives Pro');
     s.setMode(SIMPLE_PERSON, 'pro');
-    await expect(win.getByTestId('simple-leave')).toBeVisible({ timeout: 25_000 });
+    await listAnswersAfterTheChange(s, userData, 'Pro');
+    await expect(win.getByTestId('simple-leave')).toBeVisible({ timeout: FOLLOWS_MS });
     await holdStill(
       async () => (await modeOf(win)) === 'simple',
       3000,
@@ -221,7 +261,7 @@ async function failTheNextCheck(s: AccessStandIn): Promise<void> {
 
 test('Pro access, the check after the owner gives Pro again with no answer (a connection that fails at once, as on CI’s Windows): the way out is back at the list’s next answer, and Simple Mode stays', async () => {
   test.setTimeout(150_000);
-  const { app, access: s } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON } });
+  const { app, access: s, userData } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON } });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -229,14 +269,14 @@ test('Pro access, the check after the owner gives Pro again with no answer (a co
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     await expect(win.getByTestId('simple-leave')).toBeVisible();
     s.setMode(SIMPLE_PERSON, 'simple');
-    await expect(win.getByTestId('simple-leave')).toHaveCount(0, { timeout: 25_000 });
-    const changed = Date.now();
+    await listAnswersAfterTheChange(s, userData, 'Simple');
+    await expect(win.getByTestId('simple-leave')).toHaveCount(0, { timeout: FOLLOWS_MS });
     s.setMode(SIMPLE_PERSON, 'pro');
     await failTheNextCheck(s);
-    // As the test above asks today: the way out back within 25 s of the owner's change.
-    await expect(win.getByTestId('simple-leave')).toBeVisible({
-      timeout: Math.max(1, 25_000 - (Date.now() - changed)),
-    });
+    // Still Simple access: no answer came after the owner's change.
+    await expect(win.getByTestId('simple-leave')).toHaveCount(0);
+    await listAnswersAfterTheChange(s, userData, 'Pro');
+    await expect(win.getByTestId('simple-leave')).toBeVisible({ timeout: FOLLOWS_MS });
     await holdStill(
       async () => (await modeOf(win)) === 'simple',
       3000,
