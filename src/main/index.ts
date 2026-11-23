@@ -466,7 +466,9 @@ import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
-import { knownLanguageModels, languageModelFile, languageModelStore } from './speech/language-models';
+import { knownLanguageModels } from './speech/language-models';
+import { packFileFor, packLanguageModelStore } from './speech/pack-language-models';
+import { createWhisperRoute } from './speech/whisper-route';
 import { handleModelPacks } from './model-packs/ipc';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
@@ -3810,11 +3812,24 @@ function start(): void {
     platform: process.platform,
     arch: process.arch,
   });
+  // ---- caption and translation models (alpha.22, cap-pack) ---------------------------------------------------
+  // An offline pack an admin imports (Help › Caption and Translation Models…, Pro Mode), every file checked, kept in
+  // the data folder's model-packs/ (outside the library and its backups). Never fetched; nothing uses it until a
+  // caption or translation engine asks (modelPacks.model / acquire): today's captions are as they were.
+  const modelPacks = new ModelPackStore({ root: join(app.getPath('userData'), 'model-packs'), log });
+  modelPacks.start();
+  modelPacks.onChanged((status) => {
+    sendToOperator(IPC.modelPacks.changed, status);
+  });
+  stops.add('model packs', () => {
+    modelPacks.close();
+  });
   const captionsData = app.getPath('userData');
-  // A model of its own per language (alpha.22): the ones this copy knows (tests: DRASHTI_TEST_SPEECH_MODELS).
-  const languageModels = languageModelStore(
-    captionsData,
+  // A model of its own per language (alpha.22): the ones this copy knows (tests: DRASHTI_TEST_SPEECH_MODELS), and
+  // only from the offline model pack above (the lead's Q-CAPI-2 A): no file comes in any other way.
+  const languageModels = packLanguageModelStore(
     knownLanguageModels(packaged() ? undefined : sw('DRASHTI_TEST_SPEECH_MODELS')),
+    modelPacks,
   );
   // Caption words (alpha.22): the admin's names and terms, kept in the library (File › Live Captions… › Caption
   // Words…, Pro Mode). The engine is given the first ones as hints; each phrase heard goes through the spelling fixer.
@@ -3860,9 +3875,8 @@ function start(): void {
           // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
           model: (language) => {
             const own = captions.languageModelFor(language);
-            return own
-              ? languageModelFile(captionsData, own.id)
-              : modelFile(captionsData, captions.selectedModel());
+            const file = own ? packFileFor(modelPacks, own)?.path : undefined;
+            return file ?? modelFile(captionsData, captions.selectedModel());
           },
           // Asked before every start of the program: a language's own model not ready is never loaded.
           modelProblem: (language) => captions.modelProblem(language),
@@ -3876,6 +3890,28 @@ function start(): void {
           hints: captionWords.hints,
           log,
         });
+  // Route W (alpha.22, cap-integration): a Gujarati, Hindi or English model of its own from the pack, on Drashti's
+  // whisper engine (the stand-in in tests), decoded as that model needs (no timestamps for the tuned ones).
+  const whisperRoute = createWhisperRoute({
+    store: modelPacks,
+    known: (sha256) => {
+      const entry = languageModels.known().find((e) => e.sha256 === sha256);
+      return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
+    },
+    engine: (file, use) =>
+      testSpeech !== undefined
+        ? speechEngine
+        : createWhisperEngine({
+            program: () => whisperProgram,
+            model: () => file,
+            fallback: () => use.fallback,
+            timestamps: () => use.timestamps,
+            timing: () => captions.timing(),
+            sound: { open: (chunk) => streaming.listenSound(chunk) },
+            hints: captionWords.hints,
+            log,
+          }),
+  });
   // Caption AI (alpha.22, cap-integration): a speaker's language with a model of its own is heard through the
   // captions coordinator (Codex x90): one clause at a time in at most two lines, provisional while heard, settled
   // when final. As heard, Sanskrit and a language without its own model keep today's captions exactly.
@@ -3897,7 +3933,13 @@ function start(): void {
       ...ownModelCaptionAi({
         language: () => parseCaptionSettings(captionSettingsRepo.get()).language,
         ownModel: (language) => captions.languageModelFor(language),
-        engine: speechEngine,
+        // Route W: the pack's file, checked again by the pack when first heard and held while heard.
+        engineFor: (own) => {
+          const entry = languageModels.known().find((e) => e.id === own.id);
+          const found = entry ? packFileFor(modelPacks, entry) : null;
+          const packed = found ? modelPacks.model(found.modelId) : null;
+          return entry && packed ? whisperRoute.make(packed, entry.language) : null;
+        },
       }),
       coordinator: captionCoordinator,
     },
@@ -3973,18 +4015,6 @@ function start(): void {
     fromOperator(e) ? captions.setTiming(parseCaptionTiming(timing)) : captions.view(),
   );
 
-  // ---- caption and translation models (alpha.22, cap-pack) ---------------------------------------------------
-  // An offline pack an admin imports (Help › Caption and Translation Models…, Pro Mode), every file checked, kept in
-  // the data folder's model-packs/ (outside the library and its backups). Never fetched; nothing uses it until a
-  // caption or translation engine asks (modelPacks.model / acquire): today's captions are as they were.
-  const modelPacks = new ModelPackStore({ root: join(app.getPath('userData'), 'model-packs'), log });
-  modelPacks.start();
-  modelPacks.onChanged((status) => {
-    sendToOperator(IPC.modelPacks.changed, status);
-  });
-  stops.add('model packs', () => {
-    modelPacks.close();
-  });
   handleModelPacks({
     handle,
     fromOperator,

@@ -67,8 +67,8 @@ export interface OwnModelCaptionAiOptions {
   language(): SpeechLanguage | 'auto';
   /** That language's own model, chosen on this computer and checked (CaptionsService.languageModelFor), or null. */
   ownModel(language: SpeechLanguage | 'auto'): { id: string } | null;
-  /** Drashti's whisper engine: it loads the language's own model itself. */
-  engine: SpeechEngine;
+  /** The recognizer for that model (Route W on the pack's file, held while heard), or null when it cannot be had. */
+  engineFor(model: { id: string }): SpeechEngine | null;
 }
 
 /**
@@ -86,7 +86,8 @@ export function ownModelCaptionAi(o: OwnModelCaptionAiOptions): {
     },
     recognizer: (language) => {
       const own = o.ownModel(language);
-      return own ? { route: 'whisper', modelId: own.id, engine: o.engine } : null;
+      const engine = own ? o.engineFor(own) : null;
+      return own && engine ? { route: 'whisper', modelId: own.id, engine } : null;
     },
   };
 }

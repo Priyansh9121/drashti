@@ -82,7 +82,7 @@ describe('caption AI routes', () => {
     const ai = ownModelCaptionAi({
       language: () => language,
       ownModel: (l) => (l === 'gu' ? { id: 'gu-own-placeholder' } : null),
-      engine: whisperEngine,
+      engineFor: (model) => (model.id === 'gu-own-placeholder' ? whisperEngine : null),
     });
     expect(ai.on()).toBe(true);
     expect(ai.recognizer('gu')).toEqual({

@@ -16,7 +16,7 @@ const model = (sha256 = KNOWN): PackModel => ({
 });
 
 function setup(o: { held?: PackModel | null } = {}) {
-  const ran: { file: string; fallback: boolean; language: string }[] = [];
+  const ran: { file: string; fallback: boolean; timestamps: boolean; language: string }[] = [];
   const released: string[] = [];
   let finish: (h: { model: PackModel; release(): void } | null) => void = () => undefined;
   const route = createWhisperRoute({
@@ -26,10 +26,10 @@ function setup(o: { held?: PackModel | null } = {}) {
           finish = resolve;
         }),
     },
-    known: (sha) => (sha === KNOWN ? { fallback: true } : null),
-    engine: (file, fallback): SpeechEngine => ({
+    known: (sha) => (sha === KNOWN ? { fallback: false, timestamps: false } : null),
+    engine: (file, use): SpeechEngine => ({
       start(language, to) {
-        ran.push({ file, fallback, language });
+        ran.push({ file, fallback: use.fallback, timestamps: use.timestamps, language });
         to.state({ phase: 'listening', language });
         return () => released.push('engine');
       },
@@ -53,7 +53,7 @@ describe('Route W from the pack', () => {
     t.hold();
     await settle();
     expect(t.ran).toEqual([
-      { file: '/placeholder/pack/captions/gu/model.bin', fallback: true, language: 'gu' },
+      { file: '/placeholder/pack/captions/gu/model.bin', fallback: false, timestamps: false, language: 'gu' },
     ]);
     expect(t.states.at(-1)).toEqual({ phase: 'listening', language: 'gu' });
     stop?.();

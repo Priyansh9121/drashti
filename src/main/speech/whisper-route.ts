@@ -14,12 +14,21 @@ export interface WhisperRouteStore {
   acquire(id: string, signal?: AbortSignal): Promise<{ model: PackModel; release(): void } | null>;
 }
 
+/** How a known model file is decoded. */
+export interface WhisperModelUse {
+  fallback: boolean;
+  timestamps: boolean;
+}
+
 export interface WhisperRouteOptions {
   store: WhisperRouteStore;
-  /** Whether Drashti knows this file (cap-whisper's list), and whether whisper's warmer retry suits it. */
-  known(sha256: string): { fallback: boolean } | null;
+  /**
+   * Whether Drashti knows this file (cap-whisper's list), and how it is decoded: whisper's warmer retry or not, with
+   * timestamps or not (the tuned models were trained without them).
+   */
+  known(sha256: string): WhisperModelUse | null;
   /** Drashti's whisper engine on this file (index.ts: createWhisperEngine with the stream's sound and the timing). */
-  engine(file: string, fallback: boolean): SpeechEngine;
+  engine(file: string, use: WhisperModelUse): SpeechEngine;
 }
 
 const UNCHECKED =
@@ -55,7 +64,7 @@ export function createWhisperRoute(o: WhisperRouteOptions): CaptionRoute {
                 return;
               }
               hold = held;
-              stopEngine = o.engine(file, known.fallback).start(language, to);
+              stopEngine = o.engine(file, known).start(language, to);
             });
           return () => {
             stopped = true;

@@ -28,6 +28,7 @@ import { Toggle } from '../ui/Toggle';
 import { CaptionWordsSection } from './CaptionWordsDialog';
 import { closeCaptions, connectCaptions, takeCaptions, useCaptions } from './captions-store';
 import { CaptionPrototypePanel } from './CaptionPrototypePanel';
+import { openModelPacks } from '../model-packs/model-packs-store';
 import {
   captionsStateText,
   downloadText,
@@ -285,15 +286,15 @@ function LanguageModelRow({ model }: { model: LanguageModelView }) {
             {unknownChosen && <option value={model.chosen ?? ''}>Not known in this copy of Drashti</option>}
           </Select>
         </Field>
+        {/* A model of its own comes only with the offline model pack (the lead's Q-CAPI-2 A, alpha.22). */}
         <Button
           size="sm"
-          data-testid={`captions-language-model-${model.language}-add`}
-          disabled={checking}
+          data-testid={`captions-language-model-${model.language}-packs`}
           onClick={() => {
-            takeCaptions(window.drashti.captions.addLanguageModel(model.language));
+            openModelPacks();
           }}
         >
-          Add a model file…
+          Caption and Translation Models…
         </Button>
       </div>
       {refused ? (
