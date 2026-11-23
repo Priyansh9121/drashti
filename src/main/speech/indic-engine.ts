@@ -227,6 +227,14 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           capturedStart > endAt
         )
           return;
+        const room = SAMPLE_RATE * 12 - (phrase?.length ?? 0);
+        if (samples.length > room) {
+          // Capture callbacks need not divide twelve seconds evenly. Keep both sides and their capture clock.
+          const boundary = capturedStart + ((endAt - capturedStart) * room) / samples.length;
+          chunk(samples.subarray(0, room), boundary, capturedStart);
+          chunk(samples.subarray(room), endAt, boundary);
+          return;
+        }
         let sum = 0;
         for (const s of samples) sum += s * s;
         const level = Math.sqrt(sum / Math.max(1, samples.length));
