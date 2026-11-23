@@ -22,7 +22,7 @@ test('the operator can rehearse provisional, settled and corrected clauses; stal
     await expect(hall.getByTestId('captions')).toHaveText('The blue box');
     await expect(dialog.getByTestId('captions-review-status')).toContainText('Provisional');
     await dialog.getByRole('button', { name: 'Next placeholder update' }).click();
-    await expect(hall.getByTestId('captions')).toHaveText('The green box moves beside a round shape.');
+    await expect(hall.getByTestId('captions')).toHaveText('The green box is beside a round shape.');
     await dialog.getByRole('button', { name: 'Correct last phrase…' }).click();
     await dialog.getByLabel('Corrected phrase').fill('The red box stays beside a round shape.');
     await dialog.getByRole('button', { name: 'Apply correction' }).click();
@@ -43,7 +43,7 @@ test('the operator can rehearse provisional, settled and corrected clauses; stal
     await expect(hall.getByTestId('captions')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Next placeholder update' }).click();
     await dialog.getByRole('button', { name: 'Next placeholder update' }).click();
-    await expect(hall.getByTestId('captions')).toHaveText('The green box moves beside a round shape.');
+    await expect(hall.getByTestId('captions')).toHaveText('The green box is beside a round shape.');
 
     // Long wide glyphs must actually fit, not just be clipped to an estimated character count.
     await dialog.getByRole('button', { name: 'Correct last phrase…' }).click();

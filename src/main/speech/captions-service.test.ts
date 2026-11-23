@@ -224,7 +224,7 @@ describe('phase D prototype alongside the existing captions service', () => {
     service.advancePrototype();
     service.advancePrototype();
     vi.advanceTimersByTime(300);
-    expect(shown.at(-1)?.lines).toEqual(['The green box moves beside a round shape.']);
+    expect(shown.at(-1)?.lines).toEqual(['The green box is beside a round shape.']);
     expect(started).toEqual([]);
     expect(downloads).toEqual([]);
     expect(JSON.stringify(service.view())).not.toContain('green box');

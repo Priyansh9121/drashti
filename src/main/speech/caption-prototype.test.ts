@@ -23,7 +23,7 @@ describe('manual placeholder recognizer prototype', () => {
     expect(p.view().current).toMatchObject({ phraseId: 's1', revision: 1, sourceText: 'The blue box', status: 'provisional' });
     p.advance();
     vi.advanceTimersByTime(300);
-    expect(last()?.lines).toEqual(['The green box moves beside a round shape.']);
+    expect(last()?.lines).toEqual(['The green box is beside a round shape.']);
     expect(p.view().current).toMatchObject({ phraseId: 's1', revision: 2, status: 'settled' });
     vi.advanceTimersByTime(1_000);
     expect(p.view().current?.phraseId).toBe('s1');
