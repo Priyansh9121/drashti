@@ -125,7 +125,10 @@ export function generatedPdf(pages: readonly GeneratedPage[]): Buffer {
   return Buffer.concat(parts);
 }
 
-export async function openGeneratedPdf(pages: readonly GeneratedPage[] = PDF_PAGES) {
+export async function openGeneratedPdf(
+  pages: readonly GeneratedPage[] = PDF_PAGES,
+  env: Record<string, string> = {},
+) {
   const folder = mkdtempSync(join(tmpdir(), 'drashti-pdf-tools-'));
   const source = join(folder, 'Placeholder PDF tools.pdf');
   const original = generatedPdf(pages);
@@ -136,7 +139,7 @@ export async function openGeneratedPdf(pages: readonly GeneratedPage[] = PDF_PAG
     expect(current.equals(original), 'exact original generated PDF bytes').toBe(true);
     expect(createHash('sha256').update(current).digest('hex')).toBe(digest);
   };
-  const { app, userData } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' }, undefined, {}, [
+  const { app, userData } = await launchApp({ ...env, DRASHTI_TEST_NO_CONVERTER: '1' }, undefined, {}, [
     '--force-color-profile=srgb',
   ]);
   try {
