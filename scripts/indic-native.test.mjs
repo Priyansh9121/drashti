@@ -7,6 +7,40 @@ import { delimiter, join } from 'node:path';
 import { buildIndic } from './build-indic.mjs';
 import { makeIndicFixture } from './indic-fixture.mjs';
 
+test('the helper reports its approved ONNX Runtime without any model (the packaged self-test)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'drashti-indic-'));
+  try {
+    const program = buildIndic({
+      ort: process.env.DRASHTI_ORT_ROOT,
+      output: join(root, 'bin'),
+      target: process.env.DRASHTI_INDIC_TARGET,
+    });
+    const p = spawn(program, ['--runtime'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        PATH: join(process.env.DRASHTI_ORT_ROOT, 'runtimes', 'win-x64', 'native') + delimiter + process.env.PATH,
+      },
+    });
+    let output = '',
+      errors = '';
+    p.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    p.stderr.on('data', (data) => {
+      errors += data.toString();
+    });
+    const code = await new Promise((resolve, reject) => {
+      p.once('error', reject);
+      p.once('close', resolve);
+    });
+    assert.equal(code, 0, errors);
+    assert.deepEqual(JSON.parse(output), { runtime: '1.23.2', api: 23 });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 for (const trailingSeparator of [false, true]) {
   test(`native helper decodes generated PCM with real ORT, repeats and trailing separator ${trailingSeparator}`, async (context) => {
     const root = mkdtempSync(join(tmpdir(), 'drashti-indic-'));
