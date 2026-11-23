@@ -14,6 +14,7 @@ import { engineNow } from '../render/clock';
 import { startPlayback } from '../render/playback';
 import { failureState, findDevice, setSoundState } from './camera';
 import { useProgram } from './program-store';
+import { keepSoundAhead, STREAM_SOUND_AHEAD_S } from './sound-ahead';
 import type { SpeechGraph } from './speech-tap';
 
 /*
@@ -214,6 +215,8 @@ export class StreamSound {
       el.crossOrigin = 'anonymous';
       el.dataset['key'] = sound.key;
       el.dataset['kind'] = sound.kind;
+      // Sound decoded ahead (a21-s5b), asked before its file loads: this page's pictures share its one media thread.
+      if (keepSoundAhead(el)) el.dataset['soundAhead'] = String(STREAM_SOUND_AHEAD_S);
       document.body.append(el);
       // Into the stream's mix only (an element taken into Web Audio no longer plays out loud).
       const source = this.ctx.createMediaElementSource(el);

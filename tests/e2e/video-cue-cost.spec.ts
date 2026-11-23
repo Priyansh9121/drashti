@@ -286,6 +286,46 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       };
     });
     await beginCueDiagnostics([hall, win, stream, audio]);
+    // A sound player that ran out of decoded sound while it played (its 'waiting' after 'playing', not a jump's):
+    // a hole in that page's sound. Recorded on the stream's page and, to compare, the hall's audio player.
+    const underflowWatch = (page: Page) =>
+      page.evaluate(() => {
+        const seen: { at: number; key: string; currentTime: number; readyState: number }[] = [];
+        const playing = new WeakSet<EventTarget>();
+        const own = (target: EventTarget | null): target is HTMLAudioElement =>
+          target instanceof HTMLAudioElement && target.dataset['key'] !== undefined;
+        document.addEventListener(
+          'playing',
+          (e) => {
+            if (own(e.target)) playing.add(e.target);
+          },
+          true,
+        );
+        document.addEventListener(
+          'seeking',
+          (e) => {
+            if (own(e.target)) playing.delete(e.target);
+          },
+          true,
+        );
+        document.addEventListener(
+          'waiting',
+          (e) => {
+            const el = e.target;
+            if (!own(el) || !playing.has(el) || el.seeking || el.paused) return;
+            playing.delete(el);
+            seen.push({
+              at: Date.now(),
+              key: el.dataset['key'] ?? '',
+              currentTime: el.currentTime,
+              readyState: el.readyState,
+            });
+          },
+          true,
+        );
+        (globalThis as { s5SoundUnderflows?: typeof seen }).s5SoundUnderflows = seen;
+      });
+    await Promise.all([stream, audio].map(underflowWatch));
     const decoderProcesses = await app.evaluate(
       ({ BrowserWindow }, pages) =>
         pages.map(({ role, url }) => ({
@@ -425,6 +465,18 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         ).length
       );
     }, 0);
+    const [streamUnderflows, soundUnderflows] = await Promise.all(
+      [stream, audio].map((page) =>
+        page.evaluate(
+          () =>
+            (
+              globalThis as {
+                s5SoundUnderflows?: { at: number; key: string; currentTime: number; readyState: number }[];
+              }
+            ).s5SoundUnderflows ?? null,
+        ),
+      ),
+    );
     await retainCapture();
     const ended = await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.stream.end({ confirmed: true }),
@@ -499,6 +551,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       soundPictureDecodes,
       streamAt,
       actions,
+      soundUnderflows: { stream: streamUnderflows, sound: soundUnderflows },
       encodedFrames: media.videoFrames,
       blackFrames: black,
       blackFrameIndices,
@@ -521,6 +574,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     expect(black, 'the encoded video has no black frame after its first video').toBe(0);
     expect(maxA).toBeGreaterThan(0.01);
     expect(maxB).toBeGreaterThan(0.01);
+    expect(streamUnderflows, 'the stream page’s sound players are watched').not.toBeNull();
+    expect(
+      streamUnderflows,
+      'the stream’s own sound players never run out of decoded sound while they play',
+    ).toEqual([]);
     expect(
       longest,
       'both generated tones overlap continuously through the sound crossfade',
