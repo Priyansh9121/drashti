@@ -53,7 +53,8 @@ describe("the stream page's frame grid", () => {
     expect(told.length).toBe(8);
     expect(told[0]?.periodMs).toBeCloseTo(1000 / 30, 3);
     // The frame's own begin, not its callback's time.
-    expect(((told[0]?.at ?? 0) - (1_000_000 + 5000)) % (1000 / 30)).toBeCloseTo(0, 3);
+    const phase = ((((told[0]?.at ?? 0) - (1_000_000 + 5000)) % (1000 / 30)) + 1000 / 30) % (1000 / 30);
+    expect(Math.min(phase, 1000 / 30 - phase)).toBeCloseTo(0, 3);
     stop();
     expect(cancelled).toBe(1);
   });

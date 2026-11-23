@@ -189,7 +189,11 @@ describe("the page's silent graph", () => {
           });
           return node;
         },
-        createConstantSource: () => ({ offset: { value: 1 }, connect: (to: unknown) => to, start: () => undefined }),
+        createConstantSource: () => ({
+          offset: { value: 1 },
+          connect: (to: unknown) => to,
+          start: () => undefined,
+        }),
         resume: () => {
           resumed++;
           return Promise.resolve();

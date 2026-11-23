@@ -30,10 +30,12 @@ export function frameSpacing(begins: readonly number[]): number | null {
 export function fitGrid(begins: readonly number[]): FrameGrid | null {
   if (begins.length < FEWEST) return null;
   const rough = frameSpacing(begins);
-  const last = begins.at(-1);
-  if (rough === null || last === undefined) return null;
-  // Each frame's number counted back from the newest (0), a missed frame leaving its number unused.
-  const n = begins.map((t) => Math.round((t - last) / rough));
+  if (rough === null) return null;
+  // Each frame's number, gap by gap (a missed frame leaving its number unused), so a spacing a little off the
+  // average never miscounts frames over two seconds.
+  const n: number[] = [0];
+  for (let i = 1; i < begins.length; i++)
+    n.push((n[i - 1] ?? 0) + Math.max(1, Math.round(((begins[i] ?? 0) - (begins[i - 1] ?? 0)) / rough)));
   const count = begins.length;
   const meanN = n.reduce((a, b) => a + b, 0) / count;
   const meanT = begins.reduce((a, b) => a + b, 0) / count;
@@ -46,7 +48,8 @@ export function fitGrid(begins: readonly number[]): FrameGrid | null {
   }
   if (!(spread > 0)) return null;
   const periodMs = across / spread;
-  return { at: meanT - meanN * periodMs, periodMs };
+  // The newest frame's place on the fitted grid.
+  return { at: meanT + ((n.at(-1) ?? 0) - meanN) * periodMs, periodMs };
 }
 
 /**
