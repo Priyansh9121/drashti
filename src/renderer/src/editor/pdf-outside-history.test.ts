@@ -2,8 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { noteOutside, undo, redo, useEditor } from './editor-store';
 import { newSlide } from './ops';
 import type { EditDoc } from '../../../shared/slide-edit';
-const doc: EditDoc = { presentationId: 'placeholder', name: 'Placeholder', width: 400, height: 300, loop: false, transition: null, groups: [{ id: 'group', name: '', color: null, slides: [newSlide(null)] }] };
-beforeEach(() => useEditor.setState({ doc, opened: doc, past: [], future: [], editing: null, sourceConversion: null }));
+const doc: EditDoc = {
+  presentationId: 'placeholder',
+  name: 'Placeholder',
+  width: 400,
+  height: 300,
+  loop: false,
+  transition: null,
+  groups: [{ id: 'group', name: '', color: null, slides: [newSlide(null)] }],
+};
+beforeEach(() =>
+  useEditor.setState({ doc, opened: doc, past: [], future: [], editing: null, sourceConversion: null }),
+);
 describe('PDF external Undo acknowledgement', () => {
   it('retains a refused step, then advances only when Main confirms Undo and Redo', async () => {
     let allowed = false;

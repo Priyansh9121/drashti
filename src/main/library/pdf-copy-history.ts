@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { link, lstat, readFile, realpath, rename, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import type { PdfCopyReceipt } from './pdf-copy-file';
 import type { BigIntStats } from 'node:fs';
 interface Copy {
   path: string;
@@ -22,13 +23,17 @@ const same = (a: BigIntStats, b: BigIntStats) =>
 export class PdfCopyHistory {
   private copies = new Map<string, Copy>();
   private busy = false;
-  async keep(path: string): Promise<string> {
+  async keep(path: string, expected: PdfCopyReceipt): Promise<string> {
     const canonical = await realpath(path);
     const identity = await lstat(canonical, { bigint: true });
     if (!identity.isFile() || identity.isSymbolicLink() || identity.size > 64n * 1024n * 1024n)
       throw new Error('The generated PDF changed.');
     const hash = digest(await readFile(canonical));
-    if (!same(identity, await lstat(canonical, { bigint: true })))
+    if (
+      !same(expected.identity, identity) ||
+      hash !== expected.hash ||
+      !same(identity, await lstat(canonical, { bigint: true }))
+    )
       throw new Error('The generated PDF changed.');
     const id = randomUUID();
     this.copies.set(id, {
@@ -38,7 +43,26 @@ export class PdfCopyHistory {
       hash,
       visible: true,
     });
+    while (this.copies.size > 200) {
+      const oldest = this.copies.entries().next().value;
+      if (!oldest) break;
+      await this.discard(oldest[1]);
+      this.copies.delete(oldest[0]);
+    }
     return id;
+  }
+  private async discard(copy: Copy): Promise<void> {
+    if (!copy.visible && (await this.matches(copy, copy.hidden))) {
+      try {
+        await unlink(copy.hidden);
+      } catch {
+        /* Leave the owned Undo file when its folder is unavailable. */
+      }
+    }
+  }
+  async stop(): Promise<void> {
+    for (const copy of this.copies.values()) await this.discard(copy);
+    this.copies.clear();
   }
   private async matches(copy: Copy, path: string): Promise<boolean> {
     try {
@@ -51,20 +75,24 @@ export class PdfCopyHistory {
       return false;
     }
   }
-  async show(id: string, visible: boolean): Promise<boolean> {
+  async show(id: string, visible: boolean, current: () => boolean = () => true): Promise<boolean> {
     const copy = this.copies.get(id);
-    if (!copy || copy.visible === visible || this.busy) return false;
+    if (!copy || copy.visible === visible || this.busy || !current()) return false;
     this.busy = true;
     try {
       if (visible) {
-        if (!(await this.matches(copy, copy.hidden))) return false;
+        if (!(await this.matches(copy, copy.hidden)) || !current()) return false;
         // link is exclusive: a file placed at the output name is never overwritten by Redo.
         await link(copy.hidden, copy.path);
         copy.visible = true;
-        await unlink(copy.hidden);
+        try {
+          await unlink(copy.hidden);
+        } catch {
+          /* The restored output is already committed. */
+        }
         return true;
       }
-      if (!(await this.matches(copy, copy.path))) return false;
+      if (!(await this.matches(copy, copy.path)) || !current()) return false;
       // Move first, then verify again before considering the file removed. Keep changed files intact.
       await rename(copy.path, copy.hidden);
       if (!(await this.matches(copy, copy.hidden))) {

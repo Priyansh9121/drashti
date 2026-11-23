@@ -39,6 +39,11 @@ describe('PDF extracted presentation storage', () => {
       expect(repo.content(copy.id)).toBeNull();
       expect(repo.restore([copy.id])).toEqual([copy.id]);
       expect(repo.content(copy.id)).toEqual(stored);
+      const added = doc.groups[0]?.slides[1];
+      if (!added) throw new Error('Generated native page missing.');
+      delete added.documentPage;
+      const nativeCopy = keepPdfPages(db, repo, doc, [1]);
+      expect(repo.content(nativeCopy.id)?.slides[0]?.document_page).toBeNull();
       const count = repo.list().length;
       expect(() => keepPdfPages(db, repo, doc, [3])).toThrow();
       expect(repo.list()).toHaveLength(count);

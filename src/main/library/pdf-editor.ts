@@ -32,6 +32,7 @@ class PdfEditorError extends Error {}
 export class PdfEditor {
   private active: { abort: AbortController; done: Promise<PdfCopyResult> } | null = null;
   private stopped = false;
+  private historyWork: Promise<boolean> | null = null;
   private readonly copies = new PdfCopyHistory();
   private readonly copyOwners = new Map<string, number>();
   constructor(private readonly deps: PdfEditorDeps) {}
@@ -43,7 +44,7 @@ export class PdfEditor {
     rawStamp: unknown,
     rawPages?: unknown,
   ): Promise<PdfCopyResult> {
-    if (this.stopped || this.active || !this.deps.allowed(event))
+    if (this.stopped || this.active || this.historyWork || !this.deps.allowed(event))
       return Promise.resolve(
         failed('A PDF copy is already being made, or this editor is no longer available.'),
       );
@@ -118,7 +119,7 @@ export class PdfEditor {
           "SELECT source_path FROM presentations WHERE source_kind = 'pictures' AND source_path IS NOT NULL",
         )
         .all() as { source_path: string }[];
-      await writePdfCopy({
+      const receipt = await writePdfCopy({
         bytes,
         newOnly: extracted,
         outputPath: output,
@@ -134,7 +135,7 @@ export class PdfEditor {
         current,
       });
       // Final rename is the writer's commit boundary; do not falsely report cancellation after publication.
-      const undoId = extracted ? await this.copies.keep(output) : undefined;
+      const undoId = extracted ? await this.copies.keep(output, receipt) : undefined;
       if (undoId) this.copyOwners.set(undoId, event.sender.id);
       return { ok: true, name: basename(output), ...(undoId ? { undoId } : {}) };
     } catch (error) {
@@ -197,13 +198,20 @@ export class PdfEditor {
     if (
       this.stopped ||
       this.active ||
+      this.historyWork ||
       !this.deps.allowed(event) ||
       typeof id !== 'string' ||
       typeof visible !== 'boolean' ||
       this.copyOwners.get(id) !== event.sender.id
     )
       return Promise.resolve(false);
-    return this.copies.show(id, visible);
+    const work = this.copies
+      .show(id, visible, () => !this.stopped && this.deps.allowed(event))
+      .finally(() => {
+        if (this.historyWork === work) this.historyWork = null;
+      });
+    this.historyWork = work;
+    return work;
   }
 
   cancel(): void {
@@ -215,5 +223,7 @@ export class PdfEditor {
     const active = this.active;
     this.cancel();
     if (active) await active.done;
+    if (this.historyWork) await this.historyWork;
+    await this.copies.stop();
   }
 }

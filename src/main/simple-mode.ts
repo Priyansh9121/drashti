@@ -554,6 +554,9 @@ export function simpleModeRefusals(
   answers.set(IPC.media.rowTrim, () => null);
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.library.stopReadingWords, () => false);
+  answers.set(IPC.library.pdfWorkAllowed, () => false);
+  answers.set(IPC.library.showExtractedPdf, () => false);
+  answers.set(IPC.library.showExtractedPdfCopy, () => false);
   answers.set(IPC.wallpapers.pickFiles, () => []);
   // Nothing made from what was dropped, saying why.
   answers.set(IPC.playlists.createSmartFrom, () => ({ made: [], files: [], problems: [words()] }));

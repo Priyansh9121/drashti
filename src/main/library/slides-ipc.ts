@@ -510,6 +510,11 @@ export function registerSlidesIpc({
     if (!fromOperator(e)) return onlyOperator;
     const checked = validateDocument(presentationId, edited, stamp, force);
     if (!checked.ok) return checked;
+    if (
+      checked.doc.groups.some((group) => group.slides.some((slide) => slide.documentPage?.ext === 'pdf')) &&
+      !mayPrepareSource(e, checked.id)
+    )
+      return { ok: false, message: 'Wait until the stream and recording are off before saving PDF pages.' };
     cancelSourcePreparation(checked.id);
     // Its words in one form, NFC, exactly as in the validated export document.
     const after = applySlideEdit(checked.before, checked.doc);

@@ -19,6 +19,10 @@ export interface PdfCopyRequest {
   /** Main's current editor/permission/sender-generation admission. */
   current?(): boolean;
 }
+export interface PdfCopyReceipt {
+  identity: BigIntStats;
+  hash: string;
+}
 export interface PdfCopyControl {
   /** Main/test-only interleaving seam; this path never crosses IPC. */
   beforePublish?(stagedFile: string): Promise<void>;
@@ -320,7 +324,10 @@ async function cleanup(file: string, identity: BigIntStats): Promise<void> {
  * a hostile filesystem actor can still race the final recheck and rename. Do
  * not broaden replacement authority beyond the exact native Save dialog choice.
  */
-export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyControl = {}): Promise<void> {
+export async function writePdfCopy(
+  request: PdfCopyRequest,
+  control: PdfCopyControl = {},
+): Promise<PdfCopyReceipt> {
   stopped(request);
   const bytes = validPdf(request.bytes);
   const hash = createHash('sha256').update(bytes).digest('hex');
@@ -382,6 +389,7 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
     } else await rename(staged, target.file);
     // No throwing admission check after this successful commit boundary.
     committed = true;
+    return { identity: finalStaged, hash };
   } catch (error) {
     if (codeIs(error, 'ABORT_ERR'))
       throw new PdfCopyError('cancelled', 'Saving the PDF copy was cancelled before publication.');

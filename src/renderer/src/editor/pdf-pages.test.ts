@@ -52,6 +52,14 @@ describe('PDF structural page operations', () => {
     expect(replacePdfPage(before, 'missing', replacement)).toBeNull();
     expect(replacePdfPage(before, 'two', page('one', 7))).toBeNull();
   });
+  it('keeps an added native page when splitting a PDF presentation', () => {
+    const doc = fixture();
+    const first = doc.groups[0]?.slides[0];
+    if (!first) throw new Error('Generated first page missing.');
+    delete first.documentPage;
+    const parts = splitPdfPages(doc, 'two');
+    expect(parts?.map(part => part.groups.flatMap(group => group.slides.map(page => page.id)))).toEqual([['one'], ['two', 'three']]);
+  });
   it('splits before the chosen page into two nonempty ordered parts sharing the master', () => {
     const before = fixture();
     const parts = splitPdfPages(before, 'two');

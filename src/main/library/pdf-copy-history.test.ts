@@ -39,8 +39,14 @@ describe('PDF boolean refusal shapes', () => {
   it('answers false rather than a truthy refusal object for PDF admission and Undo controls', async () => {
     const { simpleModeRefusals } = await import('../simple-mode');
     const { IPC } = await import('../../shared/ipc');
-    const refusals = simpleModeRefusals(() => { throw new Error('No audio operation in this check.'); });
-    for (const channel of [IPC.library.pdfWorkAllowed, IPC.library.showExtractedPdf, IPC.library.showExtractedPdfCopy]) {
+    const refusals = simpleModeRefusals(() => {
+      throw new Error('No audio operation in this check.');
+    });
+    for (const channel of [
+      IPC.library.pdfWorkAllowed,
+      IPC.library.showExtractedPdf,
+      IPC.library.showExtractedPdfCopy,
+    ]) {
       expect(refusals.get(channel)?.(), channel).toBe(false);
     }
   });

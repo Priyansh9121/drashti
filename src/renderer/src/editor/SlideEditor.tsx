@@ -131,6 +131,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const slideId = useEditor((s) => s.slideId);
   const problem = useEditor((s) => s.problem);
   const saving = useEditor((s) => s.saving);
+  const outsideBusy = useEditor((s) => s.outsideBusy);
   const askDiscard = useEditor((s) => s.askDiscard);
   const sourceConversion = useEditor((s) => s.sourceConversion);
   const warningDecks =
@@ -148,8 +149,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   );
   const conflict = useEditor((s) => s.conflict);
   // Undo and Redo, typing too (Session 55, Part 17a): while typing, its own steps first, then the editor's.
-  const canUndo = useEditor((s) => s.past.length > 0 || (s.editing !== null && s.typing.undo > 0));
-  const canRedo = useEditor((s) => s.future.length > 0 || (s.editing !== null && s.typing.redo > 0));
+  const canUndo = useEditor(
+    (s) => !s.outsideBusy && (s.past.length > 0 || (s.editing !== null && s.typing.undo > 0)),
+  );
+  const canRedo = useEditor(
+    (s) => !s.outsideBusy && (s.future.length > 0 || (s.editing !== null && s.typing.redo > 0)),
+  );
   const dirty = useEditor(isDirty);
   const unreadable = useEditor((s) => s.unreadable);
   const sourceIssues = useEditor((s) => s.sourceIssues);
@@ -224,6 +229,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       !before.doc ||
       !before.slideId ||
       before.saving ||
+      before.outsideBusy ||
       before.askDiscard ||
       before.sourceConversion ||
       before.pdfDrawing ||
@@ -279,6 +285,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const exportBusy =
     loading ||
     saving ||
+    outsideBusy ||
     picking !== null ||
     pickingBusy ||
     pdfDrawing ||
@@ -343,7 +350,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   };
   const mayWorkOnPdf = async () => {
     try {
-      if (await window.drashti.library.pdfWorkAllowed()) return true;
+      if ((await window.drashti.library.pdfWorkAllowed()) === true) return true;
     } catch {
       /* Refuse when Main cannot confirm the stream is off air. */
     }
@@ -404,6 +411,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       pickingBusy ||
       before.loading ||
       before.saving ||
+      before.outsideBusy ||
       before.pdfDrawing ||
       before.sourceConversion ||
       before.askDiscard ||
@@ -580,6 +588,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           kbd={`${mod}S`}
           disabled={
             saving ||
+            outsideBusy ||
             loading ||
             !doc ||
             pickingBusy ||
@@ -658,7 +667,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               underlined={underlined}
               struckThrough={struckThrough}
               pending={pdfPending}
-              blocked={loading || saving || pickingBusy || pdfDrawing || sourceConversion !== null}
+              blocked={
+                loading || saving || outsideBusy || pickingBusy || pdfDrawing || sourceConversion !== null
+              }
               onHighlight={() => choosePdfTool('highlight')}
               onUnderline={() => applyPdfMark('underline')}
               onStrikeThrough={() => applyPdfMark('strike')}
@@ -868,15 +879,19 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 const undoId = result.undoId;
                 if (undoId) {
                   const show = (visible: boolean) => {
-                    void window.drashti.library
+                    return window.drashti.library
                       .showExtractedPdfCopy(undoId, visible)
                       .then((ok) => {
-                        if (!ok)
+                        if (ok !== true)
                           tell(
                             'The extracted PDF changed or the stream is on air. Undo and Redo cannot replace another file.',
                           );
+                        return ok === true;
                       })
-                      .catch(() => tell('The extracted PDF could not be changed.'));
+                      .catch(() => {
+                        tell('The extracted PDF could not be changed.');
+                        return false;
+                      });
                   };
                   noteOutside({ undo: () => show(false), redo: () => show(true) });
                 }
@@ -894,25 +909,32 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 pageAction === 'split' && before.slideId ? splitPdfPages(original, before.slideId) : null;
               const head = parts ? parts[0] : original;
               const show = (visible: boolean) => {
-                void window.drashti.library
+                return window.drashti.library
                   .showExtractedPdf(result.id, visible)
                   .then((ok) => {
-                    if (!ok)
+                    if (ok !== true)
                       tell(
                         'The extracted presentation could not be changed. Try again while the stream is off air.',
                       );
+                    return ok === true;
                   })
-                  .catch(() => tell('The extracted presentation could not be changed.'));
+                  .catch(() => {
+                    tell('The extracted presentation could not be changed.');
+                    return false;
+                  });
               };
               noteOutside({
-                undo: () => {
-                  show(false);
-                  if (parts) useEditor.setState({ doc: original, slideId: before.slideId, selection: [] });
+                undo: async () => {
+                  const ok = await show(false);
+                  if (ok && parts)
+                    useEditor.setState({ doc: original, slideId: before.slideId, selection: [] });
+                  return ok;
                 },
-                redo: () => {
-                  show(true);
-                  if (parts)
+                redo: async () => {
+                  const ok = await show(true);
+                  if (ok && parts)
                     useEditor.setState({ doc: head, slideId: slidesOf(head)[0]?.id ?? null, selection: [] });
+                  return ok;
                 },
               });
               if (parts)
