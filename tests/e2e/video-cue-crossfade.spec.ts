@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnostics';
 import { letTimePass, outputReady } from './helpers';
 import { expect, test } from '@playwright/test';
@@ -17,8 +18,11 @@ const TRIM_MS = 1000;
  * stream it starts within one 30 fps frame of the engine's moment and never moves before it.
  */
 async function cueThenGo(holdMs: number): Promise<void> {
-  const { app, win, hall, stream, audio, ids } = await setupVideoCue();
+  const { app, win, hall, stream, audio, ids, dir } = await setupVideoCue();
   await beginCueDiagnostics([hall, win, stream, audio], { lag: true });
+  // Diagnostics only (a22-cue): a held cue's media and audio trace, from before its wait to after Go.
+  const mediaTrace = holdMs > 0 ? join(dir, 's5-held-media-trace.json') : null;
+  let tracing = false;
   let pixelGoAt: number | null = null;
   try {
     const id = ids[1] ?? '';
@@ -38,6 +42,12 @@ async function cueThenGo(holdMs: number): Promise<void> {
     const cue = (await snapshot(win)).videoCue;
     if (!cue) throw new Error('No video cue');
     expect((await snapshot(win)).layers.background).toEqual({ kind: 'color', color: '#205020' });
+    if (mediaTrace) {
+      await app.evaluate(async ({ contentTracing }) => {
+        await contentTracing.startRecording({ included_categories: ['media', 'audio'] });
+      });
+      tracing = true;
+    }
     if (holdMs > 0)
       await letTimePass(
         win,
@@ -250,6 +260,14 @@ async function cueThenGo(holdMs: number): Promise<void> {
         body: Buffer.from(JSON.stringify({ goAt: pixelGoAt, ...pixels })),
         contentType: 'application/json',
       });
+    if (tracing && mediaTrace) {
+      tracing = false;
+      const kept = await app
+        .evaluate(async ({ contentTracing }, path) => contentTracing.stopRecording(path), mediaTrace)
+        .catch(() => null);
+      if (kept)
+        await test.info().attach('s5-held-media-trace.json', { path: kept, contentType: 'application/json' });
+    }
     const mainLag = await app
       .evaluate(() => {
         const g = globalThis as { s5MainLag?: { lags: unknown; stop: () => void } };
