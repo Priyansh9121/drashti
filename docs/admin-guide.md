@@ -19,7 +19,7 @@ Drashti runs on both of the mandir's computers. One is **Main**: it keeps the li
 - **A graphics chip that decodes video by itself**: every Mac that runs macOS 13 has one; a PC needs Intel, AMD or NVIDIA graphics (not a basic display adapter). Section 13 has what the speed tests found.
 - **The internet** on Main (and on any other computer used as a Main), to check its access every 15 seconds while it runs (section 3; without it, Drashti keeps working for up to 15 days): a wired connection if at all possible, and a phone's hotspot ready as a spare. A node needs none for this: it follows its Main.
 - **A wired network between Main and the node** if at all possible, and a fixed address for Main (section 8).
-- **Room on the disk**: the media library (with a copy beside each file Drashti converts, section 20, and up to three files for each Keynote deck, section 24), plus 2 GB that Drashti keeps free, plus the recordings. **Record sound** saves about 115 MB an hour in 16 kHz mono WAV files. **Record video** saves about 3 GB an hour at the Good internet setting in MKV files. A video recording goes on in parts of up to 3.5 GB, so a FAT32 USB stick can take a long sabha. Drashti warns when a video recording's folder is on one, and when the disk has room for less than an hour. A sound recording's WAV file holds 32 hours, so FAT32 never matters to it.
+- **Room on the disk**: the media library (with a copy beside each file Drashti converts, section 20, and up to three files for each Keynote deck, section 24), plus 2 GB that Drashti keeps free, plus the recordings. **Record sound** saves about 115 MB an hour in 16 kHz mono WAV files. **Record video** saves about 3 GB an hour at the Good internet setting in MKV files. A video recording goes on in parts of up to 3.5 GB, so a FAT32 USB stick can take a long sabha. Drashti warns when a video recording's folder is on one, and when the disk has room for less than an hour. A sound recording's WAV file holds 32 hours, so FAT32 never matters to it. If the disk reports that it cannot keep the video recording, recording stops with a notice; a full disk is named plainly. The stream carries on. Check the connection and free space before starting another recording.
 - Each computer's **user account with a password of its own**: once the computer is let in (section 3), anyone who can use its account can use Drashti there.
 
 ---
@@ -222,6 +222,8 @@ A click on a column's heading sorts by it, a second the other way (it opens with
 **Restoring.** **File**, then **Restore Library…**, and choose a backup folder (for a scheduled one, a "Drashti backup …" folder inside "Drashti scheduled backups"). Drashti asks first, keeps the library it has as well (in `Backups/` in its data folder), and restarts: the screens go black for a moment, so **never restore during a sabha**. If the backup turns out to be damaged, Drashti says so after the restart and keeps the library it had.
 
 **When the library cannot be opened.** If Drashti says at start that it cannot open its library (a damaged file, say), it quits, and what to do comes from here: put the last backup back without that library.
+
+**If the drive fills during a words save.** Leave the editor open while freeing space on the computer’s drive, then save again. A failed new presentation is not kept half made. This differs from a library that cannot be opened at start (below).
 
 1. Open Drashti's data folder (section 3 says where: on a Mac `~/Library/Application Support/Drashti`, on Windows `%APPDATA%\Drashti`).
 2. Make a folder there named `Damaged library`, and move into it `drashti.sqlite` and every file whose name starts with `drashti.sqlite-`. Keep them: whoever looks after Drashti may want them.
@@ -734,6 +736,8 @@ Since alpha.21, **New…**'s **Read Words from a Page…** reads the Gujarati wo
 - **How well it reads.** Tried on real booklet pages before it was built in, it found 96 to 99 of every 100 Gujarati letters, and about 1 in 10 to 20 of what it wrote was wrong or extra: a vowel sign, or a mark from the page's border. A clean, straight scan at 150 to 300 pixels an inch reads best. Words in other scripts on the page can come out wrong.
 - **Where it runs.** In a process of its own, started for a reading and closed after it, at the lowest priority, never on the show's own thread. A PDF's pages are drawn first by the same hidden window that draws an imported PDF. Even so it takes a few seconds a page: it is for preparing slides, before the sabha, not while slides are changing on the screens.
 - **The log** has a line for each reading: how many pages, how many letters and how long it took, or why nothing was read.
+
+**Video recording faults.** If a disk fills while a recording file opens, is written or starts its next part, the recording stops and names the full disk. A failed disk flush also stops it with a notice; check the disk connection and free space before recording again. The outgoing stream continues through disk faults. If the video encoder stops or cannot start, Stream says it is trying again. Once pictures return, the recording continues in a new part beside the earlier one.
 
 ## 30. Automatic error reports
 

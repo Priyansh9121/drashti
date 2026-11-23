@@ -290,6 +290,8 @@ curl -s -X POST "$DRASHTI/api/v1/screens/keep" -H "Authorization: Bearer $TOKEN"
 
 **The library's changes** (Session 54, as the window makes them), a Remote's alone, Simple Mode refusing them as the window does (403). Things are named by their ids only, never a path or a file, at most 50 at once. Each answers with the ids it changed (`"ids"`), or a new presentation's `"id"`: a delete's Undo sends those ids back to its `restore`. The feed's `{"type":"changed","what":"presentations"}` or `"playlists"` says when to read the lists again.
 
+A new presentation from words is saved with its default look in one step. If the data drive fills, the request returns a refusal naming the full drive; it leaves no partly made presentation, and can be sent again after space is freed.
+
 | Request                               | Body                                                                                      | Does                                                                                                                       |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/v1/presentations/new`      | `{"name":"…","words":"…"}`                                                                | A presentation made from words, as **New…** makes one (a blank line between slides); answers its `"id"`.                   |
@@ -564,6 +566,10 @@ In n8n, the **Crypto** node's HMAC (SHA256, hex, the secret as shown) of the bod
 **Answering.** Answer `2xx` quickly (within 15 seconds; the body is not read). Anything else is tried again: at once, then after 5 s, 30 s, 2 min, 10 min and 30 min, and then the event is given up (the dialog counts those). Events to one address go one at a time, in order; slide changes within 250 ms of each other go as the last one. A `410` turns the address off until it is turned on again in the dialog; a `404`, a redirect (never followed) or another `4xx` means the address is set up wrongly, and is tried only twice more. Events waiting when Drashti quits are not sent later.
 
 Live captions (state 26, retained by state 27) are never sent in this API, to a phone or to a node; captions are left out or null.
+
+## Desktop video recording status
+
+Video recording status reports `state: 'off'` and a disk-related `message` if the periodic disk flush fails. Main also sends that message as an operator notice. A full disk is named plainly. This stops the recording without ending the outgoing stream. The same full-disk cause is reported for first-file, active-write and next-part ENOSPC errors. Encoder exit and spawn errors immediately report `encoding: false` and a worker `error`; Main exposes that cause in the live and recording messages. Restarting the process alone does not clear it: encoded pictures after fresh Program input do. A held recording resumes in a new part.
 
 ## Desktop kirtan bundles
 
