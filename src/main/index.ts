@@ -469,10 +469,11 @@ import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/mo
 import { knownLanguageModels } from './speech/language-models';
 import { packFileFor, packLanguageModelStore } from './speech/pack-language-models';
 import { createWhisperRoute } from './speech/whisper-route';
+import { createIndicRoute } from './speech/indic-route';
 import { handleModelPacks } from './model-packs/ipc';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
-import { findIndic } from './speech/indic-place';
+import { findIndic, indicProblem } from './speech/indic-place';
 import { indicSelfTest } from './speech/indic-selftest';
 import windowsRuntimeLibraries from '../shared/whisper-windows-runtime.json';
 import { CaptionSettingsRepo } from './db/captions';
@@ -3939,6 +3940,29 @@ function start(): void {
             log,
           }),
   });
+  // Route C (alpha.22, cap-ship-c / Codex x94): AI4Bharat's IndicConformer (CTC) from the pack on Drashti's helper
+  // and ONNX Runtime 1.23.2, below the show and without a transition gate (the lead's x94 gate A, as Route W).
+  const indicProgram = findIndic({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const conformerRoute = createIndicRoute({
+    store: modelPacks,
+    program: () => indicProgram,
+    problem: () =>
+      indicProblem(process.platform, process.getSystemVersion()) ??
+      (indicProgram === null
+        ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
+        : null),
+    admission: 'below-show',
+    // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
+    threads: 2,
+    sound: { open: (chunk) => streaming.listenSound(chunk) },
+    log,
+  });
   // Caption AI (alpha.22, cap-integration): a speaker's language with a model of its own is heard through the
   // captions coordinator (Codex x90): one clause at a time in at most two lines, provisional while heard, settled
   // when final. As heard, Sanskrit and a language without its own model keep today's captions exactly.
@@ -3965,10 +3989,12 @@ function start(): void {
           const entry = languageModels.known().find((e) => e.id === own.id);
           const found = entry ? packFileFor(modelPacks, entry) : null;
           const packed = found ? modelPacks.model(found.modelId) : null;
-          // Route W runs whisper.cpp's files; Route C (IndicConformer, cap-ship-c) plugs in here the same way.
-          return entry && packed && (entry.format ?? 'whisper-ggml') === 'whisper-ggml'
-            ? whisperRoute.make(packed, entry.language)
-            : null;
+          if (!entry || !packed) return null;
+          // Route W runs whisper.cpp's files; Route C AI4Bharat's IndicConformer (the stand-in in tests).
+          if ((entry.format ?? 'whisper-ggml') === 'whisper-ggml')
+            return whisperRoute.make(packed, entry.language);
+          const routeC = conformerRoute.make(packed, entry.language);
+          return routeC && testSpeech !== undefined ? speechEngine : routeC;
         },
       }),
       coordinator: captionCoordinator,
