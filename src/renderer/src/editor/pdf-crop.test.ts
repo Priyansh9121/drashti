@@ -94,3 +94,10 @@ it('turns the crop clockwise with the page and restores it after four turns', ()
   for (let i = 0; i < 3; i++) after = turnPdfPageRight(after, 'p0');
   expect(after.groups[0]?.slides[0]?.documentPage?.crop).toEqual(crop);
 });
+
+it('four turns retain decimal crop edges without floating point drift or negative zero', () => {
+  const crop = { x: 0.1, y: 0.2, w: 0.6, h: 0.7 };
+  let doc = cropPdfPages(fixture(), 'p0', crop, 'this');
+  for (let n = 0; n < 4; n++) doc = turnPdfPageRight(doc, 'p0');
+  expect(doc.groups[0]?.slides[0]?.documentPage?.crop).toEqual(crop);
+});
