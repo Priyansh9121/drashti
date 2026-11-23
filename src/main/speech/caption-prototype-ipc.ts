@@ -19,23 +19,27 @@ export interface CaptionPrototypeControl {
 export function registerCaptionPrototypeIpc(deps: {
   fromOperator(event: IpcMainInvokeEvent): boolean;
   captions: CaptionPrototypeControl;
+  /** The placeholder rehearsal's own controls: only in a Drashti that is not packaged (tests), never shipped. */
+  rehearsal: boolean;
 }): void {
   handle(IPC.captions.prototypeView, (e) => (deps.fromOperator(e) ? deps.captions.prototypeView() : null));
-  handle(IPC.captions.setPrototypeOn, (e, on) => {
-    if (!deps.fromOperator(e) || typeof on !== 'boolean') return null;
-    deps.captions.setPrototypeOn(on);
-    return deps.captions.prototypeView();
-  });
-  handle(IPC.captions.advancePrototype, (e) => {
-    if (!deps.fromOperator(e)) return null;
-    deps.captions.advancePrototype();
-    return deps.captions.prototypeView();
-  });
-  handle(IPC.captions.restartPrototype, (e) => {
-    if (!deps.fromOperator(e)) return null;
-    deps.captions.restartPrototype();
-    return deps.captions.prototypeView();
-  });
+  if (deps.rehearsal) {
+    handle(IPC.captions.setPrototypeOn, (e, on) => {
+      if (!deps.fromOperator(e) || typeof on !== 'boolean') return null;
+      deps.captions.setPrototypeOn(on);
+      return deps.captions.prototypeView();
+    });
+    handle(IPC.captions.advancePrototype, (e) => {
+      if (!deps.fromOperator(e)) return null;
+      deps.captions.advancePrototype();
+      return deps.captions.prototypeView();
+    });
+    handle(IPC.captions.restartPrototype, (e) => {
+      if (!deps.fromOperator(e)) return null;
+      deps.captions.restartPrototype();
+      return deps.captions.prototypeView();
+    });
+  }
   handle(IPC.captions.correctPrototype, (e, raw) => {
     if (!deps.fromOperator(e)) return false;
     const parsed = captionCorrectionSchema.safeParse(raw);

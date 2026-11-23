@@ -158,8 +158,9 @@ export class CaptionsService {
           const to = spell
             ? { heard: (h: Heard) => given.heard(spell(h)), state: (s: SpeechState) => given.state(s) }
             : given;
-          // Caption AI: the speaker's language, and its checked model from the pack (never a download).
-          if (this.useAi()) {
+          // Caption AI: the speaker's language, and its checked model from the pack (never a download). Only while
+          // its path is the one running: a restart on today's path (a model downloaded) stays today's (review S2).
+          if (this.paths ? this.paths.usingAi() : this.useAi()) {
             if (language === 'auto') {
               to.state({
                 phase: 'failed',
@@ -262,9 +263,16 @@ export class CaptionsService {
   /** The admin turned caption AI on or off: while captions run, the other path takes over at once. */
   aiPathChanged(): void {
     if (this.closed || !this.paths) return;
-    this.paths.reselect();
-    if (this.switch.on) void this.fetchModel();
+    this.choosePath();
     this.tell();
+  }
+
+  /** Caption AI's path or today's chosen again; back on today's, its general model is fetched if it is not here. */
+  private choosePath(): void {
+    if (!this.paths) return;
+    const wasAi = this.paths.usingAi();
+    this.paths.reselect();
+    if (wasAi && !this.paths.usingAi() && this.switch.on) void this.fetchModel();
   }
 
   /** The operator's review: caption AI's phrases while it runs (and no rehearsal does), else the rehearsal's. */
@@ -377,7 +385,7 @@ export class CaptionsService {
     }
     this.hub.setLanguage(s.language);
     // Caption AI follows the speaker's language at once (a language with its own model, or not).
-    this.paths?.reselect();
+    this.choosePath();
     this.feed.refresh();
     this.tell();
     return this.view();
@@ -610,7 +618,11 @@ export class CaptionsService {
   private relisten(): void {
     if (!this.switch.on || this.closed) return;
     // A language's own model chosen or taken away: caption AI or today's captions take over (listening again).
-    if (this.paths?.reselect()) return;
+    const wasAi = this.paths?.usingAi() === true;
+    if (this.paths?.reselect()) {
+      if (wasAi && !this.paths.usingAi()) void this.fetchModel();
+      return;
+    }
     this.hub.setOn(false);
     this.hub.setOn(true);
   }

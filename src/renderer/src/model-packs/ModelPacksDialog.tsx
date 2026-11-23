@@ -57,9 +57,10 @@ function PacksForm({ status }: { status: ModelPacksStatus }) {
       <div className="space-y-4">
         <p className="text-sm text-muted">
           Live captions and translation can use models from an offline pack that an admin brings on a drive or
-          as a zip. Drashti never downloads them. It checks every file against the pack’s list (its size and
-          SHA-256) before keeping it on this computer, outside the library and its backups. Import the pack on
-          each Main.
+          as a zip. The caption packs are on Drashti’s release page on GitHub, beside the installers. Drashti
+          never downloads them itself. It checks every file against the pack’s list (its size and SHA-256)
+          before keeping it on this computer, outside the library and its backups. Import the pack on each
+          Main.
         </p>
         {status.problem && (
           <Notice tone="warning" data-testid="model-packs-problem">

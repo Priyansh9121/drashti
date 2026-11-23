@@ -87,7 +87,16 @@ export function placeholderCaptionPack(o: { conformer?: boolean } = {}): Placeho
         licence: 'Apache-2.0',
         fallback: false,
         timestamps: false,
-        ...(o.conformer ? { format: 'indicconformer-ctc-onnx-v1' } : {}),
+        // A Route C model pins its tokens and front-end files too (review M2).
+        ...(o.conformer
+          ? {
+              format: 'indicconformer-ctc-onnx-v1',
+              companions: [
+                { name: 'tokens.txt', bytes: tokens.length, sha256: sha(tokens) },
+                { name: 'frontend.bin', bytes: frontend.length, sha256: sha(frontend) },
+              ],
+            }
+          : {}),
       },
     ]),
   );

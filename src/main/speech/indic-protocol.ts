@@ -104,7 +104,7 @@ export function parseIndicReply(value: unknown, language: IndicLanguage): IndicR
   return { language, words };
 }
 
-/** 40 ms token frames are coarse timings; the model does not supply a confidence estimate. */
+/** 40 ms token frames are coarse timings; each word's confidence (c) decides noise only, never a word's own. */
 export function indicWords(
   value: unknown,
   language: IndicLanguage,

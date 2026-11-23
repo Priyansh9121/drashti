@@ -719,8 +719,9 @@ A model whose file has changed since the pack checked it is not used, and captio
 Runtime 1.23.2 (MIT), included for Apple silicon, Intel Mac and Windows x64. Acoustic models are not in the installer
 and this engine never downloads one. Import a checked caption model pack, then choose its model for the speaker’s
 explicit Gujarati or Hindi language. Keep this option off until rehearsal. A missing, unsuitable or stopped model
-shows a reason; it never selects another recogniser automatically. Its token-frame times are coarse (40 ms), and it
-provides no confidence estimate. Turning it off leaves ordinary live captions as before. This engine adds no sound
+shows a reason; it never selects another recogniser automatically. Its token-frame times are coarse (40 ms). It
+rates how sure it is of each word, and uses that only to leave out a very short phrase it is unsure of (noise or
+hum); the words on the screens carry no rating. Turning it off leaves ordinary live captions as before. This engine adds no sound
 recording or saved transcript. An operator’s existing sound recording and timed caption draft remain separate.
 
 The optional Gujarati and Hindi recognition engine needs macOS 13.4 or later on either kind of Mac.
@@ -796,7 +797,9 @@ The normal library save, backup and Undo keep the translations and their checks.
 
 ## 32. Caption and translation models
 
-Since alpha.22, the models for better Gujarati and Hindi captions, and for translation between Gujarati, Hindi and English, come as an **offline model pack**: a folder or a zip an admin is given on a drive. Drashti never downloads one. In Pro Mode, **Help › Caption and Translation Models…** imports it, shows what is installed and removes it. Nothing changes until a pack is imported: live captions keep the model chosen in **File › Live Captions…** (section 25).
+Since alpha.22, the models for better Gujarati and Hindi captions, and for translation between Gujarati, Hindi and English, come as an **offline model pack**: a folder or a zip an admin brings on a drive, or downloads from Drashti's release page (below). Drashti never downloads one itself. In Pro Mode, **Help › Caption and Translation Models…** imports it, shows what is installed and removes it. Nothing changes until a pack is imported: live captions keep the model chosen in **File › Live Captions…** (section 25).
+
+**Where to get the caption packs.** The Gujarati and Hindi caption packs are on the alpha.22 release's page on GitHub, as separate files, never in the installer: `drashti-captions-gu-indicconformer-ctc-int8.zip` is Gujarati and `drashti-captions-hi-indicconformer-ctc-int8.zip` is Hindi, about 190 MB each. Download the one you need, then use **Import a Zip…** on each Main. `SHA256SUMS-packs.txt` beside them gives each zip's fingerprint, to check the download. English needs no pack.
 
 **Importing a pack.** Press **Import a Folder…** and choose the pack's folder, or **Import a Zip…** and choose its zip. The pack's list, `drashti-model-pack.json` at its top, names every file with its size, its SHA-256 (a fingerprint of its bytes), its licence and its purpose: captions in Gujarati, Hindi or English, or translation from one of them into another. Each model also says who made it and where it is from (its attribution), as its licence asks; a model without one is refused. Drashti checks each file against the list as it copies it. If one file is missing, a different size, a link to somewhere outside the pack or does not match its SHA-256, the whole pack is refused, nothing is kept and the notice says what to do: usually, ask for a fresh copy of the pack. A pack whose files have any licence other than a free and open one (MIT, Apache-2.0, BSD, ISC, CC0 or CC BY 4.0) is refused the same way. The import leaves 2 GB free on the drive, as recordings and backups do, and **Stop** stops it, keeping nothing. Import the pack before the sabha, not while slides are changing.
 

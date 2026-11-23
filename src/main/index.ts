@@ -4031,7 +4031,22 @@ function start(): void {
     captionsStreamUseChanged = undefined;
     captions.close();
   });
-  registerCaptionPrototypeIpc({ fromOperator: (e) => fromOperator(e) && !simpleNow(), captions });
+  // The placeholder rehearsal's controls only where it is not packaged (tests): never in a shipped Drashti (review).
+  // A pack imported or removed chooses caption AI's path or today's again at once, and the dialog's rows follow
+  // (review S2): no turning captions off and on after importing mid-show.
+  let packsShown = '';
+  modelPacks.onChanged((status) => {
+    // Only when the packs themselves changed (an import's progress is not a change of model).
+    const packs = JSON.stringify(status.packs);
+    if (packs === packsShown) return;
+    packsShown = packs;
+    captions.aiPathChanged();
+  });
+  registerCaptionPrototypeIpc({
+    fromOperator: (e) => fromOperator(e) && !simpleNow(),
+    captions,
+    rehearsal: !packaged(),
+  });
   handle(IPC.captions.view, () => captions.view());
   handle(IPC.captions.setOn, (e, on) =>
     fromOperator(e) && typeof on === 'boolean' ? captions.setOn(on) : captions.view(),

@@ -109,11 +109,23 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
       licence: 'MIT',
       fallback: false,
       format: 'indicconformer-ctc-onnx-v1',
+      companions: [
+        { name: 'tokens.txt', bytes: 10, sha256: 'c'.repeat(64) },
+        { name: 'frontend.bin', bytes: 20, sha256: 'd'.repeat(64) },
+      ],
     };
     expect(
       parseLanguageModelList([
         conformer,
         { ...conformer, id: 'placeholder-odd', sha256: '9'.repeat(64), format: 'odd' },
+        // A Route C model that pins no tokens or front-end file is not known (review M2).
+        { ...conformer, id: 'placeholder-unpinned', sha256: '8'.repeat(64), companions: undefined },
+        {
+          ...conformer,
+          id: 'placeholder-bad-pin',
+          sha256: '7'.repeat(64),
+          companions: [{ name: 'tokens.txt' }],
+        },
       ]),
     ).toEqual([{ ...conformer, timestamps: true }]);
   });
@@ -222,6 +234,20 @@ describe('the models Drashti knows for a language (alpha.22)', () => {
         'hi-indicconformer-ctc',
       ],
     );
+    // Each Route C model pins its tokens and front-end files too, by size and SHA-256 (cap-route-c's packs).
+    const pins = (tokens: string, bytes: number) => [
+      { name: 'tokens.txt', bytes, sha256: tokens },
+      {
+        name: 'frontend.bin',
+        bytes: 82_240,
+        sha256: 'd6f2450a1bf5142d092aebbaac8dea32002945dc953b58aacfb70a5aa08e895a',
+      },
+    ];
+    const gu = pins('4949fb9c77c7d706c6cbe4339828076e497b02867d7864310c52ea1829645e90', 1_826);
+    const hi = pins('e2bc7bca13b590fd2394504707326e3464d84ec3e70dcb0cf7f2be12e4e6f711', 1_784);
+    expect(
+      LANGUAGE_MODELS.filter((m) => m.format === 'indicconformer-ctc-onnx-v1').map((m) => m.companions),
+    ).toEqual([gu, hi, gu, hi]);
     expect(LANGUAGE_MODELS.every((m) => !m.timestamps)).toBe(true);
     expect(LANGUAGE_MODELS.filter((m) => m.fallback).map((m) => m.language)).toEqual([
       'hi',

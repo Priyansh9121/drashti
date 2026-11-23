@@ -80,7 +80,8 @@ Do these about 30 minutes before the sabha starts.
 **Correcting a caption.** When captions show one phrase at a time (a language's own model), **File › Live Captions…** in Pro Mode shows the phrase on the screens now. Once it says **Settled**, **Correct last phrase…** lets you fix its words; **Apply correction** replaces it on the screens, and **Dismiss phrase** takes it off. Only the phrase on the screens can be corrected, and a picture already streamed or recorded keeps what it showed.
 
 **Gujarati and Hindi recognition models (Trial).** A model pack can provide a separate local recognition engine for
-Gujarati or Hindi. Choose the speaker’s language and its imported model before rehearsal. It does not choose a
+Gujarati or Hindi. The packs are on the release's page on GitHub, beside the installers; an admin imports one with
+**Help › Caption and Translation Models…** on each Main. Choose the speaker’s language and its imported model before rehearsal. It does not choose a
 language automatically. If that model is missing or stops, no other model takes its place. Turn this option off to
 return to ordinary live captions. Rehearse with the mixer and the screens before using automatic words in a show.
 

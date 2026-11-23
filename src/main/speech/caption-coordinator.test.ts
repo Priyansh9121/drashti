@@ -219,16 +219,19 @@ describe('phase D caption coordinator', () => {
     expect(failed.last()).toBeNull();
   });
 
-  it('does not extend the original clear time when an operator corrects a clause', () => {
+  it('gives a correction its own clear time, from when the operator made it (the lead, review S1)', () => {
+    // Was: the correction kept the phrase's first clear time, so one made late showed for a moment only.
     const { coordinator: c, clause, last } = setup();
     c.accept(clause('A blue box', 1, 'settled'));
     vi.advanceTimersByTime(5_500);
     c.correct({ ...clause(''), text: 'A green box' });
     vi.advanceTimersByTime(500);
+    expect(last()?.lines).toEqual(['A green box']);
+    vi.advanceTimersByTime(5_500);
     expect(last()).toBeNull();
   });
 
-  it('uses the original earlier paint deadline and validates the complete retained request identity', async () => {
+  it('gives a correction its own paint deadline and validates the complete retained request identity', async () => {
     const port = deferredPort();
     const { coordinator: c, clause, last } = setup(port, 'translation');
     c.accept(clause('A blue box', 1, 'settled'));
@@ -247,7 +250,8 @@ describe('phase D caption coordinator', () => {
     c.correct({ ...clause(''), text: 'A green box' });
     port.finish(0, 'Old result');
     await vi.advanceTimersByTimeAsync(0);
-    expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(request.paintDeadlineAt);
+    // The correction's own deadline, from when it was made 1 s later (review S1: was the phrase's first one).
+    expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(request.paintDeadlineAt + 1_000);
     expect(must(port.requests[1]).clause.sourceHash).not.toBe(request.sourceHash);
     expect(must(port.requests[1]).clause.requestId).not.toBe(request.requestId);
     port.finish(1, 'Wrong model', { modelIdentity: 'wrong@1' });
@@ -428,5 +432,56 @@ describe('phase D caption coordinator', () => {
     expect(must(port.requests[1]).clause.outputPolicyEpoch).toBeGreaterThan(first.outputPolicyEpoch);
     expect(must(port.requests[1]).clause.paintDeadlineAt).toBe(first.paintDeadlineAt);
     c.stop();
+  });
+
+  it('keeps showing phrases when the wall clock steps during a session (the production clock, performance.now)', () => {
+    // Heard times are Date.now(); the coordinator's own clock is monotonic. A time sync (or a Mac waking from
+    // sleep) moves one against the other mid-session: phrases must still show (review M1).
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+    vi.setSystemTime(new Date('2026-11-23T09:00:00Z'));
+    // A minute into the run on both clocks (a fresh test worker's performance.now() is under a phrase's length).
+    vi.advanceTimersByTime(60_000);
+    const shown: (CaptionsShown | null)[] = [];
+    const c = new CaptionCoordinator({
+      mayTranslate: () => false,
+      settings: () => DEFAULT_CAPTION_SETTINGS,
+      show: (s) => shown.push(s),
+      changed: vi.fn(),
+    });
+    const sessionId = c.start();
+    const phrase = (phraseId: string, sourceText: string): CaptionRevision => ({
+      sessionId,
+      phraseId,
+      revision: 1,
+      sourceLanguage: 'gu',
+      targetLanguage: 'en',
+      sourceText,
+      startAt: Date.now() - 1_000,
+      endAt: Date.now(),
+      status: 'settled',
+    });
+    expect(c.accept(phrase('s1', 'The blue box'))).toBe(true);
+    expect(shown.at(-1)?.lines).toEqual(['The blue box']);
+    vi.setSystemTime(Date.now() + 2_000);
+    expect(c.accept(phrase('s2', 'A round shape'))).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)?.lines).toEqual(['A round shape']);
+    vi.setSystemTime(Date.now() - 15_000);
+    expect(c.accept(phrase('s3', 'The green box'))).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(shown.at(-1)?.lines).toEqual(['The green box']);
+    c.stop();
+  });
+
+  it('shows a correction for its own full time, from when it was made (review S1)', () => {
+    const { coordinator: c, clause, last } = setup();
+    expect(c.accept(clause('The blue box', 1, 'settled'))).toBe(true);
+    vi.advanceTimersByTime(5_000);
+    expect(c.correct({ ...clause(''), text: 'The red box', revision: 1 })).toBe(true);
+    vi.advanceTimersByTime(3_000);
+    expect(last()?.lines).toEqual(['The red box']);
+    vi.advanceTimersByTime(3_100);
+    expect(last()).toBeNull();
   });
 });

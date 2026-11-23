@@ -236,3 +236,40 @@ test('caption AI, Route C: Gujarati’s IndicConformer model from the pack is he
     await app.close();
   }
 });
+
+test('caption AI, the pack imported mid-show: Gujarati’s own model chosen before its pack is here says to import it; once imported, caption AI listens without turning captions off and on (review S2)', async () => {
+  test.setTimeout(180_000);
+  const pack = placeholderCaptionPack();
+  const { app } = await launchApp({
+    ...OUTPUTS,
+    ...NO_PLACEHOLDERS,
+    DRASHTI_TEST_SPEECH: GU_PHRASES.join('|'),
+    DRASHTI_TEST_SPEECH_MODELS: pack.list,
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const { hall } = await threePlaces(win, app);
+    await chooseMenuItem(app, 'live-captions');
+    const dialog = win.getByTestId('captions-dialog');
+    await dialog.getByTestId('captions-audience').click();
+    // Gujarati's own model chosen while its pack is not on this computer yet.
+    await dialog.getByTestId('captions-language-model-gu-choice').selectOption('placeholder-gu');
+    await chooseMenuItem(app, 'speaker-language-gu');
+    await expect(dialog.getByTestId('captions-language')).toHaveValue('gu');
+    await dialog.getByTestId('captions-on').click();
+    await expect(dialog.getByTestId('captions-state')).toContainText('import the model pack');
+    await expect(hall.getByTestId('captions')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+
+    // Imported while captions stay on: caption AI's path is chosen at once.
+    await importCaptionPack(app, win, pack.folder);
+    await expect(hall.getByTestId('captions')).toContainText('ખોખું', { timeout: 20_000 });
+    await chooseMenuItem(app, 'live-captions');
+    await expect(dialog.getByTestId('captions-state')).toHaveText('Listening to the stream’s sound input.');
+    await expect(dialog.getByTestId('captions-language-model-gu')).toHaveAttribute('data-phase', 'ready');
+    await dialog.getByTestId('captions-on').click();
+  } finally {
+    await app.close();
+  }
+});
