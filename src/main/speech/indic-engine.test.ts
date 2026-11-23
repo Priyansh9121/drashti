@@ -63,20 +63,16 @@ describe('Route C behind the speech engine seam', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(release).toHaveBeenCalledOnce();
   });
-  it('shows nothing Route C made of noise or hum (every word one syllable); speech after it comes through', async () => {
+  it('shows nothing Route C made of noise or hum (one-syllable words heard unsure); a clear short answer, and any phrase without the helper’s confidence, comes through', async () => {
     let chunk: ((samples: Int16Array, endAt: number, startAt?: number) => void) | undefined;
     const states: SpeechState[] = [],
       phrases: Heard[] = [];
+    const word = (w: string, c: number | null, start = 0) => ({ w, start, end: start + 0.04, c });
     const decode = vi
       .fn()
-      .mockResolvedValueOnce({
-        language: 'gu',
-        words: [
-          { w: 'હ', start: 0, end: 0.04 },
-          { w: 'છે', start: 0.04, end: 0.08 },
-        ],
-      })
-      .mockResolvedValue({ language: 'gu', words: [{ w: 'આકાર', start: 0, end: 0.08 }] });
+      .mockResolvedValueOnce({ language: 'gu', words: [word('હ', 0.1), word('છે', 0.1, 0.04)] })
+      .mockResolvedValueOnce({ language: 'gu', words: [word('હા', 0.95)] })
+      .mockResolvedValue({ language: 'gu', words: [word('હ', null), word('છે', null, 0.04)] });
     const engine = createIndicEngine({
       workGate: { allowed: () => true, listen: () => () => undefined },
       program: () => '/native',
@@ -95,15 +91,17 @@ describe('Route C behind the speech engine seam', () => {
     });
     const stop = engine.start('gu', { heard: (h) => phrases.push(h), state: (s) => states.push(s) });
     await vi.waitFor(() => expect(states.at(-1)?.phase).toBe('listening'));
-    // Two short phrases, each a sound then a pause: the first decodes as hum, the second as a word.
-    const began = Date.now() - 1_600;
-    for (const at of [began, began + 800]) {
+    // Three short phrases, each a sound then a pause: hum heard unsure, a clear "yes", hum with no confidence given.
+    const began = Date.now() - 2_400;
+    for (const at of [began, began + 800, began + 1_600]) {
       chunk?.(new Int16Array(1600).fill(5000), at + 100, at);
       for (let i = 1; i <= 7; i += 1) chunk?.(new Int16Array(1600), at + (i + 1) * 100, at + i * 100);
     }
-    await vi.waitFor(() => expect(decode).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(phrases.filter((h) => h.final)).toHaveLength(1));
-    expect(phrases.filter((h) => h.words.length > 0).map((h) => h.text)).toEqual(['આકાર']);
+    await vi.waitFor(() => expect(decode).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(phrases.filter((h) => h.final)).toHaveLength(2));
+    expect(phrases.filter((h) => h.words.length > 0).map((h) => h.text)).toEqual(['હા', 'હ છે']);
+    // The helper's confidence decides what is shown; the phrase's words still carry none (as before).
+    expect(phrases.flatMap((h) => h.words.map((w) => w.confidence))).toEqual([null, null, null]);
     stop();
   });
 });

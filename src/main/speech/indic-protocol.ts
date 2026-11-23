@@ -15,7 +15,8 @@ export interface IndicPack {
 }
 export interface IndicReply {
   language: IndicLanguage;
-  words: { w: string; start: number; end: number }[];
+  /** c: the helper's confidence in the word (the mean max posterior of its CTC frames, 0-1), or null without one. */
+  words: { w: string; start: number; end: number; c: number | null }[];
 }
 
 export function pcmFrame(samples: Int16Array): Buffer {
@@ -94,7 +95,7 @@ export function parseIndicReply(value: unknown, language: IndicLanguage): IndicR
       return invalid();
     // The tokenizer's unknown symbol is a decoder marker, never a word for the hall screen.
     const display = w.replaceAll('<unk>', '');
-    if (display) words.push({ w: display, start: item.start, end: item.end });
+    if (display) words.push({ w: display, start: item.start, end: item.end, c: null });
     previous = item.start;
   }
   return { language, words };
@@ -121,10 +122,13 @@ export function indicWords(
   });
 }
 
+/** Below this confidence a word of one syllable may be noise (Route C's own CTC posteriors). Red: not measured yet. */
+export const NOISE_CONFIDENCE = 0.5;
+
 /**
  * A phrase Route C made out of noise or hum (cap-route-c: generated noise and hum give one-syllable "words" such as
- * હ, છે, म, है, આ; silence gives none): every word is one syllable. Red: not decided yet.
+ * હ, છે, म, है, આ; silence gives none). Red: not decided yet.
  */
-export function noiseOnly(words: readonly { text: string }[]): boolean {
+export function noiseOnly(words: readonly { w: string; c: number | null }[]): boolean {
   return words.length < 0;
 }
