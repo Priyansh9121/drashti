@@ -98,4 +98,14 @@ test('the admin sets up, separately opts in, captures a crash locally and turns 
   await chooseMenuItem(run.app, 'automatic-error-reports');
   await expect.poll(() => state(file)?.enabled).toBe(false);
   expect(state(file)?.queue).toEqual([]);
+  const disabled = readFileSync(file, 'utf8');
+  await run.app.close();
+  const again = await launchApp({}, run.userData, { as: 'owner' });
+  await operatorReady(await operatorPage(again.app));
+  expect(state(file)).toMatchObject({ enabled: false, queue: [] });
+  // Reloading a configured install never restores consent after the admin turned it off.
+  await again.app.evaluate(() => {
+    process.emit('uncaughtException', new Error('Placeholder crash after opting out'));
+  });
+  expect(readFileSync(file, 'utf8')).toBe(disabled);
 });
