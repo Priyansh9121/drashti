@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { constants, setPriority } from 'node:os';
 import { SPEECH_RATE, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
+import type { CaptionHints } from './caption-hints';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
 
@@ -43,6 +44,8 @@ export interface WhisperEngineOptions {
   maxMs?: number;
   /** Held this long when it could not keep up, then tried again. */
   restMs?: number;
+  /** The admin's caption words for the language listened in (alpha.22), given to whisper.cpp as its prompt. */
+  hints?: CaptionHints;
 }
 
 const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
