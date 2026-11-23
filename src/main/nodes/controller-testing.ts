@@ -67,6 +67,7 @@ export function controllerTest(options: EngineOptions = {}) {
       snapshot: () => engine.snapshot(),
       state: () => engine.current,
       rev: () => engine.rev,
+      acceptsPress: (rev, session) => engine.acceptsPress(rev, session),
       session: engine.session,
     },
     runShowAction: (command: EngineCommand) => {
