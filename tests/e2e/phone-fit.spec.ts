@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { callBody, placeholderComputer, readAnswer } from '../access-core';
 import { type AccessStandIn, accessStandIn } from '../access-standin';
-import { settled } from './a11y';
 import type { Engine } from './devices';
 import { apiCall, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken, PHONE } from './devices';
 import type { PageGlobals } from './helpers';
@@ -28,6 +27,9 @@ import { makeTestImage } from './test-media';
  * aside). The remote is one screen: Back and Next wholly on it, only its middle scrolling. Placeholder names and
  * generated media only; codes and tokens are made at run time and never printed.
  */
+
+// An action that cannot be done says so in 20 s, what it waited for, rather than using up the whole test.
+test.use({ actionTimeout: 20_000 });
 
 /** Phones upright and held sideways, and a tablet. */
 const SIZES = [
@@ -176,10 +178,23 @@ const faultsIn = (o: Rules) => {
   };
 
   const page = document.scrollingElement ?? document.documentElement;
+  /** What reaches the page's own far edge (what makes it scroll), hidden or not: the innermost, three at most. */
+  const reaching = (edge: (r: DOMRect) => number, far: number): string => {
+    const all = [...document.body.querySelectorAll('*')].filter(
+      (el) => edge(el.getBoundingClientRect()) >= far - 1.5,
+    );
+    const inner = all.filter((el) => !all.some((other) => other !== el && el.contains(other)));
+    return inner
+      .slice(0, 3)
+      .map((el) => `${named(el)} .${(el.getAttribute('class') ?? '').split(/\s+/u).slice(0, 5).join('.')}`)
+      .join(', ');
+  };
   if (innerWidth > vw + 0.5)
     out.add(`the page is laid out ${px(innerWidth)} px wide on a ${px(vw)} px screen`);
   if (page.scrollWidth > vw + 1)
-    out.add(`the page scrolls sideways (${px(page.scrollWidth)} px on a ${px(vw)} px screen)`);
+    out.add(
+      `the page scrolls sideways (${px(page.scrollWidth)} px on a ${px(vw)} px screen), reached by ${reaching((r) => r.right + scrollX, page.scrollWidth)}`,
+    );
   const pageScrolls = page.scrollHeight > vh + 1;
 
   // The open sheet, dialog or viewer on top, else the page.
@@ -338,7 +353,7 @@ const faultsIn = (o: Rules) => {
     }
     if (pageScrolls)
       out.add(
-        `the remote's page scrolls (${px(page.scrollHeight)} px on a ${px(vh)} px screen): only its middle should`,
+        `the remote's page scrolls (${px(page.scrollHeight)} px on a ${px(vh)} px screen): only its middle should; reached by ${reaching((r) => r.bottom + scrollY, page.scrollHeight)}`,
       );
   }
   return [...out];
@@ -356,6 +371,58 @@ async function phoneOf(engine: Engine): Promise<{ browser: Browser; context: Bro
   return { browser, context, page };
 }
 
+/** Laid out, and every animation that is running and ends, ended (one paused moves nothing). */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.playState === 'running' && a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
+
+/**
+ * The region's outermost scrollers (the open sheet's, else the page's), each marked `data-fit-scroller`, and how far
+ * each scrolls; and the page itself, as -1, where it scrolls.
+ */
+const markScrollers = () => {
+  const dialogs = [...document.querySelectorAll('[aria-modal="true"]')].filter(
+    (d) => d.getClientRects().length > 0,
+  );
+  const region = dialogs[dialogs.length - 1] ?? document.body;
+  const scrolls = (el: Element) => {
+    const y = getComputedStyle(el).overflowY;
+    return (y === 'auto' || y === 'scroll') && el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1;
+  };
+  const all = [...region.querySelectorAll('*')].filter(scrolls);
+  const outer = all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
+  outer.forEach((el, i) => {
+    el.setAttribute('data-fit-scroller', String(i));
+  });
+  const page = document.scrollingElement ?? document.documentElement;
+  return [
+    ...outer.map((el, i) => ({ i, height: el.clientHeight, full: el.scrollHeight })),
+    ...(region === document.body && page.scrollHeight > innerHeight + 1
+      ? [{ i: -1, height: innerHeight, full: page.scrollHeight }]
+      : []),
+  ];
+};
+
+/** One scroller (-1: the page) scrolled to `top`, at once. */
+const scrollTo = ({ i, top }: { i: number; top: number }) => {
+  const el = i === -1 ? null : document.querySelector(`[data-fit-scroller="${String(i)}"]`);
+  if (el) el.scrollTo({ top, behavior: 'instant' });
+  else if (i === -1) window.scrollTo({ top, behavior: 'instant' });
+};
+
 /** Findings of every look, and a picture of each look that has any. */
 class Sweep {
   readonly findings: string[] = [];
@@ -366,22 +433,27 @@ class Sweep {
     private readonly rules: Omit<Rules, 'width' | 'height'>,
   ) {}
 
-  /** The page as it is now, at `size`, laid out and settled. */
+  /**
+   * The page as it is now, at `size`, laid out and settled: at the top, then scrolled down a screen at a time through
+   * each of its scrollers (and the page, where it scrolls), so what is further down is looked at too.
+   */
   async look(size: Size, what: string, rules: Partial<Omit<Rules, 'width' | 'height'>> = {}): Promise<void> {
-    await this.page.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        }),
-    );
-    await settled(this.page);
+    await settle(this.page);
     await this.page.evaluate(() => document.fonts.ready.then(() => undefined));
-    const faults = await this.page.evaluate(faultsIn, {
-      ...this.rules,
-      ...rules,
-      width: size.width,
-      height: size.height,
-    });
+    const given = { ...this.rules, ...rules, width: size.width, height: size.height };
+    const seen = new Set(await this.page.evaluate(faultsIn, given));
+    const scrollers = await this.page.evaluate(markScrollers);
+    for (const { i, height, full } of scrollers) {
+      const step = Math.max(100, Math.floor(height * 0.8));
+      for (let top = step; top < full - height + step; top += step) {
+        await this.page.evaluate(scrollTo, { i, top: Math.min(top, full - height) });
+        await settle(this.page);
+        for (const f of await this.page.evaluate(faultsIn, given)) seen.add(f);
+      }
+      await this.page.evaluate(scrollTo, { i, top: 0 });
+    }
+    await settle(this.page);
+    const faults = [...seen];
     this.findings.push(...faults.map((f) => `${sized(size)}, ${what}: ${f}`));
     if (this.rules.remote)
       this.middles.set(
