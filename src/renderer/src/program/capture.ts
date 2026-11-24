@@ -79,7 +79,11 @@ let sending: Promise<void> = Promise.resolve();
  * as long as the capture took from being asked for to its first frame (measured: 46-72 ms on a dev Mac with its page
  * loaded, ~0.5 s when asked for as the page loads; up to ~0.23 s on CI's Mac), and the stream starts that much later,
  * from a frame that shows the show. Once the show is on screen before a capture is asked for (a stream begun on a page
- * long up), none.
+ * long up), none. Its limits (a22-review-blackstart): once one of a capture's frames was taken after the show, its later
+ * frames are not judged again (stamps that start again, as after a GPU restart, never hold a stream mid-service); a
+ * frame read HOLD_MAX_MS or more after the show goes all the same (stamps that stand still never keep a stream from
+ * starting; a black frame gets through only if the capture took over 1 s to give it, CI's worst ~0.23 s); and while
+ * frames are let go the window paints every REPAINT_MS (a still slide gives a frame only when it paints).
  */
 let onScreen = false;
 /** When the show came on screen, by this page's clock: a frame captured before then never goes to the encoder. */
@@ -88,10 +92,17 @@ let onScreenAt = Number.POSITIVE_INFINITY;
 let waitedOut = false;
 let showWait: ReturnType<typeof setTimeout> | null = null;
 const SHOW_WAIT_MS = 15_000;
-/** The earliest the newest frame can have been captured, by this page's clock (`capturedBy`). */
-let latestAt = 0;
-/** Said once: a frame read once the show was on screen but captured before it was let go. */
-let letGoSaid = false;
+/** Whether the newest frame was taken as captured once the show was on screen (`shown`, in capture()). */
+let latestShown = false;
+const HOLD_MAX_MS = 1000;
+const HOLD_MAX = `${String(HOLD_MAX_MS / 1000)} s`;
+/** While frames are let go, the window paints this often until one goes. */
+let repainting: ReturnType<typeof setInterval> | null = null;
+const REPAINT_MS = 100;
+const stopRepainting = () => {
+  if (repainting) clearInterval(repainting);
+  repainting = null;
+};
 
 /** Whether the encoder takes the page's frames now. */
 const encoderTakes = (): boolean => onScreen || waitedOut;
@@ -342,6 +353,10 @@ async function capture(): Promise<void> {
   let mineFrames = 0;
   /** This capture's first frame's stamp (µs, the capture's own clock). */
   let firstStamp: number | null = null;
+  /** One of its frames was taken as captured after the show: its later ones are too (its stamps only grow). */
+  let taken = false;
+  /** Its frames let go since the show, until one is taken (each said once). */
+  let letGo = 0;
   for (;;) {
     const { value: frame, done } = await reader.read();
     if (done) break;
@@ -358,9 +373,15 @@ async function capture(): Promise<void> {
     // The earliest it can have been captured, by this page's clock (see onScreen above).
     firstStamp ??= frame.timestamp;
     const capturedBy = askedAt + (frame.timestamp - firstStamp) / 1000;
-    latestAt = capturedBy;
     // eslint-disable-next-line no-restricted-properties -- capture's plumbing: how often the operator's small preview of the stream is sent
     const now = performance.now();
+    const shown = taken || capturedBy >= onScreenAt || now >= onScreenAt + HOLD_MAX_MS;
+    if (shown && !taken && onScreen) {
+      taken = true;
+      if (capturedBy < onScreenAt)
+        say(`no frame stamped as captured after it: frames go from ${HOLD_MAX} after the show`);
+    }
+    latestShown = shown;
     if (preview && !previewBusy && now - lastPreview >= 1000 / PREVIEW_FPS) {
       previewBusy = true;
       lastPreview = now;
@@ -370,18 +391,24 @@ async function capture(): Promise<void> {
         previewBusy = false;
       });
     }
-    const afterShow = capturedBy >= onScreenAt;
     const forEncoder = encoder !== null && encoderTakes();
     const forVideoOut = videoOut !== null && videoOutTakes();
-    const toEncoderNow = forEncoder && (waitedOut || afterShow);
-    const toVideoOutNow = forVideoOut && (videoOutWaited || afterShow);
+    const toEncoderNow = forEncoder && (waitedOut || shown);
+    const toVideoOutNow = forVideoOut && (videoOutWaited || shown);
     if ((forEncoder && !toEncoderNow) || (forVideoOut && !toVideoOutNow)) {
-      // Read once the show was on screen, but captured before it: let go, and the window paints for the next one.
-      if (!letGoSaid) {
-        letGoSaid = true;
-        say('a frame captured before the show was on screen was let go: the next one captured after it goes');
+      // Read once the show was on screen, but captured before it: let go, and the window paints until one comes.
+      if (++letGo === 1)
+        say('a frame captured before the show was on screen was let go: the next one after it goes');
+      // eslint-disable-next-line no-restricted-syntax -- capture's plumbing: the corner repainted (at most 1/255) until a frame comes
+      repainting ??= setInterval(nudge, REPAINT_MS);
+    } else {
+      if (letGo > 0 && (toEncoderNow || toVideoOutNow)) {
+        const ms = String(Math.round(now - onScreenAt));
+        const many = letGo === 1 ? 'one frame' : `${String(letGo)} frames`;
+        say(`${many} let go; the first taken ${ms} ms after the show`);
       }
-      nudge();
+      letGo = 0;
+      stopRepainting();
     }
     if (toEncoderNow) await toEncoder(frame);
     if (toVideoOutNow) toVideoOut(frame.clone());
@@ -389,6 +416,7 @@ async function capture(): Promise<void> {
   }
   if (mine === generation) {
     keepLatest(null);
+    stopRepainting();
     track = null;
     document.body.dataset['capture'] = 'off';
   }
@@ -410,6 +438,7 @@ function update(): void {
     say('nothing wants the picture: the capture stops');
     generation++;
     keepLatest(null);
+    stopRepainting();
     track?.stop();
     track = null;
     document.body.dataset['capture'] = 'off';
@@ -422,7 +451,7 @@ function update(): void {
  */
 function handOver(): void {
   if (!encoder) return;
-  if (latest && (waitedOut || latestAt >= onScreenAt)) {
+  if (latest && (waitedOut || latestShown)) {
     const still = latest.clone();
     void toEncoder(still).finally(() => {
       still.close();
@@ -433,7 +462,7 @@ function handOver(): void {
 /** Video out's port came, or the show is on screen: the newest frame at once if it shows the show, else a repaint. */
 function handOverVideoOut(): void {
   if (!videoOut) return;
-  if (latest && (videoOutWaited || latestAt >= onScreenAt)) toVideoOut(latest.clone());
+  if (latest && (videoOutWaited || latestShown)) toVideoOut(latest.clone());
   else wantFrame();
 }
 
