@@ -262,6 +262,8 @@ test('translation review fits the least editor size, keeps focus and readable sc
     if (!editor) throw new Error('No editor page');
     editor.setZoomFactor(2);
   });
+  // The zoom has landed: the page is half as wide in CSS pixels.
+  await expect.poll(() => ed.evaluate(() => innerWidth)).toBe(512);
   await expectFits(review, 'Translation dialog and whole editor page at 200% zoom');
   await expectDialogFits(review, 'Translation dialog at 200% zoom');
   await ed.keyboard.press('Escape');
