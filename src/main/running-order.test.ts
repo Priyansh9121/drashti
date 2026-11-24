@@ -19,6 +19,18 @@ import {
  * window, one page at a time across both, never while the show is live). Placeholder names only.
  */
 
+/** A placeholder picture's row. */
+const PICTURE: PlaylistItemInfo = {
+  id: 'm3',
+  kind: 'media',
+  label: 'Placeholder picture',
+  mediaId: 'md3',
+  media: 'image',
+  missing: false,
+  unplayable: null,
+  timers: [],
+};
+
 /** A placeholder playlist's rows, one of each kind, in its order. */
 const ITEMS: PlaylistItemInfo[] = [
   { id: 'h1', kind: 'header', label: 'Placeholder Dhun', color: null },
@@ -59,16 +71,7 @@ const ITEMS: PlaylistItemInfo[] = [
     playingMs: null,
   },
   { id: 'h2', kind: 'header', label: 'Placeholder Pravachan', color: '#ff0000' },
-  {
-    id: 'm3',
-    kind: 'media',
-    label: 'Placeholder picture',
-    mediaId: 'md3',
-    media: 'image',
-    missing: false,
-    unplayable: null,
-    timers: [],
-  },
+  PICTURE,
   { id: 'b1', kind: 'shastra', label: 'Placeholder passage 1.1', passageId: 'x', missing: false, timers: [] },
   { id: 'i1', kind: 'input', label: 'Input 1', name: 'Input 1', missing: false, timers: [] },
   { id: 's2', kind: 'placeholder', label: 'Placeholder lost file', hint: 'lost.pptx', category: null },
@@ -93,8 +96,7 @@ describe('Copy running order', () => {
   });
 
   it('numbers from 1 with no header, says a playlist is empty, and leaves the total out when nothing has a length', () => {
-    const picture = ITEMS[6] as PlaylistItemInfo;
-    expect(runningOrderLines({ name: 'Placeholder list', items: [picture, picture] })).toBe(
+    expect(runningOrderLines({ name: 'Placeholder list', items: [PICTURE, PICTURE] })).toBe(
       'Placeholder list\n1. Placeholder picture\n2. Placeholder picture',
     );
     expect(runningOrderLines({ name: 'Placeholder list', items: [] })).toBe(
@@ -157,7 +159,7 @@ describe('the running order on paper', () => {
       printed: '<img src=x onerror=alert(1)>',
       items: [
         { id: 'h', kind: 'header', label: '"Placeholder" & <b>header</b>', color: null },
-        { ...(ITEMS[2] as PlaylistItemInfo), label: "<img src='file:///etc/passwd'>" } as PlaylistItemInfo,
+        { ...PICTURE, label: "<img src='file:///etc/passwd'>" },
       ],
     });
     expect(hostile).not.toMatch(/<script|<img|<b>/u);
@@ -295,7 +297,9 @@ describe('Print running order… and Save running order as PDF…', () => {
           resolve({ ok: true, pdf: null });
         };
       });
-    const files = new GuideFiles(guidesDir({ packaged: false, resourcesPath: '/nowhere', appPath: process.cwd() }));
+    const files = new GuideFiles(
+      guidesDir({ packaged: false, resourcesPath: '/nowhere', appPath: process.cwd() }),
+    );
     const manual = new ManualPrinter({
       files,
       version: () => '1.0.0-alpha.22',

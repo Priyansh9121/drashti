@@ -9,10 +9,10 @@ import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpe
 import { makeTestVideo } from './test-media';
 
 /*
- * A playlist's running order (alpha.22, from PLAN §7's "Print": seen, not added; the owner's "Yes, build them"), in
- * the open playlist's ⋯ Playlist actions (Pro Mode's): Copy running order puts plain lines on the clipboard, written by
- * the main process; Print running order… and Save running order as PDF… print it from a hidden window as the manual
- * is, never while the show is live. Placeholder names and generated media only.
+ * A playlist's running order (alpha.22, from PLAN §7's "Print": seen, not added; the owner's "Yes, build them"),
+ * in the open playlist's ⋯ Playlist actions (Pro Mode's): Copy running order puts plain lines on the clipboard,
+ * written by the main process; Print running order… and Save running order as PDF… print it from a hidden window
+ * as the manual is, never while the show is live. Placeholder names and generated media only.
  */
 
 /** 'Placeholder sabha <test>': a header, the library's first presentation and a 10-second video, opened. */
@@ -72,9 +72,7 @@ test('Copy running order puts the open playlist’s plain lines on the clipboard
     const win = await operatorPage(app);
     await operatorReady(win);
     const { id, labels } = await placeholderSabha(win, dir);
-    await app.evaluate(({ clipboard }) => {
-      clipboard.writeText('Placeholder clipboard');
-    });
+    await app.evaluate(({ clipboard }) => clipboard.writeText('Placeholder clipboard'));
     await win.getByRole('button', { name: 'Playlist actions' }).click();
     await win.getByRole('menuitem', { name: 'Copy running order', exact: true }).click();
     await expect(win.getByTestId('operator-notice')).toContainText(
@@ -89,9 +87,7 @@ test('Copy running order puts the open playlist’s plain lines on the clipboard
     ]);
 
     // Simple Mode: no ⋯ of the playlist's own, and the main process copies nothing when asked.
-    await app.evaluate(({ clipboard }) => {
-      clipboard.writeText('Placeholder clipboard');
-    });
+    await app.evaluate(({ clipboard }) => clipboard.writeText('Placeholder clipboard'));
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     await expect(win.getByRole('button', { name: 'Playlist actions' })).toHaveCount(0);
@@ -104,7 +100,10 @@ test('Copy running order puts the open playlist’s plain lines on the clipboard
     // Nor printed, nor saved as a PDF.
     const printing = await win.evaluate(async (playlistId) => {
       const d = (globalThis as PageGlobals).drashti;
-      return [await d.playlists.printRunningOrder(playlistId), await d.playlists.saveRunningOrderPdf(playlistId)];
+      return [
+        await d.playlists.printRunningOrder(playlistId),
+        await d.playlists.saveRunningOrderPdf(playlistId),
+      ];
     }, id);
     expect(printing).toEqual([
       { ok: false, cancelled: false, message: SIMPLE_MODE_REFUSAL },
@@ -149,8 +148,10 @@ test('Save running order as PDF… writes the open playlist’s running order wh
         };
       });
     }, pdf);
-    const offered = () => app.evaluate(() => (globalThis as { drashtiOffered?: string[] }).drashtiOffered ?? []);
-    const printed = () => app.evaluate(() => (globalThis as { drashtiPrinted?: Printed[] }).drashtiPrinted ?? []);
+    const offered = () =>
+      app.evaluate(() => (globalThis as { drashtiOffered?: string[] }).drashtiOffered ?? []);
+    const printed = () =>
+      app.evaluate(() => (globalThis as { drashtiPrinted?: Printed[] }).drashtiPrinted ?? []);
     const win = await operatorPage(app);
     await operatorReady(win);
     await placeholderSabha(win, dir);
@@ -188,9 +189,9 @@ test('Save running order as PDF… writes the open playlist’s running order wh
 
     // Print…: the same page, its title the playlist's, its one header a section with its two rows.
     await playlistAction(win, 'Print running order…');
-    await expect.poll(printed, { timeout: 60_000 }).toEqual([
-      { title: 'Placeholder sabha <test> running order', sections: 1, rows: 2 },
-    ]);
+    await expect
+      .poll(printed, { timeout: 60_000 })
+      .toEqual([{ title: 'Placeholder sabha <test> running order', sections: 1, rows: 2 }]);
     await expect(notice).toHaveText('The running order went to the printer.');
 
     // On air (as the main process sees it): refused in words, nothing asked.

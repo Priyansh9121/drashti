@@ -107,6 +107,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.exportM3u,
   // A playlist's running order (alpha.22): copied, printed or saved as a PDF from its ⋯, Pro Mode's as the M3U is.
   IPC.playlists.copyRunningOrder,
+  IPC.playlists.printRunningOrder,
+  IPC.playlists.saveRunningOrderPdf,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,
@@ -658,5 +660,8 @@ export function simpleModeRefusals(
   answers.set(IPC.liveLink.stop, () => null);
   answers.set(IPC.liveLink.last, () => null);
   answers.set(IPC.zoom.open, () => null);
+  // A running order's printing (alpha.22) answers as the manual's does: not cancelled, in words.
+  for (const c of [IPC.playlists.printRunningOrder, IPC.playlists.saveRunningOrderPdf])
+    answers.set(c, () => ({ ...refused(), cancelled: false }));
   return answers;
 }

@@ -11,6 +11,10 @@ import type { Block, Inline } from '../shared/markdown';
  * every request but the page itself and the pictures the manual shows (files beside the app), no download, no
  * permission, no window it could open. The page holds no script, and its words are only ever text: each is escaped.
  * Nothing in it touches the show.
+ *
+ * Since alpha.22 a playlist's running order is printed the same way (main/running-order.ts): each page names its own
+ * title and footer, and one page is printed at a time across both, as the page's allowed files are one set
+ * (`takePrinter`).
  */
 
 /** A chapter, read, for the page. */
@@ -137,30 +141,58 @@ ${chapters}
 `;
 }
 
-/** The footer on every page of the PDF (Chromium fills in the numbers). */
-export const PDF_FOOTER =
+/** The footer on every page of the PDF: its words ("Drashti Manual"), escaped, and the page (Chromium fills it in). */
+export const pdfFooter = (words: string): string =>
   '<div style="width:100%;font-size:8px;color:#555;text-align:center;font-family:sans-serif">' +
-  'Drashti Manual · page <span class="pageNumber"></span> of <span class="totalPages"></span></div>';
+  `${escapeHtml(words)} · page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`;
 
 const inch = (mm: number) => mm / 25.4;
 
 /** printToPDF's choices: A4, with room for the footer. */
-export const PDF_OPTIONS = {
-  pageSize: 'A4',
-  printBackground: true,
-  displayHeaderFooter: true,
-  headerTemplate: '<span></span>',
-  footerTemplate: PDF_FOOTER,
-  margins: { top: inch(16), bottom: inch(18), left: inch(16), right: inch(16) },
-  preferCSSPageSize: false,
-} as const;
+export const pdfOptions = (footer: string) =>
+  ({
+    pageSize: 'A4',
+    printBackground: true,
+    displayHeaderFooter: true,
+    headerTemplate: '<span></span>',
+    footerTemplate: pdfFooter(footer),
+    margins: { top: inch(16), bottom: inch(18), left: inch(16), right: inch(16) },
+    preferCSSPageSize: false,
+  }) as const;
 
 /** The partition of the printing window: in memory only (no "persist:"), its own, never the show's. */
 const PRINT_PARTITION = 'drashti-manual-print';
 
-/** The files the page being printed may load now (one print at a time: manual-service.ts). */
+/** The files the page being printed may load now: one page at a time, across every printer (`takePrinter`). */
 let mayLoad: ReadonlySet<string> = new Set();
+/** A page is being printed now (its window open, `mayLoad` its own). */
+let pageOpen = false;
 let printSession: Electron.Session | null = null;
+
+/** Who holds the printer now ("The manual", "A running order"), or null. */
+let holder: string | null = null;
+
+/**
+ * The printer, taken for one print, from its first question (the save dialog) to its end: across the manual and every
+ * running order, one at a time, as the page's allowed files are one set. `who` names the print ("The manual"); the
+ * answer is the way to give it back (once is enough), or who holds it now.
+ */
+export function takePrinter(who: string): { release: () => void } | { heldBy: string } {
+  if (holder !== null) return { heldBy: holder };
+  holder = who;
+  let given = false;
+  return {
+    release: () => {
+      if (given) return;
+      given = true;
+      holder = null;
+    },
+  };
+}
+
+/** The words for a print asked for while another holds the printer. */
+export const printerBusy = (heldBy: string): string =>
+  `${heldBy} is being printed already: wait until that is done, then try again.`;
 
 /** The printing window's session, its rules set once: only `mayLoad`, no permission, no download. */
 function printingSession(): Electron.Session {
@@ -191,24 +223,35 @@ export function printRequestAllowed(url: string, allowed: ReadonlySet<string>): 
   }
 }
 
-/** A picture's address for the page: its file's (it must be one the page may load: see `printManual`). */
+/** A picture's address for the page: its file's (it must be one the page may load: see `printPage`). */
 export const fileAddress = (path: string): string => pathToFileURL(path).href;
 
 export type PrintOutcome = { ok: true; pdf: Buffer | null } | { ok: false; cancelled: boolean; why: string };
 
-/**
- * Print the manual's page (`html`) from a hidden window: as a PDF (its bytes), or through the system's print dialog.
- * `pictures` are the files the page shows (each its full path): nothing else may load. The page is written to a new
- * folder in `tempDir` and taken away after.
- */
-export async function printManual(p: {
+/** A page to print from a hidden window: its words, the files it shows, and what it is called. */
+export interface PrintPage {
   html: string;
+  /** The files the page shows (each its full path): nothing else may load. */
   pictures: readonly string[];
+  /** Where the page is written for a moment (a folder of its own is made in it, and taken away after). */
   tempDir: string;
   kind: 'pdf' | 'print';
-}): Promise<PrintOutcome> {
-  const folder = mkdtempSync(join(p.tempDir, 'drashti-manual-'));
-  const page = join(folder, 'manual.html');
+  /** The hidden window's title ("Drashti Manual"). */
+  title: string;
+  /** The words in the PDF's footer, before its page number ("Drashti Manual"). */
+  footer: string;
+}
+
+/**
+ * Print a page (`html`: the manual's, a running order's) from a hidden window: as a PDF (its bytes), or through the
+ * system's print dialog. Only one page at a time: another, asked for meanwhile, is not printed (`takePrinter` keeps
+ * the asking to one at a time first).
+ */
+export async function printPage(p: PrintPage): Promise<PrintOutcome> {
+  if (pageOpen) return { ok: false, cancelled: false, why: 'another page is being printed' };
+  const folder = mkdtempSync(join(p.tempDir, 'drashti-print-'));
+  pageOpen = true;
+  const page = join(folder, 'page.html');
   let win: BrowserWindow | null = null;
   try {
     writeFileSync(page, p.html, 'utf8');
@@ -228,7 +271,7 @@ export async function printManual(p: {
       skipTaskbar: true,
       width: 900,
       height: 1200,
-      title: 'Drashti Manual',
+      title: p.title,
       webPreferences: {
         session: printing,
         contextIsolation: true,
@@ -260,7 +303,7 @@ export async function printManual(p: {
     await contents.executeJavaScript(
       'Promise.all([...document.images].map((i) => i.decode().catch(() => null))).then(() => document.fonts.ready).then(() => true)',
     );
-    if (p.kind === 'pdf') return { ok: true, pdf: await contents.printToPDF(PDF_OPTIONS) };
+    if (p.kind === 'pdf') return { ok: true, pdf: await contents.printToPDF(pdfOptions(p.footer)) };
     const printed = await new Promise<{ success: boolean; why: string }>((resolve) => {
       contents.print({ silent: false, printBackground: true }, (success, why) => {
         resolve({ success, why });
@@ -272,5 +315,6 @@ export async function printManual(p: {
     mayLoad = new Set();
     if (win && !win.isDestroyed()) win.destroy();
     rmSync(folder, { recursive: true, force: true });
+    pageOpen = false;
   }
 }

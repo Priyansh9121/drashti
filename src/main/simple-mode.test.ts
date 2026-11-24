@@ -505,7 +505,10 @@ describe('Simple Mode locks', () => {
       expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
       expect(simpleModeRefusesWhole(channel), channel).toBe(true);
     }
-    expect(answers.get(IPC.playlists.copyRunningOrder)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(answers.get(IPC.playlists.copyRunningOrder)?.()).toEqual({
+      ok: false,
+      message: SIMPLE_MODE_REFUSAL,
+    });
     // Printing answers as the manual's printing does: not cancelled, in words.
     for (const channel of [IPC.playlists.printRunningOrder, IPC.playlists.saveRunningOrderPdf])
       expect(answers.get(channel)?.(), channel).toEqual({

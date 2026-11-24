@@ -714,6 +714,10 @@ export interface DrashtiBridge {
     exportM3u(playlistId: string, audio: boolean): Promise<M3uResult>;
     /** Its running order (alpha.22) as plain lines on the clipboard: numbered rows, headers as sections, the total. */
     copyRunningOrder(playlistId: string): Promise<RunningOrderCopied>;
+    /** Its running order through the system's print dialog, from a hidden window (never while the show is live). */
+    printRunningOrder(playlistId: string): Promise<ManualPrinted>;
+    /** Its running order saved as a PDF where the person chooses (the system's save dialog). */
+    saveRunningOrderPdf(playlistId: string): Promise<ManualPrinted>;
 
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;

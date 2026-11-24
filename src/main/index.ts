@@ -439,7 +439,7 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
-import { runningOrderLines } from './running-order';
+import { RunningOrderPrinter, runningOrderLines } from './running-order';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
 import { ErrorReports } from './error-reports/service';
@@ -5145,6 +5145,8 @@ function start(): void {
   edits.delete(IPC.playlists.exportM3u);
   // A running order only reads the library (alpha.22): copied, printed or saved where the person chooses.
   edits.delete(IPC.playlists.copyRunningOrder);
+  edits.delete(IPC.playlists.printRunningOrder);
+  edits.delete(IPC.playlists.saveRunningOrderPdf);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);
@@ -8083,6 +8085,45 @@ function start(): void {
       () => ({ ok: false, message: 'The running order could not be copied: try again.' }) as const,
     );
   });
+  // Print running order… and Save running order as PDF…: from a hidden window as the manual is (main/manual-print.ts),
+  // one page at a time across both, and never while the show is live (the manual's rule: anything up, or the stream on
+  // air or recording; a test can say the stream is on air).
+  const runningOrderPrinter = new RunningOrderPrinter({
+    source: (playlistId) => runningOrderSource(playlistId),
+    printed: () => {
+      const style = mainClockStyle();
+      return new Intl.DateTimeFormat(style.locale, { dateStyle: 'full', timeZone: style.timeZone }).format(
+        Date.now(),
+      );
+    },
+    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the running order as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+  });
+  const notPrintedHere = {
+    ok: false,
+    cancelled: false,
+    message: 'Only Drashti’s own window can print a running order.',
+  } as const;
+  handle(IPC.playlists.printRunningOrder, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string'
+      ? runningOrderPrinter.print(playlistId)
+      : notPrintedHere,
+  );
+  handle(IPC.playlists.saveRunningOrderPdf, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string' ? runningOrderPrinter.pdf(playlistId) : notPrintedHere,
+  );
 
   // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and
   // only that write can refuse the rename. What it returns runs once the library has the new name, the rename
