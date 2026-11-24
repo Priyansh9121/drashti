@@ -46,6 +46,8 @@ function setup(
     /** What Drashti's whisper engine says is wrong on this computer (none by default), and the pack model's route. */
     whisperProblem?: string;
     route?: 'whisper' | 'conformer';
+    /** What keeps Route C itself from running here (a Mac before 13.4, no helper), none by default. */
+    routeProblem?: string;
   } = {},
 ) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-ai-'));
@@ -109,6 +111,7 @@ function setup(
           aiPath: {
             on: () => ai.on,
             route: (language) => (o.pack?.[language] === undefined ? null : (o.route ?? 'whisper')),
+            problem: () => o.routeProblem ?? null,
             recognizer: (language) => {
               const modelId = o.pack?.[language];
               if (modelId === undefined) return null;
@@ -429,5 +432,23 @@ describe('caption AI in the captions service', () => {
       expect(t.service.view()).toMatchObject({ engine: false, engineProblem: problem });
       t.service.close();
     }
+  });
+
+  it('where Route C cannot run either (a Mac before 13.4), it says Route C’s own reason and nothing starts (review S1)', async () => {
+    const t = setup({
+      ai: true,
+      pack: { gu: GU },
+      route: 'conformer',
+      whisperProblem: 'Live captions need macOS 13.3 or later on this Mac.',
+      routeProblem: 'The Gujarati and Hindi recognition engine needs macOS 13.4 or later.',
+    });
+    t.choose('gu');
+    expect(t.service.view()).toMatchObject({
+      engine: false,
+      engineProblem: 'The Gujarati and Hindi recognition engine needs macOS 13.4 or later.',
+    });
+    await t.service.setOn(true);
+    expect(t.started).toEqual([]);
+    t.service.close();
   });
 });
