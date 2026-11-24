@@ -10,7 +10,10 @@
 /** Where the still was taken: a hall screen's window on this computer, or Live's copy (no hall screen here). */
 export type StudioLiveSource = 'screen' | 'copy';
 
-/** What is live that Live's copy cannot draw (it is no screen): a video input, or another app's window. */
+/**
+ * What is live that Live's copy does not draw (it is no screen): a video input, another app's window, or a stream link
+ * (never played by the copy: a second player and decode on the show computer, lead 2's N5).
+ */
 export type LiveUnseen = 'input' | 'window' | 'link';
 
 /** main -> the studio while Live's copy opens (its page loading): "Getting the live picture…". */

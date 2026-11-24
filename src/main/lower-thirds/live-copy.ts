@@ -192,17 +192,24 @@ export function stoppedHallHere(
   );
 }
 
-/** Red: skeleton. */
-export function linkJoinFor<T>(_fromCopy: boolean, join: () => T): T | null {
-  return join();
+/**
+ * A page's place in a stream link (liveLink.join): never Live's copy's (lead 2, N5), so its player never loads the link,
+ * and no second player and decode of it runs on the show computer for a still; every other page joins as before.
+ */
+export function linkJoinFor<T>(fromCopy: boolean, join: () => T): T | null {
+  return fromCopy ? null : join();
 }
 
-/** What is live that the copy cannot draw (it is no screen): a video input, or another app's window, in either place. */
+/**
+ * What is live that the copy does not draw (it is no screen): a video input or another app's window, in either place,
+ * or a stream link (the background only).
+ */
 export function unseenInCopy(layers: Pick<Layers, 'background' | 'pip'>): LiveUnseen[] {
   const kinds = [layers.background?.kind, layers.pip?.source.kind];
   const unseen: LiveUnseen[] = [];
   for (const kind of kinds)
-    if ((kind === 'input' || kind === 'window') && !unseen.includes(kind)) unseen.push(kind);
+    if ((kind === 'input' || kind === 'window' || kind === 'link') && !unseen.includes(kind))
+      unseen.push(kind);
   return unseen;
 }
 

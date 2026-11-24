@@ -146,7 +146,14 @@ import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
 import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
-import { LiveCopy, liveCopyContext, stoppedHallHere, unseenInCopy, WAITING } from './lower-thirds/live-copy';
+import {
+  LiveCopy,
+  linkJoinFor,
+  liveCopyContext,
+  stoppedHallHere,
+  unseenInCopy,
+  WAITING,
+} from './lower-thirds/live-copy';
 import { createLiveCopyWindow } from './lower-thirds/live-copy-window';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
@@ -4654,7 +4661,10 @@ function start(): void {
   handle(IPC.liveLink.status, () => streamLinks.view());
   handle(IPC.liveLink.last, (e) => (fromOperator(e) ? lastStreamLink : null));
   // Any of Drashti's own pages that plays it (a screen, LIVE, a card, a stage screen's box, the audio player).
-  handle(IPC.liveLink.join, (_e, linkId) => (typeof linkId === 'string' ? streamLinks.join(linkId) : null));
+  // Live's copy (alpha.23) is never given a place in a stream link: its player never loads it (lead 2, N5).
+  handle(IPC.liveLink.join, (e, linkId) =>
+    typeof linkId === 'string' ? linkJoinFor(isLiveCopy(e.sender), () => streamLinks.join(linkId)) : null,
+  );
 
   // ---- the window for Zoom (Session 48) -------------------------------------------
   const zoom = new ZoomWindow({

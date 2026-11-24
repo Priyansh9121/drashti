@@ -36,18 +36,21 @@ export const NO_LIVE = 'No live picture to show';
 export const LIVE_GETTING = 'Getting the live picture…';
 
 /**
- * Live from its copy (no hall screen here) while a video input or another app's window is live: the copy draws
- * neither (it is no screen), and says which.
+ * Live from its copy (no hall screen here) while a video input, another app's window or a stream link is live: the
+ * copy draws none of them (it is no screen), and says which.
  */
 export function unseenWords(unseen: readonly LiveUnseen[]): string {
-  const input = unseen.includes('input');
-  const window = unseen.includes('window');
-  const what =
-    input && window
-      ? 'the video input or another app’s window'
-      : input
-        ? 'the video input'
-        : 'another app’s window';
+  const names = (
+    [
+      ['input', 'the video input'],
+      ['window', 'another app’s window'],
+      ['link', 'the stream link'],
+    ] as const
+  )
+    .filter(([kind]) => unseen.includes(kind))
+    .map(([, name]) => name);
+  const last = names.pop() ?? 'it';
+  const what = names.length === 0 ? last : `${names.join(', ')} or ${last}`;
   return `Live can’t show ${what} here: there is no hall screen on this computer.`;
 }
 
