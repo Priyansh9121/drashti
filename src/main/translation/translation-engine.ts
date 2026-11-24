@@ -16,6 +16,13 @@ import { HelperError, TranslationHelper } from './translation-helper';
 import { pyStrip } from './python-text';
 
 const cancelled = (): HelperError => new HelperError('cancelled', 'Stopped.');
+const unreadableModel = (): HelperError =>
+  new HelperError(
+    'model-unreadable',
+    'The translation model\u2019s folder could not be read just now. Try Prepare translations again in a moment.',
+  );
+/** What Finder (.DS_Store) and Windows (Thumbs.db, desktop.ini) write into a folder someone opens, in lower case. */
+const FOLDER_NOTES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 const changedModel = (): HelperError =>
   new HelperError(
     'model-changed',
@@ -313,12 +320,20 @@ export class TranslationEngine implements Translator {
       const folder = dirname(file('model.bin'));
       try {
         // The folder on this disk holds the five checked files and nothing else (a22-review-mt2 S1): a file the
-        // pack's list never named (one CTranslate2 opens by name) is never read.
-        // A folder that cannot be read (gone since the check) is a changed model too.
-        const listed = await (this.o.listFolder ?? readdir)(folder).catch(() => null);
+        // pack's list never named (one CTranslate2 opens by name) is never read. Only what Finder and Windows
+        // write into a folder someone opened is passed over: CTranslate2 opens none of them.
+        let listed: readonly string[];
+        try {
+          listed = await (this.o.listFolder ?? readdir)(folder);
+        } catch (error) {
+          if (stopped()) throw cancelled();
+          const code = (error as NodeJS.ErrnoException).code;
+          // Gone since the check: a changed model. Anything else (an antivirus holding it) passes: try again.
+          throw code === 'ENOENT' || code === 'ENOTDIR' ? changedModel() : unreadableModel();
+        }
         if (stopped()) throw cancelled();
-        const onDisk = listed === null ? null : [...listed].sort().join('\n');
-        if (onDisk !== [...INDICTRANS2_FILES].sort().join('\n')) {
+        const onDisk = listed.filter((name) => !FOLDER_NOTES.has(name.toLowerCase())).sort();
+        if (onDisk.join('\n') !== [...INDICTRANS2_FILES].sort().join('\n')) {
           this.o.log.warn(`Translation: ${model.id}'s folder holds a file its pack does not list.`);
           throw changedModel();
         }
