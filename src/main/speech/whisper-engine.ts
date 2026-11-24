@@ -348,7 +348,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         return all;
       };
 
-      const hold = (measured: Omit<SlowHold, 'threads' | 'processors' | 'rests'>): void => {
+      const hold = (measured: Pick<SlowHold, 'answerMs' | 'behindMs'>): void => {
         if (busy || stopped) return;
         busy = true;
         rests += 1;
