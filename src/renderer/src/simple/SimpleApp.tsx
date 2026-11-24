@@ -74,7 +74,6 @@ import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
 import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
 import { SimpleFirstRun } from './SimpleFirstRun';
 import { SimpleFeatureDialogs, SimpleFeatureNotices, SimpleFeatureSections } from './SimpleFeatureSections';
-import { useSimpleFeatures } from './simple-features-store';
 
 /*
  * Simple Mode (PLAN.md section 3; Session 55, Part 18: for a small sabha in the hall, or anywhere with one projector):
@@ -232,8 +231,6 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   const platform = info?.platform ?? 'darwin';
   const simpleAccess = useSimpleAccess();
   const dashboardOpen = useNodes((s) => s.dashboard);
-  // Any of Pro Mode's tools chosen for Simple Mode (alpha.22).
-  const tools = useSimpleFeatures((s) => s.chosen.length > 0);
   const coming = useComingPlaylist();
   useDropsIntoPlaylist();
   // The open folder playlist's folders under the playlists, as in Pro Mode (Session 56).
@@ -407,15 +404,12 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             rest={
               // Audio (Session 56, the owner: "The Audio panel on the right, under LIVE and above Black-out, in the
               // empty space there"): Pro Mode's own, as under its LIVE. Under it (alpha.22) the tools chosen in Pro
-              // Mode's Edit › Simple Mode Features…, each its own folding section.
-              tools ? (
-                <div className="divide-y divide-line">
-                  <AudioGroup platform={platform} />
-                  <SimpleFeatureSections platform={platform} />
-                </div>
-              ) : (
+              // Mode's Edit › Simple Mode Features…, each its own folding section (with none, Audio alone, as before:
+              // a line divides only one section from the next).
+              <div className="divide-y divide-line">
                 <AudioGroup platform={platform} />
-              )
+                <SimpleFeatureSections platform={platform} />
+              </div>
             }
           />
         }

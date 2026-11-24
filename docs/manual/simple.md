@@ -103,7 +103,7 @@ Simple Mode is this window with only what a small sabha with one projector needs
 4. Open a tool's section under **Audio** to use it.
 5. To take one away again, turn its switch off in Pro Mode.
 
-![Simple Mode: LIVE with Next and Back on the right, where a chosen tool's section shows under Audio](../screenshots/simple-mode-1280x720.png)
+![Simple Mode as it comes, with none of Pro Mode's tools turned on](../screenshots/simple-mode-1280x720.png)
 
 ## A phone in Simple Mode
 
