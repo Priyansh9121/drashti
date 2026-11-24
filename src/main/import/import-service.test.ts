@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ImportProgress, ImportRunSummary } from '../../shared/import';
 import { emptyTotals } from '../../shared/import';
+import type { DisplayResult } from '../media/display-copies';
 import { ImportService, type ImportServiceDeps, type WorkerProcess } from './import-service';
 import type { FromWorker, ToWorker } from './protocol';
 
@@ -239,6 +240,65 @@ describe('ImportService', () => {
     await Promise.resolve();
     expect(workers).toHaveLength(0);
     expect(mocks.failRun).not.toHaveBeenCalled();
+  });
+
+  it('says a run held for the screens’ transitions is waiting for them, and stops once they end (QA22-L8-1, the owner: "Keep wait, say why")', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    let ends: number | null = Date.now() + 5000;
+    const { service, mocks, workers } = setup({ quiet: () => quiet, transitionsEndAt: () => ends });
+    const first = service.start(['/Placeholder picture.png']);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'queued', waitingFor: 'transitions' }),
+    );
+    ends = null;
+    end();
+    await vi.waitFor(() => {
+      expect(workers).toHaveLength(1);
+    });
+    // Its worker started: it no longer says it waits.
+    expect(mocks.onProgress.mock.calls.at(-1)?.[0].waitingFor).toBeUndefined();
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+  });
+
+  it('says a new picture waits for the screens’ transitions while its display copy waits for them (QA22-L8-1)', async () => {
+    let made: (result: DisplayResult) => void = () => undefined;
+    const prepared = new Promise<DisplayResult>((resolve) => {
+      made = resolve;
+    });
+    let ends: number | null = Date.now() + 5000;
+    const { service, mocks, workers } = setup({
+      prepareDisplay: () => prepared,
+      transitionsEndAt: () => ends,
+    });
+    const first = service.start(['/Placeholder large.png']);
+    const w = workers[0];
+    if (!w) throw new Error('no worker');
+    const reading = {
+      runId: w.runId,
+      phase: 'importing' as const,
+      done: 0,
+      total: 1,
+      current: 'Placeholder large.png',
+    };
+    w.emit({ type: 'progress', progress: reading });
+    w.emit({
+      type: 'prepare-display',
+      requestId: 'r1',
+      candidate: { path: 'a.png', sha256: 'a'.repeat(64) },
+    });
+    expect(mocks.onProgress).toHaveBeenLastCalledWith({ ...reading, waitingFor: 'transitions' });
+    ends = null;
+    made({ ok: true, copy: null });
+    await vi.waitFor(() => {
+      expect(w.sent.some((m) => m.type === 'display-prepared')).toBe(true);
+    });
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
+    w.emit({ type: 'finished', run: summary(w.runId) });
+    await first;
   });
 
   it('tells each import HEVC’s other kinds as the window said them with its answer, read as it starts (Session 60, x36)', async () => {
