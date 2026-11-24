@@ -274,3 +274,144 @@ describe('when the waits look again by themselves (saveWaitEndsAt)', () => {
     expect(saveWaitEndsAt(null, 2000)).toBeNull();
   });
 });
+
+/*
+ * a22-review-trimsave (MUST-1, SHOULD-3): what plays on the hall but the time bar does not list held no save at all,
+ * and an ended sound under it no longer covers it by accident: a slide's own sound or a deck's soundtrack over the
+ * operator's sound (audio.over), a deck's step clip and its transition sound. Each holds while it plays, by the same
+ * end point, never longer; and a file's sound set to come later than its picture (Sound and picture…) holds until it
+ * has played out too.
+ */
+describe('what plays beside the time bar’s list', () => {
+  const sound = (more: Record<string, unknown> = {}) =>
+    ({
+      id: 'placeholder-sound',
+      title: 'Placeholder tone',
+      mediaId: 'placeholder-sound',
+      volume: 1,
+      loop: false,
+      startedAt: 1000,
+      durationMs: 3000,
+      ...more,
+    }) as NonNullable<Layers['audio']>;
+  const over = sound({
+    id: 'placeholder-over',
+    mediaId: 'placeholder-over',
+    startedAt: 2000,
+    durationMs: 60_000,
+  });
+
+  it('a slide’s own sound over an ended operator sound holds a save until it has played out', () => {
+    const state = withLayers({ audio: { ...sound(), over } });
+    expect(saveWaitsFor(state, OFF, 4000 + END_SETTLE_MS)).toBe(SAVE_WAITS.sound);
+    expect(saveWaitsFor(state, OFF, 62_000 + END_SETTLE_MS - 1)).toBe(SAVE_WAITS.sound);
+    expect(saveWaitsFor(state, OFF, 62_000 + END_SETTLE_MS)).toBeNull();
+    expect(saveWaitEndsAt(state, 4000 + END_SETTLE_MS)).toBe(62_000 + END_SETTLE_MS);
+    // While both play, the one under it ends first.
+    expect(saveWaitEndsAt(state, 2500)).toBe(4000 + END_SETTLE_MS);
+  });
+
+  it('a slide’s own sound over a paused track holds it; paused itself, it does not', () => {
+    const track = sound({
+      music: { playlistId: 'p', index: 0, tracks: [] },
+      pausedAtMs: 500,
+      durationMs: 90_000,
+    });
+    expect(saveWaitsFor(withLayers({ audio: { ...track, over } }), OFF, 3000)).toBe(SAVE_WAITS.sound);
+    const quiet = { ...over, seek: { at: 2500, toMs: 500, paused: true } };
+    expect(saveWaitsFor(withLayers({ audio: { ...track, over: quiet } }), OFF, 3000)).toBeNull();
+  });
+
+  /** A deck's slide: step clips of 3 s and 2 s (the second with a loop it plays while it waits), shown at 1000. */
+  const deckSlide = (more: Record<string, unknown> = {}, deck: Record<string, unknown> = {}) =>
+    ({
+      ...stillSlide(),
+      slide: {
+        id: 'placeholder-deck-slide',
+        elements: [],
+        deck: {
+          steps: [
+            { clipId: 'placeholder-step-0', clipMs: 3000, lastId: 'placeholder-last-0' },
+            {
+              clipId: 'placeholder-step-1',
+              clipMs: 2000,
+              lastId: 'placeholder-last-1',
+              holdId: 'placeholder-hold-1',
+              holdMs: 1500,
+            },
+          ],
+          media: [],
+          ...deck,
+        },
+      },
+      step: 0,
+      stepAt: 1000,
+      ...more,
+    }) as unknown as SlideLayer;
+
+  it('a deck’s step clip holds it while it plays, from its click, and no longer once it ends on its last frame', () => {
+    const first = withLayers({ slide: deckSlide() });
+    expect(saveWaitsFor(first, OFF, 3999)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor(first, OFF, 4000 + END_SETTLE_MS)).toBeNull();
+    expect(saveWaitEndsAt(first, 2000)).toBe(4000 + END_SETTLE_MS);
+    // The next click at 10 000: its 2-second clip.
+    const second = withLayers({ slide: deckSlide({ step: 1, stepAt: 10_000 }) });
+    expect(saveWaitsFor(second, OFF, 9999)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor(second, OFF, 11_999)).toBe(SAVE_WAITS.video);
+    // Its loop while it waits for the next click goes round for as long as the step is up: the slide's own motion, as
+    // a slide's transitions and animations are, so it holds no save (a22-trimsave's call, put to lead 2).
+    expect(saveWaitsFor(second, OFF, 12_000 + END_SETTLE_MS)).toBeNull();
+    expect(saveWaitEndsAt(second, 12_000 + END_SETTLE_MS)).toBeNull();
+  });
+
+  it('a step come back to (Back, Previous) shows its last frame at once: no clip plays, so nothing holds', () => {
+    const back = withLayers({ slide: deckSlide({ step: 1, stepAt: 10_000, stepFromMs: 2000 }) });
+    expect(saveWaitsFor(back, OFF, 10_000)).toBeNull();
+    expect(saveWaitEndsAt(back, 10_000)).toBeNull();
+    // Shown part-way in (step 0 by a jump, past the deck's own transition): it plays what is left.
+    const late = withLayers({ slide: deckSlide({ stepFromMs: 1000 }) });
+    expect(saveWaitsFor(late, OFF, 2999)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor(late, OFF, 3000 + END_SETTLE_MS)).toBeNull();
+  });
+
+  it('a deck’s transition sound holds it while it plays, as the slide comes in, by its length', () => {
+    const chimed = (seek: Record<string, unknown> | null, durationMs?: number) =>
+      withLayers(
+        {
+          slide: deckSlide(
+            { ...(seek ? { seeks: { 'placeholder-chime': seek } } : {}) },
+            { steps: [], transition: { name: 'push', durationMs: 500, soundId: 'placeholder-chime' } },
+          ),
+        },
+        durationMs === undefined ? {} : { videoFiles: { 'placeholder-chime': { durationMs } } },
+      );
+    const rang = { at: 1000, toMs: 0 };
+    expect(saveWaitsFor(chimed(rang, 2000), OFF, 2999)).toBe(SAVE_WAITS.sound);
+    expect(saveWaitsFor(chimed(rang, 2000), OFF, 3000 + END_SETTLE_MS)).toBeNull();
+    expect(saveWaitEndsAt(chimed(rang, 2000), 1500)).toBe(3000 + END_SETTLE_MS);
+    // Its length not known yet: the safe side, it holds.
+    expect(saveWaitsFor(chimed(rang), OFF, 60_000)).toBe(SAVE_WAITS.sound);
+    // Not rung (Drashti's own transition came instead, or the slide was jumped to): nothing plays.
+    expect(saveWaitsFor(chimed(null, 2000), OFF, 1500)).toBeNull();
+    expect(saveWaitsFor(chimed({ ...rang, waiting: true, paused: true }, 2000), OFF, 1500)).toBeNull();
+  });
+
+  it('a file’s sound set to come later than its picture holds it until the sound has played out', () => {
+    const once = video({ loop: false, durationMs: 4000 });
+    const later = withLayers(
+      { background: once },
+      { sound: { delays: { 'placeholder-video': 1500 } } as never },
+    );
+    expect(saveWaitsFor(later, OFF, 5000 + END_SETTLE_MS)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor(later, OFF, 6500 + END_SETTLE_MS - 1)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor(later, OFF, 6500 + END_SETTLE_MS)).toBeNull();
+    expect(saveWaitEndsAt(later, 2000)).toBe(6500 + END_SETTLE_MS);
+    // Earlier than its picture: the picture still plays to its own end.
+    const earlier = withLayers(
+      { background: once },
+      { sound: { delays: { 'placeholder-video': -1500 } } as never },
+    );
+    expect(saveWaitsFor(earlier, OFF, 5000 + END_SETTLE_MS - 1)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor(earlier, OFF, 5000 + END_SETTLE_MS)).toBeNull();
+  });
+});
