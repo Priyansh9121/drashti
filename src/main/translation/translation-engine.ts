@@ -314,9 +314,11 @@ export class TranslationEngine implements Translator {
       try {
         // The folder on this disk holds the five checked files and nothing else (a22-review-mt2 S1): a file the
         // pack's list never named (one CTranslate2 opens by name) is never read.
-        const onDisk = [...(await (this.o.listFolder ?? readdir)(folder))].sort();
+        // A folder that cannot be read (gone since the check) is a changed model too.
+        const listed = await (this.o.listFolder ?? readdir)(folder).catch(() => null);
         if (stopped()) throw cancelled();
-        if (onDisk.join('\n') !== [...INDICTRANS2_FILES].sort().join('\n')) {
+        const onDisk = listed === null ? null : [...listed].sort().join('\n');
+        if (onDisk !== [...INDICTRANS2_FILES].sort().join('\n')) {
           this.o.log.warn(`Translation: ${model.id}'s folder holds a file its pack does not list.`);
           throw changedModel();
         }

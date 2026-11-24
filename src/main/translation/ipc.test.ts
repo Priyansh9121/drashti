@@ -144,8 +144,9 @@ describe('Prepare translations’ requests', () => {
         ],
         acquire: () => Promise.resolve({ release: () => undefined }),
       },
-      // A stand-in model, not x74's conversion: taken as known here.
+      // A stand-in model, not x74's conversion: taken as known here, its folder (not on this disk) the five files.
       checkFiles: () => true,
+      listFolder: () => Promise.resolve([...INDICTRANS2_FILES]),
       createHelper: (program) =>
         new TranslationHelper({
           program,

@@ -159,30 +159,36 @@ describe('Prepare translations’ engine', () => {
       for (const name of INDICTRANS2_FILES) writeFileSync(join(disk, name), '');
       writeFileSync(join(disk, 'vmap.txt'), '');
       const loads: unknown[] = [];
-      const onDisk = new TranslationEngine({
-        program: () => '/x/drashti-translate',
-        models: models([{ ...model('en-indic', ['translation-en-gu']), files: known('en-indic', disk) }]),
-        log,
-        createHelper: (p) =>
-          new TranslationHelper({
-            program: p,
-            log,
-            lowerPriority: () => undefined,
-            spawn: () =>
-              fakeHelper((r) => {
-                if (r['op'] === 'load') loads.push(r);
-                return r['op'] === 'translate'
-                  ? `{"id":${String(r['id'])},"ok":true,"tokens":["\u2581x","</s>"]}`
-                  : `{"id":${String(r['id'])},"ok":true}`;
-              }),
-          }),
-      });
+      const engineAt = (at: string) =>
+        new TranslationEngine({
+          program: () => '/x/drashti-translate',
+          models: models([{ ...model('en-indic', ['translation-en-gu']), files: known('en-indic', at) }]),
+          log,
+          createHelper: (p) =>
+            new TranslationHelper({
+              program: p,
+              log,
+              lowerPriority: () => undefined,
+              spawn: () =>
+                fakeHelper((r) => {
+                  if (r['op'] === 'load') loads.push(r);
+                  return r['op'] === 'translate'
+                    ? `{"id":${String(r['id'])},"ok":true,"tokens":["\u2581x","</s>"]}`
+                    : `{"id":${String(r['id'])},"ok":true}`;
+                }),
+            }),
+        });
+      const onDisk = engineAt(disk);
       await expect(onDisk.translate('a b', 'en', 'gu')).rejects.toMatchObject({ code: 'model-changed' });
       expect(loads).toEqual([]);
       rmSync(join(disk, 'vmap.txt'));
       await expect(onDisk.translate('a b', 'en', 'gu')).resolves.toBe('x');
       expect(loads).toHaveLength(1);
       onDisk.stop();
+      // The folder gone since the check: a changed model too, never a fault without words.
+      const gone = engineAt(join(disk, 'gone'));
+      await expect(gone.translate('a b', 'en', 'gu')).rejects.toMatchObject({ code: 'model-changed' });
+      gone.stop();
     } finally {
       rmSync(disk, { recursive: true, force: true });
     }
@@ -298,8 +304,9 @@ describe('Prepare translations’ engine', () => {
       program: () => '/x/drashti-translate',
       models: models([model('en-indic', ['translation-en-gu'])]),
       log,
-      // A stand-in model, not x74's conversion: taken as known here.
+      // A stand-in model, not x74's conversion: taken as known here, its folder (not on this disk) the five files.
       checkFiles: () => true,
+      listFolder: () => Promise.resolve([...INDICTRANS2_FILES]),
       createHelper: (p) =>
         new TranslationHelper({
           program: p,

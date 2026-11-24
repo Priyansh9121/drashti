@@ -45,7 +45,7 @@ vi.mock('node:fs', async (original) => {
 // The checks off Main's thread (library/hash-off-main.ts), watched; a read fault for the next file read reaches them
 // as it reaches a read on this thread.
 vi.mock('../library/hash-off-main', async (original) => {
-  const real = await original<typeof import('../library/hash-off-main')>();
+  const real = await original<{ hashOffMain: typeof hashOffMain }>();
   return {
     hashOffMain: vi.fn((file: string, signal?: AbortSignal) => {
       if (readFault.next) {
@@ -439,8 +439,9 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
 
   it('checks a model again off Main’s thread, with the caller’s signal, and stops at once when it aborts (a22-review-mt2 S2)', async () => {
     const data = temp('data');
+    expect((await storeIn(data).importPack(packFolder(), 'folder')).ok).toBe(true);
+    // A new run (its own store): the first use checks every file again.
     const store = storeIn(data);
-    expect((await store.importPack(packFolder(), 'folder')).ok).toBe(true);
     vi.mocked(hashOffMain).mockClear();
     const control = new AbortController();
     const hold = await store.acquire('en-indic-placeholder', control.signal);
