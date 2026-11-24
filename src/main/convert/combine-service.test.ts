@@ -1,11 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import {
-  initialEngineState,
-  nothingUp,
-  type EngineState,
-  type Layers,
-  type SlideLayer,
-} from '../../shared/engine/state';
+import { initialEngineState, nothingUp, type EngineState, type SlideLayer } from '../../shared/engine/state';
 import { saveWaitsFor } from '../../shared/save-waits';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -301,7 +295,7 @@ it('combines with the Wallpaper over a still slide up, and waits only while a vi
         fit: 'fit',
         loop: true,
         startedAt: 1000,
-      } as Layers['background'],
+      },
     },
   };
   const held = await started(ask(['second', 'source']));
