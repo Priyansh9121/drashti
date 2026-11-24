@@ -34,6 +34,8 @@ class SlowPicture extends EventTarget {
   loop = false;
   muted = false;
   preservesPitch = true;
+  /** It never plays to its own end here. */
+  readonly ended = false;
   seeks = 0;
   /** Each jump: when it began and when it landed (Date.now()). */
   readonly jumps: { from: number; to: number | null }[] = [];
@@ -58,10 +60,6 @@ class SlowPicture extends EventTarget {
 
   get paused(): boolean {
     return this.stopped;
-  }
-
-  get ended(): boolean {
-    return false;
   }
 
   get currentTime(): number {
@@ -221,7 +219,10 @@ describe('a crossfade’s two pictures: whether and when they are brought back b
     expect(FADE_PICTURE_LIMITS).toEqual({ jumpOver: 0.5, maxRateChange: 0.08 });
     let now = START;
     let pair: VideoCrossfade | null = null;
-    const ease = pictureEase(() => pair, () => now);
+    const ease = pictureEase(
+      () => pair,
+      () => now,
+    );
     expect(ease(), 'before any crossfade').toBeNull();
     pair = crossfade(START + 5_000);
     now = START + 4_900;
@@ -242,7 +243,10 @@ describe('a crossfade’s two pictures: whether and when they are brought back b
   it('one made inside its crossfade (its page opened or started again in it) is put in place as ever, then eased in the next', () => {
     let now = START + 5_500;
     let pair: VideoCrossfade | null = crossfade(START + 5_000);
-    const ease = pictureEase(() => pair, () => now);
+    const ease = pictureEase(
+      () => pair,
+      () => now,
+    );
     expect(ease(), 'made inside this fade').toBeNull();
     now = START + 6_500;
     expect(ease()).toBeNull();
