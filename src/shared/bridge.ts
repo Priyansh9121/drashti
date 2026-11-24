@@ -1335,6 +1335,8 @@ export interface DrashtiBridge {
     lastSaid(): Promise<ScreensSaid | null>;
     /** That was closed in the window (or its Change… followed): not said again as the window opens again. */
     saidClosed(id: number): Promise<null>;
+    /** The Stage preview window (alpha.22): opened, or brought forward. */
+    openStagePreview(): Promise<null>;
     onSaid(listener: (said: ScreensSaid) => void): () => void;
     removeScreen(screenId: string): Promise<ScreensResult>;
     /** Put one of a node's displays into a group (Session 13). */

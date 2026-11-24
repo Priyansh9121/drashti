@@ -4,6 +4,7 @@ import {
   asksFirst as asksFirstFor,
   openUnder,
   SCREEN_SWITCHES,
+  stageScreensSet,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
   switchOffQuestion,
@@ -19,8 +20,9 @@ import type { ScreensSnapshot } from '../../shared/screens';
  * it covers, so their displays go back to the computer; on opens them again where they were (the output manager does
  * both). Stage off (Session 55) closes nothing: the stage screens show exactly the audience picture, every stage
  * screen alike, from the engine's state (src/main/index.ts tells it). Nothing else changes: LIVE, the other switch's
- * screens, the stream and recording, and nodes' audience screens carry on. Both are on at every start, as nothing is
- * saved.
+ * screens, the stream and recording, and nodes' audience screens carry on. Audience is on at every start; Stage
+ * (alpha.22) starts as it was left, off on a new library (stage-switch-setting.ts). Stage turned on with no screen set
+ * to Stage says so (alpha.22: it used to start nothing and say nothing), from wherever it was turned.
  *
  * Every request is checked here. Simple Mode may only turn them on (a volunteer gives a screen back to the hall,
  * never takes it away); Pro Mode turns them either way, so the projector can be given back to the laptop in a
@@ -44,6 +46,11 @@ export interface ScreenSwitchDeps {
   /** The show now: whether the hall's screens show anything. */
   state(): EngineState;
   log(message: string): void;
+  /**
+   * Stage was turned on with no screen set to Stage (alpha.22): the operator window says so in one line, with Set up
+   * Stage screen…. `screens()` says which are set: this computer's and the nodes'.
+   */
+  noStageScreen?(): void;
 }
 
 export const ONLY_ON_IN_SIMPLE_MODE = 'Simple Mode only turns the screens on. Pro Mode turns them off.';
@@ -97,6 +104,11 @@ export class ScreenSwitchService {
       );
       const now = this.get();
       for (const listener of this.listeners) listener(now);
+    }
+    // Never a silent nothing (alpha.22): on, with nothing to show on, it says so (and again at each On).
+    if (which.data === 'stage' && rawOn && stageScreensSet(this.deps.screens()) === 0) {
+      this.deps.log('Screens: Stage is on, but no screen is set to Stage: said, with Set up Stage screen…');
+      this.deps.noStageScreen?.();
     }
     return { ok: true, switches: this.get() };
   }

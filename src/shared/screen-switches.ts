@@ -6,7 +6,9 @@ import type { ScreenRole, ScreensSnapshot, ScreenState } from './screens';
  * their displays go back to the computer, and on opens them again where they were. Stage off (Session 55) keeps the
  * stage screens, and they show exactly the audience picture instead of their layout, every stage screen alike (a
  * node's and a tablet's too, from the engine's state); on, their layout again. The show carries on, and nothing the
- * stage does changes the audience screens. Both are on again at every start; off is never remembered.
+ * stage does changes the audience screens. Audience is on again at every start. Stage (alpha.22; the owner, 24 Nov
+ * 2026: "by default it should be off. keep it off. i can turn on, and then turn off") starts off on a new library,
+ * and once after the update, then as it was left (main/outputs/stage-switch-setting.ts).
  */
 
 export type ScreenSwitch = 'audience' | 'stage';
@@ -20,8 +22,18 @@ export interface ScreenSwitches {
 
 export type ScreenSwitchResult = { ok: true; switches: ScreenSwitches } | { ok: false; message: string };
 
-/** How every start finds them: both on. */
+/** Both on. */
 export const ALL_ON: Readonly<ScreenSwitches> = { audience: true, stage: true };
+
+/** How a new library's first start finds them (alpha.22): Audience on, Stage off. */
+export const STARTS: Readonly<ScreenSwitches> = { audience: true, stage: false };
+
+/**
+ * Said when Stage goes on with no screen set to Stage (alpha.22: until then, Stage On with no stage screen started
+ * nothing and said nothing), with the button that opens Screens, where one click gives a display the Stage job.
+ */
+export const NO_STAGE_SCREEN = 'No screen is set to Stage.';
+export const SET_UP_STAGE = 'Set up Stage screen…';
 
 /** Each one's name, as the top bar, the View menu, the status bar and a phone say it. */
 export const SWITCH_NAMES: Readonly<Record<ScreenSwitch, string>> = { audience: 'Audience', stage: 'Stage' };
@@ -79,6 +91,20 @@ export function openUnder(snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>, 
   );
   return snapshot.status.filter(
     (st) => covered.has(st.screenId) && (st.state === 'showing' || st.state === 'stopped'),
+  ).length;
+}
+
+/**
+ * How many screens are set to Stage now (alpha.22): a stage group's screens on a display, this computer's or a
+ * node's, showing (with Stage off too: their windows stay) or stopped and tried again. None: Stage has nothing to
+ * show on, and says so as it goes on.
+ */
+export function stageScreensSet(snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>): number {
+  const staged = new Set(
+    snapshot.groups.filter((g) => g.role === 'stage').flatMap((g) => g.screens.map((s) => s.id)),
+  );
+  return snapshot.status.filter(
+    (st) => staged.has(st.screenId) && (st.state === 'showing' || st.state === 'stopped'),
   ).length;
 }
 

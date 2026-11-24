@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
+import { SET_UP_STAGE } from '../../../shared/screen-switches';
 import type { ScreensSaid } from '../../../shared/screens';
 import { Button } from '../ui/Button';
-import { Settings } from '../ui/icons';
+import { Settings, Tv } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 
 /*
@@ -12,7 +13,8 @@ import { Notice } from '../ui/Notice';
  * (one click there gives it another job, remembered by the display). Once, too, how to extend when the computer
  * mirrors its screen onto the projector. In Pro Mode and Simple Mode alike (Simple Mode changes no screen: no
  * Change… there). It sits in the window's flow under the header, never over the show controls, until closed or
- * followed by another.
+ * followed by another. Since alpha.22 it also says when Stage goes on with no screen set to Stage, with Set up Stage
+ * screen… (Pro Mode), which opens Screens at the first display that could take the job.
  */
 
 interface SaidView {
@@ -78,6 +80,19 @@ export function ScreensSaidNotice({ onChange }: { onChange: ((displayId: number)
               }}
             >
               Change…
+            </Button>
+          )}
+          {onChange && said.kind === 'no-stage' && first !== undefined && (
+            <Button
+              size="sm"
+              icon={Tv}
+              data-testid="screens-said-set-up-stage"
+              onClick={() => {
+                close(said.id);
+                onChange(first);
+              }}
+            >
+              {SET_UP_STAGE}
             </Button>
           )}
         </span>

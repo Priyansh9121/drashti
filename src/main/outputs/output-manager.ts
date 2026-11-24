@@ -32,6 +32,8 @@ export interface OutputManagerDeps {
    * out (a node's own outputs), no switch covers any.
    */
   switchOf?(screen: ScreenConfig): ScreenSwitch | null;
+  /** The switches off from the start (alpha.22: Stage, as it was left; off on a new library). Left out: both on. */
+  startsOff?: readonly ScreenSwitch[];
 }
 
 /**
@@ -60,12 +62,14 @@ export class OutputManager {
   /** Screens whose window the watchdog gave up on (Session 23): not "showing" until it reports again. */
   private readonly stopped = new Set<string>();
   /**
-   * Audience and Stage turned off (Session 50): their screens' windows closed, their displays the computer's,
-   * until on again. Kept here only, so every start has both on.
+   * Audience and Stage turned off (Session 50): Audience's screens' windows closed, their displays the computer's,
+   * until on again. Stage starts as it was left (alpha.22, told as the manager is made); Audience on at every start.
    */
-  private readonly off = new Set<ScreenSwitch>();
+  private readonly off: Set<ScreenSwitch>;
 
-  constructor(private readonly deps: OutputManagerDeps) {}
+  constructor(private readonly deps: OutputManagerDeps) {
+    this.off = new Set(deps.startsOff ?? []);
+  }
 
   /** Keep a window hidden while its display is away; closed if it is not back within DISPLAY_DROP_MS. */
   private hold(screenId: string, window: OutputWindow): void {
@@ -194,7 +198,7 @@ export class OutputManager {
     return true;
   }
 
-  /** Which are on (Session 50): both, until one is turned off. */
+  /** Which are on (Session 50): as they started, until one is turned off or on. */
   switches(): ScreenSwitches {
     return { audience: !this.off.has('audience'), stage: !this.off.has('stage') };
   }

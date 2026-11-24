@@ -1043,6 +1043,11 @@ export const IPC = {
     lastSaid: 'screens:last-said',
     /** The window closed what the screens said (or followed its Change…): not said again as it opens again. */
     saidClosed: 'screens:said-closed',
+    /**
+     * The Stage preview (alpha.22): a window on this computer showing what a stage screen would, opened (or brought
+     * forward) from the Stage screen panel, so a stage layout can be made and seen with only one projector.
+     */
+    openStagePreview: 'screens:open-stage-preview',
     /** main -> operator: what the screens did by themselves (a display plugged in given its job), in one line. */
     said: 'screens:said',
     removeScreen: 'screens:remove-screen',
@@ -2053,6 +2058,7 @@ export interface InvokeContract {
   };
   [IPC.screens.lastSaid]: { args: []; result: ScreensSaid | null };
   [IPC.screens.saidClosed]: { args: [id: number]; result: null };
+  [IPC.screens.openStagePreview]: { args: []; result: null };
   [IPC.screens.identify]: { args: []; result: null };
   [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
   [IPC.screens.tryAgain]: { args: [screenId: string]; result: { ok: true } | { ok: false; message: string } };

@@ -210,6 +210,46 @@ export function createOutputWindow(
   return { window: win, handle };
 }
 
+/** The Stage preview's page asks for its context by this (output.html?stagePreview=1). */
+export const STAGE_PREVIEW_QUERY = 'stagePreview';
+
+/**
+ * The Stage preview (alpha.22): a stage screen's page in a normal window on this computer, movable and sized as any
+ * window, over the controls' display (never full screen, never on top), so a stage layout can be made and seen with
+ * only one projector. It is no screen: nothing counts it, opens it by itself or covers anything with it. It is
+ * shown with the focus, as the operator opened it.
+ */
+export function createStagePreviewWindow(near: DisplayInfo['bounds'] | null): BrowserWindow {
+  const width = 960;
+  const height = 540;
+  const win = new BrowserWindow({
+    ...(near
+      ? {
+          x: Math.round(near.x + Math.max(0, (near.width - width) / 2)),
+          y: Math.round(near.y + Math.max(0, (near.height - height) / 3)),
+        }
+      : {}),
+    width,
+    height,
+    minWidth: 320,
+    minHeight: 180,
+    show: false,
+    title: 'Drashti – Stage preview',
+    backgroundColor: '#000000',
+    ...windowIcon(),
+    webPreferences: { ...secureWebPreferences(), backgroundThrottling: false },
+  });
+  // The page's own title would take the window's: it keeps this one.
+  win.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+  win.once('ready-to-show', () => {
+    if (!win.isDestroyed()) win.show();
+  });
+  void loadPage(win, 'output', { [STAGE_PREVIEW_QUERY]: '1' });
+  return win;
+}
+
 /**
  * Show a window, without taking the focus, once its page has drawn its first
  * frame; `cancel` before closing it. An output turned off while its page is

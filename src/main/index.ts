@@ -84,7 +84,7 @@ import { z } from 'zod';
 import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
 import { drawnGeometry } from '../shared/screen-geometry';
-import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
+import { NO_STAGE_SCREEN, type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
 import { keptTemplateSchema, messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
@@ -314,6 +314,7 @@ import { whenFree, writeLockFree } from './db/write-lock';
 import { writeOldLibrary } from './old-library-selftest';
 import {
   createOutputWindow,
+  createStagePreviewWindow,
   EXTRA_DISPLAY_ID,
   electronDisplays,
   listDisplays,
@@ -339,6 +340,7 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
+import { keepStage, STAGE_SETTING, stageStartsOn } from './outputs/stage-switch-setting';
 import { coverBox } from './network/desktop-consent';
 import type { DesktopLibrary } from './network/desktop-answers';
 import { cameraNamesIn } from '../shared/network-desktop';
@@ -2897,6 +2899,51 @@ function start(): void {
       ...(adjustingScreen(s.id) ? { grid: true as const } : {}),
     };
   };
+  // ---- the Stage preview (alpha.22) -------------------------------------------------------------------------
+  // A stage screen's page in a normal window on this computer, opened from the Stage screen panel (the owner, 24 Nov
+  // 2026: "right now i am unable to setup stage screen even its on"): with one projector, no display has the Stage
+  // job, and this shows what a stage screen would, its layout with Stage on and the audience picture with it off,
+  // as the first stage group draws it. It is no screen: never counted, never opened by itself, never covering.
+  let stagePreview: BrowserWindow | null = null;
+  const stagePreviewContext = (): OutputContext => {
+    const group = screenRepo.groups().find((g) => g.role === 'stage');
+    const first = group?.screens[0];
+    return {
+      screenId: 'stage-preview',
+      screenName: 'Stage preview',
+      groupId: group?.id ?? '',
+      groupName: group?.name ?? 'Stage',
+      role: 'stage',
+      feed: null,
+      canvasWidth: first?.canvasWidth ?? 1920,
+      canvasHeight: first?.canvasHeight ?? 1080,
+      scaling: first?.scaling ?? 'fit',
+      display: null,
+      clockStyle: mainClockStyle(),
+      hall: hallHere(),
+      ...warmUpFact(warmUps, stagePreview ?? undefined, 'the Stage preview', 'stage'),
+    };
+  };
+  const openStagePreview = (): void => {
+    const open = stagePreview;
+    if (open && !open.isDestroyed()) {
+      if (open.isMinimized()) open.restore();
+      open.show();
+      open.focus();
+      return;
+    }
+    const near =
+      operatorWindow && !operatorWindow.isDestroyed()
+        ? electronScreen.getDisplayMatching(operatorWindow.getBounds()).workArea
+        : null;
+    const win = createStagePreviewWindow(near);
+    stagePreview = win;
+    log.info('Stage preview opened: what a stage screen shows, in a window on this computer');
+    win.on('closed', () => {
+      if (stagePreview === win) stagePreview = null;
+      log.info('Stage preview closed');
+    });
+  };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
   followOutputs(warmUps, outputWindows, outputNames, (screenId, win) => {
     const context = contextFor(screenId);
@@ -3104,6 +3151,9 @@ function start(): void {
     },
     // Audience or Stage (Session 50), by the screen's group.
     switchOf: (s) => switchFor(screenRepo.groupRole(s.groupId) ?? 'audience'),
+    // Stage starts as it was left (alpha.22): off on a new library, and once after the update; the e2e tests start
+    // it on (DRASHTI_TEST_STAGE_AT_START), as every start was before. Audience is on at every start.
+    startsOff: stageStartsOn(settings, !packaged() && sw('DRASHTI_TEST_STAGE_AT_START') === 'on') ? [] : ['stage'],
     onChange: () => {
       engine.videoCuePageJoined('');
       // A hall screen stopped, or back (events out: Session 28).
@@ -3123,6 +3173,9 @@ function start(): void {
         const context = contextFor(screenId);
         if (context) sendToPage(win, IPC.output.context, context);
       }
+      // The Stage preview (alpha.22) follows the stage's group and the hall's picture as the stage screens do.
+      if (stagePreview && !stagePreview.isDestroyed())
+        sendToPage(stagePreview, IPC.output.context, stagePreviewContext());
       guardOperator();
       // Keep these screens? (Session 50): whether an output covers the controls, said again when that changed.
       keepScreens.refresh();
@@ -3228,17 +3281,37 @@ function start(): void {
   );
   adjustingScreen = (screenId) => screens.adjusting(screenId);
   // ---- Audience and Stage (Session 50; outputs/screen-switches.ts): this computer's screens off and on --------
-  // Never saved: both are on at every start.
+  // Audience is on at every start; Stage (alpha.22) as it was left, kept in the library's settings as it changes.
   const screenSwitches = new ScreenSwitchService({
     // Turned through the screens, which remember what each screen showed as its switch went off (Session 51).
     outputs: screens,
     simple: () => simpleNow(),
-    screens: () => ({ groups: screenRepo.groups(), status: manager.status() }),
+    // A node's stage screens count as set to Stage (alpha.22); only this computer's ever ask before one goes off.
+    screens: () => ({
+      groups: screenRepo.groups(),
+      status: [...manager.status(), ...(nodeService?.screenStatus() ?? [])],
+    }),
     state: () => engine.current,
     log: (message) => {
       log.info(message);
     },
+    // Stage on with no screen set to Stage (alpha.22): said under the top bar, with Set up Stage screen…, which
+    // opens Screens at the displays that could take the job (the controls' last).
+    noStageScreen: () => {
+      const controls = controlsDisplay();
+      const ids = listDisplays().map((d) => d.id);
+      sayScreens({
+        kind: 'no-stage',
+        text: NO_STAGE_SCREEN,
+        displayIds: [...ids.filter((id) => id !== controls), ...ids.filter((id) => id === controls)],
+      });
+    },
   });
+  // The engine's Stage off as the switch starts (alpha.22: off on a new library), and the log says how it started.
+  engine.setStage({ off: !manager.switches().stage });
+  log.info(
+    `Screens: Stage starts ${manager.switches().stage ? 'on' : 'off'}${settings.get(STAGE_SETTING) === undefined ? ' (never chosen in this library)' : ', as it was left'}`,
+  );
 
   // ---- Keep these screens? (Session 50) ----------------------------------------------------------------
   // After a change that puts an output on a display, 15 s to keep it, or it goes back by itself; the output over
@@ -3344,6 +3417,13 @@ function start(): void {
   // the next the stage; what it did is said in one line, with Change… (and once, how to extend when the computer
   // mirrors). Kept for a window that opens after it was said.
   let lastSaid: ScreensSaid | null = null;
+  /** The lines said so far: each its own number, whoever said it (the displays plugged in, Stage: alpha.22). */
+  let saidCount = 0;
+  const sayScreens = (said: Omit<ScreensSaid, 'id'>): void => {
+    saidCount += 1;
+    lastSaid = { ...said, id: saidCount };
+    sendToPage(operatorWindow, IPC.screens.said, lastSaid);
+  };
   const autoScreens = new AutoScreens({
     on: autoScreensOn,
     displays: () =>
@@ -3361,8 +3441,7 @@ function start(): void {
       return given;
     },
     said: (said) => {
-      lastSaid = said;
-      sendToPage(operatorWindow, IPC.screens.said, said);
+      sayScreens(said);
     },
     mirroredOnto: () => displayIds.mirroredOnto(),
     platform: process.platform,
@@ -8916,6 +8995,11 @@ function start(): void {
   );
   // What the screens did by themselves (Session 55), for a window that opened after it was said, until it is closed.
   handle(IPC.screens.lastSaid, (e) => (fromOperator(e) ? lastSaid : null));
+  // The Stage preview (alpha.22): opened, or brought forward, from the Stage screen panel.
+  handle(IPC.screens.openStagePreview, (e) => {
+    if (fromOperator(e)) openStagePreview();
+    return null;
+  });
   handle(IPC.screens.saidClosed, (e, id) => {
     if (fromOperator(e) && lastSaid?.id === id) lastSaid = null;
     return null;
@@ -8975,6 +9059,8 @@ function start(): void {
   screenSwitches.onChanged((switches) => {
     // Stage off (Session 55): every stage screen shows exactly the audience picture, from the engine's state.
     engine.setStage({ off: !switches.stage });
+    // Kept for the next start (alpha.22).
+    keepStage(settings, switches.stage);
     sendToOperator(IPC.screenSwitches.changed, switches);
     // The View menu's ticks, and a Remote's word on which are off.
     rebuildMenu();
@@ -9548,6 +9634,9 @@ function start(): void {
   });
 
   handle(IPC.output.getContext, (event) => {
+    // The Stage preview (alpha.22): a stage screen's page, never a screen.
+    if (stagePreview && !stagePreview.isDestroyed() && event.sender.id === stagePreview.webContents.id)
+      return stagePreviewContext();
     const screenId = manager.screenIdFor(event.sender.id);
     // Keep these screens? on an output over the controls that opened, or loaded again, as a change waits: sent
     // before the answer, so after the page listens for it (output-store.ts listens first).
