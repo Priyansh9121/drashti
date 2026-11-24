@@ -258,7 +258,7 @@ For the waveform and scene suggestions, see **Waveforms and suggested scene mark
 2. Choose **Preparation and export**. Under **Picture and sound**, choose **Saved edits** or **Original**. Under **Clip shape**, choose **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
 3. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
 4. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
-5. The export waits while a show, stream or recording is on. You may close the editor; it keeps the accepted request across a restart too.
+5. The export waits only while a video or a sound plays, or the stream is on air or recording. You may close the editor; it keeps the accepted request across a restart too.
 6. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
 
 ![Preparation and export: Original, Vertical 9:16 and a new clip file](../screenshots/manual-edit-video-export.png)
