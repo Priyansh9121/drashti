@@ -8,6 +8,7 @@ import { copyFf, copyFixture, copyFfmpeg } from './video-copy-fixtures';
 import { readTrimInfo } from './trim-copy';
 import { discardUnlisted, registerProxyFile } from './video-copy-files';
 import { MediaStore } from '../import/media-store';
+import { forgetTaken } from '../library/media-taken';
 
 let fixture: Awaited<ReturnType<typeof copyFixture>>;
 let clips: ClipExports;
@@ -25,12 +26,15 @@ let hooks: {
   discards: Promise<unknown>[];
   /** An import or a deck's preparation is going (a22-review-combine2 R-S1). */
   importing: boolean;
+  /** The copy's file is held (Windows): a removal removes nothing and keeps its row, as discardUnlisted does then. */
+  held: boolean;
 } = {
   current: true,
   publish: true,
   discard: true,
   discards: [],
   importing: false,
+  held: false,
 };
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -40,7 +44,7 @@ function service(destination: string) {
   let kept: unknown = [];
   // What is left to remove across a restart (a22-exportclip: video-clip-left.json).
   let left: unknown = [];
-  hooks = { current: true, publish: true, discard: true, discards: [], importing: false };
+  hooks = { current: true, publish: true, discard: true, discards: [], importing: false, held: false };
   const deps = {
     conversions: fixture.conversions,
     resolve: (request: ClipExportRequest) => ({
@@ -85,9 +89,11 @@ function service(destination: string) {
       ),
     // As the app has it (video-copies-ipc.ts): what an export copied into Media from its own file and never listed.
     discardUnlisted: (file: string, keep: ReadonlySet<string>, allowed: () => boolean) => {
-      const asked = hooks.discard
-        ? discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, file, keep, allowed })
-        : Promise.reject(new Error('The library is closed.'));
+      const asked = !hooks.discard
+        ? Promise.reject(new Error('The library is closed.'))
+        : hooks.held
+          ? Promise.resolve(0)
+          : discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, file, keep, allowed });
       hooks.discards.push(asked.catch(() => undefined));
       return asked;
     },
@@ -318,7 +324,7 @@ it('Drashti closing just after the copy into Media: the next start removes what 
   expect(stored()).toHaveLength(1);
   const before = fixture.db.prepare("SELECT id FROM media WHERE id <> 'source'").get() as { id: string };
   // The next start, quiet: what was left goes before the export, kept as asked, runs again.
-  hooks = { current: true, publish: true, discard: true, discards: [], importing: false };
+  hooks = { current: true, publish: true, discard: true, discards: [], importing: false, held: false };
   const atCopy: { id: string | null; earlier: unknown } = { id: null, earlier: undefined };
   hooks.imported = (id) => {
     atCopy.id = id;
@@ -478,6 +484,71 @@ it('an import going at the next start keeps what was left for a later start', as
   clips.close();
   // A later start, quiet.
   hooks.importing = false;
+  clips = new ClipExports(deps);
+  clips.resume();
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+    expect(stored()).toEqual([]);
+  });
+}, 20_000);
+
+/*
+ * a22-review-combine2 short look, L-E1: a leftover kept only for now (its file still held on Windows, or its row taken
+ * up by its bytes in this run) stays in the list of what is left, so a later start tries it again, by the same rules.
+ */
+it('a copy whose file is still held stays in the list, and a later start removes it', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'held clip.mp4'));
+  hooks.publish = false;
+  hooks.held = true;
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await done();
+  await Promise.all(hooks.discards);
+  expect(rows()).toBe(2);
+  // The next start: no longer held.
+  clips.close();
+  hooks.held = false;
+  clips = new ClipExports(deps);
+  clips.resume();
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+    expect(stored()).toEqual([]);
+  });
+}, 20_000);
+
+it('a copy taken up by its bytes in this run stays in the list, and the next run removes it if nothing uses it', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'taken clip.mp4'));
+  hooks.publish = false;
+  hooks.imported = (id) => {
+    const row = fixture.db.prepare('SELECT path, sha256, bytes FROM media WHERE id = ?').get(id) as {
+      path: string;
+      sha256: string;
+      bytes: number;
+    };
+    // A deck's preparation takes the same bytes up and ends; its editor is closed without saving.
+    new MediaStore(fixture.db, { dir: fixture.dir }).addStaged(
+      {
+        kind: 'video',
+        name: 'Placeholder object.mp4',
+        rel: row.path,
+        sha256: row.sha256,
+        bytes: row.bytes,
+        probe: { kind: 'video', playable: true, format: 'H.264 video (MP4)' },
+      },
+      { kind: 'drashti', path: 'Editable document object' },
+    );
+  };
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await done();
+  await Promise.all(hooks.discards);
+  expect(rows()).toBe(2);
+  // The next run of Drashti: nothing took it up in this one, and nothing uses it.
+  clips.close();
+  forgetTaken();
+  hooks.imported = undefined;
   clips = new ClipExports(deps);
   clips.resume();
   await vi.waitFor(() => {
