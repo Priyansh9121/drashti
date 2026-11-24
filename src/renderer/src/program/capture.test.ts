@@ -10,6 +10,13 @@ vi.mock('../render/live-window', () => ({
  * can finish later: its deferred WebStream completion must not clear the capture that replaced it at a new size.
  */
 
+/**
+ * The capture's own clock (µs), as Chromium stamps a captured frame: its own origin, never this page's clock, so only
+ * the time between two frames of one capture says anything (Electron 44: a getDisplayMedia frame's metadata() is {}).
+ */
+const CAPTURE_CLOCK_MS = 500_000_000;
+const stampAt = (capturedAtMs: number) => Math.round((CAPTURE_CLOCK_MS + capturedAtMs) * 1000);
+
 class GeneratedFrame {
   readonly format = 'RGBA';
   readonly visibleRect: { x: number; y: number; width: number; height: number };
@@ -19,6 +26,8 @@ class GeneratedFrame {
     readonly codedWidth: number,
     readonly codedHeight: number,
     private readonly byte: number,
+    /** When it was captured, on the capture's clock (µs): by default now, by this page's (held) clock. */
+    readonly timestamp = stampAt(performance.now()),
   ) {
     this.visibleRect = { x: 0, y: 0, width: codedWidth, height: codedHeight };
   }
@@ -35,7 +44,7 @@ class GeneratedFrame {
 
   clone(): VideoFrame {
     if (this.closed) throw new Error('A closed generated frame cannot be cloned.');
-    return new GeneratedFrame(this.codedWidth, this.codedHeight, this.byte).asVideoFrame();
+    return new GeneratedFrame(this.codedWidth, this.codedHeight, this.byte, this.timestamp).asVideoFrame();
   }
 
   close(): void {
@@ -74,8 +83,9 @@ class GeneratedTrack extends EventTarget {
     return { width: this.width, height: this.height, frameRate: 30 };
   }
 
-  frame(byte: number): void {
-    this.enqueue(new GeneratedFrame(this.width, this.height, byte).asVideoFrame());
+  /** A frame read now; captured at `capturedAtMs` by this page's clock (by default now: read as it was captured). */
+  frame(byte: number, capturedAtMs = performance.now()): void {
+    this.enqueue(new GeneratedFrame(this.width, this.height, byte, stampAt(capturedAtMs)).asVideoFrame());
   }
 
   enqueue(frame: VideoFrame): void {
@@ -180,6 +190,12 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
       setAttribute: vi.fn(),
     }),
   };
+  // This page's clock, held: it moves only when a test says (`at`), so a frame's capture and its reading can differ.
+  let clock = 1000;
+  vi.spyOn(performance, 'now').mockImplementation(() => clock);
+  const at = (ms: number) => {
+    clock = ms;
+  };
   const queued = [...tracks];
   const getDisplayMedia = vi.fn(() => {
     const track = queued.shift();
@@ -238,7 +254,7 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
       )
       .toBe(tracks.filter((track) => track.processorStarted).length);
   };
-  return { capture, deliver, getDisplayMedia, body, ended };
+  return { capture, deliver, getDisplayMedia, body, ended, at };
 }
 
 describe('Program capture while its picture request is still pending', () => {
@@ -392,19 +408,57 @@ describe('the stream starts from the first frame that shows the show (Session 58
     const port = new EncoderPort();
     p.deliver(port);
     await expect.poll(() => track.processorStarted).toBe(true);
-    // The page's own black as it comes up, then a frame or two before the show is on screen.
+    // The page's own black as it comes up (the capture asked for at 1000 ms), then a frame or two before the show is
+    // on screen, each read as it was captured.
     track.frame(3);
+    p.at(1033);
     track.frame(4);
     await expect.poll(() => p.body.dataset['frames']).toBe('2');
     expect(videoBytes(port), 'nothing to the encoder before the show is on screen').toEqual([]);
+    p.at(1100);
     showOnScreen(p.capture);
     // Not the frame captured before (the newest, kept): the window paints, and the next frame goes.
+    p.at(1133);
     track.frame(90);
     await expect.poll(() => videoBytes(port)).toEqual([Array<number>(32).fill(90)]);
+    p.at(1166);
     track.frame(91);
     await expect
       .poll(() => videoBytes(port))
       .toEqual([Array<number>(32).fill(90), Array<number>(32).fill(91)]);
+  });
+
+  it('gives neither the encoder nor video out a frame read after the show is on screen but captured before it (alpha.22 gate 3: the page’s own black), then the first one captured after', async () => {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected], { onScreen: false });
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const encoder = new EncoderPort();
+    const out = new EncoderPort();
+    // The capture asked for at 1000 ms (the stream's page as it comes up, a recording begun).
+    p.deliver(encoder);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    p.deliver(out, 'video-out');
+    // A slow computer's capture starts with its frames late: the page's own black, captured at 1000 ms, read at 1230.
+    p.at(1230);
+    track.frame(0, 1000);
+    await expect.poll(() => p.body.dataset['frames']).toBe('1');
+    p.at(1234);
+    showOnScreen(p.capture);
+    // Next out of the capture, read after the show is on screen: black, captured before it (as on CI's Mac).
+    p.at(1240);
+    track.frame(0, 1033);
+    p.at(1262);
+    track.frame(0, 1066);
+    // The first frame captured after the show came on screen: the slide.
+    p.at(1290);
+    track.frame(54, 1267);
+    await expect.poll(() => videoBytes(encoder).some((bytes) => bytes[0] === 54)).toBe(true);
+    await expect.poll(() => videoBytes(out).some((bytes) => bytes[0] === 54)).toBe(true);
+    expect(videoBytes(encoder), 'the encoder: only the frame captured after the show was on screen').toEqual([
+      Array<number>(32).fill(54),
+    ]);
+    expect(videoBytes(out), 'video out: the same').toEqual([Array<number>(32).fill(54)]);
   });
 
   it('gives the encoder the page as it is 15 s after its port came when the show is still not on screen, a new port meanwhile not restarting the wait', async () => {
@@ -566,7 +620,9 @@ describe('video out takes the same capture’s frames, never holding it (x30)', 
     track.frame(3);
     await expect.poll(() => p.body.dataset['frames']).toBe('1');
     expect(videoBytes(out)).toEqual([]);
+    p.at(1100);
     showOnScreen(p.capture);
+    p.at(1133);
     track.frame(50);
     await expect.poll(() => videoBytes(out)).toEqual([Array<number>(32).fill(50)]);
   });
