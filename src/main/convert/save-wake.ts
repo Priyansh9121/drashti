@@ -11,10 +11,13 @@ import { type EngineState, nothingUp } from '../../shared/engine/state';
 
 /**
  * An engine change after which ConvertService looks at once whether its running work must stop (activityChanged):
- * something is up. With nothing up, its one-second look is enough.
+ * something is up, or, with nothing up, a video cued for Go, starting at Go or going out in a crossfade, which hold a
+ * save the operator asked for (shared/save-waits.ts; the save-trim review's SHOULD-6: until alpha.23 a save already
+ * being made heard of a Cue set with nothing up only at the next look, up to a second later). Otherwise its
+ * one-second look is enough.
  */
 export function conversionsLookAt(state: EngineState): boolean {
-  return !nothingUp(state.layers);
+  return !nothingUp(state.layers) || Boolean(state.videoCue ?? state.videoStart ?? state.videoCrossfade);
 }
 
 export interface SaveWakeDeps {

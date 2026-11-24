@@ -584,13 +584,13 @@ export class PlaylistTrims {
     this.statusChanged();
   }
 
-  /** How far the cut is, told at each whole percent. */
+  /** How far the cut is, told each time the whole percent its row shows (rounded, shared/trim.ts) changes. */
   private progress(pending: PendingTrim, fraction: number): void {
     const status = (pending.status ??= { note: null, progress: null });
     const was = status.progress;
     status.note = null;
     status.progress = fraction;
-    if (was === null || Math.floor(was * 100) !== Math.floor(fraction * 100)) this.statusChanged();
+    if (was === null || Math.round(was * 100) !== Math.round(fraction * 100)) this.statusChanged();
   }
 
   /**

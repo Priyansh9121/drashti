@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { VideoEditResult } from '../../src/shared/video-edit';
 import {
   closeLibrary,
+  holdStill,
   importAndGetIds,
   launchApp,
   openLibrary,
@@ -321,7 +322,7 @@ const videoEdit = (win: Page, id: string): Promise<VideoEditResult> =>
   }, id);
 
 test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and says why it waits while a video plays', async () => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-save-trimmed-e-'));
   const { app, win } = await start();
   try {
@@ -342,11 +343,14 @@ test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and 
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Playback', exact: true }).click();
     await dialog.getByLabel('Speed').selectOption('2');
+    const savedAt = Date.now();
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     // Its saved copy is made under the Wallpaper over a still slide (until alpha.22 it stayed Preparing for good).
     await expect
       .poll(() => videoEdit(win, video), { timeout: 60_000 })
       .toMatchObject({ ok: true, edit: { revision: 1, state: 'ready' } });
+    // How long a save with nothing holding it took here, from its Save to Ready.
+    const unheldMs = Date.now() - savedAt;
     await expect(dialog.getByTestId('edit-video-status')).toHaveText('Ready for next showing');
 
     // A video playing holds it, and Edit Video says so.
@@ -359,10 +363,17 @@ test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and 
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(dialog.getByTestId('edit-video-status')).toHaveText('Preparing');
     await expect(dialog.getByTestId('edit-video-waiting')).toHaveText('Waiting: a video is playing');
-    expect(await videoEdit(win, video)).toMatchObject({
-      ok: true,
-      edit: { revision: 2, state: 'preparing' },
-    });
+    // Main holds it, not only the dialog's words (the save-trim review's SHOULD-4): its record stays Preparing for twice
+    // as long as the save with nothing holding it took here (at least 5 s; the test's time allows for 60 s).
+    const heldMs = Math.min(60_000, Math.max(5_000, 2 * unheldMs));
+    await holdStill(
+      async () => {
+        const held = await videoEdit(win, video);
+        return held.ok && held.edit.revision === 2 && held.edit.state === 'preparing';
+      },
+      heldMs,
+      'a video playing holds Edit Video’s Save in Main',
+    );
     expect((await dispatch(win, { type: 'clearAll' })).ok).toBe(true);
     await expect
       .poll(() => videoEdit(win, video), { timeout: 60_000 })

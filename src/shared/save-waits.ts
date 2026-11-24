@@ -139,16 +139,23 @@ export const SAVE_WAITS = {
   recording: 'Waiting: a recording is going on',
   video: 'Waiting: a video is playing',
   sound: 'Waiting: a sound is playing',
+  cued: 'Waiting: a video is cued',
 } as const;
 
 export type SaveWait = (typeof SAVE_WAITS)[keyof typeof SAVE_WAITS];
 
-/** What plays on LIVE at `now` (the engine's clock) that a save waits for: a video, a sound, or null for nothing playing. */
-export function playingHolds(state: EngineState | null | undefined, now: number): 'video' | 'sound' | null {
+/**
+ * What plays on LIVE at `now` (the engine's clock) that a save waits for: a video, a sound, a video cued for Go, or
+ * null for nothing playing.
+ */
+export function playingHolds(
+  state: EngineState | null | undefined,
+  now: number,
+): 'video' | 'sound' | 'cued' | null {
   if (!state) return null;
-  // A video cued to start at Go, waiting paused at its first frame, or one going out in a crossfade (Cue, alpha.22):
-  // about to play, or playing, on the hall's screens.
-  if (state.videoCue || state.videoCrossfade || state.videoStart) return 'video';
+  // A video started at Go's shared moment, or one going out in a crossfade (Cue, alpha.22): playing on the hall's
+  // screens.
+  if (state.videoCrossfade || state.videoStart) return 'video';
   const { background, pip } = state.layers;
   // Live pictures: a video input, another app's window or a link, as the background or in the box.
   if (background?.kind === 'input' || background?.kind === 'window' || background?.kind === 'link')
@@ -156,7 +163,10 @@ export function playingHolds(state: EngineState | null | undefined, now: number)
   if (pip?.source.kind === 'input' || pip?.source.kind === 'window') return 'video';
   const playing = stillPlaying(state, now);
   if (playing.some((p) => p.ref.layer !== 'audio' && p.sound !== true)) return 'video';
-  return playing.length > 0 ? 'sound' : null;
+  if (playing.length > 0) return 'sound';
+  // A video cued to start at Go, waiting paused at its first frame on the screens: about to play. Said as cued, not as
+  // playing (the save-trim review's nit), when nothing else plays.
+  return state.videoCue ? 'cued' : null;
 }
 
 /** Why a save waits at `now` (the engine's clock), in the operator's words; null when it may go on. */
