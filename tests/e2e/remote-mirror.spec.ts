@@ -18,11 +18,12 @@ import {
 import {
   importAndGetIds,
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
-  type PageGlobals,
   setUpScreen,
+  type PageGlobals,
 } from './helpers';
 import { PICTURE, setUpPlaceholderShow, VIDEO } from './placeholder-show';
 import { makeTestImage, makeTestTone } from './test-media';
@@ -257,6 +258,7 @@ test('from a phone, as from the operator window: media with its skips, the stage
     await p.getByTestId('remote-stage').getByRole('button', { name: 'Show' }).click();
     await expect.poll(async () => (await snapshot(win)).state.stageMessage).toBe('Placeholder: five minutes');
     await expect(p.getByTestId('remote-stage-message')).toContainText('Placeholder: five minutes');
+    await openSection(win, 'stage');
     await expect(win.getByTestId('stage-message-shown')).toHaveText('Placeholder: five minutes');
     await p.getByTestId('remote-stage-clear').click();
     await expect.poll(async () => (await snapshot(win)).state.stageMessage).toBeNull();

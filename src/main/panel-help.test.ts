@@ -94,7 +94,7 @@ describe('"What is this?" on the operator panels', () => {
     }
   });
 
-  it('has a ? where the guides were asked for: the open playlist, the show controls, Next and Back, the header’s Stream, Phones and Announcements, the status bar, and the Audio and More tools groups', () => {
+  it('has a ? where the guides were asked for: the open playlist, the show controls, Next and Back, the header’s Stream, Phones and Announcements, the status bar, and the Audio group', () => {
     expect(Object.keys(PANEL_HELP)).toEqual(
       expect.arrayContaining([
         'playlist',
@@ -105,9 +105,27 @@ describe('"What is this?" on the operator panels', () => {
         'announcements',
         'statusbar',
         'audio',
-        'tools',
       ]),
     );
+  });
+
+  it('has a ? of its own for each tool’s section under LIVE, and none for More tools, which went (alpha.22)', () => {
+    expect(Object.keys(PANEL_HELP)).toEqual(
+      expect.arrayContaining([
+        'lowerthirds',
+        'showwindow',
+        'streamlink',
+        'videoinputs',
+        'pip',
+        'qrcode',
+        'midi',
+        'osc',
+      ]),
+    );
+    expect(Object.keys(PANEL_HELP)).not.toContain('tools');
+    for (const [id, help] of Object.entries(PANEL_HELP)) {
+      expect(`${help.title} ${help.feature} ${help.text}`, id).not.toMatch(/more tools/iu);
+    }
   });
 
   it('every text is used by a panel or a column heading', () => {

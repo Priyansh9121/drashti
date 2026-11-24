@@ -672,13 +672,36 @@ export async function showExtras(page: Page): Promise<void> {
 }
 
 /**
- * Unfold More tools (Session 26a; Session 44: Lower Thirds and MIDI, folded away to begin with; Masks and the Idle
- * rotation too until Session 55).
+ * The sections under LIVE, in their order, by the name each one's fold button goes by (`group-<name>-toggle`):
+ * alpha.22 took More tools away and gave each tool a section of its own, and every section is folded at each start
+ * (the owner, 24 Nov 2026: "by default it should be collapsed, we can uncollapse it when we want").
  */
-export async function openMoreTools(page: Page): Promise<void> {
-  const toggle = page.getByTestId('group-more-tools-toggle');
+export const LIVE_SECTIONS = [
+  'audio',
+  'stage',
+  'messages',
+  'timers',
+  'lower-thirds',
+  'show-a-window',
+  'show-a-stream-link',
+  'video-inputs',
+  'picture-in-picture',
+  'qr-code',
+  'midi',
+  'osc',
+] as const;
+export type LiveSection = (typeof LIVE_SECTIONS)[number];
+
+/** Unfold a section under LIVE by its heading, as the operator would, unless it is open already. */
+export async function openSection(page: Page, section: LiveSection): Promise<void> {
+  const toggle = page.getByTestId(`group-${section}-toggle`);
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+
+/** Unfold every section under LIVE (Pro Mode's), top to bottom. */
+export async function openAllSections(page: Page): Promise<void> {
+  for (const section of LIVE_SECTIONS) await openSection(page, section);
 }
 
 /**

@@ -22,7 +22,7 @@ const CHAPTERS = [
   'Audio and the levels',
   'Stage screen',
   'Messages and timers',
-  'More tools',
+  'Tools',
   'Screens and screen geometry',
   'Stream',
   'Phones and network',

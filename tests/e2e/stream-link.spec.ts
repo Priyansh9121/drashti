@@ -7,7 +7,7 @@ import {
   killApp,
   launchApp,
   letTimePass,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
@@ -50,9 +50,9 @@ function background(win: Page) {
   return win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 }
 
-/** Show a link from More tools' Show a Stream Link…; the window shut once it is up. */
+/** Show a link from its section's Show a Stream Link…; the window shut once it is up. */
 async function showLink(win: Page, url: string, a11y = false): Promise<void> {
-  await openMoreTools(win);
+  await openSection(win, 'show-a-stream-link');
   await win.getByTestId('show-a-stream-link').click();
   const dialog = win.getByTestId('stream-link-dialog');
   await expect(dialog).toBeVisible();
@@ -485,7 +485,7 @@ test('a YouTube live link through Drashti’s yt-dlp (the fake): never looked at
 
   // On air: refused, saying why; yt-dlp never started.
   await setOnAir(true);
-  await openMoreTools(win);
+  await openSection(win, 'show-a-stream-link');
   await win.getByTestId('show-a-stream-link').click();
   const dialog = win.getByTestId('stream-link-dialog');
   await dialog.getByTestId('stream-link-text').fill(LINK);
@@ -510,7 +510,7 @@ test('a link to anywhere but this computer is refused in a test run; Simple Mode
   test.setTimeout(180_000);
   const { standIn, app, userData, win, hall } = await hallAndLink();
   // Never the internet from a test: refused before anything is asked.
-  await openMoreTools(win);
+  await openSection(win, 'show-a-stream-link');
   await win.getByTestId('show-a-stream-link').click();
   const dialog = win.getByTestId('stream-link-dialog');
   await dialog.getByTestId('stream-link-text').fill('https://media.example.org/live/placeholder.m3u8');

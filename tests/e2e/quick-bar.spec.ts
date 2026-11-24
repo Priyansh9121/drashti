@@ -10,6 +10,7 @@ import {
   importAndGetIds,
   launchApp,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   relaunchApp,
@@ -148,6 +149,7 @@ test('the quick bar: hidden when empty; a picture, a slide row, a video row and 
   await menuChoose(win, row(wordsItem).getByTestId('slide-thumb').nth(1), 'Pin to the quick bar');
   await menuChoose(win, row(videoItem).getByTestId('playlist-item'), 'Pin to the quick bar');
   // A message, from Messages.
+  await openSection(win, 'messages');
   const message = win.getByTestId('messages').getByTestId('message-row').filter({ hasText: MESSAGE });
   await message.getByRole('button', { name: `Pin “${MESSAGE}” to the quick bar` }).click();
   await expect(pins(win)).toHaveCount(4);

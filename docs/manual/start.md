@@ -4,7 +4,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 ## The window at a glance
 
-**What it is.** The operator window, where you run the show. Along the top: what is live, then **Stream**, **Phones**, **Ready?**, **Screens**, **Audience** and **Stage**. On the left: the **Library** button, the **Playlists** and the **Wallpapers**. In the middle: the open playlist. On the right: **LIVE**, **Back** and **Next**, the sound, the **Stage screen**, **Messages**, **Timers** and **More tools**. Along the bottom: the show controls and the status bar.
+**What it is.** The operator window, where you run the show. Along the top: what is live, then **Stream**, **Phones**, **Ready?**, **Screens**, **Audience** and **Stage**. On the left: the **Library** button, the **Playlists** and the **Wallpapers**. In the middle: the open playlist. On the right: **LIVE**, **Back** and **Next**, the sound, then folding sections: **Audio**, the **Stage screen**, **Messages**, **Timers** and one for each tool (**Lower Thirds**, **QR code** and more). Each section is folded when Drashti starts: press its heading to open it. Along the bottom: the show controls and the status bar.
 
 **When you would use it.** Every time you run a sabha.
 

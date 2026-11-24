@@ -7,7 +7,7 @@ import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Captions, Palette, Pencil, Plus, Trash2 } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
-import { Panel } from '../ui/Panel';
+import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { Truncate } from '../ui/Truncate';
 import {
@@ -19,13 +19,13 @@ import {
 } from './lower-thirds-store';
 
 /*
- * Lower Thirds (Session 44), in More tools in Macros' place: each lower third a row with its first lines and where
+ * Lower Thirds (Session 44; a section of its own under LIVE since alpha.22, after Timers): each lower third a row with its first lines and where
  * it shows (and how long, one that hides itself), and one button that shows it and hides it again (a show control:
  * it changes the screens at once, and says it is up in LIVE's colour). Studio, New… and Edit open the Lower Thirds
  * studio, a window of its own with a live preview (Session 55, Part 16); several can be chosen together (a box
  * dragged over them, Shift and Cmd or Ctrl clicks, Cmd or Ctrl-A) and deleted at once, with one Undo.
  */
-export function LowerThirdsPanel({ platform, nested = false }: { platform: string; nested?: boolean }) {
+export function LowerThirdsPanel({ platform }: { platform: string }) {
   const list = useLowerThirds((s) => s.list);
   const marked = useLowerThirds((s) => s.marked);
   const upId = useEngine((s) => s.state?.layers.lowerThird?.id ?? null);
@@ -54,11 +54,10 @@ export function LowerThirdsPanel({ platform, nested = false }: { platform: strin
   const deleting = (id: string) => (many && marked.includes(id) ? marked : [id]);
   return (
     <Panel
-      nested={nested}
+      {...LIVE_SECTION}
       help="lowerthirds"
       title="Lower Thirds"
       icon={Captions}
-      collapsible
       remember="lower-thirds"
       bodyClassName="space-y-2 px-3 pb-3"
       data-testid="lower-thirds-panel"

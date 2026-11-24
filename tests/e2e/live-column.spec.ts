@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { importAndGetIds, launchApp, openAllSections, operatorPage, operatorReady } from './helpers';
 import { makeTestVideo } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -17,8 +17,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 /** The owner's own window (22 Nov 2026, alpha.20.1 on his Mac), in CSS pixels. */
 const OWNERS_WINDOW = { width: 1410, height: 900 } as const;
 
-/** Enough under LIVE to scroll: Audio's playlists (both modes), and More tools open in Pro Mode. */
-async function fillUnderLive(win: Page, live: Locator, mode: 'pro' | 'simple'): Promise<void> {
+/** Enough under LIVE to scroll: Audio's playlists (both modes), and every section open in Pro Mode (alpha.22: all folded at the start). */
+async function fillUnderLive(win: Page, mode: 'pro' | 'simple'): Promise<void> {
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     for (let i = 1; i <= 12; i++) {
@@ -26,7 +26,7 @@ async function fillUnderLive(win: Page, live: Locator, mode: 'pro' | 'simple'): 
       if (!made.ok) throw new Error('Could not make an audio playlist');
     }
   });
-  if (mode === 'pro') await live.getByTestId('group-more-tools-toggle').click();
+  if (mode === 'pro') await openAllSections(win);
 }
 
 /** Every part of the column that scrolls, scrolled to its end; how far the furthest went. */
@@ -51,7 +51,7 @@ for (const mode of ['pro', 'simple'] as const)
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await sizeOperatorWindow(app, win, OWNERS_WINDOW);
     const live = win.getByRole('complementary', { name: 'Live', exact: true });
-    await fillUnderLive(win, live, mode);
+    await fillUnderLive(win, mode);
     const levels = live.getByTestId('sound-levels');
     await expect(levels).toBeInViewport({ ratio: 1 });
     const before = await levels.boundingBox();
@@ -72,7 +72,7 @@ test('in CI’s 1024 × 645 window, all of the column can be reached: under a st
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const live = win.getByRole('complementary', { name: 'Live', exact: true });
-  await fillUnderLive(win, live, 'pro');
+  await fillUnderLive(win, 'pro');
   await expect(live).toHaveAttribute('data-still', /^(true|false)$/u);
   const still = (await live.getAttribute('data-still')) === 'true';
   const rest = live.getByTestId('live-rest');
@@ -81,8 +81,8 @@ test('in CI’s 1024 × 645 window, all of the column can be reached: under a st
     expect(room, 'the room under the still LIVE block').toBeGreaterThanOrEqual(140);
   }
   expect(await scrollToEnd(live)).toBeGreaterThan(0);
-  // The last of More tools is reached, inside the window.
-  await expect(live.getByTestId('more-tools').getByRole('button').last()).toBeInViewport();
+  // The last section's last button is reached, inside the window.
+  await expect(live.getByTestId('section-osc').getByRole('button').last()).toBeInViewport();
   await expect(win.getByRole('contentinfo', { name: 'Status' })).toBeInViewport({ ratio: 1 });
   await app.close();
 });

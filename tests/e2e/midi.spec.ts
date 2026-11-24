@@ -7,7 +7,7 @@ import {
   closeLibrary,
   launchApp,
   openLibrary,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -15,7 +15,7 @@ import {
 } from './helpers';
 
 /*
- * The MIDI controller (Session 11; Session 44 moved its way in to More tools, as Macros went): with Web MIDI
+ * The MIDI controller (Session 11; Session 44 moved its way in to More tools, as Macros went; alpha.22 to its own section under LIVE): with Web MIDI
  * mocked in the operator page, Learn maps a note and a controller, and they work; only the operator page may use
  * MIDI (never SysEx); Simple Mode's own actions work from a pad there too. A pad mapped to a macro before Session
  * 44 stays in the settings, as the library had it, and does nothing; one mapped to the Logo before Session 55 works
@@ -61,7 +61,7 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  await openMoreTools(win);
+  await openSection(win, 'midi');
   await setUpScreen(win);
   const output = await outputPage(app);
 
@@ -95,11 +95,11 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
   // The window reads it as it starts, as it would a library's from before.
   await win.reload();
   await operatorReady(win);
-  await openMoreTools(win);
+  await openSection(win, 'midi');
 
   await mockMidi(win);
-  // MIDI is in More tools (Session 44: it was the Macros panel's).
-  await win.getByTestId('more-tools').getByTestId('open-midi').click();
+  // MIDI has its own section under LIVE (alpha.22; More tools' from Session 44, the Macros panel's before).
+  await win.getByTestId('section-midi').getByTestId('open-midi').click();
   const dialog = win.getByTestId('midi-dialog');
   await dialog.getByTestId('midi-device').selectOption('Placeholder pad');
   await expect(dialog.getByText('Connected')).toBeVisible();

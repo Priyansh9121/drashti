@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { musicLeftMs } from '../../../shared/playlist-playback';
 import { useNow } from '../render/useNow';
 import { PlaylistFind, useRowFind } from '../playlists/PlaylistFind';
-import { exportPlaylistFile, importPlaylistFile, M3uReport } from '../playlists/m3u-actions';
+import { exportPlaylistFile, importPlaylistFile } from '../playlists/m3u-actions';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatDuration } from '../../../shared/format';
@@ -112,7 +112,6 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
   const skips = useEngine((s) => skipsOf(s.state, 'music'));
   return (
     <div className="space-y-2 px-3 pb-3" data-testid="music-panel">
-      {pro && <M3uReport audio />}
       {playing && (
         <p className="flex items-center gap-1.5 text-xs" role="status" data-testid="music-now">
           {paused ? <Pause size={12} aria-hidden="true" /> : <Play size={12} aria-hidden="true" />}
