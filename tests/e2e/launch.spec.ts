@@ -22,17 +22,33 @@ test('opens a sandboxed, context-isolated operator window', async () => {
   });
 
   // The OS reports every window's renderer process as sandboxed (macOS and Windows): the operator
-  // window and the hidden audio player.
+  // window, the hidden audio player and (since alpha.22, L8) the hidden display-copy worker, opened empty at start.
   await expect.poll(() => app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
+  await expect
+    .poll(() => app.windows().some((w) => w.url().includes('display-copy.html')), { timeout: 20_000 })
+    .toBe(true);
   const sandboxed = await app.evaluate(({ app: electronApp, BrowserWindow }) =>
     BrowserWindow.getAllWindows().map((w) => ({
       page: w.webContents.getURL().split('/').pop(),
       sandboxed: electronApp.getAppMetrics().find((m) => m.pid === w.webContents.getOSProcessId())?.sandboxed,
     })),
   );
-  expect(sandboxed.map((w) => w.page).sort()).toEqual(['audio.html', 'index.html']);
+  expect(sandboxed.map((w) => w.page).sort()).toEqual([
+    'audio.html',
+    'display-copy.html?purpose=display',
+    'index.html',
+  ]);
   if (process.platform === 'darwin' || process.platform === 'win32')
     for (const w of sandboxed) expect(w, w.page).toMatchObject({ sandboxed: true });
+  // The display-copy worker is context-isolated too: no Node in its page, and its bridge exists.
+  const worker = app.windows().find((w) => w.url().includes('display-copy.html'));
+  expect(
+    await worker?.evaluate(() => ({
+      require: typeof (globalThis as { require?: unknown }).require,
+      process: typeof (globalThis as { process?: unknown }).process,
+      bridge: typeof (globalThis as { drashti?: unknown }).drashti,
+    })),
+  ).toEqual({ require: 'undefined', process: 'undefined', bridge: 'object' });
 
   await app.close();
 });

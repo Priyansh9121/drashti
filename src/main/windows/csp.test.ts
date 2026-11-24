@@ -139,16 +139,20 @@ describe('page security policies', () => {
 
   // The Lower Thirds studio (Session 55, Part 16): the lower thirds come through the bridge, its preview draws them
   // over a plain backdrop, so the page fetches nothing and shows no media.
-  it('lower-thirds.html (the Lower Thirds studio): app scripts only, no fetching, no media', () => {
+  // alpha.22: the library's pictures as images only (the hall's wallpaper behind its preview), never a video or a
+  // sound: Live behind it is a still the main process sends (main/lower-thirds/studio-live.ts).
+  it('lower-thirds.html (the Lower Thirds studio): app scripts only, no fetching, the library only as pictures, no media', () => {
     const policy = policyOf(readFileSync(join(RENDERER, 'lower-thirds.html'), 'utf8'));
     expect(policy.get('default-src')).toEqual(["'self'"]);
     expect(policy.get('script-src')).toEqual(["'self'"]);
     expect(policy.get('connect-src')).toEqual(["'self'"]);
     expect(policy.get('media-src')).toEqual(["'none'"]);
+    expect(policy.get('img-src')).toEqual(["'self'", 'data:', 'drashti-media:']);
     expect(policy.get('object-src')).toEqual(["'none'"]);
     expect(policy.get('base-uri')).toEqual(["'none'"]);
     expect(policy.get('form-action')).toEqual(["'none'"]);
-    for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
+    for (const [name, values] of policy)
+      if (name !== 'img-src') expect(values, name).not.toContain('drashti-media:');
   });
 
   const ownRules = new Set([

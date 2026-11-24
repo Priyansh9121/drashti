@@ -163,14 +163,18 @@ export interface DisplayUse {
 
 /**
  * What the screens did by themselves (Session 55), said in the operator window in one line: displays plugged in
- * given their jobs (with Change…, which opens Screens at them), or once how to extend when the computer mirrors.
+ * given their jobs (with Change…, which opens Screens at them), or once how to extend when the computer mirrors;
+ * and Stage turned on with no screen set to Stage (alpha.22), with Set up Stage screen… (Screens).
  */
 export interface ScreensSaid {
   /** A new one each time it says something. */
   id: number;
-  kind: 'set' | 'mirroring';
+  kind: 'set' | 'mirroring' | 'no-stage';
   text: string;
-  /** The displays it is about, in order (Change… opens Screens at the first); none for mirroring. */
+  /**
+   * The displays it is about, in order (Change… opens Screens at the first); none for mirroring; for no-stage the
+   * displays Screens could give the Stage job, the controls' last.
+   */
   displayIds: number[];
 }
 

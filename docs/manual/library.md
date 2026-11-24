@@ -109,6 +109,9 @@ It is for preparing slides: read pages before the sabha, not while slides are ch
 2. Click a picture, video or video input to put it up at once.
 3. Right-click a row for its menu: **Rename…**, **Start, end and markers…**, **Picture editor…** and more.
 4. Press **Delete** to remove the chosen rows; **Undo** brings them back.
+5. To join videos into one, in Pro Mode, Cmd-click (Ctrl-click on Windows) two or more, right-click one and choose **Combine videos…**.
+
+**Combine videos…** shows the chosen videos in the order they will play: move one with its up and down arrows, choose a **Transition** (**Dissolve**, **Fade through black** or **Cut**, 0.5 to 3 seconds), then press **Combine**. One new video, playing them one after the other, is added to **Media**; the originals stay unchanged. Each transition overlaps the two videos by its length; a video too short for it is joined with a plain cut (a video between two others needs twice its length). It has the first video's picture size: another shape gets black bars, never stretched, and a video with no sound is silent for its length. It waits while a video or a sound plays, the stream is on air or a recording goes on. The window shows its progress, **Stop**, and when it is done, **Show in Media** and **Export…**, which saves a copy to a file (Downloads unless you choose); tick **Also save a copy to a file** to choose that file before it combines.
 
 ![Media while files convert, each with its progress](../screenshots/convert-media-list-done.png)
 
@@ -124,6 +127,8 @@ It is for preparing slides: read pages before the sabha, not while slides are ch
 2. Choose what you need, such as **Rename…** or **Show in Finder** (**Show in Explorer** on Windows).
 3. **Delete…** asks first only when the file is on the screens or used.
 4. Press **Cmd+Z** (Ctrl+Z) to undo it.
+
+A presentation's menu in the library also has **Print words…** and **Save words as PDF…** (Pro Mode): a sheet for the singers with its words group by group (Verse, Chorus…), each slide's lines in its languages in its own order, and a kirtan's kavi and raag under its name. Use them when nothing is up, on air or recording.
 
 ![A playlist's right-click menu](../screenshots/share-with-phones.png)
 
@@ -157,7 +162,7 @@ A video also shows its **Lighter playing copy** status; see **Lighter playing co
 3. In **Trim**, set **Start (seconds)** and **End (seconds)**. **Use this frame as library thumbnail** keeps the chosen frame when you Save.
 4. In **Picture**, crop, turn, flip, zoom or move the picture, adjust **Brightness**, **Contrast** or **Colour**, and choose **Frame shape** and **Blurred fill behind the video**.
 5. In **Sound**, choose **Audio track** or **Reduce steady background noise in a talk**. In **Playback**, choose **Speed** and the picture and sound fades.
-6. Press **Save**. **Preparing** waits while anything is up, streaming or recording. Once clear and idle, let preparation finish until **Ready for next showing** appears.
+6. Press **Save**. **Preparing** waits only while a video or a sound plays, or the stream is on air or recording, and says which. A still slide, a picture or the Wallpaper never holds it. Wait for **Ready for next showing**.
 7. Choose **Preview saved edits** to check the saved copy privately. **Source preview** returns to the original. If the saved copy cannot play, **Prepare again** rebuilds it.
 
 **Original shape** follows the crop and rotation; **16:9**, **4:3**, **Square (1:1)** and **Vertical (9:16)** make a fixed frame. The source preview stays as it was taken: check picture changes with **Preview saved edits** after Save. For a file marked with the wrong shape, see **Audio and the levels › Sound and picture…**; its **Shape** changes the drawing at once.
@@ -258,7 +263,7 @@ For the waveform and scene suggestions, see **Waveforms and suggested scene mark
 2. Choose **Preparation and export**. Under **Picture and sound**, choose **Saved edits** or **Original**. Under **Clip shape**, choose **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
 3. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
 4. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
-5. The export waits while a show, stream or recording is on. You may close the editor; it keeps the accepted request across a restart too.
+5. The export waits only while a video or a sound plays, or the stream is on air or recording. You may close the editor; it keeps the accepted request across a restart too.
 6. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
 
 ![Preparation and export: Original, Vertical 9:16 and a new clip file](../screenshots/manual-edit-video-export.png)

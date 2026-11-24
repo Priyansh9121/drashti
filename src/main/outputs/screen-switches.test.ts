@@ -14,6 +14,8 @@ function setUp(options: { simple?: boolean; open?: Partial<Record<ScreenSwitch, 
   const off = new Set<ScreenSwitch>();
   const changes: ScreenSwitches[] = [];
   const logged: string[] = [];
+  /** Each time Stage was turned on with no screen set to Stage (alpha.22). */
+  const noStage: number[] = [];
   const t: { simple: boolean; state: EngineState; hall: ScreenState; stage: ScreenState } = {
     simple: options.simple ?? false,
     state: initialEngineState(),
@@ -80,9 +82,10 @@ function setUp(options: { simple?: boolean; open?: Partial<Record<ScreenSwitch, 
     }),
     state: () => t.state,
     log: (message) => logged.push(message),
+    noStageScreen: () => noStage.push(noStage.length + 1),
   });
   service.onChanged((switches) => changes.push(switches));
-  return { service, off, changes, logged, t };
+  return { service, off, changes, logged, t, noStage };
 }
 
 /** The View menu's question, answered as the test says, and what it was asked about. */
@@ -114,6 +117,33 @@ describe('Audience and Stage in the main process (Session 50)', () => {
     expect(logged).toHaveLength(3);
     expect(logged[0]).toContain('Audience turned off');
     expect(logged[2]).toContain('Audience turned on');
+  });
+
+  // alpha.22 (the owner, 24 Nov 2026: "right now i am unable to setup stage screen even its on"): never a silent nothing.
+  it('says when Stage is turned on with no screen set to Stage, from anywhere, and only then', () => {
+    const { service, noStage, logged } = setUp({ open: { stage: 'unassigned' } });
+    service.turn('stage', false);
+    expect(noStage).toEqual([]);
+    // On with none: said, and logged.
+    expect(service.turn('stage', true)).toEqual({ ok: true, switches: { audience: true, stage: true } });
+    expect(noStage).toEqual([1]);
+    expect(logged.at(-1)).toContain('no screen is set to Stage');
+    // On again while on (a phone's On, say): said again, nothing else changes.
+    expect(service.turn('stage', true)).toEqual({ ok: true, switches: { audience: true, stage: true } });
+    expect(noStage).toEqual([1, 2]);
+    // Audience on says nothing of the stage.
+    service.turn('audience', false);
+    service.turn('audience', true);
+    expect(noStage).toEqual([1, 2]);
+  });
+
+  it('says nothing of the stage when a screen is set to Stage, showing or stopped', () => {
+    for (const state of ['showing', 'stopped'] as const) {
+      const { service, noStage } = setUp({ open: { stage: state } });
+      service.turn('stage', false);
+      service.turn('stage', true);
+      expect(noStage).toEqual([]);
+    }
   });
 
   it('refuses anything that is not Audience or Stage, on or off', () => {

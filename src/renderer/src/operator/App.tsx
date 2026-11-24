@@ -1,4 +1,5 @@
 import { EditVideoDialog } from '../library/EditVideoDialog';
+import { CombineVideosDialog } from '../library/CombineVideosDialog';
 import { SoundPictureDialog } from '../library/SoundPictureDialog';
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
@@ -17,6 +18,7 @@ import { RemoveConfirm, RemoveItemsConfirm, RemovePlaylistConfirm } from '../lib
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
+import { addWordsPrintToMenu } from '../library/words-print';
 import { connectSlideEditorSaves } from '../editor/open-editor';
 import { AppearanceDialog } from '../appearance/AppearanceDialog';
 import { connectAppearance } from '../appearance/appearance-store';
@@ -27,7 +29,7 @@ import { dropFolders, loadTree, openImportDestination, watchPlaylists } from '..
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
-import { connectScreens, focusDisplay } from '../screens/screens-store';
+import { connectScreens, focusDisplay, useScreens } from '../screens/screens-store';
 import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
 import { runAction, undoSimple, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -128,6 +130,7 @@ import { PlayingBars } from '../markers/PlayingBars';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SimpleFeaturesDialog } from '../simple/SimpleFeaturesDialog';
 import { connectSimpleFeatures } from '../simple/simple-features-store';
+import { connectStageColours } from './stage-colours';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
 import { StreamPanel } from '../stream/StreamPanel';
@@ -167,6 +170,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectMode();
     // Simple Mode Features (alpha.22): which of Pro Mode's tools Simple Mode has, and Edit's window for them.
     connectSimpleFeatures();
+    // The stage message's colours chosen on this computer (alpha.22): told to the show, in either mode.
+    connectStageColours();
     connectAppearance();
     // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
     connectSound();
@@ -189,8 +194,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // Slides saved in the slide editor's window (Session 55, Part 17a): one change for Undo here.
     const offEditorSaves = connectSlideEditorSaves();
     // Things the main process tells the operator (for example where diagnostics were saved).
-    const offNotice = window.drashti.app.onNotice((text) => {
-      useNotice.setState({ text });
+    const offNotice = window.drashti.app.onNotice((text, mediaId) => {
+      useNotice.setState({ text, media: mediaId === undefined ? null : { text, mediaId } });
     });
     const offProgress = window.drashti.app.onProgress((next) => {
       useTaskProgress.setState({ progress: next });
@@ -272,6 +277,14 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const openScreens = useCallback(() => {
     setScreensOpen(true);
   }, []);
+  // Asked from elsewhere (alpha.22: Set up Stage screen…, in the Stage screen panel and the line under the top bar).
+  useEffect(
+    () =>
+      useScreens.subscribe((now, before) => {
+        if (now.openAsked !== before.openAsked) setScreensOpen(true);
+      }),
+    [],
+  );
   const practising = usePractice((s) => s.on);
   const run = useCallback(
     (action: OperatorAction, slot?: number) => {
@@ -298,6 +311,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
   useEffect(() => window.drashti.app.onShowTool(openTool), []);
   // Pin to the quick bar (Session 55, Part 8) in the one right-click menu, while Pro Mode's window is up.
   useEffect(() => addFileMenuItems(quickMenuItems), []);
+  // Print words… and Save words as PDF… (a singers' sheet, alpha.22) on a library presentation, Pro Mode's only.
+  useEffect(() => addWordsPrintToMenu(), []);
   // Files dropped anywhere on the window are imported, as on the presentation list (which takes
   // its own drops): an operator drags a deck onto Drashti, wherever it lands (Session 16). A folder becomes a smart
   // playlist following it, at once, nothing asked (Session 56, the owner's item 5). Into the open playlist; with none
@@ -533,6 +548,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* Sound and picture… (alpha.20): a file's own tone and delays (Pro Mode). */}
       <SoundPictureDialog />
       <EditVideoDialog />
+      <CombineVideosDialog />
       {dashboardOpen && (
         <ScreensDashboard
           simple={false}

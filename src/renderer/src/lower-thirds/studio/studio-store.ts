@@ -6,6 +6,7 @@ import type {
   StudioOpen,
 } from '../../../../shared/lower-thirds';
 import { lowerThirdName, NEW_LOWER_THIRD } from '../../../../shared/lower-thirds';
+import type { StudioLivePicture } from '../../../../shared/studio-live';
 
 /*
  * The Lower Thirds studio's state (Session 55, Part 16): the library's lower thirds, the one open (its id, as it is
@@ -32,6 +33,11 @@ interface StudioState {
   deleted: { ids: string[]; name: string } | null;
   /** Changed to play the preview again. */
   play: number;
+  /**
+   * Live's still behind the preview (alpha.22), while it shows Live: undefined until the first comes, null when this
+   * computer has nothing to take it from.
+   */
+  live: StudioLivePicture | null | undefined;
 }
 
 /** A lower third's three lines, blank where it has none. */
@@ -50,6 +56,7 @@ export const useStudio = create<StudioState>(() => ({
   asking: null,
   deleted: null,
   play: 0,
+  live: undefined,
 }));
 
 /** The lower third's fields as the studio keeps them (its lines always three). */
@@ -208,6 +215,9 @@ export function connectStudio(): void {
     if (restored) useStudio.setState({ deleted: null });
   });
   window.drashti.lowerThirds.onEdit(opened);
+  window.drashti.lowerThirds.onLive((live) => {
+    useStudio.setState({ live });
+  });
   void window.drashti.lowerThirds.list().then((list) => {
     useStudio.setState({ list });
     const asked = new URLSearchParams(location.search).get('open');

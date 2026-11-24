@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react';
 import { useEngine } from '../engine/engine-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageScreen } from '../render/StageScreen';
-import { useFirstGroupLook, useScreens } from '../screens/screens-store';
+import { askForScreens, useFirstGroupLook, useScreens } from '../screens/screens-store';
+import { NO_STAGE_SCREEN, SET_UP_STAGE, stageScreensSet } from '../../../shared/screen-switches';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ColorInput, Field, Select, TextInput } from '../ui/Field';
 import { usePersistentState } from '../ui/persist';
 import { contrastRatio } from '../../../shared/contrast';
-import { LayoutTemplate, Tv } from '../ui/icons';
+import { AppWindow, LayoutTemplate, Tv } from '../ui/icons';
 import { useHallPicture } from '../stage/hall-picture';
 import {
   chooseStageLayout,
@@ -27,16 +28,22 @@ import { StageTimerControls } from './StageTimerControls';
 import { AudienceTimerControls } from './AudienceTimerControls';
 import { Checkbox } from '../ui/Toggle';
 import {
-  STAGE_BOX_COLOR,
   STAGE_COLOR_PRESETS,
   STAGE_MESSAGE_SIZES,
   STAGE_SIZE_NAMES,
-  STAGE_TEXT_COLOR,
   type StageMessageSize,
-  stageColorSchema,
   stageColorsRead,
 } from '../../../shared/stage-message';
 import { useOperateOnly } from '../simple/simple-features-store';
+import {
+  AS_ALWAYS,
+  coloursSent,
+  isStageColours,
+  OWN,
+  STAGE_COLOURS_KEY,
+  type StageColours,
+  tellStageColours,
+} from './stage-colours';
 
 /** What the stage screens show the performers, small (also on the Stage screen's card in Screens). */
 export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
@@ -89,6 +96,49 @@ function EditLayoutButton() {
     >
       Edit layouts…
     </Button>
+  );
+}
+
+/**
+ * Stage preview (alpha.22): a window on this computer showing what a stage screen would, its layout with Stage on and
+ * the audience picture with it off, so a layout can be made and seen with only one projector. Pressed again, the
+ * same window comes forward.
+ */
+function StagePreviewButton() {
+  return (
+    <Button
+      size="sm"
+      icon={AppWindow}
+      data-testid="stage-preview-open"
+      onClick={() => void window.drashti.screens.openStagePreview()}
+    >
+      Stage preview
+    </Button>
+  );
+}
+
+/**
+ * No screen is set to Stage (alpha.22; the owner, 24 Nov 2026: "right now i am unable to setup stage screen even its
+ * on"): said plainly, with Set up Stage screen…, which opens Screens, where one click gives a display the Stage job.
+ * Nothing is said before the screens are known.
+ */
+function NoStageScreen() {
+  const none = useScreens((s) => (s.snapshot ? stageScreensSet(s.snapshot) === 0 : false));
+  if (!none) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="stage-no-screen">
+      <p className="text-xs text-muted">{NO_STAGE_SCREEN} Stage preview shows the stage on this computer.</p>
+      <Button
+        size="sm"
+        variant="secondary"
+        data-testid="stage-set-up"
+        onClick={() => {
+          askForScreens();
+        }}
+      >
+        {SET_UP_STAGE}
+      </Button>
+    </div>
   );
 }
 
@@ -154,24 +204,6 @@ export function InputPicker({ onProblem }: { onProblem: (problem: string | null)
 }
 
 const NO_RECENT: string[] = [];
-
-/** The stage message's colours as chosen (the owner, 24 Nov 2026): a preset's id, or 'own', and the two colours. */
-interface StageColours {
-  preset: string;
-  box: string;
-  text: string;
-}
-const AS_ALWAYS: StageColours = { preset: 'amber', box: STAGE_BOX_COLOR, text: STAGE_TEXT_COLOR };
-const OWN = 'own';
-const isStageColours = (v: unknown): v is StageColours => {
-  if (typeof v !== 'object' || v === null) return false;
-  const c = v as Partial<Record<keyof StageColours, unknown>>;
-  return (
-    (c.preset === OWN || STAGE_COLOR_PRESETS.some((p) => p.id === c.preset)) &&
-    stageColorSchema.safeParse(c.box).success &&
-    stageColorSchema.safeParse(c.text).success
-  );
-};
 
 /**
  * The colours of the next stage message: a few that read well, or the operator's own box and words colours, with a
@@ -261,22 +293,20 @@ export function StageMessageControl() {
   const [text, setText] = useState('');
   const [size, setSize] = useState<StageMessageSize>('standard');
   const [flash, setFlash] = useState(false);
-  // Its colours (the owner, 24 Nov 2026), remembered on this computer; sent only when not amber and black.
-  const [colours, setColours] = usePersistentState('stage.colours', AS_ALWAYS, isStageColours);
+  // Its colours (the owner, 24 Nov 2026), remembered on this computer; sent only when not amber and black. The show is
+  // told them as they change (alpha.22), for a message sent without colours (a phone's, OSC's): stage-colours.ts.
+  const [colours, keepColours] = usePersistentState(STAGE_COLOURS_KEY, AS_ALWAYS, isStageColours);
+  const setColours = (next: StageColours) => {
+    keepColours(next);
+    tellStageColours(next);
+  };
   const [problem, setProblem] = useState<string | null>(null);
   // In Simple Mode (alpha.22, the Stage screen chosen for it): the message and the timers; the layout, its editor, the
   // video input and the message's colours stay Pro Mode's (its messages there take the colours chosen in Pro Mode).
   const operateOnly = useOperateOnly();
   const show = (words: string) => {
-    const chosen = colours.box !== STAGE_BOX_COLOR || colours.text !== STAGE_TEXT_COLOR;
     if (words.trim() !== '')
-      void dispatch({
-        type: 'setStageMessage',
-        text: words,
-        size,
-        flash,
-        ...(chosen ? { boxColor: colours.box, textColor: colours.text } : {}),
-      });
+      void dispatch({ type: 'setStageMessage', text: words, size, flash, ...coloursSent(colours) });
   };
   return (
     <Panel
@@ -290,8 +320,15 @@ export function StageMessageControl() {
     >
       <div className="flex items-end gap-2">
         <StagePreview />
-        {!operateOnly && <EditLayoutButton />}
+        {!operateOnly && (
+          <div className="flex flex-col items-start gap-2">
+            <StagePreviewButton />
+            <EditLayoutButton />
+          </div>
+        )}
       </div>
+      {/* No screen set to Stage (alpha.22): said, with the way to set one up (Pro Mode). */}
+      {!operateOnly && <NoStageScreen />}
       {off && (
         <p className="text-xs text-warning-fg" data-testid="stage-off-note">
           Stage is off: every stage screen shows the audience picture.

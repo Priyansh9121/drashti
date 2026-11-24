@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cropRenderedPage } from './pdf-page-crop';
 import { languageView } from './language-view';
 import type { RenderSlide, TextElement } from './model';
 import {
@@ -187,5 +188,28 @@ describe('checked saved translation output', () => {
     expect(shown.elements.find((value) => value.id === `${el.id}:translation:gu`)?.frame).toEqual(
       el.translationDisplay?.area,
     );
+  });
+});
+
+describe('checked translations on cropped PDF pages', () => {
+  const cropped = (x = 600) => {
+    const el = box();
+    el.frame = { x: 600, y: 200, width: 600, height: 120 };
+    if (!el.translationDisplay) throw new Error('Generated translation display missing');
+    el.translationDisplay.area = { x, y: 340, width: 600, height: 150 };
+    el.translationDisplay.fontSize = 24;
+    expect(translationFits('Placeholder Q', el.translationDisplay.area, 24)).toBe(true);
+    return cropRenderedPage(slide(el), { x: 0.25, y: 0.1, w: 0.5, h: 0.6 });
+  };
+  it('retains checked words inside the crop using their original page coordinates', () => {
+    const shown = checkedTranslationView(cropped(), { canvas: { width: 1920, height: 1080 } });
+    expect(shown.elements).toHaveLength(2);
+    expect(shown.elements[1]?.frame).toEqual({ x: 600, y: 340, width: 600, height: 150 });
+    expect(shown.pageCrop).toEqual({ x: 480, y: 108, width: 1920, height: 1080 });
+  });
+  it('holds translations that the page crop would cut off', () => {
+    expect(
+      checkedTranslationView(cropped(300), { canvas: { width: 1920, height: 1080 } }).elements,
+    ).toHaveLength(1);
   });
 });

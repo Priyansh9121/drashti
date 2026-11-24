@@ -290,7 +290,7 @@ export function Canvas({
   const top = Math.max(PAD, (size.height - height) / 2);
   const elements = slide.elements;
   const visible = elements.filter((el) => !el.hidden);
-  const rendered = renderEditedSlide(doc, slide);
+  const rendered = renderEditedSlide(doc, slide, true);
   const fixedIds = new Set(rendered.masterElementIds);
   const fixed = rendered.elements.filter((el) => fixedIds.has(el.id) && !el.hidden);
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).

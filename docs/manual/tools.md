@@ -44,7 +44,8 @@ The tools a sabha needs now and then each have a section of their own in the rig
 2. Press **Templates** and click one to start from it.
 3. In **Words**, type up to three lines (placeholder: "Placeholder Speaker", "Placeholder Title").
 4. Set the **Style**, **Animation**, **Background** and **Timing**.
-5. Press **Save**, then **Show** when it is time.
+5. To see how it looks on the screens, choose **Behind the preview**: **Wallpaper** shows the hall's wallpaper, **Live** shows what the screens show now (**Dark** and **Light** are plain).
+6. Press **Save**, then **Show** when it is time.
 
 ![The Lower Thirds studio: the list, the live preview and its five tabs](../screenshots/lower-thirds-studio.png)
 

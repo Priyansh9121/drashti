@@ -87,7 +87,8 @@ export class EditService {
     };
     const options: EditCopyOptions = {
       lengthMs: 0,
-      waitForShow: true,
+      // Only what plays, the stream or a recording holds Edit Video's Save (alpha.22, shared/save-waits.ts).
+      waitForPlaying: true,
       strictPriority: true,
       inspect: (read) => {
         if (!current()) return 'These edits have been replaced by a newer save.';

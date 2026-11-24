@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { CropRect } from './picture-look';
+import { pagePartSchema } from './page-part';
 
 /** A native page can have its own paper size without claiming an imported original. */
 export interface PageSize {
@@ -23,6 +25,8 @@ export function pageSizeFromJson(text: string | null | undefined): PageSize | un
 
 /** A page occurrence, independent of its position and of deduplicated preview pictures. */
 export interface DocumentPageRef {
+  /** Shown part, in fractions of the current upright page; content underneath is retained. */
+  crop?: CropRect;
   sha256: string;
   ext: 'pdf' | 'pptx' | 'ppt' | 'key';
   /** Zero based, in the immutable source, including hidden slides. */
@@ -39,6 +43,7 @@ export interface DocumentPageRef {
 
 export const documentPageSchema: z.ZodType<DocumentPageRef> = z
   .object({
+    crop: pagePartSchema.optional(),
     sha256: z.string().regex(/^[0-9a-f]{64}$/u),
     ext: z.enum(['pdf', 'pptx', 'ppt', 'key']),
     page: z.number().int().min(0).max(1999),
@@ -90,4 +95,14 @@ export function slideCanvas(
   fallback: PageSize,
 ): PageSize {
   return slide?.pageSize ?? editingCanvas(slide?.documentPage, fallback);
+}
+
+/** Legacy source playback fits the paper inside a screen-shaped canvas; native pages already own their paper. */
+export function sourcePaperForCrop(
+  page: DocumentPageRef | undefined,
+  nativeSize: PageSize | undefined,
+): PageSize | undefined {
+  if (nativeSize || page?.edited || !page?.crop || page.width === undefined || page.height === undefined)
+    return undefined;
+  return editingCanvas(page, { width: page.width, height: page.height });
 }

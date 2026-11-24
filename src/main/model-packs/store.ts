@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
   createReadStream,
   createWriteStream,
@@ -47,11 +47,13 @@ import { checkManifest, readManifestText, type CheckedPack } from './manifest';
  *
  * An import reads the pack's list first and refuses before copying anything when the list is wrong, a file is
  * missing, the wrong size or a link out of the pack, or the drive has too little room (2 GB stays free, as for
- * recordings, imports and backups). Each file's SHA-256 is worked out as it is copied: one that does not match its
- * list refuses the whole pack, and the work folder goes. Only when every file is whole does the work folder take its
- * real name and the list name it; a pack imported again replaces the old copy, which stays whole while live captions
- * or translation still hold it (it goes when they let go, or at the next start). Files are readable by this
- * computer's user only (0600, folders 0700), as the access storage's are.
+ * recordings, imports and backups). Each file is counted as it is copied (never more than its list says), then its
+ * SHA-256 is worked out from the copy in a worker thread, never on Main's thread, where the show's commands wait
+ * (alpha.23, cap-packimport): one that does not match its list refuses the whole pack, and the work folder goes.
+ * Only when every file is whole does the work folder take its real name and the list name it; a pack imported again
+ * replaces the old copy, which stays whole while live captions or translation still hold it (it goes when they let
+ * go, or at the next start). Files are readable by this computer's user only (0600, folders 0700), as the access
+ * storage's are.
  *
  * Caption and translation engines ask here (main process only): `model(id)` and `forPurpose(purpose)` say whether a
  * model is installed and whole (each file there, its size as checked) and where (its own folder, each file's path);
@@ -161,9 +163,8 @@ export function insideFolder(
   return fold(real).startsWith(fold(folder));
 }
 
-/** Counts and hashes what passes, refusing more than `bytes`. */
-function hashing(name: string, bytes: number, step: (n: number) => void) {
-  const hash = createHash('sha256');
+/** Counts what passes, refusing more than `bytes` (a deflated zip entry, as it inflates). */
+function counting(name: string, bytes: number, step: (n: number) => void) {
   let seen = 0;
   const transform = new Transform({
     transform(chunk: Buffer, _encoding, done) {
@@ -172,12 +173,11 @@ function hashing(name: string, bytes: number, step: (n: number) => void) {
         done(new Refusal(WRONG_SIZE(name)));
         return;
       }
-      hash.update(chunk);
       step(chunk.length);
       done(null, chunk);
     },
   });
-  return { transform, finish: () => ({ seen, sha256: hash.digest('hex') }) };
+  return { transform, seen: () => seen };
 }
 
 /**
@@ -410,26 +410,42 @@ export class ModelPackStore {
       this.progress = { phase: 'importing', name: pack.manifest.name, done: 0, total: pack.bytes };
       this.tell(true);
       await mkdir(work, { mode: 0o700 });
-      let done = 0;
+      // Copying and checking each count for half of the progress told.
+      let copied = 0;
+      let hashed = 0;
+      const progress = (now = false) => {
+        const done = Math.floor((copied + hashed) / 2);
+        this.progress = { phase: 'importing', name: pack.manifest.name, done, total: pack.bytes };
+        this.tell(now);
+      };
       for (const f of pack.manifest.files) {
         const target = join(work, ...f.name.split('/'));
         await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-        const counter = hashing(f.name, f.bytes, (n) => {
-          done += n;
-          this.progress = { phase: 'importing', name: pack.manifest.name, done, total: pack.bytes };
-          this.tell();
+        const counter = counting(f.name, f.bytes, (n) => {
+          copied += n;
+          progress();
         });
+        side = 'read';
         const from = await reader.open(f);
         const out = createWriteStream(target, { flags: 'wx', mode: 0o600 });
-        side = 'read';
         out.once('error', () => {
           side = 'own';
         });
         await pipeline([...from, counter.transform, out], { signal });
-        const { seen, sha256 } = counter.finish();
-        if (seen !== f.bytes) throw new Refusal(WRONG_SIZE(f.name));
-        if (sha256 !== f.sha256) throw new Refusal(MISMATCH(f.name));
-        this.tell(true);
+        if (counter.seen() !== f.bytes) throw new Refusal(WRONG_SIZE(f.name));
+        // Its SHA-256 from the copy just written, in a worker thread (cap-packimport): hundreds of megabytes never
+        // hash on Main's thread, and what is kept is what was checked. Stop and quitting end the worker at once.
+        side = 'own';
+        const before = hashed;
+        const found = await hashOffMain(target, signal, (n) => {
+          hashed = before + n;
+          progress();
+        });
+        signal.throwIfAborted();
+        if (found.bytes !== f.bytes) throw new Refusal(WRONG_SIZE(f.name));
+        if (found.sha256 !== f.sha256) throw new Refusal(MISMATCH(f.name));
+        hashed = before + f.bytes;
+        progress(true);
       }
       side = 'own';
       await writeFile(join(work, PACK_MANIFEST), reader.manifest, { flag: 'wx', mode: 0o600 });

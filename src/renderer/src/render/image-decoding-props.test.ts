@@ -6,9 +6,10 @@ import type { StepTiming } from '../../../shared/deck-show';
 import type { MediaElement, RenderSlide } from '../../../shared/model';
 import { DeckStepStill, DeckStepView } from './DeckStep';
 import { ElementView, SlideView } from './SlideView';
-import { ScreenPictures } from './picture-looks';
+import { ScreenPictures, useDisplayCopy, usePictureLook } from './picture-looks';
 import { PLAIN } from '../../../shared/picture-look';
-import { displayUrl } from '../../../shared/media';
+import { displayMediaId, displayUrl } from '../../../shared/media';
+import { PreviewsContext, type PreviewLoader } from './previews';
 
 // A still's version is supplied by the window's store; this test needs no window or video decoder.
 vi.mock('./stills', () => ({ useStill: () => ({ version: 0, failed: false }), requestStill: vi.fn() }));
@@ -61,6 +62,18 @@ describe('a slide image decoding hint passed through the existing render tree', 
   it('reaches an ordinary picture and its slide backdrop without an ancestor decoding context', () => {
     const props = { slide, imageDecoding: 'sync' as const };
     expectSync(renderToStaticMarkup(createElement(SlideView, props)), 2);
+  });
+
+  it('reaches the pictures and backdrop inside a cropped PDF page', () => {
+    const cropped: RenderSlide = {
+      ...slide,
+      width: 960,
+      height: 540,
+      pageCrop: { x: 120, y: 80, width: 1920, height: 1080 },
+    };
+    const html = renderToStaticMarkup(createElement(SlideView, { slide: cropped, imageDecoding: 'sync' }));
+    expect(html).toContain('data-page-crop');
+    expectSync(html, 2);
   });
 
   it('reaches both the previous and last still of a baked deck step', () => {
@@ -127,4 +140,38 @@ it('selects a prepared display rendition in its very first image, before any loa
   expect(rendered).toContain(displayUrl(picture.mediaId, key));
   expect(rendered).not.toContain(`drashti-media://media/${picture.mediaId}`);
   expectSync(rendered, 1);
+});
+
+it('a phone or tablet draws the original, never the screens’ display copy, so its zoom reaches the original (Session 54, D1; wave-1 phone-full-quality.spec.ts:161)', () => {
+  const key = `p1-${'ab'.repeat(16)}-1920x1080`;
+  const loader: PreviewLoader = {
+    load: (mediaId) => Promise.resolve(`blob:placeholder/${mediaId}`),
+    cached: (mediaId) => `blob:placeholder/${mediaId}`,
+    subscribe: () => () => undefined,
+    hold: () => () => undefined,
+    measured: () => undefined,
+  };
+  // What a picture on a phone draws from: the display copy's id, or none (the original, at the phone's own width).
+  function Drawn() {
+    const copy = useDisplayCopy(picture.mediaId, usePictureLook(picture.mediaId));
+    return createElement('span', null, copy?.id ?? 'original');
+  }
+  const rendered = renderToStaticMarkup(
+    createElement(
+      PreviewsContext.Provider,
+      { value: loader },
+      createElement(
+        ScreenPictures.Provider,
+        {
+          value: {
+            pictures: { [picture.mediaId]: { ...PLAIN, display: { key, width: 1920, height: 1080 } } },
+            liveZoom: null,
+          },
+        },
+        createElement(Drawn),
+      ),
+    ),
+  );
+  expect(rendered).toBe('<span>original</span>');
+  expect(rendered).not.toContain(displayMediaId(picture.mediaId, key));
 });

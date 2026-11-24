@@ -166,3 +166,62 @@ it('lets a saved copy opt into the show gate while legacy saves still run', asyn
     rmSync(dir, { recursive: true, force: true });
   }
 }, 10_000);
+
+it('holds a save the operator asked for only while saveBusy says why, never for a still up (alpha.22)', async () => {
+  // The owner's "Trim on a row": a still slide, a picture or the Wallpaper up (showBusy) no longer holds it; what plays,
+  // the stream or a recording does (shared/save-waits.ts), stopping it as it starts, and its words reach the save.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-copy-playing-'));
+  const db = openDatabase(join(dir, 'library.sqlite'));
+  const source = join(dir, 'Placeholder source.mp4');
+  const dest = join(dir, 'Placeholder trimmed.mp4');
+  writeFileSync(source, 'Placeholder source bytes');
+  let saveBusy: string | null = 'Waiting: a video is playing';
+  const children = fakeEncoders();
+  const service = new ConvertService({
+    db,
+    mediaDir: dir,
+    ffmpegPath: () => 'placeholder-ffmpeg',
+    busy: () => null,
+    showBusy: () => true,
+    saveBusy: () => saveBusy,
+    freeBytes: () => 100 * 1024 ** 3,
+    changed: () => undefined,
+    libraryChanged: () => undefined,
+    log: () => undefined,
+  });
+  const info = { durationMs: 1000, video: null, audio: null };
+  const waiting = vi.fn();
+  try {
+    const save = service.saveCopy(source, dest, info, {
+      args: (tmp: string) => [tmp],
+      lengthMs: 1000,
+      waitForPlaying: true,
+      waiting,
+    });
+    expect(children).toHaveLength(0);
+    expect(waiting).toHaveBeenLastCalledWith('Waiting: a video is playing');
+    // Paused: a still is up, yet it goes on.
+    saveBusy = null;
+    await vi.waitFor(() => expect(children).toHaveLength(1), { timeout: 2500 });
+    expect(waiting).toHaveBeenLastCalledWith(null);
+    // On air: it stops, and says so.
+    saveBusy = 'Waiting: the stream is on air';
+    service.activityChanged();
+    const first = children[0];
+    if (!first) throw new Error('The encoder did not start.');
+    expect(first.kill).toHaveBeenCalledOnce();
+    first.child.emit('close', 0);
+    await vi.waitFor(() => expect(waiting).toHaveBeenLastCalledWith('Waiting: the stream is on air'), {
+      timeout: 2500,
+    });
+    expect(existsSync(dest)).toBe(false);
+    saveBusy = null;
+    await vi.waitFor(() => expect(children).toHaveLength(2), { timeout: 2500 });
+    children[1]?.child.emit('close', 0);
+    await expect(save.done).resolves.toEqual({ ok: true, copy: dest });
+  } finally {
+    service.close();
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);

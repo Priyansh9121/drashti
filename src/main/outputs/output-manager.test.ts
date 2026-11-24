@@ -436,6 +436,25 @@ describe('OutputManager', () => {
     expect(next.windows().map((w) => w.screenId)).toEqual(['hall', 'fill', 'key', 'stage']);
   });
 
+  // alpha.22: Stage starts as it was left (off on a new library), told to the manager as it is made.
+  it('a manager made with Stage off has it off from the start; its stage screens open all the same, Audience on', () => {
+    show();
+    const next = new OutputManager({
+      listDisplays: () => displays,
+      screens: () => screens,
+      saveDisplayKey: () => undefined,
+      openWindow: (s, d) => new FakeWindow(s.id, d.id),
+      onChange: () => undefined,
+      switchOf: (s) => switchFor(roles[s.groupId] ?? 'audience'),
+      startsOff: ['stage'],
+    });
+    expect(next.switches()).toEqual({ audience: true, stage: false });
+    next.reconcile();
+    expect(next.windows().map((w) => w.screenId)).toEqual(['hall', 'fill', 'key', 'stage']);
+    expect(next.setSwitch('stage', true)).toBe(true);
+    expect(next.switches()).toEqual(ALL_ON);
+  });
+
   it('closeAll closes what is open, switched off or not', () => {
     show();
     manager.setSwitch('stage', false);

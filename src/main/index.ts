@@ -84,7 +84,7 @@ import { z } from 'zod';
 import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
 import { drawnGeometry } from '../shared/screen-geometry';
-import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
+import { NO_STAGE_SCREEN, type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
 import { keptTemplateSchema, messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
@@ -128,6 +128,13 @@ import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
+import {
+  CHROMIUM_FAKE_DEVICES,
+  CHROMIUM_FAKE_SOUND_FILE,
+  fakeMediaSelfTest,
+  fakeSoundFeatures,
+  fakeSoundSwitch,
+} from './fake-sound';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
@@ -138,6 +145,7 @@ import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
+import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
@@ -257,11 +265,12 @@ import {
 } from '../shared/picture-look';
 import { audienceScreenSizes, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
-import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
+import { rowTrimRequestSchema, saveRequestSchema, trimSavedNotice } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
 import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
+import { exportMediaFile } from './convert/export-file';
 import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
@@ -307,6 +316,7 @@ import { whenFree, writeLockFree } from './db/write-lock';
 import { writeOldLibrary } from './old-library-selftest';
 import {
   createOutputWindow,
+  createStagePreviewWindow,
   EXTRA_DISPLAY_ID,
   electronDisplays,
   listDisplays,
@@ -332,6 +342,8 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
+import { revealPreview } from './outputs/stage-preview';
+import { keepStage, STAGE_SETTING, stageStartsOn } from './outputs/stage-switch-setting';
 import { coverBox } from './network/desktop-consent';
 import type { DesktopLibrary } from './network/desktop-answers';
 import { cameraNamesIn } from '../shared/network-desktop';
@@ -433,6 +445,9 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
+import { RunningOrderPrinter, runningOrderLines } from './running-order';
+import { printWaits } from '../shared/print-waits';
+import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
 import { ErrorReports } from './error-reports/service';
@@ -505,6 +520,7 @@ import {
   parseCaptionTiming,
 } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
+import { saveWaitsFor } from '../shared/save-waits';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { OscService } from './osc/service';
@@ -984,7 +1000,22 @@ const priorityItem = (after: (text: string) => void) =>
 // Tests only: Chromium's fake camera and microphone (a moving test pattern and a beep) stand in for real ones.
 // Only the device switch: the stream's page still captures its own real picture.
 const fakeDevices = sw('DRASHTI_TEST_FAKE_DEVICES') === '1';
-if (fakeDevices) app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+if (fakeDevices) app.commandLine.appendSwitch(CHROMIUM_FAKE_DEVICES);
+// Tests only (alpha.23, cap-realc): the fake microphone plays a generated WAV file once instead of its beep, so caption
+// AI's own recogniser (Route C) hears generated sound through the stream's own sound graph (src/main/fake-sound.ts).
+const fakeSound = fakeSoundSwitch({
+  fakeDevices,
+  file: sw('DRASHTI_TEST_FAKE_SOUND_FILE'),
+  platform: process.platform,
+});
+if (fakeSound) app.commandLine.appendSwitch(CHROMIUM_FAKE_SOUND_FILE, fakeSound);
+// macOS: the audio service reads that file only out of its sandbox (tests only, as above).
+const fakeSoundSandbox = fakeSoundFeatures({
+  sound: fakeSound,
+  platform: process.platform,
+  disabled: app.commandLine.getSwitchValue('disable-features'),
+});
+if (fakeSoundSandbox) app.commandLine.appendSwitch('disable-features', fakeSoundSandbox);
 // Tests only: behave as if the system's secure storage for keys were missing.
 const noSafeStorage = sw('DRASHTI_TEST_NO_SAFE_STORAGE') === '1';
 // Tests only: the local network listens on this computer alone (no firewall questions), and can be
@@ -1703,6 +1734,14 @@ function start(): void {
             windowsRuntime: Object.keys(windowsRuntimeLibraries),
           })
         : null;
+      // The tests' seams (alpha.23, cap-realc): a packaged Drashti turns on none of Chromium's fake media switches,
+      // whatever its environment asks (scripts/check-ffmpeg.mjs --packaged starts it asking for the fake microphone).
+      const fakeMedia = packaged()
+        ? fakeMediaSelfTest(
+            (name) => app.commandLine.hasSwitch(name),
+            app.commandLine.getSwitchValue('disable-features'),
+          )
+        : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
       const ocr = await ocrSelfTest({
         files: builtOcrFiles(__dirname),
@@ -1716,12 +1755,14 @@ function start(): void {
         youtube,
         whisper,
         indic,
+        fakeMedia,
         ocr,
         passed:
           ffmpeg.passed &&
           youtube.passed &&
           (whisper?.passed ?? true) &&
           (indic?.passed ?? true) &&
+          (fakeMedia?.passed ?? true) &&
           ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
@@ -2866,6 +2907,56 @@ function start(): void {
       ...(adjustingScreen(s.id) ? { grid: true as const } : {}),
     };
   };
+  // ---- the Stage preview (alpha.22) -------------------------------------------------------------------------
+  // A stage screen's page in a normal window on this computer, opened from the Stage screen panel (the owner, 24 Nov
+  // 2026: "right now i am unable to setup stage screen even its on"): with one projector, no display has the Stage
+  // job, and this shows what a stage screen would, its layout with Stage on and the audience picture with it off,
+  // as the first stage group draws it. It is no screen: never counted, never opened by itself, never covering.
+  let stagePreview: BrowserWindow | null = null;
+  const stagePreviewContext = (): OutputContext => {
+    const group = screenRepo.groups().find((g) => g.role === 'stage');
+    const first = group?.screens[0];
+    return {
+      screenId: 'stage-preview',
+      screenName: 'Stage preview',
+      groupId: group?.id ?? '',
+      groupName: group?.name ?? 'Stage',
+      role: 'stage',
+      feed: null,
+      canvasWidth: first?.canvasWidth ?? 1920,
+      canvasHeight: first?.canvasHeight ?? 1080,
+      scaling: first?.scaling ?? 'fit',
+      display: null,
+      clockStyle: mainClockStyle(),
+      hall: hallHere(),
+      ...warmUpFact(warmUps, stagePreview ?? undefined, 'the Stage preview', 'stage'),
+    };
+  };
+  const openStagePreview = (): void => {
+    // Never a window opened as Drashti quits (Session 23: it would stop the quit; a22-review-stage S3).
+    if (quitStarted) return;
+    const open = stagePreview;
+    if (open && !open.isDestroyed()) {
+      // In sight again, the keyboard left with the operator (a22-review-stage S1).
+      revealPreview(open);
+      return;
+    }
+    const near =
+      operatorWindow && !operatorWindow.isDestroyed()
+        ? electronScreen.getDisplayMatching(operatorWindow.getBounds()).workArea
+        : null;
+    const win = createStagePreviewWindow(near);
+    stagePreview = win;
+    log.info('Stage preview opened: what a stage screen shows, in a window on this computer');
+    win.on('closed', () => {
+      if (stagePreview === win) stagePreview = null;
+      log.info('Stage preview closed');
+    });
+  };
+  /** Closed as Simple Mode starts, as the Lower Thirds studio is (a22-review-stage S8). */
+  const closeStagePreview = (): void => {
+    if (stagePreview && !stagePreview.isDestroyed()) stagePreview.close();
+  };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
   followOutputs(warmUps, outputWindows, outputNames, (screenId, win) => {
     const context = contextFor(screenId);
@@ -3073,6 +3164,11 @@ function start(): void {
     },
     // Audience or Stage (Session 50), by the screen's group.
     switchOf: (s) => switchFor(screenRepo.groupRole(s.groupId) ?? 'audience'),
+    // Stage starts as it was left (alpha.22): off on a new library, and once after the update; the e2e tests start
+    // it on (DRASHTI_TEST_STAGE_AT_START), as every start was before. Audience is on at every start.
+    startsOff: stageStartsOn(settings, !packaged() && sw('DRASHTI_TEST_STAGE_AT_START') === 'on')
+      ? []
+      : ['stage'],
     onChange: () => {
       engine.videoCuePageJoined('');
       // A hall screen stopped, or back (events out: Session 28).
@@ -3092,6 +3188,9 @@ function start(): void {
         const context = contextFor(screenId);
         if (context) sendToPage(win, IPC.output.context, context);
       }
+      // The Stage preview (alpha.22) follows the stage's group and the hall's picture as the stage screens do.
+      if (stagePreview && !stagePreview.isDestroyed())
+        sendToPage(stagePreview, IPC.output.context, stagePreviewContext());
       guardOperator();
       // Keep these screens? (Session 50): whether an output covers the controls, said again when that changed.
       keepScreens.refresh();
@@ -3197,17 +3296,37 @@ function start(): void {
   );
   adjustingScreen = (screenId) => screens.adjusting(screenId);
   // ---- Audience and Stage (Session 50; outputs/screen-switches.ts): this computer's screens off and on --------
-  // Never saved: both are on at every start.
+  // Audience is on at every start; Stage (alpha.22) as it was left, kept in the library's settings as it changes.
   const screenSwitches = new ScreenSwitchService({
     // Turned through the screens, which remember what each screen showed as its switch went off (Session 51).
     outputs: screens,
     simple: () => simpleNow(),
-    screens: () => ({ groups: screenRepo.groups(), status: manager.status() }),
+    // A node's stage screens count as set to Stage (alpha.22); only this computer's ever ask before one goes off.
+    screens: () => ({
+      groups: screenRepo.groups(),
+      status: [...manager.status(), ...(nodeService?.screenStatus() ?? [])],
+    }),
     state: () => engine.current,
     log: (message) => {
       log.info(message);
     },
+    // Stage on with no screen set to Stage (alpha.22): said under the top bar, with Set up Stage screen…, which
+    // opens Screens at the displays that could take the job (the controls' last).
+    noStageScreen: () => {
+      const controls = controlsDisplay();
+      const ids = listDisplays().map((d) => d.id);
+      sayScreens({
+        kind: 'no-stage',
+        text: NO_STAGE_SCREEN,
+        displayIds: [...ids.filter((id) => id !== controls), ...ids.filter((id) => id === controls)],
+      });
+    },
   });
+  // The engine's Stage off as the switch starts (alpha.22: off on a new library), and the log says how it started.
+  engine.setStage({ off: !manager.switches().stage });
+  log.info(
+    `Screens: Stage starts ${manager.switches().stage ? 'on' : 'off'}${settings.get(STAGE_SETTING) === undefined ? ' (never chosen in this library)' : ', as it was left'}`,
+  );
 
   // ---- Keep these screens? (Session 50) ----------------------------------------------------------------
   // After a change that puts an output on a display, 15 s to keep it, or it goes back by itself; the output over
@@ -3313,6 +3432,13 @@ function start(): void {
   // the next the stage; what it did is said in one line, with Change… (and once, how to extend when the computer
   // mirrors). Kept for a window that opens after it was said.
   let lastSaid: ScreensSaid | null = null;
+  /** The lines said so far: each its own number, whoever said it (the displays plugged in, Stage: alpha.22). */
+  let saidCount = 0;
+  const sayScreens = (said: Omit<ScreensSaid, 'id'>): void => {
+    saidCount += 1;
+    lastSaid = { ...said, id: saidCount };
+    sendToPage(operatorWindow, IPC.screens.said, lastSaid);
+  };
   const autoScreens = new AutoScreens({
     on: autoScreensOn,
     displays: () =>
@@ -3330,8 +3456,7 @@ function start(): void {
       return given;
     },
     said: (said) => {
-      lastSaid = said;
-      sendToPage(operatorWindow, IPC.screens.said, said);
+      sayScreens(said);
     },
     mirroredOnto: () => displayIds.mirroredOnto(),
     platform: process.platform,
@@ -4122,8 +4247,11 @@ function start(): void {
   const speechEngine =
     testSpeech !== undefined
       ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
+        // DRASHTI_TEST_SPEECH_HOLD=n (cap-threads): it rests after its first phrase, as a too-slow computer does, as the
+        // n-th rest in a row (3: captions then stop).
         createStandInEngine(testSpeech.split('|'), undefined, {
           once: sw('DRASHTI_TEST_SPEECH_ONCE') !== undefined,
+          hold: Number(sw('DRASHTI_TEST_SPEECH_HOLD') ?? 0),
         })
       : createWhisperEngine({
           program: () => whisperProgram,
@@ -4144,6 +4272,8 @@ function start(): void {
           // The tuned language models are decoded without timestamps (alpha.22).
           timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
           timing: () => captions.timing(),
+          // Captions that have shown a phrase whole are never stopped as too slow (cap-review-threads MUST-1b).
+          keptUp: () => captions.keptUp(),
           sound: { open: (chunk) => streaming.listenSound(chunk) },
           // The admin's caption words as hints (cap-glossary).
           hints: captionWords.hints,
@@ -4175,6 +4305,7 @@ function start(): void {
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
             timing: () => captions.timing(),
+            keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,
@@ -4665,6 +4796,7 @@ function start(): void {
       rebuildMenu();
       if (next === 'simple') {
         closeStudio();
+        closeStagePreview();
       }
       sendToOperator(IPC.app.modeChanged, { mode: next });
       // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist, and in Simple Mode its pictures to
@@ -4941,11 +5073,14 @@ function start(): void {
       ? readManual(guideFiles)
       : { ok: false, message: 'Only Drashti’s own window can read the manual: open it from Help.' },
   );
+  // Every printer's one test (the Manual's, a running order's, a kirtan's words'; shared/print-waits.ts): never while
+  // the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording, as Trim's and
+  // the conversions' background work waits; since alpha.22 also while a video waits at Cue or goes out in a crossfade
+  // (a22-review-print S1). A test can say the stream is on air.
+  const printingLive = () => testOnAir || printWaits(engine.current, streaming.inUse());
   const manualPrinter = new ManualPrinter({
     files: guideFiles,
-    // Never while the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording,
-    // as Trim's and the conversions' background work waits (a test can say the stream is on air).
-    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    live: printingLive,
     version: () => app.getVersion(),
     tempDir: () => app.getPath('temp'),
     suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
@@ -4968,6 +5103,45 @@ function start(): void {
   } as const;
   handle(IPC.manual.print, (e) => (fromOperator(e) ? manualPrinter.print() : notFromOperator));
   handle(IPC.manual.pdf, (e) => (fromOperator(e) ? manualPrinter.pdf() : notFromOperator));
+  // ---- a singers' sheet (alpha.22): Print words… and Save words as PDF… of a presentation -------------------------
+  // Pro Mode's (simple-mode.ts), from the operator window only, never while the show is live (the Manual's rule), from
+  // the Manual's hidden window (words-print.ts). It only reads the library.
+  const wordsPrinter = new WordsPrinter({
+    read: (id) => {
+      const name = presentations.get(id)?.name;
+      const rows = name === undefined ? null : presentations.content(id);
+      return name === undefined || !rows ? null : { name, rows };
+    },
+    live: printingLive,
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the words as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+  });
+  const wordsNotFromOperator = {
+    ok: false,
+    cancelled: false,
+    message: 'Only the operator window can print a presentation’s words.',
+  } as const;
+  handle(IPC.library.printWords, (e, presentationId) => {
+    const id = idSchema.safeParse(presentationId);
+    if (!fromOperator(e) || !id.success) return wordsNotFromOperator;
+    return wordsPrinter.print(id.data);
+  });
+  handle(IPC.library.saveWordsPdf, (e, presentationId) => {
+    const id = idSchema.safeParse(presentationId);
+    if (!fromOperator(e) || !id.success) return wordsNotFromOperator;
+    return wordsPrinter.pdf(id.data);
+  });
   // ---- programs a crash left running (Session 31, ROB-3) ----------------------------------------
   // Each program Drashti starts that could outlive it is written down (src/main/system/leftovers.ts): one
   // the last run left running (the very one: id, start time and program) is stopped now, before anything
@@ -5183,6 +5357,13 @@ function start(): void {
   edits.delete(IPC.playlists.importM3u);
   // Export reads the library and writes only the chosen file; no library write lock spans its dialog.
   edits.delete(IPC.playlists.exportM3u);
+  // A running order only reads the library (alpha.22): copied, printed or saved where the person chooses.
+  edits.delete(IPC.playlists.copyRunningOrder);
+  edits.delete(IPC.playlists.printRunningOrder);
+  edits.delete(IPC.playlists.saveRunningOrderPdf);
+  // So do Print words… and Save words as PDF… (a singers' sheet, alpha.22).
+  edits.delete(IPC.library.printWords);
+  edits.delete(IPC.library.saveWordsPdf);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);
@@ -5202,6 +5383,15 @@ function start(): void {
     });
   });
 
+  // What holds a save the operator asked for (alpha.22, the owner's "Trim on a row"; shared/save-waits.ts): a row's
+  // Trim, Edit Video's Save and Export clip… wait only while a video or a sound plays, the stream is on air (the tests'
+  // hook too) or a recording goes on, never for a still slide, a picture or the Wallpaper up; in the operator's words.
+  const saveWaits = (): string | null =>
+    saveWaitsFor(engine.current, {
+      onAir: testOnAir || streaming.wanted().live,
+      recording: streaming.wanted().recording,
+    });
+  const saveIdle = () => saveWaits() === null;
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({
     prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
@@ -5231,6 +5421,7 @@ function start(): void {
         ? 'Waits while the stream is on air or recording, then carries on by itself.'
         : null,
     showBusy: () => !nothingUp(engine.current.layers),
+    saveBusy: saveWaits,
     freeBytes: diskFreeBytes,
     changed: (jobs) => {
       sendToOperator(IPC.media.conversionsChanged, jobs);
@@ -5291,6 +5482,8 @@ function start(): void {
     fromOperator,
     proMode: () => mode === 'pro',
     idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    // Export clip… (and Also add the clip to Media) is a save the operator asked for (alpha.22).
+    saveIdle,
     gpuStatus,
     freeBytes: diskFreeBytes,
     pickDest: async (name, container) => {
@@ -5305,6 +5498,16 @@ function start(): void {
     },
     showFile: (path) => shell.showItemInFolder(path),
     libraryChanged: () => libraryChanged(true),
+    // Combine videos…' Also save a copy to a file: Export…'s own save dialog (media:export-file, below).
+    exportDialog: async (name) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export video',
+        defaultPath: join(testDownloadsDir ?? app.getPath('downloads'), name),
+        buttonLabel: 'Export',
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
   });
   proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
   proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
@@ -5319,7 +5522,7 @@ function start(): void {
         ? { path: join(mediaDir, row.path), name: named.name }
         : null;
     },
-    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    idle: saveIdle,
     conversions,
     register: (file, info, name, signal) =>
       registerEditedFile({
@@ -5329,7 +5532,7 @@ function start(): void {
         info,
         name,
         signal,
-        idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+        idle: saveIdle,
         freeBytes: diskFreeBytes,
         write: sourceWrite(libraryDb, () => imports.giveWay()),
       }),
@@ -5632,7 +5835,10 @@ function start(): void {
       return ffmpeg ? frameAtOrBefore(ffmpeg, file, atMs) : Promise.resolve(null);
     },
     isLive: (itemId, mediaId) => rowVideoLive(engine.current, itemId, mediaId),
-    quiet: trimWorkQuiet,
+    // A cut is made, checked and carried on while nothing plays (alpha.22); the unused cuts' sweep still waits until
+    // nothing is up (trimCleanupQuiet).
+    quiet: () => !quitStarted && saveIdle(),
+    waits: saveWaits,
     hash: (file, signal) => hashOffMain(file, signal),
     kept: trimRecords.kept,
     spaceProblem: (file, durationMs, lengthMs) =>
@@ -5652,6 +5858,9 @@ function start(): void {
       ),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
+    statusChanged: (statuses) => sendToOperator(IPC.media.trimStatusesChanged, statuses),
+    // Its trimmed video is in Media (alpha.22): the notice says so, with Show in Media.
+    saved: (mediaId, name) => sendToOperator(IPC.app.notice, { text: trimSavedNotice(name), mediaId }),
     rowChanged: (added) => {
       if (added) {
         libraryChanged(true);
@@ -5742,6 +5951,35 @@ function start(): void {
       : noTrim;
   });
   handle(IPC.media.preparingTrims, (e) => (fromOperator(e) ? playlistTrims.list() : []));
+  handle(IPC.media.trimStatuses, (e) => (fromOperator(e) ? playlistTrims.statuses() : {}));
+  // Export… (alpha.22, the owner's "export button as well to download"): a finished video in Media (a row's trimmed
+  // video) copied byte for byte where the operator chooses, the save dialog beginning in Downloads.
+  handle(IPC.media.exportFile, (e, mediaId) => {
+    const id = idSchema.safeParse(mediaId);
+    if (!fromOperator(e) || !id.success)
+      return { ok: false as const, message: 'Open Export… in the operator window, then try again.' };
+    return exportMediaFile(
+      {
+        video: (mediaId) => {
+          const row = media.kindAndFile(mediaId);
+          const named = media.kindAndName(mediaId);
+          return row?.kind === 'video' && !row.missing && row.path !== '' && named
+            ? { path: join(mediaDir, row.path), name: named.name }
+            : null;
+        },
+        pickDest: async (name) => {
+          if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+          const picked = await dialog.showSaveDialog(operatorWindow, {
+            title: 'Export video',
+            defaultPath: join(testDownloadsDir ?? app.getPath('downloads'), name),
+            buttonLabel: 'Export',
+          });
+          return picked.canceled || !picked.filePath ? null : picked.filePath;
+        },
+      },
+      id.data,
+    );
+  });
 
   const notSaving = { ok: false as const, message: 'Only the operator window can save a video’s part.' };
   handle(IPC.media.keyframe, async (e, mediaId, startMs) => {
@@ -6812,6 +7050,46 @@ function start(): void {
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
   lowerThirds.purge();
+  // Live behind the studio's preview (alpha.22, lower-thirds/studio-live.ts): a still about once a second while the
+  // studio shows Live (not while it is minimized), never otherwise, from a picture already drawn: this computer's first
+  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here, none (the
+  // studio says "No live picture to show"). Read only.
+  const studioLive: StudioLive = new StudioLive({
+    take: async () => {
+      const roles = new Map(screenRepo.groupIds().map((g) => [g.id, g.role]));
+      const showingNow = () =>
+        new Set(
+          manager
+            .status()
+            .filter((st) => st.state === 'showing')
+            .map((st) => st.screenId),
+        );
+      const showing = showingNow();
+      const screenId = hallScreenOf(
+        screenRepo.screens(),
+        (groupId) => roles.get(groupId) ?? null,
+        (id) => showing.has(id) && pageAlive(outputWindows.get(id)),
+      );
+      const hall = screenId === null ? undefined : outputWindows.get(screenId);
+      if (screenId === null || !hall || hall.isDestroyed()) return null;
+      const image = await hall.webContents.capturePage();
+      // Taken as its window closed (its screen switched off, say), it is not what the hall shows: none (as captureLocal).
+      if (hall.isDestroyed() || outputWindows.get(screenId) !== hall || !showingNow().has(screenId))
+        return null;
+      return livePictureOf(image, 'screen', Date.now());
+    },
+    send: (picture) => {
+      studio.sendLive(picture);
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  // Tests only (never a packaged Drashti): whether Live's stills are being taken, and how many have been.
+  if (!packaged())
+    (
+      globalThis as { drashtiTestStudioLive?: () => { watching: boolean; taken: number } }
+    ).drashtiTestStudioLive = () => ({ watching: studioLive.watching, taken: studioLive.taken });
   // The Lower Thirds studio (Session 55, Part 16): a window of its own, where they are made, shown and hidden.
   const studio = new LowerThirdsStudio({
     workArea: () =>
@@ -6822,6 +7100,12 @@ function start(): void {
     background: () => appearance.background(),
     track: (win) => {
       appearance.track(win);
+    },
+    closed: () => {
+      studioLive.stop();
+    },
+    minimized: (on) => {
+      studioLive.pause(on);
     },
     log: (line) => {
       log.info(line);
@@ -6838,6 +7122,7 @@ function start(): void {
     fromOperator,
     get: (id) => lowerThirds.get(id),
     engine,
+    live: studioLive,
     log: (line) => {
       log.info(line);
     },
@@ -8126,6 +8411,65 @@ function start(): void {
       return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'write'));
     }
   });
+  // ---- a playlist's running order (alpha.22; main/running-order.ts) ----------------------------------
+  // For the sanchalak, the anchor and the sound desk before a sabha: one of the operator's playlists (never a folder,
+  // a template or an audio playlist), read as it is now. Copy running order puts its plain lines on the clipboard, by
+  // the main process (a page's own clipboard is refused: windows/security.ts).
+  const runningOrderSource = (playlistId: unknown) => {
+    const parsed = idSchema.safeParse(playlistId);
+    if (!parsed.success) return null;
+    const list = playlists.tree().find((p) => p.id === parsed.data && !p.isFolder && !p.template);
+    return list ? { name: list.name, items: playlists.itemsOf(list.id) } : null;
+  };
+  handle(IPC.playlists.copyRunningOrder, async (e, playlistId) => {
+    if (!fromOperator(e))
+      return { ok: false, message: 'Only Drashti’s own window can copy a running order.' } as const;
+    const source = runningOrderSource(playlistId);
+    if (!source) return { ok: false, message: 'That playlist no longer exists.' } as const;
+    const rows = source.items.filter((i) => i.kind !== 'header').length;
+    return clipboard.writeText(runningOrderLines(source)).then(
+      () => ({ ok: true, rows }) as const,
+      () => ({ ok: false, message: 'The running order could not be copied: try again.' }) as const,
+    );
+  });
+  // Print running order… and Save running order as PDF…: from a hidden window as the manual is (main/manual-print.ts),
+  // one page at a time across every printer, and never while the show is live (printingLive, the Manual's).
+  const runningOrderPrinter = new RunningOrderPrinter({
+    source: (playlistId) => runningOrderSource(playlistId),
+    printed: () => {
+      const style = mainClockStyle();
+      return new Intl.DateTimeFormat(style.locale, { dateStyle: 'full', timeZone: style.timeZone }).format(
+        Date.now(),
+      );
+    },
+    live: printingLive,
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the running order as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+  });
+  const notPrintedHere = {
+    ok: false,
+    cancelled: false,
+    message: 'Only Drashti’s own window can print a running order.',
+  } as const;
+  handle(IPC.playlists.printRunningOrder, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string'
+      ? runningOrderPrinter.print(playlistId)
+      : notPrintedHere,
+  );
+  handle(IPC.playlists.saveRunningOrderPdf, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string' ? runningOrderPrinter.pdf(playlistId) : notPrintedHere,
+  );
 
   // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and
   // only that write can refuse the rename. What it returns runs once the library has the new name, the rename
@@ -8784,6 +9128,11 @@ function start(): void {
   );
   // What the screens did by themselves (Session 55), for a window that opened after it was said, until it is closed.
   handle(IPC.screens.lastSaid, (e) => (fromOperator(e) ? lastSaid : null));
+  // The Stage preview (alpha.22): opened, or brought forward, from the Stage screen panel.
+  handle(IPC.screens.openStagePreview, (e) => {
+    if (fromOperator(e)) openStagePreview();
+    return null;
+  });
   handle(IPC.screens.saidClosed, (e, id) => {
     if (fromOperator(e) && lastSaid?.id === id) lastSaid = null;
     return null;
@@ -8843,6 +9192,9 @@ function start(): void {
   screenSwitches.onChanged((switches) => {
     // Stage off (Session 55): every stage screen shows exactly the audience picture, from the engine's state.
     engine.setStage({ off: !switches.stage });
+    // Kept for the next start (alpha.22), written as the mode is: never on the main thread under an import's lock
+    // (a22-review-stage S2).
+    keepStage({ set: laterSetting }, switches.stage);
     sendToOperator(IPC.screenSwitches.changed, switches);
     // The View menu's ticks, and a Remote's word on which are off.
     rebuildMenu();
@@ -9418,6 +9770,9 @@ function start(): void {
   });
 
   handle(IPC.output.getContext, (event) => {
+    // The Stage preview (alpha.22): a stage screen's page, never a screen.
+    if (stagePreview && !stagePreview.isDestroyed() && event.sender.id === stagePreview.webContents.id)
+      return stagePreviewContext();
     const screenId = manager.screenIdFor(event.sender.id);
     // Keep these screens? on an output over the controls that opened, or loaded again, as a change waits: sent
     // before the answer, so after the page listens for it (output-store.ts listens first).

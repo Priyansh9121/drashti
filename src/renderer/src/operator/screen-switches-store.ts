@@ -15,7 +15,8 @@ import { useScreens } from '../screens/screens-store';
  * back to the computer, and Stage off shows the audience picture on its stage screens (Session 55); on opens them
  * again where they were. Turning one off asks first while its screens show
  * something (the top bar's switch, Mod+1 and Mod+2), and in the window's first moments, before it has the
- * screens (Session 51, S2-4); on never asks. Simple Mode only turns them on. Both are on at every start.
+ * screens (Session 51, S2-4); on never asks. Simple Mode only turns them on. Audience is on at every start; Stage
+ * (alpha.22) starts as it was left, off in a new library (main/outputs/stage-switch-setting.ts).
  *
  * The question is this window's own, and the main process is told as it opens and goes (Session 51, S2-2): an
  * output over the controls then asks the same, large, in its middle, Enter turning it off and Esc cancelling.
@@ -23,7 +24,10 @@ import { useScreens } from '../screens/screens-store';
 
 interface SwitchesView {
   switches: ScreenSwitches;
-  /** The main process has said (until then both count as on, as every start has them). */
+  /**
+   * The main process has said which are on. Until then the top bar's switches cannot be pressed (alpha.22, they show
+   * both on meanwhile), and turning one off by its key asks first.
+   */
   known: boolean;
   /** Turning this one off waits for the operator's answer, or null. */
   asking: ScreenSwitch | null;
@@ -71,7 +75,7 @@ export function connectScreenSwitches(): void {
       useScreenSwitches.setState({ switches, known: true });
     },
     (error: unknown) => {
-      // Both on is what every start has: the window shows that until the main process says otherwise.
+      // Until the main process says, the switches show both on and cannot be pressed (alpha.22); the keys ask first.
       console.warn('Audience and Stage could not be asked: showing both on', error);
     },
   );

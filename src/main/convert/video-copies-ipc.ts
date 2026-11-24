@@ -10,6 +10,7 @@ import type { MediaRepo } from '../db/media';
 import { handle } from '../ipc/handle';
 import { AFTER_START_MS, type ConvertService } from './convert-service';
 import { ClipExports, type ExportSourceResult } from './clip-export-service';
+import { CombineVideos } from './combine-service';
 import { ProxyService } from './proxy-service';
 import { copyRequests, registerProxyFile } from './video-copy-files';
 
@@ -21,6 +22,8 @@ export interface VideoCopyIpcDeps {
   fromOperator(event: IpcMainInvokeEvent): boolean;
   proMode(): boolean;
   idle(): boolean;
+  /** An export the operator asked for may go on (alpha.22: nothing playing, off air, not recording); idle when left out. */
+  saveIdle?(): boolean;
   gpuStatus(): unknown;
   freeBytes(dir: string): number;
   pickDest(name: string, container: 'mp4' | 'webm'): Promise<string | null>;
@@ -29,6 +32,11 @@ export interface VideoCopyIpcDeps {
   /** S1 provides canonical identity; S2 supplies its actual pure original-quality export planner. */
   sourceId?: (mediaId: string) => string;
   editedExport?: (request: ClipExportRequest) => ExportSourceResult;
+  /**
+   * Combine videos…' Also save a copy to a file: Export…'s save dialog (the operator window, Downloads at `name`): the
+   * file chosen, or null when closed (a22-review-combine S2: one dialog for both).
+   */
+  exportDialog?(name: string): Promise<string | null>;
 }
 
 export function registerVideoCopies(deps: VideoCopyIpcDeps) {
@@ -44,7 +52,9 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       mediaDir: deps.mediaDir,
       file,
       info,
-      idle: () => deps.idle(),
+      // A named new video is one the operator asked for (Export clip…'s Also add the clip to Media): the save gate
+      // (alpha.22: only what plays, the stream or a recording holds it); a lighter copy waits until nothing is up.
+      idle: () => (name === undefined ? deps.idle() : (deps.saveIdle ?? deps.idle)()),
       freeBytes: (dir) => deps.freeBytes(dir),
       signal,
       name,
@@ -78,6 +88,16 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     kept: copyRequests(join(deps.mediaDir, 'video-proxies.json')),
     register: (file, info, signal) => register(file, info, signal),
   });
+  // A new video in Media listed only once it is whole and checked (Export's Also add the clip to Media, Combine videos…).
+  const publishImport = (id: string): Promise<boolean> => {
+    try {
+      const result = deps.db.prepare('UPDATE media SET listed=1 WHERE id=? AND deleted_at IS NULL').run(id);
+      if (result.changes > 0) deps.libraryChanged();
+      return Promise.resolve(result.changes > 0);
+    } catch {
+      return Promise.resolve(false);
+    }
+  };
   const clips = new ClipExports({
     conversions: deps.conversions,
     kept: copyRequests(join(deps.mediaDir, 'video-clip-clips.json')),
@@ -124,15 +144,19 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     },
     pickDest: (name, container) => deps.pickDest(name, container),
     prepareImport: (file, info, name, signal) => register(file, info, signal, name),
-    publishImport: (id) => {
-      try {
-        const result = deps.db.prepare('UPDATE media SET listed=1 WHERE id=? AND deleted_at IS NULL').run(id);
-        if (result.changes > 0) deps.libraryChanged();
-        return Promise.resolve(result.changes > 0);
-      } catch {
-        return Promise.resolve(false);
-      }
-    },
+    publishImport,
+  });
+  // Combine videos… (alpha.22): the chosen videos joined end to end into one new video in Media, by the same worker.
+  const combines = new CombineVideos({
+    pickCopy: (name) => deps.exportDialog?.(name) ?? Promise.resolve(null),
+    mediaDir: deps.mediaDir,
+    workDir: join(deps.mediaDir, 'video-combine-work'),
+    row: (id) => deps.media.about(id),
+    conversions: deps.conversions,
+    // The save gate (alpha.22): only what plays, the stream or a recording holds a combine the operator asked for.
+    idle: () => (deps.saveIdle ?? deps.idle)(),
+    prepareImport: (file, info, name, signal) => register(file, info, signal, name),
+    publishImport,
   });
   const allowed = (e: IpcMainInvokeEvent) => deps.fromOperator(e);
   handle(IPC.media.proxyStatus, (e, id, retry) =>
@@ -157,6 +181,15 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     if (job?.path) deps.showFile(job.path);
     return null;
   });
+  handle(IPC.media.combineVideos, (e, request) =>
+    allowed(e) && deps.proMode()
+      ? combines.start(request)
+      : { ok: false as const, message: 'Open Media in Pro Mode to combine videos.' },
+  );
+  handle(IPC.media.combineList, (e) => (allowed(e) ? combines.list() : []));
+  handle(IPC.media.stopCombine, (e, id) =>
+    allowed(e) && typeof id === 'string' ? combines.stop(id) : false,
+  );
   const timer = setTimeout(() => {
     proxies.resume();
     clips.resume();
@@ -164,8 +197,10 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
   return {
     proxies,
     clips,
+    combines,
     close: () => {
       clearTimeout(timer);
+      combines.close();
       clips.close();
       proxies.close();
     },

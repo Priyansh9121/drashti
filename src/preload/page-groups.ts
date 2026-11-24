@@ -136,7 +136,10 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // The Access List (Session 54, E4): the owner's window onto the access list.
   'access-list': ['accessList', 'app'],
   // The Lower Thirds studio (Session 55, Part 16): the lower thirds, and what is up (the engine's state, read only).
-  'lower-thirds': ['app', 'engine', 'lowerThirds'],
+  // Since alpha.22 its preview draws the hall's wallpaper as the screens do (render/WallpaperView.tsx), whose pictures'
+  // code reaches the library's looks (media) and a picture's file arriving again (output), as the slide editor's
+  // does; the main process refuses their changes from here (only the operator window's).
+  'lower-thirds': ['app', 'engine', 'lowerThirds', 'media', 'output'],
   // The slide editor's window (Session 55, Part 17a): a presentation's slides read and saved, the library's pictures,
   // videos and sounds to put on them (and their looks), the screens (their safe areas), video inputs, timers, and what
   // is up; a picture's file arriving again (output, as every page drawing slides). The video inputs' store reaches the

@@ -26,7 +26,8 @@ import {
  * exactly the audience picture until it is on again. The show carries on (the engine, LIVE, the other switch's
  * screens). Turning one off asks first while its screens show something; on never asks. The
  * status bar says "Audience off" or "Stage off" with Turn on, in Simple Mode too (which can only turn them on).
- * Both are on again at every start. Mod+1 and Mod+2 are the page's keys: the View menu's items show them without
+ * Audience is on again at every start; Stage starts as it was left (alpha.22: off in a new library, stage-switch.spec.ts;
+ * these tests start with it on, as launchApp does). Mod+1 and Mod+2 are the page's keys: the View menu's items show them without
  * binding them (Session 51), so one press acts once.
  *
  * Two outputs on one computer, as quiet runs make them: windowed, the second on a pretend display. No window is
@@ -265,7 +266,7 @@ test('one press acts once: the View menu’s Audience and Stage show their keys 
   await app.close();
 });
 
-test('both are on again at every start; Simple Mode only turns them on: Mod+1 and the status bar, never off', async () => {
+test('Audience is on again at every start, never remembered; Simple Mode only turns them on: Mod+1 and the status bar, never off', async () => {
   test.setTimeout(150_000);
   const { app, userData } = await launchApp(OUTPUTS);
   const win = await operatorPage(app);
@@ -276,7 +277,7 @@ test('both are on again at every start; Simple Mode only turns them on: Mod+1 an
   await expect.poll(() => openRoles(app)).toEqual([]);
   expect(await switches(win)).toEqual({ audience: false, stage: true });
 
-  // Quit with Audience off, and start again: both on, never remembered.
+  // Quit with Audience off, and start again: Audience on, never remembered (Stage as it was left: on here).
   await app.close();
   const again = await relaunchApp(userData, OUTPUTS);
   const next = await operatorPage(again.app);
@@ -616,9 +617,11 @@ test('covering the controls: Mod+1’s question shows on that output too; Esc ca
     expect(await switches(win)).toEqual({ audience: true, stage: true });
     expect(out.isClosed()).toBe(false);
 
-    // The output's own Esc, as it sends it when it has the keyboard (a windowed output): the same.
+    // The output's own Esc, as it sends it when it has the keyboard (a windowed output): the same. Answered once the
+    // window's own question is open with Turn off focused, as in the first round (the output asks a moment sooner).
     await win.keyboard.press(`${MOD}+1`);
     await expect(big).toBeVisible();
+    await expect(ask.getByTestId('screen-switch-turn-off')).toBeFocused();
     await out.evaluate(() => {
       void (globalThis as PageGlobals).drashti.output.switchAnswer(false);
     });
@@ -626,9 +629,12 @@ test('covering the controls: Mod+1’s question shows on that output too; Esc ca
     await expect(big).toHaveCount(0);
     expect(await switches(win)).toEqual({ audience: true, stage: true });
 
-    // Enter: Audience off; the output over the controls closes, and with it the question.
+    // Enter: Audience off; the output over the controls closes, and with it the question. Pressed once Turn off has the
+    // keyboard, as in the first round: the output shows its question a moment before the window's has the focus (alpha.22's
+    // gate, run 45399099984: an Enter 57 ms after the ask found no button there).
     await win.keyboard.press(`${MOD}+1`);
     await expect(big).toBeVisible();
+    await expect(ask.getByTestId('screen-switch-turn-off')).toBeFocused();
     await win.keyboard.press('Enter');
     await expect.poll(() => switches(win)).toEqual({ audience: false, stage: true });
     await expect.poll(() => outputPages(app).filter((p) => !p.isClosed()).length).toBe(0);

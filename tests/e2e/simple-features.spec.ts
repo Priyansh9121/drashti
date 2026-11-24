@@ -292,6 +292,24 @@ test('the Stage screen in Simple Mode: the message and the stage’s timers; its
   expect((await engineState(win)).stageCall).toMatchObject({ boxColor: '#1d4ed8', textColor: '#ffffff' });
   await panel.getByRole('button', { name: 'Hide', exact: true }).click();
   await expect.poll(async () => (await engineState(win)).stageMessage).toBeNull();
+  // A message sent with no colours of its own (as a phone's or OSC's) has them too (alpha.22), and Simple Mode's window
+  // may tell the show this computer's colours (as it does when Drashti starts in Simple Mode).
+  await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.engine.dispatch({
+      type: 'setStageMessage',
+      text: 'Placeholder: from the phone',
+    }),
+  );
+  expect((await engineState(win)).stageCall).toMatchObject({ boxColor: '#1d4ed8', textColor: '#ffffff' });
+  expect(
+    await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'setStageColours',
+        boxColor: '#1d4ed8',
+        textColor: '#ffffff',
+      }),
+    ),
+  ).toMatchObject({ ok: true });
   // The layout stays Pro Mode's in the main process too.
   expect(
     await win.evaluate(() => (globalThis as PageGlobals).drashti.stageLayouts.choose(null)),

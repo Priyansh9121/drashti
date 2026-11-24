@@ -5,6 +5,7 @@ import { windowIcon } from '../windows/app-icon';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 import type { OutputWindow } from './output-manager';
+import { revealPreview, stagePreviewOptions } from './stage-preview';
 
 /** Describe an Electron display. Resolution and refresh come from the OS; Drashti never changes them. */
 export function toDisplayInfo(d: Display, primaryId: number): DisplayInfo {
@@ -208,6 +209,33 @@ export function createOutputWindow(
     },
   };
   return { window: win, handle };
+}
+
+/** The Stage preview's page asks for its context by this (output.html?stagePreview=1). */
+export const STAGE_PREVIEW_QUERY = 'stagePreview';
+
+/**
+ * The Stage preview (alpha.22): a stage screen's page in a normal window on this computer (stage-preview.ts), so a
+ * stage layout can be made and seen with only one projector. It is no screen: nothing counts it, opens it by itself
+ * or covers anything with it. It is not a camera page or a screen's page either, so a layout's live video input box,
+ * and a video input or another app's window as the audience background, do not draw in it (a22-review-stage S5).
+ * Shown without the focus: the show's keys stay with the operator.
+ */
+export function createStagePreviewWindow(near: DisplayInfo['bounds'] | null): BrowserWindow {
+  const win = new BrowserWindow({
+    ...stagePreviewOptions(near),
+    ...windowIcon(),
+    webPreferences: { ...secureWebPreferences(), backgroundThrottling: false },
+  });
+  // The page's own title would take the window's: it keeps this one.
+  win.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+  win.once('ready-to-show', () => {
+    if (!win.isDestroyed()) revealPreview(win);
+  });
+  void loadPage(win, 'output', { [STAGE_PREVIEW_QUERY]: '1' });
+  return win;
 }
 
 /**

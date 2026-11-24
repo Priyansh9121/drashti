@@ -58,8 +58,8 @@ const bridge: DrashtiBridge = {
         listener();
       }),
     onNotice: (listener) =>
-      on(IPC.app.notice, ({ text }) => {
-        listener(text);
+      on(IPC.app.notice, ({ text, mediaId }) => {
+        listener(text, mediaId);
       }),
     recovery: () => invoke(IPC.app.recovery),
     dismissRecovery: () => invoke(IPC.app.dismissRecovery),
@@ -355,6 +355,8 @@ const bridge: DrashtiBridge = {
       invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
     exportPdf: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.exportPdf, presentationId, doc, stamp, pages),
+    printWords: (presentationId) => invoke(IPC.library.printWords, presentationId),
+    saveWordsPdf: (presentationId) => invoke(IPC.library.saveWordsPdf, presentationId),
     extractPdfPages: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.extractPdfPages, presentationId, doc, stamp, pages),
     showExtractedPdf: (id, visible) => invoke(IPC.library.showExtractedPdf, id, visible),
@@ -431,6 +433,9 @@ const bridge: DrashtiBridge = {
     setPlayOptions: (playlistId, options) => invoke(IPC.playlists.setPlayOptions, playlistId, options),
     importM3u: (audio, targetId) => invoke(IPC.playlists.importM3u, audio, targetId),
     exportM3u: (playlistId, audio) => invoke(IPC.playlists.exportM3u, playlistId, audio),
+    copyRunningOrder: (playlistId) => invoke(IPC.playlists.copyRunningOrder, playlistId),
+    printRunningOrder: (playlistId) => invoke(IPC.playlists.printRunningOrder, playlistId),
+    saveRunningOrderPdf: (playlistId) => invoke(IPC.playlists.saveRunningOrderPdf, playlistId),
 
     duplicate: (playlistId) => invoke(IPC.playlists.duplicate, playlistId),
     splitItem: (itemId, rest, alone, at) => invoke(IPC.playlists.splitItem, itemId, rest, alone, at),
@@ -485,6 +490,9 @@ const bridge: DrashtiBridge = {
     clipExports: () => invoke(IPC.media.clipExports),
     stopClipExport: (id) => invoke(IPC.media.stopClipExport, id),
     showClipExport: (id) => invoke(IPC.media.showClipExport, id),
+    combineVideos: (request) => invoke(IPC.media.combineVideos, request),
+    combineList: () => invoke(IPC.media.combineList),
+    stopCombine: (id) => invoke(IPC.media.stopCombine, id),
     videoAnalysis: (mediaId, audioStream = 0, retry = false) =>
       invoke(IPC.media.videoAnalysis, mediaId, audioStream, retry),
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
@@ -505,6 +513,9 @@ const bridge: DrashtiBridge = {
     stopRowTrim: (itemId, mediaId) => invoke(IPC.media.stopRowTrim, itemId, mediaId),
     preparingTrims: () => invoke(IPC.media.preparingTrims),
     onPreparingTrims: (listener) => on(IPC.media.preparingTrimsChanged, listener),
+    trimStatuses: () => invoke(IPC.media.trimStatuses),
+    onTrimStatuses: (listener) => on(IPC.media.trimStatusesChanged, listener),
+    exportFile: (mediaId) => invoke(IPC.media.exportFile, mediaId),
     saves: () => invoke(IPC.media.saves),
     onSaves: (listener) => on(IPC.media.savesChanged, listener),
     stopSave: (jobId) => invoke(IPC.media.stopSave, jobId),
@@ -752,6 +763,8 @@ const bridge: DrashtiBridge = {
       on(IPC.lowerThirds.askClose, () => {
         listener();
       }),
+    watchLive: (on) => invoke(IPC.lowerThirds.watchLive, on),
+    onLive: (listener) => on(IPC.lowerThirds.live, listener),
   },
   slideEditor: {
     open: (presentationId, slideId) => invoke(IPC.slideEditor.open, presentationId, slideId),
@@ -830,6 +843,7 @@ const bridge: DrashtiBridge = {
     setJob: (displayId, job, options) => invoke(IPC.screens.setJob, displayId, job, options),
     lastSaid: () => invoke(IPC.screens.lastSaid),
     saidClosed: (id) => invoke(IPC.screens.saidClosed, id),
+    openStagePreview: () => invoke(IPC.screens.openStagePreview),
     onSaid: (listener) => on(IPC.screens.said, listener),
     removeScreen: (screenId) => invoke(IPC.screens.removeScreen, screenId),
     assignNodeDisplay: (groupId, nodeId, displayId) =>

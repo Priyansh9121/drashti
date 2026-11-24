@@ -52,7 +52,16 @@ describe('queuing a trimmed video', () => {
     expect(source).toBe(path);
     expect(dest).toBe(join(dirname(path), 'Example_ video trimmed.mp4'));
     expect(info).toBe(INFO);
-    expect(copy).toMatchObject({ lengthMs: 400, waitForShow: true, waiting, progress });
+    // Under a still or the Wallpaper it runs while the show is up (alpha.22): verified lowest priority and a hard stop
+    // when a video starts, as Edit Video's Save and Export clip… have (a22-review-savetrim MUST-1).
+    expect(copy).toMatchObject({
+      lengthMs: 400,
+      waitForPlaying: true,
+      strictPriority: true,
+      waiting,
+      progress,
+    });
+    expect(copy).not.toHaveProperty('waitForShow');
     const args = copy.args(output);
     const seek = args.indexOf('-ss');
     expect(args.slice(seek, seek + 6)).toEqual(['-ss', '0.250', '-i', path, '-t', '0.400']);

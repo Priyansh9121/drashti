@@ -13,6 +13,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 1. Press **Stage screen** under LIVE to open it, then choose the **Layout** every stage screen shows (**Standard** to begin with).
 2. Choose the **Video input** a layout's live video box shows, if it has one.
 3. Look at the stage's small picture beside it: it shows what the stage sees.
+4. With no screen set to Stage (only the hall's projector), press **Stage preview**: a window on this computer shows the stage as a stage screen would, its layout with **Stage** on. **Set up Stage screen…** opens **Screens**, to give a display the **Stage** job.
 
 ![The Stage screen panel: its layout, a countdown running, and the stage message](../screenshots/stage-panel-timers.png)
 
@@ -26,7 +27,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 
 1. In **Stage screen**, type the message.
 2. Choose its **Size**, and tick **Flash as it comes up** to catch their eye.
-3. Choose its **Colours**, or **Your own colours** (its **Box** and **Words**). "Hard to read" says when the two are too alike; they still show. The colours stay for the next message.
+3. Choose its **Colours**, or **Your own colours** (its **Box** and **Words**). "Hard to read" says when the two are too alike; they still show. The colours stay for the next message, and a message sent from a phone or OSC shows them too.
 4. Press **Show** (or Enter). **Hide** takes it off.
 5. The last few are under **Shown before:**, one press each to show again.
 

@@ -2,7 +2,15 @@ import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 import type { SimpleFeature, SimpleFeatureResult } from './simple-features';
 
-import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type {
+  ClipExportRequest,
+  ClipExportResult,
+  ClipExportJob,
+  CombineJob,
+  CombineRequest,
+  CombineResult,
+  VideoProxyResult,
+} from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
@@ -35,6 +43,7 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
+import type { StudioLivePicture } from './studio-live';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
@@ -162,6 +171,8 @@ import type {
 import type { RepeatSettings } from './repeat';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
+import type { RunningOrderCopied } from './running-order';
+import type { WordsPrinted } from './words-print';
 import type {
   KeyframeResult,
   RowTrimRequest,
@@ -170,8 +181,10 @@ import type {
   SaveJob,
   SaveRequest,
   SaveResult,
+  TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
@@ -578,6 +591,12 @@ export const IPC = {
     slidesForEdit: 'library:slides-for-edit',
     saveSlides: 'library:save-slides',
     exportPdf: 'library:export-pdf',
+    /**
+     * A singers' sheet (alpha.22): a presentation's words, group by group in its language tracks, printed or saved as
+     * a PDF where the person chooses (operator window, Pro Mode, never while the show is live).
+     */
+    printWords: 'library:print-words',
+    saveWordsPdf: 'library:save-words-pdf',
     extractPdfPages: 'library:extract-pdf-pages',
     showExtractedPdf: 'library:show-extracted-pdf',
     showExtractedPdfCopy: 'library:show-extracted-pdf-copy',
@@ -674,6 +693,11 @@ export const IPC = {
     stopRowTrim: 'media:stop-row-trim',
     preparingTrims: 'media:preparing-trims',
     preparingTrimsChanged: 'media:preparing-trims-changed',
+    /** How each row's cut stands (alpha.22): why it waits, or how far it is. */
+    trimStatuses: 'media:trim-statuses',
+    trimStatusesChanged: 'media:trim-statuses-changed',
+    /** Export… (alpha.22): a finished video in Media copied where the operator chooses, never encoded again. */
+    exportFile: 'media:export-file',
     saves: 'media:saves',
     stopSave: 'media:stop-save',
     showSave: 'media:show-save',
@@ -710,6 +734,14 @@ export const IPC = {
     clipExports: 'media:clip-clips',
     stopClipExport: 'media:stop-clip-export',
     showClipExport: 'media:show-clip-export',
+    /**
+     * Combine videos… (alpha.22): two or more videos in Media joined end to end into one new video in Media, by the
+     * idle worker (operator window, Pro Mode); the combines and how each is going (read every second while its
+     * window is open); and one stopped.
+     */
+    combineVideos: 'media:combine-videos',
+    combineList: 'media:list-combines',
+    stopCombine: 'media:stop-combine',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
@@ -821,6 +853,14 @@ export const IPC = {
     setPlayOptions: 'playlists:set-play-options',
     importM3u: 'playlists:import-playlist-file',
     exportM3u: 'playlists:export-playlist-file',
+    /**
+     * A playlist's running order (alpha.22; main/running-order.ts): its rows as plain lines on the clipboard, written
+     * by the main process (a page's own clipboard is refused); printed, or saved as a PDF where the person chooses, from
+     * a hidden window of its own, as the manual is. Pro Mode's; never printed while the show is live.
+     */
+    copyRunningOrder: 'playlists:copy-running-order',
+    printRunningOrder: 'playlists:print-running-order',
+    saveRunningOrderPdf: 'playlists:save-running-order-pdf',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
     /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
@@ -924,6 +964,10 @@ export const IPC = {
     close: 'lowerthirds:close',
     /** main -> the studio: its window was asked to close with changes not saved (ask first). */
     askClose: 'lowerthirds:ask-close',
+    /** The studio shows Live behind its preview, or not (alpha.22): main takes its stills only while it does. */
+    watchLive: 'lowerthirds:watch-live',
+    /** main -> the studio: Live's still (shared/studio-live.ts), or null with nothing to take it from. */
+    live: 'lowerthirds:live',
   },
   /**
    * The slide editor's window (Session 55, Part 17a): the operator window opens it on a presentation (or brings it
@@ -1027,6 +1071,11 @@ export const IPC = {
     lastSaid: 'screens:last-said',
     /** The window closed what the screens said (or followed its Change…): not said again as it opens again. */
     saidClosed: 'screens:said-closed',
+    /**
+     * The Stage preview (alpha.22): a window on this computer showing what a stage screen would, opened (or brought
+     * forward) from the Stage screen panel, so a stage layout can be made and seen with only one projector.
+     */
+    openStagePreview: 'screens:open-stage-preview',
     /** main -> operator: what the screens did by themselves (a display plugged in given its job), in one line. */
     said: 'screens:said',
     removeScreen: 'screens:remove-screen',
@@ -1729,6 +1778,9 @@ export interface InvokeContract {
   };
   [IPC.playlists.importM3u]: { args: [audio: boolean, targetId: string | null]; result: M3uResult };
   [IPC.playlists.exportM3u]: { args: [playlistId: string, audio: boolean]; result: M3uResult };
+  [IPC.playlists.copyRunningOrder]: { args: [playlistId: string]; result: RunningOrderCopied };
+  [IPC.playlists.printRunningOrder]: { args: [playlistId: string]; result: ManualPrinted };
+  [IPC.playlists.saveRunningOrderPdf]: { args: [playlistId: string]; result: ManualPrinted };
   [IPC.playlists.setWhenEnds]: { args: [itemId: string, whenEnds: WhenEnds]; result: PlaylistResult };
   [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.splitItem]: {
@@ -1776,6 +1828,8 @@ export interface InvokeContract {
     args: [presentationId: string, doc: EditDoc, stamp: string, pages?: number[]];
     result: PdfCopyResult;
   };
+  [IPC.library.printWords]: { args: [presentationId: string]; result: WordsPrinted };
+  [IPC.library.saveWordsPdf]: { args: [presentationId: string]; result: WordsPrinted };
   [IPC.library.extractPdfPages]: {
     args: [presentationId: string, doc: EditDoc, stamp: string, pages: number[]];
     result: { ok: true; id: string; name: string } | { ok: false; message: string };
@@ -1861,6 +1915,9 @@ export interface InvokeContract {
   [IPC.media.clipExports]: { args: []; result: ClipExportJob[] };
   [IPC.media.stopClipExport]: { args: [jobId: string]; result: boolean };
   [IPC.media.showClipExport]: { args: [jobId: string]; result: null };
+  [IPC.media.combineVideos]: { args: [request: CombineRequest]; result: CombineResult };
+  [IPC.media.combineList]: { args: []; result: CombineJob[] };
+  [IPC.media.stopCombine]: { args: [jobId: string]; result: boolean };
   [IPC.media.videoAnalysis]: {
     args: [mediaId: string, audioStream: number | null, retry: boolean];
     result: VideoAnalysisResult;
@@ -1902,6 +1959,8 @@ export interface InvokeContract {
   [IPC.media.resetRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
   [IPC.media.stopRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
   [IPC.media.preparingTrims]: { args: []; result: string[] };
+  [IPC.media.trimStatuses]: { args: []; result: TrimStatuses };
+  [IPC.media.exportFile]: { args: [mediaId: string]; result: ExportFileResult };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
   [IPC.media.showSave]: { args: [jobId: string]; result: null };
@@ -1954,6 +2013,7 @@ export interface InvokeContract {
   [IPC.lowerThirds.hide]: { args: []; result: LowerThirdDone };
   [IPC.lowerThirds.dirty]: { args: [dirty: boolean]; result: null };
   [IPC.lowerThirds.close]: { args: []; result: null };
+  [IPC.lowerThirds.watchLive]: { args: [on: boolean]; result: null };
   [IPC.slideEditor.open]: {
     args: [presentationId: string, slideId: string | null];
     result: { ok: true } | { ok: false; message: string };
@@ -2032,6 +2092,7 @@ export interface InvokeContract {
   };
   [IPC.screens.lastSaid]: { args: []; result: ScreensSaid | null };
   [IPC.screens.saidClosed]: { args: [id: number]; result: null };
+  [IPC.screens.openStagePreview]: { args: []; result: null };
   [IPC.screens.identify]: { args: []; result: null };
   [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
   [IPC.screens.tryAgain]: { args: [screenId: string]; result: { ok: true } | { ok: false; message: string } };
@@ -2203,7 +2264,8 @@ export interface EventContract {
   [IPC.playlists.smartChanged]: SmartPlaylistView[];
   [IPC.app.undo]: { at: number };
   [IPC.app.redo]: { at: number };
-  [IPC.app.notice]: { text: string };
+  /** `mediaId`: the notice is of a new video in Media (alpha.22), offering Show in Media. */
+  [IPC.app.notice]: { text: string; mediaId?: string };
   [IPC.app.progress]: { progress: TaskProgress | null };
   [IPC.app.modeChanged]: { mode: OperatorMode };
   [IPC.backups.changed]: ScheduledBackupsView;
@@ -2241,6 +2303,7 @@ export interface EventContract {
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
+  [IPC.lowerThirds.live]: StudioLivePicture | null;
   [IPC.slideEditor.edit]: EditSlidesOpen;
   [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;
@@ -2269,6 +2332,7 @@ export interface EventContract {
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
+  [IPC.media.trimStatusesChanged]: TrimStatuses;
   [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: {
