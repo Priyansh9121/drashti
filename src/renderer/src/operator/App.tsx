@@ -126,6 +126,8 @@ import { KeysSheet, showKeysSheet } from './KeysSheet';
 import { MarkerJumps, MarkersDialog } from '../markers/MarkersDialog';
 import { PlayingBars } from '../markers/PlayingBars';
 import { SimpleApp } from '../simple/SimpleApp';
+import { SimpleFeaturesDialog } from '../simple/SimpleFeaturesDialog';
+import { connectSimpleFeatures } from '../simple/simple-features-store';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
 import { StreamPanel } from '../stream/StreamPanel';
@@ -163,6 +165,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectPictureLooks();
     connectSingleKeys();
     connectMode();
+    // Simple Mode Features (alpha.22): which of Pro Mode's tools Simple Mode has, and Edit's window for them.
+    connectSimpleFeatures();
     connectAppearance();
     // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
     connectSound();
@@ -489,6 +493,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StreamLinkDialog />
       <VideoInputDialog platform={platform} />
       <PipDialog />
+      {/* Edit › Simple Mode Features… (alpha.22). */}
+      <SimpleFeaturesDialog />
       {/* The MIDI controller's section, or Tools › MIDI Controller… (Session 60, x36). */}
       <MidiDialogHost />
       {/* Files dropped with no playlist open: a new playlist or folder for them (Session 60, x36). */}

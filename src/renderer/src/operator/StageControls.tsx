@@ -36,6 +36,7 @@ import {
   stageColorSchema,
   stageColorsRead,
 } from '../../../shared/stage-message';
+import { useOperateOnly } from '../simple/simple-features-store';
 
 /** What the stage screens show the performers, small (also on the Stage screen's card in Screens). */
 export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
@@ -126,9 +127,10 @@ function LayoutPicker({ onProblem }: { onProblem: (problem: string | null) => vo
 
 /**
  * Video input (Session 55): the one a stage layout's video input box shows and LIVE's one press puts up on the
- * audience. Offered only on a computer with video inputs in Media; the first is chosen until another is.
+ * audience. Offered only on a computer with video inputs in Media; the first is chosen until another is. Also in
+ * Simple Mode's Video inputs section (alpha.22, operator/SetupTools.tsx).
  */
-function InputPicker({ onProblem }: { onProblem: (problem: string | null) => void }) {
+export function InputPicker({ onProblem }: { onProblem: (problem: string | null) => void }) {
   const inputs = useVideoInputs((s) => s.inputs);
   const chosen = useChosenInput();
   if (!inputs || inputs.length === 0 || !chosen) return null;
@@ -262,6 +264,9 @@ export function StageMessageControl() {
   // Its colours (the owner, 24 Nov 2026), remembered on this computer; sent only when not amber and black.
   const [colours, setColours] = usePersistentState('stage.colours', AS_ALWAYS, isStageColours);
   const [problem, setProblem] = useState<string | null>(null);
+  // In Simple Mode (alpha.22, the Stage screen chosen for it): the message and the timers; the layout, its editor, the
+  // video input and the message's colours stay Pro Mode's (its messages there take the colours chosen in Pro Mode).
+  const operateOnly = useOperateOnly();
   const show = (words: string) => {
     const chosen = colours.box !== STAGE_BOX_COLOR || colours.text !== STAGE_TEXT_COLOR;
     if (words.trim() !== '')
@@ -285,7 +290,7 @@ export function StageMessageControl() {
     >
       <div className="flex items-end gap-2">
         <StagePreview />
-        <EditLayoutButton />
+        {!operateOnly && <EditLayoutButton />}
       </div>
       {off && (
         <p className="text-xs text-warning-fg" data-testid="stage-off-note">
@@ -293,10 +298,12 @@ export function StageMessageControl() {
         </p>
       )}
       {/* One layout for every stage screen, and the video input (Session 55). */}
-      <div className="flex flex-wrap items-end gap-2">
-        <LayoutPicker onProblem={setProblem} />
-        <InputPicker onProblem={setProblem} />
-      </div>
+      {!operateOnly && (
+        <div className="flex flex-wrap items-end gap-2">
+          <LayoutPicker onProblem={setProblem} />
+          <InputPicker onProblem={setProblem} />
+        </div>
+      )}
       {problem && (
         <Notice tone="danger" compact>
           {problem}
@@ -350,8 +357,9 @@ export function StageMessageControl() {
             setFlash(e.target.checked);
           }}
         />
-        {/* Its colours (the owner, 24 Nov 2026). */}
-        <StageColoursChoice value={colours} onChange={setColours} />
+        {/* Its colours (the owner, 24 Nov 2026). Simple Mode (alpha.22) never shows the choice: its messages take the
+            colours last chosen in Pro Mode on this computer. */}
+        {!operateOnly && <StageColoursChoice value={colours} onChange={setColours} />}
       </div>
       {shown !== null && (
         <div className="flex items-center gap-2 rounded-md border border-warning/60 bg-warning-bg px-2 py-1 text-sm text-warning-fg">

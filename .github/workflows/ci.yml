@@ -186,7 +186,7 @@ jobs:
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-video-out.mjs --target darwin-x64
       - name: Build the approved native IndicConformer runtime (no model download)
-        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions')
+        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions') || contains(inputs.specs, 'caption-ai-chain')
         run: node scripts/fetch-indic.mjs
       - name: Unit tests (inside Electron's Node)
         if: env.QUICK != 'true'
@@ -244,10 +244,18 @@ jobs:
           done
           echo "$failed of ${REPEAT:-1} runs failed"
           [ "$failed" -eq 0 ]
+      # Route C inside the app with no stand-in (alpha.23, cap-realc): caption-ai-chain.spec.ts (the generated test model
+      # and generated tones as the stream's sound input). The parts leave it out (playwright.config.ts). A quick check
+      # naming it runs it in its own step below, after what it needs here; a full run, after the installers are uploaded
+      # (further down). Whisper's program is here too: until cap-next's fix, captions start only where it is.
+      - name: The live captions engine (a quick check naming Route C in the app)
+        if: env.QUICK == 'true' && contains(inputs.specs, 'caption-ai-chain')
+        run: node scripts/fetch-whisper.mjs
       - name: End-to-end quick check (the specs named, or the screenshots)
         if: env.QUICK == 'true' && (inputs.specs != '' || inputs.screenshots)
         shell: bash
         env:
+          DRASHTI_E2E_REAL_CAPTIONS: ${{ contains(inputs.specs, 'caption-ai-chain') && '1' || '' }}
           SPECS: ${{ inputs.specs }}
           REPEAT: ${{ inputs.repeat }}
           QUIET: ${{ inputs.quiet }}
@@ -351,6 +359,13 @@ jobs:
             release/*/*.exe
           if-no-files-found: error
           retention-days: 7
+      # Route C inside the app in a full run (see above): after the installers, so a slow phrase never hides them.
+      - name: Route C in the app, the generated test model (generated sound as the stream's input)
+        if: env.QUICK != 'true'
+        env:
+          DRASHTI_E2E_REAL_CAPTIONS: '1'
+          PLAYWRIGHT_HTML_REPORT: playwright-report/route-c-chain
+        run: pnpm exec playwright test tests/e2e/caption-ai-chain.spec.ts
       # A failed test keeps its Drashti's crash files in its folder (Session 39: tests/e2e/helpers.ts; a
       # passing test's folder is removed, playwright.config.ts). The report is public, and a crash file
       # holds the process's memory: this job's environment holds no secret (README, "When Drashti crashes

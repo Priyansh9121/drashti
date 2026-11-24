@@ -2,15 +2,26 @@ import { describe, expect, it } from 'vitest';
 import type { AudioOutputStatus } from '../shared/audio';
 import { allChannels, IPC } from '../shared/ipc';
 import { initialEngineState } from '../shared/engine/state';
-import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../shared/mode';
+import {
+  SIMPLE_FEATURE_COMMANDS,
+  SIMPLE_MODE_REFUSAL,
+  SIMPLE_MODE_REFUSED_COMMANDS,
+  simpleModeRefuses,
+} from '../shared/mode';
+import type { EngineCommand } from '../shared/engine/commands';
+import { SIMPLE_FEATURES, type SimpleFeature } from '../shared/simple-features';
 import type { InvokeChannel } from '../shared/ipc';
 import { OP_CHANNEL } from './network/network-service';
+import type { SimpleScope } from './simple-mode';
 import {
+  SIMPLE_FEATURE_CHANNELS,
   SIMPLE_MODE_BOUNDED,
   SIMPLE_MODE_LOCKED,
+  simpleModeBounds,
   simpleModeRefusals,
   simpleModeRefusesWhole,
 } from './simple-mode';
+import { phoneCommandInSimpleMode, type SimplePhoneScope } from './simple-mode-phones';
 
 describe('Simple Mode locks', () => {
   const status = {
@@ -772,4 +783,174 @@ it('keeps clip exports and manual preparation stops in Pro Mode with their expec
   expect(answers.get(IPC.media.stopProxy)?.()).toBe(false);
   for (const channel of [IPC.media.proxyStatus, IPC.media.clipExports])
     expect(simpleModeRefusesWhole(channel), channel).toBe(false);
+});
+
+/*
+ * Edit › Simple Mode Features… (alpha.22; the owner, 24 Nov 2026: "the features can be brought to simple mode, only
+ * 1-2 and max 3"): a tool chosen there lifts Simple Mode's refusals of exactly its operate actions, from the window
+ * only (a phone or Companion, asking with none of the arguments, is refused as before); its settings stay Pro Mode's.
+ * Only Pro Mode changes the choice.
+ */
+describe('Simple Mode Features (alpha.22): a chosen tool’s operate actions, and only those', () => {
+  const nowhere: SimpleScope = {
+    playlistId: null,
+    playlistOf: () => null,
+    holdsMedia: () => false,
+    holdsPresentation: () => false,
+    kindOf: () => null,
+    listsMedia: () => false,
+    listsPresentation: () => false,
+  };
+  const boundsWith = (chosen: readonly SimpleFeature[]) =>
+    simpleModeBounds(
+      () => nowhere,
+      () => chosen,
+    );
+  /** Whether the window's request on a channel runs in Simple Mode with these tools chosen (args as sent). */
+  const runs = (chosen: readonly SimpleFeature[], channel: InvokeChannel, ...args: unknown[]): boolean =>
+    boundsWith(chosen).get(channel)?.(args) ?? false;
+  const ALL = SIMPLE_FEATURES.map((f) => f.id);
+
+  it('each tool’s operate requests are Pro Mode’s until it is chosen: locked, never one of Simple Mode’s own offers', () => {
+    expect(Object.keys(SIMPLE_FEATURE_CHANNELS).sort()).toEqual([...ALL].sort());
+    expect(SIMPLE_FEATURE_CHANNELS['show-a-window']).toEqual([
+      IPC.liveWindow.list,
+      IPC.liveWindow.show,
+      IPC.liveWindow.access,
+    ]);
+    expect(SIMPLE_FEATURE_CHANNELS['show-a-stream-link']).toEqual([
+      IPC.liveLink.show,
+      IPC.liveLink.stop,
+      IPC.liveLink.last,
+    ]);
+    expect(SIMPLE_FEATURE_CHANNELS['picture-in-picture']).toEqual([
+      IPC.pip.savePlace,
+      IPC.liveWindow.list,
+      IPC.liveWindow.access,
+    ]);
+    expect(SIMPLE_FEATURE_CHANNELS['video-inputs']).toEqual([IPC.videoInputs.choose]);
+    expect(SIMPLE_FEATURE_CHANNELS.timers).toEqual([IPC.timers.startCountdown]);
+    // Messages, Lower Thirds and the Stage screen's message and timers run through engine commands Simple Mode never
+    // refused: what changes is that their section is there.
+    expect(SIMPLE_FEATURE_CHANNELS.messages).toEqual([]);
+    expect(SIMPLE_FEATURE_CHANNELS['lower-thirds']).toEqual([]);
+    expect(SIMPLE_FEATURE_CHANNELS.stage).toEqual([]);
+    for (const channels of Object.values(SIMPLE_FEATURE_CHANNELS))
+      for (const channel of channels) {
+        expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+        expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+      }
+  });
+
+  it('with none chosen (the default), Simple Mode refuses every one of them, as before', () => {
+    for (const channels of Object.values(SIMPLE_FEATURE_CHANNELS))
+      for (const channel of channels) expect(runs([], channel), channel).toBe(false);
+    for (const type of ['showPip', 'swapPip', 'placePip', 'toggleInput'] as const)
+      expect(simpleModeRefuses({ type } as EngineCommand, null), type).toBe(true);
+    expect(simpleModeRefuses({ type: 'showPip' } as EngineCommand, null, [])).toBe(true);
+  });
+
+  it('a chosen tool’s requests run from the window; another’s stay refused', () => {
+    expect(runs(['show-a-window'], IPC.liveWindow.show, 'window:1')).toBe(true);
+    expect(runs(['show-a-window'], IPC.liveWindow.list)).toBe(true);
+    expect(runs(['show-a-window'], IPC.liveLink.show, 'https://example.invalid/live')).toBe(false);
+    expect(runs(['show-a-stream-link'], IPC.liveLink.show, 'https://example.invalid/live')).toBe(true);
+    expect(runs(['show-a-stream-link'], IPC.liveWindow.show, 'window:1')).toBe(false);
+    // Picture in Picture's window choice reads the same list Show a Window… does.
+    expect(runs(['picture-in-picture'], IPC.liveWindow.list)).toBe(true);
+    expect(runs(['picture-in-picture'], IPC.liveWindow.show, 'window:1')).toBe(false);
+    expect(runs(['picture-in-picture'], IPC.pip.savePlace, { corner: 'top-left' })).toBe(true);
+    expect(runs(['video-inputs'], IPC.videoInputs.choose, 'input-1')).toBe(true);
+    expect(runs(['messages'], IPC.videoInputs.choose, 'input-1')).toBe(false);
+    expect(runs(['timers'], IPC.timers.startCountdown, '19:30')).toBe(true);
+    expect(runs(['stage', 'messages'], IPC.timers.startCountdown, '19:30')).toBe(false);
+  });
+
+  it('a phone or Companion, asking with none of the arguments, is refused them whole, chosen or not', () => {
+    const all = boundsWith(ALL);
+    for (const channels of Object.values(SIMPLE_FEATURE_CHANNELS))
+      for (const channel of channels) {
+        expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+        expect(all.get(channel), channel).toBeDefined();
+      }
+  });
+
+  it('a chosen tool’s settings stay Pro Mode’s, with every tool chosen', () => {
+    const all = boundsWith(ALL);
+    for (const channel of [
+      IPC.messages.create,
+      IPC.messages.update,
+      IPC.messages.remove,
+      IPC.messages.restore,
+      IPC.timers.create,
+      IPC.timers.update,
+      IPC.timers.remove,
+      IPC.lowerThirds.save,
+      IPC.lowerThirds.remove,
+      IPC.lowerThirds.restore,
+      IPC.lowerThirds.studio,
+      IPC.stageLayouts.save,
+      IPC.stageLayouts.choose,
+      IPC.stageLayouts.remove,
+      IPC.videoInputs.add,
+      IPC.videoInputs.update,
+      IPC.videoInputs.remove,
+      IPC.quickBar.set,
+      IPC.zoom.open,
+      IPC.app.setSimpleFeature,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(all.get(channel)?.([]) ?? false, channel).toBe(false);
+    }
+  });
+
+  it('only Pro Mode changes the choice; both modes read it', () => {
+    expect(SIMPLE_MODE_LOCKED).toContain(IPC.app.setSimpleFeature);
+    expect(simpleModeRefusals(() => ({}) as AudioOutputStatus).get(IPC.app.setSimpleFeature)?.()).toEqual({
+      ok: false,
+      message: SIMPLE_MODE_REFUSAL,
+    });
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.app.simpleFeatures);
+    expect(SIMPLE_MODE_BOUNDED.has(IPC.app.simpleFeatures)).toBe(false);
+  });
+
+  it('the engine lets the window run a chosen tool’s commands in Simple Mode: Picture in Picture’s box, the video input’s one press; never the rest of Pro Mode’s', () => {
+    expect(SIMPLE_FEATURE_COMMANDS['picture-in-picture']).toEqual(['showPip', 'swapPip', 'placePip']);
+    expect(SIMPLE_FEATURE_COMMANDS['video-inputs']).toEqual(['toggleInput']);
+    for (const f of ALL)
+      if (f !== 'picture-in-picture' && f !== 'video-inputs')
+        expect(SIMPLE_FEATURE_COMMANDS[f], f).toEqual([]);
+    const pip = ['picture-in-picture'] as const;
+    for (const type of ['showPip', 'swapPip', 'placePip'] as const) {
+      expect(simpleModeRefuses({ type } as EngineCommand, null, pip), type).toBe(false);
+      expect(simpleModeRefuses({ type } as EngineCommand, null, ['video-inputs']), type).toBe(true);
+    }
+    expect(simpleModeRefuses({ type: 'toggleInput' } as EngineCommand, null, ['video-inputs'])).toBe(false);
+    expect(simpleModeRefuses({ type: 'toggleInput' } as EngineCommand, null, pip)).toBe(true);
+    // Media's own video input, the translation's switch, the skips and the time bar's ⋯ stay Pro Mode's, whatever is
+    // chosen.
+    for (const type of ['showInput', 'setTranslationHidden', 'repeatAb', 'stepFrame'] as const)
+      expect(simpleModeRefuses({ type } as EngineCommand, null, ALL), type).toBe(true);
+    expect(simpleModeRefuses({ type: 'skip', layer: 'background', jump: 'forward' }, null, ALL)).toBe(true);
+  });
+
+  it('a phone in Simple Mode does as before: a chosen tool is the window’s, never a phone’s', () => {
+    const phone: SimplePhoneScope = {
+      ...nowhere,
+      activePlaylist: () => false,
+      activeItem: () => false,
+      plays: () => false,
+      refusal: () => 'refused',
+    };
+    for (const command of [
+      { type: 'showPip', source: { kind: 'slides' } },
+      { type: 'swapPip' },
+      { type: 'toggleInput', inputId: 'input-1' },
+      { type: 'showMessage', message: { id: 'm', text: 'Placeholder' } },
+      { type: 'setStageMessage', text: 'Placeholder' },
+      { type: 'startTimer', timerId: 't' },
+      { type: 'showLowerThird', lowerThird: { id: 'l' } },
+    ])
+      expect(phoneCommandInSimpleMode(command as EngineCommand, phone), command.type).toBe(false);
+  });
 });

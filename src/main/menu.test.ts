@@ -589,3 +589,29 @@ describe('Help › Save Diagnostics (alpha.21, logs for 100+ installs (c): the l
     }
   });
 });
+
+describe('Edit › Simple Mode Features… (alpha.22: the owner’s "in edit, saying that the features can be brought to simple mode")', () => {
+  it.each(PLATFORMS)(
+    'is Pro Mode’s, last in Edit, and opens the window’s Simple Mode Features; Simple Mode has none (%s)',
+    (platform) => {
+      const opened: boolean[] = [];
+      on(platform, () => {
+        installMenu({ ...actions('pro').a, simpleFeatures: () => opened.push(true) });
+      });
+      const edit = built.at(-1)?.find((m) => m.label === 'Edit')?.submenu;
+      const ids = Array.isArray(edit) ? edit.map((i) => i.id ?? i.role ?? i.type) : [];
+      expect(ids.slice(-2)).toEqual(['separator', 'simple-features']);
+      const features = item('simple-features');
+      expect(features).toMatchObject({ label: 'Simple Mode Features…' });
+      (features?.click as (() => void) | undefined)?.();
+      expect(opened).toEqual([true]);
+      on(platform, () => {
+        installMenu({ ...actions('simple').a, simpleFeatures: () => opened.push(true) });
+      });
+      expect(item('simple-features')).toBeUndefined();
+      // Left out (a node, the lock screen): none.
+      on(platform, () => setUp('pro'));
+      expect(item('simple-features')).toBeUndefined();
+    },
+  );
+});
