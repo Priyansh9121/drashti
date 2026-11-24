@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SaveWake } from './save-wake';
+import { initialEngineState } from '../../shared/engine/state';
+import { conversionsLookAt, SaveWake } from './save-wake';
 
 /*
  * alpha.23 (the save-trim review's SHOULD-2): a video or a sound that does not go round stops holding a save once it
@@ -110,5 +111,26 @@ describe('waking the waiting saves when what plays has played to its end', () =>
     t.advance(10_000);
     expect(t.pending()).toEqual([]);
     expect(t.woken()).toBe(0);
+  });
+});
+
+describe('the engine changes after which ConvertService looks at once whether its running work must stop', () => {
+  // The save-trim review's SHOULD-6: a video cued for Go with nothing up holds a save (shared/save-waits.ts), yet a
+  // save already being made heard of it only at ConvertService's next one-second look.
+  it('is something up, or a video cued, starting at Go or going out in a crossfade with nothing up', () => {
+    const nothing = initialEngineState();
+    expect(conversionsLookAt(nothing)).toBe(false);
+    expect(conversionsLookAt({ ...nothing, videoCue: null, videoStart: null, videoCrossfade: null })).toBe(
+      false,
+    );
+    expect(
+      conversionsLookAt({
+        ...nothing,
+        layers: { ...nothing.layers, messages: [{ id: 'm', text: 'Placeholder' }] },
+      }),
+    ).toBe(true);
+    expect(conversionsLookAt({ ...nothing, videoCue: {} as never })).toBe(true);
+    expect(conversionsLookAt({ ...nothing, videoStart: {} as never })).toBe(true);
+    expect(conversionsLookAt({ ...nothing, videoCrossfade: {} as never })).toBe(true);
   });
 });

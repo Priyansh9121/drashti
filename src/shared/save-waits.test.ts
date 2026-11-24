@@ -89,10 +89,25 @@ describe('what holds a save', () => {
     expect(playingHolds(withLayers({ pip: box }), NOW)).toBe('video');
   });
 
-  it('waits while a video is cued for Go (Cue: paused at its first frame, about to play)', () => {
+  it('waits while a video is cued for Go (Cue: paused at its first frame, about to play), and says so', () => {
+    // The save-trim review's nit: a cued video said "Waiting: a video is playing" before it plays.
     const cued = { ...initialEngineState(), videoCue: {} as never };
-    expect(saveWaitsFor(cued, OFF, NOW)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor(cued, OFF, NOW)).toBe('Waiting: a video is cued');
+    expect(SAVE_WAITS.cued).toBe('Waiting: a video is cued');
     expect(saveWaitsFor({ ...initialEngineState(), videoCue: null }, OFF, NOW)).toBeNull();
+    // Started at Go's shared moment, or going out in a crossfade: playing.
+    expect(saveWaitsFor({ ...initialEngineState(), videoStart: {} as never }, OFF, NOW)).toBe(
+      SAVE_WAITS.video,
+    );
+    expect(saveWaitsFor({ ...initialEngineState(), videoCrossfade: {} as never }, OFF, NOW)).toBe(
+      SAVE_WAITS.video,
+    );
+    // Cued while another video or a sound plays: what plays is said first.
+    expect(saveWaitsFor({ ...withLayers({ background: video() }), videoCue: {} as never }, OFF, NOW)).toBe(
+      SAVE_WAITS.video,
+    );
+    // The stream and a recording come first, as ever.
+    expect(saveWaitsFor(cued, { onAir: true, recording: false }, NOW)).toBe(SAVE_WAITS.air);
   });
 
   it('goes on once the video is paused', () => {
@@ -235,9 +250,9 @@ describe('a video or a sound not going round, played to its end', () => {
     } as unknown as Layers['pip'];
     const files = { videoFiles: { 'placeholder-box-video': { durationMs: 4000 } } };
     expect(playingHolds(withLayers({ pip: box }, files), 3_600_000)).toBe('video');
-    // A video cued for Go still holds it.
+    // A video cued for Go still holds it (and says it is cued: the one up has ended).
     expect(saveWaitsFor({ ...withLayers({ background: once }), videoCue: {} as never }, OFF, 3_600_000)).toBe(
-      SAVE_WAITS.video,
+      'Waiting: a video is cued',
     );
   });
 });
