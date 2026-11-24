@@ -8,13 +8,14 @@ import { atGoMoment } from './go-moment';
 /**
  * The scene a page draws while a cue waits for its Go (render/cued-start.ts). `startFirst`: the operator's LIVE preview
  * (QA23-CUELIVE-1), which keeps it past Go until its cued picture has started, even through Main's patch at Go, and
- * swaps after that start, never ahead of it. Every other page swaps on its first frame past Go, as before.
+ * swaps after that start, never ahead of it. Every other page swaps on its first frame past Go, as before. `raw`: the
+ * engine's own state, which `state` (Scene's prepared copy) was drawn from.
  */
-export function useCuedStart(state: EngineState, startFirst = false): EngineState {
+export function useCuedStart(state: EngineState, startFirst = false, raw: EngineState = state): EngineState {
   const [keeper] = useState(() => new CuedStartKeeper(startFirst ? heldUntilStarted : undefined));
   const [, refresh] = useReducer((n: number) => n + 1, 0);
   const start = state.videoStart;
-  const view = keeper.at(state, engineNow()) ?? state;
+  const view = keeper.at(state, engineNow(), raw) ?? state;
   const holding = startFirst ? keeper.holding() : null;
   const heldId = holding?.id ?? null;
   const heldAt = holding?.at ?? null;

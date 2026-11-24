@@ -8,6 +8,8 @@ import type { AfterStart } from './go-moment';
  */
 
 const started = new Set<string>();
+/** Cues whose wait ended without their picture's start (it failed, say): let go of for good, whatever the clock. */
+const gaveUp = new Set<string>();
 const waiting = new Map<string, Set<() => void>>();
 
 /**
@@ -17,6 +19,11 @@ const waiting = new Map<string, Set<() => void>>();
  */
 export const startedNow = (v: { playbackRate: number; paused: boolean }): boolean =>
   v.playbackRate > 0 && !v.paused;
+
+/** LIVE's wait for cue `cueId` ended without its picture's start: its scene is let go of, whatever the clock says. */
+export function cueGaveUp(cueId: string): void {
+  gaveUp.add(cueId);
+}
 
 /** Whether this page's cued picture `cueId` has started at Go. */
 export const isCueStarted = (cueId: string): boolean => started.has(cueId);
@@ -51,8 +58,12 @@ const NEVER_STARTED_MS = 250;
 export const afterCueStart = (cueId: string): AfterStart => ({
   whenStarted: (run) => whenCueStarted(cueId, run),
   fallbackMs: NEVER_STARTED_MS,
+  gaveUp: () => cueGaveUp(cueId),
 });
 
-/** For LIVE's scene keeper (render/cued-start.ts): still held past Go `at` while its picture has not started. */
+/**
+ * For LIVE's scene keeper (render/cued-start.ts): still held past Go `at` while its picture has not started, 250 ms at
+ * most; once its wait has given up (on the page's steady clock), never again, whatever `now` (Date.now()) says.
+ */
 export const heldUntilStarted = (cueId: string, at: number, now: number): boolean =>
-  !started.has(cueId) && now < at + NEVER_STARTED_MS;
+  !started.has(cueId) && !gaveUp.has(cueId) && now < at + NEVER_STARTED_MS;

@@ -435,6 +435,7 @@ const SceneBody = memo(function SceneBody({
   picturesFirst = place === 'stream',
   cueStartFirst = false,
   cueStartTeller = false,
+  engineState,
 }: {
   state: EngineState;
   canvas: Size;
@@ -474,10 +475,12 @@ const SceneBody = memo(function SceneBody({
    * previews set to `cueStartFirst` wait for that (250 ms past Go at the latest).
    */
   cueStartTeller?: boolean;
+  /** The engine's own state that `state` was prepared from (Scene's): LIVE's keeper compares those (QA23-CUELIVE-1). */
+  engineState?: EngineState;
   translationOutputId?: string;
   translationGroupId?: string | null;
 }) {
-  const state = useCuedStart(rawState, cueStartFirst);
+  const state = useCuedStart(rawState, cueStartFirst, engineState ?? rawState);
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);
@@ -837,5 +840,5 @@ export const Scene = memo(function Scene(props: ComponentProps<typeof SceneBody>
       props.place,
     ],
   );
-  return <SceneBody {...props} state={state} />;
+  return <SceneBody {...props} state={state} engineState={props.state} />;
 });

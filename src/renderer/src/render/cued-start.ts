@@ -11,13 +11,15 @@ function onlyStartCleared(last: EngineState, state: EngineState): boolean {
 /** Hold the already drawn scene locally until Go, without duplicating its payload on the wire. */
 export class CuedStartKeeper {
   private previous: EngineState | null = null;
-  private held: { id: string; at: number; before: EngineState; last: EngineState } | null = null;
+  private held: { id: string; at: number; before: EngineState; lastRaw: EngineState } | null = null;
 
   /**
    * `holdPastGo` (the operator's LIVE preview alone, QA23-CUELIVE-1): whether, past its Go at `at`, cue `id` is still
    * held, its cued picture not started yet. Through that, LIVE keeps its scene until its picture has set its rate at Go,
    * whether its own Go-moment work or Main's patch at Go (clearing videoStart, nothing else) comes first; any other
-   * change lets it go at once. Left out (every other page): held until Go, as before.
+   * change lets it go at once. A change Main makes between Go and its own patch at Go (a Next while Main is busy then)
+   * keeps videoStart, so LIVE holds it too, until its picture's start: the rule every page has for a change before Go.
+   * Left out (every other page): held until Go, as before.
    */
   constructor(private readonly holdPastGo?: (id: string, at: number, now: number) => boolean) {}
 
@@ -26,7 +28,11 @@ export class CuedStartKeeper {
     return this.held ? { id: this.held.id, at: this.held.at } : null;
   }
 
-  at(state: EngineState | null, now: number): EngineState | null {
+  /**
+   * `raw`: the engine's own state that `state` was drawn from (a page's prepared copy has new objects on every call
+   * with translated slides around: a22-review-cuelive SHOULD-5); compared for Main's patch at Go.
+   */
+  at(state: EngineState | null, now: number, raw: EngineState | null = state): EngineState | null {
     if (!state) {
       this.previous = null;
       this.held = null;
@@ -39,8 +45,9 @@ export class CuedStartKeeper {
     if (
       held &&
       this.holdPastGo &&
+      raw &&
       !start &&
-      onlyStartCleared(held.last, state) &&
+      onlyStartCleared(held.lastRaw, raw) &&
       !goPassed(held.id, held.at)
     )
       return this.view(held.before, state);
@@ -59,8 +66,8 @@ export class CuedStartKeeper {
       return state;
     }
     if (this.held?.id !== start.id && this.previous?.videoCue?.id === start.id)
-      this.held = { id: start.id, at: start.at, before: this.previous, last: state };
-    else if (this.held) this.held = { ...this.held, at: start.at, last: state };
+      this.held = { id: start.id, at: start.at, before: this.previous, lastRaw: raw ?? state };
+    else if (this.held && this.holdPastGo) this.held = { ...this.held, at: start.at, lastRaw: raw ?? state };
     this.previous = state;
     return this.held ? this.view(this.held.before, state) : state;
   }

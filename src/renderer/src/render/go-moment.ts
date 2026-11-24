@@ -24,6 +24,8 @@ export interface AfterStart {
   whenStarted(run: () => void): () => void;
   /** Where it never starts (it failed, say): the work runs this long after Go at the latest. */
   fallbackMs: number;
+  /** Told when that wait ends without the start, before the work runs (cue-started.ts: decided, whatever the clock). */
+  gaveUp?: () => void;
 }
 
 /**
@@ -63,7 +65,12 @@ export function atGoMoment(
       return;
     }
     // Counted from Go, so a wait begun later (the slot's activation, after the swap's render) is not that much more.
-    fallback = clock.later(run, Math.max(0, at + after.fallbackMs - now));
+    const giveUp = () => {
+      if (done) return;
+      after.gaveUp?.();
+      run();
+    };
+    fallback = clock.later(giveUp, Math.max(0, at + after.fallbackMs - now));
     waiting = after.whenStarted(run);
   };
   if (options.checkNow) tick();
