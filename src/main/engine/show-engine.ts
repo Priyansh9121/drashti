@@ -1,3 +1,16 @@
+import { videoOverlapMs } from '../../shared/video-crossfade';
+import { type SavedVideoCue, restoredVideoCue } from '../recovery/video-cue';
+import {
+  type FrameGrid,
+  goOnStreamFrame,
+  type CuedVideo,
+  type VideoCue,
+  VIDEO_GO_LEAD_MS,
+  videoCueReady,
+  videoFadeProgress,
+} from '../../shared/video-cue';
+import { playbackSpanMs } from '../../shared/media';
+
 import type { VideoEditPreparation } from './video-edit-ready';
 import type { Tone } from '../../shared/playback-settings';
 import type { ShapeOverride } from '../../shared/video-shape';
@@ -192,6 +205,11 @@ function pressMetadataOnly(prev: EngineState, next: EngineState): boolean {
       path[0] === 'captions' ||
       (path[0] === 'sound' && ['gains', 'silent', 'levels'].includes(path[1] ?? '')) ||
       (path[0] === 'videoFiles' && sameData(marks(prev.videoFiles), marks(next.videoFiles))) ||
+      // Cue (alpha.22): the pages' readiness of the same private cue; Go checks that readiness itself.
+      (path[0] === 'videoCue' &&
+        !!prev.videoCue &&
+        prev.videoCue.id === next.videoCue?.id &&
+        ['ready', 'required', 'error'].includes(path[1] ?? '')) ||
       (path[0] === 'layers' &&
         (path[1] === 'background' || path[1] === 'audio') &&
         path.at(-1) === 'durationMs'),
@@ -274,7 +292,12 @@ export interface LookSource {
 }
 
 export interface EngineOptions {
-  /** Logical library identity for an immutable prepared playing file. */
+  /** Trusted identities of the local pages that must load the cued first frame. */
+  videoCueParticipants?: () => string[];
+  /** The stream page's frame grid (S5, a21-s5), told while a cue waits: a manual Go is placed on its frames. */
+  videoGoFrames?: () => FrameGrid | null;
+
+  /** Logical library identity of an immutable prepared video. */
   sourceMediaId?: (mediaId: string) => string;
   /** Check new showings once; historic/recovered showings keep their immutable files. */
   prepareVideoEdits?: (previous: EngineState, next: EngineState, historic: boolean) => VideoEditPreparation;
@@ -355,6 +378,7 @@ export interface EngineOptions {
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
 export interface RestoreRequest {
+  videoCue?: SavedVideoCue | null;
   /**
    * The slide, and when it went up (Session 51; left out by files saved before): it keeps that time, so its videos
    * and their sound carry on, and it draws settled, with no entrance again.
@@ -532,6 +556,11 @@ export class ShowEngine {
   /** The last zero that came: it is not waited for again (a slide with nowhere to go holds at 0:00). */
   private zeroDone: string | null = null;
   /** The background video waited for to end (Session 55, Part 6): its key, and how to cancel the wait. */
+  private startWait: { key: string; cancel: () => void } | null = null;
+  private cueWait: { key: string; cancel: () => void } | null = null;
+  private fadeWait: { key: string; cancel: () => void } | null = null;
+  private cueStamp = 0;
+  private canceledAutoFrom: string | null = null;
   private endWait: { key: string; cancel: () => void } | null = null;
   /** The time of the change being made, read once (null between changes). */
   private at: number | null = null;
@@ -543,6 +572,11 @@ export class ShowEngine {
    * replaced: pressed again while that showing is still up, that background comes back.
    */
   private inputWas: { inputId: string; startedAt: number; was: BackgroundLayer | null } | null = null;
+  /**
+   * The stage message's colours chosen on this computer (alpha.22, setStageColours), for a message sent without its
+   * own. Kept here only, never in the state: what the screens draw is the colours in the message's call, as before.
+   */
+  private stageColours: { boxColor?: string; textColor?: string } = {};
 
   constructor(
     private readonly source: SlideSource,
@@ -582,6 +616,357 @@ export class ShowEngine {
 
   get rev(): number {
     return this.revision;
+  }
+
+  /** A first-frame result from a trusted page; stale showing identities do nothing. */
+  reportVideoCue(cueId: string, participant: string, ready: boolean): CommandResult {
+    const cue = this.state.videoCue;
+    if (cue?.id !== cueId || !cue.required.includes(participant) || this.state.stopped)
+      return this.unchanged();
+    // Bookkeeping, never the operator's change: a press read a moment before it still counts (x81's freshness check).
+    this.bookkeeping = true;
+    try {
+      return this.atOnce(() =>
+        this.apply([
+          {
+            type: 'videoCue/set',
+            cue: {
+              ...cue,
+              ...(ready
+                ? { ready: [...new Set([...cue.ready, participant])] }
+                : {
+                    error: 'The cued video could not load its first frame: Cancel and cue it again.',
+                    ready: cue.ready.filter((p) => p !== participant),
+                  }),
+            },
+          },
+        ]),
+      );
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  /** A page reloaded: its previous decoded frame no longer exists. */
+  videoCuePageJoined(participant: string): void {
+    const cue = this.state.videoCue;
+    if (!cue) return;
+    const required = [...new Set(this.options.videoCueParticipants?.() ?? cue.required)];
+    const ready = cue.ready.filter((p) => p !== participant && required.includes(p));
+    if (sameData(required, cue.required) && sameData(ready, cue.ready)) return;
+    this.bookkeeping = true;
+    try {
+      this.apply([{ type: 'videoCue/set', cue: { ...cue, required, ready } }]);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  private sameVideoMedia(first: string, second: string): boolean {
+    return (
+      first === second ||
+      (!!this.options.sourceMediaId &&
+        this.options.sourceMediaId(first) === this.options.sourceMediaId(second))
+    );
+  }
+
+  private prepareVideoCue(
+    mediaId: string,
+    playlist: PlaylistCursor | null,
+    automatic?: VideoCue['automatic'],
+  ): Resolved {
+    if (this.state.videoCrossfade || this.state.videoStart)
+      return {
+        ok: false,
+        error: 'not-playable',
+        message: 'A video is starting or crossfading: wait until it finishes, then cue the video.',
+      };
+    if (this.options.mediaKind && this.options.mediaKind(mediaId) !== 'video')
+      return {
+        ok: false,
+        error: 'not-playable',
+        message: 'That video is not ready: find it in Media and try again once it is ready.',
+      };
+    const item = playlist ? this.checkItem(playlist)?.item : null;
+    if (playlist && (item?.kind !== 'media' || item.media !== 'video' || item.mediaId !== mediaId))
+      return {
+        ok: false,
+        error: 'not-playable',
+        message: 'That video row changed: open the playlist and cue it again.',
+      };
+    const id = randomUUID();
+    const layer = this.backgroundLayer(
+      {
+        kind: 'media',
+        mediaId,
+        media: 'video',
+        fit: 'fit',
+        loop: item?.kind === 'media' && item.whenEnds === 'loop',
+      },
+      undefined,
+      true,
+      playlist?.itemId,
+    );
+    if (layer.kind !== 'media') return NO_CHANGE;
+    const startedAt = Math.max(this.now(), this.cueStamp + 1, layer.startedAt + 1);
+    this.cueStamp = startedAt;
+    let background: CuedVideo = {
+      ...structuredClone(layer),
+      media: 'video',
+      startedAt,
+      cueId: id,
+      seek: { at: this.now(), toMs: layer.clip?.startMs ?? 0, paused: true },
+    };
+    // The same new-showing resolver as ordinary playback, with only this private video in it.
+    // Nothing from its temporary scene replaces LIVE; S2/S4 can compose at this one boundary.
+    const edited = this.options.prepareVideoEdits?.(
+      this.state,
+      {
+        ...this.state,
+        videoCue: null,
+        videoCrossfade: null,
+        videoStart: null,
+        layers: { ...this.state.layers, background, slide: null, pip: null, audio: null },
+      },
+      false,
+    );
+    if (edited?.message && !automatic) return { ok: false, error: 'preparing', message: edited.message };
+    if (edited?.state) {
+      const file = edited.state.layers.background;
+      if (file?.kind !== 'media' || file.media !== 'video')
+        return {
+          ok: false,
+          error: 'preparing',
+          message: 'The edited video is not ready: open Edit Video… and try Save again.',
+        };
+      background = {
+        ...file,
+        media: 'video',
+        cueId: id,
+        startedAt,
+        seek: { at: this.now(), toMs: file.seek?.toMs ?? file.clip?.startMs ?? 0, paused: true },
+      };
+    }
+    return {
+      ok: true,
+      actions: [
+        {
+          type: 'videoCue/set',
+          cue: {
+            id,
+            label: item?.kind === 'media' ? item.label : 'Video',
+            background,
+            playlist,
+            required: [...new Set(this.options.videoCueParticipants?.() ?? [])],
+            ready: [],
+            ...(edited?.message ? { error: edited.message } : {}),
+            ...(automatic ? { automatic } : {}),
+          },
+        },
+      ],
+    };
+  }
+
+  private goVideoCue(id: string, automatic = false, early = false): Resolved {
+    const cue = this.state.videoCue;
+    if (cue?.id !== id)
+      return { ok: false, error: 'not-playable', message: 'No video is cued: cue a video first.' };
+    const required = [...new Set(this.options.videoCueParticipants?.() ?? cue.required)];
+    if (!videoCueReady({ ...cue, required }))
+      return {
+        ok: false,
+        error: 'not-playable',
+        message: cue.error ?? 'The video is still preparing: wait for Cue ready before Go.',
+      };
+    if (cue.playlist) {
+      const item = this.checkItem(cue.playlist)?.item;
+      if (item?.kind !== 'media' || !this.sameVideoMedia(item.mediaId, cue.background.mediaId))
+        return {
+          ok: false,
+          error: 'not-playable',
+          message: 'That video row changed: Cancel and cue it again.',
+        };
+    }
+    // A manual Go is placed on the stream's own frames when its page has told them (a21-s5): every page still starts
+    // at this one moment, and the stream's first frame after it already moves. An automatic one keeps its moment.
+    const earliest = this.now() + VIDEO_GO_LEAD_MS;
+    const at = automatic
+      ? Math.max(earliest, early ? 0 : (cue.automatic?.at ?? 0))
+      : goOnStreamFrame(earliest, this.options.videoGoFrames?.() ?? null);
+    const background = { ...cue.background, seek: { at, toMs: cue.background.clip?.startMs ?? 0 } };
+    const from = this.state.layers.background;
+    const fade =
+      from?.kind === 'media' && from.media === 'video'
+        ? {
+            id: cue.id,
+            from: { ...from, media: 'video' as const },
+            at,
+            durationMs: automatic ? (cue.automatic?.durationMs ?? 0) : 0,
+          }
+        : null;
+    return {
+      ok: true,
+      actions: [
+        {
+          type: 'videoStart/set',
+          start: {
+            id: cue.id,
+            at,
+            mediaIds: [...new Set([...mediaInState(this.state).now, ...soundFilesOf(this.state)])],
+            soundIds: soundFilesOf(this.state),
+          },
+        },
+        { type: 'videoCue/set', cue: null },
+        { type: 'videoCrossfade/set', fade },
+        ...(cue.playlist ? [{ type: 'live/item' as const, playlist: cue.playlist }] : []),
+        { type: 'layer/clear', layer: 'slide', at },
+        { type: 'background/set', background },
+      ],
+    };
+  }
+
+  /** Prepare only the next playable video in the playlist's already saved playing order. */
+  private automaticVideoCue(): Resolved | null {
+    const state = this.state;
+    const bg = state.layers.background;
+    const cursor = state.live.playlist;
+    if (
+      !cursor ||
+      state.videoStart ||
+      state.videoCrossfade ||
+      state.blackout ||
+      state.wallpaper ||
+      state.stopped ||
+      state.layers.slide ||
+      state.layers.pip ||
+      state.live.presentationId !== null ||
+      bg?.kind !== 'media' ||
+      bg.media !== 'video' ||
+      bg.loop ||
+      bg.ab ||
+      bg.seek?.paused ||
+      !bg.durationMs ||
+      this.whenEndsOf(state, bg.mediaId) !== 'next'
+    )
+      return null;
+    const ms = this.playlists.crossfadeMs?.(cursor.playlistId) ?? 0;
+    if (!(ms > 0)) return null;
+    const items = this.playlists.items(cursor.playlistId) ?? [];
+    const index = items.findIndex((i) => i.id === cursor.itemId);
+    if (index < 0) return null;
+    const following = followingItems(
+      items,
+      index,
+      1,
+      this.playlists.repeatAll?.(cursor.playlistId) ?? false,
+    ).find((i) => i.kind !== 'skip');
+    if (following?.kind !== 'media' || following.media !== 'video') return null;
+    const from = `${bg.mediaId}@${bg.startedAt}`;
+    if (this.canceledAutoFrom === from) return null;
+    const existing = state.videoCue;
+    if (existing && !existing.automatic) return null;
+    const pinned =
+      existing?.automatic?.from === from &&
+      this.sameVideoMedia(existing.background.mediaId, following.mediaId) &&
+      existing.playlist?.itemId === following.id
+        ? existing
+        : null;
+    const length = pinned?.background.durationMs ?? this.options.mediaLength?.(following.mediaId);
+    if (!length || length <= 0) return null;
+    const points = pinned ? pinned.background.clip : this.clipOf(following.mediaId, following.id).clip;
+    const span = playbackSpanMs(points, length);
+    const outgoing = playbackSpanMs(bg.clip, bg.durationMs);
+    // Use the prepared copy's output time; speed/trim must never be counted a second time.
+    const durationMs = videoOverlapMs(ms, span.end - span.start, outgoing.end - outgoing.start);
+    if (durationMs <= 0) return null;
+    const at = this.now() + playbackLeftMs(bg, bg.durationMs, this.now()) - durationMs;
+    if (pinned) {
+      const automatic = { from, at, durationMs };
+      return sameData(pinned.automatic, automatic)
+        ? NO_CHANGE
+        : { ok: true, actions: [{ type: 'videoCue/set', cue: { ...pinned, automatic } }] };
+    }
+    return this.prepareVideoCue(
+      following.mediaId,
+      { playlistId: cursor.playlistId, itemId: following.id },
+      { from, at, durationMs },
+    );
+  }
+
+  private scheduleVideoCue(): void {
+    const start = this.state.videoStart;
+    const startKey = start ? `${start.id}@${start.at}` : null;
+    if (startKey !== this.startWait?.key) {
+      this.startWait?.cancel();
+      this.startWait = null;
+      if (start && startKey)
+        this.startWait = {
+          key: startKey,
+          cancel: this.wait(Math.max(0, start.at - this.now()), () => {
+            this.startWait = null;
+            this.atOnce(() => {
+              const current = this.state.videoStart;
+              if (current?.id === start.id) {
+                if (this.now() >= current.at) this.apply([{ type: 'videoStart/set', start: null }]);
+                else this.scheduleVideoCue();
+              }
+            });
+          }),
+        };
+    }
+    const fade = this.state.videoCrossfade;
+    const fadeKey = fade && fade.pausedAt === undefined ? `${fade.id}@${fade.at}` : null;
+    if (fadeKey !== this.fadeWait?.key) {
+      this.fadeWait?.cancel();
+      this.fadeWait = null;
+      if (fade && fadeKey)
+        this.fadeWait = {
+          key: fadeKey,
+          cancel: this.wait(Math.max(0, fade.at + fade.durationMs - this.now()), () => {
+            this.fadeWait = null;
+            const current = this.state.videoCrossfade;
+            if (current?.id !== fade.id) return;
+            if (videoFadeProgress(current, this.clock()) >= 1)
+              this.atOnce(() => this.apply([{ type: 'videoCrossfade/set', fade: null }]));
+            else this.scheduleVideoCue();
+          }),
+        };
+    }
+    const prepared = this.automaticVideoCue();
+    if (prepared?.ok && prepared.actions.length) {
+      this.apply(prepared.actions);
+      return;
+    }
+    const bg = this.state.layers.background;
+    if (prepared === null && this.state.videoCue?.automatic && !(bg?.kind === 'media' && bg.seek?.paused)) {
+      this.apply([{ type: 'videoCue/set', cue: null }]);
+      return;
+    }
+    const cue = this.state.videoCue;
+    const want =
+      cue?.automatic &&
+      !cue.error &&
+      videoCueReady(cue) &&
+      this.state.layers.background?.kind === 'media' &&
+      !this.state.layers.background.seek?.paused
+        ? cue
+        : null;
+    const automatic = want?.automatic;
+    const key = want && automatic ? `${want.id}@${automatic.at}` : null;
+    if (key === this.cueWait?.key) return;
+    this.cueWait?.cancel();
+    this.cueWait = null;
+    if (want && automatic && key)
+      this.cueWait = {
+        key,
+        cancel: this.wait(Math.max(0, automatic.at - VIDEO_GO_LEAD_MS - this.now()), () => {
+          this.cueWait = null;
+          this.atOnce(() => {
+            const shown = this.goVideoCue(want.id, true);
+            if (shown.ok) this.apply(shown.actions);
+          });
+        }),
+      };
   }
 
   /** A press may have missed metadata, but never a show change, a future revision or another engine run. */
@@ -754,6 +1139,12 @@ export class ShowEngine {
         ...(above ? { over: above } : {}),
       };
       actions.push({ type: 'audio/set', audio });
+    }
+    if (request.videoCue) {
+      const cue = restoredVideoCue(request.videoCue, this.options.videoCueParticipants?.() ?? [], this.now());
+      if (this.options.mediaKind && this.options.mediaKind(cue.background.mediaId) !== 'video')
+        cue.error = 'The cued file is not ready: find it in Media and cue it again.';
+      actions.push({ type: 'videoCue/set', cue });
     }
     // A message up for a set time comes back for the rest of it (Session 55); one whose time is up by now does not.
     const back = (request.messages ?? []).filter((m) => m.until === undefined || m.until > this.now());
@@ -1478,7 +1869,43 @@ export class ShowEngine {
    * waits where it is, paused; the picture-in-picture box playing it comes off (Q60-46: one-at-a-time.ts noPictureOff).
    * Not a change of the operator's: Back, Oops and Put it back are as they were. Whether any of it was up.
    */
-  noPicture(mediaId: string): boolean {
+  private dropOutgoingVideo(mediaId: string, startedAt?: number): boolean {
+    const pair = this.state.videoCrossfade;
+    const bg = this.state.layers.background;
+    if (
+      pair?.from.mediaId !== mediaId ||
+      (startedAt !== undefined && pair.from.startedAt !== startedAt) ||
+      (bg?.kind === 'media' &&
+        bg.mediaId === mediaId &&
+        (startedAt === undefined || bg.startedAt === startedAt))
+    )
+      return false;
+    this.bookkeeping = true;
+    try {
+      const start = this.state.videoStart;
+      this.apply([
+        { type: 'videoCrossfade/set', fade: null },
+        ...(start
+          ? [
+              {
+                type: 'videoStart/set' as const,
+                start: {
+                  ...start,
+                  mediaIds: start.mediaIds.filter((id) => id !== mediaId),
+                  soundIds: start.soundIds.filter((id) => id !== mediaId),
+                },
+              },
+            ]
+          : []),
+      ]);
+    } finally {
+      this.bookkeeping = false;
+    }
+    return true;
+  }
+
+  noPicture(mediaId: string, startedAt?: number): boolean {
+    if (this.dropOutgoingVideo(mediaId, startedAt)) return true;
     let took = false;
     this.atOnce(() => {
       const actions = noPictureOff(this.state, mediaId, this.now());
@@ -1501,7 +1928,8 @@ export class ShowEngine {
    * playing it comes off (one-at-a-time.ts cannotPlayOff). Not a change of the operator's: Back, Oops and Put it back
    * are as they were. What it took, or null when none of it was up.
    */
-  cannotPlay(mediaId: string): CannotPlayTook | null {
+  cannotPlay(mediaId: string, startedAt?: number): CannotPlayTook | null {
+    if (this.dropOutgoingVideo(mediaId, startedAt)) return { background: true, slide: false, box: false };
     let took: CannotPlayTook | null = null;
     this.atOnce(() => {
       const off = cannotPlayOff(this.state, mediaId, this.now());
@@ -2787,7 +3215,16 @@ export class ShowEngine {
   }
 
   private resolve(command: EngineCommand): Resolved {
+    if (command.type === 'playItem' || command.type === 'setBackground' || command.type === 'moveTo')
+      this.canceledAutoFrom = null;
     switch (command.type) {
+      case 'cueVideo':
+        return this.prepareVideoCue(command.mediaId, command.playlist ?? null);
+      case 'goVideoCue':
+        return this.goVideoCue(command.cueId, this.state.videoCue?.automatic !== undefined, true);
+      case 'cancelVideoCue':
+        this.canceledAutoFrom = this.state.videoCue?.automatic?.from ?? null;
+        return { ok: true, actions: [{ type: 'videoCue/set', cue: null }] };
       case 'goLive': {
         // One of a Repeat Slides playlist's slides put up: it goes round from there (Session 26d).
         const repeating = repeatPlaylistOf(command.presentationId);
@@ -2837,6 +3274,7 @@ export class ShowEngine {
           ? { ok: true, actions: [{ type: 'repeat/set', repeat: null }] }
           : { ok: false, error: 'not-repeating', message: 'Nothing is repeating.' };
       case 'next':
+        if (this.state.videoCue?.automatic) return this.goVideoCue(this.state.videoCue.id, true, true);
         return this.step(1);
       case 'previous':
         return this.step(-1);
@@ -2955,9 +3393,12 @@ export class ShowEngine {
         return this.runTimer(command.timerId, 'pause');
       case 'resetTimer':
         return this.runTimer(command.timerId, 'reset');
-      case 'setStageMessage':
+      case 'setStageMessage': {
         // Its own size and flash (Session 55): the standard size, no flash, when not said (an older phone, the API).
-        // Its colours (24 Nov 2026) only when given: none, amber and black, as before.
+        // Its colours (24 Nov 2026) when given; sent with none (a phone, OSC), this computer's chosen ones (alpha.22),
+        // none when those are amber and black, as before.
+        const own = command.boxColor !== undefined || command.textColor !== undefined;
+        const { boxColor, textColor } = own ? command : this.stageColours;
         return {
           ok: true,
           actions: [
@@ -2968,14 +3409,22 @@ export class ShowEngine {
                 size: command.size ?? 'standard',
                 flash: command.flash ?? false,
                 shownAt: this.now(),
-                ...(command.boxColor ? { boxColor: command.boxColor.toLowerCase() } : {}),
-                ...(command.textColor ? { textColor: command.textColor.toLowerCase() } : {}),
+                ...(boxColor ? { boxColor: boxColor.toLowerCase() } : {}),
+                ...(textColor ? { textColor: textColor.toLowerCase() } : {}),
               },
             },
           ],
         };
+      }
       case 'clearStageMessage':
         return { ok: true, actions: [{ type: 'stage/message', text: null }] };
+      case 'setStageColours':
+        // Kept apart from the state (alpha.22): no change to the show, the screens or the recovery file.
+        this.stageColours = {
+          ...(command.boxColor ? { boxColor: command.boxColor.toLowerCase() } : {}),
+          ...(command.textColor ? { textColor: command.textColor.toLowerCase() } : {}),
+        };
+        return NO_CHANGE;
       case 'cueNext': {
         const order = this.source.order(command.presentationId);
         if (!order || order.slides.length === 0)
@@ -3062,6 +3511,35 @@ export class ShowEngine {
       case 'moveTo':
       case 'pausePlaying':
       case 'resumePlaying': {
+        const pair = this.state.videoCrossfade;
+        if (pair && command.playing.layer === 'background') {
+          const moved = resolvePlaying(this.state, command, this.now(), {
+            nextTrack: () => ({ type: 'layer/clear', layer: 'audio' }),
+            refreshRestart: (p) => this.refreshRestart(p),
+          });
+          if (!moved.ok) return moved;
+          if (command.type === 'moveTo')
+            return { ok: true, actions: [...moved.actions, { type: 'videoCrossfade/set', fade: null }] };
+          const pause = command.type === 'pausePlaying';
+          if (pause === (pair.pausedAt !== undefined)) return NO_CHANGE;
+          const now = this.now();
+          const { pausedAt: _held, ...rest } = pair;
+          const from = {
+            ...pair.from,
+            seek: {
+              at: now,
+              toMs: playbackAtMs(pair.from, pair.from.durationMs ?? 0, now),
+              ...(pause ? { paused: true as const } : {}),
+            },
+          };
+          const fade = {
+            ...rest,
+            from,
+            at: pause ? pair.at : pair.at + now - (pair.pausedAt ?? now),
+            ...(pause ? { pausedAt: now } : {}),
+          };
+          return { ok: true, actions: [...moved.actions, { type: 'videoCrossfade/set', fade }] };
+        }
         const track = this.musicNow();
         if (track && command.playing.layer === 'audio' && command.type !== 'moveTo')
           return this.resolve({ type: command.type === 'pausePlaying' ? 'pauseMusic' : 'resumeMusic' });
@@ -3238,6 +3716,33 @@ export class ShowEngine {
       if (target?.mediaId !== zoomed.mediaId || target.showing !== zoomed.showing)
         next = reduce(next, { type: 'zoom/set', liveZoom: null });
     }
+    if (
+      cause === 'clearAll' ||
+      cause === 'clearLayer' ||
+      (next.blackout && !prev.blackout) ||
+      (next.wallpaper && !prev.wallpaper) ||
+      next.stopped
+    ) {
+      if (next.videoCue) next = reduce(next, { type: 'videoCue/set', cue: null });
+      if (next.videoCrossfade) next = reduce(next, { type: 'videoCrossfade/set', fade: null });
+      if (next.videoStart) next = reduce(next, { type: 'videoStart/set', start: null });
+    }
+    if (
+      next.videoStart &&
+      (next.layers.background?.kind !== 'media' || next.layers.background.cueId !== next.videoStart.id)
+    )
+      next = reduce(next, { type: 'videoStart/set', start: null });
+    if (
+      next.videoCrossfade &&
+      (next.layers.background?.kind !== 'media' || next.layers.background.cueId !== next.videoCrossfade.id)
+    )
+      next = reduce(next, { type: 'videoCrossfade/set', fade: null });
+    if (
+      next.videoCue?.automatic &&
+      next.layers.background?.kind === 'media' &&
+      `${next.layers.background.mediaId}@${next.layers.background.startedAt}` !== next.videoCue.automatic.from
+    )
+      next = reduce(next, { type: 'videoCue/set', cue: null });
     // What was cued goes once it is live (however it got there).
     if (next.live !== prev.live && next.live.presentationId === next.cue?.presentationId)
       next = reduce(next, { type: 'cue/set', cue: null });
@@ -3335,6 +3840,7 @@ export class ShowEngine {
     this.scheduleMusic();
     this.scheduleZero();
     this.scheduleVideoEnd();
+    this.scheduleVideoCue();
     this.scheduleTimed();
     this.scheduleLowerThird();
     return { ok: true, changed: true, rev: this.revision };
@@ -3619,6 +4125,7 @@ export class ShowEngine {
         }
       }
       this.scheduleVideoEnd();
+      this.scheduleVideoCue();
       return this.unchanged();
     });
   }
@@ -3631,7 +4138,7 @@ export class ShowEngine {
     const cursor = state.live.playlist;
     if (!cursor || state.live.presentationId !== null) return DEFAULT_WHEN_ENDS;
     const item = this.playlists.items(cursor.playlistId)?.find((i) => i.id === cursor.itemId);
-    return item?.kind === 'media' && item.mediaId === mediaId
+    return item?.kind === 'media' && this.sameVideoMedia(item.mediaId, mediaId)
       ? (item.whenEnds ?? DEFAULT_WHEN_ENDS)
       : DEFAULT_WHEN_ENDS;
   }
@@ -3647,6 +4154,7 @@ export class ShowEngine {
     if (bg?.kind !== 'media' || bg.media !== 'video' || bg.loop || bg.seek?.paused === true) return null;
     if (bg.durationMs === undefined || bg.durationMs <= 0) return null;
     if (state.layers.slide !== null || state.layers.pip !== null || state.stopped) return null;
+    if (this.canceledAutoFrom === `${bg.mediaId}@${bg.startedAt}`) return null;
     const then = this.whenEndsOf(state, bg.mediaId);
     if (then === 'loop' || then === 'freeze') return null;
     if (then === 'wallpaper' && !state.chosenWallpaper) return null;
@@ -3692,6 +4200,7 @@ export class ShowEngine {
         this.scheduleVideoEnd();
         return;
       }
+      if (found.then === 'next' && this.state.videoCue?.automatic) return;
       if (found.then === 'next') {
         const moved = this.step(1);
         if (moved.ok && moved.actions.length > 0) {
@@ -3768,6 +4277,12 @@ export class ShowEngine {
 
   /** Stop waiting (the engine is going away: tests, and quitting). */
   dispose(): void {
+    this.startWait?.cancel();
+    this.startWait = null;
+    this.cueWait?.cancel();
+    this.cueWait = null;
+    this.fadeWait?.cancel();
+    this.fadeWait = null;
     this.zeroWait?.cancel();
     this.zeroWait = null;
     this.endWait?.cancel();

@@ -36,6 +36,9 @@ export function mediaUpNow(state: EngineState): Set<string> {
 /** Media ids drawn now (`now`) and those Next would bring (`next`), each once, `now` first. */
 export function mediaInState(state: EngineState): { now: string[]; next: string[] } {
   const now = new Set<string>();
+  for (const id of state.videoStart?.mediaIds ?? []) now.add(id);
+  if (state.videoCue) now.add(state.videoCue.background.mediaId);
+  if (state.videoCrossfade) now.add(state.videoCrossfade.from.mediaId);
   const bg = state.layers.background;
   if (bg?.kind === 'media') now.add(bg.mediaId);
   if (state.layers.slide) fromSlide(state.layers.slide.slide, now);

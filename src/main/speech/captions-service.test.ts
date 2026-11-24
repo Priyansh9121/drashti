@@ -61,18 +61,21 @@ function setup(
     failDownload?: boolean;
     controlDownload?: boolean;
     languageModels?: ReturnType<typeof languageStore>['store'];
+    processors?: number;
   } = {},
 ) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-service-'));
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
   const started: string[] = [];
+  let stopped = 0;
   const engine: SpeechEngine = {
     start(language, to) {
       started.push(language);
       out = to;
       to.state({ phase: 'listening', language });
       return () => {
+        stopped += 1;
         out = null;
       };
     },
@@ -93,6 +96,7 @@ function setup(
       },
     },
     engine,
+    ...(o.processors === undefined ? {} : { processors: () => o.processors ?? 0 }),
     engineProblem: () => ((o.engine ?? true) ? null : 'This copy of Drashti has no captions engine.'),
     modelReady: (id) => ready.has(id),
     download: async (id, progress, signal) => {
@@ -131,7 +135,20 @@ function setup(
       heardAt: Date.now(),
     });
   };
-  return { service, userData, started, downloads, pending, shown, views, say, getSettings: () => settings };
+  return {
+    service,
+    userData,
+    started,
+    downloads,
+    pending,
+    shown,
+    views,
+    say,
+    getSettings: () => settings,
+    /** What the engine says it is doing (cap-threads: its rests). */
+    state: (s: SpeechState) => out?.state(s),
+    stops: () => stopped,
+  };
 }
 
 describe('live captions as an admin turns them on (Part 10)', () => {
@@ -141,6 +158,12 @@ describe('live captions as an admin turns them on (Part 10)', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('say how many logical processors this computer has (cap-threads), as Node counts them unless told', () => {
+    expect(setup({ processors: 2 }).service.view().processors).toBe(2);
+    const counted = setup().service.view().processors;
+    expect(Number.isInteger(counted) && counted >= 1).toBe(true);
   });
 
   it('are off at first: nothing listens, nothing is downloaded, and they are marked Trial', () => {
@@ -458,4 +481,95 @@ it('starts a fresh prototype session when the selected normal model changes, wit
   } finally {
     vi.useRealTimers();
   }
+});
+
+describe('a computer too slow for live captions (cap-threads, the owner: “Say so and stop”)', () => {
+  const rest = (rests: number, stops = false): SpeechState => ({
+    phase: 'held',
+    reason: 'busy',
+    slow: { answerMs: 15_500, behindMs: 16_000, threads: 2, processors: 2, rests, keptUp: false, stops },
+  });
+
+  it('after 3 rests in a row captions stop: off on this computer with the reason, the engine stopped; on again tries again', async () => {
+    const { service, started, userData, views, state, stops } = setup();
+    service.start();
+    await service.setOn(true);
+    expect(started).toEqual(['auto']);
+    state(rest(1));
+    state(rest(2));
+    await new Promise((wait) => setTimeout(wait, 20));
+    expect(service.view()).toMatchObject({ on: true, stopped: null });
+    state(rest(3, true));
+    await vi.waitFor(() => {
+      expect(service.view().on).toBe(false);
+    });
+    expect(readCaptionsSwitch(userData, 'win32', 'x64').on).toBe(false);
+    expect(service.view()).toMatchObject({
+      speech: { phase: 'off' },
+      stopped: { language: 'auto', slow: { rests: 3, answerMs: 15_500, threads: 2, processors: 2 } },
+    });
+    // The engine was stopped (Route W gives its pack's file back on that stop), and the dialog was told.
+    expect(stops()).toBe(1);
+    expect(views.at(-1)).toMatchObject({ on: false, stopped: { slow: { rests: 3 } } });
+    // On again: it tries again, and the reason has gone.
+    await service.setOn(true);
+    expect(started).toEqual(['auto', 'auto']);
+    expect(service.view()).toMatchObject({ on: true, stopped: null });
+  });
+
+  it('remember that they kept up (a phrase shown whole) across a language change; forget it when the operator turns them on, or on another model (cap-review-threads MUST-1b)', async () => {
+    const { service, say, getSettings } = setup();
+    service.start();
+    await service.setOn(true);
+    expect(service.keptUp()).toBe(false);
+    say('alpha beta');
+    expect(service.keptUp()).toBe(true);
+    // File › Speaker's Language: listening starts again in that language, and still they have kept up.
+    service.setSettings({ ...getSettings(), language: 'hi' });
+    service.setSettings({ ...getSettings(), language: 'auto' });
+    expect(service.keptUp()).toBe(true);
+    await service.setOn(false);
+    expect(service.keptUp()).toBe(true);
+    // Turned on by the operator: a fresh start.
+    await service.setOn(true);
+    expect(service.keptUp()).toBe(false);
+    say('gamma delta');
+    expect(service.keptUp()).toBe(true);
+    // A language's own model chosen, or another model: what kept up before says nothing about it.
+    service.setLanguageModel('gu', null);
+    expect(service.keptUp()).toBe(false);
+    say('gamma delta', 's2');
+    expect(service.keptUp()).toBe(true);
+    await service.setModel('turbo');
+    expect(service.keptUp()).toBe(false);
+  });
+
+  it('a lighter model chosen after the stop clears the reason; the switch stays Off (cap-review-threads n2)', async () => {
+    const { service, state } = setup();
+    service.start();
+    await service.setOn(true);
+    state(rest(3, true));
+    await vi.waitFor(() => {
+      expect(service.view().stopped).not.toBeNull();
+    });
+    await service.setModel('turbo');
+    expect(service.view()).toMatchObject({ on: false, stopped: null });
+  });
+
+  it('only the engine’s decision stops them: never a count of rests (it has kept up), and never a rest it measured nothing for', async () => {
+    const { service, state, stops } = setup();
+    service.start();
+    await service.setOn(true);
+    state(rest(1));
+    state(rest(2));
+    // A third and a fourth rest the engine does not stop for (it heard a phrase whole earlier: busy for a while).
+    state(rest(3));
+    state(rest(4));
+    state({ phase: 'listening', language: 'auto' });
+    state(rest(1));
+    state({ phase: 'held', reason: 'busy' });
+    await new Promise((wait) => setTimeout(wait, 20));
+    expect(service.view()).toMatchObject({ on: true, stopped: null });
+    expect(stops()).toBe(0);
+  });
 });

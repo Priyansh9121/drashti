@@ -1,3 +1,5 @@
+import { useCuedStart } from './useCuedStart';
+import type { VideoCue, VideoCrossfade } from '../../../shared/video-cue';
 import {
   preparedOutputState,
   translationBottom,
@@ -310,8 +312,14 @@ function BackgroundPicture({
   annotate,
   movement,
   onDrawn,
+  cue,
+  crossfade,
+  opaqueCanvas = false,
   onLinkDrawn,
 }: {
+  opaqueCanvas?: boolean;
+  cue?: VideoCue | null;
+  crossfade?: VideoCrossfade | null;
   background: BackgroundLayer | null;
   annotate: boolean;
   movement: Movement;
@@ -320,15 +328,39 @@ function BackgroundPicture({
   /** The same for a stream link (alpha.20, slice 8: render/LinkView.tsx), told apart from the files'. */
   onLinkDrawn?: (key: string | null) => void;
 }) {
+  // A scheduled Cue has a decoded frame already, but keeps the previous colour until its Go moment.
+  const [keptColor, setKeptColor] = useState<string | null>(
+    background?.kind === 'color' ? background.color : null,
+  );
+  if (background?.kind === 'color' && keptColor !== background.color) setKeptColor(background.color);
+  const drawn = useCallback(
+    (key: string | null) => {
+      if (key !== null) setKeptColor(null);
+      onDrawn?.(key);
+    },
+    [onDrawn],
+  );
+  const color = background?.kind === 'media' && background.cueId ? keptColor : null;
   return (
     <>
+      {color !== null && (
+        <div data-cue-underlay="" style={{ position: 'absolute', inset: 0, background: color }} />
+      )}
       {background?.kind === 'color' && (
         <div
           data-layer="background"
           style={{ position: 'absolute', inset: 0, background: background.color }}
         />
       )}
-      <BackgroundMedia layer={background} annotate={annotate} movement={movement} onDrawn={onDrawn} />
+      <BackgroundMedia
+        layer={background}
+        annotate={annotate}
+        movement={movement}
+        onDrawn={drawn}
+        cue={cue}
+        crossfade={crossfade}
+        opaqueCanvas={opaqueCanvas}
+      />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
       {background?.kind === 'link' && <LinkView layer={background} onDrawn={onLinkDrawn} />}
     </>
@@ -383,7 +415,7 @@ function MainSlot({
  * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black with none chosen).
  */
 const SceneBody = memo(function SceneBody({
-  state,
+  state: rawState,
   canvas,
   scaling,
   annotate = false,
@@ -424,6 +456,7 @@ const SceneBody = memo(function SceneBody({
   translationOutputId?: string;
   translationGroupId?: string | null;
 }) {
+  const state = useCuedStart(rawState);
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);
@@ -621,6 +654,9 @@ const SceneBody = memo(function SceneBody({
                   {/* The canvas, for a turned or cropped picture placed from the first frame (Session 55, Part 5). */}
                   <BackgroundBox.Provider value={canvas}>
                     <BackgroundPicture
+                      cue={state.videoCue}
+                      crossfade={state.videoCrossfade}
+                      opaqueCanvas={!keyed}
                       background={holding ? back.keep : background}
                       annotate={annotate}
                       movement={look.movement}

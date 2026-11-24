@@ -82,11 +82,11 @@ describe('the stage screens in the engine’s state (Session 55)', () => {
     expect(engine.current.blackout).toBe(false);
   });
 
-  it('advertises engine 31 and retains native paths and reads all supported earlier saved layers whole', () => {
-    expect(ENGINE_STATE_VERSION).toBe(31);
-    for (const v of [31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12])
+  it('advertises engine 32 and retains native paths and reads all supported earlier saved layers whole', () => {
+    expect(ENGINE_STATE_VERSION).toBe(32);
+    for (const v of [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12])
       expect(readsEngineVersion(v), String(v)).toBe(true);
-    for (const v of [11, 19, 21, 32, '23', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
+    for (const v of [11, 19, 21, 33, '23', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
   });
 });
 

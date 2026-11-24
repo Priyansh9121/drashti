@@ -1,3 +1,4 @@
+import { EncoderAudio } from './encoder-audio';
 import { PREVIEW_FPS, PREVIEW_WIDTH } from '../../../shared/stream';
 import { cutText } from '../../../shared/text';
 import { inTurn } from '../render/live-window';
@@ -23,7 +24,9 @@ let encoder: MessagePort | null = null;
 /** Video out's port (x30): each frame raw, as the encoder gets it, when video out is on (src/main/video-out/). */
 let videoOut: MessagePort | null = null;
 let track: MediaStreamTrack | null = null;
-let soundReader: ReadableStreamDefaultReader<AudioData> | null = null;
+/** Share the pending platform request while ports arrive before its track. */
+let capturePending = false;
+const encoderAudio = new EncoderAudio(() => say('the stream’s sound capture stopped'));
 let size = { width: 1920, height: 1080 };
 let levelOf: () => number = () => -100;
 let soundTrack: () => MediaStreamTrack | null = () => null;
@@ -274,55 +277,35 @@ function toEncoder(frame: VideoFrame): Promise<void> {
   return next;
 }
 
-/** The stream's sound to the encoder, as it is made (interleaved 32-bit float). */
-async function sendSound(): Promise<void> {
-  const audio = soundTrack();
-  if (!audio || soundReader) return;
-  const reader = new MediaStreamTrackProcessor<AudioData>({ track: audio }).readable.getReader();
-  soundReader = reader;
-  for (;;) {
-    const { value: data, done } = await reader.read();
-    if (done) break;
-    const port = encoder;
-    if (port) {
-      const frames = data.numberOfFrames;
-      const out = new Float32Array(frames * 2);
-      if (data.numberOfChannels >= 2 && data.format === 'f32') {
-        data.copyTo(out, { planeIndex: 0 });
-      } else {
-        // Planar (or another format): each channel, then woven together (one channel is sent to both sides).
-        const plane = new Float32Array(frames);
-        for (let c = 0; c < 2; c++) {
-          data.copyTo(plane, { planeIndex: Math.min(c, data.numberOfChannels - 1), format: 'f32-planar' });
-          for (let i = 0; i < frames; i++) out[i * 2 + c] = plane[i] ?? 0;
-        }
-      }
-      port.postMessage({ kind: 'audio', data: out.buffer, frames });
-    }
-    data.close();
-  }
-  soundReader = null;
-}
-
 async function capture(): Promise<void> {
   const mine = ++generation;
   say(`capture ${String(mine)} asks for the picture (${String(size.width)}x${String(size.height)})`);
   // In turn with a capture of another app's window up as the background (Session 48): the main process
   // gives each request what this page asked for last, its own picture unless it asked for the window.
-  const display = await inTurn(() =>
-    navigator.mediaDevices.getDisplayMedia({
-      video: { width: size.width, height: size.height, frameRate: 30 },
-      audio: false,
-    }),
-  );
+  const askingSize = { ...size };
+  let display: MediaStream;
+  capturePending = true;
+  try {
+    display = await inTurn(() =>
+      navigator.mediaDevices.getDisplayMedia({
+        video: { width: askingSize.width, height: askingSize.height, frameRate: 30 },
+        audio: false,
+      }),
+    );
+  } finally {
+    capturePending = false;
+  }
   const video = display.getVideoTracks()[0];
   if (!video) {
     say(`capture ${String(mine)} got no video track`);
     return;
   }
-  if (mine !== generation) {
+  if (mine !== generation || !wanted()) {
     say(`capture ${String(mine)} was replaced before it began`);
     video.stop();
+    // A resize or a new consumer superseded this request while it opened. Acquire only that new request;
+    // a failed acquisition above is never retried here.
+    if (wanted() && !track) update();
     return;
   }
   track = video;
@@ -380,17 +363,17 @@ function wanted(): boolean {
 }
 
 function update(): void {
-  if (wanted() && !track) {
+  if (wanted() && !track && !capturePending) {
     void capture().catch((error: unknown) => {
       say(`the capture failed: ${why(error)}`);
       track = null;
       document.body.dataset['capture'] = 'failed';
     });
-  } else if (!wanted() && track) {
+  } else if (!wanted() && (track || capturePending)) {
     say('nothing wants the picture: the capture stops');
     generation++;
     keepLatest(null);
-    track.stop();
+    track?.stop();
     track = null;
     document.body.dataset['capture'] = 'off';
   }
@@ -500,6 +483,10 @@ export function startCapture(
       speechPort(port, inputTrack, inputGraph);
       return;
     }
+    if (data?.drashtiStreamPort === 'encoder-audio') {
+      encoderAudio.pair(port, soundTrack());
+      return;
+    }
     if (data?.drashtiStreamPort === 'preview') {
       preview?.close();
       preview = port;
@@ -512,7 +499,6 @@ export function startCapture(
       sentFormat = '';
       encoderFrames = 0;
       encoderFailed = false;
-      void sendSound();
       // The picture as it stands, at once, once the show is on screen (else from then).
       if (encoderTakes()) handOver();
       else waitForShow();
@@ -556,8 +542,7 @@ export function stopEncoder(): void {
   if (encoder) say('the encoder stops');
   encoder?.close();
   encoder = null;
-  void soundReader?.cancel();
-  soundReader = null;
+  encoderAudio.stop();
   update();
 }
 
@@ -579,6 +564,7 @@ export function stopVideoOut(): void {
 export function setCaptureSize(next: { width: number; height: number }): void {
   if (next.width === size.width && next.height === size.height) return;
   size = next;
+  if (capturePending) generation++;
   if (track) {
     generation++;
     keepLatest(null);
