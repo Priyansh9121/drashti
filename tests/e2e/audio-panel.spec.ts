@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -13,6 +13,7 @@ import {
   openSection,
   operatorPage,
   operatorReady,
+  relaunchApp,
 } from './helpers';
 import { mouseDrag } from './mouse-drag';
 import { makeTestImage, makeTestTone } from './test-media';
@@ -107,5 +108,67 @@ test('Audio’s + has Create playlist and Import only; sounds dropped or dragged
     'Audio playlist: Placeholder katha.wav',
   ]);
   await expectNoSeriousA11yIssues(win, 'the Audio panel', '[data-testid="audio-group"]');
+  await app.close();
+});
+
+/** The audio playlists' names, as the main process has them. */
+const audioNames = (win: Page) =>
+  win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.music.view()).playlists.map((p) => p.name).sort(),
+  );
+
+test('Audio folded at the start (alpha.22): + › Create playlist names a new one past the lists already there, as it does open', async () => {
+  test.setTimeout(90_000);
+  const first = await launchApp();
+  const win1 = await operatorPage(first.app);
+  await operatorReady(win1);
+  // An audio playlist from an earlier day.
+  await win1.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.music.create('Audio playlist');
+    if (!made.ok) throw new Error('Could not make the audio playlist');
+  });
+  await first.app.close();
+  const { app } = await relaunchApp(first.userData);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const toggle = win.getByTestId('group-audio-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  // Its + on the folded heading, as in the owner's picture.
+  await win.getByTestId('audio-add').click();
+  await win.getByRole('menuitem', { name: 'Create playlist' }).click();
+  await expect.poll(() => audioNames(win)).toEqual(['Audio playlist', 'Audio playlist 2']);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await app.close();
+});
+
+test('Audio folded at the start (alpha.22): + › Import of an audio playlist file says at once what it did not take, and nothing comes up later as Audio opens', async () => {
+  test.setTimeout(90_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-audio-folded-'));
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const toggle = win.getByTestId('group-audio-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  // A sound and a web address, which is listed and never fetched (nothing listens there).
+  const tone = makeTestTone(join(dir, 'Placeholder bhajan.wav'), { seconds: 2 });
+  const web = 'http://127.0.0.1:9/placeholder.wav';
+  const list = join(dir, 'Placeholder audio.m3u8');
+  writeFileSync(list, `#EXTM3U\n${tone}\n${web}\n`);
+  await app.evaluate(({ dialog }, file) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [file] });
+  }, list);
+  await win.getByTestId('audio-add').click();
+  await win.getByRole('menuitem', { name: 'Import', exact: true }).click();
+  const report = win.getByRole('dialog', { name: 'Playlist file: entries not taken' });
+  await expect(report).toBeVisible();
+  await expect(report.getByTestId('m3u-not-taken')).toContainText(web);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await report.getByRole('button', { name: 'Close playlist file report' }).click();
+  await expect(report).toHaveCount(0);
+  await expect.poll(() => audio(win)).toEqual(['Placeholder audio: Placeholder bhajan.wav']);
+  // Opened afterwards, Audio shows the list, and no report comes up over the show.
+  await openSection(win, 'audio');
+  await expect(win.getByTestId('music-playlist').filter({ hasText: 'Placeholder audio' })).toBeVisible();
+  await expect(report).toHaveCount(0);
   await app.close();
 });

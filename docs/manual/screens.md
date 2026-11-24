@@ -58,6 +58,8 @@
 3. The status bar says **Audience off** or **Stage off**, with **Turn on**.
 4. Both are on again every time Drashti starts.
 
+After an audience screen is turned on or reloaded mid-show, the picture already up is prepared first. Next then loads ahead as usual. The existing wait for a picture stays at three seconds.
+
 ![The top bar with Screens, Audience and Stage](../screenshots/operator-1280x720.png)
 
 ## Keep these screens?
