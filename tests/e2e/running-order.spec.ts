@@ -154,11 +154,24 @@ test('Save running order as PDF… writes the open playlist’s running order wh
       app.evaluate(() => (globalThis as { drashtiPrinted?: Printed[] }).drashtiPrinted ?? []);
     const win = await operatorPage(app);
     await operatorReady(win);
-    await placeholderSabha(win, dir);
+    const { id } = await placeholderSabha(win, dir);
     // The notice's own words (its card also holds Report this…).
     const notice = win.getByTestId('operator-notice').locator('p');
     const refused =
       'Print or save the running order when nothing is up, on air or recording: clear what is up, and end the stream and the recording first.';
+    // Both asked of the main process directly (not through the menu): each answer, in order.
+    const askBoth = () =>
+      win.evaluate(async (playlistId) => {
+        const d = (globalThis as PageGlobals).drashti;
+        return [
+          await d.playlists.printRunningOrder(playlistId),
+          await d.playlists.saveRunningOrderPdf(playlistId),
+        ];
+      }, id);
+    const bothRefused = [
+      { ok: false, cancelled: false, message: refused },
+      { ok: false, cancelled: false, message: refused },
+    ];
 
     // Something up: refused in words, nothing asked and nothing printed.
     await win.evaluate(async () => {
@@ -172,6 +185,7 @@ test('Save running order as PDF… writes the open playlist’s running order wh
     await expect(notice).toHaveText(refused);
     await playlistAction(win, 'Print running order…');
     await expect(notice).toHaveText(refused);
+    expect(await askBoth()).toEqual(bothRefused);
     expect(await offered()).toEqual([]);
     expect(await printed()).toEqual([]);
 
@@ -201,7 +215,9 @@ test('Save running order as PDF… writes the open playlist’s running order wh
     });
     await playlistAction(win, 'Save running order as PDF…');
     await expect(notice).toHaveText(refused);
+    expect(await askBoth()).toEqual(bothRefused);
     expect(await offered()).toHaveLength(1);
+    expect(await printed()).toHaveLength(1);
     await app.evaluate(() => {
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
     });
