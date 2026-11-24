@@ -4083,8 +4083,11 @@ function start(): void {
   const speechEngine =
     testSpeech !== undefined
       ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
+        // DRASHTI_TEST_SPEECH_HOLD=n (cap-threads): it rests after its first phrase, as a too-slow computer does, as the
+        // n-th rest in a row (3: captions then stop).
         createStandInEngine(testSpeech.split('|'), undefined, {
           once: sw('DRASHTI_TEST_SPEECH_ONCE') !== undefined,
+          hold: Number(sw('DRASHTI_TEST_SPEECH_HOLD') ?? 0),
         })
       : createWhisperEngine({
           program: () => whisperProgram,
@@ -4105,6 +4108,8 @@ function start(): void {
           // The tuned language models are decoded without timestamps (alpha.22).
           timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
           timing: () => captions.timing(),
+          // Captions that have shown a phrase whole are never stopped as too slow (cap-review-threads MUST-1b).
+          keptUp: () => captions.keptUp(),
           sound: { open: (chunk) => streaming.listenSound(chunk) },
           // The admin's caption words as hints (cap-glossary).
           hints: captionWords.hints,
@@ -4136,6 +4141,7 @@ function start(): void {
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
             timing: () => captions.timing(),
+            keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,

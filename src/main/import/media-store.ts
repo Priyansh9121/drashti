@@ -426,7 +426,9 @@ export class MediaStore {
         };
       }
     }
-    if (kind === 'image' && !picture?.convert && this.options.prepareDisplay) {
+    // A screen copy only of a picture that plays as it is (wave-1 full run: a HEIC FFmpeg did not read was turned down
+    // here). One to be converted, or one no reader has named, comes in as before L8.
+    if (kind === 'image' && picture?.probe.playable === true && this.options.prepareDisplay) {
       const prepared = await this.options
         .prepareDisplay({ path: rel, sha256: hashed.sha256 }, signal)
         .catch(() => ({

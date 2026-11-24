@@ -44,7 +44,12 @@ describe('MediaStore', () => {
         }),
     );
     const store = new MediaStore(t.db, { dir: t.mediaDir, prepareDisplay });
-    const path = t.file('Placeholder new.png', 'placeholder picture bytes');
+    // A picture that plays as it is (a PNG's own first bytes).
+    const path = t.file('Placeholder new.png', '');
+    writeFileSync(
+      path,
+      Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]),
+    );
     let settled = false;
     const staged = store.stage(path).then((result) => {
       settled = true;
@@ -55,6 +60,31 @@ describe('MediaStore', () => {
     finish({ ok: false, message: 'Could not prepare the display copy.' });
     expect(await staged).toMatchObject({ ok: false, issue: { code: 'picture-display' } });
     expect(t.db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 0 });
+  });
+
+  it('asks for a screen copy only of a picture that plays as it is: a HEIC FFmpeg did not read is imported as before, to be converted (wave-1 full run, convert.spec.ts:36)', async () => {
+    const t = setup();
+    const prepareDisplay = vi.fn(() =>
+      Promise.resolve({ ok: false as const, message: 'The picture header could not be read.' }),
+    );
+    // No FFmpeg read here (none, or it failed or took too long): the stored copy's own header says.
+    const store = new MediaStore(t.db, { dir: t.mediaDir, prepareDisplay });
+    const path = t.file('Placeholder photo.heic', '');
+    writeFileSync(
+      path,
+      Buffer.concat([
+        Buffer.from([0, 0, 0, 0x18]),
+        Buffer.from('ftypheic'),
+        Buffer.alloc(4),
+        Buffer.from('mif1heic'),
+        Buffer.alloc(32),
+      ]),
+    );
+    expect(await store.stage(path)).toMatchObject({
+      ok: true,
+      staged: { kind: 'image', probe: { playable: false, kind: 'image' } },
+    });
+    expect(prepareDisplay).not.toHaveBeenCalled();
   });
 
   it('lists only what was imported as media: a page Drashti drew is not, until the same picture is dropped in on its own (Session 26a)', async () => {
