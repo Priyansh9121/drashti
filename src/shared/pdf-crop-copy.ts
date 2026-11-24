@@ -1,6 +1,16 @@
 import { PDFDocument } from 'pdf-lib';
 import type { CropRect } from './picture-look';
 
+/** PDF rectangles can name either diagonal first; PDF.js displays their normalized bounds. */
+function normalizedBox(box: { x: number; y: number; width: number; height: number }) {
+  return {
+    x: Math.min(box.x, box.x + box.width),
+    y: Math.min(box.y, box.y + box.height),
+    width: Math.abs(box.width),
+    height: Math.abs(box.height),
+  };
+}
+
 /** CropBox edits on the assembled copy only; neither page contents nor source bytes are changed. */
 export async function cropPdfCopy(data: Uint8Array, crops: (CropRect | undefined)[]): Promise<Uint8Array> {
   if (!crops.some(Boolean)) return data;
@@ -9,8 +19,8 @@ export async function cropPdfCopy(data: Uint8Array, crops: (CropRect | undefined
   for (const [index, page] of doc.getPages().entries()) {
     const crop = crops[index];
     if (!crop) continue;
-    const media = page.getMediaBox();
-    const box = page.getCropBox();
+    const media = normalizedBox(page.getMediaBox());
+    const box = normalizedBox(page.getCropBox());
     // PDF.js displays the intersection of CropBox and MediaBox (or MediaBox if disjoint).
     const left = Math.max(media.x, box.x),
       bottom = Math.max(media.y, box.y);
