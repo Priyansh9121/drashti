@@ -1,5 +1,5 @@
 import { type EngineState, isLayerEmpty, LAYER_NAMES } from './engine/state';
-import type { DeviceInfo } from './network';
+import type { DeviceInfo, NetworkStatus } from './network';
 import type { ScreenRole, ScreensSnapshot, ScreenState } from './screens';
 
 /*
@@ -127,11 +127,16 @@ export function stageScreensSet(
 
 /**
  * The devices paired as Stage (alpha.23): each shows the stage display in its browser (`/stage`), whether it is
- * connected now or not, as a stage screen whose display is unplugged is still set. Never a Remote, an Announcements
- * phone or the announcements poster link.
+ * connected now or not, as a stage screen whose display is unplugged is still set; but only while the Network
+ * (phones and tablets) is on (a22-review-stage8 S5): with it off a tablet can show nothing, so none counts. Never a
+ * Remote, an Announcements phone or the announcements poster link.
  */
-export function stageDevicesPaired(devices: readonly Pick<DeviceInfo, 'kind' | 'poster'>[]): number {
-  return devices.filter((d) => d.kind === 'stage' && !d.poster).length;
+export function stageDevicesPaired(network: {
+  on: NetworkStatus['on'];
+  devices: readonly Pick<DeviceInfo, 'kind' | 'poster'>[];
+}): number {
+  if (!network.on) return 0;
+  return network.devices.filter((d) => d.kind === 'stage' && !d.poster).length;
 }
 
 /**

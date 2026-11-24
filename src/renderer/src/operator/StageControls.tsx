@@ -126,11 +126,12 @@ function StagePreviewButton() {
 /**
  * No screen is set to Stage (alpha.22; the owner, 24 Nov 2026: "right now i am unable to setup stage screen even its
  * on"): said plainly, with Set up Stage screen…, which opens Screens, where one click gives a display the Stage job.
- * A stage screen whose display is unplugged or whose node is offline, and a tablet paired as Stage, are set to Stage
- * (alpha.23, a22-review-stage S8). Nothing is said before the screens and the paired devices are known.
+ * A stage screen whose display is unplugged or whose node is offline, and a tablet paired as Stage while the Network
+ * is on, are set to Stage (alpha.23, a22-review-stage S8). Nothing is said before the screens and the paired devices
+ * are known.
  */
 function NoStageScreen() {
-  const tablets = useNetwork((s) => (s.status ? stageDevicesPaired(s.status.devices) : null));
+  const tablets = useNetwork((s) => (s.status ? stageDevicesPaired(s.status) : null));
   const none = useScreens((s) =>
     s.snapshot && tablets !== null ? stageScreensSet(s.snapshot, tablets) === 0 : false,
   );

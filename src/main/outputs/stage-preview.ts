@@ -50,3 +50,20 @@ export function revealPreview(win: {
  * screens), and never a capture of another app's window: it names the window instead, as a tablet does.
  */
 export const PREVIEW_LIVE = { camera: 'output', list: true, report: false, window: false } as const;
+
+/** What a page asks of this computer's live pictures: a camera, the video inputs' list, to say how an input stands, a window's capture. */
+export type LiveAsk = keyof typeof PREVIEW_LIVE;
+
+/**
+ * How Main answers a page's ask (a22-review-stage8 S4; index.ts's cameraPage, videoInputs.list, videoInputs.report,
+ * liveWindow.ask and .ended): 'yes' to a screen's page (an output, the stream's, the operator window), 'no' to any
+ * other page, and to the Stage preview as PREVIEW_LIVE says, 'refused' for what it never may (said in the log). The
+ * preview is judged first, so it never passes as a screen's page.
+ */
+export function liveAnswer(
+  ask: LiveAsk,
+  page: { preview: boolean; screen: boolean },
+): 'yes' | 'no' | 'refused' {
+  if (page.preview) return PREVIEW_LIVE[ask] === false ? 'refused' : 'yes';
+  return page.screen ? 'yes' : 'no';
+}

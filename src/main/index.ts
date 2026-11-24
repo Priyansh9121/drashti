@@ -342,7 +342,7 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
-import { PREVIEW_LIVE, revealPreview } from './outputs/stage-preview';
+import { liveAnswer, PREVIEW_LIVE, revealPreview } from './outputs/stage-preview';
 import { keepStage, STAGE_SETTING, stageStartsOn } from './outputs/stage-switch-setting';
 import { coverBox } from './network/desktop-consent';
 import type { DesktopLibrary } from './network/desktop-answers';
@@ -1793,7 +1793,9 @@ function start(): void {
       if (manager.screenIdFor(contents.id) !== undefined) return 'output';
       // The Stage preview (alpha.23, QA23-STAGE8-1): its video input box and a video input behind the audience
       // picture, live, as a stage screen's (outputs/stage-preview.ts PREVIEW_LIVE).
-      return isStagePreview(contents.id) ? PREVIEW_LIVE.camera : null;
+      return liveAnswer('camera', { preview: isStagePreview(contents.id), screen: false }) === 'yes'
+        ? PREVIEW_LIVE.camera
+        : null;
     },
     // On a Mac, no camera until System Settings' Camera says granted: macOS never asks before the page has said
     // why (Media's askAccess asks). Chromium's fake camera (tests) counts as granted.
@@ -3330,7 +3332,8 @@ function start(): void {
     },
     // A tablet paired as Stage is a stage display (alpha.23, a22-review-stage S8): Stage On with one says nothing of
     // no screen set to Stage, as with a stage screen whose display is unplugged or whose node is offline.
-    stageDevices: () => stageDevicesPaired(stageTablets.list()),
+    // Only while the Network is on (a22-review-stage8 S5): with it off a tablet shows nothing.
+    stageDevices: () => stageDevicesPaired({ on: net.on, devices: stageTablets.list() }),
   });
   // The engine's Stage off as the switch starts (alpha.22: off on a new library), and the log says how it started.
   engine.setStage({ off: !manager.switches().stage });
@@ -9368,17 +9371,26 @@ function start(): void {
   // The screens' pages only: an output, the stream's page, and the operator window's pictures of them.
   const screenPage = (e: IpcMainInvokeEvent) =>
     fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined || streaming.isProgram(e.sender);
+  /** Who asks (outputs/stage-preview.ts liveAnswer): the Stage preview, or a screen's page. */
+  const livePage = (e: IpcMainInvokeEvent) => ({
+    preview: isStagePreview(e.sender.id),
+    screen: screenPage(e),
+  });
   handle(IPC.liveWindow.ask, (e, sourceId) => {
     // The Stage preview never captures another app's window: it names it (alpha.23, QA23-STAGE8-1). Its page never
     // asks; were it to, said in the log and refused.
-    if (isStagePreview(e.sender.id)) {
+    const answer = liveAnswer('window', livePage(e));
+    if (answer === 'refused') {
       log.warn('Show a Window: the Stage preview asked to capture the window: refused (it names it)');
       return false;
     }
-    return screenPage(e) && typeof sourceId === 'string' ? shownWindows.ask(e.senderFrame, sourceId) : false;
+    return answer === 'yes' && typeof sourceId === 'string'
+      ? shownWindows.ask(e.senderFrame, sourceId)
+      : false;
   });
   handle(IPC.liveWindow.ended, (e, sourceId) => {
-    if (screenPage(e) && typeof sourceId === 'string') shownWindows.ended(sourceId);
+    if (liveAnswer('window', livePage(e)) === 'yes' && typeof sourceId === 'string')
+      shownWindows.ended(sourceId);
     return null;
   });
 
@@ -9392,7 +9404,7 @@ function start(): void {
   // The slide editor's window too (Session 55, Part 17a): a slide's background is a video input by its name.
   // The Stage preview too (alpha.23, QA23-STAGE8-1): it draws the input live, as a stage screen does.
   handle(IPC.videoInputs.list, (e) =>
-    screenPage(e) || isStagePreview(e.sender.id) || (slideEditor?.isPage(e.sender) ?? false)
+    liveAnswer('list', livePage(e)) === 'yes' || (slideEditor?.isPage(e.sender) ?? false)
       ? inputs.view()
       : { inputs: [] },
   );
@@ -9418,11 +9430,12 @@ function start(): void {
   handle(IPC.videoInputs.report, (e, report) => {
     // The Stage preview is no screen: it never says how the input stands (alpha.23, QA23-STAGE8-1). Its page never
     // does; were it to, said in the log and never heard.
-    if (isStagePreview(e.sender.id)) {
+    const answer = liveAnswer('report', livePage(e));
+    if (answer === 'refused') {
       log.warn('Video inputs: the Stage preview said how an input stands: not heard (it is no screen)');
       return null;
     }
-    if (!screenPage(e)) return null;
+    if (answer === 'no') return null;
     const page = e.sender;
     const id = page.id;
     if (!reportingPages.has(id)) {
