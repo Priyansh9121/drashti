@@ -18,6 +18,7 @@ import {
   answerFromOutput,
   cancelAsk,
   confirmAsk,
+  sayProblemsWith,
   toggleSwitch,
   turnOnIfOff,
   useScreenSwitches,
@@ -171,6 +172,10 @@ export function ScreenSwitchAsk({ platform }: { platform: string }) {
       }),
     [],
   );
+  // Answered by Enter or Esc before the question had the keyboard (alpha.22's gate): its problems said as theirs.
+  useEffect(() => {
+    sayProblemsWith(say);
+  }, []);
   if (!asking) return null;
   // Made again when an output over the controls starts or stops asking, so the keyboard starts where it should.
   return <Asking key={covered ? 'covered' : 'here'} which={asking} covered={covered} platform={platform} />;

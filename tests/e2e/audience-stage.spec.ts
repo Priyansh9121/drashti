@@ -634,6 +634,22 @@ test('covering the controls: Mod+1’s question shows on that output too; Esc ca
     await expect.poll(() => switches(win)).toEqual({ audience: false, stage: true });
     await expect.poll(() => outputPages(app).filter((p) => !p.isClosed()).length).toBe(0);
     await expect(ask).toHaveCount(0);
+
+    // Mod+1 and Enter at once (alpha.22's gate, run 45399099984: an Enter pressed as the output asked, before this
+    // window's question had the keyboard, was lost): the Enter is the question's answer all the same, Turn off's.
+    await win.getByTestId('switch-off-audience').getByRole('button', { name: 'Turn on Audience' }).click();
+    const back = await windowShowing(
+      app,
+      (p) => p.url().includes('output.html') && !p.url().includes('identify=') && !p.isClosed(),
+      'output',
+    );
+    await outputReady(back);
+    await expect.poll(() => switches(win)).toEqual({ audience: true, stage: true });
+    await win.keyboard.press(`${MOD}+1`);
+    await win.keyboard.press('Enter');
+    await expect.poll(() => switches(win)).toEqual({ audience: false, stage: true });
+    await expect.poll(() => outputPages(app).filter((p) => !p.isClosed()).length).toBe(0);
+    await expect(ask).toHaveCount(0);
   } finally {
     await app.close();
   }

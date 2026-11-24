@@ -61,6 +61,10 @@ async function tellAsking(which: ScreenSwitch | null): Promise<boolean> {
 export function connectScreenSwitches(): void {
   if (connected) return;
   connected = true;
+  // Enter or Esc before the question has the keyboard is its answer, never lost (alpha.22's gate): before anything else
+  // sees it.
+  if (typeof window.addEventListener === 'function')
+    window.addEventListener('keydown', onKeyBeforeQuestion, true);
   window.drashti.screenSwitches.onChanged((switches) => {
     useScreenSwitches.setState({ switches, known: true });
   });
@@ -109,12 +113,17 @@ export async function toggleSwitch(which: ScreenSwitch): Promise<string | null> 
   if (!switches[which]) return turnSwitch(which, true);
   if (!switchAsksFirst(which)) return turnSwitch(which, false);
   opening = true;
+  held = null;
   try {
     const covered = await tellAsking(which);
     useScreenSwitches.setState({ asking: which, covered });
   } finally {
     opening = false;
   }
+  // Enter or Esc pressed meanwhile: the question's answer, as its focused button would take it (alpha.22's gate).
+  const key = held;
+  held = null;
+  if (key) return answerKey(key, useScreenSwitches.getState().covered);
   return null;
 }
 
@@ -150,7 +159,48 @@ export function turnOnIfOff(which: ScreenSwitch): Promise<string | null> {
   return useScreenSwitches.getState().switches[which] ? Promise.resolve(null) : turnSwitch(which, true);
 }
 
-/** A key pressed before the question has the keyboard: a stub until the fix lands (not taken, as before). */
-export function keyBeforeQuestion(_key: string, _questionHasKeyboard: boolean): boolean {
-  return false;
+/**
+ * Enter or Esc pressed before the question has the keyboard (alpha.22's gate, run 45399099984): the main process shows
+ * the question on an output over the controls ("Enter turns Audience off") as the window is told of it, a moment before
+ * this window's own question is open with its button focused. A key pressed in that moment went to nothing and was
+ * lost. It is the question's answer instead, as its own focused button would take it: Enter is Turn off's while an
+ * output over the controls asks too (it has the keyboard then), else Cancel's; Esc cancels. Held while the main
+ * process is being told (`opening`), answered at once once it is open. True when the key was taken.
+ */
+export function keyBeforeQuestion(key: string, questionHasKeyboard: boolean): boolean {
+  if (key !== 'Enter' && key !== 'Escape') return false;
+  if (opening) {
+    held = key;
+    return true;
+  }
+  const { asking, covered } = useScreenSwitches.getState();
+  if (!asking || questionHasKeyboard) return false;
+  void answerKey(key, covered).then(sayProblem);
+  return true;
+}
+
+/** The question answered by a key, as its focused button would answer it. */
+function answerKey(key: 'Enter' | 'Escape', covered: boolean): Promise<string | null> {
+  if (key === 'Enter' && covered) return confirmAsk();
+  cancelAsk();
+  return Promise.resolve(null);
+}
+
+/** A problem from an answer given by a key, said as the buttons' are (operator/actions.ts's notice). */
+let sayProblem: (problem: string | null) => void = () => undefined;
+export function sayProblemsWith(say: (problem: string | null) => void): void {
+  sayProblem = say;
+}
+
+/** The key that came while the main process was being told (Enter or Esc), answered once the question is open. */
+let held: 'Enter' | 'Escape' | null = null;
+
+/** The window's keys before the question has them (connectScreenSwitches): the question's own dialog, by its id. */
+function onKeyBeforeQuestion(e: KeyboardEvent): void {
+  if (e.isComposing || e.defaultPrevented) return;
+  const question = document.querySelector('[data-testid="screen-switch-ask"]');
+  const has = question !== null && question.contains(document.activeElement);
+  if (!keyBeforeQuestion(e.key, has)) return;
+  e.preventDefault();
+  e.stopPropagation();
 }
