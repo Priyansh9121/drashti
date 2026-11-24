@@ -1793,9 +1793,7 @@ function start(): void {
       if (contents.id === operatorWindow?.webContents.id) return 'operator';
       if (manager.screenIdFor(contents.id) !== undefined) return 'output';
       // The Stage preview: none (alpha.23, QA23-STAGE8-1's C; outputs/stage-preview.ts liveAnswer).
-      return liveAnswer('camera', { preview: isStagePreview(contents.id), screen: false }) === 'yes'
-        ? 'output'
-        : null;
+      return isStagePreview(contents.id) ? 'output' : null;
     },
     // On a Mac, no camera until System Settings' Camera says granted: macOS never asks before the page has said
     // why (Media's askAccess asks). Chromium's fake camera (tests) counts as granted.
