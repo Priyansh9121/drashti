@@ -18,6 +18,14 @@ it('ships the complete installed PDF writer licences and the zlib notice on both
     );
   }
   const zlib = read('LICENSES/pdf-lib/pako-Zlib.txt');
+  const deflate = read(join(dirname(require.resolve('pako/package.json')), 'lib/zlib/deflate.js'));
+  const originalNotice = deflate
+    .slice(deflate.indexOf('// (C)'), deflate.indexOf('\nvar utils'))
+    .split('\n')
+    .map((line) => line.replace(/^\/\/ ?/u, ''))
+    .join('\n')
+    .trim();
+  expect(zlib).toBe(`${originalNotice}\n`);
   expect(zlib).toContain('(C) 1995-2013 Jean-loup Gailly and Mark Adler');
   const helper = dirname(require.resolve('pdf-lib/package.json'));
   expect(read('LICENSES/pdf-lib/tslib-CopyrightNotice.txt')).toBe(
