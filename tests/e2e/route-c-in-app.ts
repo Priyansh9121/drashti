@@ -170,6 +170,35 @@ async function recordFrames(p: Page): Promise<() => Promise<number[]>> {
   return () => p.evaluate(() => [...(globalThis as unknown as { streamFrames: number[] }).streamFrames]);
 }
 
+/**
+ * The stream's sound level as its page reports it (body data-level: the loudest of each 100 ms, dBFS), with this
+ * computer's clock: when each sound reached the stream's sound graph, and for how long it was loud there.
+ */
+async function recordLevels(p: Page): Promise<() => Promise<{ at: number; db: number }[]>> {
+  await p.evaluate(() => {
+    const seen: { at: number; db: number }[] = [];
+    (globalThis as unknown as { streamLevels: typeof seen }).streamLevels = seen;
+    new MutationObserver(() => {
+      seen.push({ at: Date.now(), db: Number(document.body.dataset['level'] ?? '-100') });
+    }).observe(document.body, { attributes: true, attributeFilter: ['data-level'] });
+  });
+  return () =>
+    p.evaluate(() => [
+      ...(globalThis as unknown as { streamLevels: { at: number; db: number }[] }).streamLevels,
+    ]);
+}
+
+/**
+ * Where a sound was loud in the stream's sound graph (over -45 dBFS), between `from` and `to` (this computer's clock):
+ * its first and last loud report, and how many 100 ms reports were loud. Null when it never was.
+ */
+function loudSpan(levels: readonly { at: number; db: number }[], from: number, to: number) {
+  const loud = levels.filter((l) => l.at >= from && l.at <= to && l.db > -45);
+  const first = loud[0];
+  const last = loud.at(-1);
+  return first && last ? { first: first.at, last: last.at, reports: loud.length } : null;
+}
+
 /** A window of frames as the frame meters read them: the gaps' 95th percentile, the longest, those over 1.5 periods. */
 function meter(frames: readonly number[], from: number, to: number, period?: number) {
   const inside = frames.filter((t) => t >= from && t <= to);
@@ -250,6 +279,7 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       ['stream', await recordDrawn(places.stream)],
     ] as const;
     const frames = await recordFrames(places.stream);
+    const levels = await recordLevels(places.stream);
     const reviewed = await recordReview(win);
 
     // The stream's profile: no camera, and no sound input yet (the fake microphone begins its file when opened).
@@ -414,6 +444,20 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
         row[`${name}Ms`] = at === null ? null : Math.round(at - (soundAskedAt + sound.speechEndMs));
         row[`${name}AtLeastMs`] = at === null ? null : Math.round(at - (soundOnAt + sound.speechEndMs));
       }
+      // When the sound itself reached the stream's sound graph, against when the file holds it (the file at its
+      // earliest): a fake microphone late or slow on a busy computer shows here, apart from the recogniser.
+      const heardLevels = loudSpan(
+        await levels(),
+        soundAskedAt + sound.startMs - 500,
+        next ? soundAskedAt + next.startMs - 500 : soundAskedAt + sound.endMs + o.gapMs,
+      );
+      row['arrivedLateMs'] = heardLevels
+        ? Math.round(heardLevels.first - (soundAskedAt + sound.speechStartMs))
+        : null;
+      row['loudForMs'] = heardLevels ? Math.round(heardLevels.last - heardLevels.first) : null;
+      row['voiceMs'] = Math.round(sound.speechEndMs - sound.speechStartMs);
+      // What was heard, only when it was wrong: generated placeholder sentences (cap-winci's), never real speech.
+      if (!heard.ok) row['heard'] = own.map((p) => p.text).join(' ');
       report.push(row);
       checks.push({ sound: sound.id, phrases: own.length, heardOk: heard.ok, shown });
     }
