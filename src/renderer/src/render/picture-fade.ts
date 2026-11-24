@@ -22,8 +22,8 @@ import { fadeClock } from './cue-clock';
 
 /**
  * Whether a real crossfade is on at `now` (the engine's time): one with a length (a manual Go's pair is 0 ms, a cut)
- * that is not over: from its state, one Go lead before its start, to its end, and held while it is paused. As the
- * stream's own sound (program/sound.ts, a22-review-fade M1).
+ * that is not over: from its state (a second before an automatic crossfade's start, QA23-FADE-9; one Go lead before a
+ * press's) to its end, and held while it is paused. As the stream's own sound (program/sound.ts, a22-review-fade M1).
  */
 export function crossfadeOn(fade: VideoCrossfade | null | undefined, now: number): boolean {
   return !!fade && fade.durationMs > 0 && videoFadeProgress(fade, now) < 1;

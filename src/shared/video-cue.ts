@@ -36,6 +36,15 @@ export function videoCueReady(_cue: VideoCue): boolean {
 export const VIDEO_GO_LEAD_MS = 120;
 
 /**
+ * How far ahead of its moment an automatic crossfade's Go is sent (ms; QA23-FADE-9, the owner: "Start it early, unheard
+ * (Rec.)"): each page has it a second early, and the stream's sound page starts the incoming sound then, behind a delay
+ * of the time left, so the audio clock says when it is heard (CI's two-core Windows: that page did nothing for 0.77 s
+ * from a fade's start, and one Go lead ahead its incoming sound began 0.44 s late). The moment itself is the
+ * playlist's own, as before; a cue ready later goes at once, at that moment.
+ */
+export const CROSSFADE_GO_LEAD_MS = 1000;
+
+/**
  * The stream's page draws its frames off screen on a fixed grid (30 a second): when it began one (the engine's clock,
  * ms) and how far apart they are. It tells Main while a cue waits (renderer/src/program/frame-grid.ts).
  */

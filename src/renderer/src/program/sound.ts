@@ -3,7 +3,7 @@ import { CuedStartKeeper } from '../render/cued-start';
 import { applyVideoEnvelope } from '../audio/video-envelope';
 import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from '../audio/sounds';
-import { videoFadeProgress } from '../../../shared/video-cue';
+import { CROSSFADE_GO_LEAD_MS, videoFadeProgress } from '../../../shared/video-cue';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
 import { FADE_SOUND_LIMITS, type PlaybackSeek, STREAM_SOUND_LIMITS } from '../../../shared/media';
@@ -36,8 +36,12 @@ const LEVEL_MS = 50;
 
 export const STREAM_SAMPLE_RATE = 48_000;
 
-/** The most a crossfade's incoming sound is started ahead of its fade (QA23-FADE-4; its lead's delay, s). */
-const FADE_LEAD_MAX_S = 0.5;
+/**
+ * The most a crossfade's incoming sound is started ahead of its fade (QA23-FADE-4; its lead's delay, s): an automatic
+ * crossfade's Go comes a second ahead (QA23-FADE-9, CROSSFADE_GO_LEAD_MS), with room for a page whose clock reads it a
+ * little early.
+ */
+const FADE_LEAD_MAX_S = (CROSSFADE_GO_LEAD_MS + 500) / 1000;
 
 /** Its clock `leadMs` earlier (QA23-FADE-4): a crossfade's incoming sound, aimed that far ahead and heard as late. */
 function aheadBy(sound: Sound, leadMs: number): PlaybackSeek | undefined {
@@ -288,10 +292,11 @@ export class StreamSound {
       };
       // QA22-FADE-1 (alpha.23, the owner: "±8%, jump past 0.5 s"): in a crossfade, out of step, by speed and not a
       // jump: while it carries a real crossfade's envelope (a length, not a manual Go's 0 ms pair) and that fade is not
-      // over by the engine's time (from the crossfade's state, one Go lead before its start, to its end; held while it
-      // is paused), never until the pair's take-away reaches this page (a22-review-fade M1). Only a player there before
-      // its fade (the outgoing one, or the cue's prepared one): one made inside a fade (this page started again in it)
-      // is put in place as ever, by a jump (a22-review-x86 E5: 0.3 s at 8% would outlast it).
+      // over by the engine's time (from the crossfade's state, a second before an automatic one's start, QA23-FADE-9,
+      // or one Go lead before a press's, to its end; held while it is paused), never until the pair's take-away reaches
+      // this page (a22-review-fade M1). Only a player there before its fade (the outgoing one, or the cue's prepared
+      // one): one made inside a fade (this page started again in it) is put in place as ever, by a jump
+      // (a22-review-x86 E5: 0.3 s at 8% would outlast it).
       const easeable = !sound.envelope || sound.prepared === true;
       const inFade = () => {
         const fade = own.sound.envelope?.fade;
@@ -331,7 +336,10 @@ export class StreamSound {
    * player is aimed that far ahead, and its sound goes into the mix through a delay of just that much, set once before
    * it plays (a delay changed while it plays would change its pitch): heard from the fade's own moment, by the audio
    * clock. Only a real crossfade's (a length), from its cue's prepared player, once; a Go that comes after its moment,
-   * a manual Go (no crossfade) and the outgoing sound start as before.
+   * a manual Go (no crossfade) and the outgoing sound start as before. An automatic crossfade's Go comes a second ahead
+   * (QA23-FADE-9, the owner: "Start it early, unheard (Rec.)"), so its lead is about a second: the incoming sound is
+   * playing, unheard behind it, before the fade's own busy moment (on CI's two-core Windows, 0.77 s with nothing done on
+   * this page's main thread from a fade's start).
    */
   private leadIn(own: OwnSound): void {
     const s = own.sound;

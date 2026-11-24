@@ -5,6 +5,7 @@ import {
   goOnStreamFrame,
   type CuedVideo,
   type VideoCue,
+  CROSSFADE_GO_LEAD_MS,
   VIDEO_GO_LEAD_MS,
   videoCueReady,
   videoFadeProgress,
@@ -959,13 +960,20 @@ export class ShowEngine {
     if (want && automatic && key)
       this.cueWait = {
         key,
-        cancel: this.wait(Math.max(0, automatic.at - VIDEO_GO_LEAD_MS - this.now()), () => {
-          this.cueWait = null;
-          this.atOnce(() => {
-            const shown = this.goVideoCue(want.id, true);
-            if (shown.ok) this.apply(shown.actions);
-          });
-        }),
+        // A crossfade's Go a second ahead (QA23-FADE-9), a plain Next item's one Go lead ahead, as before.
+        cancel: this.wait(
+          Math.max(
+            0,
+            automatic.at - (automatic.durationMs > 0 ? CROSSFADE_GO_LEAD_MS : VIDEO_GO_LEAD_MS) - this.now(),
+          ),
+          () => {
+            this.cueWait = null;
+            this.atOnce(() => {
+              const shown = this.goVideoCue(want.id, true);
+              if (shown.ok) this.apply(shown.actions);
+            });
+          },
+        ),
       };
   }
 
