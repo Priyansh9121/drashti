@@ -158,3 +158,38 @@ it("lets LIVE's held scene go at once on any other change after Go, and 250 ms p
   expect(late.at({ ...after, videoStart: null }, 749)?.layers.background).toEqual(before.layers.background);
   expect(late.at({ ...after, videoStart: null }, 750)?.layers.background).toEqual(after.layers.background);
 });
+
+it("holds LIVE's scene through Main's Go-time patch when the drawn state is prepared anew on every patch (translated slides)", () => {
+  // a22-review-cuelive SHOULD-5: Scene's preparedOutputState gives new `next` and `slideOff` objects on every call with
+  // translated slides around the cue, so the drawn states always differ; the raw engine states are what is compared.
+  const before = initialEngineState();
+  before.layers.background = { kind: 'color', color: '#205020' };
+  const background = {
+    kind: 'media' as const,
+    media: 'video' as const,
+    mediaId: 'new',
+    cueId: 'cue',
+    fit: 'fit' as const,
+    loop: false,
+    startedAt: 1,
+    seek: { at: 0, toMs: 1000, paused: true },
+  };
+  before.videoCue = { id: 'cue', label: 'Placeholder', background, playlist: null, required: [], ready: [] };
+  const after = {
+    ...before,
+    videoCue: null,
+    videoStart: { id: 'cue', at: 500, mediaIds: ['new'], soundIds: ['new'] },
+    layers: { ...before.layers, background: { ...background, seek: { at: 500, toMs: 1000 } } },
+  };
+  const goPatch = { ...after, videoStart: null };
+  // A prepared copy, as Scene draws: a new top-level object for what it translates, on every call.
+  const prepared = (s: typeof before) => ({
+    ...s,
+    slideOff: s.slideOff ? { ...s.slideOff } : null,
+    upcoming: [...s.upcoming],
+  });
+  const keeper = new CuedStartKeeper((id, at, now) => id === 'cue' && now < at + 250);
+  keeper.at(prepared(before), 100, before);
+  keeper.at(prepared(after), 400, after);
+  expect(keeper.at(prepared(goPatch), 510, goPatch)?.layers.background).toEqual(before.layers.background);
+});

@@ -44,4 +44,12 @@ describe("the operator preview's word that a cued picture started at Go", () => 
     expect(isCueStarted('cue-c')).toBe(true);
     expect(heldUntilStarted('cue-c', 1000, 1100)).toBe(false);
   });
+
+  it("gives a cue up for good when LIVE's wait ends without its start, whatever the computer's clock says then", () => {
+    // a22-review-cuelive SHOULD-6: the wait's 250 ms runs on the page's steady clock, the keeper reads Date.now(); a
+    // clock set back a moment kept LIVE's old scene until the next engine change.
+    expect(heldUntilStarted('cue-d', 1000, 1249)).toBe(true);
+    afterCueStart('cue-d').gaveUp?.();
+    expect(heldUntilStarted('cue-d', 1000, 1249), 'the clock 1 ms short at the fallback').toBe(false);
+  });
 });

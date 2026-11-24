@@ -148,4 +148,21 @@ describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)
     page.runTimers();
     expect(seen).toEqual([351]);
   });
+
+  it('says it gave up when its wait ends without the start, and not when the picture started', () => {
+    // a22-review-cuelive SHOULD-6: the keeper then lets go without reading the clock.
+    const lone = new Page();
+    const gaveUp: string[] = [];
+    const never = { whenStarted: () => () => undefined, fallbackMs: 250, gaveUp: () => gaveUp.push('lone') };
+    atGoMoment(100, () => undefined, { checkNow: false, afterStart: never }, lone);
+    lone.frameAt(101);
+    lone.frameAt(351);
+    expect(gaveUp).toEqual(['lone']);
+    const page = new Page();
+    const afterStart = { ...picture(page, 100), gaveUp: () => gaveUp.push('started') };
+    atGoMoment(100, () => undefined, { checkNow: false, afterStart }, page);
+    page.frameAt(102);
+    page.frameAt(400);
+    expect(gaveUp).toEqual(['lone']);
+  });
 });
