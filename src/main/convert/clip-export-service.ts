@@ -50,6 +50,8 @@ export interface ClipExportDeps {
   quiet(): boolean;
   /** The temporary files whose copies into Media are still to be removed, kept across a restart. */
   left: { load(): unknown; save(files: unknown): void };
+  /** How many copies into Media made from `file`, never listed, are still there. */
+  leftFrom(file: string): number;
 }
 interface ExportEntry {
   job: ClipExportJob;
@@ -125,7 +127,17 @@ export class ClipExports {
     } catch {
       done = null;
     }
-    if (done !== null && done !== undefined) {
+    // Forgotten only once nothing of it is left: a copy kept only for now (its file still held on Windows, its row
+    // taken up by its bytes in this run) or used stays in the list, and a later start tries it again
+    // (a22-review-combine2 L-E1). When in doubt, it stays.
+    if (done === null || done === undefined) return;
+    let left: number;
+    try {
+      left = this.deps.leftFrom(made);
+    } catch {
+      left = 1;
+    }
+    if (left === 0) {
       this.unclean.delete(made);
       this.saveLeft();
     }

@@ -183,6 +183,21 @@ export async function registerProxyFile(options: {
  * It never waits on the library's write lock (an import holding it): it looks again shortly, as registerProxyFile
  * does. How many rows went, or null when `allowed` stopped it (nothing removed: left for later).
  */
+/** A copy into Media that registerProxyFile made and nobody listed: unlisted, Drashti's own, not deleted, a video. */
+const UNLISTED = "listed = 0 AND deleted_at IS NULL AND source_kind = 'drashti' AND kind = 'video'";
+
+/**
+ * How many such copies made from `file` (a work or temporary file) are still in Media: after discardUnlisted, the ones
+ * kept only for now (a file still held, a row taken up in this run) or used (a22-review-combine2 L-E1).
+ */
+export function unlistedMadeFrom(db: Db, file: string): number {
+  return (
+    db.prepare(`SELECT COUNT(*) AS n FROM media WHERE ${UNLISTED} AND source_path = ?`).get(file) as {
+      n: number;
+    }
+  ).n;
+}
+
 export async function discardUnlisted(options: {
   db: Db;
   mediaDir: string;
@@ -195,7 +210,7 @@ export async function discardUnlisted(options: {
   const allowed = () => options.allowed?.() ?? true;
   const kept = (id: string) =>
     typeof options.keep === 'string' ? id === options.keep : (options.keep?.has(id) ?? false);
-  const unlisted = "listed = 0 AND deleted_at IS NULL AND source_kind = 'drashti' AND kind = 'video'";
+  const unlisted = UNLISTED;
   const within = options.folder === undefined ? null : `${options.folder.replace(/[\\/]+$/u, '')}${sep}`;
   const found = (
     within === null

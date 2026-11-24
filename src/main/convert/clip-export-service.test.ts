@@ -6,7 +6,7 @@ import type { ClipExportRequest } from '../../shared/video-copies';
 import { sha256File } from '../import/media-store';
 import { copyFf, copyFixture, copyFfmpeg } from './video-copy-fixtures';
 import { readTrimInfo } from './trim-copy';
-import { discardUnlisted, registerProxyFile } from './video-copy-files';
+import { discardUnlisted, registerProxyFile, unlistedMadeFrom } from './video-copy-files';
 import { MediaStore } from '../import/media-store';
 import { forgetTaken } from '../library/media-taken';
 
@@ -105,6 +105,7 @@ function service(destination: string) {
         left = value;
       },
     },
+    leftFrom: (file: string) => unlistedMadeFrom(fixture.db, file),
   };
   clips = new ClipExports(deps);
   cleanup.push(() => clips.close());

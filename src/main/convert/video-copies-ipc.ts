@@ -12,7 +12,7 @@ import { AFTER_START_MS, type ConvertService } from './convert-service';
 import { ClipExports, type ExportSourceResult } from './clip-export-service';
 import { CombineVideos } from './combine-service';
 import { ProxyService } from './proxy-service';
-import { copyRequests, discardUnlisted, registerProxyFile } from './video-copy-files';
+import { copyRequests, discardUnlisted, registerProxyFile, unlistedMadeFrom } from './video-copy-files';
 
 export interface VideoCopyIpcDeps {
   db: Db;
@@ -157,6 +157,7 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, file, keep, allowed }),
     quiet: () => (deps.saveIdle ?? deps.idle)() && !deps.importing(),
     left: copyRequests(join(deps.mediaDir, 'video-clip-left.json')),
+    leftFrom: (file) => unlistedMadeFrom(deps.db, file),
   });
   // Combine videos… (alpha.22): the chosen videos joined end to end into one new video in Media, by the same worker.
   const combines = new CombineVideos({
