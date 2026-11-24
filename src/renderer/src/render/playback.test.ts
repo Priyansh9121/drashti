@@ -186,6 +186,74 @@ describe('a file played once to an end point', () => {
       timing: () => ({ loop: false, ...timing }),
     });
 
+  it('arms a cued decoder silently at zero rate before Go and releases it at the shared moment', () => {
+    const v = new FakeMedia(8, { startLate: 80 });
+    const timing: { loop: boolean; seek: PlaybackSeek } = {
+      loop: false,
+      seek: { at: Date.now(), toMs: 1000, paused: true },
+    };
+    const options = {
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      timing: () => timing,
+    };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, options);
+    try {
+      vi.advanceTimersByTime(20);
+      expect(v.paused).toBe(true);
+      expect(v.currentTime).toBe(1);
+      const at = Date.now() + 120;
+      timing.seek = { at, toMs: 1000 };
+      stop.resync();
+      expect(v.paused, 'the decoder starts during the already silent lead').toBe(false);
+      expect(v.playbackRate).toBe(0);
+      vi.advanceTimersByTime(119);
+      expect(v.currentTime, 'no motion before Go').toBe(1);
+      vi.advanceTimersByTime(2);
+      expect(v.playbackRate).toBe(1);
+      expect(v.currentTime, 'the first motion has no cold play delay').toBeCloseTo(1.001, 3);
+      expect(v.sourceAssignments).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it("starts a cued decoder at its own speed when the page's check for Go comes late, and brings it into step after", () => {
+    // a22-cue CI runs 113329-24953 and 144129-21154: a cued start whose first rate was 1.024-1.033 (its check 12-16 ms
+    // after Go, behind by more than the 12 ms in step) began its clock 13-32 ms after that rate (median 24: Chromium's
+    // time-stretch fills first) and the hall and LIVE started up to 43 ms after Go; at a first rate of 1, 2 ms (44 starts).
+    const v = new FakeMedia(8);
+    const timing: { loop: boolean; seek: PlaybackSeek } = {
+      loop: false,
+      seek: { at: Date.now(), toMs: 1000, paused: true },
+    };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(20);
+      const at = Date.now() + 120;
+      timing.seek = { at, toMs: 1000 };
+      stop.resync();
+      expect(v.playbackRate).toBe(0);
+      vi.advanceTimersByTime(110);
+      // The page is busy: its check for Go, due 10 ms on, runs 16 ms after Go.
+      vi.setSystemTime(Date.now() + 16);
+      vi.advanceTimersByTime(10);
+      expect(Date.now() - at).toBe(16);
+      expect(v.playbackRate, 'the cued start at its own speed').toBe(1);
+      // Playing, it is brought into step by speed at its next check, as every picture is.
+      vi.advanceTimersByTime(250);
+      expect(v.playbackRate).toBeGreaterThan(1);
+    } finally {
+      stop();
+    }
+  });
+
   it('uses an already decoded frame immediately only when the caller opts in', () => {
     vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
     for (const reuseLoadedSource of [true, false]) {

@@ -80,8 +80,8 @@ describe('native drawing paths through the existing element boundary', () => {
 });
 
 describe('the native drawing engine contract', () => {
-  it('advertises engine 31 to players which must draw the new path content', () => {
-    expect(ENGINE_STATE_VERSION).toBe(31);
+  it('advertises engine 32 to players which must draw the new path content', () => {
+    expect(ENGINE_STATE_VERSION).toBe(32);
   });
 
   it('reads the preceding 23 and 24 saved states without discarding their layers', () => {

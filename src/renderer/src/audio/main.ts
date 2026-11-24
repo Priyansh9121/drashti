@@ -1,3 +1,8 @@
+import { retainCueSounds } from './cue-start-sounds';
+import { CuedStartKeeper } from '../render/cued-start';
+import { applyVideoEnvelope } from './video-envelope';
+import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
+import { videoSoundGain } from './sounds';
 import { bandsText, type ToneChain, toneThrough } from './tone-chain';
 import type { AudioDevice } from '../../../shared/audio';
 import { resolveOutput } from '../../../shared/audio';
@@ -38,6 +43,7 @@ interface Player {
   resync: () => void;
   /** Its gain (Part 7): even loudness, and the music stepping aside; null where Web Audio could not be had. */
   level: GainNode | null;
+  videoLevel: GainNode | null;
   /** Its element's way into Web Audio, and its tone's filters once its file has had a tone (alpha.20). */
   source: MediaElementAudioSourceNode | null;
   tone: ToneChain | null;
@@ -97,6 +103,8 @@ async function playOn(id: string): Promise<void> {
 
 /** The music's own level as it steps aside and comes back (Part 7, K). */
 const aside = new StepAside();
+const cueState = new CuedStartKeeper();
+let cueStop: ReturnType<typeof setTimeout> | null = null;
 let levels: ReturnType<typeof setInterval> | null = null;
 const meterSamples = new Float32Array(2048);
 /** The meter's spectrum, for its two bands (alpha.20, the tests' data-bands). */
@@ -107,17 +115,31 @@ const meterSpectrum = new Float32Array(1024);
  * level (Audio's or Video's, X33: 0 while muted).
  */
 function setLevel(player: Player, musicLevel: number): void {
+  const c = context;
+  if ((player.sound.prepared || player.sound.envelope) && !player.videoLevel && player.level && c && master) {
+    player.videoLevel = c.createGain();
+    player.level.disconnect();
+    player.level.connect(player.videoLevel).connect(master);
+  }
   const state = useEngine.getState().state;
+  const envelope = videoSoundGain(player.sound, engineNow());
+  if (player.sound.envelope) {
+    player.el.dataset['crossfadeGain'] = String(Math.round(envelope * 1e6) / 1e6);
+    player.el.dataset['crossfadeAt'] = String(engineNow());
+  } else delete player.el.dataset['crossfadeGain'];
+  if (player.videoLevel) applyVideoEnvelope(player.videoLevel, player.sound, engineNow());
   const value = Math.round(soundGain(player.sound, musicLevel, state) * 1000) / 1000;
   // Where Web Audio could not be had, the file plays as it is (as before Part 7), and silent while its kind is muted
   // or at 0 %: a mute always holds.
-  if (!player.level) player.el.muted = kindLevel(state, player.sound.kind) === 0;
+  if (!player.level) {
+    player.el.muted = kindLevel(state, player.sound.kind) === 0;
+    if (player.sound.envelope || player.sound.prepared) player.el.volume = player.volume * envelope;
+  }
   if (player.levelSet === value) return;
   const first = player.levelSet < 0;
   player.levelSet = value;
   // For the tests and diagnostics: the gain this sound plays with now.
   player.el.dataset['gain'] = String(value);
-  const c = context;
   // Its first level at once; after that, smoothly (a few milliseconds), so no change clicks.
   if (player.level && c) {
     if (first) player.level.gain.value = value;
@@ -128,7 +150,7 @@ function setLevel(player: Player, musicLevel: number): void {
 /** The music's level now, and every player's gain to go with it (each LEVEL_MS while anything plays). */
 function applyLevels(): void {
   const now = engineNow();
-  const musicLevel = aside.levelAt(musicAside(useEngine.getState().state, now), now);
+  const musicLevel = aside.levelAt(musicAside(cueState.at(useEngine.getState().state, now), now), now);
   for (const player of [...players.values(), ...fadingOut]) setLevel(player, musicLevel);
   document.body.dataset['aside'] = String(musicLevel < 1);
   if (meter) {
@@ -196,8 +218,24 @@ let sinkId = '';
 let chosen: AudioDevice | null = null;
 
 function play(state: EngineState | null): void {
-  // The hall's sounds: a stream link's too (alpha.20), which the stream never mixes.
+  cueState.at(state, engineNow());
+  if (cueStop) clearTimeout(cueStop);
+  cueStop = null;
   const wanted = new Map((state ? hallSoundsOf(state) : []).map((s) => [s.key, s]));
+  const release = retainCueSounds(
+    wanted,
+    [...players.values()].map((p) => p.sound),
+    state,
+    engineNow(),
+  );
+  if (release !== null)
+    cueStop = setTimeout(
+      () => {
+        cueStop = null;
+        play(useEngine.getState().state);
+      },
+      Math.max(0, release - engineNow()),
+    );
   for (const [key, player] of players) {
     if (wanted.has(key)) continue;
     players.delete(key);
@@ -205,6 +243,7 @@ function play(state: EngineState | null): void {
       fadingOut.delete(player);
       player.stop();
       player.level?.disconnect();
+      player.videoLevel?.disconnect();
       player.tone?.disconnect();
       player.el.remove();
     };
@@ -223,6 +262,7 @@ function play(state: EngineState | null): void {
         soundMoved(current.sound, sound) ||
         (sound.link !== undefined && sound.startedAt !== current.sound.startedAt);
       current.sound = sound;
+      if (sound.prepared) reportLoadedVideoCue(sound.cueId, 'sound', current.el);
       if (moved) current.resync();
       // Its tone (alpha.20), eased there while it plays.
       if (context && current.source && current.level)
@@ -273,13 +313,14 @@ function play(state: EngineState | null): void {
       stop: () => undefined,
       resync: () => undefined,
       level,
+      videoLevel: null,
       levelSet: -1,
       source,
       tone,
     };
     // Its level before it makes a sound: the music already aside under a video playing, a file at its even loudness.
     const now = engineNow();
-    setLevel(player, aside.levelAt(musicAside(useEngine.getState().state, now), now));
+    setLevel(player, aside.levelAt(musicAside(cueState.at(useEngine.getState().state, now), now), now));
     // A stream link's sound (alpha.20): its player joined with its pictures, on the engine's time as they are.
     if (sound.link !== undefined) {
       const linked = startLinkSound(el, sound.link);
@@ -291,9 +332,12 @@ function play(state: EngineState | null): void {
     const playback = startPlayback(el, {
       mediaId: sound.mediaId,
       startedAt: sound.startedAt,
+      prepareScheduledStart: sound.cueId !== undefined,
       audible: true,
       limits: SOUND_LIMITS,
       timing: () => ({ loop: player.sound.loop, clip: player.sound.clip, seek: player.sound.seek }),
+      onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
+      onError: () => reportVideoCue(sound.cueId, 'sound', false),
       // An audio playlist's track fades in once it has its first sound.
       ...(sound.fadeInMs
         ? {

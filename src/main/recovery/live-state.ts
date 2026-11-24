@@ -1,3 +1,4 @@
+import { type SavedVideoCue, savedVideoCueSchema, savedVideoCue } from './video-cue';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { rename, rm, writeFile } from 'node:fs/promises';
@@ -51,6 +52,7 @@ import {
  */
 
 export interface SavedLive {
+  videoCue?: SavedVideoCue | null;
   /** 2 since Session 20: saved from the run's start, every minute, and as it quits. */
   version: 1 | 2;
   /** Which run of Drashti saved it. */
@@ -217,6 +219,7 @@ const savedPipSchema: z.ZodType<PipLayer> = z.object({
 });
 
 const savedSchema = z.object({
+  videoCue: savedVideoCueSchema.nullable().optional(),
   version: z.union([z.literal(1), z.literal(2)]),
   session: z.string().min(1).max(64),
   engineVersion: z.number(),
@@ -327,6 +330,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
   const cursor = state.live;
   return {
     version: 2,
+    ...(savedVideoCue(state.videoCue) ? { videoCue: savedVideoCue(state.videoCue) } : {}),
     session,
     engineVersion: ENGINE_STATE_VERSION,
     savedAt: now.toISOString(),
@@ -354,7 +358,13 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     playlist: state.live.playlist,
     background:
       state.layers.background?.kind === 'media'
-        ? ownPlaying(state.layers.background)
+        ? ownPlaying(
+            state.layers.background.cueId &&
+              state.layers.background.seek &&
+              state.layers.background.seek.at > now.getTime()
+              ? { ...state.layers.background, seek: { ...state.layers.background.seek, paused: true } }
+              : state.layers.background,
+          )
         : state.layers.background,
     blackout: state.blackout,
     wallpaper: state.wallpaper,
@@ -451,6 +461,7 @@ function liveIn(s: Saved): SavedLive | null {
     const parsed = schema.safeParse(value);
     return parsed.success ? parsed.data : none;
   };
+  const videoCue = layer(savedVideoCueSchema.nullable(), s.videoCue ?? null, null);
   const background = layer(backgroundSchema.nullable(), s.background, null);
   const audio = layer(audioLayerSchema.nullable(), s.audio, null);
   const messages = layer(z.array(savedMessageSchema).max(50), s.messages, []);
@@ -464,6 +475,7 @@ function liveIn(s: Saved): SavedLive | null {
   const stageRecent = same ? (s.stageRecent ?? []) : [];
   const audienceTimer = same ? (s.audienceTimer ?? null) : null;
   const anything = [
+    videoCue !== null,
     s.slide !== null,
     s.playlist !== null,
     background !== null,
@@ -483,6 +495,7 @@ function liveIn(s: Saved): SavedLive | null {
   // The schema keeps only what it names: an older file's logo, props, mask and Look are not carried on.
   return {
     ...s,
+    ...(videoCue ? { videoCue } : {}),
     background,
     audio,
     messages,

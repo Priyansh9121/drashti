@@ -1,3 +1,4 @@
+import type { NodeVideoCueReport } from '../../../shared/nodes';
 import type { ControllerRequest } from '../../../shared/controller-actions';
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import type { MediaWant, NodeCannotPlayReport, NodeHealth, NodeScreen, ToNode } from '../../../shared/nodes';
@@ -48,6 +49,7 @@ export type FromLinkWorker =
   | { type: 'health'; nodeId: string; health: NodeHealth }
   | { type: 'controller-action'; nodeId: string; request: ControllerRequest }
   | { type: 'thumb'; nodeId: string; screenId: string; jpeg: string }
+  | { type: 'video-cue'; nodeId: string; report: NodeVideoCueReport }
   | { type: 'cannot-play'; nodeId: string; report: NodeCannotPlayReport }
   | { type: 'refused'; nodeId: string; version: string }
   | { type: 'offer-dropped' }

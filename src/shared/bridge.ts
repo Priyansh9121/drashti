@@ -205,6 +205,7 @@ import type { PointAt, PointedClip } from './point-ahead';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
+import type { FrameGrid } from './video-cue';
 import type {
   EvenResult,
   FileSoundView,
@@ -512,6 +513,8 @@ export interface DrashtiBridge {
     pathFor(file: File): string;
   };
   engine: {
+    /** A matching first decoded cue frame or sound, reported by a trusted participant. */
+    videoCueReady(cueId: string, kind: 'picture' | 'sound', ready: boolean): Promise<null>;
     /**
      * Listen for engine messages (snapshots and patches). Register before
      * calling subscribe() so nothing is missed. Returns an unsubscribe function.
@@ -968,6 +971,8 @@ export interface DrashtiBridge {
       context(): Promise<ProgramContext | null>;
       onContext(listener: (context: ProgramContext) => void): () => void;
       reportInputs(inputs: ProgramInputs): Promise<null>;
+      /** While a cue waits: when its frames begin and how far apart (a manual Go is placed on them). */
+      reportFrames(grid: FrameGrid): Promise<null>;
     };
   };
   /**

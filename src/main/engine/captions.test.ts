@@ -29,11 +29,11 @@ function setup() {
 }
 
 describe('live captions in the engine’s state (engine state 26)', () => {
-  it('is engine 31, which retains captions (26), Part 17b (25) and every supported older state whole', () => {
-    expect(ENGINE_STATE_VERSION).toBe(31);
-    for (const v of [31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12])
+  it('is engine 32, which retains captions (26), Part 17b (25) and every supported older state whole', () => {
+    expect(ENGINE_STATE_VERSION).toBe(32);
+    for (const v of [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12])
       expect(readsEngineVersion(v), String(v)).toBe(true);
-    for (const v of [11, 19, 21, 32, '26', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
+    for (const v of [11, 19, 21, 33, '26', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
   });
 
   it('are set by the main process alone; the same again is no change; null takes them off', () => {

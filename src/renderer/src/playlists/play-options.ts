@@ -9,7 +9,7 @@ export interface PlayOptionsPort {
 /** Each tick changes its own option after the previous tick is committed, even when an import holds a write. */
 export function playlistOptionChanges(port: PlayOptionsPort) {
   let queued = Promise.resolve();
-  return (playlistId: string, option: keyof PlaylistPlayOptions): Promise<PlaylistResult> => {
+  return (playlistId: string, option: 'shuffle' | 'repeatAll'): Promise<PlaylistResult> => {
     const result = queued.then(async () => {
       const options = await port.read(playlistId);
       if (!options)
@@ -29,7 +29,11 @@ export const changePlaylistPlayOption = playlistOptionChanges({
   read: async (playlistId) => {
     const node = (await window.drashti.playlists.tree()).find((p) => p.id === playlistId);
     return node && !node.isFolder && !node.template
-      ? { shuffle: node.playback?.shuffle ?? false, repeatAll: node.playback?.repeatAll ?? false }
+      ? {
+          shuffle: node.playback?.shuffle ?? false,
+          repeatAll: node.playback?.repeatAll ?? false,
+          ...(node.playback?.crossfadeMs ? { crossfadeMs: node.playback.crossfadeMs } : {}),
+        }
       : null;
   },
   write: (playlistId, options) => window.drashti.playlists.setPlayOptions(playlistId, options),

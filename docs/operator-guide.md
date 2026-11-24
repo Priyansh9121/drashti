@@ -574,3 +574,11 @@ For a clip, choose start and end under **Trim**, then **Preparation and export**
 **Export clip…** opens **Save as…** for a new file. The accepted export waits while anything is up, streaming or recording, and stays across closing the editor or restarting Drashti. Open the editor again for progress, **Stop export** or **Show the file**. The original stays unchanged. The Manual's **Library › Exporting a clip, including vertical video** has the steps.
 
 ![Edit Video's Preparation and export choices for a vertical clip](screenshots/manual-edit-video-export.png)
+
+## 15. Cue a video
+
+In Pro Mode, right-click a ready video row and choose **Cue**. LIVE keeps showing the current scene while the video loads paused at its first start point. The cue card shows its first frame and **Preparing first frame…**, then **Cue ready**. Press **Go** to start it on the screens at one shared moment, or **Cancel** to remove it. Go uses the file and points selected when you cued it. A screen that reloads must get ready again. After an unexpected restart, a manual cue waits paused for another Go.
+
+Cue waits for the desired **Edit Video…** copy to be **Ready for next showing**. Saving new edits cancels that video’s private cue; cue it again after the copy is ready. A video already up keeps its file. Prepare edits before starting the show, stream or recording.
+
+A playlist crossfade between videos comes in a later release. Original files are never changed.
