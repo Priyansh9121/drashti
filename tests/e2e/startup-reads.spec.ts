@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { killApp, launchApp, operatorPage, operatorReady, relaunchApp, type PageGlobals } from './helpers';
+import { logLines } from './log-lines';
 
 /*
  * The reads a window needs as it opens say what they could not read, with Try again (Session 39): the
@@ -84,9 +85,7 @@ const readable = (app: ElectronApplication, name: string) =>
 
 /** The main process's log lines naming a failed start-up read of `what`. */
 const logged = (userData: string, what: string) => () =>
-  readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-    .split('\n')
-    .filter((line) => line.includes(`Start-up: Drashti could not read ${what} for a window`));
+  logLines(userData).filter((line) => line.includes(`Start-up: Drashti could not read ${what} for a window`));
 
 async function opened(
   env: Record<string, string>,
