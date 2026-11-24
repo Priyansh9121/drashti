@@ -25,14 +25,18 @@ export interface PlaceholderCaptionPack {
 
 /**
  * Route W (the default): one whisper.cpp file. Route C (`conformer`): AI4Bharat IndicConformer's three files
- * (model.onnx, tokens.txt, frontend.bin) in IndicConformer's format, known by the model.onnx file.
+ * (model.onnx, tokens.txt, frontend.bin) in IndicConformer's format, known by the model.onnx file. `files`: Route C's
+ * three files as given (the generated test graph of scripts/indic-fixture.mjs, which Drashti's helper really runs).
  */
-export function placeholderCaptionPack(o: { conformer?: boolean } = {}): PlaceholderCaptionPack {
+export function placeholderCaptionPack(
+  o: { conformer?: boolean; files?: { model: Buffer; tokens: Buffer; frontend: Buffer } } = {},
+): PlaceholderCaptionPack {
   const root = mkdtempSync(join(tmpdir(), 'drashti-e2e-caption-ai-'));
   const folder = join(root, 'Placeholder caption pack');
-  const model = Buffer.from(Array.from({ length: 8_192 }, (_, i) => (i * 13 + 1) % 251));
-  const tokens = Buffer.from('<blk>\nplaceholder\n');
-  const frontend = Buffer.from(Array.from({ length: 1_024 }, (_, i) => (i * 7 + 3) % 251));
+  const model = o.files?.model ?? Buffer.from(Array.from({ length: 8_192 }, (_, i) => (i * 13 + 1) % 251));
+  const tokens = o.files?.tokens ?? Buffer.from('<blk>\nplaceholder\n');
+  const frontend =
+    o.files?.frontend ?? Buffer.from(Array.from({ length: 1_024 }, (_, i) => (i * 7 + 3) % 251));
   const modelFiles: [string, Buffer][] = o.conformer
     ? [
         ['captions/gu-conformer/model.onnx', model],
