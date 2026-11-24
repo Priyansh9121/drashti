@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { FileTarget } from '../files/file-menu';
 import { fileMenuEntries } from '../files/file-menu';
 import type { MediaSummary } from '../../../shared/playlists';
-import { addCombineToMenu, combineItems, moved, type CombineVideo } from './combine-videos';
+import { addCombineToMenu, combineItems, combineJobWords, moved, type CombineVideo } from './combine-videos';
+import type { CombineJob } from '../../../shared/video-copies';
 import { useMedia } from './library-store';
 
 const video = (id: string, more: Partial<MediaSummary> = {}): MediaSummary => ({
@@ -65,5 +66,51 @@ describe('Combine videos… in Media’s right-click menu', () => {
     expect(moved(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c']);
     expect(moved(['a', 'b'], 0, -1)).toEqual(['a', 'b']);
     expect(moved(['a', 'b'], 1, 1)).toEqual(['a', 'b']);
+  });
+});
+
+describe('a combine’s words in its window', () => {
+  const job = (more: Partial<CombineJob>): CombineJob => ({
+    id: 'job',
+    name: 'Placeholder a + Placeholder b.mp4',
+    mediaIds: ['a', 'b'],
+    transition: 'dissolve',
+    transitionMs: 1000,
+    short: [],
+    state: 'waiting',
+    progress: null,
+    note: null,
+    message: null,
+    mediaId: null,
+    savedTo: null,
+    ...more,
+  });
+  it('says how it is going, what it made, where a copy was saved, and a video joined with a cut', () => {
+    expect(
+      combineJobWords(
+        job({ note: 'Waits while the stream is on air or recording, then carries on by itself.' }),
+      ),
+    ).toEqual(['Waits while the stream is on air or recording, then carries on by itself.']);
+    expect(combineJobWords(job({ state: 'preparing', progress: 0.42 }))).toEqual([
+      'Combining “Placeholder a + Placeholder b.mp4”… 42%',
+    ]);
+    expect(
+      combineJobWords(
+        job({
+          state: 'done',
+          mediaId: 'made',
+          savedTo: '/Users/placeholder/Downloads/Placeholder a + Placeholder b.mp4',
+        }),
+      ),
+    ).toEqual([
+      'Added “Placeholder a + Placeholder b.mp4” to Media.',
+      'A copy was saved as “Placeholder a + Placeholder b.mp4”.',
+    ]);
+    expect(combineJobWords(job({ short: ['Placeholder b.mp4'] }))[1]).toBe(
+      '“Placeholder b.mp4” is too short for the 1 s transition: it is joined with a plain cut.',
+    );
+    expect(combineJobWords(job({ state: 'failed', message: 'Placeholder reason.' }))).toEqual([
+      'Placeholder reason.',
+    ]);
   });
 });

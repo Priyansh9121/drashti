@@ -57,7 +57,14 @@ async function setUp() {
     .run();
   const hashes = { source: fixture.sha, second: hashed.sha256 };
   const work = join(fixture.dir, 'video-combine-work');
+  // The system's save dialog: what it was offered, and the file it answers with (null: cancelled).
+  const saving = { offered: [] as string[], answer: null as string | null };
   combines = new CombineVideos({
+    pickCopy: (name) => {
+      saving.offered.push(name);
+      return Promise.resolve(saving.answer);
+    },
+    freeBytes: () => 100 * 1024 ** 3,
     mediaDir: fixture.dir,
     workDir: work,
     row: (id) => fixture.media.about(id),
@@ -78,7 +85,22 @@ async function setUp() {
       Promise.resolve(fixture.db.prepare('UPDATE media SET listed=1 WHERE id=?').run(id).changes > 0),
   });
   cleanup.push(() => combines.close());
-  return { second, hashes, work };
+  return { second, hashes, work, saving };
+}
+/** Two or more videos, with a transition between them (Cut unless given), and no copy saved to a file. */
+const ask = (
+  mediaIds: string[],
+  more: Partial<{
+    transition: 'dissolve' | 'fade-black' | 'cut';
+    transitionMs: number;
+    saveCopy: boolean;
+  }> = {},
+) => ({ mediaIds, transition: 'cut' as const, transitionMs: 1000, saveCopy: false, ...more });
+async function started(raw: unknown) {
+  const result = await combines.start(raw);
+  if (!result.ok) throw new Error(result.message);
+  if (!result.job) throw new Error('Nothing was queued.');
+  return result.job;
 }
 
 async function settled(id: string) {
@@ -97,13 +119,12 @@ async function settled(id: string) {
 
 it('joins two videos of different sizes, rates and sound into one new video in Media; the originals unchanged', async () => {
   const { second, hashes, work } = await setUp();
-  const started = combines.start({ mediaIds: ['source', 'second'] });
-  if (!started.ok) throw new Error(started.message);
-  expect(started.job).toMatchObject({
+  const queued = { job: await started(ask(['source', 'second'])) };
+  expect(queued.job).toMatchObject({
     name: 'Placeholder source + Placeholder second.mp4',
     state: 'waiting',
   });
-  const job = await settled(started.job.id);
+  const job = await settled(queued.job.id);
   const row = fixture.media.about(job.mediaId ?? '');
   expect(row).toMatchObject({
     kind: 'video',
@@ -145,8 +166,7 @@ it('joins two videos of different sizes, rates and sound into one new video in M
 it('waits while on air and only then combines; Stop leaves nothing behind', async () => {
   const { work } = await setUp();
   fixture.activity.stream = true;
-  const waiting = combines.start({ mediaIds: ['second', 'source'] });
-  if (!waiting.ok) throw new Error(waiting.message);
+  const waiting = { job: await started(ask(['second', 'source'])) };
   await new Promise((resolve) => setTimeout(resolve, 1500));
   expect(combines.list().find((j) => j.id === waiting.job.id)).toMatchObject({
     state: 'waiting',
@@ -154,8 +174,7 @@ it('waits while on air and only then combines; Stop leaves nothing behind', asyn
   });
   expect(combines.list()[0]?.note).toMatch(/Waits while the stream or recording is on/u);
   expect(fixture.media.list()).toHaveLength(3);
-  const stopped = combines.start({ mediaIds: ['source', 'second'] });
-  if (!stopped.ok) throw new Error(stopped.message);
+  const stopped = { job: await started(ask(['source', 'second'])) };
   expect(combines.stop(stopped.job.id)).toBe(true);
   expect(combines.list().find((j) => j.id === stopped.job.id)?.state).toBe('stopped');
   fixture.activity.stream = false;
@@ -168,24 +187,78 @@ it('waits while on air and only then combines; Stop leaves nothing behind', asyn
 
 it('refuses one video, the same video twice, a picture and a missing file, with words for each', async () => {
   await setUp();
-  expect(combines.start({ mediaIds: ['source'] })).toMatchObject({
+  expect(await combines.start(ask(['source']))).toMatchObject({
     ok: false,
     message: /two or more videos/u,
   });
-  expect(combines.start({ mediaIds: ['source', 'source'] })).toMatchObject({ ok: false });
-  expect(combines.start({ mediaIds: ['source', 'still'] })).toMatchObject({
+  expect(await combines.start(ask(['source', 'source']))).toMatchObject({ ok: false });
+  expect(await combines.start(ask(['source', 'still']))).toMatchObject({
     ok: false,
     message: /“Placeholder picture.png” is not a video/u,
   });
-  expect(combines.start({ mediaIds: ['source', 'gone'] })).toMatchObject({
+  expect(await combines.start(ask(['source', 'gone']))).toMatchObject({
     ok: false,
     message: /no longer in Media/u,
   });
   fixture.db.prepare("UPDATE media SET missing=1 WHERE id='second'").run();
-  expect(combines.start({ mediaIds: ['source', 'second'] })).toMatchObject({
+  expect(await combines.start(ask(['source', 'second']))).toMatchObject({
     ok: false,
     message: /“Placeholder second.mp4”’s file is missing/u,
   });
   expect(combines.list()).toEqual([]);
   expect(existsSync(join(fixture.dir, 'video-combine-work'))).toBe(true);
 });
+
+/*
+ * The owner, 24 Nov 2026: "transition between 2 merged videos" and "export button as well to download".
+ */
+it('dissolves between them: the sum less the overlap; one too short for it is cut, and the job says which', async () => {
+  await setUp();
+  const dissolve = await started(ask(['source', 'second'], { transition: 'dissolve', transitionMs: 500 }));
+  const dissolved = await settled(dissolve.id);
+  expect(dissolved.short).toEqual([]);
+  const made = await readTrimInfo(
+    copyFfmpeg,
+    join(fixture.dir, fixture.media.about(dissolved.mediaId ?? '')?.path ?? ''),
+  );
+  // 2 s + 1 s, less the 0.5 s they overlap.
+  expect(Math.abs((made.durationMs ?? 0) - 2500)).toBeLessThanOrEqual(200);
+  expect(made.audio).not.toBeNull();
+  // A 1.5 s transition is longer than the 1 s second video: a plain cut, the sum, and its name said.
+  const fade = await started(ask(['source', 'second'], { transition: 'fade-black', transitionMs: 1500 }));
+  expect(fade.short).toEqual(['Placeholder second.mp4']);
+  const cut = await settled(fade.id);
+  const plain = await readTrimInfo(
+    copyFfmpeg,
+    join(fixture.dir, fixture.media.about(cut.mediaId ?? '')?.path ?? ''),
+  );
+  expect(Math.abs((plain.durationMs ?? 0) - 3000)).toBeLessThanOrEqual(200);
+}, 40_000);
+
+it('also saves a copy to the file chosen, and Export… copies a finished one again: one encode only', async () => {
+  const { saving } = await setUp();
+  // Cancelled: nothing combined.
+  expect(await combines.start(ask(['source', 'second'], { saveCopy: true }))).toEqual({
+    ok: true,
+    job: null,
+  });
+  expect(combines.list()).toEqual([]);
+  expect(saving.offered).toEqual(['Placeholder source + Placeholder second.mp4']);
+  const chosen = join(fixture.dir, 'chosen copy.mp4');
+  saving.answer = chosen;
+  const job = await settled((await started(ask(['source', 'second'], { saveCopy: true }))).id);
+  expect(job.savedTo).toBe(chosen);
+  const stored = join(fixture.dir, fixture.media.about(job.mediaId ?? '')?.path ?? '');
+  const bytes = (await sha256File(stored)).sha256;
+  expect((await sha256File(chosen)).sha256).toBe(bytes);
+  const again = join(fixture.dir, 'exported.mp4');
+  saving.answer = again;
+  expect(await combines.exportCopy(job.id)).toEqual({ ok: true, path: again });
+  expect((await sha256File(again)).sha256).toBe(bytes);
+  expect(saving.offered.at(-1)).toBe('Placeholder source + Placeholder second.mp4');
+  // Only a finished one, and never while on air.
+  expect(await combines.exportCopy('no-such-job')).toMatchObject({ ok: false });
+  fixture.activity.stream = true;
+  expect(await combines.exportCopy(job.id)).toMatchObject({ ok: false, message: /streaming or recording/u });
+  expect(fixture.maxActive()).toBe(1);
+}, 40_000);

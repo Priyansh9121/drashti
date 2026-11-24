@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { combinedName, combinePlan, frameFacts, type CombineInput } from './combine-plan';
+import { combinedName, combineJoins, combinePlan, frameFacts, type CombineInput } from './combine-plan';
 import type { MediaInfo } from './plan';
 
 /** What FFmpeg says reading a placeholder video (its first stream lines, as `ffmpeg -i` prints them). */
@@ -183,5 +183,113 @@ describe('combinedName', () => {
     expect(combinedName(['A.mp4', 'B.mp4', 'C.mp4'])).toBe('A + B + C.mp4');
     const long = 'L'.repeat(70);
     expect(combinedName([`${long}.mp4`, 'Second.mp4', 'Third.mp4'])).toBe(`${long} + 2 more.mp4`);
+  });
+});
+
+/*
+ * The owner, 24 Nov 2026: "transition between 2 merged videos". Dissolve (the default), Fade through black or Cut, of
+ * 0.5 to 3 s: the length is the sum less each overlap; a video too short for it is joined with a plain cut.
+ */
+describe('combinePlan with a transition', () => {
+  const opened = (args: string[]) => args.flatMap((arg, i) => (arg === '-i' ? [args[i + 1]] : []));
+  it('dissolves picture and sound across the join: xfade and acrossfade over only the chosen files', () => {
+    const plan = combinePlan([input('/media/a.mp4'), input('/media/b.mp4')], {
+      transition: 'dissolve',
+      transitionMs: 1000,
+    });
+    const args = plan.args('/work/out.mp4');
+    expect(opened(args)).toEqual(['/media/a.mp4', '/media/b.mp4']);
+    expect(args.some((arg) => arg.includes('concat:'))).toBe(false);
+    const filter = filterOf(args);
+    expect(filter).toContain('[v0][v1]xfade=transition=fade:duration=1.000:offset=2.000[v]');
+    expect(filter).toContain('[a0][a1]acrossfade=d=1.000:c1=tri:c2=tri[a]');
+    expect(filter).not.toContain('concat=');
+    // Both brought to one size, rate and sound first, as xfade needs.
+    for (const n of ['0', '1']) {
+      const branch = filter.split(';').find((b) => b.startsWith(`[${n}:V:0]`)) ?? '';
+      expect(branch).toContain('scale=320:180:force_original_aspect_ratio=decrease');
+      expect(branch).toContain('fps=25');
+    }
+    expect(plan.lengthMs).toBe(5000);
+    expect(plan.joins).toEqual(['transition']);
+    expect(plan.short).toEqual([]);
+  });
+
+  it('fades through black, the sound dipping between them', () => {
+    const plan = combinePlan([input('/media/a.mp4'), input('/media/b.mp4')], {
+      transition: 'fade-black',
+      transitionMs: 2500,
+    });
+    const filter = filterOf(plan.args('/work/out.mp4'));
+    expect(filter).toContain('[v0][v1]xfade=transition=fadeblack:duration=2.500:offset=0.500[v]');
+    expect(filter).toContain('[a0][a1]acrossfade=d=2.500:c1=exp:c2=exp[a]');
+    expect(plan.lengthMs).toBe(3500);
+  });
+
+  it('puts the same transition at every join of three, each offset by the length so far', () => {
+    const plan = combinePlan([input('/media/a.mp4'), input('/media/b.mp4'), input('/media/c.mp4')], {
+      transition: 'dissolve',
+      transitionMs: 1000,
+    });
+    const filter = filterOf(plan.args('/work/out.mp4'));
+    expect(filter).toContain('[v0][v1]xfade=transition=fade:duration=1.000:offset=2.000[x1]');
+    expect(filter).toContain('[a0][a1]acrossfade=d=1.000:c1=tri:c2=tri[y1]');
+    expect(filter).toContain('[x1][v2]xfade=transition=fade:duration=1.000:offset=4.000[v]');
+    expect(filter).toContain('[y1][a2]acrossfade=d=1.000:c1=tri:c2=tri[a]');
+    expect(plan.lengthMs).toBe(7000);
+  });
+
+  it('joins a video shorter than the transition with a plain cut, and says which', () => {
+    const plan = combinePlan([input('/media/a.mp4'), input('/media/b.mp4', { durationMs: 1000 })], {
+      transition: 'dissolve',
+      transitionMs: 1500,
+    });
+    const filter = filterOf(plan.args('/work/out.mp4'));
+    expect(filter).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]');
+    expect(filter).not.toContain('xfade');
+    expect(plan).toMatchObject({ lengthMs: 4000, joins: ['cut'], short: [1] });
+    // In the middle of three, too short for a transition at both its ends: the second join is a cut.
+    const three = combinePlan(
+      [input('/media/a.mp4'), input('/media/b.mp4', { durationMs: 1200 }), input('/media/c.mp4')],
+      { transition: 'dissolve', transitionMs: 1000 },
+    );
+    const chain = filterOf(three.args('/work/out.mp4'));
+    expect(chain).toContain('[v0][v1]xfade=transition=fade:duration=1.000:offset=2.000[x1]');
+    expect(chain).toContain('[x1][y1][v2][a2]concat=n=2:v=1:a=1[v][a]');
+    expect(three).toMatchObject({ lengthMs: 6200, joins: ['transition', 'cut'], short: [1] });
+  });
+
+  it('cuts with no transition at all, the length the sum; refuses a transition outside 0.5 to 3 s', () => {
+    const plan = combinePlan([input('/media/a.mp4'), input('/media/b.mp4')], {
+      transition: 'cut',
+      transitionMs: 1000,
+    });
+    expect(filterOf(plan.args('/work/out.mp4'))).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]');
+    expect(plan).toMatchObject({ lengthMs: 6000, joins: ['cut'], short: [] });
+    for (const transitionMs of [400, 3100])
+      expect(() =>
+        combinePlan([input('/media/a.mp4'), input('/media/b.mp4')], { transition: 'dissolve', transitionMs }),
+      ).toThrow('0.5 to 3 seconds');
+  });
+});
+
+describe('combineJoins', () => {
+  it('says each join’s transition or cut, the new length and the videos too short, from their lengths', () => {
+    const dissolve = { transition: 'dissolve' as const, transitionMs: 1000 };
+    expect(combineJoins([3000, 2000], dissolve)).toEqual({
+      joins: ['transition'],
+      lengthMs: 4000,
+      short: [],
+    });
+    expect(combineJoins([3000, 800, 3000], dissolve)).toEqual({
+      joins: ['cut', 'cut'],
+      lengthMs: 6800,
+      short: [1],
+    });
+    expect(combineJoins([3000, 2000], { transition: 'cut', transitionMs: 1000 })).toEqual({
+      joins: ['cut'],
+      lengthMs: 5000,
+      short: [],
+    });
   });
 });

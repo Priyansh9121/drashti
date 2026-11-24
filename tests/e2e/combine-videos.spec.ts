@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -104,7 +104,38 @@ function middle(file: string, at: string): number[] {
   return [...read.stdout.subarray(0, 3)];
 }
 
-test('Combine videos…: two videos chosen in Media, put in order, joined into one new video in Media once off air', async () => {
+/** The file read's length in seconds, as FFmpeg says it. */
+function lengthOf(file: string): number {
+  const read = ffmpeg(['-i', file]).stderr.toString();
+  const length = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/u.exec(read);
+  return length ? (Number(length[1]) * 60 + Number(length[2])) * 60 + Number(length[3]) : 0;
+}
+interface SaveAsGlobals {
+  drashtiSaveAs?: string[];
+  drashtiOffered?: string[];
+}
+/** The system's save dialog answers with `path` next (and says where it offered), as manual.spec's does. */
+async function answerSaveAs(app: ElectronApplication, path: string): Promise<void> {
+  await app.evaluate(({ dialog }, path) => {
+    const g = globalThis as SaveAsGlobals;
+    g.drashtiSaveAs = [...(g.drashtiSaveAs ?? []), path];
+    g.drashtiOffered ??= [];
+    dialog.showSaveDialog = (...args: unknown[]) => {
+      const options = args.find(
+        (a): a is { defaultPath?: string } => typeof a === 'object' && a !== null && 'defaultPath' in a,
+      );
+      g.drashtiOffered?.push(options?.defaultPath ?? '');
+      const answer = g.drashtiSaveAs?.shift();
+      return Promise.resolve(
+        answer ? { canceled: false, filePath: answer } : { canceled: true, filePath: '' },
+      );
+    };
+  }, path);
+}
+const offeredSaveAs = (app: ElectronApplication) =>
+  app.evaluate(() => (globalThis as SaveAsGlobals).drashtiOffered ?? []);
+
+test('Combine videos…: two videos chosen in Media, put in order, joined with a dissolve or a cut into one new video in Media once off air, and exported', async () => {
   const { app, userData } = await launchApp({ DRASHTI_TEST_ON_AIR_HOOK: '1' });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-combine-'));
   try {
@@ -152,14 +183,20 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
     await expectFits(dialog, 'Combine videos at the CI operator size');
     await expectNoSeriousA11yIssues(win, 'Combine videos');
 
+    // The transition (the owner: "transition between 2 merged videos"): Dissolve of 1 s unless chosen otherwise.
+    await expect(dialog.getByLabel('Transition', { exact: true })).toHaveValue('dissolve');
+    await expect(dialog.getByLabel('Length', { exact: true })).toHaveValue('1000');
+    await expect(dialog.getByLabel('Also save a copy to a file')).not.toBeChecked();
+
     // On air: it waits, makes nothing, and says so.
     await app.evaluate(() =>
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true),
     );
     await dialog.getByRole('button', { name: 'Combine', exact: true }).click();
-    const job = dialog.getByTestId('combine-videos-job');
-    await expect(job).toHaveAttribute('data-state', 'waiting');
-    await expect(job).toContainText('Waits while');
+    const jobs = dialog.getByTestId('combine-videos-job');
+    const dissolveJob = jobs.nth(0);
+    await expect(dissolveJob).toHaveAttribute('data-state', 'waiting');
+    await expect(dissolveJob).toContainText('Waits while');
     const list = () =>
       win.evaluate(() => (globalThis as unknown as CombineGlobals).drashti.media.combineList());
     expect(await list()).toMatchObject([
@@ -170,48 +207,76 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
       body: await dialog.screenshot(),
       contentType: 'image/png',
     });
+    const finished = (at: number) =>
+      expect
+        .poll(
+          async () => {
+            const now = (await list())[at];
+            if (now?.state === 'failed') throw new Error(now.message ?? 'The combine failed.');
+            return now?.state;
+          },
+          { timeout: 90_000 },
+        )
+        .toBe('done');
 
     // Off air: it combines, and the new video is in Media.
     await app.evaluate(() =>
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false),
     );
-    await expect
-      .poll(
-        async () => {
-          const [now] = await list();
-          if (now?.state === 'failed') throw new Error(now.message ?? 'The combine failed.');
-          return now?.state;
-        },
-        { timeout: 90_000 },
-      )
-      .toBe('done');
-    await expect(job).toHaveAttribute('data-state', 'done');
-    await expect(job).toContainText('Added “Placeholder red + Placeholder blue.mp4” to Media.');
-    const [done] = await list();
-    const madeId = done?.mediaId ?? '';
-    expect(madeId).not.toBe('');
-    await dialog.getByRole('button', { name: 'Close', exact: true }).first().click();
-    await expect(dialog).toBeHidden();
-    await expect(
-      win.getByTestId('media-item').filter({ hasText: 'Placeholder red + Placeholder blue' }),
-    ).toBeVisible();
+    await finished(0);
+    await expect(dissolveJob).toHaveAttribute('data-state', 'done');
+    await expect(dissolveJob).toContainText('Added “Placeholder red + Placeholder blue.mp4” to Media.');
 
-    // One new file: its length the sum (3 s + 2 s, within 0.2 s), the first one's picture size, red then blue.
+    // Export… on its notice (the owner: "export button as well to download"): the system's save dialog, offered in
+    // Downloads under its name; the very file copied there.
+    const exported = join(dir, 'Exported dissolve.mp4');
+    await answerSaveAs(app, exported);
+    await dissolveJob.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect.poll(() => existsSync(exported), { timeout: 20_000 }).toBe(true);
+    await expect(dissolveJob).toContainText('Exported as “Exported dissolve.mp4”.');
+    const downloads = await app.evaluate(({ app: electronApp }) => electronApp.getPath('downloads'));
+    expect(await offeredSaveAs(app)).toEqual([join(downloads, 'Placeholder red + Placeholder blue.mp4')]);
+
+    // A Cut, with a copy also saved to a file: chosen before it combines.
+    await dialog.getByLabel('Transition', { exact: true }).selectOption('cut');
+    await expect(dialog.getByLabel('Length', { exact: true })).toBeHidden();
+    await dialog.getByLabel('Also save a copy to a file').check();
+    const saved = join(dir, 'Saved cut.mp4');
+    await answerSaveAs(app, saved);
+    await dialog.getByRole('button', { name: 'Combine', exact: true }).click();
+    await finished(1);
+    const cutJob = jobs.nth(1);
+    await expect(cutJob).toHaveAttribute('data-state', 'done');
+    await expect(cutJob).toContainText('A copy was saved as “Saved cut.mp4”.');
+    expect(existsSync(saved)).toBe(true);
+    const [dissolveDone, cutDone] = await list();
+    const dissolveId = dissolveDone?.mediaId ?? '';
+    expect(dissolveId).not.toBe('');
+    expect(cutDone?.mediaId ?? '').not.toBe('');
+
+    // Each exported file is Media's own new copy, byte for byte (copied, never encoded twice).
     const made = stored(media).filter((path) => !kept.has(path));
-    expect(made).toHaveLength(1);
-    const file = made[0] ?? '';
-    const read = ffmpeg(['-i', file]).stderr.toString();
-    const length = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/u.exec(read);
-    const seconds = length ? (Number(length[1]) * 60 + Number(length[2])) * 60 + Number(length[3]) : 0;
-    expect(Math.abs(seconds - 5), read).toBeLessThanOrEqual(0.2);
-    expect(read).toMatch(/Video: h264[^\n]*320x180/u);
-    expect(read).toMatch(/Audio: aac/u);
-    const [r1 = 0, , b1 = 0] = middle(file, '1.0');
-    const [r2 = 0, , b2 = 0] = middle(file, '4.0');
-    expect(r1, 'red first').toBeGreaterThan(b1);
-    expect(b2, 'blue second').toBeGreaterThan(r2);
+    expect(made).toHaveLength(2);
+    expect(made.map(digest).sort()).toEqual([digest(exported), digest(saved)].sort());
+    // The Dissolve: 3 s + 2 s less the 1 s overlap; red, then both mixed half-way through the join, then blue.
+    expect(Math.abs(lengthOf(exported) - 4)).toBeLessThanOrEqual(0.2);
+    const info = ffmpeg(['-i', exported]).stderr.toString();
+    expect(info).toMatch(/Video: h264[^\n]*320x180/u);
+    expect(info).toMatch(/Audio: aac/u);
+    const [r1 = 0, , b1 = 0] = middle(exported, '1.0');
+    const [r2 = 0, , b2 = 0] = middle(exported, '2.5');
+    const [r3 = 0, , b3 = 0] = middle(exported, '3.5');
+    expect(r1, 'red first').toBeGreaterThan(b1 + 100);
+    expect(Math.min(r2, b2), 'red and blue mixed in the dissolve').toBeGreaterThan(50);
+    expect(b3, 'blue after the dissolve').toBeGreaterThan(r3 + 100);
+    // The Cut: the sum, red until 3 s, then blue.
+    expect(Math.abs(lengthOf(saved) - 5)).toBeLessThanOrEqual(0.2);
+    const [r4 = 0, , b4 = 0] = middle(saved, '2.5');
+    const [r5 = 0, , b5 = 0] = middle(saved, '4.0');
+    expect(r4, 'still red at 2.5 s with a cut').toBeGreaterThan(b4 + 100);
+    expect(b5, 'blue after the cut').toBeGreaterThan(r5 + 100);
 
-    // It plays in Drashti: its length as the sum, and its time moves.
+    // It plays in Drashti: its length as made, and its time moves.
     await win.evaluate(async (id) => {
       const video = document.createElement('video');
       video.id = 'combine-videos-check';
@@ -219,7 +284,7 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
       video.src = `drashti-media://media/${id}`;
       document.body.append(video);
       await video.play();
-    }, madeId);
+    }, dissolveId);
     const check = () =>
       win.evaluate(() => {
         const video = document.getElementById('combine-videos-check') as HTMLVideoElement;
@@ -233,7 +298,17 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
       video.remove();
     });
     expect(played.error).toBeNull();
-    expect(Math.abs(played.duration - 5)).toBeLessThanOrEqual(0.2);
+    expect(Math.abs(played.duration - 4)).toBeLessThanOrEqual(0.2);
+
+    // Show in Media: the window closes, and the new video is the one chosen in Media.
+    await dissolveJob.getByRole('button', { name: 'Show in Media', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    const chosen = win.locator('[data-testid="media-item"][data-marked="true"]');
+    await expect(chosen).toHaveCount(1);
+    await expect(chosen).toContainText('Placeholder red + Placeholder blue');
+    await expect(
+      win.getByTestId('media-item').filter({ hasText: 'Placeholder red + Placeholder blue' }),
+    ).toHaveCount(2);
 
     // The originals unchanged: the files imported from, and Media's own copies.
     expect([digest(first), digest(second)]).toEqual(sources);

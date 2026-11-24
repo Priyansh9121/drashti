@@ -52,3 +52,8 @@ export function moved<T>(list: readonly T[], at: number, by: -1 | 1): T[] {
   if (item !== undefined) next.splice(to, 0, item);
   return next;
 }
+
+/** Red first (the transition and Export…): not built yet. */
+export function combineJobWords(_job: unknown): string[] {
+  return [];
+}
