@@ -128,6 +128,7 @@ import {
   CHROMIUM_FAKE_DEVICES,
   CHROMIUM_FAKE_SOUND_FILE,
   fakeMediaSelfTest,
+  fakeSoundFeatures,
   fakeSoundSwitch,
 } from './fake-sound';
 import { CalendarRepo } from './db/calendar';
@@ -975,6 +976,13 @@ const fakeSound = fakeSoundSwitch({
   platform: process.platform,
 });
 if (fakeSound) app.commandLine.appendSwitch(CHROMIUM_FAKE_SOUND_FILE, fakeSound);
+// macOS: the audio service reads that file only out of its sandbox (tests only, as above).
+const fakeSoundSandbox = fakeSoundFeatures({
+  sound: fakeSound,
+  platform: process.platform,
+  disabled: app.commandLine.getSwitchValue('disable-features'),
+});
+if (fakeSoundSandbox) app.commandLine.appendSwitch('disable-features', fakeSoundSandbox);
 // Tests only: behave as if the system's secure storage for keys were missing.
 const noSafeStorage = sw('DRASHTI_TEST_NO_SAFE_STORAGE') === '1';
 // Tests only: the local network listens on this computer alone (no firewall questions), and can be
@@ -1686,7 +1694,12 @@ function start(): void {
         : null;
       // The tests' seams (alpha.23, cap-realc): a packaged Drashti turns on none of Chromium's fake media switches,
       // whatever its environment asks (scripts/check-ffmpeg.mjs --packaged starts it asking for the fake microphone).
-      const fakeMedia = packaged() ? fakeMediaSelfTest((name) => app.commandLine.hasSwitch(name)) : null;
+      const fakeMedia = packaged()
+        ? fakeMediaSelfTest(
+            (name) => app.commandLine.hasSwitch(name),
+            app.commandLine.getSwitchValue('disable-features'),
+          )
+        : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
       const ocr = await ocrSelfTest({
         files: builtOcrFiles(__dirname),
