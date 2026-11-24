@@ -11,11 +11,18 @@ import { decodePng } from './png-decode';
 const video = (page: Page, id: string) => page.locator(`video[data-media-id="${id}"]`).first();
 /** The cued video's trim (its start point): the frame Cue holds and Go starts from. */
 const TRIM_MS = 1000;
+/**
+ * One frame of the stream's page: it draws 30 frames a second off screen (its capture: 1920x1080, 30 fps), in step with
+ * this 30 fps video's frames, so it shows each of the video's frames on its own next frame: up to one of its frames
+ * after the frame is due (a21-s5, a22-cue: its clock 9-47 ms after Go, read 19-54 ms on its frames).
+ */
+const STREAM_FRAME_MS = 1000 / 30;
 
 /**
  * Cue a trimmed video, hold it `holdMs` (an operator may cue minutes ahead: Chromium lets an output that has been
  * silent for 30 s go to a stand-in sink, so a cue held past that is its own case), then Go: on hall, LIVE and the
- * stream it starts within one 30 fps frame of the engine's moment and never moves before it.
+ * stream it starts within one 30 fps frame of the engine's moment (the stream on its own frames, one of them more) and
+ * never moves before it.
  */
 async function cueThenGo(holdMs: number): Promise<void> {
   const { app, win, hall, stream, audio, ids, dir } = await setupVideoCue();
@@ -234,14 +241,21 @@ async function cueThenGo(holdMs: number): Promise<void> {
       body: Buffer.from(JSON.stringify({ goAt: bg.seek.at, holdMs, clickAt, motion })),
       contentType: 'application/json',
     });
-    for (const { at, mediaTime } of motion) {
+    for (const { page, at, mediaTime } of motion) {
       // Never moving before Go: no moved frame is on the screen before the engine's moment.
       expect(at - bg.seek.at).toBeGreaterThanOrEqual(0);
       // Starts within one 30 fps frame of Go (QA21-S5-1, the owner's "A, measure the start"): the start is the first
       // moving frame's display time less its media time past the trim. That frame is itself one frame after the trim,
       // so its own display time is a frame later than the start even when the start is exact.
+      // The stream's page is judged on its own frames (QA23-CUE-5, the owner's words: "Stream: one frame more (Rec.)"):
+      // one of its frames more. The hall's screens and LIVE keep one 30 fps frame.
       const start = at - (mediaTime - TRIM_MS / 1000) * 1000;
-      expect(start - bg.seek.at, 'starts within one 30 fps frame of Go').toBeLessThanOrEqual(1000 / 30);
+      const what =
+        page === 'stream'
+          ? 'the stream starts within one 30 fps frame of Go and one of its own frames'
+          : 'starts within one 30 fps frame of Go';
+      const bound = page === 'stream' ? 1000 / 30 + STREAM_FRAME_MS : 1000 / 30;
+      expect(start - bg.seek.at, what).toBeLessThanOrEqual(bound);
     }
     await expect(sound).toHaveJSProperty('paused', false);
   } finally {
