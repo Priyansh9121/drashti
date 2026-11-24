@@ -67,6 +67,19 @@ let sending: Promise<void> = Promise.resolve();
  * on time. Meanwhile a stream or recording that is starting sends nothing (no FFmpeg until the first frame), and one
  * whose page started again while on air repeats its last real frame, with the page's sound or silence: never black,
  * never nothing. Main's picture watch giving the page a new port meanwhile (at 5 s, then 10 s) never restarts the wait.
+ *
+ * Captured, not read, after it (alpha.22's third gate, stream-pictures.spec.ts:303 on CI's Mac): a capture can give its
+ * frames well after it took them (its first ones ~0.2 s late there), so a frame read just after the show came on screen
+ * can be one taken before it: the page's own black. A frame goes only if it was surely captured once the show was on
+ * screen. Chromium stamps each frame on a clock of its own (VideoFrame.timestamp; Electron 44 fills none of a
+ * getDisplayMedia frame's metadata(), so no captureTime), and a capture takes nothing before it is asked for: a frame
+ * was captured no earlier than the moment its capture was asked for plus the time since that capture's first frame,
+ * by their stamps (`capturedBy`). What it costs: when the show comes on screen after the capture was asked for (a
+ * stream or recording begun as its page comes up), the frames captured in the first moments after are let go too, for
+ * as long as the capture took from being asked for to its first frame (measured: 46-72 ms on a dev Mac with its page
+ * loaded, ~0.5 s when asked for as the page loads; up to ~0.23 s on CI's Mac), and the stream starts that much later,
+ * from a frame that shows the show. Once the show is on screen before a capture is asked for (a stream begun on a page
+ * long up), none.
  */
 let onScreen = false;
 /** When the show came on screen, by this page's clock: a frame captured before then never goes to the encoder. */
@@ -75,8 +88,10 @@ let onScreenAt = Number.POSITIVE_INFINITY;
 let waitedOut = false;
 let showWait: ReturnType<typeof setTimeout> | null = null;
 const SHOW_WAIT_MS = 15_000;
-/** When the newest frame was captured, by this page's clock. */
+/** The earliest the newest frame can have been captured, by this page's clock (`capturedBy`). */
 let latestAt = 0;
+/** Said once: a frame read once the show was on screen but captured before it was let go. */
+let letGoSaid = false;
 
 /** Whether the encoder takes the page's frames now. */
 const encoderTakes = (): boolean => onScreen || waitedOut;
@@ -284,14 +299,18 @@ async function capture(): Promise<void> {
   // gives each request what this page asked for last, its own picture unless it asked for the window.
   const askingSize = { ...size };
   let display: MediaStream;
+  /** When this capture was asked for, by this page's clock: it takes nothing before then. */
+  let askedAt = 0;
   capturePending = true;
   try {
-    display = await inTurn(() =>
-      navigator.mediaDevices.getDisplayMedia({
+    display = await inTurn(() => {
+      // eslint-disable-next-line no-restricted-properties -- capture's plumbing: the earliest its frames can have been captured, never a frame drawn
+      askedAt = performance.now();
+      return navigator.mediaDevices.getDisplayMedia({
         video: { width: askingSize.width, height: askingSize.height, frameRate: 30 },
         audio: false,
-      }),
-    );
+      });
+    });
   } finally {
     capturePending = false;
   }
@@ -321,6 +340,8 @@ async function capture(): Promise<void> {
   // Its first frame, even when the picture stands still.
   wantFrame();
   let mineFrames = 0;
+  /** This capture's first frame's stamp (µs, the capture's own clock). */
+  let firstStamp: number | null = null;
   for (;;) {
     const { value: frame, done } = await reader.read();
     if (done) break;
@@ -334,9 +355,12 @@ async function capture(): Promise<void> {
     keepLatest(frame.clone());
     frames++;
     document.body.dataset['frames'] = String(frames);
+    // The earliest it can have been captured, by this page's clock (see onScreen above).
+    firstStamp ??= frame.timestamp;
+    const capturedBy = askedAt + (frame.timestamp - firstStamp) / 1000;
+    latestAt = capturedBy;
     // eslint-disable-next-line no-restricted-properties -- capture's plumbing: how often the operator's small preview of the stream is sent
     const now = performance.now();
-    latestAt = now;
     if (preview && !previewBusy && now - lastPreview >= 1000 / PREVIEW_FPS) {
       previewBusy = true;
       lastPreview = now;
@@ -346,8 +370,21 @@ async function capture(): Promise<void> {
         previewBusy = false;
       });
     }
-    if (encoder && encoderTakes()) await toEncoder(frame);
-    if (videoOut && videoOutTakes()) toVideoOut(frame.clone());
+    const afterShow = capturedBy >= onScreenAt;
+    const forEncoder = encoder !== null && encoderTakes();
+    const forVideoOut = videoOut !== null && videoOutTakes();
+    const toEncoderNow = forEncoder && (waitedOut || afterShow);
+    const toVideoOutNow = forVideoOut && (videoOutWaited || afterShow);
+    if ((forEncoder && !toEncoderNow) || (forVideoOut && !toVideoOutNow)) {
+      // Read once the show was on screen, but captured before it: let go, and the window paints for the next one.
+      if (!letGoSaid) {
+        letGoSaid = true;
+        say('a frame captured before the show was on screen was let go: the next one captured after it goes');
+      }
+      nudge();
+    }
+    if (toEncoderNow) await toEncoder(frame);
+    if (toVideoOutNow) toVideoOut(frame.clone());
     frame.close();
   }
   if (mine === generation) {
