@@ -1,15 +1,32 @@
 import type { PictureLook } from '../../../../shared/picture-look';
 import type { StudioLivePicture } from '../../../../shared/studio-live';
 import type { ChosenWallpaper } from '../../../../shared/wallpapers';
+import { readPersisted, writePersisted } from '../../ui/persist';
 
 /*
- * What is behind the Lower Thirds studio's preview (Session 55, Part 16): Dark, Light or Picture.
+ * What is behind the Lower Thirds studio's preview (Session 55, Part 16: Dark, Light or Picture; alpha.22, the owner:
+ * "give wallpaper a default and aother option of live as well to see how lower thirds looks"):
+ *
+ * - Wallpaper, first and the default: the wallpaper chosen in Drashti, as the hall shows it (its pictures going
+ *   round, each with its look); with none chosen, plain dark with the words "No wallpaper chosen". It took Picture's
+ *   place (a made-up picture standing in for the hall's).
+ * - Live: what the screens show now (a video, a slide, a picture, the wallpaper, black), as a still the main process
+ *   takes about once a second while the studio shows Live, and never otherwise (main/lower-thirds/studio-live.ts).
+ * - Dark and Light, plain, as before.
+ *
+ * The choice is remembered on this computer, as the template picker's favourites are (ui/persist.ts).
  */
 
-export type Backdrop = 'dark' | 'light' | 'picture';
-export const BACKDROPS: readonly Backdrop[] = ['dark', 'light', 'picture'];
-export const BACKDROP_NAMES: Record<string, string> = { dark: 'Dark', light: 'Light', picture: 'Picture' };
-export const DEFAULT_BACKDROP: Backdrop = 'picture';
+export type Backdrop = 'wallpaper' | 'live' | 'dark' | 'light';
+export const BACKDROPS: readonly Backdrop[] = ['wallpaper', 'live', 'dark', 'light'];
+export const BACKDROP_NAMES: Record<Backdrop, string> = {
+  wallpaper: 'Wallpaper',
+  live: 'Live',
+  dark: 'Dark',
+  light: 'Light',
+};
+export const DEFAULT_BACKDROP: Backdrop = 'wallpaper';
+/** Where it is remembered (ui/persist.ts). */
 export const BACKDROP_KEY = 'lower-third-studio-backdrop';
 export const NO_WALLPAPER = 'No wallpaper chosen';
 export const NO_LIVE = 'No live picture to show';
@@ -23,28 +40,49 @@ export type BackdropDraw =
   | { kind: 'live'; picture: StudioLivePicture }
   | { kind: 'plain'; colour: string; words?: string };
 
-const COLOURS: Record<Backdrop, string> = {
-  dark: '#1f2937',
-  light: '#e5e7eb',
-  picture: 'linear-gradient(160deg, #1e3a5f 0%, #6b4f2a 55%, #c2410c 100%)',
+const DARK = '#1f2937';
+const LIGHT = '#e5e7eb';
+const BLACK = '#000000';
+
+/** The template tiles' own backdrop: plain, never the hall's (no live picture in a grid of them). */
+export const TILE_BACKDROP: BackdropDraw = {
+  kind: 'plain',
+  colour: 'linear-gradient(160deg, #1e3a5f 0%, #6b4f2a 55%, #c2410c 100%)',
 };
 
-/** The template tiles' own backdrop. */
-export const TILE_BACKDROP: BackdropDraw = { kind: 'plain', colour: COLOURS.picture };
-
+/**
+ * What `backdrop` draws, from the hall's chosen wallpaper and its pictures' looks (the engine's state) and Live's
+ * still: undefined until the first comes (black), null when this computer has nothing to take it from.
+ */
 export function backdropDraw(
-  backdrop: string,
-  _hall: { wallpaper: ChosenWallpaper | null | undefined; pictures: Record<string, PictureLook> },
-  _live: StudioLivePicture | null | undefined,
+  backdrop: Backdrop,
+  hall: { wallpaper: ChosenWallpaper | null | undefined; pictures: Record<string, PictureLook> },
+  live: StudioLivePicture | null | undefined,
 ): BackdropDraw {
-  return { kind: 'plain', colour: isBackdrop(backdrop) ? COLOURS[backdrop] : COLOURS.picture };
+  switch (backdrop) {
+    case 'wallpaper':
+      return hall.wallpaper && hall.wallpaper.pictures.length > 0
+        ? { kind: 'wallpaper', wallpaper: hall.wallpaper, pictures: hall.pictures }
+        : { kind: 'plain', colour: DARK, words: NO_WALLPAPER };
+    case 'live':
+      if (live) return { kind: 'live', picture: live };
+      return live === null
+        ? { kind: 'plain', colour: BLACK, words: NO_LIVE }
+        : { kind: 'plain', colour: BLACK };
+    case 'dark':
+      return { kind: 'plain', colour: DARK };
+    case 'light':
+      return { kind: 'plain', colour: LIGHT };
+  }
 }
 
-/** Whether the studio asks the main process for the live picture. */
-export const watchesLive = (_backdrop: string): boolean => false;
+/** Whether the studio asks the main process for Live's stills. */
+export const watchesLive = (backdrop: Backdrop): boolean => backdrop === 'live';
 
-/** The backdrop the studio opens on. */
-export const rememberedBackdrop = (): Backdrop => DEFAULT_BACKDROP;
+/** The backdrop the studio opens on: the one chosen last on this computer, else Wallpaper. */
+export const rememberedBackdrop = (): Backdrop => readPersisted(BACKDROP_KEY, DEFAULT_BACKDROP, isBackdrop);
 
-/** Remember the backdrop chosen. */
-export const rememberBackdrop = (_backdrop: string): void => undefined;
+/** Remember the backdrop chosen, on this computer. */
+export const rememberBackdrop = (backdrop: Backdrop): void => {
+  writePersisted(BACKDROP_KEY, backdrop);
+};

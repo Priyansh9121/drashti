@@ -7,6 +7,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { audienceScreen, dispatch, makeClip, SCREENS } from './hall-looks';
 import type { PageGlobals } from './helpers';
 import {
+  holdStill,
   importAndGetIds,
   launchApp,
   openSection,
@@ -125,8 +126,7 @@ const videoUp = (win: Page, mediaId: string) =>
 async function nothingTaken(app: ElectronApplication, what: string): Promise<void> {
   await expect.poll(async () => (await liveWork(app))?.watching, { message: what }).toBe(false);
   const before = (await liveWork(app))?.taken ?? -1;
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  expect((await liveWork(app))?.taken, what).toBe(before);
+  await holdStill(async () => (await liveWork(app))?.taken === before, 2500, `${what}: no still taken`);
 }
 
 test('Behind the preview: Wallpaper by default (the hall’s wallpaper, or “No wallpaper chosen”), Live follows what the hall screen shows (the wallpaper, then a video), Dark and Light; remembered; nothing taken once closed or on another backdrop; axe passes', async () => {
@@ -157,7 +157,12 @@ test('Behind the preview: Wallpaper by default (the hall’s wallpaper, or “No
     const wallpaper = await chooseWallpaper(win, wallId);
     const drawn = preview.getByTestId('studio-backdrop-wallpaper').locator(`[data-wallpaper="${wallpaper}"]`);
     await expect(drawn).toHaveCount(1);
-    await expect(drawn.locator(`[data-media-id="${wallId}"] img`)).toHaveJSProperty('complete', true);
+    const wallImage = drawn.locator(`[data-media-id="${wallId}"] img`);
+    await expect
+      .poll(() => wallImage.evaluate((img: HTMLImageElement) => img.naturalWidth), {
+        message: 'its picture drawn',
+      })
+      .toBeGreaterThan(0);
     await expect(preview.getByTestId('studio-backdrop-words')).toHaveCount(0);
 
     // Live: the hall screen's picture (the wallpaper, nothing being up), then the video once it is up.

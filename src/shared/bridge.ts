@@ -28,6 +28,7 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
+import type { StudioLivePicture } from './studio-live';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -1240,6 +1241,10 @@ export interface DrashtiBridge {
     dirty(dirty: boolean): Promise<null>;
     close(): Promise<null>;
     onAskClose(listener: () => void): () => void;
+    /** The studio shows Live behind its preview (true) or another backdrop (alpha.22): stills only while it does. */
+    watchLive(on: boolean): Promise<null>;
+    /** Live's still, about once a second while it is watched (null: nothing on this computer to take it from). */
+    onLive(listener: (picture: StudioLivePicture | null) => void): () => void;
   };
   /** OSC: explicitly allowed local UDP senders, independent of Phones. */
   osc: {

@@ -35,6 +35,7 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
+import type { StudioLivePicture } from './studio-live';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
@@ -924,6 +925,10 @@ export const IPC = {
     close: 'lowerthirds:close',
     /** main -> the studio: its window was asked to close with changes not saved (ask first). */
     askClose: 'lowerthirds:ask-close',
+    /** The studio shows Live behind its preview, or not (alpha.22): main takes its stills only while it does. */
+    watchLive: 'lowerthirds:watch-live',
+    /** main -> the studio: Live's still (shared/studio-live.ts), or null with nothing to take it from. */
+    live: 'lowerthirds:live',
   },
   /**
    * The slide editor's window (Session 55, Part 17a): the operator window opens it on a presentation (or brings it
@@ -1954,6 +1959,7 @@ export interface InvokeContract {
   [IPC.lowerThirds.hide]: { args: []; result: LowerThirdDone };
   [IPC.lowerThirds.dirty]: { args: [dirty: boolean]; result: null };
   [IPC.lowerThirds.close]: { args: []; result: null };
+  [IPC.lowerThirds.watchLive]: { args: [on: boolean]; result: null };
   [IPC.slideEditor.open]: {
     args: [presentationId: string, slideId: string | null];
     result: { ok: true } | { ok: false; message: string };
@@ -2241,6 +2247,7 @@ export interface EventContract {
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
+  [IPC.lowerThirds.live]: StudioLivePicture | null;
   [IPC.slideEditor.edit]: EditSlidesOpen;
   [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;

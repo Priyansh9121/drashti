@@ -108,7 +108,7 @@ describe('the studio’s backdrop', () => {
     // Nothing on this computer to take it from: black, and says so.
     expect(backdropDraw('live', hall, null)).toEqual({ kind: 'plain', colour: '#000000', words: NO_LIVE });
     expect(watchesLive('live')).toBe(true);
-    for (const b of ['wallpaper', 'dark', 'light']) expect(watchesLive(b)).toBe(false);
+    for (const b of ['wallpaper', 'dark', 'light'] as const) expect(watchesLive(b)).toBe(false);
   });
 
   it('Dark and Light are plain; the template tiles keep their own plain backdrop', () => {
