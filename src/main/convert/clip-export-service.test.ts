@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { ClipExports } from './clip-export-service';
 import type { ClipExportRequest } from '../../shared/video-copies';
 import { sha256File } from '../import/media-store';
@@ -88,12 +88,17 @@ function service(destination: string) {
         hooks.publish && fixture.db.prepare('UPDATE media SET listed=1 WHERE id=?').run(id).changes > 0,
       ),
     // As the app has it (video-copies-ipc.ts): what an export copied into Media from its own file and never listed.
-    discardUnlisted: (file: string, keep: ReadonlySet<string>, allowed: () => boolean) => {
+    discardUnlisted: (
+      files: string | readonly string[],
+      keep: ReadonlySet<string>,
+      allowed: () => boolean,
+    ) => {
+      const made = typeof files === 'string' ? { file: files } : { files };
       const asked = !hooks.discard
         ? Promise.reject(new Error('The library is closed.'))
         : hooks.held
           ? Promise.resolve(0)
-          : discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, file, keep, allowed });
+          : discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, ...made, keep, allowed });
       hooks.discards.push(asked.catch(() => undefined));
       return asked;
     },
@@ -556,4 +561,60 @@ it('a copy taken up by its bytes in this run stays in the list, and the next run
     expect(rows()).toBe(1);
     expect(stored()).toEqual([]);
   });
+}, 20_000);
+
+/*
+ * The leaks the reviews left (a22-combineleaks), for the list of what is left: every file there is tried at a start in
+ * ONE removal (one library-wide scan, however long the list: a copy something uses stays listed for good); a list
+ * longer than its cap is not dropped whole (the extra entries are, the newest kept).
+ */
+/** A copy into Media an earlier run's export left (never listed), its row and its file, from its own temporary file. */
+function seeded(n: number) {
+  const sha = `${String(n).padStart(2, '0')}cd`.padEnd(64, 'e');
+  const path = `${sha.slice(0, 2)}/${sha}.mp4`;
+  mkdirSync(join(fixture.dir, sha.slice(0, 2)), { recursive: true });
+  writeFileSync(join(fixture.dir, path), 'placeholder clip copy');
+  const source = join(fixture.dir, `.placeholder-${String(n)}.mp4`);
+  fixture.db
+    .prepare(
+      `INSERT INTO media(id,kind,name,path,sha256,bytes,playable,source_kind,source_path,listed)
+       VALUES (?,'video','Placeholder clip.mp4',?,?,21,1,'drashti',?,0)`,
+    )
+    .run(`placeholder-${String(n)}`, path, sha, source);
+  return { id: `placeholder-${String(n)}`, source, file: join(fixture.dir, path) };
+}
+
+it('at a start, every file left from earlier runs is tried in one removal', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'unused clip.mp4'));
+  clips.close();
+  const left = [seeded(1), seeded(2), seeded(3)];
+  deps.left.save(left.map((one) => one.source));
+  clips = new ClipExports(deps);
+  clips.resume();
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+  });
+  await Promise.all(hooks.discards);
+  expect(hooks.discards).toHaveLength(1);
+  for (const one of left) expect(existsSync(one.file)).toBe(false);
+}, 20_000);
+
+it('a list of what is left longer than its cap is not dropped whole', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'unused clip.mp4'));
+  clips.close();
+  const real = seeded(1);
+  const others = Array.from({ length: 600 }, (_, at) =>
+    join(fixture.dir, `.placeholder-gone-${String(at)}.mp4`),
+  );
+  deps.left.save([...others, real.source]);
+  clips = new ClipExports(deps);
+  clips.resume();
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+  });
+  expect(existsSync(real.file)).toBe(false);
 }, 20_000);

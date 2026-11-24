@@ -338,3 +338,61 @@ it('a leftover Edit Video took up stays before its copy is recorded', async () =
   expect(row(at.db, left.id)).toBeDefined();
   expect(existsSync(left.file)).toBe(true);
 });
+
+/*
+ * The leaks the reviews left (a22-combineleaks): N2, a removed leftover's derived copies (its still frame, its
+ * sharpened, blurred and display copies, kept by sha256) go with it; N6, the start sweep also finds what a combine left
+ * when the library was at another place (moved to another computer or drive, or its folder spelled otherwise), by the
+ * exact form of a combine's work file, and nothing else.
+ */
+it('a removed leftover takes its still frame and derived copies with it; a kept one keeps its own', async () => {
+  const at = library();
+  const gone = leftover(at);
+  const kept = leftover(at);
+  const derived = (sha: string) => [
+    join(at.dir, 'stills', `${sha}.jpg`),
+    join(at.dir, 'blurred', `${sha}.jpg`),
+    join(at.dir, 'sharpened', `${sha}-1920x1080.jpg`),
+    join(at.dir, 'display', `v1-${sha}-1920x1080.jpg`),
+  ];
+  for (const file of [...derived(gone.sha), ...derived(kept.sha)]) {
+    mkdirSync(join(file, '..'), { recursive: true });
+    writeFileSync(file, 'placeholder derived copy');
+  }
+  at.db.exec("INSERT INTO playlists(id,name) VALUES ('placeholder-order','Placeholder running order')");
+  at.db
+    .prepare(
+      "INSERT INTO playlist_items(id,playlist_id,position,kind,media_id) VALUES ('placeholder-item','placeholder-order',0,'media',?)",
+    )
+    .run(kept.id);
+  expect(await discardUnlisted({ db: at.db, mediaDir: at.dir, folder: at.work })).toBe(1);
+  expect(row(at.db, gone.id)).toBeUndefined();
+  for (const file of derived(gone.sha)) expect(existsSync(file)).toBe(false);
+  expect(row(at.db, kept.id)).toBeDefined();
+  for (const file of derived(kept.sha)) expect(existsSync(file)).toBe(true);
+});
+
+it('the start sweep finds what a combine left with the library at another place, and nothing else', async () => {
+  const at = library();
+  const uuid = (n: number) => `${String(n).padStart(8, '0')}-0000-4000-8000-000000000000`;
+  const at2 = (source: string) => {
+    const left = leftover(at);
+    at.db.prepare('UPDATE media SET source_path = ? WHERE id = ?').run(source, left.id);
+    return left;
+  };
+  // Moved from another drive, and from Windows' own spelling of its folders.
+  const moved = at2(`/Volumes/Placeholder drive/Drashti/Media/video-combine-work/.${uuid(1)}.mp4`);
+  const windows = at2(
+    `C:\\Users\\Placeholder\\AppData\\Roaming\\Drashti\\Media\\video-combine-work\\.${uuid(2)}.mp4`,
+  );
+  // Not a combine's work file: another folder's name, another file name.
+  const other = at2(`/Volumes/Placeholder drive/Drashti/Media/video-combine-work-old/.${uuid(3)}.mp4`);
+  const named = at2('/Volumes/Placeholder drive/Drashti/Media/video-combine-work/placeholder.mp4');
+  expect(await discardUnlisted({ db: at.db, mediaDir: at.dir, folder: at.work })).toBe(2);
+  expect(row(at.db, moved.id)).toBeUndefined();
+  expect(row(at.db, windows.id)).toBeUndefined();
+  expect(row(at.db, other.id)).toBeDefined();
+  expect(row(at.db, named.id)).toBeDefined();
+  expect(existsSync(other.file)).toBe(true);
+  expect(existsSync(named.file)).toBe(true);
+});
