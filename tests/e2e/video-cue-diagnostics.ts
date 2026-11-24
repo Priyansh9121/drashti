@@ -81,7 +81,12 @@ export async function beginCueDiagnostics(pages: Page[], options: { lag?: boolea
       const NativeFrame = globalThis.VideoFrame;
       const ObservedFrame = function (this: unknown, ...args: ConstructorParameters<typeof VideoFrame>) {
         try {
-          return new NativeFrame(...args);
+          const frame = new NativeFrame(...args);
+          // Which frame a cued picture's read got (a22-cue: LIVE's cue never matched its presented frame).
+          const source = args[0];
+          if (source instanceof HTMLVideoElement && source.dataset['cueId'] && events.length < 6000)
+            events.push({ t: Date.now(), event: 'videoframe', timestamp: frame.timestamp, ...media(source) });
+          return frame;
         } catch (error) {
           const source = args[0];
           events.push({
@@ -95,6 +100,29 @@ export async function beginCueDiagnostics(pages: Page[], options: { lag?: boolea
       } as unknown as typeof VideoFrame;
       ObservedFrame.prototype = NativeFrame.prototype;
       globalThis.VideoFrame = ObservedFrame;
+      // Each frame Chromium presents to a held cued picture's frame callbacks (render/cue-presentation.ts waits for its
+      // trimmed frame there): when, which frame, how many presented.
+      const nativeCallback = Object.getOwnPropertyDescriptor(
+        HTMLVideoElement.prototype,
+        'requestVideoFrameCallback',
+      );
+      if (!nativeCallback) throw new Error('No native video frame callback');
+      const askFrame = nativeCallback.value as HTMLVideoElement['requestVideoFrameCallback'];
+      HTMLVideoElement.prototype.requestVideoFrameCallback = function (callback: VideoFrameRequestCallback) {
+        const observed: VideoFrameRequestCallback = (now, frame) => {
+          // While it is held only: its frames after Go are the spec's own record.
+          if (this.dataset['cueId'] && this.paused && events.length < 6000)
+            events.push({
+              t: Date.now(),
+              event: 'presented',
+              mediaTime: frame.mediaTime,
+              presentedFrames: frame.presentedFrames,
+              ...media(this),
+            });
+          callback(now, frame);
+        };
+        return askFrame.call(this, observed);
+      };
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries())
           events.push({
@@ -140,6 +168,7 @@ export async function beginCueDiagnostics(pages: Page[], options: { lag?: boolea
         stop: () => {
           Object.defineProperty(BaseAudioContext.prototype, 'createGain', createGain);
           globalThis.VideoFrame = NativeFrame;
+          Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', nativeCallback);
           if (reports === 'drashti') g.drashti = bridge;
           for (const name of names) document.removeEventListener(name, record, true);
           observer.disconnect();
