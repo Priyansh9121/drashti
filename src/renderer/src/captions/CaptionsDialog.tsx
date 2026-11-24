@@ -41,6 +41,7 @@ import {
   SPEECH_LEVEL_NAMES,
   STEP_NAMES,
   THREAD_NAMES,
+  threadsNote,
 } from './captions-words';
 
 /*
@@ -243,7 +244,7 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
             </Select>
           </Field>
         </div>
-        <TimingFields timing={view.timing} />
+        <TimingFields timing={view.timing} threadsHint={threadsNote(view)} />
       </div>
     </Dialog>
   );
@@ -326,8 +327,11 @@ function LanguageModelRow({ model }: { model: LanguageModelView }) {
   );
 }
 
-/** The live timing on this computer (alpha.22), folded away until asked for: the standard choices are as before. */
-function TimingFields({ timing }: { timing: CaptionTiming }) {
+/**
+ * The live timing on this computer (alpha.22), folded away until asked for: the standard choices are as before. Under
+ * Engine threads, when this computer has fewer logical processors than chosen, how many captions use (cap-threads).
+ */
+function TimingFields({ timing, threadsHint }: { timing: CaptionTiming; threadsHint: string | null }) {
   const [open, setOpen] = useState(false);
   const set = (next: Partial<CaptionTiming>) => {
     takeCaptions(window.drashti.captions.setTiming({ ...timing, ...next }));
@@ -417,7 +421,14 @@ function TimingFields({ timing }: { timing: CaptionTiming }) {
                 ))}
               </Select>
             </Field>
-            <Field label="Engine threads">
+            <Field
+              label="Engine threads"
+              hint={
+                threadsHint === null ? undefined : (
+                  <span data-testid="captions-timing-threads-note">{threadsHint}</span>
+                )
+              }
+            >
               <Select
                 data-testid="captions-timing-threads"
                 className="w-full"

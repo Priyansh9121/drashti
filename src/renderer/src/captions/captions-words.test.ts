@@ -10,10 +10,13 @@ import {
   type CaptionsStatus,
   type LanguageModelView,
 } from '../../../shared/captions';
+import type { SlowHold } from '../../../shared/speech';
 import {
   captionsStateText,
+  captionsStatusLine,
   captionsSwitchDisabled,
   downloadText,
+  threadsNote,
   languageModelText,
   LONGEST_NAMES,
   megabytes,
@@ -36,6 +39,8 @@ const view = (over: Partial<CaptionsStatus>): CaptionsStatus => ({
   trial: true,
   languageModels: [],
   timing: DEFAULT_CAPTION_TIMING,
+  processors: 8,
+  stopped: null,
   ...over,
 });
 
@@ -135,5 +140,174 @@ describe('the dialog’s On switch (review S1)', () => {
     expect(captionsSwitchDisabled(view({ on: true, engine: false }))).toBe(false);
     expect(captionsSwitchDisabled(view({ on: false, engine: true }))).toBe(false);
     expect(captionsSwitchDisabled(view({ on: true, engine: true }))).toBe(false);
+  });
+});
+
+/** Resting for slowness, as the whisper engine measured it (placeholder numbers). */
+const slow = (over: Partial<SlowHold> = {}): CaptionsStatus =>
+  view({
+    speech: {
+      phase: 'held',
+      reason: 'busy',
+      slow: {
+        answerMs: 9_100,
+        behindMs: 6_200,
+        threads: 2,
+        processors: 2,
+        rests: 1,
+        keptUp: false,
+        stops: false,
+        ...over,
+      },
+    },
+  });
+
+describe('captions resting because this computer cannot keep up (cap-threads)', () => {
+  it('the dialog says what was measured, plainly: the answer’s time or how far behind, and the threads', () => {
+    const first = captionsStateText(slow());
+    expect(first).toMatch(/^Resting: this computer could not keep up with live captions/u);
+    expect(first).toContain('an answer took 9.1 seconds, with 2 engine threads');
+    expect(first).toMatch(/rest for a minute/u);
+    expect(first).toMatch(/The show comes first\.$/u);
+    // Held for falling behind (an answer more than 8 s behind the speaker).
+    expect(captionsStateText(slow({ answerMs: 1_200, behindMs: 9_400 }))).toContain(
+      'it fell 9.4 seconds behind the speaker, with 2 engine threads',
+    );
+    expect(captionsStateText(slow({ threads: 1, processors: 1 }))).toContain('with 1 engine thread)');
+  });
+
+  it('rests in a row: the dialog says this computer may be too slow for live captions with this model, and that a third rest stops them', () => {
+    const again = captionsStateText(slow({ rests: 2 }));
+    expect(again).toMatch(/^Resting again \(2 times in a row\)/u);
+    expect(again).toMatch(/may be too slow for live captions with this model/u);
+    expect(again).toContain('an answer took 9.1 seconds, with 2 engine threads');
+    expect(again).toMatch(/after 3 rests in a row they stop\.$/u);
+    // It has kept up since it started (busy for a while): no stop can come, so none is promised (review MUST-1).
+    const busy = captionsStateText(slow({ rests: 3, keptUp: true }));
+    expect(busy).toMatch(/^Resting again \(3 times in a row\): this computer could not keep up for a while/u);
+    expect(busy).not.toMatch(/they stop|too slow/u);
+    expect(busy).toMatch(/try again by themselves in a minute/u);
+  });
+
+  it('stopped after 3 rests (the owner: “Say so and stop”): off, too slow for live captions with this model, and for Gujarati or Hindi the IndicConformer pack', () => {
+    const off = (language: 'gu' | 'hi' | 'en' | 'sa' | 'auto') =>
+      view({
+        on: false,
+        speech: { phase: 'off' },
+        settings: { ...DEFAULT_CAPTION_SETTINGS, language },
+        stopped: {
+          language,
+          slow: {
+            answerMs: 15_500,
+            behindMs: 16_000,
+            threads: 2,
+            processors: 2,
+            rests: 3,
+            keptUp: false,
+            stops: true,
+          },
+        },
+      });
+    const gu = captionsStateText(off('gu'));
+    expect(gu).toMatch(/^Off: this computer is too slow for live captions with this model\./u);
+    expect(gu).toContain(
+      'They rested 3 times in a row (it fell 16.0 seconds behind the speaker, with 2 engine threads)',
+    );
+    expect(gu).toContain(
+      'For Gujarati, import the Gujarati IndicConformer model pack (Help › Caption and Translation Models…) and choose it under Gujarati model: it keeps up on slower computers.',
+    );
+    expect(gu).toMatch(/Turn captions on to try again\.$/u);
+    expect(captionsStateText(off('hi'))).toContain(
+      'For Hindi, import the Hindi IndicConformer model pack (Help › Caption and Translation Models…) and choose it under Hindi model',
+    );
+    expect(captionsStateText(off('auto'))).toContain(
+      'For Gujarati or Hindi, choose the speaker’s language, then import its IndicConformer model pack (Help › Caption and Translation Models…) and choose it under that language’s model: it keeps up on slower computers.',
+    );
+    for (const other of ['en', 'sa'] as const) {
+      expect(captionsStateText(off(other))).toMatch(/^Off: this computer is too slow/u);
+      expect(captionsStateText(off(other))).not.toMatch(/IndicConformer/u);
+    }
+    // The status bar says it too, while they are off for it (Live Captions… opens the dialog).
+    expect(captionsStatusLine(off('gu'))).toBe(
+      'Captions stopped: this computer is too slow for live captions with this model.',
+    );
+    // Off by the switch alone: nothing to say.
+    expect(captionsStateText(view({ on: false, speech: { phase: 'off' } }))).toBe('Off on this computer.');
+  });
+
+  it('a rest the engine measured nothing for keeps today’s words', () => {
+    expect(captionsStateText(view({ speech: { phase: 'held', reason: 'busy' } }))).toBe(
+      'Resting: this computer is busy, and the show comes first. Captions try again by themselves in a minute.',
+    );
+  });
+
+  it('the status bar says why captions that are on show nothing: never silence', () => {
+    expect(captionsStatusLine(slow())).toBe('Captions are resting: this computer cannot keep up.');
+    expect(captionsStatusLine(slow({ rests: 2 }))).toBe(
+      'Captions are resting: this computer cannot keep up (2 times in a row).',
+    );
+    expect(captionsStatusLine(view({ speech: { phase: 'held', reason: 'busy' } }))).toBe(
+      'Captions are resting: this computer is busy.',
+    );
+    expect(captionsStatusLine(view({ speech: { phase: 'held', reason: 'no-sound-input' } }))).toBe(
+      'Captions: no sound input is chosen for the stream.',
+    );
+    expect(captionsStatusLine(view({ speech: { phase: 'held', reason: 'no-model' } }))).toBe(
+      'Captions are waiting for their model.',
+    );
+    expect(captionsStatusLine(view({ speech: { phase: 'failed', message: 'Placeholder failure.' } }))).toBe(
+      'Captions: Placeholder failure.',
+    );
+  });
+
+  it('Engine threads says when this computer has fewer logical processors than it asks for', () => {
+    const at = (threads: 4 | 2 | 1, processors: number) =>
+      threadsNote(view({ timing: { ...DEFAULT_CAPTION_TIMING, threads }, processors }));
+    expect(at(4, 2)).toBe('This computer has 2 logical processors, so captions use 2 engine threads.');
+    expect(at(2, 1)).toBe('This computer has 1 logical processor, so captions use 1 engine thread.');
+    expect(at(4, 3)).toBe('This computer has 3 logical processors, so captions use 3 engine threads.');
+    expect(at(4, 4)).toBeNull();
+    expect(at(4, 16)).toBeNull();
+    expect(at(2, 2)).toBeNull();
+    expect(at(1, 2)).toBeNull();
+  });
+
+  it('and nothing while captions listen, start, are off, or cannot run here', () => {
+    expect(captionsStatusLine(null)).toBeNull();
+    expect(captionsStatusLine(view({}))).toBeNull();
+    expect(captionsStatusLine(view({ speech: { phase: 'starting' } }))).toBeNull();
+    expect(captionsStatusLine(view({ speech: { phase: 'off' } }))).toBeNull();
+    expect(captionsStatusLine({ ...slow(), on: false })).toBeNull();
+    expect(captionsStatusLine({ ...slow(), engine: false, on: false })).toBeNull();
+  });
+});
+
+describe('the words never say two cores (lead 2: a slow 4-core computer stops too; cap-review-threads n6)', () => {
+  it('in any rest, stop or status line, for every language', () => {
+    const texts: string[] = [];
+    for (const language of ['gu', 'hi', 'en', 'sa', 'auto'] as const)
+      for (const over of [{ rests: 1 }, { rests: 2 }, { rests: 2, keptUp: true }]) {
+        const resting = slow(over);
+        const stopped = view({
+          on: false,
+          speech: { phase: 'off' },
+          settings: { ...DEFAULT_CAPTION_SETTINGS, language },
+          stopped: {
+            language,
+            slow: {
+              answerMs: 15_500,
+              behindMs: 16_000,
+              threads: 2,
+              processors: 2,
+              rests: 3,
+              keptUp: false,
+              stops: true,
+            },
+          },
+        });
+        texts.push(captionsStateText(resting), captionsStateText(stopped));
+        texts.push(captionsStatusLine(resting) ?? '', captionsStatusLine(stopped) ?? '');
+      }
+    for (const text of texts) expect(text).not.toMatch(/two[- ]cores?/iu);
   });
 });
