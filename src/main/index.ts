@@ -722,7 +722,6 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
   cannotPlay.gpuGone();
-  if (hallWords.gpuGone()) hallWordsChanged?.();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -8975,6 +8974,8 @@ function start(): void {
     if (typeof code !== 'number' || typeof words !== 'string') return null;
     const file = media.kindAndName(mediaId);
     if (file?.kind !== 'video') return null;
+    // A screen's new word: a drawing it said before is not this one's (a22-halldrop's re-review, MUST-4).
+    if (screenId !== undefined) hallWords.saidAgain(mediaId, startedAt, screenId);
     // The error's kind and Chromium's words, for the log only (the notice names the file and where).
     const kind = errorKindWords(code);
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;

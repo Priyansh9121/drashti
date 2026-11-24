@@ -174,6 +174,12 @@ const screensOf = (wheres: readonly CannotPlayWhere[]) =>
  * to play it. When only LIVE or the stream said so (the screens show it), only the log; gone by the end of the wait,
  * only the log. What the screens show is never changed here.
  */
+/** The log's line for a showing pages said could not play, up to what came of it. */
+const saidLine = (h: Pick<Heard, 'wheres' | 'code' | 'words' | 'mediaId'>): string =>
+  `A video could not play on ${whereWords(h.wheres)} (${errorKindWords(h.code)}${
+    h.words === '' ? '' : `: ${cutText(h.words, 300, '…')}`
+  }): ${h.mediaId}`;
+
 export function heardOutcome(h: Heard): HeardOutcome {
   const named = whereWords(h.wheres);
   const screens = screensOf(h.wheres);
@@ -181,8 +187,7 @@ export function heardOutcome(h: Heard): HeardOutcome {
   const fresh = screens.filter((w) => !told.has(screenKey(w)));
   const slow = h.code === NO_START_IN_TIME;
   const kind = slow ? 'slow' : 'cannot';
-  const detail = h.words === '' ? '' : `: ${cutText(h.words, 300, '…')}`;
-  const said = `A video could not play on ${named} (${errorKindWords(h.code)}${detail}): ${h.mediaId}`;
+  const said = saidLine(h);
   const took = h.took;
   if (took) {
     const off = [
@@ -230,16 +235,23 @@ interface Kept {
   notOn: Map<string, { name: string; slow: boolean }>;
 }
 
+/** Showings whose drawing after all Main keeps a mark of, at most (the newest). */
+const DREW_MAX = NOT_ON_SCREENS_MAX * 5;
+
 /**
  * For each showing up that one of this computer's screens could not play (alpha.23, a22-halldrop; the review's MUST-2
- * and MUST-3): which screens the operator was told of (each once a showing: a later word, more than CannotPlay's wait
+ * to MUST-5): which screens the operator was told of (each once a showing: a later word, more than CannotPlay's wait
  * after, is logged only), and which do not show it, as LIVE names them under its picture: merged as more screens say
- * so; a screen that draws it after all (media:plays-here), whose page loads again, or that goes, is no longer named;
- * a GPU process that stops names none (every failed video loads again, and says so again if it still fails); a showing
- * not up any more is forgotten. The newest NOT_ON_SCREENS_MAX showings are kept.
+ * so; a screen that draws it after all (media:plays-here: marked, so a drawing said during the wait counts too, until
+ * that screen's next word), whose page loads again, or that goes, is no longer named; a showing not up any more is
+ * forgotten. A GPU process that stops changes nothing here: a video loaded again after it says media:plays-here once it
+ * draws, and one that fails again within the GPU's grace is never heard, so its line stays. The newest
+ * NOT_ON_SCREENS_MAX showings are kept.
  */
 export class HallWords {
   private readonly kept = new Map<string, Kept>();
+  /** For each showing, the screens that drew it after all since their last word (MUST-4). */
+  private readonly drew = new Map<string, { mediaId: string; startedAt: number; screens: Set<string> }>();
 
   /**
    * A showing pages said could not play, after the wait and Main's take-off: what to log and tell (heardOutcome, with
@@ -248,8 +260,29 @@ export class HallWords {
   heard(h: Heard, startedAt: number): { outcome: HeardOutcome; changed: boolean } {
     const key = `${h.mediaId}@${String(startedAt)}`;
     const was = this.kept.get(key);
-    const outcome = heardOutcome({ ...h, told: was ? [...was.told] : [] });
-    const screens = screensOf(h.wheres);
+    // Screens that drew it after all during the wait (their media:plays-here came before it ended): neither told nor
+    // named; a take-off, a change of the show, is told as ever.
+    const marks = this.drew.get(key)?.screens;
+    const drewThere = new Set(
+      screensOf(h.wheres)
+        .filter((w) => marks?.has(screenKey(w)) === true)
+        .map(screenKey),
+    );
+    const wheres =
+      drewThere.size === 0 || h.took
+        ? h.wheres
+        : h.wheres.filter((w) => typeof w !== 'object' || !drewThere.has(screenKey(w)));
+    if (wheres.length === 0 || (screensOf(wheres).length === 0 && drewThere.size > 0 && !h.took))
+      return {
+        outcome: {
+          log: { level: 'info', line: `${saidLine(h)}; drew there after all, so nothing to tell` },
+          notice: null,
+          live: null,
+        },
+        changed: false,
+      };
+    const outcome = heardOutcome({ ...h, wheres, told: was ? [...was.told] : [] });
+    const screens = screensOf(wheres).filter((w) => !drewThere.has(screenKey(w)));
     if (!h.stillUp || screens.length === 0) return { outcome, changed: false };
     const k: Kept = was ?? {
       mediaId: h.mediaId,
@@ -281,25 +314,29 @@ export class HallWords {
     return { outcome, changed };
   }
 
-  /** A screen said again that a showing could not play (as the first review fix had it: nothing kept). */
-  saidAgain(_mediaId: string, _startedAt: number, _screenId: string): void {
-    // Nothing kept yet.
+  /** A screen said (again) that a showing could not play (a new media:cannot-play word): its drawing's mark goes. */
+  saidAgain(mediaId: string, startedAt: number, screenId: string): void {
+    this.drew.get(`${mediaId}@${String(startedAt)}`)?.screens.delete(screenId);
   }
 
-  /** That screen drew the showing after all: no longer named. Whether LIVE's lines changed. */
+  /**
+   * That screen drew the showing after all: marked (a word still in CannotPlay's wait then neither tells nor names it),
+   * and no longer named. Whether LIVE's lines changed.
+   */
   playsHere(mediaId: string, startedAt: number, screenId: string): boolean {
-    return this.kept.get(`${mediaId}@${String(startedAt)}`)?.notOn.delete(screenId) ?? false;
-  }
-
-  /** A GPU process stopped: every failed video loads again, so none is named (the screens told stay told). */
-  gpuGone(): boolean {
-    let changed = false;
-    for (const k of this.kept.values())
-      if (k.notOn.size > 0) {
-        k.notOn.clear();
-        changed = true;
+    const key = `${mediaId}@${String(startedAt)}`;
+    let marks = this.drew.get(key);
+    if (!marks) {
+      marks = { mediaId, startedAt, screens: new Set() };
+      this.drew.set(key, marks);
+      while (this.drew.size > DREW_MAX) {
+        const oldest = this.drew.keys().next().value;
+        if (oldest === undefined) break;
+        this.drew.delete(oldest);
       }
-    return changed;
+    }
+    marks.screens.add(screenId);
+    return this.kept.get(key)?.notOn.delete(screenId) ?? false;
   }
 
   /** That screen's page loads again, or it went: no longer named on any showing. */
@@ -317,13 +354,14 @@ export class HallWords {
 
   /** Forget the showings not up in `state` any more: whether LIVE's lines changed. */
   prune(state: EngineState): boolean {
-    if (this.kept.size === 0) return false;
-    const up = new Set(
-      notOnScreensNow(
-        [...this.kept.values()].map((k) => ({ mediaId: k.mediaId, startedAt: k.startedAt, lines: [] })),
-        state,
-      ).map((e) => `${e.mediaId}@${String(e.startedAt)}`),
-    );
+    if (this.kept.size === 0 && this.drew.size === 0) return false;
+    const showings = [...this.kept.values(), ...this.drew.values()].map((k) => ({
+      mediaId: k.mediaId,
+      startedAt: k.startedAt,
+      lines: [],
+    }));
+    const up = new Set(notOnScreensNow(showings, state).map((e) => `${e.mediaId}@${String(e.startedAt)}`));
+    for (const key of [...this.drew.keys()]) if (!up.has(key)) this.drew.delete(key);
     let changed = false;
     for (const [key, k] of [...this.kept])
       if (!up.has(key)) {
