@@ -557,9 +557,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       {/* Below xl the top wraps whole controls, in their order, only where one row cannot hold them (200% zoom): the
           title's basis is its least width, so a line breaks only where one row would overflow, and a row that fits
           is laid out exactly as before, the title taking the room left (a22-review-x96 M1: with an 8rem basis, Save
-          dropped to a second row at 1024 × 645). From xl up it never wraps. */}
+          dropped to a second row at 1024 × 645). Its least is 5rem: at the window's least on Windows (884 inside) one
+          row needs the title at 91 px or less, so with 6rem Done went to a second row there. From xl up it never
+          wraps. */}
       <header className="@container/editor-top flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5 max-xl:flex-wrap">
-        <h1 id={titleId} className="min-w-24 flex-[1_1_6rem] text-sm font-bold">
+        <h1 id={titleId} className="min-w-20 flex-[1_1_5rem] text-sm font-bold">
           <Truncate text={`Slides of “${name}”`} />
         </h1>
         <Tabs
