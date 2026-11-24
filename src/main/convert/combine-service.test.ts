@@ -802,3 +802,36 @@ it('Stop on air after the copy into Media removes nothing on air; the next start
     expect(stored()).toEqual([]);
   });
 }, 30_000);
+
+it("Stop just after the copy into Media keeps a copy a deck's preparation took up, though its editor has not saved it", async () => {
+  const { hooks } = await setUp();
+  const queued = { id: '' };
+  const taken: { id: string | null; path: string } = { id: null, path: '' };
+  hooks.imported = (id) => {
+    const row = fixture.db.prepare('SELECT path, sha256, bytes FROM media WHERE id = ?').get(id) as {
+      path: string;
+      sha256: string;
+      bytes: number;
+    };
+    // The deck's preparation takes the same bytes up and ends; nothing names the row until its editor saves.
+    taken.id = new MediaStore(fixture.db, { dir: fixture.dir }).addStaged(
+      {
+        kind: 'video',
+        name: 'Placeholder object.mp4',
+        rel: row.path,
+        sha256: row.sha256,
+        bytes: row.bytes,
+        probe: { kind: 'video', playable: true, format: 'H.264 video (MP4)' },
+      },
+      { kind: 'drashti', path: 'Editable document object' },
+    ).mediaId;
+    taken.path = row.path;
+    expect(combines.stop(queued.id)).toBe(true);
+  };
+  queued.id = (await started(ask(['source', 'second']))).id;
+  await ended(queued.id, 'stopped');
+  await removalsDone(hooks, 1);
+  expect(taken.id).not.toBeNull();
+  expect(fixture.db.prepare('SELECT 1 FROM media WHERE id = ?').get(taken.id)).toBeDefined();
+  expect(stored()).toEqual([taken.path]);
+}, 30_000);
