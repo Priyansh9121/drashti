@@ -115,7 +115,8 @@ export class StudioLive {
       clearTimeout(limit);
     }
     if (round !== this.round) return;
-    this.deps.send(picture);
+    // Not ready yet (Live's copy still opening): nothing sent, the next taken as usual.
+    if (picture !== undefined) this.deps.send(picture);
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.next(round);

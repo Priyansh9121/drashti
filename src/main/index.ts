@@ -146,7 +146,7 @@ import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
 import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
-import { LiveCopy, liveCopyContext, unseenInCopy } from './lower-thirds/live-copy';
+import { LiveCopy, liveCopyContext, unseenInCopy, WAITING } from './lower-thirds/live-copy';
 import { createLiveCopyWindow } from './lower-thirds/live-copy-window';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
@@ -7090,9 +7090,10 @@ function start(): void {
       );
       const hall = screenId === null ? undefined : outputWindows.get(screenId);
       if (screenId === null || !hall || hall.isDestroyed()) {
-        // No hall screen here: Live's copy (opened now if it is not open; none until it has drawn), saying what is live
-        // that it cannot draw (a video input, another app's window).
+        // No hall screen here: Live's copy (opened now if it is not open; nothing sent while it loads), saying what is
+        // live that it cannot draw (a video input, another app's window).
         const drawn = liveCopy.still();
+        if (drawn === WAITING) return undefined;
         return drawn
           ? livePictureOf(drawn, 'copy', Date.now(), unseenInCopy(engine.snapshot().state.layers))
           : null;

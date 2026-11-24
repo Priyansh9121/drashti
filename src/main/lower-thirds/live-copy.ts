@@ -49,8 +49,13 @@ export interface LiveCopyDeps {
   now?(): number;
 }
 
+/** Its window is open and has not drawn yet (its page loading): Live sends nothing meanwhile. */
+export const WAITING = 'waiting';
+
 export class LiveCopy {
   private win: LiveCopyWindow | null = null;
+  /** When its window opened (this computer's clock). */
+  private openedAt = 0;
   /** Its page stopped (a crash): not opened again until it is closed (Live chosen again, or the studio back). */
   private failed = false;
 
@@ -61,20 +66,32 @@ export class LiveCopy {
     return this.win !== null && !this.win.isDestroyed();
   }
 
-  /** No hall screen here, Live wants a still: its last picture (the window opened first if need be; none until drawn). */
-  still(): CapturedImage | null {
+  /**
+   * No hall screen here, Live wants a still: its last picture, the window opened first if need be. Before its first
+   * picture, `WAITING` (for at most LIVE_COPY_FIRST_MS after it opened), then none.
+   */
+  still(): CapturedImage | typeof WAITING | null {
     if (this.failed) return null;
     const open = this.win;
-    if (open && !open.isDestroyed()) return open.latest();
+    if (open && !open.isDestroyed()) return open.latest() ?? this.waiting();
     const win: LiveCopyWindow | null = this.deps.open(() => {
       if (this.win === win) this.gone();
     });
     this.win = win;
     if (!win) return null;
+    this.openedAt = this.now();
     this.deps.log(
       'Live behind the Lower Thirds studio: no hall screen on this computer, so its copy of the audience picture is drawn off screen (960 x 540, once a second, muted)',
     );
-    return win.latest();
+    return win.latest() ?? this.waiting();
+  }
+
+  private waiting(): typeof WAITING | null {
+    return this.now() - this.openedAt < LIVE_COPY_FIRST_MS ? WAITING : null;
+  }
+
+  private now(): number {
+    return this.deps.now?.() ?? Date.now();
   }
 
   /** Every other change (Live stopped or paused, a hall screen showing): closed at once. */
