@@ -93,6 +93,9 @@ export const musicStartSchema = z.object({
 });
 
 export const engineCommandSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('cueVideo'), mediaId: id, playlist: playlistCursor.optional() }),
+  z.object({ type: z.literal('goVideoCue'), cueId: z.string().min(1).max(128) }),
+  z.object({ type: z.literal('cancelVideoCue') }),
   z.object({
     type: z.literal('goLive'),
     presentationId: id,

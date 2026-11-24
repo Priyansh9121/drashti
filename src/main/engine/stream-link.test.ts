@@ -19,9 +19,9 @@ function setup() {
 const LINK = { linkId: '00000000-0000-4000-8000-000000000001', name: 'media.example.org' };
 
 describe('a stream link as the background (alpha.20)', () => {
-  it('is engine 31, which reads every state 30 and before saved whole', () => {
-    expect(ENGINE_STATE_VERSION).toBe(31);
-    for (const v of [30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12])
+  it('is engine 32, which retains the stream link and every preceding saved state whole', () => {
+    expect(ENGINE_STATE_VERSION).toBe(32);
+    for (const v of [31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12])
       expect(readsEngineVersion(v), String(v)).toBe(true);
   });
 

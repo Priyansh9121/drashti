@@ -1072,9 +1072,28 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
 
   // The output page's own requests: the show, its screen, and how it draws.
+  handle(IPC.engine.videoCueReady, (event, cueId, kind, ready) => {
+    const screenId = manager.screenIdFor(event.sender.id);
+    const cue = snapshot().state.videoCue;
+    if (
+      kind !== 'picture' ||
+      typeof cueId !== 'string' ||
+      typeof ready !== 'boolean' ||
+      !screenId ||
+      cue?.id !== cueId
+    )
+      return null;
+    if (!cache.has(cue.background.mediaId)) return null;
+    client?.send({ type: 'video-cue', report: { cueId, screenId, state: ready ? 'ready' : 'failed' } });
+    return null;
+  });
   handle(IPC.engine.subscribe, (event) => {
     const shared = pageAlive(nodeWindow) && event.sender.id === nodeWindow.webContents.id;
     (shared ? controllerTransport : transport).add(event.sender);
+    const screenId = manager.screenIdFor(event.sender.id);
+    const cue = snapshot().state.videoCue;
+    if (screenId && cue)
+      client?.send({ type: 'video-cue', report: { cueId: cue.id, screenId, state: 'loading' } });
     return snapshot(!shared);
   });
   handle(IPC.engine.snapshot, (event) =>

@@ -1,3 +1,4 @@
+import type { VideoCue, VideoCrossfade, VideoStart } from '../video-cue';
 import type { CalendarDay, CalendarLang } from '../calendar';
 import type { Quote } from '../idle';
 import type { LiveLook } from '../looks';
@@ -80,7 +81,8 @@ import type { ShapeOverride } from '../video-shape';
 // page does not know, so it says 'incompatible'. A state 30 or 29 saved is read whole (31 only adds to them).
 // The stage message's colours (alpha.22, `boxColor` and `textColor` in `stageCall`) need no new number: they are
 // optional fields an older node or page leaves out, so a node on 31 draws its own amber and black, as before.
-export const ENGINE_STATE_VERSION = 31;
+// 32 adds a private paused video cue and a playlist’s two crossfading showings.
+export const ENGINE_STATE_VERSION = 32;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -92,6 +94,7 @@ export const ENGINE_STATE_VERSION = 31;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 31 ||
     version === 30 ||
     version === 29 ||
     version === 28 ||
@@ -448,6 +451,8 @@ export type BackgroundLayer =
       startedAt: number;
       /** The playlist video row that supplied it, or null for a direct choice. Older saves omit it. */
       sourceItemId?: string | null;
+      /** Stable identity of a showing prepared privately; keeps its decoder through Go. */
+      cueId?: string;
       /** It came on dissolving from the background before, with its slide: from `at` for `durationMs`. */
       fade?: { at: number; durationMs: number };
       /** A video's length, once known (learned from playing it): a stage screen shows the time left. */
@@ -746,6 +751,12 @@ export interface EngineState {
   next: UpNext | null;
   /** Put first in line for Next (the arti at its time), or null. */
   cue: CuedNext | null;
+  /** Private video preparation; never a request to play after restart. */
+  videoCue?: VideoCue | null;
+  /** The outgoing video while the background is the incoming showing. */
+  videoCrossfade?: VideoCrossfade | null;
+  /** Files that remain in use until a prepared video’s Go moment. */
+  videoStart?: VideoStart | null;
   /** Today's entry in the loaded calendars (Samvat date, tithi, festivals), or null when none gives today. */
   calendar: CalendarDay | null;
   /** The quote of the day (one per date, for a stage layout's Quote box), or null when there are no quotes. */

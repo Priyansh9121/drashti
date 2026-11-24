@@ -51,6 +51,7 @@ export function runLinkWorker(send: (message: FromLinkWorker) => void): (message
     thumb: (nodeId, screenId, jpeg) => {
       send({ type: 'thumb', nodeId, screenId, jpeg });
     },
+    videoCue: (nodeId, report) => send({ type: 'video-cue', nodeId, report }),
     cannotPlay: (nodeId, report) => {
       send({ type: 'cannot-play', nodeId, report });
     },

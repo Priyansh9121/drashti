@@ -589,3 +589,32 @@ describe('Sound and picture… (alpha.20): a file’s tone and its sound’s del
     expect(now && same ? soundMoved(now, same) : null).toBe(false);
   });
 });
+
+it('a cue whose edited copy is unavailable loads no source sound and leaves the live sound playing', () => {
+  const s = initialEngineState();
+  const old = {
+    kind: 'media' as const,
+    media: 'video' as const,
+    mediaId: 'old',
+    fit: 'fit' as const,
+    loop: false,
+    startedAt: 1,
+  };
+  s.layers.background = old;
+  s.videoCue = {
+    id: 'cue',
+    label: 'Placeholder',
+    playlist: null,
+    required: [],
+    ready: [],
+    error: 'The edited copy is preparing.',
+    background: {
+      ...old,
+      mediaId: 'new',
+      startedAt: 2,
+      cueId: 'cue',
+      seek: { at: 100, toMs: 0, paused: true },
+    },
+  };
+  expect(soundsOf(s).map((sound) => sound.mediaId)).toEqual(['old']);
+});
