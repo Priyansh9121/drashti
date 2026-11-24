@@ -396,3 +396,39 @@ it('the start sweep finds what a combine left with the library at another place,
   expect(existsSync(other.file)).toBe(true);
   expect(existsSync(named.file)).toBe(true);
 });
+
+/*
+ * a22-review-combine2 MUST-C1 (on 7328a5e7c): Main's library connection waits up to 5 s for an import's write lock;
+ * a removal sets that wait to 0 only for its own transaction. It must be back at once after it, never across the
+ * removal of the copies that follows, and two removals overlapping must leave it as it was.
+ */
+const waitForLock = (db: Db) => db.pragma('busy_timeout', { simple: true }) as number;
+
+it("the library's wait for the write lock is back at once, while a leftover's copies are still being removed", async () => {
+  const at = library();
+  const left = leftover(at);
+  mkdirSync(join(at.dir, 'stills'), { recursive: true });
+  writeFileSync(join(at.dir, 'stills', `${left.sha}.jpg`), 'placeholder still');
+  const before = waitForLock(at.db);
+  expect(before).toBeGreaterThan(0);
+  const pending = discardUnlisted({ db: at.db, mediaDir: at.dir, folder: at.work });
+  // Its row is gone and its copies are being removed: any other write on Main waits as usual meanwhile.
+  expect(waitForLock(at.db)).toBe(before);
+  expect(await pending).toBe(1);
+  expect(waitForLock(at.db)).toBe(before);
+  expect(existsSync(join(at.dir, 'stills', `${left.sha}.jpg`))).toBe(false);
+});
+
+it("two removals overlapping leave the library's wait for the write lock as it was", async () => {
+  const at = library();
+  const first = leftover(at);
+  const second = leftover(at);
+  const before = waitForLock(at.db);
+  const removals = [
+    discardUnlisted({ db: at.db, mediaDir: at.dir, file: first.source }),
+    discardUnlisted({ db: at.db, mediaDir: at.dir, file: second.source }),
+  ];
+  // Once both are done (the second one read the wait while the first had it at 0), it is as it was.
+  expect(await Promise.all(removals)).toEqual([1, 1]);
+  expect(waitForLock(at.db)).toBe(before);
+});
