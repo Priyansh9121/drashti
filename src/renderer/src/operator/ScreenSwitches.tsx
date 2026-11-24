@@ -3,6 +3,8 @@ import { type OperatorAction, shortcutText } from '../../../shared/keymap';
 import {
   SCREEN_SWITCHES,
   type ScreenSwitch,
+  stageDevicesPaired,
+  stageOffHint,
   type ScreenSwitches,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
@@ -13,6 +15,7 @@ import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { MonitorOff } from '../ui/icons';
 import { Tooltip } from '../ui/Tooltip';
+import { useNetwork } from '../network/network-store';
 import { useNotice } from './actions';
 import {
   answerFromOutput,
@@ -176,9 +179,14 @@ export function ScreenSwitchAsk({ platform }: { platform: string }) {
   return <Asking key={covered ? 'covered' : 'here'} which={asking} covered={covered} platform={platform} />;
 }
 
-/** The status bar's word while one is off, with Turn on: one click (both modes). */
+/**
+ * The status bar's word while one is off, with Turn on: one click (both modes). Beside "Stage off", with a tablet paired
+ * as Stage while the Network is on, that it shows the audience picture (alpha.23, the owner's QA23-STAGE8-2).
+ */
 export function SwitchedOffStatus() {
   const switches = useScreenSwitches((s) => s.switches);
+  const tablets = useNetwork((s) => (s.status ? stageDevicesPaired(s.status) : 0));
+  const hint = stageOffHint(tablets);
   return (
     <>
       {SCREEN_SWITCHES.filter((which) => !switches[which]).map((which) => (
@@ -190,6 +198,12 @@ export function SwitchedOffStatus() {
         >
           <MonitorOff size={13} aria-hidden="true" className="shrink-0" />
           <span className="font-medium">{SWITCH_NAMES[which]} off</span>
+          {which === 'stage' && hint && (
+            <>
+              {' · '}
+              <span data-testid="switch-off-stage-hint">{hint}</span>
+            </>
+          )}
           <Button
             variant="secondary"
             size="sm"

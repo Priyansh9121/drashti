@@ -36,6 +36,18 @@ export const STARTS: Readonly<ScreenSwitches> = { audience: true, stage: false }
 export const NO_STAGE_SCREEN = 'No screen is set to Stage.';
 export const SET_UP_STAGE = 'Set up Stage screen…';
 
+/**
+ * What the status bar says beside "Stage off" while tablets are paired as Stage (`tablets`, stageDevicesPaired: only
+ * while the Network is on), or nothing with none (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)"):
+ * Stage starts off, and until it is on a stage tablet shows the audience picture, far from the operator.
+ */
+export function stageOffHint(tablets: number): string | null {
+  if (tablets <= 0) return null;
+  return tablets === 1
+    ? 'the stage tablet shows the audience picture'
+    : 'the stage tablets show the audience picture';
+}
+
 /** Each one's name, as the top bar, the View menu, the status bar and a phone say it. */
 export const SWITCH_NAMES: Readonly<Record<ScreenSwitch, string>> = { audience: 'Audience', stage: 'Stage' };
 
