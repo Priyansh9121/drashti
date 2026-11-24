@@ -18,10 +18,11 @@ import { logLines } from './log-lines';
  * The Stage preview's live pictures (alpha.23; a22-review-stage S5, lead 2's QA23-STAGE8-1, option A). Until alpha.23
  * the preview got no camera and no video inputs' list, so a layout's The video input, live box and a video input
  * behind the audience picture were black there, unsaid. Now its page gets a camera as an output's: the video input
- * draws there live, from the same capture as the hall's screen, and opening and closing the preview leaves the hall's
- * camera track as it was (the same track, live, its size, frame rate and device unchanged); the preview never says
- * how the input stands (no report: the operator's notice and restart recovery hear only the screens). Another app's
- * window is never captured there: the preview names it, as a tablet does.
+ * draws there live, and opening and closing the preview, whether it opened the camera before the hall's screen or
+ * after it, leaves the hall's camera track as it was (the same track, live, its size, frame rate and device
+ * unchanged, never muted or ended, its frames coming without a gap); the preview never says how the input stands
+ * (no report: the operator's notice and restart recovery hear only the screens), and Main refuses one were it to.
+ * Another app's window is never captured there: the preview names it, as a tablet does, and Main refuses its ask.
  *
  * Chromium's fake camera (DRASHTI_TEST_FAKE_DEVICES, "fake_device_0") stands in for the video mixer, and a window the
  * test opens itself ("Placeholder meeting", DRASHTI_TEST_WINDOW_STANDIN) for another app's: never a real camera's
@@ -143,7 +144,7 @@ function openPlaceholder(app: ElectronApplication): Promise<number> {
   }, html);
 }
 
-/** Lines the main process writes if the Stage preview ever said how an input stands, or asked for a window. */
+/** Lines the main process writes when the Stage preview said how an input stands, or asked for a window. */
 const previewAsked = (userData: string) =>
   logLines(userData).filter(
     (line) =>
@@ -151,8 +152,76 @@ const previewAsked = (userData: string) =>
       line.includes('the Stage preview asked to capture the window'),
   );
 
-test('the Stage preview draws the video input live from the hall’s own capture, leaving the hall’s camera track as it was, and never says how it stands; another app’s window is named there, never captured', async () => {
-  test.setTimeout(240_000);
+interface HallWatch {
+  mutes: number;
+  ends: number;
+  frames: number;
+  longestGapMs: number;
+  last: number | null;
+  on: boolean;
+}
+
+/**
+ * Watch the hall's camera track from now (a22-review-stage8 S2): its mute and ended events, and the longest gap
+ * between its frames, until hallWatched reads them. Object references stay in the page; only counts and times leave.
+ */
+function watchHall(hall: Page): Promise<void> {
+  return hall.evaluate(() => {
+    const video = document.querySelector<HTMLVideoElement>('[data-kind="input"] video');
+    const stream = video?.srcObject instanceof MediaStream ? video.srcObject : null;
+    const track = stream?.getVideoTracks()[0];
+    if (!video || !track) throw new Error('the hall plays no video input');
+    const watch: HallWatch = { mutes: 0, ends: 0, frames: 0, longestGapMs: 0, last: null, on: true };
+    (window as unknown as { hallWatch?: HallWatch }).hallWatch = watch;
+    track.addEventListener('mute', () => {
+      watch.mutes++;
+    });
+    track.addEventListener('ended', () => {
+      watch.ends++;
+    });
+    const step = (now: number) => {
+      if (!watch.on) return;
+      if (watch.last !== null) watch.longestGapMs = Math.max(watch.longestGapMs, now - watch.last);
+      watch.last = now;
+      watch.frames++;
+      video.requestVideoFrameCallback(step);
+    };
+    video.requestVideoFrameCallback(step);
+  });
+}
+
+/** What the watch saw, and it stops; the time since the last frame counts as a gap too. */
+function hallWatched(hall: Page) {
+  return hall.evaluate(() => {
+    const watch = (window as unknown as { hallWatch?: HallWatch }).hallWatch;
+    if (!watch) throw new Error('the hall was not watched');
+    watch.on = false;
+    const since = watch.last === null ? 0 : performance.now() - watch.last;
+    return {
+      mutes: watch.mutes,
+      ends: watch.ends,
+      frames: watch.frames,
+      longestGapMs: Math.round(Math.max(watch.longestGapMs, since)),
+    };
+  });
+}
+
+/** A generous limit for the longest gap between the hall's frames (30 a second), so a slow CI computer is not flaky. */
+const GAP_MS = 1500;
+
+/** The hall's picture went on through it all: never muted or ended, no gap, frames coming. */
+async function hallWentOn(hall: Page): Promise<void> {
+  const seen = await hallWatched(hall);
+  expect(seen, 'the hall’s camera track while the preview opened or closed').toMatchObject({
+    mutes: 0,
+    ends: 0,
+  });
+  expect(seen.longestGapMs, 'the longest gap between the hall’s frames').toBeLessThan(GAP_MS);
+  expect(seen.frames).toBeGreaterThan(10);
+}
+
+test('the Stage preview draws the video input live, opened before the hall’s screen or after it, leaving the hall’s camera track as it was, and never says how it stands (Main refuses it were it to); another app’s window is named there, never captured', async () => {
+  test.setTimeout(300_000);
   const { app, userData } = await launchApp(ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -168,46 +237,85 @@ test('the Stage preview draws the video input live from the hall’s own capture
   await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   await expect(panel.getByTestId('stage-input-choice')).toHaveValue(input);
-
-  // The input on the audience, as its background: the hall's screen plays it.
-  const button = win.getByTestId('input-on-audience');
-  await button.click();
-  await expect.poll(async () => (await background(win))?.kind).toBe('input');
   const hallInput = hall.locator('[data-kind="input"]');
+  const inBoxOf = (p: Page) => p.locator('[data-stage-box="videoInput"] [data-stage-input]');
+  const stopped = () =>
+    win.evaluate(async () => (await (globalThis as PageGlobals).drashti.videoInputs.status()).stopped);
+
+  // The preview FIRST (a22-review-stage8 S3: the layout set up before the service): its video input box opens the
+  // input while the hall's screen shows none.
+  await panel.getByTestId('stage-preview-open').click();
+  const first = await windowShowing(app, isPreview, 'Stage preview');
+  await outputReady(first);
+  await expect(first.getByTestId('output-root')).toHaveAttribute('data-stage-shows', 'layout');
+  await expect(inBoxOf(first)).toHaveAttribute('data-input-state', 'live', { timeout: 15_000 });
+  await expect.poll(() => framesOf(inBoxOf(first).locator('video')), { timeout: 15_000 }).toBeGreaterThan(3);
+  expect(await background(win)).toBeNull();
+  await expect(hallInput).toHaveCount(0);
+
+  // Then the input on the audience, as its background: the hall's screen joins it and plays it.
+  await win.getByTestId('input-on-audience').click();
+  await expect.poll(async () => (await background(win))?.kind).toBe('input');
   await expect(hallInput).toHaveAttribute('data-input-state', 'live', { timeout: 15_000 });
   await expect.poll(() => framesOf(hallInput.locator('video')), { timeout: 15_000 }).toBeGreaterThan(3);
+  await expect(first.locator('[data-stage-box="audience"] [data-kind="input"]')).toHaveAttribute(
+    'data-input-state',
+    'live',
+    { timeout: 15_000 },
+  );
   const before = await hallTrack(hall);
   expect(before).toMatchObject({ same: true, readyState: 'live', muted: false, tracks: 1 });
   expect(before?.width).toBeGreaterThan(0);
   expect(before?.deviceId).not.toBe('');
 
-  // The preview: its video input box and the audience picture's video input, live.
+  // The preview that opened the camera first closes during the service: the hall's track goes on as it was.
+  await watchHall(hall);
+  await first.close();
+  await expect.poll(() => app.windows().filter(isPreview).length).toBe(0);
+  expect(await framesOf(hallInput.locator('video'))).toBeGreaterThan(3);
+  await hallWentOn(hall);
+  expect(await hallTrack(hall)).toEqual(before);
+  await expect(hallInput).toHaveAttribute('data-input-state', 'live');
+
+  // The hall first, then the preview: opened and closed, watched throughout.
+  await watchHall(hall);
   await panel.getByTestId('stage-preview-open').click();
   const preview = await windowShowing(app, isPreview, 'Stage preview');
   await outputReady(preview);
-  await expect(preview.getByTestId('output-root')).toHaveAttribute('data-stage-shows', 'layout');
-  const inBox = preview.locator('[data-stage-box="videoInput"] [data-stage-input]');
-  await expect(inBox).toHaveAttribute('data-input-state', 'live', { timeout: 15_000 });
-  await expect.poll(() => framesOf(inBox.locator('video')), { timeout: 15_000 }).toBeGreaterThan(3);
-  const inHall = preview.locator('[data-stage-box="audience"] [data-kind="input"]');
-  await expect(inHall).toHaveAttribute('data-input-state', 'live', { timeout: 15_000 });
+  await expect(inBoxOf(preview)).toHaveAttribute('data-input-state', 'live', { timeout: 15_000 });
+  await expect
+    .poll(() => framesOf(inBoxOf(preview).locator('video')), { timeout: 15_000 })
+    .toBeGreaterThan(3);
+  await expect(preview.locator('[data-stage-box="audience"] [data-kind="input"]')).toHaveAttribute(
+    'data-input-state',
+    'live',
+    { timeout: 15_000 },
+  );
   // Nothing named over the audience picture: it is drawn.
   await expect(preview.getByTestId('stage-audience-unseen')).toHaveCount(0);
-
-  // The hall's camera track as it was: the same track, live, the same size, frame rate and device, frames coming.
   expect(await hallTrack(hall)).toEqual(before);
-  expect(await framesOf(hallInput.locator('video'))).toBeGreaterThan(3);
   // The preview said nothing of how the input stands, and the operator's notice has nothing to say.
   expect(previewAsked(userData)).toEqual([]);
-  expect(
-    await win.evaluate(async () => (await (globalThis as PageGlobals).drashti.videoInputs.status()).stopped),
-  ).toBeNull();
+  expect(await stopped()).toBeNull();
 
-  // Closed: the hall's track still as it was.
+  // Were the preview's page to say the input is missing, or ask to capture a window (a22-review-stage8 S4), Main
+  // refuses both and says so in the log: the input stays up, nothing is said stopped, no window is given.
+  const asked = await preview.evaluate(async (inputId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    await d.videoInputs.report({ inputId, state: 'missing' });
+    return d.liveWindow.ask('window:placeholder');
+  }, input);
+  expect(asked).toBe(false);
+  await expect.poll(() => previewAsked(userData).length).toBe(2);
+  expect(await background(win)).toMatchObject({ kind: 'input', inputId: input });
+  expect(await stopped()).toBeNull();
+
+  // Closed: the hall's track still as it was, and it went on throughout.
   await preview.close();
   await expect.poll(() => app.windows().filter(isPreview).length).toBe(0);
-  expect(await hallTrack(hall)).toEqual(before);
   expect(await framesOf(hallInput.locator('video'))).toBeGreaterThan(3);
+  await hallWentOn(hall);
+  expect(await hallTrack(hall)).toEqual(before);
   await expect(hallInput).toHaveAttribute('data-input-state', 'live');
 
   // Another app's window on the audience: the hall draws it; the preview names it and never captures it, its own
@@ -228,12 +336,9 @@ test('the Stage preview draws the video input live from the hall’s own capture
   await outputReady(again);
   await expect(again.getByTestId('stage-audience-unseen')).toHaveText(`A window: ${MEETING}`);
   await expect(again.locator('[data-kind="window"]')).toHaveCount(0);
-  await expect(again.locator('[data-stage-box="videoInput"] [data-stage-input]')).toHaveAttribute(
-    'data-input-state',
-    'live',
-    { timeout: 15_000 },
-  );
-  expect(previewAsked(userData)).toEqual([]);
+  await expect(inBoxOf(again)).toHaveAttribute('data-input-state', 'live', { timeout: 15_000 });
+  // Nothing more asked of Main than the two refused above.
+  expect(previewAsked(userData)).toHaveLength(2);
   await again.close();
   await app.close();
 });

@@ -261,7 +261,7 @@ async function offAndOn(win: Page): Promise<void> {
 
 // alpha.23 (a22-review-stage S8; lead 2's QA23-STAGE8-1): a tablet paired as Stage is a stage display, and a stage
 // screen whose display is unplugged is still set to Stage: "No screen is set to Stage." would be wrong then.
-test('(d) set to Stage with nothing showing it on this computer: only a tablet paired as Stage, then a stage screen whose display is unplugged; Stage On never says no screen is set to Stage, and says it once neither is left', async () => {
+test('(d) set to Stage with nothing showing it on this computer: only a tablet paired as Stage (while the Network is on), then a stage screen whose display is unplugged; Stage On never says no screen is set to Stage, and says it once neither is left or the Network is off', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...AUTO, ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -279,6 +279,22 @@ test('(d) set to Stage with nothing showing it on this computer: only a tablet p
   const panel = win.getByTestId('stage-message-control');
   await expect(panel.getByTestId('stage-preview-open')).toBeVisible();
   await expect(panel.getByTestId('stage-no-screen')).toHaveCount(0);
+  await expect(noStageLine(win)).toHaveCount(0);
+  await offAndOn(win);
+  await expect(noStageLine(win)).toHaveCount(0);
+
+  // The Network (phones and tablets) turned off (a22-review-stage8 S5): the tablet can show nothing, so On says no
+  // screen is set to Stage, in the line and in the panel; on again, the tablet counts again.
+  const networkSet = (on: boolean) =>
+    win.evaluate(async (on) => (await (globalThis as PageGlobals).drashti.network.setOn(on)).ok, on);
+  expect(await networkSet(false)).toBe(true);
+  await expect(panel.getByTestId('stage-no-screen')).toContainText('No screen is set to Stage.');
+  await offAndOn(win);
+  await expect(noStageLine(win).getByTestId('screens-said-text')).toHaveText('No screen is set to Stage.');
+  expect(await networkSet(true)).toBe(true);
+  await expect(panel.getByTestId('stage-no-screen')).toHaveCount(0);
+  // The line said before stays until it is closed or another is said: closed, and On again says nothing.
+  await noStageLine(win).getByRole('button', { name: 'Dismiss' }).click();
   await expect(noStageLine(win)).toHaveCount(0);
   await offAndOn(win);
   await expect(noStageLine(win)).toHaveCount(0);

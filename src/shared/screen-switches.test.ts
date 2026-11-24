@@ -216,18 +216,35 @@ describe('Audience and Stage (Session 50)', () => {
     expect(stageScreensSet(snapshot(groups, { 'stage-1': 'showing' }), 2)).toBe(3);
     // Only a Stage device counts: never a Remote, an Announcements phone or the announcements poster link.
     expect(
-      stageDevicesPaired([
-        { kind: 'remote', poster: false },
-        { kind: 'announcements', poster: false },
-        { kind: 'announcements', poster: true },
-      ]),
+      stageDevicesPaired({
+        on: true,
+        devices: [
+          { kind: 'remote', poster: false },
+          { kind: 'announcements', poster: false },
+          { kind: 'announcements', poster: true },
+        ],
+      }),
     ).toBe(0);
     expect(
-      stageDevicesPaired([
-        { kind: 'stage', poster: false },
-        { kind: 'remote', poster: false },
-        { kind: 'stage', poster: false },
-      ]),
+      stageDevicesPaired({
+        on: true,
+        devices: [
+          { kind: 'stage', poster: false },
+          { kind: 'remote', poster: false },
+          { kind: 'stage', poster: false },
+        ],
+      }),
     ).toBe(2);
+  });
+
+  // a22-review-stage8 S5 (lead 2's call): with the Network (phones and tablets) off, a tablet paired as Stage shows
+  // nothing, so it never counts: Stage On says no screen is set to Stage, as before.
+  it('counts a tablet paired as Stage only while the Network is on', () => {
+    const tablets = [
+      { kind: 'stage', poster: false },
+      { kind: 'stage', poster: false },
+    ] as const;
+    expect(stageDevicesPaired({ on: false, devices: tablets })).toBe(0);
+    expect(stageDevicesPaired({ on: true, devices: tablets })).toBe(2);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PREVIEW_LIVE, revealPreview, stagePreviewOptions } from './stage-preview';
+import { liveAnswer, PREVIEW_LIVE, revealPreview, stagePreviewOptions } from './stage-preview';
 
 /*
  * The Stage preview's window (alpha.22, a22-review-stage S1 and S4): a normal window that never takes the keyboard
@@ -41,5 +41,26 @@ describe('the Stage preview window', () => {
   // never another app's window (named on it instead).
   it('gets a camera as an output does and the video inputs’ list; never says how an input stands, never captures a window', () => {
     expect(PREVIEW_LIVE).toEqual({ camera: 'output', list: true, report: false, window: false });
+  });
+
+  // a22-review-stage8 S4: the answers Main's handlers give (index.ts: cameraPage, videoInputs.list,
+  // videoInputs.report, liveWindow.ask and .ended), so a wrong one fails here, not only on a show.
+  it('Main answers the preview: a camera and the list yes; a report and a window capture refused, even were it counted a screen', () => {
+    const preview = { preview: true, screen: false };
+    expect(liveAnswer('camera', preview)).toBe('yes');
+    expect(liveAnswer('list', preview)).toBe('yes');
+    expect(liveAnswer('report', preview)).toBe('refused');
+    expect(liveAnswer('window', preview)).toBe('refused');
+    // Judged as the preview first: never let through as a screen's page.
+    const both = { preview: true, screen: true };
+    expect(liveAnswer('report', both)).toBe('refused');
+    expect(liveAnswer('window', both)).toBe('refused');
+  });
+
+  it('Main answers a screen’s page yes to all, and any other page no', () => {
+    for (const ask of ['camera', 'list', 'report', 'window'] as const) {
+      expect(liveAnswer(ask, { preview: false, screen: true })).toBe('yes');
+      expect(liveAnswer(ask, { preview: false, screen: false })).toBe('no');
+    }
   });
 });
