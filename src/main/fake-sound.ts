@@ -61,12 +61,13 @@ export function fakeMediaSwitchesOn(has: (name: string) => boolean): string[] {
 
 /**
  * The packaged self-test's part (DRASHTI_SELFTEST=ffmpeg, scripts/check-ffmpeg.mjs --packaged, started asking for the
- * fake devices and the fake microphone's file): passed only when none of Chromium's fake media switches is on and
- * the audio service keeps its sandbox.
+ * fake devices, the fake microphone's file and the stream-clock seam's clip): passed only when none of Chromium's fake
+ * media switches is on, the audio service keeps its sandbox, and the stream's page has no test clip to play.
  */
 export function fakeMediaSelfTest(
   has: (name: string) => boolean,
   disabledFeatures: string,
+  streamTestSound = false,
 ): {
   passed: boolean;
   on: string[];
@@ -75,6 +76,7 @@ export function fakeMediaSelfTest(
   const on = [
     ...fakeMediaSwitchesOn(has),
     ...(disabledFeatures.split(',').includes(AUDIO_SANDBOX) ? [`disable-features=${AUDIO_SANDBOX}`] : []),
+    ...(streamTestSound ? ['DRASHTI_TEST_STREAM_SOUND_FILE'] : []),
   ];
   return on.length === 0
     ? { passed: true, on, detail: 'none: Chromium’s fake camera and microphone are off' }

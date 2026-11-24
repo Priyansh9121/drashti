@@ -98,6 +98,8 @@ function check(label, command, args) {
     writeFileSync(wav, placeholderWav());
     env['DRASHTI_TEST_FAKE_DEVICES'] = '1';
     env['DRASHTI_TEST_FAKE_SOUND_FILE'] = wav;
+    // And the stream-clock seam's clip (alpha.23): a packaged Drashti has none for its stream's page.
+    env['DRASHTI_TEST_STREAM_SOUND_FILE'] = wav;
   }
   return new Promise((resolve) => {
     const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });

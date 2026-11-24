@@ -94,6 +94,10 @@ for (const route of ROUTES) {
       language: route.language,
       model: route.model,
       pack: { kind: 'zip', path: zip },
+      // The stream-clock seam (alpha.23): the clips play on the stream page's own audio clock, never through
+      // Chromium's fake microphone, which fell behind real time on CI's Mac and lost sound (cap-realc.md). Right words
+      // on the Mac here mean the fake device was the cause; wrong words would be the stream's own sound path.
+      seam: 'stream-clock',
       wav,
       sounds,
       leadMs: LEAD_MS,

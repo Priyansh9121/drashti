@@ -13,7 +13,7 @@ import {
   windowShowing,
 } from './helpers';
 import { plainText, type PlacedSound } from './caption-clips';
-import { framesVerdict, meter } from './route-c-frames';
+import { framesVerdict, meter, type SoundSeam } from './route-c-frames';
 
 /*
  * Route C inside Drashti (alpha.23, cap-realc; a22-review-cap S4), with no stand-in engine (no DRASHTI_TEST_SPEECH):
@@ -35,8 +35,14 @@ export interface RouteCInApp {
   language: 'gu' | 'hi';
   /** The language's own model as Live Captions lists it. */
   model: string;
-  /** Launch switches beyond the fake microphone's (the generated model's known list). */
+  /** Launch switches beyond the sound's own (the generated model's known list). */
   env?: Record<string, string>;
+  /**
+   * How the generated sound reaches the stream's sound graph: Chromium's fake microphone playing the file
+   * (DRASHTI_TEST_FAKE_SOUND_FILE, the default), or the stream's page playing it on its own audio clock in place of
+   * its sound input (DRASHTI_TEST_STREAM_SOUND_FILE, alpha.23's stream-clock seam: it cannot drift against the graph).
+   */
+  seam?: SoundSeam;
   /** The pack as an admin brings it in: a zip as downloaded, or a folder. */
   pack: { kind: 'zip' | 'folder'; path: string };
   /** The fake microphone's file (absolute) and the sounds in it, each `leadMs` / `gapMs` apart. */
@@ -250,7 +256,9 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     ...NO_PLACEHOLDERS,
     ...o.env,
     DRASHTI_TEST_FAKE_DEVICES: '1',
-    DRASHTI_TEST_FAKE_SOUND_FILE: o.wav,
+    ...((o.seam ?? 'fake-microphone') === 'stream-clock'
+      ? { DRASHTI_TEST_STREAM_SOUND_FILE: o.wav }
+      : { DRASHTI_TEST_FAKE_SOUND_FILE: o.wav }),
   });
   // The run's numbers (times, counts, frame meters and ids, never words), in the CI log and attached, as far as the
   // run got: written again as each part is known, so a failure keeps them (S3).
@@ -514,11 +522,12 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     });
     summary['controls'] = controls;
     summary['trials'] = trials;
-    summary['framesWorse'] = framesVerdict(process.platform, trials, controls).worse;
+    summary['seam'] = o.seam ?? 'fake-microphone';
+    summary['framesWorse'] = framesVerdict(process.platform, trials, controls, o.seam).worse;
     await say();
     for (const c of controls) expect(c.frames, 'a control window drew').toBeGreaterThan(30);
     // The owner (QA23-REALC-2): "Mac: log frames only (Rec.)": recorded above, judged everywhere but the Mac.
-    const verdict = framesVerdict(process.platform, trials, controls);
+    const verdict = framesVerdict(process.platform, trials, controls, o.seam);
     expect(
       verdict.judged && verdict.worse,
       'the stream’s frames while Route C heard the sounds, no worse than with captions off',

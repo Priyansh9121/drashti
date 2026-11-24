@@ -152,6 +152,7 @@ import type {
   DeviceChoice,
   ProgramContext,
   ProgramInputs,
+  StreamTestSound,
   StreamLayout,
   StreamProfileInput,
   StreamProfiles,
@@ -1007,6 +1008,8 @@ export interface DrashtiBridge {
       reportInputs(inputs: ProgramInputs): Promise<null>;
       /** While a cue waits: when its frames begin and how far apart (a manual Go is placed on them). */
       reportFrames(grid: FrameGrid): Promise<null>;
+      /** Tests only (alpha.23, the stream-clock seam): the clip to play in place of the sound input, else null. */
+      testSound(): Promise<StreamTestSound | null>;
     };
   };
   /**

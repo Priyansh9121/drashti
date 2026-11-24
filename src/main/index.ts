@@ -128,6 +128,7 @@ import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
+import { readTestWav, streamTestSoundFile } from './stream-test-sound';
 import {
   CHROMIUM_FAKE_DEVICES,
   CHROMIUM_FAKE_SOUND_FILE,
@@ -1015,6 +1016,13 @@ const fakeSoundSandbox = fakeSoundFeatures({
   disabled: app.commandLine.getSwitchValue('disable-features'),
 });
 if (fakeSoundSandbox) app.commandLine.appendSwitch('disable-features', fakeSoundSandbox);
+// Tests only (alpha.23, cap-realc): the stream-clock seam. The stream's page plays this generated WAV file on its own
+// audio clock in place of its sound input (src/main/stream-test-sound.ts), never through Chromium's fake microphone.
+const streamTestSound = streamTestSoundFile({
+  fakeDevices,
+  file: sw('DRASHTI_TEST_STREAM_SOUND_FILE'),
+  platform: process.platform,
+});
 // Tests only: behave as if the system's secure storage for keys were missing.
 const noSafeStorage = sw('DRASHTI_TEST_NO_SAFE_STORAGE') === '1';
 // Tests only: the local network listens on this computer alone (no firewall questions), and can be
@@ -1739,6 +1747,7 @@ function start(): void {
         ? fakeMediaSelfTest(
             (name) => app.commandLine.hasSwitch(name),
             app.commandLine.getSwitchValue('disable-features'),
+            streamTestSound !== null,
           )
         : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
@@ -9269,6 +9278,15 @@ function start(): void {
   // Open in Simple Mode and to every role, as a stopped hall screen's Try again is (Session 31).
   handle(IPC.stream.tryAgain, (e) => (fromOperator(e) ? streaming.tryAgainPage() : notOperator));
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
+  // Tests only (the stream-clock seam): never a clip in a packaged Drashti (streamTestSound is null there).
+  handle(IPC.stream.pageTestSound, async (e) => {
+    if (!streamTestSound || !streaming.isProgram(e.sender)) return null;
+    try {
+      return readTestWav(await fsPromises.readFile(streamTestSound));
+    } catch {
+      return null;
+    }
+  });
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);
     return null;
