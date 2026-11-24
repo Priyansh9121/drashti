@@ -122,7 +122,8 @@ export const screensFollow = (view: View, kept: Framing): boolean => view.zoom <
 /**
  * The live zoom's picture's frame in the hall's picture as a phone draws it (the canvas, the slide fitted into it,
  * as the remote's live picture does): the slide's picture's own box, or the whole canvas for the background up
- * alone; null when the phone may zoom neither (phoneZoomTarget).
+ * alone; null when the phone may zoom neither (phoneZoomTarget). A cropped PDF page (Crop page…) is drawn moved by
+ * where its crop starts (render/SlideView.tsx), its picture's box kept on the whole page: so is its frame.
  */
 export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFrame | null {
   const target = phoneZoomTarget(state);
@@ -132,9 +133,10 @@ export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFram
   const element = slide.slide.elements.find((e) => e.kind === 'image');
   if (!element || canvas.width <= 0 || canvas.height <= 0) return null;
   const p = placeContent({ width: slide.slide.width, height: slide.slide.height }, canvas, 'fit');
+  const origin = slide.slide.pageCrop ?? { x: 0, y: 0 };
   return {
-    x: (p.x + element.frame.x * p.scaleX) / canvas.width,
-    y: (p.y + element.frame.y * p.scaleY) / canvas.height,
+    x: (p.x + (element.frame.x - origin.x) * p.scaleX) / canvas.width,
+    y: (p.y + (element.frame.y - origin.y) * p.scaleY) / canvas.height,
     width: (element.frame.width * p.scaleX) / canvas.width,
     height: (element.frame.height * p.scaleY) / canvas.height,
   };
@@ -142,7 +144,8 @@ export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFram
 
 /**
  * The same in a slide a phone draws on its own (looked through, Session 54): the slide's picture's own box (with no
- * slide up, the whole of it); null when the phone may zoom neither (phoneZoomTarget).
+ * slide up, the whole of it), moved by a cropped page's crop as in frameInCanvas; null when the phone may zoom
+ * neither (phoneZoomTarget).
  */
 export function frameInSlide(state: EngineState | null): ZoomFrame | null {
   const target = phoneZoomTarget(state);
@@ -152,9 +155,10 @@ export function frameInSlide(state: EngineState | null): ZoomFrame | null {
   const element = slide.slide.elements.find((e) => e.kind === 'image');
   const { width, height } = slide.slide;
   if (!element || width <= 0 || height <= 0) return null;
+  const origin = slide.slide.pageCrop ?? { x: 0, y: 0 };
   return {
-    x: element.frame.x / width,
-    y: element.frame.y / height,
+    x: (element.frame.x - origin.x) / width,
+    y: (element.frame.y - origin.y) / height,
     width: element.frame.width / width,
     height: element.frame.height / height,
   };
