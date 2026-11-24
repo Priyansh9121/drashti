@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { benchCommand, benchFiles } from '../../../scripts/captions-bench.mjs';
+import { benchCommand, benchFiles, checkCaptionsInput } from '../../../scripts/captions-bench.mjs';
+import { parseCaptionsInput } from '../../main/speech/captions-bench';
 
 /*
  * CAP-CI-1 (c) (the owner, 24 Nov 2026: "Yes, all three"): one new input on the Performance workflow, `captions`,
@@ -63,6 +64,40 @@ describe('the Performance workflow’s captions input', () => {
     expect(start).toBeGreaterThan(-1);
     expect(start).toBeLessThan(perf);
     expect(stop).toBeGreaterThan(perf);
+  });
+
+  it('refuses a mistyped input in its first step, before anything is installed or downloaded', () => {
+    const all = steps();
+    expect(all[0]).toMatch(/uses: actions\/checkout@/u);
+    expect(all[1]).toContain('name: The captions input (alone or alongside, then the candidates)');
+    expect(all[1]).toContain("if: inputs.captions != ''");
+    expect(all[1]).toContain('CAPTIONS_BENCH: ${{ inputs.captions }}');
+    expect(all[1]).toContain('run: node scripts/captions-bench.mjs check');
+  });
+
+  it.each([
+    'alone',
+    'alongside',
+    'alone:rc-gu',
+    ' alongside:rc-gu, rc-hi ',
+    'alone:small-en,small-gu,small-hi,rc-hi,rc-gu',
+    'along',
+    'rc-gu',
+    'Alone',
+    'alone:',
+    'alone:rc-gu,,rc-hi',
+    'alone:rc-gu,rc-gu',
+    'alone:turbo-gu',
+    'alongside;rm -rf',
+  ])('the first step judges %j as the bench itself does', (input) => {
+    let bench: string | null;
+    try {
+      parseCaptionsInput(input);
+      bench = null;
+    } catch (error) {
+      bench = error instanceof Error ? error.message : String(error);
+    }
+    expect(checkCaptionsInput(input) === null, bench ?? '').toBe(bench === null);
   });
 
   it('caches the models by their pins and keeps the tables (numbers only) as an artifact', () => {

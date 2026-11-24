@@ -73,6 +73,8 @@ export interface CandidateRun {
   engines: BenchEngine[];
   /** False for clips made for timing only (English from the runner's voice): no error rates then. */
   scored: boolean;
+  /** The processor mask every engine must have (3, two cores, on Windows), or null where none is read. */
+  expectedMask: number | null;
 }
 
 export function parseCaptionsInput(input: string): BenchAsk | null {

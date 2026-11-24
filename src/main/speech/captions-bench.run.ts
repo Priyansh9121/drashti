@@ -283,6 +283,8 @@ async function runCandidate(
       engineStartMs: seen.listeningAt === null ? null : seen.listeningAt - began,
       engines,
       scored: candidate !== 'small-en',
+      // Two cores on Windows: every engine must read back mask 3 (summarize judges it).
+      expectedMask: WINDOWS ? 3 : null,
       feedLagMs: feed.lagMs(),
       failed: seen.failed,
     };
