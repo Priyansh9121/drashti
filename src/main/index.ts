@@ -4253,7 +4253,7 @@ function start(): void {
           },
           // Asked before every start of the program: a language's own model not ready is never loaded.
           modelProblem: (language) => captions.modelProblem(language),
-          // QWC-1 (waits for the owner): the audio context sized to the piece, fallback off, for the model model()
+          // QWC-1 (the owner: "Yes, Windows small"): the audio context sized to the piece, fallback off, for the model model()
           // gives, only on a CPU engine with a small model (Windows); every other engine asks as today.
           sizedContext: (language) => {
             const own = captions.languageModelFor(language);
@@ -4277,7 +4277,7 @@ function start(): void {
         });
   // Route W (alpha.22, cap-integration): a Gujarati, Hindi or English model of its own from the pack, on Drashti's
   // whisper engine (the stand-in in tests), decoded as that model needs (no timestamps for the tuned ones).
-  // QWC-1 (waits for the owner): the Route W model uses that size whisper's audio context (a small model on Windows).
+  // QWC-1 (the owner: "Yes, Windows small"): the Route W model uses that size whisper's audio context (a small model on Windows).
   const sizedUses = new WeakSet<object>();
   const whisperRoute = createWhisperRoute({
     store: modelPacks,

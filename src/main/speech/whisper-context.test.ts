@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { audioContextFor, sizesContext } from './whisper-context';
 
 /*
- * QWC-1 (waits for the owner): whisper's audio context sized to the piece, with the temperature fallback off, ONLY
+ * QWC-1 (the owner, 25 Nov 2026: "Yes, Windows small (Rec.)"): whisper's audio context sized to the piece, with the temperature fallback off, ONLY
  * for a CPU whisper engine with a small model. Measured on CI's Windows (runs 45400846089, 45408618411): answers
  * 2.6-3x faster on 4 processors, the words no worse on the clips shown in both. Never turbo, never a Mac (its engine
  * asks for the GPU: Metal).

@@ -1,5 +1,5 @@
 /*
- * QWC-1 (the owner's call, waits for his answer): whisper's audio context sized to the piece, with the temperature
+ * QWC-1 (the owner, 25 Nov 2026: "Yes, Windows small (Rec.)"): whisper's audio context sized to the piece, with the temperature
  * fallback off, ONLY for a CPU whisper engine with a small model. Whisper reads 30 s of sound for every answer however
  * short the piece; a context sized to the piece reads less. Measured on CI's Windows (runs 45400846089 and 45408618411,
  * 4 processors): answers 2.6-3x faster (Hindi 2.09 s against 5.80 s), the words no worse on the clips shown in both,

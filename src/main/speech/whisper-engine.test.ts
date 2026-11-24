@@ -912,7 +912,7 @@ describe('the engine says when its program has gone (alpha.23: Route W lets the 
   });
 });
 
-describe('QWC-1: the audio context sized to the piece, fallback off (waits for the owner; CPU small models only)', () => {
+describe('QWC-1: the audio context sized to the piece, fallback off (the owner: "Yes, Windows small"; CPU small models only)', () => {
   /** The /inference form's fields in order: [name, value], the sound as "file:<name>:<type>:<bytes>". */
   async function firstForm(o: {
     sized?: boolean | undefined;

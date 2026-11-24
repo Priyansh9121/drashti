@@ -85,7 +85,7 @@ export interface WhisperEngineOptions {
   /** The admin's caption words for the language listened in (alpha.22), given to whisper.cpp as its prompt. */
   hints?: CaptionHints;
   /**
-   * QWC-1 (waits for the owner): whether the language's engine sizes whisper's audio context to each piece, with the
+   * QWC-1 (the owner: "Yes, Windows small"): whether the language's engine sizes whisper's audio context to each piece, with the
    * temperature fallback off (whisper-context.ts: a CPU engine with a small model only). Asked at each start; left
    * out or false, the request is today's exactly.
    */
