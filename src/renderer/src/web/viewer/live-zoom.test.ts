@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type EngineState, initialEngineState } from '../../../../shared/engine/state';
+import { cropRenderedPage } from '../../../../shared/pdf-page-crop';
 import { backgroundShowing, PLAIN, slideShowing } from '../../../../shared/picture-look';
 import {
   frameInCanvas,
@@ -92,6 +93,32 @@ describe('the picture the screens zoom (Session 54, D2)', () => {
     if (!slide) throw new Error('no slide');
     slide.slide = { ...slide.slide, width: 1440, height: 1080 };
     expect(frameInCanvas(narrow, CANVAS)?.x).toBeCloseTo(240 / 1920);
+  });
+
+  it('has its frame where the phone draws a cropped PDF page: the page moved by its crop (Crop page…)', () => {
+    // The page's picture over the whole 1920 x 1080 page, cropped to its right half's middle band: the slide is the
+    // 960 x 540 crop, and the picture keeps its whole-page box, moved left and up by where the crop starts.
+    const cropped = withSlidePicture();
+    const layer = cropped.layers.slide;
+    if (!layer) throw new Error('no slide');
+    const page = {
+      ...layer.slide,
+      elements: layer.slide.elements.map((e) => ({ ...e, frame: { x: 0, y: 0, width: 1920, height: 1080 } })),
+    };
+    layer.slide = cropRenderedPage(page, { x: 0.5, y: 0.25, w: 0.5, h: 0.5 });
+    expect(layer.slide.pageCrop).toEqual({ x: 960, y: 270, width: 1920, height: 1080 });
+    // In the slide: the crop is a quarter of the page, so the page is twice as wide and high, from -1 and -0.5.
+    expect(frameInSlide(cropped)).toEqual({ x: -1, y: -0.5, width: 2, height: 2 });
+    // In the canvas: the 960 x 540 crop fitted at twice its size, so the same, of the canvas.
+    expect(frameInCanvas(cropped, CANVAS)).toEqual({ x: -1, y: -0.5, width: 2, height: 2 });
+    // A crop of the page's left half, whole height: fitted at 1 between bars of 480, its page from 480 in.
+    layer.slide = cropRenderedPage(page, { x: 0, y: 0, w: 0.5, h: 1 });
+    expect(frameInSlide(cropped)).toEqual({ x: 0, y: 0, width: 2, height: 1 });
+    expect(frameInCanvas(cropped, CANVAS)).toEqual({ x: 480 / 1920, y: 0, width: 1, height: 1 });
+    // Its right half: the page starts a crop's width (960) before the crop, at 480 - 960 in the canvas.
+    layer.slide = cropRenderedPage(page, { x: 0.5, y: 0, w: 0.5, h: 1 });
+    expect(frameInSlide(cropped)).toEqual({ x: -1, y: 0, width: 2, height: 1 });
+    expect(frameInCanvas(cropped, CANVAS)).toEqual({ x: -480 / 1920, y: 0, width: 1, height: 1 });
   });
 
   it('is never the background behind a slide of words, which the phone does not show as the screens’ picture', () => {
