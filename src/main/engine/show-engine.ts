@@ -791,8 +791,15 @@ export class ShowEngine {
     // A manual Go is placed on the stream's own frames when its page has told them (a21-s5): every page still starts
     // at this one moment, and the stream's first frame after it already moves. An automatic one keeps its moment.
     const earliest = this.now() + VIDEO_GO_LEAD_MS;
+    // A press on a ready automatic crossfade (QA23-FADE-9, the owner: "Blend 1 s after the press (Rec.)") blends a
+    // second after the press, so each page's incoming sound starts early, unheard behind its lead, as an automatic
+    // crossfade's does; never later than the playlist's own moment. A cut (no crossfade) keeps its one Go lead.
+    const pressed =
+      early && (cue.automatic?.durationMs ?? 0) > 0
+        ? Math.min(this.now() + CROSSFADE_GO_LEAD_MS, cue.automatic?.at ?? Infinity)
+        : 0;
     const at = automatic
-      ? Math.max(earliest, early ? 0 : (cue.automatic?.at ?? 0))
+      ? Math.max(earliest, early ? pressed : (cue.automatic?.at ?? 0))
       : goOnStreamFrame(earliest, this.options.videoGoFrames?.() ?? null);
     const background = { ...cue.background, seek: { at, toMs: cue.background.clip?.startMs ?? 0 } };
     const from = this.state.layers.background;

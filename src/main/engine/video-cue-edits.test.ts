@@ -106,7 +106,9 @@ it('Cue pins the resolved copy once, caps overlap using its output time, and Go 
   expect(engine.current.layers.background).toMatchObject({
     mediaId: 'edited-second',
     startedAt: cue.background.startedAt,
-    seek: { at: 1120, toMs: 250 },
+    // Go on a ready automatic crossfade blends a second after the press (QA23-FADE-9 QFP-5, the owner: "Blend 1 s after
+    // the press (Rec.)"; was one Go lead, 1,120).
+    seek: { at: 2000, toMs: 250 },
   });
   expect(engine.current.videoCrossfade?.durationMs).toBe(1375);
 });
