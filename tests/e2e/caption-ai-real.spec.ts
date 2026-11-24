@@ -1,8 +1,9 @@
 import { test } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { fetchCaptionModel } from '../../scripts/fetch-caption-models.mjs';
+import { pathToFileURL } from 'node:url';
 import { captionClips, characterErrorRate, fakeMicrophoneFile } from './caption-clips';
 import { routeCInTheApp } from './route-c-in-app';
 
@@ -48,28 +49,41 @@ const ROUTES = [
 const PACKS = join(homedir(), '.cache', 'drashti-caption-models');
 
 /**
- * The pack zip CI fetched, checked again by its pinned size and SHA-256 (cap-winci's fetchCaptionModel). Read from the
- * cache only: its fetch refuses, so a test never downloads, and a pack not fetched here fails with how to fetch it.
+ * The pack zip CI fetched, checked again by its pinned size and SHA-256 (cap-winci's fetchCaptionModel, run as an ES
+ * module in a child Node: Playwright's loader cannot import that script). Read from the cache only: its fetch refuses,
+ * so a test never downloads, and a pack not fetched here fails with how to fetch it.
  */
-async function fetchedPack(id: string): Promise<string> {
-  try {
-    return await fetchCaptionModel(id, {
-      cacheDir: PACKS,
-      fetch: () => Promise.reject(new Error('a test never downloads')),
-      pause: () => Promise.resolve(),
-    });
-  } catch (e) {
+function fetchedPack(id: string): string {
+  const script = pathToFileURL(join(process.cwd(), 'scripts', 'fetch-caption-models.mjs')).href;
+  const run = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `const { fetchCaptionModel } = await import(${JSON.stringify(script)});
+const [cacheDir, id] = process.argv.slice(1);
+const file = await fetchCaptionModel(id, {
+  cacheDir,
+  fetch: () => Promise.reject(new Error('a test never downloads')),
+  pause: () => Promise.resolve(),
+});
+process.stdout.write(file);`,
+      PACKS,
+      id,
+    ],
+    { encoding: 'utf8' },
+  );
+  if (run.status !== 0 || !run.stdout)
     throw new Error(
-      `The real caption pack ${id} is not fetched on this computer: run node scripts/fetch-caption-models.mjs --cache ${PACKS} ${id} first (CI does). ${(e as Error).message}`,
-      { cause: e },
+      `The real caption pack ${id} is not fetched on this computer: run node scripts/fetch-caption-models.mjs --cache ${PACKS} ${id} first (CI does). ${run.stderr.trim()}`,
     );
-  }
+  return run.stdout;
 }
 
 for (const route of ROUTES) {
   test(`caption AI's real Route C (${route.name}): generated speech through the stream's sound input reaches the hall, the stage and the stream within the live limit, the stream's frames as before, and the pack goes only after the helper has stopped`, async () => {
     test.setTimeout(300_000);
-    const zip = await fetchedPack(route.pack);
+    const zip = fetchedPack(route.pack);
     const folder = test.info().outputPath('fake-microphone');
     mkdirSync(folder, { recursive: true });
     const wav = join(folder, `${route.language}-clips.wav`);
