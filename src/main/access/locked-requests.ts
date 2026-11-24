@@ -4,9 +4,9 @@ import { pageOf } from '../../preload/page-groups';
 /*
  * Which requests run while this computer is not let in (Session 54, access by Gmail): the lock screen's and Quit,
  * and the two any page may make (what Drashti is, and a page's render errors for the log). And Drashti's own screens
- * (the outputs, the audio player, the stream's and Zoom's pictures) keep running, as they decide nothing: they draw
- * what the engine has, black once Drashti has stopped (or a self-test's placeholder content), and report how they
- * draw, so no screen is taken for hung and reloaded again and again. Never the operator window's, whatever page it
+ * (the outputs, the audio player, the stream's picture and its sound, Zoom's picture) keep running, as they decide
+ * nothing: they draw what the engine has, black once Drashti has stopped (or a self-test's placeholder content), and
+ * report how they draw, so no screen is taken for hung and reloaded again and again. Never the operator window's, whatever page it
  * shows, nor a screen's answer to the operator's questions, which is the operator's to give.
  */
 
@@ -17,8 +17,8 @@ export const OPEN_WHILE_LOCKED: ReadonlySet<string> = new Set<string>([
   IPC.app.renderError,
 ]);
 
-/** Drashti's own screens' pages. */
-const SCREEN_PAGES: ReadonlySet<string> = new Set(['output', 'audio', 'stream', 'zoom']);
+/** Drashti's own screens' pages (the stream's sound page since alpha.23, beside its picture page). */
+const SCREEN_PAGES: ReadonlySet<string> = new Set(['output', 'audio', 'stream', 'stream-sound', 'zoom']);
 
 /** A screen's answers to the operator's questions (Audience off? Keep these screens?): the operator's. */
 const OPERATOR_ANSWERS: ReadonlySet<string> = new Set<string>([
