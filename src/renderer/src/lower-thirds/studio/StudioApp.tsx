@@ -238,6 +238,11 @@ export function StudioApp() {
                 <Button variant="secondary" size="sm" icon={Play} onClick={playAgain}>
                   Play again
                 </Button>
+                {behindWords !== undefined && (
+                  <span id="studio-backdrop-said" className="sr-only">
+                    {behindWords}
+                  </span>
+                )}
                 <div
                   role="radiogroup"
                   aria-label="Behind the preview"
@@ -245,11 +250,6 @@ export function StudioApp() {
                   className="ml-auto flex gap-1"
                   onKeyDown={radioKeys(BACKDROPS, backdrop, setBackdrop)}
                 >
-                  {behindWords !== undefined && (
-                    <span id="studio-backdrop-said" className="sr-only">
-                      {behindWords}
-                    </span>
-                  )}
                   {BACKDROPS.map((b, i) => (
                     <button
                       key={b}
