@@ -75,17 +75,20 @@ function Still({
   fit,
   holder,
   role,
+  imageDecoding,
 }: {
   mediaId: string;
   fit: CSSProperties['objectFit'];
   /** Where the step keeps it, to show it or not frame by frame. */
   holder: RefObject<HTMLImageElement | null>;
   role: 'under' | 'last';
+  imageDecoding?: 'sync';
 }) {
   const attempt = useMediaAttempt(mediaId);
   const urlOf = useMediaUrl();
   return (
     <img
+      decoding={imageDecoding}
       key={attempt}
       ref={holder}
       data-deck-still={role}
@@ -519,6 +522,7 @@ function DeckStepLive({
   fit,
   cuts,
   underId,
+  imageDecoding,
 }: {
   deck: DeckSlide;
   timing: StepTiming;
@@ -528,6 +532,7 @@ function DeckStepLive({
   cuts: boolean;
   /** Under the first step's clip until it can be drawn: the still that showed before (a stage screen's, C review). */
   underId: string | null;
+  imageDecoding?: 'sync';
 }) {
   const movement = useContext(SlideMovementContext);
   const { index, step, clipAt, still, drashti, shownAt } = timing;
@@ -661,9 +666,23 @@ function DeckStepLive({
     >
       {/* Keyed by file, so a step's last frame stays the very picture under the next step (nothing loads again). */}
       {before !== undefined && before !== step.lastId && (
-        <Still key={before} mediaId={before} fit={fit} holder={underRef} role="under" />
+        <Still
+          key={before}
+          mediaId={before}
+          fit={fit}
+          imageDecoding={imageDecoding}
+          holder={underRef}
+          role="under"
+        />
       )}
-      <Still key={step.lastId} mediaId={step.lastId} fit={fit} holder={lastRef} role="last" />
+      <Still
+        key={step.lastId}
+        mediaId={step.lastId}
+        fit={fit}
+        imageDecoding={imageDecoding}
+        holder={lastRef}
+        role="last"
+      />
       {/* Drashti's own transition instead of the step's motion: its clip is never played. A slide's first clip may be
           the Preloader's, decoded ahead; a click's is the one that waited for it (its key, as it waited, below). */}
       {!still &&
@@ -772,6 +791,7 @@ export function DeckStepView({
   fit = 'contain',
   cuts = false,
   underId = null,
+  imageDecoding,
 }: {
   deck: DeckSlide;
   timing: StepTiming;
@@ -781,11 +801,20 @@ export function DeckStepView({
   cuts?: boolean;
   /** Under the first step's clip until it can be drawn: the still that showed before (a stage screen's, C review). */
   underId?: string | null;
+  imageDecoding?: 'sync';
 }) {
   return usePreviewsOnly() ? (
     <DeckStepPreview deck={deck} timing={timing} style={style} />
   ) : (
-    <DeckStepLive deck={deck} timing={timing} style={style} fit={fit} cuts={cuts} underId={underId} />
+    <DeckStepLive
+      imageDecoding={imageDecoding}
+      deck={deck}
+      timing={timing}
+      style={style}
+      fit={fit}
+      cuts={cuts}
+      underId={underId}
+    />
   );
 }
 
@@ -870,10 +899,12 @@ export function DeckStepStill({
   deck,
   index,
   style,
+  imageDecoding,
 }: {
   deck: DeckSlide;
   index: number;
   style: CSSProperties;
+  imageDecoding?: 'sync';
 }) {
   const previews = usePreviewsOnly();
   const attempt = useMediaAttempt(deckStep(deck, index)?.lastId ?? '');
@@ -886,6 +917,7 @@ export function DeckStepStill({
         <PreviewPicture mediaId={id} style={filling('contain')} />
       ) : (
         <img
+          decoding={imageDecoding}
           key={attempt}
           data-media-id={id}
           src={urlOf(id, attempt)}

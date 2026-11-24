@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ImportProgress, ImportRunSummary } from '../../shared/import';
 import { emptyTotals } from '../../shared/import';
+import type { DisplayResult } from '../media/display-copies';
 import { ImportService, type ImportServiceDeps, type WorkerProcess } from './import-service';
 import type { FromWorker, ToWorker } from './protocol';
 
@@ -176,6 +177,189 @@ describe('ImportService', () => {
     });
     workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
     await first;
+  });
+
+  it('starts an import only once no transition runs on the screens: one started during a dissolve waits for it to end (alpha.21, Q60-60 A)', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    const { service, workers } = setup({ playsHevc: () => Promise.resolve(true), quiet: () => quiet });
+    const first = service.start(['/Placeholder picture.png']);
+    await Promise.resolve();
+    await Promise.resolve();
+    // The HEVC answer is in, but the dissolve still runs: nothing heavy starts (no worker is even started now).
+    expect(workers.flatMap((w) => w.sent)).toEqual([]);
+    end();
+    await vi.waitFor(() => {
+      expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: true });
+    });
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+  });
+
+  it('starts no worker process while a transition runs on the screens: the process itself starts only once it ends (alpha.21, Q60-60 A; a21-l8a: on CI’s Mac starting it during a dissolve cost the hall’s frames)', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    const { service, mocks, workers } = setup({ playsHevc: () => Promise.resolve(true), quiet: () => quiet });
+    const first = service.start(['/Placeholder picture.png']);
+    await Promise.resolve();
+    await Promise.resolve();
+    // It shows as waiting; no process is started while the dissolve runs.
+    expect(mocks.onProgress).toHaveBeenCalledWith(expect.objectContaining({ phase: 'queued' }));
+    expect(service.busy).toBe(true);
+    expect(workers).toHaveLength(0);
+    end();
+    await vi.waitFor(() => {
+      expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: true });
+    });
+    expect(workers).toHaveLength(1);
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+  });
+
+  it('never starts a worker for a run cancelled, or for Drashti quitting, while it waits for a transition to end (alpha.21, Q60-60 A)', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    const { service, mocks, workers } = setup({ quiet: () => quiet });
+    const first = service.start(['/Placeholder one.png']);
+    const second = service.start(['/Placeholder two.png']);
+    expect(workers).toHaveLength(0);
+    const [firstId = ''] = mocks.onProgress.mock.calls.map(([progress]) => progress.runId);
+    expect(service.cancel(firstId)).toBe(true);
+    await expect(first).resolves.toEqual({ ok: false, message: 'Cancelled before it started.' });
+    service.stop();
+    await expect(second).resolves.toEqual({ ok: false, message: 'Drashti is quitting.' });
+    end();
+    await quiet;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(workers).toHaveLength(0);
+    expect(mocks.failRun).not.toHaveBeenCalled();
+  });
+
+  it('says a run held for the screens’ transitions is waiting for them, and stops once they end (QA22-L8-1, the owner: "Keep wait, say why")', async () => {
+    let end: () => void = () => undefined;
+    const quiet = new Promise<void>((resolve) => {
+      end = resolve;
+    });
+    let ends: number | null = Date.now() + 5000;
+    const { service, mocks, workers } = setup({ quiet: () => quiet, transitionsEndAt: () => ends });
+    const first = service.start(['/Placeholder picture.png']);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'queued', waitingFor: 'transitions' }),
+    );
+    ends = null;
+    end();
+    await vi.waitFor(() => {
+      expect(workers).toHaveLength(1);
+    });
+    // Its worker started: it no longer says it waits.
+    expect(mocks.onProgress.mock.calls.at(-1)?.[0].waitingFor).toBeUndefined();
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+  });
+
+  it('stops saying a cancelled run waits for the screens’ transitions; the run behind it, waiting for them, says so (QA22-L8-1)', () => {
+    const { service, mocks } = setup({
+      quiet: () => new Promise<void>(() => undefined),
+      transitionsEndAt: () => 1,
+    });
+    void service.start(['/Placeholder one.png']);
+    void service.start(['/Placeholder two.png']);
+    const [first = '', second = ''] = mocks.onProgress.mock.calls
+      .filter(([progress]) => progress.waitingFor === undefined)
+      .map(([progress]) => progress.runId);
+    expect(mocks.onProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: first, waitingFor: 'transitions' }),
+    );
+    expect(service.cancel(first)).toBe(true);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ runId: second, phase: 'queued', waitingFor: 'transitions' }),
+    );
+    service.stop();
+  });
+
+  it('says a new picture waits for the screens’ transitions only while its display copy is held for them, telling each change once (QA22-L8-1)', async () => {
+    let made: (result: DisplayResult) => void = () => undefined;
+    const prepared = new Promise<DisplayResult>((resolve) => {
+      made = resolve;
+    });
+    const { service, mocks, workers } = setup({ prepareDisplay: () => prepared });
+    const first = service.start(['/Placeholder large.png']);
+    const w = workers[0];
+    if (!w) throw new Error('no worker');
+    const reading = {
+      runId: w.runId,
+      phase: 'importing' as const,
+      done: 0,
+      total: 1,
+      current: 'Placeholder large.png',
+    };
+    w.emit({ type: 'progress', progress: reading });
+    w.emit({
+      type: 'prepare-display',
+      requestId: 'r1',
+      candidate: { path: 'a.png', sha256: 'a'.repeat(64) },
+    });
+    // Asked for, not held: it says what it does, as before.
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
+    const before = mocks.onProgress.mock.calls.length;
+    // The copies' queue is held for the screens' transitions, and still a second later: told once.
+    service.displayHeld(true);
+    service.displayHeld(true);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith({ ...reading, waitingFor: 'transitions' });
+    expect(mocks.onProgress.mock.calls.length).toBe(before + 1);
+    // The copy starts: it says what it does again.
+    service.displayHeld(false);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
+    // Held again, then Cancel: it no longer says it waits.
+    service.displayHeld(true);
+    expect(service.cancel(w.runId)).toBe(true);
+    expect(mocks.onProgress.mock.calls.at(-1)?.[0].waitingFor).toBeUndefined();
+    made({ ok: false, message: 'Picture preparation was cancelled.' });
+    await vi.waitFor(() => {
+      expect(w.sent.some((m) => m.type === 'display-prepared')).toBe(true);
+    });
+    w.emit({ type: 'finished', run: summary(w.runId) });
+    await first;
+  });
+
+  it('does not say a new picture waits when its copy is asked for in the moment after the transitions ended (a22-review-l8b: no flash in the 250 ms wake margin)', () => {
+    let ends: number | null = null;
+    const { service, mocks, workers } = setup({
+      prepareDisplay: () => new Promise<DisplayResult>(() => undefined),
+      transitionsEndAt: () => ends,
+    });
+    void service.start(['/Placeholder large.png']);
+    const w = workers[0];
+    if (!w) throw new Error('no worker');
+    const reading = {
+      runId: w.runId,
+      phase: 'importing' as const,
+      done: 0,
+      total: 1,
+      current: 'Placeholder large.png',
+    };
+    // The copies' queue was held for a transition that has just ended; it looks again within 250 ms.
+    service.displayHeld(true);
+    w.emit({ type: 'progress', progress: reading });
+    w.emit({
+      type: 'prepare-display',
+      requestId: 'r1',
+      candidate: { path: 'a.png', sha256: 'a'.repeat(64) },
+    });
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
+    // Held again while a transition runs: now it says so.
+    ends = Date.now() + 5000;
+    service.displayHeld(false);
+    service.displayHeld(true);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith({ ...reading, waitingFor: 'transitions' });
+    service.stop();
   });
 
   it('tells each import HEVC’s other kinds as the window said them with its answer, read as it starts (Session 60, x36)', async () => {

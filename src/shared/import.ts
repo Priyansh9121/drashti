@@ -154,6 +154,11 @@ export interface ImportProgress {
   total: number;
   /** Name of the file being read. */
   current: string | null;
+  /**
+   * What holds the run, when something does (alpha.22, QA22-L8-1, the owner: "Keep wait, say why"): 'transitions'
+   * while its start, or a new picture's display copy, waits for the screens' transitions to finish.
+   */
+  waitingFor?: 'transitions';
 }
 
 /** Where an import spent its time, in milliseconds (for diagnosing slow machines). */
