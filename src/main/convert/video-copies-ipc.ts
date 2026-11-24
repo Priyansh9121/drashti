@@ -12,7 +12,7 @@ import { AFTER_START_MS, type ConvertService } from './convert-service';
 import { ClipExports, type ExportSourceResult } from './clip-export-service';
 import { CombineVideos } from './combine-service';
 import { ProxyService } from './proxy-service';
-import { copyRequests, registerProxyFile } from './video-copy-files';
+import { copyRequests, discardUnlisted, registerProxyFile } from './video-copy-files';
 
 export interface VideoCopyIpcDeps {
   db: Db;
@@ -157,6 +157,9 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     idle: () => (deps.saveIdle ?? deps.idle)(),
     prepareImport: (file, info, name, signal) => register(file, info, signal, name),
     publishImport,
+    // A combine failing late leaves no unlisted row or file in Media (a22-review-combine S4).
+    discardUnlisted: (made, keep) =>
+      discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, ...made, keep: keep ?? null }),
   });
   const allowed = (e: IpcMainInvokeEvent) => deps.fromOperator(e);
   handle(IPC.media.proxyStatus, (e, id, retry) =>

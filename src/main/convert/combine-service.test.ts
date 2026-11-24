@@ -78,7 +78,7 @@ async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
     row: (id: string) => fixture.media.about(id),
     conversions: {
       saveCopy: (...[source, dest, info, options]: Parameters<typeof fixture.conversions.saveCopy>) => {
-        const args = options.args;
+        const args = options.args.bind(options);
         options.args = (temporary) => {
           const made = args(temporary);
           hooks.encoding?.();
@@ -113,9 +113,8 @@ async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
         hooks.publish && fixture.db.prepare('UPDATE media SET listed=1 WHERE id=?').run(id).changes > 0,
       ),
     // As the app has it (video-copies-ipc.ts): what a combine copied into Media and never listed, removed.
-    discardUnlisted: (made: { file: string } | { folder: string }, keep?: string | null) => {
-      discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, ...made, keep: keep ?? null });
-    },
+    discardUnlisted: (made: { file: string } | { folder: string }, keep?: string | null) =>
+      discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, ...made, keep: keep ?? null }),
   };
   combines = new CombineVideos(deps);
   cleanup.push(() => combines.close());
@@ -546,7 +545,10 @@ it('at the start, removes what a quit or a crash left of a combine, and nothing 
   };
   expect(stored()).toHaveLength(3);
   combines = new CombineVideos(deps);
-  expect(fixture.db.prepare('SELECT id FROM media WHERE id=?').get(left)).toBeUndefined();
+  // Chosen at the start, removed shortly (never waiting on the library's write lock).
+  await vi.waitFor(() => {
+    expect(fixture.db.prepare('SELECT id FROM media WHERE id=?').get(left)).toBeUndefined();
+  });
   expect(fixture.media.about(finished)).not.toBeNull();
   expect(fixture.media.about(lighter)).not.toBeNull();
   expect(stored().sort()).toEqual([before.finished, before.lighter].sort());

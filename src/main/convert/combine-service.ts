@@ -27,8 +27,10 @@ import type { MediaInfo } from './plan';
  * or a sound plays, the stream is on air or a recording goes on (a still slide, a picture or the Wallpaper up never
  * holds it; a22-save-trim's save gate), starting again from the beginning when one starts while it runs, with its
  * progress and Stop. The originals are only read: the new video is made in a work folder of its own, checked (its
- * picture, sound and length), copied into Media and listed only then. A combine waiting or going when Drashti quits is
- * let go of (nothing of it is left); combine them again after the restart.
+ * picture, sound and length), copied into Media and listed only then. A combine failing, stopped or let go of late
+ * (after its copy into Media) leaves nothing behind: that copy, never listed, is removed with its file, and what a quit
+ * or a crash left goes at the next start (a22-review-combine S4). A combine waiting or going when Drashti quits is let
+ * go of; combine them again after the restart.
  */
 export interface CombineSource {
   mediaId: string;
@@ -50,6 +52,11 @@ export interface CombineDeps {
   /** List it in Media. */
   publishImport(mediaId: string): Promise<boolean>;
   /**
+   * What prepareImport copied into Media from `file` (this combine's work file) and never listed, removed with its file;
+   * with `folder` (the work folder, at the start), what a quit or a crash left. `keep`, the one listed, stays.
+   */
+  discardUnlisted(made: { file: string } | { folder: string }, keep?: string | null): Promise<unknown>;
+  /**
    * The system's save dialog, offering Downloads and `name` (Also save a copy to a file, and Export…): the file chosen,
    * or null when cancelled. The system's own dialog asks before replacing a file there.
    */
@@ -64,11 +71,15 @@ interface Entry {
 }
 /** How many combines may wait at once. */
 const WAITING_MOST = 5;
+/** A chosen video whose file Media now holds as other bytes (or elsewhere) than when it was chosen. */
+const CHANGED = 'One of the videos changed in Media. Choose them again, then Combine.';
 
 export class CombineVideos {
   private readonly entries: Entry[] = [];
   private closed = false;
   constructor(private readonly deps: CombineDeps) {
+    // What a quit or a crash left of a combine (copied into Media, never listed): chosen now, removed shortly.
+    void deps.discardUnlisted({ folder: deps.workDir }).catch(() => undefined);
     rmSync(deps.workDir, { recursive: true, force: true });
     mkdirSync(deps.workDir, { recursive: true });
   }
@@ -93,12 +104,18 @@ export class CombineVideos {
     if (!existsSync(path)) return `“${row.name}”’s file is missing. Restore it, then Combine again.`;
     return { mediaId, name: row.name, path, sha256: row.sha256 };
   }
+  /** Why a chosen video is no longer the very file it was when its combine was asked for, in its own words; or null. */
+  private changed(sources: readonly CombineSource[]): string | null {
+    for (const source of sources) {
+      const now = this.resolve(source.mediaId);
+      if (typeof now === 'string') return now;
+      if (now.path !== source.path || now.sha256 !== source.sha256) return CHANGED;
+    }
+    return null;
+  }
   /** Whether each chosen video is still the very file it was when its combine was asked for. */
   private current(sources: readonly CombineSource[]): boolean {
-    return sources.every((source) => {
-      const now = this.resolve(source.mediaId);
-      return typeof now !== 'string' && now.path === source.path && now.sha256 === source.sha256;
-    });
+    return this.changed(sources) === null;
   }
   async start(raw: unknown): Promise<CombineResult> {
     if (this.closed)
@@ -170,10 +187,17 @@ export class CombineVideos {
     const [first, ...rest] = sources;
     if (!first) return;
     const info: MediaInfo = { durationMs: null, video: null, audio: null };
-    const made: { plan: CombinePlan | null; info: MediaInfo | null; importId: string | null } = {
+    const made: {
+      plan: CombinePlan | null;
+      info: MediaInfo | null;
+      importId: string | null;
+      /** The work file its copy into Media was made from (each attempt's is the same): what to remove if not listed. */
+      temporary: string | null;
+    } = {
       plan: null,
       info: null,
       importId: null,
+      temporary: null,
     };
     // The new file is new: its size is about the chosen ones' together (reserved half as much again).
     const bytes = sources.reduce(
@@ -192,8 +216,8 @@ export class CombineVideos {
       alsoRead: rest.map((s) => s.path),
       inspect: (read, words) => {
         Object.assign(info, read);
-        if (!this.current(sources))
-          return 'One of the videos changed in Media. Choose them again, then Combine.';
+        const changed = this.changed(sources);
+        if (changed) return changed;
         if (words.more.length !== rest.length) return 'Drashti could not read every chosen video. Try again.';
         try {
           made.plan = combinePlan(
@@ -237,6 +261,7 @@ export class CombineVideos {
       preparePublish: async (temporary, signal) => {
         if (!made.info || !this.current(sources) || !this.deps.idle())
           throw new Error('The combined video is no longer ready to keep.');
+        made.temporary = temporary;
         made.importId = await this.deps.prepareImport(temporary, made.info, job.name, signal);
       },
       beforePublish: () => {
@@ -265,23 +290,42 @@ export class CombineVideos {
     entry.conversionId = null;
     // The work file is only a step: Media keeps its own copy.
     if (result.ok && result.copy) rmSync(result.copy, { force: true });
+    const listed =
+      !this.closed &&
+      job.state !== 'stopped' &&
+      result.ok &&
+      result.copy !== null &&
+      made.importId !== null &&
+      (await this.deps.publishImport(made.importId).catch(() => false));
+    if (listed) {
+      // In Media now: from here Stop stops nothing (a22-review-combine S1).
+      job.progress = 1;
+      job.mediaId = made.importId;
+    }
+    // What it copied into Media and did not list goes, with its file: failing late, a wait just after that copy, Stop
+    // or Drashti closing leaves nothing behind (a22-review-combine S4).
+    if (made.temporary !== null)
+      await this.deps
+        .discardUnlisted({ file: made.temporary }, listed ? made.importId : null)
+        .catch(() => undefined);
     if (this.closed || job.state === 'stopped') return;
     job.note = null;
     if (!result.ok || !result.copy) {
       job.state = result.ok ? 'failed' : result.stopped ? 'stopped' : 'failed';
-      job.message = result.ok ? 'The combined video was not kept. Try Combine again.' : result.message;
+      // A video changed while it was made says so in its own words, wherever that was seen (not "free disk space").
+      job.message = result.ok
+        ? 'The combined video was not kept. Try Combine again.'
+        : result.stopped
+          ? result.message
+          : (this.changed(sources) ?? result.message);
       return;
     }
-    const listed =
-      made.importId !== null && (await this.deps.publishImport(made.importId).catch(() => false));
     if (!listed) {
       job.state = 'failed';
       job.message =
         'The combined video could not be added to Media. Check free disk space, then Combine again.';
       return;
     }
-    job.progress = 1;
-    job.mediaId = made.importId;
     // Also save a copy to a file: Media's new copy copied there, never encoded again.
     if (entry.copyTo) {
       job.note = 'Saving a copy to the file chosen…';
