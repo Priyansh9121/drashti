@@ -29,8 +29,8 @@ export const LIVE_WIDTH = 960;
 const LIVE_QUALITY = 75;
 
 export interface StudioLiveDeps {
-  /** Take a still now: null when this computer has nothing to take it from. */
-  take(): Promise<StudioLivePicture | null>;
+  /** Take a still now: null when this computer has nothing to take it from; undefined when not ready yet. */
+  take(): Promise<StudioLivePicture | null | undefined>;
   /** To the studio's page. */
   send(picture: StudioLivePicture | null): void;
   log(line: string): void;
@@ -99,7 +99,7 @@ export class StudioLive {
   private async next(round: number): Promise<void> {
     this.taken++;
     let limit: ReturnType<typeof setTimeout> | undefined;
-    let picture: StudioLivePicture | null;
+    let picture: StudioLivePicture | null | undefined;
     try {
       picture = await Promise.race([
         this.deps.take(),

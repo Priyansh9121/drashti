@@ -32,7 +32,7 @@ describe('StudioLive', () => {
     vi.useRealTimers();
   });
 
-  function make(take: () => Promise<StudioLivePicture | null>) {
+  function make(take: () => Promise<StudioLivePicture | null | undefined>) {
     const sent: (StudioLivePicture | null)[] = [];
     const lines: string[] = [];
     const live = new StudioLive({
@@ -190,6 +190,22 @@ describe('StudioLive', () => {
     live.stop();
     live.watch(false);
     expect(stopped).toHaveBeenCalledTimes(3);
+  });
+
+  it('a still not ready yet (Live’s copy still opening) sends nothing, and the next is taken as usual', async () => {
+    let n = 0;
+    const take = vi.fn(() => Promise.resolve(++n < 3 ? undefined : picture(n)));
+    const { live, sent } = make(take);
+    live.watch(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(take).toHaveBeenCalledTimes(1);
+    expect(sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(LIVE_EVERY_MS);
+    expect(take).toHaveBeenCalledTimes(2);
+    expect(sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(LIVE_EVERY_MS);
+    expect(sent).toEqual([picture(3)]);
+    live.watch(false);
   });
 
   it('started again after a stop, it takes one at once', async () => {

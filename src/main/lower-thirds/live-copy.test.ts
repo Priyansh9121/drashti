@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Layers } from '../../shared/engine/state';
 import type { ScreenConfig, ScreenGroupConfig } from '../../shared/screens';
 import {
+  LIVE_COPY_FIRST_MS,
   LIVE_COPY_FPS,
   LIVE_COPY_QUERY,
   LIVE_COPY_SCREEN_ID,
@@ -32,8 +33,10 @@ const image = (width = 960): CapturedImage => ({
 function fakeWindows() {
   const made: { drawn: CapturedImage | null; closed: boolean; gone: () => void }[] = [];
   let quitting = false;
+  let t = 1000;
   const lines: string[] = [];
   const copy = new LiveCopy({
+    now: () => t,
     open: (gone) => {
       if (quitting) return null;
       const w = { drawn: null as CapturedImage | null, closed: false, gone };
@@ -56,6 +59,9 @@ function fakeWindows() {
     quit: () => {
       quitting = true;
     },
+    advance: (ms: number) => {
+      t += ms;
+    },
   };
 }
 
@@ -65,8 +71,8 @@ describe('LiveCopy', () => {
     expect(made).toHaveLength(0);
     expect(copy.isOpen).toBe(false);
 
-    // Asked: opened, nothing drawn yet.
-    expect(copy.still()).toBeNull();
+    // Asked: opened, nothing drawn yet (waiting: the studio is not told "No live picture to show" meanwhile).
+    expect(copy.still()).toBe('waiting');
     expect(made).toHaveLength(1);
     expect(copy.isOpen).toBe(true);
     expect(lines.join('\n')).toMatch(/no hall screen/i);
@@ -93,9 +99,30 @@ describe('LiveCopy', () => {
     expect(lines).toHaveLength(said);
 
     // Asked again: a new window.
-    expect(copy.still()).toBeNull();
+    expect(copy.still()).toBe('waiting');
     expect(made).toHaveLength(2);
     expect(copy.isOpen).toBe(true);
+  });
+
+  it('waits for its first picture at most LIVE_COPY_FIRST_MS after it opens; none drawn by then, none ("No live picture to show") until one is', () => {
+    const { copy, made, advance } = fakeWindows();
+    expect(LIVE_COPY_FIRST_MS).toBeGreaterThanOrEqual(3000);
+    expect(LIVE_COPY_FIRST_MS).toBeLessThanOrEqual(10_000);
+    expect(copy.still()).toBe('waiting');
+    advance(LIVE_COPY_FIRST_MS - 1);
+    expect(copy.still()).toBe('waiting');
+    advance(1);
+    expect(copy.still()).toBeNull();
+    const w = made[0];
+    if (!w) throw new Error('no window');
+    const late = image();
+    w.drawn = late;
+    expect(copy.still()).toBe(late);
+    // Opened again later: it waits again, from then.
+    copy.close();
+    advance(60_000);
+    expect(copy.still()).toBe('waiting');
+    expect(made).toHaveLength(2);
   });
 
   it('never opens a window as Drashti quits', () => {

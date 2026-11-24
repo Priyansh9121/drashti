@@ -24,6 +24,8 @@ import type { CapturedImage } from './studio-live';
 
 /** Its size inside: the studio's preview is at most about 900 points wide. */
 export const LIVE_COPY_SIZE = { width: 960, height: 540 } as const;
+/** The longest Live waits for its first picture after it opens (its page loading) before saying there is none. */
+export const LIVE_COPY_FIRST_MS = 5000;
 /** Frames a second it draws: Live takes a still about once a second. */
 export const LIVE_COPY_FPS = 1;
 /** Its page's query, by which tests (and its address in the log) tell it from a screen's. */
@@ -43,6 +45,8 @@ export interface LiveCopyDeps {
   /** Open its window (`gone`: its page stopped); null while Drashti quits (a window made then would stop the quit). */
   open(gone: () => void): LiveCopyWindow | null;
   log(line: string): void;
+  /** This computer's clock (ms). */
+  now?(): number;
 }
 
 export class LiveCopy {
