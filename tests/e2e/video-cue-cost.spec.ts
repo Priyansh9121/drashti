@@ -20,6 +20,8 @@ interface SoundStep {
   duration: number;
   /** Jumping: silent until it lands. */
   seeking: boolean;
+  /** Aimed this far ahead and heard as late (ms; QA23-FADE-4: a crossfade's incoming sound's lead), 0 for none. */
+  lead: number;
 }
 
 /** How long into a fade its sounds have to be back in step (QA22-FADE-1), and how close then (ms). */
@@ -58,9 +60,13 @@ function fadeOffsets(
       .map((s) => {
         const { start, end: last } = playbackBounds(timing.clip, s.duration);
         const expected = playbackPosition(timing, s.duration, s.t);
+        // What the mix hears (QA23-FADE-4): its player's position less its lead; before the fade's moment the lead's
+        // delay still carries the silence before its start, so it is not yet behind.
+        const heard = s.at - s.lead / 1000;
+        const at = s.t < fade.at && heard < expected ? expected : heard;
         return {
           t: s.t - fade.at,
-          ms: Math.round(playbackOffset(s.at, expected, last - start, timing.loop) * 1000),
+          ms: Math.round(playbackOffset(at, expected, last - start, timing.loop) * 1000),
           rate: s.rate,
         };
       });
@@ -431,6 +437,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         rate: number;
         duration: number;
         seeking: boolean;
+        lead: number;
       }[] = [];
       (globalThis as { s5SoundSteps?: typeof steps }).s5SoundSteps = steps;
       setInterval(() => {
@@ -443,6 +450,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             rate: el.playbackRate,
             duration: el.duration,
             seeking: el.seeking,
+            lead: Number(el.dataset['leadMs'] ?? 0),
           });
       }, 50);
     });
