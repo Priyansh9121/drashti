@@ -212,7 +212,7 @@ describe('a singers’ sheet of a kirtan’s words', () => {
     expect(html).toContain('Raag: Raag &#39;x&#39; &amp;');
     // The page holds no script and loads nothing.
     expect(html).toContain("default-src 'none'");
-    expect(html).not.toMatch(/<script|src=|href=/iu);
+    expect(html).not.toMatch(/<script|<[^>]*\s(?:src|href)=/iu);
   });
 
   it('puts the name in every page’s footer as text, and suggests a file name the system takes', () => {
