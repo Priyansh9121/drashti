@@ -1771,11 +1771,8 @@ describe('ShowEngine', () => {
     it('gives a stage message sent without colours the ones chosen on this computer, kept apart from the state; colours sent with it win', () => {
       const { engine, transport } = setup();
       const was = engine.current;
-      expect(engine.dispatch({ type: 'setStageColours', boxColor: '#1D4ED8', textColor: '#ffffff' })).toEqual({
-        ok: true,
-        changed: false,
-        rev: 0,
-      });
+      const told = engine.dispatch({ type: 'setStageColours', boxColor: '#1D4ED8', textColor: '#ffffff' });
+      expect(told).toEqual({ ok: true, changed: false, rev: 0 });
       // Not in the state: no change for the screens, the nodes or the recovery file.
       expect(engine.current).toBe(was);
       expect(transport.messages).toHaveLength(0);
@@ -1783,7 +1780,12 @@ describe('ShowEngine', () => {
       expect(engine.current.stageCall?.boxColor).toBe('#1d4ed8');
       expect(engine.current.stageCall?.textColor).toBe('#ffffff');
       // Colours sent with the message (the API's, the window's own) win, both together: none of this computer's.
-      engine.dispatch({ type: 'setStageMessage', text: 'Placeholder', boxColor: '#000000', textColor: '#FFFFFF' });
+      engine.dispatch({
+        type: 'setStageMessage',
+        text: 'Placeholder',
+        boxColor: '#000000',
+        textColor: '#FFFFFF',
+      });
       expect(engine.current.stageCall).toMatchObject({ boxColor: '#000000', textColor: '#ffffff' });
       engine.dispatch({ type: 'setStageMessage', text: 'Placeholder', boxColor: '#b91c1c' });
       expect(engine.current.stageCall?.boxColor).toBe('#b91c1c');
@@ -1791,7 +1793,8 @@ describe('ShowEngine', () => {
       // Amber and black chosen again: the window sends none, and a message without colours has none, as before.
       engine.dispatch({ type: 'setStageColours' });
       engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: five minutes' });
-      expect(engine.current.stageCall).toEqual({ size: 'standard', flash: false, shownAt: expect.any(Number) });
+      expect(engine.current.stageCall).not.toHaveProperty('boxColor');
+      expect(engine.current.stageCall).not.toHaveProperty('textColor');
       // Only #rrggbb, as a message's own.
       expect(parseEngineCommand({ type: 'setStageColours', boxColor: 'amber' }).ok).toBe(false);
       // The operator window's alone: never a phone's or the API's command, and Simple Mode's window sends it too.

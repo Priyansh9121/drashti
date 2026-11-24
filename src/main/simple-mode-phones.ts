@@ -198,6 +198,8 @@ export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, Command
   resetTimer: 'pro',
   setStageMessage: 'pro',
   clearStageMessage: 'down',
+  // The operator window's alone (alpha.22): never a phone's (not in REMOTE_COMMANDS).
+  setStageColours: 'pro',
   cueNext: 'pro',
   clearCue: 'pro',
   playCue: 'pro',
