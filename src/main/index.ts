@@ -3961,14 +3961,16 @@ function start(): void {
     platform: process.platform,
     arch: process.arch,
   });
+  // What keeps Route C from running on this computer (a Mac before 13.4, no helper): its own reason, never whisper's.
+  const routeCProblem = (): string | null =>
+    indicProblem(process.platform, process.getSystemVersion()) ??
+    (indicProgram === null
+      ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
+      : null);
   const conformerRoute = createIndicRoute({
     store: modelPacks,
     program: () => indicProgram,
-    problem: () =>
-      indicProblem(process.platform, process.getSystemVersion()) ??
-      (indicProgram === null
-        ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
-        : null),
+    problem: () => routeCProblem(),
     admission: 'below-show',
     // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
     threads: 2,
@@ -4011,6 +4013,8 @@ function start(): void {
           return routeC && testSpeech !== undefined ? speechEngine : routeC;
         },
       }),
+      // Route C's own reason when it cannot run here (the review's S1); none for the stand-in in tests, as whisper's.
+      problem: () => (testSpeech !== undefined ? null : routeCProblem()),
       coordinator: captionCoordinator,
     },
     engineProblem: () => captionsEngineProblem,

@@ -75,6 +75,8 @@ export interface CaptionsServiceDeps {
      * Route C ('conformer') needs no whisper-server (alpha.23); left out, every route is taken to need it.
      */
     route?(language: SpeechLanguage): string | null;
+    /** What keeps Route C itself from running on this computer (its helper, macOS 13.4), or null (review S1). */
+    problem?(language: SpeechLanguage): string | null;
     /** The recognizer for this language, from the pack's checked model, or null. */
     recognizer(language: SpeechLanguage): CaptionRecognizer | null;
     coordinator: ClauseSink;
@@ -336,7 +338,7 @@ export class CaptionsService {
   }
 
   view(): CaptionsStatus {
-    const engineProblem = this.whisperProblem();
+    const engineProblem = this.hearingProblem();
     return {
       on: this.switch.on,
       model: this.switch.model,
@@ -431,7 +433,7 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (this.closed || this.prototype.view().on || this.whisperProblem() !== null) return;
+    if (this.closed || this.prototype.view().on || this.hearingProblem() !== null) return;
     this.listening = true;
     this.hub.setOn(true);
     this.feed.start();
@@ -446,16 +448,20 @@ export class CaptionsService {
   }
 
   /**
-   * What is wrong with Drashti's whisper engine, when what hears now needs it: today's captions and Route W do;
-   * a language whose own model runs on Route C does not (alpha.23, cap-realc).
+   * What keeps the engine that hears now from running on this computer: Drashti's whisper engine for today's captions
+   * and Route W; for a language whose own model runs on Route C, Route C's own reason (a Mac before 13.4, no helper),
+   * never whisper's (alpha.23: cap-realc, the review's S1).
    */
-  private whisperProblem(): string | null {
+  private hearingProblem(): string | null {
     const language = this.settings().language;
-    const route = this.useAi() && language !== 'auto' ? (this.deps.aiPath?.route?.(language) ?? null) : null;
-    return route === 'conformer' ? null : this.deps.engineProblem();
+    if (!this.useAi() || language === 'auto') return this.deps.engineProblem();
+    const ai = this.deps.aiPath;
+    return ai?.route?.(language) === 'conformer'
+      ? (ai.problem?.(language) ?? null)
+      : this.deps.engineProblem();
   }
 
-  /** Captions are on but did not start (whisper's problem): a language that needs no whisper starts now. */
+  /** Captions are on but did not start (an engine's problem): a language whose engine can run starts now. */
   private resume(): void {
     if (this.switch.on && !this.listening && !this.closed) void this.turnOn();
   }
