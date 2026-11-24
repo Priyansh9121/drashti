@@ -130,6 +130,7 @@ for (const [rotation, view] of [
     }
     const copy = await cropPdfCopy(data, [{ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }]);
     expect(data).toEqual(before);
+    expect(new TextDecoder().decode(copy)).toMatch(/\/MediaBox\s*\[\s*500\s+700\s+100\s+100\s*\]/);
     const loading = getDocument({ data: copy, useSystemFonts: false });
     try {
       const page = await (await loading.promise).getPage(1);
