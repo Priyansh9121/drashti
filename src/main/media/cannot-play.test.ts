@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { NO_FIRST_FRAME } from '../../shared/no-picture';
+import {
+  cannotPlayNotice,
+  cannotStartInTimeNotice,
+  NO_FIRST_FRAME,
+  NO_START_IN_TIME,
+} from '../../shared/no-picture';
 import {
   CANNOT_PLAY_SETTLE_MS,
   type CannotPlayWhere,
@@ -7,6 +12,8 @@ import {
   CannotPlay,
   errorKindWords,
   GPU_GONE_GRACE_MS,
+  type Heard,
+  heardOutcome,
   NodeCannotPlay,
 } from './cannot-play';
 
@@ -161,5 +168,119 @@ describe('a paired computer’s screen that could not play a video (Q60-44, the 
     ).toBe(
       'A video could not play on the paired computer “Placeholder Node”, its screen “Placeholder Hall” (no picture within 10 s): media-1; it plays on everywhere else',
     );
+  });
+});
+
+describe('a screen’s word on a video up but not playing (alpha.23, a22-halldrop: never dropped without a word)', () => {
+  const HALL = { screen: 'Placeholder Hall' };
+  const heard = (over: Partial<Heard>): Heard => ({
+    name: 'Placeholder waiting video',
+    mediaId: 'media-1',
+    wheres: [HALL],
+    code: 3,
+    words: '',
+    took: null,
+    stillUp: true,
+    ...over,
+  });
+
+  it('a video waiting on the slide (paused, or for its click) that the hall could not play: nothing comes off, the operator is told what happened and what to try, the log has it, and LIVE names the screen', () => {
+    const o = heardOutcome(heard({}));
+    expect(o.notice).toBe(
+      '“Placeholder waiting video” could not play on the screen “Placeholder Hall”. It is still up but not playing: played, its sound may be heard without its picture there. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.',
+    );
+    expect(o.log).toEqual({
+      level: 'warn',
+      line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; left up, not playing (paused, waiting for its click or at its end), so nothing came off',
+    });
+    expect(o.notOn).toBe('the screen “Placeholder Hall”');
+  });
+
+  it('with no first frame on two screens and LIVE: the screens named, LIVE not, and what the watch saw in the log', () => {
+    const o = heardOutcome(
+      heard({
+        wheres: ['live', HALL, { screen: 'Placeholder Side' }],
+        code: NO_FIRST_FRAME,
+        words: 'Placeholder looks',
+      }),
+    );
+    expect(o.notice).toContain('could not play on the screens “Placeholder Hall” and “Placeholder Side”.');
+    expect(o.log?.line).toBe(
+      'A video could not play on the screens “Placeholder Hall” and “Placeholder Side” (no picture within 10 s: Placeholder looks): media-1; left up, not playing (paused, waiting for its click or at its end), so nothing came off',
+    );
+    expect(o.notOn).toBe('the screens “Placeholder Hall” and “Placeholder Side”');
+  });
+
+  it('a showing no longer up by the end of the wait: only logged, nobody told, nothing under LIVE', () => {
+    expect(heardOutcome(heard({ stillUp: false }))).toEqual({
+      log: {
+        level: 'info',
+        line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; no longer up',
+      },
+      notice: null,
+      notOn: null,
+    });
+  });
+
+  it('a video waiting that only LIVE or the stream could not play: logged, no notice, nothing under LIVE (the screens show it)', () => {
+    expect(heardOutcome(heard({ wheres: ['live', 'stream'] }))).toEqual({
+      log: {
+        level: 'warn',
+        line: 'A video could not play on LIVE (a decoding error): media-1; left up, not playing (paused, waiting for its click or at its end), so nothing came off',
+      },
+      notice: null,
+      notOn: null,
+    });
+  });
+
+  it('a video playing on the slide is paused there as before, with the same notice, and LIVE names the screen while it stays up', () => {
+    const took = { background: false, slide: true, box: false };
+    const o = heardOutcome(heard({ took }));
+    expect(o.notice).toBe(
+      cannotPlayNotice('Placeholder waiting video', 'the screen “Placeholder Hall”', took),
+    );
+    expect(o.log).toEqual({
+      level: 'warn',
+      line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; taken off (paused on the slide)',
+    });
+    expect(o.notOn).toBe('the screen “Placeholder Hall”');
+  });
+
+  it('a background or the box taken off: the notice and the log as before, and nothing under LIVE (it is off everywhere)', () => {
+    const bg = { background: true, slide: false, box: false };
+    expect(heardOutcome(heard({ took: bg, stillUp: false }))).toEqual({
+      log: {
+        level: 'warn',
+        line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; taken off (the background)',
+      },
+      notice: cannotPlayNotice('Placeholder waiting video', 'the screen “Placeholder Hall”', bg),
+      notOn: null,
+    });
+    const box = { background: false, slide: false, box: true };
+    const slow = heardOutcome(heard({ took: box, stillUp: false, code: NO_START_IN_TIME }));
+    expect(slow.notice).toBe(
+      cannotStartInTimeNotice('Placeholder waiting video', 'the screen “Placeholder Hall”', box),
+    );
+    expect(slow.notOn).toBeNull();
+  });
+
+  it('the take-off hears every page that said so during the wait, not only their words', () => {
+    let now = 0;
+    const waiting: (() => void)[] = [];
+    const c = new CannotPlay({
+      now: () => now,
+      later: (_ms, run) => {
+        waiting.push(run);
+      },
+    });
+    const got: (readonly CannotPlayWhere[])[] = [];
+    const off = (_named: string, wheres: readonly CannotPlayWhere[]) => {
+      got.push(wheres);
+    };
+    c.heard('clip@1', 'live', off, () => undefined);
+    c.heard('clip@1', HALL, off, () => undefined);
+    now = CANNOT_PLAY_SETTLE_MS;
+    for (const run of waiting.splice(0)) run();
+    expect(got).toEqual([['live', HALL]]);
   });
 });

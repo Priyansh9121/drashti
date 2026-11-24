@@ -1,6 +1,8 @@
 import type { NodeCannotPlayReport } from '../../shared/nodes';
 import {
+  cannotPlayNotice,
   cannotPlayOnNodeNotice,
+  cannotStartInTimeNotice,
   FIRST_FRAME_MS,
   NO_FIRST_FRAME,
   NO_PICTURE,
@@ -8,6 +10,7 @@ import {
   SLOW_START_MS,
 } from '../../shared/no-picture';
 import { cutText } from '../../shared/text';
+import type { CannotPlayTook } from '../engine/one-at-a-time';
 
 /*
  * A video that could not play on a page that draws the show (Q60-31, the owner's own bug, x46): its element failed
@@ -86,7 +89,7 @@ export class CannotPlay {
   heard(
     showing: string,
     where: CannotPlayWhere,
-    takeOff: (where: string) => void,
+    takeOff: (where: string, wheres: readonly CannotPlayWhere[]) => void,
     leftToGpu: (where: string) => void,
   ): void {
     const gathered = this.waiting.get(showing);
@@ -103,9 +106,62 @@ export class CannotPlay {
       const gone = this.gpuGoneAt;
       if (gone !== null && gone >= at - GPU_GONE_GRACE_MS && gone <= at + CANNOT_PLAY_SETTLE_MS)
         leftToGpu(named);
-      else takeOff(named);
+      else takeOff(named, []);
     });
   }
+}
+
+/** A showing that pages said could not play, once the wait is over and Main's take-off (engine.cannotPlay) has run. */
+export interface Heard {
+  /** Its file's name, as Media names it. */
+  name: string;
+  mediaId: string;
+  /** Every page that said so during the wait. */
+  wheres: readonly CannotPlayWhere[];
+  /** The page's code: MediaError's 1 to 4 (0: none), NO_FIRST_FRAME or NO_START_IN_TIME. */
+  code: number;
+  /** Chromium's words, or what the start watch saw, for the log only ('' for none). */
+  words: string;
+  /** What the take-off took, or null when it took nothing. */
+  took: CannotPlayTook | null;
+  /** Whether that showing is still up after it (shared/not-on-screens.ts stillUp). */
+  stillUp: boolean;
+}
+
+/** What Main does with it: the log's line, what the operator window says, and the screens LIVE names under it. */
+export interface HeardOutcome {
+  log: { level: 'warn' | 'info'; line: string } | null;
+  notice: string | null;
+  /** The screens LIVE names under its picture while that showing stays up (shared/not-on-screens.ts), or null. */
+  notOn: string | null;
+}
+
+/** What Main does with a showing pages said could not play (as Main's media:cannot-play handler had it). */
+export function heardOutcome(h: Heard): HeardOutcome {
+  const named = whereWords(h.wheres);
+  const kind = errorKindWords(h.code);
+  const detail = h.words === '' ? '' : `: ${cutText(h.words, 300, '…')}`;
+  const took = h.took;
+  if (!took) return { log: null, notice: null, notOn: null };
+  const off = [
+    took.background ? 'the background' : '',
+    took.slide ? 'paused on the slide' : '',
+    took.box ? 'the box' : '',
+  ]
+    .filter((w) => w !== '')
+    .join(', ');
+  return {
+    log: {
+      level: 'warn',
+      line: `A video could not play on ${named} (${kind}${detail}): ${h.mediaId}; taken off (${off})`,
+    },
+    // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
+    notice:
+      h.code === NO_START_IN_TIME
+        ? cannotStartInTimeNotice(h.name, named, took)
+        : cannotPlayNotice(h.name, named, took),
+    notOn: null,
+  };
 }
 
 /** Showings told of, at most: the oldest are forgotten past it. */

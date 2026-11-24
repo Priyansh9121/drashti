@@ -438,3 +438,82 @@ test('a slide’s video and the picture-in-picture box’s video that cannot pla
     await app.close();
   }
 });
+
+test('a slide’s video waiting paused when its element fails on the hall (alpha.23): nothing comes off and the hall is not changed, but a notice names it and the screen and says what to try, LIVE names the screen under its picture while it stays up, and the log has it', async () => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-slide-waiting-error-'));
+  const clip = makeClip(join(dir, 'Placeholder waiting video.mp4'), 'h264', 30, 300);
+  const { app, userData } = await launchApp(SCREENS);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hall = await audienceScreen(app, win);
+    expect(hall.name, 'the audience screen’s name').not.toBe('');
+    const [id = ''] = await importAndGetIds(win, [clip]);
+    const SLIDE = `[data-layer="slide"] video[data-media-id="${id}"]`;
+    const presentationId = await slideWithVideo(win, dir, id, 'Placeholder slide waiting');
+    await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+    await expect
+      .poll(
+        () =>
+          hall.page.evaluate(
+            (sel) => !(document.querySelector<HTMLVideoElement>(sel)?.paused ?? true),
+            SLIDE,
+          ),
+        { timeout: 30_000, message: 'the slide’s video plays on the hall' },
+      )
+      .toBe(true);
+    // Paused on its time bar: up, not playing (as one waiting for its click is).
+    expect((await dispatch(win, { type: 'pausePlaying', playing: { layer: 'slide', mediaId: id } })).ok).toBe(
+      true,
+    );
+    await expect
+      .poll(
+        () =>
+          hall.page.evaluate((sel) => document.querySelector<HTMLVideoElement>(sel)?.paused ?? false, SLIDE),
+        { timeout: 10_000, message: 'paused on the hall' },
+      )
+      .toBe(true);
+    const failed = await hall.page.evaluate((sel) => {
+      const v = document.querySelector<HTMLVideoElement>(sel);
+      if (!v) return false;
+      v.dispatchEvent(new Event('error'));
+      return true;
+    }, SLIDE);
+    expect(failed, 'the hall’s slide video element').toBe(true);
+    // Said plainly: the file, the screen, and what to try.
+    await expect
+      .poll(() => notices(win), { timeout: 15_000, message: 'a notice names the file and the screen' })
+      .toContainEqual(
+        expect.stringMatching(
+          new RegExp(
+            `Placeholder waiting video[^ ]* could not play on the screen “${hall.name}”\\. It is still up but not playing[\\s\\S]*Put something else up`,
+            'u',
+          ),
+        ),
+      );
+    // LIVE says it under its picture, while the slide stays up.
+    await expect(win.getByTestId('live-not-on-screens')).toContainText(
+      `Not on the screen “${hall.name}”: “Placeholder waiting video`,
+    );
+    // Logged: the error's kind, the screen, and that nothing came off.
+    await expect
+      .poll(() => logOf(userData), { timeout: 10_000, message: 'the log names the screen and the file' })
+      .toMatch(
+        new RegExp(
+          `could not play on the screen “${hall.name}” \\([^)]+\\): ${id}; left up, not playing \\(paused, waiting for its click or at its end\\), so nothing came off`,
+          'u',
+        ),
+      );
+    // Nothing came off: the slide is up with its video paused there, as the operator left it.
+    expect(await slideAndBox(win, id), 'the slide and its paused video stay').toEqual({
+      slidePaused: true,
+      box: false,
+    });
+    // Off: LIVE says nothing any more.
+    await dispatch(win, { type: 'clearAll' });
+    await expect(win.getByTestId('live-not-on-screens')).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    await app.close();
+  }
+});
