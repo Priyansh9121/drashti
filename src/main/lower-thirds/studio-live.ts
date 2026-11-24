@@ -28,6 +28,8 @@ export interface StudioLiveDeps {
   take(): Promise<StudioLivePicture | null>;
   /** To the studio's page. */
   send(picture: StudioLivePicture | null): void;
+  /** Its stills stopped: let go of anything taking them held (the operator window kept drawing while covered). */
+  release?(): void;
   log(line: string): void;
   everyMs?: number;
 }
@@ -53,6 +55,7 @@ export class StudioLive {
     this.round++;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    // release: not yet
     this.deps.log(
       on
         ? 'The Lower Thirds studio shows Live behind its preview: a still about once a second'

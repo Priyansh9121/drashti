@@ -113,6 +113,25 @@ describe('StudioLive', () => {
     live.watch(false);
   });
 
+  it('lets go of what taking them held as it stops, and only then', async () => {
+    const release = vi.fn();
+    const live = new StudioLive({
+      take: () => Promise.resolve(picture(1)),
+      send: () => undefined,
+      release,
+      log: () => undefined,
+    });
+    live.watch(false);
+    expect(release).not.toHaveBeenCalled();
+    live.watch(true);
+    await vi.advanceTimersByTimeAsync(LIVE_EVERY_MS * 3);
+    expect(release).not.toHaveBeenCalled();
+    live.watch(false);
+    expect(release).toHaveBeenCalledTimes(1);
+    live.watch(false);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it('started again after a stop, it takes one at once', async () => {
     const take = vi.fn(() => Promise.resolve(picture(1)));
     const { live } = make(take);
