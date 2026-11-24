@@ -41,4 +41,19 @@ describe('Save picture… in the one right-click menu (Session 55, Part 5)', () 
     off();
     expect(labels(picture)).not.toContain('Save picture…');
   });
+
+  it('saves a slide’s picture as its slide shows it: a cropped or turned page’s turn and part go with it (a22-x95nits)', () => {
+    const saved: unknown[][] = [];
+    const save = (...args: unknown[]) => saved.push(args);
+    const onSlide = { turn: 90 as const, part: { x: 0.5, y: 0, w: 0.5, h: 0.5 } };
+    savePictureItems({ ...slide, onSlide }, save)[0]?.onSelect();
+    // A picture alone, and a slide that shows its picture as it is: by its id and name only, as before.
+    savePictureItems(picture, save)[0]?.onSelect();
+    savePictureItems(slide, save)[0]?.onSelect();
+    expect(saved).toEqual([
+      ['p3', 'Placeholder deck_3', onSlide],
+      ['m1', 'Placeholder darshan.jpg'],
+      ['p3', 'Placeholder deck_3'],
+    ]);
+  });
 });

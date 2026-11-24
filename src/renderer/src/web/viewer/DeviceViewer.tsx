@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { ZOOM } from '../../../../shared/picture-look';
+import { lookOnSlide } from '../../../../shared/picture-on-slide';
 import { useEngine } from '../../engine/engine-store';
 import { PictureScaleContext } from '../../render/previews';
 import { useElementSize } from '../../render/useElementSize';
@@ -170,7 +171,14 @@ function Viewer() {
               const saved =
                 'presentationId' in save
                   ? saveNativeSlideHere(save, name, current?.pictures ?? {})
-                  : savePictureHere(save.mediaId, name, current?.pictures[save.mediaId] ?? null);
+                  : savePictureHere(
+                      save.mediaId,
+                      name,
+                      lookOnSlide(
+                        current?.pictures[save.mediaId] ?? null,
+                        'onSlide' in save ? (save.onSlide ?? null) : null,
+                      ),
+                    );
               void saved.then((problem) => {
                 if (problem) useTapNotice.setState({ text: problem });
               });
