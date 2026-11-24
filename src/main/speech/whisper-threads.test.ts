@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import type * as Os from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CAPTION_TIMING } from '../../shared/captions';
 import type { SpeechState } from '../../shared/speech';
@@ -11,7 +12,7 @@ import { createWhisperEngine } from './whisper-engine';
  */
 
 vi.mock('node:os', async (importOriginal) => {
-  const os = await importOriginal<typeof import('node:os')>();
+  const os = await importOriginal<typeof Os>();
   return { ...os, availableParallelism: () => 2 };
 });
 

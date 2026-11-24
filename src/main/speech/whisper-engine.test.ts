@@ -645,7 +645,8 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
     await waitFor(() => heard.filter((h) => h.final).length >= 4, 5_000);
     expect(states).toEqual([{ phase: 'starting' }, { phase: 'listening', language: 'en' }]);
     expect(server.spawned).toHaveLength(1);
-    expect(server.spawned[0]?.[(server.spawned[0]?.indexOf('-t') ?? 0) + 1]).toBe('4');
+    const args = server.spawned[0] ?? [];
+    expect(args[args.indexOf('-t') + 1]).toBe('4');
   }, 30_000);
 });
 
