@@ -62,7 +62,11 @@ test('stream sound recovers independently, caps its sixth crash, and Try again p
     await expect.poll(async () => (await status()).recording.state).toBe('recording');
     // The encoder is writing before the first crash: each restart's sound must come by the new page's own pairing,
     // never by the encoder's first start pairing whichever page is there then.
-    await expect.poll(async () => (await status()).recording.bytes).toBeGreaterThan(0);
+    await expect.poll(async () => (await status()).recording.bytes, { intervals: [50] }).toBeGreaterThan(0);
+    // The file's own start, on this computer's clock: it began at most this long ago. Never `since`: the encoder starts
+    // on the page's first frame of the show, which came 5 s after the recording began on CI's Mac
+    // (a22-fade-1124-145657-55108), so a window placed from `since` fell 5 s late, past the next crash.
+    const fileSeenAt = Date.now();
     const recording = (await status()).recording;
     // a22-review-x86 M2: after an ordinary restart, the sound itself reaches the recording again (not only a microphone
     // that opened): read back from the file afterwards, from this moment on.
@@ -71,7 +75,7 @@ test('stream sound recovers independently, caps its sixth crash, and Try again p
       await expect.poll(async () => (await status()).inputs.sound).toBe('on');
       if (crash === 1) {
         restartedAt = Date.now();
-        await letTimePass(win, 4000, 'the restarted sound page’s sound reaches the recording');
+        await letTimePass(win, 5000, 'the restarted sound page’s sound reaches the recording');
       }
       expect(
         await app.evaluate(({ BrowserWindow }) => {
@@ -119,15 +123,17 @@ test('stream sound recovers independently, caps its sixth crash, and Try again p
     const files = readdirSync(dir).filter((f) => f.endsWith('.mkv'));
     expect(files, 'one recording through every sound crash').toHaveLength(1);
     const sound = readSound(ffmpeg ?? '', join(dir, files[0] ?? ''));
-    // The file's clock runs with the sound from the encoder's start, just after the recording's (since); while no sound
-    // comes the encoder fills silence, so it keeps up with this computer's clock to within a few tenths of a second.
-    const fromRestart = sound.start + (restartedAt - (recording.since ?? 0)) / 1000;
+    // The restart is placed from the file's own start (seen up to about a second after it began, so the restart lies at
+    // or a little after this), Try again from the file's own end. While no sound comes the encoder fills silence, so the
+    // file keeps up with this computer's clock to within a few tenths of a second for each crash. The restart's sound
+    // runs 5 s, until the next crash.
+    const fromRestart = sound.start + (restartedAt - fileSeenAt) / 1000;
     const end = sound.start + soundSeconds(sound);
     console.log(
-      `Sound in the recording (50 ms windows): after a restart ${String(loudWindows(sound, fromRestart + 0.5, fromRestart + 3.5, HEARD))}, after Try again ${String(loudWindows(sound, end - 3.5, end - 0.5, HEARD))}`,
+      `Sound in the recording (50 ms windows): after a restart ${String(loudWindows(sound, fromRestart + 0.5, fromRestart + 4, HEARD))}, after Try again ${String(loudWindows(sound, end - 3.5, end - 0.5, HEARD))}`,
     );
     expect(
-      loudWindows(sound, fromRestart + 0.5, fromRestart + 3.5, HEARD),
+      loudWindows(sound, fromRestart + 0.5, fromRestart + 4, HEARD),
       'the sound reaches the recording again after a sound page restart',
     ).toBeGreaterThanOrEqual(2);
     expect(
