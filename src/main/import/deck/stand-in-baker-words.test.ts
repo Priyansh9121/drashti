@@ -51,8 +51,11 @@ async function outcome(): Promise<unknown> {
   return Promise.race([made, sleep(5000).then(() => 'still waiting after 5 s')]);
 }
 
-/** An FFmpeg that takes its first frame, then fails: `before` happens first, then its exit (told before its words). */
-function failingAfterFirstFrame(before?: (child: ExitFirstChild) => void): ExitFirstChild {
+/**
+ * An FFmpeg that takes its first frame, then fails: `before` happens first, then its exit (told before its words),
+ * `exitAfterMs` later.
+ */
+function failingAfterFirstFrame(before?: (child: ExitFirstChild) => void, exitAfterMs = 0): ExitFirstChild {
   let frames = 0;
   const child = exitFirstChild({
     taken: () => {
@@ -60,7 +63,11 @@ function failingAfterFirstFrame(before?: (child: ExitFirstChild) => void): ExitF
       if (frames !== 1) return;
       setImmediate(() => {
         before?.(child);
-        child.end(1, { stderr: `${REASON}\n` });
+        const end = () => {
+          child.end(1, { stderr: `${REASON}\n` });
+        };
+        if (exitAfterMs > 0) setTimeout(end, exitAfterMs);
+        else end();
       });
     },
   });
@@ -90,11 +97,11 @@ describe('the stand-in movie, when FFmpeg’s exit is told before its last words
     expect(String(result)).toContain(WORDS);
   });
 
-  it('the same when what is being written fails first (EPIPE, before its exit): nothing is left unhandled', async () => {
+  it('the same when what is being written fails first (EPIPE, its exit told a moment later): nothing is left unhandled', async () => {
     spawn.mockImplementation(() =>
       failingAfterFirstFrame((child) => {
         child.stdin.destroy(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
-      }),
+      }, 50),
     );
     const result = await outcome();
     expect(result).toBeInstanceOf(Error);
