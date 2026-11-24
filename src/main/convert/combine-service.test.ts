@@ -1,4 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import {
+  initialEngineState,
+  nothingUp,
+  type EngineState,
+  type Layers,
+  type SlideLayer,
+} from '../../shared/engine/state';
+import { saveWaitsFor } from '../../shared/save-waits';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { sha256File } from '../import/media-store';
@@ -18,8 +26,8 @@ afterEach(() => {
   for (const close of cleanup.splice(0).reverse()) close();
 });
 
-async function setUp() {
-  fixture = await copyFixture();
+async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
+  fixture = await copyFixture(gate);
   cleanup.push(() => fixture.cleanup());
   const second = join(fixture.dir, 'second.mp4');
   copyFf([
@@ -57,6 +65,8 @@ async function setUp() {
     .run();
   const hashes = { source: fixture.sha, second: hashed.sha256 };
   const work = join(fixture.dir, 'video-combine-work');
+  // As the app has it: the save gate when given (alpha.22), else nothing up, on air or recording.
+  const idle = () => (gate.saveBusy ? gate.saveBusy() === null : fixture.idle());
   // The system's save dialog: what it was offered, and the file it answers with (null: cancelled).
   const saving = { offered: [] as string[], answer: null as string | null };
   combines = new CombineVideos({
@@ -68,7 +78,7 @@ async function setUp() {
     workDir: work,
     row: (id) => fixture.media.about(id),
     conversions: fixture.conversions,
-    idle: () => fixture.idle(),
+    idle: () => idle(),
     prepareImport: (file, read, name, signal) =>
       registerProxyFile({
         db: fixture.db,
@@ -77,7 +87,7 @@ async function setUp() {
         info: read,
         name,
         signal,
-        idle: () => fixture.idle(),
+        idle: () => idle(),
         freeBytes: () => 100 * 1024 ** 3,
       }),
     publishImport: (id) =>
@@ -250,4 +260,52 @@ it('also saves a copy to the file chosen first, with Export…’s own helper: o
   const stored = join(fixture.dir, fixture.media.about(job.mediaId ?? '')?.path ?? '');
   expect((await sha256File(chosen)).sha256).toBe((await sha256File(stored)).sha256);
   expect(fixture.maxActive()).toBe(1);
+}, 40_000);
+
+/*
+ * The owner's save fault (a22-save-trim, 24 Nov 2026): the Wallpaper over a still slide held every save for ever under
+ * the old "nothing up" rule. A combine waits only while a video or sound plays, the stream is on air or a recording runs.
+ */
+it('combines with the Wallpaper over a still slide up, and waits only while a video plays', async () => {
+  const still = {
+    ...initialEngineState(),
+    wallpaper: true,
+    layers: {
+      ...initialEngineState().layers,
+      slide: {
+        presentationId: 'placeholder-presentation',
+        slideIndex: 0,
+        shownAt: 1000,
+        slide: { id: 'placeholder-slide', elements: [] },
+      } as unknown as SlideLayer,
+    },
+  };
+  const shown: { state: EngineState } = { state: still };
+  const off = { onAir: false, recording: false };
+  await setUp({ saveBusy: () => saveWaitsFor(shown.state, off) });
+  // Something is up (the old rule's "show busy"), and nothing plays.
+  fixture.activity.show = true;
+  expect(nothingUp(still.layers)).toBe(false);
+  expect(saveWaitsFor(still, off)).toBeNull();
+  const job = await settled((await started(ask(['source', 'second']))).id);
+  expect(job.mediaId).not.toBeNull();
+  // A video playing holds the next one, in the save gate's words.
+  shown.state = {
+    ...still,
+    layers: {
+      ...still.layers,
+      background: {
+        kind: 'media',
+        mediaId: 'placeholder-video',
+        media: 'video',
+        fit: 'fit',
+        loop: true,
+        startedAt: 1000,
+      } as Layers['background'],
+    },
+  };
+  const held = await started(ask(['second', 'source']));
+  expect(held.note).toBe('Waiting: a video is playing');
+  shown.state = still;
+  await settled(held.id);
 }, 40_000);

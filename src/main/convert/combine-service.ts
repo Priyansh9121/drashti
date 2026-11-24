@@ -182,7 +182,7 @@ export class CombineVideos {
     );
     const options: CopyOptions = {
       // As Export clip… (alpha.22, a22-save-trim): only what plays, the stream or a recording holds it.
-      waitForPlaying: true,
+      waitForShow: true,
       strictPriority: true,
       kind: 'clip',
       // Its progress and its time limit (four times its length, and 5 minutes more) by all of them together, as Media

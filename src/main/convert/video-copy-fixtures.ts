@@ -31,7 +31,14 @@ export function copyFf(args: string[]): Buffer {
   if (made.status !== 0) throw new Error('The bundled FFmpeg could not make the generated copy fixture.');
   return made.stdout;
 }
-export async function copyFixture(options: { large?: boolean; alpha?: boolean } = {}) {
+export async function copyFixture(
+  options: {
+    large?: boolean;
+    alpha?: boolean;
+    /** The save gate as the app gives it (alpha.22, shared/save-waits.ts): why a save the operator asked for waits. */
+    saveBusy?: () => string | null;
+  } = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-video-copy-'));
   const name = options.alpha ? 'placeholder.webm' : 'placeholder.mp4';
   const source = join(dir, name);
@@ -69,6 +76,7 @@ export async function copyFixture(options: { large?: boolean; alpha?: boolean } 
     ffmpegPath: () => copyFfmpeg,
     busy: () => (activity.stream || activity.recording ? 'Waits while the stream or recording is on.' : null),
     showBusy: () => activity.show,
+    ...(options.saveBusy ? { saveBusy: options.saveBusy } : {}),
     freeBytes: () => 100 * 1024 ** 3,
     changed: () => undefined,
     libraryChanged: () => undefined,
