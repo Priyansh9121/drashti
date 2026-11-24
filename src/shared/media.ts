@@ -371,6 +371,13 @@ export const SOUND_LIMITS: CorrectionLimits = { jumpOver: 0.5, maxRateChange: 0.
  * jump is silent until it lands: 30 ms on a Mac, up to 1.9 s on CI's two-core Windows). render/playback.ts's `ease`.
  */
 export const FADE_SOUND_LIMITS: CorrectionLimits = { jumpOver: 0.5, maxRateChange: 0.08 };
+/**
+ * A crossfade's two pictures, on every page (lead 2's QF-1, a22-fade-picture): out of step, by the sound's own numbers
+ * (QA23-FADE-2), so the stream's picture and its sound come back alike. A jump freezes a picture until it lands: on CI's
+ * two-core Windows 0.1 to 1 s, and landing behind it was aimed again at once, through the whole fade
+ * (a22-fade-1124-103850-84620: the hall's pictures 0.6 to 3 s of each 2 s fade). render/picture-fade.ts.
+ */
+export const FADE_PICTURE_LIMITS: CorrectionLimits = FADE_SOUND_LIMITS;
 
 /**
  * How to bring a playing file back in step. Far out (a stall, a reload):

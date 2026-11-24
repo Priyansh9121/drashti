@@ -464,6 +464,39 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         attributeFilter: ['data-crossfade-gain'],
       });
     });
+    // Lead 2's QF-1 (a22-fade-picture): each background picture's jumps on the hall, LIVE and the stream's picture page.
+    // A jumping picture is frozen until it lands; one sent again as it lands stays frozen (its 'seeked' comes with it
+    // seeking again), and one let go of before it landed was frozen until then.
+    const pictureJumpWatch = (page: Page) =>
+      page.evaluate(() => {
+        const jumps: { key: string; from: number; to: number | null }[] = [];
+        (globalThis as { s5PictureJumps?: typeof jumps }).s5PictureJumps = jumps;
+        const open = new Map<EventTarget, (typeof jumps)[number]>();
+        const land = (e: Event) => {
+          const el = e.target;
+          if (!(el instanceof HTMLVideoElement) || (e.type === 'seeked' && el.seeking)) return;
+          const jump = open.get(el);
+          if (!jump) return;
+          jump.to = Date.now();
+          open.delete(el);
+        };
+        document.addEventListener(
+          'seeking',
+          (e) => {
+            const el = e.target;
+            if (!(el instanceof HTMLVideoElement) || open.has(el)) return;
+            const key = el.dataset['bgSlot'];
+            if (key === undefined || jumps.length >= 5000) return;
+            const jump = { key, from: Date.now(), to: null };
+            open.set(el, jump);
+            jumps.push(jump);
+          },
+          true,
+        );
+        document.addEventListener('seeked', land, true);
+        document.addEventListener('emptied', land, true);
+      });
+    await Promise.all([hall, win, stream].map(pictureJumpWatch));
     const fadeClocks: { askedAt: number; fade: VideoCrossfade; to: PlaybackClock & { mediaId: string } }[] =
       [];
     const decoderProcesses = await app.evaluate(
@@ -745,6 +778,29 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       durationMs: fade.durationMs,
       gains: soundGains.filter((g) => g.t >= fade.at && g.t < fade.at + fade.durationMs),
     }));
+    // Lead 2's QF-1: each moment of a fade a picture on the hall, LIVE or the stream's page was frozen in a jump (one
+    // begun before the fade that lands in it counts, as for the sound).
+    const pictureJumps = await Promise.all(
+      [hall, win, stream].map((page) =>
+        page.evaluate(
+          () =>
+            (globalThis as { s5PictureJumps?: { key: string; from: number; to: number | null }[] })
+              .s5PictureJumps ?? null,
+        ),
+      ),
+    );
+    const pictureFreezes = fadeClocks.flatMap(({ fade }) =>
+      (['hall', 'LIVE', 'stream'] as const).flatMap((role, index) =>
+        (pictureJumps[index] ?? [])
+          .map((jump) => ({
+            key: jump.key,
+            from: Math.max(jump.from, fade.at),
+            to: Math.min(jump.to ?? Number.POSITIVE_INFINITY, fade.at + fade.durationMs),
+          }))
+          .filter((jump) => jump.to > jump.from)
+          .map((jump) => ({ fadeAt: fade.at, role, key: jump.key, t: jump.from - fade.at, ms: jump.to - jump.from })),
+      ),
+    );
     await retainCapture();
     const ended = await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.stream.end({ confirmed: true }),
@@ -775,13 +831,17 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     );
     expect(pixels.status).toBe(0);
     let begun = false,
-      black = 0;
+      black = 0,
+      // Lead 2's QF-1, evidence only: frames that show the two generated videos (red, blue) blended. CI's Windows
+      // recordings had none in 11 of 13 since x69 (the Mac about 40 a fade): its encoder, below normal, dropped them.
+      blended = 0;
     const blackFrameIndices: number[] = [];
     for (let at = 0; at + 2 < pixels.stdout.length; at += 3) {
       const red = pixels.stdout[at] ?? 0,
         green = pixels.stdout[at + 1] ?? 0,
         blue = pixels.stdout[at + 2] ?? 0;
       if (Math.max(red, blue) > green + 35) begun = true;
+      if (red + blue > 60 && blue / (red + blue) > 0.3 && blue / (red + blue) < 0.7) blended++;
       if (begun && red + green + blue < 30) {
         black++;
         blackFrameIndices.push(at / 3);
@@ -829,6 +889,9 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       encodedFrames: media.videoFrames,
       blackFrames: black,
       blackFrameIndices,
+      blendedFrames: blended,
+      pictureJumpsSeen: pictureJumps.map((jumps) => jumps?.length ?? null),
+      pictureFreezes,
       toneOverlapMs: longest * 100,
       toneMaxima: { a: maxA, b: maxB },
       toneWindows: amplitudes,
@@ -884,6 +947,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         ).toEqual([]);
       }
     }
+    // Lead 2's QF-1: a crossfade's pictures are brought back by speed, not jumps, on the hall, LIVE and the stream's
+    // page: none is frozen in a jump at any moment of a fade (CI's Windows, a22-fade-1124-103850-84620: 0.6 to 4.4 s of
+    // each 2 s fade on a page; the Mac 13 to 230 ms).
+    expect(pictureJumps, 'the hall’s, LIVE’s and the stream page’s pictures are watched').not.toContain(null);
+    expect(
+      pictureFreezes,
+      'no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade',
+    ).toEqual([]);
     // S7's checks (the gains sum to one, the incoming only rises, within 0.04 of the engine's fade) wait for the next
     // release: in a22-fade-1124-103850-84601 one sample of about 100 on Windows had the outgoing gain 63 ms stale (sum
     // 1.031), cause not yet known. Its gains stay in the report (fadeGains) as evidence.
