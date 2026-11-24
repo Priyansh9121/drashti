@@ -29,27 +29,19 @@ export function namedBackground(background: BackgroundLayer | null | undefined):
  * What the hall's picture holds that this page cannot draw (Session 51), one line each, as the phone remote says
  * them: the background's video input or window ("Video input: Input 1"), then the picture-in-picture box's
  * ("Picture in picture: Input 1"); only those the hall's group shows, and none under black-out or the Wallpaper.
- * None at all on a page that draws them (`live`: this computer's own). `windows`: whether this page draws a window
- * too (alpha.23: the Stage preview draws a video input live, and names a window).
+ * None at all on a page that draws them (`live`: this computer's own).
  */
 export function unseenLive(
   state: Pick<EngineState, 'layers' | 'blackout' | 'wallpaper'>,
   look: LiveGroupLook,
   live: boolean,
-  windows = live,
 ): string[] {
-  if ((live && windows) || state.blackout || state.wallpaper) return [];
-  const unseen = (kind: 'input' | 'window' | 'link'): boolean => (kind === 'window' ? !windows : !live);
+  if (live || state.blackout || state.wallpaper) return [];
   const lines: string[] = [];
   const named = shows(look, 'background') ? namedBackground(state.layers.background) : null;
-  if (named && unseen(named.kind)) lines.push(`${named.label} ${named.name}`);
+  if (named) lines.push(`${named.label} ${named.name}`);
   const box = state.layers.pip;
-  if (
-    box &&
-    pipShownFor(look) &&
-    (box.source.kind === 'input' || box.source.kind === 'window') &&
-    unseen(box.source.kind)
-  )
+  if (box && pipShownFor(look) && (box.source.kind === 'input' || box.source.kind === 'window'))
     lines.push(`Picture in picture: ${pipName(box.source)}`);
   return lines;
 }

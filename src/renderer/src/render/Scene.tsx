@@ -46,7 +46,7 @@ import { SlideLowerThird } from './LowerThird';
 import { LowerThirdView } from './LowerThirdView';
 import { BackgroundBox, ScreenPictures } from './picture-looks';
 import { TimerText } from './TimerText';
-import { useLiveHere, useStagePreview } from './live-here';
+import { useLiveHere } from './live-here';
 import { pipMainPlaces, type PipPicture, type PipRun, pipShownFor, pipShowsHere, type PipSlot } from './pip';
 import { PipBox, PipSourcePicture, usePipMainDissolve, usePipRun } from './PipLayerView';
 import { MESSAGE_BAND, MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
@@ -514,14 +514,13 @@ const SceneBody = memo(function SceneBody({
       ? covers.held.cover
       : null;
   // The picture-in-picture box (Session 50, render/pip.ts): where this group's role shows it (else drawn as if
-  // there were none), a video input or a window only on this computer's own pages (a window never on the Stage
-  // preview, alpha.23), and the slides in it only while a slide is up and the group shows the slides.
+  // there were none), a video input or a window only on this computer's own pages, and the slides in it only
+  // while a slide is up and the group shows the slides.
   const live = useLiveHere();
-  const preview = useStagePreview();
   const boxHere = (box: PipLayer | null): box is PipLayer =>
     box !== null &&
     pipShownFor(look) &&
-    pipShowsHere(box.source, live, live && !preview) &&
+    pipShowsHere(box.source, live) &&
     (box.source.kind !== 'slides' || (layers.slide !== null && shown('slide')));
   // Worked out at every drawing from the engine's time, kept while it draws the same (Session 51).
   const [run, refreshRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);

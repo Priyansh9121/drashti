@@ -252,8 +252,9 @@ export interface OutputContext {
   /** Its picture is being adjusted in Screens (x27): a grid over the show, warped with it. Never kept. */
   grid?: true;
   /**
-   * The Stage preview's page (alpha.22), no screen: it draws this computer's video inputs live (alpha.23, lead 2's
-   * QA23-STAGE8-1), names another app's window instead of capturing it, and never says how an input stands.
+   * The Stage preview's page (alpha.22), no screen: it draws none of this computer's live pictures (alpha.23, lead 2's
+   * QA23-STAGE8-1): it names a video input and another app's window, as a tablet does, and never says how an input
+   * stands.
    */
   preview?: true;
 }

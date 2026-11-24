@@ -23,9 +23,7 @@ export interface PermissionRules {
    * Only for the default session on Main (Session 50): which of Drashti's screen pages this is, for a camera
    * (a video input): the operator window's (its LIVE picture, Media's small live pictures of its video inputs)
    * or one of this computer's outputs' (audience, stage and key and fill alike: each draws the hall's picture,
-   * a stage screen in its box of the audience picture), and the Stage preview's as an output's (alpha.23: a layout's
-   * video input box and a video input behind its audience picture; it never says how the input stands and never
-   * captures a window, outputs/stage-preview.ts); null for every other window (the window for Zoom, the
+   * a stage screen in its box of the audience picture); null for every other window (the window for Zoom, the
    * gallery, a PDF's hidden window...). A node's session and the audio player's leave it out: they never open
    * a camera.
    */
@@ -128,9 +126,8 @@ export interface CameraRequest {
  * camera was refused. Now a camera is given there only when all of these hold:
  * - it is a camera alone: Chromium names exactly one device, 'video' (a microphone names 'audio', a screen's
  *   picture names none), so sound is never given, alone or with it;
- * - the window asking is one the main process knows as a screen page: the operator window, one of this
- *   computer's outputs, or the Stage preview as an output (alpha.23) (`page`, from the window's identity, never
- *   from what the page says);
+ * - the window asking is one the main process knows as a screen page: the operator window, or one of this
+ *   computer's outputs (`page`, from the window's identity, never from what the page says);
  * - the frame asking is that window's main frame, never a frame inside it;
  * - its address is that page's own (index.html for the operator window, output.html for an output) and one of
  *   Drashti's own pages (the built renderer's files, or Vite's server in development).

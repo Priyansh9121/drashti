@@ -583,16 +583,6 @@ describe('what goes where', () => {
     );
   });
 
-  // alpha.23 (lead 2's QA23-STAGE8-1): the Stage preview draws a video input in the box, never another app's window.
-  it('a page that draws video inputs but no window (the Stage preview): the input in the box, not a window', () => {
-    const input = { kind: 'input', inputId: 'i', name: 'Input 1', device: 'Placeholder' } as const;
-    const meeting = { kind: 'window', sourceId: 'window:1:0', name: 'Placeholder meeting' } as const;
-    expect(pipShowsHere(input, true, false)).toBe(true);
-    expect(pipShowsHere(meeting, true, false)).toBe(false);
-    expect(pipShowsHere({ kind: 'slides' }, true, false)).toBe(true);
-    expect(pipShowsHere(meeting, true, true)).toBe(true);
-  });
-
   it('a group that leaves the box out (a key and fill pair, by its role since Session 55) hides it there (once the layers know the box)', () => {
     const all = [...GROUP_LAYERS];
     const without = all.filter((l) => l !== 'pip');

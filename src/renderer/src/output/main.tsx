@@ -283,7 +283,8 @@ function Output() {
   const matte = context?.role === 'keyfill' ? (context.feed ?? 'fill') : null;
   // A node's screen (its context carries how far its clock is from Main's; Main's own never does) draws no video
   // input or window in the picture-in-picture box: they are Main's computer's (Session 50). Nor before it knows.
-  const liveHere = context !== null && context.clockOffsetMs === undefined;
+  // Nor the Stage preview (alpha.23, QA23-STAGE8-1): it names them, as a tablet does, and opens no camera.
+  const liveHere = context !== null && context.clockOffsetMs === undefined && context.preview !== true;
   // Drashti stopped (Session 54): black over it all from then, the same on every screen and node.
   const stop = useStopFade(state?.stopped);
   return (
@@ -338,7 +339,7 @@ function Output() {
           {/* Main's way of writing the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */}
           <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
             <LiveHere.Provider value={liveHere}>
-              {/* The Stage preview (alpha.23, QA23-STAGE8-1): video inputs live, a window named, no input reports. */}
+              {/* The Stage preview (alpha.23, QA23-STAGE8-1): no window's capture, no input reports. */}
               <StagePreviewPage.Provider value={context?.preview === true}>
                 <PlacedInParent
                   content={canvas}

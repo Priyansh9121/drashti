@@ -342,7 +342,7 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
-import { liveAnswer, PREVIEW_LIVE, revealPreview } from './outputs/stage-preview';
+import { liveAnswer, revealPreview } from './outputs/stage-preview';
 import { keepStage, STAGE_SETTING, stageStartsOn } from './outputs/stage-switch-setting';
 import { coverBox } from './network/desktop-consent';
 import type { DesktopLibrary } from './network/desktop-answers';
@@ -1784,17 +1784,17 @@ function start(): void {
       contents !== null &&
       ((zoomWindow?.isZoomPage(contents) ?? false) || (liveWindows?.mayCapture(contents.mainFrame) ?? false)),
     // A camera for a video input (Session 50), video alone: the operator window's page (its LIVE picture, Media's
-    // small live pictures), every output of this computer (audience, stage, key and fill) and the Stage preview
-    // (alpha.23), each known by its window and its address (windows/security.ts cameraAllowed). Nothing else in this
-    // session ever gets one; the stream's page has its own session, which already may.
+    // small live pictures) and every output of this computer (audience, stage, key and fill), each known by its
+    // window and its address (windows/security.ts cameraAllowed). Nothing else in this session ever gets one (the
+    // Stage preview neither: alpha.23, outputs/stage-preview.ts); the stream's page has its own session, which
+    // already may.
     cameraPage: (contents) => {
       if (contents === null) return null;
       if (contents.id === operatorWindow?.webContents.id) return 'operator';
       if (manager.screenIdFor(contents.id) !== undefined) return 'output';
-      // The Stage preview (alpha.23, QA23-STAGE8-1): its video input box and a video input behind the audience
-      // picture, live, as a stage screen's (outputs/stage-preview.ts PREVIEW_LIVE).
+      // The Stage preview: none (alpha.23, QA23-STAGE8-1's C; outputs/stage-preview.ts liveAnswer).
       return liveAnswer('camera', { preview: isStagePreview(contents.id), screen: false }) === 'yes'
-        ? PREVIEW_LIVE.camera
+        ? 'output'
         : null;
     },
     // On a Mac, no camera until System Settings' Camera says granted: macOS never asks before the page has said
@@ -2934,8 +2934,8 @@ function start(): void {
       clockStyle: mainClockStyle(),
       hall: hallHere(),
       ...warmUpFact(warmUps, stagePreview ?? undefined, 'the Stage preview', 'stage'),
-      // It draws this computer's video inputs, never another app's window, and never says how an input stands
-      // (alpha.23, QA23-STAGE8-1).
+      // It draws none of this computer's live pictures and names them, as a tablet does, and never says how an input
+      // stands (alpha.23, QA23-STAGE8-1).
       preview: true,
     };
   };
@@ -9403,7 +9403,7 @@ function start(): void {
   };
   // The list: the operator window's Media, and every screen's page, which opens only an input listed here.
   // The slide editor's window too (Session 55, Part 17a): a slide's background is a video input by its name.
-  // The Stage preview too (alpha.23, QA23-STAGE8-1): it draws the input live, as a stage screen does.
+  // Never the Stage preview (alpha.23, QA23-STAGE8-1): it names the input, and opens no camera.
   handle(IPC.videoInputs.list, (e) =>
     liveAnswer('list', livePage(e)) === 'yes' || (slideEditor?.isPage(e.sender) ?? false)
       ? inputs.view()

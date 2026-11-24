@@ -523,13 +523,9 @@ export function pipMainPlaces(
   });
 }
 
-/**
- * A video input and another app's window are this computer's: only its own pages draw them (never a node or a
- * phone). `windows`: whether this page draws a window too (alpha.23: the Stage preview draws a video input, never a
- * window).
- */
-export const pipShowsHere = (source: PipSource, live: boolean, windows = live): boolean =>
-  source.kind === 'window' ? windows : live || source.kind === 'slides' || source.kind === 'media';
+/** A video input and another app's window are this computer's: only its own pages draw them (never a node or a phone). */
+export const pipShowsHere = (source: PipSource, live: boolean): boolean =>
+  live || source.kind === 'slides' || source.kind === 'media';
 
 /**
  * Session 50: 'pip' joins the layers a group can leave out (shared/looks.ts; since Session 55 by its role, a key and
