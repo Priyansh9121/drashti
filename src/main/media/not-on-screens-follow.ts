@@ -14,9 +14,12 @@ export class LiveLinesFollow {
     private readonly send: () => void,
   ) {}
 
-  /** A GPU process stopped (as the first review fix had it: every line cleared). */
+  /**
+   * A GPU process stopped (the re-review's MUST-5): no line changes. A video loaded again after it says media:plays-here
+   * once it draws (drew), and a damaged one that fails again within the GPU's grace is never heard, so its line stays.
+   */
   gpuStopped(): void {
-    if (this.words.gpuGone()) this.send();
+    // Nothing to forget: what draws again says so.
   }
 
   /** That screen's page starts loading again: it draws its videos afresh, so it is no longer named. */
