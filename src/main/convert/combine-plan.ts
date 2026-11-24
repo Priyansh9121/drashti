@@ -195,7 +195,16 @@ export function combinePlan(inputs: readonly CombineInput[], choice: CombineChoi
         );
         soFar += (lengths[k] ?? 0) - choice.transitionMs;
       } else {
-        steps.push(`[${picture}][${sound}][v${String(k)}][a${String(k)}]concat=n=2:v=1:a=1[${v}][${a}]`);
+        // A cut. Not the last join: concat's pictures come out on its own time base (1/1000000), which the next xfade
+        // refuses, so they are given the first one's rate again (a22-review-combine MUST-2). Only here: every other
+        // branch already runs at that rate, so the graphs with cuts only or transitions only stay as they were.
+        if (last)
+          steps.push(`[${picture}][${sound}][v${String(k)}][a${String(k)}]concat=n=2:v=1:a=1[${v}][${a}]`);
+        else
+          steps.push(
+            `[${picture}][${sound}][v${String(k)}][a${String(k)}]concat=n=2:v=1:a=1[c${String(k)}][${a}]`,
+            `[c${String(k)}]fps=${rate}[${v}]`,
+          );
         soFar += lengths[k] ?? 0;
       }
       picture = v;
@@ -219,13 +228,11 @@ export function combinePlan(inputs: readonly CombineInput[], choice: CombineChoi
       '-nostats',
       '-progress',
       'pipe:2',
-      '-threads',
+      // The graph on one thread (as Edit Video's, edit-plan.ts); an input's options cover only the -i after them, so
+      // every chosen file opens with files only and one decoding thread (a22-review-combine MUST-1).
+      '-filter_complex_threads',
       '1',
-      '-filter_threads',
-      '1',
-      '-protocol_whitelist',
-      'file',
-      ...inputs.flatMap((input) => ['-i', input.file]),
+      ...inputs.flatMap((input) => ['-threads', '1', '-protocol_whitelist', 'file', '-i', input.file]),
       '-filter_complex',
       filter,
       '-map',
