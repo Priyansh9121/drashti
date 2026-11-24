@@ -32,5 +32,5 @@ export async function cropPdfCopy(data: Uint8Array, crops: (CropRect | undefined
     page.setCropBox(point(view.x + x * view.width), point(view.y + y * view.height),
       point(w * view.width), point(h * view.height));
   }
-  return doc.save({ useObjectStreams: false, addDefaultPage: false });
+  return doc.save({ useObjectStreams: false, addDefaultPage: false, updateFieldAppearances: false });
 }
