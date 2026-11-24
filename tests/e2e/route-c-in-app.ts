@@ -22,9 +22,7 @@ import { framesVerdict, meter } from './route-c-frames';
  * and the hall, the stage and the stream drawing each settled phrase. What it hears is the stream's sound input:
  * Chromium's fake microphone playing one generated WAV file (DRASHTI_TEST_FAKE_SOUND_FILE, never in a packaged
  * Drashti), through the stream's own sound graph, its speech tap and its port to Main, as a mixer's feed is heard.
- * caption-ai-chain.spec.ts runs it with the generated test model. The same run with alpha.22's real packs and generated
- * speech (caption-ai-real.spec.ts) waits for the next release: on CI's Mac the fake microphone fell behind and lost
- * sound (cap-realc.md), so it comes with a seam that plays the clip on the stream page's own audio clock.
+ * caption-ai-chain.spec.ts runs it with the generated test model; caption-ai-real.spec.ts with alpha.22's real packs.
  */
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -460,7 +458,7 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       const lastOwn = own.at(-1);
       row['endLateMs'] = lastOwn ? Math.round(lastOwn.endAt - (soundAskedAt + sound.speechEndMs)) : null;
       row['settledAfterEndMs'] = lastOwn ? Math.round(lastOwn.at - lastOwn.endAt) : null;
-      // What was heard, only when it was wrong: generated placeholders only, never real speech.
+      // What was heard, only when it was wrong: generated placeholder sentences (cap-winci's), never real speech.
       if (!heard.ok) row['heard'] = own.map((p) => p.text).join(' ');
       report.push(row);
       checks.push({ sound: sound.id, phrases: own.length, heardOk: heard.ok, shown });

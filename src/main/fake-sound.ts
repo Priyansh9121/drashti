@@ -4,9 +4,8 @@ import { posix, win32 } from 'node:path';
  * Chromium's fake camera and microphone, for the tests only (never a packaged Drashti: switches.ts honours no
  * DRASHTI_TEST_* there). DRASHTI_TEST_FAKE_DEVICES=1 puts a moving test pattern and a beep in place of real devices.
  * With DRASHTI_TEST_FAKE_SOUND_FILE too (alpha.23, cap-realc), the fake microphone plays that WAV file once instead of
- * its beep: generated sound for caption AI's own recogniser (Route C), heard through the stream's own sound graph,
- * its speech tap and its port to Main, as a mixer's feed is. Every one of Chromium's fake media switches is named here
- * alone.
+ * its beep: generated speech for caption AI's real recogniser, heard through the stream's own sound graph, its speech
+ * tap and its port to Main, as a mixer's feed is. Every one of Chromium's fake media switches is named here alone.
  */
 
 /** Chromium's fake camera and microphone. */

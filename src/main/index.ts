@@ -1001,7 +1001,7 @@ const priorityItem = (after: (text: string) => void) =>
 const fakeDevices = sw('DRASHTI_TEST_FAKE_DEVICES') === '1';
 if (fakeDevices) app.commandLine.appendSwitch(CHROMIUM_FAKE_DEVICES);
 // Tests only (alpha.23, cap-realc): the fake microphone plays a generated WAV file once instead of its beep, so caption
-// AI's own recogniser (Route C) hears generated sound through the stream's own sound graph (src/main/fake-sound.ts).
+// AI's real recogniser hears generated speech through the stream's own sound graph (src/main/fake-sound.ts).
 const fakeSound = fakeSoundSwitch({
   fakeDevices,
   file: sw('DRASHTI_TEST_FAKE_SOUND_FILE'),
