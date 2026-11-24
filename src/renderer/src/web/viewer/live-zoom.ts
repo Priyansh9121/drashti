@@ -1,4 +1,5 @@
 import type { EngineState, MediaFit } from '../../../../shared/engine/state';
+import type { Rect } from '../../../../shared/model';
 import { backgroundShowing, framed, PLAIN, slideShowing, ZOOM } from '../../../../shared/picture-look';
 import { placeContent, type Size } from '../../../../shared/scaling';
 import type { View } from './zoom-math';
@@ -25,9 +26,11 @@ export interface ZoomFrame {
   width: number;
   height: number;
   /**
-   * Where the screens show their middle, in the same fractions, where that is not the frame's own middle: a page
-   * cropped with Crop page… keeps its picture's box on the whole page, and the screens show only the crop, so the
-   * middle shown is the crop's (the slide's, and in the canvas the canvas's, which centres it). Left out otherwise.
+   * Where the screens show the picture's middle, in the same fractions, where that is not the frame's own middle: a
+   * page cropped with Crop page… keeps its pictures' boxes on the whole page, and the screens show only the crop, so
+   * the middle shown is that of the part of the frame inside the crop (shownMiddle): for a page shown as its picture,
+   * the crop's own (the slide's, and in the canvas the canvas's, which centres it). Left out otherwise, and for a
+   * picture all inside the crop.
    */
   middle?: { x: number; y: number };
 }
@@ -116,6 +119,34 @@ export function viewForLive(z: Framing, frame: ZoomFrame, kept: Framing): View {
   };
 }
 
+/** A frame in a cropped page's slide pixels: moved by where the crop starts. */
+function inSlide(frame: Rect, origin: { x: number; y: number }): Rect {
+  return { x: frame.x - origin.x, y: frame.y - origin.y, width: frame.width, height: frame.height };
+}
+
+/**
+ * On a page cropped with Crop page…, where the screens show the middle of a picture whose frame (in the slide's
+ * pixels) is given: the middle of the part of it inside the slide, the crop. 'slide' where it covers the slide (a
+ * page shown as its picture: the crop's own middle, exactly); null where it is all inside (shown whole, about its own
+ * middle, as before) or not on the slide at all.
+ */
+function shownMiddle(frame: Rect, slide: Size): 'slide' | { x: number; y: number } | null {
+  const near = 1e-6;
+  const left = Math.max(frame.x, 0);
+  const top = Math.max(frame.y, 0);
+  const right = Math.min(frame.x + frame.width, slide.width);
+  const bottom = Math.min(frame.y + frame.height, slide.height);
+  if (right <= left || bottom <= top) return null;
+  const covers = left <= near && top <= near && right >= slide.width - near && bottom >= slide.height - near;
+  if (covers) return 'slide';
+  const inside =
+    frame.x >= -near &&
+    frame.y >= -near &&
+    frame.x + frame.width <= slide.width + near &&
+    frame.y + frame.height <= slide.height + near;
+  return inside ? null : { x: (left + right) / 2, y: (top + bottom) / 2 };
+}
+
 /** Where the screens show their middle, from the frame's middle in its widths and heights; null for the frame's own. */
 function middleIn(frame: ZoomFrame, fw: number, fh: number): { x: number; y: number } | null {
   const m = frame.middle;
@@ -147,13 +178,23 @@ export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFram
   if (!element || canvas.width <= 0 || canvas.height <= 0) return null;
   const p = placeContent({ width: slide.slide.width, height: slide.slide.height }, canvas, 'fit');
   const origin = slide.slide.pageCrop ?? { x: 0, y: 0 };
+  const shown = slide.slide.pageCrop ? shownMiddle(inSlide(element.frame, origin), slide.slide) : null;
   return {
     x: (p.x + (element.frame.x - origin.x) * p.scaleX) / canvas.width,
     y: (p.y + (element.frame.y - origin.y) * p.scaleY) / canvas.height,
     width: (element.frame.width * p.scaleX) / canvas.width,
     height: (element.frame.height * p.scaleY) / canvas.height,
     // The fit centres the crop in the canvas.
-    ...(slide.slide.pageCrop ? { middle: { x: 0.5, y: 0.5 } } : {}),
+    ...(shown === 'slide'
+      ? { middle: { x: 0.5, y: 0.5 } }
+      : shown
+        ? {
+            middle: {
+              x: (p.x + shown.x * p.scaleX) / canvas.width,
+              y: (p.y + shown.y * p.scaleY) / canvas.height,
+            },
+          }
+        : {}),
   };
 }
 
@@ -171,12 +212,17 @@ export function frameInSlide(state: EngineState | null): ZoomFrame | null {
   const { width, height } = slide.slide;
   if (!element || width <= 0 || height <= 0) return null;
   const origin = slide.slide.pageCrop ?? { x: 0, y: 0 };
+  const shown = slide.slide.pageCrop ? shownMiddle(inSlide(element.frame, origin), slide.slide) : null;
   return {
     x: (element.frame.x - origin.x) / width,
     y: (element.frame.y - origin.y) / height,
     width: element.frame.width / width,
     height: element.frame.height / height,
-    ...(slide.slide.pageCrop ? { middle: { x: 0.5, y: 0.5 } } : {}),
+    ...(shown === 'slide'
+      ? { middle: { x: 0.5, y: 0.5 } }
+      : shown
+        ? { middle: { x: shown.x / width, y: shown.y / height } }
+        : {}),
   };
 }
 
