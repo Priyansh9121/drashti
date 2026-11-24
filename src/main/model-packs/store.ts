@@ -145,6 +145,22 @@ type Side = 'read' | 'own';
 
 const hex16 = () => randomBytes(8).toString('hex');
 
+/**
+ * Whether `real`, a file's real path, is inside the pack's folder `top`, in the platform's own way (Mac and Windows
+ * folders do not tell a name's case apart). The top of a drive or a disk ("E:\\", "/") already ends in its separator
+ * (alpha.23, the review: a pack on a USB stick's top was refused as a link).
+ */
+export function insideFolder(
+  top: string,
+  real: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const separator = platform === 'win32' ? '\\' : '/';
+  const fold = (p: string) => (platform === 'linux' ? p : p.toLowerCase());
+  const folder = top.endsWith(separator) ? top : top + separator;
+  return fold(real).startsWith(fold(folder));
+}
+
 /** Counts and hashes what passes, refusing more than `bytes`. */
 function hashing(name: string, bytes: number, step: (n: number) => void) {
   const hash = createHash('sha256');
@@ -665,14 +681,12 @@ export class ModelPackStore {
     if (!ls?.isFile() || ls.size > MAX_MANIFEST_BYTES) throw new Refusal(NO_LIST);
     const manifest = await readFile(list, 'utf8');
     const path = (f: PackFile) => join(top, ...f.name.split('/'));
-    // Mac and Windows folders do not tell a name's case apart.
-    const fold = (p: string) => (process.platform === 'linux' ? p : p.toLowerCase());
     return {
       manifest,
       check: async (f) => {
         const real = await realpath(path(f)).catch(() => null);
         if (real === null) throw new Refusal(MISSING(f.name));
-        if (!fold(real).startsWith(fold(top + sep))) throw new Refusal(LINK(f.name));
+        if (!insideFolder(top, real)) throw new Refusal(LINK(f.name));
         const s = await lstat(real);
         if (!s.isFile()) throw new Refusal(MISSING(f.name));
         if (s.size !== f.bytes) throw new Refusal(WRONG_SIZE(f.name));

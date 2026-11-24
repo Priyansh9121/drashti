@@ -4080,9 +4080,18 @@ function start(): void {
       const entry = languageModels.known().find((e) => e.sha256 === sha256);
       return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
     },
-    engine: (file, use) =>
+    // The pack's file is given back once whisper-server has exited (alpha.23); the stand-in runs no program.
+    engine: (file, use, exited) =>
       testSpeech !== undefined
-        ? speechEngine
+        ? {
+            start: (language, to) => {
+              const stop = speechEngine.start(language, to);
+              return () => {
+                stop();
+                exited();
+              };
+            },
+          }
         : createWhisperEngine({
             program: () => whisperProgram,
             model: () => file,
@@ -4092,6 +4101,7 @@ function start(): void {
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,
+            onExited: exited,
           }),
   });
   // Route C (alpha.22, cap-ship-c / Codex x94): AI4Bharat's IndicConformer (CTC) from the pack on Drashti's helper
@@ -4103,17 +4113,21 @@ function start(): void {
     platform: process.platform,
     arch: process.arch,
   });
+  // What keeps Route C from running on this computer (a Mac before 13.4, no helper): its own reason, never whisper's.
+  const routeCProblem = (): string | null =>
+    indicProblem(process.platform, process.getSystemVersion()) ??
+    (indicProgram === null
+      ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
+      : null);
   const conformerRoute = createIndicRoute({
     store: modelPacks,
     program: () => indicProgram,
-    problem: () =>
-      indicProblem(process.platform, process.getSystemVersion()) ??
-      (indicProgram === null
-        ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
-        : null),
+    problem: () => routeCProblem(),
     admission: 'below-show',
     // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
     threads: 2,
+    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review).
+    timing: () => captions.timing(),
     sound: { open: (chunk) => streaming.listenSound(chunk) },
     log,
   });
@@ -4151,6 +4165,8 @@ function start(): void {
           return routeC && testSpeech !== undefined ? speechEngine : routeC;
         },
       }),
+      // Route C's own reason when it cannot run here (the review's S1); none for the stand-in in tests, as whisper's.
+      problem: () => (testSpeech !== undefined ? null : routeCProblem()),
       coordinator: captionCoordinator,
     },
     engineProblem: () => captionsEngineProblem,
@@ -4216,21 +4232,6 @@ function start(): void {
       ? captions.setLanguageModel(language, id)
       : captions.view(),
   );
-  handle(IPC.captions.addLanguageModel, async (e, language) => {
-    if (!fromOperator(e) || !isLanguageModelLanguage(language)) return captions.view();
-    const parent = BrowserWindow.fromWebContents(e.sender);
-    const options = {
-      title: 'Add a Captions Model',
-      buttonLabel: 'Add Model',
-      properties: ['openFile'] as 'openFile'[],
-      filters: [{ name: 'Captions models (ggml)', extensions: ['bin'] }],
-    };
-    const picked = parent
-      ? await dialog.showOpenDialog(parent, options)
-      : await dialog.showOpenDialog(options);
-    const file = picked.canceled ? undefined : picked.filePaths[0];
-    return file === undefined ? captions.view() : captions.addLanguageModel(language, file);
-  });
   handle(IPC.captions.checkLanguageModel, (e, language) =>
     fromOperator(e) && isLanguageModelLanguage(language)
       ? captions.checkLanguageModel(language)

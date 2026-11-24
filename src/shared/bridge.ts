@@ -418,8 +418,6 @@ export interface DrashtiBridge {
     retry(): Promise<CaptionsStatus>;
     /** A model of its own for a language (alpha.22): one Drashti knows, or the general model (null). */
     setLanguageModel(language: LanguageModelLanguage, id: string | null): Promise<CaptionsStatus>;
-    /** Add a model file for a language (alpha.22): Drashti asks for the file and checks it. */
-    addLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
     checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
     /** The live timing on this computer (alpha.22). */
     setTiming(timing: CaptionTiming): Promise<CaptionsStatus>;

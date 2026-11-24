@@ -417,8 +417,6 @@ export const IPC = {
     retry: 'captions:retry',
     /** A model of its own for a language (alpha.22): choose one Drashti knows (or the general model, null). */
     setLanguageModel: 'captions:set-language-model',
-    /** Add a model file for a language (alpha.22): main asks for the file, checks it, and keeps a copy. */
-    addLanguageModel: 'captions:add-language-model',
     /** Check a language's chosen model file whole again (alpha.22). */
     checkLanguageModel: 'captions:check-language-model',
     /** The live timing on this computer (alpha.22). */
@@ -1590,7 +1588,6 @@ export interface InvokeContract {
     args: [language: LanguageModelLanguage, id: string | null];
     result: CaptionsStatus;
   };
-  [IPC.captions.addLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
   [IPC.captions.checkLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
   [IPC.captions.setTiming]: { args: [timing: CaptionTiming]; result: CaptionsStatus };
   [IPC.modelPacks.view]: { args: []; result: ModelPacksStatus };

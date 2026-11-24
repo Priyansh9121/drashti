@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LanguageModelEntry } from './language-models';
-import {
-  ADD_REFUSED,
-  packFileFor,
-  packLanguageModelStore,
-  type CaptionPackFiles,
-} from './pack-language-models';
+import { packFileFor, packLanguageModelStore, type CaptionPackFiles } from './pack-language-models';
 
 /* A language's own model from the offline pack only (the lead's Q-CAPI-2 A): placeholder ids, paths and hashes. */
 
@@ -116,11 +111,5 @@ describe('a language’s own captions model, from the pack only', () => {
     expect(p.asked).toEqual(['pack-gu']);
     expect(p.released).toEqual(['pack-gu']);
     expect(await packLanguageModelStore([ENTRY], pack({ held: false }).store).verify(ENTRY)).toBe('changed');
-  });
-
-  it('no model file is added any other way: it says to import the pack', async () => {
-    await expect(
-      packLanguageModelStore([ENTRY], pack().store).add('gu', '/placeholder/file.bin'),
-    ).rejects.toThrow(ADD_REFUSED);
   });
 });

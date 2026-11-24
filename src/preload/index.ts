@@ -221,7 +221,6 @@ const bridge: DrashtiBridge = {
     setSettings: (settings) => invoke(IPC.captions.setSettings, settings),
     retry: () => invoke(IPC.captions.retry),
     setLanguageModel: (language, id) => invoke(IPC.captions.setLanguageModel, language, id),
-    addLanguageModel: (language) => invoke(IPC.captions.addLanguageModel, language),
     checkLanguageModel: (language) => invoke(IPC.captions.checkLanguageModel, language),
     setTiming: (timing) => invoke(IPC.captions.setTiming, timing),
     onChanged: (listener) => on(IPC.captions.changed, listener),

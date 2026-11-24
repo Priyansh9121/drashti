@@ -484,4 +484,24 @@ describe('phase D caption coordinator', () => {
     vi.advanceTimersByTime(3_100);
     expect(last()).toBeNull();
   });
+
+  it('never shows the operator a phrase that has left the screens as on them now (alpha.23, the review)', () => {
+    const { coordinator: c, clause, last } = setup();
+    expect(c.accept(clause('The blue box', 1, 'settled'))).toBe(true);
+    expect(c.view()).toMatchObject({ canCorrect: true, current: { sourceText: 'The blue box' } });
+    vi.advanceTimersByTime(6_000);
+    expect(last()).toBeNull();
+    // Gone from the screens: the panel waits for the next words, and the phrase is only the previous one (review).
+    expect(c.view()).toMatchObject({
+      canCorrect: false,
+      current: null,
+      previous: { sourceText: 'The blue box' },
+    });
+    // The next phrase is the one on the screens now; the gone one stays the previous one.
+    expect(c.accept(clause('A green shape', 1, 'settled', 's2'))).toBe(true);
+    expect(c.view()).toMatchObject({
+      current: { sourceText: 'A green shape' },
+      previous: { sourceText: 'The blue box' },
+    });
+  });
 });

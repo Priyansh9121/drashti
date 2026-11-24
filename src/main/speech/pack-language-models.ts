@@ -1,5 +1,5 @@
 import type { LanguageModelStore } from './captions-service';
-import { LanguageModelRefused, type LanguageModelCheck, type LanguageModelEntry } from './language-models';
+import type { LanguageModelCheck, LanguageModelEntry } from './language-models';
 
 /*
  * A language's own captions model comes one way only: in the offline model pack (the lead's Q-CAPI-2 A, 24 Nov).
@@ -64,9 +64,6 @@ export function packFileFor(
   return null;
 }
 
-export const ADD_REFUSED =
-  'A captions model comes with the model pack: import the pack with Help › Caption and Translation Models….';
-
 export function packLanguageModelStore(
   known: readonly LanguageModelEntry[],
   pack: CaptionPackFiles,
@@ -82,6 +79,5 @@ export function packLanguageModelStore(
       held.release();
       return 'ready';
     },
-    add: () => Promise.reject(new LanguageModelRefused(ADD_REFUSED)),
   };
 }
