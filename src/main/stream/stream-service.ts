@@ -129,6 +129,8 @@ export interface StreamServiceDeps {
 const PROFILE_SETTING = 'stream.profileId';
 const LAYOUT_SETTING = 'stream.layout';
 const FOLDER_SETTING = 'stream.recordingFolder';
+/** What the Stream panel and No sound say while the stream's sound page is stopped at its cap (a22-review-x86 S2). */
+const SOUND_STOPPED = 'The stream’s sound has stopped. Press Try again.';
 /** Recording stops before the disk has less than this free (as backups and imports do). */
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
 /** After an unexpected stop, Drashti goes live again by itself only if it starts again this soon. */
@@ -840,6 +842,8 @@ export class StreamService {
       return `The camera ${name(profile.camera, '')} is not connected. Connect it, or choose another in Stream settings.`;
     if (camera === 'failed')
       return `The camera ${name(profile.camera, '')} would not start: another app may be using it. Close that app, or choose another camera.`;
+    // The sound page stopped at its cap (a22-review-x86 S2): the page, not the microphone, so Try again, never the mixer.
+    if (this.soundStopped) return SOUND_STOPPED;
     if (sound === 'missing')
       return `The sound input ${name(profile.sound, '')} is not connected. Connect it, or choose another in Stream settings.`;
     if (sound === 'failed') return `The sound input ${name(profile.sound, '')} would not start.`;
@@ -918,6 +922,8 @@ export class StreamService {
 
   /** What the No sound notice says: why, and what to do. */
   private noSoundMessage(n: NoSound): string {
+    if (this.soundStopped)
+      return `${SOUND_STOPPED} ${this.noSoundIn === 'stream' ? 'Until then the stream has no sound.' : 'Until then the sound recording gets no sound.'}`;
     if (n.why === 'input')
       return `${this.inputsMessage() ?? 'The sound input is not working.'} ${this.noSoundIn === 'stream' ? 'Until then the stream has no sound.' : 'Until then the sound recording gets no sound.'}`;
     const seconds = String(Math.round(this.noSoundWatch.limit / 1000));
@@ -1329,7 +1335,9 @@ export class StreamService {
     const folder = this.recording.folder;
     if (!folder || !existsSync(folder))
       return { ok: false, message: 'Choose a folder for recordings first.' };
-    if (this.pageStopped || this.soundStopped)
+    if (this.soundStopped)
+      return { ok: false, message: 'The stream’s sound has stopped. Press Try again before recording sound.' };
+    if (this.pageStopped)
       return { ok: false, message: 'The stream’s page is stopped. Press Try again before recording sound.' };
     const stopInput = this.listenSound((samples, endAt, startAt) =>
       this.soundRecording.chunk(samples, endAt, startAt),
@@ -1504,6 +1512,8 @@ export class StreamService {
     if (!this.pageStopped && !this.soundStopped) return { ok: true, status: this.status() };
     this.pageStopped = false;
     this.pageRestarts.reset();
+    // Its sound page starts afresh, as after an ordinary crash: no longer "would not start" (a22-review-x86 S2).
+    if (this.soundStopped) this.inputs = { ...this.inputs, sound: 'starting' };
     this.soundStopped = false;
     this.soundRestarts.reset();
     this.deps.log('info', "The stream's page is tried again");
