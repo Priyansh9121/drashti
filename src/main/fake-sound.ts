@@ -36,6 +36,24 @@ export function fakeSoundSwitch(o: {
   return `${file}%noloop`;
 }
 
+/** Chromium's feature: the audio service runs in its sandbox (on macOS it reads only audio system folders). */
+const AUDIO_SANDBOX = 'AudioServiceSandbox';
+
+/**
+ * macOS: the audio service's sandbox lets it read only audio system folders (Plug-Ins, Tunings, Components), so the
+ * fake microphone hears silence where the tests' file lies (CI Mac, run 45291890198). With the file only (tests),
+ * Chromium's `disable-features` gains its sandbox: the value to set, keeping what is already disabled; otherwise null.
+ * Windows' audio service reads the file in its sandbox, which stays.
+ */
+export function fakeSoundFeatures(o: {
+  sound: string | null;
+  platform: NodeJS.Platform;
+  disabled: string;
+}): string | null {
+  if (!o.sound || o.platform !== 'darwin') return null;
+  return [...o.disabled.split(',').filter((f) => f !== '' && f !== AUDIO_SANDBOX), AUDIO_SANDBOX].join(',');
+}
+
 /** Which of Chromium's fake media switches this process has on (the packaged self-test requires none). */
 export function fakeMediaSwitchesOn(has: (name: string) => boolean): string[] {
   return [CHROMIUM_FAKE_DEVICES, CHROMIUM_FAKE_SOUND_FILE, CHROMIUM_FAKE_UI].filter((name) => has(name));
@@ -43,14 +61,21 @@ export function fakeMediaSwitchesOn(has: (name: string) => boolean): string[] {
 
 /**
  * The packaged self-test's part (DRASHTI_SELFTEST=ffmpeg, scripts/check-ffmpeg.mjs --packaged, started asking for the
- * fake devices and the fake microphone's file): passed only when none of Chromium's fake media switches is on.
+ * fake devices and the fake microphone's file): passed only when none of Chromium's fake media switches is on and
+ * the audio service keeps its sandbox.
  */
-export function fakeMediaSelfTest(has: (name: string) => boolean): {
+export function fakeMediaSelfTest(
+  has: (name: string) => boolean,
+  disabledFeatures: string,
+): {
   passed: boolean;
   on: string[];
   detail: string;
 } {
-  const on = fakeMediaSwitchesOn(has);
+  const on = [
+    ...fakeMediaSwitchesOn(has),
+    ...(disabledFeatures.split(',').includes(AUDIO_SANDBOX) ? [`disable-features=${AUDIO_SANDBOX}`] : []),
+  ];
   return on.length === 0
     ? { passed: true, on, detail: 'none: Chromium’s fake camera and microphone are off' }
     : { passed: false, on, detail: `ON in this copy of Drashti: ${on.join(', ')}` };

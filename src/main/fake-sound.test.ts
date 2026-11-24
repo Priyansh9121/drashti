@@ -6,6 +6,7 @@ import {
   CHROMIUM_FAKE_SOUND_FILE,
   fakeMediaSelfTest,
   fakeMediaSwitchesOn,
+  fakeSoundFeatures,
   fakeSoundSwitch,
 } from './fake-sound';
 import { switchesFor } from './switches';
@@ -88,19 +89,49 @@ describe('the fake microphone’s sound file (tests only)', () => {
   });
 
   it('the packaged self-test (DRASHTI_SELFTEST=ffmpeg) passes only with none of them on, and names any that are', () => {
-    expect(fakeMediaSelfTest(() => false)).toEqual({
+    expect(fakeMediaSelfTest(() => false, 'HardwareMediaKeyHandling')).toEqual({
       passed: true,
       on: [],
       detail: 'none: Chromium’s fake camera and microphone are off',
     });
     const on = fakeMediaSelfTest(
       (name) => name === CHROMIUM_FAKE_SOUND_FILE || name === CHROMIUM_FAKE_DEVICES,
+      'HardwareMediaKeyHandling',
     );
     expect(on).toEqual({
       passed: false,
       on: [CHROMIUM_FAKE_DEVICES, CHROMIUM_FAKE_SOUND_FILE],
       detail: `ON in this copy of Drashti: ${CHROMIUM_FAKE_DEVICES}, ${CHROMIUM_FAKE_SOUND_FILE}`,
     });
+    // The Mac audio service's sandbox off (the seam's other half) counts too.
+    expect(fakeMediaSelfTest(() => false, 'HardwareMediaKeyHandling,AudioServiceSandbox')).toEqual({
+      passed: false,
+      on: ['disable-features=AudioServiceSandbox'],
+      detail: 'ON in this copy of Drashti: disable-features=AudioServiceSandbox',
+    });
+  });
+
+  it('macOS: the audio service reads only its own system folders in its sandbox, so with the file (tests only) its sandbox is off; never on Windows (it reads the file there), never without the file', () => {
+    expect(
+      fakeSoundFeatures({ sound: `${WAV}%noloop`, platform: 'darwin', disabled: 'HardwareMediaKeyHandling' }),
+    ).toBe('HardwareMediaKeyHandling,AudioServiceSandbox');
+    expect(fakeSoundFeatures({ sound: `${WAV}%noloop`, platform: 'darwin', disabled: '' })).toBe(
+      'AudioServiceSandbox',
+    );
+    expect(
+      fakeSoundFeatures({ sound: `${WAV}%noloop`, platform: 'win32', disabled: 'HardwareMediaKeyHandling' }),
+    ).toBeNull();
+    expect(
+      fakeSoundFeatures({ sound: null, platform: 'darwin', disabled: 'HardwareMediaKeyHandling' }),
+    ).toBeNull();
+    // Packaged: the seam's value is null, so the sandbox stays.
+    expect(
+      fakeSoundFeatures({
+        sound: seam(true, env()),
+        platform: 'darwin',
+        disabled: 'HardwareMediaKeyHandling',
+      }),
+    ).toBeNull();
   });
 
   it('Chromium’s fake media switches are named in src only by fake-sound.ts, so nothing else can turn them on', () => {
