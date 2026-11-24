@@ -20,6 +20,7 @@ import type { OutputGlobals, PageGlobals } from '../e2e/helpers';
 import { outputPage, outputPages, QUIET, setUpScreen } from '../e2e/helpers';
 import type { MainRun, NodeRun } from '../e2e/nodes';
 import { launchMain, launchNode, pairNode } from '../e2e/nodes';
+import { logLines } from '../e2e/log-lines';
 import { freePort, TEST_KEY, testFfmpeg } from '../e2e/stream-helpers';
 import type { OutputSample, ProcessSample, SoakEvent, SoakReport, SoakSample, Verdict } from './report';
 import type { WindowMemory } from './heap';
@@ -268,31 +269,25 @@ async function screenSample(
 }
 
 /**
- * Main's log lines about the stream and the recording since `from` (an ISO time), oldest first. The
- * stream worker blanks the key out of its own lines; anything after the address's app is blanked here too.
+ * Main's log lines about the stream and the recording since `from` (an ISO time), oldest first, from every file of
+ * its log. The stream worker blanks the key out of its own lines; anything after the address's app is blanked here too.
  */
-function streamLines(dir: string, from: string): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
+function streamLines(userData: string, from: string): string[] {
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((l) => l.slice(0, 24) >= from && /stream|record|encoder|connect|sending|program|backup/iu.test(l))
     .sort()
     .map((l) => l.replace(/(rtmps?:\/\/[^/\s]+\/[^/\s]+\/)\S+/giu, '$1…').slice(0, 400));
 }
 
-/** Watchdog events in an instance's log: a window crashed, hung or was given up on. */
+/** Watchdog events in an instance's log, every file of it: a window crashed, hung or was given up on. */
 function watchdogLines(userData: string): number {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return 0;
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
-    .filter((l) => /Watchdog: .* (crashed|hung|gave-up)/u.test(l)).length;
+  if (!existsSync(join(userData, 'logs'))) return 0;
+  return logLines(userData).filter((l) => /Watchdog: .* (crashed|hung|gave-up)/u.test(l)).length;
 }
 
 /**
- * Main's log, read at every sample: the lines new since the last read, so what the log rotates away
+ * Main's log, every file of it, read at every sample: the lines new since the last read, so what the log rotates away
  * later is still counted (Session 15's first soak lost three of a scheduled macro's runs to a busy log).
  */
 class LogTally {
@@ -300,24 +295,23 @@ class LogTally {
   /** Warnings by what they say (numbers left out), and how often. */
   readonly warnings = new Map<string, number>();
 
-  constructor(private readonly dir: string) {}
+  constructor(private readonly userData: string) {}
 
   read(): void {
-    if (!existsSync(this.dir)) return;
+    if (!existsSync(join(this.userData, 'logs'))) return;
     let newest = this.since;
-    for (const f of readdirSync(this.dir).filter((name) => /^drashti(\.\d+)?\.log$/u.test(name)))
-      for (const line of readFileSync(join(this.dir, f), 'utf8').split('\n')) {
-        const at = line.slice(0, 24);
-        if (!/^\d{4}-\d\d-\d\dT/u.test(at) || at <= this.since) continue;
-        if (at > newest) newest = at;
-        if (line.includes('[warn]')) {
-          const key = line
-            .slice(25)
-            .replace(/0x[0-9a-f]+|\d+/giu, '#')
-            .slice(0, 100);
-          this.warnings.set(key, (this.warnings.get(key) ?? 0) + 1);
-        }
+    for (const line of logLines(this.userData)) {
+      const at = line.slice(0, 24);
+      if (!/^\d{4}-\d\d-\d\dT/u.test(at) || at <= this.since) continue;
+      if (at > newest) newest = at;
+      if (line.includes('[warn]')) {
+        const key = line
+          .slice(25)
+          .replace(/0x[0-9a-f]+|\d+/giu, '#')
+          .slice(0, 100);
+        this.warnings.set(key, (this.warnings.get(key) ?? 0) + 1);
       }
+    }
     this.since = newest;
   }
 
@@ -533,7 +527,7 @@ test('a sabha that never stops', async () => {
     let endedAt: string | null = null;
     const keepStreamLog = (why: string) => {
       if (!endedAt) return;
-      const lines = streamLines(join(userData, 'logs'), endedAt);
+      const lines = streamLines(userData, endedAt);
       const text = `${why}: Main's log about the stream from the pause on\n${lines.join('\n')}\n`;
       writeFileSync(join(OUT, 'stream-log.txt'), text, { flag: 'a' });
       console.log(text);
@@ -610,7 +604,7 @@ test('a sabha that never stops', async () => {
     let resumed = false;
     let slideChanges = 0;
 
-    const tally = new LogTally(join(userData, 'logs'));
+    const tally = new LogTally(userData);
     // Inside a window, when asked: snapshots and dumps stay in a folder of their own (never the
     // report's) and are deleted once summed up. Main's first output is the Main Hall's.
     const probed = HEAP === 'output' ? outputPages(app)[0] : win;
