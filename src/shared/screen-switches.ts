@@ -37,8 +37,21 @@ export const NO_STAGE_SCREEN = 'No screen is set to Stage.';
 export const SET_UP_STAGE = 'Set up Stage screen…';
 
 /**
- * What the status bar says beside "Stage off" while tablets are paired as Stage (`tablets`, stageDevicesPaired: only
- * while the Network is on), or nothing with none (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)"):
+ * The stage tablets that show the audience picture now, while Stage is off (a22-review-stage8, third look): paired as
+ * Stage and connected now, the Network on. One paired but switched off shows nothing. (The no-stage line counts every
+ * paired one: stageDevicesPaired.)
+ */
+export function stageTabletsShowing(network: {
+  on: NetworkStatus['on'];
+  devices: readonly Pick<DeviceInfo, 'kind' | 'poster' | 'connected'>[];
+}): number {
+  if (!network.on) return 0;
+  return network.devices.filter((d) => d.kind === 'stage' && !d.poster && d.connected).length;
+}
+
+/**
+ * What the status bar says beside "Stage off" while stage tablets are connected (`tablets`, stageTabletsShowing), or
+ * nothing with none (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)"):
  * Stage starts off, and until it is on a stage tablet shows the audience picture, far from the operator.
  */
 export function stageOffHint(tablets: number): string | null {

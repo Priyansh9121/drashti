@@ -302,17 +302,29 @@ test('(d) set to Stage with nothing showing it on this computer: only a tablet p
   const token = await pairToken(win, port, 'stage', 'Placeholder tablet');
   await stageIs(win, false);
   // Paired but not connected now (a22-review-stage8, third look, SHOULD): it shows nothing, so "Stage off" alone.
+  const tabletIcon = win.getByTestId('switch-off-stage-tablet');
   await expect(win.getByTestId('switch-off-stage')).toContainText('Stage off');
   await expect(hint).toHaveCount(0);
+  await expect(tabletIcon).toHaveCount(0);
   // Its stage display's feed open: the tablet shows the audience picture until Stage is on, and the status bar says so.
+  // A tablet in place of the screen icon (the status bar no wider: operator-fit.spec.ts), the words for screen
+  // readers, and the sentence as its tooltip.
   const feed = await connectTablet(port, token);
+  await expect(tabletIcon).toBeVisible();
   await expect(hint).toHaveText('the stage tablet shows the audience picture');
   await expect(win.getByTestId('switch-off-stage')).toContainText(
     'Stage off · the stage tablet shows the audience picture',
   );
+  await win.getByTestId('switch-off-stage').getByText('Stage off', { exact: true }).hover();
+  await expect(win.getByRole('tooltip')).toHaveText(
+    'Stage off: the stage tablet shows the audience picture.',
+  );
+  await win.mouse.move(0, 0);
+  await expect(win.getByRole('tooltip')).toHaveCount(0);
   // Its feed closed (the tablet switched off): "Stage off" alone again; open again, said again.
   feed.close();
   await expect(hint).toHaveCount(0);
+  await expect(tabletIcon).toHaveCount(0);
   const tabletFeed = await connectTablet(port, token);
   await expect(hint).toHaveText('the stage tablet shows the audience picture');
   // On says nothing of no screen, here or in the panel.

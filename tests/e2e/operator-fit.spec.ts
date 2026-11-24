@@ -542,7 +542,11 @@ for (const mode of ['pro', 'simple'] as const)
         await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
         await expect(win.getByTestId('simple-mode')).toBeVisible();
       }
-      await expect(win.getByTestId('switch-off-stage-hint')).toBeVisible();
+      // Said by a tablet in place of the screen icon, the sentence for screen readers and in its tooltip.
+      await expect(win.getByTestId('switch-off-stage-tablet')).toBeVisible();
+      await expect(win.getByTestId('switch-off-stage-hint')).toHaveText(
+        'the stage tablet shows the audience picture',
+      );
       await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience === 'off' ? 1 : 0);
       await win.evaluate(() => document.fonts.ready.then(() => undefined));
       console.log(`${mode}, Audience ${audience}: the status bar ${JSON.stringify(await statusParts(win))}`);
