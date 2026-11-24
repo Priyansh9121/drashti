@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { tmpdir } from 'node:os';
 import type { BrowserWindow, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { StreamService, type StreamServiceDeps } from './stream-service';
@@ -210,6 +211,57 @@ describe('the stream sound renderer', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(createStreamSound).toHaveBeenCalledTimes(7);
       expect(service.status().soundPageStopped).toBeUndefined();
+    } finally {
+      service.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it('says at the cap that the stream’s sound has stopped, never that its sound input would not start (a22-review-x86 S2)', async () => {
+    // The sixth crash in a minute stops the stream's sound page, not the microphone. The Stream panel's sentence, the
+    // No sound notice and Record sound's refusal said "The sound input “…” would not start." and sent the operator to
+    // the mixer and its cable in the middle of a show; each now points to Try again. Try again starts the page afresh.
+    const { service, picture, createStreamSound } = setup({
+      settings: { get: (key: string) => (key === 'stream.recordingFolder' ? tmpdir() : 'placeholder') },
+    });
+    const windows: ReturnType<typeof page>[] = [];
+    createStreamSound.mockImplementation(() => {
+      const next = page(300 + windows.length);
+      windows.push(next);
+      return next as unknown as BrowserWindow;
+    });
+    const noSoundMessage = (why: 'input' | 'quiet') =>
+      (
+        service as unknown as { noSoundMessage: (n: { since: number; why: 'input' | 'quiet' }) => string }
+      ).noSoundMessage({ since: 0, why });
+    try {
+      service.hold('generated picture', true);
+      await vi.waitFor(() => expect(createStreamSound).toHaveBeenCalledOnce());
+      picture.webContents.emit('did-finish-load');
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      for (let crash = 0; crash < 6; crash++) {
+        windows.at(-1)?.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+        await vi.advanceTimersByTimeAsync(500);
+      }
+      expect(service.status().soundPageStopped).toBe(true);
+      const stopped = 'The stream’s sound has stopped. Press Try again.';
+      expect(service.status().inputs.message, 'the Stream panel').toBe(stopped);
+      expect(noSoundMessage('input'), 'No sound, the input known to give nothing').toBe(
+        `${stopped} Until then the stream has no sound.`,
+      );
+      expect(noSoundMessage('quiet'), 'No sound, quiet for its 20 s').toBe(
+        `${stopped} Until then the stream has no sound.`,
+      );
+      expect(service.startSoundRecording(), 'Record sound').toEqual({
+        ok: false,
+        message: 'The stream’s sound has stopped. Press Try again before recording sound.',
+      });
+      service.tryAgainPage();
+      expect(service.status().soundPageStopped).toBeUndefined();
+      expect(service.status().inputs, 'Try again: the sound page starts afresh').toMatchObject({
+        sound: 'starting',
+        message: null,
+      });
     } finally {
       service.close();
       vi.useRealTimers();
