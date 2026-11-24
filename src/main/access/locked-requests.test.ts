@@ -31,7 +31,9 @@ describe('requests while not let in (Session 54)', () => {
   });
 
   it('lets Drashti’s own screens keep drawing and reporting, but never answer the operator’s questions', () => {
-    for (const name of ['output.html', 'audio.html', 'stream.html', 'zoom.html'])
+    // The stream's sound page too (alpha.23, a22-review-x86 S9): its engine reads, context, input reports and a cue's
+    // readiness, as the stream's picture page's.
+    for (const name of ['output.html', 'audio.html', 'stream.html', 'stream-sound.html', 'zoom.html'])
       expect(mayRunWhileLocked(IPC.engine.snapshot, { url: page(name), operatorWindow: false }), name).toBe(
         true,
       );
