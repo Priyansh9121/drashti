@@ -16,6 +16,7 @@ import {
   setUpScreen,
   windowShowing,
 } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * Show a Window… (Session 48): another app's window (a Zoom meeting's) live as the hall's background.
@@ -351,7 +352,7 @@ test('on a Mac that has not given Screen Recording, the picker says why and open
   await why.getByTestId('window-open-settings').click();
   // The stand-in says in the log that System Settings would open (a test never opens it).
   await expect
-    .poll(() => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'))
+    .poll(() => logText(userData))
     .toContain('Stand-in windows: System Settings would open at Screen Recording');
   await app.close();
 });

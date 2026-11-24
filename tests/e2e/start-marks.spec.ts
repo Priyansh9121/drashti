@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { launchApp, operatorPage, operatorReady } from './helpers';
+import { logLines, logText } from './log-lines';
 
 /*
  * Where a start's time goes (question 36 of Session 54: from its 650th test on, every start on CI's Mac took about
@@ -21,12 +20,11 @@ test('a start says in the log when the operator window loaded, knew what it wait
   const { app, userData } = await launchApp();
   const operator = await operatorPage(app);
   await operatorReady(operator);
-  const file = join(userData, 'logs', 'drashti.log');
   // The window says so once it has drawn its controls and knows the version: a moment after operatorReady.
   await expect
-    .poll(() => readFileSync(file, 'utf8').includes('Start: operator window drawn at'), { timeout: 10_000 })
+    .poll(() => logText(userData).includes('Start: operator window drawn at'), { timeout: 10_000 })
     .toBe(true);
-  const lines = readFileSync(file, 'utf8').split('\n');
+  const lines = logLines(userData);
   const loaded = lines.find((l) => l.includes('Start: operator window loaded at')) ?? '';
   const drawn = lines.find((l) => l.includes('Start: operator window drawn at')) ?? '';
   expect(loaded).toMatch(/Start: operator window loaded at \d+ ms/u);
@@ -51,7 +49,7 @@ test('the operator window starts without waiting for the HEVC question: its answ
   // has, holding the page that asks until then: here 15 s.
   const { app, userData } = await launchApp({ DRASHTI_TEST_HEVC_ANSWER_MS: '15000' });
   try {
-    const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const log = () => logText(userData);
     const operator = await operatorPage(app);
     await operatorReady(operator);
     // The window's whole start (its access, mode, keys and version known, its controls drawn) is in the log...

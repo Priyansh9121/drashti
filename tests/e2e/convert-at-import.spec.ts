@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HEVC_TYPE } from '../../src/shared/convert';
@@ -18,6 +18,7 @@ import {
   type PageGlobals,
   relaunchApp,
 } from './helpers';
+import { logText } from './log-lines';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
 
@@ -308,7 +309,7 @@ test('HEVC is converted by itself at import where this computer cannot play it; 
         // Asked of the window, not given: the log says what it answered.
         if (given === null)
           await expect
-            .poll(() => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'))
+            .poll(() => logText(userData))
             .toContain(plays ? 'This computer plays HEVC video' : 'This computer cannot play HEVC video');
         const imported = await importOne(win, phone);
         if (plays) {
@@ -387,7 +388,7 @@ test('the HEVC answer, however late, reaches what uses it: an import started bef
       DRASHTI_TEST_PLAYS_HEVC: '0',
       DRASHTI_TEST_HEVC_ANSWER_MS: '12000',
     }));
-    const log = () => readFileSync(join(first.userData, 'logs', 'drashti.log'), 'utf8');
+    const log = () => logText(first.userData);
     win = await operatorPage(app);
     await operatorReady(win);
     await openLibrary(win);

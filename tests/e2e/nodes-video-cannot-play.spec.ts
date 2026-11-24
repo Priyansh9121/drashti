@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
@@ -16,6 +16,7 @@ import {
   showPicture,
   shown,
 } from './hall-looks';
+import { logText } from './log-lines';
 import type { MainRun, NodeRun } from './nodes';
 import { launchMain, launchNode, nodesStatus, pairNode } from './nodes';
 import { makeTestImage } from './test-media';
@@ -90,14 +91,9 @@ const failVideosFromNow = (page: Page, mediaId: string) =>
     observer.observe(document.body, { childList: true, subtree: true });
   }, mediaId);
 
-/** Main's log, every file of it. */
+/** Main's log, every file of it (each earlier day's drashti-YYYY-MM-DD.log and its parts, then drashti.log). */
 function logOf(userData: string): string {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return '';
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .map((f) => readFileSync(join(dir, f), 'utf8'))
-    .join('\n');
+  return existsSync(join(userData, 'logs')) ? logText(userData) : '';
 }
 
 /** The node's screen and Main's, look by look for `ms`: what each shows. */
