@@ -206,20 +206,17 @@ import { CommandLog, requestLogged } from './log-commands';
 import { type DiagnosticsWho, installId } from './log-who';
 import { type LogPeriod, periodDays, periodText } from '../shared/log-period';
 import { computerName } from './access/identity';
-import {
-  cannotPlayNotice,
-  cannotStartInTimeNotice,
-  NO_FIRST_FRAME,
-  NO_START_IN_TIME,
-  noPictureNotice,
-} from '../shared/no-picture';
+import { cannotPlayNotice, NO_FIRST_FRAME, NO_START_IN_TIME, noPictureNotice } from '../shared/no-picture';
 import {
   CannotPlay,
   type CannotPlayWhere,
   errorKindWords,
+  heardOutcome,
   NodeCannotPlay,
+  NotOnScreensList,
   whereWords,
 } from './media/cannot-play';
+import { stillUp } from '../shared/not-on-screens';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -8926,6 +8923,13 @@ function start(): void {
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
     return null;
   });
+  // The videos still up that a screen could not play (alpha.23, a22-halldrop), as LIVE names them under its picture:
+  // read as the operator window opens, and told again as one goes off.
+  const notOnScreens = new NotOnScreensList();
+  handle(IPC.media.notOnScreens, () => [...notOnScreens.list]);
+  engine.onChange((state) => {
+    if (notOnScreens.prune(state)) sendToOperator(IPC.media.notOnScreensChanged, [...notOnScreens.list]);
+  });
   // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
   // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
   // it; on the slide, paused; the box off), said by its name and where it failed, and logged with the error's kind,
@@ -8956,28 +8960,30 @@ function start(): void {
       );
       return null;
     }
-    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords).
+    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords). What it took, or
+    // that it was up but not playing (alpha.23, a22-halldrop: until then dropped without a word), is said and logged,
+    // and LIVE names the screens while it stays up (cannot-play.ts heardOutcome); what the screens show is not changed.
     cannotPlay.heard(
       `${mediaId}@${String(startedAt)}`,
       where,
-      (named) => {
+      (_named, wheres) => {
         const took = engine.cannotPlay(mediaId, startedAt);
-        if (!took) return;
-        const off = [
-          took.background ? 'the background' : '',
-          took.slide ? 'paused on the slide' : '',
-          took.box ? 'the box' : '',
-        ]
-          .filter((w) => w !== '')
-          .join(', ');
-        log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
-        sendToOperator(IPC.app.notice, {
-          text:
-            code === NO_START_IN_TIME
-              ? cannotStartInTimeNotice(file.name, named, took)
-              : cannotPlayNotice(file.name, named, took),
+        const said = heardOutcome({
+          name: file.name,
+          mediaId,
+          wheres,
+          code,
+          words,
+          took,
+          stillUp: stillUp(engine.current, mediaId, startedAt),
         });
+        if (said.log?.level === 'warn') log.warn(said.log.line);
+        else if (said.log) log.info(said.log.line);
+        if (said.notice !== null) sendToOperator(IPC.app.notice, { text: said.notice });
+        if (said.notOn !== null) {
+          notOnScreens.add({ mediaId, startedAt, name: file.name, where: said.notOn }, engine.current);
+          sendToOperator(IPC.media.notOnScreensChanged, [...notOnScreens.list]);
+        }
       },
       (named) => {
         log.info(

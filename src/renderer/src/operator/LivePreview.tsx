@@ -31,6 +31,8 @@ import { PipDragHandle, PipLiveStrip } from './PipLive';
 import { PlayingBars } from '../markers/PlayingBars';
 import { PanelKindKeeper, PanelWarmUp } from './PanelWarmUp';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
+import { notOnScreenLine, notOnScreensNow } from '../../../shared/not-on-screens';
+import { connectNotOnScreens, useNotOnScreens } from './not-on-screens-store';
 
 /**
  * What the audience sees, drawn by the same Scene component the outputs use,
@@ -87,6 +89,10 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   const soundMissing = state?.layers.slide?.soundMissing ?? null;
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
+  // The videos up that one of this computer's screens could not play (alpha.23, a22-halldrop): LIVE shows them, the
+  // screens named do not, so it says so while each stays up (the show's, never practice's).
+  const notOnList = useNotOnScreens((s) => s.list);
+  const notOn = practising ? [] : notOnScreensNow(notOnList, state);
   const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
@@ -102,6 +108,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   const first = useScreens((s) => s.snapshot?.groups.flatMap((g) => g.screens)[0]);
   useEffect(() => {
     connectDrawingMode();
+    connectNotOnScreens();
     void preloadFonts();
   }, []);
   const canvas = { width: first?.canvasWidth ?? 1920, height: first?.canvasHeight ?? 1080 };
@@ -254,6 +261,15 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
           File missing: “{soundMissing}”. The sound stays as it was.
         </p>
       )}
+      {notOn.map((e) => (
+        <p
+          key={`${e.mediaId}@${String(e.startedAt)}`}
+          className="text-xs text-warning-fg"
+          data-testid="live-not-on-screens"
+        >
+          {notOnScreenLine(e)}
+        </p>
+      ))}
       {lowerThirdShort && (
         <p className="text-xs text-warning-fg" data-testid="preview-lower-third">
           Lower third shows {lowerThirdShort.shown} of {lowerThirdShort.total} lines

@@ -44,6 +44,7 @@ import type {
   StudioOpen,
 } from './lower-thirds';
 import type { StudioLivePicture } from './studio-live';
+import type { NotOnScreen } from './not-on-screens';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
@@ -720,6 +721,12 @@ export const IPC = {
      * where its page can tell nothing else.
      */
     served: 'media:served',
+    /**
+     * The videos still up that one of this computer's screens could not play (alpha.23, a22-halldrop): what LIVE names
+     * under its picture (shared/not-on-screens.ts), read as the operator window opens, and told as it changes.
+     */
+    notOnScreens: 'media:not-on-screens',
+    notOnScreensChanged: 'media:not-on-screens-changed',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1908,6 +1915,7 @@ export interface InvokeContract {
     result: null;
   };
   [IPC.media.served]: { args: [mediaId: string]; result: number };
+  [IPC.media.notOnScreens]: { args: []; result: NotOnScreen[] };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
   [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };
@@ -2330,6 +2338,7 @@ export interface EventContract {
   [IPC.youtube.changed]: YouTubeStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
+  [IPC.media.notOnScreensChanged]: NotOnScreen[];
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
   [IPC.media.trimStatusesChanged]: TrimStatuses;

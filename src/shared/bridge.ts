@@ -37,6 +37,7 @@ import type {
   StudioOpen,
 } from './lower-thirds';
 import type { StudioLivePicture } from './studio-live';
+import type { NotOnScreen } from './not-on-screens';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -933,6 +934,12 @@ export interface DrashtiBridge {
     cannotPlay(mediaId: string, startedAt: number, code: number, words: string): Promise<null>;
     /** How many bytes of a library file Main has sent the pages so far (Q60-51; 0 for none). */
     served(mediaId: string): Promise<number>;
+    /**
+     * The videos still up that one of this computer's screens could not play (alpha.23, a22-halldrop), what LIVE names
+     * under its picture; and told as they change (operator window).
+     */
+    notOnScreens(): Promise<NotOnScreen[]>;
+    onNotOnScreens(listener: (list: NotOnScreen[]) => void): () => void;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,

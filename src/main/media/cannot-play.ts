@@ -1,7 +1,9 @@
+import type { EngineState } from '../../shared/engine/state';
 import type { NodeCannotPlayReport } from '../../shared/nodes';
 import {
   cannotPlayNotice,
   cannotPlayOnNodeNotice,
+  cannotPlayWaitingNotice,
   cannotStartInTimeNotice,
   FIRST_FRAME_MS,
   NO_FIRST_FRAME,
@@ -9,6 +11,7 @@ import {
   NO_START_IN_TIME,
   SLOW_START_MS,
 } from '../../shared/no-picture';
+import { NOT_ON_SCREENS_MAX, type NotOnScreen, notOnScreensNow } from '../../shared/not-on-screens';
 import { cutText } from '../../shared/text';
 import type { CannotPlayTook } from '../engine/one-at-a-time';
 
@@ -82,7 +85,8 @@ export class CannotPlay {
 
   /**
    * A page said a showing (`showing`: its file and when it went up) could not play: after the short wait, `takeOff`
-   * runs once, with every page that said so meanwhile in words (whereWords); or `leftToGpu`, when a GPU process stopped
+   * runs once, with every page that said so meanwhile, in words (whereWords) and as they said it (the screens to name
+   * under LIVE: heardOutcome); or `leftToGpu`, when a GPU process stopped
    * about then (from GPU_GONE_GRACE_MS before the first word to the end of the wait). A later word on a showing waiting
    * is only gathered.
    */
@@ -106,7 +110,7 @@ export class CannotPlay {
       const gone = this.gpuGoneAt;
       if (gone !== null && gone >= at - GPU_GONE_GRACE_MS && gone <= at + CANNOT_PLAY_SETTLE_MS)
         leftToGpu(named);
-      else takeOff(named, []);
+      else takeOff(named, wheres);
     });
   }
 }
@@ -136,32 +140,79 @@ export interface HeardOutcome {
   notOn: string | null;
 }
 
-/** What Main does with a showing pages said could not play (as Main's media:cannot-play handler had it). */
+/**
+ * What Main does with a showing pages said could not play (alpha.23, a22-halldrop: until then a video up but not playing
+ * was dropped without a word). Taken off (the background, the box; on the slide, paused there): the notice and the log
+ * as x46 had them (Q60-31; Q60-51: one that could not start in time is never said to be damaged), and LIVE names the
+ * screens under its picture while a slide's video stays up there paused. Nothing taken off as it was up but not playing
+ * (paused, waiting for its click, or at its end, on the slide or in the box): the operator is told by its name, the
+ * screens, and what to try (played, its sound would be heard without its picture there), the log says so, and LIVE names
+ * the screens; when only LIVE or the stream said so (the screens show it), only the log. Gone by the end of the wait:
+ * only the log. What the screens show is never changed here.
+ */
 export function heardOutcome(h: Heard): HeardOutcome {
   const named = whereWords(h.wheres);
-  const kind = errorKindWords(h.code);
+  const screens = h.wheres.filter((w) => typeof w === 'object');
+  const onScreens = screens.length > 0 ? whereWords(screens) : null;
   const detail = h.words === '' ? '' : `: ${cutText(h.words, 300, '…')}`;
+  const said = `A video could not play on ${named} (${errorKindWords(h.code)}${detail}): ${h.mediaId}`;
   const took = h.took;
-  if (!took) return { log: null, notice: null, notOn: null };
-  const off = [
-    took.background ? 'the background' : '',
-    took.slide ? 'paused on the slide' : '',
-    took.box ? 'the box' : '',
-  ]
-    .filter((w) => w !== '')
-    .join(', ');
+  if (took) {
+    const off = [
+      took.background ? 'the background' : '',
+      took.slide ? 'paused on the slide' : '',
+      took.box ? 'the box' : '',
+    ]
+      .filter((w) => w !== '')
+      .join(', ');
+    return {
+      log: { level: 'warn', line: `${said}; taken off (${off})` },
+      notice:
+        h.code === NO_START_IN_TIME
+          ? cannotStartInTimeNotice(h.name, named, took)
+          : cannotPlayNotice(h.name, named, took),
+      notOn: took.slide && h.stillUp ? onScreens : null,
+    };
+  }
+  if (!h.stillUp) return { log: { level: 'info', line: `${said}; no longer up` }, notice: null, notOn: null };
   return {
     log: {
       level: 'warn',
-      line: `A video could not play on ${named} (${kind}${detail}): ${h.mediaId}; taken off (${off})`,
+      line: `${said}; left up, not playing (paused, waiting for its click or at its end), so nothing came off`,
     },
-    // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
-    notice:
-      h.code === NO_START_IN_TIME
-        ? cannotStartInTimeNotice(h.name, named, took)
-        : cannotPlayNotice(h.name, named, took),
-    notOn: null,
+    notice: onScreens === null ? null : cannotPlayWaitingNotice(h.name, onScreens),
+    notOn: onScreens,
   };
+}
+
+/**
+ * The showings still up that a screen could not play (shared/not-on-screens.ts), as LIVE names them: the newest
+ * NOT_ON_SCREENS_MAX, each forgotten once it is not up any more (a showing put back later is a new word's).
+ */
+export class NotOnScreensList {
+  private entries: readonly NotOnScreen[] = [];
+
+  get list(): readonly NotOnScreen[] {
+    return this.entries;
+  }
+
+  /** One more, a newer word on the same showing in its place; then only what is still up in `state`. */
+  add(entry: NotOnScreen, state: EngineState): void {
+    this.entries = [
+      ...this.entries.filter((e) => e.mediaId !== entry.mediaId || e.startedAt !== entry.startedAt),
+      entry,
+    ].slice(-NOT_ON_SCREENS_MAX);
+    this.prune(state);
+  }
+
+  /** Forget what is not up in `state` any more: whether the list changed. */
+  prune(state: EngineState): boolean {
+    if (this.entries.length === 0) return false;
+    const now = notOnScreensNow(this.entries, state);
+    if (now.length === this.entries.length) return false;
+    this.entries = now;
+    return true;
+  }
 }
 
 /** Showings told of, at most: the oldest are forgotten past it. */

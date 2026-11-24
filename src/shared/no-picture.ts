@@ -39,6 +39,15 @@ export function cannotPlayNotice(
 }
 
 /**
+ * What the operator window says when one of this computer's screens could not play a video that is up but not playing
+ * (alpha.23, a22-halldrop: paused, waiting for its click, or at its end, on the slide or in the box), so nothing came
+ * off: until then nobody was told. `where`: the screens, "the screen “…”" or "the screens “…” and “…”".
+ */
+export function cannotPlayWaitingNotice(name: string, where: string): string {
+  return `“${name}” could not play on ${where}. It is still up but not playing: played, its sound may be heard without its picture there. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.`;
+}
+
+/**
  * How long a page that draws the show waits for a video's first frame (Q60-44, the owner's answer A of 20 Nov 2026,
  * through the lead): with none by then, it says the video cannot play, as an element that failed does, and the show
  * takes it off with its sound, the Wallpaper or the cover over the picture staying up until then (render/Scene.tsx),

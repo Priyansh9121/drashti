@@ -534,6 +534,8 @@ const bridge: DrashtiBridge = {
     cannotPlay: (mediaId, startedAt, code, words) =>
       invoke(IPC.media.cannotPlay, mediaId, startedAt, code, words),
     served: (mediaId) => invoke(IPC.media.served, mediaId),
+    notOnScreens: () => invoke(IPC.media.notOnScreens),
+    onNotOnScreens: (listener) => on(IPC.media.notOnScreensChanged, listener),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     details: (mediaId) => invoke(IPC.media.details, mediaId),
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
