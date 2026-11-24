@@ -51,7 +51,9 @@ describe('the Stream panel’s sound meter', () => {
     const m = meter();
     m.reports(-10, 1000);
     m.silent(LEVEL_QUIET_MS + 1000);
-    expect(m.level.db(), 'falling at 20 dB a second once no report came for its 300 ms').toBeLessThanOrEqual(-28);
+    expect(m.level.db(), 'falling at 20 dB a second once no report came for its 300 ms').toBeLessThanOrEqual(
+      -28,
+    );
     m.silent(10_000);
     expect(m.level.db(), 'down to silence, and no lower').toBe(-100);
     m.report(-12);

@@ -1336,7 +1336,10 @@ export class StreamService {
     if (!folder || !existsSync(folder))
       return { ok: false, message: 'Choose a folder for recordings first.' };
     if (this.soundStopped)
-      return { ok: false, message: 'The stream’s sound has stopped. Press Try again before recording sound.' };
+      return {
+        ok: false,
+        message: 'The stream’s sound has stopped. Press Try again before recording sound.',
+      };
     if (this.pageStopped)
       return { ok: false, message: 'The stream’s page is stopped. Press Try again before recording sound.' };
     const stopInput = this.listenSound((samples, endAt, startAt) =>
