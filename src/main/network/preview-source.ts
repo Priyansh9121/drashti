@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { blurOfId, copyOfId, MEDIA_ID_PATTERN } from '../../shared/media';
+import { blurOfId, copyOfId, displayOfId, MEDIA_ID_PATTERN } from '../../shared/media';
 import { realPlace } from '../media/contained';
 import type { PreviewSource } from './previews';
 
@@ -12,6 +12,7 @@ export interface PreviewLookups {
   ) => { kind: 'image' | 'video' | 'audio'; path: string; missing: boolean } | null;
   /** A picture's sharpened copy, relative to the media folder, once it is ready (Session 26f). */
   sharpened: (mediaId: string, step: number) => string | null;
+  display?: (mediaId: string, key: string) => string | null;
   /** A picture's blurred copy, relative to the media folder, once it is ready (Session 55, Part 5, D). */
   blurred?: (mediaId: string) => string | null;
 }
@@ -19,6 +20,12 @@ export interface PreviewLookups {
 /** The file a phone's preview of `mediaId` is made from: a picture or a video inside the media folder. */
 export function previewSource(mediaId: string, deps: PreviewLookups): PreviewSource | null {
   if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
+  const display = displayOfId(mediaId);
+  if (display) {
+    const relative = deps.display?.(display.mediaId, display.key) ?? null;
+    const place = relative ? realPlace(deps.mediaDir, join(deps.mediaDir, relative)) : null;
+    return place?.inside ? { path: place.path, kind: 'image' } : null;
+  }
   // A picture's blurred copy (Session 55, D): its preview is the copy itself, once it is ready.
   const blurOf = blurOfId(mediaId);
   if (blurOf) {

@@ -25,6 +25,10 @@ import { makeTestImage } from './test-media';
 
 const MS = 3000;
 
+type DissolveGlobals = typeof globalThis & {
+  drashtiThirdBackgroundDecode?: { backgroundAsked: number; release(): void };
+};
+
 const goLive = (win: Page, presentationId: string, slideIndex: number) =>
   win.evaluate(
     ({ presentationId, slideIndex }) =>
@@ -45,8 +49,8 @@ const shownBackgrounds = (out: Page) =>
 
 test('a background dissolve cut short by another background never leaves the picture dim', async () => {
   test.setTimeout(120_000);
-  // Every picture takes 1.5 s to load, as from a slow disk: the third background is still loading
-  // while the second is half-way through its dissolve.
+  // Every request takes 1.5 s, as from a slow disk. Next can already fetch the third picture during
+  // the second dissolve, so that picture's native decode is held until the same opacity checks finish.
   const { app } = await launchApp({ DRASHTI_TEST_MEDIA_DELAY_MS: '1500' });
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -96,6 +100,29 @@ test('a background dissolve cut short by another background never leaves the pic
   );
   await setUpScreen(win);
   const out = await outputPage(app);
+  const third = backgrounds[2];
+  if (!third) throw new Error('The third placeholder background is missing');
+  await out.evaluate((mediaId) => {
+    const decode = Reflect.get(HTMLImageElement.prototype, 'decode');
+    let allow: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      allow = resolve;
+    });
+    const gate = {
+      backgroundAsked: 0,
+      release: () => {
+        allow();
+        HTMLImageElement.prototype.decode = decode;
+      },
+    };
+    (globalThis as DissolveGlobals).drashtiThirdBackgroundDecode = gate;
+    HTMLImageElement.prototype.decode = function (this: HTMLImageElement): Promise<void> {
+      const native = decode.call(this);
+      if (!this.src.includes(mediaId)) return native;
+      if (this.hasAttribute('data-bg-slot')) gate.backgroundAsked++;
+      return native.then(() => held);
+    };
+  }, third);
 
   // The first background, settled: its picture 1.5 s late by design, then the 3 s dissolve, given 30 s (one CI
   // Windows machine took more than the 10 s it had until Session 54; the dissolve cut short is what is tested).
@@ -113,16 +140,27 @@ test('a background dissolve cut short by another background never leaves the pic
     timeout: 15_000,
   });
   await letTimePass(out, MS / 3, 'the dissolve is about a third of the way through');
-  // ...the third arrives, and loads for a moment and a half.
+  // ...the third arrives, with its decode still held by the fixture.
   await goLive(win, id, 2);
-  await expect(out.locator(`[data-media-id="${backgrounds[2]}"][data-state="loading"]`)).toHaveCount(1);
-  // Meanwhile what is on screen adds up to the whole picture (a dissolve's two pictures are added
-  // together): never one left part-way through its dissolve, dim. Looked at several times.
-  for (let i = 0; i < 5; i++) {
-    const shown = await shownBackgrounds(out);
-    const strength = shown.reduce((sum, b) => sum + Number(b.wrapper || '1'), 0);
-    expect(strength, JSON.stringify(shown)).toBeCloseTo(1, 1);
-    await letTimePass(out, 200, 'looked at again a little later in the dissolve');
+  try {
+    await expect(out.locator(`[data-media-id="${backgrounds[2]}"][data-state="loading"]`)).toHaveCount(1);
+    await expect
+      .poll(() =>
+        out.evaluate(
+          () => (globalThis as DissolveGlobals).drashtiThirdBackgroundDecode?.backgroundAsked ?? 0,
+        ),
+      )
+      .toBeGreaterThan(0);
+    // Meanwhile what is on screen adds up to the whole picture (a dissolve's two pictures are added
+    // together): never one left part-way through its dissolve, dim. Looked at several times.
+    for (let i = 0; i < 5; i++) {
+      const shown = await shownBackgrounds(out);
+      const strength = shown.reduce((sum, b) => sum + Number(b.wrapper || '1'), 0);
+      expect(strength, JSON.stringify(shown)).toBeCloseTo(1, 1);
+      await letTimePass(out, 200, 'looked at again a little later in the dissolve');
+    }
+  } finally {
+    await out.evaluate(() => (globalThis as DissolveGlobals).drashtiThirdBackgroundDecode?.release());
   }
   // Once the third is ready and its own dissolve is over, it alone is on screen, at full strength.
   await expect

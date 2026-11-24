@@ -188,6 +188,21 @@ export class MediaRepo {
     return out;
   }
 
+  /** Files eligible for idle display preparation, without changing their rows or original hashes. */
+  displayCandidates(): { mediaId: string; sha256: string; path: string; look: PictureLook | null }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, sha256, path, look FROM media WHERE kind = 'image' AND sha256 IS NOT NULL AND missing = 0 AND path <> '' AND (playable IS NULL OR playable = 1)`,
+      )
+      .all() as { id: string; sha256: string; path: string; look: string | null }[];
+    return rows.map((row) => ({
+      mediaId: row.id,
+      sha256: row.sha256,
+      path: row.path,
+      look: lookOf(row.look),
+    }));
+  }
+
   /**
    * Pictures whose looks sharpen them (Session 26f), for their sharpened copies: the file and the sharpness.
    * Deleted ones too, until their files go (Undo puts them back as they were).
