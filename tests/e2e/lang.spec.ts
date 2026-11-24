@@ -97,6 +97,13 @@ test('the hall’s and the stage’s words say their language, a Hindi kirtan’
   await expect(stage.getByTestId('stage-notes')).toHaveAttribute('lang', 'hi');
   // The Gujarati one's is gu-Latn.
   await goLive(win, gujarati);
+  // The Hindi slide dissolves out under it for a moment (alpha.22's second gate, 45424508000: both slides' runs were
+  // there when this looked, and the strict check failed at once): read the incoming slide's, then the Hindi one must go.
+  await expect(slide.locator('[data-slide-in] [data-run][data-lang="translit"]')).toHaveAttribute(
+    'lang',
+    'gu-Latn',
+  );
+  await expect(slide.locator('[data-run][data-lang="translit"]')).toHaveCount(1);
   await expect(slide.locator('[data-run][data-lang="translit"]')).toHaveAttribute('lang', 'gu-Latn');
   await expect(stage.getByTestId('stage-current').locator('[lang="gu-Latn"]')).toHaveText('Namūnā paṅkti');
 
