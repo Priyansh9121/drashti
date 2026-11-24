@@ -128,6 +128,16 @@ describe('the studio’s backdrop', () => {
     expect(unseenWords(['window'])).toBe(words.window);
     expect(unseenWords(['window', 'input'])).toBe(words.both);
     expect(unseenWords(['input', 'window'])).toBe(words.both);
+    // A stream link (lead 2, N5): named too, in the same order whatever the order given.
+    expect(unseenWords(['link'])).toBe(
+      'Live can’t show the stream link here: there is no hall screen on this computer.',
+    );
+    expect(unseenWords(['link', 'input'])).toBe(
+      'Live can’t show the video input or the stream link here: there is no hall screen on this computer.',
+    );
+    expect(unseenWords(['link', 'window', 'input'])).toBe(
+      'Live can’t show the video input, another app’s window or the stream link here: there is no hall screen on this computer.',
+    );
     for (const unseen of [['input'], ['window'], ['window', 'input']] as const) {
       const picture: StudioLivePicture = { ...still('copy', 4), unseen: [...unseen] };
       expect(backdropDraw('live', hall, picture)).toEqual({

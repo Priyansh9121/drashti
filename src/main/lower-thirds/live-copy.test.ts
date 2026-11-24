@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Layers } from '../../shared/engine/state';
 import type { ScreenConfig, ScreenGroupConfig } from '../../shared/screens';
 import {
@@ -12,6 +12,7 @@ import {
   liveCopyContext,
   liveCopyOptions,
   liveCopyQuery,
+  linkJoinFor,
   stoppedHallHere,
   unseenInCopy,
 } from './live-copy';
@@ -293,6 +294,16 @@ describe('a hall screen here stopped', () => {
   });
 });
 
+describe('a stream link and the copy (lead 2, N5)', () => {
+  it('the copy is never given a place in a stream link: its player never loads it; every other page joins as before', () => {
+    const join = vi.fn(() => ({ segment: 7, startAt: 100 }));
+    expect(linkJoinFor(true, join)).toBeNull();
+    expect(join).not.toHaveBeenCalled();
+    expect(linkJoinFor(false, join)).toEqual({ segment: 7, startAt: 100 });
+    expect(join).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('what the copy cannot draw', () => {
   const layers = (more: Partial<Pick<Layers, 'background' | 'pip'>>): Pick<Layers, 'background' | 'pip'> => ({
     background: null,
@@ -312,11 +323,20 @@ describe('what the copy cannot draw', () => {
         }),
       ),
     ).toEqual([]);
+    // A stream link (lead 2, N5): never played by the copy (a second player and decode on the show computer).
     expect(
       unseenInCopy(
         layers({ background: { kind: 'link', linkId: 'l', name: 'Placeholder link', startedAt: 0 } }),
       ),
-    ).toEqual([]);
+    ).toEqual(['link']);
+    expect(
+      unseenInCopy(
+        layers({
+          background: { kind: 'link', linkId: 'l', name: 'Placeholder link', startedAt: 0 },
+          pip: pip({ kind: 'input', inputId: 'i', name: 'Input 1', device: 'fake' }),
+        }),
+      ),
+    ).toEqual(['link', 'input']);
     expect(
       unseenInCopy(
         layers({

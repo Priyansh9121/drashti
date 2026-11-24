@@ -11,7 +11,7 @@
 export type StudioLiveSource = 'screen' | 'copy';
 
 /** What is live that Live's copy cannot draw (it is no screen): a video input, or another app's window. */
-export type LiveUnseen = 'input' | 'window';
+export type LiveUnseen = 'input' | 'window' | 'link';
 
 /** main -> the studio while Live's copy opens (its page loading): "Getting the live picture…". */
 export interface StudioLiveWaiting {

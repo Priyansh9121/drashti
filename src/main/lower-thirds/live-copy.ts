@@ -192,6 +192,11 @@ export function stoppedHallHere(
   );
 }
 
+/** Red: skeleton. */
+export function linkJoinFor<T>(_fromCopy: boolean, join: () => T): T | null {
+  return join();
+}
+
 /** What is live that the copy cannot draw (it is no screen): a video input, or another app's window, in either place. */
 export function unseenInCopy(layers: Pick<Layers, 'background' | 'pip'>): LiveUnseen[] {
   const kinds = [layers.background?.kind, layers.pip?.source.kind];
