@@ -32,7 +32,7 @@ function setup(
   bytes = png(6144, 3456),
   free: number | (() => number) = 10 * 1024 ** 3,
   existing?: string,
-  runtime: Partial<Pick<DisplayDeps, 'targets' | 'canWork' | 'canStart'>> = {},
+  runtime: Partial<Pick<DisplayDeps, 'targets' | 'canWork' | 'canStart' | 'held'>> = {},
 ) {
   const dir = existing ?? mkdtempSync(join(tmpdir(), 'drashti-display-'));
   if (!existing) dirs.push(dir);
@@ -211,6 +211,22 @@ describe('original-preserving display copies', () => {
     expect(t.windows.opened).toBe(1);
     t.copies.close();
     expect(await idleNext).toBeNull();
+  });
+  it('tells while its queue is held, and once its copy starts (QA22-L8-1, the owner: "Keep wait, say why")', async () => {
+    let held = true;
+    const told = vi.fn<(waiting: boolean) => void>();
+    const t = setup(png(6144, 3456), 10 * 1024 ** 3, undefined, { canStart: () => !held, held: told });
+    const prepared = t.copies.prepare(t.candidate);
+    await vi.waitFor(() => expect(told).toHaveBeenLastCalledWith(true));
+    expect(t.windows.opened).toBe(0);
+    held = false;
+    t.copies.activityChanged();
+    await vi.waitFor(() => expect(t.windows.opened).toBe(1));
+    expect(told).toHaveBeenLastCalledWith(false);
+    const job = await t.copies.next(1);
+    if (!job) throw new Error('The display worker did not start once it was let.');
+    await t.made(1, job.key, new Uint8Array(png(1920, 1080)));
+    expect(await prepared).toMatchObject({ ok: true });
   });
   it('waits for the other picture worker before starting a decode', async () => {
     let otherWorkerBusy = true;

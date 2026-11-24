@@ -264,16 +264,32 @@ describe('ImportService', () => {
     await first;
   });
 
-  it('says a new picture waits for the screens’ transitions while its display copy waits for them (QA22-L8-1)', async () => {
+  it('stops saying a cancelled run waits for the screens’ transitions; the run behind it, waiting for them, says so (QA22-L8-1)', () => {
+    const { service, mocks } = setup({
+      quiet: () => new Promise<void>(() => undefined),
+      transitionsEndAt: () => 1,
+    });
+    void service.start(['/Placeholder one.png']);
+    void service.start(['/Placeholder two.png']);
+    const [first = '', second = ''] = mocks.onProgress.mock.calls
+      .filter(([progress]) => progress.waitingFor === undefined)
+      .map(([progress]) => progress.runId);
+    expect(mocks.onProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: first, waitingFor: 'transitions' }),
+    );
+    expect(service.cancel(first)).toBe(true);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ runId: second, phase: 'queued', waitingFor: 'transitions' }),
+    );
+    service.stop();
+  });
+
+  it('says a new picture waits for the screens’ transitions only while its display copy is held for them, telling each change once (QA22-L8-1)', async () => {
     let made: (result: DisplayResult) => void = () => undefined;
     const prepared = new Promise<DisplayResult>((resolve) => {
       made = resolve;
     });
-    let ends: number | null = Date.now() + 5000;
-    const { service, mocks, workers } = setup({
-      prepareDisplay: () => prepared,
-      transitionsEndAt: () => ends,
-    });
+    const { service, mocks, workers } = setup({ prepareDisplay: () => prepared });
     const first = service.start(['/Placeholder large.png']);
     const w = workers[0];
     if (!w) throw new Error('no worker');
@@ -290,13 +306,25 @@ describe('ImportService', () => {
       requestId: 'r1',
       candidate: { path: 'a.png', sha256: 'a'.repeat(64) },
     });
+    // Asked for, not held: it says what it does, as before.
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
+    const before = mocks.onProgress.mock.calls.length;
+    // The copies' queue is held for the screens' transitions, and still a second later: told once.
+    service.displayHeld(true);
+    service.displayHeld(true);
     expect(mocks.onProgress).toHaveBeenLastCalledWith({ ...reading, waitingFor: 'transitions' });
-    ends = null;
-    made({ ok: true, copy: null });
+    expect(mocks.onProgress.mock.calls.length).toBe(before + 1);
+    // The copy starts: it says what it does again.
+    service.displayHeld(false);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
+    // Held again, then Cancel: it no longer says it waits.
+    service.displayHeld(true);
+    expect(service.cancel(w.runId)).toBe(true);
+    expect(mocks.onProgress.mock.calls.at(-1)?.[0].waitingFor).toBeUndefined();
+    made({ ok: false, message: 'Picture preparation was cancelled.' });
     await vi.waitFor(() => {
       expect(w.sent.some((m) => m.type === 'display-prepared')).toBe(true);
     });
-    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
     w.emit({ type: 'finished', run: summary(w.runId) });
     await first;
   });
