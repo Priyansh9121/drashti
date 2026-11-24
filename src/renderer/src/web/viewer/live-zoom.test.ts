@@ -373,3 +373,89 @@ describe('a phone’s zoom on a page cropped with Crop page… (a22-zoomcropfix)
     }
   });
 });
+
+/*
+ * An editable PDF page's first picture is one of its own painted pictures, at its own frame (shared/pdf-edit-page.ts),
+ * and Crop page… crops such a page too (a22-review-zoomturn's re-review, MUST 1). The screens show that picture
+ * where it is inside the crop: all of it when it lies inside (its own middle, as alpha.22 had it), else the part the
+ * crop keeps. A made-up page 1920 x 1080 cropped to its left half (960 x 1080 from 0, 0).
+ */
+
+/** The left half of a 1920 x 1080 page whose first picture has the frame given, up on the screens. */
+function pageWithPicture(frame: Box): EngineState {
+  const state = withSlidePicture();
+  const layer = state.layers.slide;
+  if (!layer) throw new Error('no slide');
+  const page = {
+    ...layer.slide,
+    elements: layer.slide.elements.map((e) => ({ ...e, frame })),
+  };
+  layer.slide = cropRenderedPage(page, { x: 0, y: 0, w: 0.5, h: 1 });
+  return state;
+}
+
+/**
+ * Each picture, where the screens show its middle in the slide (worked by hand), and the phone's views of it: the
+ * point of the picture (fractions of its box) in the phone's middle.
+ */
+const PAINTED: {
+  what: string;
+  frame: Box;
+  shown: { x: number; y: number };
+  views: { view: { zoom: number; cx: number; cy: number }; point: { x: number; y: number } }[];
+}[] = [
+  {
+    // 400 x 300 from (100, 100): inside the crop, shown whole, so its own middle (300, 250).
+    what: 'a small picture inside the crop',
+    frame: { x: 100, y: 100, width: 400, height: 300 },
+    shown: { x: 300, y: 250 },
+    views: [
+      { view: { zoom: 3, cx: 300 / 960, cy: 250 / 1080 }, point: { x: 0.5, y: 0.5 } },
+      { view: { zoom: 3, cx: 200 / 960, cy: 175 / 1080 }, point: { x: 0.25, y: 0.25 } },
+    ],
+  },
+  {
+    // 400 x 300 from (800, 100): the crop keeps 800 to 960 of it, so the middle shown is (880, 250).
+    what: 'a picture the crop cuts through',
+    frame: { x: 800, y: 100, width: 400, height: 300 },
+    shown: { x: 880, y: 250 },
+    views: [{ view: { zoom: 3, cx: 880 / 960, cy: 250 / 1080 }, point: { x: 0.2, y: 0.5 } }],
+  },
+];
+
+describe('a phone’s zoom on a cropped page’s own small picture (a22-zoomcropfix, MUST 1 of the re-review)', () => {
+  it('puts the point in the middle of the phone where the screens show the picture’s middle, as alpha.22 did', () => {
+    for (const { what, frame: box, shown, views } of PAINTED) {
+      const frame = frameInSlide(pageWithPicture(box));
+      if (!frame) throw new Error('no frame');
+      for (const { view, point } of views) {
+        const z = liveZoomFor(view, frame, PLAIN);
+        expect(z.zoom, what).toBeCloseTo(3, 9);
+        expectAt(drawnAt(z, box, point), shown, what);
+        const back = viewForLive(z, frame, PLAIN);
+        expectAt({ x: back.cx, y: back.cy }, { x: view.cx, y: view.cy }, `${what} back`);
+      }
+    }
+    // Inside the crop, it is zoomed as alpha.22 zoomed it: about its own middle.
+    const inside = frameInSlide(pageWithPicture({ x: 100, y: 100, width: 400, height: 300 }));
+    if (!inside) throw new Error('no frame');
+    expect(liveZoomFor({ zoom: 3, cx: 300 / 960, cy: 250 / 1080 }, inside, PLAIN)).toEqual({
+      zoom: 3,
+      x: 0,
+      y: 0,
+    });
+  });
+
+  it('does so in the hall’s picture as the phone draws it: the crop in the canvas from 480 in', () => {
+    for (const { what, frame: box, shown, views } of PAINTED) {
+      const frame = frameInCanvas(pageWithPicture(box), CANVAS);
+      if (!frame) throw new Error('no frame');
+      const inCanvas = { ...box, x: 480 + box.x };
+      for (const { view, point } of views) {
+        const at = { zoom: view.zoom, cx: (480 + view.cx * 960) / 1920, cy: view.cy };
+        const z = liveZoomFor(at, frame, PLAIN);
+        expectAt(drawnAt(z, inCanvas, point), { x: 480 + shown.x, y: shown.y }, `${what} in the canvas`);
+      }
+    }
+  });
+});
