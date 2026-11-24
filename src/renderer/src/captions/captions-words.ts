@@ -1,9 +1,12 @@
-import type {
-  CaptionsStatus,
-  CaptionTiming,
-  LanguageModelLanguage,
-  LanguageModelView,
+import {
+  CAPTIONS_STOP_AFTER_RESTS,
+  type CaptionsStatus,
+  type CaptionsStopped,
+  type CaptionTiming,
+  type LanguageModelLanguage,
+  type LanguageModelView,
 } from '../../../shared/captions';
+import type { SlowHold, SpeechLanguage } from '../../../shared/speech';
 
 /* The Live captions dialog's words (Session 55, Part 10). */
 
@@ -20,7 +23,7 @@ export function captionsSwitchDisabled(view: CaptionsStatus): boolean {
 /** What the listening is doing now, and what to do about it. */
 export function captionsStateText(view: CaptionsStatus): string {
   if (!view.engine) return view.engineProblem ?? 'This copy of Drashti has no captions engine.';
-  if (!view.on) return 'Off on this computer.';
+  if (!view.on) return view.stopped ? stoppedText(view.stopped) : 'Off on this computer.';
   const s = view.speech;
   switch (s.phase) {
     case 'off':
@@ -30,6 +33,7 @@ export function captionsStateText(view: CaptionsStatus): string {
     case 'listening':
       return 'Listening to the stream’s sound input.';
     case 'held':
+      if (s.reason === 'busy' && s.slow) return slowText(s.slow);
       if (s.reason === 'busy')
         return 'Resting: this computer is busy, and the show comes first. Captions try again by themselves in a minute.';
       if (s.reason === 'no-sound-input')
@@ -38,6 +42,74 @@ export function captionsStateText(view: CaptionsStatus): string {
     case 'failed':
       return s.message;
   }
+}
+
+/** Tenths of a second, as words say them: 9100 ms is 9.1. */
+const seconds = (ms: number): string => (Math.round(ms / 100) / 10).toFixed(1);
+
+/** What the engine measured when it rested (cap-threads): the answer's time, or how far behind it fell. */
+function measured(slow: SlowHold): string {
+  const threads = slow.threads === 1 ? '1 engine thread' : `${String(slow.threads)} engine threads`;
+  return slow.behindMs > 8_000
+    ? `it fell ${seconds(slow.behindMs)} seconds behind the speaker, with ${threads}`
+    : `an answer took ${seconds(slow.answerMs)} seconds, with ${threads}`;
+}
+
+/** Resting because this computer cannot keep up (cap-threads): what was measured, and whether it keeps happening. */
+function slowText(slow: SlowHold): string {
+  // Kept up since it started: busy for a while, and no stop can come (review MUST-1), so none is promised.
+  if (slow.rests > 1 && slow.keptUp)
+    return `Resting again (${String(slow.rests)} times in a row): this computer could not keep up for a while (${measured(slow)}). Captions try again by themselves in a minute; the show comes first.`;
+  if (slow.rests > 1)
+    return `Resting again (${String(slow.rests)} times in a row): this computer may be too slow for live captions with this model (${measured(slow)}). Captions try once more in a minute; after ${String(CAPTIONS_STOP_AFTER_RESTS)} rests in a row they stop.`;
+  return `Resting: this computer could not keep up with live captions (${measured(slow)}), so captions rest for a minute and then try again by themselves. The show comes first.`;
+}
+
+/** For Gujarati or Hindi, the IndicConformer model pack: it keeps up on slower computers (cap-threads). */
+function packPointer(language: SpeechLanguage | 'auto'): string {
+  if (language === 'gu' || language === 'hi') {
+    const name = LANGUAGE_NAMES[language];
+    return ` For ${name}, import the ${name} IndicConformer model pack (Help › Caption and Translation Models…) and choose it under ${name} model: it keeps up on slower computers.`;
+  }
+  if (language === 'auto')
+    return ' For Gujarati or Hindi, choose the speaker’s language, then import its IndicConformer model pack (Help › Caption and Translation Models…) and choose it under that language’s model: it keeps up on slower computers.';
+  return '';
+}
+
+/** Captions stopped by themselves (cap-threads, the owner: "Say so and stop"): why, and what can keep up. */
+function stoppedText(stopped: CaptionsStopped): string {
+  return `Off: this computer is too slow for live captions with this model. They rested ${String(stopped.slow.rests)} times in a row (${measured(stopped.slow)}), so they stopped.${packPointer(stopped.language)} Turn captions on to try again.`;
+}
+
+/**
+ * The status bar's line while captions are on but show nothing for a reason the operator should know (cap-threads):
+ * resting because the computer cannot keep up, no sound input, no model yet, or stopped; and while they are off
+ * because this computer was too slow for them. Null otherwise.
+ */
+export function captionsStatusLine(view: CaptionsStatus | null): string | null {
+  if (!view) return null;
+  if (!view.on)
+    return view.stopped
+      ? 'Captions stopped: this computer is too slow for live captions with this model.'
+      : null;
+  const s = view.speech;
+  if (s.phase === 'failed') return `Captions: ${s.message}`;
+  if (s.phase !== 'held') return null;
+  if (s.reason === 'no-sound-input') return 'Captions: no sound input is chosen for the stream.';
+  if (s.reason === 'no-model') return 'Captions are waiting for their model.';
+  if (!s.slow) return 'Captions are resting: this computer is busy.';
+  return s.slow.rests > 1
+    ? `Captions are resting: this computer cannot keep up (${String(s.slow.rests)} times in a row).`
+    : 'Captions are resting: this computer cannot keep up.';
+}
+
+/** Under Engine threads (cap-threads): when this computer has fewer logical processors than chosen, or null. */
+export function threadsNote(view: CaptionsStatus): string | null {
+  const p = view.processors;
+  if (p >= view.timing.threads) return null;
+  return p === 1
+    ? 'This computer has 1 logical processor, so captions use 1 engine thread.'
+    : `This computer has ${String(p)} logical processors, so captions use ${String(p)} engine threads.`;
 }
 
 /** How the model stands on this computer. */

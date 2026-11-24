@@ -1,3 +1,4 @@
+import { CAPTIONS_STOP_AFTER_RESTS } from '../../shared/captions';
 import type { Heard, HeardWord } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
 
@@ -7,11 +8,21 @@ import type { SpeechEngine } from './hub';
  * one every `everyMs`, each first half-heard and then whole. No sound, no model, no program: the hub, the captions
  * and the screens run as they do with the real engine. Once (DRASHTI_TEST_SPEECH_ONCE, alpha.22): each phrase is heard
  * one time and then nothing more, so an end-to-end test can correct a settled caption before a newer one replaces it.
+ * Hold (DRASHTI_TEST_SPEECH_HOLD, cap-threads): after its first phrase it rests as a computer too slow to keep up does,
+ * with placeholder numbers, and stays resting, so an end-to-end test sees what the operator is told.
  */
 export function createStandInEngine(
   phrases: readonly string[],
   everyMs = 1_500,
-  options: { once?: boolean } = {},
+  options: {
+    once?: boolean;
+    /**
+     * Hold (DRASHTI_TEST_SPEECH_HOLD, cap-threads): after its first phrase is heard whole it rests as a computer too
+     * slow to keep up does (placeholder numbers), and stays resting. The number is which rest in a row it says it is
+     * (3: captions then stop); 0 or left out, it never rests.
+     */
+    hold?: number;
+  } = {},
 ): SpeechEngine {
   return {
     start(language, to) {
@@ -59,6 +70,22 @@ export function createStandInEngine(
           endAt: heard.at(-1)?.endAt ?? startAt,
           heardAt: Date.now(),
         });
+        if (options.hold) {
+          clearInterval(timer);
+          to.state({
+            phase: 'held',
+            reason: 'busy',
+            slow: {
+              answerMs: 9_100,
+              behindMs: 6_200,
+              threads: 2,
+              processors: 2,
+              rests: options.hold,
+              keptUp: false,
+              stops: options.hold >= CAPTIONS_STOP_AFTER_RESTS,
+            },
+          });
+        }
       }, everyMs);
       return () => {
         clearInterval(timer);
