@@ -70,9 +70,7 @@ describe('a slide image decoding hint passed through the existing render tree', 
       height: 540,
       pageCrop: { x: 120, y: 80, width: 1920, height: 1080 },
     };
-    const html = renderToStaticMarkup(
-      createElement(SlideView, { slide: cropped, imageDecoding: 'sync' }),
-    );
+    const html = renderToStaticMarkup(createElement(SlideView, { slide: cropped, imageDecoding: 'sync' }));
     expect(html).toContain('data-page-crop');
     expectSync(html, 2);
   });

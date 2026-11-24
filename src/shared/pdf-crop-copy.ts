@@ -22,10 +22,7 @@ export async function cropPdfCopy(data: Uint8Array, crops: (CropRect | undefined
         : media;
     const rotation = ((page.getRotation().angle % 360) + 360) % 360;
     // Map displayed top-left shares back to the page's unrotated bottom-left coordinates.
-    let x: number,
-      y: number,
-      w: number,
-      h: number;
+    let x: number, y: number, w: number, h: number;
     switch (rotation) {
       case 90:
         x = crop.y;

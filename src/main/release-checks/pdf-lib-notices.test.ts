@@ -32,7 +32,7 @@ it('ships the complete installed PDF writer licences and the zlib notice on both
     read(join(dirname(require.resolve('tslib/package.json')), 'CopyrightNotice.txt')),
   );
   expect(read('LICENSES/pdf-lib/tslib-1-CopyrightNotice.txt')).toBe(
-    read(join(dirname(require.resolve('tslib/package.json', { paths: [helper] })), 'CopyrightNotice.txt')),
+    read(join(dirname(require.resolve('tslib', { paths: [helper] })), 'CopyrightNotice.txt')),
   );
   expect(zlib).toContain('This notice may not be removed or altered from any source distribution.');
   expect(read('electron-builder.yml')).toMatch(/from: LICENSES\s+to: licenses/);
