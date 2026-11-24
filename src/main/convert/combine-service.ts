@@ -312,7 +312,9 @@ export class CombineVideos {
     const entry = this.entries.find(
       (e) => e.job.id === id && (e.job.state === 'waiting' || e.job.state === 'preparing'),
     );
-    if (!entry) return false;
+    // Once the new video is in Media (its copy to a file being saved), there is nothing left to stop: never both
+    // added and stopped (a22-review-combine S1).
+    if (!entry || entry.job.mediaId !== null) return false;
     entry.job.state = 'stopped';
     entry.job.note = null;
     entry.job.message = 'Stopped. Nothing was added to Media.';

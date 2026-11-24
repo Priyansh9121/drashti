@@ -12,6 +12,7 @@ import {
   closeCombineVideos,
   combineJobWords,
   exportWords,
+  leftWords,
   moved,
   useCombineVideos,
   type CombineVideo,
@@ -21,8 +22,9 @@ import { setLibraryTab, useMedia } from './library-store';
 /** Combine videos… (alpha.22): mounted once; its window opens from Media's right-click menu. */
 export function CombineVideosDialog() {
   const videos = useCombineVideos((s) => s.videos);
+  const left = useCombineVideos((s) => s.left);
   useEffect(() => addCombineToMenu(), []);
-  return videos ? <Combine key={videos.map((v) => v.id).join(' ')} initial={videos} /> : null;
+  return videos ? <Combine key={videos.map((v) => v.id).join(' ')} initial={videos} left={left} /> : null;
 }
 
 /** The transition's lengths offered: 0.5 to 3 s (COMBINE_TRANSITION_MS), by half seconds. */
@@ -35,7 +37,7 @@ function showInMedia(mediaId: string): void {
   useMedia.setState({ marked: [mediaId], anchorId: mediaId });
 }
 
-function Combine({ initial }: { initial: CombineVideo[] }) {
+function Combine({ initial, left }: { initial: CombineVideo[]; left: number }) {
   const [order, setOrder] = useState(initial);
   const [transition, setTransition] = useState<CombineTransition>('dissolve');
   const [transitionMs, setTransitionMs] = useState<number>(COMBINE_TRANSITION_MS.usual);
@@ -120,6 +122,7 @@ function Combine({ initial }: { initial: CombineVideo[] }) {
           kept as they are. It waits while a video or a sound plays, the stream is on air or a recording goes
           on.
         </p>
+        {leftWords(left) && <p className="text-sm text-warning-fg">{leftWords(left)}</p>}
         <ol className="space-y-1" aria-label="Videos, in the order they play">
           {order.map((video, at) => (
             <li
@@ -171,7 +174,8 @@ function Combine({ initial }: { initial: CombineVideo[] }) {
         </div>
         {transition !== 'cut' && (
           <p className="text-xs text-muted">
-            The same transition goes between each two. A video shorter than it is joined with a plain cut.
+            The same transition goes between each two. A video too short for it is joined with a plain cut
+            there: a video between two others needs twice the transition’s length.
           </p>
         )}
         {/* The owner, 24 Nov 2026: "export button as well to download". */}
@@ -211,7 +215,8 @@ function Combine({ initial }: { initial: CombineVideo[] }) {
                     <Progress value={job.progress ?? 0} label={`Combining “${job.name}”`} />
                   )}
                   <div className="flex flex-wrap gap-2">
-                    {(job.state === 'waiting' || job.state === 'preparing') && (
+                    {/* Once the new video is in Media (saving its copy to a file), there is nothing left to stop. */}
+                    {(job.state === 'waiting' || job.state === 'preparing') && job.mediaId === null && (
                       <Button size="sm" onClick={() => void window.drashti.media.stopCombine(job.id)}>
                         Stop
                       </Button>
