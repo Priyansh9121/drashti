@@ -12,6 +12,7 @@ export type RendererPage =
   | 'pdf'
   | 'pdf-export'
   | 'sharpen'
+  | 'display-copy'
   | 'zoom'
   | 'lock'
   | 'access-list'

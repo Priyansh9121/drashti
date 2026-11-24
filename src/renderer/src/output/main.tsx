@@ -19,6 +19,8 @@ import { KeepQuestion } from './KeepQuestion';
 import { SwitchQuestion } from './SwitchQuestion';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
+import { initialPicturesFor } from './initial-picture-preload';
+import { hallView } from '../render/audience-picture';
 import { DisplayNumber } from './SetupCards';
 import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
@@ -387,8 +389,18 @@ function Output() {
       {/* Stage screens show no pictures, so they load none ahead: but for a layout's audience picture
           (Session 50) and the audience picture with Stage off (Session 55), which load what comes next as the
           hall's screens do. */}
-      {state && (!stage || stageDrawsHall(state.stage)) && (
-        <Preloader next={state.next} pictures={state.pictures} />
+      {state && context && (!stage || stageDrawsHall(state.stage)) && (
+        <Preloader
+          next={state.next}
+          pictures={state.pictures}
+          sceneReady={ready}
+          currentPictures={() => {
+            if (matte !== null || stop.black) return null;
+            if (!stage) return initialPicturesFor(state, look);
+            const audience = hallView(state.look, context.hall);
+            return audience.kind === 'hall' ? initialPicturesFor(state, audience.look) : null;
+          }}
+        />
       )}
       <IdentifyOverlay />
       {/* The operator window's "Turn Audience off?" (Session 51), over the picture while this output covers the

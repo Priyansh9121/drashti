@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { readCaptionFile } from './video-captions';
 import { randomUUID } from 'node:crypto';
 import type { PicturesResult } from '../../shared/pictures';
+import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import type { ImportProgress } from '../../shared/import';
 import { constants, setPriority } from 'node:os';
 import { sep } from 'node:path';
@@ -106,6 +107,14 @@ const drawPdf = (pdf: string, outDir: string, readPageText?: boolean): Promise<P
     post({ type: 'draw-pdf', requestId, pdf, outDir, readPageText });
   });
 
+const displayPreparing = new Map<string, (result: DisplayResult) => void>();
+const prepareDisplay = (candidate: DisplayCandidate): Promise<DisplayResult> =>
+  new Promise((resolve) => {
+    const requestId = randomUUID();
+    displayPreparing.set(requestId, resolve);
+    post({ type: 'prepare-display', requestId, candidate });
+  });
+
 function openLibrary(file: string, expected: number): Db {
   const db = new Database(file);
   try {
@@ -137,6 +146,7 @@ async function start(message: StartMessage): Promise<void> {
       db,
       media: new MediaStore(db, {
         dir: message.mediaDir,
+        prepareDisplay,
         ...(ffmpeg ? { readInfo: (file: string) => readInfo(ffmpeg, file) } : {}),
         // Where this computer cannot play HEVC, it is converted by itself too (Session 51); so is a kind of it this
         // computer cannot play (Session 60, x36: Main 10, or 4:2:2, 4:4:4 and 12-bit, as Chromium said).
@@ -293,6 +303,9 @@ port.on('message', (event) => {
   } else if (message.type === 'on-air') {
     airing.get(message.requestId)?.(message.onAir);
     airing.delete(message.requestId);
+  } else if (message.type === 'display-prepared') {
+    displayPreparing.get(message.requestId)?.(message.result);
+    displayPreparing.delete(message.requestId);
   } else if (message.type === 'drawn') {
     drawing.get(message.requestId)?.(message.result);
     drawing.delete(message.requestId);

@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import type { MediaMarkers } from '../../shared/markers';
+import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import { constants, createReadStream, statfsSync } from 'node:fs';
 import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -50,6 +51,8 @@ export interface MediaStoreOptions {
    * with that answer; null or left out while not known (then every kind is as playsHevc says).
    */
   hevcKinds?: HevcKinds | null;
+  /** Main prepares a still display rendition before this new item can be announced ready. */
+  prepareDisplay?: (candidate: DisplayCandidate, signal?: AbortSignal) => Promise<DisplayResult>;
 }
 
 export type MediaImportResult =
@@ -338,6 +341,7 @@ export class MediaStore {
   async stage(
     path: string,
     maxVideoHeight?: number,
+    signal?: AbortSignal,
   ): Promise<{ ok: true; staged: StagedMedia } | { ok: false; issue: ImportIssue }> {
     const kind = mediaKindOf(path);
     const name = basename(path);
@@ -421,6 +425,24 @@ export class MediaStore {
           },
         };
       }
+    }
+    if (kind === 'image' && !picture?.convert && this.options.prepareDisplay) {
+      const prepared = await this.options
+        .prepareDisplay({ path: rel, sha256: hashed.sha256 }, signal)
+        .catch(() => ({
+          ok: false as const,
+          message: 'The picture could not be prepared. Try importing it again.',
+        }));
+      if (!prepared.ok)
+        return {
+          ok: false,
+          issue: {
+            severity: 'error',
+            code: 'picture-display',
+            message: `Could not prepare ${name} for the screens. ${prepared.message}`,
+            fix: { kind: 'import-again', sourcePath: path },
+          },
+        };
     }
     if (picture) return { ok: true, staged: { kind, name, rel, ...hashed, ...picture } };
     const probe = await probeMedia(target);
