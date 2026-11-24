@@ -11,6 +11,7 @@ import {
   SET_UP_STAGE,
   showsSomething,
   stageDevicesPaired,
+  stageOffHint,
   stageScreensSet,
   STARTS,
   SWITCH_NAMES,
@@ -235,6 +236,15 @@ describe('Audience and Stage (Session 50)', () => {
         ],
       }),
     ).toBe(2);
+  });
+
+  // The owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)": Stage still starts off, and while it is off with a tablet
+  // paired as Stage the status bar says beside "Stage off" that the tablet shows the audience picture; with none,
+  // "Stage off" alone, as in alpha.22.
+  it('says beside Stage off that a paired stage tablet shows the audience picture, only with one paired', () => {
+    expect(stageOffHint(0)).toBeNull();
+    expect(stageOffHint(1)).toBe('the stage tablet shows the audience picture');
+    expect(stageOffHint(2)).toBe('the stage tablets show the audience picture');
   });
 
   // a22-review-stage8 S5 (lead 2's call): with the Network (phones and tablets) off, a tablet paired as Stage shows

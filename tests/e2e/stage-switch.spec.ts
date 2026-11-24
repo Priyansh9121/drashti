@@ -270,9 +270,21 @@ test('(d) set to Stage with nothing showing it on this computer: only a tablet p
   await expect.poll(() => jobs(win)).toEqual(['1: audience']);
   await stageIs(win, false);
 
-  // The hall's projector and one tablet paired as Stage: On says nothing of no screen, here or in the panel.
+  // Stage off with no tablet paired: the status bar says "Stage off" alone, as in alpha.22.
+  const hint = win.getByTestId('switch-off-stage-hint');
+  await expect(win.getByTestId('switch-off-stage')).toContainText('Stage off');
+  await expect(hint).toHaveCount(0);
+
+  // The hall's projector and one tablet paired as Stage. Stage still off (the owner's QA23-STAGE8-2, "Keep Off, say
+  // so (Rec.)"): the status bar says the tablet shows the audience picture until Stage is on.
   const { port } = await networkOn(win);
   await pairToken(win, port, 'stage', 'Placeholder tablet');
+  await stageIs(win, false);
+  await expect(hint).toHaveText('the stage tablet shows the audience picture');
+  await expect(win.getByTestId('switch-off-stage')).toContainText(
+    'Stage off · the stage tablet shows the audience picture',
+  );
+  // On says nothing of no screen, here or in the panel.
   await win.getByTestId('switch-stage').click();
   await stageIs(win, true);
   await openSection(win, 'stage');
@@ -309,7 +321,12 @@ test('(d) set to Stage with nothing showing it on this computer: only a tablet p
     tablet.id,
   );
   await expect(panel.getByTestId('stage-no-screen')).toContainText('No screen is set to Stage.');
-  await offAndOn(win);
+  // Off: "Stage off" alone again, with no tablet paired.
+  await win.getByTestId('switch-stage').click();
+  await stageIs(win, false);
+  await expect(hint).toHaveCount(0);
+  await win.getByTestId('switch-stage').click();
+  await stageIs(win, true);
   await expect(noStageLine(win).getByTestId('screens-said-text')).toHaveText('No screen is set to Stage.');
 
   // A second projector: the stage by itself. Unplugged, its screen is still set to Stage (it shows the stage again
