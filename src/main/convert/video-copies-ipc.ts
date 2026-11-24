@@ -40,14 +40,15 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     info: Parameters<typeof registerProxyFile>[0]['info'],
     signal: AbortSignal,
     name?: string,
-    idle: () => boolean = () => deps.idle(),
   ) =>
     registerProxyFile({
       db: deps.db,
       mediaDir: deps.mediaDir,
       file,
       info,
-      idle,
+      // A named new video is one the operator asked for (Export clip…'s Also add the clip to Media): the save gate
+      // (alpha.22: only what plays, the stream or a recording holds it); a lighter copy waits until nothing is up.
+      idle: () => (name === undefined ? deps.idle() : (deps.saveIdle ?? deps.idle)()),
       freeBytes: (dir) => deps.freeBytes(dir),
       signal,
       name,
@@ -126,8 +127,7 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       );
     },
     pickDest: (name, container) => deps.pickDest(name, container),
-    prepareImport: (file, info, name, signal) =>
-      register(file, info, signal, name, () => (deps.saveIdle ?? deps.idle)()),
+    prepareImport: (file, info, name, signal) => register(file, info, signal, name),
     publishImport: (id) => {
       try {
         const result = deps.db.prepare('UPDATE media SET listed=1 WHERE id=? AND deleted_at IS NULL').run(id);
