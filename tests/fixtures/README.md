@@ -15,3 +15,9 @@ characters, so `scripts/unicode-check.mjs` is seen to pass them (Sessions 31–3
 deck our tests generate (placeholder words and notes, flat colours, one shape, no pictures), kept byte
 for byte so the editable reader is tested against the way Keynote writes text boxes and lines
 (Session 57's Keynote round trip). Its document details are empty.
+
+`captions/` holds generated speech for the captions bench (scripts/captions-bench.mjs, the Performance workflow's
+`captions` input): 48 short clips of 12 placeholder sentences, in Gujarati and Hindi, each by two synthetic voices
+(Indic Tiny TTS, CC-BY-4.0), 16 kHz mono WAV, about 5 MB. Nobody real speaks them; `captions/CREDITS.md` names the
+voices, their training data and licences, and `captions/manifest.json` each clip's words, voice, seed and SHA-256.
+English is spoken by CI's Windows runner at run time and never stored.
