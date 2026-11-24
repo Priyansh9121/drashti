@@ -12,12 +12,15 @@
 // protocol and stops by itself when its input ends (scripts/fetch-translate.mjs builds it; tools/translate/).
 // Route C (alpha.22): in packaged apps the Gujarati and Hindi recognition helper starts beside its own ONNX Runtime
 // 1.23.2 (and on Windows its app-local Microsoft runtime), without any model (src/main/speech/indic-selftest.ts).
+// The tests' seams (alpha.23, cap-realc): each packaged app is started asking for Chromium's fake camera and
+// microphone and for the fake microphone to play a placeholder WAV file (DRASHTI_TEST_FAKE_DEVICES,
+// DRASHTI_TEST_FAKE_SOUND_FILE), and must turn on none of Chromium's fake media switches (src/main/fake-sound.ts).
 //
 //   node scripts/check-ffmpeg.mjs             the built app in out/ (pnpm build first)
 //   node scripts/check-ffmpeg.mjs --packaged  every app electron-builder left in release/
 //                                             (an Intel Mac build runs under Rosetta when it can)
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,6 +92,13 @@ function check(label, command, args) {
   const root = makeTempRoot();
   const env = { ...process.env, DRASHTI_SELFTEST: 'ffmpeg', DRASHTI_USER_DATA_DIR: join(root, 'data') };
   delete env['ELECTRON_RUN_AS_NODE'];
+  if (packaged) {
+    // The tests' seams asked for: a packaged Drashti must honour neither (0.1 s of silence, never played).
+    const wav = join(root, 'placeholder-silence.wav');
+    writeFileSync(wav, placeholderWav());
+    env['DRASHTI_TEST_FAKE_DEVICES'] = '1';
+    env['DRASHTI_TEST_FAKE_SOUND_FILE'] = wav;
+  }
   return new Promise((resolve) => {
     const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
@@ -111,17 +121,41 @@ function check(label, command, args) {
       const yt = result.youtube;
       const whisper = result.whisper?.detail ?? (packaged ? 'no startup result' : 'checked in packaged apps');
       const indic = result.indic?.detail ?? (packaged ? 'no startup result' : 'checked in packaged apps');
+      const seams = result.fakeMedia?.detail ?? (packaged ? 'no result' : 'checked in packaged apps');
       const passed =
-        result.passed && (!packaged || (result.whisper?.passed === true && result.indic?.passed === true));
+        result.passed &&
+        (!packaged ||
+          (result.whisper?.passed === true &&
+            result.indic?.passed === true &&
+            result.fakeMedia?.passed === true));
       const sandbox = yt.sandbox
         ? `reading a file: ${yt.sandbox.readFile}; reaching 127.0.0.1: ${yt.sandbox.network} (${yt.sandbox.connections} connection(s) arrived); starting a program: ${yt.sandbox.runProgram}`
         : 'not run';
       console.log(
-        `${label}: ${passed ? 'OK' : 'FAILED'}\n  ${result.path}\n  ${result.version}\n  RTMPS: ${result.rtmps ? 'yes' : 'no'}\n  ${works}\n  Streams with: ${result.chosen ?? 'nothing'}\n  yt-dlp: ${yt.ytDlp.version ?? 'does not run'} (${yt.ytDlp.path ?? 'missing'})\n  Deno: ${yt.deno.version ?? 'does not run'} (${yt.deno.path ?? 'missing'})\n  Deno as yt-dlp starts it: ${sandbox}\n  Live captions: ${whisper}\n  Gujarati and Hindi recognition: ${indic}\n  Book OCR: ${result.ocr?.detail ?? 'no result'}`,
+        `${label}: ${passed ? 'OK' : 'FAILED'}\n  ${result.path}\n  ${result.version}\n  RTMPS: ${result.rtmps ? 'yes' : 'no'}\n  ${works}\n  Streams with: ${result.chosen ?? 'nothing'}\n  yt-dlp: ${yt.ytDlp.version ?? 'does not run'} (${yt.ytDlp.path ?? 'missing'})\n  Deno: ${yt.deno.version ?? 'does not run'} (${yt.deno.path ?? 'missing'})\n  Deno as yt-dlp starts it: ${sandbox}\n  Live captions: ${whisper}\n  Gujarati and Hindi recognition: ${indic}\n  Tests' fake media switches: ${seams}\n  Book OCR: ${result.ocr?.detail ?? 'no result'}`,
       );
       resolve(passed);
     });
   });
+}
+
+/** 0.1 s of silence as a WAV file (16 kHz, 16-bit, one channel): the fake microphone's file a packaged app ignores. */
+function placeholderWav() {
+  const data = Buffer.alloc(3200);
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVEfmt ', 8, 'ascii');
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(16_000, 24);
+  header.writeUInt32LE(32_000, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36, 'ascii');
+  header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
 }
 
 /** A packaged app's video out program starts: its input ended at once, it says "ready" and stops by itself. */
