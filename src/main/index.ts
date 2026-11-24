@@ -4070,6 +4070,8 @@ function start(): void {
           // The tuned language models are decoded without timestamps (alpha.22).
           timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
           timing: () => captions.timing(),
+          // Captions that have shown a phrase whole are never stopped as too slow (cap-review-threads MUST-1b).
+          keptUp: () => captions.keptUp(),
           sound: { open: (chunk) => streaming.listenSound(chunk) },
           // The admin's caption words as hints (cap-glossary).
           hints: captionWords.hints,
@@ -4101,6 +4103,7 @@ function start(): void {
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
             timing: () => captions.timing(),
+            keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,

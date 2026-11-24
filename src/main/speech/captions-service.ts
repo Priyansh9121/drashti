@@ -124,6 +124,12 @@ export class CaptionsService {
   readonly hub: SpeechHubControl;
   /** Why captions turned themselves off (cap-threads), until they are turned on again. */
   private tooSlow: CaptionsStopped | null = null;
+  /**
+   * A phrase shown whole since the operator last turned captions on, with this model (MUST-1b): kept across the
+   * engine's own starts (a language or timing change, Route W's fresh engine), so a computer that has kept up is never
+   * stopped as too slow. Forgotten when the operator turns captions on, and on another model.
+   */
+  private shownWhole = false;
   private stoppingTooSlow = false;
   private readonly feed: CaptionsFeed;
   /** Today's feed or caption AI's flow, when caption AI is wired in (null: today's feed alone). */
@@ -226,7 +232,10 @@ export class CaptionsService {
     const today = createCaptionsFeed({
       hub: this.hub,
       show: deps.show,
-      onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+      onFinalPhrase: (phrase) => {
+        this.shownWhole = true;
+        deps.onFinalPhrase?.(phrase);
+      },
       settings: () => this.settings(),
     });
     const ai = deps.aiPath;
@@ -237,7 +246,10 @@ export class CaptionsService {
             hub: this.hub,
             coordinator: ai.coordinator,
             ...(ai.spelling ? { spelling: ai.spelling } : {}),
-            onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+            onFinalPhrase: (phrase) => {
+              this.shownWhole = true;
+              deps.onFinalPhrase?.(phrase);
+            },
           }),
           () => this.useAi(),
           () => {
@@ -396,12 +408,14 @@ export class CaptionsService {
 
   /** Whether captions have shown a phrase whole since the operator last turned them on (cap-review-threads MUST-1b). */
   keptUp(): boolean {
-    return false;
+    return this.shownWhole;
   }
 
   /** The switch on this computer, with why captions turned themselves off (or null). */
   private async switchTo(on: boolean, stopped: CaptionsStopped | null): Promise<CaptionsStatus> {
     this.tooSlow = stopped;
+    // Turned on by the operator: a fresh start, nothing kept up yet (MUST-1b).
+    if (on) this.shownWhole = false;
     if (this.prototype.view().on) this.prototype.setOn(false);
     const next = { ...this.switch, on };
     try {
@@ -426,8 +440,10 @@ export class CaptionsService {
 
   async setModel(model: CaptionModelId): Promise<CaptionsStatus> {
     if (model === this.switch.model) return this.view();
-    // Another model: "too slow with this model" no longer holds (review n2); the switch stays as it is.
+    // Another model: "too slow with this model" no longer holds (review n2), nor what kept up before (MUST-1b); the
+    // switch stays as it is.
     this.tooSlow = null;
+    this.shownWhole = false;
     const next = { ...this.switch, model };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
@@ -620,6 +636,7 @@ export class CaptionsService {
     if (id !== null && !this.known(language).some((entry) => entry.id === id)) return this.view();
     this.notices.delete(language);
     this.tooSlow = null;
+    this.shownWhole = false;
     this.choose(language, id);
     this.tell();
     return this.view();

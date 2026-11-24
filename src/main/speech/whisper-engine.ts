@@ -361,8 +361,10 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         // The one decision (the owner, Q-CT-1: "Say so and stop"): the third rest in a row, nothing heard whole since
         // this start. A computer that has kept up is only busy for a while (a long import, a conversion): it rests and
         // tries again as before, however long the stretch.
-        const stops = rests >= CAPTIONS_STOP_AFTER_RESTS && !heardWhole;
-        const slow: SlowHold = { ...measured, threads, processors, rests, keptUp: heardWhole, stops };
+        // Kept up: a phrase heard whole in this start, or shown since the operator turned captions on (MUST-1b).
+        const keptUp = heardWhole || (o.keptUp?.() ?? false);
+        const stops = rests >= CAPTIONS_STOP_AFTER_RESTS && !keptUp;
+        const slow: SlowHold = { ...measured, threads, processors, rests, keptUp, stops };
         // Numbers only (cap-threads): what it measured, so a log from a slow computer says why.
         o.log.warn(
           `Speech: the computer cannot keep up, so captions rest for a minute (the show comes first): an answer took ${String(slow.answerMs)} ms, ${String(slow.behindMs)} ms behind, ${String(threads)} threads, ${String(processors)} logical processors, rest ${String(rests)} in a row.`,
