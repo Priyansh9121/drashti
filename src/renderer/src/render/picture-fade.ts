@@ -53,3 +53,17 @@ export function pictureEase(
     return pair && pair.id !== madeIn && crossfadeOn(pair, now()) ? FADE_PICTURE_LIMITS : null;
   };
 }
+
+/** A picture's clock in its crossfade (the owner's QA23-FADE-6). Red: never taken. */
+export interface CrossfadeClock {
+  pair(fade: VideoCrossfade | null): void;
+  letGo(): void;
+}
+
+export function crossfadeClock(
+  _v: HTMLMediaElement,
+  _now: () => number = engineNow,
+  _take: (v: HTMLMediaElement) => (() => void) | null = () => null,
+): CrossfadeClock {
+  return { pair: () => undefined, letGo: () => undefined };
+}

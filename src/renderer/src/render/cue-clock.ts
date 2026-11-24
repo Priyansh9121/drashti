@@ -126,3 +126,13 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
     }
   };
 }
+
+/**
+ * A crossfade's picture, its sound taken into the page's silent graph (the owner's QA23-FADE-6). Red: not yet.
+ */
+export function fadeClock(
+  _v: HTMLMediaElement,
+  _graph: () => SilentGraph | null = () => null,
+): (() => void) | null {
+  return null;
+}

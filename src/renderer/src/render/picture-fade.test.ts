@@ -8,7 +8,9 @@ import {
 } from '../../../shared/media';
 import type { CuedVideo, VideoCrossfade } from '../../../shared/video-cue';
 import { slotKey } from './background-slots';
-import { crossfadeOf, crossfadeOn, pictureEase } from './picture-fade';
+import type { SilentGraph } from './cue-clock';
+import { fadeClock } from './cue-clock';
+import { crossfadeClock, crossfadeOf, crossfadeOn, pictureEase } from './picture-fade';
 import { startPlayback } from './playback';
 
 /*
@@ -34,6 +36,9 @@ class SlowPicture extends EventTarget {
   loop = false;
   muted = false;
   preservesPitch = true;
+  dataset: Record<string, string> = {};
+  /** Its sound pulled by a page's silent graph (QA23-FADE-6): its clock is that graph's steady one from then. */
+  onGraph = false;
   /** It never plays to its own end here. */
   readonly ended = false;
   seeks = 0;
@@ -95,11 +100,17 @@ class SlowPicture extends EventTarget {
     this.dispatchEvent(new Event('ratechange'));
   }
 
-  /** Its own time, run on at a new pace from now. */
+  /** Its own time, run on at a new pace from now (on a silent graph, always the graph's: 1). */
   setOwn(own: number): void {
     this.base = this.currentTime;
     this.since = Math.max(this.since, Date.now());
-    this.own = own;
+    this.own = this.onGraph ? 1 : own;
+  }
+
+  /** Its sound taken into a silent graph: its clock the graph's from now. */
+  takenByGraph(): void {
+    this.setOwn(1);
+    this.onGraph = true;
   }
 
   set src(url: string) {
@@ -343,5 +354,118 @@ describe('a crossfade’s picture on a slow computer, played by startPlayback wi
     expect(v.seeks, 'jumped back into step').toBeGreaterThanOrEqual(1);
     expect(Math.abs(s.offset())).toBeLessThan(2 / 30);
     s.stop();
+  });
+});
+
+describe('a crossfade’s outgoing picture on the page’s silent graph (the owner’s QA23-FADE-6, "Try B in parallel")', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(START));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** The page's silent graph, running (its crossfade's cue keeps it so): a source taken in sets its picture's clock. */
+  const runningGraph = () => {
+    const context = {
+      state: 'running' as AudioContextState,
+      made: 0,
+      suspended: 0,
+      resumed: 0,
+      createMediaElementSource(el: SlowPicture) {
+        this.made++;
+        return {
+          connect: () => {
+            el.takenByGraph();
+          },
+          disconnect: () => undefined,
+        };
+      },
+      suspend() {
+        this.suspended++;
+        this.state = 'suspended';
+        return Promise.resolve();
+      },
+      resume() {
+        this.resumed++;
+        return Promise.resolve();
+      },
+    };
+    const graph = { context: context as unknown as AudioContext, sink: {} as AudioNode };
+    return { context, graph: (): SilentGraph => graph };
+  };
+
+  const playedOn = (v: SlowPicture, pair: { now: VideoCrossfade | null }, graph: () => SilentGraph) => {
+    const element = v as unknown as HTMLMediaElement;
+    const playback = startPlayback(element, {
+      mediaId: 'picture',
+      startedAt: START,
+      ease: pictureEase(() => pair.now),
+      timing: () => ({ loop: false }),
+    });
+    // As render/BackgroundMedia.tsx's VideoSlot: told the crossfade it is one of as that changes, let go at the end.
+    const clock = crossfadeClock(element, undefined, (el) => fadeClock(el, graph));
+    return {
+      stop: () => {
+        playback();
+        clock.letGo();
+      },
+      pair: (fade: VideoCrossfade | null) => {
+        pair.now = fade;
+        clock.pair(fade);
+      },
+      offset: () =>
+        playbackOffset(
+          v.currentTime,
+          playbackPosition({ startedAt: START, loop: false }, 30, Date.now()),
+          30,
+          false,
+        ),
+    };
+  };
+
+  it('its own clock at 0.4x through a 2 s fade, it is never jumped nor still for 100 ms: on the graph it keeps time', () => {
+    const v = new SlowPicture(30, { seekMs: 700 });
+    const { context, graph } = runningGraph();
+    const s = playedOn(v, { now: null }, graph);
+    runFor(3000);
+    expect(context.made, 'never taken before its crossfade').toBe(0);
+    const before = v.seeks;
+    const at = Date.now() + 120;
+    s.pair(crossfade(at));
+    // Two pictures decoding on a busy two-core PC: off the graph, its muted clock would run at 0.4 of real time.
+    v.setOwn(0.4);
+    let still = 0,
+      longest = 0,
+      last = v.currentTime;
+    for (let ms = 0; ms < 2120; ms++) {
+      runFor(1);
+      still = !v.paused && v.currentTime === last ? still + 1 : 0;
+      longest = Math.max(longest, still);
+      last = v.currentTime;
+    }
+    expect(v.seeks - before, 'no jump in the fade').toBe(0);
+    expect(longest, 'never still for 100 ms in the fade (ms)').toBeLessThan(100);
+    expect(Math.abs(s.offset()), `${s.offset().toFixed(3)} s off at the fade’s end`).toBeLessThan(0.05);
+    s.pair(null);
+    s.stop();
+    expect(context.suspended, 'let go with the fade: the graph rests (no output held while idle)').toBe(1);
+  });
+
+  it('outside a crossfade, and at a manual Go’s cut, its sound is never taken: it plays as before', () => {
+    const v = new SlowPicture(30);
+    const { context, graph } = runningGraph();
+    const s = playedOn(v, { now: null }, graph);
+    runFor(1000);
+    s.pair(null);
+    s.pair(crossfade(Date.now() + 120, 0));
+    runFor(1000);
+    expect(context.made).toBe(0);
+    expect(v.muted, 'muted, as every picture plays').toBe(true);
+    s.stop();
+    expect(context.suspended).toBe(0);
   });
 });
