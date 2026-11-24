@@ -153,11 +153,6 @@ function InputPicker({ onProblem }: { onProblem: (problem: string | null) => voi
 
 const NO_RECENT: string[] = [];
 
-/**
- * The stage screen: what the performers see, and a message for them only (the audience never sees it). Since Session 55
- * (Part 15) the message as the old program had its own: its size, a flash as it comes up, Show on every stage screen
- * and Hide, and the last few a tap away; and a timer for the audience, started, shown and hidden here too.
- */
 /** The stage message's colours as chosen (the owner, 24 Nov 2026): a preset's id, or 'own', and the two colours. */
 interface StageColours {
   preset: string;
@@ -251,6 +246,11 @@ function StageColoursChoice({
   );
 }
 
+/**
+ * The stage screen: what the performers see, and a message for them only (the audience never sees it). Since Session 55
+ * (Part 15) the message as the old program had its own: its size, a flash as it comes up, Show on every stage screen
+ * and Hide, and the last few a tap away; and a timer for the audience, started, shown and hidden here too.
+ */
 export function StageMessageControl() {
   const shown = useEngine((s) => s.state?.stageMessage ?? null);
   const recent = useEngine((s) => s.state?.stageRecent) ?? NO_RECENT;
