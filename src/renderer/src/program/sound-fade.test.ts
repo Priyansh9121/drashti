@@ -14,8 +14,15 @@ const h = vi.hoisted(() => ({
   sounds: [] as Sound[],
   started: [] as {
     key: string;
-    options: { limits?: unknown; ease?: () => unknown };
+    el: { dataset: Record<string, string> };
+    options: {
+      limits?: unknown;
+      ease?: () => unknown;
+      timing?: () => { seek?: { at: number; toMs: number; paused?: boolean } };
+    };
   }[],
+  /** Every delay the stream's graph made, as its value is set. */
+  delays: [] as { value: number }[],
   /** Each resync (a move the engine sent: a cue's Go), with what its player's ease said just then. */
   resyncs: [] as { key: string; ease: unknown }[],
 }));
@@ -25,9 +32,12 @@ vi.mock('../audio/sounds', () => ({
   videoSoundGain: () => 1,
 }));
 vi.mock('../render/playback', () => ({
-  startPlayback: (el: { dataset: Record<string, string> }, options: { ease?: () => unknown }) => {
+  startPlayback: (
+    el: { dataset: Record<string, string> },
+    options: (typeof h.started)[number]['options'],
+  ) => {
     const key = el.dataset['key'] ?? '';
-    h.started.push({ key, options });
+    h.started.push({ key, el, options });
     return Object.assign(() => undefined, {
       resync: () => h.resyncs.push({ key, ease: options.ease?.() ?? null }),
     });
@@ -49,7 +59,14 @@ class GeneratedContext extends EventTarget {
     return { ...this.node(), gain: { value: 1, setTargetAtTime: () => undefined } };
   }
   createDelay() {
-    return { ...this.node(), delayTime: { value: 0, setValueAtTime: () => undefined } };
+    const delayTime = {
+      value: 0,
+      setValueAtTime(v: number) {
+        delayTime.value = v;
+      },
+    };
+    h.delays.push(delayTime);
+    return { ...this.node(), delayTime };
   }
   createAnalyser() {
     return { ...this.node(), fftSize: 2048 };
@@ -75,6 +92,7 @@ afterEach(() => {
   h.sounds = [];
   h.started = [];
   h.resyncs = [];
+  h.delays = [];
 });
 
 it('the stream’s own sounds ease by speed exactly while they carry their crossfade envelope, through the cue’s Go (QA22-FADE-1)', async () => {
@@ -229,4 +247,94 @@ it('eases only inside a real crossfade: never for a manual Go’s 0 ms pair, nor
   vi.advanceTimersByTime(1000);
   expect(ease(green.key), 'the outgoing sound after its fade’s end').toBeNull();
   expect(ease(yellow.key), 'the incoming sound after its fade’s end').toBeNull();
+});
+
+it('starts a crossfade’s incoming sound at the fade’s own moment, not when a late timer comes (QA23-FADE-4)', async () => {
+  // CI's two-core Windows (a22-fade-1124-103850-84620 and -84601): the crossfade's Go reached the stream's sound page
+  // 47-124 ms before the fade, but the timer that was to start the incoming sound at that moment fired 34-228 ms late,
+  // so it began the fade up to 0.2 s behind. Now its player starts it as the Go arrives, aimed that far ahead, and its
+  // sound goes into the mix through a delay of just that much: heard from the fade's own moment, by the audio clock.
+  vi.useFakeTimers();
+  vi.stubGlobal('AudioContext', GeneratedContext);
+  vi.stubGlobal('document', {
+    body: { dataset: {}, append: () => undefined },
+    createElement: () => ({ dataset: {}, remove: () => undefined }),
+  });
+  const { StreamSound } = await import('./sound');
+  const sound = new StreamSound();
+  const show = { layers: {} } as unknown as EngineState;
+  const own = (id: string, startedAt: number, more: Partial<Sound> = {}): Sound => ({
+    key: `background:${id}@${String(startedAt)}`,
+    mediaId: id,
+    startedAt,
+    loop: true,
+    volume: 1,
+    kind: 'video',
+    ...more,
+  });
+  const pair = (at: number, durationMs: number) =>
+    ({
+      id: `generated cue ${String(at)}`,
+      from: { kind: 'media', media: 'video', mediaId: 'generated', startedAt: 1, loop: true, fit: 'fit' },
+      at,
+      durationMs,
+    }) as unknown as VideoCrossfade;
+  const prepared = (id: string, startedAt: number) =>
+    own(id, startedAt, {
+      cueId: `cue ${id}`,
+      prepared: true,
+      seek: { at: Date.now(), toMs: 0, paused: true },
+    });
+  const started = (s: Sound, envelope: Sound['envelope'], at: number): Sound => {
+    const { cueId: _cue, prepared: _prepared, ...rest } = s;
+    return { ...rest, seek: { at, toMs: 0 }, ...(envelope ? { envelope } : {}) };
+  };
+  const player = (key: string) => {
+    const p = h.started.find((s) => s.key === key);
+    if (!p) throw new Error(`${key} was not played`);
+    return p;
+  };
+  const go = (outgoing: Sound, incoming: Sound, fade: VideoCrossfade) => {
+    h.sounds = [outgoing, incoming];
+    sound.setOwnSound(true, show);
+    h.sounds = [
+      { ...outgoing, envelope: { fade, role: 'out' } },
+      started(incoming, { fade, role: 'in' }, fade.at),
+    ];
+    sound.setOwnSound(true, show);
+  };
+  // A crossfade whose Go reaches the page 120 ms before its moment.
+  const red = own('generated red', 1000);
+  const blue = prepared('generated blue', 2000);
+  const fade = pair(Date.now() + 120, 2000);
+  go(red, blue, fade);
+  expect(
+    player(blue.key).options.timing?.().seek?.at,
+    'the incoming player starts now, aimed 120 ms ahead',
+  ).toBe(fade.at - 120);
+  expect(player(blue.key).el.dataset['leadMs'], 'and says so').toBe('120');
+  expect(
+    h.delays.some((d) => Math.abs(d.value - 0.12) < 1e-9),
+    'its sound reaches the mix 0.12 s later: heard from the fade’s own moment',
+  ).toBe(true);
+  expect(player(red.key).el.dataset['leadMs'], 'the outgoing sound plays on as it was').toBeUndefined();
+  expect(player(red.key).options.timing?.().seek).toBeUndefined();
+  // Its lead stays with it: later moves are aimed that far ahead too, its delay unchanged.
+  vi.advanceTimersByTime(3000);
+  h.sounds = [{ ...started(blue, undefined, fade.at), seek: { at: Date.now(), toMs: 4000 } }];
+  sound.setOwnSound(true, show);
+  expect(player(blue.key).options.timing?.().seek).toEqual({ at: Date.now() - 120, toMs: 4000 });
+  // A Go that reaches the page after its moment, and a manual Go (no crossfade): started as before, no lead.
+  const green = own('generated green', 3000);
+  const yellow = prepared('generated yellow', 4000);
+  const late = pair(Date.now() - 50, 2000);
+  go(green, yellow, late);
+  expect(player(yellow.key).options.timing?.().seek?.at).toBe(late.at);
+  expect(player(yellow.key).el.dataset['leadMs']).toBeUndefined();
+  const white = own('generated white', 5000);
+  const black = prepared('generated black', 6000);
+  const manual = pair(Date.now() + 120, 0);
+  go(white, black, manual);
+  expect(player(black.key).options.timing?.().seek?.at).toBe(manual.at);
+  expect(player(black.key).el.dataset['leadMs']).toBeUndefined();
 });
