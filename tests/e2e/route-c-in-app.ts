@@ -13,6 +13,7 @@ import {
   windowShowing,
 } from './helpers';
 import { plainText, type PlacedSound } from './caption-clips';
+import { framesVerdict, meter } from './route-c-frames';
 
 /*
  * Route C inside Drashti (alpha.23, cap-realc; a22-review-cap S4), with no stand-in engine (no DRASHTI_TEST_SPEECH):
@@ -199,21 +200,6 @@ function loudSpan(levels: readonly { at: number; db: number }[], from: number, t
   const first = loud[0];
   const last = loud.at(-1);
   return first && last ? { first: first.at, last: last.at, reports: loud.length } : null;
-}
-
-/** A window of frames as the frame meters read them: the gaps' 95th percentile, the longest, those over 1.5 periods. */
-function meter(frames: readonly number[], from: number, to: number, period?: number) {
-  const inside = frames.filter((t) => t >= from && t <= to);
-  const gaps = inside.slice(1).map((t, i) => t - (inside[i] ?? t));
-  const sorted = [...gaps].sort((a, b) => a - b);
-  const median = period ?? sorted[Math.floor(sorted.length / 2)] ?? 0;
-  return {
-    frames: inside.length,
-    period: median,
-    p95: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0,
-    longest: sorted.at(-1) ?? 0,
-    over15: gaps.filter((g) => g > median * 1.5).length,
-  };
 }
 
 interface Reviewed {
@@ -528,14 +514,15 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       const settledAt = own[0]?.at ?? soundAskedAt + sound.endMs + o.gapMs;
       return meter(all, soundAskedAt + sound.speechStartMs, settledAt + 500, controls[0]?.period);
     });
-    const worse = (t: ReturnType<typeof meter>, c: ReturnType<typeof meter>) =>
-      t.p95 - c.p95 > 1 || t.longest - c.longest > 1 || t.over15 > c.over15;
     summary['controls'] = controls;
     summary['trials'] = trials;
+    summary['framesWorse'] = framesVerdict(process.platform, trials, controls).worse;
     await say();
     for (const c of controls) expect(c.frames, 'a control window drew').toBeGreaterThan(30);
+    // The owner (QA23-REALC-2): "Mac: log frames only (Rec.)": recorded above, judged everywhere but the Mac.
+    const verdict = framesVerdict(process.platform, trials, controls);
     expect(
-      trials.every((t) => controls.every((c) => worse(t, c))),
+      verdict.judged && verdict.worse,
       'the stream’s frames while Route C heard the sounds, no worse than with captions off',
     ).toBe(false);
   } catch (e) {
