@@ -322,7 +322,7 @@ const videoEdit = (win: Page, id: string): Promise<VideoEditResult> =>
   }, id);
 
 test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and says why it waits while a video plays', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(180_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-save-trimmed-e-'));
   const { app, win } = await start();
   try {
@@ -364,8 +364,10 @@ test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and 
     await expect(dialog.getByTestId('edit-video-status')).toHaveText('Preparing');
     await expect(dialog.getByTestId('edit-video-waiting')).toHaveText('Waiting: a video is playing');
     // Main holds it, not only the dialog's words (the save-trim review's SHOULD-4): its record stays Preparing for twice
-    // as long as the save with nothing holding it took here (at least 5 s; the test's time allows for 60 s).
+    // as long as the save with nothing holding it took here (at least 5 s, at most 60 s). The test's time grows by that
+    // hold alone: every other step keeps the 180 s it had.
     const heldMs = Math.min(60_000, Math.max(5_000, 2 * unheldMs));
+    test.setTimeout(180_000 + heldMs);
     await holdStill(
       async () => {
         const held = await videoEdit(win, video);
