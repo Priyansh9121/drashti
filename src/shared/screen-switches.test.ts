@@ -13,6 +13,7 @@ import {
   stageDevicesPaired,
   stageOffHint,
   stageScreensSet,
+  stageTabletsShowing,
   STARTS,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
@@ -245,6 +246,20 @@ describe('Audience and Stage (Session 50)', () => {
     expect(stageOffHint(0)).toBeNull();
     expect(stageOffHint(1)).toBe('the stage tablet shows the audience picture');
     expect(stageOffHint(2)).toBe('the stage tablets show the audience picture');
+  });
+
+  // a22-review-stage8, third look, SHOULD: a tablet that is not connected now shows nothing, so the status bar's hint
+  // counts only the stage tablets connected now (the Network on); the no-stage line still counts every paired one.
+  it('counts the stage tablets that show the audience picture now: connected, the Network on', () => {
+    const tablets = [
+      { kind: 'stage', poster: false, connected: true },
+      { kind: 'stage', poster: false, connected: false },
+      { kind: 'remote', poster: false, connected: true },
+      { kind: 'announcements', poster: true, connected: true },
+    ] as const;
+    expect(stageTabletsShowing({ on: true, devices: tablets })).toBe(1);
+    expect(stageTabletsShowing({ on: false, devices: tablets })).toBe(0);
+    expect(stageTabletsShowing({ on: true, devices: [tablets[1]] })).toBe(0);
   });
 
   // a22-review-stage8 S5 (lead 2's call): with the Network (phones and tablets) off, a tablet paired as Stage shows
