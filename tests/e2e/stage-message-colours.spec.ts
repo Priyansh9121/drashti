@@ -171,7 +171,7 @@ test('the stage message in the colours chosen, a preset or its own, on every sta
 });
 
 test('a stage message sent with no colours, from a paired phone, its Shown before or the API, shows the colours chosen on this computer (amber and black, its flash white, until others are); colours the API gives win', async () => {
-  test.setTimeout(180_000);
+  test.setTimeout(150_000);
   const { app } = await launchApp({ ...SCREENS, ...NETWORK_ENV });
   const win = await operatorPage(app);
   await operatorReady(win);
