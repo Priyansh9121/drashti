@@ -142,10 +142,8 @@ export class CaptionsService {
   private switch: CaptionsSwitch;
   private tuning: CaptionsTuning;
   private readonly models: LanguageModelStore;
-  /** A file being checked or added, per language (alpha.22). */
+  /** A language's model being checked whole again, per language (alpha.22). */
   private readonly checking = new Set<LanguageModelLanguage>();
-  /** Why a file was not added, per language, until the next change there (alpha.22). */
-  private readonly notices = new Map<LanguageModelLanguage, string>();
   private download: CaptionsDownload;
   private downloading: { controller: AbortController; promise: Promise<void> } | null = null;
   private streamInUse = false;
@@ -634,7 +632,6 @@ export class CaptionsService {
   setLanguageModel(language: LanguageModelLanguage, id: string | null): CaptionsStatus {
     if (!isLanguageModelLanguage(language)) return this.view();
     if (id !== null && !this.known(language).some((entry) => entry.id === id)) return this.view();
-    this.notices.delete(language);
     this.tooSlow = null;
     this.shownWhole = false;
     this.choose(language, id);
@@ -648,7 +645,6 @@ export class CaptionsService {
     const id = this.tuning.languageModels[language];
     const entry = this.known(language).find((e) => e.id === id);
     if (!entry) return this.view();
-    this.notices.delete(language);
     this.checking.add(language);
     this.tell();
     const result = await this.models.verify(entry).catch((): LanguageModelCheck => 'missing');
@@ -752,7 +748,6 @@ export class CaptionsService {
       here: this.models.check(entry) === 'ready',
     }));
     const own = this.ownModel(language);
-    const notice = this.notices.get(language) ?? null;
     const checking = this.checking.has(language);
     if (own === null)
       return {
@@ -760,14 +755,14 @@ export class CaptionsService {
         known,
         chosen: null,
         phase: checking ? 'checking' : 'general',
-        message: checking ? 'Checking the file…' : notice,
+        message: checking ? 'Checking the file…' : null,
       };
     return {
       language,
       known,
       chosen: this.tuning.languageModels[language] ?? null,
       phase: own.phase,
-      message: notice ?? (own.phase === 'ready' ? null : own.message),
+      message: own.phase === 'ready' ? null : own.message,
     };
   }
 
