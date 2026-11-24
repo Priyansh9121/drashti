@@ -21,7 +21,7 @@ import { emptyLayers, type MessageItem } from '../shared/engine/state';
 import { type Block, imagesOf, inlineText, parseMarkdown, passagesOf } from '../shared/markdown';
 import { PANEL_HELP, type PanelHelp } from '../shared/panel-help';
 import { GuideFiles, guidesDir } from './guides';
-import { escapeHtml, manualHtml, printRequestAllowed } from './manual-print';
+import { escapeHtml, manualHtml, pdfFooter, printRequestAllowed } from './manual-print';
 import { MANUAL_PDF_NAME, ManualPrinter, manualPage, readManual } from './manual-service';
 import { fileProblem } from './plain-errors';
 
@@ -371,6 +371,8 @@ describe('Print… and Save as PDF…', () => {
       print: (p) => {
         expect(p.kind).toBe('pdf');
         expect(p.html).toContain('<title>Drashti Manual</title>');
+        // Its own window title and footer (the printer is shared with a playlist's running order since alpha.22).
+        expect([p.title, p.footer]).toEqual(['Drashti Manual', 'Drashti Manual']);
         return Promise.resolve({ ok: true, pdf: Buffer.from('%PDF-placeholder') });
       },
       write: (file, data) => written.push({ file, size: data.length }),
@@ -422,6 +424,13 @@ describe('Print… and Save as PDF…', () => {
     );
     const failed = await printer.pdf();
     expect(messageOf(failed)).toBe('The manual was not made into a PDF: press Save as PDF… again.');
+  });
+
+  it('names its own page in the PDF’s footer, escaped, with the page number Chromium fills in', () => {
+    expect(pdfFooter('Drashti Manual')).toContain(
+      'Drashti Manual · page <span class="pageNumber"></span> of <span class="totalPages"></span>',
+    );
+    expect(pdfFooter('<b>Placeholder</b> & co')).toContain('&lt;b&gt;Placeholder&lt;/b&gt; &amp; co · page');
   });
 
   it('says what to do when the PDF cannot be written there', async () => {
