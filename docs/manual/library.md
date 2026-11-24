@@ -125,6 +125,8 @@ It is for preparing slides: read pages before the sabha, not while slides are ch
 3. **Delete…** asks first only when the file is on the screens or used.
 4. Press **Cmd+Z** (Ctrl+Z) to undo it.
 
+A presentation's menu in the library also has **Print words…** and **Save words as PDF…** (Pro Mode): a sheet for the singers with its words group by group (Verse, Chorus…), each slide's lines in its languages in its own order, and a kirtan's kavi and raag under its name. Use them when nothing is up, on air or recording.
+
 ![A playlist's right-click menu](../screenshots/share-with-phones.png)
 
 ## Media information
