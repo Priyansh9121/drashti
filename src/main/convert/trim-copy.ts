@@ -74,8 +74,10 @@ export function queueTrimCopy(conversions: Pick<ConvertService, 'saveCopy'>, inp
   const copy: CopyOptions = {
     args: (tmp) => trimCopyArgs(input, target, tmp, id),
     lengthMs: input.endMs - input.startMs,
-    // Only what plays, the stream or a recording holds a row's cut (alpha.22, shared/save-waits.ts).
+    // Only what plays, the stream or a recording holds a row's cut (alpha.22, shared/save-waits.ts). So it runs while the
+    // show is up: at a verified lowest priority, and stopped hard the moment a video starts, as Edit Video's Save is.
     waitForPlaying: true,
+    strictPriority: true,
     progress: input.progress,
     waiting: input.waiting,
   };

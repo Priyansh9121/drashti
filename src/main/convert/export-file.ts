@@ -31,8 +31,10 @@ export async function exportMediaFile(deps: ExportFileDeps, mediaId: string): Pr
   try {
     await copyFile(video.path, dest, constants.COPYFILE_EXCL);
     return { ok: true, path: dest };
-  } catch {
-    await rm(dest, { force: true }).catch(() => undefined);
+  } catch (error) {
+    // A file that came there meanwhile (EEXIST) is not ours to remove; only a part this copy made is.
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
+      await rm(dest, { force: true }).catch(() => undefined);
     return {
       ok: false,
       message:

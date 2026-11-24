@@ -349,7 +349,8 @@ export class PlaylistTrims {
 
   /**
    * The show, the stream or a recording changed. A finished copy can replace its row only after that row's video has
-   * come off; checking it, and carrying on the accepted cuts, stop while anything is up and go on once quiet.
+   * come off; checking it, and carrying on the accepted cuts, stop while a video or sound plays (alpha.22; the stream
+   * or a recording too) and go on once quiet.
    */
   activityChanged(): void {
     const quiet = this.deps.quiet();
@@ -692,8 +693,9 @@ export class PlaylistTrims {
   }
 
   /**
-   * Probe and hash a finished cut (Q57-7): only while nothing is up and the stream is neither on air nor recording,
-   * the bytes read off Main's thread. The show starting stops the check, and it goes again at the next quiet moment.
+   * Probe and hash a finished cut (Q57-7): only while nothing plays (alpha.22: a still or the Wallpaper up may) and the
+   * stream is neither on air nor recording, the bytes read off Main's thread. A video or sound starting stops the
+   * check, and it goes again at the next quiet moment.
    * Null once the cut is no longer pending.
    */
   private async checkWhenQuiet(
