@@ -13,6 +13,7 @@ import {
   writtenIn,
   type PcmSource,
 } from './whisper-engine';
+import { audioContextFor } from './whisper-context';
 
 /*
  * The captions engine's side of whisper.cpp's server (Part 10). The "server" here is a stand-in on 127.0.0.1 that
@@ -908,5 +909,105 @@ describe('the engine says when its program has gone (alpha.23: Route W lets the 
     expect(exited).toBe(2);
     stop();
     expect(exited).toBe(2);
+  });
+});
+
+describe('QWC-1: the audio context sized to the piece, fallback off (waits for the owner; CPU small models only)', () => {
+  /** The /inference form's fields in order: [name, value], the sound as "file:<name>:<type>:<bytes>". */
+  async function firstForm(o: {
+    sized?: boolean | undefined;
+    fallback: boolean;
+    timestamps?: boolean;
+    prompt?: string;
+  }): Promise<string[][]> {
+    const server = standIn();
+    const sound = bursts();
+    const forms: string[][][] = [];
+    const states: SpeechState[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => o.fallback,
+      ...(o.timestamps === undefined ? {} : { timestamps: () => o.timestamps ?? true }),
+      ...(o.sized === undefined ? {} : { sizedContext: () => o.sized ?? false }),
+      ...(o.prompt === undefined
+        ? {}
+        : { hints: { for: () => ({ words: [], prompt: o.prompt ?? '' }) } as never }),
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      stepMs: 3_000,
+      pauseMs: 200,
+      fetch: (url, options) => {
+        const body = options?.body;
+        if (body instanceof FormData)
+          forms.push(
+            [...body.entries()].map(([k, v]) =>
+              typeof v === 'string' ? [k, v] : [k, `file:${v.name}:${v.type}:${String(v.size)}`],
+            ),
+          );
+        return fetch(url, options);
+      },
+    });
+    stops.push(engine.start('hi', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    await sound.play(300, 500);
+    await waitFor(() => forms.length > 0);
+    return forms[0] ?? [];
+  }
+  const fileField = (form: string[][]): string[] => form.find(([k]) => k === 'file') ?? [];
+  const bytesOf = (form: string[][]): number => Number((fileField(form)[1] ?? '').split(':')[3]);
+
+  it("sends today's request exactly, field for field, when the context is not sized (left out, or false)", async () => {
+    for (const sized of [undefined, false]) {
+      const form = await firstForm({ sized, fallback: true });
+      expect(form.map(([k]) => k)).toEqual([
+        'file',
+        'response_format',
+        'temperature',
+        'language',
+        'no_language_probabilities',
+      ]);
+      expect(form.slice(1)).toEqual([
+        ['response_format', 'verbose_json'],
+        ['temperature', '0'],
+        ['language', 'hi'],
+        ['no_language_probabilities', 'true'],
+      ]);
+      expect(fileField(form)[1]).toMatch(/^file:clip\.wav:audio\/wav:\d+$/u);
+    }
+    // Every field today can send, still exactly as today when not sized.
+    const all = await firstForm({
+      sized: false,
+      fallback: false,
+      timestamps: false,
+      prompt: 'placeholder words',
+    });
+    expect(all.slice(1)).toEqual([
+      ['response_format', 'verbose_json'],
+      ['temperature', '0'],
+      ['temperature_inc', '0'],
+      ['no_timestamps', 'true'],
+      ['language', 'hi'],
+      ['no_language_probabilities', 'true'],
+      ['prompt', 'placeholder words'],
+    ]);
+  });
+
+  it('sized: the fallback off (temperature_inc 0, even where the model allows it) and audio_ctx sized to the piece, last', async () => {
+    const form = await firstForm({ sized: true, fallback: true });
+    expect(form.map(([k]) => k)).toEqual([
+      'file',
+      'response_format',
+      'temperature',
+      'temperature_inc',
+      'language',
+      'no_language_probabilities',
+      'audio_ctx',
+    ]);
+    expect(form.find(([k]) => k === 'temperature_inc')?.[1]).toBe('0');
+    const samples = (bytesOf(form) - 44) / 2;
+    expect(form.at(-1)).toEqual(['audio_ctx', String(audioContextFor(samples))]);
+    expect(Number(form.at(-1)?.[1])).toBe(512);
   });
 });
