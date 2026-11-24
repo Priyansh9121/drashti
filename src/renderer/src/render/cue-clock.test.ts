@@ -41,6 +41,54 @@ class Context extends EventTarget {
   }
 }
 
+/**
+ * A context as Chromium 152 runs one (audio_context.cc, AudioContextAsyncStateTransitions off; a22-review-cue2 M1):
+ * resume() starts the device and parks its promise; the device's first render posts a main-thread task that says
+ * 'running' while any resume is parked, whether or not the device still renders; suspend() stops the device whatever
+ * the state, and says 'suspended' only from 'running'; resume() on a context that says 'running' starts nothing.
+ */
+class Chromium152Context extends EventTarget {
+  state: AudioContextState = 'suspended';
+  /** Whether its device really renders. */
+  rendering = false;
+  made: Source[] = [];
+  private parked = 0;
+  private posted = false;
+  createMediaElementSource(): Source {
+    const source = new Source();
+    this.made.push(source);
+    return source;
+  }
+  resume(): Promise<void> {
+    if (this.state === 'running') return Promise.resolve();
+    this.rendering = true;
+    this.parked++;
+    return Promise.resolve();
+  }
+  suspend(): Promise<void> {
+    this.rendering = false;
+    if (this.state === 'running') {
+      this.state = 'suspended';
+      this.dispatchEvent(new Event('statechange'));
+    }
+    return Promise.resolve();
+  }
+  /** The audio thread's first quantum: posts the task that settles the parked resumes. */
+  firstRender(): void {
+    if (this.rendering && this.parked > 0) this.posted = true;
+  }
+  /** That task, on the main thread. */
+  runPostedTask(): void {
+    if (!this.posted) return;
+    this.posted = false;
+    if (this.parked > 0) {
+      this.parked = 0;
+      this.state = 'running';
+      this.dispatchEvent(new Event('statechange'));
+    }
+  }
+}
+
 class Element {
   muted = true;
   paused = true;
@@ -174,6 +222,30 @@ describe("the page's silent graph while it starts or rests (a21-review, a22-cue)
     context.start();
     expect(context.suspended).toBe(1);
     expect(v.muted).toBe(true);
+  });
+
+  it("routes the next cue only into a graph that really renders, after a cue cancelled as its graph's start finished (a22-review-cue2 M1)", () => {
+    const context = new Chromium152Context(),
+      first = new Element(),
+      next = new Element();
+    // The first cue wakes the resting graph: its device starts, and renders its first quantum, which posts the task
+    // that will say 'running'.
+    const stop = cueClock(first.media(), graphOf(context as unknown as Context));
+    context.firstRender();
+    // Cancelled before that task runs: the device stops and the graph still says 'suspended'.
+    stop();
+    expect(context.rendering).toBe(false);
+    // Then the task runs, and says 'running' though the device has stopped (Chromium 152 checks neither).
+    context.runPostedTask();
+    expect(context.state).toBe('running');
+    // The next cue on this page: its picture's sound must go only into a graph that renders, or the picture never
+    // moves at Go on this screen.
+    cueClock(next.media(), graphOf(context as unknown as Context));
+    expect(next.muted || context.rendering).toBe(true);
+    context.firstRender();
+    context.runPostedTask();
+    expect(context.rendering).toBe(true);
+    expect(next.muted).toBe(false);
   });
 
   it('is asked to run again by a new cue that comes while its rest is still on the way', () => {
