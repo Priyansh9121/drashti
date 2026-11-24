@@ -3,6 +3,7 @@ import { changePlaylistPlayOption } from './play-options';
 import { PlaylistFind, useRowFind } from './PlaylistFind';
 import { PlaylistTiming } from './PlaylistTiming';
 import { exportPlaylistFile } from './m3u-actions';
+import { copyRunningOrder, printRunningOrder } from './running-order-actions';
 import { useNotice } from '../operator/actions';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -1129,6 +1130,17 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                       label: 'Export as M3U…',
                       onSelect: () => void exportPlaylistFile(openId),
                       separatorBefore: true,
+                    },
+                    // Its running order (alpha.22): plain lines for the team's group chat, or on paper (refused while
+                    // the show is live, saying so: the main process decides).
+                    { label: 'Copy running order', onSelect: () => void copyRunningOrder(openId) },
+                    {
+                      label: 'Print running order…',
+                      onSelect: () => void printRunningOrder(openId, 'print'),
+                    },
+                    {
+                      label: 'Save running order as PDF…',
+                      onSelect: () => void printRunningOrder(openId, 'pdf'),
                     },
                   ]
                 : []),

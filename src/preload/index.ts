@@ -352,6 +352,8 @@ const bridge: DrashtiBridge = {
       invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
     exportPdf: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.exportPdf, presentationId, doc, stamp, pages),
+    printWords: (presentationId) => invoke(IPC.library.printWords, presentationId),
+    saveWordsPdf: (presentationId) => invoke(IPC.library.saveWordsPdf, presentationId),
     extractPdfPages: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.extractPdfPages, presentationId, doc, stamp, pages),
     showExtractedPdf: (id, visible) => invoke(IPC.library.showExtractedPdf, id, visible),
@@ -428,6 +430,9 @@ const bridge: DrashtiBridge = {
     setPlayOptions: (playlistId, options) => invoke(IPC.playlists.setPlayOptions, playlistId, options),
     importM3u: (audio, targetId) => invoke(IPC.playlists.importM3u, audio, targetId),
     exportM3u: (playlistId, audio) => invoke(IPC.playlists.exportM3u, playlistId, audio),
+    copyRunningOrder: (playlistId) => invoke(IPC.playlists.copyRunningOrder, playlistId),
+    printRunningOrder: (playlistId) => invoke(IPC.playlists.printRunningOrder, playlistId),
+    saveRunningOrderPdf: (playlistId) => invoke(IPC.playlists.saveRunningOrderPdf, playlistId),
 
     duplicate: (playlistId) => invoke(IPC.playlists.duplicate, playlistId),
     splitItem: (itemId, rest, alone, at) => invoke(IPC.playlists.splitItem, itemId, rest, alone, at),

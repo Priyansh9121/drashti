@@ -33,6 +33,8 @@ import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from '
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
+import type { RunningOrderCopied } from './running-order';
+import type { WordsPrinted } from './words-print';
 import type {
   ReportCopied,
   ReportDraft,
@@ -588,6 +590,9 @@ export interface DrashtiBridge {
     insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
     exportPdf(presentationId: string, doc: EditDoc, stamp: string, pages?: number[]): Promise<PdfCopyResult>;
+    /** A singers' sheet (alpha.22): the presentation's words printed, or saved as a PDF where the person chooses. */
+    printWords(presentationId: string): Promise<WordsPrinted>;
+    saveWordsPdf(presentationId: string): Promise<WordsPrinted>;
     extractPdfPages(
       presentationId: string,
       doc: EditDoc,
@@ -715,6 +720,12 @@ export interface DrashtiBridge {
     setPlayOptions(playlistId: string, options: PlaylistPlayOptions): Promise<PlaylistResult>;
     importM3u(audio: boolean, targetId: string | null): Promise<M3uResult>;
     exportM3u(playlistId: string, audio: boolean): Promise<M3uResult>;
+    /** Its running order (alpha.22) as plain lines on the clipboard: numbered rows, headers as sections, the total. */
+    copyRunningOrder(playlistId: string): Promise<RunningOrderCopied>;
+    /** Its running order through the system's print dialog, from a hidden window (never while the show is live). */
+    printRunningOrder(playlistId: string): Promise<ManualPrinted>;
+    /** Its running order saved as a PDF where the person chooses (the system's save dialog). */
+    saveRunningOrderPdf(playlistId: string): Promise<ManualPrinted>;
 
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;
