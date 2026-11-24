@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { TextElement, TextRun } from '../shared/model';
+import { WORDS_PRINT_REFUSED, type WordsPrinted, wordsPrintedText } from '../shared/words-print';
+import type { ContentRows } from './db/content';
 import { openDatabase } from './db/database';
 import { PresentationRepo, type NewPresentation } from './db/presentations';
 import { LYRICS_STYLE } from './import/formats/text';
-import { wordsFooter, wordsHtml, wordsPdfName, wordsSheet } from './words-print';
+import type { PrintOutcome } from './manual-print';
+import { fileProblem } from './plain-errors';
+import { WordsPrinter, wordsFooter, wordsHtml, wordsPdfName, wordsSheet } from './words-print';
 
 /*
  * A singers' sheet (alpha.22): a presentation's words by group, in its language tracks, with the kirtan's kavi and
@@ -223,5 +227,180 @@ describe('a singers’ sheet of a kirtan’s words', () => {
     expect(wordsPdfName('Placeholder Kirtan')).toBe('Placeholder Kirtan words.pdf');
     expect(wordsPdfName('Placeholder: a/b\\c*?"<>|')).toBe('Placeholder_ a_b_c______ words.pdf');
     expect(wordsPdfName('પહેલી')).toBe('પહેલી words.pdf');
+  });
+});
+
+describe('Print words… and Save words as PDF…', () => {
+  const kirtan = gujaratiKirtan();
+  const pictures = rowsOf({ groups: [{ name: 'Pictures', slides: [{ elements: [] }] }] });
+  const library: Record<string, { name: string; rows: ContentRows }> = {
+    k: { name: 'Placeholder Kirtan', rows: kirtan },
+    p: { name: 'Placeholder Pictures', rows: pictures },
+  };
+  type Printed = Parameters<NonNullable<ConstructorParameters<typeof WordsPrinter>[0]['print']>>[0];
+  const base = {
+    read: (id: string) => library[id] ?? null,
+    live: () => false,
+    tempDir: () => '/placeholder/tmp',
+    suggestedFolder: () => '/placeholder/Documents',
+    askWhere: () => Promise.resolve('/placeholder/Desktop/Words.pdf'),
+    print: (): Promise<PrintOutcome> => Promise.resolve({ ok: true, pdf: Buffer.from('%PDF-placeholder') }),
+    write: () => undefined,
+  };
+  const messageOf = (r: WordsPrinted) => (!r.ok && !r.cancelled ? r.message : null);
+
+  it('prints nothing, and asks nothing, while anything is up or the stream is on air or recording', async () => {
+    let asked = 0;
+    let printed = 0;
+    const printer = new WordsPrinter({
+      ...base,
+      live: () => true,
+      askWhere: () => {
+        asked++;
+        return Promise.resolve('/placeholder/a.pdf');
+      },
+      print: () => {
+        printed++;
+        return Promise.resolve({ ok: true, pdf: Buffer.from('%PDF-') });
+      },
+    });
+    expect(messageOf(await printer.pdf('k'))).toBe(WORDS_PRINT_REFUSED);
+    expect(messageOf(await printer.print('k'))).toBe(WORDS_PRINT_REFUSED);
+    expect([asked, printed]).toEqual([0, 0]);
+    expect(WORDS_PRINT_REFUSED).toBe(
+      'Print or save the words when nothing is up, on air or recording: clear what is up, and end the stream and the recording first.',
+    );
+  });
+
+  it('saves the sheet as a PDF where the person chose, suggesting “<name> words.pdf” in Documents, its name on every page', async () => {
+    const asked: string[] = [];
+    const jobs: Printed[] = [];
+    const written: { file: string; size: number }[] = [];
+    const printer = new WordsPrinter({
+      ...base,
+      askWhere: (suggested) => {
+        asked.push(suggested);
+        return Promise.resolve('/placeholder/Desktop/Words.pdf');
+      },
+      print: (p) => {
+        jobs.push(p);
+        return Promise.resolve({ ok: true, pdf: Buffer.from('%PDF-placeholder') });
+      },
+      write: (file, data) => written.push({ file, size: data.length }),
+    });
+    const result = await printer.pdf('k');
+    expect(result).toEqual({ ok: true, file: '/placeholder/Desktop/Words.pdf' });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.replace(/\\/gu, '/')).toBe('/placeholder/Documents/Placeholder Kirtan words.pdf');
+    expect(jobs).toHaveLength(1);
+    const job = jobs[0];
+    expect(job?.kind).toBe('pdf');
+    expect(job?.html).toBe(wordsHtml(must(wordsSheet('Placeholder Kirtan', kirtan))));
+    expect(job?.pictures).toEqual([]);
+    expect(job?.tempDir).toBe('/placeholder/tmp');
+    expect(job?.title).toBe('Placeholder Kirtan');
+    expect(job?.footer).toBe(wordsFooter('Placeholder Kirtan'));
+    expect(written).toEqual([{ file: '/placeholder/Desktop/Words.pdf', size: 16 }]);
+    expect(wordsPrintedText('Placeholder Kirtan', result)).toBe(
+      'Saved the words of “Placeholder Kirtan” as a PDF: Words.pdf, in Desktop.',
+    );
+  });
+
+  it('prints through the system’s print dialog, and says nothing when the person cancels either dialog', async () => {
+    const kinds: string[] = [];
+    const printer = new WordsPrinter({
+      ...base,
+      print: (p) => {
+        kinds.push(p.kind);
+        return Promise.resolve({ ok: true, pdf: null });
+      },
+    });
+    const printed = await printer.print('k');
+    expect(printed).toEqual({ ok: true, file: null });
+    expect(kinds).toEqual(['print']);
+    expect(wordsPrintedText('Placeholder Kirtan', printed)).toBe('The words of “Placeholder Kirtan” went to the printer.');
+    const leftPrint = new WordsPrinter({
+      ...base,
+      print: () => Promise.resolve({ ok: false, cancelled: true, why: 'cancelled' }),
+    });
+    const left = await leftPrint.print('k');
+    expect(left).toEqual({ ok: false, cancelled: true });
+    expect(wordsPrintedText('Placeholder Kirtan', left)).toBeNull();
+    let printedAfterCancel = 0;
+    const leftSave = new WordsPrinter({
+      ...base,
+      askWhere: () => Promise.resolve(null),
+      print: () => {
+        printedAfterCancel++;
+        return Promise.resolve({ ok: true, pdf: Buffer.from('%PDF-') });
+      },
+    });
+    expect(await leftSave.pdf('k')).toEqual({ ok: false, cancelled: true });
+    expect(printedAfterCancel).toBe(0);
+  });
+
+  it('says why when there are no words, the presentation is gone, or the printer or the drive fails', async () => {
+    let asked = 0;
+    const printer = new WordsPrinter({
+      ...base,
+      askWhere: () => {
+        asked++;
+        return Promise.resolve('/placeholder/a.pdf');
+      },
+    });
+    expect(messageOf(await printer.pdf('p'))).toBe(
+      '“Placeholder Pictures” has no words to print: none of its slides that play has any.',
+    );
+    expect(messageOf(await printer.print('p'))).toBe(
+      '“Placeholder Pictures” has no words to print: none of its slides that play has any.',
+    );
+    expect(asked).toBe(0);
+    expect(messageOf(await printer.pdf('gone'))).toBe('That presentation is no longer in the library.');
+    expect(messageOf(await printer.print('gone'))).toBe('That presentation is no longer in the library.');
+    const failing = new WordsPrinter({
+      ...base,
+      print: () => Promise.resolve({ ok: false, cancelled: false, why: 'no printer' }),
+    });
+    expect(messageOf(await failing.print('k'))).toBe(
+      'The words were not printed: check the printer is on and chosen, then press Print words… again.',
+    );
+    expect(messageOf(await failing.pdf('k'))).toBe(
+      'The words were not made into a PDF: press Save words as PDF… again.',
+    );
+    const throwing = new WordsPrinter({ ...base, print: () => Promise.reject(new Error('placeholder')) });
+    expect(messageOf(await throwing.pdf('k'))).toBe(
+      'The words were not made into a PDF: press Save words as PDF… again.',
+    );
+    const full = Object.assign(new Error('full'), { code: 'ENOSPC' });
+    const fullDrive = new WordsPrinter({
+      ...base,
+      write: () => {
+        throw full;
+      },
+    });
+    expect(messageOf(await fullDrive.pdf('k'))).toBe(fileProblem(full, 'write'));
+  });
+
+  it('prints one at a time: a second request while one is printing is told to wait', async () => {
+    let finish: (o: PrintOutcome) => void = () => undefined;
+    const printer = new WordsPrinter({
+      ...base,
+      print: () =>
+        new Promise<PrintOutcome>((resolve) => {
+          finish = resolve;
+        }),
+    });
+    const first = printer.print('k');
+    await Promise.resolve();
+    expect(messageOf(await printer.pdf('k'))).toBe(
+      'Something is being printed already: wait until that is done, then try again.',
+    );
+    finish({ ok: true, pdf: null });
+    expect(await first).toEqual({ ok: true, file: null });
+    // Then the next one goes.
+    const next = printer.print('k');
+    await Promise.resolve();
+    finish({ ok: true, pdf: null });
+    expect(await next).toEqual({ ok: true, file: null });
   });
 });
