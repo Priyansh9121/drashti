@@ -42,6 +42,5 @@ export function logLines(userData: string): string[] {
  * it in the order written, as logLines gives them.
  */
 export function logText(userData: string): string {
-  // Red: drashti.log alone, as the specs read it.
-  return readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  return logLines(userData).join('\n');
 }
