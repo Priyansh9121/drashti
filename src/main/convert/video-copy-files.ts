@@ -15,6 +15,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { Db } from '../db/database';
 import { isBusy } from '../db/later-writes';
 import { mediaInUse } from '../library/media-uses';
+import { isTaken } from '../library/media-taken';
 import { MediaStore } from '../import/media-store';
 import { hashOffMain } from '../library/hash-off-main';
 import { KEEP_FREE_BYTES } from './convert-service';
@@ -170,6 +171,8 @@ export async function registerProxyFile(options: {
  * - a row anything uses stays, with its file: an import can take a row up by its bytes without listing it (a deck's
  *   video kept as an editable document object, a kirtan bundle's link, Edit Video's copy), and running orders,
  *   wallpapers, slides and settings may then name it (library/media-uses.ts, the Trim cleanup's own checks);
+ * - a row taken up by its bytes in this run stays for the rest of it, as whoever took it may name it only later (a
+ *   deck's editor on Save, an edit's record: library/media-taken.ts); the next start's sweep may remove it if unused;
  * - a row goes only with its file: a file that cannot be removed (held open on Windows) keeps its row, so the next
  *   start finds it again; a file another row keeps stays;
  * - a row whose file is not inside Media's folder stays;
@@ -231,7 +234,8 @@ export async function discardUnlisted(options: {
           for (const row of rows) {
             const file = resolve(media, row.path);
             if (row.path === '' || !file.startsWith(`${media}${sep}`)) continue;
-            if (used.has(row.id) || edited.get({ id: row.id }) !== undefined) continue;
+            // Taken up by its bytes in this run (MediaStore handed it back): perhaps named only later (L-S1).
+            if (used.has(row.id) || isTaken(row.id) || edited.get({ id: row.id }) !== undefined) continue;
             try {
               // The row and its file together: a file that cannot be removed puts its row back (a savepoint).
               db.transaction(() => {
