@@ -65,6 +65,12 @@ export interface WhisperEngineOptions {
    * threads than these (cap-threads).
    */
   processors?: () => number;
+  /**
+   * Whether captions have shown a phrase whole since the operator last turned them on (the service's memory, across
+   * this engine's starts: a language change, a timing change, Route W's fresh engine; cap-review-threads MUST-1b). A
+   * computer that has kept up is never stopped. Left out: only this start's own phrases count.
+   */
+  keptUp?: () => boolean;
   spawn?: (program: string, args: string[]) => ChildProcess;
   fetch?: typeof fetch;
   /** How long to wait for the engine to load its model (the first start on a Mac also builds its GPU programs). */

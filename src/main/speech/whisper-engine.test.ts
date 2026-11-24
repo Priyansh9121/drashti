@@ -623,6 +623,41 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
     expect(warnings.at(-1)).toMatch(/stops trying/u);
   }, 45_000);
 
+  it('nor when it kept up before this start (cap-review-threads MUST-1b: a language change, then 3 rests before any whole phrase): a 4th start comes', async () => {
+    const server = standIn({ delayMs: 700 });
+    const sound = bursts();
+    const states: SpeechState[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      processors: () => 8,
+      // The service has shown a phrase whole since the operator turned captions on (before this start).
+      keptUp: () => true,
+      stepMs: 200,
+      pauseMs: 2_000,
+      restMs: 300,
+    });
+    stops.push(engine.start('gu', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
+    const held = () => states.filter((s) => s.phase === 'held');
+    const listened = (n: number) => () => states.filter((s) => s.phase === 'listening').length >= n;
+    for (let rest = 1; rest <= 3; rest += 1) {
+      await waitFor(listened(rest), 5_000);
+      await sound.play(3_500, 0);
+      await waitFor(() => held().length >= rest, 10_000);
+    }
+    expect(held().map((s) => s.slow)).toMatchObject([
+      { rests: 1, keptUp: true, stops: false },
+      { rests: 2, keptUp: true, stops: false },
+      { rests: 3, keptUp: true, stops: false },
+    ]);
+    await waitFor(listened(4), 5_000);
+    expect(server.spawned).toHaveLength(4);
+  }, 45_000);
+
   it('a computer that has kept up is never stopped by one long busy stretch (cap-review-threads MUST-1): a phrase heard whole, then 3 rests in a row, and a 4th start comes', async () => {
     const answer = { delayMs: 0 };
     const server = standIn(answer);

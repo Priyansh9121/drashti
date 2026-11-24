@@ -394,6 +394,11 @@ export class CaptionsService {
     });
   }
 
+  /** Whether captions have shown a phrase whole since the operator last turned them on (cap-review-threads MUST-1b). */
+  keptUp(): boolean {
+    return false;
+  }
+
   /** The switch on this computer, with why captions turned themselves off (or null). */
   private async switchTo(on: boolean, stopped: CaptionsStopped | null): Promise<CaptionsStatus> {
     this.tooSlow = stopped;

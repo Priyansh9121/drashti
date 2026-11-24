@@ -517,6 +517,33 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
     expect(service.view()).toMatchObject({ on: true, stopped: null });
   });
 
+  it('remember that they kept up (a phrase shown whole) across a language change; forget it when the operator turns them on, or on another model (cap-review-threads MUST-1b)', async () => {
+    const { service, say, getSettings } = setup();
+    service.start();
+    await service.setOn(true);
+    expect(service.keptUp()).toBe(false);
+    say('alpha beta');
+    expect(service.keptUp()).toBe(true);
+    // File › Speaker's Language: listening starts again in that language, and still they have kept up.
+    service.setSettings({ ...getSettings(), language: 'hi' });
+    service.setSettings({ ...getSettings(), language: 'auto' });
+    expect(service.keptUp()).toBe(true);
+    await service.setOn(false);
+    expect(service.keptUp()).toBe(true);
+    // Turned on by the operator: a fresh start.
+    await service.setOn(true);
+    expect(service.keptUp()).toBe(false);
+    say('gamma delta');
+    expect(service.keptUp()).toBe(true);
+    // A language's own model chosen, or another model: what kept up before says nothing about it.
+    service.setLanguageModel('gu', null);
+    expect(service.keptUp()).toBe(false);
+    say('gamma delta', 's2');
+    expect(service.keptUp()).toBe(true);
+    await service.setModel('turbo');
+    expect(service.keptUp()).toBe(false);
+  });
+
   it('a lighter model chosen after the stop clears the reason; the switch stays Off (cap-review-threads n2)', async () => {
     const { service, state } = setup();
     service.start();
