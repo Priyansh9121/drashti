@@ -155,3 +155,78 @@ it('the stream’s own sounds ease by speed exactly while they carry their cross
   sound.setOwnSound(true, show);
   expect(ease(waiting.key), 'the incoming sound after its fade: as before').toBeNull();
 });
+
+it('eases only inside a real crossfade: never for a manual Go’s 0 ms pair, nor once its fade is over (a22-review-fade M1)', async () => {
+  // The engine also makes a 0 ms pair at every manual Go from a playing video (show-engine.ts goVideoCue), and a pair
+  // stays on the sound page until its take-away gets there (up to ~0.6 s on CI's two-core Windows). Eased then, an
+  // ordinary Go's late start lost its re-aim and stayed 0.05-0.17 s off for ~7 s; a real fade kept 8% past its end.
+  vi.useFakeTimers();
+  vi.stubGlobal('AudioContext', GeneratedContext);
+  vi.stubGlobal('document', {
+    body: { dataset: {}, append: () => undefined },
+    createElement: () => ({ dataset: {}, remove: () => undefined }),
+  });
+  const { StreamSound } = await import('./sound');
+  const sound = new StreamSound();
+  const show = { layers: {} } as unknown as EngineState;
+  const own = (id: string, startedAt: number, more: Partial<Sound> = {}): Sound => ({
+    key: `background:${id}@${String(startedAt)}`,
+    mediaId: id,
+    startedAt,
+    loop: true,
+    volume: 1,
+    kind: 'video',
+    ...more,
+  });
+  const pair = (at: number, durationMs: number) =>
+    ({
+      id: `generated cue ${String(at)}`,
+      from: { kind: 'media', media: 'video', mediaId: 'generated', startedAt: 1, loop: true, fit: 'fit' },
+      at,
+      durationMs,
+    }) as unknown as VideoCrossfade;
+  const ease = (key: string) => h.started.find((s) => s.key === key)?.options.ease?.() ?? null;
+  const prepared = (id: string, startedAt: number) =>
+    own(id, startedAt, {
+      cueId: `cue ${id}`,
+      prepared: true,
+      seek: { at: Date.now(), toMs: 0, paused: true },
+    });
+  const started = (s: Sound, envelope: Sound['envelope'], at: number): Sound => {
+    const { cueId: _cue, prepared: _prepared, ...rest } = s;
+    return { ...rest, seek: { at, toMs: 0 }, ...(envelope ? { envelope } : {}) };
+  };
+  // A manual Go from a playing video: a 0 ms pair, still carried a moment after it.
+  const red = own('generated red', 1000);
+  const blue = prepared('generated blue', 2000);
+  h.sounds = [red, blue];
+  sound.setOwnSound(true, show);
+  const go = pair(Date.now() + 120, 0);
+  h.sounds = [
+    own('generated red', 1000, { envelope: { fade: go, role: 'out' } }),
+    started(blue, { fade: go, role: 'in' }, go.at),
+  ];
+  sound.setOwnSound(true, show);
+  for (const ms of [0, 120, 400]) {
+    vi.advanceTimersByTime(ms === 0 ? 0 : ms - (ms === 400 ? 120 : 0));
+    expect(ease(red.key), `the outgoing sound at a manual Go, ${String(ms)} ms on`).toBeNull();
+    expect(ease(blue.key), `the incoming sound at a manual Go, ${String(ms)} ms on`).toBeNull();
+  }
+  // A real 2 s crossfade: eased through it, and not once it is over, though its envelope is still carried.
+  const green = own('generated green', 3000);
+  const yellow = prepared('generated yellow', 4000);
+  h.sounds = [green, yellow];
+  sound.setOwnSound(true, show);
+  const fade = pair(Date.now() + 120, 2000);
+  h.sounds = [
+    own('generated green', 3000, { envelope: { fade, role: 'out' } }),
+    started(yellow, { fade, role: 'in' }, fade.at),
+  ];
+  sound.setOwnSound(true, show);
+  vi.advanceTimersByTime(1120);
+  expect(ease(green.key), 'the outgoing sound inside its fade').toEqual(FADE_SOUND_LIMITS);
+  expect(ease(yellow.key), 'the incoming sound inside its fade').toEqual(FADE_SOUND_LIMITS);
+  vi.advanceTimersByTime(1000);
+  expect(ease(green.key), 'the outgoing sound after its fade’s end').toBeNull();
+  expect(ease(yellow.key), 'the incoming sound after its fade’s end').toBeNull();
+});
