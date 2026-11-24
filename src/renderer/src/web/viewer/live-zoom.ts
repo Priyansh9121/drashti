@@ -36,7 +36,8 @@ export interface ZoomFrame {
    * page cropped with Crop page… keeps its pictures' boxes on the whole page, and the screens show only the crop, so
    * the middle shown is that of the part of the frame inside the crop (shownMiddle): for a page shown as its picture,
    * the crop's own (the slide's, and in the canvas the canvas's, which centres it). Left out otherwise, and for a
-   * picture all inside the crop.
+   * picture all inside the crop. A picture with a crop of its own (a22-zoomcrop) is zoomed in the whole picture it
+   * is cut from and shows in its frame: the middle of what shows of its frame, always.
    */
   middle?: { x: number; y: number };
   turn?: FrameTurn;
@@ -51,6 +52,11 @@ export interface FrameTurn {
   flipY?: boolean;
   /** What the phone draws, its width over its height: a turn keeps the picture's shape, not its fractions. */
   aspect: number;
+  /**
+   * The middle it is turned about, in fractions of what the phone draws, where that is not the box's own: for a
+   * picture with a crop of its own, its frame's middle (the box being the whole picture); left out otherwise.
+   */
+  about?: { x: number; y: number };
 }
 
 export const FULL_FRAME: ZoomFrame = { x: 0, y: 0, width: 1, height: 1 };
@@ -224,11 +230,21 @@ function intoFrame(
   if (!turn) return { x: dx / fw, y: dy / fh };
   const a = turn.aspect > 0 ? turn.aspect : 1;
   const { cos, sin } = turning(turn.rotation);
-  // In heights of what the phone draws, both ways, so that turning keeps lengths.
-  const vx = dx * a;
-  const x = vx * cos + dy * sin;
-  const y = -vx * sin + dy * cos;
-  return { x: (turn.flipX ? -x : x) / (fw * a), y: (turn.flipY ? -y : y) / fh };
+  if (!turn.about) {
+    // In heights of what the phone draws, both ways, so that turning keeps lengths.
+    const vx = dx * a;
+    const x = vx * cos + dy * sin;
+    const y = -vx * sin + dy * cos;
+    return { x: (turn.flipX ? -x : x) / (fw * a), y: (turn.flipY ? -y : y) / fh };
+  }
+  // Turned about its frame's middle (a picture with a crop of its own): from there, then from the box's middle.
+  const sx = turn.about.x - (frame.x + fw / 2);
+  const sy = turn.about.y - (frame.y + fh / 2);
+  const vx = (dx - sx) * a;
+  const vy = dy - sy;
+  const x = vx * cos + vy * sin;
+  const y = -vx * sin + vy * cos;
+  return { x: ((turn.flipX ? -x : x) + sx * a) / (fw * a), y: ((turn.flipY ? -y : y) + sy) / fh };
 }
 
 /** The other way: a point in the frame's own widths and heights, from its middle, in fractions of what is drawn. */
@@ -237,16 +253,52 @@ function outOfFrame(x: number, y: number, frame: ZoomFrame): { x: number; y: num
   if (!turn) return { x: x * frame.width, y: y * frame.height };
   const a = turn.aspect > 0 ? turn.aspect : 1;
   const { cos, sin } = turning(turn.rotation);
-  const lx = (turn.flipX ? -x : x) * frame.width * a;
-  const ly = (turn.flipY ? -y : y) * frame.height;
-  return { x: (lx * cos - ly * sin) / a, y: lx * sin + ly * cos };
+  if (!turn.about) {
+    const lx = (turn.flipX ? -x : x) * frame.width * a;
+    const ly = (turn.flipY ? -y : y) * frame.height;
+    return { x: (lx * cos - ly * sin) / a, y: lx * sin + ly * cos };
+  }
+  const sx = turn.about.x - (frame.x + frame.width / 2);
+  const sy = turn.about.y - (frame.y + frame.height / 2);
+  const ux = x * frame.width * a - sx * a;
+  const uy = y * frame.height - sy;
+  const lx = turn.flipX ? -ux : ux;
+  const ly = turn.flipY ? -uy : uy;
+  return { x: (lx * cos - ly * sin) / a + sx, y: lx * sin + ly * cos + sy };
+}
+
+/**
+ * The box the screens zoom a slide's picture in, in its slide's pixels before its turn (moved by a cropped page's
+ * crop, `origin`): its frame; with a crop of its own, the whole picture the crop is cut from, placed so that the crop
+ * fills the frame (render/SlideView.tsx SlidePicture), and then its frame's middle (`own`): what the screens show of
+ * it, and what it is turned about.
+ */
+function zoomBox(
+  element: SlideElement,
+  origin: { x: number; y: number },
+): { box: Rect; own?: { x: number; y: number } } {
+  const x = element.frame.x - origin.x;
+  const y = element.frame.y - origin.y;
+  const crop = element.kind === 'image' ? element.crop : undefined;
+  if (!crop || crop.width <= 0 || crop.height <= 0)
+    return { box: { x, y, width: element.frame.width, height: element.frame.height } };
+  const width = element.frame.width / crop.width;
+  const height = element.frame.height / crop.height;
+  return {
+    box: { x: x - crop.x * width, y: y - crop.y * height, width, height },
+    own: { x: x + element.frame.width / 2, y: y + element.frame.height / 2 },
+  };
 }
 
 /**
  * How a slide's picture is turned and flipped (render/SlideView.tsx frameStyle), for its frame in what the phone
  * draws, `aspect` wide for each of its heights; nothing for neither, so its frame is as it was before.
  */
-function turnOf(element: SlideElement, aspect: number): { turn?: FrameTurn } {
+function turnOf(
+  element: SlideElement,
+  aspect: number,
+  about?: { x: number; y: number },
+): { turn?: FrameTurn } {
   const rotation = (((element.rotation ?? 0) % 360) + 360) % 360;
   if (rotation === 0 && !element.flipX && !element.flipY) return {};
   return {
@@ -255,6 +307,7 @@ function turnOf(element: SlideElement, aspect: number): { turn?: FrameTurn } {
       ...(element.flipX ? { flipX: true } : {}),
       ...(element.flipY ? { flipY: true } : {}),
       aspect,
+      ...(about ? { about } : {}),
     },
   };
 }
@@ -288,23 +341,27 @@ export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFram
   const shown = slide.slide.pageCrop
     ? shownMiddle(asDrawn(inSlide(element.frame, origin), element.rotation), slide.slide)
     : null;
+  const { box, own } = zoomBox(element, origin);
+  const at = (q: { x: number; y: number }) => ({
+    x: (p.x + q.x * p.scaleX) / canvas.width,
+    y: (p.y + q.y * p.scaleY) / canvas.height,
+  });
+  // A picture with its own crop shows in its frame, not its box: always the middle of what shows of the frame.
+  const owned = own && shown === null ? own : null;
   return {
-    x: (p.x + (element.frame.x - origin.x) * p.scaleX) / canvas.width,
-    y: (p.y + (element.frame.y - origin.y) * p.scaleY) / canvas.height,
-    width: (element.frame.width * p.scaleX) / canvas.width,
-    height: (element.frame.height * p.scaleY) / canvas.height,
+    x: (p.x + box.x * p.scaleX) / canvas.width,
+    y: (p.y + box.y * p.scaleY) / canvas.height,
+    width: (box.width * p.scaleX) / canvas.width,
+    height: (box.height * p.scaleY) / canvas.height,
     // The fit centres the crop in the canvas.
     ...(shown === 'slide'
       ? { middle: { x: 0.5, y: 0.5 } }
       : shown
-        ? {
-            middle: {
-              x: (p.x + shown.x * p.scaleX) / canvas.width,
-              y: (p.y + shown.y * p.scaleY) / canvas.height,
-            },
-          }
-        : {}),
-    ...turnOf(element, canvas.width / canvas.height),
+        ? { middle: at(shown) }
+        : owned
+          ? { middle: at(owned) }
+          : {}),
+    ...turnOf(element, canvas.width / canvas.height, own && at(own)),
   };
 }
 
@@ -325,17 +382,23 @@ export function frameInSlide(state: EngineState | null): ZoomFrame | null {
   const shown = slide.slide.pageCrop
     ? shownMiddle(asDrawn(inSlide(element.frame, origin), element.rotation), slide.slide)
     : null;
+  const { box, own } = zoomBox(element, origin);
+  const at = (q: { x: number; y: number }) => ({ x: q.x / width, y: q.y / height });
+  // A picture with its own crop shows in its frame, not its box: always the middle of what shows of the frame.
+  const owned = own && shown === null ? own : null;
   return {
-    x: (element.frame.x - origin.x) / width,
-    y: (element.frame.y - origin.y) / height,
-    width: element.frame.width / width,
-    height: element.frame.height / height,
+    x: box.x / width,
+    y: box.y / height,
+    width: box.width / width,
+    height: box.height / height,
     ...(shown === 'slide'
       ? { middle: { x: 0.5, y: 0.5 } }
       : shown
-        ? { middle: { x: shown.x / width, y: shown.y / height } }
-        : {}),
-    ...turnOf(element, width / height),
+        ? { middle: at(shown) }
+        : owned
+          ? { middle: at(owned) }
+          : {}),
+    ...turnOf(element, width / height, own && at(own)),
   };
 }
 
