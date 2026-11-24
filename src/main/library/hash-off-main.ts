@@ -63,7 +63,7 @@ export function hashOffMain(
         resolve({ sha256: found.sha256, bytes: found.bytes });
       } else told?.(found.read);
     });
-    worker.once('error', (error) => {
+    worker.once('error', (error: Error) => {
       over = true;
       reject(error);
     });
