@@ -793,7 +793,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
 function PreparationWaits() {
   const state = useEngine((s) => s.state);
   const status = useStream((s) => s.status);
-  const [, redraw] = useState(0);
+  const [drawn, redraw] = useState(0);
   const now = engineNow();
   const why = saveWaitsFor(
     state,
@@ -805,6 +805,7 @@ function PreparationWaits() {
   );
   const endsAt = saveWaitEndsAt(state, now);
   useEffect(() => {
+    // Drawn again at that end, and again after (a timer that came a moment early waits again: `drawn`).
     if (endsAt === null) return;
     const timer = setTimeout(
       () => {
@@ -815,7 +816,7 @@ function PreparationWaits() {
     return () => {
       clearTimeout(timer);
     };
-  }, [endsAt]);
+  }, [endsAt, drawn]);
   return (
     <p className="text-xs text-muted" data-testid="edit-video-waiting">
       {why ?? 'Preparation waits only while a video or a sound plays, or the stream is on air or recording.'}

@@ -1,5 +1,6 @@
+import { stepTiming } from './deck-show';
 import { type Playing, playingNow } from './engine/playing';
-import type { EngineState } from './engine/state';
+import { type EngineState, videoSeek } from './engine/state';
 import { playbackSpanMs } from './media';
 
 /*
@@ -16,34 +17,119 @@ import { playbackSpanMs } from './media';
  * its end point. It may stay up there with nothing changing on LIVE: When it ends → Freeze keeps its last picture, as
  * does no wallpaper chosen, or a slide or the box over it. Until alpha.23 it held a save for good, saying "Waiting: a
  * video is playing" over a still picture. One whose length is not known yet still holds it (the safe side).
+ *
+ * a22-review-trimsave (MUST-1, SHOULD-3): what plays on the hall beside the time bar's list holds a save too, by the
+ * same end point: a slide's own sound or a deck's soundtrack over the operator's sound (audio.over; until now covered
+ * only by accident, by the sound under it counting for good), a deck's transition sound as its slide comes in, and the
+ * clip of the deck's step showing. A file's sound set to come later than its picture (Sound and picture…) holds it
+ * until the sound has played out.
  */
 
 /**
- * How long past its end point a video or a sound still holds a save (ms). The engine's own end comes at that moment
- * (When it ends → Next item or the wallpaper, an audio playlist's next track): a save begun in between would be
- * stopped again at once by what comes next.
+ * How long past its end point a video or a sound still holds a save (ms). The engine's own end comes at that very
+ * moment (When it ends → Next item, an audio playlist's next track): a save begun in the instant before it would be
+ * stopped again at once by what comes next. It also covers a sound player or a node a moment behind the engine.
  */
 export const END_SETTLE_MS = 1000;
 
+/** How much later than its picture a file's sound comes (ms, Sound and picture…; never less than none). */
+function soundLater(state: EngineState, mediaId: string): number {
+  const delays = state.sound?.delays;
+  const delay = delays && Object.hasOwn(delays, mediaId) ? delays[mediaId] : undefined;
+  return delay !== undefined && Number.isFinite(delay) ? Math.max(0, delay) : 0;
+}
+
 /**
  * When a video or a sound plays to its end point by itself (ms, the engine's clock), as shared/media.ts playbackAtMs
- * has it on every screen; null when it never does: paused, going round, or its length not known yet.
+ * has it on every screen, and its sound after it when set to come later; null when it never does: paused, going
+ * round, or its length not known yet.
  */
-function endsAt(p: Playing): number | null {
+function endsAt(state: EngineState, p: Playing): number | null {
   if (p.paused || p.clock.loop || p.clock.pausedAtMs !== undefined) return null;
   const length = p.durationMs;
   if (length === undefined || !Number.isFinite(length) || length <= 0) return null;
   const { start, end } = playbackSpanMs(p.clock.clip, length);
   const seek = p.clock.seek;
   const from = seek ? Math.min(end, Math.max(start, seek.toMs)) : start;
-  return (seek ? seek.at : p.clock.startedAt) + (end - from);
+  return (seek ? seek.at : p.clock.startedAt) + (end - from) + soundLater(state, p.mediaId);
 }
 
-/** What plays on LIVE now, unpaused and not yet past its end point (and the moment after it). */
+/** A sound as the time bar would have it, for one it does not list. */
+const soundPlaying = (
+  ref: Playing['ref'],
+  mediaId: string,
+  clock: Playing['clock'],
+  durationMs: number | undefined,
+  paused: boolean,
+): Playing => ({
+  ref,
+  mediaId,
+  clock,
+  durationMs,
+  marks: [],
+  track: false,
+  paused,
+  sound: true,
+});
+
+/**
+ * What plays on the hall beside the time bar's list (a22-review-trimsave MUST-1, SHOULD-3), each as the bar would
+ * have it, so the same end point holds a save while it plays and never longer.
+ */
+function besideTheBar(state: EngineState): Playing[] {
+  const found: Playing[] = [];
+  // A slide's own sound or a deck's soundtrack over the operator's sound: the audio player plays it whatever the sound
+  // under it does (ended, paused, between tracks), as shared/sound.ts overPlaysAt has it.
+  const over = state.layers.audio?.over;
+  if (over?.mediaId)
+    found.push(
+      soundPlaying(
+        { layer: 'audio' },
+        over.mediaId,
+        over,
+        over.durationMs,
+        over.pausedAtMs !== undefined || over.seek?.paused === true,
+      ),
+    );
+  const slide = state.layers.slide;
+  if (!slide) return found;
+  // Its deck's transition sound, once, as the slide comes in, from when the engine stamped it (audio/sounds.ts): none
+  // when Drashti's own transition came instead, or after a jump.
+  const chime = slide.slide.deck?.transition?.soundId;
+  const rang = chime ? videoSeek(slide.seeks, chime) : undefined;
+  if (chime && rang && !rang.waiting)
+    found.push(
+      soundPlaying(
+        { layer: 'slide', mediaId: chime },
+        chime,
+        { startedAt: slide.shownAt, loop: false, seek: rang },
+        state.videoFiles?.[chime]?.durationMs,
+        rang.paused === true,
+      ),
+    );
+  // The deck's step showing: its clip plays from its click on every screen (shared/deck-show.ts stepTiming), then its
+  // last frame stays. A step come back to shows that frame at once. Its loop while it waits for the next click (holdId)
+  // goes round for as long as the step is up: the slide's own motion, as a slide's transitions and animations are
+  // (alpha.22), so it holds no save.
+  const timing = stepTiming(slide);
+  if (timing && !timing.still && timing.step.clipMs > 0)
+    found.push({
+      ref: { layer: 'slide', mediaId: timing.step.clipId },
+      mediaId: timing.step.clipId,
+      clock: { startedAt: timing.clipAt, loop: false },
+      durationMs: timing.step.clipMs,
+      marks: [],
+      track: false,
+      paused: false,
+    });
+  return found;
+}
+
+/** What plays on the hall now, unpaused and not yet past its end point (and the moment after it). */
 function stillPlaying(state: EngineState, now: number): Playing[] {
-  return playingNow(state).filter((p) => {
+  return [...playingNow(state), ...besideTheBar(state)].filter((p) => {
     if (p.paused) return false;
-    const ends = endsAt(p);
+    const ends = endsAt(state, p);
     return ends === null || now < ends + END_SETTLE_MS;
   });
 }
@@ -94,7 +180,7 @@ export function saveWaitEndsAt(state: EngineState | null | undefined, now: numbe
   if (!state) return null;
   let soonest: number | null = null;
   for (const p of stillPlaying(state, now)) {
-    const ends = endsAt(p);
+    const ends = endsAt(state, p);
     if (ends === null) continue;
     const at = ends + END_SETTLE_MS;
     if (soonest === null || at < soonest) soonest = at;

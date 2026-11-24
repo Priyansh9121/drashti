@@ -168,6 +168,10 @@ export function elementVideos(state: Pick<EngineState, 'layers'>): string[] {
   // across slides has the sound's own).
   for (const m of state.layers.slide?.slide.deck?.media ?? [])
     if (m.kind === 'audio' && !playsAcross(m)) ids.add(m.mediaId);
+  // Its deck's transition sound (alpha.23, a22-review-trimsave SHOULD-3): no bar of its own, but a save waits while it
+  // plays (shared/save-waits.ts), by its length.
+  const chime = state.layers.slide?.slide.deck?.transition?.soundId;
+  if (chime) ids.add(chime);
   const box = state.layers.pip?.source;
   if (box?.kind === 'media' && box.media === 'video') ids.add(box.mediaId);
   return [...ids];
