@@ -57,7 +57,7 @@ describe('caption AI’s real recogniser on CI', () => {
   });
 
   it('the fetch has its own ten minutes and runs in bash on both systems', () => {
-    const fetches = real.filter((s) => /run: node scripts\/fetch-caption-models\.mjs --cache /u.test(s));
+    const fetches = real.filter((s) => /node scripts\/fetch-caption-models\.mjs --cache /u.test(s));
     expect(fetches.length).toBeGreaterThanOrEqual(1);
     for (const step of fetches) {
       expect(step, nameOf(step)).toContain('\n        timeout-minutes: 10\n');

@@ -43,8 +43,8 @@ export interface RouteCInApp {
   sounds: readonly PlacedSound[];
   leadMs: number;
   gapMs: number;
-  /** What was heard of a sound (its settled phrases joined) is right: fails the test if not; its numbers for the report. */
-  heard: (sound: PlacedSound, heard: string) => Record<string, unknown>;
+  /** Whether what was heard of a sound (its settled phrases joined) is right, and its numbers for the report. */
+  heard: (sound: PlacedSound, heard: string) => { ok: boolean; numbers: Record<string, unknown> };
 }
 
 interface Helper {
@@ -228,6 +228,17 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     DRASHTI_TEST_FAKE_DEVICES: '1',
     DRASHTI_TEST_FAKE_SOUND_FILE: o.wav,
   });
+  // The run's numbers (times, counts, frame meters and ids, never words), in the CI log and attached, as far as the
+  // run got: written again as each part is known, so a failure keeps them (S3).
+  const started = Date.now();
+  const summary: Record<string, unknown> = { model: o.model };
+  const say = async (): Promise<void> => {
+    console.log(`${o.name}: ${JSON.stringify(summary)}`);
+    await test.info().attach(`${o.name}.json`, {
+      body: JSON.stringify(summary, null, 2),
+      contentType: 'application/json',
+    });
+  };
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -326,6 +337,8 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       timeout: 60_000,
     });
     const listeningAt = Date.now();
+    summary['soundOnAfterMs'] = soundOnAt - soundAskedAt;
+    summary['listeningAfterMs'] = listeningAt - soundAskedAt;
     // Route C listened a second before the first sound could begin (the file began at soundAskedAt at the earliest).
     expect(listeningAt + 1_000, 'listening a second before the first sound').toBeLessThan(
       soundAskedAt + first.speechStartMs,
@@ -344,7 +357,7 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       .poll(
         async () =>
           (await reviewed()).some((r) => r.status === 'settled' && r.at >= soundAskedAt + last.speechStartMs),
-        { timeout: o.leadMs + last.endMs + o.gapMs + 30_000 },
+        { timeout: last.endMs + o.gapMs + 30_000 },
       )
       .toBe(true);
     // The last one a moment to reach the places (each draws a settled phrase within the live limit, or fails).
@@ -355,6 +368,8 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     );
 
     const review = await reviewed();
+    summary['reviewed'] = review.length;
+    summary['heardBeforeFirstSound'] = review.filter((r) => r.at < soundAskedAt + first.speechStartMs).length;
     // Nothing heard in the file's silence before its first sound: a beep, or a sound other than the file, would be.
     expect(
       review.filter((r) => r.at < soundAskedAt + first.speechStartMs).length,
@@ -365,7 +380,14 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       if (r.status === 'settled' && !settled.has(r.phraseId))
         settled.set(r.phraseId, { at: r.at, text: r.text });
     const phrases = [...settled.values()];
+    // Every sound's numbers first (S3: kept even when one fails), then its checks.
     const report: Record<string, unknown>[] = [];
+    const checks: {
+      sound: string;
+      phrases: number;
+      heardOk: boolean;
+      shown: Record<string, number | null>;
+    }[] = [];
     for (const [i, sound] of o.sounds.entries()) {
       const next = o.sounds[i + 1];
       // A phrase is this sound's when it settled after the sound began (the file at its earliest) and before the next.
@@ -373,28 +395,39 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
         (p) =>
           p.at >= soundAskedAt + sound.speechStartMs && (!next || p.at < soundAskedAt + next.speechStartMs),
       );
-      expect(own.length, `${sound.id}: a settled phrase`).toBeGreaterThan(0);
       const finalText = own.at(-1)?.text ?? '';
-      const row: Record<string, unknown> = {
-        sound: sound.id,
-        phrases: own.length,
-        ...o.heard(sound, own.map((p) => p.text).join(' ')),
-      };
+      const heard = own.length
+        ? o.heard(sound, own.map((p) => p.text).join(' '))
+        : { ok: false, numbers: {} };
+      const row: Record<string, unknown> = { sound: sound.id, phrases: own.length, ...heard.numbers };
+      const shown: Record<string, number | null> = {};
       for (const [name, drawn] of watched) {
-        const shown = (await drawn()).find(
-          (d) => d.at >= soundAskedAt + sound.startMs && plainText(d.text) === plainText(finalText),
-        );
-        expect(shown, `${sound.id}: its settled phrase on the ${name}`).toBeDefined();
-        // From the end of the sound to its settled phrase on that place: the file began no earlier than soundAskedAt,
-        // so this is never less than the truth; soundOnAt gives the least it could be.
-        const latest = (shown?.at ?? 0) - (soundAskedAt + sound.speechEndMs);
-        row[`${name}Ms`] = Math.round(latest);
-        row[`${name}AtLeastMs`] = Math.round((shown?.at ?? 0) - (soundOnAt + sound.speechEndMs));
-        expect(latest, `${sound.id} on the ${name}: within the live limit`).toBeLessThanOrEqual(
+        // The words of its settled phrase on that place (the first time they were drawn after the sound began).
+        const at = own.length
+          ? ((await drawn()).find(
+              (d) => d.at >= soundAskedAt + sound.startMs && plainText(d.text) === plainText(finalText),
+            )?.at ?? null)
+          : null;
+        // From the end of the sound to its words on that place: the file began no earlier than soundAskedAt, so this
+        // is never less than the truth; soundOnAt gives the least it could be.
+        shown[name] = at === null ? null : at - (soundAskedAt + sound.speechEndMs);
+        row[`${name}Ms`] = at === null ? null : Math.round(at - (soundAskedAt + sound.speechEndMs));
+        row[`${name}AtLeastMs`] = at === null ? null : Math.round(at - (soundOnAt + sound.speechEndMs));
+      }
+      report.push(row);
+      checks.push({ sound: sound.id, phrases: own.length, heardOk: heard.ok, shown });
+    }
+    summary['sounds'] = report;
+    await say();
+    for (const c of checks) {
+      expect(c.phrases, `${c.sound}: a settled phrase`).toBeGreaterThan(0);
+      expect(c.heardOk, `${c.sound}: what was heard`).toBe(true);
+      for (const [name, latest] of Object.entries(c.shown)) {
+        expect(latest, `${c.sound}: its settled phrase on the ${name}`).not.toBeNull();
+        expect(latest ?? Infinity, `${c.sound} on the ${name}: within the live limit`).toBeLessThanOrEqual(
           LIVE_LIMIT_MS,
         );
       }
-      report.push(row);
     }
 
     // Off: the helper stops first, then the pack is let go (removable), never the other way round.
@@ -435,25 +468,18 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     });
     const worse = (t: ReturnType<typeof meter>, c: ReturnType<typeof meter>) =>
       t.p95 - c.p95 > 1 || t.longest - c.longest > 1 || t.over15 > c.over15;
-    const summary = {
-      model: o.model,
-      soundOnAfterMs: soundOnAt - soundAskedAt,
-      listeningAfterMs: listeningAt - soundAskedAt,
-      sounds: report,
-      controls,
-      trials,
-    };
-    // In the CI log too (times, counts and ids, never words), for the report's real numbers.
-    console.log(`${o.name}: ${JSON.stringify(summary)}`);
-    await test.info().attach(`${o.name}.json`, {
-      body: JSON.stringify(summary, null, 2),
-      contentType: 'application/json',
-    });
+    summary['controls'] = controls;
+    summary['trials'] = trials;
+    await say();
     for (const c of controls) expect(c.frames, 'a control window drew').toBeGreaterThan(30);
     expect(
       trials.every((t) => controls.every((c) => worse(t, c))),
       'the stream’s frames while Route C heard the sounds, no worse than with captions off',
     ).toBe(false);
+  } catch (e) {
+    summary['failedAfterMs'] = Date.now() - started;
+    await say();
+    throw e;
   } finally {
     await app.close();
   }

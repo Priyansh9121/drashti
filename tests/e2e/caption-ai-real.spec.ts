@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -16,7 +16,9 @@ import { routeCInTheApp } from './route-c-in-app';
  * SHA-256 pinned; never in git or an installer); this spec only reads the fetched copy, never downloading, and fails
  * (never skips) where it is not there. The parts leave it out
  * (playwright.config.ts): CI runs it in a step of its own with DRASHTI_E2E_REAL_CAPTIONS=1 (ci.yml, "End-to-end and
- * installers"). Nothing here needs today's Whisper engine: Route C is the only recogniser this test asks for.
+ * installers", runs asked by hand only: never on a push, so the release gate never downloads them). Route C is the only
+ * recogniser this test asks for; until cap-next's fix, captions start only where Whisper's program is present (CI
+ * fetches it), nothing else of it is used.
  */
 
 /** Silence before the first clip: the stream's frames are measured, then Route C starts listening, within it. */
@@ -87,8 +89,7 @@ for (const route of ROUTES) {
         if (!clip) throw new Error(`No clip ${sound.id}`);
         // Against the words as written, or as they may fairly be written (a time in digits): the closer.
         const cer = Math.min(...[clip.text, ...clip.also].map((said) => characterErrorRate(said, heard)));
-        expect(cer, `${sound.id}: what was heard (CER)`).toBeLessThanOrEqual(CER_LIMIT);
-        return { cer: Number(cer.toFixed(3)) };
+        return { ok: cer <= CER_LIMIT, numbers: { cer: Number(cer.toFixed(3)) } };
       },
     });
   });

@@ -246,28 +246,38 @@ jobs:
           done
           echo "$failed of ${REPEAT:-1} runs failed"
           [ "$failed" -eq 0 ]
-      # Route C inside the app with no stand-in (alpha.23, cap-realc; lead 2's QR-2 A): tests/e2e/caption-ai-chain.spec.ts
-      # (the generated test model) and caption-ai-real.spec.ts (alpha.22's two caption packs, from their pinned zips and
-      # checked by SHA-256 by scripts/fetch-caption-models.mjs; never in git or an installer), with the live captions
-      # engine here too. The parts leave both out (playwright.config.ts): they run here once per system, after part 1,
-      # or in a quick check that names them.
-      - name: Fetch the live captions engine (Route C in the app)
-        if: env.QUICK != 'true' || contains(inputs.specs, 'caption-ai-chain') || contains(inputs.specs, 'caption-ai-real')
+      # Route C inside the app with no stand-in (alpha.23, cap-realc; lead 2's QR-2 A): caption-ai-chain.spec.ts (the
+      # generated test model) and caption-ai-real.spec.ts (alpha.22's two caption packs, 354 MB from their own prerelease
+      # page, pinned by SHA-256 in scripts/fetch-caption-models.mjs; never in git or an installer). The parts leave both
+      # out (playwright.config.ts). A quick check naming them runs them in its own step below, after what they need here;
+      # a full run, after the installers are uploaded (further down). The packs are fetched, and the real spec run, only
+      # in a run asked by hand (workflow_dispatch), never on a push: the release gate never downloads them (the release
+      # lead's decision A, 24 Nov 2026; src/main/release-checks/route-c-workflow.test.ts). Whisper's program is here
+      # too: until cap-next's fix, captions start only where it is.
+      - name: The live captions engine (a quick check naming Route C in the app)
+        if: env.QUICK == 'true' && (contains(inputs.specs, 'caption-ai-chain') || contains(inputs.specs, 'caption-ai-real'))
         run: node scripts/fetch-whisper.mjs
-      - name: Cache the caption packs (caption AI's real recogniser)
-        if: env.QUICK != 'true' || contains(inputs.specs, 'caption-ai-real')
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: The caption packs' pinned SHA-256s (a quick check naming caption-ai-real)
+        id: quick-packs-pin
+        if: github.event_name == 'workflow_dispatch' && env.QUICK == 'true' && contains(inputs.specs, 'caption-ai-real')
+        shell: bash
+        run: >-
+          echo "sha256=$(node scripts/fetch-caption-models.mjs --sha256 pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
+          | tr '\n' '-')" >> "$GITHUB_OUTPUT"
+      - name: Restore the caption packs (a quick check naming caption-ai-real)
+        id: quick-packs-cache
+        if: github.event_name == 'workflow_dispatch' && env.QUICK == 'true' && contains(inputs.specs, 'caption-ai-real')
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/drashti-caption-models
-          key: caption-models-${{ hashFiles('scripts/fetch-caption-models.mjs') }}
-      - name: Fetch the caption packs (caption AI's real recogniser)
-        if: env.QUICK != 'true' || contains(inputs.specs, 'caption-ai-real')
-        run: node scripts/fetch-caption-models.mjs --cache ~/.cache/drashti-caption-models pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
-      - name: Route C in the app (the generated test model, then alpha.22's packs; generated sound as the stream's input)
-        if: env.QUICK != 'true'
-        env:
-          DRASHTI_E2E_REAL_CAPTIONS: '1'
-        run: pnpm exec playwright test tests/e2e/caption-ai-chain.spec.ts tests/e2e/caption-ai-real.spec.ts
+          key: caption-packs-${{ runner.os }}-${{ steps.quick-packs-pin.outputs.sha256 }}
+      - name: Fetch the caption packs (a quick check naming caption-ai-real)
+        if: github.event_name == 'workflow_dispatch' && env.QUICK == 'true' && contains(inputs.specs, 'caption-ai-real')
+        timeout-minutes: 10
+        shell: bash
+        run: >-
+          node scripts/fetch-caption-models.mjs --cache ~/.cache/drashti-caption-models
+          pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
       - name: End-to-end quick check (the specs named, or the screenshots)
         if: env.QUICK == 'true' && (inputs.specs != '' || inputs.screenshots)
         shell: bash
@@ -362,6 +372,49 @@ jobs:
             release/*/*.exe
           if-no-files-found: error
           retention-days: 7
+      # Route C inside the app in a full run (see above): after the installers, so a fetch that fails or a slow phrase
+      # never hides them. The generated test model's chain on every full run; alpha.22's packs only in one asked by hand.
+      - name: The caption packs' pinned SHA-256s (caption AI's real recogniser, a run asked by hand)
+        id: packs-pin
+        if: github.event_name == 'workflow_dispatch' && env.QUICK != 'true'
+        shell: bash
+        run: >-
+          echo "sha256=$(node scripts/fetch-caption-models.mjs --sha256 pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
+          | tr '\n' '-')" >> "$GITHUB_OUTPUT"
+      - name: Restore the caption packs (caption AI's real recogniser, a run asked by hand)
+        id: packs-cache
+        if: github.event_name == 'workflow_dispatch' && env.QUICK != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti-caption-models
+          key: caption-packs-${{ runner.os }}-${{ steps.packs-pin.outputs.sha256 }}
+      - name: Fetch the caption packs (caption AI's real recogniser, a run asked by hand)
+        if: github.event_name == 'workflow_dispatch' && env.QUICK != 'true'
+        timeout-minutes: 10
+        shell: bash
+        run: >-
+          node scripts/fetch-caption-models.mjs --cache ~/.cache/drashti-caption-models
+          pack-gu-indicconformer-int8 pack-hi-indicconformer-int8
+      - name: Save the caption packs (a run asked by hand on main or phase1)
+        if: >-
+          github.event_name == 'workflow_dispatch' && env.QUICK != 'true' && steps.packs-cache.outputs.cache-hit != 'true' &&
+          (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti-caption-models
+          key: caption-packs-${{ runner.os }}-${{ steps.packs-pin.outputs.sha256 }}
+      - name: Route C in the app, the generated test model (generated sound as the stream's input)
+        if: env.QUICK != 'true'
+        env:
+          DRASHTI_E2E_REAL_CAPTIONS: '1'
+          PLAYWRIGHT_HTML_REPORT: playwright-report/route-c-chain
+        run: pnpm exec playwright test tests/e2e/caption-ai-chain.spec.ts
+      - name: Route C in the app, alpha.22's caption packs (generated speech as the stream's input; a run asked by hand)
+        if: github.event_name == 'workflow_dispatch' && env.QUICK != 'true'
+        env:
+          DRASHTI_E2E_REAL_CAPTIONS: '1'
+          PLAYWRIGHT_HTML_REPORT: playwright-report/route-c-real
+        run: pnpm exec playwright test tests/e2e/caption-ai-real.spec.ts
       # A failed test keeps its Drashti's crash files in its folder (Session 39: tests/e2e/helpers.ts; a
       # passing test's folder is removed, playwright.config.ts). The report is public, and a crash file
       # holds the process's memory: this job's environment holds no secret (README, "When Drashti crashes

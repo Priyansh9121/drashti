@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeIndicFixture } from '../../scripts/indic-fixture.mjs';
@@ -55,9 +55,6 @@ test('Route C’s whole chain in the app with the generated test model: each ton
     sounds,
     leadMs: LEAD_MS,
     gapMs: GAP_MS,
-    heard: (burst, heard) => {
-      expect(heard, `${burst.id}: the generated graph’s phrase`).toBe(HEARD);
-      return {};
-    },
+    heard: (_burst, heard) => ({ ok: heard === HEARD, numbers: { asHeard: heard === HEARD } }),
   });
 });
