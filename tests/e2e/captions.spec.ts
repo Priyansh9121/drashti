@@ -175,7 +175,7 @@ test('captions resting because the computer cannot keep up say so in the status 
     await line.getByRole('button', { name: 'Live Captions…' }).click();
     await expect(dialog).toBeVisible();
     await expect(dialog.getByTestId('captions-state')).toHaveText(
-      /^Resting: this computer could not keep up with live captions \(an answer took 9\.1 seconds, with 2 engine threads\)/u,
+      /^Resting: this computer could not keep up with live captions \(3 answers in a row took over 2\.2 seconds each, the last 9\.1 seconds, with 2 engine threads\)/u,
     );
 
     // Off: the line goes. On again: it rests again, and says so again.

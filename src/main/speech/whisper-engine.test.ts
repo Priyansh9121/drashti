@@ -362,6 +362,8 @@ describe('the captions engine (Part 10)', () => {
       slow: {
         answerMs: expect.any(Number) as number,
         behindMs: expect.any(Number) as number,
+        // An answer slower than this (1.5 times its 200 ms step) counted as slow (cap-review-threads n4).
+        limitMs: 300,
         threads: 4,
         processors: 8,
         rests: 1,

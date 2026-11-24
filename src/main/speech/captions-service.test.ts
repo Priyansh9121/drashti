@@ -507,7 +507,16 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
   const rest = (rests: number, stops = false): SpeechState => ({
     phase: 'held',
     reason: 'busy',
-    slow: { answerMs: 15_500, behindMs: 16_000, threads: 2, processors: 2, rests, keptUp: false, stops },
+    slow: {
+      answerMs: 15_500,
+      behindMs: 16_000,
+      limitMs: 2_250,
+      threads: 2,
+      processors: 2,
+      rests,
+      keptUp: false,
+      stops,
+    },
   });
 
   it('after 3 rests in a row captions stop: off on this computer with the reason, the engine stopped; on again tries again', async () => {

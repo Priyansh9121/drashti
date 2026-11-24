@@ -69,6 +69,7 @@ describe('captions that stop as too slow, when Off cannot be saved (cap-review-t
         slow: {
           answerMs: 15_500,
           behindMs: 16_000,
+          limitMs: 2_250,
           threads: 2,
           processors: 2,
           rests: 3,
