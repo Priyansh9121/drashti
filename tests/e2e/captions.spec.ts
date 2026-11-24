@@ -141,6 +141,120 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
 });
 
 /**
+ * Captions resting because the computer cannot keep up (cap-threads: today's Standard on CI's two-core Windows showed
+ * nothing at all). Never silence: DRASHTI_TEST_SPEECH_HOLD makes the stand-in rest after its first phrase, as a
+ * computer too slow for its model does (placeholder numbers). With the dialog closed, the status bar says so, and its
+ * Live Captions… opens the dialog, which says what was measured; off, the line goes. Simple Mode shows the line too,
+ * without the button (the dialog is Pro Mode's).
+ */
+test('captions resting because the computer cannot keep up say so in the status bar, and the dialog says what was measured', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ ...NO_PLACEHOLDERS, ...SPEECH, DRASHTI_TEST_SPEECH_HOLD: '1' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const line = win.getByTestId('captions-warning');
+    await expect(line).toHaveCount(0);
+
+    // Turned on, then the dialog closed: the operator watches the show, not the dialog.
+    await chooseMenuItem(app, 'live-captions');
+    const dialog = win.getByTestId('captions-dialog');
+    await dialog.getByTestId('captions-on').click();
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(line).toHaveText('Captions are resting: this computer cannot keep up.Live Captions…', {
+      timeout: 15_000,
+    });
+    await expectFits(
+      win.getByRole('contentinfo', { name: 'Status' }),
+      'the status bar with captions resting',
+    );
+    await expectNoSeriousA11yIssues(win, 'Captions resting, in the status bar');
+
+    // Its button opens the dialog, which says what was measured.
+    await line.getByRole('button', { name: 'Live Captions…' }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId('captions-state')).toHaveText(
+      /^Resting: this computer could not keep up with live captions \(an answer took 9\.1 seconds, with 2 engine threads\)/u,
+    );
+
+    // Off: the line goes. On again: it rests again, and says so again.
+    await dialog.getByTestId('captions-on').click();
+    await expect(dialog.getByTestId('captions-state')).toHaveText('Off on this computer.');
+    await expect(line).toHaveCount(0);
+    await dialog.getByTestId('captions-on').click();
+    await expect(line).toContainText('Captions are resting: this computer cannot keep up.', {
+      timeout: 15_000,
+    });
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+
+    // Simple Mode: the same line, without the button.
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
+    await expect
+      .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode()))
+      .toBe('simple');
+    await expect(line).toHaveText('Captions are resting: this computer cannot keep up.');
+    await expect(line.getByRole('button')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+/**
+ * A computer too slow for live captions (cap-threads, the owner: "Say so and stop"): after 3 rests in a row captions
+ * stop. DRASHTI_TEST_SPEECH_HOLD=3 makes the stand-in's rest the third in a row (placeholder numbers). The switch shows
+ * Off, the dialog says this computer is too slow for live captions with this model and, Gujarati chosen, points to its
+ * IndicConformer model pack; the status bar says so too, with the dialog closed. On again, captions try again.
+ */
+test('after 3 rests in a row captions stop: the switch shows Off, and the dialog and the status bar say this computer is too slow, with the Gujarati pack named', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ ...NO_PLACEHOLDERS, ...SPEECH, DRASHTI_TEST_SPEECH_HOLD: '3' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await chooseMenuItem(app, 'live-captions');
+    const dialog = win.getByTestId('captions-dialog');
+    await dialog.getByTestId('captions-language').selectOption('gu');
+    await dialog.getByTestId('captions-on').click();
+
+    // Stopped by itself: Off, with the reason and the Gujarati pack.
+    const toggle = dialog.getByTestId('captions-on');
+    await expect(toggle).toHaveAttribute('aria-checked', 'false', { timeout: 15_000 });
+    const state = dialog.getByTestId('captions-state');
+    await expect(state).toHaveText(/^Off: this computer is too slow for live captions with this model\./u);
+    await expect(state).toContainText('the Gujarati IndicConformer model pack');
+    await expect(state).toContainText('Turn captions on to try again.');
+    await expectFits(dialog, 'the Live captions dialog, stopped as too slow');
+    await expectNoSeriousA11yIssues(win, 'Live captions stopped as too slow');
+
+    // The status bar says it too, with the dialog closed.
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    const line = win.getByTestId('captions-warning');
+    await expect(line).toHaveText(
+      'Captions stopped: this computer is too slow for live captions with this model.Live Captions…',
+    );
+
+    // On again: they try again (and the stand-in stops them again). Each change the dialog is told, from here on.
+    await win.evaluate(() => {
+      const g = globalThis as PageGlobals & { captionsOn?: boolean[] };
+      g.captionsOn = [];
+      g.drashti.captions.onChanged((view) => g.captionsOn?.push(view.on));
+    });
+    await line.getByRole('button', { name: 'Live Captions…' }).click();
+    await toggle.click();
+    await expect
+      .poll(() => win.evaluate(() => (globalThis as { captionsOn?: boolean[] }).captionsOn ?? []), {
+        timeout: 15_000,
+      })
+      .toContain(true);
+    await expect(toggle).toHaveAttribute('aria-checked', 'false', { timeout: 15_000 });
+    await expect(state).toContainText('Turn captions on to try again.');
+  } finally {
+    await app.close();
+  }
+});
+
+/**
  * A model per language, the speaker's language and live timing (alpha.22, cap-whisper). The test switch
  * DRASHTI_TEST_SPEECH_MODELS lists one placeholder Gujarati "model" (generated bytes, never a real model) by its
  * size and SHA-256, as Drashti's own list will once the owner approves a file; the stand-in engine still hears.

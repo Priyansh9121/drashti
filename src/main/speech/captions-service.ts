@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import {
   CAPTION_MODELS,
   isLanguageModelLanguage,
@@ -12,9 +13,10 @@ import {
   type CaptionsDownload,
   type CaptionsShown,
   type CaptionsStatus,
+  type CaptionsStopped,
 } from '../../shared/captions';
 import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
-import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
+import type { Heard, SlowHold, SpeechLanguage, SpeechState } from '../../shared/speech';
 import type { CaptionRecognizer } from './caption-routes';
 import {
   chooseCaptionPath,
@@ -91,6 +93,8 @@ export interface CaptionsServiceDeps {
   log: { info(message: string): void; warn(message: string): void };
   /** The language models on this computer (alpha.22; main/speech/language-models.ts). None known when left out. */
   languageModels?: LanguageModelStore;
+  /** This computer's logical processors (os.availableParallelism; a test may say), for the dialog (cap-threads). */
+  processors?: () => number;
 }
 
 const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
@@ -118,6 +122,15 @@ const NO_LANGUAGE_MODELS: LanguageModelStore = {
 
 export class CaptionsService {
   readonly hub: SpeechHubControl;
+  /** Why captions turned themselves off (cap-threads), until they are turned on again. */
+  private tooSlow: CaptionsStopped | null = null;
+  /**
+   * A phrase shown whole since the operator last turned captions on, with this model (MUST-1b): kept across the
+   * engine's own starts (a language or timing change, Route W's fresh engine), so a computer that has kept up is never
+   * stopped as too slow. Forgotten when the operator turns captions on, and on another model.
+   */
+  private shownWhole = false;
+  private stoppingTooSlow = false;
   private readonly feed: CaptionsFeed;
   /** Today's feed or caption AI's flow, when caption AI is wired in (null: today's feed alone). */
   private readonly paths: CaptionPaths | null;
@@ -219,7 +232,10 @@ export class CaptionsService {
     const today = createCaptionsFeed({
       hub: this.hub,
       show: deps.show,
-      onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+      onFinalPhrase: (phrase) => {
+        this.shownWhole = true;
+        deps.onFinalPhrase?.(phrase);
+      },
       settings: () => this.settings(),
     });
     const ai = deps.aiPath;
@@ -230,7 +246,10 @@ export class CaptionsService {
             hub: this.hub,
             coordinator: ai.coordinator,
             ...(ai.spelling ? { spelling: ai.spelling } : {}),
-            onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+            onFinalPhrase: (phrase) => {
+              this.shownWhole = true;
+              deps.onFinalPhrase?.(phrase);
+            },
           }),
           () => this.useAi(),
           () => {
@@ -240,7 +259,9 @@ export class CaptionsService {
         )
       : null;
     this.feed = this.paths ?? today;
-    this.hub.onState(() => {
+    this.hub.onState((s) => {
+      // The owner (cap-threads, Q-CT-1): "Say so and stop". The engine's own decision turns captions off (review n5).
+      if (s.phase === 'held' && s.reason === 'busy' && s.slow?.stops === true) this.stopTooSlow(s.slow);
       this.tell();
     });
     this.download = this.modelState();
@@ -350,6 +371,8 @@ export class CaptionsService {
       trial: true,
       languageModels: LANGUAGE_MODEL_LANGUAGES.map((language) => this.languageModelView(language)),
       timing: this.tuning.timing,
+      processors: (this.deps.processors ?? availableParallelism)(),
+      stopped: this.tooSlow,
     };
   }
 
@@ -360,9 +383,51 @@ export class CaptionsService {
   }
 
   async setOn(on: boolean): Promise<CaptionsStatus> {
+    return this.switchTo(on, null);
+  }
+
+  /**
+   * This computer rested CAPTIONS_STOP_AFTER_RESTS times in a row, never having kept up since it started, too slow
+   * for live captions with the model (cap-threads): captions turn off on this computer, as the switch does (the engine
+   * stopped, so Route W gives its pack's file back), Off saved as the switch saves it, with the reason kept for the
+   * dialog and the status bar until they are turned on again or another model is chosen (never on disk).
+   */
+  private stopTooSlow(slow: SlowHold): void {
+    if (this.closed || !this.switch.on || this.stoppingTooSlow) return;
+    this.stoppingTooSlow = true;
+    const stopped: CaptionsStopped = { slow, language: this.settings().language };
+    this.deps.log.warn(
+      `Captions: this computer is too slow for live captions with this model (${String(slow.rests)} rests in a row), so they stop.`,
+    );
+    // After the hub has told every listener of this rest: never stopped from inside its own telling.
+    queueMicrotask(() => {
+      this.stoppingTooSlow = false;
+      if (!this.closed && this.switch.on) void this.switchTo(false, stopped);
+    });
+  }
+
+  /** Whether captions have shown a phrase whole since the operator last turned them on (cap-review-threads MUST-1b). */
+  keptUp(): boolean {
+    return this.shownWhole;
+  }
+
+  /** The switch on this computer, with why captions turned themselves off (or null). */
+  private async switchTo(on: boolean, stopped: CaptionsStopped | null): Promise<CaptionsStatus> {
+    this.tooSlow = stopped;
+    // Turned on by the operator: a fresh start, nothing kept up yet (MUST-1b).
+    if (on) this.shownWhole = false;
     if (this.prototype.view().on) this.prototype.setOn(false);
     const next = { ...this.switch, on };
-    writeCaptionsSwitch(this.deps.userData, next);
+    try {
+      writeCaptionsSwitch(this.deps.userData, next);
+    } catch (error) {
+      // Turning off by itself still turns off (review SHOULD-1): a full disk or a locked file only loses the saving.
+      if (stopped === null) throw error;
+      const code = (error as NodeJS.ErrnoException | null)?.code ?? 'unknown';
+      this.deps.log.warn(
+        `Captions: Off could not be saved on this computer (${code}); they are off until Drashti starts again.`,
+      );
+    }
     this.switch = next;
     this.deps.log.info(`Captions: turned ${on ? 'on' : 'off'} on this computer.`);
     if (on) {
@@ -375,6 +440,10 @@ export class CaptionsService {
 
   async setModel(model: CaptionModelId): Promise<CaptionsStatus> {
     if (model === this.switch.model) return this.view();
+    // Another model: "too slow with this model" no longer holds (review n2), nor what kept up before (MUST-1b); the
+    // switch stays as it is.
+    this.tooSlow = null;
+    this.shownWhole = false;
     const next = { ...this.switch, model };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
@@ -566,6 +635,8 @@ export class CaptionsService {
     if (!isLanguageModelLanguage(language)) return this.view();
     if (id !== null && !this.known(language).some((entry) => entry.id === id)) return this.view();
     this.notices.delete(language);
+    this.tooSlow = null;
+    this.shownWhole = false;
     this.choose(language, id);
     this.tell();
     return this.view();

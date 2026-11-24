@@ -128,6 +128,13 @@ import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
+import {
+  CHROMIUM_FAKE_DEVICES,
+  CHROMIUM_FAKE_SOUND_FILE,
+  fakeMediaSelfTest,
+  fakeSoundFeatures,
+  fakeSoundSwitch,
+} from './fake-sound';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
@@ -973,7 +980,22 @@ const priorityItem = (after: (text: string) => void) =>
 // Tests only: Chromium's fake camera and microphone (a moving test pattern and a beep) stand in for real ones.
 // Only the device switch: the stream's page still captures its own real picture.
 const fakeDevices = sw('DRASHTI_TEST_FAKE_DEVICES') === '1';
-if (fakeDevices) app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+if (fakeDevices) app.commandLine.appendSwitch(CHROMIUM_FAKE_DEVICES);
+// Tests only (alpha.23, cap-realc): the fake microphone plays a generated WAV file once instead of its beep, so caption
+// AI's own recogniser (Route C) hears generated sound through the stream's own sound graph (src/main/fake-sound.ts).
+const fakeSound = fakeSoundSwitch({
+  fakeDevices,
+  file: sw('DRASHTI_TEST_FAKE_SOUND_FILE'),
+  platform: process.platform,
+});
+if (fakeSound) app.commandLine.appendSwitch(CHROMIUM_FAKE_SOUND_FILE, fakeSound);
+// macOS: the audio service reads that file only out of its sandbox (tests only, as above).
+const fakeSoundSandbox = fakeSoundFeatures({
+  sound: fakeSound,
+  platform: process.platform,
+  disabled: app.commandLine.getSwitchValue('disable-features'),
+});
+if (fakeSoundSandbox) app.commandLine.appendSwitch('disable-features', fakeSoundSandbox);
 // Tests only: behave as if the system's secure storage for keys were missing.
 const noSafeStorage = sw('DRASHTI_TEST_NO_SAFE_STORAGE') === '1';
 // Tests only: the local network listens on this computer alone (no firewall questions), and can be
@@ -1692,6 +1714,14 @@ function start(): void {
             windowsRuntime: Object.keys(windowsRuntimeLibraries),
           })
         : null;
+      // The tests' seams (alpha.23, cap-realc): a packaged Drashti turns on none of Chromium's fake media switches,
+      // whatever its environment asks (scripts/check-ffmpeg.mjs --packaged starts it asking for the fake microphone).
+      const fakeMedia = packaged()
+        ? fakeMediaSelfTest(
+            (name) => app.commandLine.hasSwitch(name),
+            app.commandLine.getSwitchValue('disable-features'),
+          )
+        : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
       const ocr = await ocrSelfTest({
         files: builtOcrFiles(__dirname),
@@ -1705,12 +1735,14 @@ function start(): void {
         youtube,
         whisper,
         indic,
+        fakeMedia,
         ocr,
         passed:
           ffmpeg.passed &&
           youtube.passed &&
           (whisper?.passed ?? true) &&
           (indic?.passed ?? true) &&
+          (fakeMedia?.passed ?? true) &&
           ocr.passed,
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
@@ -4049,8 +4081,11 @@ function start(): void {
   const speechEngine =
     testSpeech !== undefined
       ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
+        // DRASHTI_TEST_SPEECH_HOLD=n (cap-threads): it rests after its first phrase, as a too-slow computer does, as the
+        // n-th rest in a row (3: captions then stop).
         createStandInEngine(testSpeech.split('|'), undefined, {
           once: sw('DRASHTI_TEST_SPEECH_ONCE') !== undefined,
+          hold: Number(sw('DRASHTI_TEST_SPEECH_HOLD') ?? 0),
         })
       : createWhisperEngine({
           program: () => whisperProgram,
@@ -4071,6 +4106,8 @@ function start(): void {
           // The tuned language models are decoded without timestamps (alpha.22).
           timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
           timing: () => captions.timing(),
+          // Captions that have shown a phrase whole are never stopped as too slow (cap-review-threads MUST-1b).
+          keptUp: () => captions.keptUp(),
           sound: { open: (chunk) => streaming.listenSound(chunk) },
           // The admin's caption words as hints (cap-glossary).
           hints: captionWords.hints,
@@ -4102,6 +4139,7 @@ function start(): void {
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
             timing: () => captions.timing(),
+            keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,
