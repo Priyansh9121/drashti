@@ -80,6 +80,16 @@ describe('a video input with no live picture', () => {
     expect(reportOf('absent')).toBeNull();
   });
 
+  // alpha.23 (lead 2's QA23-STAGE8-1): the Stage preview draws the input but is no screen: it never says how the input
+  // stands (the operator's notice and restart recovery hear only the screens), whatever its picture does.
+  it('is never said by the Stage preview: live, stopped or missing', () => {
+    expect(reportOf('live', null, 'preview')).toBeNull();
+    expect(reportOf('stopped', 'busy', 'preview')).toBeNull();
+    expect(reportOf('stopped', 'missing', 'preview')).toBeNull();
+    expect(reportOf('live', null, 'screen')).toBe('playing');
+    expect(reportOf('stopped', 'missing', 'screen')).toBe('missing');
+  });
+
   // Restart recovery (Session 50): the main process takes a put-back input off, and the recovery notice names it,
   // only when a screen says it is not on this computer, so only a page that can see the cameras' names says so.
   it('says missing only when no camera of that name is there and the page can see the cameras’ names', () => {

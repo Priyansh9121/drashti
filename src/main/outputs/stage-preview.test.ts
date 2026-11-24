@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { revealPreview, stagePreviewOptions } from './stage-preview';
+import { PREVIEW_LIVE, revealPreview, stagePreviewOptions } from './stage-preview';
 
 /*
  * The Stage preview's window (alpha.22, a22-review-stage S1 and S4): a normal window that never takes the keyboard
@@ -35,5 +35,11 @@ describe('the Stage preview window', () => {
     };
     revealPreview(win);
     expect(calls).toEqual(['restore', 'showInactive', 'moveTop']);
+  });
+
+  // alpha.23 (lead 2's QA23-STAGE8-1): the video input live, as on a stage screen; never a say in how it stands, and
+  // never another app's window (named on it instead).
+  it('gets a camera as an output does and the video inputs’ list; never says how an input stands, never captures a window', () => {
+    expect(PREVIEW_LIVE).toEqual({ camera: 'output', list: true, report: false, window: false });
   });
 });

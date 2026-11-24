@@ -97,4 +97,21 @@ describe('the lines a stage box names over the hall’s picture where it cannot 
     );
     expect(unseenLive(state, look, false)).toEqual([]);
   });
+
+  // alpha.23 (lead 2's QA23-STAGE8-1): the Stage preview draws a video input live, but never captures another
+  // app's window: it names the window, as a tablet does, and draws the input.
+  it('on a page that draws video inputs but no window (the Stage preview), names only the windows', () => {
+    const inBox = box({ kind: 'input', inputId: 'i1', name: 'Placeholder input', device: 'fake_device_0' });
+    const windowInBox = box({ kind: 'window', sourceId: 'window:1:0', name: 'Placeholder meeting' });
+    expect(unseenLive(up(meeting), look, true, false)).toEqual(['A window: Placeholder meeting']);
+    expect(unseenLive(up(input), look, true, false)).toEqual([]);
+    expect(unseenLive(up(meeting, inBox), look, true, false)).toEqual(['A window: Placeholder meeting']);
+    expect(unseenLive(up(input, windowInBox), look, true, false)).toEqual([
+      'Picture in picture: Placeholder meeting',
+    ]);
+    // Under black-out or the Wallpaper, nothing, as everywhere.
+    expect(unseenLive({ ...up(meeting), blackout: true }, look, true, false)).toEqual([]);
+    // This computer's screens draw both: nothing named.
+    expect(unseenLive(up(meeting, inBox), look, true, true)).toEqual([]);
+  });
 });
