@@ -145,6 +145,7 @@ import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
+import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
@@ -6946,6 +6947,46 @@ function start(): void {
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
   lowerThirds.purge();
+  // Live behind the studio's preview (alpha.22, lower-thirds/studio-live.ts): a still about once a second while the
+  // studio shows Live (not while it is minimized), never otherwise, from a picture already drawn: this computer's first
+  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here, none (the
+  // studio says "No live picture to show"). Read only.
+  const studioLive: StudioLive = new StudioLive({
+    take: async () => {
+      const roles = new Map(screenRepo.groupIds().map((g) => [g.id, g.role]));
+      const showingNow = () =>
+        new Set(
+          manager
+            .status()
+            .filter((st) => st.state === 'showing')
+            .map((st) => st.screenId),
+        );
+      const showing = showingNow();
+      const screenId = hallScreenOf(
+        screenRepo.screens(),
+        (groupId) => roles.get(groupId) ?? null,
+        (id) => showing.has(id) && pageAlive(outputWindows.get(id)),
+      );
+      const hall = screenId === null ? undefined : outputWindows.get(screenId);
+      if (screenId === null || !hall || hall.isDestroyed()) return null;
+      const image = await hall.webContents.capturePage();
+      // Taken as its window closed (its screen switched off, say), it is not what the hall shows: none (as captureLocal).
+      if (hall.isDestroyed() || outputWindows.get(screenId) !== hall || !showingNow().has(screenId))
+        return null;
+      return livePictureOf(image, 'screen', Date.now());
+    },
+    send: (picture) => {
+      studio.sendLive(picture);
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  // Tests only (never a packaged Drashti): whether Live's stills are being taken, and how many have been.
+  if (!packaged())
+    (
+      globalThis as { drashtiTestStudioLive?: () => { watching: boolean; taken: number } }
+    ).drashtiTestStudioLive = () => ({ watching: studioLive.watching, taken: studioLive.taken });
   // The Lower Thirds studio (Session 55, Part 16): a window of its own, where they are made, shown and hidden.
   const studio = new LowerThirdsStudio({
     workArea: () =>
@@ -6956,6 +6997,12 @@ function start(): void {
     background: () => appearance.background(),
     track: (win) => {
       appearance.track(win);
+    },
+    closed: () => {
+      studioLive.stop();
+    },
+    minimized: (on) => {
+      studioLive.pause(on);
     },
     log: (line) => {
       log.info(line);
@@ -6972,6 +7019,7 @@ function start(): void {
     fromOperator,
     get: (id) => lowerThirds.get(id),
     engine,
+    live: studioLive,
     log: (line) => {
       log.info(line);
     },

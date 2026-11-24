@@ -1,15 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import type { LowerThirdLayer } from '../../../../shared/engine/state';
 import { animationById, animationLength } from '../../../../shared/lower-third-animations';
 import type { LowerThirdInput } from '../../../../shared/lower-thirds';
 import { engineNow } from '../../render/clock';
 import { LowerThirdView, outAnimationOf, unitCount } from '../../render/LowerThirdView';
+import { ScreenPictures } from '../../render/picture-looks';
 import { useElementSize } from '../../render/useElementSize';
+import { WallpaperView } from '../../render/WallpaperView';
 import { cx } from '../../ui/cx';
+import type { Backdrop, BackdropDraw } from './backdrop';
 
 /*
  * The studio's live preview (Session 55, Part 16): the lower third being made, drawn by the very component the
- * screens use, over a backdrop like the hall's picture, at 16:9 and as wide as the window gives it. It plays in, holds
+ * screens use, over its backdrop (./backdrop.ts, alpha.22: the hall's wallpaper as the screens draw it, Live's still
+ * of what the screens show now, or plain), at 16:9 and as wide as the window gives it. It plays in, holds
  * a moment (longer with a moving background, which moves meanwhile), plays out, and comes round again; a change of
  * words or look shows at once, and choosing an animation plays it from the start (`play`). Hidden from screen
  * readers: the choices beside it say what it shows. A picture of the screens: its colours are the lower third's own.
@@ -24,26 +28,63 @@ const GAP_MS = 700;
 /** Words for a lower third with none yet. */
 const SAMPLE = ['Placeholder name', 'Placeholder title', 'Placeholder place'];
 
-export type Backdrop = 'dark' | 'light' | 'picture';
-export const BACKDROPS: readonly Backdrop[] = ['dark', 'light', 'picture'];
-export const BACKDROP_NAMES: Record<Backdrop, string> = { dark: 'Dark', light: 'Light', picture: 'Picture' };
-const BACKDROP_CSS: Record<Backdrop, string> = {
-  dark: '#1f2937',
-  light: '#e5e7eb',
-  picture: 'linear-gradient(160deg, #1e3a5f 0%, #6b4f2a 55%, #c2410c 100%)',
-};
+const FULL: CSSProperties = { position: 'absolute', inset: 0 };
+
+/** The hall's wallpaper, with its pictures' looks as the screens have them (render/NothingUp.tsx draws it so). */
+function WallpaperBehind({ draw }: { draw: Extract<BackdropDraw, { kind: 'wallpaper' }> }) {
+  const looks = useMemo(() => ({ pictures: draw.pictures, liveZoom: null }), [draw.pictures]);
+  return (
+    <div data-testid="studio-backdrop-wallpaper" style={FULL}>
+      <ScreenPictures.Provider value={looks}>
+        <WallpaperView wallpaper={draw.wallpaper} />
+      </ScreenPictures.Provider>
+    </div>
+  );
+}
+
+/** What is behind the lower third. */
+function Behind({ draw }: { draw: BackdropDraw }) {
+  switch (draw.kind) {
+    case 'wallpaper':
+      return <WallpaperBehind draw={draw} />;
+    case 'live':
+      return (
+        <img
+          data-testid="studio-live-picture"
+          data-live-source={draw.picture.source}
+          src={draw.picture.url}
+          alt=""
+          draggable={false}
+          style={{ ...FULL, width: '100%', height: '100%', objectFit: 'contain' }}
+        />
+      );
+    case 'plain':
+      return draw.words === undefined ? null : (
+        <p
+          data-testid="studio-backdrop-words"
+          className="absolute inset-x-0 top-[12%] px-4 text-center text-sm"
+          style={{ color: '#d1d5db' }}
+        >
+          {draw.words}
+        </p>
+      );
+  }
+}
 
 export function StudioPreview({
   input,
   play,
   backdrop,
+  backdropName,
   className,
   thumbnail,
   paused = false,
 }: {
   input: LowerThirdInput;
   play: number;
-  backdrop: Backdrop;
+  backdrop: BackdropDraw;
+  /** The backdrop chosen (Behind the preview), said by the preview for tests. */
+  backdropName?: Backdrop;
   className?: string;
   /** A template tile is still until hovered or focused, then plays once. */
   thumbnail?: 'play' | 'still';
@@ -114,13 +155,15 @@ export function StudioPreview({
       data-playing={!thumbnail && (layer || off) ? 'true' : undefined}
       data-template-preview={thumbnail ? '' : undefined}
       data-preview-playing={thumbnail === 'play' && !finished ? 'true' : undefined}
+      data-backdrop={backdropName}
       className={cx(
         'relative w-full overflow-hidden',
         !thumbnail && 'rounded-md border border-line',
         className,
       )}
-      style={{ aspectRatio: '16 / 9', background: BACKDROP_CSS[backdrop] }}
+      style={{ aspectRatio: '16 / 9', background: backdrop.kind === 'plain' ? backdrop.colour : '#000000' }}
     >
+      <Behind draw={backdrop} />
       {width > 0 && (
         <LowerThirdView
           layer={now}

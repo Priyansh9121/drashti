@@ -2059,6 +2059,22 @@ test('Lower Thirds: the panel with one up, and the studio finding an animation (
   );
   await letTimePass(win, 700, 'the docs’ picture: the panel and the live picture settle');
   await win.screenshot({ path: join(folder, 'lower-thirds.png'), scale: 'css', animations: 'disabled' });
+  // The studio opens on Behind the preview's Wallpaper (alpha.22): a calm placeholder wallpaper chosen for it.
+  const wallDir = mkdtempSync(join(tmpdir(), 'drashti-studio-wall-'));
+  const [wallId = ''] = await importAndGetIds(win, [
+    await makeTestImage(win, join(wallDir, 'Placeholder evening.png'), {
+      width: 1280,
+      height: 720,
+      color: '#1e3a5f',
+    }),
+  ]);
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const added = await d.wallpapers.add([id], null);
+    if (!added.ok) throw new Error(added.message);
+    const chosen = await d.wallpapers.choose(added.ids[0] ?? null);
+    if (!chosen.ok) throw new Error(chosen.message);
+  }, wallId);
   // Edit opens the studio, a window of its own (Session 55, Part 16), on this one.
   await row.getByTestId('lower-third-edit').click();
   const studio = await windowShowing(
@@ -2068,6 +2084,12 @@ test('Lower Thirds: the panel with one up, and the studio finding an animation (
   );
   await studio.setViewportSize({ width: 1280, height: 800 });
   await expect(studio.getByTestId('lt-studio')).toBeVisible();
+  const studioWall = studio.getByTestId('studio-backdrop-wallpaper').locator('img').first();
+  await expect
+    .poll(() => studioWall.evaluate((img: HTMLImageElement) => img.naturalWidth), {
+      message: 'the docs’ picture: the studio’s preview over the placeholder wallpaper',
+    })
+    .toBeGreaterThan(0);
   await studio.getByRole('tab', { name: 'Animation' }).click();
   await studio.getByTestId('lower-third-search').fill('slide');
   await expect(studio.getByTestId('lower-third-animation').first()).toBeVisible();

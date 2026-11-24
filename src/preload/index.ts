@@ -760,6 +760,8 @@ const bridge: DrashtiBridge = {
       on(IPC.lowerThirds.askClose, () => {
         listener();
       }),
+    watchLive: (on) => invoke(IPC.lowerThirds.watchLive, on),
+    onLive: (listener) => on(IPC.lowerThirds.live, listener),
   },
   slideEditor: {
     open: (presentationId, slideId) => invoke(IPC.slideEditor.open, presentationId, slideId),
