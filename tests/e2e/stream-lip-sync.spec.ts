@@ -151,12 +151,16 @@ test('the stream’s own picture and sound stay together in what it records, acr
 
     // One recording (its sound output held awake all through), the sound delay changed half-way.
     await inStep(0, 'no sound delay');
+    // The preview alone: the picture page's picture on its own clock, as before (a22-x86sync; judged at the end).
+    const clockBefore = await picturePage.locator(picture).getAttribute('data-cue-clock');
     expect((await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.startRecording())).ok).toBe(
       true,
     );
     await expect.poll(async () => (await status()).recording.bytes).toBeGreaterThan(0);
     const { file: name, since } = (await status()).recording;
     await letTimePass(win, RECORD_MS, 'about ten flashes and beeps with no sound delay');
+    // Recording: on the page's silent graph, the output device's own clock (a22-x86sync; judged at the end).
+    const clockWhile = await picturePage.locator(picture).getAttribute('data-cue-clock');
     // The control: the video's own sound delay of +200 ms (Sound and picture…) must come out 0.2 s later, so a fault
     // that put the stream's sound off its picture would be seen.
     const changedAt = Date.now();
@@ -225,6 +229,10 @@ test('the stream’s own picture and sound stay together in what it records, acr
         `${part.why}: each beep within ${String(Math.round(LIMIT * 1000))} ms of the half’s median offset (${String(Math.round(middle * 1000))} ms; each, ms: ${ms})`,
       ).toEqual([]);
     }
+    // How: while the encoder takes its pictures, the picture page's pictures are pulled by its silent graph, as the
+    // sound page's players are by theirs (render/cue-clock.ts StreamPictureClock); not before (QA23-X86SYNC-1).
+    expect(clockBefore, 'the preview alone: the stream’s picture on its own clock, as before').toBeNull();
+    expect(clockWhile, 'recording: the stream’s picture on its page’s silent graph').toBe('stream');
   } finally {
     await app.close();
   }

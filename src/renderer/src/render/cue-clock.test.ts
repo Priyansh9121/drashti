@@ -559,9 +559,11 @@ describe("the stream's picture page: its pictures on its silent graph while it c
     expect(context.made.every((s) => s.connected.length === 0)).toBe(true);
     expect(context.state).toBe('suspended');
     // The same element taken again (its playback started afresh) has the one source it can ever have.
-    const again = pictures[0] as Element;
-    context.start();
+    const [again] = pictures;
+    if (!again) throw new Error('Generated: no first picture');
     clock.take(again.media());
+    // The resting graph asked to run again: it does a moment later.
+    context.start();
     expect(context.made).toHaveLength(40);
     expect(again.muted).toBe(false);
   });

@@ -98,6 +98,20 @@ export interface PlaybackOptions {
   timing?: () => { loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek; catchUp?: PlaybackCatchUp };
 }
 
+/**
+ * What takes this page's pictures onto another clock as they play (a22-x86sync, QA23-X86SYNC-1): set by the stream's
+ * picture page alone (program/main.tsx: render/cue-clock.ts StreamPictureClock, its pictures on its silent graph while
+ * it captures). It is given each muted picture as its playback starts, and the let-go it returns runs once that
+ * playback has stopped and let go of its file. None on every other page (the hall's screens, LIVE, the stage, the
+ * display copies, a paired computer's): their pictures play as before. A sound that is heard is never given.
+ */
+let pictureClock: ((v: HTMLMediaElement) => () => void) | null = null;
+
+/** The stream's picture page only: its pictures' clock (or none again: tests). */
+export function setPictureClock(take: ((v: HTMLMediaElement) => () => void) | null): void {
+  pictureClock = take;
+}
+
 /** A playback: call it to stop; resync() checks it against the clock at once (after a jump). */
 export type Playback = (() => void) & { resync: () => void };
 
@@ -477,6 +491,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     armHold();
   };
   v.muted = !audible;
+  // The stream's picture page: a muted picture onto its silent graph's clock while it captures (none elsewhere).
+  const unclock = audible ? null : (pictureClock?.(v) ?? null);
   v.addEventListener('playing', onPlaying, { once: true });
   if (options.catchesUp === true) v.addEventListener('playing', paceAtStart);
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
@@ -518,6 +534,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     v.pause();
     v.removeAttribute('src');
     v.load();
+    // Then its sound, of a picture that no longer plays (a22-x86sync).
+    unclock?.();
   };
   return Object.assign(stop, {
     resync: () => {

@@ -6,6 +6,8 @@ import { groupLookIn } from '../../../shared/looks';
 import type { ProgramContext } from '../../../shared/stream';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { holdClock } from '../render/clock';
+import { StreamPictureClock } from '../render/cue-clock';
+import { setPictureClock } from '../render/playback';
 import { watchGpuRestarts } from '../render/media-attempts';
 import { preloadFonts } from '../render/fonts';
 import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
@@ -52,6 +54,13 @@ const slideWaiting = (): boolean =>
     '[data-testid="program-root"] [data-layer="slide"][data-fading="true"]:not([data-fade-start])',
   ) !== null;
 
+/*
+ * Its pictures on its silent graph's clock while the encoder takes them (a22-x86sync, QA23-X86SYNC-1): the stream's
+ * sound plays on its own page (x86), pulled by its device, and this page's muted pictures, on Chromium's stand-in clock,
+ * fell behind it and were jumped on a busy computer (CI's Mac). Nothing is heard and nothing goes into the stream.
+ */
+const pictures = new StreamPictureClock();
+
 /** Apply the picture size, its consumers and the camera choice. */
 function apply(context: ProgramContext): void {
   useProgram.setState({ context });
@@ -61,6 +70,7 @@ function apply(context: ProgramContext): void {
   if (!context.preview) stopPreview();
   if (!context.capturing) stopEncoder();
   if (!context.videoOut) stopVideoOut();
+  pictures.setCapturing(context.capturing);
   inputsInTurn(context);
 }
 
@@ -265,6 +275,8 @@ function Program() {
 // them as soon as the page has loaded, which can be before React has run its effects (a port
 // that arrives with no one listening is lost, and the stream would wait for frames for ever).
 startCapture();
+// Before any picture plays: each is given to the stream's picture clock as its playback starts.
+setPictureClock((v) => pictures.take(v));
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');

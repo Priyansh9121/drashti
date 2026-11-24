@@ -17,6 +17,12 @@
  * that started 45-102 ms late on CI's Mac (a21-s5-1123-152334-44457). The graph sends its output a constant below half a
  * 24-bit output's step: not zeros to that check, yet every 16- or 24-bit output receives exactly 0. The graph runs only
  * while a cued picture uses or waits for it (it rests otherwise), so the output is kept only then.
+ *
+ * The stream's picture page (a22-x86sync, QA23-X86SYNC-1, StreamPictureClock below): while it captures for the
+ * encoder, every picture it plays is pulled by this graph too. Since x86 that page plays no sound of its own, and on
+ * CI's Mac its muted pictures' stand-in clocks lost time and were jumped, so the stream's pictures wandered 0.1-0.4 s
+ * from its sound (played, and pulled, on the sound page). One graph and one route per picture whoever asks for it (a
+ * cue, a crossfade, the stream): a cue's or a crossfade's stop never takes a picture the stream still holds off it.
  */
 
 /** About -150 dB: below half a 24-bit step (2^-24), so no output can make a sound of it. */
@@ -27,6 +33,11 @@ export interface SilentGraph {
   readonly context: AudioContext;
   /** Where each routed picture's sound goes: a gain of nothing before the context's destination. */
   readonly sink: AudioNode;
+  /**
+   * Its inaudible constant to the output (on) or off it (a22-x86sync): off, the output hears exact zeros and Chromium
+   * gives it to its stand-in 30 s later, so nothing holds the output open. On as it is made.
+   */
+  awake?(on: boolean): void;
 }
 
 /** A graph on the default output whose every input is multiplied by nothing; null where none can be had. */
@@ -41,7 +52,14 @@ export function createSilentGraph(make: (options: AudioContextOptions) => AudioC
     keep.connect(context.destination);
     keep.start();
     void context.resume().catch(() => undefined);
-    return { context, sink };
+    let kept = true;
+    const awake = (on: boolean) => {
+      if (on === kept) return;
+      kept = on;
+      if (on) keep.connect(context.destination);
+      else keep.disconnect();
+    };
+    return { context, sink, awake };
   } catch {
     return null;
   }
@@ -58,46 +76,127 @@ export function pageSilentGraph(): SilentGraph | null {
 
 /** An element can be a media element source once only, ever: it is kept for a later cue of the same element. */
 const sources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
-/** How many cued pictures use (or wait for) each graph: with none, it rests (suspended) until the next cue. */
+/** How many pictures use (or wait for) each graph: with none, it rests (suspended) until the next cue. */
 const users = new WeakMap<AudioContext, number>();
+/** How many of them want its output awake: a cue, a crossfade, the stream while it captures. */
+const waking = new WeakMap<AudioContext, number>();
 /** A graph asked to rest whose rest may still be on the way (it can still say it runs). */
 const resting = new WeakSet<AudioContext>();
 
+/** Who holds a picture on the graph: a cue ('graph'), a crossfade ('fade'), the stream's picture page ('stream'). */
+type Holder = 'graph' | 'fade' | 'stream';
+/** The marker a picture shows (data-cue-clock): a cue's before a crossfade's before the stream's. */
+const SHOWN: readonly Holder[] = ['graph', 'fade', 'stream'];
+/** Each picture on a graph now: its one connection, and who holds it there. */
+const routes = new WeakMap<HTMLMediaElement, { source: MediaElementAudioSourceNode; holders: Holder[] }>();
+
 /**
- * Pull a cued picture's sound through the page's silent graph and unmute it there (its clock then starts with its
- * rate). Routed only while the picture is held (paused, or at rate 0 for its Go): never mid-play, where its sound would
- * change clocks as the picture moves. Returns its stop: the sound let go of and the picture muted again.
+ * `v`'s sound into `silent`'s sink for `holder`, once whoever else holds it there, and unmuted only then (its sound
+ * going there and nowhere else). Returns its release (the last one lets go of the sound and mutes the picture again),
+ * or null when its sound cannot be taken (it stays muted, on its own clock).
  */
-export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = pageSilentGraph): () => void {
-  const silent = graph();
-  if (!silent) return () => undefined;
-  const { context, sink } = silent;
+function hold(v: HTMLMediaElement, silent: SilentGraph, holder: Holder): (() => void) | null {
+  let route = routes.get(v);
+  if (!route) {
+    try {
+      const source = sources.get(v) ?? silent.context.createMediaElementSource(v);
+      sources.set(v, source);
+      source.connect(silent.sink);
+      route = { source, holders: [] };
+    } catch {
+      return null;
+    }
+    routes.set(v, route);
+    // Only now, its sound going into the graph and nowhere else.
+    v.muted = false;
+  }
+  const held = route;
+  held.holders.push(holder);
+  const show = () => {
+    v.dataset['cueClock'] = SHOWN.find((h) => held.holders.includes(h)) ?? holder;
+  };
+  show();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    held.holders.splice(held.holders.indexOf(holder), 1);
+    if (held.holders.length > 0) {
+      show();
+      return;
+    }
+    routes.delete(v);
+    v.muted = true;
+    delete v.dataset['cueClock'];
+    held.source.disconnect();
+  };
+}
+
+/** Its constant on while anyone wants the output awake (or nothing uses it: it rests, and wakes with it on). */
+function keepAwake(silent: SilentGraph): void {
+  const { context } = silent;
+  silent.awake?.((users.get(context) ?? 0) === 0 || (waking.get(context) ?? 0) > 0);
+}
+
+function addUser(silent: SilentGraph, awake: boolean): void {
+  const { context } = silent;
   users.set(context, (users.get(context) ?? 0) + 1);
-  // Resting since its last cue, or its rest still on the way (a21-review, a22-cue): asked to run again (it does a
-  // moment later: the route waits for that, below). Asked to rest once more first (a22-review-cue2 M1): a cue cancelled
-  // just as its graph's start finished leaves Chromium saying 'running' with its device stopped, and resume() on a
-  // context that says 'running' starts nothing; suspend() stops the device whatever it says and makes it say
-  // 'suspended', so the resume after it really starts the device and the route waits for it.
+  if (awake) waking.set(context, (waking.get(context) ?? 0) + 1);
+  keepAwake(silent);
+}
+
+function setAwake(silent: SilentGraph, on: boolean): void {
+  const { context } = silent;
+  waking.set(context, Math.max(0, (waking.get(context) ?? 0) + (on ? 1 : -1)));
+  keepAwake(silent);
+}
+
+function dropUser(silent: SilentGraph, awake: boolean): void {
+  const { context } = silent;
+  if (awake) waking.set(context, Math.max(0, (waking.get(context) ?? 1) - 1));
+  const left = (users.get(context) ?? 1) - 1;
+  users.set(context, left);
+  // Nothing uses it now: no device time spent on silence, and its constant off the output, until the next use.
+  // Asked whatever it says now: a graph still starting would otherwise run on, holding the output (a21-review).
+  if (left === 0 && context.state !== 'closed') {
+    resting.add(context);
+    void context.suspend().catch(() => undefined);
+  }
+  keepAwake(silent);
+}
+
+/**
+ * Resting since its last use, or its rest still on the way (a21-review, a22-cue): asked to run again (it does a
+ * moment later). Asked to rest once more first (a22-review-cue2 M1): a cue cancelled just as its graph's start
+ * finished leaves Chromium saying 'running' with its device stopped, and resume() on a context that says 'running'
+ * starts nothing; suspend() stops the device whatever it says and makes it say 'suspended', so the resume after it
+ * really starts the device and a route waits for it.
+ */
+function wake(context: AudioContext): void {
   if (context.state === 'suspended' || resting.has(context)) {
     if (resting.has(context)) void context.suspend().catch(() => undefined);
     resting.delete(context);
     void context.resume().catch(() => undefined);
   }
+}
+
+/**
+ * Pull a cued picture's sound through the page's silent graph and unmute it there (its clock then starts with its
+ * rate). Routed only while the picture is held (paused, or at rate 0 for its Go): never mid-play, where its sound would
+ * change clocks as the picture moves. Returns its stop: the sound let go of and the picture muted again (unless the
+ * stream's picture page still holds it there).
+ */
+export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = pageSilentGraph): () => void {
+  const silent = graph();
+  if (!silent) return () => undefined;
+  const { context } = silent;
+  addUser(silent, true);
+  wake(context);
   let stopped = false;
-  let routed: MediaElementAudioSourceNode | null = null;
+  let release: (() => void) | null = null;
   const route = () => {
-    if (stopped || routed || context.state !== 'running' || !(v.paused || v.playbackRate === 0)) return;
-    try {
-      const source = sources.get(v) ?? context.createMediaElementSource(v);
-      sources.set(v, source);
-      source.connect(sink);
-      routed = source;
-    } catch {
-      return;
-    }
-    // Only now, its sound going into the graph and nowhere else.
-    v.muted = false;
-    v.dataset['cueClock'] = 'graph';
+    if (stopped || release || context.state !== 'running' || !(v.paused || v.playbackRate === 0)) return;
+    release = hold(v, silent, 'graph');
   };
   const started = () => {
     if (context.state !== 'running') return;
@@ -110,20 +209,9 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
     if (stopped) return;
     stopped = true;
     context.removeEventListener('statechange', started);
-    if (routed) {
-      v.muted = true;
-      delete v.dataset['cueClock'];
-      routed.disconnect();
-      routed = null;
-    }
-    const left = (users.get(context) ?? 1) - 1;
-    users.set(context, left);
-    // Nothing cued uses it now: no device time spent on silence, and its constant off the output, until the next cue.
-    // Asked whatever it says now: a graph still starting would otherwise run on, holding the output (a21-review).
-    if (left === 0 && context.state !== 'closed') {
-      resting.add(context);
-      void context.suspend().catch(() => undefined);
-    }
+    release?.();
+    release = null;
+    dropUser(silent, true);
   };
 }
 
@@ -141,9 +229,9 @@ function runningPageGraph(): SilentGraph | null {
  * incoming one, pulled by this graph, ran at 1 (a22-fade-1124-103850-84620). Taken mid-play, unlike a cue: its time may
  * step by the two sinks' delays (tens of ms), never a jump. Only into a graph that already runs, as its crossfade's cue
  * keeps it (never one started for it: no output held for this, QA22-CUE-2), never a picture the graph already pulls
- * (its own cue's), and kept until the picture is let go: a source can never be taken back, and one left unpulled would
- * stop its picture. It counts as a user of the graph meanwhile, so the graph rests only once both are let go. Returns
- * its stop, or null when it was not taken.
+ * (its own cue's, or the stream's), and kept until the picture is let go: a source can never be taken back, and one
+ * left unpulled would stop its picture. It counts as a user of the graph meanwhile, so the graph rests only once both
+ * are let go. Returns its stop, or null when it was not taken.
  */
 export function fadeClock(
   v: HTMLMediaElement,
@@ -152,31 +240,139 @@ export function fadeClock(
   if (v.dataset['cueClock'] !== undefined) return null;
   const silent = graph();
   if (silent?.context.state !== 'running' || resting.has(silent.context)) return null;
-  const { context, sink } = silent;
-  let source: MediaElementAudioSourceNode;
-  try {
-    source = sources.get(v) ?? context.createMediaElementSource(v);
-    sources.set(v, source);
-    source.connect(sink);
-  } catch {
-    return null;
-  }
-  users.set(context, (users.get(context) ?? 0) + 1);
-  // Only now, its sound going into the graph and nowhere else.
-  v.muted = false;
-  v.dataset['cueClock'] = 'fade';
+  const release = hold(v, silent, 'fade');
+  if (!release) return null;
+  addUser(silent, true);
   let stopped = false;
   return () => {
     if (stopped) return;
     stopped = true;
-    v.muted = true;
-    delete v.dataset['cueClock'];
-    source.disconnect();
-    const left = (users.get(context) ?? 1) - 1;
-    users.set(context, left);
-    if (left === 0 && context.state !== 'closed') {
-      resting.add(context);
-      void context.suspend().catch(() => undefined);
-    }
+    release();
+    dropUser(silent, true);
   };
+}
+
+/**
+ * The stream's picture page's pictures on its silent graph while it captures for the encoder (live or recording;
+ * a22-x86sync, QA23-X86SYNC-1, lead 2's design A). Each picture the page plays is given here as it starts
+ * (render/playback.ts setPictureClock, set by program/main.tsx alone) and let go after it stops. While capturing, its
+ * sound is pulled by the graph, so its clock is the output device's own, as the stream's sound page's players are: taken
+ * mid-play (its time may step by tens of ms, never a jump), only once the graph runs. Nothing is heard and nothing goes
+ * into the stream: the graph's gain of nothing, then the page's own output.
+ *
+ * Capturing stops: the output is no longer kept awake for it (QA22-CUE-2: an idle stream page holds no output open; the
+ * output hears exact zeros, and Chromium gives it to its stand-in 30 s later), but a picture already taken stays pulled,
+ * since its sound can never be given back to its own clock and left unpulled its picture would stop. A picture still
+ * waiting for the graph is not taken. Capturing again keeps the output awake again and takes the rest.
+ */
+/** A picture the stream's picture page plays, as StreamPictureClock holds it. */
+interface PictureHold {
+  readonly v: HTMLMediaElement;
+  /** The graph it uses or waits for (counted as one of its users), or null. */
+  silent: SilentGraph | null;
+  /** Whether it wants that graph's output awake (while capturing). */
+  awake: boolean;
+  /** Its route, once taken. */
+  release: (() => void) | null;
+  /** Waiting for the graph to run. */
+  started: (() => void) | null;
+}
+
+export class StreamPictureClock {
+  private capturing = false;
+  private readonly held = new Set<PictureHold>();
+
+  constructor(private readonly graph: () => SilentGraph | null = pageSilentGraph) {}
+
+  /** How many pictures it is given now (tests). */
+  get holding(): number {
+    return this.held.size;
+  }
+
+  /** Whether the encoder takes this page's pictures now (the page's context: live or recording). */
+  setCapturing(on: boolean): void {
+    if (on === this.capturing) return;
+    this.capturing = on;
+    for (const h of this.held) {
+      if (on) this.engage(h);
+      else this.rest(h);
+    }
+  }
+
+  /** A picture that plays on this page: on the graph while capturing, until the returned let-go (after it stops). */
+  take(v: HTMLMediaElement): () => void {
+    const h: PictureHold = { v, silent: null, awake: false, release: null, started: null };
+    this.held.add(h);
+    if (this.capturing) this.engage(h);
+    return () => {
+      if (!this.held.delete(h)) return;
+      this.unwait(h);
+      h.release?.();
+      h.release = null;
+      this.leave(h);
+    };
+  }
+
+  /** Capturing: its graph woken (or kept awake), and the picture taken into it once it runs. */
+  private engage(h: PictureHold): void {
+    if (h.release) {
+      if (h.silent && !h.awake) {
+        h.awake = true;
+        setAwake(h.silent, true);
+      }
+      return;
+    }
+    const silent = h.silent ?? this.graph();
+    if (!silent) return;
+    if (!h.silent) {
+      h.silent = silent;
+      h.awake = true;
+      addUser(silent, true);
+    }
+    const { context } = silent;
+    wake(context);
+    const route = () => {
+      if (h.release || !this.held.has(h) || !this.capturing || context.state !== 'running') return;
+      h.release = hold(h.v, silent, 'stream');
+      // Its sound cannot be taken: on its own clock, as before, and no use of the graph.
+      if (!h.release) this.leave(h);
+    };
+    if (context.state === 'running') {
+      route();
+      return;
+    }
+    if (h.started) return;
+    const started = () => {
+      if (context.state !== 'running') return;
+      this.unwait(h);
+      route();
+    };
+    h.started = started;
+    context.addEventListener('statechange', started);
+  }
+
+  /** Capturing stopped: a picture on the graph stays there, its output no longer kept awake; one waiting is not taken. */
+  private rest(h: PictureHold): void {
+    if (h.release) {
+      if (h.silent && h.awake) {
+        h.awake = false;
+        setAwake(h.silent, false);
+      }
+      return;
+    }
+    this.unwait(h);
+    this.leave(h);
+  }
+
+  private unwait(h: PictureHold): void {
+    if (h.started && h.silent) h.silent.context.removeEventListener('statechange', h.started);
+    h.started = null;
+  }
+
+  /** No longer a user of its graph (it rests after the last). */
+  private leave(h: PictureHold): void {
+    if (h.silent) dropUser(h.silent, h.awake);
+    h.silent = null;
+    h.awake = false;
+  }
 }
