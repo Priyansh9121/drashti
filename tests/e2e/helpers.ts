@@ -105,6 +105,9 @@ export async function launchApp(
       DRASHTI_ROLE: 'main',
       // The placeholder presentations, which a new library starts without (Session 50): the tests' slides.
       DRASHTI_TEST_SEED_PLACEHOLDERS: '1',
+      // Stage on at a new library's start, as it was before alpha.22, until a spec turns it (an installed Drashti
+      // starts with it off: stage-switch.spec.ts starts so, with '').
+      DRASHTI_TEST_STAGE_AT_START: 'on',
       // Crash files go into the test's own output folder (Session 39), which Playwright keeps only when the
       // test fails (playwright.config.ts, preserveOutput), so a failed run's report carries them.
       ...crashFilesHere(),
@@ -477,8 +480,12 @@ export async function relaunchApp(
   }
 }
 
-/** An output window's page (not the setup wizard's display numbers, which use the same page). */
-const isOutput = (w: Page) => w.url().includes('output.html') && !w.url().includes('identify=');
+/**
+ * An output window's page (not the setup wizard's display numbers, which use the same page, nor the Stage preview,
+ * alpha.22: a stage screen's page in a window of its own, never a screen).
+ */
+const isOutput = (w: Page) =>
+  w.url().includes('output.html') && !w.url().includes('identify=') && !w.url().includes('stagePreview=');
 
 /** The first output window's page, waiting for it to open. */
 export function outputPage(app: ElectronApplication): Promise<Page> {

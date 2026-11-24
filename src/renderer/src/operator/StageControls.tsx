@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react';
 import { useEngine } from '../engine/engine-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageScreen } from '../render/StageScreen';
-import { useFirstGroupLook, useScreens } from '../screens/screens-store';
+import { askForScreens, useFirstGroupLook, useScreens } from '../screens/screens-store';
+import { NO_STAGE_SCREEN, SET_UP_STAGE, stageScreensSet } from '../../../shared/screen-switches';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ColorInput, Field, Select, TextInput } from '../ui/Field';
 import { usePersistentState } from '../ui/persist';
 import { contrastRatio } from '../../../shared/contrast';
-import { LayoutTemplate, Tv } from '../ui/icons';
+import { AppWindow, LayoutTemplate, Tv } from '../ui/icons';
 import { useHallPicture } from '../stage/hall-picture';
 import {
   chooseStageLayout,
@@ -95,6 +96,49 @@ function EditLayoutButton() {
     >
       Edit layouts…
     </Button>
+  );
+}
+
+/**
+ * Stage preview (alpha.22): a window on this computer showing what a stage screen would, its layout with Stage on and
+ * the audience picture with it off, so a layout can be made and seen with only one projector. Pressed again, the
+ * same window comes forward.
+ */
+function StagePreviewButton() {
+  return (
+    <Button
+      size="sm"
+      icon={AppWindow}
+      data-testid="stage-preview-open"
+      onClick={() => void window.drashti.screens.openStagePreview()}
+    >
+      Stage preview
+    </Button>
+  );
+}
+
+/**
+ * No screen is set to Stage (alpha.22; the owner, 24 Nov 2026: "right now i am unable to setup stage screen even its
+ * on"): said plainly, with Set up Stage screen…, which opens Screens, where one click gives a display the Stage job.
+ * Nothing is said before the screens are known.
+ */
+function NoStageScreen() {
+  const none = useScreens((s) => (s.snapshot ? stageScreensSet(s.snapshot) === 0 : false));
+  if (!none) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="stage-no-screen">
+      <p className="text-xs text-muted">{NO_STAGE_SCREEN} Stage preview shows the stage on this computer.</p>
+      <Button
+        size="sm"
+        variant="secondary"
+        data-testid="stage-set-up"
+        onClick={() => {
+          askForScreens();
+        }}
+      >
+        {SET_UP_STAGE}
+      </Button>
+    </div>
   );
 }
 
@@ -276,8 +320,15 @@ export function StageMessageControl() {
     >
       <div className="flex items-end gap-2">
         <StagePreview />
-        {!operateOnly && <EditLayoutButton />}
+        {!operateOnly && (
+          <div className="flex flex-col items-start gap-2">
+            <StagePreviewButton />
+            <EditLayoutButton />
+          </div>
+        )}
       </div>
+      {/* No screen set to Stage (alpha.22): said, with the way to set one up (Pro Mode). */}
+      {!operateOnly && <NoStageScreen />}
       {off && (
         <p className="text-xs text-warning-fg" data-testid="stage-off-note">
           Stage is off: every stage screen shows the audience picture.

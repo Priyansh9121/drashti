@@ -840,6 +840,7 @@ const bridge: DrashtiBridge = {
     setJob: (displayId, job, options) => invoke(IPC.screens.setJob, displayId, job, options),
     lastSaid: () => invoke(IPC.screens.lastSaid),
     saidClosed: (id) => invoke(IPC.screens.saidClosed, id),
+    openStagePreview: () => invoke(IPC.screens.openStagePreview),
     onSaid: (listener) => on(IPC.screens.said, listener),
     removeScreen: (screenId) => invoke(IPC.screens.removeScreen, screenId),
     assignNodeDisplay: (groupId, nodeId, displayId) =>

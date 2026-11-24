@@ -19,6 +19,8 @@ interface ScreensView {
   pendingCover: PendingCover | null;
   /** The display Screens opens at (Session 55: the notice's Change…), once; null for none. */
   focusDisplayId: number | null;
+  /** Asked to open Screens from outside its button (alpha.22: Set up Stage screen…): a new number each time. */
+  openAsked: number;
 }
 
 export const useScreens = create<ScreensView>(() => ({
@@ -27,11 +29,23 @@ export const useScreens = create<ScreensView>(() => ({
   busy: false,
   pendingCover: null,
   focusDisplayId: null,
+  openAsked: 0,
 }));
 
 /** Screens opens at this display, its job in reach (Session 55: the notice's Change…). */
 export function focusDisplay(displayId: number): void {
   useScreens.setState({ focusDisplayId: displayId });
+}
+
+/**
+ * Open Screens (alpha.22: Set up Stage screen…, from the Stage screen panel and the line under the top bar), at a
+ * display when one is given: there one click gives it the Stage job.
+ */
+export function askForScreens(displayId?: number): void {
+  useScreens.setState((s) => ({
+    openAsked: s.openAsked + 1,
+    ...(displayId === undefined ? {} : { focusDisplayId: displayId }),
+  }));
 }
 
 /**

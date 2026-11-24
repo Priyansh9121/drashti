@@ -29,7 +29,7 @@ import { dropFolders, loadTree, openImportDestination, watchPlaylists } from '..
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
-import { connectScreens, focusDisplay } from '../screens/screens-store';
+import { connectScreens, focusDisplay, useScreens } from '../screens/screens-store';
 import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
 import { runAction, undoSimple, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -277,6 +277,14 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const openScreens = useCallback(() => {
     setScreensOpen(true);
   }, []);
+  // Asked from elsewhere (alpha.22: Set up Stage screen…, in the Stage screen panel and the line under the top bar).
+  useEffect(
+    () =>
+      useScreens.subscribe((now, before) => {
+        if (now.openAsked !== before.openAsked) setScreensOpen(true);
+      }),
+    [],
+  );
   const practising = usePractice((s) => s.on);
   const run = useCallback(
     (action: OperatorAction, slot?: number) => {

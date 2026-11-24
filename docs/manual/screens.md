@@ -56,7 +56,8 @@
 1. Press **Audience** (or **Cmd+1**), or **Stage** (or **Cmd+2**).
 2. Drashti asks first while those screens show something: press **Turn off**.
 3. The status bar says **Audience off** or **Stage off**, with **Turn on**.
-4. Both are on again every time Drashti starts.
+4. **Audience** is on again every time Drashti starts. **Stage** starts off in a new library, then as it was left.
+5. Stage on with no screen set to Stage says **No screen is set to Stage.**: press **Set up Stage screen…**, then **Stage** beside the display that shows the stage.
 
 After an audience screen is turned on or reloaded mid-show, the picture already up is prepared first. Next then loads ahead as usual. The existing wait for a picture stays at three seconds.
 

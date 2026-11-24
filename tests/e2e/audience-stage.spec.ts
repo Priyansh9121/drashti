@@ -26,7 +26,8 @@ import {
  * exactly the audience picture until it is on again. The show carries on (the engine, LIVE, the other switch's
  * screens). Turning one off asks first while its screens show something; on never asks. The
  * status bar says "Audience off" or "Stage off" with Turn on, in Simple Mode too (which can only turn them on).
- * Both are on again at every start. Mod+1 and Mod+2 are the page's keys: the View menu's items show them without
+ * Audience is on again at every start; Stage starts as it was left (alpha.22: off in a new library, stage-switch.spec.ts;
+ * these tests start with it on, as launchApp does). Mod+1 and Mod+2 are the page's keys: the View menu's items show them without
  * binding them (Session 51), so one press acts once.
  *
  * Two outputs on one computer, as quiet runs make them: windowed, the second on a pretend display. No window is
@@ -265,7 +266,7 @@ test('one press acts once: the View menu’s Audience and Stage show their keys 
   await app.close();
 });
 
-test('both are on again at every start; Simple Mode only turns them on: Mod+1 and the status bar, never off', async () => {
+test('Audience is on again at every start, never remembered; Simple Mode only turns them on: Mod+1 and the status bar, never off', async () => {
   test.setTimeout(150_000);
   const { app, userData } = await launchApp(OUTPUTS);
   const win = await operatorPage(app);
@@ -276,7 +277,7 @@ test('both are on again at every start; Simple Mode only turns them on: Mod+1 an
   await expect.poll(() => openRoles(app)).toEqual([]);
   expect(await switches(win)).toEqual({ audience: false, stage: true });
 
-  // Quit with Audience off, and start again: both on, never remembered.
+  // Quit with Audience off, and start again: Audience on, never remembered (Stage as it was left: on here).
   await app.close();
   const again = await relaunchApp(userData, OUTPUTS);
   const next = await operatorPage(again.app);
