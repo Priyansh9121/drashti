@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { MusicStepsAside } from '../sound/MusicStepsAside';
 import { LIVE_SECTION, PanelGroup } from '../ui/Panel';
 import { Music } from '../ui/icons';
 import { AudioAddMenu, MusicPanel } from './MusicPanel';
+import { connectMusic } from './music-store';
 
 /*
  * Audio in the live column (Session 26a's group: the audio playlists, Session 55's Part 13; Music steps aside, Part
@@ -11,6 +13,11 @@ import { AudioAddMenu, MusicPanel } from './MusicPanel';
  * first of the sections under LIVE (alpha.22), folded at each start as they all are; Simple Mode's opens as before.
  */
 export function AudioGroup({ platform, section = false }: { platform: string; section?: boolean }) {
+  // The lists are known while the heading shows, folded or not: its + names a new list past them and imports into the
+  // list shown (alpha.22's review: folded at the start, the + acted on no lists at all).
+  useEffect(() => {
+    connectMusic();
+  }, []);
   return (
     <PanelGroup
       title="Audio"
