@@ -18,7 +18,8 @@ import * as fetchIndic from '../../../scripts/fetch-indic.mjs';
  * helper is built on Microsoft's ONNX Runtime 1.23.2 package (123 MB, scripts/fetch-indic.mjs), which every CI job
  * running the end-to-end tests downloaded each time. Now CI keeps that one file in its cache, keyed by the exact
  * version, the runner's platform and the SHA-256 the script pins. Whatever the cache gives is checked by size and
- * SHA-256 before use, as a download is; a miss downloads it as before. Pushes to main and phase1 keep it (a quick
+ * SHA-256 before use, as a download is; a miss downloads it as before, from a clean start (whatever a restore that
+ * failed part-way left is removed first: cap-review-ortcache S2). Pushes to main and phase1 keep it (a quick
  * check's scratch branch never runs again); every run restores what main's or its own branch's runs kept. The
  * release build still downloads it fresh (Session 30: no cache before its installers are kept).
  * A stand-in fetch and a placeholder package here: nothing is downloaded.
@@ -31,6 +32,8 @@ const PINNED_SHA256 = '25fe172f7fcdf34f2b5b02c8b997f6b88abc282956849d4af4335af23
 const PINNED_PATH = '.scratch/onnxruntime-1.23.2/microsoft.ml.onnxruntime.1.23.2.nupkg';
 /** The cache action the repository already uses (CI's Linux FFmpeg), by the same commit: no new action. */
 const CACHE_ACTION = '55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0';
+/** A miss starts clean: only when the restore ran and gave no exact hit. */
+const CLEAR_IF = "steps.ort-cache.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true'";
 const SAVE_IF =
   "steps.indic.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true' && " +
   "github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')";
@@ -131,7 +134,7 @@ describe('the package from CI’s cache is checked as a download is', () => {
     const fetch = fetchGiving();
     expect(await ensure(fetch)).toBe(archive);
     expect(fetch).not.toHaveBeenCalled();
-    expect(lines.join('\n')).toMatch(/kept .*checked/u);
+    expect(lines.join('\n')).toMatch(/already here \(CI's cache, or an earlier build\), checked/u);
   });
 
   it('a hit that is not the pinned package fails its check and is never used', async () => {
@@ -163,11 +166,48 @@ function fetchingJobs(file: string) {
       steps: job.split(/\n(?= {6}- )/u).filter((step) => step.startsWith('      - ')),
     }));
 }
-/** A step's setting (`- key:` on its first line, `key:` under it, or under its `with:`), or undefined. */
-const field = (step: string, key: string) =>
-  new RegExp(`(?:^ {6}- |\\n {8}|\\n {10})${key}: ([^\\n]*)`, 'u').exec(step)?.[1];
+/**
+ * A step's setting (`- key:` on its first line, `key:` under it, or under its `with:` or `env:`), or undefined. A
+ * folded value (`>-`) is read whole, its lines joined by a space, as GitHub reads it (cap-review-ortcache S1).
+ */
+function field(step: string, key: string): string | undefined {
+  const m = new RegExp(`(?:^ {6}- |\\n( {8}| {10}))${key}: ([^\\n]*)`, 'u').exec(step);
+  if (!m) return undefined;
+  const value = m[2] ?? '';
+  if (value !== '>-' && value !== '>') return value;
+  const indent = (m[1] ?? ' '.repeat(8)).length;
+  const lines: string[] = [];
+  for (const line of step
+    .substring(m.index + m[0].length)
+    .split('\n')
+    .slice(1)) {
+    if (!line.trim() || line.length - line.trimStart().length <= indent) break;
+    lines.push(line.trim());
+  }
+  return lines.join(' ');
+}
 
 describe('CI’s jobs that build Route C’s helper', () => {
+  it('are read with their folded conditions whole', () => {
+    const step = [
+      '      - name: A step',
+      '        if: >-',
+      "          env.QUICK != 'true' ||",
+      "          contains(inputs.specs, 'x')",
+      '        id: x',
+      '        env:',
+      '          ORT_PATH: here',
+      '        run: node x.mjs',
+    ].join('\n');
+    expect(field(step, 'if')).toBe("env.QUICK != 'true' || contains(inputs.specs, 'x')");
+    expect([field(step, 'id'), field(step, 'ORT_PATH'), field(step, 'run'), field(step, 'shell')]).toEqual([
+      'x',
+      'here',
+      'node x.mjs',
+      undefined,
+    ]);
+  });
+
   it.each([
     ['ci.yml', ['app', 'app-parts', 'app-black']],
     ['performance.yml', ['performance']],
@@ -180,10 +220,12 @@ describe('CI’s jobs that build Route C’s helper', () => {
         (s) => field(s, 'run') === 'node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"',
       );
       const restore = at((s) => field(s, 'uses') === `actions/cache/restore@${CACHE_ACTION}`);
+      const clear = at((s) => field(s, 'run') === 'rm -f "$ORT_PATH"');
       const build = at((s) => field(s, 'run') === 'node scripts/fetch-indic.mjs');
       expect(pin, `${name}: the key's step`).toBeGreaterThan(-1);
       expect(restore, `${name}: the restore after it`).toBeGreaterThan(pin);
-      expect(build, `${name}: the build after the restore`).toBeGreaterThan(restore);
+      expect(clear, `${name}: a miss's clean start after the restore`).toBeGreaterThan(restore);
+      expect(build, `${name}: the build after them`).toBeGreaterThan(clear);
       // Nothing builds the helper before the restore (the Intel Mac's build comes after, on the checked package).
       expect(
         at((s) => /run: node scripts\/fetch-indic\.mjs(?! --cache-key)/u.test(s)),
@@ -199,10 +241,18 @@ describe('CI’s jobs that build Route C’s helper', () => {
       // Only the exact key: never an older package by a prefix.
       expect(r, name).not.toContain('restore-keys');
       expect(field(b, 'id'), name).toBe('indic');
+      // A miss downloads exactly as before: whatever a restore that failed part-way left is removed first. A hit
+      // (the exact key, restored whole) is kept, and checked by the build.
+      const c = steps[clear] ?? '';
+      expect([field(c, 'if'), field(c, 'shell'), field(c, 'ORT_PATH')], name).toEqual([
+        CLEAR_IF,
+        'bash',
+        '${{ steps.ort.outputs.path }}',
+      ]);
       // The three run together, and the build (with its check) runs whatever the cache gave.
       expect([field(r, 'if'), field(b, 'if')], name).toEqual([field(p, 'if'), field(p, 'if')]);
       expect(b, name).not.toContain('cache-hit');
-      for (const s of [p, r, b]) expect(s, name).not.toContain('working-directory');
+      for (const s of [p, r, c, b]) expect(s, name).not.toContain('working-directory');
     }
   });
 
@@ -224,7 +274,9 @@ describe('CI’s jobs that build Route C’s helper', () => {
   it('performance.yml only restores it (run by hand: ci.yml’s pushes keep it)', () => {
     for (const { name, steps } of fetchingJobs('performance.yml')) {
       expect(
-        steps.filter((s) => s.includes('actions/cache/save@') && s.includes('steps.ort.')),
+        steps.filter(
+          (s) => s.includes('actions/cache/save@') && /steps\.ort\.|\.scratch\/onnxruntime/u.test(s),
+        ),
         name,
       ).toEqual([]);
     }
@@ -235,5 +287,6 @@ describe('CI’s jobs that build Route C’s helper', () => {
     expect(release).toContain('run: node scripts/fetch-indic.mjs\n');
     expect(release).not.toContain('--cache-key');
     expect(release).not.toContain('steps.ort.');
+    expect(release).not.toContain('.scratch/onnxruntime');
   });
 });
