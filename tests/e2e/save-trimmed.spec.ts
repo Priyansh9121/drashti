@@ -37,11 +37,11 @@ function ffmpeg(args: string[]): void {
   expect(r.status, r.error?.message ?? r.stderr.toString()).toBe(0);
 }
 
-/** A 4-second placeholder video (test pattern and a tone), a keyframe every second. */
-function placeholderVideo(file: string, hue: number): string {
+/** A placeholder video (test pattern and a tone), 4 seconds long unless said, a keyframe every second. */
+function placeholderVideo(file: string, hue: number, seconds = 4): string {
   ffmpeg([
-    ...['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=4'],
-    ...['-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=4'],
+    ...['-f', 'lavfi', '-i', `testsrc2=s=320x180:r=25:d=${String(seconds)}`],
+    ...['-f', 'lavfi', '-i', `sine=f=440:r=48000:d=${String(seconds)}`],
     ...['-vf', `hue=h=${String(hue)}`, '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '25'],
     ...['-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', file],
   ]);
@@ -368,6 +368,135 @@ test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and 
       .poll(() => videoEdit(win, video), { timeout: 60_000 })
       .toMatchObject({ ok: true, edit: { revision: 2, state: 'ready' } });
     await expect(dialog.getByTestId('edit-video-status')).toHaveText('Ready for next showing');
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/*
+ * alpha.23 (the save-trim review's SHOULD-2): a video that does not go round stops playing at its end point, yet may
+ * stay up: When it ends → Freeze keeps its last picture, as does no wallpaper chosen, or a slide or the box over it.
+ * Nothing changes on LIVE then. Until alpha.23 it still counted as playing, so it held a save for good, the row saying
+ * "Waiting: a video is playing" over a still picture.
+ */
+
+/** A row's video set to When it ends → Freeze, played from its row: up on LIVE and playing. Its length (ms). */
+async function freezeRowPlaying(win: Page, rowId: string, mediaId: string): Promise<number> {
+  const freeze = await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.playlists.setWhenEnds(id, 'freeze'),
+    rowId,
+  );
+  expect(freeze.ok).toBe(true);
+  await videoRow(win, rowId).click();
+  let lengthMs = 0;
+  await expect
+    .poll(async () => {
+      const bg = (await live(win)).layers.background;
+      if (bg?.kind !== 'media' || bg.mediaId !== mediaId || bg.loop || bg.seek?.paused) return 0;
+      lengthMs = bg.durationMs ?? 0;
+      return lengthMs;
+    })
+    .toBeGreaterThan(20_000);
+  return lengthMs;
+}
+
+/** The video up moved to its last second and a half: it plays to its end point by itself, nothing else changing. */
+async function playToItsEnd(win: Page, lengthMs: number): Promise<void> {
+  const moved = await dispatch(win, {
+    type: 'moveTo',
+    playing: { layer: 'background' },
+    toMs: lengthMs - 1500,
+  });
+  expect(moved.ok).toBe(true);
+}
+
+/** Still up, as it ended: not taken off, not paused, not going round (its last picture stays). */
+async function expectStillUp(win: Page, mediaId: string): Promise<void> {
+  const bg = (await live(win)).layers.background;
+  expect(bg).toMatchObject({ kind: 'media', mediaId, media: 'video', loop: false });
+  expect(bg?.kind === 'media' ? bg.seek?.paused : undefined).toBeUndefined();
+}
+
+test('Save trimmed video goes on by itself once the video up has played to its end and stays up (Freeze)', async () => {
+  test.setTimeout(120_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-save-trimmed-f-'));
+  const { app, win } = await start();
+  try {
+    const [frozen = '', six = ''] = await importAndGetIds(win, [
+      placeholderVideo(join(dir, 'Placeholder frozen.mp4'), 200, 60),
+      placeholderVideo(join(dir, 'Placeholder six.mp4'), 330),
+    ]);
+    expect(six).not.toBe('');
+    const [rowFrozen = '', rowSix = ''] = await videoPlaylist(win, 'Placeholder frozen trims', [frozen, six]);
+    const lengthMs = await freezeRowPlaying(win, rowFrozen, frozen);
+
+    // While it plays, the save waits, and says so.
+    await trimOnRow(win, rowSix, '0:01', '0:03');
+    const status = videoRow(win, rowSix).getByTestId('trim-status');
+    await expect(status).toHaveText('Waiting: a video is playing');
+    expect(await mediaNames(win)).not.toContain('Placeholder six trimmed.mp4');
+
+    // Played to its end point, its last picture stays up: it no longer plays, so the save goes on.
+    await playToItsEnd(win, lengthMs);
+    await expect
+      .poll(() => mediaNames(win), {
+        timeout: CUT_MS,
+        message:
+          'the trimmed video is in Media once the video up has played to its end and stays up (Freeze)',
+      })
+      .toContain('Placeholder six trimmed.mp4');
+    await expect(status).toHaveCount(0);
+    await expectStillUp(win, frozen);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Edit Video’s Save goes on by itself once the video up has played to its end and stays up (Freeze)', async () => {
+  test.setTimeout(150_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-save-trimmed-g-'));
+  const { app, win } = await start();
+  try {
+    const [frozen = '', video = ''] = await importAndGetIds(win, [
+      placeholderVideo(join(dir, 'Placeholder edit frozen.mp4'), 150, 60),
+      placeholderVideo(join(dir, 'Placeholder edit seven.mp4'), 270),
+    ]);
+    expect(video).not.toBe('');
+    const [rowFrozen = ''] = await videoPlaylist(win, 'Placeholder frozen edits', [frozen]);
+    const lengthMs = await freezeRowPlaying(win, rowFrozen, frozen);
+
+    await openLibrary(win);
+    await win.getByTestId('library-tab-media').click();
+    await win
+      .getByTestId('media-item')
+      .filter({ hasText: 'Placeholder edit seven.mp4' })
+      .click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Edit Video…', exact: true }).click();
+    const dialog = win.getByTestId('edit-video');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Playback', exact: true }).click();
+    await dialog.getByLabel('Speed').selectOption('2');
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    // While it plays, the save waits, and says so.
+    await expect(dialog.getByTestId('edit-video-status')).toHaveText('Preparing');
+    await expect(dialog.getByTestId('edit-video-waiting')).toHaveText('Waiting: a video is playing');
+    expect(await videoEdit(win, video)).toMatchObject({
+      ok: true,
+      edit: { revision: 1, state: 'preparing' },
+    });
+
+    // Played to its end point, its last picture stays up: it no longer plays, so the save goes on.
+    await playToItsEnd(win, lengthMs);
+    await expect
+      .poll(() => videoEdit(win, video), {
+        timeout: 60_000,
+        message: 'Edit Video’s Save is made once the video up has played to its end and stays up (Freeze)',
+      })
+      .toMatchObject({ ok: true, edit: { revision: 1, state: 'ready' } });
+    await expect(dialog.getByTestId('edit-video-status')).toHaveText('Ready for next showing');
+    await expectStillUp(win, frozen);
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });
