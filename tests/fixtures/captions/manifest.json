@@ -1,7 +1,7 @@
 {
   "format": "drashti-captions-bench",
   "version": 1,
-  "about": "Generated speech of placeholder sentences for the captions bench (tools/captions-bench): synthetic voices only, no real person, recording or mandir content. Whose voices, and their licence: CREDITS.md.",
+  "about": "Generated speech of placeholder sentences for the captions bench (scripts/captions-bench.mjs): synthetic voices only, no real person, recording or mandir content. Whose voices, and their licence: CREDITS.md.",
   "clips": [
     {
       "id": "gu-01-f",

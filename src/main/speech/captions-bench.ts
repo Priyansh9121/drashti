@@ -73,6 +73,8 @@ export interface CandidateRun {
   engines: BenchEngine[];
   /** False for clips made for timing only (English from the runner's voice): no error rates then. */
   scored: boolean;
+  /** The processor mask every engine must have (3, two cores, on Windows), or null where none is read. */
+  expectedMask: number | null;
 }
 
 export function parseCaptionsInput(input: string): BenchAsk | null {
@@ -332,6 +334,12 @@ export function summarize(run: CandidateRun): CandidateSummary {
   if (s.missed > 0) s.why.push(`missed ${String(s.missed)}`);
   if (s.growthMs !== null && s.growthMs > GROWTH_MS)
     s.why.push(`growth ${String(s.growthMs)} ms (limit ${String(GROWTH_MS)})`);
+  // Two cores, checked (review S1): every engine read back with the mask, and at least one read at all.
+  if (run.expectedMask !== null) {
+    if (run.engines.length === 0) s.why.push('no engine’s processor mask was read');
+    for (const mask of new Set(run.engines.map((e) => e.affinity)))
+      if (mask !== run.expectedMask) s.why.push(`mask ${String(mask)}, not ${String(run.expectedMask)}`);
+  }
   s.live = s.why.length === 0;
   return s;
 }
@@ -348,7 +356,7 @@ export function benchMarkdown(
   const lines = [
     `# Captions bench (${meta.mode}${meta.mode === 'alongside' ? ', with the Performance check running' : ''})`,
     '',
-    `Platform ${meta.platform}; cores: ${meta.cores}. Live = first words and the final within ${sec(LIVE_MS)} s at p95, nothing held, dropped or missed, no growth over ${sec(GROWTH_MS)} s. Times in seconds (p50 / p95 / max): first words from the speech's onset, the final from its end.`,
+    `Platform ${meta.platform}; cores: ${meta.cores}. Live = first words and the final within ${sec(LIVE_MS)} s at p95, nothing held, dropped or missed, no growth over ${sec(GROWTH_MS)} s. Times in seconds (p50 / p95 / max): first words from the speech’s onset, the final from its end.`,
     '',
     '| candidate | clips | WER | CER | first words | final | held | dropped | missed | growth | engine start | engine MB | mask | live |',
     '|---|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|',
@@ -415,8 +423,8 @@ export function englishSpeechArgs(
   return {
     args: [
       ...POWERSHELL,
-      'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile($env:DRASHTI_BENCH_FILE, $f); $s.Speak($env:DRASHTI_BENCH_TEXT); $s.Dispose()',
+      'Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile($env:CAPTIONS_BENCH_FILE, $f); $s.Speak($env:CAPTIONS_BENCH_TEXT); $s.Dispose()',
     ],
-    env: { DRASHTI_BENCH_TEXT: text, DRASHTI_BENCH_FILE: file },
+    env: { CAPTIONS_BENCH_TEXT: text, CAPTIONS_BENCH_FILE: file },
   };
 }

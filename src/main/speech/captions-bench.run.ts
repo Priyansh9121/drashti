@@ -10,13 +10,13 @@
  *     small model (models.ts's pin), fallback on, the language chosen, as index.ts wires it.
  * Each through the real speech hub, timed as the hub passes phrases on. English is spoken by the runner's own
  * Windows voice at run time and never kept. Writes compare.md and results.json (numbers only, never a word heard)
- * into DRASHTI_CAPTIONS_BENCH_OUT.
- *   DRASHTI_CAPTIONS_BENCH        the workflow's input: alone | alongside [:candidates]
- *   DRASHTI_CAPTIONS_BENCH_OUT    where its tables go
- *   DRASHTI_CAPTIONS_BENCH_STOP   alongside: rounds go on until this file appears (the Performance check is over)
- *   DRASHTI_CAPTIONS_BENCH_MINUTES alongside: at most this long (default 40)
- *   DRASHTI_CAPTION_MODELS_CACHE  the models' cache (default ~/.cache/drashti/caption-models)
- *   DRASHTI_CAPTIONS_BENCH_INDIC, DRASHTI_CAPTIONS_BENCH_WHISPER  the engine programs, when not in vendor/ (a local try)
+ * into CAPTIONS_BENCH_OUT.
+ *   CAPTIONS_BENCH        the workflow's input: alone | alongside [:candidates]
+ *   CAPTIONS_BENCH_OUT    where its tables go
+ *   CAPTIONS_BENCH_STOP   alongside: rounds go on until this file appears (the Performance check is over)
+ *   CAPTIONS_BENCH_MINUTES alongside: at most this long (default 40)
+ *   CAPTIONS_BENCH_CACHE  the models' cache (default ~/.cache/drashti/caption-models)
+ *   CAPTIONS_BENCH_INDIC, CAPTIONS_BENCH_WHISPER  the engine programs, when not in vendor/ (a local try)
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -283,6 +283,8 @@ async function runCandidate(
       engineStartMs: seen.listeningAt === null ? null : seen.listeningAt - began,
       engines,
       scored: candidate !== 'small-en',
+      // Two cores on Windows: every engine must read back mask 3 (summarize judges it).
+      expectedMask: WINDOWS ? 3 : null,
       feedLagMs: feed.lagMs(),
       failed: seen.failed,
     };
@@ -294,15 +296,15 @@ async function runCandidate(
 }
 
 it('captions bench', async () => {
-  const ask = parseCaptionsInput(env['DRASHTI_CAPTIONS_BENCH'] ?? '');
-  if (!ask) throw new Error('DRASHTI_CAPTIONS_BENCH is empty: say alone or alongside (and the candidates)');
-  const out = resolve(env['DRASHTI_CAPTIONS_BENCH_OUT'] ?? join(ROOT, '.scratch', 'captions-bench'));
+  const ask = parseCaptionsInput(env['CAPTIONS_BENCH'] ?? '');
+  if (!ask) throw new Error('CAPTIONS_BENCH is empty: say alone or alongside (and the candidates)');
+  const out = resolve(env['CAPTIONS_BENCH_OUT'] ?? join(ROOT, '.scratch', 'captions-bench'));
   mkdirSync(out, { recursive: true });
   // Two cores, as the Performance check makes them on Windows: this process first, then every engine it starts.
   const cores = WINDOWS
     ? `two (processor mask ${powershell(affinityArgs(process.pid, 3))})`
     : 'all (not Windows)';
-  const cacheDir = env['DRASHTI_CAPTION_MODELS_CACHE'] ?? DEFAULT_CACHE;
+  const cacheDir = env['CAPTIONS_BENCH_CACHE'] ?? DEFAULT_CACHE;
   const files = new Map<string, string>();
   for (const id of new Set(ask.candidates.map(candidateModel)))
     files.set(
@@ -321,8 +323,8 @@ it('captions bench', async () => {
     arch: process.arch,
   };
   const programs: Programs = {
-    indic: env['DRASHTI_CAPTIONS_BENCH_INDIC'] ?? findIndic(place),
-    whisper: env['DRASHTI_CAPTIONS_BENCH_WHISPER'] ?? findWhisper(place),
+    indic: env['CAPTIONS_BENCH_INDIC'] ?? findIndic(place),
+    whisper: env['CAPTIONS_BENCH_WHISPER'] ?? findWhisper(place),
     files,
   };
   const manifest = JSON.parse(readFileSync(join(FIXTURE, 'manifest.json'), 'utf8')) as BenchManifest;
@@ -337,7 +339,7 @@ it('captions bench', async () => {
         }));
     if (!WINDOWS)
       throw new Error(
-        "small-en: English is spoken by the Windows runner's own voice, so it runs on Windows only",
+        'small-en: English is spoken by the Windows runner’s own voice, so it runs on Windows only',
       );
     const dir = mkdtempSync(join(tmpdir(), 'drashti-captions-en-'));
     try {
@@ -355,8 +357,8 @@ it('captions bench', async () => {
   const runs = new Map<BenchCandidate, CandidateRun>();
   const notes: string[] = [];
   const failures: string[] = [];
-  const stopFile = env['DRASHTI_CAPTIONS_BENCH_STOP'] ?? '';
-  const until = Date.now() + Number(env['DRASHTI_CAPTIONS_BENCH_MINUTES'] ?? '40') * 60_000;
+  const stopFile = env['CAPTIONS_BENCH_STOP'] ?? '';
+  const until = Date.now() + Number(env['CAPTIONS_BENCH_MINUTES'] ?? '40') * 60_000;
   for (let round = 1; ; round += 1) {
     for (const c of ask.candidates) {
       let r: Awaited<ReturnType<typeof runCandidate>>;
@@ -395,6 +397,9 @@ it('captions bench', async () => {
     if (ask.mode === 'alone' || Date.now() > until || (stopFile !== '' && existsSync(stopFile))) break;
   }
   const summaries = [...runs.values()].map(summarize);
+  // Not two cores is not a measurement of two cores: the run fails (review S1).
+  for (const s of summaries)
+    for (const why of s.why) if (/mask/u.test(why)) failures.push(`${s.candidate}: ${why}`);
   const md = benchMarkdown(summaries, {
     mode: ask.mode,
     cores,

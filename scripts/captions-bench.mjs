@@ -1,12 +1,13 @@
 // The captions bench (CAP-CI-1; the owner, 24 Nov 2026: "Yes, all three"): caption AI's routes on CI's Windows
 // runner held to two cores, through the app's own engines (src/main/speech/captions-bench.run.ts, its parts in
 // captions-bench.ts), for the Performance workflow's `captions` input. Never part of the unit suite or an installer.
+//   node scripts/captions-bench.mjs check   refuses a mistyped input (the workflow's first step)
 //   node scripts/captions-bench.mjs run     the bench, now (the input's "alone")
 //   node scripts/captions-bench.mjs start   the bench in the background, left running for the steps after it (the
 //                                           input's "alongside": the Performance check runs meanwhile)
 //   node scripts/captions-bench.mjs stop    tells a started bench the Performance check is over, waits for it to finish
 //                                           its round, prints its table; its exit code is the bench's
-// DRASHTI_CAPTIONS_BENCH is the input (alone | alongside [:candidates]); DRASHTI_CAPTIONS_BENCH_OUT the folder for
+// CAPTIONS_BENCH is the input (alone | alongside [:candidates]); CAPTIONS_BENCH_OUT the folder for
 // compare.md, results.json and bench.log (numbers only, never a word heard).
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
@@ -34,12 +35,37 @@ export function benchCommand() {
   ];
 }
 
+/** The candidates, as src/main/speech/captions-bench.ts's BENCH_CANDIDATES (a unit test keeps the two in step). */
+const CANDIDATES = ['rc-gu', 'rc-hi', 'small-gu', 'small-hi', 'small-en'];
+
+/**
+ * Why a captions input is refused, as the bench's parseCaptionsInput refuses it, or null when it is good (review S2:
+ * the workflow's first step, so a mistyped one never becomes an ordinary run after 842 MB of downloads). The input is
+ * quoted as JSON, so it can never start a line of the log.
+ */
+export function checkCaptionsInput(input) {
+  const text = input.trim();
+  if (text === '') return null;
+  const m = /^(alone|alongside)(?::(.*))?$/u.exec(text);
+  if (!m)
+    return `captions: ${JSON.stringify(text)} is not alone or alongside (then, after a colon, the candidates)`;
+  if (m[2] === undefined) return null;
+  const seen = new Set();
+  for (const name of m[2].split(',').map((n) => n.trim())) {
+    if (!CANDIDATES.includes(name))
+      return `captions: unknown candidate ${JSON.stringify(name)} (known: ${CANDIDATES.join(', ')})`;
+    if (seen.has(name)) return `captions: ${JSON.stringify(name)} is named twice`;
+    seen.add(name);
+  }
+  return null;
+}
+
 /** How long `stop` waits for a started bench to finish its round (a round of every candidate is about 12 min). */
 export const STOP_WAIT_MS = 25 * 60_000;
 
 function outDir() {
-  const out = process.env['DRASHTI_CAPTIONS_BENCH_OUT'];
-  if (!out) throw new Error('DRASHTI_CAPTIONS_BENCH_OUT is not set: the folder for the bench’s tables');
+  const out = process.env['CAPTIONS_BENCH_OUT'];
+  if (!out) throw new Error('CAPTIONS_BENCH_OUT is not set: the folder for the bench’s tables');
   mkdirSync(out, { recursive: true });
   return resolve(out);
 }
@@ -52,6 +78,12 @@ function runNow(extraEnv = {}) {
 }
 
 async function main(what) {
+  if (what === 'check') {
+    const why = checkCaptionsInput(process.env['CAPTIONS_BENCH'] ?? '');
+    if (why) throw new Error(`${why}. Nothing was installed or downloaded.`);
+    console.log('The captions input is good.');
+    return;
+  }
   if (what === 'run') process.exit(runNow());
   const out = outDir();
   const files = benchFiles(out);
@@ -63,7 +95,7 @@ async function main(what) {
       cwd: root,
       detached: true,
       stdio: ['ignore', log, log],
-      env: { ...process.env, DRASHTI_CAPTIONS_BENCH_STOP: files.stop },
+      env: { ...process.env, CAPTIONS_BENCH_STOP: files.stop },
       windowsHide: true,
     });
     child.unref();
@@ -85,7 +117,7 @@ async function main(what) {
     }
     process.exit(Number(readFileSync(files.exit, 'utf8').trim()) || 0);
   }
-  throw new Error('usage: node scripts/captions-bench.mjs run | start | stop');
+  throw new Error('usage: node scripts/captions-bench.mjs check | run | start | stop');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

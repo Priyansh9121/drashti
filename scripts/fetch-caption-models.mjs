@@ -141,6 +141,7 @@ function addressOf(source, env) {
     !parsed ||
     parsed.protocol !== 'https:' ||
     parsed.hostname !== 'github.com' ||
+    parsed.port !== '' ||
     parsed.username !== '' ||
     parsed.password !== '' ||
     parsed.search !== '' ||
@@ -168,6 +169,8 @@ function guarded(source, fetch) {
       const response = await fetch(at, { redirect: 'manual' });
       const to = response.headers.get('location');
       if (![301, 302, 303, 307, 308].includes(response.status) || !to) return response;
+      // A redirect's own body is never read (review n3).
+      await response.body?.cancel();
       at = new URL(to, at).href;
     }
     throw new Error(`refused ${source.name}: more than ${String(HOPS)} redirects`);

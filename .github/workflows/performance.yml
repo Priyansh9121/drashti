@@ -110,6 +110,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The captions input (CAP-CI-1), refused here when mistyped: before anything is installed or downloaded.
+      - name: The captions input (alone or alongside, then the candidates)
+        if: inputs.captions != ''
+        env:
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+        run: node scripts/captions-bench.mjs check
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -163,14 +169,14 @@ jobs:
       - name: Captions bench, alone (two cores)
         if: startsWith(inputs.captions, 'alone')
         env:
-          DRASHTI_CAPTIONS_BENCH: ${{ inputs.captions }}
-          DRASHTI_CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
         run: node scripts/captions-bench.mjs run
       - name: Captions bench, alongside (started; two cores)
         if: startsWith(inputs.captions, 'alongside')
         env:
-          DRASHTI_CAPTIONS_BENCH: ${{ inputs.captions }}
-          DRASHTI_CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
         run: node scripts/captions-bench.mjs start
       # Let in through the stand-in list on 127.0.0.1 (tests/perf/performance.spec.ts), never the real one (question 8).
       - name: Performance self-test (headless)
@@ -211,7 +217,7 @@ jobs:
       - name: Captions bench, alongside (stopped; its table)
         if: always() && startsWith(inputs.captions, 'alongside')
         env:
-          DRASHTI_CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
         run: node scripts/captions-bench.mjs stop
       - name: Keep the captions bench's tables (numbers only)
         if: always() && inputs.captions != ''

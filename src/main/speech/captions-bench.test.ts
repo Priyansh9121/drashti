@@ -169,6 +169,7 @@ function run(over: Partial<CandidateRun> = {}): CandidateRun {
     dropped: 0,
     engineStartMs: 1_300,
     engines: [{ pid: 4, name: 'ic-ctc.exe', peak: 300 * 1024 * 1024, affinity: 3 }],
+    expectedMask: 3,
     scored: true,
     ...over,
   };
@@ -213,6 +214,26 @@ describe('the summary and its verdict (live: first words and the final within 3 
     const m = summarize(missing);
     expect(m.missed).toBe(1);
     expect(m.why.join(' ')).toMatch(/missed 1/u);
+  });
+
+  it("is not live on Windows unless every engine's processor mask is read back as the two cores (3)", () => {
+    const four = summarize(run({ engines: [{ pid: 4, name: 'ic-ctc.exe', peak: 1, affinity: 15 }] }));
+    expect(four.live).toBe(false);
+    expect(four.why.join(' ')).toMatch(/mask 15, not 3/u);
+    const mixed = summarize(
+      run({
+        engines: [
+          { pid: 4, name: 'ic-ctc.exe', peak: 1, affinity: 3 },
+          { pid: 5, name: 'ic-ctc.exe', peak: 1, affinity: 1 },
+        ],
+      }),
+    );
+    expect(mixed.live).toBe(false);
+    const none = summarize(run({ engines: [] }));
+    expect(none.live).toBe(false);
+    expect(none.why.join(' ')).toMatch(/no engine.s processor mask was read/u);
+    // Not Windows: no mask to read, none judged.
+    expect(summarize(run({ engines: [], expectedMask: null })).live).toBe(true);
   });
 
   it('leaves the error rates out where the clips are for timing only (English from the runner)', () => {
@@ -264,8 +285,8 @@ describe('the Windows commands', () => {
     expect(args.join(' ')).toMatch(/System\.Speech/u);
     expect(args.join(' ')).toMatch(/16000/u);
     expect(env).toEqual({
-      DRASHTI_BENCH_TEXT: 'Room number 12; is on "the" floor',
-      DRASHTI_BENCH_FILE: 'C:\\t\\en-08.wav',
+      CAPTIONS_BENCH_TEXT: 'Room number 12; is on "the" floor',
+      CAPTIONS_BENCH_FILE: 'C:\\t\\en-08.wav',
     });
   });
 });

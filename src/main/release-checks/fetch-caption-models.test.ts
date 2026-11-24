@@ -322,6 +322,7 @@ describe("a pack's address setting (where the packs are put on Drashti's GitHub 
     ['plain http', `http://github.com${RELEASES}v1/placeholder-pack.zip`],
     ['a query', `https://github.com${RELEASES}v1/placeholder-pack.zip?x=1`],
     ['not an address', 'placeholder-pack.zip'],
+    ['another port', `https://github.com:8443${RELEASES}v1/placeholder-pack.zip`],
   ])('refuses an address set to %s before asking anything', async (_what, url) => {
     await expect(
       fetchCaptionModel('placeholder', {
