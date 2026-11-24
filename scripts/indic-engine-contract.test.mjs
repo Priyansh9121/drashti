@@ -486,12 +486,17 @@ test('a capture chunk crossing twelve seconds is split without dropping samples 
     await Promise.resolve();
     await Promise.resolve();
     send(11200, 0);
+    // The growing phrase is worked out once at 1 s of sound (cap-partials: the first partial needs no 1.5 s wait),
+    // padded with half a second of quiet (silence: none was heard before it), then the two whole phrases, unpadded.
+    for (let i = 0; i < 20 && decoded.length < 3; i += 1) await new Promise((done) => setImmediate(done));
     assert.deepEqual(
       decoded.map((samples) => samples.length),
-      [192000, 26200],
+      [24000, 192000, 26200],
     );
-    assert.deepEqual(Array.from(decoded[0].slice(-1000)), Array(1000).fill(6000));
-    assert.deepEqual(Array.from(decoded[1]), [...Array(15000).fill(6000), ...Array(11200).fill(0)]);
+    assert.ok(decoded.every((samples) => samples.length <= 192000));
+    assert.deepEqual(Array.from(decoded[0]), [...Array(16000).fill(5000), ...Array(8000).fill(0)]);
+    assert.deepEqual(Array.from(decoded[1].slice(-1000)), Array(1000).fill(6000));
+    assert.deepEqual(Array.from(decoded[2]), [...Array(15000).fill(6000), ...Array(11200).fill(0)]);
   } finally {
     stop();
   }
