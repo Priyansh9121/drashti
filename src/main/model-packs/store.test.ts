@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type * as NodeCrypto from 'node:crypto';
 import type * as NodeFs from 'node:fs';
 import {
   appendFileSync,
@@ -13,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PACK_FORMAT,
@@ -21,9 +22,11 @@ import {
   type ModelPacksStatus,
   type ModelPurpose,
   type PackFile,
+  type PackImportResult,
 } from '../../shared/model-packs';
 import { makeZip, type ZipWriterEntry } from '../import/testing/zip-writer';
 import { hashOffMain } from '../library/hash-off-main';
+import type * as WorkerThreads from 'node:worker_threads';
 import { insideFolder, ModelPackStore } from './store';
 
 /** One read that fails the way a busy or briefly locked disk does (EIO), for the next file read only. */
@@ -42,20 +45,78 @@ vi.mock('node:fs', async (original) => {
   };
 });
 
-// The checks off Main's thread (library/hash-off-main.ts), watched; a read fault for the next file read reaches them
-// as it reaches a read on this thread.
+// The checks off Main's thread (library/hash-off-main.ts), watched: each one's file and when it ran and how it ended,
+// a hook before each starts and on each part it tells (cap-packimport); a read fault for the next file read reaches
+// them as it reaches a read on this thread.
+const hashWatch = vi.hoisted(() => ({
+  runs: [] as { file: string; from: number; to?: number; outcome?: 'done' | 'failed' }[],
+  before: null as ((file: string) => void) | null,
+  told: null as ((file: string, bytes: number) => void) | null,
+}));
+type Told = (bytes: number) => void;
 vi.mock('../library/hash-off-main', async (original) => {
-  const real = await original<{ hashOffMain: typeof hashOffMain }>();
+  const real = await original<{
+    hashOffMain: (file: string, signal?: AbortSignal, told?: Told) => ReturnType<typeof hashOffMain>;
+  }>();
   return {
-    hashOffMain: vi.fn((file: string, signal?: AbortSignal) => {
+    hashOffMain: vi.fn((file: string, signal?: AbortSignal, told?: Told) => {
+      hashWatch.before?.(file);
       if (readFault.next) {
         readFault.next = false;
         return Promise.reject(Object.assign(new Error('i/o error'), { code: 'EIO' }));
       }
-      return real.hashOffMain(file, signal);
+      const run: (typeof hashWatch.runs)[number] = { file, from: performance.now() };
+      hashWatch.runs.push(run);
+      return real
+        .hashOffMain(
+          file,
+          signal,
+          told &&
+            ((bytes) => {
+              hashWatch.told?.(file, bytes);
+              told(bytes);
+            }),
+        )
+        .then(
+          (found) => {
+            Object.assign(run, { to: performance.now(), outcome: 'done' });
+            return found;
+          },
+          (error: unknown) => {
+            Object.assign(run, { to: performance.now(), outcome: 'failed' });
+            throw error;
+          },
+        );
     }),
   };
 });
+
+// What Main's thread hashes (cap-packimport): node:crypto's createHash, watched.
+vi.mock('node:crypto', async (original) => {
+  const crypto = await original<typeof NodeCrypto>();
+  return { ...crypto, createHash: vi.fn(crypto.createHash) };
+});
+
+// Each worker thread started, and whether it has ended (cap-packimport).
+const threads = vi.hoisted(() => ({ started: 0, ended: 0 }));
+vi.mock('node:worker_threads', async (original) => {
+  const real = await original<typeof WorkerThreads>();
+  class Watched extends real.Worker {
+    constructor(...args: ConstructorParameters<typeof real.Worker>) {
+      super(...args);
+      threads.started += 1;
+      this.once('exit', () => {
+        threads.ended += 1;
+      });
+    }
+  }
+  return { ...real, Worker: Watched };
+});
+/** Every worker thread started has ended. */
+const allEnded = () =>
+  vi.waitFor(() => {
+    expect(threads.ended).toBe(threads.started);
+  });
 
 /*
  * The offline model pack on this computer (alpha.22, cap-pack): imported from a folder or a zip an admin chooses,
@@ -69,6 +130,10 @@ const GiB = 1024 ** 3;
 const made: string[] = [];
 afterEach(() => {
   for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
+  hashWatch.before = null;
+  hashWatch.told = null;
+  hashWatch.runs.length = 0;
+  readFault.next = false;
 });
 const temp = (name: string) => {
   const d = mkdtempSync(join(tmpdir(), `drashti-model-packs-${name}-`));
@@ -421,6 +486,170 @@ describe('importing a model pack (alpha.22, cap-pack)', () => {
     });
     expect(ours(join(data, 'model-packs'))).toEqual([]);
     expect(store.status().importing).toEqual({ phase: 'idle' });
+  });
+});
+
+const MiB = 1024 ** 2;
+/** A model large enough that its SHA-256 takes a worker a while (and is told in parts). */
+const LARGE: PlaceholderModel = {
+  id: 'gu-large-placeholder',
+  purpose: ['captions-gu'],
+  format: 'whisper-ggml',
+  files: { 'captions/gu/model.bin': Buffer.alloc(32 * MiB, 'placeholder large gu ') },
+};
+const LARGE_FILE = join('captions', 'gu', 'model.bin');
+const largeRun = () => hashWatch.runs.find((h) => h.file.endsWith(LARGE_FILE));
+const TRY_AGAIN =
+  'Try again; if it happens again, choose Help › Report a Problem… (or Save Diagnostics when it can’t be sent).';
+
+describe('an import works out each SHA-256 off Main’s thread (alpha.23, cap-packimport)', () => {
+  it('hashes each file from the copy kept, in a worker thread with the import’s signal, and Main’s thread hashes nothing: caption and translation models, from a folder or a zip', async () => {
+    for (const kind of ['folder', 'zip'] as const) {
+      const data = temp('data');
+      const root = join(data, 'model-packs');
+      const store = storeIn(data);
+      const source = kind === 'folder' ? packFolder() : packZip();
+      vi.mocked(hashOffMain).mockClear();
+      vi.mocked(createHash).mockClear();
+      const r = await store.importPack(source, kind);
+      expect(r, kind).toMatchObject({ ok: true });
+      // Main's thread worked out no SHA-256 at all.
+      expect(
+        vi.mocked(createHash).mock.calls.filter(([algorithm]) => algorithm === 'sha256'),
+        kind,
+      ).toEqual([]);
+      const calls = vi.mocked(hashOffMain).mock.calls;
+      // Every file the list names (the captions model's and the translation model's alike), as copied into the
+      // import's own work folder, before it takes its real name.
+      expect(
+        calls.map(([file]) => relative(root, file).split(sep).slice(1).join('/')),
+        kind,
+      ).toEqual([
+        'licences/MIT.txt',
+        'captions/gu/model.bin',
+        'translation/en-indic/model.bin',
+        'translation/en-indic/config.json',
+      ]);
+      for (const [file] of calls)
+        expect(relative(root, file).split(sep)[0]).toMatch(/^\.incoming-[0-9a-f]{16}$/u);
+      const signals = new Set(calls.map(([, signal]) => signal));
+      expect(signals.size).toBe(1);
+      expect([...signals][0]).toBeInstanceOf(AbortSignal);
+      await allEnded();
+    }
+  });
+
+  it('Main’s timers keep running while a large file’s SHA-256 is worked out, and the import waits for it', async () => {
+    const data = temp('data');
+    const store = storeIn(data);
+    const source = packFolder({ models: [LARGE] });
+    const ticks: number[] = [];
+    const timer = setInterval(() => ticks.push(performance.now()), 1);
+    let r: PackImportResult;
+    try {
+      r = await store.importPack(source, 'folder');
+    } finally {
+      clearInterval(timer);
+    }
+    expect(r).toMatchObject({ ok: true });
+    const run = largeRun();
+    expect(run?.outcome).toBe('done');
+    expect(
+      ticks.filter((t) => t > (run?.from ?? Infinity) && t < (run?.to ?? -Infinity)).length,
+    ).toBeGreaterThan(0);
+    expect(readFileSync(store.model(LARGE.id)?.files[0]?.path ?? '')).toEqual(
+      LARGE.files['captions/gu/model.bin'],
+    );
+    await allEnded();
+  });
+
+  it('Stop while a file’s SHA-256 is worked out ends the worker there: nothing is kept', async () => {
+    const data = temp('data');
+    const store = storeIn(data);
+    hashWatch.told = (file) => {
+      if (file.endsWith(LARGE_FILE)) store.cancelImport();
+    };
+    expect(await store.importPack(packFolder({ models: [LARGE] }), 'folder')).toMatchObject({
+      ok: false,
+      cancelled: true,
+      message: 'The import was stopped. Nothing was installed.',
+    });
+    // Stopped part way through the file, not left to finish.
+    expect(largeRun()?.outcome).toBe('failed');
+    await allEnded();
+    expect(ours(join(data, 'model-packs'))).toEqual([]);
+    expect(store.model(LARGE.id)).toBeNull();
+    expect(store.status().importing).toEqual({ phase: 'idle' });
+  });
+
+  it('quitting while a file’s SHA-256 is worked out ends the worker too: nothing is kept', async () => {
+    const data = temp('data');
+    const store = storeIn(data);
+    hashWatch.told = (file) => {
+      if (file.endsWith(LARGE_FILE)) store.close();
+    };
+    expect(await store.importPack(packFolder({ models: [LARGE] }), 'folder')).toMatchObject({
+      ok: false,
+      cancelled: true,
+    });
+    expect(largeRun()?.outcome).toBe('failed');
+    await allEnded();
+    expect(ours(join(data, 'model-packs'))).toEqual([]);
+  });
+
+  it('a copy gone before its check, or a read that fails for a moment, refuses in plain words with nothing kept; the next import works', async () => {
+    const data = temp('data');
+    const root = join(data, 'model-packs');
+    const store = storeIn(data);
+    // The worker's own read error, its code carried back: this computer's copy went away.
+    hashWatch.before = (file) => {
+      if (file.endsWith(join('captions', 'gu', 'model.bin'))) rmSync(file);
+    };
+    expect(await store.importPack(packFolder(), 'folder')).toMatchObject({
+      ok: false,
+      message:
+        'A file went away while Drashti was copying it (was a drive taken out?): check it, then try again. Nothing was installed.',
+    });
+    await allEnded();
+    expect(ours(root)).toEqual([]);
+    // A read that fails for a moment (EIO): try again.
+    hashWatch.before = (file) => {
+      if (file.endsWith('config.json')) readFault.next = true;
+    };
+    expect(await store.importPack(packFolder(), 'folder')).toMatchObject({
+      ok: false,
+      message: `${TRY_AGAIN} Nothing was installed.`,
+    });
+    expect(ours(root)).toEqual([]);
+    hashWatch.before = null;
+    expect(await store.importPack(packFolder(), 'folder')).toMatchObject({
+      ok: true,
+      pack: { problem: null },
+    });
+    await allEnded();
+  });
+
+  it('refuses a zip entry that inflates past the size its list and the zip say, as it is copied (the pinned sizes)', async () => {
+    const listed = GU.files['captions/gu/model.bin'] ?? Buffer.alloc(0);
+    const longer = Buffer.concat([listed, Buffer.alloc(4096, 'more placeholder ')]);
+    const file = packZip(
+      {},
+      { change: (e) => (e.name === 'captions/gu/model.bin' ? { ...e, data: longer, deflate: true } : e) },
+    );
+    // The zip's own directory says the listed size; its data inflates to more.
+    const zip = readFileSync(file);
+    const central = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+    for (let at = zip.indexOf(central); at >= 0; at = zip.indexOf(central, at + 4))
+      if (zip.toString('utf8', at + 46, at + 46 + zip.readUInt16LE(at + 28)) === 'captions/gu/model.bin')
+        zip.writeUInt32LE(listed.length, at + 24);
+    writeFileSync(file, zip);
+    const data = temp('data');
+    expect(await storeIn(data).importPack(file, 'zip')).toMatchObject({
+      ok: false,
+      message:
+        'The pack is not whole: captions/gu/model.bin is not the size its list says. Nothing was installed: ask for a fresh copy of the pack.',
+    });
+    expect(ours(join(data, 'model-packs'))).toEqual([]);
   });
 });
 
