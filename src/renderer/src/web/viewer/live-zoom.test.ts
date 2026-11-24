@@ -301,6 +301,17 @@ const bringing = (zoom: number, at: { x: number; y: number }): Framing => ({
   y: -zoom * (at.y - 0.5),
 });
 
+/**
+ * The screens' zoom that draws a point of the picture where another point of it is drawn unzoomed: on a page
+ * cropped with Crop page…, the screens show only the crop, so the point comes to where the crop's middle is
+ * (a22-review-zoomturn MUST 1; fractions of the picture before any turn, about its box's middle).
+ */
+const bringingTo = (zoom: number, at: { x: number; y: number }, to: { x: number; y: number }): Framing => ({
+  zoom,
+  x: to.x - 0.5 - zoom * (at.x - 0.5),
+  y: to.y - 0.5 - zoom * (at.y - 0.5),
+});
+
 function expectFraming(actual: Framing, expected: Framing, what: string) {
   expect(actual.zoom, `${what}: zoom`).toBeCloseTo(expected.zoom, 9);
   expect(actual.x, `${what}: x`).toBeCloseTo(expected.x, 9);
@@ -341,19 +352,23 @@ describe('a phone’s zoom on a turned PDF page (Turn page right, a22-zoomturn)'
     }
   });
 
-  it('does so on a turned page cropped to a part of it (Crop page…)', () => {
+  it('does so on a turned page cropped to a part of it (Crop page…), in the middle of the crop', () => {
     for (const { turns, quarter, inside } of TURNED) {
       const frame = frameOrThrow(frameInSlide(turnedPage(turns, QUARTER)));
-      // The crop is the turned page's top right quarter: the middle of what the phone shows is that quarter's.
+      // The crop is the turned page's top right quarter: the middle of what the phone shows is that quarter's, and
+      // the screens show it, zoomed, where it is: in the middle of the crop.
       expectFraming(
         liveZoomFor({ zoom: 3, cx: 0.5, cy: 0.5 }, frame, PLAIN),
-        bringing(3, quarter),
+        bringingTo(3, quarter, quarter),
         `${String(turns)} turns, cropped`,
       );
-      // Four times as big over the crop's own bottom left quarter.
+      const back = viewForLive(bringingTo(3, quarter, quarter), frame, PLAIN);
+      expect(back.cx, `${String(turns)} turns, cropped: back`).toBeCloseTo(0.5, 9);
+      expect(back.cy, `${String(turns)} turns, cropped: back`).toBeCloseTo(0.5, 9);
+      // Four times as big over the crop's own bottom left quarter: that point, in the middle of the crop.
       expectFraming(
         liveZoomFor({ zoom: 4, cx: 0.25, cy: 0.75 }, frame, PLAIN),
-        bringing(4, inside),
+        bringingTo(4, inside, quarter),
         `${String(turns)} turns, cropped, inside`,
       );
     }
@@ -375,7 +390,7 @@ describe('a phone’s zoom on a turned PDF page (Turn page right, a22-zoomturn)'
           frameOrThrow(frameInCanvas(turnedPage(turns, QUARTER), CANVAS)),
           PLAIN,
         ),
-        bringing(3, quarter),
+        bringingTo(3, quarter, quarter),
         `${String(turns)} turns, cropped, in the canvas`,
       );
     }
