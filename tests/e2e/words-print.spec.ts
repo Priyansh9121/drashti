@@ -71,7 +71,25 @@ test('a library presentation’s right-click menu prints its words and saves the
     await row.click({ button: 'right' });
     await win.getByRole('menuitem', { name, exact: true }).click();
   };
-  const notice = win.getByTestId('operator-notice');
+  // The notice's own words (its card also holds Report this… and Dismiss).
+  const notice = win.getByTestId('operator-notice').locator('p');
+  const kirtanId = await win.evaluate(
+    async (name) =>
+      (await (globalThis as PageGlobals).drashti.library.listPresentations()).find((p) => p.name === name)
+        ?.id ?? '',
+    KIRTAN,
+  );
+  expect(kirtanId).not.toBe('');
+  /** Both requests as the window sends them, with nothing chosen in a menu. */
+  const askBoth = () =>
+    win.evaluate(async (id) => {
+      const d = (globalThis as PageGlobals).drashti;
+      return [await d.library.printWords(id), await d.library.saveWordsPdf(id)];
+    }, kirtanId);
+  const refusedBoth = (message: string) => [
+    { ok: false, cancelled: false, message },
+    { ok: false, cancelled: false, message },
+  ];
 
   // Save words as PDF…: where you choose, suggested as "<name> words.pdf".
   await choose('Save words as PDF…');
@@ -123,16 +141,14 @@ test('a library presentation’s right-click menu prints its words and saves the
   await expect(win.getByTestId('live-text')).toContainText('Live:');
   await choose('Save words as PDF…');
   await expect(notice).toHaveText(WORDS_PRINT_REFUSED);
-  await choose('Print words…');
-  await expect(notice).toHaveText(WORDS_PRINT_REFUSED);
+  expect(await askBoth()).toEqual(refusedBoth(WORDS_PRINT_REFUSED));
   expect(await offered()).toHaveLength(1);
   // Nothing up, but on air (as the main process sees it): refused the same way.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
   await app.evaluate(() => {
     (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
   });
-  await choose('Save words as PDF…');
-  await expect(notice).toHaveText(WORDS_PRINT_REFUSED);
+  expect(await askBoth()).toEqual(refusedBoth(WORDS_PRINT_REFUSED));
   expect(await offered()).toHaveLength(1);
   await app.evaluate(() => {
     (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
@@ -142,18 +158,13 @@ test('a library presentation’s right-click menu prints its words and saves the
   ).toHaveLength(1);
 
   // Simple Mode: the main process refuses both, asking nothing (its menu never has them: words-print.test.ts).
-  const refused = await win.evaluate(async (name) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const id = (await d.library.listPresentations()).find((p) => p.name === name)?.id ?? '';
-    await d.app.setMode('simple');
-    return [await d.library.printWords(id), await d.library.saveWordsPdf(id)];
-  }, KIRTAN);
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  expect(refused).toEqual([
-    { ok: false, cancelled: false, message: SIMPLE_MODE_REFUSAL },
-    { ok: false, cancelled: false, message: SIMPLE_MODE_REFUSAL },
-  ]);
+  expect(await askBoth()).toEqual(refusedBoth(SIMPLE_MODE_REFUSAL));
   expect(await offered()).toHaveLength(1);
+  expect(
+    await app.evaluate(() => (globalThis as { drashtiPrinted?: Printed[] }).drashtiPrinted ?? []),
+  ).toHaveLength(1);
   await app.close();
   rmSync(folder, { recursive: true, force: true });
 });
