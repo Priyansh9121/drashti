@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -62,6 +62,8 @@ describe('the end-to-end tests’ reader of Drashti’s log', () => {
     let now = at(23, 23, 59, 58);
     startLogFile(join(userData, 'logs'), { now: () => now });
     log.info('placeholder check made');
+    // One day's file alone: the very text of drashti.log, as the specs read it before.
+    expect(logText(userData)).toBe(readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'));
     now = at(23, 23, 59, 59, 826);
     log.warn('placeholder line just before midnight');
     now = at(24, 0, 0, 0, 503);

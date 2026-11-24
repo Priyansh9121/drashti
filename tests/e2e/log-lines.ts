@@ -22,24 +22,40 @@ function textOf(file: string): string {
   }
 }
 
-/**
- * Every line Drashti has written to its log in `userData`, in the order written: each earlier day's files (the days
- * oldest first, each day's parts in turn), then today's drashti.log.
- */
-export function logLines(userData: string): string[] {
-  const dir = join(userData, 'logs');
-  const days = readdirSync(dir)
+/** The earlier days' files in `dir`, in the order written: the days oldest first, each day's parts in turn. */
+function datedNames(dir: string): string[] {
+  return readdirSync(dir)
     .flatMap((name) => {
       const m = DATED.exec(name);
       return m?.[1] ? [{ name, day: m[1], part: Number(m[2] ?? 1) }] : [];
     })
-    .sort((a, b) => (a.day === b.day ? a.part - b.part : a.day < b.day ? -1 : 1));
-  return [...days.map((f) => f.name), 'drashti.log'].flatMap((name) => textOf(join(dir, name)).split('\n'));
+    .sort((a, b) => (a.day === b.day ? a.part - b.part : a.day < b.day ? -1 : 1))
+    .map((f) => f.name);
+}
+
+/** How many times the log is read while Drashti moves a file of it during the read, before that is said. */
+const READS = 5;
+
+/**
+ * Every line Drashti has written to its log in `userData`, in the order written: each earlier day's files (the days
+ * oldest first, each day's parts in turn), then today's drashti.log. Drashti moves drashti.log to its day at any
+ * moment (log.ts), also during a read; a move always makes a new earlier file, so the files are listed again after
+ * the read, and read again while that listing has changed. Never a part of the log: a log that moves during every
+ * one of a few reads is said (an error), not read.
+ */
+export function logLines(userData: string): string[] {
+  const dir = join(userData, 'logs');
+  for (let read = 1; ; read++) {
+    const listed = datedNames(dir);
+    const lines = [...listed, 'drashti.log'].flatMap((name) => textOf(join(dir, name)).split('\n'));
+    if (datedNames(dir).join('\n') === listed.join('\n')) return lines;
+    if (read >= READS) throw new Error(`Drashti’s log moved a file during each of ${String(READS)} reads`);
+  }
 }
 
 /**
  * The whole log in `userData` as one text, for a test that reads it whole (toContain, toMatch, a count): every file of
- * it in the order written, as logLines gives them.
+ * it in the order written, as logLines gives them (an empty line between one file and the next).
  */
 export function logText(userData: string): string {
   return logLines(userData).join('\n');
