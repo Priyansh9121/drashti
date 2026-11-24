@@ -129,7 +129,7 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
 
 /** This page's silent graph, made and running (not resting): a crossfade's picture never starts one for itself. */
 function runningPageGraph(): SilentGraph | null {
-  if (!page || page.context.state !== 'running' || resting.has(page.context)) return null;
+  if (page?.context.state !== 'running' || resting.has(page.context)) return null;
   return page;
 }
 
@@ -151,7 +151,7 @@ export function fadeClock(
 ): (() => void) | null {
   if (v.dataset['cueClock'] !== undefined) return null;
   const silent = graph();
-  if (!silent || silent.context.state !== 'running' || resting.has(silent.context)) return null;
+  if (silent?.context.state !== 'running' || resting.has(silent.context)) return null;
   const { context, sink } = silent;
   let source: MediaElementAudioSourceNode;
   try {
