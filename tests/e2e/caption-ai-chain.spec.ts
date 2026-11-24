@@ -16,6 +16,12 @@ import { routeCInTheApp } from './route-c-in-app';
  * A fake microphone still beeping (the file not played) is heard in the silence and fails.
  *
  * In its own CI step (DRASHTI_E2E_REAL_CAPTIONS=1, ci.yml): the parts leave it out.
+ *
+ * The stream page's own frames (route-c-frames.ts): the owner, 24 Nov 2026 (QA23-REALC-2), word for word: "Mac: log
+ * frames only (Rec.)". On the Mac they are recorded (the run's numbers) and not judged in this release; Windows judges
+ * them as before. Every other check stays on both systems: each phrase on the hall, the stage and the stream within
+ * 3 s, listening before the first sound, nothing heard before it, the pack let go only after the helper. The Mac's
+ * verdict returns in the next release with the stream-clock seam and more captions-off pairs.
  */
 
 const LEAD_MS = 15_000;
