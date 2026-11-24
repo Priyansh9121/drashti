@@ -49,6 +49,11 @@ export async function registerProxyFile(options: {
   idle(): boolean;
   freeBytes(dir: string): number;
   signal: AbortSignal;
+  /**
+   * Whether a file it renamed into Media with no row made of it may be removed now (a22-review-combine2 R-S1): not
+   * while an import goes, which may have seen that very file and write its own row for it later. Left out: it may.
+   */
+  mayRemove?(): boolean;
 }): Promise<string> {
   const { db, mediaDir, file, info, signal } = options;
   signal.throwIfAborted();
@@ -142,7 +147,10 @@ export async function registerProxyFile(options: {
     // It goes in this same turn, unless a row keeps that path (an import of the same bytes, say): then it stays.
     if (own.renamed && !own.kept)
       try {
-        if (!db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1').get(relative))
+        if (
+          options.mayRemove?.() !== false &&
+          !db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1').get(relative)
+        )
           rmSync(destination, { force: true });
       } catch {
         /* Held (Windows) or the library closing: left, as before. */
@@ -164,18 +172,26 @@ export async function registerProxyFile(options: {
  *   wallpapers, slides and settings may then name it (library/media-uses.ts, the Trim cleanup's own checks);
  * - a row goes only with its file: a file that cannot be removed (held open on Windows) keeps its row, so the next
  *   start finds it again; a file another row keeps stays;
- * - a row whose file is not inside Media's folder stays.
+ * - a row whose file is not inside Media's folder stays;
+ * - nothing goes unless `allowed` says so, asked before it starts, each time it looks again and in the very turn it
+ *   removes (a22-review-combine2 R-S1, R-S2: no import going, which can reuse a file or a row in two steps without the
+ *   lock, and nothing playing, on air or recording, as its library-wide scan runs on Main); `keep` (the rows live jobs
+ *   hold) stays.
  * It never waits on the library's write lock (an import holding it): it looks again shortly, as registerProxyFile
- * does. How many rows went.
+ * does. How many rows went, or null when `allowed` stopped it (nothing removed: left for later).
  */
 export async function discardUnlisted(options: {
   db: Db;
   mediaDir: string;
   file?: string;
   folder?: string;
-  keep?: string | null;
-}): Promise<number> {
+  keep?: string | null | ReadonlySet<string>;
+  allowed?(): boolean;
+}): Promise<number | null> {
   const { db } = options;
+  const allowed = () => options.allowed?.() ?? true;
+  const kept = (id: string) =>
+    typeof options.keep === 'string' ? id === options.keep : (options.keep?.has(id) ?? false);
   const unlisted = "listed = 0 AND deleted_at IS NULL AND source_kind = 'drashti' AND kind = 'video'";
   const within = options.folder === undefined ? null : `${options.folder.replace(/[\\/]+$/u, '')}${sep}`;
   const found = (
@@ -185,16 +201,20 @@ export async function discardUnlisted(options: {
           .prepare(`SELECT id FROM media WHERE ${unlisted} AND substr(source_path, 1, length(?)) = ?`)
           .all(within, within)
   ) as { id: string }[];
-  const ids = found.map((row) => row.id).filter((id) => id !== options.keep);
+  const ids = found.map((row) => row.id).filter((id) => !kept(id));
   if (ids.length === 0) return 0;
+  if (!allowed()) return null;
   const media = resolve(options.mediaDir);
   const until = Date.now() + 30_000;
   for (;;) {
+    if (!allowed()) return null;
     const previous = db.pragma('busy_timeout', { simple: true }) as number;
     try {
       db.pragma('busy_timeout = 0');
       return db
-        .transaction(() => {
+        .transaction((): number | null => {
+          // Asked again under the lock, in the very turn it removes.
+          if (!allowed()) return null;
           const rows = ids.flatMap(
             (id) =>
               (db.prepare(`SELECT id, path FROM media WHERE id = ? AND ${unlisted}`).get(id) as
@@ -206,7 +226,7 @@ export async function discardUnlisted(options: {
             `SELECT 1 FROM video_edit_copies WHERE source_id = @id OR copy_id = @id
              UNION ALL SELECT 1 FROM media WHERE video_edit_copy_id = @id LIMIT 1`,
           );
-          const kept = db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1');
+          const keeps = db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1');
           let removed = 0;
           for (const row of rows) {
             const file = resolve(media, row.path);
@@ -216,7 +236,7 @@ export async function discardUnlisted(options: {
               // The row and its file together: a file that cannot be removed puts its row back (a savepoint).
               db.transaction(() => {
                 db.prepare('DELETE FROM media WHERE id = ?').run(row.id);
-                if (!kept.get(row.path)) rmSync(file, { force: true });
+                if (!keeps.get(row.path)) rmSync(file, { force: true });
               })();
             } catch (error) {
               if (isBusy(error)) throw error;

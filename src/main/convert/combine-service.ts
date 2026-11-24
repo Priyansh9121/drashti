@@ -53,9 +53,16 @@ export interface CombineDeps {
   publishImport(mediaId: string): Promise<boolean>;
   /**
    * What prepareImport copied into Media from `file` (this combine's work file) and never listed, removed with its file;
-   * with `folder` (the work folder, at the start), what a quit or a crash left. `keep`, the one listed, stays.
+   * with `folder` (the work folder, at the start), what a quit or a crash left. `keep` (rows live combines hold, the
+   * one listed) stays; nothing goes unless `allowed` says so (null: left for later).
    */
-  discardUnlisted(made: { file: string } | { folder: string }, keep?: string | null): Promise<unknown>;
+  discardUnlisted(
+    made: { file: string } | { folder: string },
+    keep: ReadonlySet<string>,
+    allowed: () => boolean,
+  ): Promise<unknown>;
+  /** An import or a deck's source preparation is going: it may take up a file or a row by its bytes (R-S1). */
+  importing(): boolean;
   /**
    * The system's save dialog, offering Downloads and `name` (Also save a copy to a file, and Export…): the file chosen,
    * or null when cancelled. The system's own dialog asks before replacing a file there.
@@ -77,6 +84,10 @@ const CHANGED = 'One of the videos changed in Media. Choose them again, then Com
 export class CombineVideos {
   private readonly entries: Entry[] = [];
   private closed = false;
+  /** Copies into Media going now (a copy of the same bytes takes up an earlier leftover's row): nothing is removed. */
+  private copying = 0;
+  /** The rows live combines hold (copied into Media, not listed yet): never removed. */
+  private readonly holding = new Set<string>();
   constructor(private readonly deps: CombineDeps) {
     // What a quit or a crash left of a combine (copied into Media, never listed): chosen now, removed shortly.
     void this.discard({ folder: deps.workDir });
@@ -93,13 +104,28 @@ export class CombineVideos {
       /* A combine then says it could not write in its own folder. */
     }
   }
-  /** deps.discardUnlisted, never throwing nor failing: what it could not remove is found again at the next start. */
-  private discard(made: { file: string } | { folder: string }, keep?: string | null): Promise<void> {
+  /**
+   * Whether what a combine left in Media may be removed now (a22-review-combine2 R-S1, R-S2): nothing playing, on air or
+   * recording (its library-wide scan runs on Main), no import or deck preparation going, and no copy into Media going.
+   * When in doubt, it is left: the next start's sweep finds it.
+   */
+  private quiet(): boolean {
+    if (this.closed || this.copying > 0) return false;
     try {
-      return this.deps.discardUnlisted(made, keep).then(
-        () => undefined,
-        () => undefined,
-      );
+      return this.deps.idle() && !this.deps.importing();
+    } catch {
+      return false;
+    }
+  }
+  /** deps.discardUnlisted at a quiet moment, never throwing nor failing: what it leaves, the next start finds. */
+  private discard(made: { file: string } | { folder: string }): Promise<void> {
+    try {
+      return this.deps
+        .discardUnlisted(made, new Set(this.holding), () => this.quiet())
+        .then(
+          () => undefined,
+          () => undefined,
+        );
     } catch {
       return Promise.resolve();
     }
@@ -240,6 +266,13 @@ export class CombineVideos {
       alsoRead: rest.map((s) => s.path),
       inspect: (read, words) => {
         Object.assign(info, read);
+        // A new attempt after a wait that came just after its copy into Media (the gate open again now): that copy,
+        // never listed, goes before this attempt copies again; never as the show starts (a22-review-combine2 R-S2).
+        if (made.importId !== null && made.temporary !== null) {
+          this.holding.delete(made.importId);
+          made.importId = null;
+          made.discarding = this.discard({ file: made.temporary });
+        }
         const changed = this.changed(sources);
         if (changed) return changed;
         if (words.more.length !== rest.length) return 'Drashti could not read every chosen video. Try again.';
@@ -287,7 +320,13 @@ export class CombineVideos {
         if (!made.info || !this.current(sources) || !this.deps.idle())
           throw new Error('The combined video is no longer ready to keep.');
         made.temporary = temporary;
-        made.importId = await this.deps.prepareImport(temporary, made.info, job.name, signal);
+        this.copying += 1;
+        try {
+          made.importId = await this.deps.prepareImport(temporary, made.info, job.name, signal);
+          this.holding.add(made.importId);
+        } finally {
+          this.copying -= 1;
+        }
       },
       beforePublish: () => {
         if (!this.current(sources)) throw new Error('A chosen video changed.');
@@ -296,12 +335,6 @@ export class CombineVideos {
         if (job.state !== 'waiting' && job.state !== 'preparing') return;
         job.note = note;
         job.state = note ? 'waiting' : 'preparing';
-        // A wait just after its copy into Media (the show or the stream started): that copy, never listed, goes while
-        // it waits, not kept through the service; the next attempt copies again (a22-review-combine2 S4).
-        if (note !== null && made.importId !== null && made.temporary !== null) {
-          made.importId = null;
-          made.discarding = this.discard({ file: made.temporary });
-        }
       },
       progress: (fraction) => {
         if (job.state !== 'waiting' && job.state !== 'preparing') return;
@@ -333,13 +366,13 @@ export class CombineVideos {
       job.progress = 1;
       job.mediaId = made.importId;
     }
+    if (made.importId !== null) this.holding.delete(made.importId);
     // What it copied into Media and did not list goes, with its file: failing late, a wait just after that copy, Stop
     // or Drashti closing leaves nothing behind (a22-review-combine S4). Once listed, only an earlier attempt's copy is
     // left to remove: it never holds "done" (a22-review-combine2 S3).
     if (made.temporary !== null) {
-      await made.discarding;
-      const discarding = this.discard({ file: made.temporary }, listed ? made.importId : null);
-      if (!listed) await discarding;
+      const discarding = this.discard({ file: made.temporary });
+      if (!listed) await Promise.all([made.discarding, discarding]);
     }
     if (this.closed || job.state === 'stopped') return;
     job.note = null;

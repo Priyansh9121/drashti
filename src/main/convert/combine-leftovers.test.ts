@@ -244,13 +244,7 @@ function sweeping(at: ReturnType<typeof library>, gate: { importing: boolean; id
     prepareImport: () => Promise.reject(new Error('Not used here.')),
     publishImport: () => Promise.resolve(false),
     discardUnlisted: (made, keep, allowed) => {
-      const removal = discardUnlisted({
-        db: at.db,
-        mediaDir: at.dir,
-        ...made,
-        keep: keep ?? null,
-        ...(allowed ? { allowed } : {}),
-      });
+      const removal = discardUnlisted({ db: at.db, mediaDir: at.dir, ...made, keep, allowed });
       asked.push(removal.catch(() => undefined));
       return removal;
     },

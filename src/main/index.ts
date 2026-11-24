@@ -5450,7 +5450,11 @@ function start(): void {
       ? videoAnalysis.get(mediaId, audioStream, retry)
       : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
   );
+  // A deck's source preparation going (registerSlidesIpc, below): set once it exists.
+  let sourcePreparing = (): boolean => false;
   const videoCopies = registerVideoCopies({
+    // No unlisted copy is removed while an import or a deck's preparation goes (a22-review-combine2 R-S1).
+    importing: () => imports.busy || sourcePreparing(),
     editedExport: (request) =>
       editedClipSource(request, {
         mediaDir,
@@ -6263,6 +6267,7 @@ function start(): void {
       sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
+  sourcePreparing = () => slideEdits.sourcePreparing();
   /** Make a slide…'s keeping (set below, where the open playlist is known). */
   let keepPageSlide: (
     png: Uint8Array | Uint8Array[],

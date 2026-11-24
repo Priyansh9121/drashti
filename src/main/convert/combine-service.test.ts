@@ -164,6 +164,8 @@ const stored = () =>
   readdirSync(fixture.dir)
     .filter((folder) => /^[0-9a-f]{2}$/u.test(folder))
     .flatMap((folder) => readdirSync(join(fixture.dir, folder)).map((file) => `${folder}/${file}`));
+/** The files renamed into Media's hashed folders, not a copy still going (`….part-<uuid>`). */
+const renamed = () => stored().filter((file) => !file.includes('.part-'));
 /** A job that ended without a new video in Media: failed or stopped, with its words. */
 async function ended(id: string, state: 'failed' | 'stopped') {
   await vi.waitFor(
@@ -652,9 +654,10 @@ it("Stop while the copy into Media waits for the library's write lock leaves no 
     if (!other.inTransaction) other.exec('BEGIN IMMEDIATE');
   };
   const queued = await started(ask(['source', 'second']));
-  // The file is in Media's folder, its row waiting for the lock: Stop then.
+  // The file is in Media's folder (renamed, not a copy still going), its row waiting for the lock: Stop then.
   await vi.waitFor(
     () => {
+      expect(renamed()).toHaveLength(1);
       expect(stored()).toHaveLength(1);
     },
     { timeout: 20_000 },
@@ -755,6 +758,7 @@ it('Stop while the copy into Media waits for the write lock, with an import goin
   const queued = await started(ask(['source', 'second']));
   await vi.waitFor(
     () => {
+      expect(renamed()).toHaveLength(1);
       expect(stored()).toHaveLength(1);
     },
     { timeout: 20_000 },

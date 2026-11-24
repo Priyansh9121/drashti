@@ -37,6 +37,11 @@ export interface VideoCopyIpcDeps {
    * file chosen, or null when closed (a22-review-combine S2: one dialog for both).
    */
   exportDialog?(name: string): Promise<string | null>;
+  /**
+   * An import run or a deck's source preparation is going (a22-review-combine2 R-S1): it can take up a file or a row
+   * in Media by its bytes in two steps without the lock, so nothing unlisted is removed meanwhile.
+   */
+  importing(): boolean;
 }
 
 export function registerVideoCopies(deps: VideoCopyIpcDeps) {
@@ -58,6 +63,7 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       freeBytes: (dir) => deps.freeBytes(dir),
       signal,
       name,
+      mayRemove: () => !deps.importing(),
     });
   const proxies = new ProxyService({
     mediaDir: deps.mediaDir,
@@ -157,9 +163,10 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     idle: () => (deps.saveIdle ?? deps.idle)(),
     prepareImport: (file, info, name, signal) => register(file, info, signal, name),
     publishImport,
-    // A combine failing late leaves no unlisted row or file in Media (a22-review-combine S4).
-    discardUnlisted: (made, keep) =>
-      discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, ...made, keep: keep ?? null }),
+    // A combine failing late leaves no unlisted row or file in Media (a22-review-combine S4), at a quiet moment.
+    discardUnlisted: (made, keep, allowed) =>
+      discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, ...made, keep, allowed }),
+    importing: () => deps.importing(),
   });
   const allowed = (e: IpcMainInvokeEvent) => deps.fromOperator(e);
   handle(IPC.media.proxyStatus, (e, id, retry) =>
