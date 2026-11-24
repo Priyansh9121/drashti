@@ -23,6 +23,8 @@ const WORDS = ['લાલ', 'ખોખું', 'ગોળ', 'આકાર', 'પ
 const WORD_S = 0.45;
 /** A word the final never has: what the stand-in makes of a word cut off mid-way. */
 const MISHEARD = 'ખોટું';
+/** Another word the final never has: what the stand-in hears in the quiet added after the cut. */
+const IN_THE_QUIET = 'ખાલી';
 /** The stand-in helper's time for one decode (cap-ship-c: a 2.4-3.7 s clip in 219-258 ms, two threads, warm). */
 const DECODE_MS = 200;
 /** Loud sound is speech; the room's quiet between phrases is a faint hiss (below the speech gate); a pause is silence. */
@@ -62,6 +64,21 @@ function speechReply(samples: Int16Array): Reply {
   return { language: 'gu', words };
 }
 
+/**
+ * IndicConformer when it also hears words in the quiet added after the cut (cap-review-partials S5): the word being
+ * spoken at the cut runs on into that quiet, and the quiet itself is heard as a confident word. Neither may show.
+ */
+function paddingHeardReply(samples: Int16Array): Reply {
+  const said = speechReply(samples);
+  const { speechS, quietAfterS } = speechIn(samples);
+  if (quietAfterS < 0.3 || quietAfterS > 0.6) return said;
+  const words = said.words.map((w) => (w.w === MISHEARD ? { ...w, end: speechS + 0.1 } : w));
+  return {
+    language: 'gu',
+    words: [...words, { w: IN_THE_QUIET, start: speechS + 0.15, end: speechS + 0.35, c: 0.95 }],
+  };
+}
+
 /** Hum: whatever the stand-in hears is one-syllable and unsure, however long it lasts (cap-integration's filter). */
 function humReply(samples: Int16Array): Reply {
   const seconds = samples.length / RATE;
@@ -74,10 +91,11 @@ function humReply(samples: Int16Array): Reply {
   };
 }
 
-function setup(reply: (samples: Int16Array) => Reply) {
+function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS) {
   let chunk: ((samples: Int16Array, endAt: number, startAt?: number) => void) | undefined;
-  /** What the helper was given, each time. */
+  /** What the helper was given, each time, and when it began. */
   const decoded: Int16Array[] = [];
+  const began: number[] = [];
   const engine = createIndicEngine({
     admission: 'below-show',
     threads: 2,
@@ -100,7 +118,8 @@ function setup(reply: (samples: Int16Array) => Reply) {
       Promise.resolve({
         decode: (samples: Int16Array) => {
           decoded.push(samples.slice());
-          return new Promise<Reply>((resolve) => setTimeout(() => resolve(reply(samples)), DECODE_MS));
+          began.push(Date.now());
+          return new Promise<Reply>((resolve) => setTimeout(() => resolve(reply(samples)), decodeMs));
         },
         close: () => undefined,
       }),
@@ -129,7 +148,18 @@ function setup(reply: (samples: Int16Array) => Reply) {
     }
   };
   const lines = () => shown.filter((s) => s.captions !== null);
-  return { hub, coordinator, heard, shown, reviews, lines, decoded, play, ready: () => chunk !== undefined };
+  return {
+    hub,
+    coordinator,
+    heard,
+    shown,
+    reviews,
+    lines,
+    decoded,
+    began,
+    play,
+    ready: () => chunk !== undefined,
+  };
 }
 
 describe('Route C shows the words of a phrase while it is still being spoken (cap-partials)', () => {
@@ -224,6 +254,47 @@ describe('Route C shows the words of a phrase while it is still being spoken (ca
     const { speechEnd } = await speak(t);
     const final = t.heard.find((h) => h.final);
     expect((final?.heardAt ?? Infinity) - speechEnd).toBeLessThanOrEqual(700 + DECODE_MS);
+  });
+
+  it('a final is not behind a partial when the phrase ends 0.6 s before the next step: no partial starts in its pause (cap-review-partials S2)', async () => {
+    const t = setup(speechReply);
+    await vi.advanceTimersByTimeAsync(0);
+    await t.play(0, 10, HISS);
+    const onset = Date.now();
+    await t.play(34, 0); // 3.4 s of speech: the 1.5 s step after the 2.5 s partial falls 600 ms into the pause
+    const speechEnd = Date.now();
+    await t.play(0, 25);
+    const final = t.heard.find((h) => h.final);
+    expect((final?.heardAt ?? Infinity) - speechEnd).toBeLessThanOrEqual(700 + DECODE_MS);
+    // No decode began once the phrase had 300 ms of quiet, except the final itself.
+    const partialStarts = t.began.slice(0, -1).map((at) => at - onset);
+    for (const at of partialStarts) expect(at).toBeLessThan(speechEnd - onset + 300);
+  });
+
+  it('on a slow computer a partial waits at least twice as long as the last one took, after the first seconds too: the helper is never busy more than half the time (cap-review-partials S3)', async () => {
+    const slow = 1_000; // the stand-in takes a second for each decode (still not "slow" for the 1.5 s step)
+    const t = setup(speechReply, slow);
+    await vi.advanceTimersByTimeAsync(0);
+    await t.play(0, 10, HISS);
+    await t.play(80, 0); // eight seconds of speech
+    await t.play(0, 30);
+    const partialStarts = t.began.slice(0, -1);
+    expect(partialStarts.length).toBeGreaterThan(2);
+    for (let i = 1; i < partialStarts.length; i += 1)
+      expect((partialStarts[i] ?? 0) - (partialStarts[i - 1] ?? 0)).toBeGreaterThanOrEqual(2 * slow);
+  });
+
+  it('a word heard in the quiet added after the cut, or one running into it, never reaches the screens (cap-review-partials S5)', async () => {
+    const t = setup(paddingHeardReply);
+    await speak(t);
+    const shownLines = t.lines().map((s) => s.captions?.lines.join(' ') ?? '');
+    expect(shownLines.length).toBeGreaterThan(1);
+    expect(shownLines.join(' ')).not.toContain(IN_THE_QUIET);
+    expect(shownLines.join(' ')).not.toContain(MISHEARD);
+    for (const line of shownLines) {
+      const words = line.split(' ');
+      expect(words).toEqual(WORDS.slice(0, words.length));
+    }
   });
 
   it('hum the noise filter hides never reaches the screens, however often the growing phrase is worked out', async () => {
