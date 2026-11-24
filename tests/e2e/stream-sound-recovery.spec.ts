@@ -1,30 +1,17 @@
 import { expect, test } from '@playwright/test';
-import { spawnSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { loudWindows, readSound, soundSeconds } from './av-sync';
 import { clearOfShowControls } from './fit';
 import { launchApp, letTimePass, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { freePort, setUpStream, testFfmpeg } from './stream-helpers';
 
-/** Each 50 ms of a recording's sound, mono at 48 kHz: its loudest sample (the generated microphone only). */
-function soundPeaks(ffmpeg: string, file: string): number[] {
-  const decoded = spawnSync(
-    ffmpeg,
-    ['-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'],
-    { maxBuffer: 128 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
-  );
-  if (decoded.status !== 0) throw new Error('The generated recording could not be read back');
-  const pcm = decoded.stdout,
-    size = 2400,
-    peaks: number[] = [];
-  for (let at = 0; at + size * 4 <= pcm.length; at += size * 4) {
-    let peak = 0;
-    for (let i = 0; i < size; i++) peak = Math.max(peak, Math.abs(pcm.readFloatLE(at + i * 4)));
-    peaks.push(peak);
-  }
-  return peaks;
-}
+/**
+ * Sound, in a 50 ms window of the recording: a sample this loud (-34 dBFS) at least. The generated microphone's beeps
+ * are far louder; the silence the encoder fills in while no sound comes is nothing at all.
+ */
+const HEARD = 0.02;
 
 // Alpha.22: run on both systems after alpha.21 PUBLISHED. Generated devices and local recording only.
 test('stream sound recovers independently, caps its sixth crash, and Try again preserves the picture and recording', async () => {
@@ -73,6 +60,9 @@ test('stream sound recovers independently, caps its sixth crash, and Try again p
       true,
     );
     await expect.poll(async () => (await status()).recording.state).toBe('recording');
+    // The encoder is writing before the first crash: each restart's sound must come by the new page's own pairing,
+    // never by the encoder's first start pairing whichever page is there then.
+    await expect.poll(async () => (await status()).recording.bytes).toBeGreaterThan(0);
     const recording = (await status()).recording;
     // a22-review-x86 M2: after an ordinary restart, the sound itself reaches the recording again (not only a microphone
     // that opened): read back from the file afterwards, from this moment on.
@@ -81,7 +71,7 @@ test('stream sound recovers independently, caps its sixth crash, and Try again p
       await expect.poll(async () => (await status()).inputs.sound).toBe('on');
       if (crash === 1) {
         restartedAt = Date.now();
-        await letTimePass(win, 3500, 'the restarted sound page’s sound reaches the recording');
+        await letTimePass(win, 4000, 'the restarted sound page’s sound reaches the recording');
       }
       expect(
         await app.evaluate(({ BrowserWindow }) => {
@@ -121,28 +111,27 @@ test('stream sound recovers independently, caps its sixth crash, and Try again p
       file: recording.file,
     });
     // M2 again: after Try again, the sound reaches the recording to its end.
-    await letTimePass(win, 3500, 'the sound page started again by Try again reaches the recording');
+    await letTimePass(win, 4500, 'the sound page started again by Try again reaches the recording');
     expect((await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.stopRecording())).ok).toBe(
       true,
     );
     await expect.poll(async () => (await status()).recording.state).toBe('off');
     const files = readdirSync(dir).filter((f) => f.endsWith('.mkv'));
     expect(files, 'one recording through every sound crash').toHaveLength(1);
-    const peaks = soundPeaks(ffmpeg ?? '', join(dir, files[0] ?? ''));
-    const loudest = Math.max(0, ...peaks);
-    expect(loudest, 'the generated microphone is in the recording').toBeGreaterThan(0.01);
-    /** How many 50 ms windows carry the generated microphone's beep (each half second) in this stretch (ms in). */
-    const beeps = (fromMs: number, toMs: number) =>
-      peaks
-        .slice(Math.max(0, Math.floor(fromMs / 50)), Math.ceil(toMs / 50))
-        .filter((p) => p >= loudest * 0.3).length;
-    const since = recording.since ?? 0;
+    const sound = readSound(ffmpeg ?? '', join(dir, files[0] ?? ''));
+    // The file's clock runs with the sound from the encoder's start, just after the recording's (since); while no sound
+    // comes the encoder fills silence, so it keeps up with this computer's clock to within a few tenths of a second.
+    const fromRestart = sound.start + (restartedAt - (recording.since ?? 0)) / 1000;
+    const end = sound.start + soundSeconds(sound);
+    console.log(
+      `Sound in the recording (50 ms windows): after a restart ${String(loudWindows(sound, fromRestart + 0.5, fromRestart + 3.5, HEARD))}, after Try again ${String(loudWindows(sound, end - 3.5, end - 0.5, HEARD))}`,
+    );
     expect(
-      beeps(restartedAt - since + 500, restartedAt - since + 3000),
+      loudWindows(sound, fromRestart + 0.5, fromRestart + 3.5, HEARD),
       'the sound reaches the recording again after a sound page restart',
     ).toBeGreaterThanOrEqual(2);
     expect(
-      beeps((peaks.length - 60) * 50, (peaks.length - 6) * 50),
+      loudWindows(sound, end - 3.5, end - 0.5, HEARD),
       'the sound reaches the recording again after Try again',
     ).toBeGreaterThanOrEqual(2);
   } finally {
