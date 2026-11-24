@@ -811,6 +811,6 @@ Since alpha.22, the models for better Gujarati and Hindi captions, and for trans
 
 Cue is a Pro Mode control. Allow the next video to prepare before it is needed. The cue waits for the first frame on the local playing pages and connected audience screens on paired computers. A disconnected screen joins by the usual file-copy and first-frame rules when it returns. An output that reloads loses its earlier ready acknowledgement. A failed cue keeps the live picture and sound as they were; Cancel and cue the video again after checking it in Media.
 
-While a video is cued, and while it plays from its Go, the hall's screens, the operator window and the stream page keep this computer's sound output open, sending it nothing that can be heard, so that a cue held for minutes still starts on time.
+While a video is cued, and while it plays from its Go, the hall's screens, the operator window and the stream page keep this computer's sound output open (a paired computer showing the cue keeps its own open too), sending it nothing that can be heard, so that a cue held for minutes still starts on time.
 
 Manual cues recover paused with new readiness checks after an unexpected restart, and a scheduled Go saved before its moment cannot become an audible start on recovery. No source file is rewritten.

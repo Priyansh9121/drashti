@@ -1119,8 +1119,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                       checked: node?.playback?.repeatAll ?? false,
                       onSelect: () => void setPlayOptions('repeatAll'),
                     },
-                    // Crossfade… is not offered in alpha.21 (QA21-S5-2): the stream's own sound still drops out under
-                    // a crossfade's load on a two-core Windows computer (a21-s5b). Kept, off by default, for alpha.22.
+                    // Crossfade… is not offered in alpha.22 (QA21-S5-2, QA22-FADE-1 A): the stream's own sound
+                    // is not yet steady through a crossfade (a21-s5b, a22-fade). Kept, off by default, for later.
                   ]
                 : []),
               ...(!isTemplate
