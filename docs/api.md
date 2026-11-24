@@ -680,11 +680,11 @@ no answer by 8 seconds terminates the helper; normal lag/rest guards remain. No 
 
 Build each target on its own system with `scripts/fetch-indic.mjs` (pinned Microsoft release, exact size and SHA-256),
 or build locally against an already verified extraction with `scripts/build-indic.mjs` and `DRASHTI_ORT_ROOT` /
-`DRASHTI_INDIC_OUT`. Local linked `vendor` destinations are refused. The package is kept at `.scratch/onnxruntime-1.23.2/`;
-since alpha.23 CI keeps it in its cache (`--cache-key` prints the key: the exact version, the runner’s platform and the
-pinned SHA-256; saved by pushes to main and phase1), and a kept package is checked by size and SHA-256 before use,
-exactly as a download is. The release build still downloads it fresh. `findIndic` locates the bundled helper; models
-stay in cap-pack’s per-computer store. Runtime notices ship with the helper and under `licenses/onnxruntime/`.
+`DRASHTI_INDIC_OUT`. Local linked `vendor` destinations are refused. The package is kept at `.scratch/onnxruntime-1.23.2/`.
+Since alpha.23 CI keeps it in its cache under the key `--cache-key` prints (the exact version, the runner’s platform and
+the pinned SHA-256), saved by pushes to main and phase1. A kept package is checked by size and SHA-256 before use,
+exactly as a download is; a miss starts clean and downloads it as before; the release build still downloads it fresh.
+`findIndic` locates the bundled helper; models stay in cap-pack’s per-computer store. Runtime notices ship with the helper and under `licenses/onnxruntime/`.
 
 `indicProblem(platform, systemVersion)` checks this runtime’s actual macOS 13.4 minimum; pass it as the recogniser’s
 `problem()` preflight so older Macs get a plain reason before loading a model. Production startup uses `--admit`: the

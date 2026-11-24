@@ -84,7 +84,7 @@ export async function ensureOrtArchive(
   const checked = `checked: ${String(release.bytes)} bytes, SHA-256 ${release.sha256}`;
   log(
     kept
-      ? `ONNX Runtime ${release.version}: the package kept here (CI's cache or an earlier run), ${checked}`
+      ? `ONNX Runtime ${release.version}: already here (CI's cache, or an earlier build), ${checked}`
       : `ONNX Runtime ${release.version}: downloaded from ${release.url}, ${checked}`,
   );
   return archive;
