@@ -1,21 +1,46 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { ClipExports } from './clip-export-service';
 import type { ClipExportRequest } from '../../shared/video-copies';
 import { sha256File } from '../import/media-store';
 import { copyFf, copyFixture, copyFfmpeg } from './video-copy-fixtures';
 import { readTrimInfo } from './trim-copy';
-import { registerProxyFile } from './video-copy-files';
+import { discardUnlisted, registerProxyFile } from './video-copy-files';
+import { MediaStore } from '../import/media-store';
 
 let fixture: Awaited<ReturnType<typeof copyFixture>>;
 let clips: ClipExports;
+/*
+ * Moments a test may act at (a22-exportclip): once the clip is copied into Media (not listed yet), whether the source
+ * is still the one chosen, whether listing it succeeds, and whether removing what was not listed works (it fails as
+ * when the library closes before it).
+ */
+let hooks: {
+  imported?: (mediaId: string) => void;
+  current: boolean;
+  publish: boolean;
+  discard: boolean;
+  /** Each removal asked for, as it was asked. */
+  discards: Promise<unknown>[];
+  /** An import or a deck's preparation is going (a22-review-combine2 R-S1). */
+  importing: boolean;
+} = {
+  current: true,
+  publish: true,
+  discard: true,
+  discards: [],
+  importing: false,
+};
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   for (const close of cleanup.splice(0).reverse()) close();
 });
 function service(destination: string) {
   let kept: unknown = [];
+  // What is left to remove across a restart (a22-exportclip: video-clip-left.json).
+  let left: unknown = [];
+  hooks = { current: true, publish: true, discard: true, discards: [], importing: false };
   const deps = {
     conversions: fixture.conversions,
     resolve: (request: ClipExportRequest) => ({
@@ -31,7 +56,7 @@ function service(destination: string) {
         endMs: request.endMs,
       },
     }),
-    current: () => true,
+    current: () => hooks.current,
     pickDest: () => Promise.resolve(destination),
     kept: {
       load: () => kept,
@@ -39,8 +64,8 @@ function service(destination: string) {
         kept = value;
       },
     },
-    prepareImport: (file: string, info: typeof fixture.info, name: string, signal: AbortSignal) =>
-      registerProxyFile({
+    prepareImport: async (file: string, info: typeof fixture.info, name: string, signal: AbortSignal) => {
+      const id = await registerProxyFile({
         db: fixture.db,
         mediaDir: fixture.dir,
         file,
@@ -49,9 +74,31 @@ function service(destination: string) {
         signal,
         idle: () => fixture.idle(),
         freeBytes: () => 100 * 1024 ** 3,
-      }),
+        mayRemove: () => !hooks.importing,
+      });
+      hooks.imported?.(id);
+      return id;
+    },
     publishImport: (id: string) =>
-      Promise.resolve(fixture.db.prepare('UPDATE media SET listed=1 WHERE id=?').run(id).changes > 0),
+      Promise.resolve(
+        hooks.publish && fixture.db.prepare('UPDATE media SET listed=1 WHERE id=?').run(id).changes > 0,
+      ),
+    // As the app has it (video-copies-ipc.ts): what an export copied into Media from its own file and never listed.
+    discardUnlisted: (file: string, keep: ReadonlySet<string>, allowed: () => boolean) => {
+      const asked = hooks.discard
+        ? discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, file, keep, allowed })
+        : Promise.reject(new Error('The library is closed.'));
+      hooks.discards.push(asked.catch(() => undefined));
+      return asked;
+    },
+    // As the app has it: nothing playing, off air, not recording, and no import or deck preparation going.
+    quiet: () => fixture.idle() && !hooks.importing,
+    left: {
+      load: () => left,
+      save: (value: unknown) => {
+        left = value;
+      },
+    },
   };
   clips = new ClipExports(deps);
   cleanup.push(() => clips.close());
@@ -67,6 +114,22 @@ const request: ClipExportRequest = {
   addToLibrary: false,
   revision: null,
 };
+/** Every row in Media, listed or not (the fixture's source to begin with). */
+const rows = () => (fixture.db.prepare('SELECT COUNT(*) AS n FROM media').get() as { n: number }).n;
+/** The files kept in Media's own hashed folders (`ab/<sha256>.mp4`). */
+const stored = () =>
+  readdirSync(fixture.dir)
+    .filter((folder) => /^[0-9a-f]{2}$/u.test(folder))
+    .flatMap((folder) => readdirSync(join(fixture.dir, folder)).map((file) => `${folder}/${file}`));
+async function ended(state: 'failed' | 'stopped') {
+  await vi.waitFor(
+    () => {
+      expect(clips.list().at(-1)?.state).toBe(state);
+    },
+    { timeout: 10_000 },
+  );
+  return clips.list().at(-1);
+}
 async function done() {
   await vi.waitFor(
     () => {
@@ -181,3 +244,244 @@ it('keeps real WebM transparency in the exported file without replacing the sour
   for (const at of [3, 7, 11, 15]) expect(rgba[at]).toBeLessThan(145);
   expect((await sha256File(fixture.source)).sha256).toBe(fixture.sha);
 }, 15_000);
+
+/*
+ * a22-exportclip (lead 2, after a22-review-combine S4): Export clip's Also add the clip to Media, failing, stopped or
+ * let go of after its copy into Media, leaves no unlisted row and no file in Media's folders; a video already in Media
+ * is never touched.
+ */
+const adding = { ...request, addToLibrary: true };
+it('the video changing just after the clip was copied into Media: no row or file is left in Media', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const dest = join(fixture.dir, 'changed clip.mp4');
+  service(dest);
+  const copied: string[] = [];
+  hooks.imported = (id) => {
+    copied.push(id);
+    hooks.current = false;
+  };
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await ended('failed');
+  expect(copied).toHaveLength(1);
+  expect(rows()).toBe(1);
+  expect(stored()).toEqual([]);
+  expect(existsSync(dest)).toBe(false);
+}, 15_000);
+
+it('Stop just after the clip was copied into Media leaves no row or file in Media', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const dest = join(fixture.dir, 'stopped clip.mp4');
+  service(dest);
+  hooks.imported = () => {
+    expect(clips.stop(clips.list().at(-1)?.id ?? '')).toBe(true);
+  };
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await ended('stopped');
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+  });
+  expect(stored()).toEqual([]);
+  expect(existsSync(dest)).toBe(false);
+}, 15_000);
+
+it('Media refusing to list the clip keeps the saved file and leaves no unlisted row or file in Media', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const dest = join(fixture.dir, 'refused clip.mp4');
+  service(dest);
+  hooks.publish = false;
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  const job = await done();
+  expect(job.added).toBe(false);
+  expect(job.message).toMatch(/could not be added to Media/u);
+  expect(existsSync(dest)).toBe(true);
+  expect(rows()).toBe(1);
+  expect(stored()).toEqual([]);
+}, 15_000);
+
+it('Drashti closing just after the copy into Media: the next start removes what was left before it exports again', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const dest = join(fixture.dir, 'closed clip.mp4');
+  const deps = service(dest);
+  // The library closes before the removal can run, as at a quit or a crash.
+  hooks.discard = false;
+  hooks.imported = () => {
+    clips.close();
+  };
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await vi.waitFor(() => {
+    expect(rows()).toBe(2);
+  });
+  expect(stored()).toHaveLength(1);
+  const before = fixture.db.prepare("SELECT id FROM media WHERE id <> 'source'").get() as { id: string };
+  // The next start, quiet: what was left goes before the export, kept as asked, runs again.
+  hooks = { current: true, publish: true, discard: true, discards: [], importing: false };
+  const atCopy: { id: string | null; earlier: unknown } = { id: null, earlier: undefined };
+  hooks.imported = (id) => {
+    atCopy.id = id;
+    atCopy.earlier = fixture.db.prepare('SELECT 1 FROM media WHERE id = ?').get(before.id);
+  };
+  clips = new ClipExports(deps);
+  clips.resume();
+  const job = await done();
+  // Gone before the export copied again: its copy is a row of its own.
+  expect(atCopy.earlier).toBeUndefined();
+  expect(atCopy.id).not.toBe(before.id);
+  expect(job.added).toBe(true);
+  expect(rows()).toBe(2);
+  expect(stored()).toHaveLength(1);
+}, 20_000);
+
+it('never touches a clip already in Media: the same clip again, refused its listing, leaves the first one whole', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  service(join(fixture.dir, 'first clip.mp4'));
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  expect((await done()).added).toBe(true);
+  const first = fixture.db.prepare("SELECT id, path FROM media WHERE id <> 'source'").get() as {
+    id: string;
+    path: string;
+  };
+  const bytes = await sha256File(join(fixture.dir, first.path));
+  clips.close();
+  service(join(fixture.dir, 'second clip.mp4'));
+  hooks.publish = false;
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  expect((await done()).added).toBe(false);
+  expect(
+    (fixture.db.prepare('SELECT listed FROM media WHERE id=?').get(first.id) as { listed: number }).listed,
+  ).toBe(1);
+  expect((await sha256File(join(fixture.dir, first.path))).sha256).toBe(bytes.sha256);
+  expect(rows()).toBe(2);
+  expect(stored()).toEqual([first.path]);
+}, 20_000);
+
+it('Stop just after the copy into Media keeps a copy a PowerPoint video took up meanwhile, with its file', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  service(join(fixture.dir, 'taken clip.mp4'));
+  const taken: { id: string | null; path: string } = { id: null, path: '' };
+  hooks.imported = (id) => {
+    const row = fixture.db.prepare('SELECT path, sha256, bytes FROM media WHERE id = ?').get(id) as {
+      path: string;
+      sha256: string;
+      bytes: number;
+    };
+    // An imported deck's video, kept as an editable document object, has the very same bytes (a22-review-combine2).
+    taken.id = new MediaStore(fixture.db, { dir: fixture.dir }).addStaged(
+      {
+        kind: 'video',
+        name: 'Placeholder object.mp4',
+        rel: row.path,
+        sha256: row.sha256,
+        bytes: row.bytes,
+        probe: { kind: 'video', playable: true, format: 'H.264 video (MP4)' },
+      },
+      { kind: 'drashti', path: 'Editable document object' },
+    ).mediaId;
+    taken.path = row.path;
+    fixture.db
+      .prepare("INSERT INTO app_meta(key, value) VALUES ('setting.placeholderDeckVideo', ?)")
+      .run(JSON.stringify({ mediaId: taken.id }));
+    expect(clips.stop(clips.list().at(-1)?.id ?? '')).toBe(true);
+  };
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await ended('stopped');
+  // The end of the run asked for its removal, and it has run.
+  await vi.waitFor(() => {
+    expect(hooks.discards.length).toBeGreaterThanOrEqual(1);
+  });
+  await Promise.all(hooks.discards);
+  expect(taken.id).not.toBeNull();
+  expect(fixture.db.prepare('SELECT 1 FROM media WHERE id = ?').get(taken.id)).toBeDefined();
+  expect(stored()).toEqual([taken.path]);
+}, 15_000);
+
+/*
+ * a22-review-combine2 re-review, the same rules for Export clip: R-S1, nothing unlisted is removed while an import or a
+ * deck's preparation goes; R-S2, nothing while a video or sound plays, the stream is on air or a recording goes on.
+ * What is left is kept in a list across a restart and removed at the next start.
+ */
+it('an import going: Media refusing the listing leaves the copy for the next start, which removes it', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'importing clip.mp4'));
+  hooks.importing = true;
+  hooks.publish = false;
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  expect((await done()).added).toBe(false);
+  await Promise.all(hooks.discards);
+  expect(rows()).toBe(2);
+  expect(stored()).toHaveLength(1);
+  // The next start, with no import going.
+  clips.close();
+  hooks.importing = false;
+  clips = new ClipExports(deps);
+  clips.resume();
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+    expect(stored()).toEqual([]);
+  });
+}, 20_000);
+
+it('Stop on air after the copy into Media removes nothing on air; the next start removes it', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'on air clip.mp4'));
+  const copied: string[] = [];
+  hooks.imported = (id) => {
+    copied.push(id);
+    fixture.activity.stream = true;
+  };
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  // Waiting again, after its copy into Media.
+  await vi.waitFor(() => {
+    expect(copied).toHaveLength(1);
+    expect(clips.list().at(-1)?.state).toBe('waiting');
+  });
+  expect(clips.stop(clips.list().at(-1)?.id ?? '')).toBe(true);
+  await vi.waitFor(() => {
+    expect(hooks.discards.length).toBeGreaterThanOrEqual(1);
+  });
+  await Promise.all(hooks.discards);
+  expect(rows()).toBe(2);
+  expect(stored()).toHaveLength(1);
+  clips.close();
+  fixture.activity.stream = false;
+  clips = new ClipExports(deps);
+  clips.resume();
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+    expect(stored()).toEqual([]);
+  });
+}, 20_000);
+
+it('an import going at the next start keeps what was left for a later start', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'later clip.mp4'));
+  hooks.publish = false;
+  hooks.importing = true;
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await done();
+  await Promise.all(hooks.discards);
+  clips.close();
+  // A start with an import going: still left.
+  clips = new ClipExports(deps);
+  clips.resume();
+  await Promise.all(hooks.discards);
+  expect(rows()).toBe(2);
+  expect(stored()).toHaveLength(1);
+  clips.close();
+  // A later start, quiet.
+  hooks.importing = false;
+  clips = new ClipExports(deps);
+  clips.resume();
+  await vi.waitFor(() => {
+    expect(rows()).toBe(1);
+    expect(stored()).toEqual([]);
+  });
+}, 20_000);
