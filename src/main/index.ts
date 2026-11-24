@@ -8947,6 +8947,35 @@ function start(): void {
     sendToOperator(IPC.media.notOnScreensChanged, notOnList());
   };
   handle(IPC.media.notOnScreens, (e) => (fromOperator(e) ? notOnList() : []));
+  // Play on a video a screen said it could not play is followed by the take-off (the owner's QA23-HALLDROP-1 (b),
+  // "Take it off at Play (Rec.)", as his Q60-31; media/not-on-screens-follow.ts).
+  liveLines.connectPlay({
+    later: (run) => {
+      setImmediate(run);
+    },
+    state: () => engine.current,
+    takeOff: (mediaId, startedAt) => engine.cannotPlay(mediaId, startedAt),
+    tell: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    log: (line) => {
+      log.warn(line);
+    },
+    nameOf: nameOfScreen,
+  });
+  // A screen with no first frame of a showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a), "Words during the
+  // wait (Rec.)"): LIVE says it is starting there until it draws or the verdict comes. Nothing on the screens changes.
+  handle(IPC.media.starting, (e, mediaId, startedAt) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video' || !stillUp(engine.current, mediaId, startedAt)) return null;
+    const screenName = nameOfScreen(screenId) ?? screenId;
+    if (liveLines.starting(mediaId, startedAt, screenId, screenName, file.name))
+      log.info(`A video had no first frame on the screen “${screenName}” 2 s after it went up: ${mediaId}`);
+    return null;
+  });
   // A screen's page that said a showing could not play drew it after all (the review's MUST-2): no longer named.
   handle(IPC.media.playsHere, (e, mediaId, startedAt) => {
     const screenId = manager.screenIdFor(e.sender.id);

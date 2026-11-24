@@ -2,6 +2,7 @@ import type { DrashtiBridge } from '../../../shared/bridge';
 import {
   NO_FIRST_FRAME,
   NO_START_IN_TIME,
+  STARTING_WORDS_MS,
   startVerdict,
   startWatch,
   startWatched,
@@ -36,8 +37,25 @@ export function tellNoPicture(mediaId: string, startedAt: number): void {
 /** The showings (and tries of each) this page has said could not play. */
 const failedTold = new Set<string>();
 
-/** The showings this page has said could not play, until it draws them after all (tellPlaysHere). */
-const saidFailing = new Set<string>();
+/** The showings this page has said could not play, or are starting, until it draws them after all (tellPlaysHere). */
+const saidNotDrawn = new Set<string>();
+
+/** The showings this page has said are starting (tellStarting): each once. */
+const startingTold = new Set<string>();
+
+/**
+ * A showing with no first frame here STARTING_WORDS_MS after it went up (the owner's QA23-HALLDROP-1 (a), "Words during
+ * the wait (Rec.)"): said to Main once, which says so under LIVE ("Starting on the screen “…”…") until this page draws
+ * it (tellPlaysHere) or its verdict comes. Nothing drawn changes. Phones' pages have no bridge.
+ */
+export function tellStarting(mediaId: string, startedAt: number): void {
+  const key = `${mediaId}@${String(startedAt)}`;
+  const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
+  if (!bridge?.media?.starting || startingTold.has(key)) return;
+  startingTold.add(key);
+  saidNotDrawn.add(key);
+  void bridge.media.starting(mediaId, startedAt).catch(() => undefined);
+}
 
 /**
  * A showing this page said could not play has its first frame after all (alpha.23, a22-halldrop's review, MUST-2: a slow
@@ -46,7 +64,7 @@ const saidFailing = new Set<string>();
  */
 export function tellPlaysHere(mediaId: string, startedAt: number): void {
   const key = `${mediaId}@${String(startedAt)}`;
-  if (!saidFailing.delete(key)) return;
+  if (!saidNotDrawn.delete(key)) return;
   const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
   if (!bridge?.media?.playsHere) return;
   void bridge.media.playsHere(mediaId, startedAt).catch(() => undefined);
@@ -71,7 +89,7 @@ export function tellCannotPlay(
   }`;
   if (!bridge?.media?.cannotPlay || failedTold.has(key)) return;
   failedTold.add(key);
-  saidFailing.add(`${mediaId}@${String(startedAt)}`);
+  saidNotDrawn.add(`${mediaId}@${String(startedAt)}`);
   void bridge.media.cannotPlay(mediaId, startedAt, error.code, error.message).catch(() => undefined);
 }
 
@@ -102,13 +120,18 @@ export function watchFirstFrame(
     { signal: drawing.signal, once: true },
   );
   const listening = new AbortController();
-  const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
-    listening.abort();
-    tellCannotPlay(mediaId, startedAt, attempt, {
-      code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
-      message: seen,
-    });
-  });
+  const stopWatch = watchStart(
+    v,
+    mediaId,
+    (verdict, seen) => {
+      listening.abort();
+      tellCannotPlay(mediaId, startedAt, attempt, {
+        code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
+        message: seen,
+      });
+    },
+    startedAt,
+  );
   const stop = () => {
     stopWatch();
     listening.abort();
@@ -147,7 +170,7 @@ export function watchStart(
   v: HTMLVideoElement,
   mediaId: string,
   said: (verdict: 'stalled' | 'slow', seen: string) => void,
-  _startedAt?: number,
+  startedAt?: number,
 ): () => void {
   let watch = startWatch(engineNow());
   let looked = 0;
@@ -174,6 +197,12 @@ export function watchStart(
   // eslint-disable-next-line no-restricted-syntax -- decides no frame: only whether a video that never drew is said to fail
   const looks = setInterval(() => {
     const at = engineNow();
+    // Its showing known (`startedAt`; not a cued one before its Go): no first frame STARTING_WORDS_MS after it went up
+    // is said (QA23-HALLDROP-1 (a)), and its first frame after that too.
+    if (startedAt !== undefined) {
+      if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) tellPlaysHere(mediaId, startedAt);
+      else if (at - startedAt >= STARTING_WORDS_MS) tellStarting(mediaId, startedAt);
+    }
     watch = startWatched(watch, {
       at,
       loadedMs: bufferedEndMs(v),

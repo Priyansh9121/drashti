@@ -1,6 +1,7 @@
 import type { EngineState } from '../../shared/engine/state';
+import { cannotPlayNotice } from '../../shared/no-picture';
 import type { CannotPlayTook } from '../engine/one-at-a-time';
-import type { HallWords } from './cannot-play';
+import { type HallWords, offWords } from './cannot-play';
 
 /** What the take-off at Play needs from Main (the owner's QA23-HALLDROP-1 (b)). */
 export interface TakeOffAtPlay {
@@ -27,26 +28,39 @@ export interface TakeOffAtPlay {
  */
 export class LiveLinesFollow {
   private atPlay: TakeOffAtPlay | null = null;
+  /** A take-off at Play waiting for its moment (one at a time). */
+  private atPlayWaiting = false;
 
   constructor(
     private readonly words: HallWords,
     private readonly send: () => void,
   ) {}
 
-  /** The take-off at Play (not yet: Play plays as asked). */
+  /**
+   * The take-off at Play (the owner's QA23-HALLDROP-1 (b), "Take it off at Play (Rec.)", as his Q60-31): a slide's or
+   * the box's video that a screen said it could not play, once it plays (the time bar's Play, a phone, Companion, MIDI,
+   * a deck's click: whatever played it), is taken off as one playing would be, a moment after the change: paused there
+   * on the slide with its sound, the box off; the notice says so, by the screens.
+   */
   connectPlay(deps: TakeOffAtPlay): void {
     this.atPlay = deps;
   }
 
-  /** A screen has no first frame of a showing 2 s after it went up (not yet: nothing said). */
+  /**
+   * A screen has no first frame of a showing up 2 s after it went up (the owner's QA23-HALLDROP-1 (a), "Words during the
+   * wait (Rec.)", media:starting): LIVE says "Starting on the screen “…”…" until it draws or the verdict comes. Whether
+   * LIVE's lines changed (and the window was told).
+   */
   starting(
-    _mediaId: string,
-    _startedAt: number,
-    _screenId: string,
-    _screenName: string,
-    _fileName: string,
+    mediaId: string,
+    startedAt: number,
+    screenId: string,
+    screenName: string,
+    fileName: string,
   ): boolean {
-    return this.atPlay !== null && false;
+    const changed = this.words.starting(mediaId, startedAt, screenId, screenName, fileName);
+    if (changed) this.send();
+    return changed;
   }
 
   /**
@@ -72,9 +86,26 @@ export class LiveLinesFollow {
     if (this.words.naming()) this.send();
   }
 
-  /** The show changed: a showing no longer up is forgotten. */
+  /** The show changed: a showing no longer up is forgotten; one the hall could not play, now playing, is taken off. */
   showChanged(state: EngineState): void {
     if (this.words.prune(state)) this.send();
+    const atPlay = this.atPlay;
+    if (!atPlay || this.atPlayWaiting) return;
+    const nameOf = (screenId: string) => atPlay.nameOf(screenId);
+    if (this.words.playingCannot(state, nameOf).length === 0) return;
+    // Outside the engine's change: the take-off is a change of its own.
+    this.atPlayWaiting = true;
+    atPlay.later(() => {
+      this.atPlayWaiting = false;
+      for (const p of this.words.playingCannot(atPlay.state(), nameOf)) {
+        const took = atPlay.takeOff(p.mediaId, p.startedAt);
+        if (!took) continue;
+        atPlay.log(
+          `A video was played that ${p.where} could not play: ${p.mediaId}; taken off at Play (${offWords(took)})`,
+        );
+        atPlay.tell(cannotPlayNotice(p.name, p.where, took));
+      }
+    });
   }
 
   /** That screen drew the showing after all (media:plays-here): whether its line went. */

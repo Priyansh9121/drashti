@@ -944,6 +944,11 @@ export interface DrashtiBridge {
      * heeded from this computer's screens.
      */
     playsHere(mediaId: string, startedAt: number): Promise<null>;
+    /**
+     * A page has no first frame of this showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a)): heeded from
+     * this computer's screens.
+     */
+    starting(mediaId: string, startedAt: number): Promise<null>;
     onNotOnScreens(listener: (list: NotOnScreen[]) => void): () => void;
   };
   /**

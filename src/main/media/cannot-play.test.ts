@@ -187,7 +187,7 @@ describe('a screen’s word on a video up but not playing (alpha.23, a22-halldro
   it('a video waiting on the slide (paused, or for its click) that the hall could not play: nothing comes off, the operator is told what happened and what to try, the log has it, and LIVE names the screen', () => {
     const o = heardOutcome(heard({}));
     expect(o.notice).toBe(
-      '“Placeholder waiting video” could not play on the screen “Placeholder Hall”. It is still up but not playing: if it is played, its sound will be heard there without its picture. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.',
+      '“Placeholder waiting video” could not play on the screen “Placeholder Hall”. It is still up but not playing: if it is played, Drashti stops it again, as it cannot be shown there. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.',
     );
     expect(o.log).toEqual({
       level: 'warn',

@@ -536,6 +536,7 @@ const bridge: DrashtiBridge = {
     served: (mediaId) => invoke(IPC.media.served, mediaId),
     notOnScreens: () => invoke(IPC.media.notOnScreens),
     playsHere: (mediaId, startedAt) => invoke(IPC.media.playsHere, mediaId, startedAt),
+    starting: (mediaId, startedAt) => invoke(IPC.media.starting, mediaId, startedAt),
     onNotOnScreens: (listener) => on(IPC.media.notOnScreensChanged, listener),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     details: (mediaId) => invoke(IPC.media.details, mediaId),

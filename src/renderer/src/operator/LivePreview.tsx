@@ -261,6 +261,20 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
           File missing: “{soundMissing}”. The sound stays as it was.
         </p>
       )}
+      {/* While a screen waits for a video's first frame (the owner's QA23-HALLDROP-1 (a)). */}
+      {notOn.flatMap((e) =>
+        e.starting ? (
+          <p
+            key={`${e.mediaId}@${String(e.startedAt)}:starting`}
+            className="text-xs text-muted"
+            data-testid="live-starting"
+          >
+            {e.starting}
+          </p>
+        ) : (
+          []
+        ),
+      )}
       {notOn.flatMap((e) =>
         e.lines.map((line) => (
           <p

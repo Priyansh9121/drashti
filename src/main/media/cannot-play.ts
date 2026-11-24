@@ -18,6 +18,8 @@ import {
   notOnScreenLine,
   notOnScreensNow,
   notOnScreenYetLine,
+  playingCannotNow,
+  startingLine,
 } from '../../shared/not-on-screens';
 import { cutText } from '../../shared/text';
 import type { CannotPlayTook } from '../engine/one-at-a-time';
@@ -174,6 +176,16 @@ const screensOf = (wheres: readonly CannotPlayWhere[]) =>
  * to play it. When only LIVE or the stream said so (the screens show it), only the log; gone by the end of the wait,
  * only the log. What the screens show is never changed here.
  */
+/** What a take-off took, in the log's words. */
+export const offWords = (took: CannotPlayTook): string =>
+  [
+    took.background ? 'the background' : '',
+    took.slide ? 'paused on the slide' : '',
+    took.box ? 'the box' : '',
+  ]
+    .filter((w) => w !== '')
+    .join(', ');
+
 /** The log's line for a showing pages said could not play, up to what came of it. */
 const saidLine = (h: Pick<Heard, 'wheres' | 'code' | 'words' | 'mediaId'>): string =>
   `A video could not play on ${whereWords(h.wheres)} (${errorKindWords(h.code)}${
@@ -190,15 +202,8 @@ export function heardOutcome(h: Heard): HeardOutcome {
   const said = saidLine(h);
   const took = h.took;
   if (took) {
-    const off = [
-      took.background ? 'the background' : '',
-      took.slide ? 'paused on the slide' : '',
-      took.box ? 'the box' : '',
-    ]
-      .filter((w) => w !== '')
-      .join(', ');
     return {
-      log: { level: 'warn', line: `${said}; taken off (${off})` },
+      log: { level: 'warn', line: `${said}; taken off (${offWords(took)})` },
       // Taken off is a change of the show: said, as before, even to a screen told of already.
       notice: slow ? cannotStartInTimeNotice(h.name, named, took) : cannotPlayNotice(h.name, named, took),
       live: took.slide && h.stillUp && screens.length > 0 ? kind : null,
@@ -226,13 +231,19 @@ export function heardOutcome(h: Heard): HeardOutcome {
   };
 }
 
-/** A showing kept: its file and name, the screens told of, and the screens that do not show it (and whether slow). */
+/**
+ * How a screen that does not show a showing is named under LIVE: still waiting for its first frame (the owner's
+ * QA23-HALLDROP-1 (a)), still loading it past the slow bound (Q60-51), or unable to play it.
+ */
+type NotOnKind = 'starting' | 'slow' | 'cannot';
+
+/** A showing kept: its file and name, the screens told of, and the screens that do not show it (and how). */
 interface Kept {
   mediaId: string;
   startedAt: number;
   name: string;
   told: Set<string>;
-  notOn: Map<string, { name: string; slow: boolean }>;
+  notOn: Map<string, { name: string; kind: NotOnKind }>;
 }
 
 /** Showings whose drawing after all Main keeps a mark of, at most (the newest). */
@@ -289,17 +300,17 @@ export class HallWords {
       startedAt,
       name: h.name,
       told: new Set<string>(),
-      notOn: new Map<string, { name: string; slow: boolean }>(),
+      notOn: new Map<string, { name: string; kind: NotOnKind }>(),
     };
     if (outcome.notice !== null) for (const w of screens) k.told.add(screenKey(w));
     let changed = false;
     if (outcome.live !== null)
       for (const w of screens) {
         const before = k.notOn.get(screenKey(w));
-        // A screen that could not play it stays so; one still loading it becomes so on its failure.
-        const slow = outcome.live === 'slow' && (before?.slow ?? true);
-        if (before?.slow === slow && before.name === w.screen) continue;
-        k.notOn.set(screenKey(w), { name: w.screen, slow });
+        // A screen that could not play it stays so; one starting or still loading it becomes what the word says.
+        const kind = before?.kind === 'cannot' ? 'cannot' : outcome.live;
+        if (before?.kind === kind && before.name === w.screen) continue;
+        k.notOn.set(screenKey(w), { name: w.screen, kind });
         changed = true;
       }
     if (!was) {
@@ -378,20 +389,83 @@ export class HallWords {
   list(nameOf: (screenId: string) => string | undefined): NotOnScreen[] {
     const out: NotOnScreen[] = [];
     for (const k of this.kept.values()) {
-      const cannot: CannotPlayWhere[] = [];
-      const loading: CannotPlayWhere[] = [];
-      for (const [id, s] of k.notOn) {
-        const name = nameOf(id) ?? (id === s.name ? s.name : undefined);
-        if (name === undefined) continue;
-        (s.slow ? loading : cannot).push({ screen: name });
-      }
+      const named = this.namedNow(k, nameOf);
       const lines = [
-        ...(cannot.length > 0 ? [notOnScreenLine(k.name, whereWords(cannot))] : []),
-        ...(loading.length > 0 ? [notOnScreenYetLine(k.name, whereWords(loading))] : []),
+        ...(named.cannot.length > 0 ? [notOnScreenLine(k.name, whereWords(named.cannot))] : []),
+        ...(named.slow.length > 0 ? [notOnScreenYetLine(k.name, whereWords(named.slow))] : []),
       ];
-      if (lines.length > 0) out.push({ mediaId: k.mediaId, startedAt: k.startedAt, lines });
+      const starting = named.starting.length > 0 ? startingLine(whereWords(named.starting)) : undefined;
+      if (lines.length > 0 || starting !== undefined)
+        out.push({ mediaId: k.mediaId, startedAt: k.startedAt, lines, ...(starting ? { starting } : {}) });
     }
     return out;
+  }
+
+  /** A showing's screens that do not show it, by their names now and how each is named. */
+  private namedNow(
+    k: Kept,
+    nameOf: (screenId: string) => string | undefined,
+  ): Record<NotOnKind, CannotPlayWhere[]> {
+    const named: Record<NotOnKind, CannotPlayWhere[]> = { starting: [], slow: [], cannot: [] };
+    for (const [id, s] of k.notOn) {
+      const name = nameOf(id) ?? (id === s.name ? s.name : undefined);
+      if (name !== undefined) named[s.kind].push({ screen: name });
+    }
+    return named;
+  }
+
+  /**
+   * A screen has no first frame of a showing up 2 s after it went up (the owner's QA23-HALLDROP-1 (a)): LIVE says it is
+   * starting there until it draws (playsHere) or the verdict comes (heard); never for a screen named so already. Whether
+   * LIVE's lines changed.
+   */
+  starting(
+    mediaId: string,
+    startedAt: number,
+    screenId: string,
+    screenName: string,
+    fileName: string,
+  ): boolean {
+    const key = `${mediaId}@${String(startedAt)}`;
+    const was = this.kept.get(key);
+    if (was?.notOn.has(screenId)) return false;
+    const k: Kept = was ?? {
+      mediaId,
+      startedAt,
+      name: fileName,
+      told: new Set<string>(),
+      notOn: new Map<string, { name: string; kind: NotOnKind }>(),
+    };
+    k.notOn.set(screenId, { name: screenName, kind: 'starting' });
+    if (!was) {
+      this.kept.set(key, k);
+      while (this.kept.size > NOT_ON_SCREENS_MAX) {
+        const oldest = this.kept.keys().next().value;
+        if (oldest === undefined) break;
+        this.kept.delete(oldest);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * The showings kept that a screen could not play and that play now in `state` (the owner's QA23-HALLDROP-1 (b): Play
+   * on them is followed by the take-off), with the screens in words by their names now. One only slow ("yet") or still
+   * starting there, or drawn after all, is not among them.
+   */
+  playingCannot(
+    state: EngineState,
+    nameOf: (screenId: string) => string | undefined,
+  ): { mediaId: string; startedAt: number; name: string; where: string }[] {
+    const cannot = [...this.kept.values()].flatMap((k) => {
+      const named = this.namedNow(k, nameOf).cannot;
+      return named.length > 0 ? [{ k, where: whereWords(named) }] : [];
+    });
+    if (cannot.length === 0) return [];
+    const playing = playingCannotNow(state);
+    return cannot
+      .filter(({ k }) => playing.has(`${k.mediaId}@${String(k.startedAt)}`))
+      .map(({ k, where }) => ({ mediaId: k.mediaId, startedAt: k.startedAt, name: k.name, where }));
   }
 }
 

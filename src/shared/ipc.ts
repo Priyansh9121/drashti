@@ -732,6 +732,11 @@ export const IPC = {
      * longer names that screen for it.
      */
     playsHere: 'media:plays-here',
+    /**
+     * A screen's page has no first frame of a showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a)): LIVE says
+     * it is starting there until it draws (media:plays-here) or the verdict comes.
+     */
+    starting: 'media:starting',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1922,6 +1927,7 @@ export interface InvokeContract {
   [IPC.media.served]: { args: [mediaId: string]; result: number };
   [IPC.media.notOnScreens]: { args: []; result: NotOnScreen[] };
   [IPC.media.playsHere]: { args: [mediaId: string, startedAt: number]; result: null };
+  [IPC.media.starting]: { args: [mediaId: string, startedAt: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
   [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };

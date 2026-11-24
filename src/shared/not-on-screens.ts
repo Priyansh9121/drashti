@@ -55,3 +55,18 @@ export const notOnScreenLine = (name: string, where: string): string =>
 /** What LIVE says for the screens still loading it (Q60-51: slow is not "cannot play"). */
 export const notOnScreenYetLine = (name: string, where: string): string =>
   `Not on ${where} yet: “${name}” is still loading there.`;
+
+/** What LIVE says while screens wait for a video's first frame (the owner's QA23-HALLDROP-1 (a)). */
+export const startingLine = (where: string): string => `Starting on ${where}…`;
+
+/**
+ * The showings of videos on the slide or in the box that play now in `state` (not paused, not waiting for their click),
+ * each as `file@when it went up`: what Play on one the hall said it could not play is followed by the take-off for.
+ */
+export function playingCannotNow(state: EngineState | null | undefined): Set<string> {
+  return new Set(
+    playingNow(state)
+      .filter((p) => ((p.ref.layer === 'slide' && p.sound !== true) || p.ref.layer === 'pip') && !p.paused)
+      .map((p) => `${p.mediaId}@${String(p.clock.startedAt)}`),
+  );
+}

@@ -44,7 +44,7 @@ export function cannotPlayNotice(
  * off: until then nobody was told. `where`: the screens, "the screen “…”" or "the screens “…” and “…”".
  */
 export function cannotPlayWaitingNotice(name: string, where: string): string {
-  return `“${name}” could not play on ${where}. It is still up but not playing: if it is played, its sound will be heard there without its picture. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.`;
+  return `“${name}” could not play on ${where}. It is still up but not playing: if it is played, Drashti stops it again, as it cannot be shown there. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.`;
 }
 
 /**
@@ -67,6 +67,12 @@ export const NO_FIRST_FRAME = -1;
  * loads or decodes gets up to SLOW_START_MS from going up, and is then said not to have started in time (NO_START_IN_TIME:
  * the operator is told so, never "damaged"). The Wallpaper or cover stays meanwhile, never black (render/Scene.tsx).
  */
+
+/**
+ * With no first frame on a screen this long after it went up, LIVE says it is starting there (the owner's
+ * QA23-HALLDROP-1 (a), "Words during the wait (Rec.)", render/no-picture.ts tellStarting).
+ */
+export const STARTING_WORDS_MS = 2000;
 
 /** Still loading or decoding, with no first frame this long after it went up: it could not start in time. */
 export const SLOW_START_MS = 30_000;
