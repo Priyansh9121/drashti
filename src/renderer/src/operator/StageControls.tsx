@@ -264,8 +264,8 @@ export function StageMessageControl() {
   // Its colours (the owner, 24 Nov 2026), remembered on this computer; sent only when not amber and black.
   const [colours, setColours] = usePersistentState('stage.colours', AS_ALWAYS, isStageColours);
   const [problem, setProblem] = useState<string | null>(null);
-  // In Simple Mode (alpha.22, the Stage screen chosen for it): the message and the timers; the layout, its editor and
-  // the video input stay Pro Mode's.
+  // In Simple Mode (alpha.22, the Stage screen chosen for it): the message and the timers; the layout, its editor, the
+  // video input and the message's colours stay Pro Mode's (its messages there take the colours chosen in Pro Mode).
   const operateOnly = useOperateOnly();
   const show = (words: string) => {
     const chosen = colours.box !== STAGE_BOX_COLOR || colours.text !== STAGE_TEXT_COLOR;
@@ -357,8 +357,9 @@ export function StageMessageControl() {
             setFlash(e.target.checked);
           }}
         />
-        {/* Its colours (the owner, 24 Nov 2026). */}
-        <StageColoursChoice value={colours} onChange={setColours} />
+        {/* Its colours (the owner, 24 Nov 2026). Simple Mode (alpha.22) never shows the choice: its messages take the
+            colours last chosen in Pro Mode on this computer. */}
+        {!operateOnly && <StageColoursChoice value={colours} onChange={setColours} />}
       </div>
       {shown !== null && (
         <div className="flex items-center gap-2 rounded-md border border-warning/60 bg-warning-bg px-2 py-1 text-sm text-warning-fg">
