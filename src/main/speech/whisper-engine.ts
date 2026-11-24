@@ -1,9 +1,15 @@
 import { spawn as spawnChild, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
-import { constants, setPriority } from 'node:os';
-import type { CaptionTiming } from '../../shared/captions';
-import { SPEECH_RATE, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
+import { availableParallelism, constants, setPriority } from 'node:os';
+import { CAPTIONS_STOP_AFTER_RESTS, type CaptionTiming } from '../../shared/captions';
+import {
+  SPEECH_RATE,
+  type Heard,
+  type HeardWord,
+  type SlowHold,
+  type SpeechLanguage,
+} from '../../shared/speech';
 import type { CaptionHints } from './caption-hints';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
@@ -15,8 +21,10 @@ import { isSpeech } from './speech-level';
  * program on 127.0.0.1 that keeps the model loaded. It runs below the show's priority. The stream's sound input comes
  * in as 16 kHz mono samples; a pause cuts it into phrases, each sent as it grows (partials) and once whole (final).
  * If the computer cannot keep up (each piece takes too long, or it falls more than a few seconds behind) it stops by
- * itself (held, busy) and tries again a minute later: the show comes first. It never logs a word, and the program's
- * own output is never read.
+ * itself (held, busy, with what it measured) and tries again a minute later: the show comes first. After three rests
+ * in a row, with no phrase heard whole since it started, it stops trying (the owner, cap-threads: "Say so and stop"). It never logs a word, and the program's own
+ * output is never read. It is never given more threads than the computer has logical
+ * processors (cap-threads: 4 threads on CI's two-core Windows, and nothing was ever shown).
  */
 
 export const SAMPLE_RATE = SPEECH_RATE;
@@ -52,6 +60,17 @@ export interface WhisperEngineOptions {
   sound: PcmSource;
   log: { info(message: string): void; warn(message: string): void };
   threads?: number;
+  /**
+   * This computer's logical processors (os.availableParallelism; a test may say): whisper-server is never given more
+   * threads than these (cap-threads).
+   */
+  processors?: () => number;
+  /**
+   * Whether captions have shown a phrase whole since the operator last turned them on (the service's memory, across
+   * this engine's starts: a language change, a timing change, Route W's fresh engine; cap-review-threads MUST-1b). A
+   * computer that has kept up is never stopped. Left out: only this start's own phrases count.
+   */
+  keptUp?: () => boolean;
   spawn?: (program: string, args: string[]) => ChildProcess;
   fetch?: typeof fetch;
   /** How long to wait for the engine to load its model (the first start on a Mac also builds its GPU programs). */
@@ -78,6 +97,17 @@ const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
   ['sanskrit', 'sa'],
   ['english', 'en'],
 ]);
+
+/**
+ * The threads whisper-server is started with (cap-threads): the dialog's setting, but never more than this computer's
+ * logical processors, and at least one. A computer with 4 or more (every Mac that runs macOS 13) keeps the setting.
+ * Not one fewer than the processors: the engine already runs below the show's priority, so the show's own work comes
+ * first, and on two processors one thread would only make a slow engine slower.
+ */
+export function whisperThreads(setting: number, processors: number): number {
+  const here = Number.isFinite(processors) ? Math.floor(processors) : 1;
+  return Math.max(1, Math.min(setting, here));
+}
 
 /** Whether a chunk is speech (alpha.22's speech level; its own module so Route C shares it, alpha.23). */
 export { isSpeech };
@@ -241,7 +271,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       const stepMs = timing?.stepMs ?? o.stepMs ?? 1_500;
       const pauseMs = timing?.pauseMs ?? o.pauseMs ?? 700;
       const maxMs = timing?.longestMs ?? o.maxMs ?? 12_000;
-      const threads = timing?.threads ?? o.threads ?? 4;
+      // Never more threads than this computer's logical processors (cap-threads), read once at each start.
+      const processors = (o.processors ?? availableParallelism)();
+      const threads = whisperThreads(timing?.threads ?? o.threads ?? 4, processors);
       const speechLevel = timing?.speech ?? 'standard';
       let stopped = false;
       // Read through a function: stop() changes it while a piece is awaited, which the type checker cannot see.
@@ -251,6 +283,10 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       let address = '';
       let busy = false;
       let slowInARow = 0;
+      // Rests in a row with no phrase heard whole between them (cap-threads: the dialog says when it is not once), and
+      // whether a phrase has been heard whole since this start: one that has kept up is never stopped (review MUST-1).
+      let rests = 0;
+      let heardWhole = false;
       let phrase: Growing | null = null;
       let count = 0;
       let rest: NodeJS.Timeout | null = null;
@@ -318,14 +354,29 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         return all;
       };
 
-      const hold = (): void => {
+      const hold = (measured: Pick<SlowHold, 'answerMs' | 'behindMs'>): void => {
         if (busy || stopped) return;
         busy = true;
+        rests += 1;
+        // The one decision (the owner, Q-CT-1: "Say so and stop"): the third rest in a row, nothing heard whole since
+        // this start. A computer that has kept up is only busy for a while (a long import, a conversion): it rests and
+        // tries again as before, however long the stretch.
+        // Kept up: a phrase heard whole in this start, or shown since the operator turned captions on (MUST-1b).
+        const keptUp = heardWhole || (o.keptUp?.() ?? false);
+        const stops = rests >= CAPTIONS_STOP_AFTER_RESTS && !keptUp;
+        const slow: SlowHold = { ...measured, threads, processors, rests, keptUp, stops };
+        // Numbers only (cap-threads): what it measured, so a log from a slow computer says why.
         o.log.warn(
-          'Speech: the computer cannot keep up, so captions rest for a minute (the show comes first).',
+          `Speech: the computer cannot keep up, so captions rest for a minute (the show comes first): an answer took ${String(slow.answerMs)} ms, ${String(slow.behindMs)} ms behind, ${String(threads)} threads, ${String(processors)} logical processors, rest ${String(rests)} in a row.`,
         );
-        to.state({ phase: 'held', reason: 'busy' });
+        to.state({ phase: 'held', reason: 'busy', slow });
         end();
+        // After three rests in a row, never having kept up, it stops trying; captions turn off with the reason
+        // (captions-service.ts follows slow.stops).
+        if (stops) {
+          o.log.warn(`Speech: ${String(rests)} rests in a row, so the captions engine stops trying.`);
+          return;
+        }
         rest = setTimeout(() => {
           rest = null;
           busy = false;
@@ -356,7 +407,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           const behind = Date.now() - clipEndAt;
           slowInARow = asked.tookMs > stepMs * 1.5 ? slowInARow + 1 : 0;
           if (slowInARow >= 3 || behind > 8_000) {
-            hold();
+            hold({ answerMs: asked.tookMs, behindMs: behind });
             return;
           }
           const heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
@@ -381,6 +432,11 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
             heardAt: Date.now(),
           };
           to.heard(heard);
+          // A phrase heard whole: the next rest, if one comes, is the first again, and this start has kept up.
+          if (heard.final) {
+            rests = 0;
+            heardWhole = true;
+          }
         } catch {
           // Stopped (aborted), or the engine went away: its exit says so.
         } finally {
@@ -486,6 +542,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           '-t',
           String(threads),
         ];
+        o.log.info(
+          `Speech: the captions engine’s threads: ${String(threads)} (logical processors here: ${String(processors)}).`,
+        );
         // The Windows server has an optional public files directory. Drashti serves no files.
         if (process.platform === 'win32') args.push('--public', '');
         allowFallback = o.fallback(language);
