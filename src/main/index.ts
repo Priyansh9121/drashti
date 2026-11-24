@@ -96,6 +96,8 @@ import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import { isOperatorMode, simpleModeRefuses, simplePhoneRefusalText, simpleRefusalText } from '../shared/mode';
 import { ModeKeeper } from './mode-keeper';
+import { SimpleFeaturesKeeper } from './simple-features';
+import type { SimpleFeature } from '../shared/simple-features';
 import { SimplePlaylist, simplePlaylistName } from './simple-playlist';
 import type { SimplePhoneScope } from './simple-mode-phones';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
@@ -1937,6 +1939,8 @@ function start(): void {
   let lookService: LookService | null = null;
   /** Simple Mode is on (set once the mode is read, further down). */
   let simpleNow = () => false;
+  // Which of Pro Mode's tools Simple Mode has (alpha.22, Edit › Simple Mode Features…): made with the mode, below.
+  let simpleChosen = (): readonly SimpleFeature[] => [];
   /** A media file's length, once learned from playing it (the media repo, made further down). */
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** A picture's look (Session 26e; the media repo, made further down). */
@@ -2020,7 +2024,7 @@ function start(): void {
       refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
-          : simpleNow() && simpleModeRefuses(command, state)
+          : simpleNow() && simpleModeRefuses(command, state, simpleChosen())
             ? simpleRefusalText(simpleAccess())
             : null,
       sourceMediaId: (id) => editedPlaying.sourceId(id),
@@ -4403,6 +4407,22 @@ function start(): void {
       log.info(line);
     },
   });
+  // Simple Mode Features (alpha.22; the owner's "the features can be brought to simple mode, only 1-2 and max 3"): which
+  // of Pro Mode's tools Simple Mode has, kept with the library as the mode is, none to begin with. Simple Mode's lock
+  // and the engine read it as each request comes, so a tool turned off ends at once.
+  const simpleFeatures = new SimpleFeaturesKeeper({
+    saved: settings.get('simpleFeatures'),
+    save: (chosen) => {
+      laterSetting('simpleFeatures', chosen);
+    },
+    changed: (chosen) => {
+      sendToOperator(IPC.app.simpleFeaturesChanged, { chosen: [...chosen] });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  simpleChosen = () => simpleFeatures.chosen();
   const modes = new ModeKeeper({
     saved: { mode: settings.get('operatorMode'), byAccess: settings.get('simpleByAccess') },
     recentStop: startup.recentStop,
@@ -4487,11 +4507,19 @@ function start(): void {
       () => audioOutput.status,
       () => simpleRefusalText(modes.simpleOnly()),
     ),
-    simpleModeBounds(simpleScope),
+    simpleModeBounds(simpleScope, () => simpleFeatures.chosen()),
   );
   handle(IPC.app.getMode, () => mode);
   // The playlist Simple Mode shows (Session 55, Part 18): null in Pro Mode.
   handle(IPC.app.simplePlaylist, () => (mode === 'simple' ? simplePlaylist.current() : null));
+  // Edit › Simple Mode Features… (alpha.22): read in either mode; changed in Pro Mode only (Simple Mode's lock refuses
+  // it before it comes here), at most three.
+  handle(IPC.app.simpleFeatures, () => [...simpleFeatures.chosen()]);
+  handle(IPC.app.setSimpleFeature, (e, feature, on) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can choose Simple Mode’s tools.' };
+    return simpleFeatures.set(feature, on);
+  });
   handle(IPC.app.setMode, (e, wanted): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
@@ -8616,7 +8644,8 @@ function start(): void {
 
   // ---- picture in picture's remembered place (Session 50) --------------------------------------
   handle(IPC.pip.place, () => pipPlaces.place());
-  // Locked in Simple Mode (simple-mode.ts); moving the box up remembers its place by itself (below).
+  // Locked in Simple Mode (simple-mode.ts) unless Picture in Picture is chosen for it (alpha.22); moving the box up
+  // remembers its place by itself (below).
   handle(IPC.pip.savePlace, (e, place) =>
     fromOperator(e)
       ? pipPlaces.save(place)
@@ -9767,6 +9796,10 @@ function start(): void {
     // Help › Report a Problem… (x49): the window asks for its picture and opens.
     reportProblem: () => {
       sendToOperator(IPC.app.showReport, { at: Date.now() });
+    },
+    // Edit › Simple Mode Features… (alpha.22): Pro Mode's, its window in the operator window.
+    simpleFeatures: () => {
+      if (mode === 'pro') sendToOperator(IPC.app.showSimpleFeatures, { at: Date.now() });
     },
     // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
     tools: (tool) => {

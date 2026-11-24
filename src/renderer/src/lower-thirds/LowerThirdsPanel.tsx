@@ -10,6 +10,7 @@ import { rowClass } from '../ui/ListRow';
 import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { Truncate } from '../ui/Truncate';
+import { useOperateOnly } from '../simple/simple-features-store';
 import {
   connectLowerThirds,
   deleteLowerThirds,
@@ -29,6 +30,9 @@ export function LowerThirdsPanel({ platform }: { platform: string }) {
   const list = useLowerThirds((s) => s.list);
   const marked = useLowerThirds((s) => s.marked);
   const upId = useEngine((s) => s.state?.layers.lowerThird?.id ?? null);
+  // In Simple Mode (alpha.22, Lower Thirds chosen for it): each one's Show and Hide; the studio, New…, Edit and Delete
+  // (one or several chosen together) stay Pro Mode's.
+  const operateOnly = useOperateOnly();
   useEffect(() => {
     connectLowerThirds();
   }, []);
@@ -62,32 +66,36 @@ export function LowerThirdsPanel({ platform }: { platform: string }) {
       bodyClassName="space-y-2 px-3 pb-3"
       data-testid="lower-thirds-panel"
       actions={
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={Palette}
-            data-testid="lower-third-studio"
-            onClick={() => void openStudio(null)}
-          >
-            Studio
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={Plus}
-            data-testid="lower-third-new"
-            onClick={() => void openStudio({ make: true })}
-          >
-            New…
-          </Button>
-        </>
+        operateOnly ? undefined : (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Palette}
+              data-testid="lower-third-studio"
+              onClick={() => void openStudio(null)}
+            >
+              Studio
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Plus}
+              data-testid="lower-third-new"
+              onClick={() => void openStudio({ make: true })}
+            >
+              New…
+            </Button>
+          </>
+        )
       }
     >
       <p className="text-xs text-muted">
         A lower third shows a name, a title or a place across the bottom of the picture.
       </p>
-      {items.length === 0 ? (
+      {items.length === 0 && operateOnly ? (
+        <p className="text-xs text-muted">No lower thirds yet: they are made in Pro Mode.</p>
+      ) : items.length === 0 ? (
         <p className="text-xs text-muted">
           No lower thirds yet. <strong>New…</strong> opens the Lower Thirds studio: up to three lines (a name,
           a title and a place), the style they sit in, how it comes in and goes out, a moving background and
@@ -95,25 +103,27 @@ export function LowerThirdsPanel({ platform }: { platform: string }) {
         </p>
       ) : (
         <>
-          <ChosenBar
-            count={marked.length}
-            noun="lower thirds"
-            onDelete={() => {
-              void deleteLowerThirds(marked);
-            }}
-            onClear={() => {
-              useLowerThirds.setState({ marked: [], anchor: null });
-            }}
-          />
+          {!operateOnly && (
+            <ChosenBar
+              count={marked.length}
+              noun="lower thirds"
+              onDelete={() => {
+                void deleteLowerThirds(marked);
+              }}
+              onClear={() => {
+                useLowerThirds.setState({ marked: [], anchor: null });
+              }}
+            />
+          )}
           <ul
             ref={listRef}
             tabIndex={-1}
             aria-label="Lower thirds"
             data-testid="lower-thirds"
             className="relative max-h-64 space-y-1 overflow-y-auto focus:outline-none"
-            onPointerDown={box.onPointerDown}
+            onPointerDown={operateOnly ? undefined : box.onPointerDown}
             onKeyDown={(e) => {
-              if (!isSelectAll(e, platform)) return;
+              if (operateOnly || !isSelectAll(e, platform)) return;
               e.preventDefault();
               const ids = items.map((l) => l.id);
               useLowerThirds.setState({ marked: ids, anchor: ids[0] ?? null });
@@ -143,10 +153,13 @@ export function LowerThirdsPanel({ platform }: { platform: string }) {
                       'flex min-w-0 flex-1 flex-col items-start gap-0.5 px-2.5 py-1.5 text-left',
                     )}
                     onClick={(e) => {
-                      const mods = {
-                        toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey,
-                        range: e.shiftKey,
-                      };
+                      // In Simple Mode one is chosen at a time: nothing there acts on several.
+                      const mods = operateOnly
+                        ? { toggle: false, range: false }
+                        : {
+                            toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey,
+                            range: e.shiftKey,
+                          };
                       const s = useLowerThirds.getState();
                       if (mods.toggle || mods.range) {
                         const next = clickedMany(
@@ -161,9 +174,9 @@ export function LowerThirdsPanel({ platform }: { platform: string }) {
                       }
                       useLowerThirds.setState({ marked: [lt.id], anchor: lt.id });
                     }}
-                    onDoubleClick={() => void openStudio({ id: lt.id })}
+                    onDoubleClick={operateOnly ? undefined : () => void openStudio({ id: lt.id })}
                     onKeyDown={(e) => {
-                      if (!isRemoveKey(e, platform)) return;
+                      if (operateOnly || !isRemoveKey(e, platform)) return;
                       e.preventDefault();
                       void deleteLowerThirds(deleting(lt.id));
                     }}
@@ -187,20 +200,24 @@ export function LowerThirdsPanel({ platform }: { platform: string }) {
                   >
                     {up ? 'Hide' : 'Show'}
                   </Button>
-                  <IconButton
-                    icon={Pencil}
-                    label={`Edit “${name}”`}
-                    size="sm"
-                    data-testid="lower-third-edit"
-                    onClick={() => void openStudio({ id: lt.id })}
-                  />
-                  <IconButton
-                    icon={Trash2}
-                    label={`Delete “${name}”`}
-                    size="sm"
-                    data-testid="lower-third-delete"
-                    onClick={() => void deleteLowerThirds(deleting(lt.id))}
-                  />
+                  {!operateOnly && (
+                    <>
+                      <IconButton
+                        icon={Pencil}
+                        label={`Edit “${name}”`}
+                        size="sm"
+                        data-testid="lower-third-edit"
+                        onClick={() => void openStudio({ id: lt.id })}
+                      />
+                      <IconButton
+                        icon={Trash2}
+                        label={`Delete “${name}”`}
+                        size="sm"
+                        data-testid="lower-third-delete"
+                        onClick={() => void deleteLowerThirds(deleting(lt.id))}
+                      />
+                    </>
+                  )}
                 </li>
               );
             })}

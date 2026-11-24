@@ -73,6 +73,8 @@ import { Tooltip } from '../ui/Tooltip';
 import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
 import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
 import { SimpleFirstRun } from './SimpleFirstRun';
+import { SimpleFeatureDialogs, SimpleFeatureNotices, SimpleFeatureSections } from './SimpleFeatureSections';
+import { useSimpleFeatures } from './simple-features-store';
 
 /*
  * Simple Mode (PLAN.md section 3; Session 55, Part 18: for a small sabha in the hall, or anywhere with one projector):
@@ -96,6 +98,9 @@ import { SimpleFirstRun } from './SimpleFirstRun';
  * - Nothing else: no stream, no stage controls, no messages, timers or lower thirds, no screen setup (the screens set
  *   themselves, Part 1). The main process refuses the rest too (main/simple-mode.ts): of the playlists, Simple Mode
  *   changes what Pro Mode's left column and a row's menu do, never a template, a slot or a share.
+ * - Since alpha.22 (Pro Mode's Edit › Simple Mode Features…, the owner's "only 1-2 and max 3"): up to three of Pro
+ *   Mode's tools under LIVE, each Pro Mode's own section under Audio, folded to begin with, with only what runs the
+ *   show (simple/SimpleFeatureSections.tsx); none until an admin chooses.
  * Back to Pro Mode: a double-click on Pro Mode at the top right, nothing typed (the owner's answer to question 12,
  * changed on 29 Oct 2026); from the keyboard, Enter twice. With Simple access (Part 19) there is no way to Pro Mode:
  * one line says so in its place, and the main process refuses it whatever asks.
@@ -227,6 +232,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   const platform = info?.platform ?? 'darwin';
   const simpleAccess = useSimpleAccess();
   const dashboardOpen = useNodes((s) => s.dashboard);
+  // Any of Pro Mode's tools chosen for Simple Mode (alpha.22).
+  const tools = useSimpleFeatures((s) => s.chosen.length > 0);
   const coming = useComingPlaylist();
   useDropsIntoPlaylist();
   // The open folder playlist's folders under the playlists, as in Pro Mode (Session 56).
@@ -324,6 +331,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       {/* Drashti's sound stopped: its sound player kept failing (x53): said here too. */}
       <SoundPlayerStopped />
       <LiveWindowNotice />
+      {/* A chosen Show a Stream Link's notice (alpha.22), as in Pro Mode. */}
+      <SimpleFeatureNotices />
       <VideoInputNotice platform={platform} />
       <SimpleFirstRun platform={platform} />
       <Columns
@@ -397,8 +406,16 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             }
             rest={
               // Audio (Session 56, the owner: "The Audio panel on the right, under LIVE and above Black-out, in the
-              // empty space there"): Pro Mode's own, as under its LIVE.
-              <AudioGroup platform={platform} />
+              // empty space there"): Pro Mode's own, as under its LIVE. Under it (alpha.22) the tools chosen in Pro
+              // Mode's Edit › Simple Mode Features…, each its own folding section.
+              tools ? (
+                <div className="divide-y divide-line">
+                  <AudioGroup platform={platform} />
+                  <SimpleFeatureSections platform={platform} />
+                </div>
+              ) : (
+                <AudioGroup platform={platform} />
+              )
             }
           />
         }
@@ -424,6 +441,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <ReportDialog />
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />
+      {/* What a chosen tool opens from its section (alpha.22): Show a Window…, Show a Stream Link…, Picture in Picture…. */}
+      <SimpleFeatureDialogs />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
     </div>
   );

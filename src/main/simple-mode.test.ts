@@ -914,7 +914,8 @@ describe('Simple Mode Features (alpha.22): a chosen tool’s operate actions, an
     expect(SIMPLE_FEATURE_COMMANDS['picture-in-picture']).toEqual(['showPip', 'swapPip', 'placePip']);
     expect(SIMPLE_FEATURE_COMMANDS['video-inputs']).toEqual(['toggleInput']);
     for (const f of ALL)
-      if (f !== 'picture-in-picture' && f !== 'video-inputs') expect(SIMPLE_FEATURE_COMMANDS[f], f).toEqual([]);
+      if (f !== 'picture-in-picture' && f !== 'video-inputs')
+        expect(SIMPLE_FEATURE_COMMANDS[f], f).toEqual([]);
     const pip = ['picture-in-picture'] as const;
     for (const type of ['showPip', 'swapPip', 'placePip'] as const) {
       expect(simpleModeRefuses({ type } as EngineCommand, null, pip), type).toBe(false);
@@ -926,9 +927,7 @@ describe('Simple Mode Features (alpha.22): a chosen tool’s operate actions, an
     // chosen.
     for (const type of ['showInput', 'setTranslationHidden', 'repeatAb', 'stepFrame'] as const)
       expect(simpleModeRefuses({ type } as EngineCommand, null, ALL), type).toBe(true);
-    expect(
-      simpleModeRefuses({ type: 'skip', layer: 'slide', seconds: 15 } as EngineCommand, null, ALL),
-    ).toBe(true);
+    expect(simpleModeRefuses({ type: 'skip', layer: 'background', jump: 'forward' }, null, ALL)).toBe(true);
   });
 
   it('a phone in Simple Mode does as before: a chosen tool is the window’s, never a phone’s', () => {

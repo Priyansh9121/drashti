@@ -47,7 +47,10 @@ describe('Simple Mode Features (alpha.22)', () => {
     expect(readSimpleFeatures(undefined)).toEqual([]);
     expect(readSimpleFeatures(null)).toEqual([]);
     expect(readSimpleFeatures('messages')).toEqual([]);
-    expect(readSimpleFeatures(['picture-in-picture', 'messages'])).toEqual(['messages', 'picture-in-picture']);
+    expect(readSimpleFeatures(['picture-in-picture', 'messages'])).toEqual([
+      'messages',
+      'picture-in-picture',
+    ]);
     expect(readSimpleFeatures(['messages', 'messages', 'midi', 7, null])).toEqual(['messages']);
     // A file changed by hand with four: the first three in the column's order.
     expect(readSimpleFeatures(['timers', 'stage', 'messages', 'lower-thirds'])).toEqual([

@@ -22,16 +22,14 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 const chosen = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.app.simpleFeatures());
 
 const set = (win: Page, feature: SimpleFeature, on: boolean) =>
-  win.evaluate(
-    ([f, o]) => (globalThis as PageGlobals).drashti.app.setSimpleFeature(f, o),
-    [feature, on] as const,
-  );
+  win.evaluate(([f, o]) => (globalThis as PageGlobals).drashti.app.setSimpleFeature(f, o), [
+    feature,
+    on,
+  ] as const);
 
 async function setMode(win: Page, mode: 'pro' | 'simple'): Promise<void> {
   await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
-  await expect
-    .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode()))
-    .toBe(mode);
+  await expect.poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode())).toBe(mode);
   await expect(win.getByTestId('simple-mode')).toHaveCount(mode === 'simple' ? 1 : 0);
 }
 
@@ -69,7 +67,11 @@ test('Edit › Simple Mode Features… in Pro Mode: a line saying to keep it to 
     await expect(dialog.getByText(f.line, { exact: true })).toBeVisible();
   }
   await expect(dialog.getByTestId('simple-features-full')).toHaveCount(0);
-  await expectNoSeriousA11yIssues(win, 'Simple Mode Features, none on', '[data-testid="simple-features-dialog"]');
+  await expectNoSeriousA11yIssues(
+    win,
+    'Simple Mode Features, none on',
+    '[data-testid="simple-features-dialog"]',
+  );
 
   // Two on, then a third: the rest then wait, saying why.
   await switchOf('messages').click();
@@ -85,7 +87,11 @@ test('Edit › Simple Mode Features… in Pro Mode: a line saying to keep it to 
     if (on) await expect(switchOf(f.id), f.id).toBeEnabled();
     else await expect(switchOf(f.id), f.id).toBeDisabled();
   }
-  await expectNoSeriousA11yIssues(win, 'Simple Mode Features, three on', '[data-testid="simple-features-dialog"]');
+  await expectNoSeriousA11yIssues(
+    win,
+    'Simple Mode Features, three on',
+    '[data-testid="simple-features-dialog"]',
+  );
   // A fourth asked for anyway (the main process keeps the rule too): refused, saying why.
   expect(await set(win, 'stage', true)).toEqual({ ok: false, message: SIMPLE_FEATURES_FULL });
   expect(await chosen(win)).toEqual(['messages', 'timers', 'picture-in-picture']);
@@ -178,7 +184,9 @@ test('in Simple Mode each chosen tool is its own section under Audio, folded to 
   await expect(pip.getByTestId('pip-kind-slides')).toHaveAttribute('aria-checked', 'true');
   await pip.getByTestId('pip-show').click();
   await expect(pip).toHaveCount(0);
-  await expect.poll(async () => (await engineState(win)).layers.pip?.source ?? null).toEqual({ kind: 'slides' });
+  await expect
+    .poll(async () => (await engineState(win)).layers.pip?.source ?? null)
+    .toEqual({ kind: 'slides' });
   await win.getByTestId('live-pip-swap').click();
   await expect.poll(async () => (await engineState(win)).layers.pip?.swapped ?? null).toBe(true);
   await win.getByTestId('live-pip-take-off').click();

@@ -25,6 +25,7 @@ import { StageTimerControls } from './StageTimerControls';
 import { AudienceTimerControls } from './AudienceTimerControls';
 import { Checkbox } from '../ui/Toggle';
 import { STAGE_MESSAGE_SIZES, STAGE_SIZE_NAMES, type StageMessageSize } from '../../../shared/stage-message';
+import { useOperateOnly } from '../simple/simple-features-store';
 
 /** What the stage screens show the performers, small (also on the Stage screen's card in Screens). */
 export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
@@ -115,9 +116,10 @@ function LayoutPicker({ onProblem }: { onProblem: (problem: string | null) => vo
 
 /**
  * Video input (Session 55): the one a stage layout's video input box shows and LIVE's one press puts up on the
- * audience. Offered only on a computer with video inputs in Media; the first is chosen until another is.
+ * audience. Offered only on a computer with video inputs in Media; the first is chosen until another is. Also in
+ * Simple Mode's Video inputs section (alpha.22, operator/SetupTools.tsx).
  */
-function InputPicker({ onProblem }: { onProblem: (problem: string | null) => void }) {
+export function InputPicker({ onProblem }: { onProblem: (problem: string | null) => void }) {
   const inputs = useVideoInputs((s) => s.inputs);
   const chosen = useChosenInput();
   if (!inputs || inputs.length === 0 || !chosen) return null;
@@ -156,6 +158,9 @@ export function StageMessageControl() {
   const [size, setSize] = useState<StageMessageSize>('standard');
   const [flash, setFlash] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // In Simple Mode (alpha.22, the Stage screen chosen for it): the message and the timers; the layout, its editor and
+  // the video input stay Pro Mode's.
+  const operateOnly = useOperateOnly();
   const show = (words: string) => {
     if (words.trim() !== '') void dispatch({ type: 'setStageMessage', text: words, size, flash });
   };
@@ -171,7 +176,7 @@ export function StageMessageControl() {
     >
       <div className="flex items-end gap-2">
         <StagePreview />
-        <EditLayoutButton />
+        {!operateOnly && <EditLayoutButton />}
       </div>
       {off && (
         <p className="text-xs text-warning-fg" data-testid="stage-off-note">
@@ -179,10 +184,12 @@ export function StageMessageControl() {
         </p>
       )}
       {/* One layout for every stage screen, and the video input (Session 55). */}
-      <div className="flex flex-wrap items-end gap-2">
-        <LayoutPicker onProblem={setProblem} />
-        <InputPicker onProblem={setProblem} />
-      </div>
+      {!operateOnly && (
+        <div className="flex flex-wrap items-end gap-2">
+          <LayoutPicker onProblem={setProblem} />
+          <InputPicker onProblem={setProblem} />
+        </div>
+      )}
       {problem && (
         <Notice tone="danger" compact>
           {problem}
