@@ -1,7 +1,11 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Lang } from '../shared/model';
+import { WORDS_PRINT_REFUSED, type WordsPrinted } from '../shared/words-print';
 import type { ContentRows } from './db/content';
 import { detailsOf, trackSlidesOf } from './library/tracks';
-import { escapeHtml } from './manual-print';
+import { escapeHtml, type PrintOutcome } from './manual-print';
+import { fileProblem } from './plain-errors';
 
 /*
  * A singers' sheet (alpha.22, scout2's candidate 3; the owner's "Yes, build them", 24 Nov 2026): Print words… and Save
@@ -156,4 +160,109 @@ export function wordsFooter(name: string): string {
 /** The PDF's name the save dialog suggests: the presentation's, with what no file name may hold made "_". */
 export function wordsPdfName(name: string): string {
   return `${name.replace(/[\\/:*?"<>|]/gu, '_')} words.pdf`;
+}
+
+/** A page to print from the hidden window: the sheet, its title and its PDF's footer (manual-print.ts). */
+export interface WordsPrintJob {
+  html: string;
+  /** Files the page may load: none (the sheet shows no picture). */
+  pictures: readonly string[];
+  tempDir: string;
+  kind: 'pdf' | 'print';
+  title: string;
+  footer: string;
+}
+
+export interface WordsPrinterDeps {
+  /** A presentation's name and content, or null when it is no longer in the library. */
+  read: (presentationId: string) => { name: string; rows: ContentRows } | null;
+  /**
+   * Whether the show is live now (anything up, or the stream on air or recording: index.ts, as for the Manual's
+   * print): nothing is printed then, and nothing asked (the lead's call of 20 Nov 2026).
+   */
+  live: () => boolean;
+  /** Where the page to print is written for a moment (a folder of its own is made in it, and taken away after). */
+  tempDir: () => string;
+  /** The system's save dialog: the file chosen, or null when the person cancelled. `suggested` is the full path. */
+  askWhere: (suggested: string) => Promise<string | null>;
+  /** Where the save dialog suggests first (Documents). */
+  suggestedFolder: () => string;
+  /** Printing itself (the Manual's hidden window, manual-print.ts; a test's stand-in). */
+  print: (job: WordsPrintJob) => Promise<PrintOutcome>;
+  write?: (file: string, data: Buffer) => void;
+}
+
+const fail = (message: string): WordsPrinted => ({ ok: false, cancelled: false, message });
+const GONE = fail('That presentation is no longer in the library.');
+const BUSY = fail('Something is being printed already: wait until that is done, then try again.');
+const NOT_PRINTED = fail(
+  'The words were not printed: check the printer is on and chosen, then press Print words… again.',
+);
+const NO_PDF = fail('The words were not made into a PDF: press Save words as PDF… again.');
+const noWords = (name: string) => fail(`“${name}” has no words to print: none of its slides that play has any.`);
+
+/** Print words… and Save words as PDF…, one at a time, and only while the show is not live. */
+export class WordsPrinter {
+  private busy = false;
+
+  constructor(private readonly deps: WordsPrinterDeps) {}
+
+  /** Through the system's print dialog. */
+  async print(presentationId: string): Promise<WordsPrinted> {
+    return this.once(presentationId, async (page) => {
+      const made = await this.run(page, 'print');
+      if (made.ok) return { ok: true, file: null };
+      return made.cancelled ? { ok: false, cancelled: true } : NOT_PRINTED;
+    });
+  }
+
+  /** Saved as a PDF where the person chooses. */
+  async pdf(presentationId: string): Promise<WordsPrinted> {
+    return this.once(presentationId, async (page) => {
+      const where = await this.deps.askWhere(join(this.deps.suggestedFolder(), wordsPdfName(page.name)));
+      if (where === null) return { ok: false, cancelled: true };
+      const made = await this.run(page, 'pdf');
+      if (!made.ok || made.pdf === null) return NO_PDF;
+      try {
+        (this.deps.write ?? writeFileSync)(where, made.pdf);
+      } catch (error) {
+        return fail(fileProblem(error, 'write'));
+      }
+      return { ok: true, file: where };
+    });
+  }
+
+  private async once(
+    presentationId: string,
+    go: (page: { name: string; html: string }) => Promise<WordsPrinted>,
+  ): Promise<WordsPrinted> {
+    // Nothing printed, and nothing asked, while the show is live.
+    if (this.deps.live()) return fail(WORDS_PRINT_REFUSED);
+    if (this.busy) return BUSY;
+    const found = this.deps.read(presentationId);
+    if (!found) return GONE;
+    const sheet = wordsSheet(found.name, found.rows);
+    if (!sheet) return noWords(found.name);
+    this.busy = true;
+    try {
+      return await go({ name: found.name, html: wordsHtml(sheet) });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async run(page: { name: string; html: string }, kind: 'pdf' | 'print'): Promise<PrintOutcome> {
+    try {
+      return await this.deps.print({
+        html: page.html,
+        pictures: [],
+        tempDir: this.deps.tempDir(),
+        kind,
+        title: page.name,
+        footer: wordsFooter(page.name),
+      });
+    } catch {
+      return { ok: false, cancelled: false, why: 'it could not be printed' };
+    }
+  }
 }
