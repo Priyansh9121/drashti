@@ -25,8 +25,20 @@ function job(key: string): string {
   return next < 0 ? ci.slice(start) : ci.slice(start, start + 1 + next);
 }
 
-/** A job's steps, each as its text (from its "- " line to the next). */
-const steps = (text: string): string[] => text.split(/\n(?= {6}- )/u).filter((s) => s.startsWith('      - '));
+/**
+ * A job's steps, each as its text (from its "- " line to the next), without comment lines: a comment above a step
+ * belongs to the next one, never to the step it follows.
+ */
+const steps = (text: string): string[] =>
+  text
+    .split(/\n(?= {6}- )/u)
+    .filter((s) => s.startsWith('      - '))
+    .map((s) =>
+      s
+        .split('\n')
+        .filter((line) => !/^\s*#/u.test(line))
+        .join('\n'),
+    );
 
 /** A step that touches the real packs: fetches them, caches them, or runs the spec that imports them. */
 const packs = (step: string): boolean =>
@@ -57,7 +69,7 @@ describe('caption AI’s real recogniser on CI', () => {
   });
 
   it('the fetch has its own ten minutes and runs in bash on both systems', () => {
-    const fetches = real.filter((s) => /node scripts\/fetch-caption-models\.mjs --cache /u.test(s));
+    const fetches = real.filter((s) => s.includes('node scripts/fetch-caption-models.mjs --cache '));
     expect(fetches.length).toBeGreaterThanOrEqual(1);
     for (const step of fetches) {
       expect(step, nameOf(step)).toContain('\n        timeout-minutes: 10\n');
@@ -74,7 +86,7 @@ describe('caption AI’s real recogniser on CI', () => {
 
   it('caches them by their pinned SHA-256s, saved only from main or phase1 when not already cached', () => {
     const keys = real.filter((s) =>
-      /--sha256 pack-gu-indicconformer-int8 pack-hi-indicconformer-int8/u.test(s),
+      s.includes('--sha256 pack-gu-indicconformer-int8 pack-hi-indicconformer-int8'),
     );
     expect(keys.length).toBeGreaterThanOrEqual(1);
     for (const id of ['pack-gu-indicconformer-int8', 'pack-hi-indicconformer-int8'])
@@ -86,6 +98,6 @@ describe('caption AI’s real recogniser on CI', () => {
       expect(when).toContain("cache-hit != 'true'");
       expect(when).toContain("github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1'");
     }
-    expect(real.filter((s) => /uses: actions\/cache@/u.test(s)).map(nameOf)).toEqual([]);
+    expect(real.filter((s) => s.includes('uses: actions/cache@')).map(nameOf)).toEqual([]);
   });
 });
