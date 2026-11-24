@@ -201,7 +201,15 @@ function pdfPage(turns: number, crop?: { x: number; y: number; w: number; h: num
     id: 'page',
     documentPage: { sha256: 'a'.repeat(64), ext: 'pdf', page: 0, width: 480, height: 320 },
     pageSize: { width: 480, height: 320 },
-    elements: [{ id: 'e1', kind: 'image', mediaId: 'm-page', fit: 'fill', frame: { x: 0, y: 0, width: 480, height: 320 } }],
+    elements: [
+      {
+        id: 'e1',
+        kind: 'image',
+        mediaId: 'm-page',
+        fit: 'fill',
+        frame: { x: 0, y: 0, width: 480, height: 320 },
+      },
+    ],
   };
   let doc: EditDoc = {
     presentationId: 'placeholder-pdf',
@@ -223,7 +231,8 @@ function pdfPage(turns: number, crop?: { x: number; y: number; w: number; h: num
 /** The look Save picture… draws the page's picture with, from its kept look (PLAIN here). */
 function savedLook(s: OrderedSlide) {
   const save = slidePage('placeholder-pdf', s).save;
-  if (!save || typeof save === 'function' || !('slide' in save) || 'presentationId' in save) throw new Error('no save');
+  if (!save || typeof save === 'function' || !('slide' in save) || 'presentationId' in save)
+    throw new Error('no save');
   expect(save.mediaId).toBe('m-page');
   return lookOnSlide(PLAIN, save.onSlide ?? null);
 }
@@ -236,7 +245,9 @@ describe('Save picture… of a PDF page on a phone (a22-x95nits)', () => {
   it('saves a page turned with Turn page right turned, and one cropped with Crop page… cropped', () => {
     expect(savedLook(pdfPage(1))).toMatchObject({ turn: 90 });
     expect(savedLook(pdfPage(3))).toMatchObject({ turn: 270 });
-    expect(savedLook(pdfPage(0, { x: 0, y: 0, w: 0.6, h: 1 }))).toMatchObject({ crop: { x: 0, y: 0, w: 0.6, h: 1 } });
+    expect(savedLook(pdfPage(0, { x: 0, y: 0, w: 0.6, h: 1 }))).toMatchObject({
+      crop: { x: 0, y: 0, w: 0.6, h: 1 },
+    });
     // Turned right, then its top right quarter kept (the crop in the turned page's parts).
     expect(savedLook(pdfPage(1, { x: 0.5, y: 0, w: 0.5, h: 0.5 }))).toMatchObject({
       turn: 90,

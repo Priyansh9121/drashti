@@ -5,9 +5,7 @@ import { slidesOf } from '../../../shared/slide-edit';
 export type PdfCropPages = 'this' | 'every' | 'odd' | 'even';
 /** The same part of a page: both the whole page (no crop), or the same edges. */
 const samePart = (a: CropRect | undefined, b: CropRect | undefined): boolean =>
-  a === undefined || b === undefined
-    ? a === b
-    : a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  a === undefined || b === undefined ? a === b : a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 /**
  * A presentation step, without converting or changing any source page content. The same document when every chosen

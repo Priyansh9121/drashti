@@ -140,7 +140,9 @@ describe('Save picture… saves a slide’s picture as its slide shows it', () =
   it('a turn that is not a quarter turn is left out, as before; a page crop with it too', () => {
     const tilted = picture({ x: 0, y: 0, width: 960, height: 540 }, { rotation: 25 });
     expect(onSlideOf(tilted, slideOf(tilted, 1920, 1080))).toBeNull();
-    expect(onSlideOf(tilted, cropRenderedPage(slideOf(tilted, 1920, 1080), { x: 0, y: 0, w: 0.25, h: 1 }))).toBeNull();
+    expect(
+      onSlideOf(tilted, cropRenderedPage(slideOf(tilted, 1920, 1080), { x: 0, y: 0, w: 0.25, h: 1 })),
+    ).toBeNull();
   });
 
   it('on a cropped page, a small picture all inside the crop is whole; one the crop cuts through, the part kept', () => {

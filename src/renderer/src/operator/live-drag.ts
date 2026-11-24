@@ -1,7 +1,13 @@
 import type { EngineState } from '../../../shared/engine/state';
 import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
-import { frameInCanvas, type Framing, FULL_FRAME, moveInFrame, type ZoomFrame } from '../web/viewer/live-zoom';
+import {
+  frameInCanvas,
+  type Framing,
+  FULL_FRAME,
+  moveInFrame,
+  type ZoomFrame,
+} from '../web/viewer/live-zoom';
 
 /*
  * The live zoom's drag and two fingers' move over the LIVE preview (Session 26e; Session 55, Part 5): the picture on

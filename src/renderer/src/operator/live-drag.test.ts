@@ -177,14 +177,21 @@ describe('LIVE’s drag moves the picture on the screens with the pointer', () =
     expectFollows(slideUp([picture(small, { rotation: 25 })]), 'turned 25');
     const own = { x: 0.4, y: 0.1, width: 0.5, height: 0.5 };
     expectFollows(slideUp([picture(small, { crop: own })]), 'its own crop');
-    expectFollows(slideUp([picture(small, { crop: own, rotation: 270, flipX: true })]), 'its own crop, turned');
+    expectFollows(
+      slideUp([picture(small, { crop: own, rotation: 270, flipX: true })]),
+      'its own crop, turned',
+    );
   });
 
   it('on a slide of another shape, and on a screen that fills or stretches its slides', () => {
     expectFollows(slideUp([picture({ x: 0, y: 0, width: 1440, height: 1080 })], 1440, 1080), 'a 4:3 slide');
     for (const scaling of ['fill', 'stretch'] as const) {
       expectFollows(turnedPage(1), `turned, ${scaling}`, scaling);
-      expectFollows(slideUp([picture({ x: 0, y: 0, width: 1440, height: 1080 })], 1440, 1080), scaling, scaling);
+      expectFollows(
+        slideUp([picture({ x: 0, y: 0, width: 1440, height: 1080 })], 1440, 1080),
+        scaling,
+        scaling,
+      );
     }
   });
 });
