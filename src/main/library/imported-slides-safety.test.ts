@@ -23,6 +23,7 @@ import { MediaStore } from '../import/media-store';
 import { OriginalsStore } from '../import/originals-store';
 import { originalWorld, PLACEHOLDER_WORDS } from '../import/testing/original-fixture';
 import { nativeSourceReader } from '../import/testing/native-source-reader';
+import { makeTestPdf } from '../import/testing/make-pdf';
 import { makeTestPptx } from '../import/testing/make-pptx';
 import { editablePptxFixture, slideXml, wordsShape } from '../import/testing/editable-pptx-fixture';
 import { Revisions } from './revisions';
@@ -1051,4 +1052,59 @@ describe('imported editor provenance and legacy safety', () => {
       w.clean();
     }
   });
+});
+
+it('saves a crop-only PDF edit without converting source content, and reopens the same crop', async () => {
+  const w = originalWorld();
+  try {
+    const imported = await w.importPdf();
+    const repo = new PresentationRepo(w.db);
+    register(w, repo);
+    const opened = await open(imported.id);
+    const page = opened.doc.groups[0]?.slides[0];
+    if (!page?.documentPage) throw new Error('Generated page missing');
+    const crop = { x: 0.125, y: 0.25, w: 0.5, h: 0.5 };
+    page.documentPage.crop = crop;
+    expect((await save(imported.id, opened)).ok).toBe(true);
+    const stored = repo.content(imported.id)?.slides[0];
+    expect(documentPageFromJson(stored?.document_page)).toMatchObject({ crop });
+    expect(documentPageFromJson(stored?.document_page)?.edited).not.toBe(true);
+    const shown = repo.get(imported.id)?.groups[0]?.slides[0]?.slide;
+    expect(shown?.pageCrop).toBeDefined();
+    expect(shown?.width).toBe(960);
+    expect(shown?.height).toBe(540);
+    const reopened = await open(imported.id);
+    expect(reopened.doc.groups[0]?.slides[0]?.documentPage?.crop).toEqual(crop);
+    originalsUnchanged(w);
+  } finally {
+    w.clean();
+  }
+});
+
+it('keeps native paper geometry with a crop-only save of a letterboxed source preview', async () => {
+  const w = originalWorld();
+  try {
+    const bytes = makeTestPdf([
+      { width: 480, height: 320, color: [40, 60, 80], text: 'Placeholder paper geometry' },
+    ]);
+    writeFileSync(w.source, bytes);
+    const imported = await w.importPdf();
+    const repo = new PresentationRepo(w.db);
+    register(w, repo);
+    const opened = await open(imported.id);
+    const page = opened.doc.groups[0]?.slides[0];
+    if (!page?.documentPage) throw new Error('Missing generated paper');
+    page.documentPage.crop = { x: 0, y: 0, w: 0.5, h: 0.75 };
+    expect((await save(imported.id, opened)).ok).toBe(true);
+    const shown = repo.get(imported.id)?.groups[0]?.slides[0]?.slide;
+    expect(shown?.width).toBe(810);
+    expect(shown?.height).toBe(810);
+    expect(shown?.pageCrop).toEqual({ x: 150, y: 0, width: 1920, height: 1080 });
+    const stored = documentPageFromJson(repo.content(imported.id)?.slides[0]?.document_page);
+    expect(stored).toMatchObject({ width: 480, height: 320, crop: { x: 0, y: 0, w: 0.5, h: 0.75 } });
+    expect(stored?.edited).not.toBe(true);
+    expect(readFileSync(w.source)).toEqual(bytes);
+  } finally {
+    w.clean();
+  }
 });

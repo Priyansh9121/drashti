@@ -13,7 +13,7 @@ import {
   Underline,
 } from '../ui/icons';
 import { Cluster, Divider, GROUP_ROW } from './RibbonParts';
-import { PDF_PAGES_WAIT_NOTE } from '../../../shared/pdf-work';
+import { PDF_CROP_WAIT, PDF_PAGES_WAIT_NOTE } from '../../../shared/pdf-work';
 
 export type PdfMarkTool = 'highlight' | 'underline' | 'strike' | 'draw' | 'cover';
 export type PdfPendingAction = 'insert-pages' | 'save-copy' | null;
@@ -44,6 +44,7 @@ export interface PdfToolCallbacks {
   onStrikeThrough: () => void;
   onDraw?: () => void;
   onCover?: () => void;
+  onCropPage?: () => void;
   onRotateRight: () => void;
   onDeletePage: () => void;
   onInsertPages?: () => void;
@@ -84,6 +85,7 @@ export function PdfTools({
   onStrikeThrough,
   onDraw,
   onCover,
+  onCropPage,
   onRotateRight,
   onDeletePage,
   onInsertPages,
@@ -158,6 +160,16 @@ export function PdfTools({
       </Cluster>
       <Divider />
       <Cluster name="Pages">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || pagesWait || !onCropPage}
+          title={pagesWait ? PDF_CROP_WAIT : undefined}
+          data-testid="pdf-crop-page"
+          onClick={onCropPage}
+        >
+          Crop page…
+        </Button>
         <Button
           size="sm"
           variant="ghost"
@@ -255,6 +267,11 @@ export function PdfTools({
           Save a PDF copy…
         </Button>
       </Cluster>
+      {pagesWait && (
+        <p className="ml-3 self-center text-xs text-muted" role="status" data-testid="pdf-crop-wait">
+          {PDF_CROP_WAIT}
+        </p>
+      )}
       {pagesWait && (
         <p className="ml-3 self-center text-xs text-muted" role="status" data-testid="pdf-pages-wait">
           {PDF_PAGES_WAIT_NOTE}

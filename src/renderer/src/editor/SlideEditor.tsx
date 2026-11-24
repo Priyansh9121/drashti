@@ -80,8 +80,9 @@ import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
 import { MakeSlideDialog, type MakeSlideBase } from './MakeSlideDialog';
-import { PDF_PAGES_WAIT, pdfAcknowledged, pdfOffAir } from '../../../shared/pdf-work';
+import { PDF_CROP_WAIT, PDF_PAGES_WAIT, pdfAcknowledged, pdfOffAir } from '../../../shared/pdf-work';
 import { PdfPagesDialog } from './PdfPagesDialog';
+import { PdfCropDialog } from './PdfCropDialog';
 import { PdfHandoutDialog } from './PdfHandoutDialog';
 import { replacePdfPage, splitPdfPages } from './pdf-pages';
 import type { PdfPendingAction } from './PdfTools';
@@ -195,7 +196,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       off();
     };
   }, []);
-  const [pageAction, setPageAction] = useState<'extract' | 'split' | 'handout' | null>(null);
+  const [pageAction, setPageAction] = useState<'extract' | 'split' | 'handout' | 'crop' | null>(null);
   const [replacing, setReplacing] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
   const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
@@ -357,17 +358,17 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     commit(removed.doc, { select: [] });
     showSlide(removed.show);
   };
-  const mayWorkOnPdf = async () => {
+  const mayWorkOnPdf = async (message = PDF_PAGES_WAIT) => {
     try {
       if (pdfAcknowledged(await window.drashti.library.pdfWorkAllowed())) return true;
     } catch {
       /* Refuse when Main cannot confirm the stream is off air. */
     }
-    tell(PDF_PAGES_WAIT);
+    tell(message);
     return false;
   };
-  const beginPageAction = async (action: 'extract' | 'split' | 'handout') => {
-    if (pdfJob.current || !(await mayWorkOnPdf())) return;
+  const beginPageAction = async (action: 'extract' | 'split' | 'handout' | 'crop') => {
+    if (pdfJob.current || !(await mayWorkOnPdf(action === 'crop' ? PDF_CROP_WAIT : PDF_PAGES_WAIT))) return;
     if (useEditor.getState().preparingSource.size) {
       tell('Wait for the PDF pages to finish preparing.');
       return;
@@ -736,7 +737,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               blocked={
                 loading || saving || outsideBusy || pickingBusy || pdfDrawing || sourceConversion !== null
               }
-              // Only x85's page actions wait while the stream is on air or recording (QA21-TAKEPDF-1 A); marks, Save,
+              // Crop and x85's page actions wait while the stream is on air or recording; marks, Save,
               // a single Make a slide… and Save a PDF copy… go on during a show.
               pagesWait={!pdfStreamOffAir}
               onHighlight={() => choosePdfTool('highlight')}
@@ -744,6 +745,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onStrikeThrough={() => applyPdfMark('strike')}
               onDraw={() => choosePdfTool('draw')}
               onCover={() => choosePdfTool('cover')}
+              onCropPage={() => {
+                void beginPageAction('crop');
+              }}
               onRotateRight={rotatePdfPage}
               onDeletePage={deleteCurrentPdfPage}
               onInsertPages={openInsertion}
@@ -915,6 +919,19 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         />
       )}
       {makingSlide && <MakeSlideDialog base={makingSlide} onClose={closeMakeSlide} onMade={tell} />}
+      {pageAction === 'crop' && doc && slideId && (
+        <PdfCropDialog
+          doc={doc}
+          slideId={slideId}
+          offAir={pdfStreamOffAir}
+          onClose={() => setPageAction(null)}
+          onKeep={async (next) => {
+            if (!(await mayWorkOnPdf(PDF_CROP_WAIT)) || useEditor.getState().doc !== doc) return false;
+            commit(next, { select: [] });
+            return true;
+          }}
+        />
+      )}
       {pageAction === 'handout' && doc && (
         <PdfHandoutDialog
           doc={doc}
@@ -1295,7 +1312,7 @@ function SlideList({
                       >
                         <PlacedInParent
                           fractional
-                          content={slideCanvas(s, doc)}
+                          content={renderSlide(doc, s)}
                           mode="fit"
                           className="absolute inset-0"
                         >
