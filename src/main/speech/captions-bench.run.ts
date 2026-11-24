@@ -399,7 +399,7 @@ it('captions bench', async () => {
   const summaries = [...runs.values()].map(summarize);
   // Not two cores is not a measurement of two cores: the run fails (review S1).
   for (const s of summaries)
-    for (const why of s.why) if (/mask/u.test(why)) failures.push(`${s.candidate}: ${why}`);
+    for (const why of s.why) if (why.includes('mask')) failures.push(`${s.candidate}: ${why}`);
   const md = benchMarkdown(summaries, {
     mode: ask.mode,
     cores,
