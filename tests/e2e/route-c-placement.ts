@@ -31,9 +31,11 @@ export function loudRuns(levels: readonly LevelReport[]): { first: number; last:
 }
 
 /**
- * Each clip where it played in the graph, in order: from its first loud report to a meter step before its last (the
- * sound may have ended anywhere in that step, so the earliest: a latency from it is never less than the truth). Null
- * when the graph did not play as many clips as the file holds.
+ * Each clip where it played in the graph, in order: from its first loud report to a meter step before the report just
+ * before its last loud one (review MUST-1). A report is the loudest of 4 looks 25 ms apart, each seeing the graph's
+ * last 43 ms, so it reaches back about 118 ms (more when timers fire late or the graph plays slow): the sound may have
+ * ended anywhere from the step before it on. Counted from there, the end is never after the sound really ended, so a
+ * latency from it is never less than the truth. Null when the graph did not play as many clips as the file holds.
  */
 export function placeByGraph(
   levels: readonly LevelReport[],
@@ -41,7 +43,19 @@ export function placeByGraph(
 ): { startAt: number; endAt: number }[] | null {
   const runs = loudRuns(levels);
   if (runs.length !== count) return null;
-  return runs.map((r) => ({ startAt: r.first, endAt: r.last - METER_STEP_MS }));
+  return runs.map((r) => {
+    const at = levels.findIndex((l) => l.at === r.last);
+    const before = levels[at - 1]?.at ?? r.last - METER_STEP_MS;
+    return { startAt: r.first, endAt: Math.min(r.last, before) - METER_STEP_MS };
+  });
+}
+
+/**
+ * Nothing may be heard before the first clip (review MUST-2): from the later of where the file holds it on the wall
+ * clock and where the graph played it, so a phrase settled between the two is never left out of every check.
+ */
+export function firstSoundAt(placedStart: number | undefined, fileStart: number): number {
+  return placedStart === undefined ? fileStart : Math.max(placedStart, fileStart);
 }
 
 /** From the end of a clip's sound in the graph to its words on a screen (ms). */

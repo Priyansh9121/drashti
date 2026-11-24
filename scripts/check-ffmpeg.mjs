@@ -14,7 +14,8 @@
 // 1.23.2 (and on Windows its app-local Microsoft runtime), without any model (src/main/speech/indic-selftest.ts).
 // The tests' seams (alpha.23, cap-realc): each packaged app is started asking for Chromium's fake camera and
 // microphone and for the fake microphone to play a placeholder WAV file (DRASHTI_TEST_FAKE_DEVICES,
-// DRASHTI_TEST_FAKE_SOUND_FILE), and must turn on none of Chromium's fake media switches (src/main/fake-sound.ts).
+// DRASHTI_TEST_FAKE_SOUND_FILE) and for the stream-clock seam's clip (DRASHTI_TEST_STREAM_SOUND_FILE), and must turn on
+// none of Chromium's fake media switches and have no clip for its stream's page (src/main/fake-sound.ts).
 //
 //   node scripts/check-ffmpeg.mjs             the built app in out/ (pnpm build first)
 //   node scripts/check-ffmpeg.mjs --packaged  every app electron-builder left in release/

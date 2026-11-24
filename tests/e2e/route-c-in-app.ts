@@ -14,7 +14,7 @@ import {
 } from './helpers';
 import { plainText, type PlacedSound } from './caption-clips';
 import { framesVerdict, meter, type SoundSeam } from './route-c-frames';
-import { latencyFromGraph, placeByGraph } from './route-c-placement';
+import { firstSoundAt, latencyFromGraph, loudRuns, placeByGraph } from './route-c-placement';
 
 /*
  * Route C inside Drashti (alpha.23, cap-realc; a22-review-cap S4), with no stand-in engine (no DRASHTI_TEST_SPEECH):
@@ -395,10 +395,18 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
         (await levels()).filter((l) => l.at >= soundAskedAt),
         o.sounds.length,
       );
-    // Every sound heard: its phrase settled (the operator's review panel says so).
+    // Every sound heard: its phrase settled (the operator's review panel says so). Through the stream-clock seam the
+    // wait is twice as long: a graph playing slower than real time takes longer to play the file (CI's Mac: 2.2x);
+    // the checks after it are measured against where each clip played, never loosened. The loud runs seen so far go
+    // into the run's numbers, so a timeout says whether a clip split or went missing (review S1).
     await expect
       .poll(
         async () => {
+          if (onGraph)
+            summary['loudRuns'] = loudRuns((await levels()).filter((l) => l.at >= soundAskedAt)).map((r) => [
+              Math.round(r.first - soundAskedAt),
+              Math.round(r.last - soundAskedAt),
+            ]);
           const lastStart = onGraph
             ? (await graphPlaced())?.at(-1)?.startAt
             : soundAskedAt + last.speechStartMs;
@@ -448,6 +456,12 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     if (onGraph) {
       await say();
       expect(placed, 'every clip placed where it played in the stream’s graph').not.toBeNull();
+      // Nothing heard before the first clip played in the graph either (review MUST-2): a phrase settled between the
+      // file's first-clip time and the graph's would otherwise belong to no clip and go unchecked.
+      const firstAt = firstSoundAt(placed?.[0]?.startAt, soundAskedAt + first.speechStartMs);
+      const early = review.filter((r) => r.at < firstAt).length;
+      summary['heardBeforeFirstSound'] = early;
+      expect(early, 'nothing heard before the first clip played in the stream’s graph').toBe(0);
     }
     // Every sound's numbers first (S3: kept even when one fails), then its checks.
     const report: Record<string, unknown>[] = [];
@@ -486,20 +500,39 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       }
       // When the sound itself reached the stream's sound graph, against when the file holds it (the file at its
       // earliest): a fake microphone late or slow on a busy computer shows here, apart from the recogniser.
-      const heardLevels = loudSpan(
-        await levels(),
-        soundAskedAt + sound.startMs - 500,
-        next ? soundAskedAt + next.startMs - 500 : soundAskedAt + sound.endMs + o.gapMs,
-      );
+      // Through the stream-clock seam, the clip's own run in the graph (review S5), and how slow it played (S3).
+      const p = placed?.[i];
+      const heardLevels = p
+        ? { first: p.startAt, last: p.endAt }
+        : loudSpan(
+            await levels(),
+            soundAskedAt + sound.startMs - 500,
+            next ? soundAskedAt + next.startMs - 500 : soundAskedAt + sound.endMs + o.gapMs,
+          );
       row['arrivedLateMs'] = heardLevels
         ? Math.round(heardLevels.first - (soundAskedAt + sound.speechStartMs))
         : null;
       row['loudForMs'] = heardLevels ? Math.round(heardLevels.last - heardLevels.first) : null;
       row['voiceMs'] = Math.round(sound.speechEndMs - sound.speechStartMs);
+      if (p && sound.speechEndMs > sound.speechStartMs)
+        row['stretch'] = Number(
+          ((p.endAt - p.startAt) / (sound.speechEndMs - sound.speechStartMs)).toFixed(2),
+        );
+      // And, in the same run, the hall's latency as the file would place it from when the page's sound went on (for
+      // this seam the clip starts within a render of data-sound="on"), to compare the two measures clip by clip.
+      if (onGraph && row['hallMs'] !== null) {
+        const hallAt = (await watched[0][1]()).find(
+          (d) => d.at >= w.soundAt && plainText(d.text) === plainText(finalText),
+        )?.at;
+        row['hallByFileMs'] =
+          hallAt === undefined ? null : Math.round(hallAt - (soundOnAt + sound.speechEndMs));
+      }
       // The recogniser's own view: how late it put the speech's end against the file (a late sound input shows here
       // too), and how long after that end the phrase settled (its pause, its decoding and the way to the screens).
       const lastOwn = own.at(-1);
-      row['endLateMs'] = lastOwn ? Math.round(lastOwn.endAt - (soundAskedAt + sound.speechEndMs)) : null;
+      row['endLateMs'] = lastOwn
+        ? Math.round(lastOwn.endAt - (p ? p.endAt : soundAskedAt + sound.speechEndMs))
+        : null;
       row['settledAfterEndMs'] = lastOwn ? Math.round(lastOwn.at - lastOwn.endAt) : null;
       // What was heard, only when it was wrong: generated placeholder sentences (cap-winci's), never real speech.
       if (!heard.ok) row['heard'] = own.map((p) => p.text).join(' ');
