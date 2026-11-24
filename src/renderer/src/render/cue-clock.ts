@@ -74,8 +74,12 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
   const { context, sink } = silent;
   users.set(context, (users.get(context) ?? 0) + 1);
   // Resting since its last cue, or its rest still on the way (a21-review, a22-cue): asked to run again (it does a
-  // moment later: the route waits for that, below).
+  // moment later: the route waits for that, below). Asked to rest once more first (a22-review-cue2 M1): a cue cancelled
+  // just as its graph's start finished leaves Chromium saying 'running' with its device stopped, and resume() on a
+  // context that says 'running' starts nothing; suspend() stops the device whatever it says and makes it say
+  // 'suspended', so the resume after it really starts the device and the route waits for it.
   if (context.state === 'suspended' || resting.has(context)) {
+    if (resting.has(context)) void context.suspend().catch(() => undefined);
     resting.delete(context);
     void context.resume().catch(() => undefined);
   }
