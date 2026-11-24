@@ -676,7 +676,7 @@ Each video's captions start **Off**. Its right-click **Captions…** menu and **
 
 ![Live captions off and marked Trial](screenshots/captions-off.png)
 
-**The model downloads once.** While online, choose **Model** and turn captions on: **Standard**, 488 MB, or **Most accurate**, 574 MB. Start with Standard on the Windows PC and Most accurate on an Apple-silicon Mac. The progress line says how much has arrived; **Try again** retries a failed download. Wait until it says **The model is on this computer**. After that, the chosen model works without the internet; choosing another may need its own download.
+**The model downloads once.** While online, choose **Model** and turn captions on: **Standard**, 488 MB, or **Most accurate**, 574 MB. Start with Standard on the Windows PC and Most accurate on an Apple-silicon Mac. On a Windows PC, Standard and the small Gujarati and Hindi models work out each phrase from only as much sound as it holds (at least about 10 seconds' worth) and never try a phrase again more loosely, so their words come about two and a half to three times sooner; Most accurate, the medium models and every Mac work as before. The progress line says how much has arrived; **Try again** retries a failed download. Wait until it says **The model is on this computer**. After that, the chosen model works without the internet; choosing another may need its own download.
 
 The download leaves about 2 GB free on the drive. It pauses when the stream or a recording starts. While captions are on, it resumes automatically once the stream and recording stop.
 
