@@ -74,7 +74,8 @@ export function queueTrimCopy(conversions: Pick<ConvertService, 'saveCopy'>, inp
   const copy: CopyOptions = {
     args: (tmp) => trimCopyArgs(input, target, tmp, id),
     lengthMs: input.endMs - input.startMs,
-    waitForShow: true,
+    // Only what plays, the stream or a recording holds a row's cut (alpha.22, shared/save-waits.ts).
+    waitForPlaying: true,
     progress: input.progress,
     waiting: input.waiting,
   };

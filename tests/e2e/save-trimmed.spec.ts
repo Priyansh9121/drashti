@@ -1,10 +1,12 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { VideoEditResult } from '../../src/shared/video-edit';
 import {
+  closeLibrary,
   importAndGetIds,
   launchApp,
   openLibrary,
@@ -134,6 +136,24 @@ async function stillSlideUp(win: Page, dir: string): Promise<void> {
 
 const CUT_MS = 30_000;
 
+/** Export…'s save dialog answered with `path` (never a real dialog in a test). */
+const exportTo = (app: ElectronApplication, path: string) =>
+  app.evaluate(({ dialog }, to) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: to });
+  }, path);
+
+/** The sha256 of a video in Media, read through Drashti's own media address. */
+const mediaSha = (app: ElectronApplication, mediaId: string) =>
+  app
+    .evaluate(async ({ net }, id) => {
+      const response = await net.fetch(`drashti-media://media/${id}`);
+      if (!response.ok) throw new Error('The video cannot be read.');
+      return [...new Uint8Array(await response.arrayBuffer())];
+    }, mediaId)
+    .then((bytes) => createHash('sha256').update(Buffer.from(bytes)).digest('hex'));
+
+const sha = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
+
 test('Trim on a row with only the Wallpaper up saves the trimmed video into Media', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-save-trimmed-a-'));
   const { app, win } = await start();
@@ -245,11 +265,38 @@ test('Save trimmed video waits while a video plays or the stream is on air, says
     await expect(notice).toContainText('“Placeholder four trimmed.mp4” is in Media.', { timeout: CUT_MS });
     await expect(status).toHaveCount(0);
     expect(await mediaNames(win)).toContain('Placeholder four trimmed.mp4');
+    const cutId = await win.evaluate(
+      async (name) =>
+        (await (globalThis as PageGlobals).drashti.library.listMedia()).find((m) => m.name === name)?.id ??
+        '',
+      'Placeholder four trimmed.mp4',
+    );
+    // Show in Media: Media's list open with the new video marked.
     await notice.getByRole('button', { name: 'Show in Media', exact: true }).click();
     await expect(win.getByTestId('library-tab-media')).toHaveAttribute('aria-selected', 'true');
     await expect(
       win.getByTestId('media-item').filter({ hasText: 'Placeholder four trimmed.mp4' }),
     ).toHaveAttribute('data-marked', 'true');
+    await closeLibrary(win);
+    // Export… on the notice: the finished file copied byte for byte where chosen (Downloads), never made again.
+    const downloads = join(dir, 'Downloads');
+    mkdirSync(downloads);
+    await exportTo(app, join(downloads, 'Placeholder four trimmed.mp4'));
+    await notice.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(win.getByTestId('operator-notice')).toContainText(
+      'Exported “Placeholder four trimmed.mp4” to Downloads.',
+    );
+    expect(sha(join(downloads, 'Placeholder four trimmed.mp4'))).toBe(await mediaSha(app, cutId));
+    // And from the row's Trim, once its trimmed video is made: never over the file there.
+    await videoRow(win, rowFour).click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' }).click();
+    await dialog.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(win.getByTestId('operator-notice')).toContainText(
+      'Exported “Placeholder four trimmed (2).mp4” to Downloads.',
+    );
+    expect(sha(join(downloads, 'Placeholder four trimmed (2).mp4'))).toBe(await mediaSha(app, cutId));
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
 
     // On air, the save waits, and says so; off air it goes on.
     await onAir(app, true);
@@ -296,10 +343,11 @@ test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and 
     await dialog.getByRole('button', { name: 'Playback', exact: true }).click();
     await dialog.getByLabel('Speed').selectOption('2');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(dialog.getByTestId('edit-video-status')).toHaveText('Ready for next showing', {
-      timeout: 60_000,
-    });
-    expect(await videoEdit(win, video)).toMatchObject({ ok: true, edit: { state: 'ready' } });
+    // Its saved copy is made under the Wallpaper over a still slide (until alpha.22 it stayed Preparing for good).
+    await expect
+      .poll(() => videoEdit(win, video), { timeout: 60_000 })
+      .toMatchObject({ ok: true, edit: { revision: 1, state: 'ready' } });
+    await expect(dialog.getByTestId('edit-video-status')).toHaveText('Ready for next showing');
 
     // A video playing holds it, and Edit Video says so.
     const up = await dispatch(win, {
@@ -311,10 +359,15 @@ test('Edit Video’s Save goes on with the Wallpaper up over a still slide, and 
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(dialog.getByTestId('edit-video-status')).toHaveText('Preparing');
     await expect(dialog.getByTestId('edit-video-waiting')).toHaveText('Waiting: a video is playing');
-    expect((await dispatch(win, { type: 'clearAll' })).ok).toBe(true);
-    await expect(dialog.getByTestId('edit-video-status')).toHaveText('Ready for next showing', {
-      timeout: 60_000,
+    expect(await videoEdit(win, video)).toMatchObject({
+      ok: true,
+      edit: { revision: 2, state: 'preparing' },
     });
+    expect((await dispatch(win, { type: 'clearAll' })).ok).toBe(true);
+    await expect
+      .poll(() => videoEdit(win, video), { timeout: 60_000 })
+      .toMatchObject({ ok: true, edit: { revision: 2, state: 'ready' } });
+    await expect(dialog.getByTestId('edit-video-status')).toHaveText('Ready for next showing');
   } finally {
     await app.close();
     rmSync(dir, { recursive: true, force: true });

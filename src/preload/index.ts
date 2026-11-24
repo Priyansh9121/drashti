@@ -55,8 +55,8 @@ const bridge: DrashtiBridge = {
         listener();
       }),
     onNotice: (listener) =>
-      on(IPC.app.notice, ({ text }) => {
-        listener(text);
+      on(IPC.app.notice, ({ text, mediaId }) => {
+        listener(text, mediaId);
       }),
     recovery: () => invoke(IPC.app.recovery),
     dismissRecovery: () => invoke(IPC.app.dismissRecovery),
@@ -501,6 +501,9 @@ const bridge: DrashtiBridge = {
     stopRowTrim: (itemId, mediaId) => invoke(IPC.media.stopRowTrim, itemId, mediaId),
     preparingTrims: () => invoke(IPC.media.preparingTrims),
     onPreparingTrims: (listener) => on(IPC.media.preparingTrimsChanged, listener),
+    trimStatuses: () => invoke(IPC.media.trimStatuses),
+    onTrimStatuses: (listener) => on(IPC.media.trimStatusesChanged, listener),
+    exportFile: (mediaId) => invoke(IPC.media.exportFile, mediaId),
     saves: () => invoke(IPC.media.saves),
     onSaves: (listener) => on(IPC.media.savesChanged, listener),
     stopSave: (jobId) => invoke(IPC.media.stopSave, jobId),

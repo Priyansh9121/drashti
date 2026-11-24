@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { RenderSlide } from '../../../shared/model';
+import { trimStatusWords, type TrimStatuses } from '../../../shared/trim';
 import { Badge } from '../ui/Badge';
 import { Loader } from '../ui/icons';
 import { useDocs } from './docs-store';
@@ -48,7 +49,10 @@ export function PresentationPreparing({ presentationId }: { presentationId: stri
   );
 }
 
-const useTrimJobs = create<{ pending: ReadonlySet<string> }>(() => ({ pending: new Set() }));
+const useTrimJobs = create<{ pending: ReadonlySet<string>; statuses: TrimStatuses }>(() => ({
+  pending: new Set(),
+  statuses: {},
+}));
 let connected = false;
 
 function connectTrimJobs(): void {
@@ -62,6 +66,15 @@ function connectTrimJobs(): void {
   void window.drashti.media.preparingTrims().then((ids) => {
     if (!received) useTrimJobs.setState({ pending: new Set(ids) });
   });
+  // How each cut stands (alpha.22): why it waits, or how far it is.
+  let told = false;
+  window.drashti.media.onTrimStatuses((statuses) => {
+    told = true;
+    useTrimJobs.setState({ statuses });
+  });
+  void window.drashti.media.trimStatuses().then((statuses) => {
+    if (!told) useTrimJobs.setState({ statuses });
+  });
 }
 
 export function useTrimPreparing(itemId: string | undefined): boolean {
@@ -71,16 +84,35 @@ export function useTrimPreparing(itemId: string | undefined): boolean {
   return useTrimJobs((s) => itemId !== undefined && s.pending.has(itemId));
 }
 
+/**
+ * On a playlist video's row while its trimmed video is made: Preparing, and under it how it stands (alpha.22, the
+ * owner's "Trim on a row": it said nothing of why it waited), as "Waiting: a video is playing" or "Saving the trimmed
+ * video: 40%".
+ */
 export function TrimPreparing({ itemId }: { itemId: string }) {
-  if (!useTrimPreparing(itemId)) return null;
+  const preparing = useTrimPreparing(itemId);
+  const words = useTrimJobs((s) => trimStatusWords(s.statuses[itemId]));
+  if (!preparing) return null;
   return (
-    <Badge
-      tone="info"
-      icon={Loader}
-      data-testid="trim-preparing"
-      title="The cut waits while the show or stream is on. The current video plays until the cut is ready."
-    >
-      Preparing
-    </Badge>
+    <>
+      <Badge
+        tone="info"
+        icon={Loader}
+        data-testid="trim-preparing"
+        title="The trimmed video waits while a video or a sound plays, or the stream is on air or recording. The current video plays until it is ready."
+      >
+        Preparing
+      </Badge>
+      {words !== null && (
+        <span
+          className="block truncate text-xs text-muted"
+          data-testid="trim-status"
+          role="status"
+          title={words}
+        >
+          {words}
+        </span>
+      )}
+    </>
   );
 }

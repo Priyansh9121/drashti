@@ -157,7 +157,7 @@ A video also shows its **Lighter playing copy** status; see **Lighter playing co
 3. In **Trim**, set **Start (seconds)** and **End (seconds)**. **Use this frame as library thumbnail** keeps the chosen frame when you Save.
 4. In **Picture**, crop, turn, flip, zoom or move the picture, adjust **Brightness**, **Contrast** or **Colour**, and choose **Frame shape** and **Blurred fill behind the video**.
 5. In **Sound**, choose **Audio track** or **Reduce steady background noise in a talk**. In **Playback**, choose **Speed** and the picture and sound fades.
-6. Press **Save**. **Preparing** waits while anything is up, streaming or recording. Once clear and idle, let preparation finish until **Ready for next showing** appears.
+6. Press **Save**. **Preparing** waits only while a video or a sound plays, or the stream is on air or recording, and says which. A still slide, a picture or the Wallpaper never holds it. Wait for **Ready for next showing**.
 7. Choose **Preview saved edits** to check the saved copy privately. **Source preview** returns to the original. If the saved copy cannot play, **Prepare again** rebuilds it.
 
 **Original shape** follows the crop and rotation; **16:9**, **4:3**, **Square (1:1)** and **Vertical (9:16)** make a fixed frame. The source preview stays as it was taken: check picture changes with **Preview saved edits** after Save. For a file marked with the wrong shape, see **Audio and the levels › Sound and picture…**; its **Shape** changes the drawing at once.

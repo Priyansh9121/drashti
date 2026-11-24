@@ -21,6 +21,8 @@ export interface VideoCopyIpcDeps {
   fromOperator(event: IpcMainInvokeEvent): boolean;
   proMode(): boolean;
   idle(): boolean;
+  /** An export the operator asked for may go on (alpha.22: nothing playing, off air, not recording); idle when left out. */
+  saveIdle?(): boolean;
   gpuStatus(): unknown;
   freeBytes(dir: string): number;
   pickDest(name: string, container: 'mp4' | 'webm'): Promise<string | null>;
@@ -38,13 +40,14 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     info: Parameters<typeof registerProxyFile>[0]['info'],
     signal: AbortSignal,
     name?: string,
+    idle: () => boolean = () => deps.idle(),
   ) =>
     registerProxyFile({
       db: deps.db,
       mediaDir: deps.mediaDir,
       file,
       info,
-      idle: () => deps.idle(),
+      idle,
       freeBytes: (dir) => deps.freeBytes(dir),
       signal,
       name,
@@ -123,7 +126,8 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       );
     },
     pickDest: (name, container) => deps.pickDest(name, container),
-    prepareImport: (file, info, name, signal) => register(file, info, signal, name),
+    prepareImport: (file, info, name, signal) =>
+      register(file, info, signal, name, () => (deps.saveIdle ?? deps.idle)()),
     publishImport: (id) => {
       try {
         const result = deps.db.prepare('UPDATE media SET listed=1 WHERE id=? AND deleted_at IS NULL').run(id);

@@ -189,8 +189,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // Slides saved in the slide editor's window (Session 55, Part 17a): one change for Undo here.
     const offEditorSaves = connectSlideEditorSaves();
     // Things the main process tells the operator (for example where diagnostics were saved).
-    const offNotice = window.drashti.app.onNotice((text) => {
-      useNotice.setState({ text });
+    const offNotice = window.drashti.app.onNotice((text, mediaId) => {
+      useNotice.setState({ text, media: mediaId === undefined ? null : { text, mediaId } });
     });
     const offProgress = window.drashti.app.onProgress((next) => {
       useTaskProgress.setState({ progress: next });
