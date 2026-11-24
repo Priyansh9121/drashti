@@ -261,6 +261,9 @@ export interface WarmScene {
 }
 
 const LONG_AGO = 60_000;
+/** The slide going out in the scene after a Zoom: shown this long before, by a Zoom this long (its slow zoom running). */
+const ZOOMED_FOR_MS = 1500;
+const ZOOM_IN_MS = 800;
 
 /** A picture with a look (zoomed, brighter, more colourful), as the Picture editor gives one. */
 const LOOKED: Record<string, PictureLook> = {
@@ -611,6 +614,31 @@ export function warmScenes(): WarmScene[] {
         },
       });
   }
+  // A slide going out under its slow zoom while a slide with none comes in by the dissolve (a22-cue): the first change
+  // after a Zoom. On CI's Mac every plain Performance check (308 of 308) drew one frame of 67-600 ms at its first wipe 800
+  // after the Zoom runs (a Calm slide Wipe is drawn as a dissolve), never in the streaming check that follows on the same
+  // Mac, as the GPU's other first-use drawings; the Zoom scene above has its zoom only coming in. Calm, as a show's
+  // screens move; its Zoom over and its slow zoom running, as the measured one's was (shown 1.5 s before).
+  list.push({
+    key: 'zoom-going/calm',
+    look: look('calm'),
+    state: (during, at) => ({
+      ...base,
+      layers: {
+        ...base.layers,
+        background: background(false, at, false),
+        slide: during
+          ? layerOf(slide('zoom-going-b', true), at - PART * MAX_TRANSITION_MS, {
+              kind: 'dissolve',
+              durationMs: MAX_TRANSITION_MS,
+            })
+          : layerOf(slide('zoom-going-a', false), at - ZOOMED_FOR_MS, {
+              kind: 'zoom',
+              durationMs: ZOOM_IN_MS,
+            }),
+      },
+    }),
+  });
   // A deck Drashti plays itself (Session 57, warm-up-deck.ts): its own Wipe (PowerPoint's band since Session 58) and
   // Cover (the slide coming in a shade darker), part-way, from its slide whose picture, shape and words are each
   // part-way through a Split (a mask the size of each), for the Cover through a Shape (Session 58: a Circle's radial
