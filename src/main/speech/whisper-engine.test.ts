@@ -560,3 +560,91 @@ describe('a language model decoded without timestamps (alpha.22: the tuned model
     expect(fields.every((f) => f === null)).toBe(true);
   });
 });
+
+describe('the engine says when its program has gone (alpha.23: Route W lets the pack’s file go only then)', () => {
+  const quiet = { info: () => undefined, warn: () => undefined };
+
+  it('after a stop, once whisper-server has exited: never while it still runs', async () => {
+    const server = standIn();
+    // whisper-server goes a moment after it is told to: its exit comes when the test says.
+    const exits: (() => void)[] = [];
+    const spawn = (program: string, args: string[]): ChildProcess => {
+      const child = server.spawn(program, args);
+      const kill = child.kill.bind(child);
+      child.kill = () => {
+        exits.push(() => kill());
+        return true;
+      };
+      return child;
+    };
+    const states: SpeechState[] = [];
+    let exited = 0;
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound: bursts(),
+      log: quiet,
+      spawn,
+      onExited: () => {
+        exited += 1;
+      },
+    });
+    stops.push(server.close);
+    const stop = engine.start('en', { heard: () => undefined, state: (s) => states.push(s) });
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    expect(exited).toBe(0);
+    stop();
+    // Told to go, still running: the pack's file may still be open.
+    expect(exited).toBe(0);
+    expect(exits).toHaveLength(1);
+    for (const go of exits) go();
+    expect(exited).toBe(1);
+  });
+
+  it('at once when no program ran, or it had already gone by itself', async () => {
+    let exited = 0;
+    const none = createWhisperEngine({
+      program: () => null,
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound: bursts(),
+      log: quiet,
+      onExited: () => {
+        exited += 1;
+      },
+    });
+    none.start('en', { heard: () => undefined, state: () => undefined })();
+    expect(exited).toBe(1);
+
+    const server = standIn();
+    const children: ChildProcess[] = [];
+    const states: SpeechState[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound: bursts(),
+      log: quiet,
+      spawn: (program, args) => {
+        const child = server.spawn(program, args);
+        children.push(child);
+        return child;
+      },
+      onExited: () => {
+        exited += 1;
+      },
+    });
+    stops.push(server.close);
+    const stop = engine.start('en', { heard: () => undefined, state: (s) => states.push(s) });
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    // The program stops by itself (a crash): the engine says so, and it is not told yet (not stopped).
+    children[0]?.kill();
+    expect(states.at(-1)).toMatchObject({ phase: 'failed' });
+    expect(exited).toBe(1);
+    stop();
+    expect(exited).toBe(2);
+    stop();
+    expect(exited).toBe(2);
+  });
+});

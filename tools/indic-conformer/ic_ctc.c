@@ -71,10 +71,12 @@ static void fft512(double *re, double *im) { /* in-place radix-2 */
 static float *logmel(const float *x, size_t n, const float *fb, int *T_out) {
   int T = (int)(n / HOP) + 1; /* NeMo get_seq_len with centre padding: floor(n / hop) + 1 */
   float *y = malloc(sizeof(float) * (n ? n : 1));
+  if (!y) die("allocation failed");
   if (n) { y[0] = x[0]; for (size_t i = 1; i < n; i++) y[i] = x[i] - 0.97f * x[i - 1]; }
   double win[NFFT] = {0};
   for (int i = 0; i < WIN; i++) win[(NFFT - WIN) / 2 + i] = 0.5 - 0.5 * cos(2 * M_PI * i / (WIN - 1));
   float *feat = malloc(sizeof(float) * NMEL * T);
+  if (!feat) die("allocation failed");
   double re[NFFT], im[NFFT], pw[NBIN];
   for (int t = 0; t < T; t++) {
     long start = (long)t * HOP - NFFT / 2;
@@ -193,6 +195,7 @@ static void decode(Model *m, const char *name, float *x, size_t n, int threads) 
   double td = now_ms();
   /* text: pieces joined, U+2581 -> space (the fork's ids_to_text); a word starts at a piece beginning with U+2581 */
   size_t cap = 4096, tl = 0; char *text = calloc(cap, 1);
+  if (!text) die("allocation failed");
   static char words[1024][256]; static double ws[1024], we[1024], wp[1024]; static int wn[1024]; int nw = -1;
   for (int i = 0; i < nid; i++) {
     const char *pc = m->tok[ids[i]];

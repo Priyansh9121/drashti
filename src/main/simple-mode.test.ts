@@ -662,6 +662,10 @@ describe('Simple Mode locks', () => {
       IPC.library.exportPdf,
       // Make a slide… (alpha.21): a new presentation, as New › QR code… makes one.
       IPC.slideEditor.makeSlide,
+      // Prepare translations (alpha.22): drafting is Pro Mode's.
+      IPC.slideEditor.translationStatus,
+      IPC.slideEditor.translationDraft,
+      IPC.slideEditor.translationCancel,
       IPC.library.setDefaultTransition,
       // A timer slide's timer (Timers are Pro Mode's), words, and New › QR code….
       IPC.timers.update,

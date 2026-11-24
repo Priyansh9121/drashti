@@ -31,6 +31,7 @@ import { CaptionPrototypePanel } from './CaptionPrototypePanel';
 import { openModelPacks } from '../model-packs/model-packs-store';
 import {
   captionsStateText,
+  captionsSwitchDisabled,
   downloadText,
   LANGUAGE_NAMES,
   languageModelText,
@@ -103,7 +104,7 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
         <Toggle
           checked={view.on}
           label="Live captions on this computer (Trial). Can slow the screens while on."
-          disabled={!view.engine}
+          disabled={captionsSwitchDisabled(view)}
           data-testid="captions-on"
           onChange={(on) => {
             takeCaptions(window.drashti.captions.setOn(on));

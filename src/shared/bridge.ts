@@ -115,6 +115,12 @@ import type {
   LanguageModelLanguage,
 } from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
+import type {
+  TranslationDraftRequest,
+  TranslationDraftResult,
+  TranslationEngineStatus,
+  TranslationLanguage,
+} from './prepared-translations';
 import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
 import type { SpeechLanguage } from './speech';
 import type { Lang, RenderSlide, Transition } from './model';
@@ -421,8 +427,6 @@ export interface DrashtiBridge {
     retry(): Promise<CaptionsStatus>;
     /** A model of its own for a language (alpha.22): one Drashti knows, or the general model (null). */
     setLanguageModel(language: LanguageModelLanguage, id: string | null): Promise<CaptionsStatus>;
-    /** Add a model file for a language (alpha.22): Drashti asks for the file and checks it. */
-    addLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
     checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
     /** The live timing on this computer (alpha.22). */
     setTiming(timing: CaptionTiming): Promise<CaptionsStatus>;
@@ -1199,6 +1203,12 @@ export interface DrashtiBridge {
     slidePlace(): Promise<SlidePlace>;
     /** The operator window: a slide was made in the editor's window (one change for its Undo). */
     onSlideMade(listener: (made: SlideMade) => void): () => void;
+    /** Prepare translations (alpha.22): whether the offline engine can draft this direction here. */
+    translationStatus(from: TranslationLanguage, to: TranslationLanguage): Promise<TranslationEngineStatus>;
+    /** One text box's draft (Pro Mode, off air): a named reader checks it before it can show. */
+    translationDraft(request: TranslationDraftRequest): Promise<TranslationDraftResult>;
+    /** Stop Prepare translations. */
+    translationCancel(): Promise<boolean>;
     /**
      * The stream's state, read only (x85's Extract, Replace, Split and Hand-out wait while it is on air or recording):
      * the editor's narrower bridge (ARCH-7) has none of the stream's controls.

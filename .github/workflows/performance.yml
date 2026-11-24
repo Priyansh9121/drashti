@@ -93,6 +93,10 @@ on:
         description: "Caption AI's two-core proof (CAP-CI-1), Windows only: alone (the captions bench by itself) or alongside (beside this check, both on two cores), then optionally :candidates (rc-gu, rc-hi, small-gu, small-hi, small-en; all when none). Empty: an ordinary run"
         type: string
         default: ''
+      translate_intel:
+        description: 'Instead: only the translation engine on an Intel Mac (alpha.23, a22-review-mt A2): built there, its instruction set and kernel read, timed on generated models (no model pack)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -100,6 +104,7 @@ permissions:
 jobs:
   performance:
     name: Performance check (${{ matrix.os }})
+    if: ${{ !inputs.translate_intel }}
     strategy:
       fail-fast: false
       matrix:
@@ -243,3 +248,42 @@ jobs:
           path: ${{ runner.temp }}/perf-profile*
           if-no-files-found: warn
           retention-days: 7
+
+  # The translation engine on an Intel Mac (alpha.23, a22-intel; a22-review-mt A2; the owner's "Yes, after 15:00",
+  # 24 Nov 2026: one job). The release builds the Intel copy on an Apple silicon runner and nothing there can run its
+  # matrix products (Rosetta), so this job builds it natively on GitHub's Intel Mac runner, prints the processor's
+  # features, and runs scripts/translate-timing.mjs: which instruction set CTranslate2 dispatches to (CT2_VERBOSE=1),
+  # which of ruy's int8 kernels the program holds and runs while translating, and how long one sentence takes as the
+  # app runs it, on GENERATED models only (the committed tiny one, and a full-size one made here). No model pack, no
+  # package install, nothing paid; the build downloads only its own pinned, checked sources. Started by hand only, with
+  # translate_intel set; the ordinary performance check is skipped then.
+  translate-intel:
+    name: Translation engine on an Intel Mac
+    if: inputs.translate_intel
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The runner's own Node (its image carries one): no setup action, so nothing else is fetched.
+      - name: The runner's processor
+        run: |
+          node --version
+          uname -m
+          sysctl -n machdep.cpu.brand_string
+          sysctl machdep.cpu.features machdep.cpu.leaf7_features
+      - name: Build the translation engine natively (Intel)
+        run: node scripts/fetch-translate.mjs --target darwin-x64
+      - name: The engine's instruction set, kernel and speed (generated models only)
+        run: node scripts/translate-timing.mjs proof vendor/translate/darwin-x64/drashti-translate --work "$RUNNER_TEMP/translate-timing"
+      - name: Keep the proof's readings (30 days)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: translate-intel-proof
+          path: |
+            ${{ runner.temp }}/translate-timing/translate-timing.json
+            ${{ runner.temp }}/translate-timing/sample-beam5.txt
+          if-no-files-found: warn
+          retention-days: 30

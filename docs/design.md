@@ -826,7 +826,7 @@ Main's callback is synchronous, with no acknowledgement wait. The link worker bo
 
 ## Prepared translations (alpha.21)
 
-The translation dialog belongs to Edit slides in Pro Mode. It compares source and target words, takes a local reader name and offers an explicit check of that exact pair. It reports No engine installed; a test stand-in never supplies production library words. New presentations have translation Off. Simple Mode reads saved status and plays checked data, with authoring, approval and route changes refused in Main.
+The translation dialog belongs to Edit slides in Pro Mode. It compares source and target words, takes a local reader name and offers an explicit check of that exact pair. Prepare translations (alpha.22) drafts empty translations through the offline engine when a model pack holds the direction, a run at a time with Stop, one Undo for the run; otherwise it reports No engine installed. A draft is unchecked like hand-written words. A test stand-in never supplies production library words. New presentations have translation Off. Simple Mode reads saved status and plays checked data, with authoring, approval and route changes refused in Main.
 
 Attachments live in the existing text-element JSON, so normal content, revision, backup and bundle paths carry them without a schema migration. Review identities use bounded lossless source/result encodings, avoiding hash collisions across browser and Main. A source edit retains the old words for re-check; changing translated words resets approval. Output projection is synchronous, caches immutable slides and cannot delay original publication on an engine request. Playback strips drafts and reader names before feeds.
 
