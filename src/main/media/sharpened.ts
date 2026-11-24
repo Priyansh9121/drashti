@@ -109,6 +109,8 @@ export interface SharpenDeps {
   wanted(): CopyWant[];
   /** The largest audience screen's picture as drawn, in pixels; null with none (copies at their own size). */
   screen(): PixelSize | null;
+  /** Another private picture worker may be active: one decode job at a time. */
+  canWork?(): boolean;
   /** Open the hidden window (its page loaded); `gone` when its process ends unexpectedly. */
   open(gone: () => void): SharpenWindow;
   /** A copy is ready, or one went: the screens and thumbnails look again. */
@@ -166,6 +168,8 @@ export class SharpenedCopies {
   private idleWaiters: (() => void)[] = [];
   /** The screens' size the copies were last looked at for (boxKey). */
   private lastScreen = '';
+  private retryStart: ReturnType<typeof setTimeout> | null = null;
+  private closed = false;
 
   constructor(private readonly deps: SharpenDeps) {}
 
@@ -319,7 +323,22 @@ export class SharpenedCopies {
     }
   }
 
+  get working(): boolean {
+    return this.reading || this.current !== null || (this.win !== null && !this.finishing);
+  }
+  activityChanged(): void {
+    if (this.queue.length > 0) this.start();
+  }
+
   private start(): void {
+    if (this.closed) return;
+    if (this.deps.canWork?.() === false) {
+      this.retryStart ??= setTimeout(() => {
+        this.retryStart = null;
+        this.start();
+      }, 1000);
+      return;
+    }
     if (this.win && !this.finishing) return;
     // A window whose page has stopped asking is closed; a new one asks again.
     this.win?.destroy();
@@ -485,6 +504,9 @@ export class SharpenedCopies {
 
   /** Drashti is quitting: the window goes, nothing more is made. */
   close(): void {
+    this.closed = true;
+    if (this.retryStart) clearTimeout(this.retryStart);
+    this.retryStart = null;
     if (this.current) clearTimeout(this.current.timer);
     this.current = null;
     this.queue = [];

@@ -138,13 +138,35 @@ export function tidyNotes(text: string): string {
   );
 }
 
-/** One picture for the hidden window that makes sharpened copies (Session 26f): its file's bytes, the percent, and what to hand back. */
-export interface SharpenJobView {
+/** The display source bound, applied before grant, by its private protocol, and by its worker reader. */
+export const MAX_DISPLAY_SOURCE_BYTES = 256 * 1024 * 1024;
+
+/** The existing limit on one encoded display rendition, checked again before its native file write. */
+export const MAX_DISPLAY_COPY_BYTES = 512 * 1024 * 1024;
+
+/** A worker-owned encoded Blob; its bytes stay in Chromium until its private native file write ends. */
+export interface DisplayCopyBlob {
+  url: string;
+  bytes: number;
+}
+
+interface PictureCopyJob {
   key: string;
-  data: Uint8Array;
   percent: number;
   type: 'image/jpeg' | 'image/png';
   maxPixels: number;
-  /** The size the screens draw it at (Session 26g): the copy is the picture fitted into it; null, its own size. */
   box: { width: number; height: number } | null;
 }
+/** Sharpen jobs retain their bytes; a display job names only its current private streamed original. */
+export type SharpenJobView = PictureCopyJob &
+  (
+    | { data: Uint8Array; resizeOnly?: never; sourceSize?: never; source?: never; maxBytes?: never }
+    | {
+        resizeOnly: true;
+        source: string;
+        maxBytes: number;
+        sourceSize: { width: number; height: number };
+        box: { width: number; height: number };
+        data?: never;
+      }
+  );

@@ -25,6 +25,7 @@ import { CONVERTING_DIR, UPLOADS_DIR } from '../import/media-store';
 import { TRIM_RECORDS_FILE } from '../convert/trim-records';
 import { SHARPENED_DIR } from '../media/sharpened';
 import { BLURRED_DIR } from '../media/blurred';
+import { DISPLAY_DIR } from '../media/display-copies';
 import { realPlace } from '../media/contained';
 import {
   ORIGINALS_STAGING_DIR,
@@ -171,7 +172,14 @@ const errorCode = (error: unknown): string | undefined =>
  * phones are sending.
  */
 // Blurred copies (Session 55, Part 5) are left out as the sharpened ones are: each can be made again.
-const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR, BLURRED_DIR, UPLOADS_DIR, ORIGINALS_STAGING_DIR]);
+const LEFT_OUT = new Set([
+  CONVERTING_DIR,
+  SHARPENED_DIR,
+  BLURRED_DIR,
+  DISPLAY_DIR,
+  UPLOADS_DIR,
+  ORIGINALS_STAGING_DIR,
+]);
 
 /**
  * The files in a folder and below (regular files only, symbolic links not followed), with their sizes.

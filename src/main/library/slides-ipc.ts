@@ -1,3 +1,4 @@
+import type { MediaStoreOptions } from '../import/media-store';
 import { translationsUnchanged } from '../../shared/prepared-translation-guard';
 import type { InsertPdfPagesResult, PdfPageSource, LinkPdfPageResult } from '../../shared/slide-edit';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -52,6 +53,7 @@ export interface SlidesIpcDeps {
   mayChangeTranslations?: () => boolean;
   sourceReader?: SourceReader;
   sourceWrite?: SourceWrite;
+  prepareDisplay?: MediaStoreOptions['prepareDisplay'];
   waitForPdfIdle?: (signal: AbortSignal) => Promise<boolean>;
   /**
    * The show needs the computer now (anything up, or the stream on air or recording; Session 57): Edit slides' PDF
@@ -116,13 +118,14 @@ export function registerSlidesIpc({
   mayChangeTranslations = () => false,
   sourceReader,
   sourceWrite,
+  prepareDisplay,
   mayPrepareSource = () => false,
   waitForPdfIdle = (signal) => Promise.resolve(!signal.aborted),
   showBusy = () => false,
   onAir = () => false,
   choosePdfFile,
 }: SlidesIpcDeps): SlidesIpcController {
-  const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
+  const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite, prepareDisplay });
   const generations = new Map<string, AbortController>();
   // Cancellation removes controllers immediately; these complete chains outlive
   // the reader queue while Main stages assets or removes its private files.

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      The hidden window that makes pictures' display copies (alpha.22): it streams only its currently granted
+      original through its own private local Session, and the finished copy goes back through the bridge.
+      Only this page connects to the local media scheme; the sharpened copies' window does not (QA22-L8-2).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; font-src 'none'; media-src 'none'; connect-src 'self' drashti-media:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Drashti Display Copies</title>
+  </head>
+  <body>
+    <script type="module" src="./src/sharpen/display-main.ts"></script>
+  </body>
+</html>
