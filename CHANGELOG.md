@@ -2,13 +2,26 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.22 (24 Nov 2026)
+## 1.0.0-alpha.22 (25 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
 
-- Live captions (Trial): Gujarati and Hindi can be heard by a new, more accurate recognizer that runs on this computer itself (IndicConformer by AI4Bharat), from an offline model pack the admin imports (Help › Caption and Translation Models…). The Gujarati and Hindi packs are separate files on this release's page, never in the installer. Their captions show one phrase at a time, which the operator can correct or take off; noise and hum heard as short one-syllable words are not shown. As heard, English, Sanskrit and other languages show captions as before.
-- Gujarati words in live captions are no longer joined together, with the new recognizer or without it.
-- While Drashti starts, the corners of the LIVE picture stay exactly as they are: the graphics warm-up no longer tints them on computers with a graphics chip.
+- Live captions (Trial): Gujarati and Hindi can use a new, more accurate recognizer on this computer (IndicConformer by AI4Bharat), from a model pack on this release’s page that the admin imports (Help › Caption and Translation Models…; importing no longer slows the show). Its words show while the speaker talks, the whole phrase at the pause; the operator can correct a phrase or take it off, and noise and hum heard as short words are not shown. It follows the dialog’s timing choices. Other languages show captions as before.
+- On a computer too slow for the chosen model, live captions say so and turn off after three tries instead of going silent.
+- Edit slides… › Translate… (Pro Mode): Prepare translations drafts the empty Gujarati, Hindi and English translations on this computer, off air, once the admin imports the translation pack from this release’s page; a reader checks every draft before it shows. It is slower on an Intel Mac.
+- Cue (Pro Mode, a video’s right-click menu): the video waits at its first frame, and Go starts it on the hall, LIVE and the stream together.
+- Combine videos… (Pro Mode, Media’s right-click on two or more videos) joins them into one new video, with a dissolve, a fade through black or a cut between them; the originals stay.
+- A playlist row’s Trim saves the trimmed part as a new video in Media, says why it waits and how far it is, and no longer waits for a wallpaper, a still slide or a picture that is up.
+- Print or save as a PDF a playlist’s running order or a kirtan’s words, or copy the running order as text (Pro Mode).
+- Pictures show sooner and whole; an import waits while the screens finish a transition, and the status line says so. After updating, start Drashti once before the sabha with nothing up and no stream or recording, so it prepares the library’s large pictures.
+- PDF pages: Crop page… shows only the part of a page you choose, on every screen and the stream.
+- More tools is gone: each tool has its own folding section under LIVE, and in Pro Mode every section starts folded.
+- Edit › Simple Mode Features… brings up to three of Pro Mode’s tools into Simple Mode, each with an on/off switch; only Pro Mode can change them.
+- A long stage message wraps and gets smaller only as much as it must, so it always shows whole; its box and words can have their own colours, chosen in Stage screen, which messages from a phone, Shown before or OSC show too.
+- Stage starts off; turning it on with no screen set to Stage says so and opens Screens; a Stage preview window shows the stage layout without a third screen.
+- The Lower Thirds studio previews a lower third over the hall’s wallpaper by default, or over what the screens show now, or plain dark or light.
+- The slide editor’s top row wraps at 200% zoom instead of scrolling sideways, and Back and Next fit at every width of the LIVE column.
+- Fixed: Gujarati words in live captions are no longer joined together, and the LIVE picture’s corners are no longer tinted as Drashti starts.
 
 ## 1.0.0-alpha.21 (24 Nov 2026)
 

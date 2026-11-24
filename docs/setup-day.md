@@ -1,6 +1,6 @@
 # Setup day: the checklist
 
-Use this checklist with **1.0.0-alpha.22**. Live captions start off, are marked **Trial** and can slow the screens while on.
+Use this checklist with **1.0.0-alpha.22**. Live captions start off, are marked **Trial** and can slow the screens while on; Gujarati and Hindi can use a model pack from the release’s page (admin guide, section 32).
 
 This is the list for the day Drashti is set up on the mandir's two computers: for the admin doing the setup, with the operators there for the parts marked **(operators)**. Tick each line as it is done, and fill in the "Write down" table at the end. The steps say what to do; `docs/admin-guide.md` says how, and `docs/parallel-run.md` has the first evenings beside the old presentation program.
 
