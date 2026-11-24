@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FIRST_FRAME_MS } from '../../../shared/no-picture';
-import { tellCannotPlay, watchFirstFrame } from './no-picture';
+import { tellCannotPlay, watchFirstFrame, watchStart } from './no-picture';
 
 /*
  * A page that said a showing could not play, drawing it after all (alpha.23, a22-halldrop's review, MUST-2): its first
@@ -21,6 +21,7 @@ const drawn = (v: FakeVideo) => {
 
 describe('a page’s first frame after it said a showing could not play (alpha.23, a22-halldrop)', () => {
   const said: [string, number][] = [];
+  const started: [string, number][] = [];
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] });
     vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
@@ -32,9 +33,14 @@ describe('a page’s first frame after it said a showing could not play (alpha.2
           said.push([mediaId, startedAt]);
           return Promise.resolve(null);
         },
+        starting: (mediaId: string, startedAt: number) => {
+          started.push([mediaId, startedAt]);
+          return Promise.resolve(null);
+        },
       },
     });
     said.length = 0;
+    started.length = 0;
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -80,5 +86,50 @@ describe('a page’s first frame after it said a showing could not play (alpha.2
     expect(said).toEqual([]);
     drawn(v);
     expect(said).toEqual([['clip-d', 4000]]);
+  });
+
+  it('the owner’s QA23-HALLDROP-1 (a): no first frame 2 s after it went up is said once, and its first frame then says it plays here', () => {
+    const v = new FakeVideo();
+    const at = Date.now();
+    const stop = watchStart(v as unknown as HTMLVideoElement, 'clip-e', () => undefined, at);
+    vi.advanceTimersByTime(1500);
+    expect(started).toEqual([]);
+    vi.advanceTimersByTime(1000);
+    expect(started).toEqual([['clip-e', at]]);
+    vi.advanceTimersByTime(2000);
+    expect(started).toHaveLength(1);
+    expect(said).toEqual([]);
+    v.readyState = 2;
+    vi.advanceTimersByTime(500);
+    expect(said).toEqual([['clip-e', at]]);
+    vi.advanceTimersByTime(1000);
+    expect(said).toHaveLength(1);
+    stop();
+  });
+
+  it('drawn within 2 s, or watched without its start (a cued video before its Go): nothing said', () => {
+    const quick = new FakeVideo();
+    const stopQuick = watchStart(quick as unknown as HTMLVideoElement, 'clip-f', () => undefined, Date.now());
+    vi.advanceTimersByTime(1000);
+    quick.readyState = 2;
+    vi.advanceTimersByTime(3000);
+    stopQuick();
+    const cued = new FakeVideo();
+    const stopCued = watchStart(cued as unknown as HTMLVideoElement, 'clip-g', () => undefined);
+    vi.advanceTimersByTime(3000);
+    stopCued();
+    expect(started).toEqual([]);
+    expect(said).toEqual([]);
+  });
+
+  it('a slide’s or the box’s video (watchFirstFrame) says it is starting too, and its first frame after', () => {
+    const v = new FakeVideo();
+    const at = Date.now();
+    const stop = watchFirstFrame(v as unknown as HTMLVideoElement, 'clip-h', at, 0);
+    vi.advanceTimersByTime(2500);
+    expect(started).toEqual([['clip-h', at]]);
+    drawn(v);
+    expect(said).toEqual([['clip-h', at]]);
+    stop();
   });
 });

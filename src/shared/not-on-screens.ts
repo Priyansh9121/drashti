@@ -17,6 +17,8 @@ export interface NotOnScreen {
   startedAt: number;
   /** LIVE's lines under its picture for it (notOnScreenLine, notOnScreenYetLine). */
   lines: string[];
+  /** LIVE's line while screens wait for its first frame (the owner's QA23-HALLDROP-1 (a): startingLine). */
+  starting?: string;
 }
 
 /** How many showings Main keeps, at most: the newest. */

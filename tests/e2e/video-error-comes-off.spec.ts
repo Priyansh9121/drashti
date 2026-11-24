@@ -666,3 +666,77 @@ test('two screens, a slide’s video waiting paused, its element failing on one 
     await app.close();
   }
 });
+
+test('Play on a slide’s video the hall said it could not play (the owner’s QA23-HALLDROP-1 (b), “Take it off at Play”): the take-off follows at once, paused there again with its sound stopped, with the notice, and LIVE paused as the hall', async () => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-play-after-error-'));
+  const clip = makeClip(join(dir, 'Placeholder played anyway.mp4'), 'h264', 30, 300);
+  const { app } = await launchApp(SCREENS);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hall = await audienceScreen(app, win);
+    expect(hall.name, 'the audience screen’s name').not.toBe('');
+    const [id = ''] = await importAndGetIds(win, [clip]);
+    const SLIDE = `[data-layer="slide"] video[data-media-id="${id}"]`;
+    const presentationId = await slideWithVideo(win, dir, id, 'Placeholder slide played anyway');
+    await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+    const paused = (page: Page, sel: string) =>
+      page.evaluate((s) => document.querySelector<HTMLVideoElement>(s)?.paused ?? null, sel);
+    await expect
+      .poll(() => paused(hall.page, SLIDE), {
+        timeout: 30_000,
+        message: 'the slide’s video plays on the hall',
+      })
+      .toBe(false);
+    expect((await dispatch(win, { type: 'pausePlaying', playing: { layer: 'slide', mediaId: id } })).ok).toBe(
+      true,
+    );
+    await expect
+      .poll(() => paused(hall.page, SLIDE), { timeout: 10_000, message: 'paused on the hall' })
+      .toBe(true);
+    expect(
+      await hall.page.evaluate((sel) => {
+        const v = document.querySelector<HTMLVideoElement>(sel);
+        if (!v) return false;
+        v.dispatchEvent(new Event('error'));
+        return true;
+      }, SLIDE),
+      'the hall’s slide video element',
+    ).toBe(true);
+    await expect
+      .poll(() => notices(win), { timeout: 15_000, message: 'told it could not play there, still up' })
+      .toContainEqual(expect.stringContaining('It is still up but not playing'));
+    // Play, as the time bar's Play does: the take-off follows, with the notice.
+    expect(
+      (await dispatch(win, { type: 'resumePlaying', playing: { layer: 'slide', mediaId: id } })).ok,
+    ).toBe(true);
+    await expect
+      .poll(() => notices(win), { timeout: 15_000, message: 'the take-off’s notice' })
+      .toContainEqual(
+        expect.stringMatching(
+          new RegExp(
+            `Placeholder played anyway[^ ]* could not play on the screen “${hall.name}”, so it stopped where it was on the slide`,
+            'u',
+          ),
+        ),
+      );
+    await expect
+      .poll(async () => (await slideAndBox(win, id)).slidePaused, {
+        timeout: 10_000,
+        message: 'paused there again',
+      })
+      .toBe(true);
+    await expect.poll(() => itsSound(app, id), { timeout: 5_000, message: 'its sound stopped' }).toBe(false);
+    // LIVE as the hall: its video paused, the slide still up.
+    await expect
+      .poll(() => paused(win, `[data-testid="live-preview"] ${SLIDE}`), {
+        timeout: 10_000,
+        message: 'LIVE’s video paused',
+      })
+      .toBe(true);
+    await expect(win.getByTestId('live-not-on-screens')).toContainText(`Not on the screen “${hall.name}”`);
+  } finally {
+    await app.close();
+  }
+});

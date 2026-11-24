@@ -147,6 +147,7 @@ export function watchStart(
   v: HTMLVideoElement,
   mediaId: string,
   said: (verdict: 'stalled' | 'slow', seen: string) => void,
+  _startedAt?: number,
 ): () => void {
   let watch = startWatch(engineNow());
   let looked = 0;
