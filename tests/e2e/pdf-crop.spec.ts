@@ -225,7 +225,7 @@ test('Turn page right turns the crop with the full page, Undo restores it, and t
     );
     await s.editor.getByTestId('save-slides').click();
     await slideEditorClosed(s.app);
-    await setUpScreen(s.win, 'Placeholder crop hall', 0);
+    const hallId = await setUpScreen(s.win, 'Placeholder crop hall', 0);
     const out = await outputPage(s.app);
     await outputReady(out);
     await s.win.evaluate(
@@ -246,8 +246,20 @@ test('Turn page right turns the crop with the full page, Undo restores it, and t
     if (!page) throw new Error('Missing hall crop viewport');
     expect(screen.width).toBeGreaterThan(0);
     expect(screen.height).toBeGreaterThan(0);
-    expect(page.width).toBeCloseTo(Math.min(screen.width, screen.height), 0);
-    expect(page.height).toBeCloseTo(Math.min(screen.width, screen.height), 0);
+    // Every output fits its hall canvas into its window first (output/main.tsx), then each slide inside that canvas:
+    // the square crop fills the placed 1920 x 1080 canvas's height (576 on CI's 1024 x 768 window).
+    const canvas = await s.win.evaluate(
+      async (id) =>
+        (await (globalThis as PageGlobals).drashti.screens.get()).groups
+          .flatMap((g) => g.screens)
+          .filter((x) => x.id === id)
+          .map((x) => ({ width: x.canvasWidth, height: x.canvasHeight })),
+      hallId,
+    );
+    expect(canvas).toEqual([{ width: 1920, height: 1080 }]);
+    const side = 1080 * Math.min(screen.width / 1920, screen.height / 1080);
+    expect(page.width).toBeCloseTo(side, 0);
+    expect(page.height).toBeCloseTo(side, 0);
     s.unchanged();
   } finally {
     await s.app.close();
