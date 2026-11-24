@@ -145,6 +145,8 @@ export default defineConfig({
           'pdf-export': resolve('src/renderer/pdf-export.html'),
           // The hidden window that makes pictures' sharpened copies (Session 26f).
           sharpen: resolve('src/renderer/sharpen.html'),
+          // Its sibling for pictures' display copies (alpha.22): its own page, the only one that streams a granted original.
+          'display-copy': resolve('src/renderer/display-copy.html'),
           // The window for Zoom: the stream's picture, for Zoom's Share Screen (Session 48).
           zoom: resolve('src/renderer/zoom.html'),
           // The lock screen, before this computer is let in (Session 54, access by Gmail).

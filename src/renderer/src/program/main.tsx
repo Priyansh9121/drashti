@@ -13,6 +13,7 @@ import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { WarmUp } from '../render/WarmUp';
 import { Preloader } from '../output/Preloader';
+import { programInitialPictures } from '../output/initial-picture-preload';
 import { applyCameraChoice, listDevices } from './camera';
 import {
   repaintUnseen,
@@ -258,7 +259,16 @@ function Program() {
           cut in on the stream is drawn with its pictures at once (it is drawn only once they can be:
           render/SlideLayerView.tsx); with Next's slide's first deck clip and the pointed slide's (C3), so a deck slide
           comes in on the stream on time as on the hall's screens. Each loaded once. */}
-      {state && context?.picture && <Preloader next={state.next} pictures={state.pictures} />}
+      {state && context?.picture && (
+        <Preloader
+          next={state.next}
+          pictures={state.pictures}
+          sceneReady={ready}
+          currentPictures={() =>
+            stop.black ? null : programInitialPictures(state, context.layout, languages)
+          }
+        />
+      )}
     </div>
   );
 }

@@ -31,7 +31,7 @@ function drawnScreen(screen: ScreenConfig, window: PixelSize): PixelSize {
  * on the network now or not: its displays as it last reported them, so a node dropping off for a moment
  * does not have every copy made smaller and then bigger again.
  */
-export function largestAudienceScreen(input: {
+export function audienceScreenSizes(input: {
   /** This computer's outputs, each in its window. */
   local: readonly LocalOutput[];
   /** Every screen there is. */
@@ -39,10 +39,10 @@ export function largestAudienceScreen(input: {
   roleOf: (groupId: string) => ScreenRole | null;
   /** The paired nodes, with the displays each last reported. */
   nodes: readonly NodeDisplays[];
-}): PixelSize | null {
-  let largest: PixelSize | null = null;
+}): PixelSize[] {
+  const sizes: PixelSize[] = [];
   const consider = (drawn: PixelSize) => {
-    if (!largest || drawn.width * drawn.height > largest.width * largest.height) largest = drawn;
+    sizes.push(drawn);
   };
   for (const { screen, window } of input.local) {
     if (input.roleOf(screen.groupId) !== 'audience') continue;
@@ -61,6 +61,15 @@ export function largestAudienceScreen(input: {
       const d = node.displays.find((x) => x.id === found.get(s.id));
       if (d) consider(drawnScreen(s, { width: d.pixelWidth, height: d.pixelHeight }));
     }
+  }
+  return sizes;
+}
+
+/** The existing sharpening policy still chooses the largest audience canvas by area. */
+export function largestAudienceScreen(input: Parameters<typeof audienceScreenSizes>[0]): PixelSize | null {
+  let largest: PixelSize | null = null;
+  for (const drawn of audienceScreenSizes(input)) {
+    if (!largest || drawn.width * drawn.height > largest.width * largest.height) largest = drawn;
   }
   return largest;
 }

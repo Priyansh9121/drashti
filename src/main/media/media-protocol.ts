@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { Readable } from 'node:stream';
-import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../../shared/media';
+import { DISPLAY_KEY_PATTERN, MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../../shared/media';
 import { extOf } from '../import/scan';
 import { realPlaceAsync } from './contained';
 
@@ -55,6 +55,8 @@ export interface MediaProtocolDeps {
   selectedThumbnail?: (mediaId: string) => Uint8Array | null;
   /** A picture's sharpened copy at a step, relative to the media folder, if it is ready (Session 26f). */
   sharpened?: (sha256: string, step: number) => string | null;
+  /** A checked display rendition of this original, addressed by its exact source/size key. */
+  display?: (sha256: string, key: string) => string | null;
   /** A picture's blurred copy, relative to the media folder, if it is ready (Session 55, Part 5, D). */
   blurred?: (sha256: string) => string | null;
   /**
@@ -191,6 +193,7 @@ export { isInside } from './contained';
 
 export type MediaRequest =
   | { what: 'media'; mediaId: string }
+  | { what: 'display'; mediaId: string; key: string }
   | { what: 'still'; mediaId: string }
   /** A picture's sharpened copy (Session 26f), made at a step of 5 %. */
   | { what: 'sharp'; mediaId: string; step: number }
@@ -220,6 +223,14 @@ export function mediaRequestOf(url: string): MediaRequest | null {
   }
   const what = parsed.hostname;
   if (parsed.protocol !== `${MEDIA_SCHEME}:`) return null;
+  if (what === 'display') {
+    const parts = parsed.pathname.split('/');
+    const mediaId = parts[1] ?? '';
+    const key = parts[2] ?? '';
+    return parts.length === 3 && MEDIA_ID_PATTERN.test(mediaId) && DISPLAY_KEY_PATTERN.test(key)
+      ? { what, mediaId, key }
+      : null;
+  }
   if (what === 'sharp') {
     const m = /^\/([^/]+)\/(\d{1,3})$/u.exec(parsed.pathname);
     const step = Number(m?.[2]);
@@ -325,6 +336,10 @@ async function fileFor(
   else if (asked.what === 'opening') row = { path: openingCopyPath(sha) };
   else if (asked.what === 'blur') {
     const copy = deps.blurred?.(sha) ?? null;
+    if (!copy) return null;
+    row = { path: copy };
+  } else if (asked.what === 'display') {
+    const copy = deps.display?.(sha, asked.key) ?? null;
     if (!copy) return null;
     row = { path: copy };
   } else {
