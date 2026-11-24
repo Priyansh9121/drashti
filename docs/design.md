@@ -703,12 +703,13 @@ The owner, 19 Nov 2026, using alpha.19 (Session 60, x36):
   header with its close button, and the button comes back, with the keyboard, as it shuts. It stays gone while the sheet
   stands aside for a drag from it, so nothing under the pointer moves.
 - **The setup tools** (his "A, More tools + menu"): **Show a Window…**, **Add a Video Input…**, **Picture in Picture…**
-  and **QR code…** are in More tools under Lower Thirds, the MIDI controller and OSC, each a secondary `sm` button after
-  a `PanelNote`-sized line saying what it does (`operator/SetupTools.tsx`, the words once in `src/shared/setup-tools.ts`),
-  and in a **Tools** menu between View and Window (Pro Mode; `main/menu.ts`), with **Lower Thirds Studio…**, **MIDI
-  Controller…** and **OSC Control…** after a separator. A menu item reaches the window as `app:show-tool`. The library's
-  tools row keeps Import… and New… only. The MIDI controller's window is the operator window's own
-  (`MidiDialogHost`), so the menu opens it with More tools folded.
+  and **QR code…** were in More tools under Lower Thirds, the MIDI controller and OSC until alpha.22 (§56: since then
+  each is a section of its own under LIVE), each a secondary `sm` button after a one-line note saying what it does
+  (`operator/SetupTools.tsx`, the words once in `src/shared/setup-tools.ts`), and are in a **Tools** menu between View
+  and Window (Pro Mode; `main/menu.ts`), with **Lower Thirds Studio…**, **MIDI Controller…** and **OSC Control…** after
+  a separator. A menu item reaches the window as `app:show-tool`. The library's tools row keeps Import… and New… only.
+  The MIDI controller's window is the operator window's own (`MidiDialogHost`), so the menu opens it with its section
+  folded.
 - **The drop window** (his words, and "Yes, all A" to D1-D4; `playlists/DropNewDialog.tsx`): files dropped anywhere on
   the window while no playlist is open (and the library's rows dropped on the middle or the playlists column, outside a
   playlist's name) open a small dialog (`size="sm"`): "Put “…” in…" or "Put 2 files in…", two native radios with their

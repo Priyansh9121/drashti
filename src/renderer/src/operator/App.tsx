@@ -59,6 +59,7 @@ import { connectStreamLink } from '../live-link/live-link-store';
 import { WindowPicker } from '../live-window/WindowPicker';
 import { ReadyDialog } from './ReadyDialog';
 import { QrSlideDialog } from '../library/QrSlideDialog';
+import { M3uReport } from '../playlists/m3u-actions';
 import { PipDialog } from './PipDialog';
 import { connectLiveWindow } from '../live-window/live-window-store';
 import { VideoInputDialog } from '../video-inputs/VideoInputDialog';
@@ -501,6 +502,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* Ready? and New › QR code… (Session 55, Part 8). */}
       <ReadyDialog />
       <QrSlideDialog />
+      {/* An audio playlist file's entries not taken (Audio's + › Import): here, not in Audio, so it is said at once
+      with Audio folded, and never comes up later as Audio opens (alpha.22's review). */}
+      <M3uReport audio />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}
