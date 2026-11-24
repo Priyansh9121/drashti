@@ -338,3 +338,75 @@ it('starts a crossfade’s incoming sound at the fade’s own moment, not when a
   expect(player(black.key).options.timing?.().seek?.at).toBe(manual.at);
   expect(player(black.key).el.dataset['leadMs']).toBeUndefined();
 });
+
+it('a crossfaded sound held paused lets go of its lead, so Play resumes it in place (a22-review-fade R2-M1)', async () => {
+  // The lead stayed for the sound's whole life: a pause of a video that came in by a crossfade, then Play, gave the lead's
+  // silence and then a silent jump (up to 1.9 s on a two-core PC), where before Play resumed it in place.
+  vi.useFakeTimers();
+  vi.stubGlobal('AudioContext', GeneratedContext);
+  vi.stubGlobal('document', {
+    body: { dataset: {}, append: () => undefined },
+    createElement: () => ({ dataset: {}, remove: () => undefined }),
+  });
+  const { StreamSound } = await import('./sound');
+  const sound = new StreamSound();
+  const show = { layers: {} } as unknown as EngineState;
+  const fade = {
+    id: 'generated cue',
+    from: {
+      kind: 'media',
+      media: 'video',
+      mediaId: 'generated red',
+      startedAt: 1000,
+      loop: true,
+      fit: 'fit',
+    },
+    at: Date.now() + 120,
+    durationMs: 2000,
+  } as unknown as VideoCrossfade;
+  const red: Sound = {
+    key: 'background:generated red@1000',
+    mediaId: 'generated red',
+    startedAt: 1000,
+    loop: true,
+    volume: 1,
+    kind: 'video',
+  };
+  const blue: Sound = {
+    key: 'background:generated blue@2000',
+    mediaId: 'generated blue',
+    startedAt: 2000,
+    loop: true,
+    volume: 1,
+    kind: 'video',
+    cueId: 'cue blue',
+    prepared: true,
+    seek: { at: Date.now(), toMs: 0, paused: true },
+  };
+  h.sounds = [red, blue];
+  sound.setOwnSound(true, show);
+  const { cueId: _cue, prepared: _prepared, ...playing } = blue;
+  h.sounds = [
+    { ...red, envelope: { fade, role: 'out' } },
+    { ...playing, seek: { at: fade.at, toMs: 0 }, envelope: { fade, role: 'in' } },
+  ];
+  sound.setOwnSound(true, show);
+  const player = h.started.find((s) => s.key === blue.key);
+  if (!player) throw new Error('No incoming player');
+  expect(player.el.dataset['leadMs'], 'started ahead at its Go').toBe('120');
+  expect(h.delays.some((d) => Math.abs(d.value - 0.12) < 1e-9)).toBe(true);
+  // Minutes later the operator pauses it on the time bar, then presses Play.
+  vi.advanceTimersByTime(120_000);
+  h.sounds = [{ ...playing, seek: { at: Date.now(), toMs: 121_000, paused: true } }];
+  sound.setOwnSound(true, show);
+  expect(player.el.dataset['leadMs'], 'held paused, it lets go of its lead').toBeUndefined();
+  expect(
+    h.delays.some((d) => Math.abs(d.value - 0.12) < 1e-9),
+    'its delay back to none while nothing plays into it',
+  ).toBe(false);
+  vi.advanceTimersByTime(5000);
+  const resume = { at: Date.now(), toMs: 121_000 };
+  h.sounds = [{ ...playing, seek: resume }];
+  sound.setOwnSound(true, show);
+  expect(player.options.timing?.().seek, 'Play resumes it in place, on the engine’s clock').toEqual(resume);
+});
