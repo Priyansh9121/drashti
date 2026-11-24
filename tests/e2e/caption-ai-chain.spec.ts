@@ -23,6 +23,14 @@ const LEAD_MS = 15_000;
 const GAP_MS = 9_000;
 /** What the generated graph always decodes to (its tokens: "▁shape", "▁box"; the repeat across a blank is kept). */
 const HEARD = 'shape shape box';
+/**
+ * Two bursts (at 15.0 and 24.4 s, the file over by about 25 s): on CI's Mac Chromium's fake microphone falls behind
+ * real time from about 35 s into its file (a third burst there reached the screens at 2.4 s; cap-realc.md), which is
+ * the test device's, not Drashti's. The lead, the gap and the 3 s limit are unchanged (lead 2, from
+ * cap-review-realc). Whether the stream's own sound path loses sound under heavy load stays open, for
+ * s59-cap-realc-next's stream-clock test.
+ */
+const BURSTS = 2;
 
 test('Route C’s whole chain in the app with the generated test model: each tone burst the stream’s sound input carries, and nothing before them, gives its phrase on the hall, the stage and the stream within the live limit; the stream’s frames as before; the pack goes only after the helper has stopped', async () => {
   test.setTimeout(240_000);
@@ -41,7 +49,7 @@ test('Route C’s whole chain in the app with the generated test model: each ton
   const sounds = toneBurstsFile(wav, {
     leadMs: LEAD_MS,
     gapMs: GAP_MS,
-    bursts: 3,
+    bursts: BURSTS,
     burstMs: 400,
     text: HEARD,
   });
