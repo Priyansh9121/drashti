@@ -34,12 +34,7 @@ import {
   type CaptionsTuning,
 } from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
-import {
-  languageName,
-  LanguageModelRefused,
-  type LanguageModelCheck,
-  type LanguageModelEntry,
-} from './language-models';
+import { languageName, type LanguageModelCheck, type LanguageModelEntry } from './language-models';
 
 export type { CaptionsStatus } from '../../shared/captions';
 
@@ -75,6 +70,13 @@ export interface CaptionsServiceDeps {
    */
   aiPath?: {
     on(): boolean;
+    /**
+     * The route this language's own model runs on ('conformer', 'whisper'), without making its engine, or null.
+     * Route C ('conformer') needs no whisper-server (alpha.23); left out, every route is taken to need it.
+     */
+    route?(language: SpeechLanguage): string | null;
+    /** What keeps Route C itself from running on this computer (its helper, macOS 13.4), or null (review S1). */
+    problem?(language: SpeechLanguage): string | null;
     /** The recognizer for this language, from the pack's checked model, or null. */
     recognizer(language: SpeechLanguage): CaptionRecognizer | null;
     coordinator: ClauseSink;
@@ -106,15 +108,12 @@ export interface LanguageModelStore {
   check(entry: LanguageModelEntry): LanguageModelCheck;
   /** The file checked whole again (stamped again when it is still the same). */
   verify(entry: LanguageModelEntry): Promise<LanguageModelCheck>;
-  /** Add a file the admin chose for `language`: its entry, or LanguageModelRefused with what to say. */
-  add(language: LanguageModelLanguage, source: string): Promise<LanguageModelEntry>;
 }
 
 const NO_LANGUAGE_MODELS: LanguageModelStore = {
   known: () => [],
   check: () => 'missing',
   verify: () => Promise.resolve('missing'),
-  add: () => Promise.reject(new LanguageModelRefused('This copy of Drashti knows no language models.')),
 };
 
 export class CaptionsService {
@@ -124,6 +123,8 @@ export class CaptionsService {
   private readonly paths: CaptionPaths | null;
   /** What caption AI's recognizer is while it runs. */
   private recognizer: { route: string; modelId: string } | null = null;
+  /** Whether captions were started (turnOn), not only switched on: whisper's problem can keep them from it. */
+  private listening = false;
   private readonly prototype: CaptionPrototype;
   private switch: CaptionsSwitch;
   private tuning: CaptionsTuning;
@@ -176,12 +177,25 @@ export class CaptionsService {
               });
               return () => undefined;
             }
+            // Route W runs on Drashti's whisper engine: what is wrong with it stops it as today's captions.
+            const problem = recognizer.route === 'conformer' ? null : this.deps.engineProblem();
+            if (problem !== null) {
+              to.state({ phase: 'failed', message: problem });
+              return () => undefined;
+            }
             this.recognizer = { route: recognizer.route, modelId: recognizer.modelId };
             const stop = recognizer.engine.start(language, to);
             return () => {
               this.recognizer = null;
               stop();
             };
+          }
+          // Today's captions need Drashti's whisper engine (reached here when caption AI on Route C, which needs
+          // none, was listening and the speaker's language changed).
+          const problem = this.deps.engineProblem();
+          if (problem !== null) {
+            to.state({ phase: 'failed', message: problem });
+            return () => undefined;
           }
           // A model of its own chosen for the language (alpha.22) is used only when it is here and checked: never
           // the general model in its place.
@@ -273,6 +287,7 @@ export class CaptionsService {
     const wasAi = this.paths.usingAi();
     this.paths.reselect();
     if (wasAi && !this.paths.usingAi() && this.switch.on) void this.fetchModel();
+    this.resume();
   }
 
   /** The operator's review: caption AI's phrases while it runs (and no rehearsal does), else the rehearsal's. */
@@ -323,7 +338,7 @@ export class CaptionsService {
   }
 
   view(): CaptionsStatus {
-    const engineProblem = this.deps.engineProblem();
+    const engineProblem = this.hearingProblem();
     return {
       on: this.switch.on,
       model: this.switch.model,
@@ -418,16 +433,37 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (this.closed || this.prototype.view().on || this.deps.engineProblem() !== null) return;
+    if (this.closed || this.prototype.view().on || this.hearingProblem() !== null) return;
+    this.listening = true;
     this.hub.setOn(true);
     this.feed.start();
     await this.fetchModel();
   }
 
   private turnOff(): void {
+    this.listening = false;
     this.stopDownload();
     this.feed.stop();
     this.hub.setOn(false);
+  }
+
+  /**
+   * What keeps the engine that hears now from running on this computer: Drashti's whisper engine for today's captions
+   * and Route W; for a language whose own model runs on Route C, Route C's own reason (a Mac before 13.4, no helper),
+   * never whisper's (alpha.23: cap-realc, the review's S1).
+   */
+  private hearingProblem(): string | null {
+    const language = this.settings().language;
+    if (!this.useAi() || language === 'auto') return this.deps.engineProblem();
+    const ai = this.deps.aiPath;
+    return ai?.route?.(language) === 'conformer'
+      ? (ai.problem?.(language) ?? null)
+      : this.deps.engineProblem();
+  }
+
+  /** Captions are on but did not start (an engine's problem): a language whose engine can run starts now. */
+  private resume(): void {
+    if (this.switch.on && !this.listening && !this.closed) void this.turnOn();
   }
 
   private stopDownload(): void {
@@ -535,35 +571,6 @@ export class CaptionsService {
     return this.view();
   }
 
-  /** Add a model file the admin chose for a language: checked, copied in, and chosen for it. */
-  async addLanguageModel(language: LanguageModelLanguage, source: string): Promise<CaptionsStatus> {
-    if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
-    if (this.streamInUse) {
-      this.notices.set(language, 'Add a model file when the stream and recording have stopped.');
-      this.tell();
-      return this.view();
-    }
-    this.notices.delete(language);
-    this.checking.add(language);
-    this.tell();
-    try {
-      const entry = await this.models.add(language, source);
-      this.deps.log.info(`Captions: the ${entry.id} model was added for ${languageName(language)}.`);
-      this.checking.delete(language);
-      this.choose(language, entry.id, true);
-    } catch (error) {
-      this.checking.delete(language);
-      const message =
-        error instanceof LanguageModelRefused
-          ? error.message
-          : 'Drashti could not add that model file: check the file, then add it again.';
-      this.notices.set(language, message);
-      this.deps.log.warn(`Captions: a model file for ${languageName(language)} was not added.`);
-    }
-    this.tell();
-    return this.view();
-  }
-
   /** Check the chosen model's file whole again (after it was found changed). */
   async checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus> {
     if (!isLanguageModelLanguage(language) || this.checking.has(language) || this.closed) return this.view();
@@ -600,9 +607,9 @@ export class CaptionsService {
     return this.switch.on && this.settings().language === language;
   }
 
-  private choose(language: LanguageModelLanguage, id: string | null, always = false): void {
+  private choose(language: LanguageModelLanguage, id: string | null): void {
     const was = this.tuning.languageModels[language] ?? null;
-    if (was === id && !always) return;
+    if (was === id) return;
     const languageModels: CaptionsTuning['languageModels'] = {};
     for (const each of LANGUAGE_MODEL_LANGUAGES) {
       const chosen = each === language ? id : (this.tuning.languageModels[each] ?? null);
@@ -617,6 +624,11 @@ export class CaptionsService {
   /** Listening starts again (a model or the timing changed), when it is on. */
   private relisten(): void {
     if (!this.switch.on || this.closed) return;
+    // Never started (whisper's problem): start now if what hears needs no whisper, else stay as it is.
+    if (!this.listening) {
+      this.resume();
+      return;
+    }
     // A language's own model chosen or taken away: caption AI or today's captions take over (listening again).
     const wasAi = this.paths?.usingAi() === true;
     if (this.paths?.reselect()) {

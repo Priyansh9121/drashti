@@ -7,7 +7,7 @@ import {
   launchApp,
   letTimePass,
   openLibrary,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
@@ -47,11 +47,11 @@ const videoWidth = (picture: Locator) =>
   picture.locator('video').evaluate((v: HTMLVideoElement) => v.videoWidth);
 
 /**
- * Name the fake camera "Placeholder input" with Add a Video Input… (in More tools since alpha.20): only once it is
+ * Name the fake camera "Placeholder input" with Add a Video Input… (in its Video inputs section under LIVE since alpha.22): only once it is
  * chosen and named does Add to Media keep it, and nothing goes up. Its row in Media, with its own live picture.
  */
 async function addInput(win: Page): Promise<Locator> {
-  await openMoreTools(win);
+  await openSection(win, 'video-inputs');
   await win.getByTestId('add-video-input').click();
   const dialog = win.getByTestId('video-input-dialog');
   await expect(dialog).toBeVisible();

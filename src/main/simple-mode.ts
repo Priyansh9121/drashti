@@ -4,6 +4,7 @@ import { IPC } from '../shared/ipc';
 import { DROP_REFUSED_VIEW } from '../shared/drop-folder';
 import { SIMPLE_MODE_REFUSAL } from '../shared/mode';
 import { NO_VIEW } from '../shared/access-list';
+import type { SimpleFeature } from '../shared/simple-features';
 
 /*
  * What Simple Mode locks. Every request that would change the library, the
@@ -62,6 +63,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.exportPdf,
   // Make a slide… (alpha.21): a new presentation from a PDF page, as New › QR code… makes one.
   IPC.slideEditor.makeSlide,
+  // Prepare translations (alpha.22): drafting is Pro Mode's, as Translation…'s changes are.
+  IPC.slideEditor.translationStatus,
+  IPC.slideEditor.translationDraft,
+  IPC.slideEditor.translationCancel,
   IPC.library.extractPdfPages,
   IPC.library.showExtractedPdf,
   IPC.library.showExtractedPdfCopy,
@@ -70,6 +75,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.setExtras,
   // The single-letter keys (Session 37): Pro Mode's keys sheet turns them on or off.
   IPC.app.setSingleKeys,
+  // Edit › Simple Mode Features… (alpha.22): only Pro Mode chooses the tools Simple Mode has.
+  IPC.app.setSimpleFeature,
   // The appearance (Sessions 39–40): Simple Mode shows the one chosen, with no switch.
   IPC.appearance.choose,
   IPC.appearance.make,
@@ -102,7 +109,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.messages.create,
   IPC.messages.update,
   IPC.messages.remove,
-  // Session 55 (Part 15): a message put back (Undo), and Countdown to the start, Pro Mode's.
+  // Session 55 (Part 15): a message put back (Undo), and Countdown to the start, Pro Mode's; since alpha.22 Countdown to
+  // the start is Simple Mode's too while Timers is chosen for it in Edit › Simple Mode Features… (SIMPLE_FEATURE_CHANNELS
+  // below; the lead's one-minute answer for the owner, 24 Nov 2026), and Pro Mode's alone otherwise.
   IPC.messages.restore,
   IPC.timers.create,
   IPC.timers.update,
@@ -256,7 +265,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.captions.retry,
   // A model per language and the live timing (alpha.22): Pro Mode's too.
   IPC.captions.setLanguageModel,
-  IPC.captions.addLanguageModel,
   IPC.captions.checkLanguageModel,
   IPC.captions.setTiming,
   // Caption and translation models (alpha.22, cap-pack): Help › Caption and Translation Models… is Pro Mode's.
@@ -546,14 +554,43 @@ export function simpleModeRefusesWhole(channel: InvokeChannel): boolean {
   return SIMPLE_MODE_LOCKED.includes(channel) || SIMPLE_MODE_BOUNDED.has(channel);
 }
 
+/*
+ * Simple Mode Features (alpha.22; the owner, 24 Nov 2026: "the features can be brought to simple mode, only 1-2 and max
+ * 3", shared/simple-features.ts): while a tool is chosen in Pro Mode's Edit › Simple Mode Features…, Simple Mode's
+ * window may make exactly its operate requests, each locked above for Pro Mode until then; its settings stay locked
+ * (a message's or a timer's making and changing, a lower third's studio, a stage layout, adding a video input, the
+ * quick bar's pins). Asked with none of the arguments (a phone's or Companion's), each is refused whole as before: a
+ * chosen tool is the window's. Messages, Lower Thirds and the Stage screen's message and timers run through engine
+ * commands Simple Mode never refused (their section is what changes); Picture in Picture's box and the video input's
+ * one press are engine commands the engine lets through for a chosen tool (shared/mode.ts SIMPLE_FEATURE_COMMANDS).
+ */
+export const SIMPLE_FEATURE_CHANNELS: Readonly<Record<SimpleFeature, readonly InvokeChannel[]>> = {
+  stage: [],
+  messages: [],
+  // Countdown to the start: the sabha's time over the wallpaper, its one timer made or changed to that time, shown (the
+  // lead's one-minute answer for the owner, 24 Nov 2026: allowed while Timers is chosen, Pro Mode's otherwise).
+  timers: [IPC.timers.startCountdown],
+  'lower-thirds': [],
+  // The windows to choose from, one shown as the background, and the Mac's screen recording permission it asks for.
+  'show-a-window': [IPC.liveWindow.list, IPC.liveWindow.show, IPC.liveWindow.access],
+  // A stream's link shown as the background, stopped, and the last one offered again.
+  'show-a-stream-link': [IPC.liveLink.show, IPC.liveLink.stop, IPC.liveLink.last],
+  // Which video input LIVE's one press puts up (adding, changing and removing one stay Pro Mode's).
+  'video-inputs': [IPC.videoInputs.choose],
+  // Where the box goes and how it looks, kept for the next box; and its window choice, from Show a Window…'s list.
+  'picture-in-picture': [IPC.pip.savePlace, IPC.liveWindow.list, IPC.liveWindow.access],
+};
+
 /**
  * Each bounded channel's test as the lock asks it (ipc/handle.ts): whether a request, its arguments as sent, is within
- * its bounds, the playlists read as each request comes (`scope`).
+ * its bounds, the playlists read as each request comes (`scope`); and (alpha.22) each chosen tool's operate requests,
+ * the tools read as each request comes (`chosen`), so turning one off ends them at once.
  */
 export function simpleModeBounds(
   scope: () => SimpleScope,
+  chosen: () => readonly SimpleFeature[] = () => [],
 ): Map<InvokeChannel, (args: readonly unknown[]) => boolean> {
-  return new Map(
+  const bounds = new Map(
     [...SIMPLE_MODE_BOUNDED].map(
       ([channel, bound]): [InvokeChannel, (args: readonly unknown[]) => boolean] => [
         channel,
@@ -561,6 +598,18 @@ export function simpleModeBounds(
       ],
     ),
   );
+  const toolsOf = new Map<InvokeChannel, SimpleFeature[]>();
+  for (const [feature, channels] of Object.entries(SIMPLE_FEATURE_CHANNELS) as [
+    SimpleFeature,
+    InvokeChannel[],
+  ][])
+    for (const channel of channels) toolsOf.set(channel, [...(toolsOf.get(channel) ?? []), feature]);
+  for (const [channel, tools] of toolsOf)
+    bounds.set(channel, () => {
+      const now = chosen();
+      return tools.some((t) => now.includes(t));
+    });
+  return bounds;
 }
 
 /**
@@ -592,6 +641,12 @@ export function simpleModeRefusals(
   answers.set(IPC.media.stopClipExport, () => false);
   answers.set(IPC.media.stopProxy, () => false);
   answers.set(IPC.modelPacks.cancel, () => false);
+  answers.set(IPC.slideEditor.translationStatus, () => ({
+    installed: false,
+    available: false,
+    message: words(),
+  }));
+  answers.set(IPC.slideEditor.translationCancel, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).

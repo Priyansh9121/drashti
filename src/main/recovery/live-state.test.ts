@@ -373,7 +373,8 @@ describe('restart recovery', () => {
         timer: { timerId: 't1', shownAt: 20 },
       },
       stageMessage: 'Placeholder stage',
-      stageCall: { size: 'large', flash: true, shownAt: 15 },
+      // With its colours (24 Nov 2026).
+      stageCall: { size: 'large', flash: true, shownAt: 15, boxColor: '#1d4ed8', textColor: '#ffffff' },
       stageRecent: ['Placeholder stage', 'Placeholder before'],
     };
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
@@ -381,7 +382,7 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toMatchObject({
       messages: [{ id: 'm', look, seconds: 30, shownAt: 10, until: 30_010 }],
       stageMessage: 'Placeholder stage',
-      stageCall: { size: 'large', flash: true, shownAt: 15 },
+      stageCall: { size: 'large', flash: true, shownAt: 15, boxColor: '#1d4ed8', textColor: '#ffffff' },
       stageRecent: ['Placeholder stage', 'Placeholder before'],
       audienceTimer: { timerId: 't1', shownAt: 20 },
     });

@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, letTimePass, openLibrary, operatorPage, operatorReady } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  letTimePass,
+  openLibrary,
+  openSection,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { makeTestTone } from './test-media';
 
 /*
@@ -197,6 +205,7 @@ test('playlists, the library’s presentations and Audio’s lists and sounds: m
   await win.getByTestId('library-close').click();
 
   // Audio: both lists by Cmd-A, then Backspace; one Undo. Then two sounds taken out at once.
+  await openSection(win, 'audio');
   const panel = win.getByTestId('music-panel');
   const lists = panel.getByTestId('music-playlist');
   await lists.first().click();

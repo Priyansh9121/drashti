@@ -10,7 +10,7 @@
 
 **How:**
 
-1. In **Messages**, fill in the message's fields.
+1. Press **Messages** under LIVE to open it, then fill in the message's fields.
 2. Press **Show** (or Enter in the field).
 3. Change the words and press **Update** to put them up.
 4. Press **Take off** to remove it; **F6** removes every message.
@@ -40,7 +40,7 @@
 
 **How:**
 
-1. Press **Start** on a timer. **Pause** stops it; **Reset** starts it over.
+1. Press **Timers** under LIVE to open it, then **Start** on a timer. **Pause** stops it; **Reset** starts it over.
 2. Press **Edit** to change its kind, length or name.
 3. The stage screens show it while it runs.
 

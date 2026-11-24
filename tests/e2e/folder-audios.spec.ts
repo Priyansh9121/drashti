@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, openSection, operatorPage, operatorReady } from './helpers';
 import { makeTestImage, makeTestTone } from './test-media';
 
 /*
@@ -44,6 +44,7 @@ test('a smart playlist’s sounds are also in Audio, as “<folder> - Audios”:
   await expect
     .poll(() => audio(win), { timeout: 120_000 })
     .toEqual(['Placeholder Sabha - Audios: Bhajan.wav, Katha.wav']);
+  await openSection(win, 'audio');
   await expect(win.getByTestId('music-panel')).toContainText('Placeholder Sabha - Audios');
 
   // The same sounds as the playlist's: nothing imported twice.

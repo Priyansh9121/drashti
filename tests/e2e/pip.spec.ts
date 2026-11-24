@@ -11,7 +11,7 @@ import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices
 import {
   importAndGetIds,
   launchApp,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -164,9 +164,10 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await expect.poll(async () => (await drawn(hall)).main).toEqual(['background', 'slide']);
   expect((await drawn(hall)).pip).toBe('none');
 
-  // Picture in Picture…, in More tools under Show a Window… (Session 60, x36): nothing goes up until Show in the box.
-  await openMoreTools(win);
-  await expect(win.getByTestId('show-a-window')).toBeVisible();
+  // Picture in Picture…, in its own section under LIVE (alpha.22; More tools' from Session 60, x36): nothing goes up
+  // until Show in the box.
+  await openSection(win, 'picture-in-picture');
+  await expect(win.getByTestId('section-picture-in-picture').getByTestId('pip-open')).toBeVisible();
   await win.getByTestId('pip-open').click();
   const dialog = win.getByTestId('pip-dialog');
   await expect(dialog).toBeVisible();

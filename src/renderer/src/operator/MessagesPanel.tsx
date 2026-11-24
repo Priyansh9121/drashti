@@ -14,11 +14,12 @@ import { Select, TextInput } from '../ui/Field';
 import { MessageSquare, Pin, PinOff, Plus } from '../ui/icons';
 import { pinIt, unpin, useQuickBar } from '../quick-bar/quick-bar-store';
 import { pinKey, type QuickPin } from '../../../shared/quick-bar';
-import { Panel } from '../ui/Panel';
+import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 import { cutText } from '../../../shared/text';
+import { useOperateOnly } from '../simple/simple-features-store';
 
 /** A field's choice in its select: "" typed in, a timer's id, or "samvat:gu" / "samvat:en". */
 function fieldChoice(f: MessageField): string {
@@ -199,6 +200,8 @@ function TemplateRow({
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
+  // In Simple Mode (alpha.22, a tool chosen for it): Show, Update and Take off; pinning and Edit stay Pro Mode's.
+  const operateOnly = useOperateOnly();
   const names = templateFields(t.template);
   // On the quick bar (Session 55, Part 8): one press shows it, as Show does.
   const pin: QuickPin = { kind: 'message', templateId: t.id, label: t.name };
@@ -221,13 +224,15 @@ function TemplateRow({
       <div className="flex items-center gap-2">
         <Truncate text={t.name} className="flex-1 text-sm font-medium" />
         {shown && <Badge tone="live">On the screens</Badge>}
-        <IconButton
-          icon={pinned ? PinOff : Pin}
-          size="sm"
-          label={pinned ? `Unpin “${t.name}” from the quick bar` : `Pin “${t.name}” to the quick bar`}
-          data-testid="message-pin"
-          onClick={() => void (pinned ? unpin(pinKey(pin)) : pinIt(pin))}
-        />
+        {!operateOnly && (
+          <IconButton
+            icon={pinned ? PinOff : Pin}
+            size="sm"
+            label={pinned ? `Unpin “${t.name}” from the quick bar` : `Pin “${t.name}” to the quick bar`}
+            data-testid="message-pin"
+            onClick={() => void (pinned ? unpin(pinKey(pin)) : pinIt(pin))}
+          />
+        )}
       </div>
       <Truncate text={t.template} className="text-xs text-muted" />
       {/* Where its own look puts it, and how long it stays up (Session 55). */}
@@ -283,9 +288,11 @@ function TemplateRow({
             Take off
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onEdit}>
-          Edit
-        </Button>
+        {!operateOnly && (
+          <Button variant="ghost" size="sm" onClick={onEdit}>
+            Edit
+          </Button>
+        )}
       </div>
     </li>
   );
@@ -295,6 +302,8 @@ function TemplateRow({
 export function MessagesPanel() {
   const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  // Simple Mode's (alpha.22): the messages shown and taken off; making one stays Pro Mode's.
+  const operateOnly = useOperateOnly();
   const messages = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
   const reload = () => {
@@ -316,14 +325,16 @@ export function MessagesPanel() {
       help="messages"
       title="Messages"
       icon={MessageSquare}
-      collapsible
+      {...LIVE_SECTION}
       remember="messages"
       data-testid="messages"
       bodyClassName="space-y-2 px-3 pb-3"
       actions={
-        <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
-          New message
-        </Button>
+        operateOnly ? undefined : (
+          <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
+            New message
+          </Button>
+        )
       }
     >
       {editing === 'new' && <TemplateForm initial={null} timers={timers} onDone={done} />}
@@ -347,7 +358,7 @@ export function MessagesPanel() {
       </ul>
       {templates?.length === 0 && editing !== 'new' && (
         <EmptyState icon={MessageSquare} title="No messages yet" compact>
-          For example: Car {'{plate}'} please move.
+          {operateOnly ? 'Messages are made in Pro Mode.' : <>For example: Car {'{plate}'} please move.</>}
         </EmptyState>
       )}
     </Panel>

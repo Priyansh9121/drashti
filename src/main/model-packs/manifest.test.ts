@@ -129,10 +129,28 @@ describe('a model pack’s list (alpha.22, cap-pack)', () => {
     ['captions\\gu\\model.bin'],
     ['captions/./model.bin'],
     ['.hidden/model.bin'],
+    // Windows' device names, in any case and with any ending, and a name ending in a dot (alpha.23, the review).
+    ['captions/CON'],
+    ['captions/gu/nul.bin'],
+    ['aux/model.bin'],
+    ['captions/Com1/model.bin'],
+    ['captions/lpt9.txt'],
+    ['captions/prn.tar.gz'],
+    ['captions/model.bin.'],
+    ['captions./model.bin'],
   ])('refuses a file name that is not a plain path inside the pack (%s)', (name) => {
     expect(refusal(pack([licence, { ...gu, name }]))).toBe(
       'The pack’s list is not right (files › 2 › name). Nothing was installed: ask for a fresh copy of the pack.',
     );
+  });
+
+  it.each([
+    ['captions/console/model.bin'],
+    ['captions/com10/model.bin'],
+    ['captions/nullable/model.txt'],
+    ['captions/auxiliary/a.b'],
+  ])('takes a name that only begins like a Windows device name (%s)', (name) => {
+    expect(checkManifest(pack([licence, { ...gu, name }])).ok).toBe(true);
   });
 
   it('refuses a file named twice (in any case: Mac and Windows folders do not tell them apart), and its own list', () => {

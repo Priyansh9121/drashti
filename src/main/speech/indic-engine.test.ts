@@ -104,4 +104,57 @@ describe('Route C behind the speech engine seam', () => {
     expect(phrases.flatMap((h) => h.words.map((w) => w.confidence))).toEqual([null, null, null]);
     stop();
   });
+  it('follows the dialog’s live timing, read once at each start: step, pause, longest phrase and speech level (alpha.23, the review); two threads still', async () => {
+    let chunk: ((samples: Int16Array, endAt: number, startAt?: number) => void) | undefined;
+    const states: SpeechState[] = [],
+      phrases: Heard[] = [];
+    const threads: (number | undefined)[] = [];
+    const timing = vi.fn(() => ({
+      stepMs: 1_000 as const,
+      pauseMs: 500 as const,
+      longestMs: 6_000 as const,
+      speech: 'quiet-room' as const,
+      threads: 4 as const,
+    }));
+    const engine = createIndicEngine({
+      workGate: { allowed: () => true, listen: () => () => undefined },
+      program: () => '/native',
+      acquire: () => ({
+        files: { model: '/pack/model.onnx', tokens: '/pack/tokens.txt', frontend: '/pack/frontend.bin' },
+        release: () => undefined,
+      }),
+      sound: {
+        open: (to) => {
+          chunk = to;
+          return () => undefined;
+        },
+      },
+      log: { info: () => undefined, warn: () => undefined },
+      threads: 2,
+      timing,
+      open: (options) => {
+        threads.push(options.threads);
+        return Promise.resolve({
+          decode: () => Promise.resolve({ language: 'gu', words: [{ w: 'આકાર', start: 0, end: 0.08 }] }),
+          close: () => undefined,
+        });
+      },
+    });
+    const stop = engine.start('gu', { heard: (h) => phrases.push(h), state: (s) => states.push(s) });
+    await vi.waitFor(() => expect(states.at(-1)?.phase).toBe('listening'));
+    expect(timing).toHaveBeenCalledOnce();
+    expect(threads).toEqual([2]);
+    const finals = () => phrases.filter((h) => h.final);
+    // Softer speech (a quiet room hears it; standard would not), then a 500 ms pause: one whole phrase.
+    let at = Date.now() - 600;
+    chunk?.(new Int16Array(1600).fill(700), at + 100, at);
+    for (let i = 1; i <= 5; i += 1) chunk?.(new Int16Array(1600), at + (i + 1) * 100, at + i * 100);
+    await vi.waitFor(() => expect(finals()).toHaveLength(1));
+    // Speech without a pause ends a phrase at the longest, 6 s.
+    at = Date.now() - 6_000;
+    for (let i = 0; i < 60; i += 1)
+      chunk?.(new Int16Array(1600).fill(5000), at + (i + 1) * 100, at + i * 100);
+    await vi.waitFor(() => expect(finals()).toHaveLength(2));
+    stop();
+  });
 });

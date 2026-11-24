@@ -13,7 +13,7 @@ import type { Heard, SpeechState } from '../../shared/speech';
 import { CaptionsService, type CaptionsStatus } from './captions-service';
 import { readCaptionsSwitch, readCaptionsTuning } from './captions-switch';
 import type { SpeechEngine } from './hub';
-import { LanguageModelRefused, type LanguageModelEntry } from './language-models';
+import type { LanguageModelEntry } from './language-models';
 
 /** The value, or the test stops here with a plain reason (no non-null assertion). */
 function must<T>(value: T | null | undefined): T {
@@ -37,10 +37,8 @@ function languageStore() {
   };
   let phase: 'ready' | 'missing' | 'changed' = 'missing';
   let onDisk: 'ready' | 'missing' | 'changed' = 'missing';
-  const added: string[] = [];
   return {
     entry,
-    added,
     set: (now: 'ready' | 'missing' | 'changed', whole = now) => {
       phase = now;
       onDisk = whole;
@@ -52,19 +50,6 @@ function languageStore() {
       verify: () => {
         phase = onDisk;
         return Promise.resolve(onDisk);
-      },
-      add: (language: string, source: string) => {
-        added.push(source);
-        if (language === 'gu' && source === '/placeholder/known-gu.bin') {
-          phase = 'ready';
-          onDisk = 'ready';
-          return Promise.resolve(entry);
-        }
-        return Promise.reject(
-          new LanguageModelRefused(
-            'This file is not a model Drashti knows for Gujarati, so it was not added. Use a file from the approved list of captions models.',
-          ),
-        );
       },
     },
   };
@@ -370,38 +355,6 @@ describe('a model per language and live timing (alpha.22)', () => {
     expect(service.view().speech).toEqual({ phase: 'failed', message });
     expect(service.view().languageModels[0]).toMatchObject({ phase: 'missing', message });
     expect(started).toEqual(['auto']);
-  });
-
-  it('adds a model file chosen for a language: one it knows is used; one it does not is refused plainly; never while the stream is in use', async () => {
-    const lm = languageStore();
-    const { service, started } = setup({ languageModels: lm.store });
-    service.start();
-    await service.setOn(true);
-    service.setSettings({ ...DEFAULT_CAPTION_SETTINGS, language: 'gu' });
-    service.setStreamInUse(true);
-    await service.addLanguageModel('gu', '/placeholder/known-gu.bin');
-    expect(lm.added).toEqual([]);
-    expect(service.view().languageModels[0]?.message).toBe(
-      'Add a model file when the stream and recording have stopped.',
-    );
-    service.setStreamInUse(false);
-    await service.addLanguageModel('gu', '/placeholder/other.bin');
-    expect(service.view().languageModels[0]).toMatchObject({
-      chosen: null,
-      phase: 'general',
-      message:
-        'This file is not a model Drashti knows for Gujarati, so it was not added. Use a file from the approved list of captions models.',
-    });
-    expect(started).toEqual(['auto', 'gu']);
-    await service.addLanguageModel('gu', '/placeholder/known-gu.bin');
-    expect(service.view().languageModels[0]).toMatchObject({
-      chosen: 'placeholder-gu',
-      phase: 'ready',
-      message: null,
-    });
-    expect(service.languageModelFor('gu')).toEqual(lm.entry);
-    // Listening started again, now with Gujarati's own model.
-    expect(started).toEqual(['auto', 'gu', 'gu']);
   });
 
   it('keeps the live timing on this computer and starts listening again with it', async () => {

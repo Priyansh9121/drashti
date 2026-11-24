@@ -11,6 +11,7 @@ import {
   importAndGetIds,
   launchApp,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
 } from './helpers';
@@ -236,6 +237,7 @@ test('a playlist’s row and an audio playlist’s track: pixels shaped 16:9, an
   await expect(dialog).toHaveCount(0);
 
   // An audio playlist's track.
+  await openSection(win, 'audio');
   await win.getByTestId('music-playlist').filter({ hasText: 'Placeholder music' }).click();
   dialog = await openFrom(win, win.getByTestId('music-track').filter({ hasText: 'Placeholder cover' }));
   await expect(line(dialog, 'The file', 'What it is')).toHaveText('Sound');

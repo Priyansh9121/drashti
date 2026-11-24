@@ -5,11 +5,12 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import {
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
-  type PageGlobals,
   setUpScreen,
+  type PageGlobals,
 } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -74,6 +75,7 @@ test('the stage message: its size and flash, on every stage screen whatever the 
   await makeStage(win, 'Stage one');
   const hall = await outputFor(app, hallId);
   const stage = await outputFor(app, stageId);
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
 
   // Typed, a size of its own and a flash, then Show.
@@ -192,6 +194,7 @@ test('the Stage screen panel’s message, its last few and the timer for the aud
     for (const text of ['Placeholder: two minutes left, then the arti', words])
       await d.engine.dispatch({ type: 'setStageMessage', text, size: 'large', flash: true });
   }, WORDS);
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
     await sizeOperatorWindow(app, win, size);
