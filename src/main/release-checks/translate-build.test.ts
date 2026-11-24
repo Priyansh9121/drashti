@@ -132,6 +132,24 @@ describe('the translation engine’s pinned sources and packaging (alpha.22)', (
       expect(lines, words).toContain(words);
   });
 
+  it('keeps Drashti’s two lists of compiled-in notices whole, avx512_mathfun’s BSD-2 terms in (a22-review-mt2)', () => {
+    // Pinned whole, as the verbatim files are: a line dropped anywhere fails, not only a line looked for.
+    expect(sha256(join(root, 'LICENSES', 'translation', 'ctranslate2-third-party-headers.txt'))).toBe(
+      '9c01c2ec7cd869075b70511274bdd1a8f93fbef494d612016fa52b02aaaf57ba',
+    );
+    expect(sha256(join(root, 'LICENSES', 'translation', 'ctranslate2-submodules-copyrights.txt'))).toBe(
+      '91611f191faa992e5452ede34e3e794328b556fbe4a522619730bf62f53962c6',
+    );
+    // The header names BSD-2 only; its terms are carried, for the author it names.
+    const headers = read('LICENSES/translation/ctranslate2-third-party-headers.txt');
+    const avx512 = headers.split('=== third_party/avx512_mathfun.h')[1]?.split('\n=== ')[0] ?? '';
+    expect(avx512).toContain(' * Licence : BSD-2');
+    expect(avx512).toContain('Based on "sse_mathfun.h", by Julien Pommier');
+    expect(avx512).toContain('for SIMD_Utils 0.2.5 by\nJishinMaster');
+    expect(avx512).toContain('Redistribution and use in source and binary forms, with or without');
+    expect(avx512).toContain('OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.');
+  });
+
   it('ships the whole LICENSES folder in every installer, the translation notices with it', () => {
     // The packaged list: electron-builder copies LICENSES/ to the app's resources as it is, with no filter.
     expect(read('electron-builder.yml')).toMatch(
