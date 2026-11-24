@@ -219,23 +219,32 @@ interface Reviewed {
   phraseId: string;
   status: string;
   text: string;
+  /** Where the recogniser put the phrase's end, on the main process's own clock (performance.now there). */
+  endAt: number;
 }
 
 /** Caption AI's phrases as the operator's review panel hears them (the panel shows each, for a correction). */
 async function recordReview(win: Page): Promise<() => Promise<Reviewed[]>> {
   await win.evaluate(() => {
-    const seen: { at: number; phraseId: string; status: string; text: string }[] = [];
+    const seen: { at: number; phraseId: string; status: string; text: string; endAt: number }[] = [];
     (globalThis as unknown as { reviewed: typeof seen }).reviewed = seen;
     (globalThis as PageGlobals).drashti.captions.onPrototypeChanged((review) => {
       const c = review.current;
-      if (c) seen.push({ at: Date.now(), phraseId: c.phraseId, status: c.status, text: c.sourceText });
+      if (c)
+        seen.push({
+          at: Date.now(),
+          phraseId: c.phraseId,
+          status: c.status,
+          text: c.sourceText,
+          endAt: c.endAt,
+        });
     });
   });
   return () =>
     win.evaluate(() => [
       ...(
         globalThis as unknown as {
-          reviewed: { at: number; phraseId: string; status: string; text: string }[];
+          reviewed: { at: number; phraseId: string; status: string; text: string; endAt: number }[];
         }
       ).reviewed,
     ]);
@@ -405,10 +414,12 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       review.filter((r) => r.at < soundAskedAt + first.speechStartMs).length,
       'nothing heard before the file’s first sound',
     ).toBe(0);
-    const settled = new Map<string, { at: number; text: string }>();
+    // The main process's clock against this computer's (its performance.now() is what the coordinator keeps).
+    const mainOffset = await app.evaluate(() => Date.now() - performance.now());
+    const settled = new Map<string, { at: number; text: string; endAt: number }>();
     for (const r of review)
       if (r.status === 'settled' && !settled.has(r.phraseId))
-        settled.set(r.phraseId, { at: r.at, text: r.text });
+        settled.set(r.phraseId, { at: r.at, text: r.text, endAt: r.endAt + mainOffset });
     const phrases = [...settled.values()];
     // Every sound's numbers first (S3: kept even when one fails), then its checks.
     const report: Record<string, unknown>[] = [];
@@ -456,6 +467,11 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
         : null;
       row['loudForMs'] = heardLevels ? Math.round(heardLevels.last - heardLevels.first) : null;
       row['voiceMs'] = Math.round(sound.speechEndMs - sound.speechStartMs);
+      // The recogniser's own view: how late it put the speech's end against the file (a late sound input shows here
+      // too), and how long after that end the phrase settled (its pause, its decoding and the way to the screens).
+      const lastOwn = own.at(-1);
+      row['endLateMs'] = lastOwn ? Math.round(lastOwn.endAt - (soundAskedAt + sound.speechEndMs)) : null;
+      row['settledAfterEndMs'] = lastOwn ? Math.round(lastOwn.at - lastOwn.endAt) : null;
       // What was heard, only when it was wrong: generated placeholder sentences (cap-winci's), never real speech.
       if (!heard.ok) row['heard'] = own.map((p) => p.text).join(' ');
       report.push(row);
