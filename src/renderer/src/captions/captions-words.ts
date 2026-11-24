@@ -9,6 +9,11 @@ import type {
 
 export const megabytes = (bytes: number): string => `${String(Math.round(bytes / 1_000_000))} MB`;
 
+/** Whether the dialog's On switch is greyed out: with no engine that can run on this computer. */
+export function captionsSwitchDisabled(view: CaptionsStatus): boolean {
+  return !view.engine;
+}
+
 /** What the listening is doing now, and what to do about it. */
 export function captionsStateText(view: CaptionsStatus): string {
   if (!view.engine) return view.engineProblem ?? 'This copy of Drashti has no captions engine.';
