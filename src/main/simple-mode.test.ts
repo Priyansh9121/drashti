@@ -735,6 +735,18 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.library.stopReadingWords)?.()).toBe(false);
   });
 
+  it('Print words… and Save words as PDF… (a singers’ sheet, alpha.22) are Pro Mode’s: nothing printed, refused in words in their own shape', () => {
+    for (const channel of [IPC.library.printWords, IPC.library.saveWordsPdf]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+      expect(answers.get(channel)?.(), channel).toEqual({
+        ok: false,
+        cancelled: false,
+        message: SIMPLE_MODE_REFUSAL,
+      });
+    }
+  });
+
   it('New › QR code… (Session 55, Part 8) is Pro Mode’s: Simple Mode makes no slide', () => {
     expect(SIMPLE_MODE_LOCKED).toContain(IPC.library.newQrSlide);
     expect(SIMPLE_MODE_BOUNDED.has(IPC.library.newQrSlide)).toBe(false);
