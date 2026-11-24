@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import {
   CAPTION_MODELS,
   isLanguageModelLanguage,
@@ -91,6 +92,8 @@ export interface CaptionsServiceDeps {
   log: { info(message: string): void; warn(message: string): void };
   /** The language models on this computer (alpha.22; main/speech/language-models.ts). None known when left out. */
   languageModels?: LanguageModelStore;
+  /** This computer's logical processors (os.availableParallelism; a test may say), for the dialog (cap-threads). */
+  processors?: () => number;
 }
 
 const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
@@ -350,6 +353,7 @@ export class CaptionsService {
       trial: true,
       languageModels: LANGUAGE_MODEL_LANGUAGES.map((language) => this.languageModelView(language)),
       timing: this.tuning.timing,
+      processors: (this.deps.processors ?? availableParallelism)(),
     };
   }
 

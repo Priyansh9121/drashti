@@ -560,8 +560,7 @@ describe('threads on this computer (cap-threads: today’s captions on a two-cor
       engine.start('en', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
       server.close,
     );
-    const rests = (): number[] =>
-      states.flatMap((s) => (s.phase === 'held' && s.slow ? [s.slow.rests] : []));
+    const rests = (): number[] => states.flatMap((s) => (s.phase === 'held' && s.slow ? [s.slow.rests] : []));
     const listened = (n: number) => () => states.filter((s) => s.phase === 'listening').length >= n;
     await waitFor(listened(1));
     // Too slow twice, with nothing heard whole between: the second rest says so. (Each sound played whole, so one

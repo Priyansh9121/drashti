@@ -165,7 +165,10 @@ test('captions resting because the computer cannot keep up say so in the status 
     await expect(line).toHaveText('Captions are resting: this computer cannot keep up.Live Captions…', {
       timeout: 15_000,
     });
-    await expectFits(win.getByRole('contentinfo', { name: 'Status' }), 'the status bar with captions resting');
+    await expectFits(
+      win.getByRole('contentinfo', { name: 'Status' }),
+      'the status bar with captions resting',
+    );
     await expectNoSeriousA11yIssues(win, 'Captions resting, in the status bar');
 
     // Its button opens the dialog, which says what was measured.
@@ -180,7 +183,9 @@ test('captions resting because the computer cannot keep up say so in the status 
     await expect(dialog.getByTestId('captions-state')).toHaveText('Off on this computer.');
     await expect(line).toHaveCount(0);
     await dialog.getByTestId('captions-on').click();
-    await expect(line).toContainText('Captions are resting: this computer cannot keep up.', { timeout: 15_000 });
+    await expect(line).toContainText('Captions are resting: this computer cannot keep up.', {
+      timeout: 15_000,
+    });
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 
     // Simple Mode: the same line, without the button.

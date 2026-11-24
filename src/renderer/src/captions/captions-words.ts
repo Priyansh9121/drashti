@@ -4,6 +4,7 @@ import type {
   LanguageModelLanguage,
   LanguageModelView,
 } from '../../../shared/captions';
+import type { SlowHold } from '../../../shared/speech';
 
 /* The Live captions dialog's words (Session 55, Part 10). */
 
@@ -30,6 +31,7 @@ export function captionsStateText(view: CaptionsStatus): string {
     case 'listening':
       return 'Listening to the stream’s sound input.';
     case 'held':
+      if (s.reason === 'busy' && s.slow) return slowText(s.slow);
       if (s.reason === 'busy')
         return 'Resting: this computer is busy, and the show comes first. Captions try again by themselves in a minute.';
       if (s.reason === 'no-sound-input')
@@ -40,17 +42,48 @@ export function captionsStateText(view: CaptionsStatus): string {
   }
 }
 
+/** Tenths of a second, as words say them: 9100 ms is 9.1. */
+const seconds = (ms: number): string => (Math.round(ms / 100) / 10).toFixed(1);
+
+/** What the engine measured when it rested (cap-threads): the answer's time, or how far behind it fell. */
+function measured(slow: SlowHold): string {
+  const threads = slow.threads === 1 ? '1 engine thread' : `${String(slow.threads)} engine threads`;
+  return slow.behindMs > 8_000
+    ? `it fell ${seconds(slow.behindMs)} seconds behind the speaker, with ${threads}`
+    : `an answer took ${seconds(slow.answerMs)} seconds, with ${threads}`;
+}
+
+/** Resting because this computer cannot keep up (cap-threads): what was measured, and whether it keeps happening. */
+function slowText(slow: SlowHold): string {
+  if (slow.rests > 1)
+    return `Resting again (${String(slow.rests)} times in a row): this computer is too slow for live captions with this model (${measured(slow)}). Captions try again by themselves every minute; the show comes first.`;
+  return `Resting: this computer heard too slowly for live captions (${measured(slow)}), so captions rest for a minute and then try again by themselves. The show comes first.`;
+}
+
 /**
  * The status bar's line while captions are on but show nothing for a reason the operator should know (cap-threads):
- * resting because the computer cannot keep up, no sound input, or stopped. Null otherwise.
+ * resting because the computer cannot keep up, no sound input, no model yet, or stopped. Null otherwise.
  */
-export function captionsStatusLine(_view: CaptionsStatus | null): string | null {
-  return null;
+export function captionsStatusLine(view: CaptionsStatus | null): string | null {
+  if (!view?.on) return null;
+  const s = view.speech;
+  if (s.phase === 'failed') return `Captions stopped: ${s.message}`;
+  if (s.phase !== 'held') return null;
+  if (s.reason === 'no-sound-input') return 'Captions: no sound input is chosen for the stream.';
+  if (s.reason === 'no-model') return 'Captions are waiting for their model.';
+  if (!s.slow) return 'Captions are resting: this computer is busy.';
+  return s.slow.rests > 1
+    ? `Captions are resting: this computer cannot keep up (${String(s.slow.rests)} times in a row).`
+    : 'Captions are resting: this computer cannot keep up.';
 }
 
 /** Under Engine threads (cap-threads): when this computer has fewer logical processors than chosen, or null. */
-export function threadsNote(_view: CaptionsStatus): string | null {
-  return null;
+export function threadsNote(view: CaptionsStatus): string | null {
+  const p = view.processors;
+  if (p >= view.timing.threads) return null;
+  return p === 1
+    ? 'This computer has 1 logical processor, so captions use 1 engine thread.'
+    : `This computer has ${String(p)} logical processors, so captions use ${String(p)} engine threads.`;
 }
 
 /** How the model stands on this computer. */

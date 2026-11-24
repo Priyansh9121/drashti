@@ -32,6 +32,7 @@ import { UpdateStatus } from '../updates/UpdatesDialog';
 import { LinkStatus } from '../links/LinkDialog';
 import { showSave, stopSave, useSaves } from '../markers/save-store';
 import { MutedStatus } from '../sound/SoundLevels';
+import { CaptionsWarning } from '../captions/CaptionsWarning';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
@@ -289,6 +290,8 @@ export function StatusBar({
 }) {
   // What is this? (Sessions 31–36): its ? before the bar's passing news, its words just above it (Pro Mode only).
   const help = useWhatIsThis('statusbar');
+  // Live Captions… opens from the captions' line in Pro Mode only (the dialog is Pro Mode's).
+  const pro = useMode((s) => s.mode === 'pro');
   return (
     <>
       {help.card && <div className="shrink-0 border-t border-line pt-2">{help.card}</div>}
@@ -307,6 +310,8 @@ export function StatusBar({
         <SoundStatus onOpen={onOpenScreens} />
         {/* Audio or Video muted (X33): in red while it is, in both modes. */}
         <MutedStatus />
+        {/* Captions on but showing nothing, and why (cap-threads): in both modes. */}
+        <CaptionsWarning canOpen={pro} />
         <TodayStatus onOpen={onOpenCalendar} />
         {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button. */}
         {help.button}
