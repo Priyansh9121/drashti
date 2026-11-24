@@ -385,6 +385,8 @@ export const SOUND_LIMITS: CorrectionLimits = { jumpOver: 0.5, maxRateChange: 0.
  * jump is silent until it lands: 30 ms on a Mac, up to 1.9 s on CI's two-core Windows). render/playback.ts's `ease`.
  */
 export const FADE_SOUND_LIMITS: CorrectionLimits = { jumpOver: 0.5, maxRateChange: 0.08 };
+/** The stream's own sounds (program/sound.ts), outside a crossfade: no faster yet than a sound's (red, lead 2's (b)). */
+export const STREAM_SOUND_LIMITS: CorrectionLimits = SOUND_LIMITS;
 /**
  * A crossfade's two pictures, on every page (lead 2's QF-1, a22-fade-picture): out of step, by the sound's own numbers
  * (QA23-FADE-2), so the stream's picture and its sound come back alike. A jump freezes a picture until it lands: on CI's

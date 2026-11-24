@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { EngineState } from '../../../shared/engine/state';
-import { FADE_SOUND_LIMITS, SOUND_LIMITS } from '../../../shared/media';
+import { FADE_SOUND_LIMITS, SOUND_LIMITS, STREAM_SOUND_LIMITS } from '../../../shared/media';
 import type { VideoCrossfade } from '../../../shared/video-cue';
 import type { Sound } from '../audio/sounds';
 
@@ -132,7 +132,9 @@ it('the stream’s own sounds ease by speed exactly while they carry their cross
   const ease = (key: string) => {
     const started = h.started.filter((s) => s.key === key);
     expect(started, `${key}: one player`).toHaveLength(1);
-    expect(started[0]?.options.limits, `${key} plays with a sound's limits`).toBe(SOUND_LIMITS);
+    expect(started[0]?.options.limits, `${key} plays with the stream's own sound's limits`).toBe(
+      STREAM_SOUND_LIMITS,
+    );
     return started[0]?.options.ease?.() ?? null;
   };
   // Before: the background plays, the next video's cue waits prepared (held at its first frame), music under them.
@@ -409,4 +411,13 @@ it('a crossfaded sound held paused lets go of its lead, so Play resumes it in pl
   h.sounds = [{ ...playing, seek: resume }];
   sound.setOwnSound(true, show);
   expect(player.options.timing?.().seek, 'Play resumes it in place, on the engine’s clock').toEqual(resume);
+});
+
+it('the stream’s own sounds close what their re-aims leave by up to 8%, outside fades too, with no new jump (lead 2’s (b))', () => {
+  // CI's two-core Windows (a22-fade-1124-145657-55108): a stream sound's start re-aims landed 0.1-0.2 s off on that
+  // page's late timers, and after its two re-aims the rest eased by 2% a second, so a crossfade asked 3-5 s after the
+  // video's start began with its outgoing sound 0.1-0.17 s off. 8% (the owner's crossfade bound, pitch kept) closes
+  // 0.2 s in about 3 s; the hall's sound keeps SOUND_LIMITS. A jump stays only past half a second, as every sound's.
+  expect(STREAM_SOUND_LIMITS).toEqual({ jumpOver: SOUND_LIMITS.jumpOver, maxRateChange: 0.08 });
+  expect(FADE_SOUND_LIMITS.maxRateChange).toBe(STREAM_SOUND_LIMITS.maxRateChange);
 });
