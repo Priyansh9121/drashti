@@ -120,7 +120,8 @@ function hold(v: HTMLMediaElement, silent: SilentGraph, holder: Holder): (() => 
   return () => {
     if (released) return;
     released = true;
-    held.holders.splice(held.holders.indexOf(holder), 1);
+    const at = held.holders.indexOf(holder);
+    if (at >= 0) held.holders.splice(at, 1);
     if (held.holders.length > 0) {
       show();
       return;
@@ -147,13 +148,13 @@ function addUser(silent: SilentGraph, awake: boolean): void {
 
 function setAwake(silent: SilentGraph, on: boolean): void {
   const { context } = silent;
-  waking.set(context, Math.max(0, (waking.get(context) ?? 0) + (on ? 1 : -1)));
+  waking.set(context, (waking.get(context) ?? 0) + (on ? 1 : -1));
   keepAwake(silent);
 }
 
 function dropUser(silent: SilentGraph, awake: boolean): void {
   const { context } = silent;
-  if (awake) waking.set(context, Math.max(0, (waking.get(context) ?? 1) - 1));
+  if (awake) waking.set(context, (waking.get(context) ?? 0) - 1);
   const left = (users.get(context) ?? 1) - 1;
   users.set(context, left);
   // Nothing uses it now: no device time spent on silence, and its constant off the output, until the next use.
@@ -252,19 +253,6 @@ export function fadeClock(
   };
 }
 
-/**
- * The stream's picture page's pictures on its silent graph while it captures for the encoder (live or recording;
- * a22-x86sync, QA23-X86SYNC-1, lead 2's design A). Each picture the page plays is given here as it starts
- * (render/playback.ts setPictureClock, set by program/main.tsx alone) and let go after it stops. While capturing, its
- * sound is pulled by the graph, so its clock is the output device's own, as the stream's sound page's players are: taken
- * mid-play (its time may step by tens of ms, never a jump), only once the graph runs. Nothing is heard and nothing goes
- * into the stream: the graph's gain of nothing, then the page's own output.
- *
- * Capturing stops: the output is no longer kept awake for it (QA22-CUE-2: an idle stream page holds no output open; the
- * output hears exact zeros, and Chromium gives it to its stand-in 30 s later), but a picture already taken stays pulled,
- * since its sound can never be given back to its own clock and left unpulled its picture would stop. A picture still
- * waiting for the graph is not taken. Capturing again keeps the output awake again and takes the rest.
- */
 /** A picture the stream's picture page plays, as StreamPictureClock holds it. */
 interface PictureHold {
   readonly v: HTMLMediaElement;
@@ -278,9 +266,31 @@ interface PictureHold {
   started: (() => void) | null;
 }
 
+/**
+ * The stream's picture page's pictures on its silent graph while it captures for the encoder (live or recording;
+ * a22-x86sync, QA23-X86SYNC-1, lead 2's design A). Each picture the page plays is given here as it starts
+ * (render/playback.ts setPictureClock, set by program/main.tsx alone) and let go after it stops. While capturing, its
+ * sound is pulled by the graph, so its clock is the output device's own, as the stream's sound page's players are: taken
+ * only once the graph runs, mid-play if it must (its time may step by tens of ms, never a jump). Nothing is heard and
+ * nothing goes into the stream: the graph's gain of nothing, then the page's own output.
+ *
+ * While capturing the graph is kept up from its first picture on, even between pictures (a22-review-x86sync S1): a
+ * slide with a video, one without, then one with again on air neither stops nor starts its device, and the next picture
+ * is taken as its playback starts, before it plays.
+ *
+ * Capturing stops: the output is no longer kept awake for it (QA22-CUE-2: an idle stream page holds no output open; the
+ * output hears exact zeros, and Chromium gives it to its stand-in 30 s later), but a picture already taken stays pulled:
+ * its sound can never be given back to its own clock, and unpulled it runs on the graph's idle pace (0.18 of real time
+ * locally, throttled). So a picture whose sound it once took is taken again whenever it plays again, capturing or not
+ * (a22-review-x86sync M1: DeckStep's StepVideo replays one element on Previous then Next, SlideView's video on a retry),
+ * its output not kept awake. A picture never taken is not taken while not capturing, and one still waiting for the graph
+ * then is let be. Capturing again keeps the output awake again and takes the rest.
+ */
 export class StreamPictureClock {
   private capturing = false;
   private readonly held = new Set<PictureHold>();
+  /** The graph it keeps up while capturing, from its first picture (counted as one awake user of it), or null. */
+  private kept: SilentGraph | null = null;
 
   constructor(private readonly graph: () => SilentGraph | null = pageSilentGraph) {}
 
@@ -297,13 +307,19 @@ export class StreamPictureClock {
       if (on) this.engage(h);
       else this.rest(h);
     }
+    if (!on && this.kept) {
+      const kept = this.kept;
+      this.kept = null;
+      dropUser(kept, true);
+    }
   }
 
   /** A picture that plays on this page: on the graph while capturing, until the returned let-go (after it stops). */
   take(v: HTMLMediaElement): () => void {
     const h: PictureHold = { v, silent: null, awake: false, release: null, started: null };
     this.held.add(h);
-    if (this.capturing) this.engage(h);
+    // Its sound once taken (M1): pulled again whether or not the page captures now.
+    if (this.capturing || sources.has(v)) this.engage(h);
     return () => {
       if (!this.held.delete(h)) return;
       this.unwait(h);
@@ -313,26 +329,34 @@ export class StreamPictureClock {
     };
   }
 
-  /** Capturing: its graph woken (or kept awake), and the picture taken into it once it runs. */
+  /** Its graph woken (and its output kept awake while capturing), and the picture taken into it once it runs. */
   private engage(h: PictureHold): void {
-    if (h.release) {
-      if (h.silent && !h.awake) {
-        h.awake = true;
-        setAwake(h.silent, true);
-      }
-      return;
-    }
+    const awake = this.capturing;
     const silent = h.silent ?? this.graph();
     if (!silent) return;
-    if (!h.silent) {
-      h.silent = silent;
-      h.awake = true;
+    if (awake && !this.kept) {
+      this.kept = silent;
       addUser(silent, true);
     }
+    if (!h.silent) {
+      h.silent = silent;
+      h.awake = awake;
+      addUser(silent, awake);
+    } else if (h.awake !== awake) {
+      h.awake = awake;
+      setAwake(silent, awake);
+    }
+    if (h.release) return;
     const { context } = silent;
     wake(context);
     const route = () => {
-      if (h.release || !this.held.has(h) || !this.capturing || context.state !== 'running') return;
+      if (
+        h.release ||
+        !this.held.has(h) ||
+        !(this.capturing || sources.has(h.v)) ||
+        context.state !== 'running'
+      )
+        return;
       h.release = hold(h.v, silent, 'stream');
       // Its sound cannot be taken: on its own clock, as before, and no use of the graph.
       if (!h.release) this.leave(h);
@@ -351,9 +375,12 @@ export class StreamPictureClock {
     context.addEventListener('statechange', started);
   }
 
-  /** Capturing stopped: a picture on the graph stays there, its output no longer kept awake; one waiting is not taken. */
+  /**
+   * Capturing stopped: a picture on the graph, or one whose sound it took before and waits for it, stays (its output no
+   * longer kept awake); one never taken that still waits is let be, on its own clock.
+   */
   private rest(h: PictureHold): void {
-    if (h.release) {
+    if (h.release || sources.has(h.v)) {
       if (h.silent && h.awake) {
         h.awake = false;
         setAwake(h.silent, false);
