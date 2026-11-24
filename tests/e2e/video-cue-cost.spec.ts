@@ -630,10 +630,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           });
         }
         if (round === 0 && mode === 'crossfade') {
+          // Only 'media' (lead 2, 24 Nov): what the sound renderer's no-picture-decoding check reads (vpx_codec_decode).
+          // The wider trace ('cc', 'blink', 'devtools.timeline') starved the stream sound page's 50 ms sampler on CI's
+          // two-core Windows: 6 samples in this fade (a22-fade-1124-145657-55108) against the 20 its checks need.
           await app.evaluate(async ({ contentTracing }) => {
-            await contentTracing.startRecording({
-              included_categories: ['cc', 'blink', 'devtools.timeline', 'media'],
-            });
+            await contentTracing.startRecording({ included_categories: ['media'] });
           });
           tracing = true;
         }
