@@ -2,6 +2,7 @@ import { type CorrectionLimits, FADE_PICTURE_LIMITS } from '../../../shared/medi
 import { videoFadeProgress, type VideoCrossfade } from '../../../shared/video-cue';
 import { slotKey, type SlotLayer } from './background-slots';
 import { engineNow } from './clock';
+import { fadeClock } from './cue-clock';
 
 /*
  * A crossfade's two pictures, on every page (lead 2's QF-1, the next release; a22-fade-picture). Out of step, they are
@@ -13,6 +14,10 @@ import { engineNow } from './clock';
  * so the hall's, LIVE's and the stream page's pictures stood still for 0.6 to 4.4 s of each 2 s fade. By speed it moves
  * on throughout, a little behind at most, and no seek's decoding from a keyframe is spent on three pages at once.
  * render/playback.ts's `ease` does it; render/BackgroundMedia.tsx asks for it.
+ *
+ * And its clock (the owner's QA23-FADE-6, "Try B in parallel (Rec.)"): from its crossfade's state on, a picture's sound
+ * is pulled by the page's silent graph, as a cued one's is (crossfadeClock, render/cue-clock.ts fadeClock), so the
+ * outgoing one keeps real time and does not fall behind at all; speed, then, only for what is left.
  */
 
 /**
@@ -54,16 +59,30 @@ export function pictureEase(
   };
 }
 
-/** A picture's clock in its crossfade (the owner's QA23-FADE-6). Red: never taken. */
+/**
+ * A picture's clock in its crossfade (the owner's QA23-FADE-6, B): `pair()` as the crossfade it is one of changes; once
+ * a real one is on (crossfadeOn: never a manual Go's cut, never outside a crossfade), its sound is taken into the page's
+ * silent graph (render/cue-clock.ts fadeClock) and stays there until `letGo()`, as the picture is let go (with its
+ * crossfade, for the outgoing one). A graph not running then is tried again at the next change of its crossfade.
+ */
 export interface CrossfadeClock {
   pair(fade: VideoCrossfade | null): void;
   letGo(): void;
 }
 
 export function crossfadeClock(
-  _v: HTMLMediaElement,
-  _now: () => number = engineNow,
-  _take: (v: HTMLMediaElement) => (() => void) | null = () => null,
+  v: HTMLMediaElement,
+  now: () => number = engineNow,
+  take: (v: HTMLMediaElement) => (() => void) | null = fadeClock,
 ): CrossfadeClock {
-  return { pair: () => undefined, letGo: () => undefined };
+  let stop: (() => void) | null = null;
+  return {
+    pair: (fade) => {
+      if (stop === null && crossfadeOn(fade, now())) stop = take(v);
+    },
+    letGo: () => {
+      stop?.();
+      stop = null;
+    },
+  };
 }

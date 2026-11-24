@@ -503,6 +503,19 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         );
         document.addEventListener('seeked', land, true);
         document.addEventListener('emptied', land, true);
+        // QA23-FADE-6 (B), evidence: each picture's clock as it changes (data-cue-clock: 'graph' a cue's, 'fade' its
+        // crossfade's, none its own muted one).
+        const clocks: { key: string; clock: string | null; t: number }[] = [];
+        (globalThis as { s5PictureClocks?: typeof clocks }).s5PictureClocks = clocks;
+        new MutationObserver((records) => {
+          for (const r of records)
+            if (r.target instanceof HTMLVideoElement && clocks.length < 5000)
+              clocks.push({
+                key: r.target.dataset['bgSlot'] ?? '',
+                clock: r.target.dataset['cueClock'] ?? null,
+                t: Date.now(),
+              });
+        }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-cue-clock'] });
       });
     await Promise.all([hall, win, stream].map(pictureJumpWatch));
     const fadeClocks: { askedAt: number; fade: VideoCrossfade; to: PlaybackClock & { mediaId: string } }[] =
@@ -905,6 +918,15 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       blackFrameIndices,
       blendedFrames: blended,
       pictureJumpsSeen: pictureJumps.map((jumps) => jumps?.length ?? null),
+      pictureClocks: await Promise.all(
+        [hall, win, stream].map((page) =>
+          page.evaluate(
+            () =>
+              (globalThis as { s5PictureClocks?: { key: string; clock: string | null; t: number }[] })
+                .s5PictureClocks ?? null,
+          ),
+        ),
+      ),
       pictureFreezes,
       toneOverlapMs: longest * 100,
       toneMaxima: { a: maxA, b: maxB },
