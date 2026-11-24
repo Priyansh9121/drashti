@@ -8,7 +8,8 @@ import { ENGINE_STATE_VERSION, LAYER_NAMES } from '../../shared/engine/state';
 import type { SlideCue } from '../../shared/library';
 import type { LowerThird } from '../../shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
-import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
+import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../../shared/mode';
+import { REMOTE_COMMANDS } from '../../shared/network-api';
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { MemoryPlaylistSource } from './playlist-source';
 import { ShowEngine } from './show-engine';
@@ -1763,6 +1764,39 @@ describe('ShowEngine', () => {
       engine.dispatch({ type: 'clearStageMessage' });
       expect(engine.current.stageMessage).toBeNull();
       expect(parseEngineCommand({ type: 'setStageMessage', text: '   ' }).ok).toBe(false);
+    });
+
+    // A phone's, OSC's or a phone's "Shown before" tap's message (alpha.22, the stage message review's open point):
+    // in the colours chosen on this computer, which the operator window sends as they change and as it starts.
+    it('gives a stage message sent without colours the ones chosen on this computer, kept apart from the state; colours sent with it win', () => {
+      const { engine, transport } = setup();
+      const was = engine.current;
+      expect(engine.dispatch({ type: 'setStageColours', boxColor: '#1D4ED8', textColor: '#ffffff' })).toEqual({
+        ok: true,
+        changed: false,
+        rev: 0,
+      });
+      // Not in the state: no change for the screens, the nodes or the recovery file.
+      expect(engine.current).toBe(was);
+      expect(transport.messages).toHaveLength(0);
+      engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes left' });
+      expect(engine.current.stageCall?.boxColor).toBe('#1d4ed8');
+      expect(engine.current.stageCall?.textColor).toBe('#ffffff');
+      // Colours sent with the message (the API's, the window's own) win, both together: none of this computer's.
+      engine.dispatch({ type: 'setStageMessage', text: 'Placeholder', boxColor: '#000000', textColor: '#FFFFFF' });
+      expect(engine.current.stageCall).toMatchObject({ boxColor: '#000000', textColor: '#ffffff' });
+      engine.dispatch({ type: 'setStageMessage', text: 'Placeholder', boxColor: '#b91c1c' });
+      expect(engine.current.stageCall?.boxColor).toBe('#b91c1c');
+      expect(engine.current.stageCall).not.toHaveProperty('textColor');
+      // Amber and black chosen again: the window sends none, and a message without colours has none, as before.
+      engine.dispatch({ type: 'setStageColours' });
+      engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: five minutes' });
+      expect(engine.current.stageCall).toEqual({ size: 'standard', flash: false, shownAt: expect.any(Number) });
+      // Only #rrggbb, as a message's own.
+      expect(parseEngineCommand({ type: 'setStageColours', boxColor: 'amber' }).ok).toBe(false);
+      // The operator window's alone: never a phone's or the API's command, and Simple Mode's window sends it too.
+      expect(REMOTE_COMMANDS as readonly string[]).not.toContain('setStageColours');
+      expect(simpleModeRefuses({ type: 'setStageColours', boxColor: '#1d4ed8' }, engine.current)).toBe(false);
     });
   });
 
