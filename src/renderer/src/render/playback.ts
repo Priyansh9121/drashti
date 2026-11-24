@@ -434,7 +434,12 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       if (ease !== null && !v.preservesPitch) v.preservesPitch = true;
       // A late start catching up (Session 57) plays that much faster on top, never more than its fastest.
       const up = catchingUp(c);
-      const rate = up ? Math.min(up.maxRate, correction.rate + up.extra) : correction.rate;
+      // A prepared cue (S5) starts at its own speed at Go, however late this check: a first rate of 1.02-1.03 started
+      // its clock about 24 ms after it on CI (Chromium's time-stretch fills first), against 2 ms at 1 (a22-cue, 57
+      // starts). Brought into step, as every picture is, from its next check.
+      const preparedStart = options.prepareScheduledStart === true && v.playbackRate === 0;
+      const paced = up ? Math.min(up.maxRate, correction.rate + up.extra) : correction.rate;
+      const rate = preparedStart ? 1 : paced;
       if (v.playbackRate !== rate) v.playbackRate = rate;
     }
     // Paused where the clock says it plays: it plays on, once any jump is made (Session 51). Held at its own end
