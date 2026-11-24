@@ -88,12 +88,13 @@ test('under LIVE: no More tools, each tool its own folding section after Timers,
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(s.shows(live)).toHaveCount(0);
   }
-  // From the keyboard: each heading a button, Enter and Space fold it, and Tab goes down them in order.
+  // From the keyboard: each heading a button that Enter opens and folds again (Space stays Next in this window, as
+  // the keymap has it), and Tab goes down them in order.
   const first = toggleOf(live, SECTIONS[0].id);
   await first.focus();
   await win.keyboard.press('Enter');
   await expect(first).toHaveAttribute('aria-expanded', 'true');
-  await win.keyboard.press('Space');
+  await win.keyboard.press('Enter');
   await expect(first).toHaveAttribute('aria-expanded', 'false');
   const reached: string[] = [];
   for (let i = 0; i < 60 && reached.length < SECTIONS.length - 1; i++) {
