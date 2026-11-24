@@ -216,6 +216,7 @@ import {
   whereWords,
 } from './media/cannot-play';
 import { stillUp } from '../shared/not-on-screens';
+import { LiveLinesFollow } from './media/not-on-screens-follow';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -708,6 +709,10 @@ const nodeCannotPlay = new NodeCannotPlay();
  */
 const hallWords = new HallWords();
 let hallWordsChanged: (() => void) | null = null;
+/** What Main does with LIVE's lines as things happen around them (media/not-on-screens-follow.ts). */
+const liveLines = new LiveLinesFollow(hallWords, () => {
+  hallWordsChanged?.();
+});
 const cannotPlay = new CannotPlay({
   now: () => Date.now(),
   later: (ms, run) => {
@@ -722,6 +727,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
   cannotPlay.gpuGone();
+  liveLines.gpuStopped();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -3128,10 +3134,10 @@ function start(): void {
         heartbeat.opened(config.id);
         loadedSinceStopped.add(config.id);
         // A screen whose page loads again draws its videos afresh: LIVE no longer names it (a22-halldrop).
-        if (hallWords.screenGone(config.id)) hallWordsChanged?.();
+        liveLines.pageLoading(config.id);
       });
       window.on('closed', () => {
-        if (hallWords.screenGone(config.id)) hallWordsChanged?.();
+        liveLines.windowClosed(config.id);
         warmUps.forget(h.webContentsId);
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
@@ -3173,7 +3179,7 @@ function start(): void {
     onChange: () => {
       engine.videoCuePageJoined('');
       // LIVE's "Not on the screen" lines name the screens as they are now (a22-halldrop).
-      if (hallWords.naming()) hallWordsChanged?.();
+      liveLines.screensChanged();
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
         screenId: st.screenId,
@@ -8946,14 +8952,12 @@ function start(): void {
     const screenId = manager.screenIdFor(e.sender.id);
     if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
     if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
-    if (hallWords.playsHere(mediaId, startedAt, screenId)) {
+    if (liveLines.drew(mediaId, startedAt, screenId))
       log.info(`A video drew on the screen “${nameOfScreen(screenId) ?? screenId}” after all: ${mediaId}`);
-      hallWordsChanged?.();
-    }
     return null;
   });
   engine.onChange((state) => {
-    if (hallWords.prune(state)) hallWordsChanged?.();
+    liveLines.showChanged(state);
   });
   // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
   // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with

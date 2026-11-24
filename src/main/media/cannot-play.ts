@@ -339,6 +339,17 @@ export class HallWords {
     return this.kept.get(key)?.notOn.delete(screenId) ?? false;
   }
 
+  /** A GPU process stopped (as the first review fix had it): no line kept. */
+  gpuGone(): boolean {
+    let changed = false;
+    for (const k of this.kept.values())
+      if (k.notOn.size > 0) {
+        k.notOn.clear();
+        changed = true;
+      }
+    return changed;
+  }
+
   /** That screen's page loads again, or it went: no longer named on any showing. */
   screenGone(screenId: string): boolean {
     let changed = false;
