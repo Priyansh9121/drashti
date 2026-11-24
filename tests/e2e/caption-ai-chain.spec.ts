@@ -7,15 +7,15 @@ import { toneBurstsFile } from './caption-clips';
 import { routeCInTheApp } from './route-c-in-app';
 
 /*
- * Route C's whole chain inside Drashti with no model downloaded (alpha.23, cap-realc): everything caption-ai-real.spec.ts
- * runs (route-c-in-app.ts: the pack imported, findIndic, the store's real acquire, Drashti's helper with two threads
+ * Route C's whole chain inside Drashti with no model downloaded (alpha.23, cap-realc; route-c-in-app.ts: the pack
+ * imported, findIndic, the store's real acquire, Drashti's helper with two threads
  * below the show, the stream's sound graph, tap and port, the coordinator and three places), but the pack holds the
  * generated test graph (scripts/indic-fixture.mjs, as indic-captions.spec.ts runs it), which "hears" its one phrase in
  * whatever it is given. So the sound must decide when: the fake microphone's file holds generated tone bursts after a
  * long silence (no voice, no recording), and each burst, and nothing before them, gives one settled phrase on time.
  * A fake microphone still beeping (the file not played) is heard in the silence and fails.
  *
- * In its own CI step with caption-ai-real.spec.ts (DRASHTI_E2E_REAL_CAPTIONS=1, ci.yml): the parts leave both out.
+ * In its own CI step (DRASHTI_E2E_REAL_CAPTIONS=1, ci.yml): the parts leave it out.
  */
 
 const LEAD_MS = 15_000;

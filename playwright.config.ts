@@ -2,13 +2,10 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  // Route C in the app with no stand-in (alpha.23, cap-realc): alpha.22's real caption packs and the live captions
-  // engine, which CI fetches in a step of its own in the "End-to-end and installers" job (ci.yml). The parts leave
-  // both specs out; that step (DRASHTI_E2E_REAL_CAPTIONS=1) names them.
-  testIgnore:
-    process.env['DRASHTI_E2E_REAL_CAPTIONS'] === '1'
-      ? []
-      : ['**/caption-ai-chain.spec.ts', '**/caption-ai-real.spec.ts'],
+  // Route C in the app with no stand-in (alpha.23, cap-realc): it needs the live captions engine, which CI fetches in a
+  // step of its own in the "End-to-end and installers" job (ci.yml). The parts leave it out; that step
+  // (DRASHTI_E2E_REAL_CAPTIONS=1) names it.
+  testIgnore: process.env['DRASHTI_E2E_REAL_CAPTIONS'] === '1' ? [] : ['**/caption-ai-chain.spec.ts'],
   // One temporary folder for the run, removed at the end (tests/global-setup.ts).
   globalSetup: './tests/global-setup.ts',
   timeout: 90_000,
