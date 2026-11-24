@@ -1,10 +1,11 @@
 import { preparationLaunch, PRIORITY_FAILURE_EXIT } from './preparation-launch';
 import { type ChildProcess, type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { rename } from 'node:fs/promises';
 import { constants, getPriority, setPriority } from 'node:os';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import { z } from 'zod';
 import type { ConversionJob, ConvertResult } from '../../shared/convert';
 import { isHevc } from '../../shared/convert';
@@ -89,6 +90,8 @@ function spoken(ms: number): string {
 }
 
 export interface ConvertDeps {
+  /** A new still remains unready until its display rendition exists. */
+  prepareDisplay?(candidate: DisplayCandidate, signal?: AbortSignal): Promise<DisplayResult>;
   db: Db;
   mediaDir: string;
   ffmpegPath(): string | null;
@@ -198,6 +201,7 @@ function removeQuietly(path: string): void {
 type Stop = 'cancel' | 'quit' | 'wait' | 'space' | 'time';
 
 interface Running {
+  preparing?: AbortController;
   job: ConversionJob;
   child: ChildProcess | null;
   tmp: string | null;
@@ -532,6 +536,7 @@ export class ConvertService {
           if (running?.job === pending && !running.stop) {
             running.stop = 'wait';
             running.child?.kill();
+            running.preparing?.abort();
           }
         }
         going++;
@@ -619,6 +624,7 @@ export class ConvertService {
       if (this.running?.job === job) {
         this.running.stop = 'cancel';
         this.running.child?.kill();
+        this.running.preparing?.abort();
       } else job.state = 'cancelled';
       this.heldUntil.delete(job.id);
     }
@@ -702,6 +708,7 @@ export class ConvertService {
   private pauseForActivity(running: Running | RunningFile, waitForShow: boolean): Stop | null {
     if (!running.stop && this.waitFor(waitForShow) !== null) {
       running.stop = 'wait';
+      if ('preparing' in running) running.preparing?.abort();
       if ('preparation' in running) running.preparation?.abort();
       if ('copy' in running.job && running.job.copy?.strictPriority) running.child?.kill('SIGKILL');
       else running.child?.kill();
@@ -888,6 +895,24 @@ export class ConvertService {
       if (stopped) {
         removeQuietly(tmp);
         return this.stopped(running, stopped);
+      }
+      if ((target === 'jpeg' || target === 'png') && this.deps.prepareDisplay) {
+        const controller = new AbortController();
+        running.preparing = controller;
+        try {
+          const prepared = await this.deps.prepareDisplay(
+            { path: relative(this.deps.mediaDir, tmp), sha256: digest.sha256 },
+            controller.signal,
+          );
+          if (!prepared.ok) throw new Error(prepared.message);
+        } finally {
+          delete running.preparing;
+        }
+        const paused = this.pauseForActivity(running, true);
+        if (paused) {
+          removeQuietly(tmp);
+          return this.stopped(running, paused);
+        }
       }
       this.store(job, row, target, tmp, digest);
       return true;
@@ -1566,6 +1591,7 @@ export class ConvertService {
     if (running) {
       running.stop = 'quit';
       running.child?.kill();
+      running.preparing?.abort();
       if (running.tmp) removeQuietly(running.tmp);
     }
   }

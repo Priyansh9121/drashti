@@ -12,6 +12,7 @@ import { cancelLinkConversion, connectConversions, useConvert } from '../library
 import { convertingWords, jobBusy } from '../library/converting';
 import { useMode } from './mode-store';
 import { ImportNoticeLine } from './ImportNoticeLine';
+import { importProgressText } from './import-status-text';
 import { connectSound, useSound } from '../screens/sound-store';
 import { Button } from '../ui/Button';
 import { AlertTriangle, CalendarDays, Info, Volume2, X } from '../ui/icons';
@@ -111,12 +112,7 @@ function ImportStatus() {
   const active = list.find((r) => r.phase !== 'queued') ?? list[0];
   const waiting = list.length - (active ? 1 : 0);
   if (active) {
-    const text =
-      active.phase === 'queued'
-        ? 'Waiting to import…'
-        : active.phase === 'scanning'
-          ? 'Looking for files…'
-          : `Importing ${active.done.toLocaleString('en')} of ${active.total.toLocaleString('en')}${active.current ? ` · ${active.current}` : ''}`;
+    const text = importProgressText(active);
     return (
       <div data-testid="import-progress" className="flex min-w-0 items-center gap-2">
         <Truncate text={`${text}${waiting > 0 ? ` · ${plural(waiting, 'more import')} waiting` : ''}`} />

@@ -896,6 +896,10 @@ const bridge: DrashtiBridge = {
     done: (done) => invoke(IPC.pictures.done, done),
     asset: (kind, name) => invoke(IPC.pictures.asset, kind, name),
   },
+  displayCopies: {
+    next: () => invoke(IPC.displayCopies.next),
+    made: (key, bytes) => invoke(IPC.displayCopies.made, key, bytes),
+  },
   sharpen: {
     next: () => invoke(IPC.sharpen.next),
     made: (key, bytes) => invoke(IPC.sharpen.made, key, bytes),

@@ -34,6 +34,29 @@ const storedFiles = (mediaDir: string) =>
     .map((e) => e.name);
 
 describe('MediaStore', () => {
+  it('waits for Main to prepare a new picture before it is staged as ready', async () => {
+    const t = setup();
+    let finish!: (result: { ok: false; message: string }) => void;
+    const prepareDisplay = vi.fn(
+      () =>
+        new Promise<{ ok: false; message: string }>((done) => {
+          finish = done;
+        }),
+    );
+    const store = new MediaStore(t.db, { dir: t.mediaDir, prepareDisplay });
+    const path = t.file('Placeholder new.png', 'placeholder picture bytes');
+    let settled = false;
+    const staged = store.stage(path).then((result) => {
+      settled = true;
+      return result;
+    });
+    await vi.waitFor(() => expect(prepareDisplay).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    finish({ ok: false, message: 'Could not prepare the display copy.' });
+    expect(await staged).toMatchObject({ ok: false, issue: { code: 'picture-display' } });
+    expect(t.db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 0 });
+  });
+
   it('lists only what was imported as media: a page Drashti drew is not, until the same picture is dropped in on its own (Session 26a)', async () => {
     const { db, store, file } = setup();
     const page = file('page-0001.png', 'placeholder page bytes');

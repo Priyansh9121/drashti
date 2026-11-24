@@ -198,6 +198,20 @@ export function stillUrl(mediaId: string, version = 0): string {
   return `${MEDIA_SCHEME}://still/${mediaId}${version > 0 ? `?v=${version}` : ''}`;
 }
 
+/** A private display rendition. The original media URL always retains the original bytes. */
+export const DISPLAY_KEY_PATTERN = /^p1-[a-f0-9]{32}-[1-9]\d{0,5}x[1-9]\d{0,5}$/u;
+export const displayUrl = (mediaId: string, key: string, attempt = 0): string =>
+  `${MEDIA_SCHEME}://display/${mediaId}/${key}${attempt > 0 ? `?try=${String(attempt)}` : ''}`;
+export const displayMediaId = (mediaId: string, key: string): string => `${mediaId}_d${key}`;
+export function displayOfId(id: string): { mediaId: string; key: string } | null {
+  const match = /^(.*)_d(p1-[a-f0-9]{32}-[1-9]\d{0,5}x[1-9]\d{0,5})$/u.exec(id);
+  const mediaId = match?.[1];
+  const key = match?.[2];
+  return mediaId && key && MEDIA_ID_PATTERN.test(mediaId) && DISPLAY_KEY_PATTERN.test(key)
+    ? { mediaId, key }
+    : null;
+}
+
 /**
  * The URL of a picture's sharpened copy (Session 26f), made once at the sharpness `step` of its look (5 to
  * 100): the screens draw it in place of the picture, so none of them draws a filter. A later try gets a URL of

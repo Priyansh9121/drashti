@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { previewSource } from './preview-source';
+import { displayMediaId } from '../../shared/media';
 
 /*
  * A phone's preview is made only from a file inside the media folder, by its real path (Sessions 31–36,
@@ -72,4 +73,21 @@ describe('a blurred copy as a phone’s preview (Session 55, Part 5, D)', () => 
     // Not one yet: no preview, the picture drawn on black.
     expect(previewSource('m1_b', { ...deps, blurred: () => null })).toBeNull();
   });
+});
+
+it('makes a display preview from only the exact rendition inside Media', () => {
+  const { mediaDir } = folders();
+  const key = `p1-${'ab'.repeat(16)}-1920x1080`;
+  const id = displayMediaId('m1', key);
+  const deps = {
+    mediaDir,
+    kindAndFile: () => null,
+    sharpened: () => null,
+    display: (_id: string, asked: string) => (asked === key ? 'inside.png' : null),
+  };
+  expect(previewSource(id, deps)).toEqual({
+    path: realpathSync.native(join(mediaDir, 'inside.png')),
+    kind: 'image',
+  });
+  expect(previewSource(id, { ...deps, display: () => 'linked/secret.png' })).toBeNull();
 });

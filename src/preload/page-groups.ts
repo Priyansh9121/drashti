@@ -18,6 +18,7 @@ export type BridgePage =
   | 'pdf'
   | 'pdf-export'
   | 'sharpen'
+  | 'display-copy'
   | 'gallery'
   | 'zoom'
   | 'lock'
@@ -123,6 +124,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   'pdf-export': ['engine', 'media', 'output', 'pdfExport'],
   // Pictures' sharpened copies.
   sharpen: ['sharpen'],
+  // Pictures' display copies (alpha.22): a hidden worker of their own, with its own page (QA22-L8-2).
+  'display-copy': ['displayCopies'],
   // The component gallery (Diagnostics).
   // Its panels' "What is this?" asks the manual (x37; the guides until then).
   gallery: ['app', 'manual'],

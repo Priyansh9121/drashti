@@ -38,6 +38,8 @@ export interface PictureLook {
    * copy that is ready, drawn in place of the picture (absent while it is being made: drawn unsharpened).
    */
   copy?: number;
+  /** Ready private display rendition, never persisted as an edit to the original. */
+  display?: { key: string; width: number; height: number };
   /** Turned clockwise in quarter turns (Session 55); absent: as it was taken. */
   turn?: Turn;
   /** Flipped across, left for right, and up and down (Session 55), after its turn. */

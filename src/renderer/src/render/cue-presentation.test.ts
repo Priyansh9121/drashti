@@ -109,6 +109,24 @@ describe('a private Cue first frame', () => {
     expect(ready).toHaveBeenCalledTimes(1);
     gate.stop();
   });
+  it("reads the frame again as the trimmed frame is presented, when the decoder's word read the frame from before the trim seek", () => {
+    // a22-cue-1124-113329-24953 (CI's Mac, LIVE's player): its file's start was still the compositor's frame when the
+    // decoder's word came, and was read then; the trimmed frame presented next never matched it, so no first frame
+    // was acknowledged for 10 s and the whole cue failed ("could not load its first frame").
+    const video = new Video(),
+      ready = vi.fn(),
+      failed = vi.fn();
+    const gate = cuePresentation(video.element(), ready, failed);
+    video.decodedTimestamp = 0;
+    gate.decoded();
+    expect(ready).not.toHaveBeenCalled();
+    // The compositor takes the trimmed frame and presents it: the element's frame is that one now.
+    video.decodedTimestamp = 1_000_000;
+    video.present(1);
+    expect(failed).not.toHaveBeenCalled();
+    expect(ready).toHaveBeenCalledTimes(1);
+    gate.stop();
+  });
   it('still fails a frame that may not be read, at once, and one that cannot be read even once presented', () => {
     const refused = new Video(),
       failedAtOnce = vi.fn();
