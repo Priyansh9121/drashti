@@ -8,6 +8,8 @@ import { CombineVideos } from './combine-service';
 import { readTrimInfo } from './trim-copy';
 import { copyFf, copyFfmpeg, copyFixture } from './video-copy-fixtures';
 import { discardUnlisted, registerProxyFile } from './video-copy-files';
+import { openDatabase } from '../db/database';
+import { MediaStore } from '../import/media-store';
 
 /*
  * Combine videos… (alpha.22): two generated placeholder videos, of different sizes, rates and sound (the fixture's
@@ -65,8 +67,17 @@ async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
   const saving = { offered: [] as string[], answer: null as string | null };
   // Moments a test may act at (a22-review-combine S4): once FFmpeg's arguments are made (the encode starts), once the
   // new video is copied into Media (not listed yet), and whether listing it succeeds.
-  const hooks: { encoding?: () => void; imported?: (mediaId: string) => void; publish: boolean } = {
+  const hooks: {
+    encoding?: () => void;
+    imported?: (mediaId: string) => void;
+    publish: boolean;
+    /** Each removal asked for, as it was asked (a22-review-combine2). */
+    discards: Promise<unknown>[];
+    /** Holds a removal asked for once the new video is listed, until the test lets it go (S3). */
+    holdKept?: Promise<void>;
+  } = {
     publish: true,
+    discards: [],
   };
   const deps = {
     pickCopy: (name: string) => {
@@ -113,8 +124,14 @@ async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
         hooks.publish && fixture.db.prepare('UPDATE media SET listed=1 WHERE id=?').run(id).changes > 0,
       ),
     // As the app has it (video-copies-ipc.ts): what a combine copied into Media and never listed, removed.
-    discardUnlisted: (made: { file: string } | { folder: string }, keep?: string | null) =>
-      discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, ...made, keep: keep ?? null }),
+    discardUnlisted: (made: { file: string } | { folder: string }, keep?: string | null) => {
+      const held = keep ? hooks.holdKept : undefined;
+      const asked = (held ?? Promise.resolve()).then(() =>
+        discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, ...made, keep: keep ?? null }),
+      );
+      hooks.discards.push(asked);
+      return asked;
+    },
   };
   combines = new CombineVideos(deps);
   cleanup.push(() => combines.close());
@@ -554,3 +571,125 @@ it('at the start, removes what a quit or a crash left of a combine, and nothing 
   expect(stored().sort()).toEqual([before.finished, before.lighter].sort());
   expect(readdirSync(work)).toEqual([]);
 }, 30_000);
+
+/*
+ * a22-review-combine2: MUST-1 through the service (a row another import took up is kept), S1 (no file without a row),
+ * S3 (done without waiting for a removal) and S4 (the copy goes while it waits).
+ */
+/** Every removal asked for so far has run. */
+async function removalsDone(hooks: { discards: Promise<unknown>[] }, atLeast: number) {
+  await vi.waitFor(() => {
+    expect(hooks.discards.length).toBeGreaterThanOrEqual(atLeast);
+  });
+  await Promise.all(hooks.discards);
+}
+
+it('Stop just after the copy into Media keeps a copy a PowerPoint video took up meanwhile, with its file', async () => {
+  const { hooks } = await setUp();
+  const queued = { id: '' };
+  const taken: { id: string | null; path: string } = { id: null, path: '' };
+  hooks.imported = (id) => {
+    const row = fixture.db.prepare('SELECT path, sha256, bytes FROM media WHERE id = ?').get(id) as {
+      path: string;
+      sha256: string;
+      bytes: number;
+    };
+    // An imported deck's video, kept as an editable document object, has the very same bytes.
+    taken.id = new MediaStore(fixture.db, { dir: fixture.dir }).addStaged(
+      {
+        kind: 'video',
+        name: 'Placeholder object.mp4',
+        rel: row.path,
+        sha256: row.sha256,
+        bytes: row.bytes,
+        probe: { kind: 'video', playable: true, format: 'H.264 video (MP4)' },
+      },
+      { kind: 'drashti', path: 'Editable document object' },
+    ).mediaId;
+    taken.path = row.path;
+    fixture.db
+      .prepare("INSERT INTO app_meta(key, value) VALUES ('setting.placeholderDeckVideo', ?)")
+      .run(JSON.stringify({ mediaId: taken.id }));
+    expect(combines.stop(queued.id)).toBe(true);
+  };
+  queued.id = (await started(ask(['source', 'second']))).id;
+  await ended(queued.id, 'stopped');
+  await removalsDone(hooks, 1);
+  expect(taken.id).not.toBeNull();
+  expect(fixture.db.prepare('SELECT 1 FROM media WHERE id = ?').get(taken.id)).toBeDefined();
+  expect(stored()).toEqual([taken.path]);
+}, 30_000);
+
+it("Stop while the copy into Media waits for the library's write lock leaves no file in Media", async () => {
+  const { hooks } = await setUp();
+  // The import worker's connection takes the write lock while the combine encodes.
+  const other = openDatabase(join(fixture.dir, 'library.sqlite'));
+  cleanup.push(() => {
+    if (other.inTransaction) other.exec('ROLLBACK');
+    other.close();
+  });
+  hooks.encoding = () => {
+    if (!other.inTransaction) other.exec('BEGIN IMMEDIATE');
+  };
+  const queued = await started(ask(['source', 'second']));
+  // The file is in Media's folder, its row waiting for the lock: Stop then.
+  await vi.waitFor(
+    () => {
+      expect(stored()).toHaveLength(1);
+    },
+    { timeout: 20_000 },
+  );
+  expect(combines.stop(queued.id)).toBe(true);
+  await ended(queued.id, 'stopped');
+  other.exec('ROLLBACK');
+  await removalsDone(hooks, 1);
+  await vi.waitFor(() => {
+    expect(stored()).toEqual([]);
+  });
+  expect(rows()).toBe(3);
+}, 30_000);
+
+it('a finished combine says done without waiting for the removal of what an earlier attempt left', async () => {
+  const { hooks } = await setUp();
+  const release = { go: () => undefined as void };
+  hooks.holdKept = new Promise<void>((resolve) => {
+    release.go = resolve;
+  });
+  const queued = await started(ask(['source', 'second']));
+  await vi.waitFor(
+    () => {
+      expect(combines.list().find((j) => j.id === queued.id)?.state).toBe('done');
+    },
+    { timeout: 15_000 },
+  );
+  release.go();
+  await removalsDone(hooks, 1);
+  expect(rows()).toBe(4);
+}, 30_000);
+
+it('a wait just after the copy into Media removes that copy while it waits, then keeps one new video', async () => {
+  const { hooks } = await setUp();
+  const copied: string[] = [];
+  hooks.imported = (id) => {
+    copied.push(id);
+    if (copied.length === 1) fixture.activity.stream = true;
+  };
+  const queued = await started(ask(['source', 'second']));
+  await vi.waitFor(
+    () => {
+      expect(combines.list().find((j) => j.id === queued.id)?.state).toBe('waiting');
+      expect(copied).toHaveLength(1);
+    },
+    { timeout: 20_000 },
+  );
+  // While the stream is on air, nothing of it stays in Media.
+  await vi.waitFor(() => {
+    expect(rows()).toBe(3);
+    expect(stored()).toEqual([]);
+  });
+  fixture.activity.stream = false;
+  const job = await settled(queued.id);
+  const row = fixture.media.about(job.mediaId ?? '');
+  expect(rows()).toBe(4);
+  expect(stored()).toEqual([row?.path]);
+}, 40_000);
