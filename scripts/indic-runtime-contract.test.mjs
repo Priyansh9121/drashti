@@ -104,11 +104,34 @@ test('the helper checks every allocation before using it: it says so and exits, 
 
 test('the allocation rule sees any use before the check: a copy into it, a member through it, a call with it (cap-review-next n3)', () => {
   const unchecked = (body) => allocationsUsedUnchecked(`static void f(void) {\n${body}\n}\n`).unchecked;
-  assert.deepEqual(unchecked('  char *buf = malloc(8);\n  memcpy(buf, "abc", 4);\n  if (!buf) die("allocation failed");'), ['buf']);
-  assert.deepEqual(unchecked('  struct s *p = calloc(1, sizeof *p);\n  p->len = 0;\n  if (!p) die("allocation failed");'), ['p']);
-  assert.deepEqual(unchecked('  float *x = malloc(4);\n  fill(x, 1);\n  if (!x) die("allocation failed");'), ['x']);
+  assert.deepEqual(
+    unchecked('  char *buf = malloc(8);\n  memcpy(buf, "abc", 4);\n  if (!buf) die("allocation failed");'),
+    ['buf'],
+  );
+  assert.deepEqual(
+    unchecked('  struct s *p = calloc(1, sizeof *p);\n  p->len = 0;\n  if (!p) die("allocation failed");'),
+    ['p'],
+  );
+  assert.deepEqual(unchecked('  float *x = malloc(4);\n  fill(x, 1);\n  if (!x) die("allocation failed");'), [
+    'x',
+  ]);
   // Checked first, then used: none, however it is used; a comment or a string naming it is no use.
-  assert.deepEqual(unchecked('  int *ids = malloc(4), *fr = malloc(4);\n  if (!ids || !fr) die("allocation failed");\n  ids[0] = fr[0] = 0;'), []);
-  assert.deepEqual(unchecked('  char *t = calloc(9, 1);\n  if (!t) die("allocation failed");\n  t = realloc(t, 18);\n  if (!t) die("allocation failed");\n  t->x = 0;'), []);
-  assert.deepEqual(unchecked('  char *buf = malloc(8);\n  /* buf: the bytes */ puts("buf");\n  if (!buf) die("allocation failed");\n  memcpy(buf, "abc", 4);'), []);
+  assert.deepEqual(
+    unchecked(
+      '  int *ids = malloc(4), *fr = malloc(4);\n  if (!ids || !fr) die("allocation failed");\n  ids[0] = fr[0] = 0;',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    unchecked(
+      '  char *t = calloc(9, 1);\n  if (!t) die("allocation failed");\n  t = realloc(t, 18);\n  if (!t) die("allocation failed");\n  t->x = 0;',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    unchecked(
+      '  char *buf = malloc(8);\n  /* buf: the bytes */ puts("buf");\n  if (!buf) die("allocation failed");\n  memcpy(buf, "abc", 4);',
+    ),
+    [],
+  );
 });

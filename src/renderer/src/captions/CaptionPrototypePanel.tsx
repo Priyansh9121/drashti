@@ -26,8 +26,7 @@ export function correctionStanding(
   current: CaptionRevision | null,
 ): CorrectionStanding {
   if (draft === null) return 'none';
-  if (current === null || draft.sessionId !== current.sessionId || draft.phraseId !== current.phraseId)
-    return 'gone';
+  if (current?.sessionId !== draft.sessionId || current.phraseId !== draft.phraseId) return 'gone';
   return draft.revision === current.revision ? 'open' : 'changed';
 }
 
