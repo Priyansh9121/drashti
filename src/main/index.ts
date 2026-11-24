@@ -488,7 +488,7 @@ import { CaptionCoordinator } from './speech/caption-coordinator';
 import { ownModelCaptionAi } from './speech/caption-routes';
 import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
-import { sizesContext } from './speech/whisper-context';
+import { sizesContext, whisperModelFor } from './speech/whisper-context';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
@@ -4230,6 +4230,15 @@ function start(): void {
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
   const captionSettingsRepo = new CaptionSettingsRepo(opened.db);
+  // The model today's engine loads, and the one QWC-1's sizing judges: one helper for both (whisper-context.ts).
+  // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
+  const whisperModel = (language: SpeechLanguage | 'auto') =>
+    whisperModelFor(
+      captions.languageModelFor(language),
+      (own) => packFileFor(modelPacks, own)?.path,
+      captions.selectedModel(),
+      (id) => modelFile(captionsData, id),
+    );
   const speechEngine =
     testSpeech !== undefined
       ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
@@ -4242,27 +4251,12 @@ function start(): void {
       : createWhisperEngine({
           program: () => whisperProgram,
           // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
-          model: (language) => {
-            const own = captions.languageModelFor(language);
-            // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
-            const file =
-              own && (own.format ?? 'whisper-ggml') === 'whisper-ggml'
-                ? packFileFor(modelPacks, own)?.path
-                : undefined;
-            return file ?? modelFile(captionsData, captions.selectedModel());
-          },
+          model: (language) => whisperModel(language).file,
           // Asked before every start of the program: a language's own model not ready is never loaded.
           modelProblem: (language) => captions.modelProblem(language),
           // QWC-1 (the owner: "Yes, Windows small"): the audio context sized to the piece, fallback off, for the model model()
           // gives, only on a CPU engine with a small model (Windows); every other engine asks as today.
-          sizedContext: (language) => {
-            const own = captions.languageModelFor(language);
-            const ownFile =
-              own && (own.format ?? 'whisper-ggml') === 'whisper-ggml'
-                ? packFileFor(modelPacks, own)?.path
-                : undefined;
-            return sizesContext(process.platform, own && ownFile ? own.id : captions.selectedModel());
-          },
+          sizedContext: (language) => sizesContext(process.platform, whisperModel(language).id),
           fallback: (language) =>
             captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
           // The tuned language models are decoded without timestamps (alpha.22).
@@ -4277,7 +4271,8 @@ function start(): void {
         });
   // Route W (alpha.22, cap-integration): a Gujarati, Hindi or English model of its own from the pack, on Drashti's
   // whisper engine (the stand-in in tests), decoded as that model needs (no timestamps for the tuned ones).
-  // QWC-1 (the owner: "Yes, Windows small"): the Route W model uses that size whisper's audio context (a small model on Windows).
+  // QWC-1 (the owner: "Yes, Windows small"): Route W sizes whisper's audio context for a small model on Windows (the
+  // WeakSet marks which use is sized).
   const sizedUses = new WeakSet<object>();
   const whisperRoute = createWhisperRoute({
     store: modelPacks,
