@@ -192,6 +192,18 @@ test('Turn page right turns the crop with the full page, Undo restores it, and t
     await s.ed.mouse.up();
     await expect(dialog.getByTestId('crop-readout')).toContainText('right 50%');
     await expect(dialog.getByTestId('crop-readout')).toContainText('bottom 25%');
+    // Set the exact 50% by 75% square with hundredth keyboard steps; pointer coordinates are subpixel.
+    await dialog.getByRole('button', { name: 'The whole page', exact: true }).click();
+    await expect(dialog.getByTestId('crop-readout')).toHaveText(
+      'Taken off: left 0%, top 0%, right 0%, bottom 0%',
+    );
+    const exactBox = dialog.getByTestId('pdf-crop-box');
+    await exactBox.focus();
+    for (let i = 0; i < 50; i++) await exactBox.press('Shift+ArrowLeft');
+    for (let i = 0; i < 25; i++) await exactBox.press('Shift+ArrowUp');
+    await expect(dialog.getByTestId('crop-readout')).toHaveText(
+      'Taken off: left 0%, top 0%, right 50%, bottom 25%',
+    );
     await dialog.getByRole('button', { name: 'Keep crop', exact: true }).click();
     const thumb = s.editor.getByTestId('editor-slide-thumb').first();
     await expect(thumb.locator('[data-page-crop]')).toHaveCSS('width', '240px');
