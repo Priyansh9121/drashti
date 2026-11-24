@@ -211,7 +211,7 @@ test('Trim on a row with a picture up saves the trimmed video into Media', async
     const [row = ''] = await videoPlaylist(win, 'Placeholder picture trims', [video]);
     const shown = await dispatch(win, {
       type: 'setBackground',
-      background: { kind: 'media', mediaId: picture, media: 'image', fit: 'fit' },
+      background: { kind: 'media', mediaId: picture, media: 'image', fit: 'fit', loop: false },
     });
     expect(shown.ok).toBe(true);
     await trimOnRow(win, row, '0:00.5', '0:02.5');
