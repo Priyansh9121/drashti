@@ -5,9 +5,12 @@ import type { ContentRows } from './db/content';
 import { openDatabase } from './db/database';
 import { PresentationRepo, type NewPresentation } from './db/presentations';
 import { LYRICS_STYLE } from './import/formats/text';
-import type { PrintOutcome } from './manual-print';
+import { tmpdir } from 'node:os';
+import { GuideFiles, guidesDir } from './guides';
+import { pdfFooter, type PrintOutcome, type PrintPage } from './manual-print';
+import { ManualPrinter } from './manual-service';
 import { fileProblem } from './plain-errors';
-import { WordsPrinter, wordsFooter, wordsHtml, wordsPdfName, wordsSheet } from './words-print';
+import { WordsPrinter, wordsHtml, wordsPdfName, wordsSheet } from './words-print';
 
 /*
  * A singers' sheet (alpha.22): a presentation's words by group, in its language tracks, with the kirtan's kavi and
@@ -225,11 +228,7 @@ describe('a singers’ sheet of a kirtan’s words', () => {
     expect(html).not.toMatch(/<script|<[^>]*\s(?:src|href)=/iu);
   });
 
-  it('puts the name in every page’s footer as text, and suggests a file name the system takes', () => {
-    const footer = wordsFooter('Placeholder <Kirtan> & co');
-    expect(footer).toContain('Placeholder &lt;Kirtan&gt; &amp; co');
-    expect(footer).toContain('class="pageNumber"');
-    expect(footer).toContain('class="totalPages"');
+  it('suggests a file name the system takes', () => {
     expect(wordsPdfName('Placeholder Kirtan')).toBe('Placeholder Kirtan words.pdf');
     expect(wordsPdfName('Placeholder: a/b\\c*?"<>|')).toBe('Placeholder_ a_b_c______ words.pdf');
     expect(wordsPdfName('પહેલી')).toBe('પહેલી words.pdf');
@@ -243,7 +242,6 @@ describe('Print words… and Save words as PDF…', () => {
     k: { name: 'Placeholder Kirtan', rows: kirtan },
     p: { name: 'Placeholder Pictures', rows: pictures },
   };
-  type Printed = Parameters<NonNullable<ConstructorParameters<typeof WordsPrinter>[0]['print']>>[0];
   const base = {
     read: (id: string) => library[id] ?? null,
     live: () => false,
@@ -280,7 +278,7 @@ describe('Print words… and Save words as PDF…', () => {
 
   it('saves the sheet as a PDF where the person chose, suggesting “<name> words.pdf” in Documents, its name on every page', async () => {
     const asked: string[] = [];
-    const jobs: Printed[] = [];
+    const jobs: PrintPage[] = [];
     const written: { file: string; size: number }[] = [];
     const printer = new WordsPrinter({
       ...base,
@@ -305,7 +303,8 @@ describe('Print words… and Save words as PDF…', () => {
     expect(job?.pictures).toEqual([]);
     expect(job?.tempDir).toBe('/placeholder/tmp');
     expect(job?.title).toBe('Placeholder Kirtan');
-    expect(job?.footer).toBe(wordsFooter('Placeholder Kirtan'));
+    // Every page's footer names it (the shared printer escapes the footer's words: manual-print.ts).
+    expect(job?.footer).toBe('Placeholder Kirtan · words');
     expect(written).toEqual([{ file: '/placeholder/Desktop/Words.pdf', size: 16 }]);
     expect(wordsPrintedText('Placeholder Kirtan', result)).toBe(
       'Saved the words of “Placeholder Kirtan” as a PDF: Words.pdf, in Desktop.',
@@ -389,26 +388,66 @@ describe('Print words… and Save words as PDF…', () => {
     expect(messageOf(await fullDrive.pdf('k'))).toBe(fileProblem(full, 'write'));
   });
 
-  it('prints one at a time: a second request while one is printing is told to wait', async () => {
-    let finish: (o: PrintOutcome) => void = () => undefined;
+  it('names a presentation with markup in its footer as words, never as markup', async () => {
+    const jobs: PrintPage[] = [];
     const printer = new WordsPrinter({
       ...base,
-      print: () =>
-        new Promise<PrintOutcome>((resolve) => {
-          finish = resolve;
-        }),
+      read: () => ({ name: 'Placeholder <b>Kirtan</b> & co', rows: kirtan }),
+      print: (p) => {
+        jobs.push(p);
+        return Promise.resolve({ ok: true, pdf: null });
+      },
     });
-    const first = printer.print('k');
-    await Promise.resolve();
-    expect(messageOf(await printer.pdf('k'))).toBe(
-      'Something is being printed already: wait until that is done, then try again.',
+    expect(await printer.print('k')).toEqual({ ok: true, file: null });
+    expect(jobs[0]?.footer).toBe('Placeholder <b>Kirtan</b> & co · words');
+    expect(pdfFooter(jobs[0]?.footer ?? '')).toContain(
+      'Placeholder &lt;b&gt;Kirtan&lt;/b&gt; &amp; co · words · page',
     );
-    finish({ ok: true, pdf: null });
+    expect(jobs[0]?.html).toContain('<h1>Placeholder &lt;b&gt;Kirtan&lt;/b&gt; &amp; co</h1>');
+  });
+
+  it('prints one page at a time across the manual, the running orders and the words: the second is refused in words, naming the first', async () => {
+    let finish: (() => void) | null = null;
+    const waiting = () =>
+      new Promise<PrintOutcome>((resolve) => {
+        finish = () => {
+          resolve({ ok: true, pdf: null });
+        };
+      });
+    const files = new GuideFiles(
+      guidesDir({ packaged: false, resourcesPath: '/nowhere', appPath: process.cwd() }),
+    );
+    const manual = new ManualPrinter({
+      files,
+      version: () => '1.0.0-alpha.22',
+      tempDir: () => tmpdir(),
+      suggestedFolder: () => '/placeholder',
+      live: () => false,
+      askWhere: () => Promise.resolve('/placeholder/m.pdf'),
+      print: waiting,
+      write: () => undefined,
+    });
+    const words = new WordsPrinter({ ...base, print: waiting });
+    const first = manual.print();
+    expect(messageOf(await words.print('k'))).toBe(
+      'The manual is being printed already: wait until that is done, then try again.',
+    );
+    expect(messageOf(await words.pdf('k'))).toContain('The manual is being printed already');
+    (finish as (() => void) | null)?.();
     expect(await first).toEqual({ ok: true, file: null });
-    // Then the next one goes.
-    const next = printer.print('k');
-    await Promise.resolve();
-    finish({ ok: true, pdf: null });
-    expect(await next).toEqual({ ok: true, file: null });
+    // Free again: the words now, and the manual (and more words) wait for them.
+    const second = words.print('k');
+    expect(messageOf(await manual.pdf())).toBe(
+      'A sheet of words is being printed already: wait until that is done, then try again.',
+    );
+    expect(messageOf(await words.pdf('k'))).toBe(
+      'A sheet of words is being printed already: wait until that is done, then try again.',
+    );
+    (finish as (() => void) | null)?.();
+    expect(await second).toEqual({ ok: true, file: null });
+    // And free once more: the next goes.
+    const third = words.print('k');
+    (finish as (() => void) | null)?.();
+    expect(await third).toEqual({ ok: true, file: null });
   });
 });
