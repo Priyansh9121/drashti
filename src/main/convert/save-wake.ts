@@ -1,3 +1,5 @@
+import { type EngineState, nothingUp } from '../../shared/engine/state';
+
 /*
  * Waking the waiting saves when what plays has played to its end (alpha.23, the save-trim review's SHOULD-2). A save
  * the operator asked for waits while a video or a sound plays (shared/save-waits.ts), and one that does not go round
@@ -6,6 +8,14 @@
  * again at a change: a row's Trim checks and carries on its cut only then (main/convert/playlist-trims.ts). This waits
  * for that moment and wakes them. ConvertService and EditService look every second as well.
  */
+
+/**
+ * An engine change after which ConvertService looks at once whether its running work must stop (activityChanged):
+ * something is up. With nothing up, its one-second look is enough.
+ */
+export function conversionsLookAt(state: EngineState): boolean {
+  return !nothingUp(state.layers);
+}
 
 export interface SaveWakeDeps {
   /** The next moment something playing stops holding a save by itself (shared/save-waits.ts saveWaitEndsAt), or null. */

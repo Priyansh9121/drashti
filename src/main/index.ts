@@ -268,7 +268,7 @@ import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema, trimSavedNotice } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
-import { SaveWake } from './convert/save-wake';
+import { conversionsLookAt, SaveWake } from './convert/save-wake';
 import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
 import { exportMediaFile } from './convert/export-file';
@@ -5544,7 +5544,7 @@ function start(): void {
   });
   stops.add('display activity', offDisplayActivity);
   const offConversionActivity = engine.onChange((state) => {
-    if (!nothingUp(state.layers)) conversions.activityChanged();
+    if (conversionsLookAt(state)) conversions.activityChanged();
   });
   stops.add('conversions', () => {
     conversionActivityChanged = undefined;
