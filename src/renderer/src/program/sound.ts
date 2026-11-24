@@ -6,7 +6,7 @@ import { videoSoundGain } from '../audio/sounds';
 import { videoFadeProgress } from '../../../shared/video-cue';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
-import { FADE_SOUND_LIMITS, type PlaybackSeek, SOUND_LIMITS } from '../../../shared/media';
+import { FADE_SOUND_LIMITS, type PlaybackSeek, STREAM_SOUND_LIMITS } from '../../../shared/media';
 import { musicAside, soundGain, StepAside } from '../../../shared/sound';
 import type { DeviceChoice } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
@@ -302,7 +302,7 @@ export class StreamSound {
         startedAt: sound.startedAt,
         prepareScheduledStart: sound.cueId !== undefined,
         audible: true,
-        limits: SOUND_LIMITS,
+        limits: STREAM_SOUND_LIMITS,
         ease: () => (easeable && inFade() ? FADE_SOUND_LIMITS : null),
         onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
         onError: () => reportVideoCue(sound.cueId, 'sound', false),
