@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SPEECH_LANGUAGES, type SpeechLanguage, type SpeechState } from './speech';
+import { SPEECH_LANGUAGES, type SlowHold, type SpeechLanguage, type SpeechState } from './speech';
 
 /*
  * Live captions (Session 55, Part 10): speech from the stream's sound input, heard on this computer
@@ -263,4 +263,21 @@ export interface CaptionsStatus {
    * dialog says when Engine threads asks for more.
    */
   processors: number;
+  /**
+   * Why captions turned themselves off (cap-threads, the owner: "Say so and stop"): this computer rested
+   * CAPTIONS_STOP_AFTER_RESTS times in a row, too slow for live captions with the model; null otherwise. Kept until
+   * they are turned on again (never on disk).
+   */
+  stopped: CaptionsStopped | null;
+}
+
+/** After this many rests in a row for slowness, with no phrase heard whole between, captions stop (cap-threads). */
+export const CAPTIONS_STOP_AFTER_RESTS = 3;
+
+/** Captions stopped because this computer is too slow for live captions with the model (cap-threads). */
+export interface CaptionsStopped {
+  /** What the engine measured at the last rest. */
+  slow: SlowHold;
+  /** The language listened for then. */
+  language: SpeechLanguage | 'auto';
 }

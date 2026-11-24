@@ -585,6 +585,70 @@ describe('threads on this computer (cap-threads: today’s captions on a two-cor
   }, 45_000);
 });
 
+describe('a computer too slow for live captions (cap-threads, the owner: “Say so and stop”)', () => {
+  it('stops trying after 3 rests in a row: no fourth start, and the log says so (numbers only)', async () => {
+    const server = standIn({ delayMs: 700 });
+    const sound = bursts();
+    const states: SpeechState[] = [];
+    const warnings: string[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: () => undefined, warn: (m) => warnings.push(m) },
+      spawn: server.spawn,
+      processors: () => 2,
+      stepMs: 200,
+      pauseMs: 2_000,
+      restMs: 300,
+    });
+    stops.push(engine.start('en', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
+    const held = () => states.filter((s) => s.phase === 'held');
+    for (let rest = 1; rest <= 3; rest += 1) {
+      await waitFor(() => states.filter((s) => s.phase === 'listening').length >= rest, 5_000);
+      await sound.play(3_500, 0);
+      await waitFor(() => held().length >= rest, 10_000);
+    }
+    expect(held().at(-1)).toMatchObject({ reason: 'busy', slow: { rests: 3 } });
+    // Rested a third time, it stays held: nothing starts again.
+    await new Promise((wait) => setTimeout(wait, 1_200));
+    expect(states.filter((s) => s.phase === 'listening')).toHaveLength(3);
+    expect(server.spawned).toHaveLength(3);
+    expect(states.at(-1)).toMatchObject({ phase: 'held', reason: 'busy' });
+    expect(warnings.at(-1)).toMatch(/stops trying/u);
+  }, 45_000);
+
+  it('a computer that keeps up never rests, so never stops (today’s captions on 4 or more processors, as now)', async () => {
+    const server = standIn();
+    const sound = bursts();
+    const states: SpeechState[] = [];
+    const heard: Heard[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      processors: () => 8,
+      stepMs: 200,
+      pauseMs: 400,
+      restMs: 300,
+    });
+    stops.push(
+      engine.start('en', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    for (let phrase = 0; phrase < 4; phrase += 1) await sound.play(1_500, 600);
+    await waitFor(() => heard.filter((h) => h.final).length >= 4, 5_000);
+    expect(states).toEqual([{ phase: 'starting' }, { phase: 'listening', language: 'en' }]);
+    expect(server.spawned).toHaveLength(1);
+    expect(server.spawned[0]?.[(server.spawned[0]?.indexOf('-t') ?? 0) + 1]).toBe('4');
+  }, 30_000);
+});
+
 describe('a model that may not be used is never loaded (alpha.22)', () => {
   it('says why at a start, and starts no program', async () => {
     const server = standIn();

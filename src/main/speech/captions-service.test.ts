@@ -68,12 +68,14 @@ function setup(
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
   const started: string[] = [];
+  let stopped = 0;
   const engine: SpeechEngine = {
     start(language, to) {
       started.push(language);
       out = to;
       to.state({ phase: 'listening', language });
       return () => {
+        stopped += 1;
         out = null;
       };
     },
@@ -133,7 +135,20 @@ function setup(
       heardAt: Date.now(),
     });
   };
-  return { service, userData, started, downloads, pending, shown, views, say, getSettings: () => settings };
+  return {
+    service,
+    userData,
+    started,
+    downloads,
+    pending,
+    shown,
+    views,
+    say,
+    getSettings: () => settings,
+    /** What the engine says it is doing (cap-threads: its rests). */
+    state: (s: SpeechState) => out?.state(s),
+    stops: () => stopped,
+  };
 }
 
 describe('live captions as an admin turns them on (Part 10)', () => {
@@ -466,4 +481,53 @@ it('starts a fresh prototype session when the selected normal model changes, wit
   } finally {
     vi.useRealTimers();
   }
+});
+
+describe('a computer too slow for live captions (cap-threads, the owner: “Say so and stop”)', () => {
+  const rest = (rests: number): SpeechState => ({
+    phase: 'held',
+    reason: 'busy',
+    slow: { answerMs: 15_500, behindMs: 16_000, threads: 2, processors: 2, rests },
+  });
+
+  it('after 3 rests in a row captions stop: off on this computer with the reason, the engine stopped; on again tries again', async () => {
+    const { service, started, userData, views, state, stops } = setup();
+    service.start();
+    await service.setOn(true);
+    expect(started).toEqual(['auto']);
+    state(rest(1));
+    state(rest(2));
+    await new Promise((wait) => setTimeout(wait, 20));
+    expect(service.view()).toMatchObject({ on: true, stopped: null });
+    state(rest(3));
+    await vi.waitFor(() => {
+      expect(service.view().on).toBe(false);
+    });
+    expect(readCaptionsSwitch(userData, 'win32', 'x64').on).toBe(false);
+    expect(service.view()).toMatchObject({
+      speech: { phase: 'off' },
+      stopped: { language: 'auto', slow: { rests: 3, answerMs: 15_500, threads: 2, processors: 2 } },
+    });
+    // The engine was stopped (Route W gives its pack's file back on that stop), and the dialog was told.
+    expect(stops()).toBe(1);
+    expect(views.at(-1)).toMatchObject({ on: false, stopped: { slow: { rests: 3 } } });
+    // On again: it tries again, and the reason has gone.
+    await service.setOn(true);
+    expect(started).toEqual(['auto', 'auto']);
+    expect(service.view()).toMatchObject({ on: true, stopped: null });
+  });
+
+  it('a rest or two never stop them, and a rest the engine measured nothing for never counts', async () => {
+    const { service, state, stops } = setup();
+    service.start();
+    await service.setOn(true);
+    state(rest(1));
+    state(rest(2));
+    state({ phase: 'listening', language: 'auto' });
+    state(rest(1));
+    state({ phase: 'held', reason: 'busy' });
+    await new Promise((wait) => setTimeout(wait, 20));
+    expect(service.view()).toMatchObject({ on: true, stopped: null });
+    expect(stops()).toBe(0);
+  });
 });

@@ -17,9 +17,10 @@ export function createStandInEngine(
     once?: boolean;
     /**
      * Hold (DRASHTI_TEST_SPEECH_HOLD, cap-threads): after its first phrase is heard whole it rests as a computer too
-     * slow to keep up does (placeholder numbers), and stays resting.
+     * slow to keep up does (placeholder numbers), and stays resting. The number is which rest in a row it says it is
+     * (3: captions then stop); 0 or left out, it never rests.
      */
-    hold?: boolean;
+    hold?: number;
   } = {},
 ): SpeechEngine {
   return {

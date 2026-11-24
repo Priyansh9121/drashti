@@ -50,7 +50,7 @@ describe('the stand-in recognizer', () => {
   it('hold (cap-threads): after its first phrase heard whole it rests as a too-slow computer does, and stays resting', () => {
     const heard: Heard[] = [];
     const states: SpeechState[] = [];
-    const stop = createStandInEngine(['alpha beta', 'gamma delta'], 1_500, { hold: true }).start('en', {
+    const stop = createStandInEngine(['alpha beta', 'gamma delta'], 1_500, { hold: 1 }).start('en', {
       heard: (h) => heard.push(h),
       state: (s) => states.push(s),
     });
@@ -67,6 +67,17 @@ describe('the stand-in recognizer', () => {
         slow: { answerMs: 9_100, behindMs: 6_200, threads: 2, processors: 2, rests: 1 },
       },
     ]);
+    stop();
+  });
+
+  it('hold 3: the rest it says is the third in a row (captions then stop: cap-threads)', () => {
+    const states: SpeechState[] = [];
+    const stop = createStandInEngine(['alpha beta'], 1_500, { hold: 3 }).start('en', {
+      heard: () => undefined,
+      state: (s) => states.push(s),
+    });
+    vi.advanceTimersByTime(1_500 * 2);
+    expect(states.at(-1)).toMatchObject({ phase: 'held', reason: 'busy', slow: { rests: 3 } });
     stop();
   });
 
