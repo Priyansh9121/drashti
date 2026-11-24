@@ -3333,7 +3333,8 @@ function start(): void {
     // A tablet paired as Stage is a stage display (alpha.23, a22-review-stage S8): Stage On with one says nothing of
     // no screen set to Stage, as with a stage screen whose display is unplugged or whose node is offline.
     // Only while the Network is on (a22-review-stage8 S5): with it off a tablet shows nothing.
-    stageDevices: () => stageDevicesPaired({ on: net.on, devices: stageTablets.list() }),
+    // (`net` is made further down and read only as Stage goes on: the return type is written, never inferred from it.)
+    stageDevices: (): number => stageDevicesPaired({ on: net.on, devices: stageTablets.list() }),
   });
   // The engine's Stage off as the switch starts (alpha.22: off on a new library), and the log says how it started.
   engine.setStage({ off: !manager.switches().stage });
