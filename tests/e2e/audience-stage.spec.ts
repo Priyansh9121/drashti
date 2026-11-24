@@ -617,9 +617,11 @@ test('covering the controls: Mod+1’s question shows on that output too; Esc ca
     expect(await switches(win)).toEqual({ audience: true, stage: true });
     expect(out.isClosed()).toBe(false);
 
-    // The output's own Esc, as it sends it when it has the keyboard (a windowed output): the same.
+    // The output's own Esc, as it sends it when it has the keyboard (a windowed output): the same. Answered once the
+    // window's own question is open with Turn off focused, as in the first round (the output asks a moment sooner).
     await win.keyboard.press(`${MOD}+1`);
     await expect(big).toBeVisible();
+    await expect(ask.getByTestId('screen-switch-turn-off')).toBeFocused();
     await out.evaluate(() => {
       void (globalThis as PageGlobals).drashti.output.switchAnswer(false);
     });
@@ -627,9 +629,12 @@ test('covering the controls: Mod+1’s question shows on that output too; Esc ca
     await expect(big).toHaveCount(0);
     expect(await switches(win)).toEqual({ audience: true, stage: true });
 
-    // Enter: Audience off; the output over the controls closes, and with it the question.
+    // Enter: Audience off; the output over the controls closes, and with it the question. Pressed once Turn off has the
+    // keyboard, as in the first round: the output shows its question a moment before the window's has the focus (alpha.22's
+    // gate, run 45399099984: an Enter 57 ms after the ask found no button there).
     await win.keyboard.press(`${MOD}+1`);
     await expect(big).toBeVisible();
+    await expect(ask.getByTestId('screen-switch-turn-off')).toBeFocused();
     await win.keyboard.press('Enter');
     await expect.poll(() => switches(win)).toEqual({ audience: false, stage: true });
     await expect.poll(() => outputPages(app).filter((p) => !p.isClosed()).length).toBe(0);
