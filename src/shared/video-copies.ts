@@ -101,5 +101,3 @@ export interface CombineJob {
 }
 /** A combine queued (null: the save dialog of Also save a copy to a file was cancelled, so none), or why not. */
 export type CombineResult = { ok: true; job: CombineJob | null } | { ok: false; message: string };
-/** Export…: the file written (null: the save dialog was cancelled), or why none was. */
-export type ExportCopyResult = { ok: true; path: string | null } | { ok: false; message: string };

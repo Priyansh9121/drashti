@@ -11,7 +11,6 @@ import { handle } from '../ipc/handle';
 import { AFTER_START_MS, type ConvertService } from './convert-service';
 import { ClipExports, type ExportSourceResult } from './clip-export-service';
 import { CombineVideos } from './combine-service';
-import { exportOffer } from './export-copy';
 import { ProxyService } from './proxy-service';
 import { copyRequests, registerProxyFile } from './video-copy-files';
 
@@ -143,27 +142,26 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     publishImport,
   });
   // Combine videos… (alpha.22): the chosen videos joined end to end into one new video in Media, by the same worker.
-  // The system's save dialog for Also save a copy to a file and Export…, from the operator's window, opened in
-  // Downloads at the video's name; the system itself asks before replacing a file there.
+  // The system's save dialog for Also save a copy to a file, from the operator's window, opened in Downloads at the
+  // new video's name (as Export…'s, media:export-file).
   const pickCopy = async (name: string): Promise<string | null> => {
     const parent = BrowserWindow.getFocusedWindow();
     const options = {
       title: 'Export video',
-      defaultPath: exportOffer(app.getPath('downloads'), name),
+      defaultPath: join(app.getPath('downloads'), name),
       buttonLabel: 'Export',
-      filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
     };
     const picked = await (parent ? dialog.showSaveDialog(parent, options) : dialog.showSaveDialog(options));
     return picked.canceled || !picked.filePath ? null : picked.filePath;
   };
   const combines = new CombineVideos({
     pickCopy,
-    freeBytes: (dir) => deps.freeBytes(dir),
     mediaDir: deps.mediaDir,
     workDir: join(deps.mediaDir, 'video-combine-work'),
     row: (id) => deps.media.about(id),
     conversions: deps.conversions,
-    idle: () => deps.idle(),
+    // The save gate (alpha.22): only what plays, the stream or a recording holds a combine the operator asked for.
+    idle: () => (deps.saveIdle ?? deps.idle)(),
     prepareImport: (file, info, name, signal) => register(file, info, signal, name),
     publishImport,
   });
@@ -196,11 +194,6 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       : { ok: false as const, message: 'Open Media in Pro Mode to combine videos.' },
   );
   handle(IPC.media.combineList, (e) => (allowed(e) ? combines.list() : []));
-  handle(IPC.media.exportCombined, (e, id) =>
-    allowed(e) && deps.proMode() && typeof id === 'string'
-      ? combines.exportCopy(id)
-      : { ok: false as const, message: 'Open Combine videos… in Pro Mode to export.' },
-  );
   handle(IPC.media.stopCombine, (e, id) =>
     allowed(e) && typeof id === 'string' ? combines.stop(id) : false,
   );

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { MediaSummary } from '../../../shared/playlists';
-import { COMBINE_MOST, type CombineJob, type ExportCopyResult } from '../../../shared/video-copies';
+import { exportedNotice, type ExportFileResult } from '../../../shared/export-file';
+import { COMBINE_MOST, type CombineJob } from '../../../shared/video-copies';
 import { addFileMenuItems, type FileTarget } from '../files/file-menu';
 import { Layers } from '../ui/icons';
 import type { MenuEntry } from '../ui/Menu';
@@ -76,8 +77,8 @@ export function combineJobWords(job: CombineJob): string[] {
   return lines;
 }
 
-/** Export…'s words: where it went, or why not (nothing when its save dialog was cancelled). */
-export function exportWords(result: ExportCopyResult): string | null {
+/** Export…'s words (media:export-file's, as a22-save-trim's notice says them), or nothing when its dialog was closed. */
+export function exportWords(result: ExportFileResult): string | null {
   if (!result.ok) return result.message;
-  return result.path ? `Exported as “${fileName(result.path)}”.` : null;
+  return result.path ? exportedNotice(result.path) : null;
 }

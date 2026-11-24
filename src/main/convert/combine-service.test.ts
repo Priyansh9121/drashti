@@ -64,7 +64,6 @@ async function setUp() {
       saving.offered.push(name);
       return Promise.resolve(saving.answer);
     },
-    freeBytes: () => 100 * 1024 ** 3,
     mediaDir: fixture.dir,
     workDir: work,
     row: (id) => fixture.media.about(id),
@@ -235,7 +234,7 @@ it('dissolves between them: the sum less the overlap; one too short for it is cu
   expect(Math.abs((plain.durationMs ?? 0) - 3000)).toBeLessThanOrEqual(200);
 }, 40_000);
 
-it('also saves a copy to the file chosen, and Export… copies a finished one again: one encode only', async () => {
+it('also saves a copy to the file chosen first, with Export…’s own helper: one encode, the very bytes', async () => {
   const { saving } = await setUp();
   // Cancelled: nothing combined.
   expect(await combines.start(ask(['source', 'second'], { saveCopy: true }))).toEqual({
@@ -249,16 +248,6 @@ it('also saves a copy to the file chosen, and Export… copies a finished one ag
   const job = await settled((await started(ask(['source', 'second'], { saveCopy: true }))).id);
   expect(job.savedTo).toBe(chosen);
   const stored = join(fixture.dir, fixture.media.about(job.mediaId ?? '')?.path ?? '');
-  const bytes = (await sha256File(stored)).sha256;
-  expect((await sha256File(chosen)).sha256).toBe(bytes);
-  const again = join(fixture.dir, 'exported.mp4');
-  saving.answer = again;
-  expect(await combines.exportCopy(job.id)).toEqual({ ok: true, path: again });
-  expect((await sha256File(again)).sha256).toBe(bytes);
-  expect(saving.offered.at(-1)).toBe('Placeholder source + Placeholder second.mp4');
-  // Only a finished one, and never while on air.
-  expect(await combines.exportCopy('no-such-job')).toMatchObject({ ok: false });
-  fixture.activity.stream = true;
-  expect(await combines.exportCopy(job.id)).toMatchObject({ ok: false, message: /streaming or recording/u });
+  expect((await sha256File(chosen)).sha256).toBe((await sha256File(stored)).sha256);
   expect(fixture.maxActive()).toBe(1);
 }, 40_000);

@@ -9,7 +9,6 @@ import type {
   CombineJob,
   CombineRequest,
   CombineResult,
-  ExportCopyResult,
   VideoProxyResult,
 } from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
@@ -734,8 +733,6 @@ export const IPC = {
     combineVideos: 'media:combine-videos',
     combineList: 'media:list-combines',
     stopCombine: 'media:stop-combine',
-    /** Export… (alpha.22): a finished combine's video copied to a file chosen in the system's save dialog. */
-    exportCombined: 'media:export-combined',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
@@ -1890,7 +1887,6 @@ export interface InvokeContract {
   [IPC.media.combineVideos]: { args: [request: CombineRequest]; result: CombineResult };
   [IPC.media.combineList]: { args: []; result: CombineJob[] };
   [IPC.media.stopCombine]: { args: [jobId: string]; result: boolean };
-  [IPC.media.exportCombined]: { args: [jobId: string]; result: ExportCopyResult };
   [IPC.media.videoAnalysis]: {
     args: [mediaId: string, audioStream: number | null, retry: boolean];
     result: VideoAnalysisResult;

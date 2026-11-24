@@ -790,7 +790,7 @@ it('keeps clip exports and manual preparation stops in Pro Mode with their expec
 
 it('keeps Combine videos… in Pro Mode: combining and stopping refused in Simple Mode, its list readable', () => {
   const answers = simpleModeRefusals(() => ({}) as AudioOutputStatus);
-  for (const channel of [IPC.media.combineVideos, IPC.media.stopCombine, IPC.media.exportCombined]) {
+  for (const channel of [IPC.media.combineVideos, IPC.media.stopCombine]) {
     expect(channel, 'the channel exists').toMatch(/^media:/u);
     expect(simpleModeRefusesWhole(channel), channel).toBe(true);
   }

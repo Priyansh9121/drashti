@@ -485,7 +485,6 @@ const bridge: DrashtiBridge = {
     combineVideos: (request) => invoke(IPC.media.combineVideos, request),
     combineList: () => invoke(IPC.media.combineList),
     stopCombine: (id) => invoke(IPC.media.stopCombine, id),
-    exportCombined: (id) => invoke(IPC.media.exportCombined, id),
     videoAnalysis: (mediaId, audioStream = 0, retry = false) =>
       invoke(IPC.media.videoAnalysis, mediaId, audioStream, retry),
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),

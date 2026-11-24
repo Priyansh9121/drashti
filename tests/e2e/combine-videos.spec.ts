@@ -201,7 +201,7 @@ test('Combine videos…: two videos chosen in Media, put in order, joined with a
     const jobs = dialog.getByTestId('combine-videos-job');
     const dissolveJob = jobs.nth(0);
     await expect(dissolveJob).toHaveAttribute('data-state', 'waiting');
-    await expect(dissolveJob).toContainText('Waits while');
+    await expect(dissolveJob).toContainText('Waiting: the stream is on air');
     const list = () =>
       win.evaluate(() => (globalThis as unknown as CombineGlobals).drashti.media.combineList());
     expect(await list()).toMatchObject([
@@ -238,7 +238,7 @@ test('Combine videos…: two videos chosen in Media, put in order, joined with a
     await answerSaveAs(app, exported);
     await dissolveJob.getByRole('button', { name: 'Export…', exact: true }).click();
     await expect.poll(() => existsSync(exported), { timeout: 20_000 }).toBe(true);
-    await expect(dissolveJob).toContainText('Exported as “Exported dissolve.mp4”.');
+    await expect(dissolveJob).toContainText('Exported “Exported dissolve.mp4”');
     const downloads = await app.evaluate(({ app: electronApp }) => electronApp.getPath('downloads'));
     expect(await offeredSaveAs(app)).toEqual([join(downloads, 'Placeholder red + Placeholder blue.mp4')]);
 

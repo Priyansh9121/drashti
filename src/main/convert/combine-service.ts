@@ -6,7 +6,6 @@ import {
   COMBINE_MOST,
   type CombineJob,
   type CombineResult,
-  type ExportCopyResult,
 } from '../../shared/video-copies';
 import type { DetailsRow } from '../media/media-details';
 import {
@@ -16,15 +15,17 @@ import {
   type CombineChoice,
   type CombinePlan,
 } from './combine-plan';
-import { copyToChosen } from './export-copy';
+import type { ExportFileResult } from '../../shared/export-file';
+import { exportMediaFile } from './export-file';
 import type { ConvertService, CopyOptions } from './convert-service';
 import type { MediaInfo } from './plan';
 
 /*
  * Combine videos… (alpha.22; the owner, 24 Nov 2026: "new feature, combine 2 videos", "Yes, one after other"): the
  * chosen videos, in the operator's order, joined end to end into ONE new video added to Media. It runs as Edit Video's
- * export does, in conversion's one idle worker: at the lowest priority (verified, else refused), waiting while the
- * show, stream or recording is on (and starting again from the beginning when one starts while it runs), with its
+ * export does, in conversion's one idle worker: at the lowest priority (verified, else refused), waiting while a video
+ * or a sound plays, the stream is on air or a recording goes on (a still slide, a picture or the Wallpaper up never
+ * holds it; a22-save-trim's save gate), starting again from the beginning when one starts while it runs, with its
  * progress and Stop. The originals are only read: the new video is made in a work folder of its own, checked (its
  * picture, sound and length), copied into Media and listed only then. A combine waiting or going when Drashti quits is
  * let go of (nothing of it is left); combine them again after the restart.
@@ -53,7 +54,6 @@ export interface CombineDeps {
    * or null when cancelled. The system's own dialog asks before replacing a file there.
    */
   pickCopy(name: string): Promise<string | null>;
-  freeBytes(dir: string): number;
 }
 interface Entry {
   job: CombineJob;
@@ -181,7 +181,8 @@ export class CombineVideos {
       0,
     );
     const options: CopyOptions = {
-      waitForShow: true,
+      // As Export clip… (alpha.22, a22-save-trim): only what plays, the stream or a recording holds it.
+      waitForPlaying: true,
       strictPriority: true,
       kind: 'clip',
       // Its progress and its time limit (four times its length, and 5 minutes more) by all of them together, as Media
@@ -292,32 +293,20 @@ export class CombineVideos {
     }
     job.state = 'done';
   }
-  /** Media's own copy of a finished combine copied to `dest`, whole or not at all, only while idle. */
-  private copyOut(mediaId: string | null, dest: string): Promise<ExportCopyResult> {
-    const row = mediaId ? this.deps.row(mediaId) : null;
-    if (!row || row.deleted || row.missing || !row.path)
-      return Promise.resolve({
-        ok: false,
-        message: 'The combined video is no longer in Media. Combine the videos again.',
-      });
-    return copyToChosen(join(this.deps.mediaDir, row.path), dest, {
-      idle: () => this.deps.idle(),
-      freeBytes: (dir) => this.deps.freeBytes(dir),
-    });
-  }
-  /** Export…: a finished combine's video saved to a file chosen in the system's save dialog (Downloads, its name). */
-  async exportCopy(id: string): Promise<ExportCopyResult> {
-    const entry = this.entries.find((e) => e.job.id === id && e.job.state === 'done' && e.job.mediaId);
-    if (!entry) return { ok: false, message: 'That combined video is not ready. Combine the videos again.' };
-    if (!this.deps.idle())
-      return {
-        ok: false,
-        message:
-          'Export… waits for an idle moment: nothing can be exported while anything is up, streaming or recording. Try again when the show is idle.',
-      };
-    const dest = await this.deps.pickCopy(entry.job.name);
-    if (dest === null) return { ok: true, path: null };
-    return this.copyOut(entry.job.mediaId, dest);
+  /** Media's own copy of a finished combine copied to `dest` by Export…'s one helper (never over a file there). */
+  private copyOut(mediaId: string | null, dest: string): Promise<ExportFileResult> {
+    return exportMediaFile(
+      {
+        video: (id) => {
+          const row = this.deps.row(id);
+          return row && !row.deleted && !row.missing && row.path
+            ? { path: join(this.deps.mediaDir, row.path), name: row.name }
+            : null;
+        },
+        pickDest: () => Promise.resolve(dest),
+      },
+      mediaId ?? '',
+    );
   }
   stop(id: string): boolean {
     const entry = this.entries.find(

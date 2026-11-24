@@ -91,9 +91,10 @@ function Combine({ initial }: { initial: CombineVideo[] }) {
       setBusy(false);
     }
   };
-  const exportJob = async (id: string) => {
+  // Export… (media:export-file, the one helper a22-save-trim's rows use too): its words beside the combine.
+  const exportJob = async (id: string, mediaId: string) => {
     try {
-      const words = exportWords(await window.drashti.media.exportCombined(id));
+      const words = exportWords(await window.drashti.media.exportFile(mediaId));
       if (words) setExported((now) => ({ ...now, [id]: words }));
     } catch {
       setExported((now) => ({ ...now, [id]: 'The video could not be exported. Try Export… again.' }));
@@ -116,7 +117,8 @@ function Combine({ initial }: { initial: CombineVideo[] }) {
       <div className="space-y-3">
         <p className="text-sm text-muted">
           They play one after the other, in this order, as one new video added to Media. The originals are
-          kept as they are. It waits until the show, stream and recording are idle.
+          kept as they are. It waits while a video or a sound plays, the stream is on air or a recording goes
+          on.
         </p>
         <ol className="space-y-1" aria-label="Videos, in the order they play">
           {order.map((video, at) => (
@@ -219,7 +221,7 @@ function Combine({ initial }: { initial: CombineVideo[] }) {
                         <Button size="sm" onClick={() => showInMedia(job.mediaId ?? '')}>
                           Show in Media
                         </Button>
-                        <Button size="sm" onClick={() => void exportJob(job.id)}>
+                        <Button size="sm" onClick={() => void exportJob(job.id, job.mediaId ?? '')}>
                           Export…
                         </Button>
                       </>
