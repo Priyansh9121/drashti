@@ -164,6 +164,40 @@ test('prepared translations require named review, survive restart, and source ed
   await second.app.close();
 });
 
+test('Prepare translations drafts empty boxes only, unchecked, and waits while the stream is on air (stand-in engine)', async () => {
+  // DRASHTI_TEST_TRANSLATE stands in for the offline engine (a marked placeholder, never a translation): no model
+  // pack on CI. The engine itself is checked by the unit tests and, locally, against x74's Python on real models.
+  const { app } = await launchApp({ DRASHTI_TEST_TRANSLATE: '1', DRASHTI_TEST_ON_AIR_HOOK: '1' });
+  const win = await operatorPage(app);
+  await fixture(win);
+  const { review } = await editor(app, win);
+  await review.getByLabel('Source language', { exact: true }).selectOption('en');
+  await review.getByLabel('Target language', { exact: true }).selectOption('gu');
+  await expect(review).toContainText('A named reader checks every draft before it can show.');
+  const prepare = review.getByRole('button', { name: 'Prepare translations', exact: true });
+  const words = review.getByLabel('Translation words', { exact: true }).first();
+  const onAir = (on: boolean) =>
+    app.evaluate((_electron, air) => {
+      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(air);
+    }, on);
+  // On air: nothing is drafted, and the dialog says why.
+  await onAir(true);
+  await prepare.click();
+  await expect(review).toContainText('Prepare translations waits while the stream is on air or recording.');
+  await expect(words).toHaveValue('');
+  // Off air: a draft, unchecked, in the empty box.
+  await onAir(false);
+  await prepare.click();
+  await expect(words).toHaveValue(`[Test placeholder en/gu: ${JSON.stringify(SOURCE)}]`);
+  await expect(review.getByTestId('translation-review-state').first()).toHaveText('Unchecked');
+  // No empty box is left, so there is nothing more to prepare; typed words are never replaced.
+  await expect(prepare).toBeDisabled();
+  await words.fill('Placeholder typed');
+  await expect(prepare).toBeDisabled();
+  await expect(words).toHaveValue('Placeholder typed');
+  await app.close();
+});
+
 test('hall, explicit screen Off and stage use their own saved checked targets; Simple Mode cannot approve over raw IPC', async () => {
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);

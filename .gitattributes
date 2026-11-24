@@ -9,3 +9,5 @@
 *.woff2 binary
 *.ttf binary
 *.pptx binary
+*.bin binary
+*.spm binary

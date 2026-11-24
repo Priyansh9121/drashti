@@ -70,6 +70,28 @@ export interface Translator {
 
 export const noTranslator = { status: 'No engine installed' } as const;
 
+/**
+ * Prepare translations' offline engine as the Translation… dialog sees it (alpha.22, a22-mt): whether this copy of
+ * Drashti has it, whether a model pack holds this direction, and what to tell the operator.
+ */
+export interface TranslationEngineStatus {
+  installed: boolean;
+  available: boolean;
+  message: string;
+}
+/** One text box's source, to be drafted (never shown before a named reader checks it). */
+export interface TranslationDraftRequest {
+  source: string;
+  from: TranslationLanguage;
+  to: TranslationLanguage;
+}
+export type TranslationDraftResult =
+  | { ok: true; text: string }
+  /** thisBoxOnly: only this text box's words could not be drafted; the others may be. */
+  | { ok: false; message: string; thisBoxOnly?: boolean };
+/** The longest text box source Prepare translations takes (as the dialog's translation box). */
+export const MAX_DRAFT_SOURCE = 20_000;
+
 /** Test double only; never connect placeholder generation to the operator's library. */
 export class StandInTranslator implements Translator {
   translate(source: string, from: TranslationLanguage, to: TranslationLanguage): Promise<string> {
