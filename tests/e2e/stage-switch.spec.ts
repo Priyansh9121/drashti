@@ -239,3 +239,73 @@ test('(c) the controls and two projectors: the second is the stage by itself, sh
   expect(outputPages(app)).toHaveLength(2);
   await app.close();
 });
+
+/** How the stage group's screens stand now, this computer's (Screens' states). */
+const stageStates = (win: Page) =>
+  win.evaluate(async () => {
+    const s = await (globalThis as PageGlobals).drashti.screens.get();
+    const staged = new Set(
+      s.groups.filter((g) => g.role === 'stage').flatMap((g) => g.screens.map((sc) => sc.id)),
+    );
+    return s.status.filter((st) => staged.has(st.screenId)).map((st) => st.state);
+  });
+
+/** Stage off, then on again from the top bar (nothing to ask: no stage screen is open on this computer). */
+async function offAndOn(win: Page): Promise<void> {
+  await win.getByTestId('switch-stage').click();
+  await expect(win.getByTestId('screen-switch-ask')).toHaveCount(0);
+  await stageIs(win, false);
+  await win.getByTestId('switch-stage').click();
+  await stageIs(win, true);
+}
+
+// alpha.23 (a22-review-stage S8; lead 2's QA23-STAGE8-1): a tablet paired as Stage is a stage display, and a stage
+// screen whose display is unplugged is still set to Stage: "No screen is set to Stage." would be wrong then.
+test('(d) set to Stage with nothing showing it on this computer: only a tablet paired as Stage, then a stage screen whose display is unplugged; Stage On never says no screen is set to Stage, and says it once neither is left', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ ...AUTO, ...NETWORK_ENV });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await plugIn(app, 1);
+  await expect.poll(() => jobs(win)).toEqual(['1: audience']);
+  await stageIs(win, false);
+
+  // The hall's projector and one tablet paired as Stage: On says nothing of no screen, here or in the panel.
+  const { port } = await networkOn(win);
+  await pairToken(win, port, 'stage', 'Placeholder tablet');
+  await win.getByTestId('switch-stage').click();
+  await stageIs(win, true);
+  await openSection(win, 'stage');
+  const panel = win.getByTestId('stage-message-control');
+  await expect(panel.getByTestId('stage-preview-open')).toBeVisible();
+  await expect(panel.getByTestId('stage-no-screen')).toHaveCount(0);
+  await expect(noStageLine(win)).toHaveCount(0);
+  await offAndOn(win);
+  await expect(noStageLine(win)).toHaveCount(0);
+
+  // The tablet forgotten: nothing is set to Stage now, and On says so again, in the line and in the panel.
+  const tablet = await win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.network.status()).devices.find((d) => d.kind === 'stage'),
+  );
+  if (!tablet) throw new Error('the tablet paired as Stage was expected');
+  await win.evaluate(
+    async (id) => (await (globalThis as PageGlobals).drashti.network.revokeDevice(id)).ok,
+    tablet.id,
+  );
+  await expect(panel.getByTestId('stage-no-screen')).toContainText('No screen is set to Stage.');
+  await offAndOn(win);
+  await expect(noStageLine(win).getByTestId('screens-said-text')).toHaveText('No screen is set to Stage.');
+
+  // A second projector: the stage by itself. Unplugged, its screen is still set to Stage (it shows the stage again
+  // as the display comes back), so On says nothing of no screen.
+  await plugIn(app, 2);
+  await expect.poll(() => jobs(win)).toEqual(['1: audience', '2: stage']);
+  await expect.poll(() => stageStates(win)).toEqual(['showing']);
+  await plugIn(app, 1);
+  await expect.poll(() => stageStates(win), { timeout: 30_000 }).toEqual(['missing-display']);
+  await expect(panel.getByTestId('stage-no-screen')).toHaveCount(0);
+  await offAndOn(win);
+  await expect(noStageLine(win)).toHaveCount(0);
+  await expect(panel.getByTestId('stage-no-screen')).toHaveCount(0);
+  await app.close();
+});
