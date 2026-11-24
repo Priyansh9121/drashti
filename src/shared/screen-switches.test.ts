@@ -7,7 +7,11 @@ import {
   CLOSES_WINDOWS,
   openUnder,
   pictureWhile,
+  NO_STAGE_SCREEN,
+  SET_UP_STAGE,
   showsSomething,
+  stageScreensSet,
+  STARTS,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
   switchFor,
@@ -166,5 +170,31 @@ describe('Audience and Stage (Session 50)', () => {
     );
     expect(pictureWhile(null, null)).toBeNull();
     expect(SWITCHED_OFF_PICTURE).toBe('This computer’s desktop');
+  });
+
+  // alpha.22 (the owner, 24 Nov 2026: "by default it should be off. keep it off. i can turn on, and then turn off").
+  it('starts with Audience on and Stage off on a new library (alpha.22)', () => {
+    expect(STARTS).toEqual({ audience: true, stage: false });
+  });
+
+  it('counts the screens set to Stage: a stage group’s, on a display, this computer’s or a node’s', () => {
+    const groups = [
+      group('hall', 'audience', [screen('hall-1', 'hall')]),
+      group('stage', 'stage', [screen('stage-1', 'stage'), screen('node-stage', 'stage', 'node-1')]),
+    ];
+    // The hall's projector alone: none.
+    expect(stageScreensSet(snapshot(groups, { 'hall-1': 'showing' }))).toBe(0);
+    // A stage group with no display, or turned off in Screens, or its display unplugged: none either.
+    expect(
+      stageScreensSet(
+        snapshot(groups, { 'hall-1': 'showing', 'stage-1': 'unassigned', 'node-stage': 'disabled' }),
+      ),
+    ).toBe(0);
+    expect(stageScreensSet(snapshot(groups, { 'stage-1': 'missing-display' }))).toBe(0);
+    // Showing (with Stage off too: its window stays) or stopped and tried again: set; a node's counts too.
+    expect(stageScreensSet(snapshot(groups, { 'stage-1': 'showing' }))).toBe(1);
+    expect(stageScreensSet(snapshot(groups, { 'stage-1': 'stopped', 'node-stage': 'showing' }))).toBe(2);
+    expect(NO_STAGE_SCREEN).toBe('No screen is set to Stage.');
+    expect(SET_UP_STAGE).toBe('Set up Stage screen…');
   });
 });
