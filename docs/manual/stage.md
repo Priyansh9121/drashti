@@ -26,7 +26,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 
 1. In **Stage screen**, type the message.
 2. Choose its **Size**, and tick **Flash as it comes up** to catch their eye.
-3. Choose its **Colours**, or **Your own colours** (its **Box** and **Words**). "Hard to read" says when the two are too alike; they still show. The colours stay for the next message.
+3. Choose its **Colours**, or **Your own colours** (its **Box** and **Words**). "Hard to read" says when the two are too alike; they still show. The colours stay for the next message, and a message sent from a phone or OSC shows them too.
 4. Press **Show** (or Enter). **Hide** takes it off.
 5. The last few are under **Shown before:**, one press each to show again.
 
