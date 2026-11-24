@@ -334,6 +334,12 @@ export function summarize(run: CandidateRun): CandidateSummary {
   if (s.missed > 0) s.why.push(`missed ${String(s.missed)}`);
   if (s.growthMs !== null && s.growthMs > GROWTH_MS)
     s.why.push(`growth ${String(s.growthMs)} ms (limit ${String(GROWTH_MS)})`);
+  // Two cores, checked (review S1): every engine read back with the mask, and at least one read at all.
+  if (run.expectedMask !== null) {
+    if (run.engines.length === 0) s.why.push('no engine’s processor mask was read');
+    for (const mask of new Set(run.engines.map((e) => e.affinity)))
+      if (mask !== run.expectedMask) s.why.push(`mask ${String(mask)}, not ${String(run.expectedMask)}`);
+  }
   s.live = s.why.length === 0;
   return s;
 }
