@@ -1,4 +1,5 @@
 import { cueClock } from './cue-clock';
+import { atGoMoment } from './go-moment';
 import { cuePresentation, PRIVATE_VIDEO_OPACITY } from './cue-presentation';
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
 import { reportVideoCue, reportLoadedVideoCue } from './video-cue-report';
@@ -529,15 +530,10 @@ function BackgroundPlayer({
       !coming.layer.cueId
     )
       return;
-    let frame = 0;
     const at = coming.layer.seek?.at ?? coming.layer.startedAt;
-    const activate = () => {
-      const now = engineNow();
-      if (now >= at) dispatch({ type: 'activate', key: coming.key, at: now, fade: crossfade });
-      else frame = requestAnimationFrame(activate);
-    };
-    activate();
-    return () => cancelAnimationFrame(frame);
+    const activate = (now: number) =>
+      dispatch({ type: 'activate', key: coming.key, at: now, fade: crossfade });
+    return atGoMoment(at, activate, { checkNow: true });
   }, [coming, crossfade]);
   // During Pause/Play the outgoing source clock changes in place, without replacing its decoder.
   const outgoing = crossfade?.from;
