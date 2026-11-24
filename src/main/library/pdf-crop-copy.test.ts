@@ -104,3 +104,39 @@ it('the independent operator-list oracle reads retained words that CropBox hides
     await loading.destroy();
   }
 });
+
+for (const [rotation, view] of [
+  [0, [140, 380, 230, 540]],
+  [90, [170, 260, 290, 380]],
+  [180, [290, 300, 380, 460]],
+  [270, [230, 460, 350, 580]],
+] as const) {
+  it(`normalizes reversed offset box corners before mapping the crop through ${rotation} degrees`, async () => {
+    const { PDFDocument, PDFName, degrees } = await import('pdf-lib');
+    const fixture = await PDFDocument.create();
+    const sheet = fixture.addPage();
+    sheet.node.set(PDFName.of('MediaBox'), fixture.context.obj([500, 700, 100, 100]));
+    sheet.node.set(PDFName.of('CropBox'), fixture.context.obj([410, 620, 110, 220]));
+    sheet.setRotation(degrees(rotation));
+    const data = await fixture.save({ useObjectStreams: false });
+    const before = data.slice();
+    const original = getDocument({ data: data.slice(), useSystemFonts: false });
+    try {
+      const page = await (await original.promise).getPage(1);
+      expect(page.view).toEqual([110, 220, 410, 620]);
+      expect(page.rotate).toBe(rotation);
+    } finally {
+      await original.destroy();
+    }
+    const copy = await cropPdfCopy(data, [{ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }]);
+    expect(data).toEqual(before);
+    const loading = getDocument({ data: copy, useSystemFonts: false });
+    try {
+      const page = await (await loading.promise).getPage(1);
+      expect(page.view).toEqual(view);
+      expect(page.rotate).toBe(rotation);
+    } finally {
+      await loading.destroy();
+    }
+  });
+}
