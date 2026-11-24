@@ -40,9 +40,8 @@ class Page implements GoMomentClock {
   }
   runTimers(): void {
     for (;;) {
-      const ready = this.timers
-        .filter((t) => t.due <= this.time)
-        .sort((a, b) => a.due - b.due || a.id - b.id)[0];
+      const due = this.timers.filter((t) => t.due <= this.time);
+      const ready = due.sort((a, b) => a.due - b.due || a.id - b.id)[0];
       if (!ready) return;
       this.timers = this.timers.filter((t) => t !== ready);
       ready.run();
@@ -95,19 +94,18 @@ function picture(page: Page, at: number) {
     started = true;
     for (const run of waiting.splice(0)) run();
   }, at - page.time);
-  return {
-    whenStarted(run: () => void): () => void {
-      if (started) {
-        run();
-        return () => undefined;
-      }
-      waiting.push(run);
-      return () => {
-        const i = waiting.indexOf(run);
-        if (i >= 0) waiting.splice(i, 1);
-      };
-    },
+  const whenStarted = (run: () => void): (() => void) => {
+    if (started) {
+      run();
+      return () => undefined;
+    }
+    waiting.push(run);
+    return () => {
+      const i = waiting.indexOf(run);
+      if (i >= 0) waiting.splice(i, 1);
+    };
   };
+  return { whenStarted, fallbackMs: 250 };
 }
 
 describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)", () => {
@@ -115,8 +113,8 @@ describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)
   // operator window's own work, while the hall's was set 7-10 ms after it; LIVE started 36.6 and 40.0 ms after Go.
   it('runs only once its cued picture has started at Go, never ahead of it', () => {
     const page = new Page();
-    const { whenStarted } = picture(page, 100);
-    atGoMoment(100, () => page.order.push('work'), { checkNow: false, afterStart: { whenStarted, fallbackMs: 250 } }, page);
+    const afterStart = picture(page, 100);
+    atGoMoment(100, () => page.order.push('work'), { checkNow: false, afterStart }, page);
     // The page is busy past Go: its next frame comes at 102, its frame callbacks before its timers.
     page.frameAt(102);
     expect(page.order).toEqual(['rate', 'work']);
@@ -124,19 +122,18 @@ describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)
 
   it('runs at once where its picture started already, and a check of the moment later where it never starts', () => {
     const page = new Page();
-    const { whenStarted } = picture(page, 100);
+    const afterStart = picture(page, 100);
     page.time = 101;
     page.runTimers();
-    atGoMoment(100, () => page.order.push('work'), { checkNow: true, afterStart: { whenStarted, fallbackMs: 250 } }, page);
+    atGoMoment(100, () => page.order.push('work'), { checkNow: true, afterStart }, page);
     expect(page.order).toEqual(['rate', 'work']);
     const lone = new Page();
     const seen: number[] = [];
-    const never = { whenStarted: () => () => undefined };
-    atGoMoment(100, (now) => seen.push(now), { checkNow: false, afterStart: { ...never, fallbackMs: 250 } }, lone);
+    const never = { whenStarted: () => () => undefined, fallbackMs: 250 };
+    atGoMoment(100, (now) => seen.push(now), { checkNow: false, afterStart: never }, lone);
     lone.frameAt(101);
     expect(seen).toEqual([]);
     lone.frameAt(351);
     expect(seen).toEqual([351]);
   });
 });
-
