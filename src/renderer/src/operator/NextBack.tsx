@@ -16,8 +16,15 @@ import { NextPicture, useNextCaption } from './NextPreview';
  * practice.
  */
 
-/** Back's and Next's keys, shown from about a 336 px live column (alpha.21): narrower, their words have the room. */
-const KEY_WHEN_ROOM = 'hidden @[19.5rem]/nextback:inline-flex';
+/**
+ * Back's and Next's keys, only where both have room for them beside their words (alpha.22, the owner's report on
+ * alpha.21, 24 Nov 2026: "UI Front end issue."). Next needs the most, about 131 px with its key (its bold words,
+ * chevron, key and padding): two of them, the next picture's 56 px and the row's two 8 px gaps make about 21rem of the
+ * row, a live column of about 360 px. Narrower, Back and Next show their words alone. The key's own inline-flex (Kbd)
+ * comes after a plain `hidden` in the CSS, so alpha.21's `hidden @[19.5rem]/nextback:inline-flex` never hid it and
+ * the keys ran past both buttons' padding below about 355 px; a width query's `hidden` comes after it, and holds.
+ */
+const KEY_WHEN_ROOM = '@max-[21rem]/nextback:hidden';
 
 export function NextBack({
   platform,
