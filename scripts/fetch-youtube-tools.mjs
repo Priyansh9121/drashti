@@ -33,7 +33,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { digestLine, stillAsUnpacked } from './tree-digest.mjs';
 
-export const YT_DLP_VERSION = '2026.08.19';
+export const YT_DLP_VERSION = '2026.11.23';
 export const DENO_VERSION = '2.9.7';
 
 const YT_DLP_RELEASE = `https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}`;
@@ -48,19 +48,29 @@ const DENO_RELEASE = `https://github.com/denoland/deno/releases/download/v${DENO
 export const YT_DLP_BUILDS = {
   'darwin-arm64': {
     url: `${YT_DLP_RELEASE}/yt-dlp_macos.zip`,
-    sha256: '07e54b0865303c864006925913bce2604f8ee8cc6f18699bac9c309f9328a6d8',
+    sha256: '43fc87fc581f64b48c366ce20b9cacb9c2949cc1ac4b9eca56fe25ac52dbb63b',
     exe: 'yt-dlp_macos',
   },
   'darwin-x64': {
     url: `${YT_DLP_RELEASE}/yt-dlp_macos.zip`,
-    sha256: '07e54b0865303c864006925913bce2604f8ee8cc6f18699bac9c309f9328a6d8',
+    sha256: '43fc87fc581f64b48c366ce20b9cacb9c2949cc1ac4b9eca56fe25ac52dbb63b',
     exe: 'yt-dlp_macos',
   },
   'win32-x64': {
     url: `${YT_DLP_RELEASE}/yt-dlp_win.zip`,
-    sha256: '30b4c14aafab6082becff7881e41b76df46dc43ea7633479410a91e29da492bf',
+    sha256: '824860984b96ca01de09f98f7bfd74ed7bbdce72a3340b51af8b9dc5ee037a5f',
     exe: 'yt-dlp.exe',
   },
+};
+
+/**
+ * yt-dlp's licence and its list of what its builds bundle, as in its repository at the pinned tag, by their
+ * SHA-256: Drashti ships them as LICENSES/yt-dlp/LICENSE and LICENSES/yt-dlp/THIRD_PARTY_LICENSES.txt
+ * (QA23-YTDLP-1: a newer yt-dlp brings its own list with it).
+ */
+export const YT_DLP_NOTICES = {
+  LICENSE: '7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c',
+  'THIRD_PARTY_LICENSES.txt': '510233b06ab5222b087d3384ac82ee3f369fde9991fb71e08175d88b72383584',
 };
 
 /** Deno, one program per platform; `binarySha256` is Deno's own sum of the program inside the zip. */
