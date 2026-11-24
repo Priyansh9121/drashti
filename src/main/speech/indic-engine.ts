@@ -79,10 +79,13 @@ interface Growing {
  * (not streaming), and in a phrase's first second or two it often hears only what the noise filter hides; on the
  * dialog's step alone, a phrase then showed its first words only at the next step, often with its final (cap-winci's
  * bench: first words p95 4.3-4.7 s from the speech's onset). So, until a phrase has shown words, and only in its
- * first seconds of sound, it is worked out every half second (at least twice as long as its last working out took,
- * so the helper is never busy more than half the time); after that, at the dialog's step, as before. A phrase in a
- * pause waits: its words do not change in quiet, and its final (the whole phrase, worked out once) then never waits
- * behind a partial.
+ * first 2.5 s of sound, it is worked out every half second; after that, at the dialog's step, as before. Each time,
+ * never sooner than twice as long as its last working out took, so on a slow computer the helper is busy at most
+ * half the time (cap-review-partials S3). No partial starts once a phrase has 300 ms of quiet: its words do not
+ * change in quiet. A final can still wait behind a partial begun before that (in the last of the speech or up to
+ * 300 ms into the quiet), at most for the rest of that one decode: about 0.2 s on a fast Mac with the 0.5 s pause,
+ * up to about a second on a two-core Windows computer (cap-review-partials S1), and less often than before, when a
+ * partial could start anywhere in the pause. At the longest phrase there is no pause, as before.
  */
 const FIRST_SAMPLES = SAMPLE_RATE;
 const EARLY_SAMPLES = SAMPLE_RATE * 2.5;
@@ -128,7 +131,7 @@ function partialDue(g: Growing, stepMs: number, now: number): boolean {
   if (g.length < FIRST_SAMPLES || g.quietMs >= PAUSING_MS) return false;
   if (!g.shown && g.length <= EARLY_SAMPLES)
     return g.partials === 0 || now - g.sentAt >= Math.max(EARLY_STEP_MS, 2 * g.tookMs);
-  return now - g.sentAt >= stepMs;
+  return now - g.sentAt >= Math.max(stepMs, 2 * g.tookMs);
 }
 
 export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
