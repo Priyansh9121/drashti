@@ -737,8 +737,21 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     await panel.getByTestId('pair-name').fill('Placeholder remote');
     await panel.getByTestId('pair-remote').click();
     await expect(panel.getByTestId('pairing-offer')).toBeVisible();
+    // From the panel's top, as the guides name it ("The Phones panel with its address"): alpha.22's first picture run
+    // took it 278 px down, past the switch and the address, the offer's QR code at the panel's top edge, as a scroll
+    // into view by an action leaves it (nothing in the panel scrolls itself). Back to its top, then the switch, the
+    // address and the code whole in view before and after the picture: one that moved fails here, not in the guides.
+    await panel.evaluate((root) => {
+      for (const el of root.querySelectorAll('*')) el.scrollTop = 0;
+    });
+    const fromItsTop = async () => {
+      for (const id of ['network-switch', 'network-addresses', 'pairing-code'])
+        await expect(panel.getByTestId(id), `${id} whole in the picture`).toBeInViewport({ ratio: 1 });
+    };
+    await fromItsTop();
     // The pairing code, its QR code and the poster's QR code (its key) are covered in the picture.
     await shot(win, 'phones-panel', [panel.getByTestId('qr-code'), panel.getByTestId('pairing-code')]);
+    await fromItsTop();
     await win.keyboard.press('Escape');
     await expect(panel).toHaveCount(0);
 
@@ -2236,7 +2249,12 @@ test('stage timer layouts: New from a Template…, a timer box’s settings, the
   await expect(row).toHaveCount(1);
   await row.getByRole('button', { name: 'Start' }).click();
   await expect(row).toHaveAttribute('data-running', 'true');
+  // The whole panel, as the guides name it (its layout, the countdown and the stage message): since alpha.21 only what
+  // is under the LIVE block scrolls, and at 900 high the panel's foot was cut off, the bars below in its picture. In a
+  // window tall enough for all of it, seen whole before the picture.
+  await win.setViewportSize({ width: 1600, height: 1400 });
   await panel.scrollIntoViewIfNeeded();
+  await expect(panel, 'the Stage screen panel whole in its picture').toBeInViewport({ ratio: 1 });
   await part(win, 'stage-panel-timers', [panel]);
 
   // The stage screen: the hall's picture, live, with the countdown at the top left and the clock at the top right.
@@ -3178,8 +3196,13 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   await form.getByRole('textbox', { name: 'Message name' }).fill('Placeholder notice');
   await form.getByRole('textbox', { name: 'Message words' }).fill('Placeholder notice words');
   await expect(form.getByTestId('message-look')).toBeVisible();
+  // The whole form, its look too (since alpha.21 only what is under the LIVE block scrolls, and at 720 high the
+  // form's foot was cut off, the bars below in its picture): in a window tall enough for all of it, seen whole first.
+  await win.setViewportSize({ width: 1280, height: 1400 });
   await form.scrollIntoViewIfNeeded();
+  await expect(form, 'the message form whole in its picture').toBeInViewport({ ratio: 1 });
   await part(win, 'manual-messages', [form]);
+  await win.setViewportSize({ width: 1280, height: 720 });
   await form.getByRole('button', { name: 'Cancel' }).click();
   await expect(form).toHaveCount(0);
 
