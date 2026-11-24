@@ -158,8 +158,11 @@ test('Combine videos…: two videos chosen in Media, put in order, joined with a
 
     await openLibrary(win);
     await win.getByTestId('library-tab-media').click();
-    const red = win.getByTestId('media-item').filter({ hasText: 'Placeholder red' });
-    const blue = win.getByTestId('media-item').filter({ hasText: 'Placeholder blue' });
+    // Each by its whole name: the new video's name holds both of theirs.
+    const item = (name: string) =>
+      win.getByTestId('media-item').filter({ has: win.getByText(name, { exact: true }) });
+    const red = item('Placeholder red.mp4');
+    const blue = item('Placeholder blue.mp4');
     // One video alone: no Combine videos… in its menu.
     await red.click();
     await red.click({ button: 'right' });
