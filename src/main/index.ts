@@ -3897,10 +3897,11 @@ function start(): void {
   const speechEngine =
     testSpeech !== undefined
       ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
-        // DRASHTI_TEST_SPEECH_HOLD (cap-threads): it rests after its first phrase, as a too-slow computer does.
+        // DRASHTI_TEST_SPEECH_HOLD=n (cap-threads): it rests after its first phrase, as a too-slow computer does, as the
+        // n-th rest in a row (3: captions then stop).
         createStandInEngine(testSpeech.split('|'), undefined, {
           once: sw('DRASHTI_TEST_SPEECH_ONCE') !== undefined,
-          hold: sw('DRASHTI_TEST_SPEECH_HOLD') !== undefined,
+          hold: Number(sw('DRASHTI_TEST_SPEECH_HOLD') ?? 0),
         })
       : createWhisperEngine({
           program: () => whisperProgram,

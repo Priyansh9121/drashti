@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import {
+  CAPTIONS_STOP_AFTER_RESTS,
   CAPTION_MODELS,
   isLanguageModelLanguage,
   LANGUAGE_MODEL_LANGUAGES,
@@ -13,9 +14,10 @@ import {
   type CaptionsDownload,
   type CaptionsShown,
   type CaptionsStatus,
+  type CaptionsStopped,
 } from '../../shared/captions';
 import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
-import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
+import type { Heard, SlowHold, SpeechLanguage, SpeechState } from '../../shared/speech';
 import type { CaptionRecognizer } from './caption-routes';
 import {
   chooseCaptionPath,
@@ -121,6 +123,9 @@ const NO_LANGUAGE_MODELS: LanguageModelStore = {
 
 export class CaptionsService {
   readonly hub: SpeechHubControl;
+  /** Why captions turned themselves off (cap-threads), until they are turned on again. */
+  private tooSlow: CaptionsStopped | null = null;
+  private stoppingTooSlow = false;
   private readonly feed: CaptionsFeed;
   /** Today's feed or caption AI's flow, when caption AI is wired in (null: today's feed alone). */
   private readonly paths: CaptionPaths | null;
@@ -243,7 +248,10 @@ export class CaptionsService {
         )
       : null;
     this.feed = this.paths ?? today;
-    this.hub.onState(() => {
+    this.hub.onState((s) => {
+      // The owner (cap-threads, Q-CT-1): "Say so and stop". The third rest in a row for slowness turns captions off.
+      if (s.phase === 'held' && s.reason === 'busy' && s.slow && s.slow.rests >= CAPTIONS_STOP_AFTER_RESTS)
+        this.stopTooSlow(s.slow);
       this.tell();
     });
     this.download = this.modelState();
@@ -354,6 +362,7 @@ export class CaptionsService {
       languageModels: LANGUAGE_MODEL_LANGUAGES.map((language) => this.languageModelView(language)),
       timing: this.tuning.timing,
       processors: (this.deps.processors ?? availableParallelism)(),
+      stopped: this.tooSlow,
     };
   }
 
@@ -364,6 +373,31 @@ export class CaptionsService {
   }
 
   async setOn(on: boolean): Promise<CaptionsStatus> {
+    return this.switchTo(on, null);
+  }
+
+  /**
+   * This computer rested CAPTIONS_STOP_AFTER_RESTS times in a row, too slow for live captions with the model
+   * (cap-threads): captions turn off on this computer, as the switch does (the engine stopped, so Route W gives its
+   * pack's file back), with the reason kept for the dialog and the status bar until they are turned on again.
+   */
+  private stopTooSlow(slow: SlowHold): void {
+    if (this.closed || !this.switch.on || this.stoppingTooSlow) return;
+    this.stoppingTooSlow = true;
+    const stopped: CaptionsStopped = { slow, language: this.settings().language };
+    this.deps.log.warn(
+      `Captions: this computer is too slow for live captions with this model (${String(slow.rests)} rests in a row), so they stop.`,
+    );
+    // After the hub has told every listener of this rest: never stopped from inside its own telling.
+    queueMicrotask(() => {
+      this.stoppingTooSlow = false;
+      if (!this.closed && this.switch.on) void this.switchTo(false, stopped);
+    });
+  }
+
+  /** The switch on this computer, with why captions turned themselves off (or null). */
+  private async switchTo(on: boolean, stopped: CaptionsStopped | null): Promise<CaptionsStatus> {
+    this.tooSlow = stopped;
     if (this.prototype.view().on) this.prototype.setOn(false);
     const next = { ...this.switch, on };
     writeCaptionsSwitch(this.deps.userData, next);

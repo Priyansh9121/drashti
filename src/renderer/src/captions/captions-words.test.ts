@@ -192,14 +192,14 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
       'They rested 3 times in a row (it fell 16.0 seconds behind the speaker, with 2 engine threads)',
     );
     expect(gu).toContain(
-      'For Gujarati, import the Gujarati IndicConformer model pack (Help › Caption and Translation Models…) and choose it under Gujarati model: it keeps up on a computer with two cores.',
+      'For Gujarati, import the Gujarati IndicConformer model pack (Help › Caption and Translation Models…) and choose it under Gujarati model: it keeps up on slower computers.',
     );
     expect(gu).toMatch(/Turn captions on to try again\.$/u);
     expect(captionsStateText(off('hi'))).toContain(
       'For Hindi, import the Hindi IndicConformer model pack (Help › Caption and Translation Models…) and choose it under Hindi model',
     );
     expect(captionsStateText(off('auto'))).toContain(
-      'For Gujarati or Hindi, choose the speaker’s language, then import its IndicConformer model pack (Help › Caption and Translation Models…) and choose it under that language’s model: it keeps up on a computer with two cores.',
+      'For Gujarati or Hindi, choose the speaker’s language, then import its IndicConformer model pack (Help › Caption and Translation Models…) and choose it under that language’s model: it keeps up on slower computers.',
     );
     for (const other of ['en', 'sa'] as const) {
       expect(captionsStateText(off(other))).toMatch(/^Off: this computer is too slow/u);

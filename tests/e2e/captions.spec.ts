@@ -234,13 +234,21 @@ test('after 3 rests in a row captions stop: the switch shows Off, and the dialog
       'Captions stopped: this computer is too slow for live captions with this model.Live Captions…',
     );
 
-    // On again: they try again (and the stand-in stops them again).
+    // On again: they try again (and the stand-in stops them again). Each change the dialog is told, from here on.
+    await win.evaluate(() => {
+      const g = globalThis as PageGlobals & { captionsOn?: boolean[] };
+      g.captionsOn = [];
+      g.drashti.captions.onChanged((view) => g.captionsOn?.push(view.on));
+    });
     await line.getByRole('button', { name: 'Live Captions…' }).click();
-    await dialog.getByTestId('captions-on').click();
+    await toggle.click();
+    await expect
+      .poll(() => win.evaluate(() => (globalThis as { captionsOn?: boolean[] }).captionsOn ?? []), {
+        timeout: 15_000,
+      })
+      .toContain(true);
     await expect(toggle).toHaveAttribute('aria-checked', 'false', { timeout: 15_000 });
-    expect(
-      await win.evaluate(async () => (await (globalThis as PageGlobals).drashti.captions.view()).on),
-    ).toBe(false);
+    await expect(state).toContainText('Turn captions on to try again.');
   } finally {
     await app.close();
   }

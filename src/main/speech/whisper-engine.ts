@@ -2,7 +2,7 @@ import { spawn as spawnChild, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { availableParallelism, constants, setPriority } from 'node:os';
-import type { CaptionTiming } from '../../shared/captions';
+import { CAPTIONS_STOP_AFTER_RESTS, type CaptionTiming } from '../../shared/captions';
 import {
   SPEECH_RATE,
   type Heard,
@@ -21,8 +21,9 @@ import { isSpeech } from './speech-level';
  * program on 127.0.0.1 that keeps the model loaded. It runs below the show's priority. The stream's sound input comes
  * in as 16 kHz mono samples; a pause cuts it into phrases, each sent as it grows (partials) and once whole (final).
  * If the computer cannot keep up (each piece takes too long, or it falls more than a few seconds behind) it stops by
- * itself (held, busy, with what it measured) and tries again a minute later: the show comes first. It never logs a
- * word, and the program's own output is never read. It is never given more threads than the computer has logical
+ * itself (held, busy, with what it measured) and tries again a minute later: the show comes first. After three rests
+ * in a row it stops trying (the owner, cap-threads: "Say so and stop"). It never logs a word, and the program's own
+ * output is never read. It is never given more threads than the computer has logical
  * processors (cap-threads: 4 threads on CI's two-core Windows, and nothing was ever shown).
  */
 
@@ -356,6 +357,12 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         );
         to.state({ phase: 'held', reason: 'busy', slow });
         end();
+        // The owner (cap-threads, Q-CT-1): "Say so and stop". After three rests in a row it stops trying; captions turn
+        // off with the reason (captions-service.ts).
+        if (rests >= CAPTIONS_STOP_AFTER_RESTS) {
+          o.log.warn(`Speech: ${String(rests)} rests in a row, so the captions engine stops trying.`);
+          return;
+        }
         rest = setTimeout(() => {
           rest = null;
           busy = false;
