@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackSeek } from '../../../shared/media';
-import { FADE_PICTURE_LIMITS, FADE_SOUND_LIMITS, playbackOffset, playbackPosition } from '../../../shared/media';
+import {
+  FADE_PICTURE_LIMITS,
+  FADE_SOUND_LIMITS,
+  playbackOffset,
+  playbackPosition,
+} from '../../../shared/media';
 import type { CuedVideo, VideoCrossfade } from '../../../shared/video-cue';
 import { slotKey } from './background-slots';
 import { crossfadeOf, crossfadeOn, pictureEase } from './picture-fade';
@@ -190,9 +195,15 @@ describe('a crossfade’s two pictures: whether and when they are brought back b
     expect(crossfadeOf(fade, { key: slotKey(outgoing), layer: outgoing })).toBe(fade);
     expect(crossfadeOf(fade, { key: slotKey(incoming), layer: incoming })).toBe(fade);
     const other = video('outgoing', START + 5);
-    expect(crossfadeOf(fade, { key: slotKey(other), layer: other }), 'the same file, another playback').toBeNull();
+    expect(
+      crossfadeOf(fade, { key: slotKey(other), layer: other }),
+      'the same file, another playback',
+    ).toBeNull();
     const earlier = video('earlier', START - 9_000, { cueId: 'cue-1' });
-    expect(crossfadeOf(fade, { key: slotKey(earlier), layer: earlier }), 'an earlier cue’s picture').toBeNull();
+    expect(
+      crossfadeOf(fade, { key: slotKey(earlier), layer: earlier }),
+      'an earlier cue’s picture',
+    ).toBeNull();
     expect(crossfadeOf(null, { key: slotKey(outgoing), layer: outgoing })).toBeNull();
     const input = {
       kind: 'input' as const,
@@ -210,10 +221,7 @@ describe('a crossfade’s two pictures: whether and when they are brought back b
     expect(FADE_PICTURE_LIMITS).toEqual({ jumpOver: 0.5, maxRateChange: 0.08 });
     let now = START;
     let pair: VideoCrossfade | null = null;
-    const ease = pictureEase(
-      () => pair,
-      () => now,
-    );
+    const ease = pictureEase(() => pair, () => now);
     expect(ease(), 'before any crossfade').toBeNull();
     pair = crossfade(START + 5_000);
     now = START + 4_900;
@@ -234,10 +242,7 @@ describe('a crossfade’s two pictures: whether and when they are brought back b
   it('one made inside its crossfade (its page opened or started again in it) is put in place as ever, then eased in the next', () => {
     let now = START + 5_500;
     let pair: VideoCrossfade | null = crossfade(START + 5_000);
-    const ease = pictureEase(
-      () => pair,
-      () => now,
-    );
+    const ease = pictureEase(() => pair, () => now);
     expect(ease(), 'made inside this fade').toBeNull();
     now = START + 6_500;
     expect(ease()).toBeNull();

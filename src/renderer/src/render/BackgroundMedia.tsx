@@ -45,6 +45,7 @@ import { useInputReport, useVideoInput } from './video-input';
 import { hasNoPicture, tellCannotPlay, tellNoPicture, watchStart } from './no-picture';
 import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
+import { crossfadeOf, pictureEase } from './picture-fade';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -74,11 +75,14 @@ function VideoSlot({
   slot,
   visible,
   shape,
+  fade,
   dispatch,
 }: {
   slot: MediaSlot;
   visible: boolean;
   shape: number | null;
+  /** The crossfade it is one of now, outgoing or incoming (lead 2's QF-1: then brought back by speed, not jumps). */
+  fade: VideoCrossfade | null;
   dispatch: Dispatch<SlotEvent>;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -98,6 +102,11 @@ function VideoSlot({
   const privateCue = useRef(slot.cued === true);
   useLayoutEffect(() => {
     privateCue.current = slot.cued === true;
+  });
+  // Read at every check of its playback (render/picture-fade.ts).
+  const pair = useRef(fade);
+  useLayoutEffect(() => {
+    pair.current = fade;
   });
   const playback = useRef<Playback | null>(null);
   useEffect(() => {
@@ -130,6 +139,9 @@ function VideoSlot({
       attempt,
       startedAt,
       prepareScheduledStart: layer.cueId !== undefined,
+      // In a crossfade, out of step, by speed and not a jump (a jump freezes it until it lands: on a two-core PC again
+      // and again through the fade, the hall's screens too); a picture made inside its fade is put in place as ever.
+      ease: pictureEase(() => pair.current),
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
         if (hasNoPicture(v)) {
@@ -587,7 +599,13 @@ function BackgroundPlayer({
             : null;
         const element = isMediaSlot(slot) ? (
           slot.layer.media === 'video' ? (
-            <VideoSlot slot={slot} visible={visible} shape={shape} dispatch={dispatch} />
+            <VideoSlot
+              slot={slot}
+              visible={visible}
+              shape={shape}
+              fade={crossfadeOf(crossfade, slot)}
+              dispatch={dispatch}
+            />
           ) : (
             <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
           )

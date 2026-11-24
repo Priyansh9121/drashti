@@ -798,7 +798,13 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             to: Math.min(jump.to ?? Number.POSITIVE_INFINITY, fade.at + fade.durationMs),
           }))
           .filter((jump) => jump.to > jump.from)
-          .map((jump) => ({ fadeAt: fade.at, role, key: jump.key, t: jump.from - fade.at, ms: jump.to - jump.from })),
+          .map((jump) => ({
+            fadeAt: fade.at,
+            role,
+            key: jump.key,
+            t: jump.from - fade.at,
+            ms: jump.to - jump.from,
+          })),
       ),
     );
     await retainCapture();
