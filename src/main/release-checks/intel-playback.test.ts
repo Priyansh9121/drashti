@@ -118,7 +118,9 @@ describe('the one hand-started Intel playback job, never in the release gate', (
 
   it('proves in each run that it fails a video the hall cannot play, before it judges the real ones', () => {
     const spec = read('tests/intel-playback/intel-playback.spec.ts');
-    const first = spec.indexOf('test(');
+    // The spec's first test (a line starting test(...), not a regular expression's .test()).
+    const first = spec.indexOf("\ntest('");
+    expect(first).toBeGreaterThan(0);
     expect(spec.slice(first, first + 200)).toContain('cannot play');
     expect(spec).toContain('expect(judgePlayback(reading)).not.toEqual([])');
     expect(spec).toContain('expect(judgePlayback(reading), JSON.stringify(reading)).toEqual([])');
