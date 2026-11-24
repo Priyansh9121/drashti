@@ -31,7 +31,8 @@
     "test:perf": "electron-vite build && playwright test -c playwright.perf.config.ts"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
