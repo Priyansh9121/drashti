@@ -72,16 +72,25 @@ test('Indic unknown-token markers never reach displayed words, while malformed r
   );
 });
 
-/** The C source's allocations (`name = malloc(`, `calloc(`, `realloc(`), and those used before their null check. */
+/**
+ * The C source's allocations (`name = malloc(`, `calloc(`, `realloc(`), and those used before their null check: after
+ * the statement that allocates it, the name's first appearance must be `!name` (cap-review-next n3: any use, such as
+ * `memcpy(name, …)`, `name->` or a call with it, not only `name[` and `(name +`). Comments, strings and characters are
+ * no use.
+ */
 function allocationsUsedUnchecked(source) {
-  const allocations = [...source.matchAll(/\b(\w+)\s*=\s*(?:malloc|calloc|realloc)\(/gu)];
+  // One pass, left to right, so a quote in a comment or a slash in a string is read as C reads it.
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/gu, (t) =>
+    t.startsWith('/') ? ' ' : `${t[0] ?? ''}${t[0] ?? ''}`,
+  );
+  const allocations = [...code.matchAll(/\b(\w+)\s*=\s*(?:malloc|calloc|realloc)\(/gu)];
   const unchecked = [];
   for (const allocation of allocations) {
     const name = allocation[1] ?? '';
-    const after = source.slice(allocation.index);
-    const checked = after.search(new RegExp(`!${name}\\b`, 'u'));
-    const used = after.search(new RegExp(`\\b${name}\\s*\\[|\\(${name}\\s*\\+`, 'u'));
-    if (!(checked >= 0 && (used < 0 || checked < used))) unchecked.push(name);
+    const end = code.indexOf(';', allocation.index);
+    const after = end < 0 ? '' : code.slice(end + 1);
+    const first = after.search(new RegExp(`\\b${name}\\b`, 'u'));
+    if (first < 1 || after[first - 1] !== '!') unchecked.push(name);
   }
   return { count: allocations.length, unchecked };
 }
