@@ -54,7 +54,7 @@ Press **Find in playlist**, or **Find in audio playlist** above Audio’s tracks
 
 **When the screens open.** Let the picture finish drawing before judging it. The screens start without waiting for the Lower Thirds studio’s fonts; after a restart or reconnect, words restored in one of those fonts may appear a moment after their band. There is no setting to change for this.
 
-**After an update or a larger projector is added.** Start Drashti once before the sabha and leave nothing up while it prepares the library's older large pictures. Keep the stream and recording off during that quiet moment. New large pictures finish their preparation before the import says ready; check that before putting one on the screens. Their original files stay as they were.
+**After an update or a larger projector is added.** Start Drashti once before the sabha and leave nothing up while it prepares the library's older large pictures. Keep the stream and recording off during that quiet moment. New large pictures finish their preparation before the import says ready; check that before putting one on the screens. An import started while a dissolve or fade runs on the screens waits for it to end, and so does a new large picture's preparation; meanwhile the status line says **Waiting for the screens’ transitions to finish**. Their original files stay as they were.
 
 Do these about 30 minutes before the sabha starts.
 

@@ -48,6 +48,11 @@ export interface ImportServiceDeps {
    * then, so nothing heavy (not even starting the process) runs during a dissolve. Left out: at once.
    */
   quiet?(): Promise<void>;
+  /**
+   * When the screens' transitions running now end (Main's clock, ms), or null when none runs: a run whose start waits
+   * for quiet() while one runs says it waits for them (alpha.22, QA22-L8-1, the owner: "Keep wait, say why").
+   */
+  transitionsEndAt?(): number | null;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
   /**
@@ -103,6 +108,15 @@ export class ImportService {
   private stopped = false;
   /** The next run waits for no transition on the screens before its worker process starts (Q60-60 A). */
   private waitingForQuiet = false;
+  /** ...and a transition ran as it began waiting, so it really waits for the screens' transitions (QA22-L8-1). */
+  private startHeld = false;
+  /** The run told as waiting for the screens' transitions, with what it says otherwise (QA22-L8-1). */
+  private told: { runId: string; progress: ImportProgress } | null = null;
+  /** The active run's own last progress, and its display copies asked for and not answered yet. */
+  private said: ImportProgress | null = null;
+  private displayWaits = 0;
+  /** The display copies' queue is held for the screens' transitions (displayHeld, from Main). */
+  private copyHeld = false;
   private active: {
     job: Job;
     worker: WorkerProcess;
@@ -162,12 +176,16 @@ export class ImportService {
     if (waiting >= 0) {
       const [job] = this.queue.splice(waiting, 1);
       job?.resolve({ ok: false, message: 'Cancelled before it started.' });
+      this.checkHold();
       return true;
     }
     if (this.active?.job.runId === runId) {
       this.active.worker.postMessage({ type: 'cancel', runId });
       // A PDF being drawn for it stops too.
       this.active.drawing.abort();
+      // ...and its picture's copy is no longer waited for: it no longer says it waits (QA22-L8-1).
+      this.displayWaits = 0;
+      this.checkHold();
       return true;
     }
     return false;
@@ -242,15 +260,59 @@ export class ImportService {
     const quiet = this.deps.quiet?.();
     if (quiet) {
       this.waitingForQuiet = true;
+      this.startHeld = (this.deps.transitionsEndAt?.() ?? null) !== null;
+      this.checkHold();
       void quiet
         .catch(() => undefined)
         .then(() => {
           this.waitingForQuiet = false;
+          this.startHeld = false;
           this.launch();
+          this.checkHold();
         });
       return;
     }
     this.launch();
+  }
+
+  /**
+   * The display copies' queue is held for the screens' transitions, or no longer (Main, as the queue looks again at
+   * each transition's end and every second): a new picture's copy waiting in it says so (QA22-L8-1).
+   */
+  displayHeld(waiting: boolean): void {
+    if (this.copyHeld === waiting) return;
+    this.copyHeld = waiting;
+    this.checkHold();
+  }
+
+  /** What a run held for the screens' transitions would say: its start waiting, or a new picture's copy waiting. */
+  private held(): ImportProgress | null {
+    const queued = this.queue[0];
+    if (this.waitingForQuiet && this.startHeld && queued)
+      return { runId: queued.runId, phase: 'queued', done: 0, total: 0, current: null };
+    if (this.active && this.displayWaits > 0 && this.copyHeld)
+      return (
+        this.said ?? { runId: this.active.job.runId, phase: 'importing', done: 0, total: 0, current: null }
+      );
+    return null;
+  }
+
+  /**
+   * Tell the operator, only when it changes, whether a run waits for the screens' transitions (QA22-L8-1, the owner:
+   * "Keep wait, say why"): once nothing holds it, it says what it does again.
+   */
+  private checkHold(): void {
+    const waiting = this.stopped ? null : this.held();
+    const told = this.told;
+    if (told && told.runId !== waiting?.runId) {
+      this.told = null;
+      const going = this.active?.job.runId === told.runId || this.queue.some((j) => j.runId === told.runId);
+      if (going) this.deps.onProgress(told.progress);
+    }
+    if (waiting && !this.told) {
+      this.told = { runId: waiting.runId, progress: waiting };
+      this.deps.onProgress({ ...waiting, waitingFor: 'transitions' });
+    }
   }
 
   private launch(): void {
@@ -290,6 +352,9 @@ export class ImportService {
       // Writes waiting for the import to give way need wait no more.
       for (const done of [...active.ways.values()]) done();
       if (this.active === active) this.active = null;
+      this.said = null;
+      this.displayWaits = 0;
+      this.checkHold();
       // The result is the worker's last message (it has closed the library by then): stop it.
       worker.kill();
       job.resolve(result);
@@ -300,7 +365,13 @@ export class ImportService {
       if (this.stopped) return;
       switch (m.type) {
         case 'progress':
-          if (m.progress.runId === job.runId) this.deps.onProgress(m.progress);
+          if (m.progress.runId !== job.runId) break;
+          this.said = m.progress;
+          // Still held for the screens' transitions: it goes on saying so (QA22-L8-1).
+          if (this.told?.runId === job.runId && m.progress.phase !== 'finished') {
+            this.told = { runId: job.runId, progress: m.progress };
+            this.deps.onProgress({ ...m.progress, waitingFor: 'transitions' });
+          } else this.deps.onProgress(m.progress);
           break;
         case 'wrote':
           this.deps.onWrote({ presentationId: m.presentationId, replaced: m.replaced });
@@ -310,6 +381,9 @@ export class ImportService {
           else this.deps.onMarked?.(m.mediaIds);
           break;
         case 'prepare-display': {
+          // A new picture's copy may wait for the screens' transitions: the status line says so meanwhile.
+          this.displayWaits++;
+          this.checkHold();
           const prepared =
             this.deps.prepareDisplay?.(m.candidate, active.drawing.signal) ??
             Promise.resolve<DisplayResult>({ ok: true, copy: null });
@@ -319,6 +393,10 @@ export class ImportService {
               message: 'The picture could not be prepared. Try importing it again.',
             }))
             .then((result) => {
+              if (this.active === active) {
+                this.displayWaits = Math.max(0, this.displayWaits - 1);
+                this.checkHold();
+              }
               if (!settled) worker.postMessage({ type: 'display-prepared', requestId: m.requestId, result });
             });
           break;

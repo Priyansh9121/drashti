@@ -1053,6 +1053,9 @@ const TRANSITION_WAKE_MARGIN_MS = 250;
 const IMPORT_QUIET_MAX_MS = 15_000;
 /** The import's wait for no running transition, set once the engine and the outputs exist (Q60-60 A). */
 let importQuiet: (() => Promise<void>) | null = null;
+/** QA22-L8-1 (the owner: "Keep wait, say why"): the screens' transitions' end, and the copies' hold, for the import. */
+let importTransitionsEnd: (() => number | null) | null = null;
+let importDisplayHeld: ((waiting: boolean) => void) | null = null;
 const nodeClockSkewMs = packaged() ? 0 : Number(sw('DRASHTI_TEST_CLOCK_SKEW_MS') ?? 0) || 0;
 const nodePortOverride = Number(sw('DRASHTI_NODE_PORT') ?? 0) || null;
 // Tests only (never a packaged Drashti): a test can make an output draw an element that throws, to see a
@@ -2329,6 +2332,7 @@ function start(): void {
       check();
     });
   importQuiet = untilNoTransition;
+  importTransitionsEnd = () => transitionsEndAt(engine.current, Date.now());
   const noTransitionRunning = (): boolean => {
     const ends = transitionsEndAt(engine.current, Date.now());
     if (ends === null) return true;
@@ -2348,6 +2352,10 @@ function start(): void {
     mediaDir,
     targets: displayTargets,
     canStart: () => !sharpened.working && noTransitionRunning(),
+    // Held while a transition runs: a new picture's import says it waits for the screens' transitions (QA22-L8-1).
+    held: (waiting) => {
+      importDisplayHeld?.(waiting && transitionsEndAt(engine.current, Date.now()) !== null);
+    },
     canWork: () => nothingUp(engine.current.layers) && !displayOnAir(),
     open: (gone) => {
       const win = createSharpenWindow(gone, true, displaySession);
@@ -4962,6 +4970,7 @@ function start(): void {
     hevcKinds: () => hevc.kinds,
     // Each import starts only once no transition runs on the screens (alpha.21, Q60-60 A).
     quiet: () => importQuiet?.() ?? Promise.resolve(),
+    transitionsEndAt: () => importTransitionsEnd?.() ?? null,
     // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
     // 58: such a write copied the import's pages and waited for the disk on the main thread).
     running: leaveCopyingToImports(libraryDb),
@@ -5045,6 +5054,9 @@ function start(): void {
     },
   });
   importer = imports;
+  importDisplayHeld = (waiting) => {
+    imports.displayHeld(waiting);
+  };
   stops.add('imports', () => {
     imports.stop();
   });

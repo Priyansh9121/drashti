@@ -52,8 +52,9 @@ export function nativeCostPair(control: NativeCostTrial, imported: NativeCostTri
 }
 
 /**
- * QA22-L8-3 B (the owner, 24 Nov 2026): a trial's dropped presented frames, the native presentation gaps over 1.5 of
+ * A trial's dropped presented frames (QA22-L8-3 B, the owner, 24 Nov 2026), the native presentation gaps over 1.5 of
  * the trial's own median period, split at `splitMs` (1 s) after the dissolve's start (`startMs`, the page's clock).
+ * Since QA23-L8-4 A they are recorded and reported, deciding nothing.
  */
 export function droppedFrames(frameTimesMs: readonly number[], startMs: number, splitMs = 1000) {
   const gaps = frameTimesMs.slice(1).map((t, i) => t - (frameTimesMs[i] ?? t));
@@ -69,10 +70,11 @@ export function droppedFrames(frameTimesMs: readonly number[], startMs: number, 
 }
 
 /**
- * The margin over the controls, set from the 24 attempts of L8 on record on CI's Mac (23-24 Nov 2026) where the import
- * does no work during the dissolve: the largest import excess was 13 frames in a first second (15 against 2: the
- * import's own call) and 29 after it (63 against 34: the runner's own swing). In the first second the import trials
- * may drop at most 15 frames more than the controls (5 per trial); after it, at most half as many again plus 15.
+ * QA22-L8-3 B's margin over the controls, set from the 24 attempts of L8 on record on CI's Mac (23-24 Nov 2026) where
+ * the import does no work during the dissolve: the largest import excess was 13 frames in a first second (15 against
+ * 2: the import's own call) and 29 after it (63 against 34: the runner's own swing). In the first second the import
+ * trials could drop at most 15 frames more than the controls (5 per trial); after it, at most half as many again plus
+ * 15. Since QA23-L8-4 A it only marks, in the reported drops, an attempt B would have failed; it decides nothing.
  */
 export const MAC_DROP_MARGIN = { first: 15, afterRatio: 1.5, after: 15 } as const;
 

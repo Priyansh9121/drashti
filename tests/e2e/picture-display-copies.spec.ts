@@ -320,7 +320,10 @@ async function startDisplayCostPage(out: Page): Promise<void> {
   });
 }
 
-/** Native presentation feedback and renderer callback entry retain independent, unchanged paired limits. */
+/**
+ * On Windows the hall's presented frames and the renderer's frames decide, each by its unchanged paired limits
+ * (Q59-1); on the Mac the import's fixed order decides (QA23-L8-4 A), its frames recorded and reported.
+ */
 test('a large picture imported during a hall dissolve does not add sustained frame gaps: its display copy waits for the dissolve to end (Q60-59)', async () => {
   const info = test.info();
   const subscribe = true;
@@ -530,9 +533,10 @@ test('a large picture imported during a hall dissolve does not add sustained fra
         measured.p95 - control.p95 > oneMs ||
         measured.longest - control.longest > oneMs ||
         measured.over15 > control.over15;
-      // QA21-L8-1, the owner's "A, hall and renderer": the hall's presented frames (native presentation) and the
-      // renderer's frames (rAF) decide. Main's capture-callback times stay in the evidence below, deciding nothing: with
-      // no import at all they called a control worse than itself in 10 of 15 pairs on CI's Windows (a21-l8a's A/A).
+      // QA21-L8-1, the owner's "A, hall and renderer": on Windows the hall's presented frames (native presentation) and
+      // the renderer's frames (rAF) decide; on the Mac (QA23-L8-4 A) they are recorded and reported. Main's
+      // capture-callback times stay in the evidence below, deciding nothing: with no import at all they called a
+      // control worse than itself in 10 of 15 pairs on CI's Windows (a21-l8a's A/A).
       allWorse.native.push(nativePair.presentationWorse);
       allWorse.raf.push(worse(rafImport, rafControl));
       const verdict = {

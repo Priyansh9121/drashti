@@ -56,6 +56,11 @@ export interface DisplayDeps {
   canWork?(): boolean;
   /** Shared picture worker arbitration, for imports and sweeps alike. */
   canStart?(): boolean;
+  /**
+   * Told each time the queue looks: true while it is held (canStart, or an idle-only job while something is up), false
+   * once a copy starts or nothing waits. The import's status line says why a new picture waits (QA22-L8-1).
+   */
+  held?(waiting: boolean): void;
   freeBytes?(): number;
 }
 interface Job {
@@ -296,10 +301,12 @@ export class DisplayCopies {
     if (this.stopped || this.current) return;
     if (this.queue.length === 0) {
       this.active = false;
+      this.deps.held?.(false);
       this.settle();
       return;
     }
     if (this.deps.canStart?.() === false || (this.queue[0]?.idleOnly && this.deps.canWork?.() === false)) {
+      this.deps.held?.(true);
       this.active = false;
       this.wake ??= setTimeout(() => {
         this.wake = null;
@@ -308,6 +315,7 @@ export class DisplayCopies {
       return;
     }
     // Claim the shared decode slot before opening or waking the worker. An empty warm worker owns none.
+    this.deps.held?.(false);
     this.active = true;
     this.openWorker();
     const waiting = this.waiting;

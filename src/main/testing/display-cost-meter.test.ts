@@ -24,8 +24,9 @@ it('refuses absent native evidence instead of substituting capture callback arri
   );
 });
 
-// QA22-L8-3 B (the owner, 24 Nov 2026): on the Mac the cost test is judged by the hall's dropped presented frames,
-// import trials against control trials, in the dissolve's first second and after it.
+// QA22-L8-3 B (the owner, 24 Nov 2026) judged the Mac's cost test by the hall's dropped presented frames, import trials
+// against control trials, in the dissolve's first second and after it; since QA23-L8-4 A ("A: check the import order")
+// they are recorded and reported on both systems and decide nothing.
 it('counts the dropped presented frames of a trial, split at the first second of the dissolve', () => {
   const period = 1000 / 60;
   // 20 frames on time, one frame missed (a 2-period gap) at 300 ms, 60 on time, two missed at 1.5 s.
