@@ -46,8 +46,10 @@ export interface StudioDeps {
   background(): string;
   /** One of Drashti's own windows: told of each change of appearance until it closes. */
   track(win: BrowserWindow): void;
-  /** Its window closed (alpha.22: Live's stills stop with it). */
+  /** Its window closed, or its page went (alpha.22: Live's stills stop with it). */
   closed?(): void;
+  /** Its window minimized (true) or back (false): Live's stills pause meanwhile (alpha.22). */
+  minimized?(on: boolean): void;
   log(line: string): void;
 }
 
@@ -111,9 +113,16 @@ export class LowerThirdsStudio {
       this.deps.closed?.();
       this.deps.log('The Lower Thirds studio closed');
     });
-    // Its page gone (a crash, or reloaded): Live's stills stop until the page asks again.
+    // Its page gone (a crash): Live's stills stop until a new page asks again.
     win.webContents.on('render-process-gone', () => {
       if (this.win === win) this.deps.closed?.();
+    });
+    // Out of sight in the Dock or the taskbar: Live's stills pause until it is back.
+    win.on('minimize', () => {
+      if (this.win === win) this.deps.minimized?.(true);
+    });
+    win.on('restore', () => {
+      if (this.win === win) this.deps.minimized?.(false);
     });
     const query: Record<string, string> =
       what === null ? {} : 'id' in what ? { open: what.id } : { open: 'new' };

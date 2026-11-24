@@ -83,7 +83,8 @@ describe('StudioLive', () => {
     );
     const { live, sent } = make(take);
     live.watch(true);
-    await vi.advanceTimersByTimeAsync(LIVE_EVERY_MS * 5);
+    // (Within the time limit: past it, the still counts as none: the next test.)
+    await vi.advanceTimersByTimeAsync(LIVE_TAKE_LIMIT_MS - 1);
     expect(take).toHaveBeenCalledTimes(1);
     pending[0]?.(picture(1));
     await vi.advanceTimersByTimeAsync(0);

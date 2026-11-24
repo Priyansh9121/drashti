@@ -145,13 +145,7 @@ import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
-import {
-  hallScreenOf,
-  LIVE_RECT_SCRIPT,
-  livePictureOf,
-  liveRectOf,
-  StudioLive,
-} from './lower-thirds/studio-live';
+import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
@@ -6944,47 +6938,35 @@ function start(): void {
   // Those deleted before this start can no longer be undone.
   lowerThirds.purge();
   // Live behind the studio's preview (alpha.22, lower-thirds/studio-live.ts): a still about once a second while the
-  // studio shows Live, never otherwise, from a picture already drawn: this computer's first audience screen showing,
-  // as the Screens dashboard's pictures are taken (captureLocal), else LIVE in the operator window. Read only.
-  /** The operator window kept drawing while Live takes LIVE's picture from it, and its own setting before. */
-  let operatorHeldDrawing: { win: BrowserWindow; throttled: boolean } | null = null;
+  // studio shows Live (not while it is minimized), never otherwise, from a picture already drawn: this computer's first
+  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here, none (the
+  // studio says "No live picture to show"). Read only.
   const studioLive: StudioLive = new StudioLive({
     take: async () => {
       const roles = new Map(screenRepo.groupIds().map((g) => [g.id, g.role]));
-      const showing = new Set(
-        manager
-          .status()
-          .filter((st) => st.state === 'showing')
-          .map((st) => st.screenId),
-      );
+      const showingNow = () =>
+        new Set(
+          manager
+            .status()
+            .filter((st) => st.state === 'showing')
+            .map((st) => st.screenId),
+        );
+      const showing = showingNow();
       const screenId = hallScreenOf(
         screenRepo.screens(),
         (groupId) => roles.get(groupId) ?? null,
         (id) => showing.has(id) && pageAlive(outputWindows.get(id)),
       );
       const hall = screenId === null ? undefined : outputWindows.get(screenId);
-      if (hall && !hall.isDestroyed())
-        return livePictureOf(await hall.webContents.capturePage(), 'screen', Date.now());
-      const op = operatorWindow;
-      if (!op || op.isDestroyed()) return null;
-      // Covered by the studio (one display), the operator window would stop drawing LIVE: kept drawing, as it does
-      // in view, while Live takes from it, and let go as Live stops (release).
-      if (operatorHeldDrawing === null) {
-        operatorHeldDrawing = { win: op, throttled: op.webContents.getBackgroundThrottling() };
-        op.webContents.setBackgroundThrottling(false);
-      }
-      const rect = liveRectOf(await op.webContents.executeJavaScript(LIVE_RECT_SCRIPT, true));
-      return rect && !op.isDestroyed()
-        ? livePictureOf(await op.webContents.capturePage(rect), 'live', Date.now())
-        : null;
+      if (screenId === null || !hall || hall.isDestroyed()) return null;
+      const image = await hall.webContents.capturePage();
+      // Taken as its window closed (its screen switched off, say), it is not what the hall shows: none (as captureLocal).
+      if (hall.isDestroyed() || outputWindows.get(screenId) !== hall || !showingNow().has(screenId))
+        return null;
+      return livePictureOf(image, 'screen', Date.now());
     },
     send: (picture) => {
       studio.sendLive(picture);
-    },
-    release: () => {
-      const held = operatorHeldDrawing;
-      operatorHeldDrawing = null;
-      if (held && !held.win.isDestroyed()) held.win.webContents.setBackgroundThrottling(held.throttled);
     },
     log: (line) => {
       log.info(line);
@@ -7007,7 +6989,10 @@ function start(): void {
       appearance.track(win);
     },
     closed: () => {
-      studioLive.watch(false);
+      studioLive.stop();
+    },
+    minimized: (on) => {
+      studioLive.pause(on);
     },
     log: (line) => {
       log.info(line);

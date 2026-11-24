@@ -1,24 +1,26 @@
-import type { Rectangle } from 'electron';
 import type { ScreenRole } from '../../shared/screens';
 import type { StudioLivePicture, StudioLiveSource } from '../../shared/studio-live';
 
 /*
  * Live behind the Lower Thirds studio's preview (alpha.22, the owner: "the background while selecting the animation
  * should be the one thats live, meaning a video is live, or wallpaper"). While the studio shows Live, and only then,
- * a still of what the screens show now is taken about once a second, each only once the one before is done, and
- * sent to the studio; it stops the moment the studio shows another backdrop or closes (Simple Mode and quitting close
- * it), so with the studio closed it costs nothing.
+ * a still of what the screens show now is taken about once a second, each only once the one before is done (or has
+ * taken LIVE_TAKE_LIMIT_MS: it then counts as none), and sent to the studio; it stops the moment the studio shows
+ * another backdrop or closes (Simple Mode and quitting close it), and pauses while the studio is minimized, so with
+ * the studio closed or out of sight it costs nothing.
  *
  * The still is taken from a picture already drawn, as the Screens dashboard's pictures of this computer's outputs are
  * (index.ts, captureLocal): the window of the first audience screen showing on this computer, exactly as the hall
- * sees it; with none here (none set up, or only on nodes), LIVE in the operator window, which draws the same scene.
- * So no video is played a second time for it (the studio's page cannot play one at all: media-src 'none'), and
- * nothing on the screens changes.
+ * sees it. So no video is played a second time for it (the studio's page cannot play one at all: media-src 'none'),
+ * and nothing on the screens changes. With no such screen here (none set up, a single display, or only nodes'
+ * screens) there is no still, and the studio says "No live picture to show". (LIVE in the operator window was tried
+ * as a second source and left out: it is only in the window while its column is scrolled to the top, and opening the
+ * studio from the Lower Thirds section scrolls it away: CI Windows, 4 of 4.)
  */
 
 /** How long after one still is sent the next is taken. */
 export const LIVE_EVERY_MS = 1000;
-/** The longest a still may take before it counts as none. */
+/** The longest a still may take before it counts as none (a capture that never comes never stops Live). */
 export const LIVE_TAKE_LIMIT_MS = 3000;
 /** The widest a still is sent: the preview is at most about 900 points wide. */
 export const LIVE_WIDTH = 960;
@@ -30,13 +32,16 @@ export interface StudioLiveDeps {
   take(): Promise<StudioLivePicture | null>;
   /** To the studio's page. */
   send(picture: StudioLivePicture | null): void;
-  /** Its stills stopped: let go of anything taking them held (the operator window kept drawing while covered). */
-  release?(): void;
   log(line: string): void;
   everyMs?: number;
 }
 
 export class StudioLive {
+  /** The studio's page asks for Live. */
+  private wanted = false;
+  /** The studio's window is minimized. */
+  private paused = false;
+  /** Stills are being taken (wanted, and not paused). */
   private on = false;
   /** Changed at each start and stop: a still taken for an earlier round is never sent. */
   private round = 0;
@@ -46,41 +51,64 @@ export class StudioLive {
 
   constructor(private readonly deps: StudioLiveDeps) {}
 
+  /** Whether stills are being taken now. */
   get watching(): boolean {
     return this.on;
   }
 
-  pause(_paused: boolean): void {
-    void this.round;
-  }
-
-  stop(): void {
-    void this.round;
-  }
-
-  /** The studio shows Live (true) or another backdrop, or closed (false). */
+  /** The studio shows Live (true) or another backdrop (false). */
   watch(on: boolean): void {
+    this.wanted = on;
+    this.update();
+  }
+
+  /** The studio's window minimized (true) or back (false). */
+  pause(paused: boolean): void {
+    this.paused = paused;
+    this.update();
+  }
+
+  /** The studio closed (or its page went): nothing wanted, nothing paused. */
+  stop(): void {
+    this.wanted = false;
+    this.paused = false;
+    this.update();
+  }
+
+  private update(): void {
+    const on = this.wanted && !this.paused;
     if (on === this.on) return;
     this.on = on;
     this.round++;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    if (!on) this.deps.release?.();
     this.deps.log(
       on
         ? 'The Lower Thirds studio shows Live behind its preview: a still about once a second'
-        : 'The Lower Thirds studio no longer shows Live: no stills taken',
+        : this.wanted
+          ? 'The Lower Thirds studio is minimized: Live pauses, no stills taken'
+          : 'The Lower Thirds studio no longer shows Live: no stills taken',
     );
     if (on) void this.next(this.round);
   }
 
   private async next(round: number): Promise<void> {
     this.taken++;
+    let limit: ReturnType<typeof setTimeout> | undefined;
     let picture: StudioLivePicture | null;
     try {
-      picture = await this.deps.take();
+      picture = await Promise.race([
+        this.deps.take(),
+        new Promise<null>((resolve) => {
+          limit = setTimeout(() => {
+            resolve(null);
+          }, LIVE_TAKE_LIMIT_MS);
+        }),
+      ]);
     } catch {
       picture = null;
+    } finally {
+      clearTimeout(limit);
     }
     if (round !== this.round) return;
     this.deps.send(picture);
@@ -93,7 +121,7 @@ export class StudioLive {
 
 /**
  * The screen on this computer Live takes its still from: the first audience screen showing here, in Screens' order
- * (as LIVE draws the first screen's canvas); null with none (Live then takes LIVE's picture in the operator window).
+ * (as LIVE draws the first screen's canvas); null with none ("No live picture to show").
  */
 export function hallScreenOf(
   screens: readonly { id: string; groupId: string }[],
@@ -101,38 +129,6 @@ export function hallScreenOf(
   showing: (screenId: string) => boolean,
 ): string | null {
   return screens.find((s) => roleOf(s.groupId) === 'audience' && showing(s.id))?.id ?? null;
-}
-
-/**
- * Where LIVE's picture is in the operator window (`LIVE_RECT_SCRIPT` asks its page): the scene, inside LIVE's box (a
- * zoomed LIVE shows only part of it) and inside the window, in whole points; null when it is not there to see.
- */
-export const LIVE_RECT_SCRIPT = `(() => {
-  const box = document.querySelector('[data-testid="live-preview"]');
-  const scene = box && box.querySelector('[data-testid="scene"]');
-  if (!box || !scene) return null;
-  const r = (e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height }; };
-  return { box: r(box), scene: r(scene), view: { width: innerWidth, height: innerHeight } };
-})()`;
-
-const isRect = (v: unknown): v is { x: number; y: number; width: number; height: number } =>
-  typeof v === 'object' &&
-  v !== null &&
-  ['x', 'y', 'width', 'height'].every((k) => Number.isFinite((v as Record<string, unknown>)[k]));
-
-export function liveRectOf(seen: unknown): Rectangle | null {
-  if (typeof seen !== 'object' || seen === null) return null;
-  const { box, scene, view } = seen as Record<string, unknown>;
-  if (!isRect(box) || !isRect(scene) || typeof view !== 'object' || view === null) return null;
-  const { width: vw, height: vh } = view as Record<string, unknown>;
-  if (typeof vw !== 'number' || typeof vh !== 'number') return null;
-  const left = Math.ceil(Math.max(box.x, scene.x, 0));
-  const top = Math.ceil(Math.max(box.y, scene.y, 0));
-  const right = Math.floor(Math.min(box.x + box.width, scene.x + scene.width, vw));
-  const bottom = Math.floor(Math.min(box.y + box.height, scene.y + scene.height, vh));
-  return right - left >= 16 && bottom - top >= 9
-    ? { x: left, y: top, width: right - left, height: bottom - top }
-    : null;
 }
 
 /** The part of Electron's NativeImage a still needs. */
