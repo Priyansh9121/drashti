@@ -43,15 +43,15 @@ export interface Heard {
 }
 
 /**
- * Why captions rest when the computer cannot keep up (cap-threads): what the whisper engine measured, numbers only.
- * It holds when one answer is more than 8 s behind the speaker, or three answers in a row take over 1.5 steps.
- */
-/**
- * The whisper engine rests when its answers fall more than 8 s behind the speaker, or when this many answers in a row
- * each took longer than SlowHold.limitMs (cap-threads).
+ * The whisper engine rests when an answer is more than 8 s behind the speaker, or when this many answers in a row each
+ * took longer than SlowHold.limitMs (cap-threads).
  */
 export const SLOW_ANSWERS_IN_A_ROW = 3;
 
+/**
+ * Why captions rest when the computer cannot keep up (cap-threads): what the whisper engine measured, numbers only.
+ * It holds when one answer is more than 8 s behind the speaker, or three answers in a row take over 1.5 steps.
+ */
 export interface SlowHold {
   /** How long the last answer took (ms), and how far behind the speaker its phrase's end then was (ms). */
   answerMs: number;
