@@ -31,6 +31,12 @@ export interface ZoomFrame {
   y: number;
   width: number;
   height: number;
+  /**
+   * Where the screens show their middle, in the same fractions, where that is not the frame's own middle: a page
+   * cropped with Crop page… keeps its picture's box on the whole page, and the screens show only the crop, so the
+   * middle shown is the crop's (the slide's, and in the canvas the canvas's, which centres it). Left out otherwise.
+   */
+  middle?: { x: number; y: number };
   turn?: FrameTurn;
 }
 
@@ -110,13 +116,12 @@ export function liveZoomFor(view: View, frame: ZoomFrame, kept: Framing): Framin
     fh,
   );
   const zoom = Math.min(ZOOM.max, Math.max(ZOOM.min, view.zoom * kept.zoom));
-  // That point of the picture, as the kept look draws it, brought to the frame's middle at the new zoom.
-  const at = framed({
-    ...PLAIN,
-    zoom,
-    x: (-zoom * (dx - kept.x)) / kept.zoom,
-    y: (-zoom * (dy - kept.y)) / kept.zoom,
-  });
+  // That point of the picture, as the kept look draws it, brought to the frame's middle at the new zoom, or to the
+  // middle the screens show where that is not the frame's (a cropped page's crop).
+  const to = middleIn(frame, fw, fh);
+  const x = (-zoom * (dx - kept.x)) / kept.zoom;
+  const y = (-zoom * (dy - kept.y)) / kept.zoom;
+  const at = framed({ ...PLAIN, zoom, x: to ? to.x + x : x, y: to ? to.y + y : y });
   // No "-0": in the middle is 0, however it was worked out.
   const plain = (v: number) => (v === 0 ? 0 : v);
   return { zoom: at.zoom, x: plain(at.x), y: plain(at.y) };
@@ -125,12 +130,26 @@ export function liveZoomFor(view: View, frame: ZoomFrame, kept: Framing): Framin
 /** The phone's view that shows what a live zoom shows (opening on a picture already zoomed on the screens). */
 export function viewForLive(z: Framing, frame: ZoomFrame, kept: Framing): View {
   const zoom = z.zoom / (kept.zoom > 0 ? kept.zoom : 1);
-  const at = outOfFrame(kept.x - (z.x * kept.zoom) / z.zoom, kept.y - (z.y * kept.zoom) / z.zoom, frame);
+  const to = middleIn(frame, frame.width > 0 ? frame.width : 1, frame.height > 0 ? frame.height : 1);
+  const at = outOfFrame(
+    kept.x - ((to ? z.x - to.x : z.x) * kept.zoom) / z.zoom,
+    kept.y - ((to ? z.y - to.y : z.y) * kept.zoom) / z.zoom,
+    frame,
+  );
   return {
     zoom,
     cx: frame.x + frame.width / 2 + at.x,
     cy: frame.y + frame.height / 2 + at.y,
   };
+}
+
+/**
+ * Where the screens show their middle, from the frame's middle in its own widths and heights (turned back, as the
+ * phone's view is); null for the frame's own.
+ */
+function middleIn(frame: ZoomFrame, fw: number, fh: number): { x: number; y: number } | null {
+  const m = frame.middle;
+  return m ? intoFrame(m.x - (frame.x + fw / 2), m.y - (frame.y + fh / 2), frame, fw, fh) : null;
 }
 
 /** A turn's cosine and sine: exact for the quarter turns (Turn page right's). */
@@ -205,8 +224,9 @@ export const screensFollow = (view: View, kept: Framing): boolean => view.zoom <
  * The live zoom's picture's frame in the hall's picture as a phone draws it (the canvas, the slide fitted into it,
  * as the remote's live picture does): the slide's picture's own box, or the whole canvas for the background up
  * alone; null when the phone may zoom neither (phoneZoomTarget). A cropped PDF page (Crop page…) is drawn moved by
- * where its crop starts (render/SlideView.tsx), its picture's box kept on the whole page: so is its frame. A page
- * turned with Turn page right keeps its picture's box unturned, the box turned about its middle: so is its frame.
+ * where its crop starts (render/SlideView.tsx), its picture's box kept on the whole page: so is its frame, and the
+ * screens show the crop in their middle (`middle`). A page turned with Turn page right keeps its picture's box
+ * unturned, the box turned about its middle: so is its frame.
  */
 export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFrame | null {
   const target = phoneZoomTarget(state);
@@ -222,14 +242,16 @@ export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFram
     y: (p.y + (element.frame.y - origin.y) * p.scaleY) / canvas.height,
     width: (element.frame.width * p.scaleX) / canvas.width,
     height: (element.frame.height * p.scaleY) / canvas.height,
+    // The fit centres the crop in the canvas.
+    ...(slide.slide.pageCrop ? { middle: { x: 0.5, y: 0.5 } } : {}),
     ...turnOf(element, canvas.width / canvas.height),
   };
 }
 
 /**
  * The same in a slide a phone draws on its own (looked through, Session 54): the slide's picture's own box (with no
- * slide up, the whole of it), moved by a cropped page's crop and turned as in frameInCanvas; null when the phone may
- * zoom neither (phoneZoomTarget).
+ * slide up, the whole of it), moved by a cropped page's crop, its middle the crop's, and turned as in frameInCanvas;
+ * null when the phone may zoom neither (phoneZoomTarget).
  */
 export function frameInSlide(state: EngineState | null): ZoomFrame | null {
   const target = phoneZoomTarget(state);
@@ -245,6 +267,7 @@ export function frameInSlide(state: EngineState | null): ZoomFrame | null {
     y: (element.frame.y - origin.y) / height,
     width: element.frame.width / width,
     height: element.frame.height / height,
+    ...(slide.slide.pageCrop ? { middle: { x: 0.5, y: 0.5 } } : {}),
     ...turnOf(element, width / height),
   };
 }
