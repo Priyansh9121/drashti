@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, type IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import { availableParallelism } from 'node:os';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -32,6 +32,11 @@ export interface VideoCopyIpcDeps {
   /** S1 provides canonical identity; S2 supplies its actual pure original-quality export planner. */
   sourceId?: (mediaId: string) => string;
   editedExport?: (request: ClipExportRequest) => ExportSourceResult;
+  /**
+   * Combine videos…' Also save a copy to a file: Export…'s save dialog (the operator window, Downloads at `name`): the
+   * file chosen, or null when closed (a22-review-combine S2: one dialog for both).
+   */
+  exportDialog?(name: string): Promise<string | null>;
 }
 
 export function registerVideoCopies(deps: VideoCopyIpcDeps) {
@@ -142,20 +147,8 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     publishImport,
   });
   // Combine videos… (alpha.22): the chosen videos joined end to end into one new video in Media, by the same worker.
-  // The system's save dialog for Also save a copy to a file, from the operator's window, opened in Downloads at the
-  // new video's name (as Export…'s, media:export-file).
-  const pickCopy = async (name: string): Promise<string | null> => {
-    const parent = BrowserWindow.getFocusedWindow();
-    const options = {
-      title: 'Export video',
-      defaultPath: join(app.getPath('downloads'), name),
-      buttonLabel: 'Export',
-    };
-    const picked = await (parent ? dialog.showSaveDialog(parent, options) : dialog.showSaveDialog(options));
-    return picked.canceled || !picked.filePath ? null : picked.filePath;
-  };
   const combines = new CombineVideos({
-    pickCopy,
+    pickCopy: (name) => deps.exportDialog?.(name) ?? Promise.resolve(null),
     mediaDir: deps.mediaDir,
     workDir: join(deps.mediaDir, 'video-combine-work'),
     row: (id) => deps.media.about(id),
