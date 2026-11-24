@@ -11,7 +11,7 @@ import { nativeStepTiming } from '../../../shared/deck-show';
 import { isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { MOVEMENTS } from '../../../shared/looks';
-import { TRANSITION_KINDS } from '../../../shared/model';
+import { SLOW_ZOOM_MS, TRANSITION_KINDS } from '../../../shared/model';
 import { OPENING_START_HOLD_MS } from '../../../shared/opening';
 import { deckTransitionFrame, deckWipeShows, wipeSlideMask } from './transition-frame';
 import { handOverWarmUp, type WarmScene, type WarmUpEnd, WARM_UP_LONGEST_MS, warmScenes } from './WarmUp';
@@ -65,6 +65,29 @@ describe('the warm-up', () => {
         expect(keys).toContain(`${kind}/${movement}`);
         expect(keys).toContain(`${kind}/${movement}/clipped`);
       }
+  });
+
+  it('draws a slide going out under its slow zoom while a slide with none comes in by the dissolve (the first change after a Zoom)', () => {
+    // Every Performance check on CI's Mac (308 of 308 plain checks, the first "wipe 800" after the six Zoom runs) drew
+    // one frame of 67-600 ms there, the first time a slide still under its slow zoom went out under a slide with none
+    // coming in light for light (on Calm screens a slide Wipe is drawn as a dissolve); never in the streaming check that
+    // follows on the same Mac, as the GPU's other first-use drawings (a22-cue). The warm-up drew a Zoom only coming in.
+    const s = scene('zoom-going/calm');
+    expect(s.look.movement).toBe('calm');
+    const going = slideOf(s, false, BEFORE);
+    const coming = slideOf(s, true, BEFORE + 100);
+    expect(going.transition?.kind, 'the slide going came on by a Zoom').toBe('zoom');
+    // Its own Zoom over and its slow zoom still running, as the measured one's was (shown 1.5 s before).
+    const shown = BEFORE - going.shownAt;
+    expect(shown).toBeGreaterThan(going.transition?.durationMs ?? 0);
+    expect(shown).toBeLessThan(SLOW_ZOOM_MS);
+    expect(coming.slide.id).not.toBe(going.slide.id);
+    expect(coming.transition?.kind, 'the slide coming in by the dissolve, with no zoom of its own').toBe(
+      'dissolve',
+    );
+    const p = (BEFORE + 100 - coming.shownAt) / (coming.transition?.durationMs ?? 1);
+    expect(p).toBeGreaterThan(0);
+    expect(p).toBeLessThan(1);
   });
 
   it('draws a deck’s own Wipe part-way: PowerPoint’s band, a mask over the slide coming in, the band itself on the screen (Session 58)', () => {
