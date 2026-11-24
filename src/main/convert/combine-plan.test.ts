@@ -32,10 +32,16 @@ describe('combinePlan', () => {
     const args = plan.args('/work/out.mp4');
     const opened = args.flatMap((arg, i) => (arg === '-i' ? [args[i + 1]] : []));
     expect(opened).toEqual(['/media/a.mp4', '/media/b.mp4']);
-    expect(args.slice(args.indexOf('-protocol_whitelist'), args.indexOf('-protocol_whitelist') + 2)).toEqual([
-      '-protocol_whitelist',
-      'file',
+    // Each input's options cover only the -i after them (a22-review-combine MUST-1): every chosen file opens with
+    // files only and one decoding thread, and the filter graph runs on one thread too.
+    const each = args.flatMap((arg, i) => (arg === '-i' ? [args.slice(i - 4, i)] : []));
+    expect(each).toEqual([
+      ['-threads', '1', '-protocol_whitelist', 'file'],
+      ['-threads', '1', '-protocol_whitelist', 'file'],
     ]);
+    expect(
+      args.slice(args.indexOf('-filter_complex_threads'), args.indexOf('-filter_complex_threads') + 2),
+    ).toEqual(['-filter_complex_threads', '1']);
     // Never the concat protocol or a list naming other places: only the filter, over the two inputs.
     expect(args.some((arg) => arg.includes('concat:'))).toBe(false);
     expect(args).not.toContain('concat');
@@ -93,6 +99,9 @@ describe('combinePlan', () => {
       '/media/b.mp4',
     ]);
     expect(filterOf(args)).toContain('[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[v][a]');
+    for (const [i, arg] of args.entries())
+      if (arg === '-i')
+        expect(args.slice(i - 4, i)).toEqual(['-threads', '1', '-protocol_whitelist', 'file']);
     expect(plan.lengthMs).toBe(9000);
   });
 
@@ -257,6 +266,17 @@ describe('combinePlan with a transition', () => {
     expect(chain).toContain('[v0][v1]xfade=transition=fade:duration=1.000:offset=2.000[x1]');
     expect(chain).toContain('[x1][y1][v2][a2]concat=n=2:v=1:a=1[v][a]');
     expect(three).toMatchObject({ lengthMs: 6200, joins: ['transition', 'cut'], short: [1] });
+    // A cut, then a transition (a22-review-combine MUST-2): concat's pictures come out on another time base, which
+    // xfade refuses, so they are given the first one's rate again before the next join.
+    const cutFirst = combinePlan(
+      [input('/media/a.mp4', { durationMs: 800 }), input('/media/b.mp4'), input('/media/c.mp4')],
+      { transition: 'dissolve', transitionMs: 1000 },
+    );
+    const mixed = filterOf(cutFirst.args('/work/out.mp4'));
+    expect(mixed).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[c1][y1];[c1]fps=25[x1]');
+    expect(mixed).toContain('[x1][v2]xfade=transition=fade:duration=1.000:offset=2.800[v]');
+    expect(mixed).toContain('[y1][a2]acrossfade=d=1.000:c1=tri:c2=tri[a]');
+    expect(cutFirst).toMatchObject({ lengthMs: 5800, joins: ['cut', 'transition'], short: [0] });
   });
 
   it('cuts with no transition at all, the length the sum; refuses a transition outside 0.5 to 3 s', () => {

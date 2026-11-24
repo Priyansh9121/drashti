@@ -303,3 +303,48 @@ it('combines with the Wallpaper over a still slide up, and waits only while a vi
   shown.state = still;
   await settled(held.id);
 }, 40_000);
+
+it('joins a short video with a cut and then dissolves into the next: three videos, one encode (a22-review-combine MUST-2)', async () => {
+  await setUp();
+  const third = join(fixture.dir, 'third.mp4');
+  copyFf([
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=0x993333:s=320x240:r=25:d=2',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=f=660:r=48000:d=2',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-shortest',
+    third,
+  ]);
+  const hashed = await sha256File(third);
+  const info = await readTrimInfo(copyFfmpeg, third);
+  fixture.db
+    .prepare(
+      "INSERT INTO media(id,kind,name,path,sha256,bytes,duration_ms,playable) VALUES ('third','video','Placeholder third.mp4','third.mp4',?,?,?,1)",
+    )
+    .run(hashed.sha256, hashed.bytes, info.durationMs);
+  // 1 s, 2 s and 2 s with a 1.5 s dissolve: the first join a cut (the 1 s video is too short), the second a dissolve.
+  const queued = await started(
+    ask(['second', 'source', 'third'], { transition: 'dissolve', transitionMs: 1500 }),
+  );
+  expect(queued.short).toEqual(['Placeholder second.mp4']);
+  const job = await settled(queued.id);
+  const file = join(fixture.dir, fixture.media.about(job.mediaId ?? '')?.path ?? '');
+  const made = await readTrimInfo(copyFfmpeg, file);
+  expect(Math.abs((made.durationMs ?? 0) - 3500)).toBeLessThanOrEqual(200);
+  expect(made.video).toMatchObject({ width: 320, height: 240 });
+  expect(made.audio).not.toBeNull();
+  // It plays: every frame and its sound decode to the end.
+  copyFf(['-i', file, '-f', 'null', '-']);
+}, 40_000);
