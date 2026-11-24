@@ -276,11 +276,11 @@ it('combines with the Wallpaper over a still slide up, and waits only while a vi
   };
   const shown: { state: EngineState } = { state: still };
   const off = { onAir: false, recording: false };
-  await setUp({ saveBusy: () => saveWaitsFor(shown.state, off) });
+  await setUp({ saveBusy: () => saveWaitsFor(shown.state, off, Date.now()) });
   // Something is up (the old rule's "show busy"), and nothing plays.
   fixture.activity.show = true;
   expect(nothingUp(still.layers)).toBe(false);
-  expect(saveWaitsFor(still, off)).toBeNull();
+  expect(saveWaitsFor(still, off, Date.now())).toBeNull();
   const job = await settled((await started(ask(['source', 'second']))).id);
   expect(job.mediaId).not.toBeNull();
   // A video playing holds the next one, in the save gate's words.

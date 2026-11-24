@@ -115,7 +115,7 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 
 1. Right-click the video's row and choose **Trim (start, end and markers)…**.
 2. Set **Start** and **End** on its timeline.
-3. Press **Save trimmed video**. The row says **Preparing**, and under it why it waits, such as **Waiting: a video is playing**, or how far it is. A still slide, a picture or the Wallpaper never holds it.
+3. Press **Save trimmed video**. The row says **Preparing**, and under it why it waits, such as **Waiting: a video is playing**, or how far it is. A still slide, a picture, the Wallpaper or a video that has ended never holds it.
 4. When it is ready, a notice says it is in **Media**. **Show in Media** finds it; **Export…** saves a copy of its file where you choose, Downloads to begin with. **Export…** is in the row's **Trim** too.
 5. **Reset to original** puts the whole video back in that row.
 

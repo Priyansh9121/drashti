@@ -16,11 +16,12 @@ import {
   type VideoEditFrame,
 } from '../../../shared/video-edit';
 import { Button } from '../ui/Button';
-import { saveWaitsFor } from '../../../shared/save-waits';
+import { saveWaitEndsAt, saveWaitsFor } from '../../../shared/save-waits';
 import { useEngine } from '../engine/engine-store';
 import { useStream } from '../stream/stream-store';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, Slider, TextInput } from '../ui/Field';
+import { engineNow } from '../render/clock';
 import { refreshStill } from '../render/stills';
 import { addEditVideoToMenu, closeEditVideo, useEditVideo } from './edit-video';
 
@@ -785,15 +786,36 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
 
 /**
  * Why Save's preparation waits now (alpha.22, shared/save-waits.ts, as the main process holds it): only while a video
- * or a sound plays, or the stream is on air or recording; never for a still slide, a picture or the Wallpaper up.
+ * or a sound plays, or the stream is on air or recording; never for a still slide, a picture or the Wallpaper up, nor
+ * (alpha.23) a video or a sound that has played to its end and stays up: drawn again at that end, nothing else
+ * changing then.
  */
 function PreparationWaits() {
   const state = useEngine((s) => s.state);
   const status = useStream((s) => s.status);
-  const why = saveWaitsFor(state, {
-    onAir: status !== null && status.live.state !== 'off',
-    recording: status !== null && status.recording.state !== 'off',
-  });
+  const [, redraw] = useState(0);
+  const now = engineNow();
+  const why = saveWaitsFor(
+    state,
+    {
+      onAir: status !== null && status.live.state !== 'off',
+      recording: status !== null && status.recording.state !== 'off',
+    },
+    now,
+  );
+  const endsAt = saveWaitEndsAt(state, now);
+  useEffect(() => {
+    if (endsAt === null) return;
+    const timer = setTimeout(
+      () => {
+        redraw((n) => n + 1);
+      },
+      Math.max(0, endsAt - engineNow()) + 20,
+    );
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [endsAt]);
   return (
     <p className="text-xs text-muted" data-testid="edit-video-waiting">
       {why ?? 'Preparation waits only while a video or a sound plays, or the stream is on air or recording.'}
