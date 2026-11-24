@@ -149,3 +149,8 @@ export function answerFromOutput(yes: boolean): Promise<string | null> {
 export function turnOnIfOff(which: ScreenSwitch): Promise<string | null> {
   return useScreenSwitches.getState().switches[which] ? Promise.resolve(null) : turnSwitch(which, true);
 }
+
+/** A key pressed before the question has the keyboard: a stub until the fix lands (not taken, as before). */
+export function keyBeforeQuestion(_key: string, _questionHasKeyboard: boolean): boolean {
+  return false;
+}

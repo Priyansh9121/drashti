@@ -22,6 +22,9 @@ interface Fake {
   covered: boolean;
   /** The main process says an output over the controls started or stopped asking. */
   tellCovered: (covered: boolean) => void;
+  /** The main process answers the next question only at `release()` (a slow window's first moments). */
+  holdAsking: boolean;
+  release: () => void;
 }
 
 async function connected(): Promise<Fake> {
@@ -36,6 +39,8 @@ async function connected(): Promise<Fake> {
     asked: [],
     covered: false,
     tellCovered: (c) => coveredListener(c),
+    holdAsking: false,
+    release: () => undefined,
   };
   (globalThis as { window?: unknown }).window = {
     drashti: {
@@ -47,7 +52,13 @@ async function connected(): Promise<Fake> {
         },
         asking: (which: ScreenSwitch | null) => {
           fake.asked.push(which);
-          return Promise.resolve({ covered: which !== null && fake.covered });
+          const answer = { covered: which !== null && fake.covered };
+          if (which === null || !fake.holdAsking) return Promise.resolve(answer);
+          return new Promise<{ covered: boolean }>((resolve) => {
+            fake.release = () => {
+              resolve(answer);
+            };
+          });
         },
         onCovered: (l: (covered: boolean) => void) => {
           coveredListener = l;
@@ -245,5 +256,68 @@ describe('Audience and Stage in the operator window (Session 50)', () => {
     // Nothing asked: an answer that comes late changes nothing.
     expect(await fake.store.answerFromOutput(true)).toBeNull();
     expect(fake.turns).toEqual([['stage', false]]);
+  });
+
+  // alpha.22's gate (run 45399099984, audience-stage.spec.ts:634): the output over the controls showed "Enter turns
+  // Audience off" a moment before this window's question had the keyboard, and an Enter pressed in that moment was lost.
+  it('takes an Enter pressed before its question has the keyboard as the question’s answer: Turn off while an output over the controls asks too', async () => {
+    const fake = await connected();
+    await screensAre('showing', 'showing');
+    await showIs(true);
+    fake.covered = true;
+    fake.holdAsking = true;
+    const toggled = fake.store.toggleSwitch('audience');
+    // Not open yet in this window: the Enter is held, never lost, and nothing turns yet.
+    expect(fake.store.keyBeforeQuestion('Enter', false)).toBe(true);
+    expect(fake.turns).toEqual([]);
+    fake.release();
+    expect(await toggled).toBeNull();
+    expect(fake.turns).toEqual([['audience', false]]);
+    expect(fake.store.useScreenSwitches.getState()).toMatchObject({ asking: null, covered: false });
+    // And the output over the controls is told the question went.
+    expect(fake.asked.at(-1)).toBeNull();
+  });
+
+  it('answers a held key as the question’s own keys would: Enter is Cancel’s with no output over the controls, Esc always cancels', async () => {
+    const fake = await connected();
+    await screensAre('showing', 'showing');
+    await showIs(true);
+    fake.holdAsking = true;
+    // No output over the controls: Cancel has the keyboard, so Enter cancels.
+    let toggled = fake.store.toggleSwitch('audience');
+    expect(fake.store.keyBeforeQuestion('Enter', false)).toBe(true);
+    fake.release();
+    expect(await toggled).toBeNull();
+    expect(fake.turns).toEqual([]);
+    expect(fake.store.useScreenSwitches.getState().asking).toBeNull();
+    // With one: Esc cancels all the same.
+    fake.covered = true;
+    toggled = fake.store.toggleSwitch('audience');
+    expect(fake.store.keyBeforeQuestion('Escape', false)).toBe(true);
+    fake.release();
+    expect(await toggled).toBeNull();
+    expect(fake.turns).toEqual([]);
+    expect(fake.store.useScreenSwitches.getState().asking).toBeNull();
+  });
+
+  it('answers at once while the question is open but its buttons do not have the keyboard yet; leaves the keys alone otherwise', async () => {
+    const fake = await connected();
+    await screensAre('showing', 'showing');
+    await showIs(true);
+    // Nothing asks: no key is taken.
+    expect(fake.store.keyBeforeQuestion('Enter', false)).toBe(false);
+    fake.covered = true;
+    expect(await fake.store.toggleSwitch('audience')).toBeNull();
+    expect(fake.store.useScreenSwitches.getState()).toMatchObject({ asking: 'audience', covered: true });
+    // Its buttons have the keyboard: theirs to answer. Any other key: not taken.
+    expect(fake.store.keyBeforeQuestion('Enter', true)).toBe(false);
+    expect(fake.store.keyBeforeQuestion('a', false)).toBe(false);
+    expect(fake.turns).toEqual([]);
+    // Open, its buttons not yet focused: the Enter is the focused button's, Turn off.
+    expect(fake.store.keyBeforeQuestion('Enter', false)).toBe(true);
+    await vi.waitFor(() => {
+      expect(fake.turns).toEqual([['audience', false]]);
+    });
+    expect(fake.store.useScreenSwitches.getState().asking).toBeNull();
   });
 });
