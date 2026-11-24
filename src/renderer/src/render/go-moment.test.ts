@@ -76,4 +76,67 @@ describe("a page's own work for a cue's Go moment", () => {
     page.frameAt(101);
     expect(cancelled).toEqual([]);
   });
+
+  it('on the hall, the stream and the sound pages: in the frame itself, as before, whatever its pictures do', () => {
+    const page = new Page();
+    page.later(() => page.order.push('rate'), 100);
+    atGoMoment(100, () => page.order.push('work'), { checkNow: false }, page);
+    page.frameAt(102);
+    expect(page.order).toEqual(['work', 'rate']);
+  });
 });
+
+/** A cued picture's start at Go, as its page sees it: a timer due at Go sets its rate, then says it has started. */
+function picture(page: Page, at: number) {
+  const waiting: (() => void)[] = [];
+  let started = false;
+  page.later(() => {
+    page.order.push('rate');
+    started = true;
+    for (const run of waiting.splice(0)) run();
+  }, at - page.time);
+  return {
+    whenStarted(run: () => void): () => void {
+      if (started) {
+        run();
+        return () => undefined;
+      }
+      waiting.push(run);
+      return () => {
+        const i = waiting.indexOf(run);
+        if (i >= 0) waiting.splice(i, 1);
+      };
+    },
+  };
+}
+
+describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)", () => {
+  // alpha.22's gate 3 (run 45449968552, CI's Mac): LIVE's cued picture set its rate 23-27 ms after Go, behind the
+  // operator window's own work, while the hall's was set 7-10 ms after it; LIVE started 36.6 and 40.0 ms after Go.
+  it('runs only once its cued picture has started at Go, never ahead of it', () => {
+    const page = new Page();
+    const { whenStarted } = picture(page, 100);
+    atGoMoment(100, () => page.order.push('work'), { checkNow: false, afterStart: { whenStarted, fallbackMs: 250 } }, page);
+    // The page is busy past Go: its next frame comes at 102, its frame callbacks before its timers.
+    page.frameAt(102);
+    expect(page.order).toEqual(['rate', 'work']);
+  });
+
+  it('runs at once where its picture started already, and a check of the moment later where it never starts', () => {
+    const page = new Page();
+    const { whenStarted } = picture(page, 100);
+    page.time = 101;
+    page.runTimers();
+    atGoMoment(100, () => page.order.push('work'), { checkNow: true, afterStart: { whenStarted, fallbackMs: 250 } }, page);
+    expect(page.order).toEqual(['rate', 'work']);
+    const lone = new Page();
+    const seen: number[] = [];
+    const never = { whenStarted: () => () => undefined };
+    atGoMoment(100, (now) => seen.push(now), { checkNow: false, afterStart: { ...never, fallbackMs: 250 } }, lone);
+    lone.frameAt(101);
+    expect(seen).toEqual([]);
+    lone.frameAt(351);
+    expect(seen).toEqual([351]);
+  });
+});
+
