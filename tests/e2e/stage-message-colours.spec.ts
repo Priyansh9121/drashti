@@ -4,6 +4,7 @@ import { newStageBox, type StageBox } from '../../src/shared/stage-layouts';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,

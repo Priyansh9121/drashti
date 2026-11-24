@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { newStageBox, type StageBox } from '../../src/shared/stage-layouts';
 import {
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
