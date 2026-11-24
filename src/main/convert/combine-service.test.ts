@@ -71,13 +71,19 @@ async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
     encoding?: () => void;
     imported?: (mediaId: string) => void;
     publish: boolean;
-    /** Each removal asked for, as it was asked (a22-review-combine2). */
+    /** Each removal of a combine's own work file's copy, as it was asked (a22-review-combine2). */
     discards: Promise<unknown>[];
+    /** Each start sweep of the work folder, as it was asked. */
+    sweeps: Promise<unknown>[];
     /** Holds a removal asked for once the new video is listed, until the test lets it go (S3). */
     holdKept?: Promise<void>;
+    /** An import or a deck's preparation is going (a22-review-combine2 R-S1). */
+    importing: boolean;
   } = {
     publish: true,
     discards: [],
+    sweeps: [],
+    importing: false,
   };
   const deps = {
     pickCopy: (name: string) => {
@@ -115,6 +121,7 @@ async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
         signal,
         idle: () => idle(),
         freeBytes: () => 100 * 1024 ** 3,
+        mayRemove: () => !hooks.importing,
       });
       hooks.imported?.(id);
       return id;
@@ -124,14 +131,27 @@ async function setUp(gate: Parameters<typeof copyFixture>[0] = {}) {
         hooks.publish && fixture.db.prepare('UPDATE media SET listed=1 WHERE id=?').run(id).changes > 0,
       ),
     // As the app has it (video-copies-ipc.ts): what a combine copied into Media and never listed, removed.
-    discardUnlisted: (made: { file: string } | { folder: string }, keep?: string | null) => {
-      const held = keep ? hooks.holdKept : undefined;
+    discardUnlisted: (
+      made: { file: string } | { folder: string },
+      keep?: string | null | ReadonlySet<string>,
+      allowed?: () => boolean,
+    ) => {
+      const listed = typeof keep === 'string' || (keep instanceof Set && keep.size > 0);
+      const held = listed ? hooks.holdKept : undefined;
       const asked = (held ?? Promise.resolve()).then(() =>
-        discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, ...made, keep: keep ?? null }),
+        discardUnlisted({
+          db: fixture.db,
+          mediaDir: fixture.dir,
+          ...made,
+          keep: keep ?? null,
+          ...(allowed ? { allowed } : {}),
+        }),
       );
-      hooks.discards.push(asked);
+      ('file' in made ? hooks.discards : hooks.sweeps).push(asked.catch(() => undefined));
       return asked;
     },
+    importing: () => hooks.importing,
+    // As the app wires it (video-copies-ipc.ts): a file it renamed into Media is never removed while an import goes.
   };
   combines = new CombineVideos(deps);
   cleanup.push(() => combines.close());
@@ -667,7 +687,7 @@ it('a finished combine says done without waiting for the removal of what an earl
   expect(rows()).toBe(4);
 }, 30_000);
 
-it('a wait just after the copy into Media removes that copy while it waits, then keeps one new video', async () => {
+it('a wait just after the copy into Media removes that copy only once the gate opens again, then keeps one new video', async () => {
   const { hooks } = await setUp();
   const copied: string[] = [];
   hooks.imported = (id) => {
@@ -682,14 +702,99 @@ it('a wait just after the copy into Media removes that copy while it waits, then
     },
     { timeout: 20_000 },
   );
-  // While the stream is on air, nothing of it stays in Media.
-  await vi.waitFor(() => {
-    expect(rows()).toBe(3);
-    expect(stored()).toEqual([]);
-  });
+  // a22-review-combine2 R-S2: nothing is removed (no library-wide scan on Main) as the stream goes on air.
+  expect(hooks.discards).toHaveLength(0);
+  expect(rows()).toBe(4);
   fixture.activity.stream = false;
   const job = await settled(queued.id);
+  // Removed as the next attempt began (the gate open), before its own copy: that copy is a new row.
+  expect(copied).toHaveLength(2);
+  expect(copied[1]).not.toBe(copied[0]);
+  expect(fixture.db.prepare('SELECT 1 FROM media WHERE id = ?').get(copied[0])).toBeUndefined();
   const row = fixture.media.about(job.mediaId ?? '');
   expect(rows()).toBe(4);
   expect(stored()).toEqual([row?.path]);
 }, 40_000);
+
+/*
+ * a22-review-combine2 re-review: R-S1, an import reuses a file or a row by its bytes in two steps without the lock, so
+ * nothing unlisted is removed while an import or a deck's preparation goes (left for the next start); R-S2, nothing is
+ * removed while a video or sound plays, the stream is on air or a recording goes on.
+ */
+it('an import going: Media refusing the listing leaves the copy for the next start, which removes it', async () => {
+  const { hooks, deps } = await setUp();
+  hooks.importing = true;
+  hooks.publish = false;
+  const queued = await started(ask(['source', 'second']));
+  await ended(queued.id, 'failed');
+  await removalsDone(hooks, 1);
+  expect(rows()).toBe(4);
+  expect(stored()).toHaveLength(1);
+  // The next start, with no import going.
+  combines.close();
+  hooks.importing = false;
+  combines = new CombineVideos(deps);
+  await vi.waitFor(() => {
+    expect(hooks.sweeps).toHaveLength(2);
+  });
+  await Promise.all(hooks.sweeps);
+  expect(rows()).toBe(3);
+  expect(stored()).toEqual([]);
+}, 30_000);
+
+it('Stop while the copy into Media waits for the write lock, with an import going, keeps the file (when in doubt)', async () => {
+  const { hooks } = await setUp();
+  const other = openDatabase(join(fixture.dir, 'library.sqlite'));
+  cleanup.push(() => {
+    if (other.inTransaction) other.exec('ROLLBACK');
+    other.close();
+  });
+  hooks.encoding = () => {
+    if (!other.inTransaction) other.exec('BEGIN IMMEDIATE');
+  };
+  const queued = await started(ask(['source', 'second']));
+  await vi.waitFor(
+    () => {
+      expect(stored()).toHaveLength(1);
+    },
+    { timeout: 20_000 },
+  );
+  // An import has just seen that file and will write its own row for it.
+  hooks.importing = true;
+  expect(combines.stop(queued.id)).toBe(true);
+  await ended(queued.id, 'stopped');
+  other.exec('ROLLBACK');
+  await removalsDone(hooks, 1);
+  expect(stored()).toHaveLength(1);
+  expect(rows()).toBe(3);
+}, 30_000);
+
+it('Stop on air after the copy into Media removes nothing on air; the next start removes it', async () => {
+  const { hooks, deps } = await setUp();
+  const copied: string[] = [];
+  hooks.imported = (id) => {
+    copied.push(id);
+    fixture.activity.stream = true;
+  };
+  const queued = await started(ask(['source', 'second']));
+  // Waiting again, after its copy into Media (not its first wait, before anything was made).
+  await vi.waitFor(
+    () => {
+      expect(copied).toHaveLength(1);
+      expect(combines.list().find((j) => j.id === queued.id)?.state).toBe('waiting');
+    },
+    { timeout: 20_000 },
+  );
+  expect(combines.stop(queued.id)).toBe(true);
+  await removalsDone(hooks, 1);
+  // Still on air: the copy stays.
+  expect(rows()).toBe(4);
+  expect(stored()).toHaveLength(1);
+  combines.close();
+  fixture.activity.stream = false;
+  combines = new CombineVideos(deps);
+  await vi.waitFor(() => {
+    expect(rows()).toBe(3);
+    expect(stored()).toEqual([]);
+  });
+}, 30_000);

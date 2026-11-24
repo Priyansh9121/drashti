@@ -205,6 +205,7 @@ it('a work folder still held at the start (Windows) never stops Drashti starting
       cancelFile: () => false,
     },
     idle: () => true,
+    importing: () => false,
     prepareImport: () => Promise.reject(new Error('Not used here.')),
     publishImport: () => Promise.resolve(false),
     discardUnlisted: discard,
@@ -221,4 +222,90 @@ it('a work folder still held at the start (Windows) never stops Drashti starting
         }),
       ),
   ).not.toThrow();
+});
+
+/*
+ * a22-review-combine2 re-review: the start sweep removes nothing while an import or a deck's preparation goes (R-S1),
+ * or while a video plays, the stream is on air or a recording goes on (R-S2): left for the next start. An import
+ * starting while the sweep waits for the write lock stops it too.
+ */
+function sweeping(at: ReturnType<typeof library>, gate: { importing: boolean; idle: boolean }) {
+  const asked: Promise<unknown>[] = [];
+  const deps: CombineDeps = {
+    mediaDir: at.dir,
+    workDir: at.work,
+    row: () => null,
+    conversions: {
+      saveCopy: () => ({ id: 'none', done: new Promise<never>(() => undefined) }),
+      cancelFile: () => false,
+    },
+    idle: () => gate.idle,
+    importing: () => gate.importing,
+    prepareImport: () => Promise.reject(new Error('Not used here.')),
+    publishImport: () => Promise.resolve(false),
+    discardUnlisted: (made, keep, allowed) => {
+      const removal = discardUnlisted({
+        db: at.db,
+        mediaDir: at.dir,
+        ...made,
+        keep: keep ?? null,
+        ...(allowed ? { allowed } : {}),
+      });
+      asked.push(removal.catch(() => undefined));
+      return removal;
+    },
+    pickCopy: () => Promise.resolve(null),
+  };
+  return { deps, asked };
+}
+
+it('an import going at the start leaves the sweep for the next start', async () => {
+  const at = library();
+  const left = leftover(at);
+  const gate = { importing: true, idle: true };
+  const first = sweeping(at, gate);
+  new CombineVideos(first.deps).close();
+  await Promise.all(first.asked);
+  expect(row(at.db, left.id)).toBeDefined();
+  expect(existsSync(left.file)).toBe(true);
+  gate.importing = false;
+  const next = sweeping(at, gate);
+  new CombineVideos(next.deps).close();
+  await Promise.all(next.asked);
+  expect(row(at.db, left.id)).toBeUndefined();
+  expect(existsSync(left.file)).toBe(false);
+});
+
+it('a video playing or the stream on air at the start leaves the sweep for the next start', async () => {
+  const at = library();
+  const left = leftover(at);
+  const gate = { importing: false, idle: false };
+  const first = sweeping(at, gate);
+  new CombineVideos(first.deps).close();
+  await Promise.all(first.asked);
+  expect(row(at.db, left.id)).toBeDefined();
+  expect(existsSync(left.file)).toBe(true);
+});
+
+it('an import starting while the sweep waits for the write lock stops the sweep', async () => {
+  const at = library();
+  const left = leftover(at);
+  const other = openDatabase(join(at.dir, 'library.sqlite'));
+  cleanup.push(() => {
+    if (other.inTransaction) other.exec('ROLLBACK');
+    other.close();
+  });
+  other.exec('BEGIN IMMEDIATE');
+  const gate = { importing: false, idle: true };
+  const first = sweeping(at, gate);
+  const combines = new CombineVideos(first.deps);
+  cleanup.push(() => {
+    combines.close();
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  gate.importing = true;
+  other.exec('ROLLBACK');
+  await Promise.all(first.asked);
+  expect(row(at.db, left.id)).toBeDefined();
+  expect(existsSync(left.file)).toBe(true);
 });
