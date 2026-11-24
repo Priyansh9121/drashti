@@ -172,8 +172,9 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
               canvas={canvas}
               scaling={scaling}
               annotate
-              // Its own work for a cue's Go moment after its cued picture's start (QA23-CUELIVE-1).
+              // Its own work for a cue's Go moment after its cued picture's start, which it tells (QA23-CUELIVE-1).
               cueStartFirst
+              cueStartTeller
               translationGroupId={translationGroupId}
               translationOutputId={audienceOutputId}
               {...(audience ? { look: audience.look } : {})}

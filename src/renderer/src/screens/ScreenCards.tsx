@@ -175,6 +175,9 @@ function ProjectorPreview({ group }: { group: ScreenGroupConfig | null }) {
               scaling={screen?.scaling ?? 'fit'}
               translationGroupId={group.id}
               translationOutputId={screen?.id}
+              // In the operator window with LIVE: its Go-moment work after LIVE's picture's start (QA23-CUELIVE-1); with
+              // LIVE's preview not drawn, 250 ms past Go.
+              cueStartFirst
               {...(look ? { look } : {})}
             />
           </PlacedInParent>

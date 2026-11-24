@@ -149,4 +149,3 @@ describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)
     expect(seen).toEqual([351]);
   });
 });
-

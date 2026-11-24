@@ -2,6 +2,10 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- Cue: on a busy computer, LIVE could start a cued video a moment after the hall; it now starts it before redrawing itself.
+
 ## 1.0.0-alpha.22 (25 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.

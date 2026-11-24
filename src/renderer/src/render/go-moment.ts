@@ -22,7 +22,7 @@ const PAGE: GoMomentClock = {
 export interface AfterStart {
   /** Runs `run` once this page's cued picture has set its rate at Go (at once if it has); returns its cancel. */
   whenStarted(run: () => void): () => void;
-  /** Where it never starts (it failed, say): the work runs this long after the first frame past Go. */
+  /** Where it never starts (it failed, say): the work runs this long after Go at the latest. */
   fallbackMs: number;
 }
 
@@ -62,7 +62,8 @@ export function atGoMoment(
       work(now);
       return;
     }
-    fallback = clock.later(run, after.fallbackMs);
+    // Counted from Go, so a wait begun later (the slot's activation, after the swap's render) is not that much more.
+    fallback = clock.later(run, Math.max(0, at + after.fallbackMs - now));
     waiting = after.whenStarted(run);
   };
   if (options.checkNow) tick();

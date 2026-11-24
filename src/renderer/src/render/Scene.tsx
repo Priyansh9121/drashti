@@ -316,11 +316,14 @@ function BackgroundPicture({
   crossfade,
   opaqueCanvas = false,
   cueStartFirst = false,
+  cueStartTeller = false,
   onLinkDrawn,
 }: {
   opaqueCanvas?: boolean;
-  /** The operator's LIVE preview (QA23-CUELIVE-1): its work for a cue's Go moment after its cued picture's start. */
+  /** The operator window's previews (QA23-CUELIVE-1): their work for a cue's Go moment after LIVE's picture's start. */
   cueStartFirst?: boolean;
+  /** LIVE's preview alone: its cued picture says when it has started at Go (render/cue-started.ts). */
+  cueStartTeller?: boolean;
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
   background: BackgroundLayer | null;
@@ -364,6 +367,7 @@ function BackgroundPicture({
         crossfade={crossfade}
         opaqueCanvas={opaqueCanvas}
         cueStartFirst={cueStartFirst}
+        cueStartTeller={cueStartTeller}
       />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
       {background?.kind === 'link' && <LinkView layer={background} onDrawn={onLinkDrawn} />}
@@ -430,6 +434,7 @@ const SceneBody = memo(function SceneBody({
   captions = true,
   picturesFirst = place === 'stream',
   cueStartFirst = false,
+  cueStartTeller = false,
 }: {
   state: EngineState;
   canvas: Size;
@@ -464,6 +469,11 @@ const SceneBody = memo(function SceneBody({
    * (CI's Mac) LIVE's picture set its rate 23-27 ms after Go behind the operator window's work. Every screen as before.
    */
   cueStartFirst?: boolean;
+  /**
+   * LIVE's preview alone (QA23-CUELIVE-1): its cued picture tells the window when it has started at Go; the window's
+   * previews set to `cueStartFirst` wait for that (250 ms past Go at the latest).
+   */
+  cueStartTeller?: boolean;
   translationOutputId?: string;
   translationGroupId?: string | null;
 }) {
@@ -674,6 +684,7 @@ const SceneBody = memo(function SceneBody({
                       onDrawn={setDrawnKey}
                       onLinkDrawn={setLinkDrawn}
                       cueStartFirst={cueStartFirst}
+                      cueStartTeller={cueStartTeller}
                     />
                   </BackgroundBox.Provider>
                 </MainSlot>

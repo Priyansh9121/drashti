@@ -10,6 +10,17 @@ import type { AfterStart } from './go-moment';
 const started = new Set<string>();
 const waiting = new Map<string, Set<() => void>>();
 
+/**
+ * Whether a cued picture has started at Go, by its element: its rate above 0 while it plays (a prepared start's rate set
+ * at Go; a start with no lead plays at its rate). Its rate 0 with play() (the Go lead's warm-up), or a rate while paused,
+ * is not a start.
+ */
+export const startedNow = (v: { playbackRate: number; paused: boolean }): boolean =>
+  v.playbackRate > 0 && !v.paused;
+
+/** Whether this page's cued picture `cueId` has started at Go. */
+export const isCueStarted = (cueId: string): boolean => started.has(cueId);
+
 /** This page's cued picture `cueId` has started at Go. */
 export function cueStarted(cueId: string): void {
   started.add(cueId);
@@ -41,3 +52,7 @@ export const afterCueStart = (cueId: string): AfterStart => ({
   whenStarted: (run) => whenCueStarted(cueId, run),
   fallbackMs: NEVER_STARTED_MS,
 });
+
+/** For LIVE's scene keeper (render/cued-start.ts): still held past Go `at` while its picture has not started. */
+export const heldUntilStarted = (cueId: string, at: number, now: number): boolean =>
+  !started.has(cueId) && now < at + NEVER_STARTED_MS;

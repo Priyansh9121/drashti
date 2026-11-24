@@ -1,5 +1,5 @@
 import { cueClock } from './cue-clock';
-import { afterCueStart, cueStarted } from './cue-started';
+import { afterCueStart, cueStarted, startedNow } from './cue-started';
 import { atGoMoment } from './go-moment';
 import { cuePresentation, PRIVATE_VIDEO_OPACITY } from './cue-presentation';
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
@@ -194,7 +194,7 @@ function VideoSlot({
     const v = ref.current;
     if (!tellStart || !cueId || !v) return;
     const told = () => {
-      if (v.playbackRate > 0 && !v.paused) cueStarted(cueId);
+      if (startedNow(v)) cueStarted(cueId);
     };
     v.addEventListener('ratechange', told);
     v.addEventListener('playing', told);
@@ -445,8 +445,10 @@ export function BackgroundMedia(props: {
   opaqueCanvas?: boolean;
   layer: BackgroundLayer | null;
   annotate?: boolean;
-  /** The operator's LIVE preview (QA23-CUELIVE-1): its Go-moment work after its cued picture's start. */
+  /** The operator window's previews (QA23-CUELIVE-1): their Go-moment work after LIVE's cued picture's start. */
   cueStartFirst?: boolean;
+  /** LIVE's preview alone: its cued picture tells the window when it has started at Go. */
+  cueStartTeller?: boolean;
   /** How this screen's group moves (Session 27): its dissolve's curve. */
   movement?: Movement;
   /**
@@ -501,6 +503,7 @@ function BackgroundPlayer({
   crossfade,
   opaqueCanvas = false,
   cueStartFirst = false,
+  cueStartTeller = false,
 }: {
   opaqueCanvas?: boolean;
   cue?: VideoCue | null;
@@ -508,6 +511,7 @@ function BackgroundPlayer({
   layer: BackgroundLayer | null;
   annotate?: boolean;
   cueStartFirst?: boolean;
+  cueStartTeller?: boolean;
   movement?: Movement;
   onDrawn?: (key: string | null) => void;
 }) {
@@ -613,7 +617,7 @@ function BackgroundPlayer({
               visible={visible}
               shape={shape}
               dispatch={dispatch}
-              tellStart={cueStartFirst}
+              tellStart={cueStartTeller}
             />
           ) : (
             <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />

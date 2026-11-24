@@ -1,9 +1,30 @@
 import type { EngineState } from '../../../shared/engine/state';
 
+/** Every top-level field the same but videoStart, which Main's patch at Go clears (show-engine.ts scheduleVideoCue). */
+function onlyStartCleared(last: EngineState, state: EngineState): boolean {
+  if (state.videoStart || !last.videoStart) return false;
+  const keys = new Set([...Object.keys(last), ...Object.keys(state)]) as Set<keyof EngineState>;
+  for (const key of keys) if (key !== 'videoStart' && !Object.is(last[key], state[key])) return false;
+  return true;
+}
+
 /** Hold the already drawn scene locally until Go, without duplicating its payload on the wire. */
 export class CuedStartKeeper {
   private previous: EngineState | null = null;
-  private held: { id: string; before: EngineState } | null = null;
+  private held: { id: string; at: number; before: EngineState; last: EngineState } | null = null;
+
+  /**
+   * `holdPastGo` (the operator's LIVE preview alone, QA23-CUELIVE-1): whether, past its Go at `at`, cue `id` is still
+   * held, its cued picture not started yet. Through that, LIVE keeps its scene until its picture has set its rate at Go,
+   * whether its own Go-moment work or Main's patch at Go (clearing videoStart, nothing else) comes first; any other
+   * change lets it go at once. Left out (every other page): held until Go, as before.
+   */
+  constructor(private readonly holdPastGo?: (id: string, at: number, now: number) => boolean) {}
+
+  /** The cue held now, and its Go (null with none). */
+  holding(): { id: string; at: number } | null {
+    return this.held ? { id: this.held.id, at: this.held.at } : null;
+  }
 
   at(state: EngineState | null, now: number): EngineState | null {
     if (!state) {
@@ -13,12 +34,22 @@ export class CuedStartKeeper {
     }
     const start = state.videoStart;
     const bg = state.layers.background;
+    const goPassed = (id: string, at: number) => now >= at && !(this.holdPastGo?.(id, at, now) ?? false);
+    const held = this.held;
+    if (
+      held &&
+      this.holdPastGo &&
+      !start &&
+      onlyStartCleared(held.last, state) &&
+      !goPassed(held.id, held.at)
+    )
+      return this.view(held.before, state);
     if (
       !start ||
       bg?.kind !== 'media' ||
       bg.media !== 'video' ||
       bg.cueId !== start.id ||
-      now >= start.at ||
+      goPassed(start.id, start.at) ||
       state.stopped ||
       state.blackout ||
       state.wallpaper
@@ -28,11 +59,17 @@ export class CuedStartKeeper {
       return state;
     }
     if (this.held?.id !== start.id && this.previous?.videoCue?.id === start.id)
-      this.held = { id: start.id, before: this.previous };
+      this.held = { id: start.id, at: start.at, before: this.previous, last: state };
+    else if (this.held) this.held = { ...this.held, at: start.at, last: state };
     this.previous = state;
-    const before = this.held?.before;
-    const cue = before?.videoCue;
-    if (!before || !cue) return state;
+    return this.held ? this.view(this.held.before, state) : state;
+  }
+
+  /** The scene held: the one before the cue's Go, with the cue armed on the decoder (its own background). */
+  private view(before: EngineState, state: EngineState): EngineState {
+    const cue = before.videoCue;
+    const bg = state.layers.background;
+    if (!cue || bg?.kind !== 'media') return state;
     return {
       ...state,
       live: before.live,
