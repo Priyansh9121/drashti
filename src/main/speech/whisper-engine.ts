@@ -52,6 +52,11 @@ export interface WhisperEngineOptions {
   sound: PcmSource;
   log: { info(message: string): void; warn(message: string): void };
   threads?: number;
+  /**
+   * This computer's logical processors (os.availableParallelism; a test may say): whisper-server is never given more
+   * threads than these (cap-threads).
+   */
+  processors?: () => number;
   spawn?: (program: string, args: string[]) => ChildProcess;
   fetch?: typeof fetch;
   /** How long to wait for the engine to load its model (the first start on a Mac also builds its GPU programs). */

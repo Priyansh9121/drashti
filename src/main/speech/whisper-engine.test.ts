@@ -345,6 +345,7 @@ describe('the captions engine (Part 10)', () => {
       sound,
       log: { info: () => undefined, warn: (m) => warnings.push(m) },
       spawn: server.spawn,
+      processors: () => 8,
       stepMs: 200,
       pauseMs: 2_000,
       restMs: 500,
@@ -353,7 +354,20 @@ describe('the captions engine (Part 10)', () => {
     await waitFor(() => states.some((s) => s.phase === 'listening'));
     void sound.play(6_000, 0);
     await waitFor(() => states.some((s) => s.phase === 'held'), 8_000);
-    expect(states.find((s) => s.phase === 'held')).toEqual({ phase: 'held', reason: 'busy' });
+    // It says what it measured (cap-threads): the last answer's time, how far behind, its threads, the processors.
+    const held = states.find((s) => s.phase === 'held');
+    expect(held).toEqual({
+      phase: 'held',
+      reason: 'busy',
+      slow: {
+        answerMs: expect.any(Number) as number,
+        behindMs: expect.any(Number) as number,
+        threads: 4,
+        processors: 8,
+        rests: 1,
+      },
+    });
+    expect(held?.phase === 'held' && held.slow ? held.slow.answerMs : 0).toBeGreaterThanOrEqual(700);
     expect(warnings.join('\n')).toMatch(/cannot keep up/);
     // A rest later it starts again by itself.
     await waitFor(() => states.filter((s) => s.phase === 'listening').length >= 2, 8_000);
@@ -434,6 +448,7 @@ describe('the engine with a model per language and live timing (alpha.22)', () =
       sound,
       log: { info: () => undefined, warn: () => undefined },
       spawn: server.spawn,
+      processors: () => 8,
     });
     stops.push(
       engine.start('gu', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
@@ -463,12 +478,112 @@ describe('the engine with a model per language and live timing (alpha.22)', () =
       sound: bursts(),
       log: { info: () => undefined, warn: () => undefined },
       spawn: server.spawn,
+      // A computer with more logical processors than the threads (GitHub's Mac runners have three).
+      processors: () => 8,
     });
     stops.push(engine.start('en', { heard: () => undefined, state: (s) => states.push(s) }), server.close);
     await waitFor(() => states.some((s) => s.phase === 'listening'));
     const args = server.spawned[0] ?? [];
     expect(args[args.indexOf('-t') + 1]).toBe('4');
   });
+});
+
+/** The -t whisper-server was started with, for the dialog's thread setting on a computer with these processors. */
+async function threadsGiven(setting: CaptionTiming['threads'], processors: number): Promise<string> {
+  const server = standIn();
+  const states: SpeechState[] = [];
+  const info: string[] = [];
+  const engine = createWhisperEngine({
+    program: () => '/placeholder/whisper-server',
+    model: () => '/placeholder/model.bin',
+    fallback: () => true,
+    timing: () => ({ ...DEFAULT_CAPTION_TIMING, threads: setting }),
+    sound: bursts(),
+    log: { info: (m) => info.push(m), warn: () => undefined },
+    spawn: server.spawn,
+    processors: () => processors,
+  });
+  const stop = engine.start('en', { heard: () => undefined, state: (s) => states.push(s) });
+  try {
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    const args = server.spawned[0] ?? [];
+    // Numbers only in the log: the threads it runs and the processors it has.
+    expect(info.join('\n')).toContain(
+      `the captions engine’s threads: ${args[args.indexOf('-t') + 1] ?? '?'} (logical processors here: ${String(processors)})`,
+    );
+    return args[args.indexOf('-t') + 1] ?? '';
+  } finally {
+    stop();
+    server.close();
+  }
+}
+
+describe('threads on this computer (cap-threads: today’s captions on a two-core PC)', () => {
+  it('never starts whisper-server with more threads than the computer has logical processors', async () => {
+    // CI's two-core Windows (run 45300253760): 4 threads on 2 logical processors, and nothing was ever shown.
+    expect(await threadsGiven(4, 2)).toBe('2');
+    expect(await threadsGiven(2, 2)).toBe('2');
+    expect(await threadsGiven(4, 3)).toBe('3');
+    expect(await threadsGiven(4, 1)).toBe('1');
+    expect(await threadsGiven(2, 1)).toBe('1');
+    // Never none, whatever the computer says.
+    expect(await threadsGiven(4, 0)).toBe('1');
+  });
+
+  it('leaves a computer with 4 or more logical processors exactly as now (every Mac that runs macOS 13 has 4)', async () => {
+    expect(await threadsGiven(4, 4)).toBe('4');
+    expect(await threadsGiven(4, 16)).toBe('4');
+    expect(await threadsGiven(2, 16)).toBe('2');
+    expect(await threadsGiven(1, 16)).toBe('1');
+    expect(await threadsGiven(1, 4)).toBe('1');
+  });
+
+  it('counts its rests in a row, and starts again from one once a phrase is heard whole', async () => {
+    const answer = { delayMs: 700 };
+    const server = standIn(answer);
+    const sound = bursts();
+    const states: SpeechState[] = [];
+    const heard: Heard[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      processors: () => 2,
+      stepMs: 200,
+      pauseMs: 400,
+      restMs: 300,
+    });
+    stops.push(
+      engine.start('en', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    const rests = (): number[] =>
+      states.flatMap((s) => (s.phase === 'held' && s.slow ? [s.slow.rests] : []));
+    const listened = (n: number) => () => states.filter((s) => s.phase === 'listening').length >= n;
+    await waitFor(listened(1));
+    // Too slow twice, with nothing heard whole between: the second rest says so. (Each sound played whole, so one
+    // never runs on into the next.)
+    await sound.play(3_500, 0);
+    await waitFor(() => rests().length >= 1, 10_000);
+    await waitFor(listened(2), 5_000);
+    await sound.play(3_500, 0);
+    await waitFor(() => rests().length >= 2, 10_000);
+    expect(rests()).toEqual([1, 2]);
+    const second = states.filter((s) => s.phase === 'held').at(-1);
+    expect(second).toMatchObject({ slow: { threads: 2, processors: 2, rests: 2 } });
+    // Quick again: a phrase heard whole, and the next rest is the first again.
+    await waitFor(listened(3), 5_000);
+    answer.delayMs = 0;
+    await sound.play(600, 900);
+    await waitFor(() => heard.some((h) => h.final), 5_000);
+    answer.delayMs = 700;
+    await sound.play(3_500, 0);
+    await waitFor(() => rests().length >= 3, 10_000);
+    expect(rests()).toEqual([1, 2, 1]);
+  }, 45_000);
 });
 
 describe('a model that may not be used is never loaded (alpha.22)', () => {

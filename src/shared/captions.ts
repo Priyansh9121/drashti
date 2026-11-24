@@ -258,4 +258,9 @@ export interface CaptionsStatus {
   languageModels: LanguageModelView[];
   /** Live timing on this computer (alpha.22). */
   timing: CaptionTiming;
+  /**
+   * This computer's logical processors (cap-threads): the whisper engine never runs more threads than these, so the
+   * dialog says when Engine threads asks for more.
+   */
+  processors: number;
 }

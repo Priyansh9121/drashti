@@ -61,6 +61,7 @@ function setup(
     failDownload?: boolean;
     controlDownload?: boolean;
     languageModels?: ReturnType<typeof languageStore>['store'];
+    processors?: number;
   } = {},
 ) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-service-'));
@@ -93,6 +94,7 @@ function setup(
       },
     },
     engine,
+    ...(o.processors === undefined ? {} : { processors: () => o.processors ?? 0 }),
     engineProblem: () => ((o.engine ?? true) ? null : 'This copy of Drashti has no captions engine.'),
     modelReady: (id) => ready.has(id),
     download: async (id, progress, signal) => {
@@ -141,6 +143,12 @@ describe('live captions as an admin turns them on (Part 10)', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('say how many logical processors this computer has (cap-threads), as Node counts them unless told', () => {
+    expect(setup({ processors: 2 }).service.view().processors).toBe(2);
+    const counted = setup().service.view().processors;
+    expect(Number.isInteger(counted) && counted >= 1).toBe(true);
   });
 
   it('are off at first: nothing listens, nothing is downloaded, and they are marked Trial', () => {

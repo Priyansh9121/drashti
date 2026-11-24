@@ -11,7 +11,14 @@ import type { SpeechEngine } from './hub';
 export function createStandInEngine(
   phrases: readonly string[],
   everyMs = 1_500,
-  options: { once?: boolean } = {},
+  options: {
+    once?: boolean;
+    /**
+     * Hold (DRASHTI_TEST_SPEECH_HOLD, cap-threads): after its first phrase is heard whole it rests as a computer too
+     * slow to keep up does (placeholder numbers), and stays resting.
+     */
+    hold?: boolean;
+  } = {},
 ): SpeechEngine {
   return {
     start(language, to) {

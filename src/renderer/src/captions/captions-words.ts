@@ -40,6 +40,19 @@ export function captionsStateText(view: CaptionsStatus): string {
   }
 }
 
+/**
+ * The status bar's line while captions are on but show nothing for a reason the operator should know (cap-threads):
+ * resting because the computer cannot keep up, no sound input, or stopped. Null otherwise.
+ */
+export function captionsStatusLine(_view: CaptionsStatus | null): string | null {
+  return null;
+}
+
+/** Under Engine threads (cap-threads): when this computer has fewer logical processors than chosen, or null. */
+export function threadsNote(_view: CaptionsStatus): string | null {
+  return null;
+}
+
 /** How the model stands on this computer. */
 export function downloadText(view: CaptionsStatus): string {
   const d = view.download;
