@@ -341,6 +341,72 @@ it('starts a crossfade’s incoming sound at the fade’s own moment, not when a
   expect(player(black.key).el.dataset['leadMs']).toBeUndefined();
 });
 
+it('starts a crossfade’s incoming sound a second early when its Go comes a second ahead, unheard behind that lead (QA23-FADE-9)', async () => {
+  // The owner, QA23-FADE-9 QFP-4: "Start it early, unheard (Rec.)". The engine sends an automatic crossfade's Go a
+  // second before its moment; the incoming player starts as it arrives, aimed a second ahead, and its sound reaches the
+  // mix through a delay of that second: the audio clock says when it is heard, however late this page's main thread is
+  // at the moment itself (CI's two-core Windows: nothing for 0.77 s from a fade's start).
+  vi.useFakeTimers();
+  vi.stubGlobal('AudioContext', GeneratedContext);
+  vi.stubGlobal('document', {
+    body: { dataset: {}, append: () => undefined },
+    createElement: () => ({ dataset: {}, remove: () => undefined }),
+  });
+  const { StreamSound } = await import('./sound');
+  const sound = new StreamSound();
+  const show = { layers: {} } as unknown as EngineState;
+  const red: Sound = {
+    key: 'background:generated red@1000',
+    mediaId: 'generated red',
+    startedAt: 1000,
+    loop: true,
+    volume: 1,
+    kind: 'video',
+  };
+  const blue: Sound = {
+    key: 'background:generated blue@2000',
+    mediaId: 'generated blue',
+    startedAt: 2000,
+    loop: true,
+    volume: 1,
+    kind: 'video',
+    cueId: 'cue generated blue',
+    prepared: true,
+    seek: { at: Date.now(), toMs: 0, paused: true },
+  };
+  const fade = {
+    id: 'generated cue',
+    from: {
+      kind: 'media',
+      media: 'video',
+      mediaId: 'generated red',
+      startedAt: 1000,
+      loop: true,
+      fit: 'fit',
+    },
+    at: Date.now() + 1000,
+    durationMs: 2000,
+  } as unknown as VideoCrossfade;
+  h.sounds = [red, blue];
+  sound.setOwnSound(true, show);
+  const { cueId: _cue, prepared: _prepared, ...rest } = blue;
+  h.sounds = [
+    { ...red, envelope: { fade, role: 'out' } },
+    { ...rest, seek: { at: fade.at, toMs: 0 }, envelope: { fade, role: 'in' } },
+  ];
+  sound.setOwnSound(true, show);
+  const player = h.started.find((s) => s.key === blue.key);
+  expect(player?.options.timing?.().seek?.at, 'started now, aimed a second ahead').toBe(fade.at - 1000);
+  expect(player?.el.dataset['leadMs'], 'and says so').toBe('1000');
+  expect(
+    h.delays.some((d) => Math.abs(d.value - 1) < 1e-9),
+    'its sound reaches the mix a second later: heard from the fade’s own moment',
+  ).toBe(true);
+  expect(player?.options.ease?.(), 'eased from its start: no jump behind its lead').toEqual(
+    FADE_SOUND_LIMITS,
+  );
+});
+
 it('a crossfaded sound held paused lets go of its lead, so Play resumes it in place (a22-review-fade R2-M1)', async () => {
   // The lead stayed for the sound's whole life: a pause of a video that came in by a crossfade, then Play, gave the lead's
   // silence and then a silent jump (up to 1.9 s on a two-core PC), where before Play resumed it in place.

@@ -110,6 +110,30 @@ it('prepares the next row silently and uses one exact overlap moment, then relea
   expect(x.engine.current.live.playlist?.itemId).toBe('b');
 });
 
+it('sends an automatic crossfade’s Go a second before its moment, its moment unchanged (QA23-FADE-9)', () => {
+  // The owner, QA23-FADE-9 QFP-4: "Start it early, unheard (Rec.)". On CI's two-core Windows the stream's sound page
+  // did nothing for 0.77 s from a fade's start, so a Go that reached it one Go lead (120 ms) ahead started the incoming
+  // sound 0.44 s late. A second ahead, each page starts it before that, behind its lead, heard from the moment itself.
+  const x = setup();
+  x.play();
+  x.ready();
+  x.advance(14_499);
+  expect(x.engine.current.videoCrossfade, 'not yet, more than a second before').toBeFalsy();
+  x.advance(14_500);
+  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 15_500, durationMs: 2000 });
+  const incoming = x.engine.current.layers.background;
+  expect(incoming?.kind === 'media' ? incoming.seek : null).toEqual({ at: 15_500, toMs: 500 });
+});
+
+it('a cue ready under a second before its automatic crossfade goes at once, at the playlist’s own moment, never later', () => {
+  const x = setup();
+  x.play();
+  x.advance(15_200);
+  x.ready();
+  x.advance(15_200);
+  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 15_500, durationMs: 2000 });
+});
+
 it('holds on the current video when the next first frame failed, with no cut or black fallback', () => {
   const x = setup();
   x.play();
