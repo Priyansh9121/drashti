@@ -13,6 +13,7 @@ import { TranslitSourceContext } from '../render/lang';
 import { translitSource } from '../../../shared/tracks';
 import { MeasureContext, type MeasureReport } from '../render/measure';
 import { useElementSize } from '../render/useElementSize';
+import { slidePad } from './editor-fold';
 import {
   allowSourceContent,
   beginGesture,
@@ -88,8 +89,6 @@ import {
  * ten at a time), Delete removes it.
  */
 
-/** Room round the slide. */
-const PAD = 32;
 /** How close (screen pixels) something must come to a line to snap to it. */
 const SNAP_PX = 8;
 /** Moves under this (screen pixels) are a click, not a drag. */
@@ -222,7 +221,8 @@ export function Canvas({
       const pageSize = current?.pageSize ?? editingCanvas(current?.documentPage, d);
       const w = el.clientWidth;
       const h = el.clientHeight;
-      const fit = Math.max(0.05, Math.min((w - 2 * PAD) / pageSize.width, (h - 2 * PAD) / pageSize.height));
+      const pad = slidePad(w, h);
+      const fit = Math.max(0.05, Math.min((w - 2 * pad) / pageSize.width, (h - 2 * pad) / pageSize.height));
       const scale = scaleFor(now.zoom, fit);
       const next = zoomBy(now.zoom, fit, Math.exp(-e.deltaY * 0.01));
       if (Math.abs(next - scale) < 1e-4) return;
@@ -232,8 +232,8 @@ export function Canvas({
         zoomScroll({
           pointer,
           scroll,
-          offset: Math.max(PAD, (area - length * scale) / 2),
-          offsetAfter: Math.max(PAD, (area - length * next) / 2),
+          offset: Math.max(pad, (area - length * scale) / 2),
+          offsetAfter: Math.max(pad, (area - length * next) / 2),
           from: scale,
           to: next,
         });
@@ -277,17 +277,19 @@ export function Canvas({
   if (!doc || !slide) return <div ref={area} className="min-w-0 flex-1 bg-ink" />;
   const pageSize = slide.pageSize ?? editingCanvas(slide.documentPage, doc);
 
-  // Fitted to the area, as the editor always opened; zoomed, a size of its own (Session 55, Part 17a).
+  // Fitted to the area, as the editor always opened; zoomed, a size of its own (Session 55, Part 17a). The room round
+  // it is less in a small area (a folded editor's: a22-ribbonfold).
+  const pad = slidePad(size.width, size.height);
   const fit = Math.max(
     0.05,
-    Math.min((size.width - 2 * PAD) / pageSize.width, (size.height - 2 * PAD) / pageSize.height),
+    Math.min((size.width - 2 * pad) / pageSize.width, (size.height - 2 * pad) / pageSize.height),
   );
   const scale = scaleFor(zoom, fit);
   const width = pageSize.width * scale;
   const height = pageSize.height * scale;
-  // Where the slide sits: in the middle while it fits, else PAD in from the scrolled area's edges.
-  const left = Math.max(PAD, (size.width - width) / 2);
-  const top = Math.max(PAD, (size.height - height) / 2);
+  // Where the slide sits: in the middle while it fits, else the room round it in from the scrolled area's edges.
+  const left = Math.max(pad, (size.width - width) / 2);
+  const top = Math.max(pad, (size.height - height) / 2);
   const elements = slide.elements;
   const visible = elements.filter((el) => !el.hidden);
   const rendered = renderEditedSlide(doc, slide, true);
@@ -868,9 +870,9 @@ export function Canvas({
         className={cx('absolute inset-0', zoom === 'fit' ? 'overflow-hidden' : 'overflow-auto')}
         data-testid="editor-canvas-area"
       >
-        {/* Zoomed in, the room the slide takes (with PAD round it): the area scrolls over it. */}
+        {/* Zoomed in, the room the slide takes (with its room round it): the area scrolls over it. */}
         {zoom !== 'fit' && (
-          <div aria-hidden="true" style={{ width: left + width + PAD, height: top + height + PAD }} />
+          <div aria-hidden="true" style={{ width: left + width + pad, height: top + height + pad }} />
         )}
         <div
           ref={stage}
