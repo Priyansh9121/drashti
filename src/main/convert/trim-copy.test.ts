@@ -52,7 +52,8 @@ describe('queuing a trimmed video', () => {
     expect(source).toBe(path);
     expect(dest).toBe(join(dirname(path), 'Example_ video trimmed.mp4'));
     expect(info).toBe(INFO);
-    expect(copy).toMatchObject({ lengthMs: 400, waitForShow: true, waiting, progress });
+    expect(copy).toMatchObject({ lengthMs: 400, waitForPlaying: true, waiting, progress });
+    expect(copy).not.toHaveProperty('waitForShow');
     const args = copy.args(output);
     const seek = args.indexOf('-ss');
     expect(args.slice(seek, seek + 6)).toEqual(['-ss', '0.250', '-i', path, '-t', '0.400']);

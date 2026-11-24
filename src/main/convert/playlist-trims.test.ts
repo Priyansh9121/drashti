@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_MARKERS } from '../../shared/markers';
+import { trimStatusWords } from '../../shared/trim';
 import type { Db } from '../db/database';
 import { openDatabase } from '../db/database';
 import { sha256File } from '../import/media-store';
@@ -62,6 +63,10 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
   const isLive = vi.fn((item: string, media: string) => item === itemId && media === liveMedia);
   // Nothing up on LIVE (and no stream or recording): background work may go on.
   const quiet = vi.fn(() => liveMedia === null);
+  // Why it waits, in the operator's words (alpha.22): the row's video playing, here.
+  const waits = vi.fn(() => (liveMedia === null ? null : 'Waiting: a video is playing'));
+  const statusChanged = vi.fn();
+  const saved = vi.fn();
   const hash = vi.fn((file: string, _signal: AbortSignal) => sha256File(file));
   let stored: KeptTrim[] = [];
   const kept = {
@@ -117,6 +122,9 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     notice,
     isLive,
     quiet,
+    waits,
+    statusChanged,
+    saved,
     hash,
     kept,
     copies,
@@ -151,6 +159,8 @@ async function setup(frameAt = (_path: string, atMs: number) => Promise.resolve<
     hash,
     kept,
     saveNow,
+    statusChanged,
+    saved,
     onDisk: () => onDisk,
     show: (media: string | null) => {
       liveMedia = media;
@@ -191,6 +201,43 @@ async function secondOriginal(x: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe('trimming a playlist video', () => {
+  it('says on its row why the cut waits and how far it is, and tells the operator once it is in Media (alpha.22)', async () => {
+    // The owner's "Trim on a row": the row said only Preparing, never why.
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    const input = x.queue.mock.calls[0]?.[0];
+    if (!input) throw new Error('The cut was not queued.');
+    // Queued, with nothing said yet: its turn behind another video being made.
+    expect(x.service.statuses()).toEqual({ [x.itemId]: { note: null, progress: null } });
+    expect(trimStatusWords(x.service.statuses()[x.itemId])).toBe(
+      'Waiting: another video is being made first',
+    );
+    input.waiting?.('Waiting: a video is playing');
+    expect(x.statusChanged).toHaveBeenLastCalledWith({
+      [x.itemId]: { note: 'Waiting: a video is playing', progress: null },
+    });
+    input.waiting?.(null);
+    input.progress?.(0.426);
+    expect(x.service.statuses()).toEqual({ [x.itemId]: { note: null, progress: 0.426 } });
+    expect(trimStatusWords(x.service.statuses()[x.itemId])).toBe('Saving the trimmed video: 43%');
+    // A video playing again before the finished cut is checked: its row says so.
+    x.show('original');
+    x.finish({ ok: true, copy: x.output });
+    await vi.waitFor(() => {
+      expect(x.service.statuses()[x.itemId]?.note).toBe('Waiting: a video is playing');
+    });
+    expect(x.saved).not.toHaveBeenCalled();
+    x.show(null);
+    await vi.waitFor(() => {
+      expect(x.saved).toHaveBeenCalledOnce();
+    });
+    const made = x.repo.view(x.itemId)?.mediaId;
+    expect(made).not.toBe('original');
+    expect(x.saved).toHaveBeenCalledWith(made, 'Placeholder trimmed.mp4');
+    expect(x.service.statuses()).toEqual({});
+    expect(x.statusChanged).toHaveBeenLastCalledWith({});
+  });
+
   it('offers Reset for old file playback points and clears them only for that row', async () => {
     const x = await setup();
     x.media.setMarkers('original', request.points);

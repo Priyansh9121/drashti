@@ -11,8 +11,13 @@ import type { OperatorAction } from '../../../shared/keymap';
 // logo-store uses dispatch from here; both only call each other when an action runs.
 import { toggleSwitch, turnOnIfOff } from './screen-switches-store';
 
-/** The last problem to show the operator (for example "Slide 4 of 3 does not exist"). */
-export const useNotice = create<{ text: string | null }>(() => ({ text: null }));
+/**
+ * The last problem to show the operator (for example "Slide 4 of 3 does not exist"). `media`: a notice of a new video
+ * in Media (alpha.22: a row's trimmed video), offering Show in Media while that same notice is up.
+ */
+export const useNotice = create<{ text: string | null; media?: { text: string; mediaId: string } | null }>(
+  () => ({ text: null }),
+);
 
 /** A long task's progress (a backup copying the media), or null. */
 export const useTaskProgress = create<{ progress: TaskProgress | null }>(() => ({ progress: null }));

@@ -98,7 +98,8 @@ describe('persisted edited copies share the idle worker', () => {
     t.gates[gate] = false;
     service?.wake();
     expect(t.saveCopy).toHaveBeenCalledTimes(1);
-    expect(t.queued()).toMatchObject({ waitForShow: true, strictPriority: true });
+    expect(t.queued()).toMatchObject({ waitForPlaying: true, strictPriority: true });
+    expect(t.queued()).not.toHaveProperty('waitForShow');
     service?.wake();
     service?.wake();
     expect(t.saveCopy).toHaveBeenCalledTimes(1);

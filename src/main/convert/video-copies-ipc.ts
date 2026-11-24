@@ -23,6 +23,8 @@ export interface VideoCopyIpcDeps {
   fromOperator(event: IpcMainInvokeEvent): boolean;
   proMode(): boolean;
   idle(): boolean;
+  /** An export the operator asked for may go on (alpha.22: nothing playing, off air, not recording); idle when left out. */
+  saveIdle?(): boolean;
   gpuStatus(): unknown;
   freeBytes(dir: string): number;
   pickDest(name: string, container: 'mp4' | 'webm'): Promise<string | null>;
@@ -46,7 +48,9 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       mediaDir: deps.mediaDir,
       file,
       info,
-      idle: () => deps.idle(),
+      // A named new video is one the operator asked for (Export clip…'s Also add the clip to Media): the save gate
+      // (alpha.22: only what plays, the stream or a recording holds it); a lighter copy waits until nothing is up.
+      idle: () => (name === undefined ? deps.idle() : (deps.saveIdle ?? deps.idle)()),
       freeBytes: (dir) => deps.freeBytes(dir),
       signal,
       name,

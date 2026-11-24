@@ -7,6 +7,8 @@ import { useEngine } from '../engine/engine-store';
 import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
 import { cancelImport, dismissFinished, useImports } from '../library/import-store';
+import { showInMedia } from '../library/library-store';
+import { exportMedia } from '../library/export-file';
 import { dismissAllImportNotices, useImportNotices } from '../library/import-notices';
 import { cancelLinkConversion, connectConversions, useConvert } from '../library/convert-store';
 import { convertingWords, jobBusy } from '../library/converting';
@@ -382,7 +384,7 @@ export function NoticeArea() {
           ))}
         </div>
       )}
-      {notice && <NoticeCard key={notice} notice={notice} />}
+      {notice && <NoticeCard key={notice} notice={notice} canShowMedia={canFindMissing} />}
     </>
   );
   if (place)
@@ -408,9 +410,11 @@ export function NoticeArea() {
   );
 }
 
-function NoticeCard({ notice }: { notice: string }) {
+function NoticeCard({ notice, canShowMedia }: { notice: string; canShowMedia: boolean }) {
   const ref = useLeaving<HTMLDivElement>('notice');
   const arriving = useArrival('notice');
+  // A new video in Media (alpha.22: a row's trimmed video): Show in Media, in Pro Mode, whose library has Media.
+  const media = useNotice((s) => (s.media?.text === notice ? s.media.mediaId : null));
   return (
     <div
       ref={ref}
@@ -421,6 +425,29 @@ function NoticeCard({ notice }: { notice: string }) {
     >
       <Info size={13} aria-hidden="true" className="mt-px shrink-0 text-accent" />
       <p className="min-w-0 flex-1 break-words">{notice}</p>
+      {media !== null && canShowMedia && (
+        <button
+          type="button"
+          onClick={() => {
+            void showInMedia(media);
+          }}
+          className="pointer-events-auto -my-1 inline-flex min-h-6 shrink-0 items-center rounded-sm px-1 text-xs text-fg underline hover:bg-panel-2"
+        >
+          Show in Media
+        </button>
+      )}
+      {/* Its file copied where the operator chooses (the owner's "export button as well to download"). */}
+      {media !== null && (
+        <button
+          type="button"
+          onClick={() => {
+            void exportMedia(media);
+          }}
+          className="pointer-events-auto -my-1 inline-flex min-h-6 shrink-0 items-center rounded-sm px-1 text-xs text-fg underline hover:bg-panel-2"
+        >
+          Export…
+        </button>
+      )}
       {/* Report a Problem with this notice's words and the feature they name (x49, Q60-38). */}
       <button
         type="button"
