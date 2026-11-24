@@ -143,8 +143,10 @@ export async function standInMovie(
   );
   let stderr = '';
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
+  // Once it has exited and all it said has been read ('close'): at its exit alone, a busy computer may not have read
+  // its reason yet (a22-exitreaders, after x58). FFmpeg leaves nothing holding its output.
   const ended = new Promise<number | null>((resolve) => {
-    child.on('exit', resolve);
+    child.on('close', resolve);
     child.on('error', () => {
       resolve(null);
     });
