@@ -2,11 +2,21 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.22 (24 Nov 2026)
+## 1.0.0-alpha.22 (25 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
 
-- Live captions (Trial): Gujarati and Hindi can be heard by a new, more accurate recognizer that runs on this computer itself (IndicConformer by AI4Bharat), from an offline model pack the admin imports (Help › Caption and Translation Models…). The Gujarati and Hindi packs are separate files on this release's page, never in the installer. Their captions show one phrase at a time, which the operator can correct or take off; noise and hum heard as short one-syllable words are not shown. As heard, English, Sanskrit and other languages show captions as before.
+- Live captions (Trial): Gujarati and Hindi can be heard by a new, more accurate recognizer that runs on this computer itself (IndicConformer by AI4Bharat), from an offline model pack the admin imports (Help › Caption and Translation Models…). The Gujarati and Hindi packs are separate files on this release’s page, never in the installer. Their captions show one phrase at a time, which the operator can correct or take off; noise and hum heard as short one-syllable words are not shown. It keeps to the captions’ Timing for live use, and on Windows a pack at the top of a USB stick imports. As heard, English, Sanskrit and other languages show captions as before.
+- Edit slides… › Translate… (Pro Mode): Prepare translations drafts the empty Gujarati, Hindi and English translations on this computer, off air, once the admin imports the translation model pack; a reader corrects and checks every draft before it can show. It is slower on an Intel Mac, where a long sentence can take about half a minute.
+- Cue (Pro Mode, a video’s right-click menu): the video waits paused at its first frame while LIVE stays as it is, and Go starts it on the hall, LIVE and the stream together, within a frame.
+- Crossfade… (Pro Mode, an open playlist’s ⋯, off at first): a video whose When it ends is Next item blends into the next over up to 10 seconds, picture and sound, with Shuffle and Repeat all too; the stream’s sound keeps in step by playing a little faster or slower, never with a gap. On a slower two-core Windows PC without a graphics chip the stream’s picture may pause for a moment in a crossfade; the hall’s screens are not affected.
+- The stream’s sound starts again by itself, apart from its picture; if it keeps failing, The stream’s sound has stopped offers Try again while the picture goes on.
+- Pictures: a large new picture is made ready for the screens as it comes in (its import says ready once it is), a slide goes up with its pictures whole, and an import started during a dissolve or fade waits for its end. After updating, start Drashti once before the sabha with nothing up and the stream and recording off, so it prepares the library’s older large pictures.
+- More tools is gone: Lower Thirds, Show a Window, Show a Stream Link, Video inputs, Picture in Picture, QR code, MIDI controller and OSC control each have a folding section of their own under LIVE, after Timers, and every section there is folded each time Drashti starts. The Tools menu is as before.
+- Edit › Simple Mode Features… (Pro Mode) brings up to three of Pro Mode’s tools under LIVE into Simple Mode, each with an on/off switch; none is on at first.
+- A long stage message wraps, stays centred and gets smaller only as much as it must, so the whole message is always on the stage screen, the banner too; one that fits keeps its Size. Its box and its words can have colours of their own, chosen in Stage screen.
+- The slide editor at 200% window zoom: its top row wraps, so every command stays within reach and the page never scrolls sideways.
+- Back and Next under LIVE fit at every width of the column: their keys show only where both have room.
 - Gujarati words in live captions are no longer joined together, with the new recognizer or without it.
 - While Drashti starts, the corners of the LIVE picture stay exactly as they are: the graphics warm-up no longer tints them on computers with a graphics chip.
 
