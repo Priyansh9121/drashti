@@ -1,3 +1,4 @@
+import { CAPTIONS_STOP_AFTER_RESTS } from '../../shared/captions';
 import type { Heard, HeardWord } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
 
@@ -74,7 +75,15 @@ export function createStandInEngine(
           to.state({
             phase: 'held',
             reason: 'busy',
-            slow: { answerMs: 9_100, behindMs: 6_200, threads: 2, processors: 2, rests: options.hold },
+            slow: {
+              answerMs: 9_100,
+              behindMs: 6_200,
+              threads: 2,
+              processors: 2,
+              rests: options.hold,
+              keptUp: false,
+              stops: options.hold >= CAPTIONS_STOP_AFTER_RESTS,
+            },
           });
         }
       }, everyMs);

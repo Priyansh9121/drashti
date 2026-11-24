@@ -22,7 +22,7 @@ import { isSpeech } from './speech-level';
  * in as 16 kHz mono samples; a pause cuts it into phrases, each sent as it grows (partials) and once whole (final).
  * If the computer cannot keep up (each piece takes too long, or it falls more than a few seconds behind) it stops by
  * itself (held, busy, with what it measured) and tries again a minute later: the show comes first. After three rests
- * in a row it stops trying (the owner, cap-threads: "Say so and stop"). It never logs a word, and the program's own
+ * in a row, with no phrase heard whole since it started, it stops trying (the owner, cap-threads: "Say so and stop"). It never logs a word, and the program's own
  * output is never read. It is never given more threads than the computer has logical
  * processors (cap-threads: 4 threads on CI's two-core Windows, and nothing was ever shown).
  */
@@ -277,8 +277,10 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       let address = '';
       let busy = false;
       let slowInARow = 0;
-      // Rests in a row with no phrase heard whole between them (cap-threads: the dialog says when it is not once).
+      // Rests in a row with no phrase heard whole between them (cap-threads: the dialog says when it is not once), and
+      // whether a phrase has been heard whole since this start: one that has kept up is never stopped (review MUST-1).
       let rests = 0;
+      let heardWhole = false;
       let phrase: Growing | null = null;
       let count = 0;
       let rest: NodeJS.Timeout | null = null;
@@ -350,16 +352,20 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         if (busy || stopped) return;
         busy = true;
         rests += 1;
-        const slow: SlowHold = { ...measured, threads, processors, rests };
+        // The one decision (the owner, Q-CT-1: "Say so and stop"): the third rest in a row, nothing heard whole since
+        // this start. A computer that has kept up is only busy for a while (a long import, a conversion): it rests and
+        // tries again as before, however long the stretch.
+        const stops = rests >= CAPTIONS_STOP_AFTER_RESTS && !heardWhole;
+        const slow: SlowHold = { ...measured, threads, processors, rests, keptUp: heardWhole, stops };
         // Numbers only (cap-threads): what it measured, so a log from a slow computer says why.
         o.log.warn(
           `Speech: the computer cannot keep up, so captions rest for a minute (the show comes first): an answer took ${String(slow.answerMs)} ms, ${String(slow.behindMs)} ms behind, ${String(threads)} threads, ${String(processors)} logical processors, rest ${String(rests)} in a row.`,
         );
         to.state({ phase: 'held', reason: 'busy', slow });
         end();
-        // The owner (cap-threads, Q-CT-1): "Say so and stop". After three rests in a row it stops trying; captions turn
-        // off with the reason (captions-service.ts).
-        if (rests >= CAPTIONS_STOP_AFTER_RESTS) {
+        // After three rests in a row, never having kept up, it stops trying; captions turn off with the reason
+        // (captions-service.ts follows slow.stops).
+        if (stops) {
           o.log.warn(`Speech: ${String(rests)} rests in a row, so the captions engine stops trying.`);
           return;
         }
@@ -418,8 +424,11 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
             heardAt: Date.now(),
           };
           to.heard(heard);
-          // A phrase heard whole: the next rest, if one comes, is the first again.
-          if (heard.final) rests = 0;
+          // A phrase heard whole: the next rest, if one comes, is the first again, and this start has kept up.
+          if (heard.final) {
+            rests = 0;
+            heardWhole = true;
+          }
         } catch {
           // Stopped (aborted), or the engine went away: its exit says so.
         } finally {

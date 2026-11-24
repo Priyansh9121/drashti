@@ -1,6 +1,5 @@
 import { availableParallelism } from 'node:os';
 import {
-  CAPTIONS_STOP_AFTER_RESTS,
   CAPTION_MODELS,
   isLanguageModelLanguage,
   LANGUAGE_MODEL_LANGUAGES,
@@ -249,9 +248,8 @@ export class CaptionsService {
       : null;
     this.feed = this.paths ?? today;
     this.hub.onState((s) => {
-      // The owner (cap-threads, Q-CT-1): "Say so and stop". The third rest in a row for slowness turns captions off.
-      if (s.phase === 'held' && s.reason === 'busy' && s.slow && s.slow.rests >= CAPTIONS_STOP_AFTER_RESTS)
-        this.stopTooSlow(s.slow);
+      // The owner (cap-threads, Q-CT-1): "Say so and stop". The engine's own decision turns captions off (review n5).
+      if (s.phase === 'held' && s.reason === 'busy' && s.slow?.stops === true) this.stopTooSlow(s.slow);
       this.tell();
     });
     this.download = this.modelState();
@@ -377,9 +375,10 @@ export class CaptionsService {
   }
 
   /**
-   * This computer rested CAPTIONS_STOP_AFTER_RESTS times in a row, too slow for live captions with the model
-   * (cap-threads): captions turn off on this computer, as the switch does (the engine stopped, so Route W gives its
-   * pack's file back), with the reason kept for the dialog and the status bar until they are turned on again.
+   * This computer rested CAPTIONS_STOP_AFTER_RESTS times in a row, never having kept up since it started, too slow
+   * for live captions with the model (cap-threads): captions turn off on this computer, as the switch does (the engine
+   * stopped, so Route W gives its pack's file back), Off saved as the switch saves it, with the reason kept for the
+   * dialog and the status bar until they are turned on again or another model is chosen (never on disk).
    */
   private stopTooSlow(slow: SlowHold): void {
     if (this.closed || !this.switch.on || this.stoppingTooSlow) return;
@@ -400,7 +399,16 @@ export class CaptionsService {
     this.tooSlow = stopped;
     if (this.prototype.view().on) this.prototype.setOn(false);
     const next = { ...this.switch, on };
-    writeCaptionsSwitch(this.deps.userData, next);
+    try {
+      writeCaptionsSwitch(this.deps.userData, next);
+    } catch (error) {
+      // Turning off by itself still turns off (review SHOULD-1): a full disk or a locked file only loses the saving.
+      if (stopped === null) throw error;
+      const code = (error as NodeJS.ErrnoException | null)?.code ?? 'unknown';
+      this.deps.log.warn(
+        `Captions: Off could not be saved on this computer (${code}); they are off until Drashti starts again.`,
+      );
+    }
     this.switch = next;
     this.deps.log.info(`Captions: turned ${on ? 'on' : 'off'} on this computer.`);
     if (on) {
@@ -413,6 +421,8 @@ export class CaptionsService {
 
   async setModel(model: CaptionModelId): Promise<CaptionsStatus> {
     if (model === this.switch.model) return this.view();
+    // Another model: "too slow with this model" no longer holds (review n2); the switch stays as it is.
+    this.tooSlow = null;
     const next = { ...this.switch, model };
     writeCaptionsSwitch(this.deps.userData, next);
     this.switch = next;
@@ -604,6 +614,7 @@ export class CaptionsService {
     if (!isLanguageModelLanguage(language)) return this.view();
     if (id !== null && !this.known(language).some((entry) => entry.id === id)) return this.view();
     this.notices.delete(language);
+    this.tooSlow = null;
     this.choose(language, id);
     this.tell();
     return this.view();

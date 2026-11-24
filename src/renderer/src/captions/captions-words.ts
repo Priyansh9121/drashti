@@ -57,9 +57,12 @@ function measured(slow: SlowHold): string {
 
 /** Resting because this computer cannot keep up (cap-threads): what was measured, and whether it keeps happening. */
 function slowText(slow: SlowHold): string {
+  // Kept up since it started: busy for a while, and no stop can come (review MUST-1), so none is promised.
+  if (slow.rests > 1 && slow.keptUp)
+    return `Resting again (${String(slow.rests)} times in a row): this computer could not keep up for a while (${measured(slow)}). Captions try again by themselves in a minute; the show comes first.`;
   if (slow.rests > 1)
     return `Resting again (${String(slow.rests)} times in a row): this computer may be too slow for live captions with this model (${measured(slow)}). Captions try once more in a minute; after ${String(CAPTIONS_STOP_AFTER_RESTS)} rests in a row they stop.`;
-  return `Resting: this computer heard too slowly for live captions (${measured(slow)}), so captions rest for a minute and then try again by themselves. The show comes first.`;
+  return `Resting: this computer could not keep up with live captions (${measured(slow)}), so captions rest for a minute and then try again by themselves. The show comes first.`;
 }
 
 /** For Gujarati or Hindi, the IndicConformer model pack: it keeps up on slower computers (cap-threads). */
@@ -90,7 +93,7 @@ export function captionsStatusLine(view: CaptionsStatus | null): string | null {
       ? 'Captions stopped: this computer is too slow for live captions with this model.'
       : null;
   const s = view.speech;
-  if (s.phase === 'failed') return `Captions stopped: ${s.message}`;
+  if (s.phase === 'failed') return `Captions: ${s.message}`;
   if (s.phase !== 'held') return null;
   if (s.reason === 'no-sound-input') return 'Captions: no sound input is chosen for the stream.';
   if (s.reason === 'no-model') return 'Captions are waiting for their model.';
