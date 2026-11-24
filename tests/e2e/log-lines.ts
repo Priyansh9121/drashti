@@ -36,3 +36,12 @@ export function logLines(userData: string): string[] {
     .sort((a, b) => (a.day === b.day ? a.part - b.part : a.day < b.day ? -1 : 1));
   return [...days.map((f) => f.name), 'drashti.log'].flatMap((name) => textOf(join(dir, name)).split('\n'));
 }
+
+/**
+ * The whole log in `userData` as one text, for a test that reads it whole (toContain, toMatch, a count): every file of
+ * it in the order written, as logLines gives them.
+ */
+export function logText(userData: string): string {
+  // Red: drashti.log alone, as the specs read it.
+  return readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+}
