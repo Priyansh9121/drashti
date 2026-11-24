@@ -18,7 +18,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 
 ## A message for the stage
 
-**What it is.** A short message on every stage screen, such as "Two minutes left", in its own size, with a flash if you like. The hall's screens, the stream and the phones never show it.
+**What it is.** A short message on every stage screen, such as "Two minutes left", in its own size, with a flash if you like. The hall's screens, the stream and the phones never show it. A long message wraps, stays centred and gets smaller only as much as it must, so the whole message is always on the stage screen; one that fits keeps the size you chose.
 
 **When you would use it.** To tell the speaker the time, or to give the singers a cue.
 

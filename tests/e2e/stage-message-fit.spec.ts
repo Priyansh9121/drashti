@@ -77,46 +77,47 @@ const showMessage = (win: Page, text: string, size: 'standard' | 'large' | 'huge
 
 /**
  * Where a message is drawn against its place (`place`, a selector its element is inside, or else in the page): inside
- * it (to the pixel), its words inside the message, each word on one line (none broken across two: wrapped by words),
- * how far below the chosen size, its alignment, and the room above and below it in the place.
+ * it (to the pixel) and, on a stage screen (`screen`), inside the window; its words inside the message, each word on
+ * one line (none broken across two: wrapped by words), how far below the chosen size, and its alignment.
  */
-function drawn(message: Locator, place: string) {
-  return message.evaluate((el, place) => {
-    const area = (el.closest(place) ?? document.querySelector(place))?.getBoundingClientRect();
-    if (!area) throw new Error(`no ${place}`);
-    const r = el.getBoundingClientRect();
-    const words: string[] = [];
-    const broken: string[] = [];
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const text = node.textContent ?? '';
-      for (const m of text.matchAll(/\S+/gu)) {
-        const range = document.createRange();
-        range.setStart(node, m.index);
-        range.setEnd(node, m.index + m[0].length);
-        const tops = [...range.getClientRects()].map((rect) => Math.round(rect.top));
-        words.push(m[0]);
-        if (tops.some((t) => Math.abs(t - (tops[0] ?? t)) > 1)) broken.push(m[0]);
+function drawn(message: Locator, place: string, screen = true) {
+  return message.evaluate(
+    (el, { place, screen }) => {
+      const area = (el.closest(place) ?? document.querySelector(place))?.getBoundingClientRect();
+      if (!area) throw new Error(`no ${place}`);
+      const r = el.getBoundingClientRect();
+      const words: string[] = [];
+      const broken: string[] = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const text = node.textContent ?? '';
+        for (const m of text.matchAll(/\S+/gu)) {
+          const range = document.createRange();
+          range.setStart(node, m.index);
+          range.setEnd(node, m.index + m[0].length);
+          const tops = [...range.getClientRects()].map((rect) => Math.round(rect.top));
+          words.push(m[0]);
+          if (tops.some((t) => Math.abs(t - (tops[0] ?? t)) > 1)) broken.push(m[0]);
+        }
       }
-    }
-    const fitted = el.closest('[data-message-fit]');
-    return {
-      inside:
-        r.top >= area.top - 1 &&
-        r.bottom <= area.bottom + 1 &&
-        r.left >= area.left - 1 &&
-        r.right <= area.right + 1 &&
-        r.bottom <= window.innerHeight + 1,
-      wordsInside: el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1,
-      broken,
-      words: words.length,
-      fontSize: parseFloat(getComputedStyle(el).fontSize),
-      fit: fitted ? Number(fitted.getAttribute('data-message-fit')) : 1,
-      align: getComputedStyle(el).textAlign,
-      above: r.top - area.top,
-      below: area.bottom - r.bottom,
-    };
-  }, place);
+      const fitted = el.closest('[data-message-fit]');
+      return {
+        inside:
+          r.top >= area.top - 1 &&
+          r.bottom <= area.bottom + 1 &&
+          r.left >= area.left - 1 &&
+          r.right <= area.right + 1 &&
+          (!screen || (r.top >= -1 && r.bottom <= window.innerHeight + 1)),
+        wordsInside: el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1,
+        broken,
+        words: words.length,
+        fontSize: parseFloat(getComputedStyle(el).fontSize),
+        fit: fitted ? Number(fitted.getAttribute('data-message-fit')) : 1,
+        align: getComputedStyle(el).textAlign,
+      };
+    },
+    { place, screen },
+  );
 }
 
 /**
@@ -175,7 +176,7 @@ test('a long stage message wraps, is centred and made only as small as it must b
   // The operator's preview of the stage: the same, at its size.
   const preview = panel.getByTestId('stage-preview').getByTestId('stage-message');
   await expect(preview).toHaveText(LONG);
-  expect(await drawn(preview, '[data-testid="stage-preview"]')).toMatchObject({
+  expect(await drawn(preview, '[data-testid="stage-preview"]', false)).toMatchObject({
     inside: true,
     wordsInside: true,
     broken: [],
