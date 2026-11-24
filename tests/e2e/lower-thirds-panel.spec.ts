@@ -11,7 +11,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
   launchApp,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -65,7 +65,7 @@ async function start(
 test('made from the panel (in the studio), shown on a placeholder hall screen and hidden with one button; found by their words; many deleted at once with one Undo; axe passes', async () => {
   test.setTimeout(150_000);
   const { app, win, out } = await start();
-  await openMoreTools(win);
+  await openSection(win, 'lower-thirds');
   const panel = win.getByTestId('lower-thirds-panel');
   await panel.scrollIntoViewIfNeeded();
   await expect(panel).toContainText('No lower thirds yet');
@@ -164,7 +164,7 @@ test('made from the panel (in the studio), shown on a placeholder hall screen an
 test('Clear all takes it off at once, as it takes off the slide, and Put it back brings it back; Black-out covers it; one for the stream never shows in the hall', async () => {
   test.setTimeout(120_000);
   const { app, win, out } = await start();
-  await openMoreTools(win);
+  await openSection(win, 'lower-thirds');
   await make(win, input('Placeholder hall name'));
   await make(win, input('Placeholder stream name', 'stream'));
   const panel = win.getByTestId('lower-thirds-panel');

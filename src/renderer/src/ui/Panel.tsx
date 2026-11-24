@@ -7,6 +7,7 @@ import { cx } from './cx';
 import type { Icon } from './icons';
 import { ChevronDown, ChevronRight } from './icons';
 import { livelyNow } from './motion';
+import type { Keep } from './persist';
 import { usePersistentState } from './persist';
 
 /** A small heading over a part of a panel, in the appearance's heading colour (Session 42). */
@@ -17,10 +18,16 @@ export function SectionTitle({ children, className }: { children: ReactNode; cla
 }
 
 /**
+ * A section under LIVE (alpha.22; the owner: "by default it should be collapsed, we can uncollapse it when we want"):
+ * folded at each start, and kept as the operator leaves it while Drashti runs.
+ */
+export const LIVE_SECTION = { collapsible: true, defaultOpen: false, keep: 'run' } as const;
+
+/**
  * A panel with a header: its title (a heading, which also names the region),
  * an icon, "What is this?" (its words in shared/panel-help.ts) and actions on
  * the right. A collapsible panel folds away to its header, and remembers that
- * when `remember` names it.
+ * when `remember` names it: on this computer, or while Drashti runs (`keep`).
  */
 export function Panel({
   title,
@@ -30,6 +37,7 @@ export function Panel({
   collapsible = false,
   remember,
   defaultOpen = true,
+  keep = 'computer',
   className,
   bodyClassName,
   children,
@@ -42,9 +50,11 @@ export function Panel({
   help?: PanelHelpId;
   actions?: ReactNode;
   collapsible?: boolean;
-  /** A name to remember whether it is folded (per computer). */
+  /** A name to remember whether it is folded (per computer, or while Drashti runs: `keep`). */
   remember?: string;
   defaultOpen?: boolean;
+  /** How long whether it is folded is remembered. */
+  keep?: Keep;
   className?: string;
   bodyClassName?: string;
   children: ReactNode;
@@ -58,6 +68,7 @@ export function Panel({
     remember ? `panel.${remember}.open` : null,
     defaultOpen,
     (v): v is boolean => typeof v === 'boolean',
+    keep,
   );
   const shown = !collapsible || open;
   const help = useWhatIsThis(topic ?? null);
@@ -88,6 +99,7 @@ export function Panel({
               aria-expanded={open}
               // Only while the body is there to point at (axe: aria-controls must name an element).
               aria-controls={open ? `${id}-body` : undefined}
+              data-testid={remember ? `group-${remember}-toggle` : undefined}
               onClick={() => {
                 setOpening(!open && livelyNow());
                 setOpen(!open);
@@ -147,14 +159,15 @@ function Heading({
 }
 
 /**
- * Panels together under one heading (Session 26a: Audio holds Music; More tools holds Lower Thirds, Masks, the
- * Idle rotation and the MIDI controller, folded away to begin with). It folds as a panel does, and remembers it.
+ * Panels together under one heading (Session 26a: Audio holds Music, and its lists since Session 55). It folds as a
+ * panel does, and remembers it.
  */
 export function PanelGroup({
   title,
   icon: IconShape,
   remember,
   defaultOpen = true,
+  keep = 'computer',
   help: topic,
   actions,
   children,
@@ -162,9 +175,11 @@ export function PanelGroup({
 }: {
   title: string;
   icon?: Icon;
-  /** A name to remember whether it is folded (per computer). */
+  /** A name to remember whether it is folded (per computer, or while Drashti runs: `keep`). */
   remember: string;
   defaultOpen?: boolean;
+  /** How long whether it is folded is remembered. */
+  keep?: Keep;
   /** Its "What is this?" words (Sessions 31–36), as a panel's: shared/panel-help.ts. */
   help?: PanelHelpId;
   /** Buttons at the end of its heading (Session 44: Audio's +). */
@@ -179,6 +194,7 @@ export function PanelGroup({
     `group.${remember}.open`,
     defaultOpen,
     (v): v is boolean => typeof v === 'boolean',
+    keep,
   );
   return (
     <section aria-labelledby={`${id}-title`} className="flex min-h-0 flex-col" {...data}>
@@ -220,9 +236,4 @@ export function PanelGroup({
       )}
     </section>
   );
-}
-
-/** A plain line under a group's heading, saying what the panel below is for (More tools). */
-export function PanelNote({ children }: { children: ReactNode }) {
-  return <p className="px-6 pt-2 text-xs text-muted">{children}</p>;
 }

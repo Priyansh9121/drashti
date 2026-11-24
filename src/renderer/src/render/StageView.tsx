@@ -15,7 +15,7 @@ import { TimerText } from './TimerText';
 import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
-import { stageMessageColors, stageMessageData, stageMessagePx } from './StageMessageBanner';
+import { StageMessageOnStage } from './StageMessageBanner';
 import { createTextSizeObserver, type TextSizes } from './observe-text-sizes';
 
 /**
@@ -318,26 +318,10 @@ export function StageView({
         gap: 28,
       }}
     >
-      {state.stageMessage !== null && (
-        <div
-          data-testid="stage-message"
-          lang={textLang(state.stageMessage)}
-          // Its own size and flash (Session 55, Part 15).
-          {...stageMessageData(state.stageCall)}
-          style={{
-            ...stageMessageColors(state.stageCall, now),
-            fontSize: stageMessagePx(state.stageCall),
-            fontWeight: 700,
-            lineHeight: 1.2,
-            padding: '16px 32px',
-            borderRadius: 16,
-            overflowWrap: 'anywhere',
-          }}
-        >
-          {state.stageMessage}
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 48, flex: 1, minHeight: 0 }}>
+      {/* The stage message (Session 55, Part 15): fitted within the screen (render/stage-message-fit.ts). */}
+      <StageMessageOnStage state={state} now={now} />
+      {/* NOW and NEXT: what does not fit below a long stage message is cut at the screen's margin, never past it. */}
+      <div style={{ display: 'flex', gap: 48, flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <section style={{ flex: 3, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <p style={label}>
             NOW

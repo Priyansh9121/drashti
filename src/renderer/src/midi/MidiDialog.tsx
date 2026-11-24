@@ -10,7 +10,7 @@ import { SectionTitle } from '../ui/Panel';
 import { learn, openMidi, saveMidi, useMidi } from './midi-store';
 
 /*
- * The MIDI controller (Pro Mode, from More tools): the device to listen to, and what its notes and controllers
+ * The MIDI controller (Pro Mode, from its section under LIVE or the Tools menu): the device to listen to, and what its notes and controllers
  * do. Learn, then press a pad, key or button on the controller: it now does that. Next, Back, Clear all and
  * Black-out work in Simple Mode too. A pad mapped to a macro before Session 44, or to the Logo before Session 55, is
  * kept in the settings and does nothing (both are gone); it is not listed here.

@@ -7,6 +7,7 @@ import type { PageGlobals } from './helpers';
 import {
   launchApp,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
@@ -138,6 +139,7 @@ test('Standard is the stage screen as before; a layout made in the editor puts e
   await expect(win.getByTestId('screen-group').first().getByTestId('look-stage-layout')).toHaveCount(0);
   await win.getByRole('button', { name: 'Close screens' }).click();
   await expect(stage.getByTestId('stage-view')).toBeVisible();
+  await openSection(win, 'stage');
   await win
     .getByTestId('stage-message-control')
     .getByTestId('stage-layout-choice')
@@ -263,6 +265,7 @@ test('the audience picture, live, as a stage layout box: what the hall shows, bl
   await editor.getByRole('button', { name: 'Close stage layouts' }).click();
   await win.getByRole('button', { name: 'Close screens' }).click();
   // Chosen for every stage screen in the Stage screen panel (Session 55).
+  await openSection(win, 'stage');
   await win.getByTestId('stage-layout-choice').selectOption({ label: 'Placeholder hall picture layout' });
 
   const hall = await outputFor(app, hallId);

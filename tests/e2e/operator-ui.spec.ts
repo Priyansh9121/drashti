@@ -10,8 +10,8 @@ import {
   dropFiles,
   importAndGetIds,
   launchApp,
+  openAllSections,
   openLibrary,
-  openMoreTools,
   operatorPage,
   relaunchApp,
 } from './helpers';
@@ -132,10 +132,11 @@ test('the operator window and every panel pass the accessibility checks', async 
   await notice.getByRole('button', { name: 'Dismiss import notice' }).click();
   await showRunning(win);
   await expectNoSeriousA11yIssues(win, 'the operator window');
-  // With the open playlist in the centre (Session 26a), and More tools unfolded.
+  // With the open playlist in the centre (Session 26a), and every section under LIVE unfolded (alpha.22: each tool
+  // its own section, all folded at the start).
   await expect(win.getByTestId('open-playlist')).toBeVisible();
-  await openMoreTools(win);
-  await expectNoSeriousA11yIssues(win, 'More tools, unfolded', '[data-testid="more-tools"]');
+  await openAllSections(win);
+  await expectNoSeriousA11yIssues(win, 'the sections under LIVE, unfolded', '[data-testid="live-rest"]');
 
   // The panels on the right, with their forms open (Props' too until Session 55).
   for (const [panel, button] of [

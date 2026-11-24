@@ -3,7 +3,14 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXAMPLE_TEMPLATES } from '../../src/main/db/seed';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { launchApp, openLibrary, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  launchApp,
+  openLibrary,
+  openSection,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 
 /** A library as an operator's starts (Session 50): without the tests' placeholder presentations (as helpers.ts's NO_PLACEHOLDERS). */
 const NO_PLACEHOLDERS = { DRASHTI_TEST_SEED_PLACEHOLDERS: '' } as const;
@@ -78,6 +85,7 @@ test('the messages list follows changes made elsewhere, with no reload (the prop
     if (!message.ok) throw new Error('could not make the placeholder');
     return message.id;
   });
+  await openSection(win, 'messages');
   const message = win.getByTestId('messages').getByTestId('message-row');
   await expect(message.filter({ hasText: 'Placeholder notice' })).toBeVisible();
   // Removing it elsewhere takes it out of the list too.

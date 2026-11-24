@@ -54,7 +54,7 @@ export const MANUAL_CHAPTERS: readonly ManualChapter[] = [
   { id: 'audio', file: 'audio.md', title: 'Audio and the levels' },
   { id: 'stage', file: 'stage.md', title: 'Stage screen' },
   { id: 'messages', file: 'messages.md', title: 'Messages and timers' },
-  { id: 'tools', file: 'tools.md', title: 'More tools' },
+  { id: 'tools', file: 'tools.md', title: 'Tools' },
   { id: 'screens', file: 'screens.md', title: 'Screens and screen geometry' },
   { id: 'stream', file: 'stream.md', title: 'Stream' },
   { id: 'phones', file: 'phones.md', title: 'Phones and network' },

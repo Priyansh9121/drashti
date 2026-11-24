@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink } from './dropbox-stand-in';
 import type { PageGlobals } from './helpers';
-import { launchApp, openLibrary, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import {
+  launchApp,
+  openLibrary,
+  openSection,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+} from './helpers';
 import { pasteLink } from './paste-link';
 import { makeTestTone } from './test-media';
 
@@ -166,6 +174,7 @@ test('Audio lists its audio playlists directly, with no Music heading or ? of it
     [1280, 720],
   ] as const) {
     await win.setViewportSize({ width, height });
+    await openSection(win, 'audio');
     const group = win.getByTestId('audio-group');
     await expect(group.getByRole('heading', { name: 'Music' })).toHaveCount(0);
     await expect(group.getByRole('button', { name: /^What is this\? Music/u })).toHaveCount(0);
@@ -214,6 +223,7 @@ test('From a Link… in Audio: a sound from a Dropbox link goes into a new audio
     const win = await operatorPage(app);
     await operatorReady(win);
     await win.setViewportSize({ width: 1280, height: 720 });
+    await openSection(win, 'audio');
     await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
     await pasteLink(win, fileLink('toneAAAAAAAAAAA', 'Placeholder link tone.wav'));
     await expect(win.getByTestId('import-report')).toHaveCount(0);
