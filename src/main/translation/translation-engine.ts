@@ -1,3 +1,4 @@
+import { readdir } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import type { ModelPurpose } from '../../shared/model-packs';
 import type { TranslationLanguage, Translator } from '../../shared/prepared-translations';
@@ -15,6 +16,11 @@ import { HelperError, TranslationHelper } from './translation-helper';
 import { pyStrip } from './python-text';
 
 const cancelled = (): HelperError => new HelperError('cancelled', 'Stopped.');
+const changedModel = (): HelperError =>
+  new HelperError(
+    'model-changed',
+    'The translation model on this computer changed or is incomplete. Import the model pack again.',
+  );
 const tooLong = (): HelperError =>
   new HelperError('too-long', 'This text is too long for one translation. Split it into shorter lines.');
 /** The prepared words, with their JSON escapes, that one request may carry (the helper reads lines of 64 KiB). */
@@ -78,12 +84,21 @@ interface PackFile {
   sha256: string;
 }
 
-/** Whether a model's files are the known conversion for this direction family: every one by its SHA-256. */
+/**
+ * Whether a model's files are the known conversion for this direction family: exactly its five files, each once, all
+ * in one folder, every one by its SHA-256 (a22-review-mt2 S1). Nothing else may be listed with them: CTranslate2
+ * opens some files by name (a shared vocabulary, a vocabulary map) and would read them before the checked ones, and
+ * the helper loads the folder of model.bin.
+ */
 export function knownConversion(route: Route, files: readonly PackFile[]): boolean {
   const known = KNOWN_INDICTRANS2_MODELS[route];
-  return INDICTRANS2_FILES.every((name) =>
-    files.some((f) => basename(f.path) === name && f.sha256 === known[name]),
-  );
+  if (files.length !== INDICTRANS2_FILES.length) return false;
+  const folder = dirname(files[0]?.path ?? '');
+  return INDICTRANS2_FILES.every((name) => {
+    const named = files.filter((f) => basename(f.path) === name);
+    const [file] = named;
+    return named.length === 1 && file?.sha256 === known[name] && dirname(file.path) === folder;
+  });
 }
 
 /** What the engine needs of the model pack store (main/model-packs/store.ts). */
@@ -93,7 +108,8 @@ export interface TranslationModels {
     format: string;
     files: readonly PackFile[];
   }[];
-  acquire(id: string): Promise<{ release(): void } | null>;
+  /** Checks the model's files again and holds it; stops at once when `signal` aborts (it then rejects). */
+  acquire(id: string, signal?: AbortSignal): Promise<{ release(): void } | null>;
 }
 
 export interface TranslationEngineOptions {
@@ -110,6 +126,8 @@ export interface TranslationEngineOptions {
   idleMs?: number;
   /** Whether a model's files are a conversion this Drashti runs (tests' stand-in models only replace it). */
   checkFiles?: (route: Route, files: readonly PackFile[]) => boolean;
+  /** The names in a model's folder on this disk (tests' stand-in folders only replace it). */
+  listFolder?: (folder: string) => Promise<readonly string[]>;
 }
 
 const purposeOf = (from: TranslationLanguage, to: TranslationLanguage): ModelPurpose =>
@@ -121,10 +139,11 @@ export class TranslationEngine implements Translator {
   private queue: Promise<unknown> = Promise.resolve();
   private idle: NodeJS.Timeout | null = null;
   private generation = 0;
+  /** Aborted by Stop (and by the stream going on air): the model's check of this generation ends at once. */
+  private abort = new AbortController();
 
   constructor(private readonly o: TranslationEngineOptions) {}
 
-  /** The model for a direction, when this copy of Drashti has the helper and a pack holds a whole one. */
   /** The pack's models of this engine's format, with every file, offered for the direction. */
   private candidates(from: TranslationLanguage, to: TranslationLanguage) {
     if (from === to || this.o.program() === null) return [];
@@ -162,6 +181,7 @@ export class TranslationEngine implements Translator {
   /** A draft translation of the source, line by line. Throws a HelperError with plain words when it cannot. */
   translate(source: string, from: TranslationLanguage, to: TranslationLanguage): Promise<string> {
     const generation = this.generation;
+    const { signal } = this.abort;
     // Stop (or the stream going on air) starts a new generation: everything of an older one stops at its next step.
     const stopped = (): boolean => generation !== this.generation;
     const run = this.queue.then(async () => {
@@ -170,7 +190,7 @@ export class TranslationEngine implements Translator {
         const out: string[] = [];
         for (const line of source.split(/\r\n|\n|\r/u)) {
           if (stopped()) throw cancelled();
-          out.push(pyStrip(line) === '' ? line : await this.translateLine(line, from, to, stopped));
+          out.push(pyStrip(line) === '' ? line : await this.translateLine(line, from, to, stopped, signal));
         }
         return out.join('\n');
       } catch (error) {
@@ -185,14 +205,20 @@ export class TranslationEngine implements Translator {
 
   /** Stop what is under way and anything waiting (the helper ends: a careful search cannot stop mid-sentence). */
   cancel(): void {
-    this.generation += 1;
+    this.nextGeneration();
     this.stopHelper();
   }
 
   /** Let the model and the helper go (closing Drashti, or nothing to do for a while). */
   stop(): void {
-    this.generation += 1;
+    this.nextGeneration();
     this.stopHelper();
+  }
+
+  private nextGeneration(): void {
+    this.generation += 1;
+    this.abort.abort();
+    this.abort = new AbortController();
   }
 
   private stopHelper(): void {
@@ -209,6 +235,7 @@ export class TranslationEngine implements Translator {
     from: TranslationLanguage,
     to: TranslationLanguage,
     stopped: () => boolean,
+    signal: AbortSignal,
   ): Promise<string> {
     const prepared = preprocess(wellFormed(line), from);
     // Nothing left to translate once prepared (only marks the pipeline drops): the line stays as it is.
@@ -222,7 +249,7 @@ export class TranslationEngine implements Translator {
     // Too long for one request: this box only, and the helper keeps running for the next box.
     if (Buffer.byteLength(JSON.stringify(prepared.text), 'utf8') > MAX_REQUEST_TEXT_BYTES) throw tooLong();
     const route = routeFor(from, to);
-    const helper = await this.ready(route, from, to, stopped);
+    const helper = await this.ready(route, from, to, stopped, signal);
     const tokens = await helper.translate(route, TAG_OF[from], TAG_OF[to], prepared.text, this.o.beam ?? 5);
     if (stopped()) throw cancelled();
     // No end token: the model stopped at its length limit mid-sentence. Never a shortened draft that looks whole.
@@ -233,13 +260,15 @@ export class TranslationEngine implements Translator {
 
   /**
    * The running helper with this direction's model loaded. After every wait (the helper's start, the model's check
-   * and load) a Stop is honoured: a helper started for a stopped run is ended, a hold taken for it let go.
+   * and load) a Stop is honoured: a helper started for a stopped run is ended, a hold taken for it let go; the
+   * model's check itself ends at once (`signal`).
    */
   private async ready(
     route: Route,
     from: TranslationLanguage,
     to: TranslationLanguage,
     stopped: () => boolean,
+    signal: AbortSignal,
   ): Promise<TranslationHelper> {
     const program = this.o.program();
     const model = this.modelFor(from, to);
@@ -274,19 +303,24 @@ export class TranslationEngine implements Translator {
         }
       }
       if (stopped()) throw cancelled();
-      const hold = await this.o.models.acquire(model.id);
-      if (!hold)
-        throw new HelperError(
-          'model-changed',
-          'The translation model on this computer changed or is incomplete. Import the model pack again.',
-        );
+      const hold = await this.o.models.acquire(model.id, signal);
+      if (!hold) throw changedModel();
       if (stopped()) {
         hold.release();
         throw cancelled();
       }
       const file = (name: string) => model.files.find((f) => basename(f.path) === name)?.path ?? '';
+      const folder = dirname(file('model.bin'));
       try {
-        await helper.load(route, dirname(file('model.bin')), file('source.spm'), this.o.threads ?? 2);
+        // The folder on this disk holds the five checked files and nothing else (a22-review-mt2 S1): a file the
+        // pack's list never named (one CTranslate2 opens by name) is never read.
+        const onDisk = [...(await (this.o.listFolder ?? readdir)(folder))].sort();
+        if (stopped()) throw cancelled();
+        if (onDisk.join('\n') !== [...INDICTRANS2_FILES].sort().join('\n')) {
+          this.o.log.warn(`Translation: ${model.id}'s folder holds a file its pack does not list.`);
+          throw changedModel();
+        }
+        await helper.load(route, folder, file('source.spm'), this.o.threads ?? 2);
       } catch (error) {
         hold.release();
         throw error;
