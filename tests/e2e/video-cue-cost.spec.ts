@@ -503,6 +503,35 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         );
         document.addEventListener('seeked', land, true);
         document.addEventListener('emptied', land, true);
+        // QA23-FADE-6 (B), evidence: each picture's clock as it changes (data-cue-clock: 'graph' a cue's, 'fade' its
+        // crossfade's, none its own muted one).
+        const clocks: {
+          key: string;
+          clock: string | null;
+          t: number;
+          // a22-review-fade's SHOULD: the picture's own time every 20 ms for 600 ms from the change (its sound moved to
+          // the graph mid-play: a stall there is not a jump, so the strict check would not see it).
+          times: { t: number; at: number; paused: boolean }[];
+        }[] = [];
+        (globalThis as { s5PictureClocks?: typeof clocks }).s5PictureClocks = clocks;
+        new MutationObserver((records) => {
+          for (const r of records) {
+            const el = r.target;
+            if (!(el instanceof HTMLVideoElement) || clocks.length >= 200) continue;
+            const change = {
+              key: el.dataset['bgSlot'] ?? '',
+              clock: el.dataset['cueClock'] ?? null,
+              t: Date.now(),
+              times: [{ t: Date.now(), at: el.currentTime, paused: el.paused }],
+            };
+            clocks.push(change);
+            const sample = () => {
+              change.times.push({ t: Date.now(), at: el.currentTime, paused: el.paused });
+              if (Date.now() < change.t + 600 && el.isConnected) setTimeout(sample, 20);
+            };
+            setTimeout(sample, 20);
+          }
+        }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-cue-clock'] });
       });
     await Promise.all([hall, win, stream].map(pictureJumpWatch));
     const fadeClocks: { askedAt: number; fade: VideoCrossfade; to: PlaybackClock & { mediaId: string } }[] =
@@ -906,6 +935,36 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       blackFrameIndices,
       blendedFrames: blended,
       pictureJumpsSeen: pictureJumps.map((jumps) => jumps?.length ?? null),
+      pictureClocks: await Promise.all(
+        [hall, win, stream].map(async (page) => {
+          const changes = await page.evaluate(
+            () =>
+              (
+                globalThis as {
+                  s5PictureClocks?: {
+                    key: string;
+                    clock: string | null;
+                    t: number;
+                    times: { t: number; at: number; paused: boolean }[];
+                  }[];
+                }
+              ).s5PictureClocks ?? null,
+          );
+          // Evidence only: the longest its time stood still while playing in those 600 ms (ms).
+          return changes?.map((change) => {
+            let longestStillMs = 0,
+              since: number | null = null;
+            for (const [i, sample] of change.times.entries()) {
+              const before = change.times[i - 1];
+              if (before && !sample.paused && sample.at === before.at) {
+                since ??= before.t;
+                longestStillMs = Math.max(longestStillMs, sample.t - since);
+              } else since = null;
+            }
+            return { ...change, longestStillMs };
+          });
+        }),
+      ),
       pictureFreezes,
       toneOverlapMs: longest * 100,
       toneMaxima: { a: maxA, b: maxB },

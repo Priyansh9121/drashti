@@ -45,7 +45,7 @@ import { useInputReport, useVideoInput } from './video-input';
 import { hasNoPicture, tellCannotPlay, tellNoPicture, watchStart } from './no-picture';
 import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
-import { crossfadeOf, pictureEase } from './picture-fade';
+import { type CrossfadeClock, crossfadeClock, crossfadeOf, pictureEase } from './picture-fade';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -190,6 +190,23 @@ function VideoSlot({
       unclock?.();
     };
   }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch]);
+  // Once it is one of a real crossfade, its clock is the page's silent graph's until it is let go (the owner's
+  // QA23-FADE-6, render/picture-fade.ts crossfadeClock): never outside one, never at a manual Go's cut, never a graph
+  // started for it. After its playback's own effect, so the picture is stopped before its sound is let go.
+  const fadeClock = useRef<CrossfadeClock | null>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const clock = crossfadeClock(v);
+    fadeClock.current = clock;
+    return () => {
+      fadeClock.current = null;
+      clock.letGo();
+    };
+  }, []);
+  useEffect(() => {
+    fadeClock.current?.pair(fade);
+  }, [fade]);
   useEffect(() => {
     if (slot.cued && slot.state === 'ready' && ref.current)
       reportLoadedVideoCue(layer.cueId, 'picture', ref.current);

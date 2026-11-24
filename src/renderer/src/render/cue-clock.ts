@@ -126,3 +126,57 @@ export function cueClock(v: HTMLMediaElement, graph: () => SilentGraph | null = 
     }
   };
 }
+
+/** This page's silent graph, made and running (not resting): a crossfade's picture never starts one for itself. */
+function runningPageGraph(): SilentGraph | null {
+  if (page?.context.state !== 'running' || resting.has(page.context)) return null;
+  return page;
+}
+
+/**
+ * A crossfade's playing picture on the page's silent graph (the owner's QA23-FADE-6, "Try B in parallel (Rec.)"): its
+ * sound pulled by the graph from its crossfade's state on, so its clock is the graph's steady one. On CI's two-core
+ * Windows a fade's muted outgoing picture ran on its sound's stand-in sink, pulled late on its page's busy media thread
+ * with the late pulls skipped, and lost its time (0.3 to 0.8 of real time), so it fell behind and was jumped; the cued
+ * incoming one, pulled by this graph, ran at 1 (a22-fade-1124-103850-84620). Taken mid-play, unlike a cue: its time may
+ * step by the two sinks' delays (tens of ms), never a jump. Only into a graph that already runs, as its crossfade's cue
+ * keeps it (never one started for it: no output held for this, QA22-CUE-2), never a picture the graph already pulls
+ * (its own cue's), and kept until the picture is let go: a source can never be taken back, and one left unpulled would
+ * stop its picture. It counts as a user of the graph meanwhile, so the graph rests only once both are let go. Returns
+ * its stop, or null when it was not taken.
+ */
+export function fadeClock(
+  v: HTMLMediaElement,
+  graph: () => SilentGraph | null = runningPageGraph,
+): (() => void) | null {
+  if (v.dataset['cueClock'] !== undefined) return null;
+  const silent = graph();
+  if (silent?.context.state !== 'running' || resting.has(silent.context)) return null;
+  const { context, sink } = silent;
+  let source: MediaElementAudioSourceNode;
+  try {
+    source = sources.get(v) ?? context.createMediaElementSource(v);
+    sources.set(v, source);
+    source.connect(sink);
+  } catch {
+    return null;
+  }
+  users.set(context, (users.get(context) ?? 0) + 1);
+  // Only now, its sound going into the graph and nowhere else.
+  v.muted = false;
+  v.dataset['cueClock'] = 'fade';
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    v.muted = true;
+    delete v.dataset['cueClock'];
+    source.disconnect();
+    const left = (users.get(context) ?? 1) - 1;
+    users.set(context, left);
+    if (left === 0 && context.state !== 'closed') {
+      resting.add(context);
+      void context.suspend().catch(() => undefined);
+    }
+  };
+}
