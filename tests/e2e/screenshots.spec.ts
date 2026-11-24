@@ -3233,7 +3233,8 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   await expect(form.getByTestId('message-look')).toBeVisible();
   // The whole form, its look too (since alpha.21 only what is under the LIVE block scrolls, and at 720 high the
   // form's foot was cut off, the bars below in its picture): in a window tall enough for all of it, seen whole first.
-  await win.setViewportSize({ width: 1280, height: 1400 });
+  // 1800 high: at 1400 only 0.905 of it was in view (alpha.22's picture run at 20:38, 24 Nov).
+  await win.setViewportSize({ width: 1280, height: 1800 });
   await form.scrollIntoViewIfNeeded();
   await expect(form, 'the message form whole in its picture').toBeInViewport({ ratio: 1 });
   await part(win, 'manual-messages', [form]);
