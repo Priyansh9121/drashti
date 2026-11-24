@@ -287,7 +287,11 @@ test('Pro Mode: a whole sabha by keyboard alone', async () => {
   await win.keyboard.press('F12');
   await expect.poll(async () => (await engine(win)).state.wallpaper).toBe(false);
 
-  // A message, typed in its field and shown with Enter; Tab out of the field, and F6 takes it off.
+  // A message, typed in its field and shown with Enter; Tab out of the field, and F6 takes it off. Messages opened from
+  // its heading with Enter first (alpha.22: every section under LIVE is folded at the start).
+  await tabTo(win, (f) => f.testid === 'group-messages-toggle');
+  await win.keyboard.press('Enter');
+  await expect(win.getByTestId('group-messages-toggle')).toHaveAttribute('aria-expanded', 'true');
   await tabTo(win, (f) => f.tag === 'input' && f.region === 'Live' && f.name === 'plate');
   await win.keyboard.type('KB 123');
   await win.keyboard.press('Enter');
@@ -296,7 +300,10 @@ test('Pro Mode: a whole sabha by keyboard alone', async () => {
   await win.keyboard.press('F6');
   await expect(output.locator('[data-layer="messages"]')).toHaveCount(0);
 
-  // A timer started from its button.
+  // A timer started from its button, Timers opened from its heading with Enter first.
+  await tabTo(win, (f) => f.testid === 'group-timers-toggle');
+  await win.keyboard.press('Enter');
+  await expect(win.getByTestId('group-timers-toggle')).toHaveAttribute('aria-expanded', 'true');
   await tabTo(win, (f) => f.region === 'Live' && f.tag === 'button' && /^Start\b/u.test(f.name));
   await win.keyboard.press('Enter');
   await expect

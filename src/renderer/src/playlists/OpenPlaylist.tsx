@@ -367,7 +367,7 @@ function ItemBody({
           <span
             className="block truncate text-xs text-warning-fg"
             data-testid="item-input-missing"
-            title={`No video input called “${item.name}” is on this computer, so Next goes past it. Add a Video Input… in More tools can name one so.`}
+            title={`No video input called “${item.name}” is on this computer, so Next goes past it. Add a Video Input…, in Video inputs under LIVE, can name one so.`}
           >
             Not on this computer
           </span>

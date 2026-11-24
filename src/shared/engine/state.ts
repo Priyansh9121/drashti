@@ -79,6 +79,8 @@ import type { ShapeOverride } from '../video-shape';
 // its file says, so it says 'incompatible'. A state 29 saved is read whole (30 only adds to it).
 // 31 (alpha.20, the playback set's slice 8): a stream link as the background (`kind: 'link'`), which an older node or
 // page does not know, so it says 'incompatible'. A state 30 or 29 saved is read whole (31 only adds to them).
+// The stage message's colours (alpha.22, `boxColor` and `textColor` in `stageCall`) need no new number: they are
+// optional fields an older node or page leaves out, so a node on 31 draws its own amber and black, as before.
 // 32 adds a private paused video cue and a playlist’s two crossfading showings.
 export const ENGINE_STATE_VERSION = 32;
 

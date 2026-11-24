@@ -38,12 +38,15 @@ export function mirrorRoutes<R>(route: MakeRoute<R>): R[] {
       timerId: p['id'],
     })),
     route('POST', '/api/v1/timers/hide', 'command', command('hideAudienceTimer')),
-    // With its own size and a flash since Session 55 (both left out: the standard size, no flash).
+    // With its own size and a flash since Session 55 (both left out: the standard size, no flash), and its box's and
+    // words' colours since 24 Nov 2026 (left out: amber and black).
     route('POST', '/api/v1/stage-message', 'command', (b) => ({
       type: 'setStageMessage',
       text: b['text'],
       size: b['size'],
       flash: b['flash'],
+      boxColor: b['boxColor'],
+      textColor: b['textColor'],
     })),
     route('POST', '/api/v1/stage-message/clear', 'command', command('clearStageMessage')),
     route('POST', '/api/v1/skip', 'command', (b) => ({ type: 'skip', layer: b['layer'], jump: b['jump'] })),

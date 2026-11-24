@@ -2,7 +2,15 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import {
+  chooseMenuItem,
+  launchApp,
+  LIVE_SECTIONS,
+  openAllSections,
+  openSection,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 import { headingProblems, layoutPicture, liveRowProblems } from './operator-layout';
 
@@ -45,7 +53,7 @@ for (const mode of ['pro', 'simple'] as const) {
         await expect(win.getByTestId('simple-mode')).toBeVisible();
       }
       await win.evaluate(() => document.fonts.ready.then(() => undefined));
-      // Soft assertions retain every distinct fault and the More tools picture on the old layout.
+      // Soft assertions retain every distinct fault and the open sections' picture on the old layout.
       const soft = expect.configure({ soft: true });
       const splitter = win.getByRole('separator', { name: 'Resize the live column', exact: true });
       for (const columnWidth of [380, 300]) {
@@ -61,7 +69,8 @@ for (const mode of ['pro', 'simple'] as const) {
         await layoutPicture(win, `${picture}-live`);
         await soft.poll(() => liveRowProblems(win)).toEqual([]);
         if (mode === 'pro') {
-          await win.getByTestId('group-more-tools-toggle').click();
+          // Every section under LIVE open (alpha.22: More tools went, and each tool's section is folded at the start).
+          await openAllSections(win);
           const lowerThirds = win.getByTestId('lower-thirds-panel');
           await lowerThirds.scrollIntoViewIfNeeded();
           await layoutPicture(win, `${picture}-tools`);
@@ -78,7 +87,8 @@ for (const mode of ['pro', 'simple'] as const) {
           await expect.soft(lowerThirds).toContainText(await note.innerText());
         }
         await soft.poll(() => headingProblems(win)).toEqual([]);
-        if (mode === 'pro') await win.getByTestId('group-more-tools-toggle').click();
+        if (mode === 'pro')
+          for (const section of LIVE_SECTIONS) await win.getByTestId(`group-${section}-toggle`).click();
       }
       await app.close();
     });
@@ -96,10 +106,12 @@ test('Pro Mode at 1024 × 645: Audio stays inside the live column when it scroll
   });
 
   const live = win.getByRole('complementary', { name: 'Live', exact: true });
+  // Audio open, then every other section (alpha.22: each folded at the start), so the column has to scroll.
+  await openSection(win, 'audio');
   const announcement = live.getByTestId('audio-group').getByTestId('chosen-said');
   await expect(announcement).toHaveCount(1);
-  await live.getByTestId('group-more-tools-toggle').click();
-  await live.getByTestId('lower-thirds-panel').scrollIntoViewIfNeeded();
+  await openAllSections(win);
+  await live.getByTestId('section-osc').scrollIntoViewIfNeeded();
 
   // A screen-reader announcement below the visible part of the column used to escape its scroll area.
   const staysInColumn = await announcement.evaluate(

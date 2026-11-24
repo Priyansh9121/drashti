@@ -11,11 +11,11 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { QR_DOWNLOAD_PIXELS, QR_SLIDE_PIXELS } from '../../src/shared/qr-picture';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { closeLibrary, launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
+import { closeLibrary, launchApp, openSection, operatorPage, operatorReady } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
- * The QR-code slide (Session 55, Part 8, the owner's idea G): QR code… (in More tools and the Tools menu since alpha.20;
+ * The QR-code slide (Session 55, Part 8, the owner's idea G): QR code… (in its own section under LIVE since alpha.22, More tools from alpha.20, and the Tools menu;
  * beside New… in the library before): a link or words pasted,
  * and a slide with a large code and the words under it, made offline (the code a picture in the library). It is
  * chosen in the library, and one click on its row puts it up. Pro Mode's: Simple Mode refuses making one. At CI's
@@ -58,15 +58,15 @@ async function expectFits(win: Page, what: string): Promise<void> {
   expect(problems, what).toEqual([]);
 }
 
-test('More tools › QR code…: a link pasted becomes one slide with a large code and the words under it, chosen in the library and up with one click, at 1024 × 645 and 1280 × 720', async () => {
+test('the QR code section › QR code…: a link pasted becomes one slide with a large code and the words under it, chosen in the library and up with one click, at 1024 × 645 and 1280 × 720', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
 
-  // In More tools since alpha.20 (Session 60, x36: the owner's "A, More tools + menu"), under Lower Thirds.
-  await openMoreTools(win);
+  // In its own section under LIVE since alpha.22 (More tools from alpha.20, Session 60, x36).
+  await openSection(win, 'qr-code');
   await win.getByTestId('qr-code-open').click();
   const dialog = win.getByTestId('qr-dialog');
   await expect(dialog).toBeVisible();
@@ -121,8 +121,8 @@ test('More tools › QR code…: a link pasted becomes one slide with a large co
 
   // At 1280 × 720 the dialog fits too.
   await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
-  // In More tools since alpha.20 (Session 60, x36: the owner's "A, More tools + menu"), under Lower Thirds.
-  await openMoreTools(win);
+  // In its own section under LIVE since alpha.22 (More tools from alpha.20, Session 60, x36).
+  await openSection(win, 'qr-code');
   await win.getByTestId('qr-code-open').click();
   await dialog.getByRole('textbox', { name: 'Link or words' }).fill('Placeholder words for a code');
   await expectFits(win, 'the QR code dialog at 1280 × 720');
@@ -236,7 +236,7 @@ test('QR code…: Logo in the middle: Choose a Picture… keeps a picture and re
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
-  await openMoreTools(win);
+  await openSection(win, 'qr-code');
   await win.getByTestId('qr-code-open').click();
   const dialog = win.getByTestId('qr-dialog');
   await expect(dialog).toBeVisible();
@@ -325,7 +325,7 @@ test('QR code…: Logo in the middle: Choose a Picture… keeps a picture and re
   await closeLibrary(win);
 
   // Remembered: the dialog opened again has the logo, on, and the words left off.
-  await openMoreTools(win);
+  await openSection(win, 'qr-code');
   await win.getByTestId('qr-code-open').click();
   await expect(dialog.getByTestId('qr-logo')).toContainText('Placeholder logo.png');
   await expect(dialog.getByRole('switch', { name: 'Logo in the middle' })).toHaveAttribute(
@@ -344,7 +344,7 @@ test('QR code…: Logo in the middle: Choose a Picture… keeps a picture and re
   const again = await launchApp({ DRASHTI_TEST_DOWNLOADS_DIR: downloads }, userData);
   const win2 = await operatorPage(again.app);
   await operatorReady(win2);
-  await openMoreTools(win2);
+  await openSection(win2, 'qr-code');
   await win2.getByTestId('qr-code-open').click();
   const dialog2 = win2.getByTestId('qr-dialog');
   await expect(dialog2.getByTestId('qr-logo')).toContainText('Placeholder logo.png');
@@ -364,7 +364,7 @@ test('Choose a Picture…: a file that is not a PNG or JPEG picture is turned do
   await answerDialogs(app, notPicture, join(folder, 'Never.png'));
   const win = await operatorPage(app);
   await operatorReady(win);
-  await openMoreTools(win);
+  await openSection(win, 'qr-code');
   await win.getByTestId('qr-code-open').click();
   const dialog = win.getByTestId('qr-dialog');
   await dialog.getByRole('button', { name: 'Choose a Picture…' }).click();

@@ -98,6 +98,8 @@ import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import { isOperatorMode, simpleModeRefuses, simplePhoneRefusalText, simpleRefusalText } from '../shared/mode';
 import { ModeKeeper } from './mode-keeper';
+import { SimpleFeaturesKeeper } from './simple-features';
+import type { SimpleFeature } from '../shared/simple-features';
 import { SimplePlaylist, simplePlaylistName } from './simple-playlist';
 import type { SimplePhoneScope } from './simple-mode-phones';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
@@ -479,6 +481,10 @@ import { packFileFor, packLanguageModelStore } from './speech/pack-language-mode
 import { createWhisperRoute } from './speech/whisper-route';
 import { createIndicRoute } from './speech/indic-route';
 import { handleModelPacks } from './model-packs/ipc';
+import { findTranslateHelper } from './translation/helper-place';
+import { handleTranslation } from './translation/ipc';
+import { TranslationEngine } from './translation/translation-engine';
+import { StandInTranslator } from '../shared/prepared-translations';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { findIndic, indicProblem } from './speech/indic-place';
@@ -1963,6 +1969,8 @@ function start(): void {
   let lookService: LookService | null = null;
   /** Simple Mode is on (set once the mode is read, further down). */
   let simpleNow = () => false;
+  // Which of Pro Mode's tools Simple Mode has (alpha.22, Edit › Simple Mode Features…): made with the mode, below.
+  let simpleChosen = (): readonly SimpleFeature[] => [];
   /** A media file's length, once learned from playing it (the media repo, made further down). */
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** A picture's look (Session 26e; the media repo, made further down). */
@@ -2052,7 +2060,7 @@ function start(): void {
       refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
-          : simpleNow() && simpleModeRefuses(command, state)
+          : simpleNow() && simpleModeRefuses(command, state, simpleChosen())
             ? simpleRefusalText(simpleAccess())
             : null,
       videoCueParticipants: () => {
@@ -4134,9 +4142,18 @@ function start(): void {
       const entry = languageModels.known().find((e) => e.sha256 === sha256);
       return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
     },
-    engine: (file, use) =>
+    // The pack's file is given back once whisper-server has exited (alpha.23); the stand-in runs no program.
+    engine: (file, use, exited) =>
       testSpeech !== undefined
-        ? speechEngine
+        ? {
+            start: (language, to) => {
+              const stop = speechEngine.start(language, to);
+              return () => {
+                stop();
+                exited();
+              };
+            },
+          }
         : createWhisperEngine({
             program: () => whisperProgram,
             model: () => file,
@@ -4146,6 +4163,7 @@ function start(): void {
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,
+            onExited: exited,
           }),
   });
   // Route C (alpha.22, cap-ship-c / Codex x94): AI4Bharat's IndicConformer (CTC) from the pack on Drashti's helper
@@ -4157,17 +4175,21 @@ function start(): void {
     platform: process.platform,
     arch: process.arch,
   });
+  // What keeps Route C from running on this computer (a Mac before 13.4, no helper): its own reason, never whisper's.
+  const routeCProblem = (): string | null =>
+    indicProblem(process.platform, process.getSystemVersion()) ??
+    (indicProgram === null
+      ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
+      : null);
   const conformerRoute = createIndicRoute({
     store: modelPacks,
     program: () => indicProgram,
-    problem: () =>
-      indicProblem(process.platform, process.getSystemVersion()) ??
-      (indicProgram === null
-        ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
-        : null),
+    problem: () => routeCProblem(),
     admission: 'below-show',
     // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
     threads: 2,
+    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review).
+    timing: () => captions.timing(),
     sound: { open: (chunk) => streaming.listenSound(chunk) },
     log,
   });
@@ -4205,6 +4227,8 @@ function start(): void {
           return routeC && testSpeech !== undefined ? speechEngine : routeC;
         },
       }),
+      // Route C's own reason when it cannot run here (the review's S1); none for the stand-in in tests, as whisper's.
+      problem: () => (testSpeech !== undefined ? null : routeCProblem()),
       coordinator: captionCoordinator,
     },
     engineProblem: () => captionsEngineProblem,
@@ -4270,21 +4294,6 @@ function start(): void {
       ? captions.setLanguageModel(language, id)
       : captions.view(),
   );
-  handle(IPC.captions.addLanguageModel, async (e, language) => {
-    if (!fromOperator(e) || !isLanguageModelLanguage(language)) return captions.view();
-    const parent = BrowserWindow.fromWebContents(e.sender);
-    const options = {
-      title: 'Add a Captions Model',
-      buttonLabel: 'Add Model',
-      properties: ['openFile'] as 'openFile'[],
-      filters: [{ name: 'Captions models (ggml)', extensions: ['bin'] }],
-    };
-    const picked = parent
-      ? await dialog.showOpenDialog(parent, options)
-      : await dialog.showOpenDialog(options);
-    const file = picked.canceled ? undefined : picked.filePaths[0];
-    return file === undefined ? captions.view() : captions.addLanguageModel(language, file);
-  });
   handle(IPC.captions.checkLanguageModel, (e, language) =>
     fromOperator(e) && isLanguageModelLanguage(language)
       ? captions.checkLanguageModel(language)
@@ -4609,6 +4618,22 @@ function start(): void {
       log.info(line);
     },
   });
+  // Simple Mode Features (alpha.22; the owner's "the features can be brought to simple mode, only 1-2 and max 3"): which
+  // of Pro Mode's tools Simple Mode has, kept with the library as the mode is, none to begin with. Simple Mode's lock
+  // and the engine read it as each request comes, so a tool turned off ends at once.
+  const simpleFeatures = new SimpleFeaturesKeeper({
+    saved: settings.get('simpleFeatures'),
+    save: (chosen) => {
+      laterSetting('simpleFeatures', chosen);
+    },
+    changed: (chosen) => {
+      sendToOperator(IPC.app.simpleFeaturesChanged, { chosen: [...chosen] });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  simpleChosen = () => simpleFeatures.chosen();
   const modes = new ModeKeeper({
     saved: { mode: settings.get('operatorMode'), byAccess: settings.get('simpleByAccess') },
     recentStop: startup.recentStop,
@@ -4693,11 +4718,19 @@ function start(): void {
       () => audioOutput.status,
       () => simpleRefusalText(modes.simpleOnly()),
     ),
-    simpleModeBounds(simpleScope),
+    simpleModeBounds(simpleScope, () => simpleFeatures.chosen()),
   );
   handle(IPC.app.getMode, () => mode);
   // The playlist Simple Mode shows (Session 55, Part 18): null in Pro Mode.
   handle(IPC.app.simplePlaylist, () => (mode === 'simple' ? simplePlaylist.current() : null));
+  // Edit › Simple Mode Features… (alpha.22): read in either mode; changed in Pro Mode only (Simple Mode's lock refuses
+  // it before it comes here), at most three.
+  handle(IPC.app.simpleFeatures, () => [...simpleFeatures.chosen()]);
+  handle(IPC.app.setSimpleFeature, (e, feature, on) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can choose Simple Mode’s tools.' };
+    return simpleFeatures.set(feature, on);
+  });
   handle(IPC.app.setMode, (e, wanted): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
@@ -6050,6 +6083,52 @@ function start(): void {
   pdfReadWaits.add(stopPdfOnAir);
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
+  });
+  // Prepare translations (alpha.22, a22-mt): drafts from the offline engine (drashti-translate with a model pack's
+  // IndicTrans2 model) for the Translation… dialog only; a named reader checks each before it can show. Pro Mode, off
+  // air: what is under way stops when the stream goes on air. Nothing runs until the dialog asks.
+  const translateProgram = findTranslateHelper({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const translationEngine = new TranslationEngine({
+    program: () => translateProgram,
+    models: modelPacks,
+    log,
+  });
+  const translationOnAir = () => streaming.inUse() || testOnAir;
+  // Tests only (never a packaged Drashti): DRASHTI_TEST_TRANSLATE=1 stands in for the engine with x83's stand-in (a
+  // marked placeholder, never a translation), so the dialog's Prepare translations is driven without a model pack.
+  const testTranslate = !packaged() && sw('DRASHTI_TEST_TRANSLATE') === '1';
+  const standInTranslator = new StandInTranslator();
+  handleTranslation({
+    handle,
+    mayDraft: (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+    onAir: translationOnAir,
+    engine: testTranslate
+      ? {
+          installed: () => true,
+          available: (from, to) => from !== to,
+          unknownModel: () => false,
+          translate: (source, from, to) => standInTranslator.translate(source, from, to),
+          cancel: () => undefined,
+        }
+      : translationEngine,
+  });
+  const stopTranslationOnAir = () => {
+    if (translationOnAir()) translationEngine.cancel();
+  };
+  pdfReadWaits.add(stopTranslationOnAir);
+  stops.add('translation engine', () => {
+    pdfReadWaits.delete(stopTranslationOnAir);
+    translationEngine.stop();
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
   handle(
@@ -8899,7 +8978,8 @@ function start(): void {
 
   // ---- picture in picture's remembered place (Session 50) --------------------------------------
   handle(IPC.pip.place, () => pipPlaces.place());
-  // Locked in Simple Mode (simple-mode.ts); moving the box up remembers its place by itself (below).
+  // Locked in Simple Mode (simple-mode.ts) unless Picture in Picture is chosen for it (alpha.22); moving the box up
+  // remembers its place by itself (below).
   handle(IPC.pip.savePlace, (e, place) =>
     fromOperator(e)
       ? pipPlaces.save(place)
@@ -10050,6 +10130,10 @@ function start(): void {
     // Help › Report a Problem… (x49): the window asks for its picture and opens.
     reportProblem: () => {
       sendToOperator(IPC.app.showReport, { at: Date.now() });
+    },
+    // Edit › Simple Mode Features… (alpha.22): Pro Mode's, its window in the operator window.
+    simpleFeatures: () => {
+      if (mode === 'pro') sendToOperator(IPC.app.showSimpleFeatures, { at: Date.now() });
     },
     // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
     tools: (tool) => {

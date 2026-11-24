@@ -10,7 +10,7 @@ import { toggleInputOnAudience, useChosenInput } from '../video-inputs/video-inp
  * (pressed). The stage never follows it: the stage screens show their own layout, or with Stage off the audience
  * picture. Shown only on a computer with a video input in Media.
  */
-export function InputOnAudience() {
+export function InputOnAudience({ className = 'px-3 pt-2' }: { className?: string }) {
   const input = useChosenInput();
   const up = useEngine((s) => {
     const bg = s.state?.layers.background;
@@ -18,7 +18,7 @@ export function InputOnAudience() {
   });
   if (!input) return null;
   return (
-    <div className="px-3 pt-2">
+    <div className={className}>
       <Button
         size="sm"
         icon={Video}

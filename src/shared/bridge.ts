@@ -15,6 +15,7 @@ import type { MakeSlideRequest, MakeSlideResult, SlideMade, SlidePlace } from '.
 import type { SlidePictureResult } from './slide-picture';
 import type { ReadyReport } from './ready';
 import type { ToolsMenuItem } from './setup-tools';
+import type { SimpleFeature, SimpleFeatureResult } from './simple-features';
 import type { PdfJob, PdfPage, PdfPageReceipt, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { QuickBarResult, QuickPin } from './quick-bar';
@@ -114,6 +115,12 @@ import type {
   LanguageModelLanguage,
 } from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
+import type {
+  TranslationDraftRequest,
+  TranslationDraftResult,
+  TranslationEngineStatus,
+  TranslationLanguage,
+} from './prepared-translations';
 import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
 import type { SpeechLanguage } from './speech';
 import type { Lang, RenderSlide, Transition } from './model';
@@ -286,6 +293,14 @@ export interface DrashtiBridge {
     onShowReport(listener: () => void): () => void;
     /** An item of the Tools menu was chosen (Session 60, x36; Pro Mode): which. */
     onShowTool(listener: (tool: ToolsMenuItem) => void): () => void;
+    /**
+     * Simple Mode Features (alpha.22, shared/simple-features.ts): which of Pro Mode's tools Simple Mode has, in either
+     * mode; one turned on or off (Pro Mode only, at most three); told as they change; Edit › Simple Mode Features….
+     */
+    simpleFeatures(): Promise<SimpleFeature[]>;
+    setSimpleFeature(feature: SimpleFeature, on: boolean): Promise<SimpleFeatureResult>;
+    onSimpleFeaturesChanged(listener: (chosen: SimpleFeature[]) => void): () => void;
+    onShowSimpleFeatures(listener: () => void): () => void;
   };
   /** The guides inside Drashti (Sessions 31–36): those this mode may read, and a guide's text. */
   guides: {
@@ -413,8 +428,6 @@ export interface DrashtiBridge {
     retry(): Promise<CaptionsStatus>;
     /** A model of its own for a language (alpha.22): one Drashti knows, or the general model (null). */
     setLanguageModel(language: LanguageModelLanguage, id: string | null): Promise<CaptionsStatus>;
-    /** Add a model file for a language (alpha.22): Drashti asks for the file and checks it. */
-    addLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
     checkLanguageModel(language: LanguageModelLanguage): Promise<CaptionsStatus>;
     /** The live timing on this computer (alpha.22). */
     setTiming(timing: CaptionTiming): Promise<CaptionsStatus>;
@@ -1195,6 +1208,12 @@ export interface DrashtiBridge {
     slidePlace(): Promise<SlidePlace>;
     /** The operator window: a slide was made in the editor's window (one change for its Undo). */
     onSlideMade(listener: (made: SlideMade) => void): () => void;
+    /** Prepare translations (alpha.22): whether the offline engine can draft this direction here. */
+    translationStatus(from: TranslationLanguage, to: TranslationLanguage): Promise<TranslationEngineStatus>;
+    /** One text box's draft (Pro Mode, off air): a named reader checks it before it can show. */
+    translationDraft(request: TranslationDraftRequest): Promise<TranslationDraftResult>;
+    /** Stop Prepare translations. */
+    translationCancel(): Promise<boolean>;
     /**
      * The stream's state, read only (x85's Extract, Replace, Split and Hand-out wait while it is on air or recording):
      * the editor's narrower bridge (ARCH-7) has none of the stream's controls.

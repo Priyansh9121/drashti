@@ -1,6 +1,6 @@
 # Simple Mode
 
-Simple Mode is this window with only what a small sabha with one projector needs, for a volunteer: the playlists and the wallpapers on the left, the open playlist in the middle, and **LIVE**, **Next**, **Back**, the time bar, **Record** and **Audio** on the right. The stage, messages, timers, lower thirds and the screens' setup stay in Pro Mode.
+Simple Mode is this window with only what a small sabha with one projector needs, for a volunteer: the playlists and the wallpapers on the left, the open playlist in the middle, and **LIVE**, **Next**, **Back**, the time bar, **Record** and **Audio** on the right. The stage, messages, timers, lower thirds and the screens' setup stay in Pro Mode, unless an admin brings up to three of those tools into Simple Mode.
 
 ## Simple Mode
 
@@ -88,6 +88,22 @@ Simple Mode is this window with only what a small sabha with one projector needs
 3. With the keyboard on **Pro Mode**, press **Enter** twice.
 
 ![Simple Mode: the window, with Pro Mode at the top right](../screenshots/simple-mode-1280x720.png)
+
+## Pro Mode's tools in Simple Mode
+
+**What it is.** Up to three of Pro Mode's tools under LIVE, brought into Simple Mode by an admin in Pro Mode, each with its own on/off switch: **Stage screen**, **Messages**, **Timers**, **Lower Thirds**, **Show a Window**, **Show a Stream Link**, **Video inputs** and **Picture in Picture**. In Simple Mode each is a folding section under **Audio**, folded until it is opened, with only what runs the show. None is on to begin with.
+
+**When you would use it.** When a volunteer's sabha needs one or two of Pro Mode's tools, a message or a countdown, say, and nothing more.
+
+**How:**
+
+1. In Pro Mode, choose **Edit**, then **Simple Mode Features…**.
+2. Turn on one or two tools with their switches (three at most).
+3. Press **Done**, then switch to Simple Mode.
+4. Open a tool's section under **Audio** to use it.
+5. To take one away again, turn its switch off in Pro Mode.
+
+![Simple Mode as it comes, with none of Pro Mode's tools turned on](../screenshots/simple-mode-1280x720.png)
 
 ## A phone in Simple Mode
 

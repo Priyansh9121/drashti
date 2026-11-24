@@ -110,6 +110,16 @@ const bridge: DrashtiBridge = {
       on(IPC.app.showTool, ({ tool }) => {
         listener(tool);
       }),
+    simpleFeatures: () => invoke(IPC.app.simpleFeatures),
+    setSimpleFeature: (feature, on) => invoke(IPC.app.setSimpleFeature, feature, on),
+    onSimpleFeaturesChanged: (listener) =>
+      on(IPC.app.simpleFeaturesChanged, ({ chosen }) => {
+        listener(chosen);
+      }),
+    onShowSimpleFeatures: (listener) =>
+      on(IPC.app.showSimpleFeatures, () => {
+        listener();
+      }),
   },
   guides: {
     list: () => invoke(IPC.guides.list),
@@ -221,7 +231,6 @@ const bridge: DrashtiBridge = {
     setSettings: (settings) => invoke(IPC.captions.setSettings, settings),
     retry: () => invoke(IPC.captions.retry),
     setLanguageModel: (language, id) => invoke(IPC.captions.setLanguageModel, language, id),
-    addLanguageModel: (language) => invoke(IPC.captions.addLanguageModel, language),
     checkLanguageModel: (language) => invoke(IPC.captions.checkLanguageModel, language),
     setTiming: (timing) => invoke(IPC.captions.setTiming, timing),
     onChanged: (listener) => on(IPC.captions.changed, listener),
@@ -760,6 +769,9 @@ const bridge: DrashtiBridge = {
     makeSlide: (request) => invoke(IPC.slideEditor.makeSlide, request),
     slidePlace: () => invoke(IPC.slideEditor.slidePlace),
     onSlideMade: (listener) => on(IPC.slideEditor.slideMade, listener),
+    translationStatus: (from, to) => invoke(IPC.slideEditor.translationStatus, from, to),
+    translationDraft: (request) => invoke(IPC.slideEditor.translationDraft, request),
+    translationCancel: () => invoke(IPC.slideEditor.translationCancel),
     streamStatus: () => invoke(IPC.stream.status),
     onStreamChanged: (listener) => on(IPC.stream.changed, listener),
   },

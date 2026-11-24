@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { STREAM_LINK_OFF, type StreamLinkStatus } from '../../../shared/live-link';
 
 /*
- * Show a Stream Link… (alpha.20, the playback set's slice 8) in the operator window: its window (from More tools and
- * Tools, Pro Mode), and how the stream link stands, for the notice under the header (connecting, up, reconnecting, the
+ * Show a Stream Link… (alpha.20, the playback set's slice 8) in the operator window: its window (from its section under
+ * LIVE and Tools, Pro Mode), and how the stream link stands, for the notice under the header (connecting, up, reconnecting, the
  * Wallpaper while it is gone, ended).
  */
 

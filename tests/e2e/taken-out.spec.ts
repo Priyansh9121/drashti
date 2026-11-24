@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, openMoreTools, operatorPage, operatorReady, outputPages } from './helpers';
+import { launchApp, openAllSections, operatorPage, operatorReady, outputPages } from './helpers';
 
 /*
  * Taken out (Session 55, Part 12: "Gone from the window, the menus, the keys, the phone and the screens"): Props,
@@ -64,12 +64,12 @@ test('Props, Looks, Masks, the Idle rotation, Themes and the Logo are gone from 
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 900 });
 
-  // The top bar: no Themes beside Screens. LIVE: no Props and no Looks; More tools: no Masks, no Idle rotation, and
+  // The top bar: no Themes beside Screens. LIVE: no Props and no Looks; its sections: no Masks, no Idle rotation, and
   // MIDI's words name no Logo.
   await expect(win.getByTestId('app-header').getByRole('button', { name: 'Themes' })).toHaveCount(0);
   for (const id of ['props', 'looks-panel', 'masks-panel', 'idle-panel', 'logo-button'])
     await expect(win.getByTestId(id), id).toHaveCount(0);
-  await openMoreTools(win);
+  await openAllSections(win);
   await expect(win.getByRole('complementary', { name: 'Live' })).not.toContainText(GONE);
   // The bottom bar: no clear for props or masks.
   await expect(win.getByTestId('layer-bar')).not.toContainText(GONE);
@@ -230,7 +230,7 @@ test('a library holding props, a logo, masks, Looks, the idle rotation and a the
   const state = (await snapshot(win)).state as unknown as Record<string, unknown>;
   expect([state['wallpaper'], 'logo' in state, 'idle' in state]).toEqual([false, false, false]);
   // Nothing of them in the window either.
-  await openMoreTools(win);
+  await openAllSections(win);
   await expect(win.getByRole('complementary', { name: 'Live' })).not.toContainText(GONE);
   // New words start in the library's default look, its own theme's orange, though Themes are gone.
   const color = await win.evaluate(async () => {

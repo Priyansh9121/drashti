@@ -7,12 +7,13 @@ import { expectFits } from './fit';
 import {
   chooseMenuItem,
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
-  type PageGlobals,
   relaunchApp,
   setUpScreen,
+  type PageGlobals,
 } from './helpers';
 import { holdClock } from './placeholder-slides';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -125,6 +126,7 @@ test('one layout for every stage screen: the Stage screen panel’s Layout or a 
   expect(await shows(two)).toBe('standard');
 
   // The Layout picker in the Stage screen panel under LIVE: Standard and every layout.
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   const picker = panel.getByTestId('stage-layout-choice');
   await expect(picker).toHaveValue('standard');
@@ -195,6 +197,7 @@ test('one layout for every stage screen: the Stage screen panel’s Layout or a 
   const next = await operatorPage(again.app);
   await operatorReady(next);
   await expect.poll(() => chosenNow(next)).toBe(other);
+  await openSection(next, 'stage');
   await expect(next.getByTestId('stage-layout-choice')).toHaveValue(other);
   const oneAgain = await outputFor(again.app, oneId);
   const twoAgain = await outputFor(again.app, twoId);
@@ -254,6 +257,7 @@ test('Stage off: the stage screens stay, the same windows, showing exactly the a
   await dispatch(win, { type: 'next' });
   await expect(picture.locator('[data-layer="slide"]')).toContainText('Placeholder stage line two');
   // The Stage screen panel says so.
+  await openSection(win, 'stage');
   await expect(win.getByTestId('stage-off-note')).toContainText(
     'every stage screen shows the audience picture',
   );
@@ -536,6 +540,7 @@ test('the video input box shows the chosen input whatever the audience shows; wi
   ]);
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.stageLayouts.choose(id), layout);
   // The chosen video input: the first, offered in the Stage screen panel.
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   await expect(panel.getByTestId('stage-input-choice')).toHaveValue(programme);
   await expect(panel.getByTestId('stage-input-choice').locator('option')).toHaveText([
@@ -639,6 +644,7 @@ test('the editor: New, Duplicate, Rename, Save, Delete and New from a Template�
       (await (globalThis as PageGlobals).drashti.stageLayouts.list()).map((l) => l.name),
     );
 
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await expect(editor).toBeVisible();
@@ -812,6 +818,7 @@ test('the Stage screen panel changes the time a stage timer counts to, and a cou
     },
   ]);
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.stageLayouts.choose(id), layout);
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   const rows = panel.getByTestId('stage-timer-row');
   await expect(rows).toHaveCount(2);

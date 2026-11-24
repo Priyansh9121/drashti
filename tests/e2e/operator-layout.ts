@@ -21,8 +21,9 @@ export const liveRowProblems = (win: Page) =>
       if (!(el instanceof HTMLButtonElement)) continue;
       if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)
         problems.push(`${name(el)}: its contents overflow`);
+      // A part drawn nowhere (Back's and Next's keys in a row too narrow for them, NextBack.tsx) is not outside it.
       for (const part of el.querySelectorAll('kbd, svg'))
-        if (!inside(part.getBoundingClientRect(), box))
+        if (part.getClientRects().length > 0 && !inside(part.getBoundingClientRect(), box))
           problems.push(`${name(el)}: ${part.tagName} ${part.textContent.trim()} extends outside its button`);
       const text = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       for (let node = text.nextNode(); node; node = text.nextNode()) {

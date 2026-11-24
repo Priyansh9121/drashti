@@ -81,7 +81,7 @@ describe('the Drashti Manual’s chapters', () => {
       'LIVE, Back and Next',
       'Audio and the levels',
       'Stage screen',
-      'More tools',
+      'Tools',
       'Screens and screen geometry',
       'Stream',
       'Phones and network',
@@ -91,7 +91,7 @@ describe('the Drashti Manual’s chapters', () => {
     ])
       expect(titles).toContain(part);
     const all = MANUAL_CHAPTERS.map((c) => chapterText(c.file)).join('\n');
-    // More tools' own, and what alpha.20 brought.
+    // The tools' own sections (More tools until alpha.22), and what alpha.20 brought.
     for (const words of [
       'Lower Thirds',
       'Show a Window…',
@@ -151,6 +151,27 @@ describe('the Drashti Manual’s chapters', () => {
         if (name && !shipped.has(name) && !madeByThePictureRun.has(name)) missing.push(`${c.file}: ${name}`);
       }
     expect(missing).toEqual([]);
+  });
+
+  it('never names More tools, which went in alpha.22: each tool has its own section under LIVE', () => {
+    const named: string[] = [];
+    const files = [
+      ...MANUAL_CHAPTERS.map((c) => join('manual', c.file)),
+      'operator-guide.md',
+      'presenter-guide.md',
+      'admin-guide.md',
+      'setup-day.md',
+      'parallel-run.md',
+      'windows-checks.md',
+      'api.md',
+    ];
+    for (const file of files)
+      readFileSync(join(docs, file), 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (/more tools/iu.test(line)) named.push(`${file}:${String(i + 1)}`);
+        });
+    expect(named).toEqual([]);
   });
 
   it('never names the old presentation program, as Drashti’s own screens never do', () => {

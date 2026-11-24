@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { contrastRatio, WORDS_CONTRAST_MIN } from './contrast';
 import type { StageLayout } from './stage-layouts';
 
 /*
@@ -8,6 +9,12 @@ import type { StageLayout } from './stage-layouts';
  * banner over the top of the stage screen (a layout with no message box, the Standard stage screen's own place, and
  * Stage off's audience picture). Each has its own size and, if asked, a slow flash as it comes up; the last few are a
  * tap away. The words stay the engine's `stageMessage` (an older state reads whole); the rest is `stageCall`.
+ *
+ * Its colours (the owner, 24 Nov 2026): the box's and the words', chosen in the Stage screen panel, travel in the call
+ * (`boxColor`, `textColor`, each left out for amber and black, as it always was: a phone, the API and OSC send none;
+ * Simple Mode's panel sends the colours this computer keeps). They are only added to the call, so the engine's state
+ * keeps its version: a node or a page of the version before reads the call whole and draws its own amber and black, as
+ * it always did.
  */
 
 export type StageMessageSize = 'small' | 'standard' | 'large' | 'huge';
@@ -34,12 +41,53 @@ export const STAGE_SIZE_FACTOR: Record<StageMessageSize, number> = {
 /** The standard size of the banner's words on a 1080-high stage screen (the Standard stage screen's message). */
 export const STAGE_MESSAGE_PX = 64;
 
-/** How the message up was shown: its size, whether it flashes, and when it went up (the engine's clock). */
+/**
+ * How the message up was shown: its size, whether it flashes, when it went up (the engine's clock) and, if chosen,
+ * its box's and its words' colours (#rrggbb; left out: amber and black).
+ */
 export interface StageCall {
   size: StageMessageSize;
   flash: boolean;
   shownAt: number;
+  boxColor?: string;
+  textColor?: string;
 }
+
+/** The stage message's colours as it always was: an amber box with black words. */
+export const STAGE_BOX_COLOR = '#f5a524';
+export const STAGE_TEXT_COLOR = '#000000';
+/** The flash's other colour: white (amber for a box white would hardly show on). */
+export const STAGE_FLASH_COLOR = '#ffffff';
+
+/** A colour the stage message is given: #rrggbb. */
+export const stageColorSchema = z.string().regex(/^#[0-9a-f]{6}$/iu, 'a colour as #rrggbb');
+
+/** A few colours that read well from the stage (each pair 4.5 to 1 or more), the first as it always was. */
+export const STAGE_COLOR_PRESETS = [
+  { id: 'amber', name: 'Amber, black words', box: STAGE_BOX_COLOR, text: STAGE_TEXT_COLOR },
+  { id: 'white', name: 'White, black words', box: '#ffffff', text: '#000000' },
+  { id: 'black', name: 'Black, white words', box: '#000000', text: '#ffffff' },
+  { id: 'red', name: 'Red, white words', box: '#b91c1c', text: '#ffffff' },
+  { id: 'blue', name: 'Blue, white words', box: '#1d4ed8', text: '#ffffff' },
+  { id: 'green', name: 'Green, black words', box: '#22c55e', text: '#000000' },
+] as const;
+
+/** Whether words in `text` read on `box` from the stage: 4.5 to 1 or more (shared/contrast.ts's rule for words). */
+export const stageColorsRead = (box: string, text: string): boolean =>
+  contrastRatio(box, text) >= WORDS_CONTRAST_MIN;
+
+/** Words that read on `background`: `text` where it does, else black or white, whichever reads better. */
+export function readableOn(text: string, background: string): string {
+  if (stageColorsRead(background, text)) return text;
+  return contrastRatio('#000000', background) >= contrastRatio('#ffffff', background) ? '#000000' : '#ffffff';
+}
+
+/**
+ * The flash's other colour for a box: white, or amber where the box is so light white would hardly show on it
+ * (less than 1.5 to 1 apart: a white box).
+ */
+export const stageFlashColor = (box: string): string =>
+  contrastRatio(box, STAGE_FLASH_COLOR) < 1.5 ? STAGE_BOX_COLOR : STAGE_FLASH_COLOR;
 
 /** How many of the last messages stay a tap away. */
 export const STAGE_RECENT = 5;
@@ -62,6 +110,23 @@ export function stageFlashOn(call: StageCall | null | undefined, now: number): b
   if (!call?.flash) return false;
   const from = Math.ceil(call.shownAt / STAGE_FLASH_STEP_MS) * STAGE_FLASH_STEP_MS;
   return now >= from && now < from + STAGE_FLASH_MS && Math.floor(now / STAGE_FLASH_STEP_MS) % 2 === 1;
+}
+
+/**
+ * The message's box and words colours at `now`: its call's (left out, amber; and black words, or `words`, a layout
+ * box's own), and while it flashes, its flash colour (stageFlashColor) with words that read on it: the chosen words'
+ * colour where it does, else black or white. A message with no colours flashes white with its words as they were.
+ */
+export function stageMessageLook(
+  call: StageCall | null | undefined,
+  now: number,
+  words: string = STAGE_TEXT_COLOR,
+): { background: string; color: string } {
+  const box = call?.boxColor ?? STAGE_BOX_COLOR;
+  const text = call?.textColor ?? words;
+  if (!stageFlashOn(call, now)) return { background: box, color: text };
+  const flash = stageFlashColor(box);
+  return { background: flash, color: call?.textColor === undefined ? text : readableOn(text, flash) };
 }
 
 /**

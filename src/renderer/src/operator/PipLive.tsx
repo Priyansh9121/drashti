@@ -10,7 +10,7 @@ import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ArrowLeftRight, PictureInPicture2, Settings, X } from '../ui/icons';
 import { dispatch, useNotice } from './actions';
-import { useMode } from './mode-store';
+import { useToolHere } from '../simple/simple-features-store';
 import { boxName, openPipDialog, placeBox } from './pip-store';
 
 /*
@@ -18,7 +18,8 @@ import { boxName, openPipDialog, placeBox } from './pip-store';
  * click away and its settings (Picture in Picture…); and over the LIVE picture, the box itself to drag anywhere
  * on the screen, let go near a corner to put it there. Dragging is never the only way: the dialog's corners do it
  * from the keyboard. The practice show has no box. Simple Mode (whose LIVE this is too) only names the box and
- * takes it off: setting one up, swapping and moving it are Pro Mode's.
+ * takes it off: setting one up, swapping and moving it are Pro Mode's, and (alpha.22) Simple Mode's too while
+ * Picture in Picture is chosen for it in Pro Mode's Edit › Simple Mode Features….
  */
 
 /** What is in the box, with Swap and Take off, while one is up. */
@@ -26,7 +27,7 @@ export function PipLiveStrip() {
   const box = useEngine((s) => s.state?.layers.pip ?? null);
   const media = useMedia((s) => s.media);
   const practising = usePractice((s) => s.on);
-  const simple = useMode((s) => s.mode === 'simple');
+  const boxLocked = !useToolHere('picture-in-picture');
   if (!box || practising) return null;
   const name = boxName(box.source, media);
   return (
@@ -41,7 +42,7 @@ export function PipLiveStrip() {
         <span className="font-bold">Picture in picture</span> · {name}
         {box.swapped ? ' · swapped' : ''}
       </span>
-      {!simple && (
+      {!boxLocked && (
         <Button
           size="sm"
           instant
@@ -61,7 +62,7 @@ export function PipLiveStrip() {
       >
         Take off
       </Button>
-      {!simple && (
+      {!boxLocked && (
         <IconButton
           icon={Settings}
           size="sm"
@@ -120,10 +121,10 @@ export function PipDragHandle({
   const [drag, setDrag] = useState<{ x: number; y: number; scale: number; dx: number; dy: number } | null>(
     null,
   );
-  const simple = useMode((s) => s.mode === 'simple');
+  const boxLocked = !useToolHere('picture-in-picture');
   const box = state.layers.pip;
-  // Moving the box is Pro Mode's.
-  if (simple) return null;
+  // Moving the box is Pro Mode's (and Simple Mode's with Picture in Picture chosen for it, alpha.22).
+  if (boxLocked) return null;
   // Only where LIVE draws it: a box of the slides draws nothing with no slide up.
   const slidesAway = state.layers.slide === null || !look.layers.includes('slide');
   if (!box || !pipShownFor(look) || (box.source.kind === 'slides' && slidesAway)) return null;

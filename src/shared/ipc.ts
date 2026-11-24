@@ -1,5 +1,6 @@
 import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+import type { SimpleFeature, SimpleFeatureResult } from './simple-features';
 
 import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
@@ -54,6 +55,12 @@ import type {
   LanguageModelLanguage,
 } from './captions';
 import type { ModelPacksStatus, PackImportResult, PackLicenceResult, PackRemoveResult } from './model-packs';
+import type {
+  TranslationDraftRequest,
+  TranslationDraftResult,
+  TranslationEngineStatus,
+  TranslationLanguage,
+} from './prepared-translations';
 import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
 import type { SpeechLanguage } from './speech';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
@@ -295,6 +302,16 @@ export const IPC = {
     showReport: 'app:show-report',
     /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
     showTool: 'app:show-tool',
+    /**
+     * Simple Mode Features (alpha.22, shared/simple-features.ts): which of Pro Mode's tools Simple Mode has, read in either
+     * mode, and one turned on or off (Pro Mode's: Simple Mode's lock refuses it).
+     */
+    simpleFeatures: 'app:simple-features',
+    setSimpleFeature: 'app:set-simple-feature',
+    /** main -> operator: the tools Simple Mode has changed. */
+    simpleFeaturesChanged: 'app:simple-features-changed',
+    /** main -> operator: Edit › Simple Mode Features… was chosen (Pro Mode). */
+    showSimpleFeatures: 'app:show-simple-features',
   },
   /** Scheduled backups (Session 14, shared/backups.ts): changing them, and Back up now, are Pro Mode's. */
   backups: {
@@ -412,8 +429,6 @@ export const IPC = {
     retry: 'captions:retry',
     /** A model of its own for a language (alpha.22): choose one Drashti knows (or the general model, null). */
     setLanguageModel: 'captions:set-language-model',
-    /** Add a model file for a language (alpha.22): main asks for the file, checks it, and keeps a copy. */
-    addLanguageModel: 'captions:add-language-model',
     /** Check a language's chosen model file whole again (alpha.22). */
     checkLanguageModel: 'captions:check-language-model',
     /** The live timing on this computer (alpha.22). */
@@ -938,6 +953,13 @@ export const IPC = {
     slidePlace: 'slideeditor:slide-place',
     /** main -> operator: a slide was made from a PDF page (for its Undo). */
     slideMade: 'slideeditor:slide-made',
+    /**
+     * Prepare translations (alpha.22, a22-mt): the offline engine's state for a direction, one text box's draft, and
+     * stopping it. Pro Mode's, off air only; drafts are never shown before a named reader checks them.
+     */
+    translationStatus: 'slideeditor:translation-status',
+    translationDraft: 'slideeditor:translation-draft',
+    translationCancel: 'slideeditor:translation-cancel',
   },
   /** OSC settings belong only to this computer's operator window, in Pro Mode. */
   osc: { status: 'osc:status', configure: 'osc:configure', changed: 'osc:changed' },
@@ -1534,6 +1556,8 @@ export interface InvokeContract {
   [IPC.app.getMode]: { args: []; result: OperatorMode };
   [IPC.app.setMode]: { args: [mode: OperatorMode]; result: ModeResult };
   [IPC.app.simplePlaylist]: { args: []; result: string | null };
+  [IPC.app.simpleFeatures]: { args: []; result: SimpleFeature[] };
+  [IPC.app.setSimpleFeature]: { args: [feature: SimpleFeature, on: boolean]; result: SimpleFeatureResult };
   [IPC.backups.view]: { args: []; result: ScheduledBackupsView };
   [IPC.backups.save]: { args: [schedule: BackupSchedule]; result: BackupsResult };
   [IPC.backups.pickFolder]: { args: []; result: PickFolderResult };
@@ -1581,7 +1605,6 @@ export interface InvokeContract {
     args: [language: LanguageModelLanguage, id: string | null];
     result: CaptionsStatus;
   };
-  [IPC.captions.addLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
   [IPC.captions.checkLanguageModel]: { args: [language: LanguageModelLanguage]; result: CaptionsStatus };
   [IPC.captions.setTiming]: { args: [timing: CaptionTiming]; result: CaptionsStatus };
   [IPC.modelPacks.view]: { args: []; result: ModelPacksStatus };
@@ -1946,6 +1969,15 @@ export interface InvokeContract {
   [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.makeSlide]: { args: [request: MakeSlideRequest]; result: MakeSlideResult };
   [IPC.slideEditor.slidePlace]: { args: []; result: SlidePlace };
+  [IPC.slideEditor.translationStatus]: {
+    args: [from: TranslationLanguage, to: TranslationLanguage];
+    result: TranslationEngineStatus;
+  };
+  [IPC.slideEditor.translationDraft]: {
+    args: [request: TranslationDraftRequest];
+    result: TranslationDraftResult;
+  };
+  [IPC.slideEditor.translationCancel]: { args: []; result: boolean };
   [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.osc.status]: { args: []; result: OscStatus };
   [IPC.osc.configure]: { args: [settings: OscSettings]; result: OscResult };
@@ -2200,6 +2232,8 @@ export interface EventContract {
   [IPC.app.showReport]: { at: number };
   [IPC.report.changed]: { at: number };
   [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };
+  [IPC.app.simpleFeaturesChanged]: { chosen: SimpleFeature[] };
+  [IPC.app.showSimpleFeatures]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.midi.ask]: MidiAsk;
