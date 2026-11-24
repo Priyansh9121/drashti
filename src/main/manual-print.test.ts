@@ -35,7 +35,7 @@ const { makeWindow, fromPartition } = vi.hoisted(() => ({
 
 vi.mock('electron', () => ({ BrowserWindow: makeWindow, session: { fromPartition } }));
 vi.mock('node:fs', async (original) => {
-  const real = await original<typeof import('node:fs')>();
+  const real = await original<typeof fs>();
   return { ...real, rmSync: vi.fn(real.rmSync) };
 });
 

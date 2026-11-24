@@ -440,6 +440,7 @@ import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
 import { RunningOrderPrinter, runningOrderLines } from './running-order';
+import { printWaits } from '../shared/print-waits';
 import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
@@ -4966,11 +4967,14 @@ function start(): void {
       ? readManual(guideFiles)
       : { ok: false, message: 'Only Drashti’s own window can read the manual: open it from Help.' },
   );
+  // Every printer's one test (the Manual's, a running order's, a kirtan's words'; shared/print-waits.ts): never while
+  // the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording, as Trim's and
+  // the conversions' background work waits; since alpha.22 also while a video waits at Cue or goes out in a crossfade
+  // (a22-review-print S1). A test can say the stream is on air.
+  const printingLive = () => testOnAir || printWaits(engine.current, streaming.inUse());
   const manualPrinter = new ManualPrinter({
     files: guideFiles,
-    // Never while the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording,
-    // as Trim's and the conversions' background work waits (a test can say the stream is on air).
-    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    live: printingLive,
     version: () => app.getVersion(),
     tempDir: () => app.getPath('temp'),
     suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
@@ -5002,7 +5006,7 @@ function start(): void {
       const rows = name === undefined ? null : presentations.content(id);
       return name === undefined || !rows ? null : { name, rows };
     },
-    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    live: printingLive,
     tempDir: () => app.getPath('temp'),
     suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
     askWhere: async (suggested) => {
@@ -8217,8 +8221,7 @@ function start(): void {
     );
   });
   // Print running order… and Save running order as PDF…: from a hidden window as the manual is (main/manual-print.ts),
-  // one page at a time across both, and never while the show is live (the manual's rule: anything up, or the stream on
-  // air or recording; a test can say the stream is on air).
+  // one page at a time across every printer, and never while the show is live (printingLive, the Manual's).
   const runningOrderPrinter = new RunningOrderPrinter({
     source: (playlistId) => runningOrderSource(playlistId),
     printed: () => {
@@ -8227,7 +8230,7 @@ function start(): void {
         Date.now(),
       );
     },
-    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    live: printingLive,
     tempDir: () => app.getPath('temp'),
     suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
     askWhere: async (suggested) => {

@@ -12,9 +12,9 @@ import type { Block, Inline } from '../shared/markdown';
  * permission, no window it could open. The page holds no script, and its words are only ever text: each is escaped.
  * Nothing in it touches the show.
  *
- * Since alpha.22 a playlist's running order is printed the same way (main/running-order.ts): each page names its own
- * title and footer, and one page is printed at a time across both, as the page's allowed files are one set
- * (`takePrinter`).
+ * Since alpha.22 a playlist's running order (main/running-order.ts) and a kirtan's words (main/words-print.ts) are
+ * printed the same way: each page names its own title and footer, and one page is printed at a time across all three,
+ * as the page's allowed files are one set (`takePrinter`). When they wait: shared/print-waits.ts.
  */
 
 /** A chapter, read, for the page. */
@@ -169,12 +169,12 @@ let mayLoad: ReadonlySet<string> = new Set();
 let pageOpen = false;
 let printSession: Electron.Session | null = null;
 
-/** Who holds the printer now ("The manual", "A running order"), or null. */
+/** Who holds the printer now ("The manual", "A running order", a kirtan's words), or null. */
 let holder: string | null = null;
 
 /**
- * The printer, taken for one print, from its first question (the save dialog) to its end: across the manual and every
- * running order, one at a time, as the page's allowed files are one set. `who` names the print ("The manual"); the
+ * The printer, taken for one print, from its first question (the save dialog) to its end: across the manual, every
+ * running order and every sheet of words, one at a time, as the page's allowed files are one set. `who` names the print ("The manual"); the
  * answer is the way to give it back (once is enough), or who holds it now.
  */
 export function takePrinter(who: string): { release: () => void } | { heldBy: string } {
@@ -314,7 +314,9 @@ export async function printPage(p: PrintPage): Promise<PrintOutcome> {
   } finally {
     mayLoad = new Set();
     if (win && !win.isDestroyed()) win.destroy();
-    rmSync(folder, { recursive: true, force: true });
+    // The next page may open now, whatever happens to this one's folder: one that cannot be taken away (Windows'
+    // EBUSY or EPERM while something still holds the file) fails this print alone (a22-review-print M1).
     pageOpen = false;
+    rmSync(folder, { recursive: true, force: true });
   }
 }
