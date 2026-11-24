@@ -19,7 +19,13 @@ it('ships the complete installed PDF writer licences and the zlib notice on both
   }
   const zlib = read('LICENSES/pdf-lib/pako-Zlib.txt');
   expect(zlib).toContain('(C) 1995-2013 Jean-loup Gailly and Mark Adler');
-  expect(read('LICENSES/pdf-lib/tslib-CopyrightNotice.txt')).toContain('Microsoft');
+  const helper = dirname(require.resolve('pdf-lib/package.json'));
+  expect(read('LICENSES/pdf-lib/tslib-CopyrightNotice.txt')).toBe(
+    read(join(dirname(require.resolve('tslib/package.json')), 'CopyrightNotice.txt')),
+  );
+  expect(read('LICENSES/pdf-lib/tslib-1-CopyrightNotice.txt')).toBe(
+    read(join(helper, 'node_modules/tslib/CopyrightNotice.txt')),
+  );
   expect(zlib).toContain('This notice may not be removed or altered from any source distribution.');
   expect(read('electron-builder.yml')).toMatch(/from: LICENSES\s+to: licenses/);
 });
