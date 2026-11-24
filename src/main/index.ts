@@ -8981,8 +8981,10 @@ function start(): void {
     const screenId = manager.screenIdFor(e.sender.id);
     if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
     if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
-    if (liveLines.drew(mediaId, startedAt, screenId))
-      log.info(`A video drew on the screen “${nameOfScreen(screenId) ?? screenId}” after all: ${mediaId}`);
+    const changed = liveLines.drew(mediaId, startedAt, screenId);
+    log.info(
+      `A video drew on the screen “${nameOfScreen(screenId) ?? screenId}” after all: ${mediaId}${changed ? '' : ' (nothing named there)'}`,
+    );
     return null;
   });
   engine.onChange((state) => {

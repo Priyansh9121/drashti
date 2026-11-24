@@ -180,9 +180,20 @@ test('while the hall waits for a video’s first frame (the owner’s QA23-HALLD
       { timeout: 10_000 },
     );
     await expect.poll(() => shown(hall.page, OUT), { timeout: 60_000, message: 'it plays' }).toBe('VIDEO');
-    await expect(line, `the line goes once the hall draws it; Main: ${mainSaid()}`).toHaveCount(0, {
-      timeout: 10_000,
-    });
+    await expect(line, 'the line goes once the hall draws it')
+      .toHaveCount(0, { timeout: 10_000 })
+      .catch(async (e: unknown) => {
+        // What Main and the hall's videos said by then, for the failure's words.
+        const videos = await hall.page.evaluate(() =>
+          [...document.querySelectorAll('video')]
+            .map(
+              (v) =>
+                `${v.dataset['mediaId'] ?? '?'} ready ${String(v.readyState)} ${v.dataset['state'] ?? ''}`,
+            )
+            .join(' | '),
+        );
+        throw new Error(`${String(e)}\nMain: ${mainSaid()}\nThe hall's videos: ${videos}`);
+      });
     expect((await notices(win)).filter((n) => n.includes('could not'))).toEqual([]);
   } finally {
     await app.close();

@@ -42,7 +42,7 @@ import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
-import { hasNoPicture, tellCannotPlay, tellNoPicture, watchStart } from './no-picture';
+import { hasNoPicture, tellCannotPlay, tellNoPicture, tellPlaysHere, watchStart } from './no-picture';
 import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
 
@@ -109,6 +109,8 @@ function VideoSlot({
     const ready = () => {
       settled = true;
       reportVideoCue(layer.cueId, 'picture', true);
+      // Its first frame, as this page shows it: said, should this page have said it was starting (QA23-HALLDROP-1 (a)).
+      if (!layer.cueId) tellPlaysHere(mediaId, startedAt);
       if (privateCue.current) dispatch({ type: 'ready', key, at: engineNow() });
       else dispatch({ type: 'loaded', key });
     };
