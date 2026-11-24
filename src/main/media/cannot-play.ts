@@ -281,6 +281,11 @@ export class HallWords {
     return { outcome, changed };
   }
 
+  /** A screen said again that a showing could not play (as the first review fix had it: nothing kept). */
+  saidAgain(_mediaId: string, _startedAt: number, _screenId: string): void {
+    // Nothing kept yet.
+  }
+
   /** That screen drew the showing after all: no longer named. Whether LIVE's lines changed. */
   playsHere(mediaId: string, startedAt: number, screenId: string): boolean {
     return this.kept.get(`${mediaId}@${String(startedAt)}`)?.notOn.delete(screenId) ?? false;

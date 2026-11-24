@@ -4,7 +4,7 @@ import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../shared/no-picture';
 import { NOT_ON_SCREENS_MAX, notOnScreensNow, stillUp } from '../../shared/not-on-screens';
 import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport, textSlide } from '../engine/testing';
-import { type CannotPlayWhere, type Heard, HallWords } from './cannot-play';
+import { CannotPlay, type CannotPlayWhere, type Heard, HallWords } from './cannot-play';
 
 /*
  * A slide's video up but not playing (paused, or waiting for its click) that a screen could not play (alpha.23,
@@ -168,17 +168,78 @@ describe('a slide’s video up but not playing that a screen could not play (alp
     ]);
   });
 
-  it('MUST-2: a GPU process stopping clears the lines (every failed video loads again); failing again brings its line back, told once only', () => {
-    const { heard, lines, hallWords, pause } = setup();
+  it('MUST-5: a GPU process stopping changes no line: a damaged video failing again within the GPU’s grace is never heard, so its line stays until the element loaded again draws (plays-here)', () => {
+    const { heard, lines, hallWords, at, pause } = setup();
     expect(pause()).toBe(true);
     heard([HALL], 3);
-    expect(hallWords.gpuGone()).toBe(true);
-    expect(lines()).toEqual([]);
-    expect(hallWords.gpuGone()).toBe(false);
-    const again = heard([HALL], 3);
-    expect(again.outcome.notice).toBeNull();
-    expect(again.changed).toBe(true);
     expect(lines()).toHaveLength(1);
+    // Main's GPU stop: CannotPlay leaves a word within its grace to the GPU (log only); nothing reaches HallWords.
+    let now = 0;
+    const waiting: (() => void)[] = [];
+    const c = new CannotPlay({
+      now: () => now,
+      later: (_ms, run) => {
+        waiting.push(run);
+      },
+    });
+    c.gpuGone();
+    const went: string[] = [];
+    c.heard(
+      `onslide@${String(at)}`,
+      HALL,
+      () => went.push('heard'),
+      () => went.push('gpu'),
+    );
+    now = 1000;
+    for (const run of waiting.splice(0)) run();
+    expect(went).toEqual(['gpu']);
+    expect(lines()).toEqual([
+      'Not on the screen “Placeholder Hall”: “Placeholder slide video” could not play there.',
+    ]);
+    // The element loaded again draws after all: the line goes.
+    expect(hallWords.playsHere('onslide', at, 'screen-hall')).toBe(true);
+    expect(lines()).toEqual([]);
+  });
+
+  it('MUST-4: a first frame said during the wait, before Main keeps the showing: no notice, no line, and the log says it drew there after all', () => {
+    const { heard, lines, hallWords, at, pause } = setup();
+    expect(pause()).toBe(true);
+    // The slow verdict at 30.0 s, its first frame at 30.4 s, the end of Main's wait at 31.0 s.
+    expect(hallWords.playsHere('onslide', at, 'screen-hall')).toBe(false);
+    const { outcome, changed } = heard([HALL], NO_START_IN_TIME);
+    expect(outcome.notice).toBeNull();
+    expect(outcome.live).toBeNull();
+    expect(outcome.log).toEqual({
+      level: 'info',
+      line: 'A video could not play on the screen “Placeholder Hall” (no picture within 30 s while it still loaded): onslide; drew there after all, so nothing to tell',
+    });
+    expect(changed).toBe(false);
+    expect(lines()).toEqual([]);
+  });
+
+  it('MUST-4: drawn, then a new word from that screen: its mark goes, and it is told and named', () => {
+    const { heard, lines, hallWords, at, pause } = setup();
+    expect(pause()).toBe(true);
+    hallWords.playsHere('onslide', at, 'screen-hall');
+    hallWords.saidAgain('onslide', at, 'screen-hall');
+    expect(heard([HALL], 3).outcome.notice).toContain('could not play on the screen “Placeholder Hall”.');
+    expect(lines()).toEqual([
+      'Not on the screen “Placeholder Hall”: “Placeholder slide video” could not play there.',
+    ]);
+  });
+
+  it('MUST-4: one screen drew during the wait, the other did not: only the other is told and named', () => {
+    const { heard, lines, hallWords, at, pause } = setup();
+    expect(pause()).toBe(true);
+    hallWords.playsHere('onslide', at, 'screen-hall');
+    const { outcome } = heard([HALL, SIDE], 3);
+    expect(outcome.notice).toContain('could not play on the screen “Placeholder Side”.');
+    expect(outcome.notice).not.toContain('Placeholder Hall');
+    expect(lines()).toEqual([
+      'Not on the screen “Placeholder Side”: “Placeholder slide video” could not play there.',
+    ]);
+    // A mark is the showing's: another showing of the file is told as ever.
+    expect(hallWords.playsHere('onslide', at + 1, 'screen-side')).toBe(false);
   });
 
   it('MUST-2: a screen whose page loads again, or that goes, is no longer named; a renamed one is named as it is now', () => {
