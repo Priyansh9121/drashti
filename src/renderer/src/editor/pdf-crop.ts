@@ -18,28 +18,23 @@ export function cropPdfPages(doc: EditDoc, slideId: string, crop: CropRect, page
   )
     return doc;
   let index = 0;
-  let changed = false;
   const whole = crop.x === 0 && crop.y === 0 && crop.w === 1 && crop.h === 1;
-  const next: EditDoc = {
-    ...doc,
-    groups: doc.groups.map((group) => ({
-      ...group,
-      slides: group.slides.map((slide) => {
-        const at = index++;
-        if (
-          slide.documentPage?.ext !== 'pdf' ||
-          !(
-            pages === 'every' ||
-            (pages === 'this' ? slide.id === slideId : pages === 'odd' ? at % 2 === 0 : at % 2 === 1)
-          )
+  const groups = doc.groups.map((group) => {
+    const slides = group.slides.map((slide) => {
+      const at = index++;
+      if (
+        slide.documentPage?.ext !== 'pdf' ||
+        !(
+          pages === 'every' ||
+          (pages === 'this' ? slide.id === slideId : pages === 'odd' ? at % 2 === 0 : at % 2 === 1)
         )
-          return slide;
-        const { crop: was, ...ref } = slide.documentPage;
-        if (samePart(was, whole ? undefined : crop)) return slide;
-        changed = true;
-        return { ...slide, documentPage: { ...ref, ...(whole ? {} : { crop: { ...crop } }) } };
-      }),
-    })),
-  };
-  return changed ? next : doc;
+      )
+        return slide;
+      const { crop: was, ...ref } = slide.documentPage;
+      if (samePart(was, whole ? undefined : crop)) return slide;
+      return { ...slide, documentPage: { ...ref, ...(whole ? {} : { crop: { ...crop } }) } };
+    });
+    return slides.some((slide, n) => slide !== group.slides[n]) ? { ...group, slides } : group;
+  });
+  return groups.some((group, n) => group !== doc.groups[n]) ? { ...doc, groups } : doc;
 }

@@ -2721,7 +2721,10 @@ function start(): void {
     // A slide's picture as its slide shows it (a page cropped or turned: a22-x95nits); nothing else is taken.
     const shown = onSlide === undefined ? null : onSlideSchema.safeParse(onSlide);
     if (shown && !shown.success)
-      return { ok: false as const, message: 'Drashti could not tell how that slide shows its picture.' };
+      return {
+        ok: false as const,
+        message: 'Drashti could not tell how that slide shows its picture: choose Save picture… on it again.',
+      };
     const found = media.kindAndFile(mediaId);
     if (found?.kind !== 'image' || found.missing || found.path === '' || isAbsolute(found.path))
       return {
