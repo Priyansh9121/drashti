@@ -89,6 +89,39 @@ const EARLY_SAMPLES = SAMPLE_RATE * 2.5;
 const EARLY_STEP_MS = 500;
 const PAUSING_MS = 300;
 
+/*
+ * A growing phrase is cut off mid-speech, without the pause a whole phrase ends with, and the model, trained on whole
+ * phrases, then often hears only hum (cap-partials' probes of the committed synthetic clips: with half a second of
+ * quiet after the cut, a partial is heard from 0.8 s of sound in every clip; without it, at p95 only from 2.4 s and in
+ * some clips never before the final). So a partial is worked out with PAD of the room's own quiet after it (the quiet
+ * last heard between phrases; silence before any was heard). A final is never padded: it already ends with its pause,
+ * and its words are exactly as before. Of a padded partial, only its first words are shown, each ending at least
+ * MARGIN before the sound heard so far ends: a word still being spoken at the cut, or one heard in the quiet added,
+ * is the one most likely wrong (lead 2: the screens must not flash a word the final does not confirm; on the probes,
+ * 0.3 s leaves fewer such words than today's partials, with the first words as soon).
+ */
+const PAD_SAMPLES = SAMPLE_RATE * 0.5;
+const MARGIN_S = 0.3;
+
+/**
+ * A partial's sound: the phrase so far, then the room's quiet (repeated to PAD; silence when none was heard yet), never
+ * past the twelve seconds the helper takes at once.
+ */
+function padded(phrase: Int16Array, quiet: Int16Array): Int16Array {
+  const out = new Int16Array(Math.max(phrase.length, Math.min(SAMPLE_RATE * 12, phrase.length + PAD_SAMPLES)));
+  out.set(phrase);
+  if (quiet.length === 0) return out;
+  for (let at = phrase.length; at < out.length; at += quiet.length)
+    out.set(quiet.subarray(0, Math.min(quiet.length, out.length - at)), at);
+  return out;
+}
+
+/** How many of a padded partial's first words to show: each ended MARGIN before its sound so far (seconds) ends. */
+function wordsToShow(words: readonly { start: number; end: number }[], seconds: number): number {
+  const n = words.findIndex((w) => w.start >= seconds || w.end > seconds - MARGIN_S);
+  return n < 0 ? words.length : n;
+}
+
 function partialDue(g: Growing, stepMs: number, now: number): boolean {
   if (g.length < FIRST_SAMPLES || g.quietMs >= PAUSING_MS) return false;
   if (!g.shown && g.length <= EARLY_SAMPLES)
@@ -148,6 +181,8 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       let rest: NodeJS.Timeout | null = null;
       let retrySound: NodeJS.Timeout | null = null;
       let floor = 300;
+      // The room's quiet heard last between phrases (at most PAD), to pad a partial with.
+      let roomQuiet = new Int16Array(0);
       const finals: Growing[] = [];
       const end = (): void => {
         generation += 1;
@@ -218,7 +253,9 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         const mine = generation;
         working = true;
         piece.sentAt = Date.now();
-        const samples = joined(piece);
+        // A partial with the room's quiet after it; a final exactly as heard (its pause is its own).
+        const samples = growing ? padded(joined(piece), roomQuiet) : joined(piece);
+        const heardS = piece.length / SAMPLE_RATE;
         // Freeze the clock with the submitted samples: more microphone chunks can arrive during inference.
         const captured = piece.captured.slice();
         const clipAt = piece.startAt;
@@ -236,8 +273,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           const decoded = indicWords(asked.reply, chosen, clipAt, clipEndAt, (seconds, beginning) =>
             capturedAt(captured, seconds, beginning),
           );
+          // A padded partial shows only its first words that ended before the cut (above); a final, all of them.
+          const reply = parseIndicReply(asked.reply, chosen).words;
+          const kept = growing ? reply.slice(0, wordsToShow(reply, heardS)) : reply;
           // Noise or hum (one-syllable words heard unsure) is nothing heard: a growing phrase clears, a whole goes.
-          const words = noiseOnly(parseIndicReply(asked.reply, chosen).words) ? [] : decoded;
+          const words = noiseOnly(kept) ? [] : decoded.slice(0, kept.length);
           if (growing) {
             growing.partials += 1;
             growing.tookMs = asked.tookMs;
@@ -290,7 +330,14 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         const speech = isSpeech(level, floor, speechLevel);
         if (!speech) floor = floor * 0.95 + level * 0.05;
         if (!phrase) {
-          if (!speech) return;
+          if (!speech) {
+            const kept = new Int16Array(Math.min(PAD_SAMPLES, roomQuiet.length + samples.length));
+            const fromOld = kept.length - Math.min(kept.length, samples.length);
+            kept.set(roomQuiet.subarray(roomQuiet.length - fromOld), 0);
+            kept.set(samples.subarray(samples.length - (kept.length - fromOld)), fromOld);
+            roomQuiet = kept;
+            return;
+          }
           count += 1;
           phrase = {
             // The hub's phrase ids, as Whisper's engine gives them: s1, s2… in this listening.
