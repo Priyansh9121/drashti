@@ -6,7 +6,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NETWORK_ENV, networkOn } from './devices';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openAllSections,
+  openLibrary,
+  openSection,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { makeTestImage, makeTestTone, makeTestVideo, setWebmDuration } from './test-media';
 import { dispatch, row, slideWithVideos } from './time-bar-helpers';
 import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
@@ -16,7 +24,7 @@ import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
  * in 21", 22 Nov 2026), in Pro and Simple Mode: at his own 1410 × 900, at 1280 × 720 and at CI's 1024 × 645, with the
  * side columns at their least, the left one at its most and the live column at its most, and typical content in it
  * (long names, the network on, a playlist open, a slide's video playing, the background's paused, Audio's playlists and
- * a track, More tools open, a long notice; in Pro Mode the library's sheet open too), each part that scrolls at its top
+ * a track, every section under LIVE open, a long notice; in Pro Mode the library's sheet open too), each part that scrolls at its top
  * and at its end. In every one of them no control or heading is cut, lies over another (an action in a row's own room,
  * as Rename and Delete at its end, may, if none of the row's words or icons are under it), runs out of its column or is
  * under a notice, no words of Drashti's own are cut short (a name the operator gave may be, with an ellipsis), nothing
@@ -410,11 +418,13 @@ async function fill(app: ElectronApplication, win: Page, mode: 'pro' | 'simple')
   await expect(bg.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
   await bg.getByRole('button', { name: 'Pause' }).click();
   await expect(bg).toHaveAttribute('data-paused', 'true');
-  // The first audio playlist shown, with its track.
+  // The first audio playlist shown, with its track (Audio opened first: every section under LIVE is folded at the
+  // start, alpha.22).
+  await openSection(win, 'audio');
   await win.getByTestId('music-playlist').filter({ hasText: LONG.audio[0] }).click();
   await expect(win.getByTestId('music-track')).toBeVisible();
-  // More tools open (Pro Mode's).
-  if (mode === 'pro') await win.getByTestId('group-more-tools-toggle').click();
+  // Every section under LIVE open (Pro Mode's; More tools until alpha.22).
+  if (mode === 'pro') await openAllSections(win);
   if (mode === 'simple') {
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(win.getByTestId('simple-mode')).toBeVisible();

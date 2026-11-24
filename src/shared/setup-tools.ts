@@ -3,30 +3,31 @@
  * accesibble, … maybe somewhere we can access and remember easily, below lower thirds?", and his answer "A, More tools +
  * menu"): Show a Window…, Add a Video Input…, Picture in Picture… and QR code… each set up something to show that is not
  * a slide or a file, in a small window of its own. Their buttons were in the library's rows (Media's and Presentations')
- * until alpha.20; now they are in More tools, under Lower Thirds, the MIDI controller and OSC, each with its one line,
- * and in the menu bar's Tools menu (Pro Mode), with the Lower Thirds studio, the MIDI controller and OSC. A named video
+ * until alpha.20, then in More tools; since alpha.22 (the owner: "remove more tools, bring out all the features with
+ * collapsable") each is a section of its own under LIVE, with its one line, and they are in the menu bar's Tools menu
+ * (Pro Mode), with the Lower Thirds studio, the MIDI controller and OSC. A named video
  * input or window still shows in Media as one click to put it up: only the buttons that set them up moved.
  */
 
 /**
- * The setup tools, as More tools and the Tools menu name them: the four of Session 60, and Show a Stream Link… (alpha.20,
+ * The setup tools, as their sections and the Tools menu name them: the four of Session 60, and Show a Stream Link… (alpha.20,
  * the playback set's slice 8) after Show a Window….
  */
 export type SetupTool =
   'show-a-window' | 'show-a-stream-link' | 'add-video-input' | 'picture-in-picture' | 'qr-code';
 
-/** What the Tools menu opens: the four setup tools, then More tools' other tools. */
+/** What the Tools menu opens: the setup tools, then the Lower Thirds studio, the MIDI controller and OSC. */
 export type ToolsMenuItem = SetupTool | 'lower-thirds-studio' | 'midi' | 'osc';
 
 export interface SetupToolWords {
   id: SetupTool;
   /** Its button's and its menu item's words. */
   label: string;
-  /** What it does, in one line, above its button in More tools (as the MIDI controller's line is). */
+  /** What it does, in one line, above its button in its section under LIVE (as the MIDI controller's line is). */
   line: string;
 }
 
-/** In More tools' order, under Lower Thirds, the MIDI controller and OSC, and first in the Tools menu. */
+/** In their sections' order under LIVE (after Lower Thirds), and first in the Tools menu. */
 export const SETUP_TOOLS: readonly SetupToolWords[] = [
   {
     id: 'show-a-window',

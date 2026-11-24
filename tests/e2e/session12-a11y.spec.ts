@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, openSection, operatorPage, operatorReady } from './helpers';
 
 /*
  * Every panel and dialog Session 12 added passes the accessibility checks at
@@ -98,6 +98,7 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   await expectNoSeriousA11yIssues(win, 'the operator window with today’s line');
 
   // A message with a Samvat field, being changed.
+  await openSection(win, 'messages');
   const row = win.getByTestId('message-row').filter({ hasText: 'Placeholder today' });
   await row.getByRole('button', { name: 'Edit' }).click();
   await expect(win.getByRole('combobox', { name: 'How {date} is filled' })).toHaveValue('samvat:gu');

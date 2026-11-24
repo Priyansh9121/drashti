@@ -45,8 +45,6 @@ import { Columns, LeftColumn } from './Layout';
 import { Middle } from './Middle';
 import { JumpBox } from './JumpBox';
 import { FileMenu } from '../files/FileMenu';
-import { PanelGroup, PanelNote } from '../ui/Panel';
-import { Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { ScreensSaidNotice } from '../screens/ScreensSaid';
@@ -91,10 +89,19 @@ import { AudioGroup } from '../music/AudioGroup';
 import { SoundLevels } from '../sound/SoundLevels';
 import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
-import { MidiDialogHost, MidiTool } from '../midi/MidiTool';
-import { openTool, SetupTools } from './SetupTools';
+import { MidiDialogHost } from '../midi/MidiTool';
+import {
+  MidiSection,
+  OscSection,
+  openTool,
+  PictureInPictureSection,
+  QrCodeSection,
+  ShowAWindowSection,
+  StreamLinkSection,
+  VideoInputsSection,
+} from './SetupTools';
 import { askWhereFilesGo, DropNewDialog } from '../playlists/DropNewDialog';
-import { OscControl, OscTool } from '../osc/OscControl';
+import { OscControl } from '../osc/OscControl';
 import { connectOsc } from '../osc/osc-store';
 import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
 import { runBack } from './actions';
@@ -432,34 +439,26 @@ function ProApp({ info }: { info: AppInfo | null }) {
                 </>
               }
               rest={
-                /* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away
-                (Session 55: Props and Looks went). */
+                /* Session 26a's order: LIVE, Audio, the stage screen, messages, timers; then each tool in a section
+                of its own (alpha.22, the owner's "remove more tools, bring out all the features with collapsable"):
+                Lower Thirds, the tools that put something on the screens in the Tools menu's order, QR code, then
+                the MIDI controller and OSC. Every section is folded at each start (ui/Panel.tsx, LIVE_SECTION). */
                 <div className="divide-y divide-line">
                   {/* Audio, one part with Simple Mode's (Session 56). */}
-                  <AudioGroup platform={platform} />
+                  <AudioGroup platform={platform} section />
                   <StageMessageControl />
                   <MessagesPanel />
                   <TimersPanel />
-                  <PanelGroup
-                    title="More tools"
-                    icon={Wrench}
-                    remember="more-tools"
-                    defaultOpen={false}
-                    help="tools"
-                    data-testid="more-tools"
-                  >
-                    <LowerThirdsPanel nested platform={platform} />
-                    <div>
-                      <PanelNote>
-                        A MIDI controller’s pads can work Next, Back, Clear all and Black-out.
-                      </PanelNote>
-                      <MidiTool />
-                      <OscTool />
-                    </div>
-                    {/* Show a Window…, Add a Video Input…, Picture in Picture… and QR code… (Session 60, x36: the
-                      owner's "A, More tools + menu"), each with its line; the Tools menu opens them too. */}
-                    <SetupTools />
-                  </PanelGroup>
+                  <LowerThirdsPanel platform={platform} />
+                  {/* Each with its line and the button that opens its window (operator/SetupTools.tsx); the Tools
+                  menu opens them too. */}
+                  <ShowAWindowSection />
+                  <StreamLinkSection />
+                  <VideoInputsSection />
+                  <PictureInPictureSection />
+                  <QrCodeSection />
+                  <MidiSection />
+                  <OscSection />
                 </div>
               }
             />
@@ -489,7 +488,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StreamLinkDialog />
       <VideoInputDialog platform={platform} />
       <PipDialog />
-      {/* More tools' MIDI controller, or Tools › MIDI Controller… (Session 60, x36). */}
+      {/* The MIDI controller's section, or Tools › MIDI Controller… (Session 60, x36). */}
       <MidiDialogHost />
       {/* Files dropped with no playlist open: a new playlist or folder for them (Session 60, x36). */}
       <DropNewDialog />

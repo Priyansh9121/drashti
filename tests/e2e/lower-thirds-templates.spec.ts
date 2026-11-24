@@ -6,7 +6,7 @@ import { LOWER_THIRD_TEMPLATES } from '../../src/shared/lower-third-templates';
 import { shownLines } from '../../src/shared/lower-thirds';
 import {
   launchApp,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -36,9 +36,9 @@ async function start(): Promise<{ app: ElectronApplication; win: Page; out: Page
   return { app, win, out };
 }
 
-/** The studio, opened from the Lower Thirds panel as the operator would (More tools), at CI's window size. */
+/** The studio, opened from the Lower Thirds panel as the operator would (its section under LIVE), at CI's window size. */
 async function openStudio(app: ElectronApplication, win: Page): Promise<Page> {
-  await openMoreTools(win);
+  await openSection(win, 'lower-thirds');
   const panel = win.getByTestId('lower-thirds-panel');
   await panel.scrollIntoViewIfNeeded();
   await panel.getByTestId('lower-third-studio').click();

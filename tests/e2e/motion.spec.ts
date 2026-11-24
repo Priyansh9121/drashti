@@ -349,7 +349,8 @@ async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> 
   await openLibrary(win);
   await win.getByTestId('library-tab-media').click();
   await still(win, 'a tab chosen');
-  await win.getByTestId('group-more-tools-toggle').click();
+  // A section under LIVE opening (Audio, a group as More tools was until alpha.22; folded at the start).
+  await win.getByTestId('group-audio-toggle').click();
   await still(win, 'a panel opening');
 }
 
@@ -518,8 +519,8 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   await win.getByTestId('library-tab-media').click();
   expect((await started).some((a) => a.what === 'underline' && a.ms === 240)).toBe(true);
 
-  // A folded panel's insides arrive as it opens.
-  await win.getByTestId('group-more-tools-toggle').click();
+  // A folded panel's insides arrive as it opens (Audio: every section under LIVE is folded at the start, alpha.22).
+  await win.getByTestId('group-audio-toggle').click();
   const body = win.locator('[data-lively="open"]').first();
   await expect(body).toBeVisible();
   expect(await body.evaluate((el) => getComputedStyle(el).animationName)).toBe('lively-open');

@@ -27,7 +27,8 @@ import {
   letTimePass,
   lockPage,
   openLibrary,
-  openMoreTools,
+  LIVE_SECTIONS,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -198,8 +199,11 @@ async function running(win: Page) {
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   // Its slides are rows under its name (Session 55).
   await slidesOf(win, KIRTAN).nth(1).click();
-  // Exactly Start: Countdown to the start… (Session 55) is in the panel too.
+  // Exactly Start: Countdown to the start… (Session 55) is in the panel too. Timers and Messages opened first, as the
+  // operator would (alpha.22: every section under LIVE is folded at the start).
+  await openSection(win, 'timers');
   await win.getByTestId('timers').getByRole('button', { name: 'Start', exact: true }).click();
+  await openSection(win, 'messages');
   await win.getByTestId('messages').getByRole('textbox', { name: 'plate' }).fill('12');
   await win.getByTestId('messages').getByRole('button', { name: 'Show' }).click();
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');
@@ -860,7 +864,6 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
     ...NETWORK_ENV,
   });
   const win = await operatorPage(app);
-  await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1600, height: 900 });
   await running(win);
@@ -994,7 +997,8 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
       value: () => Promise.resolve(access),
     });
   });
-  await win.getByTestId('more-tools').getByTestId('open-midi').click();
+  await openSection(win, 'midi');
+  await win.getByTestId('section-midi').getByTestId('open-midi').click();
   await win.getByTestId('midi-device').selectOption('Placeholder pad');
   await shot(win, 'midi-dialog');
   await win.getByRole('button', { name: 'Close MIDI' }).click();
@@ -1072,7 +1076,6 @@ test('Books, timers in the running order, Samvat and tithi (Session 12; the idle
     DRASHTI_EXTRA_DISPLAYS: '2',
   });
   const win = await operatorPage(app);
-  await openMoreTools(win);
   await operatorReady(win);
   await showExtras(win);
   await win.setViewportSize({ width: 1600, height: 900 });
@@ -1340,7 +1343,6 @@ test('music, markers, scheduled backups, and Simple Mode with music (Session 14)
   test.setTimeout(240_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  await openMoreTools(win);
   await win.setViewportSize({ width: 1920, height: 1080 });
   await operatorReady(win);
   await running(win);
@@ -1363,6 +1365,7 @@ test('music, markers, scheduled backups, and Simple Mode with music (Session 14)
   );
 
   // The Music panel, playing.
+  await openSection(win, 'audio');
   const music = win.getByTestId('music-panel');
   await music.scrollIntoViewIfNeeded();
   await music.getByTestId('music-play').click();
@@ -1682,6 +1685,7 @@ test('Import from a Link, YouTube: the paste field, video and Audio progress, an
   await shot(first.win, 'import-link-youtube-going');
   await first.win.getByTestId('link-stop').click();
   await expect.poll(async () => (await linkView(first.win)).phase).toBe('stopped');
+  await openSection(first.win, 'audio');
   await first.win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
   await first.win.getByTestId('link-text').fill('https://youtu.be/AAAAAAAAAAA');
   await shot(first.win, 'import-link-youtube-mp3');
@@ -2022,7 +2026,7 @@ test('Lower Thirds: the panel with one up, and the studio finding an animation (
     });
     if (!made.ok) throw new Error(made.message);
   }, DEFAULT_LOWER_THIRD_LOOK);
-  await openMoreTools(win);
+  await openSection(win, 'lower-thirds');
   const panel = win.getByTestId('lower-thirds-panel');
   await panel.scrollIntoViewIfNeeded();
   const row = panel.getByTestId('lower-third-row').filter({ hasText: 'Placeholder speaker' });
@@ -2126,7 +2130,7 @@ test('Zoom, both ways: the window for Zoom with the stream’s picture, and Show
     await w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     w.showInactive();
   });
-  await openMoreTools(win);
+  await openSection(win, 'show-a-window');
   await win.getByTestId('show-a-window').click();
   const picker = win.getByTestId('window-picker');
   const choice = picker.getByTestId('window-choice').filter({ hasText: 'Placeholder meeting' });
@@ -2206,6 +2210,7 @@ test('stage timer layouts: New from a Template…, a timer box’s settings, the
 
   // New from a Template…, from the Stage screen panel's Edit layout…: Countdown chosen, its length and its
   // timer's name as it offers them.
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await expect(editor).toBeVisible();
@@ -2272,6 +2277,7 @@ test('the time bar: under LIVE in Pro Mode and in Simple Mode, Music’s own, an
     },
     { clipId, toneId },
   );
+  await openSection(win, 'audio');
   const music = win.getByTestId('music-panel');
   await music.scrollIntoViewIfNeeded();
   await music.getByTestId('music-play').click();
@@ -3118,10 +3124,10 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
 /*
  * The Drashti Manual's own pictures (x37, Session 60; the owner's "A, new Manual"), named manual-*.png, for its chapters
  * (docs/manual/): the manual itself and the guides from Help, the How loud lines with Video muted, a timer's look for
- * the audience, a new message's look, More tools opened with Picture in Picture…, QR code… and OSC control…, the File
+ * the audience, a new message's look, the tools' sections under LIVE with Picture in Picture…, QR code… and OSC control…, the File
  * menu's Opening…, Drop Folder… and Events Out…, and the library's Export kirtan bundle…. Placeholder content only.
  */
-test('the Drashti Manual’s pictures: the manual, the guides, the levels, a timer’s and a message’s look, More tools and its tools, the File menu’s settings and a kirtan bundle (x37)', async () => {
+test('the Drashti Manual’s pictures: the manual, the guides, the levels, a timer’s and a message’s look, the tools’ sections and their tools, the File menu’s settings and a kirtan bundle (x37)', async () => {
   test.setTimeout(240_000);
   // A placeholder computer name: Report a Problem's review names the computer (alpha.21's picture run showed this
   // Mac's own name there; the OCR read-back caught it).
@@ -3183,21 +3189,34 @@ test('the Drashti Manual’s pictures: the manual, the guides, the levels, a tim
   await form.getByRole('button', { name: 'Cancel' }).click();
   await expect(form).toHaveCount(0);
 
-  // More tools opened, then three of its tools.
-  await openMoreTools(win);
-  const more = win.getByTestId('more-tools');
-  await more.scrollIntoViewIfNeeded();
-  await part(win, 'manual-more-tools', [more]);
+  // The tools' sections under LIVE (alpha.22: More tools went), folded as at a start but Video inputs, opened; in a
+  // window tall enough to show them all at once. Then three of the tools, each from its own section.
+  for (const section of LIVE_SECTIONS) {
+    const toggle = win.getByTestId(`group-${section}-toggle`);
+    if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  }
+  await openSection(win, 'video-inputs');
+  await win.setViewportSize({ width: 1280, height: 1100 });
+  const firstTool = win.getByTestId('lower-thirds-panel');
+  const lastTool = win.getByTestId('section-osc');
+  await lastTool.scrollIntoViewIfNeeded();
+  await expect(firstTool).toBeInViewport({ ratio: 1 });
+  await part(win, 'manual-more-tools', [firstTool, lastTool]);
+  await win.setViewportSize({ width: 1280, height: 720 });
 
   // The new received-link tool: an unsubmitted placeholder only, no connection or stream.
+  await openSection(win, 'show-a-stream-link');
   await win.getByTestId('show-a-stream-link').click();
   const streamLink = win.getByTestId('stream-link-dialog');
   await streamLink.getByTestId('stream-link-text').fill('https://example.org/placeholder.m3u8');
   await expect(streamLink.getByTestId('stream-link-show')).toBeEnabled();
   await dialogShot('stream-link-dialog', 'manual-stream-link');
 
+  await openSection(win, 'picture-in-picture');
   await win.getByTestId('pip-open').click();
   await dialogShot('pip-dialog', 'manual-pip');
+  await openSection(win, 'qr-code');
   await win.getByTestId('qr-code-open').click();
   const qr = win.getByTestId('qr-dialog');
   await qr.getByRole('textbox', { name: 'Link or words' }).fill('https://example.org/placeholder');

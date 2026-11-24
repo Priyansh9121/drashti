@@ -10,6 +10,7 @@ import {
   dropFiles,
   launchApp,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
@@ -166,6 +167,7 @@ test('a calendar loads; today shows in the operator window, on the stage and in 
     });
     if (!made.ok) throw new Error(made.message);
   });
+  await openSection(win, 'messages');
   const row = win.getByTestId('message-row').filter({ hasText: 'Placeholder today' });
   await expect(row).toContainText('today’s Samvat date (English)');
   await row.getByRole('button', { name: 'Show' }).click();

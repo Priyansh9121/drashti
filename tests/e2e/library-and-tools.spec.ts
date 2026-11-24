@@ -1,13 +1,13 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
-import type { PageGlobals } from './helpers';
+import type { LiveSection, PageGlobals } from './helpers';
 import {
   chooseMenuItem,
   closeLibrary,
   launchApp,
   openLibrary,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   windowShowing,
@@ -21,15 +21,27 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Cmd+F), and "we want to keep the QR code as well, but somewhere accesibble, … maybe somewhere we can access and
  * remember easily, below lower thirds?" (his answer: "A, More tools + menu"): Show a Window…, Add a Video Input…,
  * Picture in Picture… and QR code… in More tools under Lower Thirds and the MIDI controller, each with its line, and in
- * a Tools menu in the menu bar (Pro Mode); the library's rows keep Import… and New…. At CI's window size.
+ * a Tools menu in the menu bar (Pro Mode); the library's rows keep Import… and New…. Since alpha.22 (the owner: "remove
+ * more tools, bring out all the features with collapsable"), each is a section of its own under LIVE, after Lower
+ * Thirds and before the MIDI controller, folded at the start. At CI's window size.
  */
 
-const TOOLS: readonly { testId: string; name: string; dialog: string }[] = [
-  { testId: 'show-a-window', name: 'Show a Window…', dialog: 'window-picker' },
-  { testId: 'show-a-stream-link', name: 'Show a Stream Link…', dialog: 'stream-link-dialog' },
-  { testId: 'add-video-input', name: 'Add a Video Input…', dialog: 'video-input-dialog' },
-  { testId: 'pip-open', name: 'Picture in Picture…', dialog: 'pip-dialog' },
-  { testId: 'qr-code-open', name: 'QR code…', dialog: 'qr-dialog' },
+const TOOLS: readonly { testId: string; name: string; dialog: string; section: LiveSection }[] = [
+  { testId: 'show-a-window', name: 'Show a Window…', dialog: 'window-picker', section: 'show-a-window' },
+  {
+    testId: 'show-a-stream-link',
+    name: 'Show a Stream Link…',
+    dialog: 'stream-link-dialog',
+    section: 'show-a-stream-link',
+  },
+  {
+    testId: 'add-video-input',
+    name: 'Add a Video Input…',
+    dialog: 'video-input-dialog',
+    section: 'video-inputs',
+  },
+  { testId: 'pip-open', name: 'Picture in Picture…', dialog: 'pip-dialog', section: 'picture-in-picture' },
+  { testId: 'qr-code-open', name: 'QR code…', dialog: 'qr-dialog', section: 'qr-code' },
 ];
 
 /** The menu bar's top-level menus, and the Tools menu's items (not its separators), by their words. */
@@ -96,7 +108,7 @@ test('the Library button: there while the library is closed, gone while it is op
   await app.close();
 });
 
-test('the setup tools in More tools and a Tools menu: Show a Window…, Add a Video Input…, Picture in Picture… and QR code…, each with its line under Lower Thirds and the MIDI controller; the library keeps Import… and New…; none in Simple Mode', async () => {
+test('the setup tools in their own sections under LIVE and a Tools menu: Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture… and QR code…, each folded at the start, then with its line, after Lower Thirds and before the MIDI controller; the library keeps Import… and New…; none in Simple Mode', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1', DRASHTI_TEST_WINDOW_STANDIN: '1' });
   const win = await operatorPage(app);
@@ -112,31 +124,34 @@ test('the setup tools in More tools and a Tools menu: Show a Window…, Add a Vi
   for (const tool of TOOLS) await expect(win.getByTestId(tool.testId)).toHaveCount(0);
   await closeLibrary(win);
 
-  // More tools: the setup tools (Show a Stream Link… since alpha.20) under Lower Thirds and the MIDI controller, each with
-  // its line, each opening its window.
-  await openMoreTools(win);
-  const more = win.getByTestId('more-tools');
-  const setup = more.getByTestId('setup-tools');
-  await setup.scrollIntoViewIfNeeded();
-  await expect(setup.getByRole('button')).toHaveText(TOOLS.map((t) => t.name));
-  const order = await win.evaluate(() => {
-    const top = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().top ?? -1;
-    return [
-      top('[data-testid="lower-thirds-panel"]'),
-      top('[data-testid="open-midi"]'),
-      top('[data-testid="setup-tools"]'),
-    ];
-  });
-  expect(order[0] ?? -1, 'Lower Thirds above the MIDI controller').toBeLessThan(order[1] ?? -1);
-  expect(order[1] ?? -1, 'the setup tools under the MIDI controller').toBeLessThan(order[2] ?? -1);
+  // Each setup tool in its own section under LIVE (alpha.22; More tools' from alpha.20), after Lower Thirds and before
+  // the MIDI controller: folded at the start, then opened, its line and its button, which opens its window.
+  const live = win.getByRole('complementary', { name: 'Live', exact: true });
+  await expect(win.getByTestId('more-tools')).toHaveCount(0);
+  const order = await win.evaluate(
+    (ids) =>
+      ids.map((id) => document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect().top ?? null),
+    ['lower-thirds-panel', ...TOOLS.map((t) => `section-${t.section}`), 'section-midi'],
+  );
+  expect(order, 'every section there').not.toContain(null);
+  for (let i = 1; i < order.length; i++)
+    expect(
+      order[i - 1] ?? 0,
+      'Lower Thirds, the setup tools in order, then the MIDI controller',
+    ).toBeLessThan(order[i] ?? 0);
   for (const tool of TOOLS) {
-    const line = setup.getByTestId(`${tool.testId}-line`);
+    const section = live.getByTestId(`section-${tool.section}`);
+    await expect(win.getByTestId(`group-${tool.section}-toggle`)).toHaveAttribute('aria-expanded', 'false');
+    await expect(section.getByTestId(tool.testId)).toHaveCount(0);
+    await openSection(win, tool.section);
+    await expect(section.getByTestId(tool.testId)).toHaveText(tool.name);
+    const line = section.getByTestId(`${tool.testId}-line`);
     await expect(line).toBeVisible();
     expect((await line.innerText()).trim().length, `${tool.name}: its line`).toBeGreaterThan(20);
-    await setup.getByTestId(tool.testId).click();
+    await section.getByTestId(tool.testId).click();
     await opensAndShuts(win, tool.dialog);
   }
-  await expectNoSeriousA11yIssues(win, 'More tools with the setup tools', '[data-testid="more-tools"]');
+  await expectNoSeriousA11yIssues(win, 'the setup tools’ sections, open', '[data-testid="live-rest"]');
 
   // The Tools menu, after View and before Window (Mac and Windows): the setup tools, then Lower Thirds, MIDI and OSC.
   const { bar, tools } = await menus(app);

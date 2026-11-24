@@ -10,7 +10,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 
 **How:**
 
-1. Choose the **Layout** every stage screen shows (**Standard** to begin with).
+1. Press **Stage screen** under LIVE to open it, then choose the **Layout** every stage screen shows (**Standard** to begin with).
 2. Choose the **Video input** a layout's live video box shows, if it has one.
 3. Look at the stage's small picture beside it: it shows what the stage sees.
 
@@ -70,7 +70,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 
 **How:**
 
-1. Name a video input first (**Add a Video Input…**, in More tools).
+1. Name a video input first (**Add a Video Input…**, in the **Video inputs** section).
 2. In **Stage screen**, choose it under **Video input**.
 3. Use a layout with **The video input, live** in it, such as **Pravachan and anchoring**.
 
