@@ -8,6 +8,7 @@ import {
   playbackPosition,
   SOUND_LIMITS,
 } from '../../../shared/media';
+import { type SilentGraph, StreamPictureClock } from './cue-clock';
 import { catchUpLeftMs, type PlaybackCatchUp, setPictureClock, startPlayback } from './playback';
 
 /*
@@ -1450,5 +1451,98 @@ describe("a page's clock for its pictures (a22-x86sync, QA23-X86SYNC-1: only the
     expect(v.muted).toBe(true);
     expect(at).toBeGreaterThan(0.9);
     stop();
+  });
+});
+
+describe("the stream's picture page: a slide's video played again on the same element (a22-review-x86sync, SlideView's retry)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-10-06T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    setPictureClock(null);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** A slide's video element, as the page's picture clock marks it. */
+  class SlideVideo extends FakeMedia {
+    dataset: Record<string, string> = {};
+  }
+
+  /** The page's silent graph: each source it makes, and where that source goes; it runs a moment after it is asked. */
+  function silentGraph() {
+    const sink = { name: 'silent sink' };
+    const made: { to: unknown[] }[] = [];
+    const context = Object.assign(new EventTarget(), {
+      state: 'running',
+      suspended: 0,
+      createMediaElementSource() {
+        const source = {
+          to: [] as unknown[],
+          connect(node: unknown) {
+            source.to.push(node);
+            return node;
+          },
+          disconnect() {
+            source.to = [];
+          },
+        };
+        made.push(source);
+        return source;
+      },
+      suspend() {
+        context.suspended++;
+        context.state = 'suspended';
+        return Promise.resolve();
+      },
+      resume() {
+        setTimeout(() => {
+          context.state = 'running';
+          context.dispatchEvent(new Event('statechange'));
+        }, 20);
+        return Promise.resolve();
+      },
+    });
+    const graph = { context: context as unknown as AudioContext, sink: sink as unknown as AudioNode };
+    return { sink, made, context, graph: (): SilentGraph => graph };
+  }
+
+  it('is taken again at each new try, while the stream records and after it stops, through its one source', () => {
+    const g = silentGraph();
+    const clock = new StreamPictureClock(g.graph);
+    setPictureClock((el) => clock.take(el));
+    clock.setCapturing(true);
+    const v = new SlideVideo(10);
+    const play = (attempt: number) =>
+      startPlayback(v as unknown as HTMLMediaElement, { mediaId: 'clip', attempt, startedAt: Date.now() });
+    // Its first try, while recording: pulled by the graph.
+    let stop = play(0);
+    runFor(v, 300);
+    expect(v.muted).toBe(false);
+    expect(v.dataset['cueClock']).toBe('stream');
+    // A try again on the same element (SlideView.tsx: a GPU process restart, or its file landing).
+    stop();
+    expect(v.muted).toBe(true);
+    stop = play(1);
+    runFor(v, 300);
+    expect(v.muted).toBe(false);
+    expect(g.made[0]?.to).toEqual([g.sink]);
+    stop();
+    // The recording stops; another try: still pulled, never left on the graph's idle pace.
+    clock.setCapturing(false);
+    stop = play(2);
+    runFor(v, 300);
+    expect(v.muted).toBe(false);
+    expect(v.dataset['cueClock']).toBe('stream');
+    expect(g.made).toHaveLength(1);
+    expect(v.currentTime).toBeGreaterThan(0.2);
+    stop();
+    expect(v.muted).toBe(true);
+    expect(clock.holding).toBe(0);
+    expect(g.context.state).toBe('suspended');
   });
 });
