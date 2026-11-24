@@ -17,7 +17,7 @@ import {
  * never refused), remembered on this computer. Every stage screen shows them at once, wherever the message shows
  * (the Standard stage screen, the operator's preview, a layout's message box, the banner, Stage off's picture). The
  * flash keeps its rhythm, with white (amber for a white box), its words readable in both. A message sent with no
- * colours (a phone, the API, Simple Mode) looks as it always did. Placeholder words only.
+ * colours (a phone, the API) looks as it always did. Placeholder words only.
  */
 
 const SCREENS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -84,6 +84,8 @@ test('the stage message in the colours chosen, a preset or its own, on every sta
   const stageId = await setUpScreen(win, 'Stage one', 1);
   await makeStage(win, 'Stage one');
   const stage = await outputFor(app, stageId);
+  // The Stage screen section under LIVE, folded at each start (alpha.22).
+  await openSection(win, 'stage');
   let panel = win.getByTestId('stage-message-control');
   const text = () => panel.getByRole('textbox', { name: 'Message for the stage' });
   const choice = () => panel.getByRole('combobox', { name: 'Colours of the stage message' });
@@ -150,6 +152,7 @@ test('the stage message in the colours chosen, a preset or its own, on every sta
   app = (await launchApp(SCREENS, launched.userData)).app;
   win = await operatorPage(app);
   await operatorReady(win);
+  await openSection(win, 'stage');
   panel = win.getByTestId('stage-message-control');
   await expect(choice()).toHaveValue('own');
   await expect(panel.getByLabel('Box colour of the stage message')).toHaveValue('#ffffff');
@@ -157,7 +160,7 @@ test('the stage message in the colours chosen, a preset or its own, on every sta
   await app.close();
 });
 
-test('a stage message sent with no colours, by the API as a phone or Simple Mode sends it, shows amber with black words, its flash white', async () => {
+test('a stage message sent with no colours, as a phone or the API sends it, shows amber with black words, its flash white', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp(SCREENS);
   const win = await operatorPage(app);
@@ -166,6 +169,7 @@ test('a stage message sent with no colours, by the API as a phone or Simple Mode
   const stageId = await setUpScreen(win, 'Stage one', 1);
   await makeStage(win, 'Stage one');
   const stage = await outputFor(app, stageId);
+  await openSection(win, 'stage');
   // The operator's own choice is not what a message sent from elsewhere shows.
   await win
     .getByTestId('stage-message-control')
