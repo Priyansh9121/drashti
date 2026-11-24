@@ -24,6 +24,13 @@ import { dispatch } from './time-bar-helpers';
  * And the measure must see an offset when there is one: the video's own sound delay of +200 ms (Sound and picture…),
  * set half-way through the same recording, must come out 0.2 s later, within the same limit. Nothing is streamed
  * anywhere; Mac and Windows both.
+ *
+ * And from second to second (a22-x86sync): a median cannot see a picture that wanders. On CI's Mac x86's picture page
+ * let its pictures fall behind and jumped them (a22-fade2's S6 baseline): the beeps were exactly a second apart while
+ * the flashes came 0.63 to 2.1 s apart, 8 of 29 skipped, each beep 0.26 s before to 0.39 s after its flash, all with
+ * a median inside the limit. So each half must also hold every flash (none skipped: each the next second's), and each
+ * beep must be within the same limit of the half's own median: the hall's rule for each moment, plus the recording's
+ * frame.
  */
 
 const ffmpeg = testFfmpeg();
@@ -199,10 +206,24 @@ test('the stream’s own picture and sound stay together in what it records, acr
         offsets.length,
         `${part.why}: flashes with their beeps (${String(part.flashes.length)} flashes, ${String(beeps.length)} beeps in all)`,
       ).toBeGreaterThanOrEqual(6);
+      const middle = median(offsets) ?? 9;
       expect(
-        Math.abs((median(offsets) ?? 9) - part.trail),
+        Math.abs(middle - part.trail),
         `${part.why}: the recording’s sound ${String(part.trail)} s after its picture (each beep after its flash, ms: ${ms})`,
       ).toBeLessThanOrEqual(LIMIT);
+      // Every flash, each the next second's: a picture that fell behind and was jumped skips one (2 s apart) or
+      // comes a moment early or late (a22-x86sync).
+      const gaps = part.flashes.slice(1).map((t, i) => t - (part.flashes[i] ?? t));
+      const gapsMs = gaps.map((g) => (g * 1000).toFixed(0)).join(' ');
+      expect(
+        gaps.filter((g) => Math.abs(g - 1) > LIMIT),
+        `${part.why}: each flash a second after the one before (ms between flashes: ${gapsMs})`,
+      ).toEqual([]);
+      // And each beep with its own flash, not only the median: within the limit of the half's own offset.
+      expect(
+        offsets.filter((o) => Math.abs(o - middle) > LIMIT).map((o) => Math.round(o * 1000)),
+        `${part.why}: each beep within ${String(Math.round(LIMIT * 1000))} ms of the half’s median offset (${String(Math.round(middle * 1000))} ms; each, ms: ${ms})`,
+      ).toEqual([]);
     }
   } finally {
     await app.close();
