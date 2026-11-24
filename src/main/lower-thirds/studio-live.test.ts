@@ -5,9 +5,9 @@ import {
   type CapturedImage,
   hallScreenOf,
   LIVE_EVERY_MS,
+  LIVE_TAKE_LIMIT_MS,
   LIVE_WIDTH,
   livePictureOf,
-  liveRectOf,
   StudioLive,
 } from './studio-live';
 
@@ -113,23 +113,55 @@ describe('StudioLive', () => {
     live.watch(false);
   });
 
-  it('lets go of what taking them held as it stops, and only then', async () => {
-    const release = vi.fn();
-    const live = new StudioLive({
-      take: () => Promise.resolve(picture(1)),
-      send: () => undefined,
-      release,
-      log: () => undefined,
-    });
-    live.watch(false);
-    expect(release).not.toHaveBeenCalled();
+  it('a still that never comes counts as none after LIVE_TAKE_LIMIT_MS, and Live carries on', async () => {
+    let n = 0;
+    const take = vi.fn(() =>
+      ++n === 1 ? new Promise<StudioLivePicture | null>(() => undefined) : Promise.resolve(picture(n)),
+    );
+    const { live, sent } = make(take);
     live.watch(true);
+    await vi.advanceTimersByTimeAsync(LIVE_TAKE_LIMIT_MS - 1);
+    expect(sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sent).toEqual([null]);
+    await vi.advanceTimersByTimeAsync(LIVE_EVERY_MS);
+    expect(sent).toEqual([null, picture(2)]);
+    live.watch(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('takes nothing while the studio is minimized, one at once when it comes back; closed, nothing is wanted', async () => {
+    const take = vi.fn(() => Promise.resolve(picture(1)));
+    const { live } = make(take);
+    live.watch(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(take).toHaveBeenCalledTimes(1);
+    live.pause(true);
+    expect(live.watching).toBe(false);
+    await vi.advanceTimersByTimeAsync(LIVE_EVERY_MS * 5);
+    expect(take).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    live.pause(false);
+    expect(live.watching).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(take).toHaveBeenCalledTimes(2);
+    // Another backdrop chosen while minimized: nothing when it comes back.
+    live.pause(true);
+    live.watch(false);
+    live.pause(false);
     await vi.advanceTimersByTimeAsync(LIVE_EVERY_MS * 3);
-    expect(release).not.toHaveBeenCalled();
-    live.watch(false);
-    expect(release).toHaveBeenCalledTimes(1);
-    live.watch(false);
-    expect(release).toHaveBeenCalledTimes(1);
+    expect(take).toHaveBeenCalledTimes(2);
+    // Closed while minimized: the next studio's Live is taken at once.
+    live.watch(true);
+    await vi.advanceTimersByTimeAsync(0);
+    live.pause(true);
+    live.stop();
+    expect(live.watching).toBe(false);
+    live.watch(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(take).toHaveBeenCalledTimes(4);
+    live.stop();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('started again after a stop, it takes one at once', async () => {
@@ -165,35 +197,9 @@ describe('where Live takes its picture', () => {
     expect(hallScreenOf(screens, roleOf, () => true)).toBe('s-hall-a');
     expect(hallScreenOf(screens, roleOf, (id) => id !== 's-hall-a')).toBe('s-hall-b');
     expect(hallScreenOf(screens, roleOf, (id) => id === 's-hall2' || id === 's-stage')).toBe('s-hall2');
-    // None showing here (none set up, or only on nodes): LIVE in the operator window instead.
+    // None showing here (none set up, a single display, or only on nodes): no still ("No live picture to show").
     expect(hallScreenOf(screens, roleOf, (id) => id === 's-stage')).toBeNull();
     expect(hallScreenOf([], roleOf, () => true)).toBeNull();
-  });
-
-  it('LIVE’s picture as the operator window shows it: the scene inside LIVE’s box and the window, in whole points', () => {
-    const view = { width: 1024, height: 645 };
-    const box = { x: 10, y: 40, width: 402, height: 228 };
-    expect(liveRectOf({ box, scene: { x: 12, y: 42, width: 398, height: 224 }, view })).toEqual({
-      x: 12,
-      y: 42,
-      width: 398,
-      height: 224,
-    });
-    // Zoomed in (the scene larger than its box): only what the box shows.
-    expect(liveRectOf({ box, scene: { x: -200, y: -100, width: 1200, height: 675 }, view })).toEqual({
-      x: 10,
-      y: 40,
-      width: 402,
-      height: 228,
-    });
-    // Scrolled partly out of the window: the part in it; wholly out, or too small: none.
-    expect(
-      liveRectOf({ box: { ...box, y: -100 }, scene: { x: 10, y: -100, width: 402, height: 228 }, view }),
-    ).toEqual({ x: 10, y: 0, width: 402, height: 128 });
-    expect(liveRectOf({ box: { ...box, y: 700 }, scene: { ...box, y: 700 }, view })).toBeNull();
-    expect(liveRectOf({ box: { ...box, width: 4 }, scene: { ...box, width: 4 }, view })).toBeNull();
-    expect(liveRectOf(null)).toBeNull();
-    expect(liveRectOf({ box: 'x' })).toBeNull();
   });
 
   it('a still is a JPEG at most LIVE_WIDTH wide, never wider than taken; an empty picture is none', () => {
@@ -213,7 +219,7 @@ describe('where Live takes its picture', () => {
       at: 5,
     });
     expect(asked).toEqual([LIVE_WIDTH]);
-    expect(livePictureOf(image(640, 360), 'live', 6)?.source).toBe('live');
+    expect(livePictureOf(image(640, 360), 'screen', 6)?.at).toBe(6);
     expect(asked).toEqual([LIVE_WIDTH, 640]);
     expect(livePictureOf(image(1920, 1080, true), 'screen', 7)).toBeNull();
   });

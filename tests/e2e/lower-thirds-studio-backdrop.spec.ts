@@ -24,8 +24,8 @@ import { makeTestImage } from './test-media';
  * animation should be the one thats live, meaning a video is live, or wallpaper, give wallpaper a default and aother
  * option of live as well to see how lower thirds looks"): Wallpaper (the default: the hall's chosen wallpaper, plain
  * dark with "No wallpaper chosen" before one is chosen), Live (a still of what the screens show now, taken about once
- * a second by the main process from a hall screen on this computer, else from LIVE in the operator window, and
- * following what goes up), Dark and Light. The choice is remembered; closed, or on another backdrop, nothing is taken.
+ * a second by the main process from a hall screen on this computer, following what goes up; with none here, "No live
+ * picture to show"), Dark and Light. The choice is remembered; closed, or on another backdrop, nothing is taken.
  * Generated media only (a blue wallpaper, an orange test video), placeholder names.
  */
 
@@ -216,7 +216,7 @@ test('Behind the preview: Wallpaper by default (the hall’s wallpaper, or “No
   }
 });
 
-test('with no hall screen on this computer, Live shows LIVE’s picture from the operator window, the video once it is up', async () => {
+test('with no hall screen on this computer (one display, or only nodes’ screens), Live says “No live picture to show”, even with a video up; nothing taken once closed', async () => {
   test.setTimeout(180_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-studio-backdrop-live-'));
   const { app } = await launchApp({});
@@ -226,18 +226,19 @@ test('with no hall screen on this computer, Live shows LIVE’s picture from the
     expect(outputPages(app), 'no hall screen on this computer').toHaveLength(0);
     const { wallId, videoId } = await wallpaperAndVideo(win, dir);
     await chooseWallpaper(win, wallId);
+    await videoUp(win, videoId);
     const studio = await openStudio(app, win);
     await choose(studio, 'Live');
     const preview = studio.getByTestId('lower-third-preview');
-    const still = preview.getByTestId('studio-live-picture');
-    await expect(still).toHaveAttribute('data-live-source', 'live', { timeout: 15_000 });
-    await expect
-      .poll(async () => BLUE(await liveColour(studio)), { message: 'LIVE’s wallpaper', timeout: 15_000 })
-      .toBe(true);
-    await videoUp(win, videoId);
-    await expect
-      .poll(async () => ORANGE(await liveColour(studio)), { message: 'LIVE’s video', timeout: 20_000 })
-      .toBe(true);
+    await expect(preview).toHaveAttribute('data-backdrop', 'live');
+    await expect(preview.getByTestId('studio-backdrop-words')).toHaveText('No live picture to show', {
+      timeout: 15_000,
+    });
+    await expect(preview.getByTestId('studio-live-picture')).toHaveCount(0);
+    expect((await liveWork(app))?.watching, 'it keeps looking (a hall screen may be set up meanwhile)').toBe(
+      true,
+    );
+    await expectNoSeriousA11yIssues(studio, 'the studio on Live, no hall screen here');
     await closeStudio(app, studio);
     await nothingTaken(app, 'the studio closed');
   } finally {

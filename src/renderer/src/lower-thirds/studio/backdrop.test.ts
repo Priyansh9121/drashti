@@ -32,7 +32,7 @@ const WALL: ChosenWallpaper = {
   since: 0,
 };
 const LOOKS = { m1: { zoom: 1.2 } as never };
-const still = (source: 'screen' | 'live', at = 1): StudioLivePicture => ({
+const still = (source: 'screen', at = 1): StudioLivePicture => ({
   url: `data:image/jpeg;base64,${source}`,
   source,
   at,
@@ -104,7 +104,10 @@ describe('the studio’s backdrop', () => {
       kind: 'live',
       picture: still('screen', 1),
     });
-    expect(backdropDraw('live', hall, still('live', 2))).toEqual({ kind: 'live', picture: still('live', 2) });
+    expect(backdropDraw('live', hall, still('screen', 2))).toEqual({
+      kind: 'live',
+      picture: still('screen', 2),
+    });
     // Nothing on this computer to take it from: black, and says so.
     expect(backdropDraw('live', hall, null)).toEqual({ kind: 'plain', colour: '#000000', words: NO_LIVE });
     expect(watchesLive('live')).toBe(true);

@@ -18,6 +18,8 @@ import type { StudioLivePicture, StudioLiveSource } from '../../shared/studio-li
 
 /** How long after one still is sent the next is taken. */
 export const LIVE_EVERY_MS = 1000;
+/** The longest a still may take before it counts as none. */
+export const LIVE_TAKE_LIMIT_MS = 3000;
 /** The widest a still is sent: the preview is at most about 900 points wide. */
 export const LIVE_WIDTH = 960;
 /** Its JPEG quality. */
@@ -46,6 +48,14 @@ export class StudioLive {
 
   get watching(): boolean {
     return this.on;
+  }
+
+  pause(_paused: boolean): void {
+    void this.round;
+  }
+
+  stop(): void {
+    void this.round;
   }
 
   /** The studio shows Live (true) or another backdrop, or closed (false). */
