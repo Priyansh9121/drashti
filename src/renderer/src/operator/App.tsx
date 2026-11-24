@@ -277,10 +277,13 @@ function ProApp({ info }: { info: AppInfo | null }) {
     setScreensOpen(true);
   }, []);
   // Asked from elsewhere (alpha.22: Set up Stage screen…, in the Stage screen panel and the line under the top bar).
-  const screensAsked = useScreens((s) => s.openAsked);
-  useEffect(() => {
-    if (screensAsked > 0) setScreensOpen(true);
-  }, [screensAsked]);
+  useEffect(
+    () =>
+      useScreens.subscribe((now, before) => {
+        if (now.openAsked !== before.openAsked) setScreensOpen(true);
+      }),
+    [],
+  );
   const practising = usePractice((s) => s.on);
   const run = useCallback(
     (action: OperatorAction, slot?: number) => {

@@ -13,6 +13,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 1. Press **Stage screen** under LIVE to open it, then choose the **Layout** every stage screen shows (**Standard** to begin with).
 2. Choose the **Video input** a layout's live video box shows, if it has one.
 3. Look at the stage's small picture beside it: it shows what the stage sees.
+4. With no screen set to Stage (only the hall's projector), press **Stage preview**: a window on this computer shows the stage as a stage screen would, its layout with **Stage** on. **Set up Stage screen…** opens **Screens**, to give a display the **Stage** job.
 
 ![The Stage screen panel: its layout, a countdown running, and the stage message](../screenshots/stage-panel-timers.png)
 

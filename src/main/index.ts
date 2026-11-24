@@ -3153,7 +3153,9 @@ function start(): void {
     switchOf: (s) => switchFor(screenRepo.groupRole(s.groupId) ?? 'audience'),
     // Stage starts as it was left (alpha.22): off on a new library, and once after the update; the e2e tests start
     // it on (DRASHTI_TEST_STAGE_AT_START), as every start was before. Audience is on at every start.
-    startsOff: stageStartsOn(settings, !packaged() && sw('DRASHTI_TEST_STAGE_AT_START') === 'on') ? [] : ['stage'],
+    startsOff: stageStartsOn(settings, !packaged() && sw('DRASHTI_TEST_STAGE_AT_START') === 'on')
+      ? []
+      : ['stage'],
     onChange: () => {
       engine.videoCuePageJoined('');
       // A hall screen stopped, or back (events out: Session 28).
