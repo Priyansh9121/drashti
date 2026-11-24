@@ -67,6 +67,33 @@ interface Growing {
   endAt: number;
   quietMs: number;
   sentAt: number;
+  /** How often it was worked out while growing, and whether any of those gave words (after the noise filter). */
+  partials: number;
+  shown: boolean;
+  /** How long its last working out took (ms). */
+  tookMs: number;
+}
+
+/*
+ * When a growing phrase is worked out again (cap-partials, alpha.23). Route C's model hears the whole phrase at once
+ * (not streaming), and in a phrase's first second or two it often hears only what the noise filter hides; on the
+ * dialog's step alone, a phrase then showed its first words only at the next step, often with its final (cap-winci's
+ * bench: first words p95 4.3-4.7 s from the speech's onset). So, until a phrase has shown words, and only in its
+ * first seconds of sound, it is worked out every half second (at least twice as long as its last working out took,
+ * so the helper is never busy more than half the time); after that, at the dialog's step, as before. A phrase in a
+ * pause waits: its words do not change in quiet, and its final (the whole phrase, worked out once) then never waits
+ * behind a partial.
+ */
+const FIRST_SAMPLES = SAMPLE_RATE;
+const EARLY_SAMPLES = SAMPLE_RATE * 2.5;
+const EARLY_STEP_MS = 500;
+const PAUSING_MS = 300;
+
+function partialDue(g: Growing, stepMs: number, now: number): boolean {
+  if (g.length < FIRST_SAMPLES || g.quietMs >= PAUSING_MS) return false;
+  if (!g.shown && g.length <= EARLY_SAMPLES)
+    return g.partials === 0 || now - g.sentAt >= Math.max(EARLY_STEP_MS, 2 * g.tookMs);
+  return now - g.sentAt >= stepMs;
 }
 
 export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
@@ -187,8 +214,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         const final = finals.shift();
         const growing = final ? null : phrase;
         const piece = final ?? growing;
-        if (!piece || (growing && (Date.now() - growing.sentAt < stepMs || growing.length < SAMPLE_RATE)))
-          return;
+        if (!piece || (growing && !partialDue(growing, stepMs, Date.now()))) return;
         const mine = generation;
         working = true;
         piece.sentAt = Date.now();
@@ -212,6 +238,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           );
           // Noise or hum (one-syllable words heard unsure) is nothing heard: a growing phrase clears, a whole goes.
           const words = noiseOnly(parseIndicReply(asked.reply, chosen).words) ? [] : decoded;
+          if (growing) {
+            growing.partials += 1;
+            growing.tookMs = asked.tookMs;
+            if (words.length > 0) growing.shown = true;
+          }
           if (final && words.length === 0) return;
           const heard: Heard = {
             id: piece.id,
@@ -271,6 +302,9 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             endAt,
             quietMs: 0,
             sentAt: Date.now(),
+            partials: 0,
+            shown: false,
+            tookMs: 0,
           };
         }
         phrase.captured.push({

@@ -110,7 +110,7 @@ function setup(reply: (seconds: number) => Reply) {
     }
   };
   const lines = () => shown.filter((s) => s.captions !== null);
-  return { hub, coordinator, heard, shown, lines, decoded, play, ready: () => chunk !== undefined };
+  return { hub, coordinator, heard, shown, reviews, lines, decoded, play, ready: () => chunk !== undefined };
 }
 
 describe('Route C shows the words of a phrase while it is still being spoken (cap-partials)', () => {
