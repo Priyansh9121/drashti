@@ -28,6 +28,7 @@ import {
   type PackRemoveResult,
 } from '../../shared/model-packs';
 import { listZip, readZipEntries, ZipError, type ZipEntry } from '../import/zip';
+import { hashOffMain } from '../library/hash-off-main';
 import { fileProblem } from '../plain-errors';
 import { readStateTwice, setAside } from '../state-file';
 import { freeBytesOf } from '../stream/recording-drive';
@@ -179,12 +180,13 @@ function hashing(name: string, bytes: number, step: (n: number) => void) {
   return { transform, finish: () => ({ seen, sha256: hash.digest('hex') }) };
 }
 
-/** A file's SHA-256, a megabyte at a time. */
+/**
+ * A file's SHA-256, read and hashed in a worker thread (a22-review-mt2 S2): checking a model again before its use
+ * (hundreds of megabytes) never takes Main's thread, where the show's commands wait; it ends at once when `signal`
+ * aborts.
+ */
 async function sha256Of(file: string, signal?: AbortSignal): Promise<string> {
-  const hash = createHash('sha256');
-  for await (const chunk of createReadStream(file, { highWaterMark: 1024 * 1024, signal }))
-    hash.update(chunk as Buffer);
-  return hash.digest('hex');
+  return (await hashOffMain(file, signal)).sha256;
 }
 
 /** Rename, again a few times when Windows holds a just-written folder for a moment (its indexer, an antivirus). */

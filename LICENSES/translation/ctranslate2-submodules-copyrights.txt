@@ -1,0 +1,33 @@
+Copyright lines in the files of CTranslate2 4.9.1's pinned submodules that drashti-translate compiles, word for word.
+
+They come from every source file and every header the two Mac builds compile (the compiler's own list), and from
+the Windows build's own files (cpuinfo's src/x86/windows, spdlog's wincolor sink), which add no other line. Each file
+is under its project's licence; the full text is beside this file. A project whose compiled files carry no copyright
+line of their own says so, and its licence file names its holders.
+
+=== ruy, commit 363f2522 (Apache-2.0, ruy-LICENSE.txt)
+Copyright 2019 Google LLC. All Rights Reserved.
+Copyright 2020 Google LLC. All Rights Reserved.
+Copyright 2021 Google LLC. All Rights Reserved.
+Copyright 2022 Google LLC. All Rights Reserved.
+Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
+=== cpuinfo, commit 082deffc (BSD-2-Clause, cpuinfo-LICENSE.txt)
+Copyright (c) Facebook, Inc. and its affiliates.
+
+=== clog, bundled in cpuinfo (BSD-2-Clause, clog-LICENSE.txt)
+No copyright line in its compiled files (src/clog.c, include/clog.h).
+
+=== cpu_features, commit 8a494eb1 (Apache-2.0, cpu_features-LICENSE.txt)
+Copyright 2017 Google LLC
+Copyright 2021 Google LLC
+Copyright 2020 Intel Corporation
+Copyright 2018 IBM.
+
+=== spdlog, commit 76fb40d9 (MIT, spdlog-LICENSE.txt)
+Copyright(c) 2015-present, Gabi Melman & spdlog contributors.
+Copyright(c) 2016-2018 Gabi Melman.
+
+=== fmt 8.1.1, bundled in spdlog (MIT, fmt-LICENSE.txt)
+Copyright (c) 2012 - present, Victor Zverovich
+Copyright (c) 2012 - 2016, Victor Zverovich

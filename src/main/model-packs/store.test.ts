@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PACK_FORMAT,
@@ -23,6 +23,7 @@ import {
   type PackFile,
 } from '../../shared/model-packs';
 import { makeZip, type ZipWriterEntry } from '../import/testing/zip-writer';
+import { hashOffMain } from '../library/hash-off-main';
 import { insideFolder, ModelPackStore } from './store';
 
 /** One read that fails the way a busy or briefly locked disk does (EIO), for the next file read only. */
@@ -38,6 +39,21 @@ vi.mock('node:fs', async (original) => {
       }
       return fs.createReadStream(...args);
     },
+  };
+});
+
+// The checks off Main's thread (library/hash-off-main.ts), watched; a read fault for the next file read reaches them
+// as it reaches a read on this thread.
+vi.mock('../library/hash-off-main', async (original) => {
+  const real = await original<{ hashOffMain: typeof hashOffMain }>();
+  return {
+    hashOffMain: vi.fn((file: string, signal?: AbortSignal) => {
+      if (readFault.next) {
+        readFault.next = false;
+        return Promise.reject(Object.assign(new Error('i/o error'), { code: 'EIO' }));
+      }
+      return real.hashOffMain(file, signal);
+    }),
   };
 });
 
@@ -419,6 +435,30 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
     const hold = await store.acquire('gu-placeholder');
     expect(hold?.model.id).toBe('gu-placeholder');
     hold?.release();
+  });
+
+  it('checks a model again off Main’s thread, with the caller’s signal, and stops at once when it aborts (a22-review-mt2 S2)', async () => {
+    const data = temp('data');
+    expect((await storeIn(data).importPack(packFolder(), 'folder')).ok).toBe(true);
+    // A new run (its own store): the first use checks every file again.
+    const store = storeIn(data);
+    vi.mocked(hashOffMain).mockClear();
+    const control = new AbortController();
+    const hold = await store.acquire('en-indic-placeholder', control.signal);
+    expect(hold?.model.id).toBe('en-indic-placeholder');
+    hold?.release();
+    // Each of the model's two files, read and hashed in a worker thread, never on Main's.
+    expect(vi.mocked(hashOffMain).mock.calls.map(([file, signal]) => [basename(file), signal])).toEqual([
+      ['model.bin', control.signal],
+      ['config.json', control.signal],
+    ]);
+    // Stopped: the check ends at once and the model is not held.
+    const stopped = new AbortController();
+    const later = storeIn(data);
+    stopped.abort();
+    await expect(later.acquire('en-indic-placeholder', stopped.signal)).rejects.toThrow();
+    expect(only(later.status().packs).inUse).toBe(false);
+    expect(only(later.status().packs).problem).toBeNull();
   });
 
   it('checks a model again before its first use; a file changed since makes the pack unusable until imported again', async () => {
