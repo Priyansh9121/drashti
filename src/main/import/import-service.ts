@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { DisplayCandidate, DisplayResult } from '../media/display-copies';
 import type { ImportOptions, ImportProgress, ImportResult, ImportRunSummary } from '../../shared/import';
 import type { PicturesResult } from '../../shared/pictures';
 import type { HevcKinds } from '../convert/plays-hevc';
@@ -42,6 +43,16 @@ export interface ImportServiceDeps {
   playsHevc?(): Promise<boolean | null>;
   /** HEVC's other kinds, as the window said with that answer (Session 60, x36); null while not known. */
   hevcKinds?(): HevcKinds | null;
+  /**
+   * Resolves once no transition runs on the screens (alpha.21, Q60-60 A): each run's worker process is started only
+   * then, so nothing heavy (not even starting the process) runs during a dissolve. Left out: at once.
+   */
+  quiet?(): Promise<void>;
+  /**
+   * When the screens' transitions running now end (Main's clock, ms), or null when none runs: a run whose start waits
+   * for quiet() while one runs says it waits for them (alpha.22, QA22-L8-1, the owner: "Keep wait, say why").
+   */
+  transitionsEndAt?(): number | null;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
   /**
@@ -73,6 +84,8 @@ export interface ImportServiceDeps {
   baker?(): boolean | 'stand-in';
   /** Draw a PDF's pages as pictures for the worker (Session 15): it cannot open the window that draws. */
   drawPdf?(pdf: string, outDir: string, signal: AbortSignal, readPageText?: boolean): Promise<PicturesResult>;
+  /** A new picture remains preparing until Main has its display rendition. */
+  prepareDisplay?(candidate: DisplayCandidate, signal: AbortSignal): Promise<DisplayResult>;
   log(level: 'info' | 'warn', message: string): void;
   /** Bring the operator's window back to the front (Keynote or PowerPoint took it, Session 16). */
   refocus?(): void;
@@ -93,6 +106,17 @@ export class ImportService {
   private readonly queue: Job[] = [];
   /** Drashti is quitting: nothing more starts, and what the stopped worker says after is not heard. */
   private stopped = false;
+  /** The next run waits for no transition on the screens before its worker process starts (Q60-60 A). */
+  private waitingForQuiet = false;
+  /** ...and a transition ran as it began waiting, so it really waits for the screens' transitions (QA22-L8-1). */
+  private startHeld = false;
+  /** The run told as waiting for the screens' transitions, with what it says otherwise (QA22-L8-1). */
+  private told: { runId: string; progress: ImportProgress } | null = null;
+  /** The active run's own last progress, and its display copies asked for and not answered yet. */
+  private said: ImportProgress | null = null;
+  private displayWaits = 0;
+  /** The display copies' queue is held for the screens' transitions (displayHeld, from Main). */
+  private copyHeld = false;
   private active: {
     job: Job;
     worker: WorkerProcess;
@@ -152,12 +176,16 @@ export class ImportService {
     if (waiting >= 0) {
       const [job] = this.queue.splice(waiting, 1);
       job?.resolve({ ok: false, message: 'Cancelled before it started.' });
+      this.checkHold();
       return true;
     }
     if (this.active?.job.runId === runId) {
       this.active.worker.postMessage({ type: 'cancel', runId });
       // A PDF being drawn for it stops too.
       this.active.drawing.abort();
+      // ...and its picture's copy is no longer waited for: it no longer says it waits (QA22-L8-1).
+      this.displayWaits = 0;
+      this.checkHold();
       return true;
     }
     return false;
@@ -225,6 +253,69 @@ export class ImportService {
   }
 
   private next(): void {
+    if (this.active || this.stopped || this.waitingForQuiet || this.queue.length === 0) return;
+    // The next run's worker process starts only once no transition runs on the screens (alpha.21, Q60-60 A; a21-l8a:
+    // on CI's Mac starting the process itself during a dissolve cost the hall's frames). Its job waits in the queue
+    // meanwhile, so Cancel and quitting end it as any waiting run, with no process started.
+    const quiet = this.deps.quiet?.();
+    if (quiet) {
+      this.waitingForQuiet = true;
+      this.startHeld = (this.deps.transitionsEndAt?.() ?? null) !== null;
+      this.checkHold();
+      void quiet
+        .catch(() => undefined)
+        .then(() => {
+          this.waitingForQuiet = false;
+          this.startHeld = false;
+          this.launch();
+          this.checkHold();
+        });
+      return;
+    }
+    this.launch();
+  }
+
+  /**
+   * The display copies' queue is held for the screens' transitions, or no longer (Main, as the queue looks again at
+   * each transition's end and every second): a new picture's copy waiting in it says so (QA22-L8-1).
+   */
+  displayHeld(waiting: boolean): void {
+    if (this.copyHeld === waiting) return;
+    this.copyHeld = waiting;
+    this.checkHold();
+  }
+
+  /** What a run held for the screens' transitions would say: its start waiting, or a new picture's copy waiting. */
+  private held(): ImportProgress | null {
+    const queued = this.queue[0];
+    if (this.waitingForQuiet && this.startHeld && queued)
+      return { runId: queued.runId, phase: 'queued', done: 0, total: 0, current: null };
+    if (this.active && this.displayWaits > 0 && this.copyHeld)
+      return (
+        this.said ?? { runId: this.active.job.runId, phase: 'importing', done: 0, total: 0, current: null }
+      );
+    return null;
+  }
+
+  /**
+   * Tell the operator, only when it changes, whether a run waits for the screens' transitions (QA22-L8-1, the owner:
+   * "Keep wait, say why"): once nothing holds it, it says what it does again.
+   */
+  private checkHold(): void {
+    const waiting = this.stopped ? null : this.held();
+    const told = this.told;
+    if (told && told.runId !== waiting?.runId) {
+      this.told = null;
+      const going = this.active?.job.runId === told.runId || this.queue.some((j) => j.runId === told.runId);
+      if (going) this.deps.onProgress(told.progress);
+    }
+    if (waiting && !this.told) {
+      this.told = { runId: waiting.runId, progress: waiting };
+      this.deps.onProgress({ ...waiting, waitingFor: 'transitions' });
+    }
+  }
+
+  private launch(): void {
     if (this.active || this.stopped) return;
     const job = this.queue.shift();
     if (!job) return;
@@ -261,6 +352,9 @@ export class ImportService {
       // Writes waiting for the import to give way need wait no more.
       for (const done of [...active.ways.values()]) done();
       if (this.active === active) this.active = null;
+      this.said = null;
+      this.displayWaits = 0;
+      this.checkHold();
       // The result is the worker's last message (it has closed the library by then): stop it.
       worker.kill();
       job.resolve(result);
@@ -271,7 +365,13 @@ export class ImportService {
       if (this.stopped) return;
       switch (m.type) {
         case 'progress':
-          if (m.progress.runId === job.runId) this.deps.onProgress(m.progress);
+          if (m.progress.runId !== job.runId) break;
+          this.said = m.progress;
+          // Still held for the screens' transitions: it goes on saying so (QA22-L8-1).
+          if (this.told?.runId === job.runId && m.progress.phase !== 'finished') {
+            this.told = { runId: job.runId, progress: m.progress };
+            this.deps.onProgress({ ...m.progress, waitingFor: 'transitions' });
+          } else this.deps.onProgress(m.progress);
           break;
         case 'wrote':
           this.deps.onWrote({ presentationId: m.presentationId, replaced: m.replaced });
@@ -280,6 +380,27 @@ export class ImportService {
           if (job.options.automatic) this.deps.onAutoMarked?.(m.mediaIds);
           else this.deps.onMarked?.(m.mediaIds);
           break;
+        case 'prepare-display': {
+          // A new picture's copy may wait for the screens' transitions: the status line says so meanwhile.
+          this.displayWaits++;
+          this.checkHold();
+          const prepared =
+            this.deps.prepareDisplay?.(m.candidate, active.drawing.signal) ??
+            Promise.resolve<DisplayResult>({ ok: true, copy: null });
+          void prepared
+            .catch((): DisplayResult => ({
+              ok: false,
+              message: 'The picture could not be prepared. Try importing it again.',
+            }))
+            .then((result) => {
+              if (this.active === active) {
+                this.displayWaits = Math.max(0, this.displayWaits - 1);
+                this.checkHold();
+              }
+              if (!settled) worker.postMessage({ type: 'display-prepared', requestId: m.requestId, result });
+            });
+          break;
+        }
         case 'draw-pdf': {
           const drawn = this.deps.drawPdf
             ? this.deps.drawPdf(m.pdf, m.outDir, active.drawing.signal, m.readPageText)
@@ -352,7 +473,7 @@ export class ImportService {
       });
     };
     // Once it is known whether this computer plays HEVC (Session 51 review: an import in the first moments after
-    // the start waits for the answer, convert/plays-hevc.ts, 15 s at most).
+    // the start waits for the answer, convert/plays-hevc.ts, 15 s at most). No transition runs by now (next(), above).
     if (this.deps.playsHevc)
       void this.deps.playsHevc().then(start, () => {
         start(null);

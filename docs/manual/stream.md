@@ -14,6 +14,8 @@
 2. Choose **Camera and words** (the camera, with the slide's words as a lower third) or **Slides** (as the hall sees them).
 3. Check the preview, and that the sound bar moves when someone speaks.
 
+When the stream starts following a show already running, the current picture is prepared before Next. Its existing wait for a picture stays at three seconds.
+
 ![The Stream panel: its layout, its preview and its buttons](../screenshots/stream-panel.png)
 
 ## Going live
