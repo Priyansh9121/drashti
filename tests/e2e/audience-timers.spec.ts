@@ -4,12 +4,13 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import {
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
   outputPages,
-  type PageGlobals,
   setUpScreen,
+  type PageGlobals,
 } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -67,6 +68,7 @@ function sabhaTime(now: number): string | null {
 
 /** A countdown in Timers, through its form: its id. */
 async function newCountdown(win: Page, name: string, length: string): Promise<string> {
+  await openSection(win, 'timers');
   const timers = win.getByTestId('timers');
   await timers.getByRole('button', { name: 'New timer' }).click();
   const form = timers.getByTestId('timer-form');
@@ -132,6 +134,7 @@ test('a timer for the audience in its own look: a corner over what is up, its la
   await expect(stage.locator('[data-layer="timer"]')).toHaveCount(1);
 
   // Start, Pause and Reset from the Stage screen panel's timer for the audience.
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   const forAudience = panel.getByTestId('stage-audience-timer');
   await expect(forAudience.getByRole('combobox', { name: 'Timer for the audience' })).toHaveValue(id);
@@ -170,6 +173,7 @@ test('Countdown to the start: the sabha’s time, counted down over the wallpape
       background: { kind: 'color', color: '#1f3a5f' },
     }),
   );
+  await openSection(win, 'timers');
   const timers = win.getByTestId('timers');
   await timers.getByRole('button', { name: 'Countdown to the start…' }).click();
   const start = timers.getByTestId('start-countdown');

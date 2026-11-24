@@ -7,7 +7,7 @@ import { tap } from '../taps';
 import { useMirror } from './mirror-store';
 
 /*
- * The operator window's More tools that run the show (Session 54, D5): the Lower Thirds, each shown and hidden
+ * The operator window's tools that run the show (Session 54, D5): the Lower Thirds, each shown and hidden
  * again with one button (Session 44). Making and changing them, and the MIDI controller, stay in Drashti. (The idle
  * rotation and the masks went in Session 55.)
  */
@@ -17,7 +17,7 @@ const post = (path: string) => () => api<{ rev?: number }>(path, { method: 'POST
 function LowerThirds() {
   const list = useMirror((s) => s.lowerThirds);
   const upId = useEngine((s) => s.state?.layers.lowerThird?.id ?? null);
-  // None yet: nothing to show here (the desktop's More tools say how one is made).
+  // None yet: nothing to show here (the desktop's Lower Thirds section says how one is made).
   if (!list || list.length === 0) return null;
   return (
     <section className="space-y-2" aria-labelledby="lower-thirds-title" data-testid="remote-lower-thirds">

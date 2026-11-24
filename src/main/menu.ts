@@ -137,6 +137,12 @@ export interface MenuActions {
    * window in the operator window. Left out (or null): no Tools menu.
    */
   tools?: ((item: ToolsMenuItem) => void) | null;
+  /**
+   * Edit › Simple Mode Features… (alpha.22, Pro Mode only; the owner's "in edit, saying that the features can be
+   * brought to simple mode"): the window's on/off switch for each of Pro Mode's tools Simple Mode may have, up to
+   * three. Left out (or null): no such item.
+   */
+  simpleFeatures?: (() => void) | null;
   /** File > Run Ahead of Other Programs (Windows only, Pro Mode; Session 16): null elsewhere. */
   priority: PriorityItem | null;
   /**
@@ -187,7 +193,7 @@ function shownKey(action: OperatorAction): MenuItemConstructorOptions {
 
 /**
  * The Tools menu (Session 60, x36): the setup tools (shared/setup-tools.ts), then a line, then the Lower Thirds
- * studio, the MIDI controller and OSC, as More tools has them. Each item's id is `tools-<its id>`.
+ * studio, the MIDI controller and OSC, as their sections under LIVE have them. Each item's id is `tools-<its id>`.
  */
 function toolsMenu(open: (item: ToolsMenuItem) => void): MenuItemConstructorOptions {
   return {
@@ -319,6 +325,17 @@ export function installMenu(actions: MenuActions): void {
         { role: 'delete' },
         { type: 'separator' },
         { role: 'selectAll' },
+        // Simple Mode Features… (alpha.22): Pro Mode's, which tools Simple Mode has; Simple Mode never changes it.
+        ...(!simple && actions.simpleFeatures
+          ? [
+              { type: 'separator' } as MenuItemConstructorOptions,
+              {
+                id: 'simple-features',
+                label: 'Simple Mode Features…',
+                click: actions.simpleFeatures,
+              } as MenuItemConstructorOptions,
+            ]
+          : []),
       ],
     },
     {

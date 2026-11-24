@@ -1,5 +1,6 @@
 import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
+import type { SimpleFeature, SimpleFeatureResult } from './simple-features';
 
 import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
@@ -300,6 +301,16 @@ export const IPC = {
     showReport: 'app:show-report',
     /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
     showTool: 'app:show-tool',
+    /**
+     * Simple Mode Features (alpha.22, shared/simple-features.ts): which of Pro Mode's tools Simple Mode has, read in either
+     * mode, and one turned on or off (Pro Mode's: Simple Mode's lock refuses it).
+     */
+    simpleFeatures: 'app:simple-features',
+    setSimpleFeature: 'app:set-simple-feature',
+    /** main -> operator: the tools Simple Mode has changed. */
+    simpleFeaturesChanged: 'app:simple-features-changed',
+    /** main -> operator: Edit › Simple Mode Features… was chosen (Pro Mode). */
+    showSimpleFeatures: 'app:show-simple-features',
   },
   /** Scheduled backups (Session 14, shared/backups.ts): changing them, and Back up now, are Pro Mode's. */
   backups: {
@@ -1541,6 +1552,8 @@ export interface InvokeContract {
   [IPC.app.getMode]: { args: []; result: OperatorMode };
   [IPC.app.setMode]: { args: [mode: OperatorMode]; result: ModeResult };
   [IPC.app.simplePlaylist]: { args: []; result: string | null };
+  [IPC.app.simpleFeatures]: { args: []; result: SimpleFeature[] };
+  [IPC.app.setSimpleFeature]: { args: [feature: SimpleFeature, on: boolean]; result: SimpleFeatureResult };
   [IPC.backups.view]: { args: []; result: ScheduledBackupsView };
   [IPC.backups.save]: { args: [schedule: BackupSchedule]; result: BackupsResult };
   [IPC.backups.pickFolder]: { args: []; result: PickFolderResult };
@@ -2210,6 +2223,8 @@ export interface EventContract {
   [IPC.app.showReport]: { at: number };
   [IPC.report.changed]: { at: number };
   [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };
+  [IPC.app.simpleFeaturesChanged]: { chosen: SimpleFeature[] };
+  [IPC.app.showSimpleFeatures]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.midi.ask]: MidiAsk;

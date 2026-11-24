@@ -2,6 +2,8 @@
 
 **Edit slides…** opens a presentation in a window of its own, the slide editor, while the operator window keeps the show controls. It has six groups along the top: **Words**, **Insert**, **Arrange**, **Design**, **Motion** and **Slides**.
 
+Where the top row has no room for all its commands, as at 200% zoom, it wraps onto a second row and keeps them within reach. Use **Tab** and **Shift+Tab** between controls, and the arrow keys between the editor’s groups.
+
 ## Edit slides…
 
 **What it is.** The slide editor's own window. Choose a slide on the left, then click a box on it to change it. **Objects**, on the right, lists everything on the slide.

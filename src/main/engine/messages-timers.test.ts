@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseEngineCommand } from '../../shared/engine/commands';
 import type { MessageItem } from '../../shared/engine/state';
 import { DEFAULT_MESSAGE_LOOK, type MessageLook } from '../../shared/message-look';
 import { DEFAULT_TIMER_LOOK, START_COUNTDOWN_LOOK } from '../../shared/timer-look';
@@ -145,6 +146,34 @@ describe('the stage message', () => {
     expect(engine.current.stageMessage).toBeNull();
     expect(engine.current.stageCall ?? null).toBeNull();
     expect(engine.current.stageRecent).toEqual(['Placeholder: five minutes', 'Placeholder: two minutes']);
+  });
+
+  it('carries its box and words colours when given (24 Nov 2026), and none when not: amber and black, as before', () => {
+    const { engine, now } = setup();
+    engine.dispatch({
+      type: 'setStageMessage',
+      text: 'Placeholder: five minutes',
+      boxColor: '#1D4ED8',
+      textColor: '#ffffff',
+    });
+    expect(engine.current.stageCall).toEqual({
+      size: 'standard',
+      flash: false,
+      shownAt: now(),
+      boxColor: '#1d4ed8',
+      textColor: '#ffffff',
+    });
+    engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes', size: 'large' });
+    expect(engine.current.stageCall).toEqual({ size: 'large', flash: false, shownAt: now() });
+    // A colour it cannot read is refused with the message.
+    for (const boxColor of ['amber', '#fff', '#1d4ed8ff'])
+      expect(
+        parseEngineCommand({ type: 'setStageMessage', text: 'Placeholder', boxColor }).ok,
+        boxColor,
+      ).toBe(false);
+    expect(
+      parseEngineCommand({ type: 'setStageMessage', text: 'Placeholder', textColor: '#00ff00' }).ok,
+    ).toBe(true);
   });
 
   it('remembers five', () => {

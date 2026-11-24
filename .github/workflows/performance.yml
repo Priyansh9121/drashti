@@ -89,14 +89,14 @@ on:
         description: "The operator window's appearance for the check, by id (saffron, dhaja, …; empty: the computer's, White on CI). Session 43: a round measures a colourful one's header and band"
         type: string
         default: ''
-      translate_intel:
-        description: 'Instead: only the translation engine on an Intel Mac (alpha.23, a22-review-mt A2): built there, its instruction set and kernel read, timed on generated models (no model pack)'
-        type: boolean
-        default: false
       captions:
         description: "Caption AI's two-core proof (CAP-CI-1), Windows only: alone (the captions bench by itself) or alongside (beside this check, both on two cores), then optionally :candidates (rc-gu, rc-hi, small-gu, small-hi, small-en; all when none). Empty: an ordinary run"
         type: string
         default: ''
+      translate_intel:
+        description: 'Instead: only the translation engine on an Intel Mac (alpha.23, a22-review-mt A2): built there, its instruction set and kernel read, timed on generated models (no model pack)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read

@@ -5,6 +5,7 @@ import {
   holdStill,
   launchApp,
   letTimePass,
+  openSection,
   operatorPage,
   outputPages,
   outputReady,
@@ -37,6 +38,7 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   for (const o of [a, b]) await outputReady(o);
 
   // Make a countdown in the operator window, start it, and show it on the screens.
+  await openSection(win, 'timers');
   const timers = win.getByTestId('timers');
   await timers.getByRole('button', { name: 'New timer' }).click();
   const form = timers.getByTestId('timer-form');

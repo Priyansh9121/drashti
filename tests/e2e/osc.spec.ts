@@ -6,7 +6,7 @@ import type { OscSettings } from '../../src/shared/osc';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   launchApp,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -114,7 +114,7 @@ test('OSC on localhost runs every supported show action, rejects bad packets and
     });
     const proof = await bind(port);
     await close(proof.socket);
-    await openMoreTools(win);
+    await openSection(win, 'osc');
     await win.getByTestId('open-osc').click();
     const dialog = win.getByTestId('osc-dialog');
     await dialog.getByTestId('osc-port').fill(String(port));

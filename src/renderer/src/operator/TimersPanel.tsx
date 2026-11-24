@@ -9,12 +9,13 @@ import { CalendarDays, Monitor, Palette, Pause, Play, Plus, RotateCcw, Square, T
 import { START_COUNTDOWN_NAME } from '../../../shared/timer-look';
 import { TimerLookDialog } from './TimerLookDialog';
 import { openCalendar } from '../calendar/calendar-store';
-import { Panel } from '../ui/Panel';
+import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch, useNotice } from './actions';
 
 import { TimerForm } from './TimerForm';
+import { useOperateOnly } from '../simple/simple-features-store';
 
 const NO_TIMERS: TimerState[] = [];
 
@@ -38,6 +39,9 @@ function TimerRow({
 }) {
   const running = t.startedAt !== null;
   const counts = t.kind === 'countdown' || t.kind === 'countup';
+  // In Simple Mode (alpha.22, Timers chosen for it): Start, Pause, Reset, Show and Hide; its look and Edit stay Pro
+  // Mode's.
+  const operateOnly = useOperateOnly();
   return (
     <li
       data-testid="timer-row"
@@ -87,16 +91,20 @@ function TimerRow({
           void dispatch(shown ? { type: 'hideAudienceTimer' } : { type: 'showAudienceTimer', timerId: t.id })
         }
       />
-      <IconButton
-        icon={Palette}
-        label="How it looks for the audience…"
-        size="sm"
-        data-testid="timer-look-open"
-        onClick={onLook}
-      />
-      <Button variant="ghost" size="sm" onClick={onEdit}>
-        Edit
-      </Button>
+      {!operateOnly && (
+        <>
+          <IconButton
+            icon={Palette}
+            label="How it looks for the audience…"
+            size="sm"
+            data-testid="timer-look-open"
+            onClick={onLook}
+          />
+          <Button variant="ghost" size="sm" onClick={onEdit}>
+            Edit
+          </Button>
+        </>
+      )}
     </li>
   );
 }
@@ -173,6 +181,9 @@ export function TimersPanel() {
   const [editing, setEditing] = useState<string | null>(null);
   const [looking, setLooking] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // Simple Mode's (alpha.22): the timers run and shown, and Countdown to the start; the calendar, making a timer and
+  // changing one stay Pro Mode's.
+  const operateOnly = useOperateOnly();
   const lookAt = timers.find((t) => t.id === looking);
   const done = () => {
     setEditing(null);
@@ -183,27 +194,29 @@ export function TimersPanel() {
       help="timers"
       title="Timers"
       icon={Timer}
-      collapsible
+      {...LIVE_SECTION}
       remember="timers"
       data-testid="timers"
       bodyClassName="space-y-2 px-3 pb-3"
       actions={
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={CalendarDays}
-            data-testid="open-calendar"
-            onClick={() => {
-              openCalendar();
-            }}
-          >
-            Calendar
-          </Button>
-          <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
-            New timer
-          </Button>
-        </>
+        operateOnly ? undefined : (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={CalendarDays}
+              data-testid="open-calendar"
+              onClick={() => {
+                openCalendar();
+              }}
+            >
+              Calendar
+            </Button>
+            <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
+              New timer
+            </Button>
+          </>
+        )
       }
     >
       <Button
@@ -257,8 +270,9 @@ export function TimersPanel() {
       </ul>
       {timers.length === 0 && editing !== 'new' && (
         <EmptyState icon={Timer} title="No timers yet" compact>
-          A countdown can go up on the screens on its own, or in a message, for example “Sabha starts in
-          5:00”.
+          {operateOnly
+            ? 'Timers are made in Pro Mode; Countdown to the start makes its own.'
+            : 'A countdown can go up on the screens on its own, or in a message, for example “Sabha starts in 5:00”.'}
         </EmptyState>
       )}
     </Panel>
