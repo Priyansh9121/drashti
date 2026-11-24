@@ -71,6 +71,7 @@ import { up as mediaHistory } from './migrations/088-media-history';
 import { up as mediaPlaybackSettings } from './migrations/089-media-playback-settings';
 import { up as videoEdits } from './migrations/090-video-edits';
 import { up as captionWords } from './migrations/091-caption-words';
+import { up as pdfPageCrops } from './migrations/092-pdf-page-crops';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -165,6 +166,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 89, name: 'media playback settings: tone and delays', up: mediaPlaybackSettings },
   { version: 90, name: 'video edit recipes and immutable prepared copies', up: videoEdits },
   { version: 91, name: 'caption words', up: captionWords },
+  { version: 92, name: 'PDF page crops', up: pdfPageCrops },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

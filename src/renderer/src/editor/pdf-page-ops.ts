@@ -30,7 +30,20 @@ export function turnPdfPageRight(doc: EditDoc, slideId: string): EditDoc {
   return mapSlide(doc, slideId, (page) => ({
     ...page,
     pageSize: { width: size.height, height: size.width },
-    documentPage: { ...source, rotation: 0 },
+    documentPage: {
+      ...source,
+      rotation: 0,
+      ...(source.crop
+        ? {
+            crop: {
+              x: Math.max(0, Math.round((1 - source.crop.y - source.crop.h) * 1e10) / 1e10),
+              y: source.crop.x,
+              w: source.crop.h,
+              h: source.crop.w,
+            },
+          }
+        : {}),
+    },
     elements: page.elements.map((element) => turnedElement(element, size.height)),
     ...(page.guides
       ? {

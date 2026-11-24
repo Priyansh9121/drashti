@@ -388,10 +388,15 @@ export class PdfCopySession {
     }
     for (const [index, page] of active.job.pages.entries()) {
       const actual = value.pages[index];
-      if (
-        page.kind === 'native' &&
-        (actual?.width !== page.slide.width || actual.height !== page.slide.height)
-      ) {
+      const matches =
+        page.kind !== 'native' ||
+        (actual !== undefined &&
+          (page.crop
+            ? // CropBox edges are decimal PDF numbers; subtraction can differ by a sub-millionth of a point.
+              Math.abs(actual.width - page.slide.width * page.crop.w) <= 1e-6 &&
+              Math.abs(actual.height - page.slide.height * page.crop.h) <= 1e-6
+            : actual.width === page.slide.width && actual.height === page.slide.height));
+      if (!matches) {
         active.finish(null);
         return false;
       }

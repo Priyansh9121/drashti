@@ -928,9 +928,14 @@ export class ImportedSlides {
         slide.background = saved.background;
         slide.darken = saved.darken;
         slide.design = saved.design;
-        slide.documentPage = saved.documentPage ?? original.documentPage;
+        const crop = slide.documentPage.crop;
+        const { crop: _savedCrop, ...keptPage } = saved.documentPage ?? originalRef;
+        const paper = slideCanvas(original, cached?.doc ?? doc);
+        slide.documentPage = {
+          ...keptPage,
+          ...(crop ? { crop, width: paper.width, height: paper.height, rotation: 0 } : {}),
+        };
         if (
-          slide.documentPage &&
           !slide.documentPage.edited &&
           !saved.pageSize &&
           (before.width !== doc.width || before.height !== doc.height)
