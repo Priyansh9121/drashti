@@ -308,13 +308,13 @@ win:
     - from: vendor/deno/win32-${arch}
       to: deno
       filter: [deno.exe]
-    # Live captions' engine (scripts/fetch-whisper.mjs, Session 55, Part 10): whisper.cpp's whisper-server.exe and its
-    # DLLs: LICENSES/whisper/.
     # Prepare translations' engine (scripts/fetch-translate.mjs, alpha.22): drashti-translate.exe, its C++ runtime
     # linked in: LICENSES/translation/.
     - from: vendor/translate/win32-${arch}
       to: translate
       filter: [drashti-translate.exe]
+    # Live captions' engine (scripts/fetch-whisper.mjs, Session 55, Part 10): whisper.cpp's whisper-server.exe and its
+    # DLLs: LICENSES/whisper/.
     - from: vendor/indic/win32-${arch}
       to: indic
       filter: [ic-ctc.exe, onnxruntime.dll, onnxruntime_providers_shared.dll, LICENSE, ThirdPartyNotices.txt]
