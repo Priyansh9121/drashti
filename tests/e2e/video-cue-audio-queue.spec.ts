@@ -134,6 +134,11 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
     // The waits that overlap the long frame (alpha.22 gate 3: a wait before it, on CI's Mac's software-timed sound, is
     // not the frame's; the whole watch's longest stays in the record above).
     const deliveries = (result as unknown as { deliveries: PcmDelivery[] }).deliveries;
+    // Judged only over a whole long frame its deliveries cover (fail closed; this also bounds the two processes'
+    // clocks' offset by the watch's own round trips).
+    expect(longFrame.to - longFrame.from).toBeGreaterThanOrEqual(500);
+    expect(deliveries[0]?.wall ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(longFrame.from);
+    expect(deliveries.at(-1)?.wall ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(longFrame.to);
     expect(
       longestPcmWait(deliveries, longFrame.from, longFrame.to),
       'the encoder receives sound through the long drawing frame',
