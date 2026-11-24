@@ -17,6 +17,10 @@ import { sizeOperatorWindow } from './window-size';
 /** Wide enough for the live column's most (Layout.tsx: 620, with the middle's 400 and the playlists' 220 beside it). */
 const WINDOW = { width: 1280, height: 800 } as const;
 
+/** The live column at its least and at its most (Layout.tsx's RIGHT), in a window as wide as WINDOW. */
+const LEAST = 300;
+const MOST = 620;
+
 /** The live column's first width (Layout.tsx's RIGHT.initial): Enter on its splitter puts it back. */
 const FIRST_WIDTH = 380;
 
@@ -129,12 +133,20 @@ function runs(widths: readonly number[]): string {
 async function sweep(win: Page, buttons: string): Promise<{ faults: string[]; keysAt: number[] }> {
   await win.evaluate(() => document.fonts.ready.then(() => undefined));
   const splitter = win.getByRole('separator', { name: 'Resize the live column', exact: true });
+  // The columns laid out for the page's width first. On CI's Mac the window's own resize (to its 1024-wide display)
+  // can reach the columns after the page took WINDOW's size, leaving them at the display's width: a resize event
+  // makes them read the page's width again, as any resize does.
+  await win.evaluate(() => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  await expect(splitter, 'the live column can be widened to its most').toHaveAttribute(
+    'aria-valuemax',
+    String(MOST),
+  );
+  await expect(splitter).toHaveAttribute('aria-valuemin', String(LEAST));
   await splitter.focus();
   await splitter.press('Home');
-  const least = Number(await splitter.getAttribute('aria-valuemin'));
-  const most = Number(await splitter.getAttribute('aria-valuemax'));
-  expect(most - least, 'the live column can be widened').toBeGreaterThan(300);
-  await expect(splitter).toHaveAttribute('aria-valuenow', String(least));
+  await expect(splitter).toHaveAttribute('aria-valuenow', String(LEAST));
   const box = await splitter.boundingBox();
   if (!box) throw new Error('the live column’s splitter is not on the screen');
   const x = Math.round(box.x + box.width / 2);
@@ -144,9 +156,9 @@ async function sweep(win: Page, buttons: string): Promise<{ faults: string[]; ke
   const oneKey: number[] = [];
   await win.mouse.move(x, y);
   await win.mouse.down();
-  for (let width = least; width <= most; width++) {
+  for (let width = LEAST; width <= MOST; width++) {
     // Leftwards widens the live column, a pixel at a time.
-    await win.mouse.move(x - (width - least), y);
+    await win.mouse.move(x - (width - LEAST), y);
     await expect(splitter).toHaveAttribute('aria-valuenow', String(width));
     const at = await measure(win, buttons);
     for (const fault of at.faults) {
@@ -169,10 +181,9 @@ async function sweep(win: Page, buttons: string): Promise<{ faults: string[]; ke
 /** Back's and Next's keys at the live column's first width and at its most. */
 async function keysAtFirstAndMost(win: Page): Promise<void> {
   const splitter = win.getByRole('separator', { name: 'Resize the live column', exact: true });
-  const most = (await splitter.getAttribute('aria-valuemax')) ?? '';
   for (const [key, width] of [
     ['Enter', String(FIRST_WIDTH)],
-    ['End', most],
+    ['End', String(MOST)],
   ] as const) {
     await splitter.focus();
     await splitter.press(key);
