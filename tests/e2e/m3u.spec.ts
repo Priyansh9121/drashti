@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, openSection, operatorPage, operatorReady } from './helpers';
 import { makeTestImage, makeTestTone } from './test-media';
 
 test('M3U imports local files in order, lists a web entry without fetching it, exports UTF-8 and imports into Audio', async () => {
@@ -74,6 +74,7 @@ test('M3U imports local files in order, lists a web entry without fetching it, e
     await app.evaluate(({ dialog }, file) => {
       dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [file] });
     }, audioList);
+    await openSection(win, 'audio');
     await win.getByTestId('audio-add').click();
     await win.getByRole('menuitem', { name: 'Import', exact: true }).click();
     await expect(win.getByTestId('music-playlist').filter({ hasText: 'Placeholder audio' })).toBeVisible();

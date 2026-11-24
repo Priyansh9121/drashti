@@ -1,21 +1,21 @@
-# More tools
+# Tools
 
-**More tools**, folded away at the end of the right column, holds the tools a sabha needs now and then: Lower Thirds, the MIDI controller, OSC control, Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture… and QR code…. They are Pro Mode's.
+The tools a sabha needs now and then each have a section of their own in the right column, under **Timers**: **Lower Thirds**, **Show a Window**, **Show a Stream Link**, **Video inputs**, **Picture in Picture**, **QR code**, **MIDI controller** and **OSC control**. They are Pro Mode's.
 
-## More tools and the Tools menu
+## The tools' sections and the Tools menu
 
-**What it is.** The folded group at the end of the right column, each tool with a line saying what it does. **Tools** in the menu bar has the same: Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture…, QR code…, then Lower Thirds Studio…, MIDI Controller… and OSC Control….
+**What it is.** A folding section for each tool under **LIVE**, after **Timers**, each with a line saying what its tool does and the button that opens it. Like every section under LIVE, each is folded every time Drashti starts. **Tools** in the menu bar has the same: Show a Window…, Show a Stream Link…, Add a Video Input…, Picture in Picture…, QR code…, then Lower Thirds Studio…, MIDI Controller… and OSC Control….
 
 **When you would use it.** Whenever you need one of these tools.
 
 **How:**
 
-1. Press **More tools** at the end of the right column to open it.
-2. Press the tool you need.
-3. Press **More tools** again to fold it away.
+1. In the right column, press the tool's heading (**Show a Window**, say) to open its section.
+2. Press the tool's button.
+3. Press the heading again to fold it. It stays as you leave it until Drashti quits.
 4. Or choose the tool from **Tools** in the menu bar.
 
-![More tools opened: each tool with a line saying what it does](../screenshots/manual-more-tools.png)
+![The sections under LIVE, folded, with one tool's section open](../screenshots/manual-more-tools.png)
 
 ## Lower Thirds
 
@@ -25,7 +25,7 @@
 
 **How:**
 
-1. In **More tools**, find **Lower Thirds**.
+1. In the right column, press **Lower Thirds** to open its section.
 2. Press **Show** beside a lower third to put it up.
 3. Press the same button, now **Hide**, to take it off.
 4. **Studio** or **New…** opens the studio to make one.
@@ -57,7 +57,7 @@
 **How:**
 
 1. Open the other app's window first, not minimised.
-2. In **More tools**, press **Show a Window…**.
+2. Open the **Show a Window** section and press **Show a Window…**.
 3. Choose the window by its name and its small live picture.
 4. Press **Show on the screens**. **F3** or **Clear all** takes it off.
 
@@ -71,7 +71,7 @@
 
 **How:**
 
-1. In **More tools**, press **Show a Stream Link…**, or choose it from the **Tools** menu. This is Pro Mode's.
+1. Open the **Show a Stream Link** section and press **Show a Stream Link…**, or choose it from the **Tools** menu. This is Pro Mode's.
 2. Paste the HLS link ending in **.m3u8**, or the YouTube live stream's **Share** link. A YouTube link can be checked only while Drashti is off air and not recording.
 3. Press **Show on the screens**. The earlier picture stays until the link's pictures come.
 4. If it drops, the last picture stays while Drashti reconnects. After 20 seconds the Wallpaper goes up. The link returns by itself, unless something else went up.
@@ -90,12 +90,12 @@ Output nodes show the rest of the show without this link; stage screens name it,
 
 **How:**
 
-1. In **More tools**, press **Add a Video Input…**.
+1. Open the **Video inputs** section and press **Add a Video Input…**.
 2. Choose the input by its small live picture, and give it a name, such as "Input 1".
 3. Press **Add to Media**. Nothing goes up yet.
 4. In **Media**, click it to put it up.
 
-![More tools opened, with Add a Video Input… among its tools](../screenshots/manual-more-tools.png)
+![The sections under LIVE, with Add a Video Input… in its Video inputs section](../screenshots/manual-more-tools.png)
 
 ## Picture in Picture
 
@@ -105,7 +105,7 @@ Output nodes show the rest of the show without this link; stage screens name it,
 
 **How:**
 
-1. In **More tools**, press **Picture in Picture…**.
+1. Open the **Picture in Picture** section and press **Picture in Picture…**.
 2. Under **What goes in the box**, choose what goes in it.
 3. Choose **Where it sits**, the **Size** and how it comes on.
 4. Press **Show in the box**. Under **LIVE**, **Swap** and **Take off** work on it.
@@ -122,7 +122,7 @@ If a video in the box cannot play, the box closes and a notice names it: see **L
 
 **How:**
 
-1. In **More tools**, press **QR code…**.
+1. Open the **QR code** section and press **QR code…**.
 2. Paste a link or type words under **Link or words** (300 letters at most).
 3. For a logo in the middle, press **Choose a Picture…** and choose it: a PNG or JPEG, such as the mandir's logo from the setup kit. Drashti remembers it. **Logo in the middle** turns it on or off.
 4. Check the code. For a slide with the code alone, untick **Words under the code**.
@@ -141,7 +141,7 @@ If a video in the box cannot play, the box closes and a notice names it: see **L
 **How:**
 
 1. Plug the controller in.
-2. In **More tools**, press **MIDI controller…** and choose the device.
+2. Open the **MIDI controller** section, press **MIDI controller…** and choose the device.
 3. For each action, press **Learn**, then the pad.
 4. Close it. The pads work in Simple Mode too.
 
@@ -155,7 +155,7 @@ If a video in the box cannot play, the box closes and a notice names it: see **L
 
 **How:**
 
-1. In **More tools**, press **OSC control…**.
+1. Open the **OSC control** section and press **OSC control…**.
 2. Set the **UDP port**, and list each sender's address under **Allowed sender addresses**.
 3. Turn on **Enable OSC control**, then **Save OSC settings**.
 4. **OSC on** shows in the header; **Turn OSC off** closes it.

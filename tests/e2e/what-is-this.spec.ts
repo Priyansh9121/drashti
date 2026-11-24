@@ -4,15 +4,7 @@ import { manualChapter } from '../../src/shared/manual';
 import { PANEL_HELP } from '../../src/shared/panel-help';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { NETWORK_ENV, networkOn } from './devices';
-import {
-  chooseMenuItem,
-  launchApp,
-  openLibrary,
-  openMoreTools,
-  operatorPage,
-  operatorReady,
-  slidesOf,
-} from './helpers';
+import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady, slidesOf } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -40,9 +32,8 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   await networkOn(win);
   await showRunning(win);
 
-  // Every panel and column heading has its ?, one each (More tools unfolded: Session 26a), and the places added in
-  // Sessions 31–36.
-  await openMoreTools(win);
+  // Every panel and column heading has its ?, one each (each section under LIVE has its own on its heading, folded
+  // or not: alpha.22), and the places added in Sessions 31–36.
   // The library's is in its sheet (Session 44).
   await openLibrary(win);
   for (const id of Object.keys(PANEL_HELP)) {

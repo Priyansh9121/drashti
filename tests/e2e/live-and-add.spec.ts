@@ -14,6 +14,7 @@ import {
   dropFiles,
   launchApp,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   setUpScreen,
@@ -100,6 +101,7 @@ test('the preview is headed LIVE with no Next under it; Edit layout… opens the
     if (saved.ok) await d.stageLayouts.choose(saved.id);
   });
   // Edit layout…, from the stage screen's panel: the editor at that layout.
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   await panel.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');

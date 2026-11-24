@@ -18,7 +18,7 @@ import {
 } from '../stage/stage-layouts-store';
 import { chooseInput, useChosenInput, useVideoInputs } from '../video-inputs/video-inputs-store';
 import { Notice } from '../ui/Notice';
-import { Panel } from '../ui/Panel';
+import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 import { StageTimerControls } from './StageTimerControls';
@@ -164,7 +164,7 @@ export function StageMessageControl() {
       help="stage"
       title="Stage screen"
       icon={Tv}
-      collapsible
+      {...LIVE_SECTION}
       remember="stage"
       bodyClassName="space-y-2 px-3 pb-3"
       data-testid="stage-message-control"

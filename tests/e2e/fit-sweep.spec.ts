@@ -18,6 +18,7 @@ import {
   lockPage,
   onEditorSlide,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   setUpScreen,
@@ -662,6 +663,7 @@ test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show 
     );
 
     // A timer's look for the audience.
+    await openSection(win, 'timers');
     await dialog('a timer’s How it looks for the audience…', win.getByTestId('timer-look'), () =>
       win
         .getByTestId('timers')
@@ -713,6 +715,7 @@ test('the rarer windows and dialogs (Ready?, stage layouts and a template, Show 
     await closeLibrary(win);
 
     // Music: a new audio playlist's Add sounds….
+    await openSection(win, 'audio');
     await dialog('Music’s Add sounds…', win.getByTestId('music-add-dialog'), async () => {
       await win.getByTestId('audio-add').click();
       await win.getByRole('menuitem', { name: 'Create playlist' }).click();

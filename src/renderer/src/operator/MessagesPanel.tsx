@@ -14,7 +14,7 @@ import { Select, TextInput } from '../ui/Field';
 import { MessageSquare, Pin, PinOff, Plus } from '../ui/icons';
 import { pinIt, unpin, useQuickBar } from '../quick-bar/quick-bar-store';
 import { pinKey, type QuickPin } from '../../../shared/quick-bar';
-import { Panel } from '../ui/Panel';
+import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
@@ -316,7 +316,7 @@ export function MessagesPanel() {
       help="messages"
       title="Messages"
       icon={MessageSquare}
-      collapsible
+      {...LIVE_SECTION}
       remember="messages"
       data-testid="messages"
       bodyClassName="space-y-2 px-3 pb-3"

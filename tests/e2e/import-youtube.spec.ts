@@ -9,6 +9,7 @@ import {
   chooseMenuItem,
   holdStill,
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   type PageGlobals,
@@ -118,6 +119,7 @@ test('YouTube: a paste downloads video at 1080p, or sound from Audio; going on a
   await expect.poll(async () => (await listMedia(win)).map((m) => m.name)).toContain('Placeholder video.mp4');
 
   // The same video from Audio takes its sound, and adds it to the audio playlist.
+  await openSection(win, 'audio');
   await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
   await pasteLink(win, LINK);
   await linkFinished(win);
@@ -248,6 +250,7 @@ test('YouTube captions: two placeholder SRT files beside video and Audio, with a
     ],
   });
   expect((await listMedia(win)).map((media) => media.name)).toEqual(['Placeholder video.mp4']);
+  await openSection(win, 'audio');
   await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
   await pasteLink(win, LINK, false);
   await expect(win.getByTestId('link-name')).toHaveValue('Placeholder video');

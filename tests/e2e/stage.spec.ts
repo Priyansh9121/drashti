@@ -8,10 +8,11 @@ import {
   importAndGetIds,
   launchApp,
   openLibrary,
+  openSection,
   operatorPage,
   outputPages,
-  type PageGlobals,
   setUpScreen,
+  type PageGlobals,
 } from './helpers';
 import { makeTestImage } from './test-media';
 
@@ -156,6 +157,7 @@ test('a stage screen follows Next with the current and next text, notes, clock a
   await expect(view.getByTestId('stage-next')).toHaveText('End');
 
   // A message for the stage: the audience never sees it.
+  await openSection(win, 'stage');
   const control = win.getByTestId('stage-message-control');
   await control.getByRole('textbox', { name: 'Message for the stage' }).fill('Placeholder: two minutes left');
   await control.getByRole('button', { name: 'Show' }).click();
@@ -166,6 +168,7 @@ test('a stage screen follows Next with the current and next text, notes, clock a
   await expect(view.getByTestId('stage-message')).toHaveCount(0);
 
   // A running timer shows on the stage too.
+  await openSection(win, 'timers');
   const timers = win.getByTestId('timers');
   await timers.getByRole('button', { name: 'New timer' }).click();
   const form = timers.getByTestId('timer-form');

@@ -8,13 +8,14 @@ import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from '.
 import {
   holdStill,
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
   outputPages,
   outputReady,
-  type PageGlobals,
   setUpScreen,
+  type PageGlobals,
 } from './helpers';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { holdClock } from './placeholder-slides';
@@ -178,6 +179,7 @@ test('New from a Template… makes each of the six with the timer it needs, chos
   const stage = await outputFor(app, stageId);
 
   // The editor, from the Stage screen panel's Edit layout….
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await expect(editor).toBeVisible();
@@ -291,6 +293,7 @@ test('the stage layout editor and New from a Template fit 1024 × 645 and pass t
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await expect(editor).toBeVisible();
@@ -369,6 +372,7 @@ test('boxes may overlap; Bring to the front, Send to the back and one step set w
   await expect(stage.getByTestId('stage-layout')).toBeVisible();
   await expect.poll(() => topBoxAt(stage, 1000, 540)).toBe('placeholder-c');
 
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Placeholder overlap layout');
@@ -574,6 +578,7 @@ test('a box’s settings draw alike on this computer’s stage screen, a node’
     await same(tablet.page, 'a tablet’s stage page');
 
     // The Stage panel's preview, and the editor's canvas.
+    await openSection(main.win, 'stage');
     await same(main.win.getByTestId('stage-preview'), 'the Stage panel’s preview');
     await main.win.getByTestId('stage-edit-layout').click();
     await expect(main.win.getByTestId('stage-layout-editor')).toBeVisible();
@@ -771,6 +776,7 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
   await holdClock(app, null);
 
   // In the editor: as it was, nothing to save, its boxes' new settings at what they leave out.
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Placeholder layout saved before');
@@ -843,6 +849,7 @@ test('the Stage panel and the phone start, pause and reset the stage layout’s 
     );
 
   // The Stage screen panel: the two timers the layout names, each once, in its order, with what each counts to.
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   const rows = panel.getByTestId('stage-timer-row');
   await expect(rows).toHaveCount(2);
@@ -920,6 +927,7 @@ test('the Text size field shows what is typed, figure by figure, and the box tak
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await editor.getByTestId('stage-layout-duplicate').click();
@@ -974,6 +982,7 @@ test('a line’s width and how many items show what is typed: Backspace, then a 
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await editor.getByTestId('stage-layout-duplicate').click();
@@ -1042,6 +1051,7 @@ test('New from a Template… says when a countdown chosen in Timers stops at 0:0
     allowsOverrun: false,
   });
 
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await editor.getByTestId('stage-layout-from-template').click();
@@ -1201,6 +1211,7 @@ test('New from a Template… chooses the layout for every stage screen at once',
   });
   expect(await liveLayoutOf(win, groups[0] ?? '')).toBeNull();
 
+  await openSection(win, 'stage');
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
   await editor.getByTestId('stage-layout-from-template').click();
