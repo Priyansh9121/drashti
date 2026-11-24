@@ -15,27 +15,26 @@ export function latestCaptionReview(current: CaptionReview | null, next: Caption
 }
 
 /**
- * How the operator's open correction stands against the phrase on the screens now: none open (or none for this
- * phrase), open on it as it is, or open on an earlier revision of it (it changed since).
+ * How the operator's open correction stands against the phrase on the screens now: none open, open on it as it is,
+ * open on an earlier revision of it (it changed since), or gone: its phrase has left the screens (its time is over,
+ * or the next phrase took its place). A correction being typed stays open until closed, and says so (review n2).
  */
-export type CorrectionStanding = 'none' | 'open' | 'changed';
+export type CorrectionStanding = 'none' | 'open' | 'changed' | 'gone';
 
 export function correctionStanding(
   draft: CaptionCorrection | null,
   current: CaptionRevision | null,
 ): CorrectionStanding {
-  if (
-    draft === null ||
-    current === null ||
-    draft.sessionId !== current.sessionId ||
-    draft.phraseId !== current.phraseId
-  )
-    return 'none';
+  if (draft === null) return 'none';
+  if (current === null || draft.sessionId !== current.sessionId || draft.phraseId !== current.phraseId)
+    return 'gone';
   return draft.revision === current.revision ? 'open' : 'changed';
 }
 
 /** Why an open correction cannot be applied as it stands, or null. */
 export function correctionProblem(standing: CorrectionStanding, valid: boolean): string | null {
+  if (standing === 'gone')
+    return 'That phrase has left the screens, so this correction cannot be applied. Close this edit.';
   if (standing !== 'open') return 'The phrase changed. Close this edit and open it again.';
   return valid ? null : 'Use a shorter correction with plain text.';
 }
@@ -96,7 +95,7 @@ export function CaptionPrototypeControls({
           </Button>
         </div>
       )}
-      {draft !== null && standing !== 'none' && (
+      {draft !== null && (
         <div className="space-y-2">
           <Field label="Corrected phrase" error={problem}>
             <Textarea
