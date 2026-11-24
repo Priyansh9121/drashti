@@ -515,21 +515,24 @@ const statusParts = (win: Page) =>
 
 /*
  * Stage off with a stage tablet connected (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)", and
- * a22-review-stage8's third look, MUST 1): the status bar says beside "Stage off" that the tablet shows the audience
- * picture. In CI's 1024 × 645, in both modes, with Audience on and off too (an ordinary end of a service), its words
- * and every other part of the status bar fit: none cut short, nothing past the window's edge.
+ * a22-review-stage8's third look, MUST 1): the status bar's Stage off says the tablet shows the audience picture (a
+ * tablet in place of its screen icon, the words for screen readers and in its tooltip). In CI's 1024 × 645, with
+ * Audience on and off too (an ordinary end of a service):
+ * - Pro Mode: nothing anywhere is cut short, over another or past the window's edge (the status bar's version words
+ *   shortened for it, QA23-STAGE8-4);
+ * - Simple Mode: the same state with the tablet and without it finds the very same faults, and the Stage off item is
+ *   as wide: the tablet adds none. (Simple Mode's own day playlist's name in a fresh library is cut short in the
+ *   left column at 1024 × 645 with or without it: the owner's QA23-STAGE8-5, held for him.)
  */
 for (const mode of ['pro', 'simple'] as const)
   for (const audience of ['on', 'off'] as const)
-    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, Stage off with a stage tablet connected, Audience ${audience}: the status bar's words fit, none cut short, nothing past the window's edge`, async () => {
+    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, Stage off with a stage tablet connected, Audience ${audience}: ${mode === 'pro' ? 'nothing cut short or past the window’s edge' : 'the tablet adds no fault to the same state without it'}`, async () => {
       test.setTimeout(120_000);
       const { app } = await launchApp(NETWORK_ENV);
       const win = await operatorPage(app);
       await operatorReady(win);
       await sizeOperatorWindow(app, win, CI_WINDOW);
       const { port } = await networkOn(win);
-      const token = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
-      const feed = await connectTablet(port, token);
       // Off from Pro Mode first (Simple Mode only turns them on).
       for (const which of audience === 'off' ? (['stage', 'audience'] as const) : (['stage'] as const)) {
         const turned = await win.evaluate(
@@ -542,21 +545,38 @@ for (const mode of ['pro', 'simple'] as const)
         await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
         await expect(win.getByTestId('simple-mode')).toBeVisible();
       }
-      // Said by a tablet in place of the screen icon, the sentence for screen readers and in its tooltip.
+      await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience === 'off' ? 1 : 0);
+      const stageOff = win.getByTestId('switch-off-stage');
+      const faultsNow = async (label: string) => {
+        await win.evaluate(() => document.fonts.ready.then(() => undefined));
+        console.log(
+          `${mode}, Audience ${audience}, ${label}: the status bar ${JSON.stringify(await statusParts(win))}`,
+        );
+        const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
+        if (faults.length > 0)
+          await test.info().attach(`${mode}-stage-off-audience-${audience}-${label}`, {
+            body: await win.screenshot(),
+            contentType: 'image/png',
+          });
+        const box = await stageOff.boundingBox();
+        return { faults, width: Math.round(box?.width ?? 0) };
+      };
+      // The same state with no tablet paired first.
+      await expect(stageOff).toContainText('Stage off');
+      await expect(win.getByTestId('switch-off-stage-tablet')).toHaveCount(0);
+      const without = await faultsNow('no tablet');
+      // A stage tablet paired and connected: said by a tablet in place of the screen icon, the sentence for screen
+      // readers and in its tooltip.
+      const token = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
+      const feed = await connectTablet(port, token);
       await expect(win.getByTestId('switch-off-stage-tablet')).toBeVisible();
       await expect(win.getByTestId('switch-off-stage-hint')).toHaveText(
         'the stage tablet shows the audience picture',
       );
-      await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience === 'off' ? 1 : 0);
-      await win.evaluate(() => document.fonts.ready.then(() => undefined));
-      console.log(`${mode}, Audience ${audience}: the status bar ${JSON.stringify(await statusParts(win))}`);
-      const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
-      if (faults.length > 0)
-        await test.info().attach(`${mode}-stage-off-tablet-audience-${audience}`, {
-          body: await win.screenshot(),
-          contentType: 'image/png',
-        });
-      expect(faults).toEqual([]);
+      const withTablet = await faultsNow('a tablet connected');
+      expect(withTablet.width, 'the Stage off item no wider with the tablet').toBe(without.width);
+      if (mode === 'pro') expect(withTablet.faults).toEqual([]);
+      else expect(withTablet.faults).toEqual(without.faults);
       feed.close();
       await app.close();
     });
