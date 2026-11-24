@@ -200,6 +200,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.media.clipExport,
   IPC.media.stopClipExport,
   IPC.media.stopProxy,
+  // Combine videos… (alpha.22): Pro Mode's; its list stays readable.
+  IPC.media.combineVideos,
+  IPC.media.stopCombine,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
   IPC.media.savePicture,
@@ -639,6 +642,7 @@ export function simpleModeRefusals(
   // Nothing copied (alpha.20: the new secret's Copy, whose window Simple Mode never opens).
   answers.set(IPC.events.copySecret, () => false);
   answers.set(IPC.media.stopClipExport, () => false);
+  answers.set(IPC.media.stopCombine, () => false);
   answers.set(IPC.media.stopProxy, () => false);
   answers.set(IPC.modelPacks.cancel, () => false);
   answers.set(IPC.slideEditor.translationStatus, () => ({

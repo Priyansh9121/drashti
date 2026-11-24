@@ -40,7 +40,12 @@ describe('combinePlan', () => {
     expect(args.some((arg) => arg.includes('concat:'))).toBe(false);
     expect(args).not.toContain('concat');
     expect(filterOf(args)).toContain('[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]');
-    expect(args.slice(args.indexOf('[v]') - 1, args.indexOf('[v]') + 3)).toEqual(['-map', '[v]', '-map', '[a]']);
+    expect(args.slice(args.indexOf('[v]') - 1, args.indexOf('[v]') + 3)).toEqual([
+      '-map',
+      '[v]',
+      '-map',
+      '[a]',
+    ]);
     expect(args.at(-1)).toBe('/work/out.mp4');
     expect(args.slice(-3, -1)).toEqual(['-f', 'mp4']);
     expect(args).toEqual(expect.arrayContaining(['-c:v', 'libx264', '-c:a', 'aac', '-pix_fmt', 'yuv420p']));
@@ -53,20 +58,23 @@ describe('combinePlan', () => {
       input('/media/b.mp4', { width: 360, height: 640 }, words('360x640 [SAR 1:1 DAR 9:16]', '30')),
     ]);
     expect(plan).toMatchObject({ width: 320, height: 180, rate: '25' });
-    const [first = '', second = ''] = filterOf(plan.args('/work/out.mp4')).split(';');
+    const branches = filterOf(plan.args('/work/out.mp4')).split(';');
+    const first = branches.find((b) => b.startsWith('[0:V:0]')) ?? '';
+    const second = branches.find((b) => b.startsWith('[1:V:0]')) ?? '';
     for (const branch of [first, second]) {
       expect(branch).toContain('scale=320:180:force_original_aspect_ratio=decrease');
       expect(branch).toContain('pad=320:180:(ow-iw)/2:(oh-ih)/2:black');
       expect(branch).toContain('fps=25');
       expect(branch).toContain('format=yuv420p');
     }
-    expect(first.startsWith('[0:V:0]')).toBe(true);
-    expect(second.startsWith('[1:V:0]')).toBe(true);
     expect(first).toContain('trim=duration=3.000[v0]');
   });
 
   it('gives a video with no sound silence for its whole length, and resamples the sound of the others', () => {
-    const plan = combinePlan([input('/media/a.mp4'), input('/media/b.mp4', { durationMs: 2000, audio: false })]);
+    const plan = combinePlan([
+      input('/media/a.mp4'),
+      input('/media/b.mp4', { durationMs: 2000, audio: false }),
+    ]);
     const filter = filterOf(plan.args('/work/out.mp4'));
     expect(filter).toContain(
       '[0:a:0]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=3.000[a0]',
@@ -96,14 +104,20 @@ describe('combinePlan', () => {
     expect(() => combinePlan([input('/media/a.mp4'), input('/media/b.png', { still: true })])).toThrow(
       'is not a video',
     );
-    expect(() => combinePlan([input('/media/a.mp4'), input('/media/b.webm', { pixFmt: 'yuva420p' })])).toThrow(
-      'transparency',
-    );
-    expect(() => combinePlan([input('/media/a.mp4'), { ...input('/media/b.mp4'), info: { ...input('').info, durationMs: null } }])).toThrow(
-      'length',
-    );
     expect(() =>
-      combinePlan([input('/media/a.mp4'), { ...input('/media/b.mp4'), info: { durationMs: 1000, video: null, audio: null } }]),
+      combinePlan([input('/media/a.mp4'), input('/media/b.webm', { pixFmt: 'yuva420p' })]),
+    ).toThrow('transparency');
+    expect(() =>
+      combinePlan([
+        input('/media/a.mp4'),
+        { ...input('/media/b.mp4'), info: { ...input('').info, durationMs: null } },
+      ]),
+    ).toThrow('length');
+    expect(() =>
+      combinePlan([
+        input('/media/a.mp4'),
+        { ...input('/media/b.mp4'), info: { durationMs: 1000, video: null, audio: null } },
+      ]),
     ).toThrow('is not a video');
   });
 
@@ -118,11 +132,23 @@ describe('combinePlan', () => {
       height: 1920,
       rate: '30000/1001',
     });
-    const wide = input('/media/dv.mp4', { width: 720, height: 576 }, words('720x576 [SAR 16:15 DAR 4:3]', '25'));
+    const wide = input(
+      '/media/dv.mp4',
+      { width: 720, height: 576 },
+      words('720x576 [SAR 16:15 DAR 4:3]', '25'),
+    );
     expect(combinePlan([wide, input('/media/b.mp4')])).toMatchObject({ width: 768, height: 576 });
     // Larger than the H.264 Drashti draws everywhere: made no larger than it, the same shape.
-    const huge = input('/media/8k.mp4', { width: 7680, height: 4320 }, words('7680x4320 [SAR 1:1 DAR 16:9]', '60'));
-    expect(combinePlan([huge, input('/media/b.mp4')])).toMatchObject({ width: 4096, height: 2304, rate: '60' });
+    const huge = input(
+      '/media/8k.mp4',
+      { width: 7680, height: 4320 },
+      words('7680x4320 [SAR 1:1 DAR 16:9]', '60'),
+    );
+    expect(combinePlan([huge, input('/media/b.mp4')])).toMatchObject({
+      width: 4096,
+      height: 2304,
+      rate: '60',
+    });
     const fast = input('/media/fast.mp4', {}, words('320x180 [SAR 1:1 DAR 16:9]', '120'));
     expect(combinePlan([fast, input('/media/b.mp4')]).rate).toBe('60');
   });
@@ -130,13 +156,19 @@ describe('combinePlan', () => {
 
 describe('frameFacts', () => {
   it('reads the first picture’s rate, pixel shape and turn from FFmpeg’s words', () => {
-    expect(frameFacts(words('320x180 [SAR 1:1 DAR 16:9]', '25'))).toEqual({ rate: '25', sar: 1, turned: false });
+    expect(frameFacts(words('320x180 [SAR 1:1 DAR 16:9]', '25'))).toEqual({
+      rate: '25',
+      sar: 1,
+      turned: false,
+    });
     expect(frameFacts(words('720x480 [SAR 8:9 DAR 4:3]', '23.98'))).toEqual({
       rate: '24000/1001',
       sar: 8 / 9,
       turned: false,
     });
-    expect(frameFacts(`${words('320x180', '59.94')}\n      displaymatrix: rotation of 90.00 degrees`)).toEqual({
+    expect(
+      frameFacts(`${words('320x180', '59.94')}\n      displaymatrix: rotation of 90.00 degrees`),
+    ).toEqual({
       rate: '60000/1001',
       sar: 1,
       turned: true,

@@ -51,7 +51,9 @@ async function setUp() {
     .run(hashed.sha256, hashed.bytes, info.durationMs);
   fixture.db.prepare("UPDATE media SET name='Placeholder source.mp4' WHERE id='source'").run();
   fixture.db
-    .prepare("INSERT INTO media(id,kind,name,path,playable) VALUES ('still','image','Placeholder picture.png','x.png',1)")
+    .prepare(
+      "INSERT INTO media(id,kind,name,path,playable) VALUES ('still','image','Placeholder picture.png','x.png',1)",
+    )
     .run();
   const hashes = { source: fixture.sha, second: hashed.sha256 };
   const work = join(fixture.dir, 'video-combine-work');
@@ -97,10 +99,17 @@ it('joins two videos of different sizes, rates and sound into one new video in M
   const { second, hashes, work } = await setUp();
   const started = combines.start({ mediaIds: ['source', 'second'] });
   if (!started.ok) throw new Error(started.message);
-  expect(started.job).toMatchObject({ name: 'Placeholder source + Placeholder second.mp4', state: 'waiting' });
+  expect(started.job).toMatchObject({
+    name: 'Placeholder source + Placeholder second.mp4',
+    state: 'waiting',
+  });
   const job = await settled(started.job.id);
   const row = fixture.media.about(job.mediaId ?? '');
-  expect(row).toMatchObject({ kind: 'video', name: 'Placeholder source + Placeholder second.mp4', deleted: false });
+  expect(row).toMatchObject({
+    kind: 'video',
+    name: 'Placeholder source + Placeholder second.mp4',
+    deleted: false,
+  });
   expect(
     (fixture.db.prepare('SELECT listed FROM media WHERE id=?').get(job.mediaId) as { listed: number }).listed,
   ).toBe(1);
@@ -159,13 +168,19 @@ it('waits while on air and only then combines; Stop leaves nothing behind', asyn
 
 it('refuses one video, the same video twice, a picture and a missing file, with words for each', async () => {
   await setUp();
-  expect(combines.start({ mediaIds: ['source'] })).toMatchObject({ ok: false, message: /two or more videos/u });
+  expect(combines.start({ mediaIds: ['source'] })).toMatchObject({
+    ok: false,
+    message: /two or more videos/u,
+  });
   expect(combines.start({ mediaIds: ['source', 'source'] })).toMatchObject({ ok: false });
   expect(combines.start({ mediaIds: ['source', 'still'] })).toMatchObject({
     ok: false,
     message: /“Placeholder picture.png” is not a video/u,
   });
-  expect(combines.start({ mediaIds: ['source', 'gone'] })).toMatchObject({ ok: false, message: /no longer in Media/u });
+  expect(combines.start({ mediaIds: ['source', 'gone'] })).toMatchObject({
+    ok: false,
+    message: /no longer in Media/u,
+  });
   fixture.db.prepare("UPDATE media SET missing=1 WHERE id='second'").run();
   expect(combines.start({ mediaIds: ['source', 'second'] })).toMatchObject({
     ok: false,

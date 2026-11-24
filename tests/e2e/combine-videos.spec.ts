@@ -36,12 +36,23 @@ interface CombineGlobals {
 function ffmpeg(args: string[]) {
   const file = testFfmpeg();
   if (!file) throw new Error('The bundled FFmpeg is required.');
-  return spawnSync(file, ['-hide_banner', '-nostdin', '-y', '-threads', '1', '-filter_threads', '1', ...args], {
-    windowsHide: true,
-  });
+  return spawnSync(
+    file,
+    ['-hide_banner', '-nostdin', '-y', '-threads', '1', '-filter_threads', '1', ...args],
+    {
+      windowsHide: true,
+    },
+  );
 }
 /** A placeholder: one colour, with a generated tone or no sound at all. */
-function generated(path: string, colour: string, size: string, rate: number, seconds: number, sound: boolean) {
+function generated(
+  path: string,
+  colour: string,
+  size: string,
+  rate: number,
+  seconds: number,
+  sound: boolean,
+) {
   const made = ffmpeg([
     '-loglevel',
     'error',
@@ -135,23 +146,37 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
     await expect(rows).toHaveText([/Placeholder blue/u, /Placeholder red/u]);
     await dialog.getByRole('button', { name: 'Move “Placeholder red.mp4” up', exact: true }).click();
     await expect(rows).toHaveText([/Placeholder red/u, /Placeholder blue/u]);
-    await expect(dialog.getByRole('button', { name: 'Move “Placeholder red.mp4” up', exact: true })).toBeDisabled();
+    await expect(
+      dialog.getByRole('button', { name: 'Move “Placeholder red.mp4” up', exact: true }),
+    ).toBeDisabled();
     await expectFits(dialog, 'Combine videos at the CI operator size');
     await expectNoSeriousA11yIssues(win, 'Combine videos');
 
     // On air: it waits, makes nothing, and says so.
-    await app.evaluate(() => (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true));
+    await app.evaluate(() =>
+      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true),
+    );
     await dialog.getByRole('button', { name: 'Combine', exact: true }).click();
     const job = dialog.getByTestId('combine-videos-job');
     await expect(job).toHaveAttribute('data-state', 'waiting');
     await expect(job).toContainText('Waits while');
-    const list = () => win.evaluate(() => (globalThis as unknown as CombineGlobals).drashti.media.combineList());
-    expect(await list()).toMatchObject([{ name: 'Placeholder red + Placeholder blue.mp4', state: 'waiting', mediaId: null }]);
+    const list = () =>
+      win.evaluate(() => (globalThis as unknown as CombineGlobals).drashti.media.combineList());
+    expect(await list()).toMatchObject([
+      { name: 'Placeholder red + Placeholder blue.mp4', state: 'waiting', mediaId: null },
+    ]);
     expect(stored(media)).toHaveLength(kept.size);
-    await test.info().attach('Combine videos, waiting on air', { body: await dialog.screenshot(), contentType: 'image/png' });
+    await test
+      .info()
+      .attach('Combine videos, waiting on air', {
+        body: await dialog.screenshot(),
+        contentType: 'image/png',
+      });
 
     // Off air: it combines, and the new video is in Media.
-    await app.evaluate(() => (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false));
+    await app.evaluate(() =>
+      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false),
+    );
     await expect
       .poll(
         async () => {
@@ -169,7 +194,9 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
     expect(madeId).not.toBe('');
     await dialog.getByRole('button', { name: 'Close', exact: true }).first().click();
     await expect(dialog).toBeHidden();
-    await expect(win.getByTestId('media-item').filter({ hasText: 'Placeholder red + Placeholder blue' })).toBeVisible();
+    await expect(
+      win.getByTestId('media-item').filter({ hasText: 'Placeholder red + Placeholder blue' }),
+    ).toBeVisible();
 
     // One new file: its length the sum (3 s + 2 s, within 0.2 s), the first one's picture size, red then blue.
     const made = stored(media).filter((path) => !kept.has(path));

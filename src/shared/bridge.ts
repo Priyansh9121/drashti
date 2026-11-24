@@ -1,7 +1,15 @@
 import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 
-import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type {
+  ClipExportRequest,
+  ClipExportResult,
+  ClipExportJob,
+  CombineJob,
+  CombineRequest,
+  CombineResult,
+  VideoProxyResult,
+} from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
@@ -794,6 +802,13 @@ export interface DrashtiBridge {
     clipExports(): Promise<ClipExportJob[]>;
     stopClipExport(jobId: string): Promise<boolean>;
     showClipExport(jobId: string): Promise<null>;
+    /**
+     * Combine videos… (alpha.22): the videos (two to ten, in the order they play) joined end to end into one new video
+     * in Media, waiting for an idle moment (operator window, Pro Mode); the combines; and Stop.
+     */
+    combineVideos(request: CombineRequest): Promise<CombineResult>;
+    combineList(): Promise<CombineJob[]>;
+    stopCombine(jobId: string): Promise<boolean>;
     /** Cached source-time analysis; queues only through the idle conversion worker. Audio uses 0:a:N. */
     videoAnalysis(
       mediaId: string,
