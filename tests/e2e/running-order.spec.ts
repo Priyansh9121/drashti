@@ -155,7 +155,8 @@ test('Save running order as PDF… writes the open playlist’s running order wh
     const win = await operatorPage(app);
     await operatorReady(win);
     await placeholderSabha(win, dir);
-    const notice = win.getByTestId('operator-notice');
+    // The notice's own words (its card also holds Report this…).
+    const notice = win.getByTestId('operator-notice').locator('p');
     const refused =
       'Print or save the running order when nothing is up, on air or recording: clear what is up, and end the stream and the recording first.';
 
