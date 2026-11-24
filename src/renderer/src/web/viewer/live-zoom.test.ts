@@ -248,7 +248,11 @@ describe('a phone’s zoom put on the screens (Session 54, D2)', () => {
  * A PDF page whose picture is the whole 480 x 320 page, turned right `turns` times by Turn page right and kept to
  * `crop` of the turned page by Crop page… (in the turned page's fractions, as the operator crops what they see), up.
  */
-function turnedPage(turns: number, crop?: CropRect): EngineState {
+function turnedPage(
+  turns: number,
+  crop?: CropRect,
+  picture = { x: 0, y: 0, width: 480, height: 320 },
+): EngineState {
   const page: EditSlide = {
     ...newSlide(null),
     id: 'page',
@@ -260,7 +264,7 @@ function turnedPage(turns: number, crop?: CropRect): EngineState {
         kind: 'image',
         mediaId: 'm-page',
         fit: 'fill',
-        frame: { x: 0, y: 0, width: 480, height: 320 },
+        frame: picture,
       },
     ],
   };
@@ -577,6 +581,47 @@ describe('a phone’s zoom on a page cropped with Crop page… (a22-zoomcropfix)
         expect(again.x, what).toBeCloseTo(zoom.x, 9);
         expect(again.y, what).toBeCloseTo(zoom.y, 9);
       }
+    }
+  });
+});
+
+/*
+ * A turned page's own small picture, the page cropped (a22-review-zoomturn's re-review, MUST 1 on a turned page): an
+ * editable PDF page's picture keeps its own frame, and the screens show it whole where it lies inside the crop, so
+ * it is zoomed about its own middle. Whether it lies inside is a matter of the picture as drawn, turned: a quarter
+ * turn stands its frame on end about its middle. Made up: a 160 x 40 picture from (60, 100) of the 480 x 320 page,
+ * turned right once (its middle (140, 120) to (200, 140) of the 320 x 480 page, drawn 40 x 160: 180 to 220 across,
+ * 60 to 220 down), the page kept to its top right quarter (160 x 240 from 160, 0). Unturned, its frame would reach
+ * past the crop's left edge; drawn, it lies inside it.
+ */
+describe('a phone’s zoom on a turned page’s own small picture inside the crop (a22-zoomturn, re-review MUST 1)', () => {
+  const small = () => turnedPage(1, QUARTER, { x: 60, y: 100, width: 160, height: 40 });
+  // The picture's middle, (40, 140) of the crop; and (30, 100) of it, which is (190, 100) of the turned page, which
+  // was (100, 130) of the page before its turn: (0.25, 0.75) of the picture.
+  const views = [
+    { view: { zoom: 3, cx: 40 / 160, cy: 140 / 240 }, point: { x: 0.5, y: 0.5 } },
+    { view: { zoom: 3, cx: 30 / 160, cy: 100 / 240 }, point: { x: 0.25, y: 0.75 } },
+  ];
+
+  it('zooms it about its own middle, as a picture shown whole', () => {
+    const frame = frameOrThrow(frameInSlide(small()));
+    for (const { view, point } of views) {
+      expectFraming(liveZoomFor(view, frame, PLAIN), bringing(3, point), `at ${JSON.stringify(point)}`);
+      const back = viewForLive(bringing(3, point), frame, PLAIN);
+      expect(back.cx).toBeCloseTo(view.cx, 9);
+      expect(back.cy).toBeCloseTo(view.cy, 9);
+    }
+  });
+
+  it('does so in the hall’s picture as the phone draws it: the crop fitted into the canvas at 4.5, from 600 in', () => {
+    const frame = frameOrThrow(frameInCanvas(small(), CANVAS));
+    for (const { view, point } of views) {
+      const cx = (600 + view.cx * 160 * 4.5) / 1920;
+      expectFraming(
+        liveZoomFor({ ...view, cx }, frame, PLAIN),
+        bringing(3, point),
+        `canvas ${JSON.stringify(point)}`,
+      );
     }
   });
 });
