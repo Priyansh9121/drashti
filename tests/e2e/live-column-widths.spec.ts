@@ -33,6 +33,8 @@ interface Measured {
   keys: 'both' | 'neither' | 'one';
   /** How many buttons of Audio's body were measured (none: Audio folded, or its buttons gone). */
   audio: number;
+  /** The test ids of the buttons whose contents were measured (Back's, Next's, Oops'). */
+  measured: string[];
 }
 
 /**
@@ -45,6 +47,7 @@ const measure = (win: Page, buttons: string) =>
     const faults: string[] = [];
     const sizes: Record<string, string> = {};
     let audio = 0;
+    const measured: string[] = [];
     const named = (el: Element) =>
       el.getAttribute('data-testid') ??
       el.getAttribute('aria-label') ??
@@ -52,8 +55,6 @@ const measure = (win: Page, buttons: string) =>
     const shown = (el: Element) => el.getClientRects().length > 0;
     for (const button of document.querySelectorAll(buttons)) {
       if (!(button instanceof HTMLElement) || !shown(button)) continue;
-      // Audio's body (its header's toggle, ? and + show folded too).
-      if (button.closest('[data-testid="audio-group"] [data-testid="music-panel"]')) audio++;
       const box = button.getBoundingClientRect();
       const style = getComputedStyle(button);
       const inLeft = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
@@ -76,6 +77,10 @@ const measure = (win: Page, buttons: string) =>
         right = Math.max(right, rect.right);
       }
       if (left === Infinity) continue;
+      // What was measured: Audio's body (its header's toggle, ? and + show folded too), and each button by its test id.
+      if (button.closest('[data-testid="audio-group"] [data-testid="music-panel"]')) audio++;
+      const id = button.getAttribute('data-testid');
+      if (id !== null) measured.push(id);
       if (left < inLeft - 0.5 || right > inRight + 0.5) {
         const fault = `${named(button)}'s contents run past its padding`;
         faults.push(fault);
@@ -100,7 +105,7 @@ const measure = (win: Page, buttons: string) =>
     const [back, next, picture] = row;
     if (!back || !next || !picture) {
       faults.push('Back, Next or the next picture is not shown');
-      return { faults, sizes, keys: 'neither', audio };
+      return { faults, sizes, keys: 'neither', audio, measured };
     }
     if (Math.abs(back.box.width - next.box.width) > 0.5) {
       const fault = 'Back and Next differ in width';
@@ -117,6 +122,7 @@ const measure = (win: Page, buttons: string) =>
       sizes,
       keys: keys[0] && keys[1] ? 'both' : !keys[0] && !keys[1] ? 'neither' : 'one',
       audio,
+      measured,
     };
   }, buttons);
 
@@ -138,9 +144,14 @@ function runs(widths: readonly number[]): string {
 /**
  * The live column dragged by its splitter from its least to its most, a pixel at a time, `buttons` measured at each
  * width: every fault with the widths it is seen at and its sizes at the first of them, the widths where Back's and
- * Next's keys show on one only, and where they show.
+ * Next's keys show on one only, where `required` (test ids) or Audio's buttons were not measured, and whether the
+ * keys show in one run from the column's first width or less to its most.
  */
-async function sweep(win: Page, buttons: string): Promise<{ faults: string[]; keysAt: number[] }> {
+async function sweep(
+  win: Page,
+  buttons: string,
+  required: readonly string[],
+): Promise<{ faults: string[]; keysAt: number[] }> {
   await win.evaluate(() => document.fonts.ready.then(() => undefined));
   const splitter = win.getByRole('separator', { name: 'Resize the live column', exact: true });
   // The columns laid out for the page's width first. On CI's Mac the window's own resize (to its 1024-wide display)
@@ -165,6 +176,7 @@ async function sweep(win: Page, buttons: string): Promise<{ faults: string[]; ke
   const keysAt: number[] = [];
   const oneKey: number[] = [];
   const noAudio: number[] = [];
+  const unmeasured = new Map<string, number[]>();
   await win.mouse.move(x, y);
   await win.mouse.down();
   for (let width = LEAST; width <= MOST; width++) {
@@ -181,6 +193,9 @@ async function sweep(win: Page, buttons: string): Promise<{ faults: string[]; ke
     if (at.keys === 'one') oneKey.push(width);
     // Audio open, and its buttons among those measured, at every width: a folded Audio would pass unmeasured.
     if (at.audio === 0) noAudio.push(width);
+    // Back's and Next's own contents (the owner's fault) measured at every width, whatever holds them.
+    for (const id of required)
+      if (!at.measured.includes(id)) unmeasured.set(id, [...(unmeasured.get(id) ?? []), width]);
   }
   await win.mouse.up();
   const faults = [...seen].map(
@@ -189,6 +204,14 @@ async function sweep(win: Page, buttons: string): Promise<{ faults: string[]; ke
   );
   if (oneKey.length > 0) faults.push(`Back's and Next's keys show on one only at ${runs(oneKey)} px`);
   if (noAudio.length > 0) faults.push(`none of Audio's buttons was measured at ${runs(noAudio)} px`);
+  for (const [id, widths] of unmeasured)
+    faults.push(`${id}'s contents were not measured at ${runs(widths)} px`);
+  // The keys show wherever both have room: one run, from the column's first width or less to its most.
+  const keysRun = /^(\d+)–(\d+)$/u.exec(runs(keysAt));
+  if (!keysRun || Number(keysRun[1]) > FIRST_WIDTH || Number(keysRun[2]) !== MOST)
+    faults.push(
+      `Back's and Next's keys show at ${runs(keysAt) || 'no width'}, not in one run from ${String(FIRST_WIDTH)} px or less to ${String(MOST)} px`,
+    );
   return { faults, keysAt };
 }
 
@@ -222,7 +245,7 @@ test('Pro Mode: at every width of the live column, Back, Next, the next picture,
   // Audio, a section under LIVE folded at each start (alpha.22), opened to measure its buttons.
   await openSection(win, 'audio');
   await expect(win.getByTestId('live-column').getByTestId('music-empty').getByRole('button')).toHaveCount(3);
-  const { faults, keysAt } = await sweep(win, BUTTONS);
+  const { faults, keysAt } = await sweep(win, BUTTONS, ['show-back', 'show-next', 'show-oops']);
   expect(faults, 'what runs past its padding or lies over another, and where').toEqual([]);
   expect(keysAt.length, 'Back’s and Next’s keys show somewhere').toBeGreaterThan(0);
   await keysAtFirstAndMost(win);
@@ -240,7 +263,7 @@ test('Simple Mode: at every width of the live column, Back, Next, the next pictu
   // Simple Mode's Audio opens as before; opened here in case it was left folded.
   await openSection(win, 'audio');
   await expect(win.getByTestId('live-column').getByTestId('music-empty').getByRole('button')).toHaveCount(3);
-  const { faults, keysAt } = await sweep(win, BUTTONS);
+  const { faults, keysAt } = await sweep(win, BUTTONS, ['show-back', 'show-next']);
   expect(faults, 'what runs past its padding or lies over another, and where').toEqual([]);
   expect(keysAt.length, 'Back’s and Next’s keys show somewhere').toBeGreaterThan(0);
   await keysAtFirstAndMost(win);
