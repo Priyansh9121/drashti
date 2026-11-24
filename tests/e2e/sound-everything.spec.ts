@@ -15,6 +15,7 @@ import {
   launchApp,
   letTimePass,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   relaunchApp,
@@ -195,6 +196,7 @@ test('a sound plays on whatever goes up; the music steps aside under a video wit
   await expect.poll(() => gainOf(music), { timeout: 5000 }).toBeCloseTo(even, 2);
 
   // Audio's switch off: the music stays as loud under a video.
+  await openSection(win, 'audio');
   const aside = win.getByTestId('music-steps-aside-switch');
   await expect(aside).toHaveAttribute('aria-checked', 'true');
   // Its row fits the live column in CI's window and at 1280 × 720, nothing cut or scrolling sideways.

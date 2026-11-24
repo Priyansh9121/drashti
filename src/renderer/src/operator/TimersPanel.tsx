@@ -9,7 +9,7 @@ import { CalendarDays, Monitor, Palette, Pause, Play, Plus, RotateCcw, Square, T
 import { START_COUNTDOWN_NAME } from '../../../shared/timer-look';
 import { TimerLookDialog } from './TimerLookDialog';
 import { openCalendar } from '../calendar/calendar-store';
-import { Panel } from '../ui/Panel';
+import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch, useNotice } from './actions';
@@ -183,7 +183,7 @@ export function TimersPanel() {
       help="timers"
       title="Timers"
       icon={Timer}
-      collapsible
+      {...LIVE_SECTION}
       remember="timers"
       data-testid="timers"
       bodyClassName="space-y-2 px-3 pb-3"

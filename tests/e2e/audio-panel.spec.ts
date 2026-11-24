@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { dropFiles, importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import {
+  dropFiles,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  openSection,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { mouseDrag } from './mouse-drag';
 import { makeTestImage, makeTestTone } from './test-media';
 
@@ -30,6 +38,7 @@ test('Audio’s + has Create playlist and Import only; sounds dropped or dragged
   const win = await operatorPage(app);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 900 });
+  await openSection(win, 'audio');
   const group = win.getByTestId('audio-group');
   const panel = win.getByTestId('music-panel');
 

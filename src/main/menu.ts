@@ -187,7 +187,7 @@ function shownKey(action: OperatorAction): MenuItemConstructorOptions {
 
 /**
  * The Tools menu (Session 60, x36): the setup tools (shared/setup-tools.ts), then a line, then the Lower Thirds
- * studio, the MIDI controller and OSC, as More tools has them. Each item's id is `tools-<its id>`.
+ * studio, the MIDI controller and OSC, as their sections under LIVE have them. Each item's id is `tools-<its id>`.
  */
 function toolsMenu(open: (item: ToolsMenuItem) => void): MenuItemConstructorOptions {
   return {

@@ -1138,7 +1138,7 @@ function TimersAndMessages() {
     );
   return (
     // The operator window's right column in its order (Session 54, D5): Music, the stage screen, messages, timers and
-    // Books, then its More tools; in two columns where a tablet has the width for them.
+    // Books, then its Lower Thirds; in two columns where a tablet has the width for them.
     <div className="@container">
       <div
         className="@lg:columns-2 @lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid"

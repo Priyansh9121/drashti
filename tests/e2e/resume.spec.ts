@@ -6,7 +6,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, letTimePass, openLibrary, operatorPage, operatorReady } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  letTimePass,
+  openLibrary,
+  openSection,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -215,6 +223,7 @@ test('an audio playlist stopped part-way plays on from the track it stopped on a
     }, ids);
     const playing = async () => (await snapshot(win)).layers.audio?.mediaId ?? null;
     // The Audio panel as the operator has it: the list shown, its tracks' rows, and its Play.
+    await openSection(win, 'audio');
     await win.getByTestId('music-playlist').filter({ hasText: 'Placeholder before sabha' }).click();
     const panel = win.getByTestId('music-panel');
     const track = (name: string) => panel.getByRole('button', { name: `Play from ${name}` });

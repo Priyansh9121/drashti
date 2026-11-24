@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { importAndGetIds, launchApp, openSection, operatorPage, operatorReady } from './helpers';
 import { makeTestImage, makeTestTone } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -67,6 +67,7 @@ test('Find in 60 rows moves and marks matches without choosing a row or changing
     await expectNoSeriousA11yIssues(win, 'playlist Find');
     await find.press('Escape');
     await expect(find).toHaveCount(0);
+    await openSection(win, 'audio');
     const music = win.getByTestId('music-panel');
     await music.getByRole('button', { name: 'Find in audio playlist', exact: true }).click();
     const trackFind = music.getByRole('textbox', { name: 'Find in audio playlist', exact: true });

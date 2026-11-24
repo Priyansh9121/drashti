@@ -8,7 +8,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink } from './dropbox-stand-in';
 import { clearOfShowControls, expectFits } from './fit';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, operatorReady, outputPages } from './helpers';
+import { dropFiles, launchApp, LIVE_SECTIONS, operatorPage, operatorReady, outputPages } from './helpers';
 import { mouseDrag } from './mouse-drag';
 import { pasteLink } from './paste-link';
 import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
@@ -97,8 +97,8 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
     /^Black-out/u,
   ]);
 
-  // Nothing else: no stream, phones, screens or library; no stage, messages, timers or lower thirds (More tools); no
-  // Oops button, no playlist's menu, no Close.
+  // Nothing else: no stream, phones, screens or library; no stage, messages, timers, lower thirds or any tool's section
+  // (More tools until alpha.22); no Oops button, no playlist's menu, no Close.
   for (const name of [
     'Stream',
     'Phones',
@@ -110,9 +110,7 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
   ])
     await expect(win.getByRole('button', { name, exact: true }), name).toHaveCount(0);
   for (const id of [
-    'group-stage-toggle',
-    'group-messages-toggle',
-    'group-timers-toggle',
+    ...LIVE_SECTIONS.filter((s) => s !== 'audio').map((s) => `group-${s}-toggle`),
     'group-more-tools-toggle',
     'layer-bar',
     'playlist-close',

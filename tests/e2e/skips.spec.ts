@@ -9,6 +9,7 @@ import {
   importAndGetIds,
   launchApp,
   letTimePass,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
@@ -241,6 +242,7 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
     },
     { one, two },
   );
+  await openSection(win, 'audio');
   const panel = win.getByTestId('music-panel');
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id, 0), listId);
   await expect.poll(async () => (await audioLayer(win))?.mediaId).toBe(one);
@@ -303,6 +305,7 @@ test('an audio playlist’s two sit in the row with its Play and Pause, in a win
     { one, two },
   );
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id, 0), listId);
+  await openSection(win, 'audio');
   const row = win.getByTestId('music-panel').getByRole('group', { name: 'Play the music' });
   const pause = row.getByTestId('music-pause');
   await expect(pause).toBeVisible();

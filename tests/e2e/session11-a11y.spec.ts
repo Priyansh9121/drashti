@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
+import { launchApp, openSection, operatorPage, operatorReady } from './helpers';
 
 /*
  * Every panel and dialog Session 11 added passes the accessibility checks at
  * 1280 x 720: Screens with a stage group's layout and a key and fill group;
  * the stage layout editor; the MIDI dialog (Session 44: Macros are gone, and
- * MIDI is in More tools). The Looks and Masks panels, Screens' Looks and the
+ * MIDI has its own section under LIVE since alpha.22). The Looks and Masks panels, Screens' Looks and the
  * mask editor were checked here too until Session 55 took them out.
  * Placeholder names only.
  */
@@ -16,9 +16,9 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  // MIDI is in More tools (Session 44).
-  await openMoreTools(win);
   await operatorReady(win);
+  // MIDI has its own section under LIVE (alpha.22; More tools' from Session 44).
+  await openSection(win, 'midi');
   await win.setViewportSize({ width: 1280, height: 720 });
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
@@ -69,7 +69,7 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   await win.getByRole('button', { name: 'Close screens' }).click();
 
   // The MIDI dialog.
-  await win.getByTestId('more-tools').getByTestId('open-midi').click();
+  await win.getByTestId('section-midi').getByTestId('open-midi').click();
   await expect(win.getByTestId('midi-dialog')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the MIDI dialog');
   await win.getByRole('button', { name: 'Close MIDI' }).click();

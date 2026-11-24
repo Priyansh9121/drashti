@@ -39,8 +39,8 @@ export { LogOut } from 'lucide-react';
 export { Bookmark, Download, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
 // Import from a Link (Session 25b): a link, Dropbox (a cloud) and YouTube (a played video).
 export { Cloud, Link2, MonitorPlay } from 'lucide-react';
-// Session 26a: the open playlist's Add files…, Audio, More tools and Repeat Slides.
-export { FilePlus, Repeat2, Wrench } from 'lucide-react';
+// Session 26a: the open playlist's Add files… and Repeat Slides (More tools' wrench went in alpha.22).
+export { FilePlus, Repeat2 } from 'lucide-react';
 // Session 26c: a smart playlist, following a folder.
 export { FolderSync } from 'lucide-react';
 // Session 44: back up to a folder playlist's parent folder.

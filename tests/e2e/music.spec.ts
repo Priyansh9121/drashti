@@ -11,6 +11,7 @@ import {
   killApp,
   launchApp,
   letTimePass,
+  openSection,
   operatorPage,
   operatorReady,
   relaunchApp,
@@ -88,6 +89,7 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
   const [toneOne, toneTwo] = [idOf('Placeholder tone one'), idOf('Placeholder tone two')];
 
   // A list from Audio's + (Session 44): Create playlist, named in place, then the two sounds.
+  await openSection(win, 'audio');
   const panel = win.getByTestId('music-panel');
   await win.getByTestId('audio-add').click();
   await win.getByRole('menuitem', { name: 'Create playlist' }).click();

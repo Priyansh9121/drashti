@@ -11,6 +11,7 @@ import {
   importAndGetIds,
   launchApp,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   relaunchApp,
@@ -161,6 +162,7 @@ test('each row has a visible delete (playlist, playlist item, presentation, medi
   await expect(picture).toHaveCount(1);
 
   // Music and a sound in it.
+  await openSection(win, 'audio');
   const music = win.getByTestId('music-panel');
   await win.getByTestId('audio-add').click();
   await win.getByRole('menuitem', { name: 'Create playlist' }).click();
