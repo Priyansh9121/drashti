@@ -6,7 +6,7 @@ import type { StepTiming } from '../../../shared/deck-show';
 import type { MediaElement, RenderSlide } from '../../../shared/model';
 import { DeckStepStill, DeckStepView } from './DeckStep';
 import { ElementView, SlideView } from './SlideView';
-import { ScreenPictures } from './picture-looks';
+import { ScreenPictures, useDisplayCopy, usePictureLook } from './picture-looks';
 import { PLAIN } from '../../../shared/picture-look';
 import { displayMediaId, displayUrl } from '../../../shared/media';
 import { PreviewsContext, type PreviewLoader } from './previews';
@@ -139,6 +139,11 @@ it('a phone or tablet draws the original, never the screens’ display copy, so 
     hold: () => () => undefined,
     measured: () => undefined,
   };
+  // What a picture on a phone draws from: the display copy's id, or none (the original, at the phone's own width).
+  function Drawn() {
+    const copy = useDisplayCopy(picture.mediaId, usePictureLook(picture.mediaId));
+    return createElement('span', null, copy?.id ?? 'original');
+  }
   const rendered = renderToStaticMarkup(
     createElement(
       PreviewsContext.Provider,
@@ -151,10 +156,10 @@ it('a phone or tablet draws the original, never the screens’ display copy, so 
             liveZoom: null,
           },
         },
-        createElement(ElementView, { el: picture }),
+        createElement(Drawn),
       ),
     ),
   );
-  expect(rendered).toContain(`data-media-id="${picture.mediaId}"`);
+  expect(rendered).toBe('<span>original</span>');
   expect(rendered).not.toContain(displayMediaId(picture.mediaId, key));
 });
