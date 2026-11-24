@@ -227,13 +227,13 @@ const hallVideo = (page: Page, mediaId: string) =>
 
 /** Drashti's own word for a video taken off a screen, or reloaded as the GPU process stopped (every day's log). */
 function cannotPlay(userData: string): string | null {
-  let lines: string[] = [];
-  try {
-    lines = logLines(userData);
-  } catch {
-    return null;
-  }
-  return lines.find((l) => l.includes('A video could not play on'))?.trim() ?? null;
+  // No logs folder yet reads as no line.
+  if (!existsSync(join(userData, 'logs'))) return null;
+  return (
+    logLines(userData)
+      .find((l) => l.includes('A video could not play on'))
+      ?.trim() ?? null
+  );
 }
 
 /** Frames the hall's page drew black by its own markup (hall-looks' look, frame by frame), Black-out not counted. */
