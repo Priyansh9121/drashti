@@ -72,18 +72,23 @@ test('Indic unknown-token markers never reach displayed words, while malformed r
   );
 });
 
-test('the helper checks every allocation before using it: it says so and exits, never writes through null (review)', () => {
-  const source = readFileSync(new URL('../tools/indic-conformer/ic_ctc.c', import.meta.url), 'utf8');
+/** The C source's allocations (`name = malloc(`, `calloc(`, `realloc(`), and those used before their null check. */
+function allocationsUsedUnchecked(source) {
   const allocations = [...source.matchAll(/\b(\w+)\s*=\s*(?:malloc|calloc|realloc)\(/gu)];
-  assert.ok(allocations.length >= 10);
+  const unchecked = [];
   for (const allocation of allocations) {
     const name = allocation[1] ?? '';
     const after = source.slice(allocation.index);
     const checked = after.search(new RegExp(`!${name}\\b`, 'u'));
     const used = after.search(new RegExp(`\\b${name}\\s*\\[|\\(${name}\\s*\\+`, 'u'));
-    assert.ok(
-      checked >= 0 && (used < 0 || checked < used),
-      `${name} is used before its allocation is checked`,
-    );
+    if (!(checked >= 0 && (used < 0 || checked < used))) unchecked.push(name);
   }
+  return { count: allocations.length, unchecked };
+}
+
+test('the helper checks every allocation before using it: it says so and exits, never writes through null (review)', () => {
+  const source = readFileSync(new URL('../tools/indic-conformer/ic_ctc.c', import.meta.url), 'utf8');
+  const { count, unchecked } = allocationsUsedUnchecked(source);
+  assert.ok(count >= 10);
+  assert.deepEqual(unchecked, [], `${unchecked.join(', ')}: used before the allocation is checked`);
 });
