@@ -8,7 +8,7 @@ import {
   playbackPosition,
   SOUND_LIMITS,
 } from '../../../shared/media';
-import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
+import { catchUpLeftMs, type PlaybackCatchUp, setPictureClock, startPlayback } from './playback';
 
 /*
  * A file played once with an end point stops there (Session 15): within two
@@ -1390,5 +1390,65 @@ describe('the stream’s own sound in a crossfade: brought back by speed, not a 
     expect(Math.abs(s.offset())).toBeLessThan(2 / 30);
     expect(Math.max(...s.rates.filter((r) => r > 0)), 'eased by at most 2%').toBeLessThanOrEqual(1.02);
     s.stop();
+  });
+});
+
+describe("a page's clock for its pictures (a22-x86sync, QA23-X86SYNC-1: only the stream's picture page sets one)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-10-06T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    setPictureClock(null);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('is given each muted picture once, already muted, and lets it go only after its file is let go', () => {
+    const seen: string[] = [];
+    setPictureClock((el) => {
+      seen.push(`take, muted ${String(el.muted)}`);
+      return () => {
+        seen.push(`let go, file ${String(el.getAttribute('src'))}`);
+      };
+    });
+    const v = new FakeMedia(10);
+    const stop = startPlayback(v as unknown as HTMLMediaElement, { mediaId: 'clip', startedAt: Date.now() });
+    runFor(v, 600);
+    expect(seen).toEqual(['take, muted true']);
+    stop();
+    // The picture stopped and its file let go first, so its sound is let go of a picture that no longer plays.
+    expect(seen).toEqual(['take, muted true', 'let go, file null']);
+  });
+
+  it('is never given a sound that is heard (the audio player, the stream’s sound page)', () => {
+    const seen: string[] = [];
+    setPictureClock(() => {
+      seen.push('take');
+      return () => {
+        seen.push('let go');
+      };
+    });
+    const v = new FakeMedia(10);
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'clip',
+      startedAt: Date.now(),
+      audible: true,
+    });
+    runFor(v, 600);
+    stop();
+    expect(seen).toEqual([]);
+  });
+
+  it('changes nothing where none is set: the hall’s screens, LIVE and every other page play as before (condition 3)', () => {
+    const v = new FakeMedia(10);
+    const stop = startPlayback(v as unknown as HTMLMediaElement, { mediaId: 'clip', startedAt: Date.now() });
+    const at = runFor(v, 1000);
+    expect(v.muted).toBe(true);
+    expect(at).toBeGreaterThan(0.9);
+    stop();
   });
 });

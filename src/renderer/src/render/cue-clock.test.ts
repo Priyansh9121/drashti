@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSilentGraph, cueClock, type SilentGraph } from './cue-clock';
+import { createSilentGraph, cueClock, fadeClock, type SilentGraph, StreamPictureClock } from './cue-clock';
 
 class Source {
   connected: unknown[] = [];
@@ -362,5 +362,286 @@ describe("the page's silent graph", () => {
         throw new Error('Generated: no audio here');
       }),
     ).toBeNull();
+  });
+});
+
+/** A picture playing on: every seek, pause, play or new speed it is given is written down (a jump would be one). */
+class Picture {
+  muted = true;
+  dataset: Record<string, string> = {};
+  readonly writes: string[] = [];
+  private time = 3;
+  private rate = 1;
+  private stopped = false;
+  get paused(): boolean {
+    return this.stopped;
+  }
+  get currentTime(): number {
+    return this.time;
+  }
+  set currentTime(t: number) {
+    this.writes.push(`seek ${String(t)}`);
+    this.time = t;
+  }
+  get playbackRate(): number {
+    return this.rate;
+  }
+  set playbackRate(r: number) {
+    this.writes.push(`rate ${String(r)}`);
+    this.rate = r;
+  }
+  pause(): void {
+    this.writes.push('pause');
+    this.stopped = true;
+  }
+  play(): Promise<void> {
+    this.writes.push('play');
+    this.stopped = false;
+    return Promise.resolve();
+  }
+  media(): HTMLMediaElement {
+    return this as unknown as HTMLMediaElement;
+  }
+}
+
+/** A stand-in graph that says when its inaudible constant goes to its output and when it comes off. */
+function keptGraph(context: Context): { graph: () => SilentGraph; awake: () => boolean } {
+  let kept = true;
+  const graph: SilentGraph = {
+    context: context as unknown as AudioContext,
+    sink: sink as unknown as AudioNode,
+    awake: (on) => {
+      kept = on;
+    },
+  };
+  return { graph: () => graph, awake: () => kept };
+}
+
+describe("the stream's picture page: its pictures on its silent graph while it captures (a22-x86sync, QA23-X86SYNC-1)", () => {
+  /*
+   * A muted picture with a sound track plays on its sound's clock, and muted that sound goes to Chromium's stand-in sink,
+   * paced by a timer on the page's media thread: there late pulls are skipped and the picture loses time. Since x86 the
+   * stream's picture page plays no sound of its own that kept that thread on time, and on CI's Mac its pictures fell
+   * behind and were jumped (a22-fade2's S6: flashes 0.63-2.1 s apart, 8 of 29 skipped, the beeps exact). Pulled by the
+   * page's silent graph (the device's own real-time thread) the picture keeps real time, as the sound page's players do.
+   */
+  it('takes a picture already playing into the graph as the stream starts capturing: mid-play, never a jump, a pause or a new speed', () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph),
+      v = new Picture();
+    clock.take(v.media());
+    // Not capturing (the operator's preview alone): on its own clock, as before.
+    expect(context.made).toHaveLength(0);
+    expect(v.muted).toBe(true);
+    expect(v.dataset['cueClock']).toBeUndefined();
+    clock.setCapturing(true);
+    expect(context.made).toHaveLength(1);
+    expect(context.made[0]?.connected).toEqual([sink]);
+    expect(v.muted).toBe(false);
+    expect(v.dataset['cueClock']).toBe('stream');
+    expect(v.writes).toEqual([]);
+    expect(kept.awake()).toBe(true);
+  });
+
+  it('sends its sound only into the gain of nothing before the output: nothing heard, nothing into the stream or the hall (condition 1)', () => {
+    const destination = { name: 'destination' };
+    const gains: { gain: { value: number }; to: unknown[] }[] = [];
+    const sources: { to: unknown[] }[] = [];
+    const made = {
+      state: 'running',
+      destination,
+      createGain: () => {
+        const node = {
+          gain: { value: 1 },
+          to: [] as unknown[],
+          connect(to: unknown) {
+            node.to.push(to);
+            return to;
+          },
+        };
+        gains.push(node);
+        return node;
+      },
+      createConstantSource: () => ({
+        offset: { value: 1 },
+        connect: (to: unknown) => to,
+        disconnect: () => undefined,
+        start: () => undefined,
+      }),
+      createMediaElementSource: () => {
+        const source = {
+          to: [] as unknown[],
+          connect(to: unknown) {
+            source.to.push(to);
+            return to;
+          },
+          disconnect() {
+            source.to = [];
+          },
+        };
+        sources.push(source);
+        return source;
+      },
+      resume: () => Promise.resolve(),
+      suspend: () => Promise.resolve(),
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    };
+    const graph = createSilentGraph(() => made as unknown as AudioContext);
+    const clock = new StreamPictureClock(() => graph);
+    clock.setCapturing(true);
+    const v = new Picture();
+    clock.take(v.media());
+    expect(sources).toHaveLength(1);
+    expect(gains).toHaveLength(1);
+    // Into the graph's one gain, set to nothing, and from there only to the page's own output: the picture page has no
+    // way to the stream's encoder (its sound comes only from the stream's sound page), and the hall hears its own player.
+    expect(sources[0]?.to).toEqual([gains[0]]);
+    expect(gains[0]?.gain.value).toBe(0);
+    expect(gains[0]?.to).toEqual([destination]);
+  });
+
+  it("holds the output awake only while it captures: after, the picture stays pulled (no jump, no freeze) and only Chromium's 30 s stand-in has the output (condition 2)", () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph),
+      v = new Picture();
+    clock.setCapturing(true);
+    clock.take(v.media());
+    expect(kept.awake()).toBe(true);
+    clock.setCapturing(false);
+    // Its constant off: the output now hears exact zeros, so 30 s on Chromium gives it to its stand-in (QA22-CUE-2).
+    expect(kept.awake()).toBe(false);
+    // A taken sound cannot be given back to the picture's own clock: left unpulled it would stop the picture.
+    expect(context.made[0]?.connected).toEqual([sink]);
+    expect(v.muted).toBe(false);
+    expect(context.suspended).toBe(0);
+    expect(v.writes).toEqual([]);
+    // Capturing again (live, or the next recording): awake again.
+    clock.setCapturing(true);
+    expect(kept.awake()).toBe(true);
+  });
+
+  it('keeps the output awake after capturing stops while a cue still waits on the same page, and not after it', () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph);
+    clock.setCapturing(true);
+    clock.take(new Picture().media());
+    const stopCue = cueClock(new Element().media(), kept.graph);
+    clock.setCapturing(false);
+    expect(kept.awake()).toBe(true);
+    stopCue();
+    expect(kept.awake()).toBe(false);
+  });
+
+  it('lets go of each route as its picture is let go or replaced, and rests the graph after the last: nothing left behind across many cues (condition 4)', () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph);
+    clock.setCapturing(true);
+    const pictures = Array.from({ length: 40 }, () => new Element());
+    let previous: (() => void) | null = null;
+    for (const v of pictures) {
+      // A playlist's next video: taken as it plays here, cued, then the one before it let go and its cue's clock with it.
+      const letGo = clock.take(v.media());
+      const stopCue = cueClock(v.media(), kept.graph);
+      previous?.();
+      stopCue();
+      expect(v.muted).toBe(false);
+      expect(v.dataset['cueClock']).toBe('stream');
+      previous = letGo;
+    }
+    previous?.();
+    expect(clock.holding).toBe(0);
+    expect(pictures.every((v) => v.muted && v.dataset['cueClock'] === undefined)).toBe(true);
+    expect(context.made.every((s) => s.connected.length === 0)).toBe(true);
+    expect(context.state).toBe('suspended');
+    // The same element taken again (its playback started afresh) has the one source it can ever have.
+    const again = pictures[0] as Element;
+    context.start();
+    clock.take(again.media());
+    expect(context.made).toHaveLength(40);
+    expect(again.muted).toBe(false);
+  });
+
+  it("is never taken off the graph by a cue's or a crossfade's stop, and never takes a cue's off by its own", () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph);
+    clock.setCapturing(true);
+    const v = new Element();
+    const letGo = clock.take(v.media());
+    const stopCue = cueClock(v.media(), kept.graph);
+    expect(v.dataset['cueClock']).toBe('graph');
+    stopCue();
+    expect(v.muted).toBe(false);
+    expect(context.made[0]?.connected).toEqual([sink]);
+    expect(v.dataset['cueClock']).toBe('stream');
+    // Already pulled by the graph: a crossfade takes nothing more of it.
+    expect(fadeClock(v.media(), kept.graph)).toBeNull();
+    letGo();
+    expect(v.muted).toBe(true);
+    const w = new Element();
+    const stopW = cueClock(w.media(), kept.graph);
+    if (context.state !== 'running') context.start();
+    const letGoW = clock.take(w.media());
+    letGoW();
+    expect(w.muted).toBe(false);
+    expect(w.dataset['cueClock']).toBe('graph');
+    stopW();
+    expect(w.muted).toBe(true);
+  });
+
+  it('waits for a resting graph to run before it takes a picture, and takes none once capturing stopped first', () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph),
+      v = new Picture();
+    context.state = 'suspended';
+    clock.take(v.media());
+    clock.setCapturing(true);
+    expect(context.resumed).toBe(1);
+    expect(context.made).toHaveLength(0);
+    expect(v.muted).toBe(true);
+    context.start();
+    expect(context.made).toHaveLength(1);
+    expect(v.muted).toBe(false);
+    expect(v.writes).toEqual([]);
+
+    const later = new Context(),
+      keptLater = keptGraph(later),
+      stopped = new StreamPictureClock(keptLater.graph),
+      w = new Picture();
+    later.state = 'suspended';
+    stopped.take(w.media());
+    stopped.setCapturing(true);
+    stopped.setCapturing(false);
+    expect(later.suspended).toBe(1);
+    later.start();
+    expect(later.made).toHaveLength(0);
+    expect(w.muted).toBe(true);
+  });
+
+  it('leaves a picture on its own clock where no graph can be had or its sound cannot be taken', () => {
+    const none = new StreamPictureClock(() => null),
+      v = new Picture();
+    none.setCapturing(true);
+    const letGo = none.take(v.media());
+    expect(v.muted).toBe(true);
+    expect(() => {
+      letGo();
+    }).not.toThrow();
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph),
+      refused = new Picture();
+    context.refuse = true;
+    clock.setCapturing(true);
+    clock.take(refused.media());
+    expect(refused.muted).toBe(true);
+    expect(refused.dataset['cueClock']).toBeUndefined();
+    expect(refused.writes).toEqual([]);
   });
 });
