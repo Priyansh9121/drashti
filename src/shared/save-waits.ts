@@ -24,6 +24,9 @@ export type SaveWait = (typeof SAVE_WAITS)[keyof typeof SAVE_WAITS];
 /** What plays on LIVE that a save waits for: a video, a sound, or null for nothing playing. */
 export function playingHolds(state: EngineState | null | undefined): 'video' | 'sound' | null {
   if (!state) return null;
+  // A video cued to start at Go, waiting paused at its first frame, or one going out in a crossfade (Cue, alpha.22):
+  // about to play, or playing, on the hall's screens.
+  if (state.videoCue || state.videoCrossfade || state.videoStart) return 'video';
   const { background, pip } = state.layers;
   // Live pictures: a video input, another app's window or a link, as the background or in the box.
   if (background?.kind === 'input' || background?.kind === 'window' || background?.kind === 'link')

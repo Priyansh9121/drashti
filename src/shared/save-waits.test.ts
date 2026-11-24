@@ -87,6 +87,12 @@ describe('what holds a save', () => {
     expect(playingHolds(withLayers({ pip: box }))).toBe('video');
   });
 
+  it('waits while a video is cued for Go (Cue: paused at its first frame, about to play)', () => {
+    const cued = { ...initialEngineState(), videoCue: {} as never };
+    expect(saveWaitsFor(cued, OFF)).toBe(SAVE_WAITS.video);
+    expect(saveWaitsFor({ ...initialEngineState(), videoCue: null }, OFF)).toBeNull();
+  });
+
   it('goes on once the video is paused', () => {
     const paused = video({ seek: { at: 2000, toMs: 500, paused: true } });
     expect(saveWaitsFor(withLayers({ background: paused }), OFF)).toBeNull();
