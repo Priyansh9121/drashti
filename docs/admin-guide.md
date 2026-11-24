@@ -815,6 +815,6 @@ Cue and playlist Crossfade are Pro Mode controls. Crossfade is off until an oper
 
 Crossfades use two playing videos for the overlap. The length is limited to half the shorter video to keep that limit through a sequence. The hall and stream use their existing sound levels and mutes; the stream hears Drashti’s own sound only when that profile includes it. Playlist seconds are kept with the library. Manual cues recover paused with new readiness checks after an unexpected restart, and a scheduled Go saved before its moment cannot become an audible start on recovery. No source file is rewritten.
 
-While a video is cued, and while it plays from its Go, the hall's screens, the operator window and the stream page keep this computer's sound output open, sending it nothing that can be heard, so that a cue held for minutes still starts on time.
+While a video is cued, and while it plays from its Go, the hall's screens, the operator window and the stream page keep this computer's sound output open (a paired computer showing the cue keeps its own open too), sending it nothing that can be heard, so that a cue held for minutes still starts on time.
 
 Manual cues recover paused with new readiness checks after an unexpected restart, and a scheduled Go saved before its moment cannot become an audible start on recovery. No source file is rewritten.
