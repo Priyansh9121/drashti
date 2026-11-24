@@ -261,14 +261,15 @@ describe('the verdict', () => {
 
 describe('the one hand-started Intel job (performance.yml)', () => {
   const workflow = read('.github/workflows/performance.yml');
-  const job = workflow.split('\n  translate-intel:\n')[1]?.split(/\n {2}[\w-]+:\n/u)[0] ?? '';
+  // The job alone: up to the blank line before the next job's comment and key (a22-review-intelplay N2).
+  const job = workflow.split('\n  translate-intel:\n')[1]?.split(/\n\n|\n {2}[\w-]+:\n/u)[0] ?? '';
 
   it('is an input of the dispatchable performance workflow, off unless asked', () => {
     expect(workflow).toMatch(
       /\n {6}translate_intel:\n {8}description: [^\n]+\n {8}type: boolean\n {8}default: false\n/u,
     );
     expect(job).toContain('    if: inputs.translate_intel\n');
-    // The ordinary performance check is unchanged, and skipped when the Intel job is asked for (one job only).
+    // The ordinary performance check is skipped when either Intel job is asked for (each one job only).
     expect(workflow).toMatch(
       /\n {2}performance:\n {4}name: [^\n]+\n {4}if: \$\{\{ !inputs\.translate_intel && !inputs\.intel_playback \}\}\n/u,
     );

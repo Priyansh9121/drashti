@@ -294,13 +294,14 @@ jobs:
 
   # The hall's video playback on an Intel Mac (alpha.23, a22-intelplay; the owner's QA23-INTELPLAY-1, "Yes, add it
   # (Rec.)": run only when asked, never in the release gate). The end-to-end suite runs on Apple silicon and Windows only,
-  # and the owner's video once played in Drashti but not on the hall (reports/a22-intel-video.md). Here Drashti is built
-  # on GitHub's Intel Mac runner (its own Electron for Intel, the bundled FFmpeg for Intel) and
-  # tests/intel-playback/intel-playback.spec.ts plays generated test videos (H.264 with the movie box first and last,
-  # the owner's file's 1080p30 shape, VP8 in a WebM, HEVC as this Mac takes it) through the hall's own playback path:
-  # a playlist row clicked, the audience screen's background video and Drashti's first-frame watch. It fails on no first
-  # frame, a decoder error, a video taken off, black, or a video that does not play on; its first test proves it fails a
-  # video the hall cannot play. Started by hand only, with intel_playback set; the ordinary performance check is skipped.
+  # and the owner's video once played in Drashti but not on the hall (Q60-31). Here Drashti is built on GitHub's Intel
+  # Mac runner (its own Electron for Intel, the bundled FFmpeg for Intel) and tests/intel-playback/intel-playback.spec.ts
+  # plays generated test videos (orange, a white bar moving along the foot; H.264 with the movie box first and last, the
+  # owner's file's 1080p30 shape, VP8 in a WebM, HEVC as this Mac takes it) through the hall's own playback path: a
+  # playlist row clicked, the audience screen's background video and Drashti's first-frame watch. It fails on no first
+  # frame, a decoder error, a video taken off, black, a clock that does not move on, too few frames shown or a still
+  # picture; its first tests prove it fails three controls (a cut copy, a black picture, a still one). Started by hand
+  # only, with intel_playback set; the ordinary performance check is skipped. A VM: its graphics are in the summary.
   intel-playback:
     name: Video playback on the hall, on an Intel Mac
     if: inputs.intel_playback
@@ -331,13 +332,15 @@ jobs:
       - name: Build Drashti
         run: pnpm exec electron-vite build
       - name: Play the test videos on the hall
+        id: play
         env:
           DRASHTI_PLAYBACK_READINGS: ${{ runner.temp }}/intel-playback.json
         run: pnpm exec playwright test -c playwright.intel.config.ts
-      - name: The summary, one row a video
+      - name: The summary, one row a video (GREEN only when the step above passed and every reading came)
         if: always()
         env:
           DRASHTI_PLAYBACK_READINGS: ${{ runner.temp }}/intel-playback.json
+          PLAY_OUTCOME: ${{ steps.play.outcome }}
         run: node scripts/playback-check.mjs summary "$DRASHTI_PLAYBACK_READINGS"
       - name: Upload Playwright report
         if: always()

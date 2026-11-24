@@ -199,10 +199,8 @@ describe('the one hand-started Intel playback job, never in the release gate', (
     const first = spec.indexOf("\ntest('");
     expect(first).toBeGreaterThan(0);
     expect(spec.slice(first, first + 200)).toContain('cannot play');
-    expect(first).toBeLessThan(spec.indexOf('for (const video of VIDEOS)'));
-    expect(spec).toContain(
-      'expect(judgePlayback(reading).some((p) => p.includes(control.mustSay))).toBe(true)',
-    );
+    expect(first).toBeLessThan(spec.indexOf('for (const video of RECIPES)'));
+    expect(spec).toContain("judgePlayback(reading).some((p) => p.includes(c?.mustSay ?? '?'))");
     expect(spec).toContain('expect(reading.off, JSON.stringify(reading)).toBe(true)');
     expect(spec).toContain('expect(judgePlayback(reading), JSON.stringify(reading)).toEqual([])');
     // The spec's videos are the summary's: a missing reading is RED.
