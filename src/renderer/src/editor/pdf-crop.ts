@@ -3,7 +3,16 @@ import { pagePartSchema } from '../../../shared/page-part';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
 export type PdfCropPages = 'this' | 'every' | 'odd' | 'even';
-/** A presentation step, without converting or changing any source page content. */
+/** The same part of a page: both the whole page (no crop), or the same edges. */
+const samePart = (a: CropRect | undefined, b: CropRect | undefined): boolean =>
+  a === undefined || b === undefined
+    ? a === b
+    : a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
+/**
+ * A presentation step, without converting or changing any source page content. The same document when every chosen
+ * page already shows that part (Keep crop as the dialog opened, or The whole page on whole pages): no step for Undo.
+ */
 export function cropPdfPages(doc: EditDoc, slideId: string, crop: CropRect, pages: PdfCropPages): EditDoc {
   if (
     !pagePartSchema.safeParse(crop).success ||
@@ -11,8 +20,9 @@ export function cropPdfPages(doc: EditDoc, slideId: string, crop: CropRect, page
   )
     return doc;
   let index = 0;
+  let changed = false;
   const whole = crop.x === 0 && crop.y === 0 && crop.w === 1 && crop.h === 1;
-  return {
+  const next: EditDoc = {
     ...doc,
     groups: doc.groups.map((group) => ({
       ...group,
@@ -26,9 +36,12 @@ export function cropPdfPages(doc: EditDoc, slideId: string, crop: CropRect, page
           )
         )
           return slide;
-        const { crop: _crop, ...ref } = slide.documentPage;
+        const { crop: was, ...ref } = slide.documentPage;
+        if (samePart(was, whole ? undefined : crop)) return slide;
+        changed = true;
         return { ...slide, documentPage: { ...ref, ...(whole ? {} : { crop: { ...crop } }) } };
       }),
     })),
   };
+  return changed ? next : doc;
 }
