@@ -2957,13 +2957,20 @@ export class ShowEngine {
         return this.runTimer(command.timerId, 'reset');
       case 'setStageMessage':
         // Its own size and flash (Session 55): the standard size, no flash, when not said (an older phone, the API).
+        // Its colours (24 Nov 2026) only when given: none, amber and black, as before.
         return {
           ok: true,
           actions: [
             {
               type: 'stage/message',
               text: command.text,
-              call: { size: command.size ?? 'standard', flash: command.flash ?? false, shownAt: this.now() },
+              call: {
+                size: command.size ?? 'standard',
+                flash: command.flash ?? false,
+                shownAt: this.now(),
+                ...(command.boxColor ? { boxColor: command.boxColor.toLowerCase() } : {}),
+                ...(command.textColor ? { textColor: command.textColor.toLowerCase() } : {}),
+              },
             },
           ],
         };

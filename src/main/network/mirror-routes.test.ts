@@ -175,6 +175,14 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
     'command',
     { type: 'setStageMessage', text: 'Placeholder: five minutes', size: 'large', flash: true },
   ],
+  // Its box's and words' colours (24 Nov 2026).
+  [
+    'POST',
+    '/api/v1/stage-message',
+    { text: 'Placeholder: five minutes', boxColor: '#1d4ed8', textColor: '#ffffff' },
+    'command',
+    { type: 'setStageMessage', text: 'Placeholder: five minutes', boxColor: '#1d4ed8', textColor: '#ffffff' },
+  ],
   ['POST', '/api/v1/stage-message/clear', undefined, 'command', { type: 'clearStageMessage' }],
   [
     'POST',

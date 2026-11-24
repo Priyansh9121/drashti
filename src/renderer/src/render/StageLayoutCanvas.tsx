@@ -322,7 +322,8 @@ function BoxContents({
           {...stageMessageData(state.stageCall)}
           style={{
             fontSize: `${String(STAGE_SIZE_FACTOR[state.stageCall?.size ?? 'standard'])}em`,
-            background: stageMessageColors(state.stageCall, now).background,
+            // Its colours, or amber with the box's own words' colour (24 Nov 2026).
+            ...stageMessageColors(state.stageCall, now, box.color),
             borderRadius: '0.25em',
             padding: '0.15em 0.4em',
             fontWeight: 700,

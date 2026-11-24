@@ -5,7 +5,7 @@ import {
   STAGE_MESSAGE_PX,
   STAGE_SIZE_FACTOR,
   type StageCall,
-  stageFlashOn,
+  stageMessageLook,
 } from '../../../shared/stage-message';
 import { fontFamilyFor } from './fonts';
 import { textLang } from './lang';
@@ -15,16 +15,23 @@ import { atMessageFit, messageAlign, runsPast, useStageMessageFit } from './stag
 /*
  * The stage message (Session 55, Part 15, shared/stage-message.ts) on a stage screen: its look wherever it shows (the
  * Standard stage screen's own place, a layout's message box) and, over a layout with no message box or over the
- * audience picture with Stage off, a banner across the top. Amber with black words, as it always was; its own size;
- * and, when asked, a slow flash as it comes up (white and amber in turn, once a second, the same moment on every stage
- * screen, by the engine's clock). A message too long for its place wraps, is centred and is drawn only as much smaller
- * as it must be to fit (render/stage-message-fit.ts): the banner within the screen's margins, the Standard stage
- * screen's within the screen less its own.
+ * audience picture with Stage off, a banner across the top. Amber with black words, as it always was, or the colours
+ * chosen for it; its own size; and, when asked, a slow flash as it comes up (white and its box's colour in turn, amber
+ * for a white box, once a second, the same moment on every stage screen, by the engine's clock). A message too long
+ * for its place wraps, is centred and is drawn only as much smaller as it must be to fit (render/stage-message-fit.ts):
+ * the banner within the screen's margins, the Standard stage screen's within the screen less its own.
  */
 
-/** The message's colours at `now`: amber, or white while it flashes. */
-export function stageMessageColors(call: StageCall | null | undefined, now: number): CSSProperties {
-  return { background: stageFlashOn(call, now) ? '#ffffff' : '#f5a524', color: '#000000' };
+/**
+ * The message's colours at `now`: its own (chosen in the Stage screen panel, 24 Nov 2026), or amber with black words
+ * (`words`: a layout box's own words' colour), and its flash colour while it flashes (shared/stage-message.ts).
+ */
+export function stageMessageColors(
+  call: StageCall | null | undefined,
+  now: number,
+  words?: string,
+): CSSProperties {
+  return stageMessageLook(call, now, words);
 }
 
 /** What a stage screen's message says of its look, for tests and a screen reader's nothing (it is a picture). */

@@ -18,7 +18,7 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 
 ## A message for the stage
 
-**What it is.** A short message on every stage screen, such as "Two minutes left", in its own size, with a flash if you like. The hall's screens, the stream and the phones never show it. A long message wraps, stays centred and gets smaller only as much as it must, so the whole message is always on the stage screen; one that fits keeps the size you chose.
+**What it is.** A short message on every stage screen, such as "Two minutes left", in its own size and colours, with a flash if you like. The hall's screens, the stream and the phones never show it. A long message wraps, stays centred and gets smaller only as much as it must, so the whole message is always on the stage screen; one that fits keeps the size you chose.
 
 **When you would use it.** To tell the speaker the time, or to give the singers a cue.
 
@@ -26,8 +26,9 @@ The stage screen is what the speaker and the singers see, never the hall. The **
 
 1. In **Stage screen**, type the message.
 2. Choose its **Size**, and tick **Flash as it comes up** to catch their eye.
-3. Press **Show** (or Enter). **Hide** takes it off.
-4. The last few are under **Shown before:**, one press each to show again.
+3. Choose its **Colours**, or **Your own colours** (its **Box** and **Words**). "Hard to read" says when the two are too alike; they still show. The colours stay for the next message.
+4. Press **Show** (or Enter). **Hide** takes it off.
+5. The last few are under **Shown before:**, one press each to show again.
 
 ![The Stage screen panel with a placeholder message](../screenshots/stage-panel-timers.png)
 

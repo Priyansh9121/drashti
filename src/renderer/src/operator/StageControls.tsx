@@ -6,7 +6,9 @@ import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { Field, Select, TextInput } from '../ui/Field';
+import { ColorInput, Field, Select, TextInput } from '../ui/Field';
+import { usePersistentState } from '../ui/persist';
+import { contrastRatio } from '../../../shared/contrast';
 import { LayoutTemplate, Tv } from '../ui/icons';
 import { useHallPicture } from '../stage/hall-picture';
 import {
@@ -24,7 +26,16 @@ import { dispatch } from './actions';
 import { StageTimerControls } from './StageTimerControls';
 import { AudienceTimerControls } from './AudienceTimerControls';
 import { Checkbox } from '../ui/Toggle';
-import { STAGE_MESSAGE_SIZES, STAGE_SIZE_NAMES, type StageMessageSize } from '../../../shared/stage-message';
+import {
+  STAGE_BOX_COLOR,
+  STAGE_COLOR_PRESETS,
+  STAGE_MESSAGE_SIZES,
+  STAGE_SIZE_NAMES,
+  STAGE_TEXT_COLOR,
+  type StageMessageSize,
+  stageColorSchema,
+  stageColorsRead,
+} from '../../../shared/stage-message';
 
 /** What the stage screens show the performers, small (also on the Stage screen's card in Screens). */
 export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
@@ -147,6 +158,99 @@ const NO_RECENT: string[] = [];
  * (Part 15) the message as the old program had its own: its size, a flash as it comes up, Show on every stage screen
  * and Hide, and the last few a tap away; and a timer for the audience, started, shown and hidden here too.
  */
+/** The stage message's colours as chosen (the owner, 24 Nov 2026): a preset's id, or 'own', and the two colours. */
+interface StageColours {
+  preset: string;
+  box: string;
+  text: string;
+}
+const AS_ALWAYS: StageColours = { preset: 'amber', box: STAGE_BOX_COLOR, text: STAGE_TEXT_COLOR };
+const OWN = 'own';
+const isStageColours = (v: unknown): v is StageColours => {
+  if (typeof v !== 'object' || v === null) return false;
+  const c = v as Partial<Record<keyof StageColours, unknown>>;
+  return (
+    (c.preset === OWN || STAGE_COLOR_PRESETS.some((p) => p.id === c.preset)) &&
+    stageColorSchema.safeParse(c.box).success &&
+    stageColorSchema.safeParse(c.text).success
+  );
+};
+
+/**
+ * The colours of the next stage message: a few that read well, or the operator's own box and words colours, with a
+ * plain word when those are hard to read (never refused). Remembered on this computer.
+ */
+function StageColoursChoice({
+  value,
+  onChange,
+}: {
+  value: StageColours;
+  onChange: (next: StageColours) => void;
+}) {
+  const reads = stageColorsRead(value.box, value.text);
+  return (
+    <>
+      <Field label="Colours" layout="inline">
+        <Select
+          aria-label="Colours of the stage message"
+          value={value.preset}
+          onChange={(e) => {
+            const preset = STAGE_COLOR_PRESETS.find((p) => p.id === e.target.value);
+            onChange(
+              preset ? { preset: preset.id, box: preset.box, text: preset.text } : { ...value, preset: OWN },
+            );
+          }}
+        >
+          {STAGE_COLOR_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+          <option value={OWN}>Your own colours</option>
+        </Select>
+      </Field>
+      {value.preset === OWN && (
+        <>
+          <Field label="Box" layout="inline">
+            <ColorInput
+              aria-label="Box colour of the stage message"
+              value={value.box}
+              onChange={(e) => {
+                onChange({ ...value, box: e.target.value.toLowerCase() });
+              }}
+            />
+          </Field>
+          <Field label="Words" layout="inline">
+            <ColorInput
+              aria-label="Words colour of the stage message"
+              value={value.text}
+              onChange={(e) => {
+                onChange({ ...value, text: e.target.value.toLowerCase() });
+              }}
+            />
+          </Field>
+        </>
+      )}
+      {/* How the message will look: its words on its box (a picture of the stage's, as the preview is). */}
+      <span
+        aria-hidden="true"
+        data-a11y-picture
+        data-testid="stage-colours-sample"
+        className="rounded px-2 py-0.5 text-xs font-bold"
+        style={{ background: value.box, color: value.text }}
+      >
+        Aa
+      </span>
+      {!reads && (
+        <p data-testid="stage-colours-contrast" className="basis-full text-xs text-warning-fg">
+          Hard to read: these colours are only {contrastRatio(value.box, value.text).toFixed(1)} to 1 apart.
+          4.5 to 1 or more reads well from the stage.
+        </p>
+      )}
+    </>
+  );
+}
+
 export function StageMessageControl() {
   const shown = useEngine((s) => s.state?.stageMessage ?? null);
   const recent = useEngine((s) => s.state?.stageRecent) ?? NO_RECENT;
@@ -155,9 +259,19 @@ export function StageMessageControl() {
   const [text, setText] = useState('');
   const [size, setSize] = useState<StageMessageSize>('standard');
   const [flash, setFlash] = useState(false);
+  // Its colours (the owner, 24 Nov 2026), remembered on this computer; sent only when not amber and black.
+  const [colours, setColours] = usePersistentState('stage.colours', AS_ALWAYS, isStageColours);
   const [problem, setProblem] = useState<string | null>(null);
   const show = (words: string) => {
-    if (words.trim() !== '') void dispatch({ type: 'setStageMessage', text: words, size, flash });
+    const chosen = colours.box !== STAGE_BOX_COLOR || colours.text !== STAGE_TEXT_COLOR;
+    if (words.trim() !== '')
+      void dispatch({
+        type: 'setStageMessage',
+        text: words,
+        size,
+        flash,
+        ...(chosen ? { boxColor: colours.box, textColor: colours.text } : {}),
+      });
   };
   return (
     <Panel
@@ -211,7 +325,7 @@ export function StageMessageControl() {
           Show
         </Button>
       </form>
-      {/* Its own size, and a flash as it comes up (Session 55). */}
+      {/* Its own size, and a flash as it comes up (Session 55), and its colours. */}
       <div className="flex flex-wrap items-center gap-3">
         <Field label="Size" layout="inline">
           <Select
@@ -236,6 +350,8 @@ export function StageMessageControl() {
             setFlash(e.target.checked);
           }}
         />
+        {/* Its colours (the owner, 24 Nov 2026). */}
+        <StageColoursChoice value={colours} onChange={setColours} />
       </div>
       {shown !== null && (
         <div className="flex items-center gap-2 rounded-md border border-warning/60 bg-warning-bg px-2 py-1 text-sm text-warning-fg">
