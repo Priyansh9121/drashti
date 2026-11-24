@@ -39,3 +39,14 @@ export function revealPreview(win: {
   win.showInactive();
   win.moveTop();
 }
+
+/**
+ * What the Stage preview's page may have of this computer's live pictures (alpha.23; lead 2's QA23-STAGE8-1, option
+ * A): a camera, video only, as an output's (windows/security.ts cameraAllowed still checks its output.html address,
+ * and on a Mac the Camera access), and the video inputs' list it finds the input in, so a layout's **The video
+ * input, live** box and a video input behind the audience picture draw there live: Chromium opens a camera once for
+ * all of Drashti's pages in the same format (render/video-input.ts), so it adds no second capture of the device.
+ * Never a say in how the input stands (videoInputs.report: the operator's notice and restart recovery hear only the
+ * screens), and never a capture of another app's window: it names the window instead, as a tablet does.
+ */
+export const PREVIEW_LIVE = { camera: 'output', list: true, report: false, window: false } as const;

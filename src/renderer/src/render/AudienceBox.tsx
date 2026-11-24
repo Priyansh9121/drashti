@@ -16,7 +16,7 @@ import {
 } from './audience-picture';
 import { fontFamilyFor } from './fonts';
 import { textLang } from './lang';
-import { useLiveHere } from './live-here';
+import { useLiveHere, useStagePreview } from './live-here';
 import { unseenLive } from './named-background';
 import { Placed } from './Placed';
 import { Scene } from './Scene';
@@ -75,9 +75,11 @@ export const AudienceBox = memo(function AudienceBox({
   const area = useRef<HTMLDivElement>(null);
   const size = useElementSize(area);
   const view = useMemo(() => hallView(state.look, hall), [state.look, hall]);
-  // A video input or a window this page cannot draw (a tablet's, a node's), named (Session 51).
+  // A video input or a window this page cannot draw (a tablet's, a node's), named (Session 51); on the Stage preview
+  // a window (alpha.23, QA23-STAGE8-1: it draws the video input, never captures a window).
   const live = useLiveHere();
-  const unseen = view.kind === 'hall' ? unseenLive(state, view.look, live) : [];
+  const preview = useStagePreview();
+  const unseen = view.kind === 'hall' ? unseenLive(state, view.look, live, live && !preview) : [];
   const sized = size.width > 0 && size.height > 0;
   return (
     <div

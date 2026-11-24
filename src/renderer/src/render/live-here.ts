@@ -16,3 +16,14 @@ export function useLiveHere(): boolean {
   const previews = usePreviewsOnly();
   return here && !previews;
 }
+
+/**
+ * The Stage preview's page (alpha.23; lead 2's QA23-STAGE8-1): it draws this computer's video inputs live, as a
+ * stage screen does, but never captures another app's window (it names it, as a tablet does) and never says how an
+ * input stands (it is no screen). Its OutputContext says so (`preview`).
+ */
+export const StagePreviewPage = createContext(false);
+
+export function useStagePreview(): boolean {
+  return useContext(StagePreviewPage);
+}

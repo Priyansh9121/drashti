@@ -51,6 +51,11 @@ export interface ScreenSwitchDeps {
    * Stage screen…. `screens()` says which are set: this computer's and the nodes'.
    */
   noStageScreen?(): void;
+  /**
+   * The tablets paired as Stage (alpha.23, a22-review-stage S8): each is a stage display, so Stage On with one says
+   * nothing of no screen set to Stage.
+   */
+  stageDevices?(): number;
 }
 
 export const ONLY_ON_IN_SIMPLE_MODE = 'Simple Mode only turns the screens on. Pro Mode turns them off.';
@@ -106,7 +111,11 @@ export class ScreenSwitchService {
       for (const listener of this.listeners) listener(now);
     }
     // Never a silent nothing (alpha.22): on, with nothing to show on, it says so (and again at each On).
-    if (which.data === 'stage' && rawOn && stageScreensSet(this.deps.screens()) === 0) {
+    if (
+      which.data === 'stage' &&
+      rawOn &&
+      stageScreensSet(this.deps.screens(), this.deps.stageDevices?.() ?? 0) === 0
+    ) {
       this.deps.log('Screens: Stage is on, but no screen is set to Stage: said, with Set up Stage screen…');
       this.deps.noStageScreen?.();
     }

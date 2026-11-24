@@ -251,6 +251,11 @@ export interface OutputContext {
   geometry?: ScreenGeometry | null;
   /** Its picture is being adjusted in Screens (x27): a grid over the show, warped with it. Never kept. */
   grid?: true;
+  /**
+   * The Stage preview's page (alpha.22), no screen: it draws this computer's video inputs live (alpha.23, lead 2's
+   * QA23-STAGE8-1), names another app's window instead of capturing it, and never says how an input stands.
+   */
+  preview?: true;
 }
 
 /** What an output window says about how it draws (every few seconds). */

@@ -74,7 +74,10 @@ export function notFoundReason(devices: readonly SeenDevice[], label: string): S
 export function reportOf(
   state: InputCaptureState,
   reason: StopReason | null = null,
+  page: 'screen' | 'preview' = 'screen',
 ): 'playing' | 'stopped' | 'missing' | null {
+  // The Stage preview (alpha.23, QA23-STAGE8-1) is no screen: it never says how the input stands.
+  if (page === 'preview') return null;
   if (state === 'live') return 'playing';
   if (state !== 'stopped') return null;
   return reason === 'missing' ? 'missing' : 'stopped';
