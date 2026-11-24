@@ -19,3 +19,13 @@ export function audioContextFor(samples: number): number {
 export function sizesContext(platform: NodeJS.Platform, model: string): boolean {
   return platform === 'win32' && (model === 'small' || /(^|-)small(-|$)/u.test(model));
 }
+
+// Red: one helper for the model a whisper engine loads (not built yet).
+export function whisperModelFor<T extends { id: string; format?: string }>(
+  _own: T | null,
+  _fileOf: (own: T) => string | undefined,
+  _selected: string,
+  _selectedFile: (id: string) => string,
+): { id: string; file: string } {
+  throw new Error('not built yet');
+}
