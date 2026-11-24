@@ -83,7 +83,8 @@ Do these about 30 minutes before the sabha starts.
 Gujarati or Hindi. The packs are on the release's page on GitHub, beside the installers; an admin imports one with
 **Help › Caption and Translation Models…** on each Main. Choose the speaker’s language and its imported model before rehearsal. It does not choose a
 language automatically. If that model is missing or stops, no other model takes its place. Turn this option off to
-return to ordinary live captions. Rehearse with the mixer and the screens before using automatic words in a show.
+return to ordinary live captions. On a short phrase, Gujarati and Hindi captions appear just after the speaker pauses.
+Rehearse with the mixer and the screens before using automatic words in a show.
 
 **Record the sabha.** Open **Record** in **Stream** in Pro Mode, or under **LIVE** in Simple Mode. Pick **Record sound** to save the chosen sound input as a 16 kHz mono WAV file. If Live captions is on, a timed caption draft is saved beside the sound. **Record video** saves the stream’s chosen layout and takes about 3 GB an hour at the Good internet setting. Both choices work off air or while the stream is on air. In Pro Mode, choose the folder in **Stream settings** or from the **Record** menu. Press the recording’s **Stop** button when finished. If the disk cannot save the video recording, it stops and says why. Check the disk connection and free space before starting a new recording; the stream carries on. A full disk is named even if it fills just as a file opens or a new part starts. If the video encoder stops, Stream says it is trying again; the recording carries on in a new part once pictures return.
 
