@@ -187,13 +187,13 @@ describe('a screen’s word on a video up but not playing (alpha.23, a22-halldro
   it('a video waiting on the slide (paused, or for its click) that the hall could not play: nothing comes off, the operator is told what happened and what to try, the log has it, and LIVE names the screen', () => {
     const o = heardOutcome(heard({}));
     expect(o.notice).toBe(
-      '“Placeholder waiting video” could not play on the screen “Placeholder Hall”. It is still up but not playing: played, its sound may be heard without its picture there. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.',
+      '“Placeholder waiting video” could not play on the screen “Placeholder Hall”. It is still up but not playing: if it is played, its sound will be heard there without its picture. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.',
     );
     expect(o.log).toEqual({
       level: 'warn',
       line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; left up, not playing (paused, waiting for its click or at its end), so nothing came off',
     });
-    expect(o.notOn).toBe('the screen “Placeholder Hall”');
+    expect(o.live).toBe('cannot');
   });
 
   it('with no first frame on two screens and LIVE: the screens named, LIVE not, and what the watch saw in the log', () => {
@@ -208,17 +208,47 @@ describe('a screen’s word on a video up but not playing (alpha.23, a22-halldro
     expect(o.log?.line).toBe(
       'A video could not play on the screens “Placeholder Hall” and “Placeholder Side” (no picture within 10 s: Placeholder looks): media-1; left up, not playing (paused, waiting for its click or at its end), so nothing came off',
     );
-    expect(o.notOn).toBe('the screens “Placeholder Hall” and “Placeholder Side”');
+    expect(o.live).toBe('cannot');
   });
 
-  it('a showing no longer up by the end of the wait: only logged, nobody told, nothing under LIVE', () => {
+  it('MUST-1 (Q60-51, the owner’s “Yes, A”): a waiting video only slow to start is said not to have started in time, still loading, never damaged, and LIVE says it is still loading there', () => {
+    const o = heardOutcome(heard({ code: NO_START_IN_TIME }));
+    expect(o.notice).toBe(
+      '“Placeholder waiting video” could not start in time on the screen “Placeholder Hall”: this computer was too busy to start it in 30 seconds, and it is still loading there. The file is not damaged: wait until the line under LIVE goes before you play it.',
+    );
+    expect(o.live).toBe('slow');
+    // A playing one paused on the slide by the take-off: the notice as before, and LIVE's still-loading line.
+    const took = { background: false, slide: true, box: false };
+    const paused = heardOutcome(heard({ code: NO_START_IN_TIME, took }));
+    expect(paused.notice).toBe(
+      cannotStartInTimeNotice('Placeholder waiting video', 'the screen “Placeholder Hall”', took),
+    );
+    expect(paused.live).toBe('slow');
+  });
+
+  it('MUST-3: a screen told already on this showing is not told again (only the log); a new screen is told, by itself', () => {
+    const again = heardOutcome(heard({ told: ['Placeholder Hall'] }));
+    expect(again.notice).toBeNull();
+    expect(again.log?.line).toBe(
+      'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; left up, not playing (paused, waiting for its click or at its end), so nothing came off; told already',
+    );
+    expect(again.live).toBe('cannot');
+    const side = { screen: 'Placeholder Side', id: 'screen-side' };
+    const more = heardOutcome(heard({ wheres: [HALL, side], told: ['Placeholder Hall'] }));
+    expect(more.notice).toContain('could not play on the screen “Placeholder Side”.');
+    expect(more.notice).not.toContain('Placeholder Hall');
+    // Told by its id where it has one.
+    expect(heardOutcome(heard({ wheres: [side], told: ['screen-side'] })).notice).toBeNull();
+  });
+
+  it('a showing not up by the end of the wait: only logged, nobody told, nothing under LIVE', () => {
     expect(heardOutcome(heard({ stillUp: false }))).toEqual({
       log: {
         level: 'info',
-        line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; no longer up',
+        line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; not up as the show’s background, slide or box video now',
       },
       notice: null,
-      notOn: null,
+      live: null,
     });
   });
 
@@ -229,7 +259,7 @@ describe('a screen’s word on a video up but not playing (alpha.23, a22-halldro
         line: 'A video could not play on LIVE (a decoding error): media-1; left up, not playing (paused, waiting for its click or at its end), so nothing came off',
       },
       notice: null,
-      notOn: null,
+      live: null,
     });
   });
 
@@ -243,7 +273,9 @@ describe('a screen’s word on a video up but not playing (alpha.23, a22-halldro
       level: 'warn',
       line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; taken off (paused on the slide)',
     });
-    expect(o.notOn).toBe('the screen “Placeholder Hall”');
+    expect(o.live).toBe('cannot');
+    // Taken off, it is told even where told already (the show changed: paused there).
+    expect(heardOutcome(heard({ took, told: ['Placeholder Hall'] })).notice).toBe(o.notice);
   });
 
   it('a background or the box taken off: the notice and the log as before, and nothing under LIVE (it is off everywhere)', () => {
@@ -254,14 +286,14 @@ describe('a screen’s word on a video up but not playing (alpha.23, a22-halldro
         line: 'A video could not play on the screen “Placeholder Hall” (a decoding error): media-1; taken off (the background)',
       },
       notice: cannotPlayNotice('Placeholder waiting video', 'the screen “Placeholder Hall”', bg),
-      notOn: null,
+      live: null,
     });
     const box = { background: false, slide: false, box: true };
     const slow = heardOutcome(heard({ took: box, stillUp: false, code: NO_START_IN_TIME }));
     expect(slow.notice).toBe(
       cannotStartInTimeNotice('Placeholder waiting video', 'the screen “Placeholder Hall”', box),
     );
-    expect(slow.notOn).toBeNull();
+    expect(slow.live).toBeNull();
   });
 
   it('the take-off hears every page that said so during the wait, not only their words', () => {

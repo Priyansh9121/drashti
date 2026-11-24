@@ -31,7 +31,7 @@ import { PipDragHandle, PipLiveStrip } from './PipLive';
 import { PlayingBars } from '../markers/PlayingBars';
 import { PanelKindKeeper, PanelWarmUp } from './PanelWarmUp';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
-import { notOnScreenLine, notOnScreensNow } from '../../../shared/not-on-screens';
+import { notOnScreensNow } from '../../../shared/not-on-screens';
 import { connectNotOnScreens, useNotOnScreens } from './not-on-screens-store';
 
 /**
@@ -261,15 +261,17 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
           File missing: “{soundMissing}”. The sound stays as it was.
         </p>
       )}
-      {notOn.map((e) => (
-        <p
-          key={`${e.mediaId}@${String(e.startedAt)}`}
-          className="text-xs text-warning-fg"
-          data-testid="live-not-on-screens"
-        >
-          {notOnScreenLine(e)}
-        </p>
-      ))}
+      {notOn.flatMap((e) =>
+        e.lines.map((line) => (
+          <p
+            key={`${e.mediaId}@${String(e.startedAt)}:${line}`}
+            className="text-xs text-warning-fg"
+            data-testid="live-not-on-screens"
+          >
+            {line}
+          </p>
+        )),
+      )}
       {lowerThirdShort && (
         <p className="text-xs text-warning-fg" data-testid="preview-lower-third">
           Lower third shows {lowerThirdShort.shown} of {lowerThirdShort.total} lines

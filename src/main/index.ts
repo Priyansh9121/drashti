@@ -211,9 +211,8 @@ import {
   CannotPlay,
   type CannotPlayWhere,
   errorKindWords,
-  heardOutcome,
+  HallWords,
   NodeCannotPlay,
-  NotOnScreensList,
   whereWords,
 } from './media/cannot-play';
 import { stillUp } from '../shared/not-on-screens';
@@ -703,6 +702,12 @@ const gpuStops = new GpuStops();
  */
 /** A paired computer's screen that could not play a video (Q60-44): told once for each node and showing. */
 const nodeCannotPlay = new NodeCannotPlay();
+/**
+ * What the operator was told of, and LIVE names, for each showing up that one of this computer's screens could not play
+ * (alpha.23, a22-halldrop; media/cannot-play.ts): told again to the operator window as it changes.
+ */
+const hallWords = new HallWords();
+let hallWordsChanged: (() => void) | null = null;
 const cannotPlay = new CannotPlay({
   now: () => Date.now(),
   later: (ms, run) => {
@@ -8925,10 +8930,14 @@ function start(): void {
   });
   // The videos still up that a screen could not play (alpha.23, a22-halldrop), as LIVE names them under its picture:
   // read as the operator window opens, and told again as one goes off.
-  const notOnScreens = new NotOnScreensList();
-  handle(IPC.media.notOnScreens, () => [...notOnScreens.list]);
+  const nameOfScreen = (screenId: string) => screenRepo.screens().find((s) => s.id === screenId)?.name;
+  const notOnList = () => hallWords.list(nameOfScreen);
+  hallWordsChanged = () => {
+    sendToOperator(IPC.media.notOnScreensChanged, notOnList());
+  };
+  handle(IPC.media.notOnScreens, (e) => (fromOperator(e) ? notOnList() : []));
   engine.onChange((state) => {
-    if (notOnScreens.prune(state)) sendToOperator(IPC.media.notOnScreensChanged, [...notOnScreens.list]);
+    if (hallWords.prune(state)) hallWordsChanged?.();
   });
   // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
   // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
@@ -8938,7 +8947,7 @@ function start(): void {
     const screenId = manager.screenIdFor(e.sender.id);
     const where: CannotPlayWhere | null =
       screenId !== undefined
-        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId }
+        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId, id: screenId }
         : fromOperator(e)
           ? 'live'
           : streaming.isProgram(e.sender)
@@ -8968,22 +8977,22 @@ function start(): void {
       where,
       (_named, wheres) => {
         const took = engine.cannotPlay(mediaId, startedAt);
-        const said = heardOutcome({
-          name: file.name,
-          mediaId,
-          wheres,
-          code,
-          words,
-          took,
-          stillUp: stillUp(engine.current, mediaId, startedAt),
-        });
+        const { outcome: said, changed } = hallWords.heard(
+          {
+            name: file.name,
+            mediaId,
+            wheres,
+            code,
+            words,
+            took,
+            stillUp: stillUp(engine.current, mediaId, startedAt),
+          },
+          startedAt,
+        );
         if (said.log?.level === 'warn') log.warn(said.log.line);
         else if (said.log) log.info(said.log.line);
         if (said.notice !== null) sendToOperator(IPC.app.notice, { text: said.notice });
-        if (said.notOn !== null) {
-          notOnScreens.add({ mediaId, startedAt, name: file.name, where: said.notOn }, engine.current);
-          sendToOperator(IPC.media.notOnScreensChanged, [...notOnScreens.list]);
-        }
+        if (changed) hallWordsChanged?.();
       },
       (named) => {
         log.info(

@@ -10,24 +10,29 @@ import type { EngineState } from './engine/state';
  * play it, for as long as that showing stays up. What the screens show is not changed.
  */
 
-/** A showing still up that a screen could not play: its file, when it went up, its name, and the screens in words. */
+/** A showing still up that a screen could not play: its file, when it went up, and what LIVE says of it. */
 export interface NotOnScreen {
   mediaId: string;
   startedAt: number;
-  name: string;
-  /** The screens that said so, in words: "the screen “…”", or "the screens “…” and “…”". */
-  where: string;
+  /** LIVE's lines under its picture for it (notOnScreenLine, notOnScreenYetLine). */
+  lines: string[];
 }
 
-/** How many LIVE keeps, at most: the newest. */
+/** How many showings Main keeps, at most: the newest. */
 export const NOT_ON_SCREENS_MAX = 20;
+
+/** The showings of videos up now (the background, on the slide, in the box), each as `file@when it went up`. */
+function upNow(state: EngineState | null | undefined): Set<string> {
+  return new Set(
+    playingNow(state)
+      .filter((p) => p.ref.layer !== 'audio' && p.sound !== true)
+      .map((p) => `${p.mediaId}@${String(p.clock.startedAt)}`),
+  );
+}
 
 /** Whether that showing of a video (its file, when it went up) is still up: the background, on the slide or in the box. */
 export function stillUp(state: EngineState | null | undefined, mediaId: string, startedAt: number): boolean {
-  return playingNow(state).some(
-    (p) =>
-      p.ref.layer !== 'audio' && p.sound !== true && p.mediaId === mediaId && p.clock.startedAt === startedAt,
-  );
+  return upNow(state).has(`${mediaId}@${String(startedAt)}`);
 }
 
 /** Those of `list` still up in `state`, oldest first. */
@@ -35,9 +40,11 @@ export function notOnScreensNow(
   list: readonly NotOnScreen[],
   state: EngineState | null | undefined,
 ): NotOnScreen[] {
-  return list.filter((e) => stillUp(state, e.mediaId, e.startedAt));
+  if (list.length === 0) return [];
+  const up = upNow(state);
+  return list.filter((e) => up.has(`${e.mediaId}@${String(e.startedAt)}`));
 }
 
-/** What LIVE says under its picture for one (in the words of the notice that named it). */
-export const notOnScreenLine = (e: NotOnScreen): string =>
-  `Not on ${e.where}: “${e.name}” could not play there.`;
+/** What LIVE says for the screens that could not play it (`where`: "the screen “…”", "the screens “…” and “…”"). */
+export const notOnScreenLine = (name: string, where: string): string =>
+  `Not on ${where}: “${name}” could not play there.`;

@@ -15,7 +15,16 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  outputReady,
+  setUpScreen,
+} from './helpers';
 import {
   audienceScreen,
   backgroundUp,
@@ -513,6 +522,146 @@ test('a slide’s video waiting paused when its element fails on the hall (alpha
     // Off: LIVE says nothing any more.
     await dispatch(win, { type: 'clearAll' });
     await expect(win.getByTestId('live-not-on-screens')).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+/** The output page showing this screen, ready to draw. */
+async function outputOf(app: ElectronApplication, screenId: string): Promise<Page> {
+  let found: Page | undefined;
+  await expect
+    .poll(
+      async () => {
+        found = undefined;
+        for (const p of outputPages(app)) {
+          if (p.isClosed()) continue;
+          const id = await p
+            .getByTestId('output-root')
+            .getAttribute('data-screen', { timeout: 1000 })
+            .catch(() => null);
+          if (id === screenId) found = p;
+        }
+        return found !== undefined;
+      },
+      { timeout: 30_000, message: `the output of ${screenId} opens` },
+    )
+    .toBe(true);
+  if (!found) throw new Error(`no output for ${screenId}`);
+  await outputReady(found);
+  return found;
+}
+
+test('two screens, a slide’s video waiting paused, its element failing on one only (alpha.23): only that screen is named, it is told once though it says so again later, the other keeps showing it, and LIVE’s line goes when that screen’s page loads again', async () => {
+  test.setTimeout(300_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-two-screens-error-'));
+  const clip = makeClip(join(dir, 'Placeholder two screens video.mp4'), 'h264', 30, 300);
+  const { app, userData } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const hallId = await setUpScreen(win, 'Placeholder Hall', 0);
+    const sideId = await setUpScreen(win, 'Placeholder Side', 1);
+    const hall = await outputOf(app, hallId);
+    const side = await outputOf(app, sideId);
+    const [hallName = '', sideName = ''] = await win.evaluate(
+      async (ids) => {
+        const screens = (await (globalThis as PageGlobals).drashti.screens.get()).groups.flatMap(
+          (g) => g.screens,
+        );
+        return ids.map((id) => screens.find((s) => s.id === id)?.name ?? '');
+      },
+      [hallId, sideId],
+    );
+    expect(hallName, 'the first screen’s name').not.toBe('');
+    expect(sideName, 'the second screen’s name').not.toBe('');
+    const [id = ''] = await importAndGetIds(win, [clip]);
+    const SLIDE = `[data-layer="slide"] video[data-media-id="${id}"]`;
+    const presentationId = await slideWithVideo(win, dir, id, 'Placeholder slide two screens');
+    await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+    const paused = (page: Page) =>
+      page.evaluate((sel) => document.querySelector<HTMLVideoElement>(sel)?.paused ?? null, SLIDE);
+    for (const page of [hall, side])
+      await expect
+        .poll(() => paused(page), { timeout: 30_000, message: 'the slide’s video plays on both screens' })
+        .toBe(false);
+    expect((await dispatch(win, { type: 'pausePlaying', playing: { layer: 'slide', mediaId: id } })).ok).toBe(
+      true,
+    );
+    for (const page of [hall, side])
+      await expect
+        .poll(() => paused(page), { timeout: 10_000, message: 'paused on both screens' })
+        .toBe(true);
+    const startedAt = await win.evaluate(
+      async () =>
+        (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide?.shownAt ?? 0,
+    );
+    // The first screen's element fails; the second's does not.
+    const failed = await hall.evaluate((sel) => {
+      const v = document.querySelector<HTMLVideoElement>(sel);
+      if (!v) return false;
+      v.dispatchEvent(new Event('error'));
+      return true;
+    }, SLIDE);
+    expect(failed, 'the first screen’s slide video element').toBe(true);
+    await expect
+      .poll(() => notices(win), { timeout: 15_000, message: 'a notice names the first screen' })
+      .toContainEqual(
+        expect.stringMatching(
+          new RegExp(`could not play on the screen “${hallName}”\\. It is still up`, 'u'),
+        ),
+      );
+    expect(
+      (await notices(win)).filter((n) => n.includes(sideName)),
+      'the second screen, which shows it, is named in no notice',
+    ).toEqual([]);
+    const line = win.getByTestId('live-not-on-screens');
+    await expect(line).toHaveCount(1);
+    await expect(line).toContainText(`Not on the screen “${hallName}”: “Placeholder two screens video`);
+    await expect(line).not.toContainText(sideName);
+    // The second screen still has its frame: it shows the video, paused.
+    expect(
+      await side.evaluate((sel) => {
+        const v = document.querySelector<HTMLVideoElement>(sel);
+        return v !== null && v.error === null && v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+      }, SLIDE),
+      'the second screen shows it',
+    ).toBe(true);
+    // The first screen says so again more than the 1 s wait later (no first frame, as a page may after an error):
+    // logged as told already, and no second notice.
+    await letTimePass(win, 2000, 'more than the wait after the first word');
+    await hall.evaluate(
+      async ({ mediaId, at }) => {
+        await (globalThis as PageGlobals).drashti.media.cannotPlay(
+          mediaId,
+          at,
+          -1,
+          'Placeholder second word',
+        );
+      },
+      { mediaId: id, at: startedAt },
+    );
+    await expect
+      .poll(() => logOf(userData), { timeout: 10_000, message: 'the second word is logged as told already' })
+      .toMatch(
+        new RegExp(
+          `could not play on the screen “${hallName}” \\(no picture within 10 s: Placeholder second word\\): ${id}; left up, not playing [^\\n]*; told already`,
+          'u',
+        ),
+      );
+    await letTimePass(win, 1000, 'the log written');
+    expect(
+      logOf(userData)
+        .split('\n')
+        .filter((l) => l.includes('Notice: ') && l.includes('It is still up but not playing')),
+      'one notice only',
+    ).toHaveLength(1);
+    await expect(line).toHaveCount(1);
+    // The first screen's page loads again (it draws the video now): LIVE no longer names it.
+    await hall.reload();
+    await expect(line).toHaveCount(0, { timeout: 15_000 });
+    // Nothing came off: the slide and its paused video stay.
+    expect(await slideAndBox(win, id)).toEqual({ slidePaused: true, box: false });
   } finally {
     await app.close();
   }

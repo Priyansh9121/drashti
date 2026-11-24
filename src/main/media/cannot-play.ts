@@ -11,7 +11,12 @@ import {
   NO_START_IN_TIME,
   SLOW_START_MS,
 } from '../../shared/no-picture';
-import { NOT_ON_SCREENS_MAX, type NotOnScreen, notOnScreensNow } from '../../shared/not-on-screens';
+import {
+  NOT_ON_SCREENS_MAX,
+  type NotOnScreen,
+  notOnScreenLine,
+  notOnScreensNow,
+} from '../../shared/not-on-screens';
 import { cutText } from '../../shared/text';
 import type { CannotPlayTook } from '../engine/one-at-a-time';
 
@@ -57,8 +62,11 @@ export interface CannotPlayDeps {
   later(ms: number, run: () => void): void;
 }
 
-/** Where a page that draws the show found a video could not play: one of this computer's screens, LIVE, the stream. */
-export type CannotPlayWhere = { screen: string } | 'live' | 'stream';
+/**
+ * Where a page that draws the show found a video could not play: one of this computer's screens (its name, and its id
+ * where Main has it), LIVE, the stream.
+ */
+export type CannotPlayWhere = { screen: string; id?: string } | 'live' | 'stream';
 
 /**
  * Where a showing could not play, in words, from every page that said so: the screens by name first (the hall is what
@@ -130,14 +138,19 @@ export interface Heard {
   took: CannotPlayTook | null;
   /** Whether that showing is still up after it (shared/not-on-screens.ts stillUp). */
   stillUp: boolean;
+  /** The screens (their ids, else their names) already told of on this showing (HallWords). */
+  told?: readonly string[];
 }
 
 /** What Main does with it: the log's line, what the operator window says, and the screens LIVE names under it. */
 export interface HeardOutcome {
   log: { level: 'warn' | 'info'; line: string } | null;
   notice: string | null;
-  /** The screens LIVE names under its picture while that showing stays up (shared/not-on-screens.ts), or null. */
-  notOn: string | null;
+  /**
+   * Whether LIVE names the screens that said so under its picture while that showing stays up (HallWords), and how: as
+   * ones that could not play it, or as ones still loading it; null for none.
+   */
+  live: 'cannot' | 'slow' | null;
 }
 
 /**
@@ -171,47 +184,73 @@ export function heardOutcome(h: Heard): HeardOutcome {
         h.code === NO_START_IN_TIME
           ? cannotStartInTimeNotice(h.name, named, took)
           : cannotPlayNotice(h.name, named, took),
-      notOn: took.slide && h.stillUp ? onScreens : null,
+      live: took.slide && h.stillUp && onScreens !== null ? 'cannot' : null,
     };
   }
-  if (!h.stillUp) return { log: { level: 'info', line: `${said}; no longer up` }, notice: null, notOn: null };
+  if (!h.stillUp) return { log: { level: 'info', line: `${said}; no longer up` }, notice: null, live: null };
   return {
     log: {
       level: 'warn',
       line: `${said}; left up, not playing (paused, waiting for its click or at its end), so nothing came off`,
     },
     notice: onScreens === null ? null : cannotPlayWaitingNotice(h.name, onScreens),
-    notOn: onScreens,
+    live: onScreens === null ? null : 'cannot',
   };
 }
 
 /**
- * The showings still up that a screen could not play (shared/not-on-screens.ts), as LIVE names them: the newest
- * NOT_ON_SCREENS_MAX, each forgotten once it is not up any more (a showing put back later is a new word's).
+ * The showings still up that a screen could not play (shared/not-on-screens.ts), as LIVE names them (as the branch's
+ * first fix had it: the latest word's screens only).
  */
-export class NotOnScreensList {
-  private entries: readonly NotOnScreen[] = [];
+export class HallWords {
+  private entries = new Map<string, { mediaId: string; startedAt: number; name: string; where: string }>();
 
-  get list(): readonly NotOnScreen[] {
-    return this.entries;
+  heard(h: Heard, startedAt: number): { outcome: HeardOutcome; changed: boolean } {
+    const outcome = heardOutcome(h);
+    const screens = h.wheres.filter((w) => typeof w === 'object');
+    if (outcome.live === null || screens.length === 0) return { outcome, changed: false };
+    const key = `${h.mediaId}@${String(startedAt)}`;
+    this.entries.delete(key);
+    this.entries.set(key, { mediaId: h.mediaId, startedAt, name: h.name, where: whereWords(screens) });
+    while (this.entries.size > NOT_ON_SCREENS_MAX) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest === undefined) break;
+      this.entries.delete(oldest);
+    }
+    return { outcome, changed: true };
   }
 
-  /** One more, a newer word on the same showing in its place; then only what is still up in `state`. */
-  add(entry: NotOnScreen, state: EngineState): void {
-    this.entries = [
-      ...this.entries.filter((e) => e.mediaId !== entry.mediaId || e.startedAt !== entry.startedAt),
-      entry,
-    ].slice(-NOT_ON_SCREENS_MAX);
-    this.prune(state);
+  playsHere(_mediaId: string, _startedAt: number, _screenId: string): boolean {
+    return false;
   }
 
-  /** Forget what is not up in `state` any more: whether the list changed. */
+  gpuGone(): boolean {
+    return false;
+  }
+
+  screenGone(_screenId: string): boolean {
+    return false;
+  }
+
   prune(state: EngineState): boolean {
-    if (this.entries.length === 0) return false;
-    const now = notOnScreensNow(this.entries, state);
-    if (now.length === this.entries.length) return false;
-    this.entries = now;
-    return true;
+    const now = new Set(
+      notOnScreensNow(this.list(), state).map((e) => `${e.mediaId}@${String(e.startedAt)}`),
+    );
+    let changed = false;
+    for (const key of [...this.entries.keys()])
+      if (!now.has(key)) {
+        this.entries.delete(key);
+        changed = true;
+      }
+    return changed;
+  }
+
+  list(_nameOf?: (screenId: string) => string | undefined): NotOnScreen[] {
+    return [...this.entries.values()].map((e) => ({
+      mediaId: e.mediaId,
+      startedAt: e.startedAt,
+      lines: [notOnScreenLine(e.name, e.where)],
+    }));
   }
 }
 

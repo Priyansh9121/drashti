@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaElement } from '../../shared/model';
-import { NOT_ON_SCREENS_MAX, notOnScreenLine, notOnScreensNow, stillUp } from '../../shared/not-on-screens';
+import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../shared/no-picture';
+import { NOT_ON_SCREENS_MAX, notOnScreensNow, stillUp } from '../../shared/not-on-screens';
 import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport, textSlide } from '../engine/testing';
-import { heardOutcome, NotOnScreensList } from './cannot-play';
+import { type CannotPlayWhere, type Heard, HallWords } from './cannot-play';
 
 /*
- * A slide's video up but not playing (paused, or waiting for its click) that the hall could not play (alpha.23,
+ * A slide's video up but not playing (paused, or waiting for its click) that a screen could not play (alpha.23,
  * a22-halldrop), through the real engine: Main's take-off finds nothing to take off, but the showing is still up, so
- * the operator is told, and LIVE names the screen until it goes off. Placeholder ids only.
+ * the operator is told once for each screen, and LIVE names the screens that do not show it, until each shows it after
+ * all, a GPU process stops (every failed video loads again), its page loads again or it goes, or the showing goes.
+ * Placeholder ids and names only.
  */
 
 const VIDEO: MediaElement = {
@@ -18,6 +21,13 @@ const VIDEO: MediaElement = {
   frame: { x: 0, y: 0, width: 640, height: 360 },
   fit: 'fit',
   loop: false,
+};
+
+const HALL: CannotPlayWhere = { screen: 'Placeholder Hall', id: 'screen-hall' };
+const SIDE: CannotPlayWhere = { screen: 'Placeholder Side', id: 'screen-side' };
+const NAMES: Record<string, string> = {
+  'screen-hall': 'Placeholder Hall',
+  'screen-side': 'Placeholder Side',
 };
 
 function setup() {
@@ -30,91 +40,191 @@ function setup() {
     mediaLength: () => 40_000,
     mediaKind: () => 'video',
   });
+  engine.dispatch({ type: 'goLive', presentationId: 'onslide', slideIndex: 0 });
+  const at = engine.current.layers.slide?.shownAt ?? 0;
+  const words2 = new HallWords();
+  /** A word from `wheres` after the wait, the take-off run first, as Main's handler has it. */
+  const heard = (wheres: CannotPlayWhere[], code = 3) => {
+    const took = engine.cannotPlay('onslide', at);
+    const h: Heard = {
+      name: 'Placeholder slide video',
+      mediaId: 'onslide',
+      wheres,
+      code,
+      words: '',
+      took,
+      stillUp: stillUp(engine.current, 'onslide', at),
+    };
+    return words2.heard(h, at);
+  };
+  const lines = () => words2.list((id) => NAMES[id]).flatMap((e) => e.lines);
   return {
     engine,
+    at,
+    hallWords: words2,
+    heard,
+    lines,
     elapse: (ms: number) => {
       clock += ms;
     },
+    pause: () =>
+      engine.dispatch({ type: 'pausePlaying', playing: { layer: 'slide', mediaId: 'onslide' } }).ok,
   };
 }
 
-describe('a slide’s video up but not playing that the hall could not play (alpha.23, a22-halldrop)', () => {
-  it('takes nothing off, but is still up: told and named under LIVE until its slide goes', () => {
-    const { engine, elapse } = setup();
-    engine.dispatch({ type: 'goLive', presentationId: 'onslide', slideIndex: 0 });
+describe('a slide’s video up but not playing that a screen could not play (alpha.23, a22-halldrop)', () => {
+  it('takes nothing off, but is still up: told, and named under LIVE until its slide goes', () => {
+    const { engine, at, hallWords, heard, lines, elapse, pause } = setup();
     elapse(2000);
-    expect(
-      engine.dispatch({ type: 'pausePlaying', playing: { layer: 'slide', mediaId: 'onslide' } }).ok,
-    ).toBe(true);
-    const at = engine.current.layers.slide?.shownAt ?? 0;
+    expect(pause()).toBe(true);
     elapse(1000);
-    // The hall's word, after the wait: nothing playing to take off.
-    const took = engine.cannotPlay('onslide', at);
-    expect(took).toBeNull();
-    expect(stillUp(engine.current, 'onslide', at)).toBe(true);
-    // Another showing of the same file is not this one.
-    expect(stillUp(engine.current, 'onslide', at + 1)).toBe(false);
-    const said = heardOutcome({
-      name: 'Placeholder slide video',
-      mediaId: 'onslide',
-      wheres: [{ screen: 'Placeholder Hall' }],
-      code: 3,
-      words: '',
-      took,
-      stillUp: true,
-    });
-    expect(said.notice).toContain(
+    const { outcome, changed } = heard([HALL]);
+    expect(outcome.notice).toContain(
       '“Placeholder slide video” could not play on the screen “Placeholder Hall”.',
     );
-    expect(said.notOn).toBe('the screen “Placeholder Hall”');
+    expect(outcome.live).toBe('cannot');
+    expect(changed).toBe(true);
     // The slide and its paused video are as the operator left them.
     expect(engine.current.layers.slide?.seeks?.['onslide']?.paused).toBe(true);
-    const list = new NotOnScreensList();
-    const entry = {
-      mediaId: 'onslide',
-      startedAt: at,
-      name: 'Placeholder slide video',
-      where: said.notOn ?? '',
-    };
-    list.add(entry, engine.current);
-    expect(list.list).toEqual([entry]);
-    expect(notOnScreensNow(list.list, engine.current).map(notOnScreenLine)).toEqual([
+    expect(lines()).toEqual([
       'Not on the screen “Placeholder Hall”: “Placeholder slide video” could not play there.',
     ]);
+    expect(
+      notOnScreensNow(
+        hallWords.list((id) => NAMES[id]),
+        engine.current,
+      ),
+    ).toHaveLength(1);
+    // Another showing of the same file is not this one.
+    expect(stillUp(engine.current, 'onslide', at + 1)).toBe(false);
     // Still up: nothing to forget.
-    expect(list.prune(engine.current)).toBe(false);
+    expect(hallWords.prune(engine.current)).toBe(false);
     // Its slide goes: forgotten, and LIVE says nothing.
     engine.dispatch({ type: 'goLive', presentationId: 'other', slideIndex: 0 });
-    expect(notOnScreensNow([entry], engine.current)).toEqual([]);
-    expect(list.prune(engine.current)).toBe(true);
-    expect(list.list).toEqual([]);
+    expect(hallWords.prune(engine.current)).toBe(true);
+    expect(lines()).toEqual([]);
   });
 
-  it('keeps one line per showing, the newest word’s, however often it is said, and never a showing not up', () => {
-    const { engine } = setup();
-    engine.dispatch({ type: 'goLive', presentationId: 'onslide', slideIndex: 0 });
-    const at = engine.current.layers.slide?.shownAt ?? 0;
-    const list = new NotOnScreensList();
-    const entry = {
-      mediaId: 'onslide',
-      startedAt: at,
-      name: 'Placeholder slide video',
-      where: 'the screen “A”',
-    };
-    list.add(entry, engine.current);
-    list.add({ ...entry, where: 'the screens “A” and “B”' }, engine.current);
-    expect(list.list).toEqual([{ ...entry, where: 'the screens “A” and “B”' }]);
-    list.add({ ...entry, startedAt: at - 1 }, engine.current);
-    expect(list.list).toHaveLength(1);
-    for (let i = 0; i < NOT_ON_SCREENS_MAX + 5; i++)
-      list.add({ ...entry, where: `the screen “${String(i)}”` }, engine.current);
-    expect(list.list).toEqual([{ ...entry, where: `the screen “${String(NOT_ON_SCREENS_MAX + 4)}”` }]);
+  it('MUST-3: the same screen’s later word on that showing (more than the 1 s wait after) is logged only: one notice, one line', () => {
+    const { heard, lines, pause } = setup();
+    expect(pause()).toBe(true);
+    expect(heard([HALL], NO_FIRST_FRAME).outcome.notice).not.toBeNull();
+    const again = heard([HALL], 3);
+    expect(again.outcome.notice).toBeNull();
+    expect(again.outcome.log?.line).toMatch(/; told already$/u);
+    expect(again.changed).toBe(false);
+    expect(lines()).toEqual([
+      'Not on the screen “Placeholder Hall”: “Placeholder slide video” could not play there.',
+    ]);
+  });
+
+  it('MUST-3: a playing slide video paused by the take-off, then a second screen’s word later: told only of the new screen, and LIVE names both', () => {
+    const { heard, lines, elapse } = setup();
+    elapse(10_000);
+    const first = heard([HALL], NO_FIRST_FRAME);
+    expect(first.outcome.notice).toContain('so it stopped where it was on the slide');
+    elapse(3000);
+    const later = heard([SIDE], 3);
+    expect(later.outcome.notice).toContain('could not play on the screen “Placeholder Side”.');
+    expect(later.outcome.notice).not.toContain('Placeholder Hall');
+    expect(later.changed).toBe(true);
+    expect(lines()).toEqual([
+      'Not on the screens “Placeholder Hall” and “Placeholder Side”: “Placeholder slide video” could not play there.',
+    ]);
+    // Both again: nothing new to tell.
+    expect(heard([HALL, SIDE], 3).outcome.notice).toBeNull();
+  });
+
+  it('MUST-1 + MUST-2: a waiting video slow to start on a screen is said to be still loading there, and the line goes once that screen draws it after all', () => {
+    const { heard, lines, hallWords, at, pause } = setup();
+    expect(pause()).toBe(true);
+    const slow = heard([HALL], NO_START_IN_TIME);
+    expect(slow.outcome.notice).toContain('could not start in time on the screen “Placeholder Hall”');
+    expect(slow.outcome.notice).not.toContain('could not play');
+    expect(slow.outcome.live).toBe('slow');
+    expect(lines()).toEqual([
+      'Not on the screen “Placeholder Hall” yet: “Placeholder slide video” is still loading there.',
+    ]);
+    // Another screen's word is not the hall's drawing.
+    expect(hallWords.playsHere('onslide', at, 'screen-side')).toBe(false);
+    expect(hallWords.playsHere('onslide', at + 1, 'screen-hall')).toBe(false);
+    expect(hallWords.playsHere('onslide', at, 'screen-hall')).toBe(true);
+    expect(lines()).toEqual([]);
+    expect(hallWords.playsHere('onslide', at, 'screen-hall')).toBe(false);
+  });
+
+  it('MUST-2: a screen that could not play it, then one still loading it: each named as it is; a later failure on the slow one makes it "could not play"', () => {
+    const { heard, lines, pause } = setup();
+    expect(pause()).toBe(true);
+    heard([HALL], 3);
+    heard([SIDE], NO_START_IN_TIME);
+    expect(lines()).toEqual([
+      'Not on the screen “Placeholder Hall”: “Placeholder slide video” could not play there.',
+      'Not on the screen “Placeholder Side” yet: “Placeholder slide video” is still loading there.',
+    ]);
+    heard([SIDE], 3);
+    expect(lines()).toEqual([
+      'Not on the screens “Placeholder Hall” and “Placeholder Side”: “Placeholder slide video” could not play there.',
+    ]);
+  });
+
+  it('MUST-2: a GPU process stopping clears the lines (every failed video loads again); failing again brings its line back, told once only', () => {
+    const { heard, lines, hallWords, pause } = setup();
+    expect(pause()).toBe(true);
+    heard([HALL], 3);
+    expect(hallWords.gpuGone()).toBe(true);
+    expect(lines()).toEqual([]);
+    expect(hallWords.gpuGone()).toBe(false);
+    const again = heard([HALL], 3);
+    expect(again.outcome.notice).toBeNull();
+    expect(again.changed).toBe(true);
+    expect(lines()).toHaveLength(1);
+  });
+
+  it('MUST-2: a screen whose page loads again, or that goes, is no longer named; a renamed one is named as it is now', () => {
+    const { heard, lines, hallWords, pause } = setup();
+    expect(pause()).toBe(true);
+    heard([HALL, SIDE], 3);
+    expect(
+      hallWords
+        .list((id) => (id === 'screen-side' ? 'Placeholder Lobby' : NAMES[id]))
+        .flatMap((e) => e.lines),
+    ).toEqual([
+      'Not on the screens “Placeholder Hall” and “Placeholder Lobby”: “Placeholder slide video” could not play there.',
+    ]);
+    // A screen gone from the screens' list is not named.
+    expect(
+      hallWords.list((id) => (id === 'screen-side' ? undefined : NAMES[id])).flatMap((e) => e.lines),
+    ).toEqual(['Not on the screen “Placeholder Hall”: “Placeholder slide video” could not play there.']);
+    expect(hallWords.screenGone('screen-hall')).toBe(true);
+    expect(hallWords.screenGone('screen-hall')).toBe(false);
+    expect(lines()).toEqual([
+      'Not on the screen “Placeholder Side”: “Placeholder slide video” could not play there.',
+    ]);
+  });
+
+  it('keeps one entry per showing, at most NOT_ON_SCREENS_MAX, and never a showing not up', () => {
+    const hallWords = new HallWords();
+    const h = (mediaId: string): Heard => ({
+      name: mediaId,
+      mediaId,
+      wheres: [HALL],
+      code: 3,
+      words: '',
+      took: null,
+      stillUp: true,
+    });
+    for (let i = 0; i < NOT_ON_SCREENS_MAX + 5; i++) hallWords.heard(h(`m${String(i)}`), 1);
+    const kept = hallWords.list((id) => NAMES[id]);
+    expect(kept).toHaveLength(NOT_ON_SCREENS_MAX);
+    expect(kept.at(-1)?.mediaId).toBe(`m${String(NOT_ON_SCREENS_MAX + 4)}`);
+    const gone = hallWords.heard({ ...h('gone'), stillUp: false }, 1);
+    expect(gone.changed).toBe(false);
+    expect(hallWords.list((id) => NAMES[id]).some((e) => e.mediaId === 'gone')).toBe(false);
   });
 
   it('with no show at all, nothing is up', () => {
     expect(stillUp(null, 'onslide', 1)).toBe(false);
-    expect(notOnScreensNow([{ mediaId: 'onslide', startedAt: 1, name: 'x', where: 'y' }], undefined)).toEqual(
-      [],
-    );
+    expect(notOnScreensNow([{ mediaId: 'onslide', startedAt: 1, lines: ['x'] }], undefined)).toEqual([]);
   });
 });
