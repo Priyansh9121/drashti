@@ -557,8 +557,12 @@ describe("the stream's picture page: its pictures on its silent graph while it c
     expect(clock.holding).toBe(0);
     expect(pictures.every((v) => v.muted && v.dataset['cueClock'] === undefined)).toBe(true);
     expect(context.made.every((s) => s.connected.length === 0)).toBe(true);
+    // While it captures the graph stays up for the next picture (a22-review-x86sync S1); it rests once capturing stops.
+    expect(context.state).toBe('running');
+    clock.setCapturing(false);
     expect(context.state).toBe('suspended');
-    // The same element taken again (its playback started afresh) has the one source it can ever have.
+    // The same element taken again (its playback started afresh) has the one source it can ever have, and is pulled
+    // again though capturing has stopped (a22-review-x86sync M1).
     const [again] = pictures;
     if (!again) throw new Error('Generated: no first picture');
     clock.take(again.media());
@@ -566,6 +570,87 @@ describe("the stream's picture page: its pictures on its silent graph while it c
     context.start();
     expect(context.made).toHaveLength(40);
     expect(again.muted).toBe(false);
+  });
+
+  it('pulls a picture whose sound it once took when it plays again after capturing stopped, its output not kept awake (a22-review-x86sync M1)', () => {
+    // Chromium never gives a taken sound back to the picture's own clock: unpulled, it runs on the graph's own idle pace
+    // (locally, throttled: 0.18 of real time, against 1.000 pulled again).
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph),
+      v = new Picture();
+    clock.setCapturing(true);
+    clock.take(v.media())();
+    clock.setCapturing(false);
+    expect(context.state).toBe('suspended');
+    const resumed = context.resumed;
+    // Played again with the recording stopped (the preview, Video out, the window for Zoom).
+    clock.take(v.media());
+    expect(context.resumed).toBe(resumed + 1);
+    context.start();
+    expect(context.made).toHaveLength(1);
+    expect(context.made[0]?.connected).toEqual([sink]);
+    expect(v.muted).toBe(false);
+    expect(v.dataset['cueClock']).toBe('stream');
+    // Nothing keeps the output awake for it: exact zeros, so Chromium's stand-in has it 30 s on (QA22-CUE-2).
+    expect(kept.awake()).toBe(false);
+    expect(v.writes).toEqual([]);
+    // A picture never taken still plays on its own clock with capturing stopped (the preview alone, as before).
+    const fresh = new Picture();
+    clock.take(fresh.media());
+    expect(fresh.muted).toBe(true);
+    expect(context.made).toHaveLength(1);
+  });
+
+  it("a deck's clip replayed by Previous then Next on the same element is pulled each time, and let go each time (DeckStep's StepVideo)", () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph),
+      clip = new Element();
+    clock.setCapturing(true);
+    // Click 2's clip plays while recording; Previous lets it go, Next plays the very element again.
+    for (let round = 0; round < 3; round++) {
+      const letGo = clock.take(clip.media());
+      expect(clip.muted).toBe(false);
+      letGo();
+      expect(clip.muted).toBe(true);
+    }
+    clock.setCapturing(false);
+    // The recording stopped: Previous, then Next, on the same element, three times more.
+    for (let round = 0; round < 3; round++) {
+      const letGo = clock.take(clip.media());
+      if (context.state !== 'running') context.start();
+      expect(clip.muted).toBe(false);
+      expect(clip.dataset['cueClock']).toBe('stream');
+      expect(kept.awake()).toBe(false);
+      letGo();
+      expect(clip.muted).toBe(true);
+      expect(clip.dataset['cueClock']).toBeUndefined();
+    }
+    expect(context.made).toHaveLength(1);
+    expect(clock.holding).toBe(0);
+    expect(context.state).toBe('suspended');
+  });
+
+  it('keeps the graph up between pictures while it captures, so the next is taken at once, before it plays (a22-review-x86sync S1)', () => {
+    const context = new Context(),
+      kept = keptGraph(context),
+      clock = new StreamPictureClock(kept.graph);
+    clock.setCapturing(true);
+    // Slide A's video, then slide B with none: the graph neither stops nor starts its device on air.
+    clock.take(new Element().media())();
+    expect(context.suspended).toBe(0);
+    expect(kept.awake()).toBe(true);
+    // Slide C's video: taken as its playback starts, still held, never switched to the graph mid-play.
+    const next = new Element();
+    const letGoNext = clock.take(next.media());
+    expect(next.muted).toBe(false);
+    expect(context.made).toHaveLength(2);
+    letGoNext();
+    expect(context.suspended).toBe(0);
+    // Capturing stops with no picture on it: the graph rests.
+    clock.setCapturing(false);
+    expect(context.suspended).toBe(1);
   });
 
   it("is never taken off the graph by a cue's or a crossfade's stop, and never takes a cue's off by its own", () => {
