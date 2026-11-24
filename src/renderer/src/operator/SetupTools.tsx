@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Icon } from '../ui/icons';
 import {
   AppWindow,
@@ -18,6 +19,11 @@ import { openPipDialog } from './pip-store';
 import { openStudio } from '../lower-thirds/lower-thirds-store';
 import { openMidiDialog } from '../midi/MidiTool';
 import { openOsc } from '../osc/osc-store';
+import { useOperateOnly } from '../simple/simple-features-store';
+import { useVideoInputs } from '../video-inputs/video-inputs-store';
+import { Notice } from '../ui/Notice';
+import { InputOnAudience } from './InputOnAudience';
+import { InputPicker } from './StageControls';
 import {
   SETUP_TOOLS,
   type SetupTool,
@@ -133,8 +139,35 @@ export function StreamLinkSection() {
   );
 }
 
-/** Video inputs: Add a Video Input… names a camera or capture input for Media. */
+/**
+ * In Simple Mode (alpha.22, Video inputs chosen for it in Edit › Simple Mode Features…): which input it is, and LIVE's
+ * one press that puts it up on the audience and takes it off again. Adding one, and the rest, stay Pro Mode's.
+ */
+function VideoInputsOperate() {
+  const inputs = useVideoInputs((s) => s.inputs);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (inputs !== null && inputs.length === 0)
+    return (
+      <p className="text-xs text-muted" data-testid="video-inputs-none">
+        No video input on this computer yet: one is added in Pro Mode.
+      </p>
+    );
+  return (
+    <>
+      {inputs !== null && inputs.length > 1 && <InputPicker onProblem={setProblem} />}
+      <InputOnAudience className="" />
+      {problem && (
+        <Notice tone="danger" compact>
+          {problem}
+        </Notice>
+      )}
+    </>
+  );
+}
+
+/** Video inputs: Add a Video Input… names a camera or capture input for Media; in Simple Mode, its one press. */
 export function VideoInputsSection() {
+  const operateOnly = useOperateOnly();
   return (
     <Panel
       {...LIVE_SECTION}
@@ -145,7 +178,7 @@ export function VideoInputsSection() {
       bodyClassName="space-y-2 px-3 pb-3"
       data-testid="section-video-inputs"
     >
-      <SetupToolLine id="add-video-input" />
+      {operateOnly ? <VideoInputsOperate /> : <SetupToolLine id="add-video-input" />}
     </Panel>
   );
 }

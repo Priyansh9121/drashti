@@ -110,6 +110,16 @@ const bridge: DrashtiBridge = {
       on(IPC.app.showTool, ({ tool }) => {
         listener(tool);
       }),
+    simpleFeatures: () => invoke(IPC.app.simpleFeatures),
+    setSimpleFeature: (feature, on) => invoke(IPC.app.setSimpleFeature, feature, on),
+    onSimpleFeaturesChanged: (listener) =>
+      on(IPC.app.simpleFeaturesChanged, ({ chosen }) => {
+        listener(chosen);
+      }),
+    onShowSimpleFeatures: (listener) =>
+      on(IPC.app.showSimpleFeatures, () => {
+        listener();
+      }),
   },
   guides: {
     list: () => invoke(IPC.guides.list),
