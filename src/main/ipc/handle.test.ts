@@ -4,6 +4,7 @@ import { STOPPED_REFUSAL } from '../../shared/access';
 import type { AudioOutputStatus } from '../../shared/audio';
 import { IPC } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
+import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import type { SimpleFeature } from '../../shared/simple-features';
 import type { SimpleScope } from '../simple-mode';
 import { simpleModeBounds, simpleModeRefusals } from '../simple-mode';
@@ -181,14 +182,14 @@ describe('the lock and a chosen tool (alpha.22, Simple Mode Features)', () => {
         () => chosen,
       ),
     );
-    handle(IPC.pip.savePlace, (_e, place) => {
-      ran.push(place);
-      return { ok: true as const };
+    const place = { ...DEFAULT_PIP_PLACE, corner: 'top-left' as const };
+    handle(IPC.pip.savePlace, (_e, asked) => {
+      ran.push(asked);
+      return { ok: true as const, place };
     });
-    const place = { corner: 'top-left', size: 'small' };
     const savePlace = () => Promise.resolve(handlers.get(IPC.pip.savePlace)?.(from('index.html'), place));
     // The window's request runs while the tool is chosen.
-    await expect(savePlace()).resolves.toEqual({ ok: true });
+    await expect(savePlace()).resolves.toEqual({ ok: true, place });
     expect(ran).toEqual([place]);
     // A phone or Companion (no arguments) is refused, chosen or not.
     expect(refusedNow(IPC.pip.savePlace)).toBe(true);
@@ -207,7 +208,7 @@ describe('the lock and a chosen tool (alpha.22, Simple Mode Features)', () => {
     expect(ran).toEqual([place]);
     // Chosen again: it runs again.
     chosen = ['picture-in-picture'];
-    await expect(savePlace()).resolves.toEqual({ ok: true });
+    await expect(savePlace()).resolves.toEqual({ ok: true, place });
     expect(ran).toEqual([place, place]);
   });
 });
