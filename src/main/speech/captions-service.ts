@@ -138,6 +138,11 @@ export class CaptionsService {
   private recognizer: { route: string; modelId: string } | null = null;
   /** Whether captions were started (turnOn), not only switched on: whisper's problem can keep them from it. */
   private listening = false;
+  /**
+   * Switched on but kept from starting by the engine's problem (turnOn): a choice that lets another engine hear may
+   * start them (resume). Never set by the rehearsal or an access stop, so nothing starts again after those (review n1).
+   */
+  private blocked = false;
   private readonly prototype: CaptionPrototype;
   private switch: CaptionsSwitch;
   private tuning: CaptionsTuning;
@@ -500,7 +505,12 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (this.closed || this.prototype.view().on || this.hearingProblem() !== null) return;
+    if (this.closed || this.prototype.view().on) return;
+    if (this.hearingProblem() !== null) {
+      this.blocked = true;
+      return;
+    }
+    this.blocked = false;
     this.listening = true;
     this.hub.setOn(true);
     this.feed.start();
@@ -509,6 +519,7 @@ export class CaptionsService {
 
   private turnOff(): void {
     this.listening = false;
+    this.blocked = false;
     this.stopDownload();
     this.feed.stop();
     this.hub.setOn(false);
@@ -528,9 +539,12 @@ export class CaptionsService {
       : this.deps.engineProblem();
   }
 
-  /** Captions are on but did not start (an engine's problem): a language whose engine can run starts now. */
+  /**
+   * Captions are on but did not start (an engine's problem): a language whose engine can run starts now. Captions the
+   * rehearsal or an access stop stopped are not waiting: they start again only when turned on (review n1).
+   */
   private resume(): void {
-    if (this.switch.on && !this.listening && !this.closed) void this.turnOn();
+    if (this.switch.on && this.blocked && !this.listening && !this.closed) void this.turnOn();
   }
 
   private stopDownload(): void {
@@ -691,7 +705,8 @@ export class CaptionsService {
   /** Listening starts again (a model or the timing changed), when it is on. */
   private relisten(): void {
     if (!this.switch.on || this.closed) return;
-    // Never started (whisper's problem): start now if what hears needs no whisper, else stay as it is.
+    // Not listening: kept from starting by whisper's problem, start now if what hears needs no whisper; else (the
+    // rehearsal or an access stop) stay as it is.
     if (!this.listening) {
       this.resume();
       return;
