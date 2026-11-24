@@ -163,6 +163,7 @@ import type { RepeatSettings } from './repeat';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
 import type { RunningOrderCopied } from './running-order';
+import type { WordsPrinted } from './words-print';
 import type {
   KeyframeResult,
   RowTrimRequest,
@@ -579,6 +580,12 @@ export const IPC = {
     slidesForEdit: 'library:slides-for-edit',
     saveSlides: 'library:save-slides',
     exportPdf: 'library:export-pdf',
+    /**
+     * A singers' sheet (alpha.22): a presentation's words, group by group in its language tracks, printed or saved as
+     * a PDF where the person chooses (operator window, Pro Mode, never while the show is live).
+     */
+    printWords: 'library:print-words',
+    saveWordsPdf: 'library:save-words-pdf',
     extractPdfPages: 'library:extract-pdf-pages',
     showExtractedPdf: 'library:show-extracted-pdf',
     showExtractedPdfCopy: 'library:show-extracted-pdf-copy',
@@ -1788,6 +1795,8 @@ export interface InvokeContract {
     args: [presentationId: string, doc: EditDoc, stamp: string, pages?: number[]];
     result: PdfCopyResult;
   };
+  [IPC.library.printWords]: { args: [presentationId: string]; result: WordsPrinted };
+  [IPC.library.saveWordsPdf]: { args: [presentationId: string]; result: WordsPrinted };
   [IPC.library.extractPdfPages]: {
     args: [presentationId: string, doc: EditDoc, stamp: string, pages: number[]];
     result: { ok: true; id: string; name: string } | { ok: false; message: string };

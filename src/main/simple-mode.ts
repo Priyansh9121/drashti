@@ -61,6 +61,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.downloadQr,
   // The slide editor's Save a PDF copy… (a copy: Pro Mode's; its save is bounded since Session 56, below).
   IPC.library.exportPdf,
+  // A singers' sheet (alpha.22): Print words… and Save words as PDF… are Pro Mode's, in its library's menu.
+  IPC.library.printWords,
+  IPC.library.saveWordsPdf,
   // Make a slide… (alpha.21): a new presentation from a PDF page, as New › QR code… makes one.
   IPC.slideEditor.makeSlide,
   // Prepare translations (alpha.22): drafting is Pro Mode's, as Translation…'s changes are.
@@ -642,6 +645,9 @@ export function simpleModeRefusals(
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   // Nothing copied (alpha.20: the new secret's Copy, whose window Simple Mode never opens).
   answers.set(IPC.events.copySecret, () => false);
+  // Nothing printed (a singers' sheet, alpha.22): said as Print words… and Save words as PDF… say why not.
+  for (const channel of [IPC.library.printWords, IPC.library.saveWordsPdf])
+    answers.set(channel, () => ({ ok: false as const, cancelled: false as const, message: words() }));
   answers.set(IPC.media.stopClipExport, () => false);
   answers.set(IPC.media.stopProxy, () => false);
   answers.set(IPC.modelPacks.cancel, () => false);

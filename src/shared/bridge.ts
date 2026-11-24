@@ -33,6 +33,7 @@ import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
 import type { RunningOrderCopied } from './running-order';
+import type { WordsPrinted } from './words-print';
 import type {
   ReportCopied,
   ReportDraft,
@@ -588,6 +589,9 @@ export interface DrashtiBridge {
     insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
     exportPdf(presentationId: string, doc: EditDoc, stamp: string, pages?: number[]): Promise<PdfCopyResult>;
+    /** A singers' sheet (alpha.22): the presentation's words printed, or saved as a PDF where the person chooses. */
+    printWords(presentationId: string): Promise<WordsPrinted>;
+    saveWordsPdf(presentationId: string): Promise<WordsPrinted>;
     extractPdfPages(
       presentationId: string,
       doc: EditDoc,

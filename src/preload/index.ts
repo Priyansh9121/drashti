@@ -352,6 +352,8 @@ const bridge: DrashtiBridge = {
       invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
     exportPdf: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.exportPdf, presentationId, doc, stamp, pages),
+    printWords: (presentationId) => invoke(IPC.library.printWords, presentationId),
+    saveWordsPdf: (presentationId) => invoke(IPC.library.saveWordsPdf, presentationId),
     extractPdfPages: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.extractPdfPages, presentationId, doc, stamp, pages),
     showExtractedPdf: (id, visible) => invoke(IPC.library.showExtractedPdf, id, visible),
