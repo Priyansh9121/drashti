@@ -307,13 +307,17 @@ export class CaptionCoordinator {
   }
 
   view(): CaptionReview {
+    // A phrase that has left the screens (its time is up) is never shown as on them now: it is the previous one,
+    // for review only, as it becomes when the next phrase comes (alpha.23, the review).
+    const onScreens = this.visible ? this.current : null;
+    const previous = this.visible ? this.previous : (this.current ?? this.previous);
     return {
-      canCorrect: this.visible && this.current !== null && this.current.status !== 'provisional',
+      canCorrect: onScreens !== null && onScreens.status !== 'provisional',
       version: this.version,
       on: this.sessionId !== null,
       sessionId: this.sessionId,
-      current: this.current ? { ...this.current } : null,
-      previous: this.previous ? { ...this.previous } : null,
+      current: onScreens ? { ...onScreens } : null,
+      previous: previous ? { ...previous } : null,
       busy:
         this.flight !== null &&
         !this.flight.abort.signal.aborted &&

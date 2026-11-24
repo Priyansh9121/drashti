@@ -249,6 +249,11 @@ mac:
     - from: vendor/whisper/darwin-${arch}
       to: whisper
       filter: ['**/*', '!SOURCE.txt']
+    # Prepare translations' engine (scripts/fetch-translate.mjs, alpha.22): drashti-translate, CTranslate2 and
+    # SentencePiece built from their pinned sources: LICENSES/translation/. Signed with the rest of the app.
+    - from: vendor/translate/darwin-${arch}
+      to: translate
+      filter: [drashti-translate]
     # Video out (x30): drashti-video-out, Drashti's small Syphon sender with Syphon's sources compiled in
     # (scripts/fetch-video-out.mjs): LICENSES/syphon/. The sender alone: the tests' receiver beside it never ships.
     - from: vendor/video-out/darwin-${arch}
@@ -303,6 +308,11 @@ win:
     - from: vendor/deno/win32-${arch}
       to: deno
       filter: [deno.exe]
+    # Prepare translations' engine (scripts/fetch-translate.mjs, alpha.22): drashti-translate.exe, its C++ runtime
+    # linked in: LICENSES/translation/.
+    - from: vendor/translate/win32-${arch}
+      to: translate
+      filter: [drashti-translate.exe]
     # Live captions' engine (scripts/fetch-whisper.mjs, Session 55, Part 10): whisper.cpp's whisper-server.exe and its
     # DLLs: LICENSES/whisper/.
     - from: vendor/indic/win32-${arch}

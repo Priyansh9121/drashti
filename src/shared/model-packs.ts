@@ -77,9 +77,19 @@ const ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
  * digit or "_" (so never "." or "..", a hidden file, a drive or a path from the top of a disk).
  */
 const NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/u;
+/**
+ * A part Windows would not keep as named (alpha.23, the review): a device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9),
+ * in any case and with any ending, or a name ending in a dot, which Windows drops.
+ */
+const WINDOWS_UNSAFE = /^(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(?:\.|$)|\.$/iu;
 
 export const packFileSchema = z.object({
-  name: z.string().min(1).max(240).regex(NAME),
+  name: z
+    .string()
+    .min(1)
+    .max(240)
+    .regex(NAME)
+    .refine((name) => name.split('/').every((part) => !WINDOWS_UNSAFE.test(part))),
   bytes: z.number().int().min(0).max(MAX_PACK_FILE_BYTES),
   sha256: z.string().regex(/^[0-9a-f]{64}$/u),
   licence: z.string().min(1).max(64),

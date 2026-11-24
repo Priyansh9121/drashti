@@ -2,6 +2,8 @@
 
 **Edit slides…** opens a presentation in a window of its own, the slide editor, while the operator window keeps the show controls. It has six groups along the top: **Words**, **Insert**, **Arrange**, **Design**, **Motion** and **Slides**.
 
+Where the top row has no room for all its commands, as at 200% zoom, it wraps onto a second row and keeps them within reach. Use **Tab** and **Shift+Tab** between controls, and the arrow keys between the editor’s groups.
+
 ## Edit slides…
 
 **What it is.** The slide editor's own window. Choose a slide on the left, then click a box on it to change it. **Objects**, on the right, lists everything on the slide.
@@ -19,7 +21,7 @@
 
 ## Prepared translations
 
-**What it is.** **Translate…** in the slide editor, in Pro Mode: saved Gujarati, Hindi or English words below their original, checked by a named reader. **No engine installed** means you write the words by hand; **Prepare translations** is unavailable.
+**What it is.** **Translate…** in the slide editor, in Pro Mode: saved Gujarati, Hindi or English words below their original, checked by a named reader. Once the admin has imported the translation model pack, **Prepare translations** fills the empty translations with drafts from the offline engine; **No engine installed** means you write the words by hand.
 
 **When you would use it.** Before the sabha, when a reader can compare the meaning, names and numbers in both languages and check each screen's fit.
 
@@ -27,10 +29,11 @@
 
 1. Open **Edit slides…**, then **Translate…**.
 2. Choose **Source language** and a different **Target language**. Keep one source language in each text box.
-3. Write **Translation words** beside the original. Reserve clear space below the source using **Reserved translation area**. Rearrange the source in the editor first if it fills the slide.
-4. Have the reader check the exact pair and its fit, enter **Reader name**, then press **Mark checked**. Changing either set of words requires a new check.
-5. Open **Where checked translations show**. Choose the presentation language and any screen or group choices; **Off** on a screen takes precedence.
-6. Preview the checked words, press **Done**, then **Save**. Missing or unchecked words and translations that cannot fit stay hidden; the original stays in place.
+3. Press **Prepare translations** for drafts of the empty ones. **Stop** ends the run; one **Undo** takes it back. A draft is only a start: read it against its source and correct it.
+4. Or write **Translation words** beside the original. Reserve clear space below the source using **Reserved translation area**. Rearrange the source in the editor first if it fills the slide.
+5. Have the reader check the exact pair and its fit, enter **Reader name**, then press **Mark checked**. Changing either set of words requires a new check.
+6. Open **Where checked translations show**. Choose the presentation language and any screen or group choices; **Off** on a screen takes precedence.
+7. Preview the checked words, press **Done**, then **Save**. Missing or unchecked words and translations that cannot fit stay hidden; the original stays in place.
 
 Simple Mode has **Translation status…** to read the saved checks. It cannot write, check or choose translations. Imported pages, pictures and movies remain whole; use separately authored text boxes on ordinary slides. Normal Save, Undo, backups and kirtan bundles carry the saved words and their review.
 

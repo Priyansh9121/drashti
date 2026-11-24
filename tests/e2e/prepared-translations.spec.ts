@@ -80,12 +80,7 @@ async function output(app: ElectronApplication, id: string): Promise<Page> {
   throw new Error('Expected output page is missing');
 }
 
-/**
- * The Translation dialog itself fits (fit.ts's expectFits, all but its whole-page check): inside the window,
- * every button's words whole and inside the dialog, nothing in it scrolling sideways. At 200% zoom the slide
- * editor's own top row is wider than its page (822-837 px in 512, on phase1 before prepared translations too:
- * diagnostic a21-take-tr-1123-210335-48560), an alpha.22 item of its own (QA21-TR-1 A, the lead).
- */
+/** Extra dialog-local checks alongside expectFits, including inner scrollers and both button edges. */
 async function expectDialogFits(dialog: Locator, what: string): Promise<void> {
   await expect(dialog).toBeVisible();
   await settled(dialog.page());
@@ -167,6 +162,40 @@ test('prepared translations require named review, survive restart, and source ed
   );
   await expect(held.review.getByTestId('translation-preview')).not.toContainText('Placeholder R8');
   await second.app.close();
+});
+
+test('Prepare translations drafts empty boxes only, unchecked, and waits while the stream is on air (stand-in engine)', async () => {
+  // DRASHTI_TEST_TRANSLATE stands in for the offline engine (a marked placeholder, never a translation): no model
+  // pack on CI. The engine itself is checked by the unit tests and, locally, against x74's Python on real models.
+  const { app } = await launchApp({ DRASHTI_TEST_TRANSLATE: '1', DRASHTI_TEST_ON_AIR_HOOK: '1' });
+  const win = await operatorPage(app);
+  await fixture(win);
+  const { review } = await editor(app, win);
+  await review.getByLabel('Source language', { exact: true }).selectOption('en');
+  await review.getByLabel('Target language', { exact: true }).selectOption('gu');
+  await expect(review).toContainText('A named reader checks every draft before it can show.');
+  const prepare = review.getByRole('button', { name: 'Prepare translations', exact: true });
+  const words = review.getByLabel('Translation words', { exact: true }).first();
+  const onAir = (on: boolean) =>
+    app.evaluate((_electron, air) => {
+      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(air);
+    }, on);
+  // On air: nothing is drafted, and the dialog says why.
+  await onAir(true);
+  await prepare.click();
+  await expect(review).toContainText('Prepare translations waits while the stream is on air or recording.');
+  await expect(words).toHaveValue('');
+  // Off air: a draft, unchecked, in the empty box.
+  await onAir(false);
+  await prepare.click();
+  await expect(words).toHaveValue(`[Test placeholder en/gu: ${JSON.stringify(SOURCE)}]`);
+  await expect(review.getByTestId('translation-review-state').first()).toHaveText('Unchecked');
+  // No empty box is left, so there is nothing more to prepare; typed words are never replaced.
+  await expect(prepare).toBeDisabled();
+  await words.fill('Placeholder typed');
+  await expect(prepare).toBeDisabled();
+  await expect(words).toHaveValue('Placeholder typed');
+  await app.close();
 });
 
 test('hall, explicit screen Off and stage use their own saved checked targets; Simple Mode cannot approve over raw IPC', async () => {
@@ -267,19 +296,24 @@ test('translation review fits the least editor size, keeps focus and readable sc
     if (!editor) throw new Error('No editor page');
     editor.setZoomFactor(2);
   });
+  // The zoom has landed: the page is half as wide in CSS pixels.
+  await expect.poll(() => ed.evaluate(() => innerWidth)).toBe(512);
+  await expectFits(review, 'Translation dialog and whole editor page at 200% zoom');
   await expectDialogFits(review, 'Translation dialog at 200% zoom');
   await ed.keyboard.press('Escape');
   await expect(review).toHaveCount(0);
-  // Translate… is reached at 200% too, though the top row is wider than the page there: by keys (focus comes back
-  // to it, Enter opens it) and by the pointer (the click scrolls the page to it and lands only where it is hit).
+  // The wrapped editor top row fits too; Translate… stays reachable by keyboard and pointer.
+  await expectFits(ed.getByTestId('slide-editor').locator('header'), 'Editor top row at 200% zoom');
   const translate = ed.getByRole('button', { name: 'Translate…', exact: true });
   await expect(translate).toBeFocused();
   await ed.keyboard.press('Enter');
+  await expectFits(review, 'Translation dialog and whole editor page opened by keys at 200% zoom');
   await expectDialogFits(review, 'Translation dialog opened by keys at 200% zoom');
   await ed.keyboard.press('Escape');
   await expect(review).toHaveCount(0);
   await expect(translate).toBeFocused();
   await translate.click();
+  await expectFits(review, 'Translation dialog and whole editor page opened by the pointer at 200% zoom');
   await expectDialogFits(review, 'Translation dialog opened by the pointer at 200% zoom');
   await review.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(review).toHaveCount(0);

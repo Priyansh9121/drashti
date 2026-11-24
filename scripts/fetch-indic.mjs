@@ -41,6 +41,11 @@ export function verifyOrtArchive(file, expected = ORT_RELEASE) {
   if (createHash('sha256').update(readFileSync(file)).digest('hex') !== expected.sha256)
     throw new Error('ONNX Runtime archive SHA-256 mismatch');
 }
+/** The staged libraries of a target, by their pinned size together (Microsoft's 1.23.2 files). */
+export function verifyOrtFiles(dir, target) {
+  const bytes = target.files.reduce((sum, file) => sum + statSync(join(dir, file)).size, 0);
+  if (bytes !== target.bytes) throw new Error('ONNX Runtime library size mismatch');
+}
 const run = (command, args) => {
   const result = spawnSync(command, args, { stdio: 'inherit' });
   if (result.error) throw result.error;
@@ -103,6 +108,7 @@ export async function fetchIndic(target, output = join('vendor', 'indic', target
       join(output, file),
     );
   }
+  verifyOrtFiles(output, selected);
   const program = buildIndic({ ort: unpacked, output, target });
   if (target.startsWith('darwin')) {
     // Microsoft's dylib id is versioned; ship the library next to the helper under its actual load name.
