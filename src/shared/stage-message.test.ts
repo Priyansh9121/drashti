@@ -112,8 +112,11 @@ describe('the stage message', () => {
       expect(stageColorSchema.safeParse(bad).success, bad).toBe(false);
   });
 
-  it('a reader of the version before reads a call with colours whole, its colours left out: amber and black', () => {
-    // The call as engine 31 read it (src/main/recovery/live-state.ts's schema then): its size, flash and time only.
+  it('a non-strict schema of the call, shaped as engine 31’s was, strips the colours and leaves amber and black', () => {
+    // What this shows is zod's non-strict parse, not 31's own code (which cannot run in this tree): a schema shaped as
+    // src/main/recovery/live-state.ts's call was at engine 31 (its size, flash and time only, a plain z.object) reads a
+    // call with colours, leaving them out, and a call without colours draws amber and black. That 31's readers are
+    // non-strict was checked by reading them (the review a22-review-stagemsg).
     const before = z.object({ size: z.enum(STAGE_MESSAGE_SIZES), flash: z.boolean(), shownAt: z.number() });
     const call: StageCall = { ...flashing, boxColor: '#1d4ed8', textColor: '#ffffff' };
     const read = before.safeParse(JSON.parse(JSON.stringify(call)));
