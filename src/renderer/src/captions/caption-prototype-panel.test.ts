@@ -2,7 +2,12 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { CaptionReview } from '../../../shared/caption-coordinator';
-import { CaptionPrototypeControls, latestCaptionReview } from './CaptionPrototypePanel';
+import {
+  CaptionPrototypeControls,
+  correctionProblem,
+  correctionStanding,
+  latestCaptionReview,
+} from './CaptionPrototypePanel';
 
 const view: CaptionReview = {
   on: false,
@@ -60,5 +65,24 @@ describe('ephemeral operator correction panel', () => {
     };
     expect(latestCaptionReview(current, stale)).toBe(current);
     expect(latestCaptionReview(stale, current)).toBe(current);
+  });
+  it('keeps an open correction when its phrase has left the screens, and says so: never an edit box gone without a word (cap-review-next n2)', () => {
+    const draft = { sessionId: 'new-session', phraseId: 's1', revision: 1, text: 'The blue box' };
+    const settled = { ...clause, status: 'settled' as const };
+    // On the screens as it was opened: open; corrected or settled again since: changed; none open: none.
+    expect(correctionStanding(draft, settled)).toBe('open');
+    expect(correctionStanding(draft, { ...settled, revision: 2 })).toBe('changed');
+    expect(correctionStanding(null, settled)).toBe('none');
+    expect(correctionStanding(null, null)).toBe('none');
+    // Its six seconds over (the review's phrase empty), or the next phrase in its place: the edit stays, and says why.
+    expect(correctionStanding(draft, null)).toBe('gone');
+    expect(correctionStanding(draft, { ...settled, phraseId: 's2' })).toBe('gone');
+    expect(correctionProblem('gone', true)).toBe(
+      'That phrase has left the screens, so this correction cannot be applied. Close this edit.',
+    );
+    // As before for the others.
+    expect(correctionProblem('changed', true)).toBe('The phrase changed. Close this edit and open it again.');
+    expect(correctionProblem('open', false)).toBe('Use a shorter correction with plain text.');
+    expect(correctionProblem('open', true)).toBeNull();
   });
 });
