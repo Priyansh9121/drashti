@@ -93,6 +93,10 @@ on:
         description: 'Instead: only the translation engine on an Intel Mac (alpha.23, a22-review-mt A2): built there, its instruction set and kernel read, timed on generated models (no model pack)'
         type: boolean
         default: false
+      captions:
+        description: "Caption AI's two-core proof (CAP-CI-1), Windows only: alone (the captions bench by itself) or alongside (beside this check, both on two cores), then optionally :candidates (rc-gu, rc-hi, small-gu, small-hi, small-en; all when none). Empty: an ordinary run"
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -104,12 +108,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.os == 'windows' && '["windows-latest"]' || inputs.os == 'macos' && '["macos-latest"]' || '["macos-latest","windows-latest"]') }}
+        # The captions bench is Windows' only (two cores by processor mask, as a mandir Main has).
+        os: ${{ fromJSON(inputs.captions != '' && '["windows-latest"]' || inputs.os == 'windows' && '["windows-latest"]' || inputs.os == 'macos' && '["macos-latest"]' || '["macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The captions input (CAP-CI-1), refused here when mistyped: before anything is installed or downloaded.
+      - name: The captions input (alone or alongside, then the candidates)
+        if: inputs.captions != ''
+        env:
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+        run: node scripts/captions-bench.mjs check
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -142,9 +153,39 @@ jobs:
         run: |
           echo "::error::The packaged video cases run only on a computer let in, by hand (docs/parallel-run.md, section 11). On CI, choose the case under scenario: the check lets itself in through the stand-in list on 127.0.0.1."
           exit 1
+      # Caption AI's two-core proof (CAP-CI-1; the owner, 24 Nov 2026: "Yes, all three"), only when asked: the app's
+      # own engines (Route C's helper on ONNX Runtime 1.23.2, whisper-server) built and fetched as CI's other jobs do;
+      # the models from their pinned sources, each checked by size and SHA-256 and cached by them
+      # (scripts/fetch-caption-models.mjs; never in an installer); the clips committed in tests/fixtures/captions
+      # (generated speech, CC-BY-4.0 voices: its CREDITS.md). The bench holds itself and its engines to two cores
+      # (processor mask 3, as the handicap below does).
+      - name: Cache the caption models
+        if: inputs.captions != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti/caption-models
+          key: caption-models-${{ hashFiles('scripts/fetch-caption-models.mjs', 'src/main/speech/models.ts') }}
+      - name: Fetch the live captions engine
+        if: inputs.captions != ''
+        run: node scripts/fetch-whisper.mjs
+      - name: Build the approved native IndicConformer runtime (no model download)
+        if: inputs.captions != ''
+        run: node scripts/fetch-indic.mjs
+      - name: Captions bench, alone (two cores)
+        if: startsWith(inputs.captions, 'alone')
+        env:
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+        run: node scripts/captions-bench.mjs run
+      - name: Captions bench, alongside (started; two cores)
+        if: startsWith(inputs.captions, 'alongside')
+        env:
+          CAPTIONS_BENCH: ${{ inputs.captions }}
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+        run: node scripts/captions-bench.mjs start
       # Let in through the stand-in list on 127.0.0.1 (tests/perf/performance.spec.ts), never the real one (question 8).
       - name: Performance self-test (headless)
-        if: inputs.video_cases_packaged == ''
+        if: inputs.video_cases_packaged == '' && !startsWith(inputs.captions, 'alone')
         env:
           # The local network on (this computer only) with this many devices on the feed (README, "Performance check").
           DRASHTI_PERF_DEVICES: ${{ inputs.devices }}
@@ -159,7 +200,8 @@ jobs:
           DRASHTI_PERF_PROFILE: ${{ inputs.profile && format('{0}/perf-profile', runner.temp) || '' }}
           # A heavy case, and modest hardware (Session 15).
           DRASHTI_PERF_SCENARIO: ${{ inputs.scenario != 'none' && inputs.scenario || '' }}
-          DRASHTI_PERF_HANDICAP: ${{ inputs.handicap && '1' || '0' }}
+          # Alongside the captions bench: on its two cores too.
+          DRASHTI_PERF_HANDICAP: ${{ (inputs.handicap || startsWith(inputs.captions, 'alongside')) && '1' || '0' }}
           DRASHTI_PERF_EDITS: ${{ inputs.edits && '1' || '0' }}
           DRASHTI_PERF_SONGS: ${{ inputs.songs }}
           # The streaming check to two places at once (Session 28).
@@ -177,6 +219,19 @@ jobs:
           # only, never packaged; render/motion-probe.ts).
           DRASHTI_TEST_MOTION_PROBE: ${{ inputs.scenario == 'animations' && '1' || '' }}
         run: pnpm test:perf
+      - name: Captions bench, alongside (stopped; its table)
+        if: always() && startsWith(inputs.captions, 'alongside')
+        env:
+          CAPTIONS_BENCH_OUT: ${{ runner.temp }}/captions-bench
+        run: node scripts/captions-bench.mjs stop
+      - name: Keep the captions bench's tables (numbers only)
+        if: always() && inputs.captions != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: captions-bench-${{ runner.os }}
+          path: ${{ runner.temp }}/captions-bench
+          if-no-files-found: warn
+          retention-days: 90
       - name: Keep each slide change's raw times (90 days)
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
