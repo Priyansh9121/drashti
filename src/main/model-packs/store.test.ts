@@ -557,8 +557,9 @@ describe('an import works out each SHA-256 off Main’s thread (alpha.23, cap-pa
     expect(
       ticks.filter((t) => t > (run?.from ?? Infinity) && t < (run?.to ?? -Infinity)).length,
     ).toBeGreaterThan(0);
-    expect(readFileSync(store.model(LARGE.id)?.files[0]?.path ?? '')).toEqual(
-      LARGE.files['captions/gu/model.bin'],
+    // The copy kept is whole (compared by SHA-256: a 32 MB buffer's own comparison takes the test runner's memory).
+    expect(sha(readFileSync(store.model(LARGE.id)?.files[0]?.path ?? ''))).toBe(
+      sha(LARGE.files['captions/gu/model.bin'] ?? Buffer.alloc(0)),
     );
     await allEnded();
   });
