@@ -1,7 +1,7 @@
 import { PDFDocument } from 'pdf-lib';
 import type { CropRect } from './picture-look';
 
-/** PDF rectangles can name either diagonal first; PDF.js displays their normalized bounds. */
+/** PDF rectangles may name either corner first; PDF.js displays normalized bounds. */
 function normalizedBox(box: { x: number; y: number; width: number; height: number }) {
   return {
     x: Math.min(box.x, box.x + box.width),
