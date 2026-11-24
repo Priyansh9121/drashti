@@ -171,7 +171,9 @@ it('an early Next uses the prepared pair at once, never a third decoder', () => 
   x.ready();
   x.advance(11_000);
   x.engine.dispatch({ type: 'next' });
-  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 11_120, durationMs: 2000 });
+  // The owner, QA23-FADE-9 QFP-5: "Blend 1 s after the press (Rec.)": its incoming sound starts a second early,
+  // unheard behind its lead, as an automatic crossfade's does (was one Go lead, 11,120).
+  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 12_000, durationMs: 2000 });
   expect(x.engine.current.videoCue).toBeNull();
   expect(x.engine.dispatch({ type: 'cueVideo', mediaId: 'first' }).ok).toBe(false);
 });
@@ -257,7 +259,19 @@ it('Go on an automatic crossfade cue keeps the playlist blend instead of cutting
   const cue = x.engine.current.videoCue;
   if (!cue) throw new Error('No automatic cue');
   x.engine.dispatch({ type: 'goVideoCue', cueId: cue.id });
-  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 11_120, durationMs: 2000 });
+  // QFP-5 (the owner: "Blend 1 s after the press (Rec.)"): a second after the press (was one Go lead, 11,120).
+  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 12_000, durationMs: 2000 });
+});
+
+it('a press within a second of the playlist’s own crossfade blends at that moment, never later (QFP-5)', () => {
+  // Its cue ready only 0.5 s before the moment (15,500), Next pressed before its own Go: a second after the press would
+  // be 16,000, past the moment the outgoing video's end allows for the whole blend.
+  const x = setup();
+  x.play();
+  x.advance(15_000);
+  x.ready();
+  x.engine.dispatch({ type: 'next' });
+  expect(x.engine.current.videoCrossfade).toMatchObject({ at: 15_500, durationMs: 2000 });
 });
 
 it('rearms a completion timer that wakes early instead of leaving an ended pair in the engine', () => {
