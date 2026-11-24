@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { type EngineState, initialEngineState } from '../../../../shared/engine/state';
+import type { MediaElement } from '../../../../shared/model';
 import { cropRenderedPage } from '../../../../shared/pdf-page-crop';
-import { backgroundShowing, PLAIN, slideShowing } from '../../../../shared/picture-look';
+import { backgroundShowing, type CropRect, PLAIN, slideShowing } from '../../../../shared/picture-look';
+import { renderEditedSlide } from '../../../../shared/slide-design';
+import type { EditDoc, EditSlide } from '../../../../shared/slide-edit';
+import { findSlide, newSlide } from '../../editor/ops';
+import { turnPdfPageRight } from '../../editor/pdf-page-ops';
 import {
+  type Framing,
   frameInCanvas,
   frameInSlide,
   frameOfBackground,
@@ -224,5 +230,192 @@ describe('a phone’s zoom put on the screens (Session 54, D2)', () => {
       liveFramingOf({ ...zoomed, liveZoom: { ...zoomed.liveZoom, showing: backgroundShowing(1) } }),
     ).toBeNull();
     expect(keptFraming(state, 'm-bg')).toEqual({ zoom: 1, x: 0, y: 0 });
+  });
+});
+
+/*
+ * A picture turned or flipped in its slide (a22-zoomturn, after a22-review-x95's follow-up): Turn page right turns a
+ * PDF page's picture a quarter turn about its box's middle each time, and the screens zoom and move a picture in its
+ * own box, unturned, the box then turned and flipped as the slide places it (render/SlideView.tsx frameStyle,
+ * render/picture-looks.tsx Looked). A made-up 480 x 320 page whose picture is the whole page; where a point of the
+ * turned page is on the page before its turns is worked out by hand: one turn right puts the page's top left at its
+ * top right, so a point (x, y) of the turned page, in its fractions, is (y, 1 - x) of the page before that turn.
+ */
+
+/**
+ * A PDF page whose picture is the whole 480 x 320 page, turned right `turns` times by Turn page right and kept to
+ * `crop` of the turned page by Crop page… (in the turned page's fractions, as the operator crops what they see), up.
+ */
+function turnedPage(turns: number, crop?: CropRect): EngineState {
+  const page: EditSlide = {
+    ...newSlide(null),
+    id: 'page',
+    documentPage: { sha256: 'a'.repeat(64), ext: 'pdf', page: 0, width: 480, height: 320 },
+    pageSize: { width: 480, height: 320 },
+    elements: [
+      {
+        id: 'e1',
+        kind: 'image',
+        mediaId: 'm-page',
+        fit: 'fill',
+        frame: { x: 0, y: 0, width: 480, height: 320 },
+      },
+    ],
+  };
+  let doc: EditDoc = {
+    presentationId: 'placeholder-pdf',
+    name: 'Placeholder PDF',
+    width: 1920,
+    height: 1080,
+    transition: null,
+    loop: false,
+    groups: [{ id: 'g', name: '', color: null, slides: [page] }],
+  };
+  for (let turn = 0; turn < turns; turn += 1) doc = turnPdfPageRight(doc, 'page');
+  const turned = findSlide(doc, 'page');
+  if (!turned?.documentPage) throw new Error('no page');
+  const shown = crop ? { ...turned, documentPage: { ...turned.documentPage, crop } } : turned;
+  const state = withSlidePicture();
+  const layer = state.layers.slide;
+  if (!layer) throw new Error('no slide');
+  layer.slide = renderEditedSlide(doc, shown);
+  return state;
+}
+
+/** The slide's picture in its top left quarter (withSlidePicture) turned and flipped as `how` says. */
+function placedPicture(how: Pick<MediaElement, 'rotation' | 'flipX' | 'flipY'>): EngineState {
+  const state = withSlidePicture();
+  const layer = state.layers.slide;
+  if (!layer) throw new Error('no slide');
+  layer.slide = {
+    ...layer.slide,
+    elements: layer.slide.elements.map((e) => (e.kind === 'image' ? { ...e, ...how } : e)),
+  };
+  return state;
+}
+
+/** The screens' zoom that brings a point of the picture (fractions of it, as it is before any turn) to the middle. */
+const bringing = (zoom: number, at: { x: number; y: number }): Framing => ({
+  zoom,
+  x: -zoom * (at.x - 0.5),
+  y: -zoom * (at.y - 0.5),
+});
+
+function expectFraming(actual: Framing, expected: Framing, what: string) {
+  expect(actual.zoom, `${what}: zoom`).toBeCloseTo(expected.zoom, 9);
+  expect(actual.x, `${what}: x`).toBeCloseTo(expected.x, 9);
+  expect(actual.y, `${what}: y`).toBeCloseTo(expected.y, 9);
+}
+
+function frameOrThrow<T>(frame: T | null): T {
+  if (!frame) throw new Error('no frame');
+  return frame;
+}
+
+/**
+ * Two points of the turned page, on the page before its turns: the middle of its top right quarter (turned right
+ * once, the page's top left quarter is there), and (0.625, 0.375), the middle of that quarter's bottom left quarter.
+ */
+const TURNED = [
+  { turns: 0, quarter: { x: 0.75, y: 0.25 }, inside: { x: 0.625, y: 0.375 } },
+  { turns: 1, quarter: { x: 0.25, y: 0.25 }, inside: { x: 0.375, y: 0.375 } },
+  { turns: 2, quarter: { x: 0.25, y: 0.75 }, inside: { x: 0.375, y: 0.625 } },
+  { turns: 3, quarter: { x: 0.75, y: 0.75 }, inside: { x: 0.625, y: 0.625 } },
+];
+
+/** Crop page… kept to the turned page's top right quarter. */
+const QUARTER: CropRect = { x: 0.5, y: 0, w: 0.5, h: 0.5 };
+
+describe('a phone’s zoom on a turned PDF page (Turn page right, a22-zoomturn)', () => {
+  it('puts on the screens the part of the turned page the phone looks at, at each quarter turn', () => {
+    for (const { turns, quarter } of TURNED) {
+      const frame = frameOrThrow(frameInSlide(turnedPage(turns)));
+      // Looked through: three times as big over the middle of the turned page's top right quarter.
+      const view = { zoom: 3, cx: 0.75, cy: 0.25 };
+      expectFraming(liveZoomFor(view, frame, PLAIN), bringing(3, quarter), `${String(turns)} turns`);
+      // And the phone opens there on the screens' zoom of that part.
+      const back = viewForLive(bringing(3, quarter), frame, PLAIN);
+      expect(back.zoom, `${String(turns)} turns: back`).toBeCloseTo(3, 9);
+      expect(back.cx, `${String(turns)} turns: back`).toBeCloseTo(0.75, 9);
+      expect(back.cy, `${String(turns)} turns: back`).toBeCloseTo(0.25, 9);
+    }
+  });
+
+  it('does so on a turned page cropped to a part of it (Crop page…)', () => {
+    for (const { turns, quarter, inside } of TURNED) {
+      const frame = frameOrThrow(frameInSlide(turnedPage(turns, QUARTER)));
+      // The crop is the turned page's top right quarter: the middle of what the phone shows is that quarter's.
+      expectFraming(
+        liveZoomFor({ zoom: 3, cx: 0.5, cy: 0.5 }, frame, PLAIN),
+        bringing(3, quarter),
+        `${String(turns)} turns, cropped`,
+      );
+      // Four times as big over the crop's own bottom left quarter.
+      expectFraming(
+        liveZoomFor({ zoom: 4, cx: 0.25, cy: 0.75 }, frame, PLAIN),
+        bringing(4, inside),
+        `${String(turns)} turns, cropped, inside`,
+      );
+    }
+  });
+
+  it('does so in the hall’s picture as the phone draws it: the turned page fitted into the canvas', () => {
+    for (const { turns, quarter } of TURNED) {
+      // 480 x 320 fitted into 1920 x 1080 at 3.375 (1620 wide, from 150 in); turned, 320 x 480 at 2.25 (720 from 600).
+      const cx = turns % 2 === 0 ? (150 + 0.75 * 1620) / 1920 : (600 + 0.75 * 720) / 1920;
+      expectFraming(
+        liveZoomFor({ zoom: 3, cx, cy: 0.25 }, frameOrThrow(frameInCanvas(turnedPage(turns), CANVAS)), PLAIN),
+        bringing(3, quarter),
+        `${String(turns)} turns, in the canvas`,
+      );
+      // Cropped to that quarter: the crop fitted in the canvas, its middle in the canvas's.
+      expectFraming(
+        liveZoomFor(
+          { zoom: 3, cx: 0.5, cy: 0.5 },
+          frameOrThrow(frameInCanvas(turnedPage(turns, QUARTER), CANVAS)),
+          PLAIN,
+        ),
+        bringing(3, quarter),
+        `${String(turns)} turns, cropped, in the canvas`,
+      );
+    }
+  });
+
+  it('follows a picture flipped in its slide, and one turned and flipped (a deck’s picture)', () => {
+    // The picture in the slide's top left quarter (960 x 540), flipped across: the left half of what the phone shows
+    // of it is the picture's own right half.
+    const view = { zoom: 3, cx: 0.125, cy: 0.25 };
+    const across = frameOrThrow(frameInSlide(placedPicture({ flipX: true })));
+    expectFraming(liveZoomFor(view, across, PLAIN), bringing(3, { x: 0.75, y: 0.5 }), 'flipped across');
+    // Up and down: the lower half shown is its own upper half.
+    const upDown = frameOrThrow(frameInSlide(placedPicture({ flipY: true })));
+    expectFraming(
+      liveZoomFor({ zoom: 3, cx: 0.25, cy: 0.375 }, upDown, PLAIN),
+      bringing(3, { x: 0.5, y: 0.25 }),
+      'flipped up and down',
+    );
+    // Turned right and flipped across: 240 below its middle (480, 270) is 240 left of its own middle.
+    const both = frameOrThrow(frameInSlide(placedPicture({ rotation: 90, flipX: true })));
+    expectFraming(
+      liveZoomFor({ zoom: 3, cx: 480 / 1920, cy: 510 / 1080 }, both, PLAIN),
+      bringing(3, { x: 0.25, y: 0.5 }),
+      'turned and flipped',
+    );
+  });
+
+  it('opens the phone where the screens are zoomed, as kept and turned, and back to the same zoom', () => {
+    const kept = { zoom: 1.5, x: 0.1, y: -0.05 };
+    const zoom = { zoom: 3, x: 0.4, y: -0.3 };
+    const states = [
+      ...TURNED.flatMap(({ turns }) => [turnedPage(turns), turnedPage(turns, QUARTER)]),
+      // A deck's picture turned a little, and flipped.
+      placedPicture({ rotation: 25, flipY: true }),
+    ];
+    for (const [i, state] of states.entries())
+      for (const frame of [frameOrThrow(frameInSlide(state)), frameOrThrow(frameInCanvas(state, CANVAS))]) {
+        const view = viewForLive(zoom, frame, kept);
+        expect(view.zoom).toBeCloseTo(2, 9);
+        expectFraming(liveZoomFor(view, frame, kept), zoom, `case ${String(i)}`);
+      }
   });
 });
