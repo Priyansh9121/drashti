@@ -949,17 +949,25 @@ describe('how the last run ended', () => {
   });
 
   it('saves the show again every minute while it runs, so a slide up for hours still comes back after a crash', async () => {
+    vi.useFakeTimers();
     const writer = new LiveStateWriter(files, { throttleMs: 10, aliveMs: 20, now });
-    writer.start(live());
-    await pause(40);
-    // Four hours on the same slide, then a crash.
-    clock += 4 * HOUR;
-    await pause(60);
-    writer.stop();
-    await writer.settle();
-    expect(JSON.parse(readFileSync(files.state, 'utf8'))).toMatchObject({ savedAt: now().toISOString() });
-    clock += 5 * 60_000;
-    expect(startFinds().putBack).toMatchObject({ slide: { slideIndex: 2 } });
+    try {
+      writer.start(live());
+      await vi.advanceTimersByTimeAsync(40);
+      await writer.settle();
+      // Four hours on the same slide, then a crash. Deliver the periodic save before stop cancels future work.
+      clock += 4 * HOUR;
+      await vi.advanceTimersByTimeAsync(60);
+      await writer.settle();
+      writer.stop();
+      expect(JSON.parse(readFileSync(files.state, 'utf8'))).toMatchObject({ savedAt: now().toISOString() });
+      clock += 5 * 60_000;
+      expect(startFinds().putBack).toMatchObject({ slide: { slideIndex: 2 } });
+    } finally {
+      writer.stop();
+      await writer.settle();
+      vi.useRealTimers();
+    }
   });
 
   it('a clean quit saves the show as it is, under this run, before its mark: even straight after the start', () => {

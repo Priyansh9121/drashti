@@ -161,6 +161,9 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
  */
 export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, CommandInSimpleMode>> = {
   // A slide, a row or Repeat Slides from an active playlist.
+  cueVideo: 'pro',
+  goVideoCue: 'pro',
+  cancelVideoCue: 'pro',
   goLive: 'within',
   playItem: 'within',
   startRepeat: 'within',
@@ -198,6 +201,8 @@ export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, Command
   resetTimer: 'pro',
   setStageMessage: 'pro',
   clearStageMessage: 'down',
+  // The operator window's alone (alpha.22): never a phone's (not in REMOTE_COMMANDS).
+  setStageColours: 'pro',
   cueNext: 'pro',
   clearCue: 'pro',
   playCue: 'pro',

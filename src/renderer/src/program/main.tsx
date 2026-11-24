@@ -34,6 +34,7 @@ import { ClockStyleContext } from '../render/clock-style';
 import { setLiveWindowSize } from '../render/live-window';
 import { useStopFade } from '../render/StopFade';
 import { framesOnTime } from '../render/frames-on-time';
+import { watchFrameGrid } from './frame-grid';
 
 /*
  * The stream's page: the Program, drawn off screen at the stream's size.
@@ -96,6 +97,14 @@ function Program() {
   const soundState = useProgram((s) => s.sound);
   const state = useEngine((s) => s.state);
   const rev = useEngine((s) => s.rev);
+  // While a cue waits, Main is told this page's frame grid, so a manual Go lands just before one of its frames and
+  // the stream starts the cued video within one frame of Go (S5, a21-s5; shared/video-cue.ts goOnStreamFrame).
+  const cueWaits = !!state?.videoCue && !state.videoCue.error;
+  useEffect(
+    () =>
+      cueWaits ? watchFrameGrid((grid) => void window.drashti.stream.page.reportFrames(grid)) : undefined,
+    [cueWaits],
+  );
   // The stream group's languages and Movement in the live Look (switching the Look changes them on air).
   const streamLook = groupLookIn(state?.look, context?.groupId);
   const languages = streamLook.languages;

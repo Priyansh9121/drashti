@@ -101,9 +101,9 @@ describe('the chosen wallpaper in the engine’s state (engine state 18)', () =>
   it('is set by the main process alone, from when it was chosen; the same again is no change, and none is null', () => {
     const { engine, now, elapse } = setup();
     // 18 then (Part 6); 28 now (editable deck effects; native paths retained), reading every additive predecessor whole.
-    expect(ENGINE_STATE_VERSION).toBe(31);
+    expect(ENGINE_STATE_VERSION).toBe(32);
     expect(
-      [31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12].every((v) =>
+      [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 20, 18, 17, 16, 15, 14, 13, 12].every((v) =>
         readsEngineVersion(v),
       ),
     ).toBe(true);

@@ -145,6 +145,7 @@ import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
+import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
@@ -264,11 +265,12 @@ import {
 } from '../shared/picture-look';
 import { audienceScreenSizes, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
-import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
+import { rowTrimRequestSchema, saveRequestSchema, trimSavedNotice } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
 import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
+import { exportMediaFile } from './convert/export-file';
 import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
@@ -439,6 +441,9 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
+import { RunningOrderPrinter, runningOrderLines } from './running-order';
+import { printWaits } from '../shared/print-waits';
+import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
 import { ErrorReports } from './error-reports/service';
@@ -472,6 +477,7 @@ import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
+import type { FrameGrid } from '../shared/video-cue';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
@@ -510,6 +516,7 @@ import {
   parseCaptionTiming,
 } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
+import { saveWaitsFor } from '../shared/save-waits';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { OscService } from './osc/service';
@@ -909,6 +916,15 @@ async function paced(response: Response, mediaId: string | null): Promise<Respon
 // it, so nobody pauses the sabha's sound by pressing one. Keeping those controls up to date also took
 // the main process 60 to 180 ms each time a sound started on Windows (the performance check's trace).
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
+// Sound-only elements select no video track, avoiding unused software picture decoding (S5). The stream's own sound
+// players keep a second of sound decoded ahead (a21-s5b, renderer/src/program/sound-ahead.ts): a page's pictures
+// decode on its one media thread too, and held it longer than the 0.2 s a player keeps at first.
+app.commandLine.appendSwitch(
+  'enable-blink-features',
+  [app.commandLine.getSwitchValue('enable-blink-features'), 'AudioVideoTracks', 'MediaLatencyHint']
+    .filter(Boolean)
+    .join(','),
+);
 
 // The show's own process first (Session 15): on a two-core PC with no graphics chip, the windows decoding
 // video at the same priority kept the main process (every slide change, and the screens' media) waiting
@@ -2064,11 +2080,17 @@ function start(): void {
     }
     return kept;
   };
+  // The stream page's frame grid, told while a cue waits (S5, a21-s5): a manual Go is placed on its frames.
+  let streamFrames: (FrameGrid & { told: number }) | null = null;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
     Date.now,
-    { items: (id) => playlists.playItems(id), repeatAll: (id) => playlists.playOptions(id).repeatAll },
+    {
+      items: (id) => playlists.playItems(id),
+      repeatAll: (id) => playlists.playOptions(id).repeatAll,
+      crossfadeMs: (id) => playlists.playOptions(id).crossfadeMs ?? 0,
+    },
     {
       defaultTransition: () => defaultTransition(settings),
       looks: { start: () => lookService?.start() ?? NO_LOOK },
@@ -2079,6 +2101,42 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state, simpleChosen())
             ? simpleRefusalText(simpleAccess())
             : null,
+      videoCueParticipants: () => {
+        const ids: string[] = [];
+        if (operatorWindow && !operatorWindow.isDestroyed())
+          ids.push(`picture:${operatorWindow.webContents.id}`);
+        if (audioWindow && !audioWindow.isDestroyed()) ids.push(`sound:${audioWindow.webContents.id}`);
+        const groups = screenRepo.groups();
+        const audience = new Set(
+          screenRepo
+            .screens()
+            .filter((s) => groups.find((g) => g.id === s.groupId)?.role !== 'stage')
+            .map((s) => s.id),
+        );
+        for (const entry of manager.windows())
+          if (audience.has(entry.screenId) && !entry.window.isDestroyed())
+            ids.push(`picture:${entry.window.webContentsId}`);
+        const remote = new Set(
+          nodeService
+            ?.screenStatus()
+            .filter((s) => s.state === 'showing')
+            .map((s) => s.screenId) ?? [],
+        );
+        for (const screen of screenRepo.screens())
+          if (screen.nodeId && screen.enabled && audience.has(screen.id) && remote.has(screen.id))
+            ids.push(`node:${screen.nodeId}:${screen.id}`);
+        const program = streaming.programContents();
+        if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`, `sound:${program.id}`);
+        return ids;
+      },
+      videoGoFrames: () => {
+        const program = streaming.programContents();
+        // Only a grid the stream's page told in the last 3 s (it tells four times a second while a cue waits).
+        if (!streamFrames || !program || program.isDestroyed() || Date.now() - streamFrames.told > 3000)
+          return null;
+        return { at: streamFrames.at, periodMs: streamFrames.periodMs };
+      },
+
       sourceMediaId: (id) => editedPlaying.sourceId(id),
       prepareVideoEdits: (previous, next, historic) => {
         const edited = prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
@@ -2299,7 +2357,12 @@ function start(): void {
       const file = media.file(id);
       return !!file && !file.missing && !file.deleted && existsSync(join(mediaDir, file.path));
     },
-    changed: (edit) => sendToOperator(IPC.media.videoEditChanged, edit),
+    changed: (edit) => {
+      const cue = engine.current.videoCue;
+      if (cue && videoEdits.sourceId(cue.background.mediaId) === edit.mediaId)
+        engine.dispatch({ type: 'cancelVideoCue' });
+      sendToOperator(IPC.media.videoEditChanged, edit);
+    },
     write: sourceWrite(
       libraryDb,
       () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },
@@ -3045,6 +3108,7 @@ function start(): void {
     // Audience or Stage (Session 50), by the screen's group.
     switchOf: (s) => switchFor(screenRepo.groupRole(s.groupId) ?? 'audience'),
     onChange: () => {
+      engine.videoCuePageJoined('');
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
         screenId: st.screenId,
@@ -4906,11 +4970,14 @@ function start(): void {
       ? readManual(guideFiles)
       : { ok: false, message: 'Only Drashti’s own window can read the manual: open it from Help.' },
   );
+  // Every printer's one test (the Manual's, a running order's, a kirtan's words'; shared/print-waits.ts): never while
+  // the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording, as Trim's and
+  // the conversions' background work waits; since alpha.22 also while a video waits at Cue or goes out in a crossfade
+  // (a22-review-print S1). A test can say the stream is on air.
+  const printingLive = () => testOnAir || printWaits(engine.current, streaming.inUse());
   const manualPrinter = new ManualPrinter({
     files: guideFiles,
-    // Never while the show is live (the lead's call of 20 Nov 2026): anything up, or the stream on air or recording,
-    // as Trim's and the conversions' background work waits (a test can say the stream is on air).
-    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    live: printingLive,
     version: () => app.getVersion(),
     tempDir: () => app.getPath('temp'),
     suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
@@ -4933,6 +5000,45 @@ function start(): void {
   } as const;
   handle(IPC.manual.print, (e) => (fromOperator(e) ? manualPrinter.print() : notFromOperator));
   handle(IPC.manual.pdf, (e) => (fromOperator(e) ? manualPrinter.pdf() : notFromOperator));
+  // ---- a singers' sheet (alpha.22): Print words… and Save words as PDF… of a presentation -------------------------
+  // Pro Mode's (simple-mode.ts), from the operator window only, never while the show is live (the Manual's rule), from
+  // the Manual's hidden window (words-print.ts). It only reads the library.
+  const wordsPrinter = new WordsPrinter({
+    read: (id) => {
+      const name = presentations.get(id)?.name;
+      const rows = name === undefined ? null : presentations.content(id);
+      return name === undefined || !rows ? null : { name, rows };
+    },
+    live: printingLive,
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the words as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+  });
+  const wordsNotFromOperator = {
+    ok: false,
+    cancelled: false,
+    message: 'Only the operator window can print a presentation’s words.',
+  } as const;
+  handle(IPC.library.printWords, (e, presentationId) => {
+    const id = idSchema.safeParse(presentationId);
+    if (!fromOperator(e) || !id.success) return wordsNotFromOperator;
+    return wordsPrinter.print(id.data);
+  });
+  handle(IPC.library.saveWordsPdf, (e, presentationId) => {
+    const id = idSchema.safeParse(presentationId);
+    if (!fromOperator(e) || !id.success) return wordsNotFromOperator;
+    return wordsPrinter.pdf(id.data);
+  });
   // ---- programs a crash left running (Session 31, ROB-3) ----------------------------------------
   // Each program Drashti starts that could outlive it is written down (src/main/system/leftovers.ts): one
   // the last run left running (the very one: id, start time and program) is stopped now, before anything
@@ -5148,6 +5254,13 @@ function start(): void {
   edits.delete(IPC.playlists.importM3u);
   // Export reads the library and writes only the chosen file; no library write lock spans its dialog.
   edits.delete(IPC.playlists.exportM3u);
+  // A running order only reads the library (alpha.22): copied, printed or saved where the person chooses.
+  edits.delete(IPC.playlists.copyRunningOrder);
+  edits.delete(IPC.playlists.printRunningOrder);
+  edits.delete(IPC.playlists.saveRunningOrderPdf);
+  // So do Print words… and Save words as PDF… (a singers' sheet, alpha.22).
+  edits.delete(IPC.library.printWords);
+  edits.delete(IPC.library.saveWordsPdf);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);
@@ -5167,6 +5280,15 @@ function start(): void {
     });
   });
 
+  // What holds a save the operator asked for (alpha.22, the owner's "Trim on a row"; shared/save-waits.ts): a row's
+  // Trim, Edit Video's Save and Export clip… wait only while a video or a sound plays, the stream is on air (the tests'
+  // hook too) or a recording goes on, never for a still slide, a picture or the Wallpaper up; in the operator's words.
+  const saveWaits = (): string | null =>
+    saveWaitsFor(engine.current, {
+      onAir: testOnAir || streaming.wanted().live,
+      recording: streaming.wanted().recording,
+    });
+  const saveIdle = () => saveWaits() === null;
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({
     prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
@@ -5196,6 +5318,7 @@ function start(): void {
         ? 'Waits while the stream is on air or recording, then carries on by itself.'
         : null,
     showBusy: () => !nothingUp(engine.current.layers),
+    saveBusy: saveWaits,
     freeBytes: diskFreeBytes,
     changed: (jobs) => {
       sendToOperator(IPC.media.conversionsChanged, jobs);
@@ -5256,6 +5379,8 @@ function start(): void {
     fromOperator,
     proMode: () => mode === 'pro',
     idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    // Export clip… (and Also add the clip to Media) is a save the operator asked for (alpha.22).
+    saveIdle,
     gpuStatus,
     freeBytes: diskFreeBytes,
     pickDest: async (name, container) => {
@@ -5270,6 +5395,16 @@ function start(): void {
     },
     showFile: (path) => shell.showItemInFolder(path),
     libraryChanged: () => libraryChanged(true),
+    // Combine videos…' Also save a copy to a file: Export…'s own save dialog (media:export-file, below).
+    exportDialog: async (name) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export video',
+        defaultPath: join(testDownloadsDir ?? app.getPath('downloads'), name),
+        buttonLabel: 'Export',
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
   });
   proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
   proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
@@ -5284,7 +5419,7 @@ function start(): void {
         ? { path: join(mediaDir, row.path), name: named.name }
         : null;
     },
-    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    idle: saveIdle,
     conversions,
     register: (file, info, name, signal) =>
       registerEditedFile({
@@ -5294,7 +5429,7 @@ function start(): void {
         info,
         name,
         signal,
-        idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+        idle: saveIdle,
         freeBytes: diskFreeBytes,
         write: sourceWrite(libraryDb, () => imports.giveWay()),
       }),
@@ -5597,7 +5732,10 @@ function start(): void {
       return ffmpeg ? frameAtOrBefore(ffmpeg, file, atMs) : Promise.resolve(null);
     },
     isLive: (itemId, mediaId) => rowVideoLive(engine.current, itemId, mediaId),
-    quiet: trimWorkQuiet,
+    // A cut is made, checked and carried on while nothing plays (alpha.22); the unused cuts' sweep still waits until
+    // nothing is up (trimCleanupQuiet).
+    quiet: () => !quitStarted && saveIdle(),
+    waits: saveWaits,
     hash: (file, signal) => hashOffMain(file, signal),
     kept: trimRecords.kept,
     spaceProblem: (file, durationMs, lengthMs) =>
@@ -5617,6 +5755,9 @@ function start(): void {
       ),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
+    statusChanged: (statuses) => sendToOperator(IPC.media.trimStatusesChanged, statuses),
+    // Its trimmed video is in Media (alpha.22): the notice says so, with Show in Media.
+    saved: (mediaId, name) => sendToOperator(IPC.app.notice, { text: trimSavedNotice(name), mediaId }),
     rowChanged: (added) => {
       if (added) {
         libraryChanged(true);
@@ -5707,6 +5848,35 @@ function start(): void {
       : noTrim;
   });
   handle(IPC.media.preparingTrims, (e) => (fromOperator(e) ? playlistTrims.list() : []));
+  handle(IPC.media.trimStatuses, (e) => (fromOperator(e) ? playlistTrims.statuses() : {}));
+  // Export… (alpha.22, the owner's "export button as well to download"): a finished video in Media (a row's trimmed
+  // video) copied byte for byte where the operator chooses, the save dialog beginning in Downloads.
+  handle(IPC.media.exportFile, (e, mediaId) => {
+    const id = idSchema.safeParse(mediaId);
+    if (!fromOperator(e) || !id.success)
+      return { ok: false as const, message: 'Open Export… in the operator window, then try again.' };
+    return exportMediaFile(
+      {
+        video: (mediaId) => {
+          const row = media.kindAndFile(mediaId);
+          const named = media.kindAndName(mediaId);
+          return row?.kind === 'video' && !row.missing && row.path !== '' && named
+            ? { path: join(mediaDir, row.path), name: named.name }
+            : null;
+        },
+        pickDest: async (name) => {
+          if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+          const picked = await dialog.showSaveDialog(operatorWindow, {
+            title: 'Export video',
+            defaultPath: join(testDownloadsDir ?? app.getPath('downloads'), name),
+            buttonLabel: 'Export',
+          });
+          return picked.canceled || !picked.filePath ? null : picked.filePath;
+        },
+      },
+      id.data,
+    );
+  });
 
   const notSaving = { ok: false as const, message: 'Only the operator window can save a video’s part.' };
   handle(IPC.media.keyframe, async (e, mediaId, startMs) => {
@@ -5796,9 +5966,22 @@ function start(): void {
     (globalThis as { drashtiTestReadable?: (name: string) => void }).drashtiTestReadable = (name) => {
       windowReads.readable(name);
     };
+  handle(IPC.engine.videoCueReady, (event, cueId, kind, ready) => {
+    if (typeof cueId !== 'string' || cueId.length > 128 || typeof ready !== 'boolean') return null;
+    const picture =
+      fromOperator(event) ||
+      manager.screenIdFor(event.sender.id) !== undefined ||
+      streaming.isProgram(event.sender);
+    const sound = event.sender.id === audioWindow?.webContents.id || streaming.isProgram(event.sender);
+    if ((kind === 'picture' && picture) || (kind === 'sound' && sound))
+      engine.reportVideoCue(cueId, `${kind}:${event.sender.id}`, ready);
+    return null;
+  });
   handle(IPC.engine.subscribe, (event) =>
     windowReads.read('engine', () => {
       transport.add(event.sender);
+      engine.videoCuePageJoined(`picture:${event.sender.id}`);
+      engine.videoCuePageJoined(`sound:${event.sender.id}`);
       return engine.snapshot();
     }),
   );
@@ -6764,6 +6947,46 @@ function start(): void {
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
   lowerThirds.purge();
+  // Live behind the studio's preview (alpha.22, lower-thirds/studio-live.ts): a still about once a second while the
+  // studio shows Live (not while it is minimized), never otherwise, from a picture already drawn: this computer's first
+  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here, none (the
+  // studio says "No live picture to show"). Read only.
+  const studioLive: StudioLive = new StudioLive({
+    take: async () => {
+      const roles = new Map(screenRepo.groupIds().map((g) => [g.id, g.role]));
+      const showingNow = () =>
+        new Set(
+          manager
+            .status()
+            .filter((st) => st.state === 'showing')
+            .map((st) => st.screenId),
+        );
+      const showing = showingNow();
+      const screenId = hallScreenOf(
+        screenRepo.screens(),
+        (groupId) => roles.get(groupId) ?? null,
+        (id) => showing.has(id) && pageAlive(outputWindows.get(id)),
+      );
+      const hall = screenId === null ? undefined : outputWindows.get(screenId);
+      if (screenId === null || !hall || hall.isDestroyed()) return null;
+      const image = await hall.webContents.capturePage();
+      // Taken as its window closed (its screen switched off, say), it is not what the hall shows: none (as captureLocal).
+      if (hall.isDestroyed() || outputWindows.get(screenId) !== hall || !showingNow().has(screenId))
+        return null;
+      return livePictureOf(image, 'screen', Date.now());
+    },
+    send: (picture) => {
+      studio.sendLive(picture);
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  // Tests only (never a packaged Drashti): whether Live's stills are being taken, and how many have been.
+  if (!packaged())
+    (
+      globalThis as { drashtiTestStudioLive?: () => { watching: boolean; taken: number } }
+    ).drashtiTestStudioLive = () => ({ watching: studioLive.watching, taken: studioLive.taken });
   // The Lower Thirds studio (Session 55, Part 16): a window of its own, where they are made, shown and hidden.
   const studio = new LowerThirdsStudio({
     workArea: () =>
@@ -6774,6 +6997,12 @@ function start(): void {
     background: () => appearance.background(),
     track: (win) => {
       appearance.track(win);
+    },
+    closed: () => {
+      studioLive.stop();
+    },
+    minimized: (on) => {
+      studioLive.pause(on);
     },
     log: (line) => {
       log.info(line);
@@ -6790,6 +7019,7 @@ function start(): void {
     fromOperator,
     get: (id) => lowerThirds.get(id),
     engine,
+    live: studioLive,
     log: (line) => {
       log.info(line);
     },
@@ -7468,6 +7698,7 @@ function start(): void {
         : Promise.resolve({ ok: false as const, message: 'Main is starting: the report goes in a moment.' }),
     onAir: () => streaming.inUse(),
     changed: (status) => {
+      engine.videoCuePageJoined('');
       sendToOperator(IPC.nodes.changed, status);
     },
     screensChanged: () => {
@@ -7481,6 +7712,16 @@ function start(): void {
     },
     // A paired computer's screen could not play a video (Q60-44, the owner's answer A): it keeps what it showed; the
     // video plays on everywhere else, and the operator is told, once for each node and showing (media/cannot-play.ts).
+    videoCue: (nodeId, report) => {
+      if (
+        screenRepo.screen(report.screenId)?.nodeId !== nodeId ||
+        engine.current.videoCue?.id !== report.cueId
+      )
+        return;
+      const participant = `node:${nodeId}:${report.screenId}`;
+      if (report.state === 'loading') engine.videoCuePageJoined(participant);
+      else engine.reportVideoCue(report.cueId, participant, report.state === 'ready');
+    },
     cannotPlay: (node, report) => {
       const file = media.kindAndName(report.mediaId);
       if (file?.kind !== 'video') return;
@@ -8065,6 +8306,65 @@ function start(): void {
       return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'write'));
     }
   });
+  // ---- a playlist's running order (alpha.22; main/running-order.ts) ----------------------------------
+  // For the sanchalak, the anchor and the sound desk before a sabha: one of the operator's playlists (never a folder,
+  // a template or an audio playlist), read as it is now. Copy running order puts its plain lines on the clipboard, by
+  // the main process (a page's own clipboard is refused: windows/security.ts).
+  const runningOrderSource = (playlistId: unknown) => {
+    const parsed = idSchema.safeParse(playlistId);
+    if (!parsed.success) return null;
+    const list = playlists.tree().find((p) => p.id === parsed.data && !p.isFolder && !p.template);
+    return list ? { name: list.name, items: playlists.itemsOf(list.id) } : null;
+  };
+  handle(IPC.playlists.copyRunningOrder, async (e, playlistId) => {
+    if (!fromOperator(e))
+      return { ok: false, message: 'Only Drashti’s own window can copy a running order.' } as const;
+    const source = runningOrderSource(playlistId);
+    if (!source) return { ok: false, message: 'That playlist no longer exists.' } as const;
+    const rows = source.items.filter((i) => i.kind !== 'header').length;
+    return clipboard.writeText(runningOrderLines(source)).then(
+      () => ({ ok: true, rows }) as const,
+      () => ({ ok: false, message: 'The running order could not be copied: try again.' }) as const,
+    );
+  });
+  // Print running order… and Save running order as PDF…: from a hidden window as the manual is (main/manual-print.ts),
+  // one page at a time across every printer, and never while the show is live (printingLive, the Manual's).
+  const runningOrderPrinter = new RunningOrderPrinter({
+    source: (playlistId) => runningOrderSource(playlistId),
+    printed: () => {
+      const style = mainClockStyle();
+      return new Intl.DateTimeFormat(style.locale, { dateStyle: 'full', timeZone: style.timeZone }).format(
+        Date.now(),
+      );
+    },
+    live: printingLive,
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the running order as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+  });
+  const notPrintedHere = {
+    ok: false,
+    cancelled: false,
+    message: 'Only Drashti’s own window can print a running order.',
+  } as const;
+  handle(IPC.playlists.printRunningOrder, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string'
+      ? runningOrderPrinter.print(playlistId)
+      : notPrintedHere,
+  );
+  handle(IPC.playlists.saveRunningOrderPdf, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string' ? runningOrderPrinter.pdf(playlistId) : notPrintedHere,
+  );
 
   // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and
   // only that write can refuse the rename. What it returns runs once the library has the new name, the rename
@@ -8532,7 +8832,7 @@ function start(): void {
     if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
     if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
     const file = media.kindAndName(mediaId);
-    if (file?.kind !== 'video' || !engine.noPicture(mediaId)) return null;
+    if (file?.kind !== 'video' || !engine.noPicture(mediaId, startedAt)) return null;
     log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
     const converting = conversions.convertUndrawable(mediaId);
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
@@ -8573,7 +8873,7 @@ function start(): void {
       `${mediaId}@${String(startedAt)}`,
       where,
       (named) => {
-        const took = engine.cannotPlay(mediaId);
+        const took = engine.cannotPlay(mediaId, startedAt);
         if (!took) return;
         const off = [
           took.background ? 'the background' : '',
@@ -8875,6 +9175,19 @@ function start(): void {
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);
+    return null;
+  });
+  handle(IPC.stream.pageFrames, (e, grid: unknown) => {
+    const told = grid as Partial<FrameGrid> | null;
+    if (
+      streaming.isProgram(e.sender) &&
+      typeof told?.at === 'number' &&
+      Number.isFinite(told.at) &&
+      typeof told.periodMs === 'number' &&
+      told.periodMs >= 10 &&
+      told.periodMs <= 100
+    )
+      streamFrames = { at: told.at, periodMs: told.periodMs, told: Date.now() };
     return null;
   });
 

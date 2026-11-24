@@ -122,6 +122,11 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
   );
   const imported = await listMedia(win);
   const idOf = (name: string) => imported.find((m) => m.name === name)?.id ?? '';
+  // All five are in the list (a file never imported has no entry, so it fails here), each marked unplayable.
+  expect(
+    names.filter((n) => !imported.some((m) => m.name === n)),
+    'imported',
+  ).toEqual([]);
   for (const n of names) expect(imported.find((m) => m.name === n)?.unplayable, n).not.toBeNull();
 
   // The AVI is in a playlist.

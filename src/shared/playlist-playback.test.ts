@@ -90,3 +90,20 @@ it('Music ends in its running shuffle order, using the live points and each foll
   );
   expect(playlistTotals([{ ...video('points', 30000), playingMs: 10000 }]).durationMs).toBe(10000);
 });
+
+it('subtracts an automatic video overlap exactly once from totals and the finish time', () => {
+  const items = [video('a', 10000, 'next'), video('b', 10000)];
+  const playback = { shuffle: false, repeatAll: false, playOrder: ['a', 'b'], crossfadeMs: 2000 };
+  expect(playlistTotals(items, playback)).toEqual({ rows: 2, durationMs: 18000, unknown: 0 });
+  expect(playlistLeftMs(items, playback.playOrder, 'a', 7000, false, 2000)).toBe(15000);
+  expect(playlistLeftMs(items, playback.playOrder, 'b', 7000, false, 2000)).toBe(7000);
+});
+
+it('uses the saved draw and the shorter span bound for each overlapping pair', () => {
+  const items = [video('a', 10000), video('b', 4000, 'next')];
+  expect(
+    playlistTotals(items, { shuffle: true, repeatAll: false, playOrder: ['b', 'a'], crossfadeMs: 9000 })
+      .durationMs,
+  ).toBe(12000);
+  expect(playlistTotals(items).durationMs).toBe(14000);
+});

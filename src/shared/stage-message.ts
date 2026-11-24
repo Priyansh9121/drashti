@@ -12,9 +12,10 @@ import type { StageLayout } from './stage-layouts';
  *
  * Its colours (the owner, 24 Nov 2026): the box's and the words', chosen in the Stage screen panel, travel in the call
  * (`boxColor`, `textColor`, each left out for amber and black, as it always was: a phone, the API and OSC send none;
- * Simple Mode's panel sends the colours this computer keeps). They are only added to the call, so the engine's state
- * keeps its version: a node or a page of the version before reads the call whole and draws its own amber and black, as
- * it always did.
+ * Simple Mode's panel sends the colours this computer keeps). Since alpha.22 the engine gives a message sent with none
+ * the colours chosen on this computer, which the operator window tells it (setStageColours, operator/stage-colours.ts).
+ * They are only added to the call, so the engine's state keeps its version: a node or a page of the version before
+ * reads the call whole and draws its own amber and black, as it always did.
  */
 
 export type StageMessageSize = 'small' | 'standard' | 'large' | 'huge';

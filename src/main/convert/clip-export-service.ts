@@ -171,7 +171,8 @@ export class ClipExports {
     const lengthMs = source.outputLengthMs ?? source.endMs - source.startMs;
     const prepared: { info: MediaInfo | null; importId: string | null } = { info: null, importId: null };
     const copy = this.deps.conversions.saveCopy(source.path, entry.destination, info, {
-      waitForShow: true,
+      // Only what plays, the stream or a recording holds an export the operator asked for (alpha.22).
+      waitForPlaying: true,
       strictPriority: true,
       kind: 'clip',
       lengthMs,

@@ -49,7 +49,7 @@ export function MakeSlideDialog({
   const nextPart = useRef(1);
   const dragging = useRef<number | null>(null);
   const slide = findSlide(base.doc, slideId);
-  const canvas = slideCanvas(slide, base.doc);
+  const canvas = slide ? renderEditedSlide(base.doc, slide) : slideCanvas(slide, base.doc);
   const [part, setPart] = useState<CropRect>(FULL_CROP);
   const [shape, setShape] = useState<CropShape>('free');
   const [place, setPlace] = useState<SlidePlace | null>(null);
@@ -355,7 +355,7 @@ export function MakeSlideDialog({
 function PartPreview({ doc, slideId, part }: { doc: EditDoc; slideId: string; part: CropRect }) {
   const slide = findSlide(doc, slideId);
   if (!slide) return null;
-  const canvas = slideCanvas(slide, doc);
+  const canvas = renderEditedSlide(doc, slide);
   const scale = Math.min(80 / (canvas.width * part.w), 56 / (canvas.height * part.h));
   return (
     <span

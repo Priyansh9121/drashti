@@ -34,7 +34,7 @@ const pageWindow = globalThis as unknown as {
 // And video out's (x30): the page's frames to other software.
 ipcRenderer.on(
   IPC.stream.port,
-  (event, payload: { role: 'preview' | 'encoder' | 'speech' | 'video-out' }) => {
+  (event, payload: { role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' | 'video-out' }) => {
     pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
   },
 );
@@ -55,8 +55,8 @@ const bridge: DrashtiBridge = {
         listener();
       }),
     onNotice: (listener) =>
-      on(IPC.app.notice, ({ text }) => {
-        listener(text);
+      on(IPC.app.notice, ({ text, mediaId }) => {
+        listener(text, mediaId);
       }),
     recovery: () => invoke(IPC.app.recovery),
     dismissRecovery: () => invoke(IPC.app.dismissRecovery),
@@ -302,6 +302,7 @@ const bridge: DrashtiBridge = {
     pathFor: (file) => webUtils.getPathForFile(file),
   },
   engine: {
+    videoCueReady: (cueId, kind, ready) => invoke(IPC.engine.videoCueReady, cueId, kind, ready),
     onMessage: (listener) =>
       on(IPC.engine.message, (message) => {
         engineSeen.remember(message, true);
@@ -351,6 +352,8 @@ const bridge: DrashtiBridge = {
       invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
     exportPdf: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.exportPdf, presentationId, doc, stamp, pages),
+    printWords: (presentationId) => invoke(IPC.library.printWords, presentationId),
+    saveWordsPdf: (presentationId) => invoke(IPC.library.saveWordsPdf, presentationId),
     extractPdfPages: (presentationId, doc, stamp, pages) =>
       invoke(IPC.library.extractPdfPages, presentationId, doc, stamp, pages),
     showExtractedPdf: (id, visible) => invoke(IPC.library.showExtractedPdf, id, visible),
@@ -427,6 +430,9 @@ const bridge: DrashtiBridge = {
     setPlayOptions: (playlistId, options) => invoke(IPC.playlists.setPlayOptions, playlistId, options),
     importM3u: (audio, targetId) => invoke(IPC.playlists.importM3u, audio, targetId),
     exportM3u: (playlistId, audio) => invoke(IPC.playlists.exportM3u, playlistId, audio),
+    copyRunningOrder: (playlistId) => invoke(IPC.playlists.copyRunningOrder, playlistId),
+    printRunningOrder: (playlistId) => invoke(IPC.playlists.printRunningOrder, playlistId),
+    saveRunningOrderPdf: (playlistId) => invoke(IPC.playlists.saveRunningOrderPdf, playlistId),
 
     duplicate: (playlistId) => invoke(IPC.playlists.duplicate, playlistId),
     splitItem: (itemId, rest, alone, at) => invoke(IPC.playlists.splitItem, itemId, rest, alone, at),
@@ -481,6 +487,9 @@ const bridge: DrashtiBridge = {
     clipExports: () => invoke(IPC.media.clipExports),
     stopClipExport: (id) => invoke(IPC.media.stopClipExport, id),
     showClipExport: (id) => invoke(IPC.media.showClipExport, id),
+    combineVideos: (request) => invoke(IPC.media.combineVideos, request),
+    combineList: () => invoke(IPC.media.combineList),
+    stopCombine: (id) => invoke(IPC.media.stopCombine, id),
     videoAnalysis: (mediaId, audioStream = 0, retry = false) =>
       invoke(IPC.media.videoAnalysis, mediaId, audioStream, retry),
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
@@ -501,6 +510,9 @@ const bridge: DrashtiBridge = {
     stopRowTrim: (itemId, mediaId) => invoke(IPC.media.stopRowTrim, itemId, mediaId),
     preparingTrims: () => invoke(IPC.media.preparingTrims),
     onPreparingTrims: (listener) => on(IPC.media.preparingTrimsChanged, listener),
+    trimStatuses: () => invoke(IPC.media.trimStatuses),
+    onTrimStatuses: (listener) => on(IPC.media.trimStatusesChanged, listener),
+    exportFile: (mediaId) => invoke(IPC.media.exportFile, mediaId),
     saves: () => invoke(IPC.media.saves),
     onSaves: (listener) => on(IPC.media.savesChanged, listener),
     stopSave: (jobId) => invoke(IPC.media.stopSave, jobId),
@@ -635,6 +647,7 @@ const bridge: DrashtiBridge = {
       context: () => invoke(IPC.stream.pageContext),
       onContext: (listener) => on(IPC.stream.context, listener),
       reportInputs: (inputs) => invoke(IPC.stream.pageInputs, inputs),
+      reportFrames: (grid) => invoke(IPC.stream.pageFrames, grid),
     },
   },
   youtube: {
@@ -747,6 +760,8 @@ const bridge: DrashtiBridge = {
       on(IPC.lowerThirds.askClose, () => {
         listener();
       }),
+    watchLive: (on) => invoke(IPC.lowerThirds.watchLive, on),
+    onLive: (listener) => on(IPC.lowerThirds.live, listener),
   },
   slideEditor: {
     open: (presentationId, slideId) => invoke(IPC.slideEditor.open, presentationId, slideId),

@@ -9,6 +9,7 @@ import type { RowTrimView } from '../../../shared/trim';
 import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
 import { useTrimPreparing } from '../playlists/PreparingMark';
+import { exportMedia } from '../library/export-file';
 import { Button, IconButton } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { KeepChangesDialog } from '../ui/KeepChanges';
@@ -104,6 +105,11 @@ export function MarkersDialog({ copies = true }: { copies?: boolean } = {}) {
     return <MarkersForm key={trim.itemId} media={media} start={trim.markers} copies={false} trim={trim} />;
   if (loaded?.id !== media.id) return null;
   return <MarkersForm key={media.id} media={media} start={loaded.markers} copies={copies} />;
+}
+
+/** The name a row’s trimmed video takes in Media (main/convert/trim-copy.ts), without its extension. */
+function trimmedName(name: string): string {
+  return `${name.replace(/(.)\.[^.]+$/u, '$1')} trimmed`;
 }
 
 function trimTime(ms: number): string {
@@ -237,6 +243,12 @@ function MarkersForm({
     if (lostParts.length > 0) setAsking(true);
     else close();
   };
+  // Its Save cuts the row's video (alpha.22, the owner's "give proper option of save trimmed video"): a start or end
+  // moved from the row's own, and not the whole video (that is Reset, or the markers alone).
+  const cuts =
+    trim !== undefined &&
+    (startText !== timeText(start.startMs) || endText !== timeText(start.endMs)) &&
+    (partStart > 0 || (durationMs !== null && typedEnd !== null && partEnd < durationMs - 10));
   const save = async () => {
     if (submitting || preparing) return;
     const startMs = startText.trim() === '' ? null : parseMarkerTime(startText);
@@ -298,6 +310,16 @@ function MarkersForm({
               Reset to original
             </Button>
           )}
+          {/* The row's trimmed video, made: its file copied where the operator chooses, never made again (alpha.22). */}
+          {trim && trim.mediaId !== trim.sourceId && (
+            <Button
+              data-testid="markers-export"
+              disabled={submitting || preparing}
+              onClick={() => void exportMedia(trim.mediaId)}
+            >
+              Export…
+            </Button>
+          )}
           <Button onClick={requestClose} disabled={submitting}>
             Cancel
           </Button>
@@ -308,7 +330,7 @@ function MarkersForm({
             data-testid="markers-save"
             disabled={submitting || preparing}
           >
-            Save
+            {cuts ? 'Save trimmed video' : 'Save'}
           </Button>
         </>
       }
@@ -396,7 +418,7 @@ function MarkersForm({
         )}
         <p className="text-xs text-muted">
           {trim
-            ? 'Saving a cut prepares a new video for this row. It waits while the show or stream is on, and the current video plays until it’s ready. The preview is silent.'
+            ? `Save trimmed video makes the part from Start to End a new video in Media, “${trimmedName(media.name)}”, and this row plays it; the original stays as it is. It waits only while a video or a sound plays, or the stream is on air or recording (the row says which), and the current video plays until it’s ready. The preview is silent.`
             : copies
               ? 'It plays between its start and end points wherever it is used (a background video loops between them), and the markers can be jumped to while it plays, from under the live picture or a phone. The preview is silent: only the audio player makes sound.'
               : 'It plays between its start and end points wherever it is used (a background video loops between them), and its markers show on its time bar under the live picture. Its file is never cut or copied. The preview is silent: only the audio player makes sound.'}

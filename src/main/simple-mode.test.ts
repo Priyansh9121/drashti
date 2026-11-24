@@ -99,6 +99,9 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('zoomLive');
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('resetLiveZoom');
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual([
+      'cueVideo',
+      'goVideoCue',
+      'cancelVideoCue',
       // Prepared translations: hide and restore remain Pro Mode's.
       'setTranslationHidden',
       'showPip',
@@ -495,6 +498,29 @@ describe('Simple Mode locks', () => {
     }
   });
 
+  it('a playlist’s running order (alpha.22) is Pro Mode’s, as Export as M3U… is: nothing copied, printed or saved', () => {
+    for (const channel of [
+      IPC.playlists.copyRunningOrder,
+      IPC.playlists.printRunningOrder,
+      IPC.playlists.saveRunningOrderPdf,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+      expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+    }
+    expect(answers.get(IPC.playlists.copyRunningOrder)?.()).toEqual({
+      ok: false,
+      message: SIMPLE_MODE_REFUSAL,
+    });
+    // Printing answers as the manual's printing does: not cancelled, in words.
+    for (const channel of [IPC.playlists.printRunningOrder, IPC.playlists.saveRunningOrderPdf])
+      expect(answers.get(channel)?.(), channel).toEqual({
+        ok: false,
+        cancelled: false,
+        message: SIMPLE_MODE_REFUSAL,
+      });
+  });
+
   it('Rename: a file a playlist holds (Session 56: any playlist, never only a template)', () => {
     expect(within(IPC.library.renamePresentation, 'p-in', 'Placeholder new name')).toBe(true);
     expect(within(IPC.library.renamePresentation, 'p-other', 'Placeholder new name')).toBe(true);
@@ -735,6 +761,18 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.library.stopReadingWords)?.()).toBe(false);
   });
 
+  it('Print words… and Save words as PDF… (a singers’ sheet, alpha.22) are Pro Mode’s: nothing printed, refused in words in their own shape', () => {
+    for (const channel of [IPC.library.printWords, IPC.library.saveWordsPdf]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+      expect(answers.get(channel)?.(), channel).toEqual({
+        ok: false,
+        cancelled: false,
+        message: SIMPLE_MODE_REFUSAL,
+      });
+    }
+  });
+
   it('New › QR code… (Session 55, Part 8) is Pro Mode’s: Simple Mode makes no slide', () => {
     expect(SIMPLE_MODE_LOCKED).toContain(IPC.library.newQrSlide);
     expect(SIMPLE_MODE_BOUNDED.has(IPC.library.newQrSlide)).toBe(false);
@@ -783,6 +821,18 @@ it('keeps clip exports and manual preparation stops in Pro Mode with their expec
   expect(answers.get(IPC.media.stopProxy)?.()).toBe(false);
   for (const channel of [IPC.media.proxyStatus, IPC.media.clipExports])
     expect(simpleModeRefusesWhole(channel), channel).toBe(false);
+});
+
+it('keeps Combine videos… in Pro Mode: combining and stopping refused in Simple Mode, its list readable', () => {
+  const answers = simpleModeRefusals(() => ({}) as AudioOutputStatus);
+  for (const channel of [IPC.media.combineVideos, IPC.media.stopCombine]) {
+    expect(channel, 'the channel exists').toMatch(/^media:/u);
+    expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+  }
+  expect(answers.get(IPC.media.combineVideos)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  expect(answers.get(IPC.media.stopCombine)?.()).toBe(false);
+  expect(IPC.media.combineList).toMatch(/^media:/u);
+  expect(simpleModeRefusesWhole(IPC.media.combineList)).toBe(false);
 });
 
 /*

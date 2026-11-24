@@ -1,3 +1,7 @@
+import { cueClock } from './cue-clock';
+import { cuePresentation, PRIVATE_VIDEO_OPACITY } from './cue-presentation';
+import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
+import { reportVideoCue, reportLoadedVideoCue } from './video-cue-report';
 import {
   type Dispatch,
   useCallback,
@@ -91,29 +95,57 @@ function VideoSlot({
   useLayoutEffect(() => {
     timing.current = layer;
   });
+  const privateCue = useRef(slot.cued === true);
+  useLayoutEffect(() => {
+    privateCue.current = slot.cued === true;
+  });
   const playback = useRef<Playback | null>(null);
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    // Its first frame came, or it failed: no more waiting for it.
+    // Keep a private cue in the compositor below pixel precision, and require its trimmed native frame.
+    // The armed Go lead then warms the same decoder silently before the shared moment (playback.ts).
     let settled = false;
+    const ready = () => {
+      settled = true;
+      reportVideoCue(layer.cueId, 'picture', true);
+      if (privateCue.current) dispatch({ type: 'ready', key, at: engineNow() });
+      else dispatch({ type: 'loaded', key });
+    };
+    const presentation = layer.cueId
+      ? cuePresentation(v, ready, () => {
+          settled = true;
+          reportVideoCue(layer.cueId, 'picture', false);
+          if (!privateCue.current)
+            tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
+              code: 0,
+              message:
+                'The cued video’s first frame could not be read. Cancel the cue and check the video in Media.',
+            });
+          dispatch({ type: 'failed', key, landed: landed.current });
+        })
+      : null;
     const p = startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
+      prepareScheduledStart: layer.cueId !== undefined,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
-        settled = true;
         if (hasNoPicture(v)) {
-          tellNoPicture(mediaId, startedAt);
+          settled = true;
+          reportVideoCue(layer.cueId, 'picture', false);
+          if (!privateCue.current) tellNoPicture(mediaId, startedAt);
           return;
         }
-        // Its data is in: drawn over the picture before, which stays until it has been presented (below).
-        dispatch({ type: 'loaded', key });
+        if (presentation) presentation.decoded();
+        else ready();
       },
       onError: (error) => {
+        presentation?.stop();
         settled = true;
-        tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
+        reportVideoCue(layer.cueId, 'picture', false);
+        if (!privateCue.current) tellCannotPlay(mediaId, startedAt, attempt ?? 0, error);
         dispatch({ type: 'failed', key, landed: landed.current });
       },
     });
@@ -124,19 +156,32 @@ function VideoSlot({
     // a paired computer) shows it if its first frame comes after all.
     const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
       if (settled) return;
+      presentation?.stop();
       settled = true;
-      tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
-        code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
-        message: seen,
-      });
+      reportVideoCue(layer.cueId, 'picture', false);
+      if (!privateCue.current)
+        tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
+          code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
+          message: seen,
+        });
     });
     playback.current = p;
+    // A cued picture starts on its Go, not 34-79 ms after it: its sound is pulled by this page's silent graph, so its
+    // clock starts with its rate (render/cue-clock.ts, QA21-S5-1). Every other picture plays muted, as before.
+    const unclock = layer.cueId ? cueClock(v) : null;
     return () => {
+      settled = true;
       stopWatch();
+      presentation?.stop();
       playback.current = null;
       p();
+      unclock?.();
     };
-  }, [key, mediaId, attempt, startedAt, dispatch]);
+  }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch]);
+  useEffect(() => {
+    if (slot.cued && slot.state === 'ready' && ref.current)
+      reportLoadedVideoCue(layer.cueId, 'picture', ref.current);
+  }, [slot, layer.cueId]);
   const seekAt = layer.seek?.at;
   const clipKey = `${String(layer.clip?.startMs)}/${String(layer.clip?.endMs)}`;
   useEffect(() => {
@@ -166,21 +211,24 @@ function VideoSlot({
     };
   }, [presenting, key, dispatch]);
 
+  const opacity = visible ? 1 : layer.cueId ? PRIVATE_VIDEO_OPACITY : 0;
   return (
     <video
       ref={ref}
+      data-cue-id={layer.cueId}
       data-bg-slot={key}
       data-state={slot.state}
       data-media-id={mediaId}
       muted
       playsInline
+      crossOrigin={layer.cueId ? 'anonymous' : undefined}
       disablePictureInPicture
       preload="auto"
       loop={layer.loop && !layer.clip}
       style={
         shape === null
-          ? style(layer.fit, visible)
-          : { ...shapedVideoStyle(shape, layer.fit === 'fill' ? 'fill' : 'fit'), opacity: visible ? 1 : 0 }
+          ? { ...style(layer.fit, visible), opacity }
+          : { ...shapedVideoStyle(shape, layer.fit === 'fill' ? 'fill' : 'fit'), opacity }
       }
     />
   );
@@ -319,17 +367,24 @@ function useFade(
   slots: Slots,
   dispatch: Dispatch<SlotEvent>,
   movement: Movement,
+  pair?: VideoCrossfade | null,
+  opaqueCanvas = false,
 ): void {
   const start = slots.fade?.start ?? null;
   const ms = slots.fade?.ms ?? 0;
   useLayoutEffect(() => {
-    setFade(root.current, start, ms, movement);
+    if (pair) setVideoFade(root.current, pair, opaqueCanvas);
+    else setFade(root.current, start, ms, movement);
   });
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
     const tick = () => {
-      if (setFade(root.current, start, ms, movement) >= 1) {
+      if (
+        (pair
+          ? setVideoFade(root.current, pair, opaqueCanvas)
+          : setFade(root.current, start, ms, movement)) >= 1
+      ) {
         dispatch({ type: 'faded', start });
         return;
       }
@@ -339,7 +394,7 @@ function useFade(
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [root, start, ms, dispatch, movement]);
+  }, [root, start, ms, dispatch, movement, pair, opaqueCanvas]);
 }
 
 /**
@@ -348,7 +403,25 @@ function useFade(
  * immediate. `annotate` marks a file that cannot play (the operator preview).
  * On a phone or tablet it is a still preview instead (render/previews.tsx).
  */
+/** Linear, complementary picture gains at the engine moment, shared with both sound players. */
+function setVideoFade(root: HTMLElement | null, fade: VideoCrossfade, opaqueCanvas: boolean): number {
+  const progress = videoFadeProgress(fade, engineNow());
+  for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-wrap]') ?? []) {
+    const role = el.dataset['bgFade'];
+    const gain = role === undefined ? 1 : role === 'out' ? 1 - progress : progress;
+    // The incoming opaque canvas supplies p; source-over attenuates the opaque old canvas by 1-p.
+    // This is the same linear picture mix without a costly plus-lighter software blend.
+    el.style.opacity = String(role === 'out' && opaqueCanvas ? 1 : gain);
+    el.dataset['videoGain'] = String(Math.round(gain * 1e6) / 1e6);
+  }
+  return progress;
+}
+
 export function BackgroundMedia(props: {
+  cue?: VideoCue | null;
+  crossfade?: VideoCrossfade | null;
+  /** Opaque hall/stream canvas; key/fill retains the alpha-safe blend. */
+  opaqueCanvas?: boolean;
   layer: BackgroundLayer | null;
   annotate?: boolean;
   /** How this screen's group moves (Session 27): its dissolve's curve. */
@@ -360,7 +433,7 @@ export function BackgroundMedia(props: {
   onDrawn?: (key: string | null) => void;
 }) {
   const previews = usePreviewsOnly();
-  if (!previews) return <BackgroundPlayer {...props} />;
+  if (!previews) return <BackgroundPlayer {...props} cue={props.cue?.error ? null : props.cue} />;
   return <BackgroundPreview {...props} />;
 }
 
@@ -401,7 +474,13 @@ function BackgroundPlayer({
   annotate = false,
   movement = 'calm',
   onDrawn,
+  cue,
+  crossfade,
+  opaqueCanvas = false,
 }: {
+  opaqueCanvas?: boolean;
+  cue?: VideoCue | null;
+  crossfade?: VideoCrossfade | null;
   layer: BackgroundLayer | null;
   annotate?: boolean;
   movement?: Movement;
@@ -417,10 +496,52 @@ function BackgroundPlayer({
   if (seen !== layer) {
     setSeen(layer);
     // The first time: this window has just opened, perhaps part-way through a dissolve (Session 23).
-    dispatch({ type: 'layer', layer, joined: seen === undefined });
+    if (seen === undefined && crossfade && layer?.kind === 'media')
+      dispatch({ type: 'joinPair', layer, fade: crossfade });
+    else dispatch({ type: 'layer', layer, joined: seen === undefined });
+  }
+  const [seenCue, setSeenCue] = useState<VideoCue | null | undefined>(undefined);
+  if (
+    seenCue !== cue ||
+    (cue &&
+      !slots.leaving &&
+      (!slots.incoming || slots.incoming.cued) &&
+      slots.incoming?.key !== slotKey(cue.background) &&
+      slots.shown?.key !== slotKey(cue.background))
+  ) {
+    setSeenCue(cue);
+    dispatch({ type: 'cue', cue: cue ?? null });
+  }
+  const [seenPair, setSeenPair] = useState(crossfade);
+  if (seenPair !== crossfade) {
+    if (seenPair && !crossfade) dispatch({ type: 'pairDone' });
+    setSeenPair(crossfade);
   }
   const rootRef = useRef<HTMLDivElement>(null);
-  useFade(rootRef, slots, dispatch, movement);
+  useFade(rootRef, slots, dispatch, movement, crossfade, opaqueCanvas);
+  const coming = slots.incoming;
+  useEffect(() => {
+    if (
+      !coming ||
+      coming.cued ||
+      coming.state !== 'ready' ||
+      coming.layer.kind !== 'media' ||
+      !coming.layer.cueId
+    )
+      return;
+    let frame = 0;
+    const at = coming.layer.seek?.at ?? coming.layer.startedAt;
+    const activate = () => {
+      const now = engineNow();
+      if (now >= at) dispatch({ type: 'activate', key: coming.key, at: now, fade: crossfade });
+      else frame = requestAnimationFrame(activate);
+    };
+    activate();
+    return () => cancelAnimationFrame(frame);
+  }, [coming, crossfade]);
+  // During Pause/Play the outgoing source clock changes in place, without replacing its decoder.
+  const outgoing = crossfade?.from;
+  const leaving = slots.leaving && outgoing ? { ...slots.leaving, layer: outgoing } : slots.leaving;
   // On a node: a background that failed because its copy had not arrived loads again when it lands,
   // once for each landing (a try that fails again waits for the next one). A video that failed with a GPU
   // process that stopped loads again once another has started (Sessions 31–36, ROB-5), the same way.
@@ -442,22 +563,24 @@ function BackgroundPlayer({
   useLayoutEffect(() => {
     onDrawn?.(drawn);
   }, [onDrawn, drawn]);
-  const list = [slots.leaving, slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
+  const list = [leaving, slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
   if (list.length === 0) return null;
   const fading = slots.fade !== null;
+  const opaqueBlend = !!crossfade && opaqueCanvas;
   return (
     <div
       ref={rootRef}
       data-layer="background"
       data-kind="media"
+      data-video-crossfade={crossfade?.id}
       data-fading={fading ? 'true' : undefined}
       data-fade-start={slots.fade?.start ?? undefined}
       // The old and new pictures blend with each other only.
-      style={{ position: 'absolute', inset: 0, isolation: fading ? 'isolate' : undefined }}
+      style={{ position: 'absolute', inset: 0, isolation: fading && !opaqueBlend ? 'isolate' : undefined }}
     >
       {list.map((slot) => {
         const visible =
-          ((slot === slots.shown || slot === slots.leaving) && isDrawn(slot)) || drawnOver(slots, slot);
+          ((slot === slots.shown || slot === leaving) && isDrawn(slot)) || drawnOver(slots, slot);
         const shape =
           isMediaSlot(slot) && slot.layer.media === 'video'
             ? shapeFor(shapes, slot.layer.mediaId, slot.layer.fit)
@@ -469,17 +592,20 @@ function BackgroundPlayer({
             <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
           )
         ) : isInputSlot(slot) ? (
-          <InputSlotView slot={slot} visible={visible} current={slot !== slots.leaving} dispatch={dispatch} />
+          <InputSlotView slot={slot} visible={visible} current={slot !== leaving} dispatch={dispatch} />
         ) : null;
         return (
           <div
             key={`${slot.key}#${slot.attempt ?? 0}`}
             data-bg-wrap=""
-            data-bg-fade={slot === slots.leaving ? 'out' : slot === slots.shown && fading ? 'in' : undefined}
+            data-bg-fade={slot === leaving ? 'out' : slot === slots.shown && fading ? 'in' : undefined}
             style={{
               position: 'absolute',
               inset: 0,
-              mixBlendMode: fading && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
+              mixBlendMode:
+                fading && !opaqueBlend && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
+              // Full canvas matte also preserves linear weights through letterboxes and video shapes.
+              background: fading && opaqueBlend ? '#000000' : undefined,
               willChange: ownLayers ? 'opacity' : undefined,
               // A video in a shape of its own: its box laid out in this place, and clipped to it (filling).
               ...(shape === null ? {} : SHAPED_PLACE),

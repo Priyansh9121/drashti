@@ -1,3 +1,4 @@
+import type { NodeVideoCueReport } from '../../shared/nodes';
 import { PAIRED_SEATS_NOTICE } from '../network/paired-seats';
 import { randomInt } from 'node:crypto';
 import type { NodeReportAnswer } from '../../shared/report';
@@ -108,6 +109,7 @@ export interface NodeServiceDeps {
   thumbs(thumbs: ScreenThumb[]): void;
   /** A showing one of a node's screens could not play (Q60-44): the node, by its name, and its word. */
   cannotPlay?(node: { id: string; name: string }, report: NodeCannotPlayReport): void;
+  videoCue?(nodeId: string, report: NodeVideoCueReport): void;
   /** How Main's own outputs draw, for the dashboard. */
   localOutputs(): NodeOutputStatus[];
   log(level: 'info' | 'warn', message: string): void;
@@ -420,6 +422,9 @@ export class NodeService implements EngineTransport {
             at: this.deps.now(),
           },
         ]);
+        return;
+      case 'video-cue':
+        if (this.deps.nodes.get(m.nodeId)) this.deps.videoCue?.(m.nodeId, m.report);
         return;
       case 'cannot-play': {
         const node = this.deps.nodes.get(m.nodeId);

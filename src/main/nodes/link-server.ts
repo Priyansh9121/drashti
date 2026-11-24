@@ -1,3 +1,5 @@
+import type { NodeVideoCueReport } from '../../shared/nodes';
+import { nodeVideoCueSchema } from '../../shared/nodes-schema';
 import { controllerRequestSchema, type ControllerRequest } from '../../shared/controller-actions';
 import { ACCESS_REPORT } from '../../shared/access-protocol';
 import type { NodeReportAnswer } from '../../shared/report';
@@ -93,6 +95,7 @@ export interface LinkNode {
 }
 
 export interface LinkHost {
+  videoCue?(nodeId: string, report: NodeVideoCueReport): void;
   /** A node proved the code: keep it (its token's hash). Its id and name, or null if it could not be kept. */
   paired(node: {
     name: string;
@@ -839,6 +842,11 @@ export class LinkServer {
         )
           this.host.thumb(nodeId, message.screenId, message.jpeg);
         return;
+      case 'video-cue': {
+        const report = nodeVideoCueSchema.safeParse(message.report);
+        if (report.success) this.host.videoCue?.(nodeId, report.data);
+        return;
+      }
       case 'cannot-play': {
         const report = nodeCannotPlaySchema.safeParse(message.report);
         if (report.success) this.host.cannotPlay?.(nodeId, report.data);

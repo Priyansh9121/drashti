@@ -12,6 +12,7 @@ import { LayoutTemplate, Star } from '../../ui/icons';
 import { usePersistentState } from '../../ui/persist';
 import { FindBox } from './FindBox';
 import { makeNew } from './studio-store';
+import { TILE_BACKDROP } from './backdrop';
 import { StudioPreview } from './StudioPreview';
 
 const COLLECTIONS = {
@@ -127,7 +128,7 @@ const TemplateTile = memo(function TemplateTile({
           key={active ? 'play' : 'still'}
           input={template.input}
           play={0}
-          backdrop="picture"
+          backdrop={TILE_BACKDROP}
           thumbnail={active ? 'play' : 'still'}
         />
       </button>

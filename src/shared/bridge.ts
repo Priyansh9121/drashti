@@ -1,7 +1,15 @@
 import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 
-import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type {
+  ClipExportRequest,
+  ClipExportResult,
+  ClipExportJob,
+  CombineJob,
+  CombineRequest,
+  CombineResult,
+  VideoProxyResult,
+} from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
@@ -28,10 +36,13 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
+import type { StudioLivePicture } from './studio-live';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
+import type { RunningOrderCopied } from './running-order';
+import type { WordsPrinted } from './words-print';
 import type {
   ReportCopied,
   ReportDraft,
@@ -196,8 +207,10 @@ import type {
   SaveJob,
   SaveRequest,
   SaveResult,
+  TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
@@ -205,6 +218,7 @@ import type { PointAt, PointedClip } from './point-ahead';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
+import type { FrameGrid } from './video-cue';
 import type {
   EvenResult,
   FileSoundView,
@@ -244,7 +258,7 @@ export interface DrashtiBridge {
     /** Edit > Redo was chosen (operator window). */
     onRedo(listener: () => void): () => void;
     /** Something to tell the operator, from the main process. */
-    onNotice(listener: (text: string) => void): () => void;
+    onNotice(listener: (text: string, mediaId?: string) => void): () => void;
     /** What was put back on the screens after Drashti stopped unexpectedly, until dismissed. */
     recovery(): Promise<RecoveryNotice | null>;
     dismissRecovery(): Promise<null>;
@@ -512,6 +526,8 @@ export interface DrashtiBridge {
     pathFor(file: File): string;
   };
   engine: {
+    /** A matching first decoded cue frame or sound, reported by a trusted participant. */
+    videoCueReady(cueId: string, kind: 'picture' | 'sound', ready: boolean): Promise<null>;
     /**
      * Listen for engine messages (snapshots and patches). Register before
      * calling subscribe() so nothing is missed. Returns an unsubscribe function.
@@ -584,6 +600,9 @@ export interface DrashtiBridge {
     insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
     exportPdf(presentationId: string, doc: EditDoc, stamp: string, pages?: number[]): Promise<PdfCopyResult>;
+    /** A singers' sheet (alpha.22): the presentation's words printed, or saved as a PDF where the person chooses. */
+    printWords(presentationId: string): Promise<WordsPrinted>;
+    saveWordsPdf(presentationId: string): Promise<WordsPrinted>;
     extractPdfPages(
       presentationId: string,
       doc: EditDoc,
@@ -711,6 +730,12 @@ export interface DrashtiBridge {
     setPlayOptions(playlistId: string, options: PlaylistPlayOptions): Promise<PlaylistResult>;
     importM3u(audio: boolean, targetId: string | null): Promise<M3uResult>;
     exportM3u(playlistId: string, audio: boolean): Promise<M3uResult>;
+    /** Its running order (alpha.22) as plain lines on the clipboard: numbered rows, headers as sections, the total. */
+    copyRunningOrder(playlistId: string): Promise<RunningOrderCopied>;
+    /** Its running order through the system's print dialog, from a hidden window (never while the show is live). */
+    printRunningOrder(playlistId: string): Promise<ManualPrinted>;
+    /** Its running order saved as a PDF where the person chooses (the system's save dialog). */
+    saveRunningOrderPdf(playlistId: string): Promise<ManualPrinted>;
 
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;
@@ -794,6 +819,13 @@ export interface DrashtiBridge {
     clipExports(): Promise<ClipExportJob[]>;
     stopClipExport(jobId: string): Promise<boolean>;
     showClipExport(jobId: string): Promise<null>;
+    /**
+     * Combine videos… (alpha.22): the videos (two to ten, in the order they play) joined end to end into one new video
+     * in Media, waiting for an idle moment (operator window, Pro Mode); the combines; and Stop.
+     */
+    combineVideos(request: CombineRequest): Promise<CombineResult>;
+    combineList(): Promise<CombineJob[]>;
+    stopCombine(jobId: string): Promise<boolean>;
     /** Cached source-time analysis; queues only through the idle conversion worker. Audio uses 0:a:N. */
     videoAnalysis(
       mediaId: string,
@@ -833,6 +865,11 @@ export interface DrashtiBridge {
     stopRowTrim(itemId: string, mediaId: string): Promise<RowTrimResult>;
     preparingTrims(): Promise<string[]>;
     onPreparingTrims(listener: (itemIds: string[]) => void): () => void;
+    /** How each row's cut stands (alpha.22): why it waits, or how far it is. */
+    trimStatuses(): Promise<TrimStatuses>;
+    onTrimStatuses(listener: (statuses: TrimStatuses) => void): () => void;
+    /** Export… (alpha.22): a finished video in Media copied where the operator chooses (a save dialog in Downloads). */
+    exportFile(mediaId: string): Promise<ExportFileResult>;
     saves(): Promise<SaveJob[]>;
     onSaves(listener: (jobs: SaveJob[]) => void): () => void;
     stopSave(jobId: string): Promise<boolean>;
@@ -968,6 +1005,8 @@ export interface DrashtiBridge {
       context(): Promise<ProgramContext | null>;
       onContext(listener: (context: ProgramContext) => void): () => void;
       reportInputs(inputs: ProgramInputs): Promise<null>;
+      /** While a cue waits: when its frames begin and how far apart (a manual Go is placed on them). */
+      reportFrames(grid: FrameGrid): Promise<null>;
     };
   };
   /**
@@ -1235,6 +1274,10 @@ export interface DrashtiBridge {
     dirty(dirty: boolean): Promise<null>;
     close(): Promise<null>;
     onAskClose(listener: () => void): () => void;
+    /** The studio shows Live behind its preview (true) or another backdrop (alpha.22): stills only while it does. */
+    watchLive(on: boolean): Promise<null>;
+    /** Live's still, about once a second while it is watched (null: nothing on this computer to take it from). */
+    onLive(listener: (picture: StudioLivePicture | null) => void): () => void;
   };
   /** OSC: explicitly allowed local UDP senders, independent of Phones. */
   osc: {

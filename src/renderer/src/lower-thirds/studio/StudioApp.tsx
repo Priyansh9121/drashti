@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { lowerThirdName, shownLines, WHERE_NAMES } from '../../../../shared/lower-thirds';
 import { connectEngine, useEngine } from '../../engine/engine-store';
@@ -9,7 +9,16 @@ import { KeepChangesDialog, settingsChanged } from '../../ui/KeepChanges';
 import { Notice } from '../../ui/Notice';
 import { radioKeys, radioTabIndex } from '../../ui/radio';
 import { Truncate } from '../../ui/Truncate';
-import { BACKDROP_NAMES, BACKDROPS, type Backdrop, StudioPreview } from './StudioPreview';
+import {
+  BACKDROP_NAMES,
+  BACKDROPS,
+  type Backdrop,
+  backdropDraw,
+  rememberBackdrop,
+  rememberedBackdrop,
+  watchesLive,
+} from './backdrop';
+import { StudioPreview } from './StudioPreview';
 import { AnimationTab, BackgroundTab, StyleTab, TimingTab, WordsTab } from './StudioTabs';
 import { TemplatePicker } from './TemplatePicker';
 import {
@@ -126,6 +135,27 @@ function StudioList({ upId }: { upId: string | null }) {
   );
 }
 
+/** No picture looks yet (the engine's state not read). */
+const NO_LOOKS = {};
+
+/**
+ * Behind the preview (alpha.22): Wallpaper, Live, Dark or Light, remembered on this computer; Live's stills are asked
+ * of the main process only while it is chosen (studio-live.ts there), and forgotten when another is.
+ */
+function useBackdrop(): [Backdrop, (b: Backdrop) => void] {
+  const [backdrop, setBackdrop] = useState<Backdrop>(rememberedBackdrop);
+  useEffect(() => {
+    const on = watchesLive(backdrop);
+    if (!on) useStudio.setState({ live: undefined });
+    void window.drashti.lowerThirds.watchLive(on);
+  }, [backdrop]);
+  const choose = useCallback((b: Backdrop) => {
+    setBackdrop(b);
+    rememberBackdrop(b);
+  }, []);
+  return [backdrop, choose];
+}
+
 function TabPanel({ tab }: { tab: StudioTab }): ReactNode {
   switch (tab) {
     case 'words':
@@ -158,7 +188,13 @@ export function StudioApp() {
   const deleted = useStudio((s) => s.deleted);
   const upId = useEngine((s) => s.state?.layers.lowerThird?.id ?? null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [backdrop, setBackdrop] = useState<Backdrop>('picture');
+  const [backdrop, setBackdrop] = useBackdrop();
+  const live = useStudio((s) => s.live);
+  const wallpaper = useEngine((s) => s.state?.chosenWallpaper ?? null);
+  const pictures = useEngine((s) => s.state?.pictures ?? NO_LOOKS);
+  const behind = backdropDraw(backdrop, { wallpaper, pictures }, live);
+  // The preview is a picture (hidden from screen readers): what it says over its backdrop is said beside it too.
+  const behindWords = behind.kind === 'plain' ? behind.words : undefined;
   const dirty = isDirty({ draft, saved });
   const hasWords = shownLines(draft.lines).length > 0;
   const up = id !== null && id === upId;
@@ -191,14 +227,26 @@ export function StudioApp() {
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 gap-4 p-4">
             <section aria-label="Preview" className="flex min-w-0 flex-1 flex-col gap-2">
-              <StudioPreview input={draft} play={play} backdrop={backdrop} paused={templatesOpen} />
+              <StudioPreview
+                input={draft}
+                play={play}
+                backdrop={behind}
+                backdropName={backdrop}
+                paused={templatesOpen}
+              />
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" size="sm" icon={Play} onClick={playAgain}>
                   Play again
                 </Button>
+                {behindWords !== undefined && (
+                  <span id="studio-backdrop-said" className="sr-only">
+                    {behindWords}
+                  </span>
+                )}
                 <div
                   role="radiogroup"
                   aria-label="Behind the preview"
+                  aria-describedby={behindWords === undefined ? undefined : 'studio-backdrop-said'}
                   className="ml-auto flex gap-1"
                   onKeyDown={radioKeys(BACKDROPS, backdrop, setBackdrop)}
                 >

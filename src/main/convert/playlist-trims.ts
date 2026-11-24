@@ -4,7 +4,13 @@ import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { mediaMarkersSchema, type MediaMarkers } from '../../shared/markers';
 import { idSchema } from '../../shared/model-schema';
-import type { RowTrimRequest, RowTrimResult } from '../../shared/trim';
+import {
+  TRIM_ROW_UP,
+  type RowTrimRequest,
+  type RowTrimResult,
+  type TrimRowStatus,
+  type TrimStatuses,
+} from '../../shared/trim';
 import type { TrimMarkerEdits, TrimmedVideos } from '../db/trimmed';
 import { isInside } from '../media/contained';
 import type { FitResult } from './convert-service';
@@ -66,8 +72,13 @@ interface PlaylistTrimsDeps {
   ): { id: string; done: Promise<FitResult> };
   cancel(id: string): boolean;
   isLive(itemId: string, mediaId: string): boolean;
-  /** Background work may go on (Q57-7): nothing up on LIVE, no stream on air or recording, not quitting. */
+  /**
+   * A cut may be made, checked and carried on (Q57-7; alpha.22, shared/save-waits.ts): nothing playing on LIVE (a still,
+   * a picture or the Wallpaper up never holds it), no stream on air or recording, not quitting.
+   */
   quiet(): boolean;
+  /** Why a cut waits now, in the operator's words (alpha.22), or null. */
+  waits?(): string | null;
   /** A file's sha256 and length, read off Main's thread (library/hash-off-main.ts); stops when `signal` aborts. */
   hash(file: string, signal: AbortSignal): Promise<{ sha256: string; bytes: number }>;
   /** The cuts accepted and waiting, and the copies made but not taken in: saved in the background (trim-records.ts). */
@@ -83,6 +94,10 @@ interface PlaylistTrimsDeps {
   saveNow(): void;
   trash(file: string): Promise<void>;
   pendingChanged(ids: string[]): void;
+  /** How each row's cut stands (alpha.22): why it waits, or how far it is. */
+  statusChanged?(statuses: TrimStatuses): void;
+  /** A row's trimmed video is made and in Media (alpha.22): the operator is told, with Show in Media. */
+  saved?(mediaId: string, name: string): void;
   rowChanged(added: string | null): void;
   markersChanged(mediaId: string): void;
   notice(text: string): void;
@@ -96,6 +111,10 @@ interface PendingTrim {
   wake: (() => void) | null;
   /** Stops checking the finished file (the show started, or the cut stopped). */
   stopCheck?: () => void;
+  /** How it stands once queued (alpha.22): why it waits, or how far it is. */
+  status?: TrimRowStatus;
+  /** Its file is made and waits to be checked: its words follow what holds it. */
+  checking?: boolean;
 }
 
 const CHANGED = {
@@ -330,12 +349,14 @@ export class PlaylistTrims {
 
   /**
    * The show, the stream or a recording changed. A finished copy can replace its row only after that row's video has
-   * come off; checking it, and carrying on the accepted cuts, stop while anything is up and go on once quiet.
+   * come off; checking it, and carrying on the accepted cuts, stop while a video or sound plays (alpha.22; the stream
+   * or a recording too) and go on once quiet.
    */
   activityChanged(): void {
     const quiet = this.deps.quiet();
     for (const pending of this.pending.values()) {
       if (!quiet) pending.stopCheck?.();
+      if (pending.checking) this.note(pending, quiet ? null : (this.deps.waits?.() ?? null));
       pending.wake?.();
     }
     if (quiet && this.resuming === 'waiting' && !this.closed)
@@ -439,9 +460,18 @@ export class PlaylistTrims {
           alpha: row.sourceFormat?.includes('video with transparency'),
           startMs,
           endMs,
+          // How it stands, said on its row (alpha.22): why it waits, then how far it is.
+          waiting: (note) => {
+            this.note(pending, note);
+          },
+          progress: (fraction) => {
+            if (fraction !== null) this.progress(pending, fraction);
+          },
         },
         (temporary, destination) => this.rememberCopy(mediaDir, pending, temporary, destination),
       );
+      pending.status ??= { note: null, progress: null };
+      this.statusChanged();
       pending.queueId = queued.id;
       void this.finish(row, pending, queued.done, mediaDir, cutStart, endMs, points);
       return { ok: true };
@@ -531,6 +561,36 @@ export class PlaylistTrims {
     pending.wake?.();
     if (pending.kept) this.keepWaiting();
     this.deps.pendingChanged(this.list());
+    if (pending.status) this.statusChanged();
+  }
+
+  /** How each row's cut stands now (alpha.22), by the row. */
+  statuses(): TrimStatuses {
+    const statuses: TrimStatuses = {};
+    for (const [itemId, pending] of this.pending)
+      if (pending.status) statuses[itemId] = { ...pending.status };
+    return statuses;
+  }
+
+  private statusChanged(): void {
+    if (!this.closed) this.deps.statusChanged?.(this.statuses());
+  }
+
+  /** Why the cut waits (null: no longer waiting), told when it changes. */
+  private note(pending: PendingTrim, note: string | null): void {
+    const status = (pending.status ??= { note: null, progress: null });
+    if (status.note === note) return;
+    status.note = note;
+    this.statusChanged();
+  }
+
+  /** How far the cut is, told at each whole percent. */
+  private progress(pending: PendingTrim, fraction: number): void {
+    const status = (pending.status ??= { note: null, progress: null });
+    const was = status.progress;
+    status.note = null;
+    status.progress = fraction;
+    if (was === null || Math.floor(was * 100) !== Math.floor(fraction * 100)) this.statusChanged();
   }
 
   /**
@@ -633,8 +693,9 @@ export class PlaylistTrims {
   }
 
   /**
-   * Probe and hash a finished cut (Q57-7): only while nothing is up and the stream is neither on air nor recording,
-   * the bytes read off Main's thread. The show starting stops the check, and it goes again at the next quiet moment.
+   * Probe and hash a finished cut (Q57-7): only while nothing plays (alpha.22: a still or the Wallpaper up may) and the
+   * stream is neither on air nor recording, the bytes read off Main's thread. A video or sound starting stops the
+   * check, and it goes again at the next quiet moment.
    * Null once the cut is no longer pending.
    */
   private async checkWhenQuiet(
@@ -686,7 +747,10 @@ export class PlaylistTrims {
         this.deps.notice(cutFailed(row.sourceName, ''));
         return;
       }
+      pending.checking = true;
+      this.note(pending, this.deps.quiet() ? null : (this.deps.waits?.() ?? null));
       const checked = await this.checkWhenQuiet(pending, stillPending, unclaimed);
+      pending.checking = false;
       if (!checked) return;
       const { info, sha256, bytes } = checked;
       if (!info.video || info.video.still || !info.durationMs || sha256 === null) {
@@ -697,6 +761,7 @@ export class PlaylistTrims {
       }
       // The show may have started since the finished file was checked. Recheck after every wake,
       // then publish in the same turn, so the live row keeps what it does when the current video ends.
+      if (this.deps.isLive(row.itemId, row.mediaId)) this.note(pending, TRIM_ROW_UP);
       await this.waitUntil(pending, () => !stillPending() || !this.deps.isLive(row.itemId, row.mediaId));
       if (!stillPending()) return;
       const ext = extname(unclaimed);
@@ -718,6 +783,7 @@ export class PlaylistTrims {
       );
       if (adopted) {
         this.deps.rowChanged(adopted);
+        this.deps.saved?.(adopted, basename(unclaimed));
       } else if (this.deps.repo.row(row.itemId)) {
         this.deps.notice(CHANGED.message);
       }

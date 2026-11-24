@@ -61,6 +61,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.downloadQr,
   // The slide editor's Save a PDF copy… (a copy: Pro Mode's; its save is bounded since Session 56, below).
   IPC.library.exportPdf,
+  // A singers' sheet (alpha.22): Print words… and Save words as PDF… are Pro Mode's, in its library's menu.
+  IPC.library.printWords,
+  IPC.library.saveWordsPdf,
   // Make a slide… (alpha.21): a new presentation from a PDF page, as New › QR code… makes one.
   IPC.slideEditor.makeSlide,
   // Prepare translations (alpha.22): drafting is Pro Mode's, as Translation…'s changes are.
@@ -105,6 +108,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.setPlayOptions,
   IPC.playlists.importM3u,
   IPC.playlists.exportM3u,
+  // A playlist's running order (alpha.22): copied, printed or saved as a PDF from its ⋯, Pro Mode's as the M3U is.
+  IPC.playlists.copyRunningOrder,
+  IPC.playlists.printRunningOrder,
+  IPC.playlists.saveRunningOrderPdf,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,
@@ -200,6 +207,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.media.clipExport,
   IPC.media.stopClipExport,
   IPC.media.stopProxy,
+  // Combine videos… (alpha.22): Pro Mode's; its list stays readable.
+  IPC.media.combineVideos,
+  IPC.media.stopCombine,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
   IPC.media.savePicture,
@@ -638,7 +648,11 @@ export function simpleModeRefusals(
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   // Nothing copied (alpha.20: the new secret's Copy, whose window Simple Mode never opens).
   answers.set(IPC.events.copySecret, () => false);
+  // Nothing printed (a singers' sheet, alpha.22): said as Print words… and Save words as PDF… say why not.
+  for (const channel of [IPC.library.printWords, IPC.library.saveWordsPdf])
+    answers.set(channel, () => ({ ok: false as const, cancelled: false as const, message: words() }));
   answers.set(IPC.media.stopClipExport, () => false);
+  answers.set(IPC.media.stopCombine, () => false);
   answers.set(IPC.media.stopProxy, () => false);
   answers.set(IPC.modelPacks.cancel, () => false);
   answers.set(IPC.slideEditor.translationStatus, () => ({
@@ -656,5 +670,8 @@ export function simpleModeRefusals(
   answers.set(IPC.liveLink.stop, () => null);
   answers.set(IPC.liveLink.last, () => null);
   answers.set(IPC.zoom.open, () => null);
+  // A running order's printing (alpha.22) answers as the manual's does: not cancelled, in words.
+  for (const c of [IPC.playlists.printRunningOrder, IPC.playlists.saveRunningOrderPdf])
+    answers.set(c, () => ({ ...refused(), cancelled: false }));
   return answers;
 }

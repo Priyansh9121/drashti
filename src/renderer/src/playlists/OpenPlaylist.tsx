@@ -1,7 +1,9 @@
+import { PlaylistCrossfadeDialog } from './PlaylistCrossfadeDialog';
 import { changePlaylistPlayOption } from './play-options';
 import { PlaylistFind, useRowFind } from './PlaylistFind';
 import { PlaylistTiming } from './PlaylistTiming';
 import { exportPlaylistFile } from './m3u-actions';
+import { copyRunningOrder, printRunningOrder } from './running-order-actions';
 import { useNotice } from '../operator/actions';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -662,6 +664,7 @@ function GroupNote({ row }: { row: Extract<MiddleRow, { kind: 'group' }> }) {
 }
 
 function PlaylistItems({ platform, openId, simple }: { platform: string; openId: string; simple: boolean }) {
+  const [crossfadeOpen, setCrossfadeOpen] = useState(false);
   const node = usePlaylists(
     (s) => s.tree.find((n) => n.id === openId) ?? s.templates.find((n) => n.id === openId),
   );
@@ -1031,6 +1034,13 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
       }}
       onDrop={onDrop}
     >
+      {crossfadeOpen && (
+        <PlaylistCrossfadeDialog
+          playlistId={openId}
+          initialMs={node?.playback?.crossfadeMs ?? 0}
+          onClose={() => setCrossfadeOpen(false)}
+        />
+      )}
       <div
         className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2"
         data-strip=""
@@ -1110,6 +1120,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                       checked: node?.playback?.repeatAll ?? false,
                       onSelect: () => void setPlayOptions('repeatAll'),
                     },
+                    // Crossfade… is not offered in alpha.22 (QA21-S5-2, QA22-FADE-1 A): the stream's own sound
+                    // is not yet steady through a crossfade (a21-s5b, a22-fade). Kept, off by default, for later.
                   ]
                 : []),
               ...(!isTemplate
@@ -1118,6 +1130,17 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                       label: 'Export as M3U…',
                       onSelect: () => void exportPlaylistFile(openId),
                       separatorBefore: true,
+                    },
+                    // Its running order (alpha.22): plain lines for the team's group chat, or on paper (refused while
+                    // the show is live, saying so: the main process decides).
+                    { label: 'Copy running order', onSelect: () => void copyRunningOrder(openId) },
+                    {
+                      label: 'Print running order…',
+                      onSelect: () => void printRunningOrder(openId, 'print'),
+                    },
+                    {
+                      label: 'Save running order as PDF…',
+                      onSelect: () => void printRunningOrder(openId, 'pdf'),
                     },
                   ]
                 : []),

@@ -1,3 +1,8 @@
+import { retainCueSounds } from '../audio/cue-start-sounds';
+import { CuedStartKeeper } from '../render/cued-start';
+import { applyVideoEnvelope } from '../audio/video-envelope';
+import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
+import { videoSoundGain } from '../audio/sounds';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
@@ -9,6 +14,7 @@ import { engineNow } from '../render/clock';
 import { startPlayback } from '../render/playback';
 import { failureState, findDevice, setSoundState } from './camera';
 import { useProgram } from './program-store';
+import { keepSoundAhead, STREAM_SOUND_AHEAD_S } from './sound-ahead';
 import type { SpeechGraph } from './speech-tap';
 
 /*
@@ -32,6 +38,7 @@ interface OwnSound {
   el: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
   gain: GainNode;
+  videoGain: GainNode | null;
   /** What it plays now (its start and end points and a jump, as the audio player follows them). */
   sound: Sound;
   /** Its tone's filters once its file has had a tone (alpha.20): as the hall hears it. */
@@ -56,6 +63,8 @@ export class StreamSound {
   /** The music's own level as it steps aside and comes back (Part 7, K), and the show it follows. */
   private readonly aside = new StepAside();
   private state: EngineState | null = null;
+  private readonly cueState = new CuedStartKeeper();
+  private cueStop: ReturnType<typeof setTimeout> | null = null;
   private levels: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -153,11 +162,35 @@ export class StreamSound {
   setOwnSound(on: boolean, state: EngineState | null): void {
     this.ownOn = on;
     this.state = state;
-    const wanted = new Map((on && state ? soundsOf(state) : []).map((s) => [s.key, s]));
+    this.cueState.at(state, engineNow());
+    if (this.cueStop) clearTimeout(this.cueStop);
+    this.cueStop = null;
+    // A stream page prepares the cue's silent sound even when its own mix is switched off.
+    const wanted = new Map(
+      (state ? soundsOf(state).filter((s) => on || s.prepared) : []).map((s) => [s.key, s]),
+    );
+    const release = on
+      ? retainCueSounds(
+          wanted,
+          [...this.own.values()].map((p) => p.sound),
+          state,
+          engineNow(),
+        )
+      : null;
+    if (release !== null)
+      // eslint-disable-next-line no-restricted-syntax -- Dispose silent old players after the audio-thread gain step; no frame or sound start is timed here.
+      this.cueStop = setTimeout(
+        () => {
+          this.cueStop = null;
+          this.setOwnSound(this.ownOn, this.state);
+        },
+        Math.max(0, release - engineNow()),
+      );
     for (const [key, own] of this.own) {
       if (wanted.has(key)) continue;
       own.stop();
       own.source.disconnect();
+      own.videoGain?.disconnect();
       own.tone?.disconnect();
       own.el.remove();
       this.own.delete(key);
@@ -168,6 +201,7 @@ export class StreamSound {
         // A jump, or new start or end points: it lands there at once, as the audio player's does (Session 52).
         const moved = soundMoved(current.sound, sound);
         current.sound = sound;
+        if (sound.prepared) reportLoadedVideoCue(sound.cueId, 'sound', current.el);
         if (moved) current.resync();
         current.el.loop = sound.loop && !sound.clip;
         // Its tone (alpha.20), as the hall hears it, eased there while it plays.
@@ -181,6 +215,8 @@ export class StreamSound {
       el.crossOrigin = 'anonymous';
       el.dataset['key'] = sound.key;
       el.dataset['kind'] = sound.kind;
+      // Sound decoded ahead (a21-s5b), asked before its file loads: this page's pictures share its one media thread.
+      if (keepSoundAhead(el)) el.dataset['soundAhead'] = String(STREAM_SOUND_AHEAD_S);
       document.body.append(el);
       // Into the stream's mix only (an element taken into Web Audio no longer plays out loud).
       const source = this.ctx.createMediaElementSource(el);
@@ -189,12 +225,24 @@ export class StreamSound {
       source.connect(gain).connect(this.mix);
       // Its file's tone (alpha.20), as the hall hears it: only Drashti's own sounds, never the sound input.
       const tone = toneThrough(this.ctx, source, gain, null, sound.tone ?? null);
-      const own: OwnSound = { el, source, gain, sound, tone, stop: () => undefined, resync: () => undefined };
+      const own: OwnSound = {
+        el,
+        source,
+        gain,
+        videoGain: null,
+        sound,
+        tone,
+        stop: () => undefined,
+        resync: () => undefined,
+      };
       const playback = startPlayback(el, {
         mediaId: sound.mediaId,
         startedAt: sound.startedAt,
+        prepareScheduledStart: sound.cueId !== undefined,
         audible: true,
         limits: SOUND_LIMITS,
+        onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
+        onError: () => reportVideoCue(sound.cueId, 'sound', false),
         timing: () => ({ loop: own.sound.loop, clip: own.sound.clip, seek: own.sound.seek }),
       });
       own.stop = playback;
@@ -224,14 +272,26 @@ export class StreamSound {
   /** The music's level now (Part 7, K), by the engine's time. */
   private musicLevel(): number {
     const now = engineNow();
-    return this.aside.levelAt(musicAside(this.state, now), now);
+    return this.aside.levelAt(musicAside(this.cueState.at(this.state, now), now), now);
   }
 
   /** Every own sound's gain, as the show has it now, eased there so no change clicks. */
   private applyLevels(): void {
     const musicLevel = this.musicLevel();
-    for (const own of this.own.values())
+    for (const own of this.own.values()) {
+      if ((own.sound.prepared || own.sound.envelope) && !own.videoGain) {
+        own.videoGain = this.ctx.createGain();
+        own.gain.disconnect();
+        own.gain.connect(own.videoGain).connect(this.mix);
+      }
+      if (own.videoGain) applyVideoEnvelope(own.videoGain, own.sound, engineNow());
+      if (own.sound.envelope)
+        own.el.dataset['crossfadeGain'] = String(
+          Math.round(videoSoundGain(own.sound, engineNow()) * 1e6) / 1e6,
+        );
+      else delete own.el.dataset['crossfadeGain'];
       own.gain.gain.setTargetAtTime(this.levelOf(own.sound, musicLevel), this.ctx.currentTime, 0.015);
+    }
     // How loud the stream is low down and high up (alpha.20, the tests' meter of Sound and picture…'s tones).
     document.body.dataset['bands'] = bandsText(this.meter, this.spectrum);
   }
