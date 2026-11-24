@@ -329,6 +329,39 @@ describe('ImportService', () => {
     await first;
   });
 
+  it('does not say a new picture waits when its copy is asked for in the moment after the transitions ended (a22-review-l8b: no flash in the 250 ms wake margin)', () => {
+    let ends: number | null = null;
+    const { service, mocks, workers } = setup({
+      prepareDisplay: () => new Promise<DisplayResult>(() => undefined),
+      transitionsEndAt: () => ends,
+    });
+    void service.start(['/Placeholder large.png']);
+    const w = workers[0];
+    if (!w) throw new Error('no worker');
+    const reading = {
+      runId: w.runId,
+      phase: 'importing' as const,
+      done: 0,
+      total: 1,
+      current: 'Placeholder large.png',
+    };
+    // The copies' queue was held for a transition that has just ended; it looks again within 250 ms.
+    service.displayHeld(true);
+    w.emit({ type: 'progress', progress: reading });
+    w.emit({
+      type: 'prepare-display',
+      requestId: 'r1',
+      candidate: { path: 'a.png', sha256: 'a'.repeat(64) },
+    });
+    expect(mocks.onProgress).toHaveBeenLastCalledWith(reading);
+    // Held again while a transition runs: now it says so.
+    ends = Date.now() + 5000;
+    service.displayHeld(false);
+    service.displayHeld(true);
+    expect(mocks.onProgress).toHaveBeenLastCalledWith({ ...reading, waitingFor: 'transitions' });
+    service.stop();
+  });
+
   it('tells each import HEVC’s other kinds as the window said them with its answer, read as it starts (Session 60, x36)', async () => {
     let kinds: { main10: boolean; rext: boolean } | null = null;
     const { service, workers } = setup({ playsHevc: () => Promise.resolve(true), hevcKinds: () => kinds });
