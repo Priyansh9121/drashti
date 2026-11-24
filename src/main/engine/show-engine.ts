@@ -543,6 +543,11 @@ export class ShowEngine {
    * replaced: pressed again while that showing is still up, that background comes back.
    */
   private inputWas: { inputId: string; startedAt: number; was: BackgroundLayer | null } | null = null;
+  /**
+   * The stage message's colours chosen on this computer (alpha.22, setStageColours), for a message sent without its
+   * own. Kept here only, never in the state: what the screens draw is the colours in the message's call, as before.
+   */
+  private stageColours: { boxColor?: string; textColor?: string } = {};
 
   constructor(
     private readonly source: SlideSource,
@@ -2955,9 +2960,12 @@ export class ShowEngine {
         return this.runTimer(command.timerId, 'pause');
       case 'resetTimer':
         return this.runTimer(command.timerId, 'reset');
-      case 'setStageMessage':
+      case 'setStageMessage': {
         // Its own size and flash (Session 55): the standard size, no flash, when not said (an older phone, the API).
-        // Its colours (24 Nov 2026) only when given: none, amber and black, as before.
+        // Its colours (24 Nov 2026) when given; sent with none (a phone, OSC), this computer's chosen ones (alpha.22),
+        // none when those are amber and black, as before.
+        const own = command.boxColor !== undefined || command.textColor !== undefined;
+        const { boxColor, textColor } = own ? command : this.stageColours;
         return {
           ok: true,
           actions: [
@@ -2968,14 +2976,22 @@ export class ShowEngine {
                 size: command.size ?? 'standard',
                 flash: command.flash ?? false,
                 shownAt: this.now(),
-                ...(command.boxColor ? { boxColor: command.boxColor.toLowerCase() } : {}),
-                ...(command.textColor ? { textColor: command.textColor.toLowerCase() } : {}),
+                ...(boxColor ? { boxColor: boxColor.toLowerCase() } : {}),
+                ...(textColor ? { textColor: textColor.toLowerCase() } : {}),
               },
             },
           ],
         };
+      }
       case 'clearStageMessage':
         return { ok: true, actions: [{ type: 'stage/message', text: null }] };
+      case 'setStageColours':
+        // Kept apart from the state (alpha.22): no change to the show, the screens or the recovery file.
+        this.stageColours = {
+          ...(command.boxColor ? { boxColor: command.boxColor.toLowerCase() } : {}),
+          ...(command.textColor ? { textColor: command.textColor.toLowerCase() } : {}),
+        };
+        return NO_CHANGE;
       case 'cueNext': {
         const order = this.source.order(command.presentationId);
         if (!order || order.slides.length === 0)

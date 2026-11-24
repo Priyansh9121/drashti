@@ -205,6 +205,16 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     textColor: stageColorSchema.optional(),
   }),
   z.object({ type: z.literal('clearStageMessage') }),
+  /**
+   * The stage message's colours chosen on this computer (alpha.22): the operator window's, sent as they change and as
+   * it starts (left out: amber and black). A stage message sent without colours (a phone's, OSC's) takes them. Never
+   * a phone's or the API's command (network-api.ts REMOTE_COMMANDS).
+   */
+  z.object({
+    type: z.literal('setStageColours'),
+    boxColor: stageColorSchema.optional(),
+    textColor: stageColorSchema.optional(),
+  }),
   /** Put a presentation first in line for Next (the arti at its time); clearCue takes it away. */
   z.object({ type: z.literal('cueNext'), presentationId: id, label: z.string().trim().min(1).max(120) }),
   z.object({ type: z.literal('clearCue') }),
