@@ -66,7 +66,9 @@ describe('the pins', () => {
     }
     const assets = read('scripts/release-assets.mjs');
     expect(assets).toContain(`name: 'yt-dlp-${YT_DLP_VERSION}.tar.gz'`);
-    expect(assets).toContain(`https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp.tar.gz`);
+    expect(assets).toContain(
+      `https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp.tar.gz`,
+    );
     // Every place that names a yt-dlp release names the pinned one (a newer yt-dlp is read and named in each).
     for (const path of [
       'README.md',

@@ -53,7 +53,7 @@ export function findYoutubeTools(p: ToolPlace): YoutubeTools | null {
 }
 
 /**
- * How yt-dlp 2026.08.19 starts Deno to run YouTube's player JavaScript, read from its source
+ * How yt-dlp 2026.11.23 starts Deno to run YouTube's player JavaScript, read from its source
  * (yt_dlp/extractor/youtube/jsc/_builtin/deno.py: its base options, then --no-npm --cached-only because
  * Drashti allows no remote components). No --allow-* flag: Deno may read no file, reach no address,
  * read no environment variable and start no program. The script comes on its standard input ("-").
