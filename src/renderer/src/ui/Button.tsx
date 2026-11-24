@@ -75,7 +75,10 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   iconEnd?: Icon;
   /** The keyboard shortcut, shown as a key hint after the words. */
   kbd?: string;
-  /** Classes for the key hint alone: a narrow row can hide it (alpha.21: NextBack's, below its width). */
+  /**
+   * Classes for the key hint alone: a narrow row can hide it (NextBack's, below its width). Hide it with a variant (a
+   * width query's `hidden`, as `@max-[21rem]/nextback:hidden`): a plain `hidden` loses to the key's own inline-flex.
+   */
   kbdClassName?: string;
   /** A show control: its state (on, lit) changes at once, with no colour fade. */
   instant?: boolean;
