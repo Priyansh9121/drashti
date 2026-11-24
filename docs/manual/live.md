@@ -204,7 +204,7 @@ This is offered in Simple Mode too. For an audio playlist that carries on from i
 3. If it names a paired computer, check that computer's screen: it keeps its earlier picture while the video plays on elsewhere.
 4. After the sabha, use **Help › Report a Problem…**. See **Help and when something goes wrong › Report a Problem…** for the optional files and review.
 
-A video on a slide or in the picture-in-picture box that is paused, waiting for its click or at its end does not come off when a screen cannot play it. The notice names the file and the screen, and a line under the LIVE picture says **Not on the screen “…”** while it stays up: LIVE shows it, that screen does not. Do not play it there, as its sound would be heard without its picture; put something else up.
+A video on a slide or in the picture-in-picture box that is paused, waiting for its click or at its end does not come off when a screen cannot play it. The notice names the file and the screen, and a line under the LIVE picture says **Not on the screen “…”**: LIVE shows it, that screen does not. Do not play it there, as its sound would be heard without its picture; put something else up. A screen only too slow to start it says **Not on the screen “…” yet** while it is still loading; the line goes once that screen shows it.
 
 A video making no progress for 10 seconds comes off; one still loading gets up to 30 seconds. If it still has no picture then, the notice says it **could not start in time**. That does not mean the file is damaged: try it again when less is playing.
 

@@ -5,6 +5,7 @@ import {
   cannotPlayOnNodeNotice,
   cannotPlayWaitingNotice,
   cannotStartInTimeNotice,
+  cannotStartInTimeWaitingNotice,
   FIRST_FRAME_MS,
   NO_FIRST_FRAME,
   NO_PICTURE,
@@ -16,6 +17,7 @@ import {
   type NotOnScreen,
   notOnScreenLine,
   notOnScreensNow,
+  notOnScreenYetLine,
 } from '../../shared/not-on-screens';
 import { cutText } from '../../shared/text';
 import type { CannotPlayTook } from '../engine/one-at-a-time';
@@ -153,20 +155,32 @@ export interface HeardOutcome {
   live: 'cannot' | 'slow' | null;
 }
 
+/** A screen's own key: its id where Main has it, else its name. */
+const screenKey = (w: { screen: string; id?: string }): string => w.id ?? w.screen;
+
+/** The screens among the pages that said so. */
+const screensOf = (wheres: readonly CannotPlayWhere[]) =>
+  wheres.filter((w): w is { screen: string; id?: string } => typeof w === 'object');
+
 /**
  * What Main does with a showing pages said could not play (alpha.23, a22-halldrop: until then a video up but not playing
  * was dropped without a word). Taken off (the background, the box; on the slide, paused there): the notice and the log
  * as x46 had them (Q60-31; Q60-51: one that could not start in time is never said to be damaged), and LIVE names the
  * screens under its picture while a slide's video stays up there paused. Nothing taken off as it was up but not playing
  * (paused, waiting for its click, or at its end, on the slide or in the box): the operator is told by its name, the
- * screens, and what to try (played, its sound would be heard without its picture there), the log says so, and LIVE names
- * the screens; when only LIVE or the stream said so (the screens show it), only the log. Gone by the end of the wait:
+ * screens not told of yet on this showing (`told`: a later word, a second screen's, says only what is new), and what to
+ * try; one only slow to start (NO_START_IN_TIME, Q60-51, the owner's "Yes, A") is said not to have started in time and
+ * to be still loading there, never damaged; the log says so, and LIVE names the screens, as still loading or as unable
+ * to play it. When only LIVE or the stream said so (the screens show it), only the log; gone by the end of the wait,
  * only the log. What the screens show is never changed here.
  */
 export function heardOutcome(h: Heard): HeardOutcome {
   const named = whereWords(h.wheres);
-  const screens = h.wheres.filter((w) => typeof w === 'object');
-  const onScreens = screens.length > 0 ? whereWords(screens) : null;
+  const screens = screensOf(h.wheres);
+  const told = new Set(h.told ?? []);
+  const fresh = screens.filter((w) => !told.has(screenKey(w)));
+  const slow = h.code === NO_START_IN_TIME;
+  const kind = slow ? 'slow' : 'cannot';
   const detail = h.words === '' ? '' : `: ${cutText(h.words, 300, '…')}`;
   const said = `A video could not play on ${named} (${errorKindWords(h.code)}${detail}): ${h.mediaId}`;
   const took = h.took;
@@ -180,77 +194,161 @@ export function heardOutcome(h: Heard): HeardOutcome {
       .join(', ');
     return {
       log: { level: 'warn', line: `${said}; taken off (${off})` },
-      notice:
-        h.code === NO_START_IN_TIME
-          ? cannotStartInTimeNotice(h.name, named, took)
-          : cannotPlayNotice(h.name, named, took),
-      live: took.slide && h.stillUp && onScreens !== null ? 'cannot' : null,
+      // Taken off is a change of the show: said, as before, even to a screen told of already.
+      notice: slow ? cannotStartInTimeNotice(h.name, named, took) : cannotPlayNotice(h.name, named, took),
+      live: took.slide && h.stillUp && screens.length > 0 ? kind : null,
     };
   }
-  if (!h.stillUp) return { log: { level: 'info', line: `${said}; no longer up` }, notice: null, live: null };
+  if (!h.stillUp)
+    return {
+      log: { level: 'info', line: `${said}; not up as the show’s background, slide or box video now` },
+      notice: null,
+      live: null,
+    };
+  const again = screens.length > 0 && fresh.length === 0 ? '; told already' : '';
   return {
     log: {
       level: 'warn',
-      line: `${said}; left up, not playing (paused, waiting for its click or at its end), so nothing came off`,
+      line: `${said}; left up, not playing (paused, waiting for its click or at its end), so nothing came off${again}`,
     },
-    notice: onScreens === null ? null : cannotPlayWaitingNotice(h.name, onScreens),
-    live: onScreens === null ? null : 'cannot',
+    notice:
+      fresh.length === 0
+        ? null
+        : slow
+          ? cannotStartInTimeWaitingNotice(h.name, whereWords(fresh))
+          : cannotPlayWaitingNotice(h.name, whereWords(fresh)),
+    live: screens.length > 0 ? kind : null,
   };
 }
 
+/** A showing kept: its file and name, the screens told of, and the screens that do not show it (and whether slow). */
+interface Kept {
+  mediaId: string;
+  startedAt: number;
+  name: string;
+  told: Set<string>;
+  notOn: Map<string, { name: string; slow: boolean }>;
+}
+
 /**
- * The showings still up that a screen could not play (shared/not-on-screens.ts), as LIVE names them (as the branch's
- * first fix had it: the latest word's screens only).
+ * For each showing up that one of this computer's screens could not play (alpha.23, a22-halldrop; the review's MUST-2
+ * and MUST-3): which screens the operator was told of (each once a showing: a later word, more than CannotPlay's wait
+ * after, is logged only), and which do not show it, as LIVE names them under its picture: merged as more screens say
+ * so; a screen that draws it after all (media:plays-here), whose page loads again, or that goes, is no longer named;
+ * a GPU process that stops names none (every failed video loads again, and says so again if it still fails); a showing
+ * not up any more is forgotten. The newest NOT_ON_SCREENS_MAX showings are kept.
  */
 export class HallWords {
-  private entries = new Map<string, { mediaId: string; startedAt: number; name: string; where: string }>();
+  private readonly kept = new Map<string, Kept>();
 
+  /**
+   * A showing pages said could not play, after the wait and Main's take-off: what to log and tell (heardOutcome, with
+   * the screens told of already), and whether LIVE's lines changed.
+   */
   heard(h: Heard, startedAt: number): { outcome: HeardOutcome; changed: boolean } {
-    const outcome = heardOutcome(h);
-    const screens = h.wheres.filter((w) => typeof w === 'object');
-    if (outcome.live === null || screens.length === 0) return { outcome, changed: false };
     const key = `${h.mediaId}@${String(startedAt)}`;
-    this.entries.delete(key);
-    this.entries.set(key, { mediaId: h.mediaId, startedAt, name: h.name, where: whereWords(screens) });
-    while (this.entries.size > NOT_ON_SCREENS_MAX) {
-      const oldest = this.entries.keys().next().value;
-      if (oldest === undefined) break;
-      this.entries.delete(oldest);
-    }
-    return { outcome, changed: true };
-  }
-
-  playsHere(_mediaId: string, _startedAt: number, _screenId: string): boolean {
-    return false;
-  }
-
-  gpuGone(): boolean {
-    return false;
-  }
-
-  screenGone(_screenId: string): boolean {
-    return false;
-  }
-
-  prune(state: EngineState): boolean {
-    const now = new Set(
-      notOnScreensNow(this.list(), state).map((e) => `${e.mediaId}@${String(e.startedAt)}`),
-    );
+    const was = this.kept.get(key);
+    const outcome = heardOutcome({ ...h, told: was ? [...was.told] : [] });
+    const screens = screensOf(h.wheres);
+    if (!h.stillUp || screens.length === 0) return { outcome, changed: false };
+    const k: Kept = was ?? {
+      mediaId: h.mediaId,
+      startedAt,
+      name: h.name,
+      told: new Set<string>(),
+      notOn: new Map<string, { name: string; slow: boolean }>(),
+    };
+    if (outcome.notice !== null) for (const w of screens) k.told.add(screenKey(w));
     let changed = false;
-    for (const key of [...this.entries.keys()])
-      if (!now.has(key)) {
-        this.entries.delete(key);
+    if (outcome.live !== null)
+      for (const w of screens) {
+        const before = k.notOn.get(screenKey(w));
+        // A screen that could not play it stays so; one still loading it becomes so on its failure.
+        const slow = outcome.live === 'slow' && (before?.slow ?? true);
+        if (before?.slow === slow && before.name === w.screen) continue;
+        k.notOn.set(screenKey(w), { name: w.screen, slow });
+        changed = true;
+      }
+    if (!was) {
+      this.kept.set(key, k);
+      while (this.kept.size > NOT_ON_SCREENS_MAX) {
+        const oldest = this.kept.keys().next().value;
+        if (oldest === undefined) break;
+        if ((this.kept.get(oldest)?.notOn.size ?? 0) > 0) changed = true;
+        this.kept.delete(oldest);
+      }
+    }
+    return { outcome, changed };
+  }
+
+  /** That screen drew the showing after all: no longer named. Whether LIVE's lines changed. */
+  playsHere(mediaId: string, startedAt: number, screenId: string): boolean {
+    return this.kept.get(`${mediaId}@${String(startedAt)}`)?.notOn.delete(screenId) ?? false;
+  }
+
+  /** A GPU process stopped: every failed video loads again, so none is named (the screens told stay told). */
+  gpuGone(): boolean {
+    let changed = false;
+    for (const k of this.kept.values())
+      if (k.notOn.size > 0) {
+        k.notOn.clear();
         changed = true;
       }
     return changed;
   }
 
-  list(_nameOf?: (screenId: string) => string | undefined): NotOnScreen[] {
-    return [...this.entries.values()].map((e) => ({
-      mediaId: e.mediaId,
-      startedAt: e.startedAt,
-      lines: [notOnScreenLine(e.name, e.where)],
-    }));
+  /** That screen's page loads again, or it went: no longer named on any showing. */
+  screenGone(screenId: string): boolean {
+    let changed = false;
+    for (const k of this.kept.values()) if (k.notOn.delete(screenId)) changed = true;
+    return changed;
+  }
+
+  /** Whether LIVE names any screen now. */
+  naming(): boolean {
+    for (const k of this.kept.values()) if (k.notOn.size > 0) return true;
+    return false;
+  }
+
+  /** Forget the showings not up in `state` any more: whether LIVE's lines changed. */
+  prune(state: EngineState): boolean {
+    if (this.kept.size === 0) return false;
+    const up = new Set(
+      notOnScreensNow(
+        [...this.kept.values()].map((k) => ({ mediaId: k.mediaId, startedAt: k.startedAt, lines: [] })),
+        state,
+      ).map((e) => `${e.mediaId}@${String(e.startedAt)}`),
+    );
+    let changed = false;
+    for (const [key, k] of [...this.kept])
+      if (!up.has(key)) {
+        if (k.notOn.size > 0) changed = true;
+        this.kept.delete(key);
+      }
+    return changed;
+  }
+
+  /**
+   * LIVE's lines for each showing kept with screens that do not show it, the screens by their names now (`nameOf`;
+   * undefined: gone, not named), those that could not play it apart from those still loading it.
+   */
+  list(nameOf: (screenId: string) => string | undefined): NotOnScreen[] {
+    const out: NotOnScreen[] = [];
+    for (const k of this.kept.values()) {
+      const cannot: CannotPlayWhere[] = [];
+      const loading: CannotPlayWhere[] = [];
+      for (const [id, s] of k.notOn) {
+        const name = nameOf(id) ?? (id === s.name ? s.name : undefined);
+        if (name === undefined) continue;
+        (s.slow ? loading : cannot).push({ screen: name });
+      }
+      const lines = [
+        ...(cannot.length > 0 ? [notOnScreenLine(k.name, whereWords(cannot))] : []),
+        ...(loading.length > 0 ? [notOnScreenYetLine(k.name, whereWords(loading))] : []),
+      ];
+      if (lines.length > 0) out.push({ mediaId: k.mediaId, startedAt: k.startedAt, lines });
+    }
+    return out;
   }
 }
 

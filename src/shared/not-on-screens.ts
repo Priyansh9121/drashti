@@ -7,7 +7,8 @@ import type { EngineState } from './engine/state';
  * its end), which Main has nothing to take off for (main/media/cannot-play.ts heardOutcome), or one on the slide that it
  * paused there. Until then Main said nothing and logged nothing for the first, while LIVE showed the video and the
  * screen did not. Now the operator is told, the log has it, and LIVE says under its picture which screens could not
- * play it, for as long as that showing stays up. What the screens show is not changed.
+ * play it, or are still loading it (Q60-51), until each draws it after all, or the showing goes (main's HallWords). What
+ * the screens show is not changed.
  */
 
 /** A showing still up that a screen could not play: its file, when it went up, and what LIVE says of it. */
@@ -48,3 +49,7 @@ export function notOnScreensNow(
 /** What LIVE says for the screens that could not play it (`where`: "the screen “…”", "the screens “…” and “…”"). */
 export const notOnScreenLine = (name: string, where: string): string =>
   `Not on ${where}: “${name}” could not play there.`;
+
+/** What LIVE says for the screens still loading it (Q60-51: slow is not "cannot play"). */
+export const notOnScreenYetLine = (name: string, where: string): string =>
+  `Not on ${where} yet: “${name}” is still loading there.`;

@@ -939,6 +939,11 @@ export interface DrashtiBridge {
      * under its picture; and told as they change (operator window).
      */
     notOnScreens(): Promise<NotOnScreen[]>;
+    /**
+     * A page that said this showing could not play drew its first frame after all (a22-halldrop's review, MUST-2):
+     * heeded from this computer's screens.
+     */
+    playsHere(mediaId: string, startedAt: number): Promise<null>;
     onNotOnScreens(listener: (list: NotOnScreen[]) => void): () => void;
   };
   /**

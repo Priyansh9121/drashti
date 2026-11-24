@@ -44,7 +44,7 @@ export function cannotPlayNotice(
  * off: until then nobody was told. `where`: the screens, "the screen “…”" or "the screens “…” and “…”".
  */
 export function cannotPlayWaitingNotice(name: string, where: string): string {
-  return `“${name}” could not play on ${where}. It is still up but not playing: played, its sound may be heard without its picture there. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.`;
+  return `“${name}” could not play on ${where}. It is still up but not playing: if it is played, its sound will be heard there without its picture. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.`;
 }
 
 /**
@@ -139,6 +139,15 @@ export function cannotStartInTimeNotice(
       ? 'so it stopped where it was on the slide, with its sound'
       : 'so the picture-in-picture box came off';
   return `“${name}” could not start in time on ${where}, ${what}: this computer was too busy to start it in ${String(SLOW_START_MS / 1000)} seconds. Put it up again when less is playing.`;
+}
+
+/**
+ * What the operator window says when a video up but not playing (a22-halldrop) did not start in time on this computer's
+ * screens (Q60-51, the owner's "Yes, A": slow, never "damaged"), so nothing came off: it is still loading there, and LIVE
+ * says so under its picture until it is drawn. `where`: the screens.
+ */
+export function cannotStartInTimeWaitingNotice(name: string, where: string): string {
+  return `“${name}” could not start in time on ${where}: this computer was too busy to start it in ${String(SLOW_START_MS / 1000)} seconds, and it is still loading there. The file is not damaged: wait until the line under LIVE goes before you play it.`;
 }
 
 /**

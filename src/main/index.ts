@@ -722,6 +722,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
   cannotPlay.gpuGone();
+  if (hallWords.gpuGone()) hallWordsChanged?.();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -3127,8 +3128,11 @@ function start(): void {
       window.webContents.on('did-start-loading', () => {
         heartbeat.opened(config.id);
         loadedSinceStopped.add(config.id);
+        // A screen whose page loads again draws its videos afresh: LIVE no longer names it (a22-halldrop).
+        if (hallWords.screenGone(config.id)) hallWordsChanged?.();
       });
       window.on('closed', () => {
+        if (hallWords.screenGone(config.id)) hallWordsChanged?.();
         warmUps.forget(h.webContentsId);
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
@@ -3169,6 +3173,8 @@ function start(): void {
       : ['stage'],
     onChange: () => {
       engine.videoCuePageJoined('');
+      // LIVE's "Not on the screen" lines name the screens as they are now (a22-halldrop).
+      if (hallWords.naming()) hallWordsChanged?.();
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
         screenId: st.screenId,
@@ -8936,6 +8942,17 @@ function start(): void {
     sendToOperator(IPC.media.notOnScreensChanged, notOnList());
   };
   handle(IPC.media.notOnScreens, (e) => (fromOperator(e) ? notOnList() : []));
+  // A screen's page that said a showing could not play drew it after all (the review's MUST-2): no longer named.
+  handle(IPC.media.playsHere, (e, mediaId, startedAt) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    if (hallWords.playsHere(mediaId, startedAt, screenId)) {
+      log.info(`A video drew on the screen “${nameOfScreen(screenId) ?? screenId}” after all: ${mediaId}`);
+      hallWordsChanged?.();
+    }
+    return null;
+  });
   engine.onChange((state) => {
     if (hallWords.prune(state)) hallWordsChanged?.();
   });

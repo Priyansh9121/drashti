@@ -727,6 +727,11 @@ export const IPC = {
      */
     notOnScreens: 'media:not-on-screens',
     notOnScreensChanged: 'media:not-on-screens-changed',
+    /**
+     * A screen's page that said a showing could not play drew it after all (a22-halldrop's review, MUST-2): LIVE no
+     * longer names that screen for it.
+     */
+    playsHere: 'media:plays-here',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1916,6 +1921,7 @@ export interface InvokeContract {
   };
   [IPC.media.served]: { args: [mediaId: string]; result: number };
   [IPC.media.notOnScreens]: { args: []; result: NotOnScreen[] };
+  [IPC.media.playsHere]: { args: [mediaId: string, startedAt: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
   [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };

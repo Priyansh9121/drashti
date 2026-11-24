@@ -36,6 +36,22 @@ export function tellNoPicture(mediaId: string, startedAt: number): void {
 /** The showings (and tries of each) this page has said could not play. */
 const failedTold = new Set<string>();
 
+/** The showings this page has said could not play, until it draws them after all (tellPlaysHere). */
+const saidFailing = new Set<string>();
+
+/**
+ * A showing this page said could not play has its first frame after all (alpha.23, a22-halldrop's review, MUST-2: a slow
+ * or stalled one that loaded later, one loaded again after a GPU process stopped): said to Main once, which no longer
+ * names this screen for it under LIVE. Nothing drawn changes. Phones' pages have no bridge.
+ */
+export function tellPlaysHere(mediaId: string, startedAt: number): void {
+  const key = `${mediaId}@${String(startedAt)}`;
+  if (!saidFailing.delete(key)) return;
+  const bridge = (globalThis as { drashti?: Partial<DrashtiBridge> }).drashti;
+  if (!bridge?.media?.playsHere) return;
+  void bridge.media.playsHere(mediaId, startedAt).catch(() => undefined);
+}
+
 /**
  * Say that this showing of a video (its file, when it went up, and which try at loading it) could not play here
  * (Q60-31: its element failed, as this computer's decoder raises an error, or a cut or damaged file does), with the
@@ -55,13 +71,16 @@ export function tellCannotPlay(
   }`;
   if (!bridge?.media?.cannotPlay || failedTold.has(key)) return;
   failedTold.add(key);
+  saidFailing.add(`${mediaId}@${String(startedAt)}`);
   void bridge.media.cannotPlay(mediaId, startedAt, error.code, error.message).catch(() => undefined);
 }
 
 /**
  * A video on a slide, a prop or in the picture-in-picture box (render/SlideView.tsx SlideVideo; x46's item 4 of
  * Q60-31): with no first frame within FIRST_FRAME_MS (Q60-44), said to Main as a background's is (its element's error
- * is said by its onError, tellCannotPlay). Only said: the element keeps loading. The watch, to stop as it goes.
+ * is said by its onError, tellCannotPlay). Only said: the element keeps loading, and its first frame, should it come
+ * after this page said it could not play (on this try or an earlier one), is said too (tellPlaysHere). The watch, to
+ * stop as it goes.
  */
 export function watchFirstFrame(
   v: HTMLVideoElement,
@@ -69,7 +88,19 @@ export function watchFirstFrame(
   startedAt: number,
   attempt: number,
 ): () => void {
-  if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return () => undefined;
+  if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    tellPlaysHere(mediaId, startedAt);
+    return () => undefined;
+  }
+  // Its first frame, whenever it comes while it is up: after the watch's word too.
+  const drawing = new AbortController();
+  v.addEventListener(
+    'loadeddata',
+    () => {
+      tellPlaysHere(mediaId, startedAt);
+    },
+    { signal: drawing.signal, once: true },
+  );
   const listening = new AbortController();
   const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
     listening.abort();
@@ -84,7 +115,10 @@ export function watchFirstFrame(
   };
   v.addEventListener('loadeddata', stop, { signal: listening.signal });
   v.addEventListener('error', stop, { signal: listening.signal });
-  return stop;
+  return () => {
+    stop();
+    drawing.abort();
+  };
 }
 
 /** How often a page looks at a video's start (ms). */
