@@ -112,8 +112,8 @@ function power(x: Float64Array, hz: number, rate: number): number {
   const coefficient = 2 * Math.cos((2 * Math.PI * hz) / rate);
   let one = 0,
     two = 0;
-  for (let n = 0; n < x.length; n++) {
-    const next = (x[n] ?? 0) + coefficient * one - two;
+  for (const v of x) {
+    const next = v + coefficient * one - two;
     two = one;
     one = next;
   }
@@ -230,7 +230,9 @@ export function heardFades(
   const heardIn = (r: Reading, band: number, gain?: number) => {
     const level = r.bands[band]?.level ?? 0;
     const whole = full[band] ?? 0;
-    return whole > 0 && level >= readable * whole && (gain === undefined || level >= FULL_SHARE * gain * whole);
+    return (
+      whole > 0 && level >= readable * whole && (gain === undefined || level >= FULL_SHARE * gain * whole)
+    );
   };
   // Where each pair of sounds was heard together: one stretch for each crossfade, in order.
   const pairOf = (f: FadeInput) =>
@@ -282,7 +284,10 @@ export function heardFades(
           );
         })
         .map((r) =>
-          outgoing.offset(sweepPosition(outgoing.sweep, r.bands[outgoing.band]?.hz ?? 0), anchor + r.t * 1000),
+          outgoing.offset(
+            sweepPosition(outgoing.sweep, r.bands[outgoing.band]?.hz ?? 0),
+            anchor + r.t * 1000,
+          ),
         );
       if (settled.length < 10)
         return {
@@ -312,9 +317,7 @@ export function heardFades(
           if (at < f.askedAt || at >= f.at + f.durationMs) return [];
           const gain = s.role === 'out' ? 1 - progress(at) : progress(at);
           if (gain < minGain || !heardIn(r, s.band, gain)) return [];
-          return [
-            { t: at - f.at, ms: s.offset(sweepPosition(s.sweep, r.bands[s.band]?.hz ?? 0), at), gain },
-          ];
+          return [{ t: at - f.at, ms: s.offset(sweepPosition(s.sweep, r.bands[s.band]?.hz ?? 0), at), gain }];
         }),
       })),
     });

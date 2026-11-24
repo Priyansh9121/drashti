@@ -40,6 +40,12 @@ export interface TestVideoOptions {
   fps?: number;
   /** A tone in Hz for the sound track; no sound when left out. */
   tone?: number;
+  /**
+   * Beside the tone, a quiet position sweep (QA23-FADE-9, the cost spec): a sine at `level` whose frequency rises from
+   * `from` Hz by `perSecond` Hz each second of the file, so the frequency heard says the position playing
+   * (tests/e2e/sweep-position.ts). The tone is then `1 - level`, so the two never pass full scale.
+   */
+  sweep?: { from: number; perSecond: number; level: number };
   /** Background colour hue, so two test videos look different. */
   hue?: number;
   /**
@@ -78,18 +84,17 @@ const run = promisify(execFile);
 export async function makeTestVideo(_page: Page, file: string, options: TestVideoOptions): Promise<string> {
   const ffmpeg = testFfmpeg();
   if (!ffmpeg) throw new Error('A test video needs the bundled FFmpeg (node scripts/fetch-ffmpeg.mjs).');
-  const { seconds, width = 320, height = 180, fps = 30, tone = 0, hue = 210, h264 = false } = options;
+  const { seconds, width = 320, height = 180, fps = 30, tone = 0, hue = 210, h264 = false, sweep } = options;
   const sound = tone > 0 && !h264;
+  const channel = sweep
+    ? `${String(1 - sweep.level)}*sin(2*PI*${String(tone)}*t)+${String(sweep.level)}*sin(2*PI*(${String(sweep.from)}*t+${String(sweep.perSecond / 2)}*t*t))`
+    : `sin(2*PI*${String(tone)}*t)`;
   const graph = [
     `color=c=${background(hue)}:s=${String(width)}x${String(height)}:r=${String(fps)}:d=${String(seconds)}[bg]`,
     `color=c=white:s=${String(Math.max(2, Math.round(width / 64)))}x${String(height)}:r=${String(fps)}:d=${String(seconds)}[bar]`,
     `[bg][bar]overlay=x=t*${String(width / seconds)}:y=0:shortest=1,format=yuv420p[v]`,
     // As the page's oscillator was: a sine at full scale, on both channels.
-    ...(sound
-      ? [
-          `aevalsrc=exprs=sin(2*PI*${String(tone)}*t)|sin(2*PI*${String(tone)}*t):c=stereo:s=48000:d=${String(seconds)}[a]`,
-        ]
-      : []),
+    ...(sound ? [`aevalsrc=exprs=${channel}|${channel}:c=stereo:s=48000:d=${String(seconds)}[a]`] : []),
   ].join(';');
   const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-filter_complex', graph, '-map', '[v]'];
   const keyframes = ['-force_key_frames', 'expr:gte(t,n_forced*0.25)', '-b:v', '400k'];

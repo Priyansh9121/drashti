@@ -174,9 +174,9 @@ describe('the position sweep read back from a recording', () => {
     // The recording begins after the ask.
     const samples = record(4, FADE_AT - 50, scene(inClock));
     const late = heardFades(readSweeps(samples, RATE, BANDS), [fade()]);
-    expect(late).toEqual({ error: expect.stringMatching(/settled/u) });
+    expect('error' in late ? late.error : '').toMatch(/settled/u);
     // Two fades asked, one heard.
     const one = heardFades(readSweeps(record(10, 3217, scene(inClock)), RATE, BANDS), [fade(), fade()]);
-    expect(one).toEqual({ error: expect.stringMatching(/fades/u) });
+    expect('error' in one ? one.error : '').toMatch(/fades/u);
   });
 });

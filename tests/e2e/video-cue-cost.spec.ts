@@ -6,7 +6,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { windowShowing, type PageGlobals } from './helpers';
 import { dispatch, snapshot } from './time-bar-helpers';
-import { cueReady, setupVideoCue } from './video-cue-helpers';
+import { COST_BANDS, COST_SWEEPS, cueReady, setupVideoCue } from './video-cue-helpers';
+import { heardFades, readSweeps, type FadeInput, type FadeSound } from './sweep-position';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 import { type PlaybackClock, playbackBounds, playbackOffset, playbackPosition } from '../../src/shared/media';
 import type { VideoCrossfade } from '../../src/shared/video-cue';
@@ -72,6 +73,33 @@ function fadeOffsets(
       });
     return { role, key, offsets };
   });
+}
+
+/**
+ * The page sampler's median offset for one sound between two engine moments (ms), as fadeOffsets reads it, or null
+ * when it read none there: the outgoing sound's settled seconds, which anchor the recording's clock (QA23-FADE-9).
+ */
+function sampledMedian(
+  steps: SoundStep[],
+  key: string,
+  clock: PlaybackClock,
+  from: number,
+  to: number,
+): number | null {
+  const offsets = steps
+    .filter((s) => s.key === key && s.t >= from && s.t <= to && Number.isFinite(s.duration) && s.duration > 0)
+    .map((s) => {
+      const { start, end } = playbackBounds(clock.clip, s.duration);
+      return playbackOffset(
+        s.at - s.lead / 1000,
+        playbackPosition(clock, s.duration, s.t),
+        end - start,
+        clock.loop,
+      );
+    })
+    .sort((a, b) => a - b);
+  const middle = offsets[Math.floor(offsets.length / 2)];
+  return middle === undefined ? null : middle * 1000;
 }
 
 /**
@@ -222,7 +250,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       );
       expect(previousAffinity).toMatch(/^\d+$/);
     }
-    const setup = await setupVideoCue(true);
+    // With each video's position sweep (QA23-FADE-9): where each sound was heard is read back from the recording.
+    const setup = await setupVideoCue(true, true);
     running = setup;
     const { app, win, hall, stream, audio, ids, dir } = setup;
     const streamSound = await windowShowing(
@@ -910,6 +939,60 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         longest = Math.max(longest, length);
       } else length = 0;
     }
+    // QA23-FADE-9 (the owner: "Read it from the recording (Rec.)"): where each fade's two sounds were HEARD, from the
+    // position sweep in the stream's own recording, every 20 ms where each one's gain is at least 0.1; the recording's
+    // clock anchored by the outgoing sound's settled seconds before the ask. No page thread is in the way.
+    const recording = Float32Array.from({ length: Math.floor(decoded.stdout.length / 4) }, (_, i) =>
+      decoded.stdout.readFloatLE(i * 4),
+    );
+    const heardSound = (role: 'out' | 'in', clock: PlaybackClock & { mediaId: string }): FadeSound => {
+      const key = `background:${clock.mediaId}@${String(clock.startedAt)}`;
+      const band = ids.indexOf(clock.mediaId);
+      const timing: PlaybackClock = {
+        startedAt: clock.startedAt,
+        loop: clock.loop,
+        clip: clock.clip,
+        seek: clock.seek,
+      };
+      const duration =
+        soundSteps.find((s) => s.key === key && Number.isFinite(s.duration) && s.duration > 0)?.duration ??
+        NaN;
+      return {
+        role,
+        key,
+        band,
+        sweep: COST_SWEEPS[band === 1 ? 1 : 0],
+        offset: (heard, at) => {
+          const { start, end } = playbackBounds(timing.clip, duration);
+          return (
+            playbackOffset(heard, playbackPosition(timing, duration, at), end - start, timing.loop) * 1000
+          );
+        },
+      };
+    };
+    const heardInputs: FadeInput[] = fadeClocks.map(({ askedAt, fade, to }) => {
+      const from: PlaybackClock & { mediaId: string } = {
+        startedAt: fade.from.startedAt,
+        loop: fade.from.loop,
+        clip: fade.from.clip,
+        seek: fade.from.seek,
+        mediaId: fade.from.mediaId,
+      };
+      return {
+        askedAt,
+        at: fade.at,
+        durationMs: fade.durationMs,
+        sounds: [heardSound('out', from), heardSound('in', to)],
+        settledMs: sampledMedian(
+          soundSteps,
+          `background:${from.mediaId}@${String(from.startedAt)}`,
+          from,
+          askedAt - 1000,
+          askedAt - 100,
+        ),
+      };
+    });
+    const heard = heardFades(readSweeps(recording, 48_000, COST_BANDS), heardInputs);
     const report = {
       system:
         process.platform === 'win32'
@@ -929,6 +1012,18 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       streamSoundJumps,
       fadeJumps,
       fadeSteps,
+      heardFades:
+        'error' in heard
+          ? heard
+          : heard.fades.map((f) => ({
+              at: f.at,
+              anchor: f.anchor,
+              sounds: f.sounds.map((sound) => ({
+                role: sound.role,
+                key: sound.key,
+                readings: sound.readings.map((r) => [Math.round(r.t), Math.round(r.ms)]),
+              })),
+            })),
       fadeGains,
       encodedFrames: media.videoFrames,
       blackFrames: black,
@@ -1006,11 +1101,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     expect(fadeSteps.length, 'every crossfade round had its two sounds’ clocks').toBe(3);
     for (const fade of fadeSteps) {
       expect(fade.silent, 'no stream sound is still jumping (silent) at any moment of a fade').toEqual([]);
+      // Where the page's sampler saw a sound, the bounds hold; its floor is counted where the sound was heard (below).
       for (const sound of fade.sounds) {
-        expect(
-          sound.offsets.length,
-          `the ${sound.role} sound is seen through the fade`,
-        ).toBeGreaterThanOrEqual(20);
         expect(
           Math.max(...sound.offsets.map((o) => Math.abs(o.ms))),
           `the ${sound.role} sound stays within ${String(FADE_MOST_OFF_MS)} ms of its clock through the fade`,
@@ -1021,6 +1113,32 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         ).toEqual([]);
       }
     }
+    // QA23-FADE-9 (the owner: "Read it from the recording (Rec.)"): the same strict bounds where each sound was heard,
+    // read from the stream's recording by its position sweep, and the floor of 20 readings a sound a fade counted there
+    // (where its gain is at least 0.1). The page's 50 ms sampler starved for 0.77-0.81 s at a fade's start on CI's
+    // two-core Windows (a22-fadeprep-1125-084705-80663), while the sound itself stayed in step.
+    expect(heard, 'the stream recording’s position sweeps are read for every fade').not.toHaveProperty(
+      'error',
+    );
+    const heardList = 'fades' in heard ? heard.fades : [];
+    expect(heardList.length, 'every crossfade is heard in the recording').toBe(fadeSteps.length);
+    for (const fade of heardList)
+      for (const sound of fade.sounds) {
+        expect(
+          sound.readings.length,
+          `the ${sound.role} sound is heard through the fade (read where its gain is at least 0.1)`,
+        ).toBeGreaterThanOrEqual(20);
+        expect(
+          Math.max(...sound.readings.map((r) => Math.abs(r.ms))),
+          `the ${sound.role} sound is heard within ${String(FADE_MOST_OFF_MS)} ms of its clock through the fade`,
+        ).toBeLessThanOrEqual(FADE_MOST_OFF_MS);
+        expect(
+          sound.readings
+            .filter((r) => r.t >= FADE_CLOSED_AFTER_MS && Math.abs(r.ms) > FADE_CLOSED_WITHIN_MS)
+            .map((r) => ({ t: Math.round(r.t), ms: Math.round(r.ms) })),
+          `the ${sound.role} sound is heard back within ${String(FADE_CLOSED_WITHIN_MS)} ms of its clock ${String(FADE_CLOSED_AFTER_MS)} ms into the fade`,
+        ).toEqual([]);
+      }
     // Lead 2's QF-1: a crossfade's pictures are brought back by speed, not jumps, on the hall, LIVE and the stream's
     // page: none is frozen in a jump at any moment of a fade (CI's Windows, a22-fade-1124-103850-84620: 0.6 to 4.4 s of
     // each 2 s fade on a page; the Mac 13 to 230 ms).

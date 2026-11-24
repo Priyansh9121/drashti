@@ -17,7 +17,20 @@ import {
 import { audioPage, snapshot } from './time-bar-helpers';
 import { makeTestVideo } from './test-media';
 
-export async function setupVideoCue(software = false) {
+/**
+ * The cost spec's position sweeps (QA23-FADE-9), one for each of setupVideoCue's two videos in their order, each in
+ * its own band beside its tone (440 and 880 Hz), and where the reader looks for them.
+ */
+export const COST_SWEEPS = [
+  { from: 2000, perSecond: 500, level: 0.1 },
+  { from: 7000, perSecond: 500, level: 0.1 },
+] as const;
+export const COST_BANDS = [
+  { lo: 1900, hi: 6300 },
+  { lo: 6900, hi: 11_300 },
+] as const;
+
+export async function setupVideoCue(software = false, sweeps = false) {
   const { app } = await launchApp(
     { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_FAKE_DEVICES: '1' },
     undefined,
@@ -33,12 +46,14 @@ export async function setupVideoCue(software = false) {
       seconds: 8,
       hue: 0,
       tone: 440,
+      ...(sweeps ? { sweep: COST_SWEEPS[0] } : {}),
       ...dimensions,
     });
     const b = await makeTestVideo(win, join(dir, 'Placeholder blue.webm'), {
       seconds: 8,
       hue: 240,
       tone: 880,
+      ...(sweeps ? { sweep: COST_SWEEPS[1] } : {}),
       ...dimensions,
     });
     const ids = await importAndGetIds(win, [a, b]);
