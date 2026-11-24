@@ -311,12 +311,19 @@ test('the operator window and its panels', async () => {
   await win.keyboard.press('Escape');
 
   // What is this? on the Messages panel (the Looks panel's until Session 55): its words under the heading, in the
-  // live column.
+  // live column. In a window tall enough for the heading and its words whole under the LIVE block (since alpha.21 only
+  // what is under it scrolls: at 720 high the words' first lines were hidden under it, the heading too).
+  await win.setViewportSize({ width: 1280, height: 1000 });
   await toTop();
   await win.getByTestId('what-is-this-messages').click();
-  await expect(win.getByTestId('what-is-this')).toBeVisible();
+  const card = win.getByTestId('what-is-this');
+  await expect(card).toBeVisible();
+  await card.scrollIntoViewIfNeeded();
+  for (const whole of [win.getByTestId('what-is-this-messages'), card])
+    await expect(whole, 'the heading and its words whole in the picture').toBeInViewport({ ratio: 1 });
   await part(win, 'what-is-this', [win.getByRole('complementary', { name: 'Live' })]);
   await win.getByRole('button', { name: 'Got it' }).click();
+  await win.setViewportSize({ width: 1280, height: 720 });
 
   // The playlist without dragging: the chosen item's Up and Down, and Add to playlist on the
   // library's chosen row.
