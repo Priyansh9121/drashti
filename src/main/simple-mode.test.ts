@@ -495,6 +495,29 @@ describe('Simple Mode locks', () => {
     }
   });
 
+  it('a playlist’s running order (alpha.22) is Pro Mode’s, as Export as M3U… is: nothing copied, printed or saved', () => {
+    for (const channel of [
+      IPC.playlists.copyRunningOrder,
+      IPC.playlists.printRunningOrder,
+      IPC.playlists.saveRunningOrderPdf,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+      expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+    }
+    expect(answers.get(IPC.playlists.copyRunningOrder)?.()).toEqual({
+      ok: false,
+      message: SIMPLE_MODE_REFUSAL,
+    });
+    // Printing answers as the manual's printing does: not cancelled, in words.
+    for (const channel of [IPC.playlists.printRunningOrder, IPC.playlists.saveRunningOrderPdf])
+      expect(answers.get(channel)?.(), channel).toEqual({
+        ok: false,
+        cancelled: false,
+        message: SIMPLE_MODE_REFUSAL,
+      });
+  });
+
   it('Rename: a file a playlist holds (Session 56: any playlist, never only a template)', () => {
     expect(within(IPC.library.renamePresentation, 'p-in', 'Placeholder new name')).toBe(true);
     expect(within(IPC.library.renamePresentation, 'p-other', 'Placeholder new name')).toBe(true);

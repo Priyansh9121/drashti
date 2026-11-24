@@ -162,6 +162,7 @@ import type {
 import type { RepeatSettings } from './repeat';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
+import type { RunningOrderCopied } from './running-order';
 import type { WordsPrinted } from './words-print';
 import type {
   KeyframeResult,
@@ -826,6 +827,14 @@ export const IPC = {
     setPlayOptions: 'playlists:set-play-options',
     importM3u: 'playlists:import-playlist-file',
     exportM3u: 'playlists:export-playlist-file',
+    /**
+     * A playlist's running order (alpha.22; main/running-order.ts): its rows as plain lines on the clipboard, written
+     * by the main process (a page's own clipboard is refused); printed, or saved as a PDF where the person chooses, from
+     * a hidden window of its own, as the manual is. Pro Mode's; never printed while the show is live.
+     */
+    copyRunningOrder: 'playlists:copy-running-order',
+    printRunningOrder: 'playlists:print-running-order',
+    saveRunningOrderPdf: 'playlists:save-running-order-pdf',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
     /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
@@ -1728,6 +1737,9 @@ export interface InvokeContract {
   };
   [IPC.playlists.importM3u]: { args: [audio: boolean, targetId: string | null]; result: M3uResult };
   [IPC.playlists.exportM3u]: { args: [playlistId: string, audio: boolean]; result: M3uResult };
+  [IPC.playlists.copyRunningOrder]: { args: [playlistId: string]; result: RunningOrderCopied };
+  [IPC.playlists.printRunningOrder]: { args: [playlistId: string]; result: ManualPrinted };
+  [IPC.playlists.saveRunningOrderPdf]: { args: [playlistId: string]; result: ManualPrinted };
   [IPC.playlists.setWhenEnds]: { args: [itemId: string, whenEnds: WhenEnds]; result: PlaylistResult };
   [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.splitItem]: {

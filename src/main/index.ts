@@ -439,7 +439,8 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
-import { printManual } from './manual-print';
+import { RunningOrderPrinter, runningOrderLines } from './running-order';
+import { printPage } from './manual-print';
 import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
@@ -4952,7 +4953,7 @@ function start(): void {
       if (picked.canceled || !picked.filePath) return null;
       return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
     },
-    print: (job) => printManual(job),
+    print: (job) => printPage(job),
   });
   const wordsNotFromOperator = {
     ok: false,
@@ -5184,6 +5185,10 @@ function start(): void {
   edits.delete(IPC.playlists.importM3u);
   // Export reads the library and writes only the chosen file; no library write lock spans its dialog.
   edits.delete(IPC.playlists.exportM3u);
+  // A running order only reads the library (alpha.22): copied, printed or saved where the person chooses.
+  edits.delete(IPC.playlists.copyRunningOrder);
+  edits.delete(IPC.playlists.printRunningOrder);
+  edits.delete(IPC.playlists.saveRunningOrderPdf);
   // So do Print words… and Save words as PDF… (a singers' sheet, alpha.22).
   edits.delete(IPC.library.printWords);
   edits.delete(IPC.library.saveWordsPdf);
@@ -8104,6 +8109,66 @@ function start(): void {
       return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'write'));
     }
   });
+  // ---- a playlist's running order (alpha.22; main/running-order.ts) ----------------------------------
+  // For the sanchalak, the anchor and the sound desk before a sabha: one of the operator's playlists (never a folder,
+  // a template or an audio playlist), read as it is now. Copy running order puts its plain lines on the clipboard, by
+  // the main process (a page's own clipboard is refused: windows/security.ts).
+  const runningOrderSource = (playlistId: unknown) => {
+    const parsed = idSchema.safeParse(playlistId);
+    if (!parsed.success) return null;
+    const list = playlists.tree().find((p) => p.id === parsed.data && !p.isFolder && !p.template);
+    return list ? { name: list.name, items: playlists.itemsOf(list.id) } : null;
+  };
+  handle(IPC.playlists.copyRunningOrder, async (e, playlistId) => {
+    if (!fromOperator(e))
+      return { ok: false, message: 'Only Drashti’s own window can copy a running order.' } as const;
+    const source = runningOrderSource(playlistId);
+    if (!source) return { ok: false, message: 'That playlist no longer exists.' } as const;
+    const rows = source.items.filter((i) => i.kind !== 'header').length;
+    return clipboard.writeText(runningOrderLines(source)).then(
+      () => ({ ok: true, rows }) as const,
+      () => ({ ok: false, message: 'The running order could not be copied: try again.' }) as const,
+    );
+  });
+  // Print running order… and Save running order as PDF…: from a hidden window as the manual is (main/manual-print.ts),
+  // one page at a time across both, and never while the show is live (the manual's rule: anything up, or the stream on
+  // air or recording; a test can say the stream is on air).
+  const runningOrderPrinter = new RunningOrderPrinter({
+    source: (playlistId) => runningOrderSource(playlistId),
+    printed: () => {
+      const style = mainClockStyle();
+      return new Intl.DateTimeFormat(style.locale, { dateStyle: 'full', timeZone: style.timeZone }).format(
+        Date.now(),
+      );
+    },
+    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the running order as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+  });
+  const notPrintedHere = {
+    ok: false,
+    cancelled: false,
+    message: 'Only Drashti’s own window can print a running order.',
+  } as const;
+  handle(IPC.playlists.printRunningOrder, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string'
+      ? runningOrderPrinter.print(playlistId)
+      : notPrintedHere,
+  );
+  handle(IPC.playlists.saveRunningOrderPdf, (e, playlistId) =>
+    fromOperator(e) && typeof playlistId === 'string' ? runningOrderPrinter.pdf(playlistId) : notPrintedHere,
+  );
 
   // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and
   // only that write can refuse the rename. What it returns runs once the library has the new name, the rename
