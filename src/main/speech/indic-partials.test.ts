@@ -29,7 +29,10 @@ const DECODE_MS = 200;
 const LOUD = 5_000;
 const HISS = 7;
 
-type Reply = { language: 'gu'; words: { w: string; start: number; end: number; c: number | null }[] };
+interface Reply {
+  language: 'gu';
+  words: { w: string; start: number; end: number; c: number | null }[];
+}
 
 /** The speech in what the helper was given: its seconds, and the seconds of quiet after it. */
 function speechIn(samples: Int16Array): { speechS: number; quietAfterS: number } {

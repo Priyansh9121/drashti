@@ -108,7 +108,9 @@ const MARGIN_S = 0.3;
  * past the twelve seconds the helper takes at once.
  */
 function padded(phrase: Int16Array, quiet: Int16Array): Int16Array {
-  const out = new Int16Array(Math.max(phrase.length, Math.min(SAMPLE_RATE * 12, phrase.length + PAD_SAMPLES)));
+  const out = new Int16Array(
+    Math.max(phrase.length, Math.min(SAMPLE_RATE * 12, phrase.length + PAD_SAMPLES)),
+  );
   out.set(phrase);
   if (quiet.length === 0) return out;
   for (let at = phrase.length; at < out.length; at += quiet.length)
