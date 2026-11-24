@@ -439,6 +439,7 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
+import { runningOrderLines } from './running-order';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
 import { ErrorReports } from './error-reports/service';
@@ -5142,6 +5143,8 @@ function start(): void {
   edits.delete(IPC.playlists.importM3u);
   // Export reads the library and writes only the chosen file; no library write lock spans its dialog.
   edits.delete(IPC.playlists.exportM3u);
+  // A running order only reads the library (alpha.22): copied, printed or saved where the person chooses.
+  edits.delete(IPC.playlists.copyRunningOrder);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);
@@ -8058,6 +8061,27 @@ function start(): void {
     } catch (error) {
       return playlistFileFailure(error instanceof M3uError ? error.message : fileProblem(error, 'write'));
     }
+  });
+  // ---- a playlist's running order (alpha.22; main/running-order.ts) ----------------------------------
+  // For the sanchalak, the anchor and the sound desk before a sabha: one of the operator's playlists (never a folder,
+  // a template or an audio playlist), read as it is now. Copy running order puts its plain lines on the clipboard, by
+  // the main process (a page's own clipboard is refused: windows/security.ts).
+  const runningOrderSource = (playlistId: unknown) => {
+    const parsed = idSchema.safeParse(playlistId);
+    if (!parsed.success) return null;
+    const list = playlists.tree().find((p) => p.id === parsed.data && !p.isFolder && !p.template);
+    return list ? { name: list.name, items: playlists.itemsOf(list.id) } : null;
+  };
+  handle(IPC.playlists.copyRunningOrder, async (e, playlistId) => {
+    if (!fromOperator(e))
+      return { ok: false, message: 'Only Drashti’s own window can copy a running order.' } as const;
+    const source = runningOrderSource(playlistId);
+    if (!source) return { ok: false, message: 'That playlist no longer exists.' } as const;
+    const rows = source.items.filter((i) => i.kind !== 'header').length;
+    return clipboard.writeText(runningOrderLines(source)).then(
+      () => ({ ok: true, rows }) as const,
+      () => ({ ok: false, message: 'The running order could not be copied: try again.' }) as const,
+    );
   });
 
   // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and

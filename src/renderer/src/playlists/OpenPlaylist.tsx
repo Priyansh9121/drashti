@@ -2,6 +2,7 @@ import { changePlaylistPlayOption } from './play-options';
 import { PlaylistFind, useRowFind } from './PlaylistFind';
 import { PlaylistTiming } from './PlaylistTiming';
 import { exportPlaylistFile } from './m3u-actions';
+import { copyRunningOrder } from './running-order-actions';
 import { useNotice } from '../operator/actions';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -1119,6 +1120,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                       onSelect: () => void exportPlaylistFile(openId),
                       separatorBefore: true,
                     },
+                    // Its running order (alpha.22): plain lines for the team's group chat.
+                    { label: 'Copy running order', onSelect: () => void copyRunningOrder(openId) },
                   ]
                 : []),
               { label: 'Add a header', icon: ListPlus, onSelect: () => void addHeader() },

@@ -32,6 +32,7 @@ import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from '
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
+import type { RunningOrderCopied } from './running-order';
 import type {
   ReportCopied,
   ReportDraft,
@@ -711,6 +712,8 @@ export interface DrashtiBridge {
     setPlayOptions(playlistId: string, options: PlaylistPlayOptions): Promise<PlaylistResult>;
     importM3u(audio: boolean, targetId: string | null): Promise<M3uResult>;
     exportM3u(playlistId: string, audio: boolean): Promise<M3uResult>;
+    /** Its running order (alpha.22) as plain lines on the clipboard: numbered rows, headers as sections, the total. */
+    copyRunningOrder(playlistId: string): Promise<RunningOrderCopied>;
 
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;

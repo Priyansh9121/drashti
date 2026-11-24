@@ -162,6 +162,7 @@ import type {
 import type { RepeatSettings } from './repeat';
 import type { GuideId, GuideRead } from './guides';
 import type { ManualPrinted, ManualRead } from './manual';
+import type { RunningOrderCopied } from './running-order';
 import type {
   KeyframeResult,
   RowTrimRequest,
@@ -819,6 +820,11 @@ export const IPC = {
     setPlayOptions: 'playlists:set-play-options',
     importM3u: 'playlists:import-playlist-file',
     exportM3u: 'playlists:export-playlist-file',
+    /**
+     * A playlist's running order (alpha.22; main/running-order.ts): its rows as plain lines on the clipboard, written
+     * by the main process (a page's own clipboard is refused). Pro Mode's.
+     */
+    copyRunningOrder: 'playlists:copy-running-order',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
     /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
@@ -1721,6 +1727,7 @@ export interface InvokeContract {
   };
   [IPC.playlists.importM3u]: { args: [audio: boolean, targetId: string | null]; result: M3uResult };
   [IPC.playlists.exportM3u]: { args: [playlistId: string, audio: boolean]; result: M3uResult };
+  [IPC.playlists.copyRunningOrder]: { args: [playlistId: string]; result: RunningOrderCopied };
   [IPC.playlists.setWhenEnds]: { args: [itemId: string, whenEnds: WhenEnds]; result: PlaylistResult };
   [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.splitItem]: {

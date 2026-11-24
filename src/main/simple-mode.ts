@@ -105,6 +105,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.setPlayOptions,
   IPC.playlists.importM3u,
   IPC.playlists.exportM3u,
+  // A playlist's running order (alpha.22): copied, printed or saved as a PDF from its ⋯, Pro Mode's as the M3U is.
+  IPC.playlists.copyRunningOrder,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,

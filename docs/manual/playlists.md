@@ -56,6 +56,8 @@ In Pro Mode, the open playlist’s **⋯** has **Shuffle** and **Repeat all**, b
 
 To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…**. Its local files come through the usual import into a new playlist named after the file, in its file order. A file can name at most 2,000 entries and be at most 1 MB. Anything not taken is listed; web addresses are never fetched. Files that need a playable copy wait for the show to be idle, as with any import. Choose the open playlist’s **⋯ › Export as M3U…** to save a UTF-8 `.m3u8` with the library files’ full paths, row labels and playing lengths; presentations are named in comments. The files stay in Drashti’s library, so the exported list works where those files can be reached.
 
+**A running order for the team.** Before a sabha, the sanchalak, the anchor and the sound desk can have the playlist’s running order. In Pro Mode, choose the open playlist’s **⋯ › Copy running order**, then paste it into the team’s group chat. It is plain lines: the playlist’s name, each header as a section line, every other row numbered with its name and its length where it has one, a slot as what it asks for, and the videos’ and sounds’ time in all.
+
 ![Up and Down under the chosen row, and Add to playlist under the library's chosen presentation](../screenshots/playlist-up-down.png)
 
 ## Smart playlists
