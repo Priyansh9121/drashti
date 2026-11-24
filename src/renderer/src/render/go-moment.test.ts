@@ -136,4 +136,17 @@ describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)
     lone.frameAt(351);
     expect(seen).toEqual([351]);
   });
+
+  it('counts its wait for a picture that never starts from Go, so a second wait begun later is not 250 ms more', () => {
+    // a22-review-cuelive SHOULD-1: the slot's activation begins its wait only after the swap's render.
+    const page = new Page();
+    const never = { whenStarted: () => () => undefined, fallbackMs: 250 };
+    const seen: number[] = [];
+    page.time = 350;
+    atGoMoment(100, (now) => seen.push(now), { checkNow: true, afterStart: never }, page);
+    page.time = 351;
+    page.runTimers();
+    expect(seen).toEqual([351]);
+  });
 });
+
