@@ -6845,6 +6845,8 @@ function start(): void {
   // Live behind the studio's preview (alpha.22, lower-thirds/studio-live.ts): a still about once a second while the
   // studio shows Live, never otherwise, from a picture already drawn: this computer's first audience screen showing,
   // as the Screens dashboard's pictures are taken (captureLocal), else LIVE in the operator window. Read only.
+  /** The operator window kept drawing while Live takes LIVE's picture from it, and its own setting before. */
+  let operatorHeldDrawing: { win: BrowserWindow; throttled: boolean } | null = null;
   const studioLive: StudioLive = new StudioLive({
     take: async () => {
       const roles = new Map(screenRepo.groupIds().map((g) => [g.id, g.role]));
@@ -6864,6 +6866,12 @@ function start(): void {
         return livePictureOf(await hall.webContents.capturePage(), 'screen', Date.now());
       const op = operatorWindow;
       if (!op || op.isDestroyed()) return null;
+      // Covered by the studio (one display), the operator window would stop drawing LIVE: kept drawing, as it does
+      // in view, while Live takes from it, and let go as Live stops (release).
+      if (operatorHeldDrawing === null) {
+        operatorHeldDrawing = { win: op, throttled: op.webContents.getBackgroundThrottling() };
+        op.webContents.setBackgroundThrottling(false);
+      }
       const rect = liveRectOf(await op.webContents.executeJavaScript(LIVE_RECT_SCRIPT, true));
       return rect && !op.isDestroyed()
         ? livePictureOf(await op.webContents.capturePage(rect), 'live', Date.now())
@@ -6871,6 +6879,11 @@ function start(): void {
     },
     send: (picture) => {
       studio.sendLive(picture);
+    },
+    release: () => {
+      const held = operatorHeldDrawing;
+      operatorHeldDrawing = null;
+      if (held && !held.win.isDestroyed()) held.win.webContents.setBackgroundThrottling(held.throttled);
     },
     log: (line) => {
       log.info(line);

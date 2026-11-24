@@ -55,7 +55,7 @@ export class StudioLive {
     this.round++;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    // release: not yet
+    if (!on) this.deps.release?.();
     this.deps.log(
       on
         ? 'The Lower Thirds studio shows Live behind its preview: a still about once a second'

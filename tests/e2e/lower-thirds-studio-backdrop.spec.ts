@@ -157,7 +157,7 @@ test('Behind the preview: Wallpaper by default (the hall’s wallpaper, or “No
     const wallpaper = await chooseWallpaper(win, wallId);
     const drawn = preview.getByTestId('studio-backdrop-wallpaper').locator(`[data-wallpaper="${wallpaper}"]`);
     await expect(drawn).toHaveCount(1);
-    const wallImage = drawn.locator(`[data-media-id="${wallId}"] img`);
+    const wallImage = drawn.locator(`[data-media-id="${wallId}"] img`).first();
     await expect
       .poll(() => wallImage.evaluate((img: HTMLImageElement) => img.naturalWidth), {
         message: 'its picture drawn',
