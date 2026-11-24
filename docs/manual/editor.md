@@ -2,7 +2,7 @@
 
 **Edit slides…** opens a presentation in a window of its own, the slide editor, while the operator window keeps the show controls. It has six groups along the top: **Words**, **Insert**, **Arrange**, **Design**, **Motion** and **Slides**.
 
-When you zoom the window to 200%, the top row wraps to keep its commands within reach. Use **Tab** and **Shift+Tab** between controls, and the arrow keys between the editor’s groups.
+Where the top row has no room for all its commands, as at 200% zoom, it wraps onto a second row and keeps them within reach. Use **Tab** and **Shift+Tab** between controls, and the arrow keys between the editor’s groups.
 
 ## Edit slides…
 
