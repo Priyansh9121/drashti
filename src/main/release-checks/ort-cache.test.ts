@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +39,9 @@ describe('ONNX Runtime’s cache key (scripts/fetch-indic.mjs --cache-key)', () 
   it('is the exact version, the runner’s platform and the pinned SHA-256', () => {
     expect(fetchIndic.ORT_RELEASE.sha256).toBe(PINNED_SHA256);
     expect(fetchIndic.ortCacheKey('win32', 'x64')).toBe(`onnxruntime-1.23.2-win32-x64-${PINNED_SHA256}`);
-    expect(fetchIndic.ortCacheKey('darwin', 'arm64')).toBe(`onnxruntime-1.23.2-darwin-arm64-${PINNED_SHA256}`);
+    expect(fetchIndic.ortCacheKey('darwin', 'arm64')).toBe(
+      `onnxruntime-1.23.2-darwin-arm64-${PINNED_SHA256}`,
+    );
     expect(fetchIndic.ortCacheKey()).toBe(
       `onnxruntime-1.23.2-${process.platform}-${process.arch}-${PINNED_SHA256}`,
     );
@@ -166,14 +176,19 @@ describe('CI’s jobs that build Route C’s helper', () => {
     expect(jobs.map((j) => j.name)).toEqual(names);
     for (const { name, steps } of jobs) {
       const at = (test: (step: string) => boolean) => steps.findIndex(test);
-      const pin = at((s) => field(s, 'run') === 'node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"');
+      const pin = at(
+        (s) => field(s, 'run') === 'node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"',
+      );
       const restore = at((s) => field(s, 'uses') === `actions/cache/restore@${CACHE_ACTION}`);
       const build = at((s) => field(s, 'run') === 'node scripts/fetch-indic.mjs');
       expect(pin, `${name}: the key's step`).toBeGreaterThan(-1);
       expect(restore, `${name}: the restore after it`).toBeGreaterThan(pin);
       expect(build, `${name}: the build after the restore`).toBeGreaterThan(restore);
       // Nothing builds the helper before the restore (the Intel Mac's build comes after, on the checked package).
-      expect(at((s) => /run: node scripts\/fetch-indic\.mjs(?! --cache-key)/u.test(s)), name).toBe(build);
+      expect(
+        at((s) => /run: node scripts\/fetch-indic\.mjs(?! --cache-key)/u.test(s)),
+        name,
+      ).toBe(build);
       const [p, r, b] = [steps[pin] ?? '', steps[restore] ?? '', steps[build] ?? ''];
       expect([field(p, 'id'), field(p, 'shell')], name).toEqual(['ort', 'bash']);
       expect([field(r, 'id'), field(r, 'path'), field(r, 'key')], name).toEqual([
@@ -208,9 +223,10 @@ describe('CI’s jobs that build Route C’s helper', () => {
 
   it('performance.yml only restores it (run by hand: ci.yml’s pushes keep it)', () => {
     for (const { name, steps } of fetchingJobs('performance.yml')) {
-      expect(steps.filter((s) => s.includes('actions/cache/save@') && s.includes('steps.ort.')), name).toEqual(
-        [],
-      );
+      expect(
+        steps.filter((s) => s.includes('actions/cache/save@') && s.includes('steps.ort.')),
+        name,
+      ).toEqual([]);
     }
   });
 
