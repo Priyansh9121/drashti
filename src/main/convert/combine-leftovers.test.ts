@@ -7,6 +7,7 @@ import { openDatabase, type Db } from '../db/database';
 import { MediaStore } from '../import/media-store';
 import { CombineVideos, type CombineDeps } from './combine-service';
 import { discardUnlisted } from './video-copy-files';
+import { forgetTaken } from '../library/media-taken';
 
 /*
  * a22-review-combine2: what a combine copied into Media and never listed is removed only when nothing uses it, only
@@ -300,6 +301,40 @@ it('an import starting while the sweep waits for the write lock stops the sweep'
   gate.importing = true;
   other.exec('ROLLBACK');
   await Promise.all(first.asked);
+  expect(row(at.db, left.id)).toBeDefined();
+  expect(existsSync(left.file)).toBe(true);
+});
+
+/*
+ * a22-review-combine2 last look, L-S1: a row a reuse path took up by its bytes (a deck's preparation, Edit Video) may be
+ * named only later (the editor saves, the edit is recorded), so nothing names it yet. Taken in this run, it is never
+ * removed during it; only the next start's sweep may, if nothing uses it then.
+ */
+it("a leftover a deck's preparation took up stays for the rest of this run, though its editor has not saved it", async () => {
+  const at = library();
+  const left = leftover(at);
+  // The preparation took the row up by its bytes and ended; the editor holds the id, unsaved: nothing names it.
+  new MediaStore(at.db, { dir: at.dir }).addStaged(staged(left), {
+    kind: 'drashti',
+    path: 'Editable document object',
+  });
+  expect(await discardUnlisted({ db: at.db, mediaDir: at.dir, file: left.source })).toBe(0);
+  expect(await discardUnlisted({ db: at.db, mediaDir: at.dir, folder: at.work })).toBe(0);
+  expect(row(at.db, left.id)).toBeDefined();
+  expect(existsSync(left.file)).toBe(true);
+  // The next start (a new run): its sweep removes it, as nothing uses it then.
+  forgetTaken();
+  expect(await discardUnlisted({ db: at.db, mediaDir: at.dir, folder: at.work })).toBe(1);
+  expect(row(at.db, left.id)).toBeUndefined();
+  expect(existsSync(left.file)).toBe(false);
+});
+
+it('a leftover Edit Video took up stays before its copy is recorded', async () => {
+  const at = library();
+  const left = leftover(at);
+  // convert/edit-files.ts: the edited copy's row by its bytes; edit-service records it as the copy afterwards.
+  new MediaStore(at.db, { dir: at.dir }).addStaged(staged(left), { kind: 'drashti', path: left.path });
+  expect(await discardUnlisted({ db: at.db, mediaDir: at.dir, file: left.source })).toBe(0);
   expect(row(at.db, left.id)).toBeDefined();
   expect(existsSync(left.file)).toBe(true);
 });
