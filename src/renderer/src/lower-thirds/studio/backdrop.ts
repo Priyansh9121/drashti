@@ -32,12 +32,24 @@ export const DEFAULT_BACKDROP: Backdrop = 'wallpaper';
 export const BACKDROP_KEY = 'lower-third-studio-backdrop';
 export const NO_WALLPAPER = 'No wallpaper chosen';
 export const NO_LIVE = 'No live picture to show';
-/** Live's copy still opening (its page loading). */
+/** Live's copy still opening (its page loading): never black alone, which is a real Live picture too. */
 export const LIVE_GETTING = 'Getting the live picture…';
-/** Red: skeleton. */
-export const unseenWords = (_unseen: readonly LiveUnseen[]): string => LIVE_UNSEEN;
-/** Live from its copy (no hall screen here) while a video input or another app's window is live: the copy draws neither. */
-export const LIVE_UNSEEN = 'No hall screen on this computer: Live here shows no video input or shown window.';
+
+/**
+ * Live from its copy (no hall screen here) while a video input or another app's window is live: the copy draws
+ * neither (it is no screen), and says which.
+ */
+export function unseenWords(unseen: readonly LiveUnseen[]): string {
+  const input = unseen.includes('input');
+  const window = unseen.includes('window');
+  const what =
+    input && window
+      ? 'the video input or another app’s window'
+      : input
+        ? 'the video input'
+        : 'another app’s window';
+  return `Live can’t show ${what} here: there is no hall screen on this computer.`;
+}
 
 export const isBackdrop = (v: unknown): v is Backdrop =>
   typeof v === 'string' && (BACKDROPS as readonly string[]).includes(v);
@@ -74,9 +86,11 @@ export function backdropDraw(
         : { kind: 'plain', colour: DARK, words: NO_WALLPAPER };
     case 'live':
       // From Live's copy (no hall screen here) with a video input or another app's window live: it draws neither.
-      if (live && 'url' in live)
-        return (live.unseen?.length ?? 0) > 0
-          ? { kind: 'live', picture: live, words: LIVE_UNSEEN }
+      // Live's copy still opening: black, saying so.
+      if (live && 'waiting' in live) return { kind: 'plain', colour: BLACK, words: LIVE_GETTING };
+      if (live)
+        return live.unseen && live.unseen.length > 0
+          ? { kind: 'live', picture: live, words: unseenWords(live.unseen) }
           : { kind: 'live', picture: live };
       return live === null
         ? { kind: 'plain', colour: BLACK, words: NO_LIVE }

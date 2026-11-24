@@ -14,7 +14,10 @@ export function createLiveCopyWindow(gone: () => void): { window: BrowserWindow;
   win.webContents.setAudioMuted(true);
   win.webContents.setFrameRate(LIVE_COPY_FPS);
   let latest: NativeImage | null = null;
+  // Each picture painted is copied into the main process: counted, so a test sees it is about one a second.
+  let paints = 0;
   win.webContents.on('paint', (_event, _dirty, image) => {
+    paints++;
     if (!image.isEmpty()) latest = image;
   });
   win.webContents.on('render-process-gone', () => {
@@ -30,7 +33,7 @@ export function createLiveCopyWindow(gone: () => void): { window: BrowserWindow;
     window: win,
     copy: {
       latest: () => (win.isDestroyed() ? null : latest),
-      paints: () => 0,
+      paints: () => paints,
       isDestroyed: () => win.isDestroyed(),
       close: () => {
         latest = null;

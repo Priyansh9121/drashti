@@ -24,8 +24,11 @@ import type { CapturedImage } from './studio-live';
 
 /** Its size inside: the studio's preview is at most about 900 points wide. */
 export const LIVE_COPY_SIZE = { width: 960, height: 540 } as const;
-/** The longest Live waits for its first picture after it opens (its page loading) before saying there is none. */
-export const LIVE_COPY_FIRST_MS = 5000;
+/**
+ * The longest Live waits after the copy opens for its page to draw the show (its first painted frame, as the page
+ * reports it) before saying there is none; meanwhile the studio says "Getting the live picture…".
+ */
+export const LIVE_COPY_FIRST_MS = 15_000;
 /** Frames a second it draws: Live takes a still about once a second. */
 export const LIVE_COPY_FPS = 1;
 /** Its page's query, by which tests (and its address in the log) tell it from a screen's. */
@@ -47,9 +50,12 @@ export interface LiveCopyDeps {
   /** Open its window (`gone`: its page stopped); null while Drashti quits (a window made then would stop the quit). */
   open(gone: () => void): LiveCopyWindow | null;
   log(line: string): void;
-  /** This computer's clock (ms). */
+  /** A steady clock (ms): performance.now() unless a test gives one. */
   now?(): number;
-  /** Whether this computer has the memory for it now. Red: skeleton. */
+  /**
+   * Whether this computer has the memory for it now (as Point Ahead asks, shared/point-ahead.ts): short of memory,
+   * no copy (a whole renderer and one more video decode), and none until there is room.
+   */
   room?(): boolean;
 }
 
@@ -58,8 +64,12 @@ export const WAITING = 'waiting';
 
 export class LiveCopy {
   private win: LiveCopyWindow | null = null;
-  /** When its window opened (this computer's clock). */
+  /** When its window opened (the steady clock). */
   private openedAt = 0;
+  /** Its page has drawn the show (its first painted frame): until then its pictures are its own black. */
+  private showDrawn = false;
+  /** Short of memory, said once until there is room again. */
+  private short = false;
   /** Its page stopped (a crash): not opened again until it is closed (Live chosen again, or the studio back). */
   private failed = false;
 
@@ -70,6 +80,11 @@ export class LiveCopy {
     return this.win !== null && !this.win.isDestroyed();
   }
 
+  /** The pictures its open window has painted (tests: about one a second); 0 with none open. */
+  paints(): number {
+    return this.win && !this.win.isDestroyed() ? this.win.paints() : 0;
+  }
+
   /**
    * No hall screen here, Live wants a still: its last picture, the window opened first if need be. Before its first
    * picture, `WAITING` (for at most LIVE_COPY_FIRST_MS after it opened), then none.
@@ -77,17 +92,31 @@ export class LiveCopy {
   still(): CapturedImage | typeof WAITING | null {
     if (this.failed) return null;
     const open = this.win;
-    if (open && !open.isDestroyed()) return open.latest() ?? this.waiting();
+    if (open && !open.isDestroyed()) return this.pictureOf(open);
+    if (this.deps.room && !this.deps.room()) {
+      if (!this.short)
+        this.deps.log(
+          'Live behind the Lower Thirds studio: this computer is short of memory, so no copy of the audience picture is drawn',
+        );
+      this.short = true;
+      return null;
+    }
+    this.short = false;
     const win: LiveCopyWindow | null = this.deps.open(() => {
       if (this.win === win) this.gone();
     });
     this.win = win;
     if (!win) return null;
     this.openedAt = this.now();
+    this.showDrawn = false;
     this.deps.log(
       'Live behind the Lower Thirds studio: no hall screen on this computer, so its copy of the audience picture is drawn off screen (960 x 540, once a second, muted)',
     );
-    return win.latest() ?? this.waiting();
+    return this.pictureOf(win);
+  }
+
+  private pictureOf(win: LiveCopyWindow): CapturedImage | typeof WAITING | null {
+    return (this.showDrawn ? win.latest() : null) ?? this.waiting();
   }
 
   private waiting(): typeof WAITING | null {
@@ -95,12 +124,12 @@ export class LiveCopy {
   }
 
   private now(): number {
-    return this.deps.now?.() ?? Date.now();
+    return this.deps.now?.() ?? performance.now();
   }
 
-  /** Its page has drawn the show (its first painted frame). Red: skeleton. */
+  /** Its page has drawn the show (its first painted frame, from its report): its pictures are Live from now. */
   shown(): void {
-    // Red: nothing yet.
+    if (this.isOpen) this.showDrawn = true;
   }
 
   /** Every other change (Live stopped or paused, a hall screen showing): closed at once. */
@@ -148,13 +177,19 @@ export function liveCopyContext(
   };
 }
 
-/** Red: skeleton. */
+/**
+ * An audience screen of this computer stopped (the watchdog gave up on it: its page kept crashing). Then no copy: the
+ * same scene would be drawn again in a renderer nobody watches, while the hall shows black. A node's screen, a stage
+ * screen, Audience off, a missing display or none set up still get the copy.
+ */
 export function stoppedHallHere(
-  _screens: readonly { id: string; groupId: string; nodeId: string | null }[],
-  _roleOf: (groupId: string) => string | null,
-  _stateOf: (screenId: string) => string,
+  screens: readonly { id: string; groupId: string; nodeId: string | null }[],
+  roleOf: (groupId: string) => string | null,
+  stateOf: (screenId: string) => string,
 ): boolean {
-  return false;
+  return screens.some(
+    (s) => s.nodeId === null && roleOf(s.groupId) === 'audience' && stateOf(s.id) === 'stopped',
+  );
 }
 
 /** What is live that the copy cannot draw (it is no screen): a video input, or another app's window, in either place. */
