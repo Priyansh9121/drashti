@@ -263,6 +263,18 @@ export function setDropOnly(on: boolean): void {
   useMedia.setState({ dropOnly: on });
 }
 
+/** Media's list open, this item marked and in sight (alpha.22: Show in Media, on a saved trimmed video's notice). */
+export async function showInMedia(mediaId: string): Promise<void> {
+  setLibraryTab('media');
+  await loadMedia();
+  useMedia.setState({ marked: [mediaId], anchorId: mediaId });
+  requestAnimationFrame(() => {
+    document
+      .querySelector('[data-testid="media-item"][data-marked="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
 export async function loadMedia(): Promise<void> {
   const media = await window.drashti.library.listMedia();
   const ids = new Set(media.map((m) => m.id));

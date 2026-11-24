@@ -198,8 +198,10 @@ import type {
   SaveJob,
   SaveRequest,
   SaveResult,
+  TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
@@ -247,7 +249,7 @@ export interface DrashtiBridge {
     /** Edit > Redo was chosen (operator window). */
     onRedo(listener: () => void): () => void;
     /** Something to tell the operator, from the main process. */
-    onNotice(listener: (text: string) => void): () => void;
+    onNotice(listener: (text: string, mediaId?: string) => void): () => void;
     /** What was put back on the screens after Drashti stopped unexpectedly, until dismissed. */
     recovery(): Promise<RecoveryNotice | null>;
     dismissRecovery(): Promise<null>;
@@ -847,6 +849,11 @@ export interface DrashtiBridge {
     stopRowTrim(itemId: string, mediaId: string): Promise<RowTrimResult>;
     preparingTrims(): Promise<string[]>;
     onPreparingTrims(listener: (itemIds: string[]) => void): () => void;
+    /** How each row's cut stands (alpha.22): why it waits, or how far it is. */
+    trimStatuses(): Promise<TrimStatuses>;
+    onTrimStatuses(listener: (statuses: TrimStatuses) => void): () => void;
+    /** Export… (alpha.22): a finished video in Media copied where the operator chooses (a save dialog in Downloads). */
+    exportFile(mediaId: string): Promise<ExportFileResult>;
     saves(): Promise<SaveJob[]>;
     onSaves(listener: (jobs: SaveJob[]) => void): () => void;
     stopSave(jobId: string): Promise<boolean>;

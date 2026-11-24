@@ -107,7 +107,7 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 
 ## Trimming a playlist's video
 
-**What it is.** A new video of just the part you want, for one row. The original file never changes.
+**What it is.** A new video of just the part you want, in **Media** and in that row. The original file never changes.
 
 **When you would use it.** When only a few minutes of a long video are needed tonight.
 
@@ -115,8 +115,9 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 
 1. Right-click the video's row and choose **Trim (start, end and markers)…**.
 2. Set **Start** and **End** on its timeline.
-3. Press **Save**. The row says **Preparing** until the new video is ready.
-4. **Reset to original** puts the whole video back in that row.
+3. Press **Save trimmed video**. The row says **Preparing**, and under it why it waits, such as **Waiting: a video is playing**, or how far it is. A still slide, a picture or the Wallpaper never holds it.
+4. When it is ready, a notice says it is in **Media**. **Show in Media** finds it; **Export…** saves a copy of its file where you choose, Downloads to begin with. **Export…** is in the row's **Trim** too.
+5. **Reset to original** puts the whole video back in that row.
 
 ![The timeline of a placeholder video, with its start and end](../screenshots/markers-dialog.png)
 

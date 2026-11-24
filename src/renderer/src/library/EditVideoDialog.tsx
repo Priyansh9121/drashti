@@ -16,6 +16,9 @@ import {
   type VideoEditFrame,
 } from '../../../shared/video-edit';
 import { Button } from '../ui/Button';
+import { saveWaitsFor } from '../../../shared/save-waits';
+import { useEngine } from '../engine/engine-store';
+import { useStream } from '../stream/stream-store';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, Slider, TextInput } from '../ui/Field';
 import { refreshStill } from '../render/stills';
@@ -325,11 +328,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                 ? 'Could not prepare the video'
                 : 'Ready for next showing'}
           </p>
-          {kept.state === 'preparing' && (
-            <p className="text-xs text-muted">
-              Preparation waits while a show, stream or recording is running.
-            </p>
-          )}
+          {kept.state === 'preparing' && <PreparationWaits />}
           {kept.message && (
             <p className="text-sm text-danger-fg" role="alert">
               {kept.message}
@@ -781,5 +780,23 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
         </Dialog>
       )}
     </>
+  );
+}
+
+/**
+ * Why Save's preparation waits now (alpha.22, shared/save-waits.ts, as the main process holds it): only while a video
+ * or a sound plays, or the stream is on air or recording; never for a still slide, a picture or the Wallpaper up.
+ */
+function PreparationWaits() {
+  const state = useEngine((s) => s.state);
+  const status = useStream((s) => s.status);
+  const why = saveWaitsFor(state, {
+    onAir: status !== null && status.live.state !== 'off',
+    recording: status !== null && status.recording.state !== 'off',
+  });
+  return (
+    <p className="text-xs text-muted" data-testid="edit-video-waiting">
+      {why ?? 'Preparation waits only while a video or a sound plays, or the stream is on air or recording.'}
+    </p>
   );
 }

@@ -159,7 +159,7 @@ A video also shows its **Lighter playing copy** status; see **Lighter playing co
 3. In **Trim**, set **Start (seconds)** and **End (seconds)**. **Use this frame as library thumbnail** keeps the chosen frame when you Save.
 4. In **Picture**, crop, turn, flip, zoom or move the picture, adjust **Brightness**, **Contrast** or **Colour**, and choose **Frame shape** and **Blurred fill behind the video**.
 5. In **Sound**, choose **Audio track** or **Reduce steady background noise in a talk**. In **Playback**, choose **Speed** and the picture and sound fades.
-6. Press **Save**. **Preparing** waits while anything is up, streaming or recording. Once clear and idle, let preparation finish until **Ready for next showing** appears.
+6. Press **Save**. **Preparing** waits only while a video or a sound plays, or the stream is on air or recording, and says which. A still slide, a picture or the Wallpaper never holds it. Wait for **Ready for next showing**.
 7. Choose **Preview saved edits** to check the saved copy privately. **Source preview** returns to the original. If the saved copy cannot play, **Prepare again** rebuilds it.
 
 **Original shape** follows the crop and rotation; **16:9**, **4:3**, **Square (1:1)** and **Vertical (9:16)** make a fixed frame. The source preview stays as it was taken: check picture changes with **Preview saved edits** after Save. For a file marked with the wrong shape, see **Audio and the levels › Sound and picture…**; its **Shape** changes the drawing at once.
@@ -260,7 +260,7 @@ For the waveform and scene suggestions, see **Waveforms and suggested scene mark
 2. Choose **Preparation and export**. Under **Picture and sound**, choose **Saved edits** or **Original**. Under **Clip shape**, choose **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
 3. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
 4. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
-5. The export waits while a show, stream or recording is on. You may close the editor; it keeps the accepted request across a restart too.
+5. The export waits only while a video or a sound plays, or the stream is on air or recording. You may close the editor; it keeps the accepted request across a restart too.
 6. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
 
 ![Preparation and export: Original, Vertical 9:16 and a new clip file](../screenshots/manual-edit-video-export.png)

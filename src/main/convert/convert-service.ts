@@ -101,6 +101,12 @@ export interface ConvertDeps {
   busy(): string | null;
   /** Background conversions also wait while there is something live. */
   showBusy?(): boolean;
+  /**
+   * Why a save the operator asked for waits (alpha.22, shared/save-waits.ts: the stream on air, a recording, a video or
+   * a sound playing), in the operator's words, or null: a still, a picture or the Wallpaper up never holds it. Left out
+   * (tests): such a save waits as waitForShow does.
+   */
+  saveBusy?(): string | null;
   freeBytes(dir: string): number;
   /** The jobs changed: the operator window is told. */
   changed(jobs: ConversionJob[]): void;
@@ -234,6 +240,11 @@ export interface CopyOptions {
   lengthMs: number;
   /** Wait while show layers are up, including when a show starts during the copy. */
   waitForShow?: boolean;
+  /**
+   * A save the operator asked for (alpha.22: Trim on a row, Edit Video's Save, Export clip…): it waits only while
+   * deps.saveBusy says why (what plays, the stream, a recording), stopping as that starts; waitForShow is then left out.
+   */
+  waitForPlaying?: boolean;
   /** Record a managed Trim copy before it can appear at its final path. */
   beforePublish?(temporary: string, destination: string): void;
   /** Idle analysis: probe in this same worker, never alongside another conversion. */
@@ -259,7 +270,8 @@ export interface CopyOptions {
 
 interface FileJob {
   id: string;
-  waitForShow: boolean;
+  /** True: it waits while anything is up; 'playing': only while saveBusy says why (CopyOptions.waitForPlaying). */
+  waitForShow: boolean | 'playing';
   source: string;
   dest: string;
   info: MediaInfo;
@@ -690,7 +702,9 @@ export class ConvertService {
     return { ok: true };
   }
 
-  private waitFor(waitForShow: boolean): string | null {
+  private waitFor(waitForShow: boolean | 'playing'): string | null {
+    // A save the operator asked for (alpha.22): only what plays, the stream or a recording holds it.
+    if (waitForShow === 'playing' && this.deps.saveBusy) return this.deps.saveBusy();
     return (
       this.deps.busy() ??
       (waitForShow && this.deps.showBusy?.()
@@ -705,7 +719,7 @@ export class ConvertService {
     if (this.runningFile) this.pauseForActivity(this.runningFile, this.runningFile.job.waitForShow);
   }
 
-  private pauseForActivity(running: Running | RunningFile, waitForShow: boolean): Stop | null {
+  private pauseForActivity(running: Running | RunningFile, waitForShow: boolean | 'playing'): Stop | null {
     if (!running.stop && this.waitFor(waitForShow) !== null) {
       running.stop = 'wait';
       if ('preparing' in running) running.preparing?.abort();
@@ -1099,7 +1113,7 @@ export class ConvertService {
     const done = new Promise<FitResult>((resolve) => {
       this.files.push({
         id,
-        waitForShow: copy.waitForShow === true,
+        waitForShow: copy.waitForPlaying === true ? 'playing' : copy.waitForShow === true,
         source,
         dest,
         info,

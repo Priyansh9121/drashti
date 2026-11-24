@@ -264,11 +264,12 @@ import {
 } from '../shared/picture-look';
 import { audienceScreenSizes, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
-import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
+import { rowTrimRequestSchema, saveRequestSchema, trimSavedNotice } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
 import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
+import { exportMediaFile } from './convert/export-file';
 import { frameAtOrBefore } from './convert/frame-at';
 import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
@@ -514,6 +515,7 @@ import {
   parseCaptionTiming,
 } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
+import { saveWaitsFor } from '../shared/save-waits';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { OscService } from './osc/service';
@@ -5277,6 +5279,15 @@ function start(): void {
     });
   });
 
+  // What holds a save the operator asked for (alpha.22, the owner's "Trim on a row"; shared/save-waits.ts): a row's
+  // Trim, Edit Video's Save and Export clip… wait only while a video or a sound plays, the stream is on air (the tests'
+  // hook too) or a recording goes on, never for a still slide, a picture or the Wallpaper up; in the operator's words.
+  const saveWaits = (): string | null =>
+    saveWaitsFor(engine.current, {
+      onAir: testOnAir || streaming.wanted().live,
+      recording: streaming.wanted().recording,
+    });
+  const saveIdle = () => saveWaits() === null;
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({
     prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
@@ -5306,6 +5317,7 @@ function start(): void {
         ? 'Waits while the stream is on air or recording, then carries on by itself.'
         : null,
     showBusy: () => !nothingUp(engine.current.layers),
+    saveBusy: saveWaits,
     freeBytes: diskFreeBytes,
     changed: (jobs) => {
       sendToOperator(IPC.media.conversionsChanged, jobs);
@@ -5366,6 +5378,8 @@ function start(): void {
     fromOperator,
     proMode: () => mode === 'pro',
     idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    // Export clip… (and Also add the clip to Media) is a save the operator asked for (alpha.22).
+    saveIdle,
     gpuStatus,
     freeBytes: diskFreeBytes,
     pickDest: async (name, container) => {
@@ -5394,7 +5408,7 @@ function start(): void {
         ? { path: join(mediaDir, row.path), name: named.name }
         : null;
     },
-    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    idle: saveIdle,
     conversions,
     register: (file, info, name, signal) =>
       registerEditedFile({
@@ -5404,7 +5418,7 @@ function start(): void {
         info,
         name,
         signal,
-        idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+        idle: saveIdle,
         freeBytes: diskFreeBytes,
         write: sourceWrite(libraryDb, () => imports.giveWay()),
       }),
@@ -5707,7 +5721,10 @@ function start(): void {
       return ffmpeg ? frameAtOrBefore(ffmpeg, file, atMs) : Promise.resolve(null);
     },
     isLive: (itemId, mediaId) => rowVideoLive(engine.current, itemId, mediaId),
-    quiet: trimWorkQuiet,
+    // A cut is made, checked and carried on while nothing plays (alpha.22); the unused cuts' sweep still waits until
+    // nothing is up (trimCleanupQuiet).
+    quiet: () => !quitStarted && saveIdle(),
+    waits: saveWaits,
     hash: (file, signal) => hashOffMain(file, signal),
     kept: trimRecords.kept,
     spaceProblem: (file, durationMs, lengthMs) =>
@@ -5727,6 +5744,9 @@ function start(): void {
       ),
     cancel: (id) => conversions.cancelFile(id),
     pendingChanged: (ids) => sendToOperator(IPC.media.preparingTrimsChanged, ids),
+    statusChanged: (statuses) => sendToOperator(IPC.media.trimStatusesChanged, statuses),
+    // Its trimmed video is in Media (alpha.22): the notice says so, with Show in Media.
+    saved: (mediaId, name) => sendToOperator(IPC.app.notice, { text: trimSavedNotice(name), mediaId }),
     rowChanged: (added) => {
       if (added) {
         libraryChanged(true);
@@ -5817,6 +5837,35 @@ function start(): void {
       : noTrim;
   });
   handle(IPC.media.preparingTrims, (e) => (fromOperator(e) ? playlistTrims.list() : []));
+  handle(IPC.media.trimStatuses, (e) => (fromOperator(e) ? playlistTrims.statuses() : {}));
+  // Export… (alpha.22, the owner's "export button as well to download"): a finished video in Media (a row's trimmed
+  // video) copied byte for byte where the operator chooses, the save dialog beginning in Downloads.
+  handle(IPC.media.exportFile, (e, mediaId) => {
+    const id = idSchema.safeParse(mediaId);
+    if (!fromOperator(e) || !id.success)
+      return { ok: false as const, message: 'Open Export… in the operator window, then try again.' };
+    return exportMediaFile(
+      {
+        video: (mediaId) => {
+          const row = media.kindAndFile(mediaId);
+          const named = media.kindAndName(mediaId);
+          return row?.kind === 'video' && !row.missing && row.path !== '' && named
+            ? { path: join(mediaDir, row.path), name: named.name }
+            : null;
+        },
+        pickDest: async (name) => {
+          if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+          const picked = await dialog.showSaveDialog(operatorWindow, {
+            title: 'Export video',
+            defaultPath: join(testDownloadsDir ?? app.getPath('downloads'), name),
+            buttonLabel: 'Export',
+          });
+          return picked.canceled || !picked.filePath ? null : picked.filePath;
+        },
+      },
+      id.data,
+    );
+  });
 
   const notSaving = { ok: false as const, message: 'Only the operator window can save a video’s part.' };
   handle(IPC.media.keyframe, async (e, mediaId, startMs) => {
