@@ -87,6 +87,13 @@ jobs:
       - name: Build video out for Intel Macs too
         if: runner.os == 'macOS'
         run: node scripts/fetch-video-out.mjs --target darwin-x64
+      # Prepare translations' engine (alpha.22): drashti-translate, CTranslate2 4.9.1 and SentencePiece 0.2.1 compiled
+      # here from their official sources, each download checked against its SHA-256 first; never from a cache.
+      - name: Build the translation engine
+        run: node scripts/fetch-translate.mjs
+      - name: Build the translation engine for Intel Macs too
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-translate.mjs --target darwin-x64
       - run: pnpm build
       - name: Package (signed when the certificates are given)
         shell: bash

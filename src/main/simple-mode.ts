@@ -62,6 +62,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.exportPdf,
   // Make a slide… (alpha.21): a new presentation from a PDF page, as New › QR code… makes one.
   IPC.slideEditor.makeSlide,
+  // Prepare translations (alpha.22): drafting is Pro Mode's, as Translation…'s changes are.
+  IPC.slideEditor.translationStatus,
+  IPC.slideEditor.translationDraft,
+  IPC.slideEditor.translationCancel,
   IPC.library.extractPdfPages,
   IPC.library.showExtractedPdf,
   IPC.library.showExtractedPdfCopy,
@@ -592,6 +596,12 @@ export function simpleModeRefusals(
   answers.set(IPC.media.stopClipExport, () => false);
   answers.set(IPC.media.stopProxy, () => false);
   answers.set(IPC.modelPacks.cancel, () => false);
+  answers.set(IPC.slideEditor.translationStatus, () => ({
+    installed: false,
+    available: false,
+    message: words(),
+  }));
+  answers.set(IPC.slideEditor.translationCancel, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).

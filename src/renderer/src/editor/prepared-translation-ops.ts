@@ -141,3 +141,39 @@ export function placePreparedWords(
 ): EditDoc {
   return change(doc, slideId, elementId, (el) => ({ ...el, translationDisplay: display }));
 }
+
+/**
+ * Prepare translations (alpha.22): the text boxes a draft may fill for this direction. Only a box whose whole source
+ * is in `from` and that has no words yet for `to`: a draft never replaces words someone wrote, edited or checked.
+ */
+export function draftTargets(
+  doc: EditDoc,
+  from: TranslationLanguage,
+  to: TranslationLanguage,
+): { slideId: string; elementId: string; source: string }[] {
+  if (from === to) return [];
+  return preparedRows(doc).flatMap(({ slide, element }) => {
+    const source = translationSource(element);
+    const existing = element.translations?.find((item) => item.targetLanguage === to);
+    return source.trim() !== '' && translationSourceSupported(element, from) && !existing?.text.trim()
+      ? [{ slideId: slide.id, elementId: element.id, source }]
+      : [];
+  });
+}
+
+/**
+ * A draft for one text box, put in only if that box still has the same source and still no words for `to` (the
+ * operator may have typed meanwhile); otherwise the document as it is.
+ */
+export function placeDraft(
+  doc: EditDoc,
+  target: { slideId: string; elementId: string; source: string },
+  from: TranslationLanguage,
+  to: TranslationLanguage,
+  text: string,
+): EditDoc {
+  const now = draftTargets(doc, from, to).find(
+    (t) => t.slideId === target.slideId && t.elementId === target.elementId && t.source === target.source,
+  );
+  return now && text.trim() ? editPreparedWords(doc, target.slideId, target.elementId, from, to, text) : doc;
+}
