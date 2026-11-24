@@ -3,6 +3,7 @@ import { CuedStartKeeper } from '../render/cued-start';
 import { applyVideoEnvelope } from '../audio/video-envelope';
 import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from '../audio/sounds';
+import { videoFadeProgress } from '../../../shared/video-cue';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
 import { FADE_SOUND_LIMITS, SOUND_LIMITS } from '../../../shared/media';
@@ -256,17 +257,23 @@ export class StreamSound {
         resync: () => undefined,
       };
       // QA22-FADE-1 (alpha.23, the owner: "±8%, jump past 0.5 s"): in a crossfade, out of step, by speed and not a
-      // jump, while it carries its envelope (from the crossfade's state until the engine takes the pair away). Only a
-      // player there before its fade (the outgoing one, or the cue's prepared one): one made inside a fade (this page
-      // started again in it) is put in place as ever, by a jump (a22-review-x86 E5: 0.3 s at 8% would outlast it).
+      // jump: while it carries a real crossfade's envelope (a length, not a manual Go's 0 ms pair) and that fade is not
+      // over by the engine's time (from the crossfade's state, one Go lead before its start, to its end; held while it
+      // is paused), never until the pair's take-away reaches this page (a22-review-fade M1). Only a player there before
+      // its fade (the outgoing one, or the cue's prepared one): one made inside a fade (this page started again in it)
+      // is put in place as ever, by a jump (a22-review-x86 E5: 0.3 s at 8% would outlast it).
       const easeable = !sound.envelope || sound.prepared === true;
+      const inFade = () => {
+        const fade = own.sound.envelope?.fade;
+        return !!fade && fade.durationMs > 0 && videoFadeProgress(fade, engineNow()) < 1;
+      };
       const playback = startPlayback(el, {
         mediaId: sound.mediaId,
         startedAt: sound.startedAt,
         prepareScheduledStart: sound.cueId !== undefined,
         audible: true,
         limits: SOUND_LIMITS,
-        ease: () => (easeable && own.sound.envelope ? FADE_SOUND_LIMITS : null),
+        ease: () => (easeable && inFade() ? FADE_SOUND_LIMITS : null),
         onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
         onError: () => reportVideoCue(sound.cueId, 'sound', false),
         timing: () => ({ loop: own.sound.loop, clip: own.sound.clip, seek: own.sound.seek }),
