@@ -14,6 +14,7 @@ import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Db } from '../db/database';
 import { isBusy } from '../db/later-writes';
+import { mediaInUse } from '../library/media-uses';
 import { MediaStore } from '../import/media-store';
 import { hashOffMain } from '../library/hash-off-main';
 import { KEEP_FREE_BYTES } from './convert-service';
@@ -63,6 +64,8 @@ export async function registerProxyFile(options: {
   const combined = AbortSignal.any([signal, control.signal]);
   const timer = setInterval(guard, 1000);
   timer.unref();
+  // The file this call put into Media, until a row keeps it (a22-review-combine2 S1).
+  const own = { renamed: false, kept: false };
   try {
     guard();
     combined.throwIfAborted();
@@ -82,6 +85,7 @@ export async function registerProxyFile(options: {
       guard();
       combined.throwIfAborted();
       await rename(part, destination);
+      own.renamed = true;
     }
     const store = new MediaStore(db, { dir: mediaDir });
     const until = Date.now() + 30_000;
@@ -91,7 +95,7 @@ export async function registerProxyFile(options: {
       const previous = db.pragma('busy_timeout', { simple: true }) as number;
       try {
         db.pragma('busy_timeout = 0');
-        return db
+        const mediaId = db
           .transaction(
             () =>
               store.addStaged(
@@ -117,6 +121,8 @@ export async function registerProxyFile(options: {
               ).mediaId,
           )
           .immediate();
+        own.kept = true;
+        return mediaId;
       } catch (error) {
         if (
           !(error instanceof Error) ||
@@ -132,6 +138,15 @@ export async function registerProxyFile(options: {
     }
   } finally {
     clearInterval(timer);
+    // Stopped, held or refused after its rename into Media and before its row: nothing would ever find that file again.
+    // It goes in this same turn, unless a row keeps that path (an import of the same bytes, say): then it stays.
+    if (own.renamed && !own.kept)
+      try {
+        if (!db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1').get(relative))
+          rmSync(destination, { force: true });
+      } catch {
+        /* Held (Windows) or the library closing: left, as before. */
+      }
     await rm(part, { force: true }).catch(() => undefined);
   }
 }
@@ -142,8 +157,16 @@ export async function registerProxyFile(options: {
  * `folder`, every such row made from a file in that folder (what a quit or a crash left, found at the next start).
  * The rows are chosen at the call, so a combine started afterwards is never touched; only rows made from that work
  * file: a video already in Media with the same bytes keeps its own source, and a row listed meanwhile (imported again)
- * stays. `keep` (the row just listed) stays, and so does a file another row still keeps. It never waits on the
- * library's write lock (an import holding it): it looks again shortly, as registerProxyFile does. How many rows went.
+ * stays. `keep` (the row just listed) stays.
+ * When in doubt it keeps (a22-review-combine2):
+ * - a row anything uses stays, with its file: an import can take a row up by its bytes without listing it (a deck's
+ *   video kept as an editable document object, a kirtan bundle's link, Edit Video's copy), and running orders,
+ *   wallpapers, slides and settings may then name it (library/media-uses.ts, the Trim cleanup's own checks);
+ * - a row goes only with its file: a file that cannot be removed (held open on Windows) keeps its row, so the next
+ *   start finds it again; a file another row keeps stays;
+ * - a row whose file is not inside Media's folder stays.
+ * It never waits on the library's write lock (an import holding it): it looks again shortly, as registerProxyFile
+ * does. How many rows went.
  */
 export async function discardUnlisted(options: {
   db: Db;
@@ -170,41 +193,40 @@ export async function discardUnlisted(options: {
     const previous = db.pragma('busy_timeout', { simple: true }) as number;
     try {
       db.pragma('busy_timeout = 0');
-      const { removed, files } = db
+      return db
         .transaction(() => {
-          const gone: string[] = [];
-          for (const id of ids) {
-            const row = db.prepare(`SELECT path FROM media WHERE id = ? AND ${unlisted}`).get(id) as
-              { path: string } | undefined;
-            if (!row) continue;
+          const rows = ids.flatMap(
+            (id) =>
+              (db.prepare(`SELECT id, path FROM media WHERE id = ? AND ${unlisted}`).get(id) as
+                { id: string; path: string } | undefined) ?? [],
+          );
+          const used = mediaInUse(db, options.mediaDir, rows);
+          // Edit Video's records of its copies (references without a cascade).
+          const edited = db.prepare(
+            `SELECT 1 FROM video_edit_copies WHERE source_id = @id OR copy_id = @id
+             UNION ALL SELECT 1 FROM media WHERE video_edit_copy_id = @id LIMIT 1`,
+          );
+          const kept = db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1');
+          let removed = 0;
+          for (const row of rows) {
+            const file = resolve(media, row.path);
+            if (row.path === '' || !file.startsWith(`${media}${sep}`)) continue;
+            if (used.has(row.id) || edited.get({ id: row.id }) !== undefined) continue;
             try {
-              db.prepare('DELETE FROM media WHERE id = ?').run(id);
+              // The row and its file together: a file that cannot be removed puts its row back (a savepoint).
+              db.transaction(() => {
+                db.prepare('DELETE FROM media WHERE id = ?').run(row.id);
+                if (!kept.get(row.path)) rmSync(file, { force: true });
+              })();
             } catch (error) {
-              // Something now points at it (a reference kept without a cascade): left as it is.
               if (isBusy(error)) throw error;
               continue;
             }
-            gone.push(row.path);
+            removed += 1;
           }
-          // A file goes only when no row keeps it any more, and only inside Media's own folder.
-          return {
-            removed: gone.length,
-            files: gone.filter(
-              (path) => path !== '' && !db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1').get(path),
-            ),
-          };
+          return removed;
         })
         .immediate();
-      for (const path of files) {
-        const file = resolve(media, path);
-        if (!file.startsWith(`${media}${sep}`)) continue;
-        try {
-          rmSync(file, { force: true });
-        } catch {
-          /* A file held open (Windows) stays; its row is gone, so nothing lists or plays it. */
-        }
-      }
-      return removed;
     } catch (error) {
       if (!isBusy(error) || Date.now() >= until) throw error;
     } finally {

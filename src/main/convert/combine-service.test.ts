@@ -651,7 +651,7 @@ it("Stop while the copy into Media waits for the library's write lock leaves no 
 
 it('a finished combine says done without waiting for the removal of what an earlier attempt left', async () => {
   const { hooks } = await setUp();
-  const release = { go: () => undefined as void };
+  const release: { go: () => void } = { go: () => undefined };
   hooks.holdKept = new Promise<void>((resolve) => {
     release.go = resolve;
   });

@@ -79,9 +79,30 @@ export class CombineVideos {
   private closed = false;
   constructor(private readonly deps: CombineDeps) {
     // What a quit or a crash left of a combine (copied into Media, never listed): chosen now, removed shortly.
-    void deps.discardUnlisted({ folder: deps.workDir }).catch(() => undefined);
-    rmSync(deps.workDir, { recursive: true, force: true });
-    mkdirSync(deps.workDir, { recursive: true });
+    void this.discard({ folder: deps.workDir });
+    // A work file still held (Windows: an FFmpeg that outlived its stop, a scanner) never stops Drashti starting: the
+    // folder is emptied at a later start (a22-review-combine2 S6).
+    try {
+      rmSync(deps.workDir, { recursive: true, force: true });
+    } catch {
+      /* Left for the next start. */
+    }
+    try {
+      mkdirSync(deps.workDir, { recursive: true });
+    } catch {
+      /* A combine then says it could not write in its own folder. */
+    }
+  }
+  /** deps.discardUnlisted, never throwing nor failing: what it could not remove is found again at the next start. */
+  private discard(made: { file: string } | { folder: string }, keep?: string | null): Promise<void> {
+    try {
+      return this.deps.discardUnlisted(made, keep).then(
+        () => undefined,
+        () => undefined,
+      );
+    } catch {
+      return Promise.resolve();
+    }
   }
   /** Read afresh after an await (the save dialog): Drashti may have started closing meanwhile. */
   private closing(): boolean {
@@ -193,11 +214,14 @@ export class CombineVideos {
       importId: string | null;
       /** The work file its copy into Media was made from (each attempt's is the same): what to remove if not listed. */
       temporary: string | null;
+      /** That copy being removed as it waits (S4): the next copy into Media waits for it. */
+      discarding: Promise<void>;
     } = {
       plan: null,
       info: null,
       importId: null,
       temporary: null,
+      discarding: Promise.resolve(),
     };
     // The new file is new: its size is about the chosen ones' together (reserved half as much again).
     const bytes = sources.reduce(
@@ -259,6 +283,7 @@ export class CombineVideos {
         return undefined;
       },
       preparePublish: async (temporary, signal) => {
+        await made.discarding;
         if (!made.info || !this.current(sources) || !this.deps.idle())
           throw new Error('The combined video is no longer ready to keep.');
         made.temporary = temporary;
@@ -271,6 +296,12 @@ export class CombineVideos {
         if (job.state !== 'waiting' && job.state !== 'preparing') return;
         job.note = note;
         job.state = note ? 'waiting' : 'preparing';
+        // A wait just after its copy into Media (the show or the stream started): that copy, never listed, goes while
+        // it waits, not kept through the service; the next attempt copies again (a22-review-combine2 S4).
+        if (note !== null && made.importId !== null && made.temporary !== null) {
+          made.importId = null;
+          made.discarding = this.discard({ file: made.temporary });
+        }
       },
       progress: (fraction) => {
         if (job.state !== 'waiting' && job.state !== 'preparing') return;
@@ -303,11 +334,13 @@ export class CombineVideos {
       job.mediaId = made.importId;
     }
     // What it copied into Media and did not list goes, with its file: failing late, a wait just after that copy, Stop
-    // or Drashti closing leaves nothing behind (a22-review-combine S4).
-    if (made.temporary !== null)
-      await this.deps
-        .discardUnlisted({ file: made.temporary }, listed ? made.importId : null)
-        .catch(() => undefined);
+    // or Drashti closing leaves nothing behind (a22-review-combine S4). Once listed, only an earlier attempt's copy is
+    // left to remove: it never holds "done" (a22-review-combine2 S3).
+    if (made.temporary !== null) {
+      await made.discarding;
+      const discarding = this.discard({ file: made.temporary }, listed ? made.importId : null);
+      if (!listed) await discarding;
+    }
     if (this.closed || job.state === 'stopped') return;
     job.note = null;
     if (!result.ok || !result.copy) {

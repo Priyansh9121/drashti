@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import type * as NodeFs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase, type Db } from '../db/database';
@@ -14,7 +15,7 @@ import { discardUnlisted } from './video-copy-files';
  */
 const removal = vi.hoisted(() => ({ fails: [] as string[] }));
 vi.mock('node:fs', async (importOriginal) => {
-  const real = await importOriginal<typeof import('node:fs')>();
+  const real = await importOriginal<typeof NodeFs>();
   // A file or folder held open (Windows: a scanner, a player, an FFmpeg still going) cannot be removed.
   const held: typeof real.rmSync = (path, options) => {
     const named = String(path).replaceAll('\\', '/');
