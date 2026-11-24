@@ -59,7 +59,9 @@ export function wordsSheet(name: string, rows: ContentRows): WordsSheet | null {
     });
     if (verse.length > 0) group.verses.push(verse);
   }
-  const withWords = groups.filter((g) => g.verses.length > 0).map((g) => ({ name: g.name, verses: g.verses }));
+  const withWords = groups
+    .filter((g) => g.verses.length > 0)
+    .map((g) => ({ name: g.name, verses: g.verses }));
   if (withWords.length === 0) return null;
   const details = detailsOf(rows);
   return {
@@ -199,7 +201,8 @@ const NOT_PRINTED = fail(
   'The words were not printed: check the printer is on and chosen, then press Print words… again.',
 );
 const NO_PDF = fail('The words were not made into a PDF: press Save words as PDF… again.');
-const noWords = (name: string) => fail(`“${name}” has no words to print: none of its slides that play has any.`);
+const noWords = (name: string) =>
+  fail(`“${name}” has no words to print: none of its slides that play has any.`);
 
 /** Print words… and Save words as PDF…, one at a time, and only while the show is not live. */
 export class WordsPrinter {

@@ -105,7 +105,9 @@ describe('a singers’ sheet of a kirtan’s words', () => {
     expect(between(html, '<h1>', '<h2>')).toContain('Raag: Placeholder Raag');
     // Both lines of a slide, Gujarati first and its Roman reading after it, slide by slide.
     const verse = between(html, '<h2>Verse</h2>', '<h2>Chorus</h2>');
-    const order = ['પહેલી પંક્તિ', 'Paheli pankti', 'બીજી પંક્તિ', 'Biji pankti'].map((t) => verse.indexOf(t));
+    const order = ['પહેલી પંક્તિ', 'Paheli pankti', 'બીજી પંક્તિ', 'Biji pankti'].map((t) =>
+      verse.indexOf(t),
+    );
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(verse).toContain('lang="gu"');
@@ -182,7 +184,11 @@ describe('a singers’ sheet of a kirtan’s words', () => {
           name: 'Verse',
           slides: [
             { elements: [box('a', [{ text: 'Placeholder line', lang: 'en' }])] },
-            { elements: [box('l', [{ text: 'Placeholder old font', font: 'Placeholder Gopika', legacy: true }])] },
+            {
+              elements: [
+                box('l', [{ text: 'Placeholder old font', font: 'Placeholder Gopika', legacy: true }]),
+              ],
+            },
           ],
         },
       ],
@@ -318,7 +324,9 @@ describe('Print words… and Save words as PDF…', () => {
     const printed = await printer.print('k');
     expect(printed).toEqual({ ok: true, file: null });
     expect(kinds).toEqual(['print']);
-    expect(wordsPrintedText('Placeholder Kirtan', printed)).toBe('The words of “Placeholder Kirtan” went to the printer.');
+    expect(wordsPrintedText('Placeholder Kirtan', printed)).toBe(
+      'The words of “Placeholder Kirtan” went to the printer.',
+    );
     const leftPrint = new WordsPrinter({
       ...base,
       print: () => Promise.resolve({ ok: false, cancelled: true, why: 'cancelled' }),

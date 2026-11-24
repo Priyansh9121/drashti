@@ -26,24 +26,27 @@ describe('Print words… and Save words as PDF… in the right-click menu', () =
       { kind: 'picture' as const, name: 'Placeholder.png', place: 'media' as const, mediaId: 'm' },
       { ...presentation, presentationId: undefined },
     ])
-      expect(wordsPrintItems(other, () => undefined), JSON.stringify(other)).toEqual([]);
+      expect(
+        wordsPrintItems(other, () => undefined),
+        JSON.stringify(other),
+      ).toEqual([]);
   });
 
   it('asks the main process for the one chosen, and says how it went', async () => {
     const asked: [string, string][] = [];
     const said: (string | null)[] = [];
-    const answers: Record<string, WordsPrinted> = {
+    const answers: { print: WordsPrinted; pdf: WordsPrinted } = {
       print: { ok: true, file: null },
       pdf: { ok: true, file: '/placeholder/Documents/Placeholder Kirtan words.pdf' },
     };
     const items = wordsPrintItems(presentation, (text) => said.push(text), {
       print: (id) => {
         asked.push(['print', id]);
-        return Promise.resolve(answers.print ?? { ok: false, cancelled: true });
+        return Promise.resolve(answers.print);
       },
       pdf: (id) => {
         asked.push(['pdf', id]);
-        return Promise.resolve(answers.pdf ?? { ok: false, cancelled: true });
+        return Promise.resolve(answers.pdf);
       },
     });
     items[0]?.onSelect();
