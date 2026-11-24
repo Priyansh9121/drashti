@@ -365,6 +365,8 @@ describe('the captions engine (Part 10)', () => {
         threads: 4,
         processors: 8,
         rests: 1,
+        keptUp: false,
+        stops: false,
       },
     });
     expect(held?.phase === 'held' && held.slow ? held.slow.answerMs : 0).toBeGreaterThanOrEqual(700);
@@ -572,7 +574,9 @@ describe('threads on this computer (cap-threads: today’s captions on a two-cor
     await waitFor(() => rests().length >= 2, 10_000);
     expect(rests()).toEqual([1, 2]);
     const second = states.filter((s) => s.phase === 'held').at(-1);
-    expect(second).toMatchObject({ slow: { threads: 2, processors: 2, rests: 2 } });
+    expect(second).toMatchObject({
+      slow: { threads: 2, processors: 2, rests: 2, keptUp: false, stops: false },
+    });
     // Quick again: a phrase heard whole, and the next rest is the first again.
     await waitFor(listened(3), 5_000);
     answer.delayMs = 0;
@@ -610,13 +614,57 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
       await sound.play(3_500, 0);
       await waitFor(() => held().length >= rest, 10_000);
     }
-    expect(held().at(-1)).toMatchObject({ reason: 'busy', slow: { rests: 3 } });
+    expect(held().at(-1)).toMatchObject({ reason: 'busy', slow: { rests: 3, keptUp: false, stops: true } });
     // Rested a third time, it stays held: nothing starts again.
     await new Promise((wait) => setTimeout(wait, 1_200));
     expect(states.filter((s) => s.phase === 'listening')).toHaveLength(3);
     expect(server.spawned).toHaveLength(3);
     expect(states.at(-1)).toMatchObject({ phase: 'held', reason: 'busy' });
     expect(warnings.at(-1)).toMatch(/stops trying/u);
+  }, 45_000);
+
+  it('a computer that has kept up is never stopped by one long busy stretch (cap-review-threads MUST-1): a phrase heard whole, then 3 rests in a row, and a 4th start comes', async () => {
+    const answer = { delayMs: 0 };
+    const server = standIn(answer);
+    const sound = bursts();
+    const states: SpeechState[] = [];
+    const heard: Heard[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: () => undefined, warn: () => undefined },
+      spawn: server.spawn,
+      processors: () => 8,
+      stepMs: 200,
+      pauseMs: 400,
+      restMs: 300,
+    });
+    stops.push(
+      engine.start('en', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+      server.close,
+    );
+    const listened = (n: number) => () => states.filter((s) => s.phase === 'listening').length >= n;
+    const held = () => states.filter((s) => s.phase === 'held');
+    await waitFor(listened(1));
+    // It keeps up: a phrase heard whole.
+    await sound.play(600, 900);
+    await waitFor(() => heard.some((h) => h.final), 5_000);
+    // Then a long busy stretch while someone speaks: three rests in a row, and it tries again after the third.
+    answer.delayMs = 700;
+    for (let rest = 1; rest <= 3; rest += 1) {
+      await waitFor(listened(rest), 5_000);
+      await sound.play(3_500, 0);
+      await waitFor(() => held().length >= rest, 10_000);
+    }
+    expect(held().map((s) => (s.phase === 'held' ? s.slow : undefined))).toMatchObject([
+      { rests: 1, keptUp: true, stops: false },
+      { rests: 2, keptUp: true, stops: false },
+      { rests: 3, keptUp: true, stops: false },
+    ]);
+    await waitFor(listened(4), 5_000);
+    expect(server.spawned).toHaveLength(4);
   }, 45_000);
 
   it('a computer that keeps up never rests, so never stops (today’s captions on 4 or more processors, as now)', async () => {

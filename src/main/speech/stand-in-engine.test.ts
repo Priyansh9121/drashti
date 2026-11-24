@@ -64,7 +64,15 @@ describe('the stand-in recognizer', () => {
       {
         phase: 'held',
         reason: 'busy',
-        slow: { answerMs: 9_100, behindMs: 6_200, threads: 2, processors: 2, rests: 1 },
+        slow: {
+          answerMs: 9_100,
+          behindMs: 6_200,
+          threads: 2,
+          processors: 2,
+          rests: 1,
+          keptUp: false,
+          stops: false,
+        },
       },
     ]);
     stop();
@@ -77,7 +85,7 @@ describe('the stand-in recognizer', () => {
       state: (s) => states.push(s),
     });
     vi.advanceTimersByTime(1_500 * 2);
-    expect(states.at(-1)).toMatchObject({ phase: 'held', reason: 'busy', slow: { rests: 3 } });
+    expect(states.at(-1)).toMatchObject({ phase: 'held', reason: 'busy', slow: { rests: 3, stops: true } });
     stop();
   });
 

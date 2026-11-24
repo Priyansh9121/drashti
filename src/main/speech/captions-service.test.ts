@@ -484,10 +484,10 @@ it('starts a fresh prototype session when the selected normal model changes, wit
 });
 
 describe('a computer too slow for live captions (cap-threads, the owner: “Say so and stop”)', () => {
-  const rest = (rests: number): SpeechState => ({
+  const rest = (rests: number, stops = false): SpeechState => ({
     phase: 'held',
     reason: 'busy',
-    slow: { answerMs: 15_500, behindMs: 16_000, threads: 2, processors: 2, rests },
+    slow: { answerMs: 15_500, behindMs: 16_000, threads: 2, processors: 2, rests, keptUp: false, stops },
   });
 
   it('after 3 rests in a row captions stop: off on this computer with the reason, the engine stopped; on again tries again', async () => {
@@ -499,7 +499,7 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
     state(rest(2));
     await new Promise((wait) => setTimeout(wait, 20));
     expect(service.view()).toMatchObject({ on: true, stopped: null });
-    state(rest(3));
+    state(rest(3, true));
     await vi.waitFor(() => {
       expect(service.view().on).toBe(false);
     });
@@ -517,12 +517,27 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
     expect(service.view()).toMatchObject({ on: true, stopped: null });
   });
 
-  it('a rest or two never stop them, and a rest the engine measured nothing for never counts', async () => {
+  it('a lighter model chosen after the stop clears the reason; the switch stays Off (cap-review-threads n2)', async () => {
+    const { service, state } = setup();
+    service.start();
+    await service.setOn(true);
+    state(rest(3, true));
+    await vi.waitFor(() => {
+      expect(service.view().stopped).not.toBeNull();
+    });
+    await service.setModel('turbo');
+    expect(service.view()).toMatchObject({ on: false, stopped: null });
+  });
+
+  it('only the engine’s decision stops them: never a count of rests (it has kept up), and never a rest it measured nothing for', async () => {
     const { service, state, stops } = setup();
     service.start();
     await service.setOn(true);
     state(rest(1));
     state(rest(2));
+    // A third and a fourth rest the engine does not stop for (it heard a phrase whole earlier: busy for a while).
+    state(rest(3));
+    state(rest(4));
     state({ phase: 'listening', language: 'auto' });
     state(rest(1));
     state({ phase: 'held', reason: 'busy' });

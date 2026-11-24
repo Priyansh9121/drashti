@@ -149,14 +149,23 @@ const slow = (over: Partial<SlowHold> = {}): CaptionsStatus =>
     speech: {
       phase: 'held',
       reason: 'busy',
-      slow: { answerMs: 9_100, behindMs: 6_200, threads: 2, processors: 2, rests: 1, ...over },
+      slow: {
+        answerMs: 9_100,
+        behindMs: 6_200,
+        threads: 2,
+        processors: 2,
+        rests: 1,
+        keptUp: false,
+        stops: false,
+        ...over,
+      },
     },
   });
 
 describe('captions resting because this computer cannot keep up (cap-threads)', () => {
   it('the dialog says what was measured, plainly: the answer’s time or how far behind, and the threads', () => {
     const first = captionsStateText(slow());
-    expect(first).toMatch(/^Resting: this computer heard too slowly for live captions/u);
+    expect(first).toMatch(/^Resting: this computer could not keep up with live captions/u);
     expect(first).toContain('an answer took 9.1 seconds, with 2 engine threads');
     expect(first).toMatch(/rest for a minute/u);
     expect(first).toMatch(/The show comes first\.$/u);
@@ -173,6 +182,11 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
     expect(again).toMatch(/may be too slow for live captions with this model/u);
     expect(again).toContain('an answer took 9.1 seconds, with 2 engine threads');
     expect(again).toMatch(/after 3 rests in a row they stop\.$/u);
+    // It has kept up since it started (busy for a while): no stop can come, so none is promised (review MUST-1).
+    const busy = captionsStateText(slow({ rests: 3, keptUp: true }));
+    expect(busy).toMatch(/^Resting again \(3 times in a row\): this computer could not keep up for a while/u);
+    expect(busy).not.toMatch(/they stop|too slow/u);
+    expect(busy).toMatch(/try again by themselves in a minute/u);
   });
 
   it('stopped after 3 rests (the owner: “Say so and stop”): off, too slow for live captions with this model, and for Gujarati or Hindi the IndicConformer pack', () => {
@@ -183,7 +197,15 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
         settings: { ...DEFAULT_CAPTION_SETTINGS, language },
         stopped: {
           language,
-          slow: { answerMs: 15_500, behindMs: 16_000, threads: 2, processors: 2, rests: 3 },
+          slow: {
+            answerMs: 15_500,
+            behindMs: 16_000,
+            threads: 2,
+            processors: 2,
+            rests: 3,
+            keptUp: false,
+            stops: true,
+          },
         },
       });
     const gu = captionsStateText(off('gu'));
@@ -234,7 +256,7 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
       'Captions are waiting for their model.',
     );
     expect(captionsStatusLine(view({ speech: { phase: 'failed', message: 'Placeholder failure.' } }))).toBe(
-      'Captions stopped: Placeholder failure.',
+      'Captions: Placeholder failure.',
     );
   });
 
@@ -257,5 +279,35 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
     expect(captionsStatusLine(view({ speech: { phase: 'off' } }))).toBeNull();
     expect(captionsStatusLine({ ...slow(), on: false })).toBeNull();
     expect(captionsStatusLine({ ...slow(), engine: false, on: false })).toBeNull();
+  });
+});
+
+describe('the words never say two cores (lead 2: a slow 4-core computer stops too; cap-review-threads n6)', () => {
+  it('in any rest, stop or status line, for every language', () => {
+    const texts: string[] = [];
+    for (const language of ['gu', 'hi', 'en', 'sa', 'auto'] as const)
+      for (const over of [{ rests: 1 }, { rests: 2 }, { rests: 2, keptUp: true }]) {
+        const resting = slow(over);
+        const stopped = view({
+          on: false,
+          speech: { phase: 'off' },
+          settings: { ...DEFAULT_CAPTION_SETTINGS, language },
+          stopped: {
+            language,
+            slow: {
+              answerMs: 15_500,
+              behindMs: 16_000,
+              threads: 2,
+              processors: 2,
+              rests: 3,
+              keptUp: false,
+              stops: true,
+            },
+          },
+        });
+        texts.push(captionsStateText(resting), captionsStateText(stopped));
+        texts.push(captionsStatusLine(resting) ?? '', captionsStatusLine(stopped) ?? '');
+      }
+    for (const text of texts) expect(text).not.toMatch(/two[- ]cores?/iu);
   });
 });

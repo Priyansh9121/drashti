@@ -55,6 +55,16 @@ export interface SlowHold {
   processors: number;
   /** Rests in a row with no phrase heard whole between them: 1 at the first. */
   rests: number;
+  /**
+   * Whether a phrase has been heard whole since this start of listening (cap-review-threads MUST-1): a computer that
+   * has kept up once is only busy for a while, and is never stopped for it.
+   */
+  keptUp: boolean;
+  /**
+   * The engine's one decision (the owner, Q-CT-1: "Say so and stop"): this rest is the CAPTIONS_STOP_AFTER_RESTS-th in a
+   * row with nothing heard whole since this start, so it stops trying and captions turn off.
+   */
+  stops: boolean;
 }
 
 /** What the listening is doing now. */
