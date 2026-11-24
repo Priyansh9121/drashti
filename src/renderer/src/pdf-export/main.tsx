@@ -11,6 +11,7 @@ import '../render/fonts.css';
 import '../styles/app.css';
 import './print.css';
 import { rasterizeTextEffects } from './text-effects';
+import { cropPdfCopy } from '../../../shared/pdf-crop-copy';
 
 (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = pdfWorker;
 
@@ -163,7 +164,7 @@ async function draw(): Promise<void> {
         cleanupEffects();
       }
     }
-    const data = await assemble(job, printed);
+    const data = await cropPdfCopy(await assemble(job, printed), job.pages.map((page) => page.crop));
     const pages = await dimensions(data);
     await window.drashti.pdfExport.done({ id: job.id, data, pages });
   } catch {
