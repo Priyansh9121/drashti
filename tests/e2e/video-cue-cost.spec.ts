@@ -63,7 +63,7 @@ function fadeOffsets(
         // What the mix hears (QA23-FADE-4): its player's position less its lead; before the fade's moment the lead's
         // delay still carries the silence before its start, so it is not yet behind.
         const heard = s.at - s.lead / 1000;
-        const at = s.t < fade.at && heard < expected ? expected : heard;
+        const at = s.lead > 0 && s.t < fade.at && heard < expected ? expected : heard;
         return {
           t: s.t - fade.at,
           ms: Math.round(playbackOffset(at, expected, last - start, timing.loop) * 1000),
@@ -559,8 +559,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           await cueReady(win);
           fadeBefore = await snapshot(win);
           // The outgoing sound given its chance to settle first, as a video that has played a while has when it
-          // crossfades: playing, not jumping, within 0.3 s of its clock (past 0.5 s it jumps by every rule). It began
-          // only ~3 s before, and on CI's two-core Windows its start's jumps landed 0.9-1.5 s late one after another,
+          // crossfades: playing, not jumping, within 0.05 s of its clock (the fade's own strict bound is 0.1 s). It
+          // began only ~3 s before, and on CI's two-core Windows its start's jumps landed 0.9-1.5 s late one by one,
           // so it came into a fade 1.5 s off and jumped there (a22-fade-1124-103850-84601). The wait ends a second
           // before the playlist's own crossfade would start by itself; settled or not, Next then crossfades and the
           // fade's own sound is judged as before (`settled` in the report).
@@ -596,7 +596,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
                   if (!seen || seen.seeking || seen.paused || !(seen.duration > 0)) return false;
                   const { start, end } = playbackBounds(outgoingClock.clip, seen.duration);
                   const expected = playbackPosition(outgoingClock, seen.duration, seen.t);
-                  return Math.abs(playbackOffset(seen.at, expected, end - start, outgoingClock.loop)) < 0.3;
+                  return Math.abs(playbackOffset(seen.at, expected, end - start, outgoingClock.loop)) < 0.05;
                 },
                 { timeout: Math.max(1, by - Date.now()) },
               )
@@ -969,9 +969,26 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       pictureFreezes,
       'no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade',
     ).toEqual([]);
-    // S7's checks (the gains sum to one, the incoming only rises, within 0.04 of the engine's fade) wait for the next
-    // release: in a22-fade-1124-103850-84601 one sample of about 100 on Windows had the outgoing gain 63 ms stale (sum
-    // 1.031), cause not yet known. Its gains stay in the report (fadeGains) as evidence.
+    // S7: the stream's own two sounds cross by the engine's fade, as the hall's audio player's do in the crossfade case
+    // (back since applyLevels reads the engine's time once for all its sounds: a22-fade-1124-103850-84601's one sample
+    // of ~100 had the outgoing gain 63 ms stale, two reads split on a starved two-core runner, a22-review-fade R2-S3).
+    for (const fade of fadeGains) {
+      expect(
+        fade.gains.length,
+        'the stream sound page’s crossfade gains are seen through each fade',
+      ).toBeGreaterThanOrEqual(10);
+      let previous = -1;
+      for (const frame of fade.gains) {
+        const incoming = frame.gains[1] ?? -1;
+        expect((frame.gains[0] ?? -1) + incoming, 'the two gains sum to one').toBeCloseTo(1, 2);
+        expect(incoming, 'the incoming gain only rises').toBeGreaterThanOrEqual(previous - 0.001);
+        expect(
+          Math.abs(incoming - Math.max(0, Math.min(1, (frame.t - fade.at) / fade.durationMs))),
+          'the incoming gain follows the engine’s fade (the sound page writes it every 50 ms)',
+        ).toBeLessThanOrEqual(0.04);
+        previous = incoming;
+      }
+    }
     const streamSoundPid = decoderProcesses.find((p) => p.role === 'stream sound')?.pid;
     expect(streamSoundPid).toBeGreaterThan(0);
     expect(streamSoundPid, 'sound has its own renderer and media thread').not.toBe(
