@@ -3,6 +3,7 @@ import { type OperatorAction, shortcutText } from '../../../shared/keymap';
 import {
   SCREEN_SWITCHES,
   type ScreenSwitch,
+  type ScreenSwitches,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
   switchOffQuestion,
@@ -40,6 +41,15 @@ const WHOSE: Record<ScreenSwitch, string> = {
 const say = (problem: string | null) => {
   if (problem) useNotice.setState({ text: problem });
 };
+
+/** A switch as the top bar shows it: a stub until the change lands (pressable at once, as before). */
+export function switchButton(
+  which: ScreenSwitch,
+  switches: ScreenSwitches,
+  _known: boolean,
+): { on: boolean; disabled: boolean } {
+  return { on: switches[which], disabled: false };
+}
 
 function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: string }) {
   const on = useScreenSwitches((s) => s.switches[which]);
