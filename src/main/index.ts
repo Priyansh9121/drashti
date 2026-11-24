@@ -439,6 +439,8 @@ import { runQrJob } from './library/qr-worker-run';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
+import { printManual } from './manual-print';
+import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
 import { ErrorReports } from './error-reports/service';
@@ -4927,6 +4929,46 @@ function start(): void {
   } as const;
   handle(IPC.manual.print, (e) => (fromOperator(e) ? manualPrinter.print() : notFromOperator));
   handle(IPC.manual.pdf, (e) => (fromOperator(e) ? manualPrinter.pdf() : notFromOperator));
+  // ---- a singers' sheet (alpha.22): Print words… and Save words as PDF… of a presentation -------------------------
+  // Pro Mode's (simple-mode.ts), from the operator window only, never while the show is live (the Manual's rule), from
+  // the Manual's hidden window (words-print.ts). It only reads the library.
+  const wordsPrinter = new WordsPrinter({
+    read: (id) => {
+      const name = presentations.get(id)?.name;
+      const rows = name === undefined ? null : presentations.content(id);
+      return name === undefined || !rows ? null : { name, rows };
+    },
+    live: () => streaming.inUse() || testOnAir || !nothingUp(engine.current.layers),
+    tempDir: () => app.getPath('temp'),
+    suggestedFolder: () => testDownloadsDir ?? app.getPath('documents'),
+    askWhere: async (suggested) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save the words as a PDF',
+        defaultPath: suggested,
+        buttonLabel: 'Save',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
+    },
+    print: (job) => printManual(job),
+  });
+  const wordsNotFromOperator = {
+    ok: false,
+    cancelled: false,
+    message: 'Only the operator window can print a presentation’s words.',
+  } as const;
+  handle(IPC.library.printWords, (e, presentationId) => {
+    const id = idSchema.safeParse(presentationId);
+    if (!fromOperator(e) || !id.success) return wordsNotFromOperator;
+    return wordsPrinter.print(id.data);
+  });
+  handle(IPC.library.saveWordsPdf, (e, presentationId) => {
+    const id = idSchema.safeParse(presentationId);
+    if (!fromOperator(e) || !id.success) return wordsNotFromOperator;
+    return wordsPrinter.pdf(id.data);
+  });
   // ---- programs a crash left running (Session 31, ROB-3) ----------------------------------------
   // Each program Drashti starts that could outlive it is written down (src/main/system/leftovers.ts): one
   // the last run left running (the very one: id, start time and program) is stopped now, before anything
@@ -5142,6 +5184,9 @@ function start(): void {
   edits.delete(IPC.playlists.importM3u);
   // Export reads the library and writes only the chosen file; no library write lock spans its dialog.
   edits.delete(IPC.playlists.exportM3u);
+  // So do Print words… and Save words as PDF… (a singers' sheet, alpha.22).
+  edits.delete(IPC.library.printWords);
+  edits.delete(IPC.library.saveWordsPdf);
   // These wait for the write lock themselves, after the file dialog and background reading have ended.
   edits.delete(IPC.videoCaptions.add);
   edits.delete(IPC.videoCaptions.select);
