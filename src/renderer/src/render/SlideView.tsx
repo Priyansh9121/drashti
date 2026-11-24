@@ -1383,6 +1383,7 @@ export const SlideView = memo(function SlideView({
         <div style={{ position: 'absolute', left: -pageCrop.x, top: -pageCrop.y }}>
           <SlideView
             slide={{ ...whole, width: pageCrop.width, height: pageCrop.height }}
+            imageDecoding={imageDecoding}
             media={media}
             startedAt={startedAt}
             clips={clips}

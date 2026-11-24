@@ -164,7 +164,10 @@ async function draw(): Promise<void> {
         cleanupEffects();
       }
     }
-    const data = await cropPdfCopy(await assemble(job, printed), job.pages.map((page) => page.crop));
+    const data = await cropPdfCopy(
+      await assemble(job, printed),
+      job.pages.map((page) => page.crop),
+    );
     const pages = await dimensions(data);
     await window.drashti.pdfExport.done({ id: job.id, data, pages });
   } catch {
