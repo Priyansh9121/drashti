@@ -17,6 +17,7 @@ import { RemoveConfirm, RemoveItemsConfirm, RemovePlaylistConfirm } from '../lib
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
+import { addWordsPrintToMenu } from '../library/words-print';
 import { connectSlideEditorSaves } from '../editor/open-editor';
 import { AppearanceDialog } from '../appearance/AppearanceDialog';
 import { connectAppearance } from '../appearance/appearance-store';
@@ -301,6 +302,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
   useEffect(() => window.drashti.app.onShowTool(openTool), []);
   // Pin to the quick bar (Session 55, Part 8) in the one right-click menu, while Pro Mode's window is up.
   useEffect(() => addFileMenuItems(quickMenuItems), []);
+  // Print words… and Save words as PDF… (a singers' sheet, alpha.22) on a library presentation, Pro Mode's only.
+  useEffect(() => addWordsPrintToMenu(), []);
   // Files dropped anywhere on the window are imported, as on the presentation list (which takes
   // its own drops): an operator drags a deck onto Drashti, wherever it lands (Session 16). A folder becomes a smart
   // playlist following it, at once, nothing asked (Session 56, the owner's item 5). Into the open playlist; with none

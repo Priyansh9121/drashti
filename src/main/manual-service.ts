@@ -9,7 +9,14 @@ import {
 } from '../shared/manual';
 import { parseMarkdown } from '../shared/markdown';
 import type { GuideFiles } from './guides';
-import { fileAddress, manualHtml, type PrintOutcome, printManual } from './manual-print';
+import {
+  fileAddress,
+  manualHtml,
+  type PrintOutcome,
+  printerBusy,
+  printPage,
+  takePrinter,
+} from './manual-print';
 import { fileProblem } from './plain-errors';
 
 /*
@@ -56,7 +63,7 @@ export interface ManualPrinterDeps {
   /** Where the save dialog suggests first (Documents). */
   suggestedFolder: () => string;
   /** Printing itself (manual-print.ts; a test's stand-in). */
-  print?: typeof printManual;
+  print?: typeof printPage;
   write?: (file: string, data: Buffer) => void;
   /**
    * Whether the show is live now (anything up, or the stream on air or recording: index.ts, as the work that waits
@@ -68,21 +75,20 @@ export interface ManualPrinterDeps {
 /** The PDF's name the save dialog suggests. */
 export const MANUAL_PDF_NAME = 'Drashti Manual.pdf';
 
-const BUSY: ManualPrinted = {
-  ok: false,
-  cancelled: false,
-  message: 'The manual is being printed already: wait until that is done, then try again.',
-};
+/** The manual's name for the printer, its page's title and its footer's words. */
+const MANUAL = 'The manual';
+const MANUAL_TITLE = 'Drashti Manual';
 const MISSING: ManualPrinted = {
   ok: false,
   cancelled: false,
   message: 'The manual is missing from Drashti’s folder: install Drashti again.',
 };
 
-/** Print… and Save as PDF…, one at a time, and only while the show is not live. */
+/**
+ * Print… and Save as PDF…, one at a time (across the manual and every running order: manual-print.ts's
+ * `takePrinter`), and only while the show is not live.
+ */
 export class ManualPrinter {
-  private busy = false;
-
   constructor(private readonly deps: ManualPrinterDeps) {}
 
   /** Through the system's print dialog. */
@@ -125,12 +131,12 @@ export class ManualPrinter {
   private async once(run: () => Promise<ManualPrinted>): Promise<ManualPrinted> {
     // Nothing printed, and nothing asked, while the show is live (the window's buttons wait then too).
     if (this.deps.live()) return { ok: false, cancelled: false, message: MANUAL_PRINT_REFUSED };
-    if (this.busy) return BUSY;
-    this.busy = true;
+    const printer = takePrinter(MANUAL);
+    if ('heldBy' in printer) return { ok: false, cancelled: false, message: printerBusy(printer.heldBy) };
     try {
       return await run();
     } finally {
-      this.busy = false;
+      printer.release();
     }
   }
 
@@ -139,7 +145,13 @@ export class ManualPrinter {
     const page = manualPage(this.deps.files, this.deps.version());
     if (page === null) return null;
     try {
-      return await (this.deps.print ?? printManual)({ ...page, tempDir: this.deps.tempDir(), kind });
+      return await (this.deps.print ?? printPage)({
+        ...page,
+        tempDir: this.deps.tempDir(),
+        kind,
+        title: MANUAL_TITLE,
+        footer: MANUAL_TITLE,
+      });
     } catch {
       return { ok: false, cancelled: false, why: 'it could not be printed' };
     }
