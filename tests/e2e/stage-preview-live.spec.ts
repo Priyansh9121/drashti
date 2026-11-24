@@ -305,6 +305,24 @@ test('the Stage preview names the video input and another app’s window, as a t
   expect(
     await preview.evaluate(async () => (await (globalThis as PageGlobals).drashti.videoInputs.list()).inputs),
   ).toEqual([]);
+  // And were its page to ask for a camera itself (a22-review-stage8, second look, note 2), Chromium refuses it, as
+  // Main's cameraPage answers none for it; nor are the cameras' names told it. The hall's track stays as it was.
+  const camera = await preview.evaluate(async () => {
+    const names = (await navigator.mediaDevices.enumerateDevices())
+      .filter((d) => d.kind === 'videoinput')
+      .map((d) => d.label);
+    const asked = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then(
+      (stream) => {
+        for (const track of stream.getTracks()) track.stop();
+        return 'given';
+      },
+      (error: unknown) => (error instanceof DOMException ? error.name : 'refused'),
+    );
+    return { asked, names };
+  });
+  expect(camera.asked).toBe('NotAllowedError');
+  expect(camera.names.every((label) => label === '')).toBe(true);
+  expect(await hallTrack(hall)).toEqual(before);
 
   // Closed: the hall's track still as it was, and it went on throughout.
   await preview.close();
