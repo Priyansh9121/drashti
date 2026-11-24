@@ -18,24 +18,59 @@ const PAGE: GoMomentClock = {
   cancelLater: (id) => clearTimeout(id),
 };
 
+/** The operator preview's wait for its cued picture's start at Go (QA23-CUELIVE-1). */
+export interface AfterStart {
+  /** Runs `run` once this page's cued picture has set its rate at Go (at once if it has); returns its cancel. */
+  whenStarted(run: () => void): () => void;
+  /** Where it never starts (it failed, say): the work runs this long after the first frame past Go. */
+  fallbackMs: number;
+}
+
 /**
  * A page's own work for a cue's Go moment (S5: the scene's swap, render/useCuedStart.ts; a cued slot's activation,
  * render/BackgroundMedia.tsx): on the first animation frame at or past `at` (`checkNow`: at once, too, if `at` has
- * passed already). Returns its cancel.
+ * passed already). With `afterStart` (the operator's LIVE preview, QA23-CUELIVE-1) it waits from then for its cued
+ * picture's start, so that picture's own check for Go never waits behind this React work: on alpha.22's gate 3 (CI's
+ * Mac) LIVE's picture set its rate 23-27 ms after Go, behind the operator window's work, and started 37-40 ms late.
+ * Every other page as before. Returns its cancel.
  */
 export function atGoMoment(
   at: number,
   work: (now: number) => void,
-  options: { checkNow: boolean },
+  options: { checkNow: boolean; afterStart?: AfterStart },
   clock: GoMomentClock = PAGE,
 ): () => void {
   let frame = 0;
+  let waiting: (() => void) | null = null;
+  let fallback: ReturnType<typeof setTimeout> | null = null;
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
+    waiting?.();
+    if (fallback !== null) clock.cancelLater(fallback);
+    work(clock.now());
+  };
   const tick = () => {
     const now = clock.now();
-    if (now >= at) work(now);
-    else frame = clock.frame(tick);
+    if (now < at) {
+      frame = clock.frame(tick);
+      return;
+    }
+    const after = options.afterStart;
+    if (!after) {
+      work(now);
+      return;
+    }
+    fallback = clock.later(run, after.fallbackMs);
+    waiting = after.whenStarted(run);
   };
   if (options.checkNow) tick();
   else frame = clock.frame(tick);
-  return () => clock.cancelFrame(frame);
+  return () => {
+    done = true;
+    clock.cancelFrame(frame);
+    waiting?.();
+    if (fallback !== null) clock.cancelLater(fallback);
+  };
 }

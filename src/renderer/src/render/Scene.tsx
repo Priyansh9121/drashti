@@ -315,9 +315,12 @@ function BackgroundPicture({
   cue,
   crossfade,
   opaqueCanvas = false,
+  cueStartFirst = false,
   onLinkDrawn,
 }: {
   opaqueCanvas?: boolean;
+  /** The operator's LIVE preview (QA23-CUELIVE-1): its work for a cue's Go moment after its cued picture's start. */
+  cueStartFirst?: boolean;
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
   background: BackgroundLayer | null;
@@ -360,6 +363,7 @@ function BackgroundPicture({
         cue={cue}
         crossfade={crossfade}
         opaqueCanvas={opaqueCanvas}
+        cueStartFirst={cueStartFirst}
       />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
       {background?.kind === 'link' && <LinkView layer={background} onDrawn={onLinkDrawn} />}
@@ -425,6 +429,7 @@ const SceneBody = memo(function SceneBody({
   place = 'hall',
   captions = true,
   picturesFirst = place === 'stream',
+  cueStartFirst = false,
 }: {
   state: EngineState;
   canvas: Size;
@@ -453,10 +458,16 @@ const SceneBody = memo(function SceneBody({
    * page (Session 58, Q57-35) and the hall's screens (Session 59, X19, output/HallScene.tsx). Left out: the stream only.
    */
   picturesFirst?: boolean;
+  /**
+   * The operator's LIVE preview alone (QA23-CUELIVE-1): its own React work for a cue's Go moment (the scene's swap, the
+   * cued slot's activation) runs after its cued picture has set its rate at Go, never ahead of it. On alpha.22's gate 3
+   * (CI's Mac) LIVE's picture set its rate 23-27 ms after Go behind the operator window's work. Every screen as before.
+   */
+  cueStartFirst?: boolean;
   translationOutputId?: string;
   translationGroupId?: string | null;
 }) {
-  const state = useCuedStart(rawState);
+  const state = useCuedStart(rawState, cueStartFirst);
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);
@@ -662,6 +673,7 @@ const SceneBody = memo(function SceneBody({
                       movement={look.movement}
                       onDrawn={setDrawnKey}
                       onLinkDrawn={setLinkDrawn}
+                      cueStartFirst={cueStartFirst}
                     />
                   </BackgroundBox.Provider>
                 </MainSlot>
