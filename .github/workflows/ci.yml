@@ -349,6 +349,20 @@ jobs:
       - name: Fetch the live captions engine for Intel Macs too
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-whisper.mjs --target darwin-x64
+      # Prepare translations' engine (alpha.22): drashti-translate compiled from CTranslate2's and SentencePiece's
+      # pinned sources (scripts/fetch-translate.mjs); kept between runs while its pins and sources are unchanged.
+      - name: Cache the translation engine
+        if: env.QUICK != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/translate
+          key: translate-${{ runner.os }}-${{ hashFiles('scripts/fetch-translate.mjs', 'tools/translate/**') }}
+      - name: Build the translation engine
+        if: env.QUICK != 'true'
+        run: node scripts/fetch-translate.mjs
+      - name: Build the translation engine for Intel Macs too
+        if: runner.os == 'macOS' && env.QUICK != 'true'
+        run: node scripts/fetch-translate.mjs --target darwin-x64
       - name: Build IndicConformer for Intel Macs too
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-indic.mjs --target darwin-x64
