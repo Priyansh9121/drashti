@@ -80,3 +80,32 @@ export const rowTrimRequestSchema: z.ZodType<RowTrimRequest> = z.object({
 });
 
 export type RowTrimResult = { ok: true } | { ok: false; message: string };
+
+/*
+ * How a row's cut stands while the row says Preparing (alpha.22, the owner's "Trim on a row": nothing said why it
+ * waited): why it waits, in the operator's words (shared/save-waits.ts, or that the row's own video is up), or how far
+ * it is (0 to 1). Both null: it waits its turn behind another video being made.
+ */
+export interface TrimRowStatus {
+  note: string | null;
+  progress: number | null;
+}
+
+/** Each row's cut that says how it stands, by the row. */
+export type TrimStatuses = Record<string, TrimRowStatus>;
+
+export const TRIM_TURN = 'Waiting: another video is being made first';
+export const TRIM_ROW_UP = 'Ready: it takes the row’s place once the row’s video comes off';
+
+/** What a row says of its cut under Preparing, or null for nothing (not yet queued). */
+export function trimStatusWords(status: TrimRowStatus | undefined): string | null {
+  if (!status) return null;
+  if (status.note !== null) return status.note;
+  if (status.progress !== null)
+    return `Saving the trimmed video: ${String(Math.round(Math.min(1, Math.max(0, status.progress)) * 100))}%`;
+  return TRIM_TURN;
+}
+
+/** The notice once a row's trimmed video is made (alpha.22). */
+export const trimSavedNotice = (name: string): string =>
+  `“${name}” is in Media. Its playlist row plays it from now on.`;

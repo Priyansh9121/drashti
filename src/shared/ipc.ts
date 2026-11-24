@@ -172,8 +172,10 @@ import type {
   SaveJob,
   SaveRequest,
   SaveResult,
+  TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
@@ -682,6 +684,11 @@ export const IPC = {
     stopRowTrim: 'media:stop-row-trim',
     preparingTrims: 'media:preparing-trims',
     preparingTrimsChanged: 'media:preparing-trims-changed',
+    /** How each row's cut stands (alpha.22): why it waits, or how far it is. */
+    trimStatuses: 'media:trim-statuses',
+    trimStatusesChanged: 'media:trim-statuses-changed',
+    /** Export… (alpha.22): a finished video in Media copied where the operator chooses, never encoded again. */
+    exportFile: 'media:export-file',
     saves: 'media:saves',
     stopSave: 'media:stop-save',
     showSave: 'media:show-save',
@@ -1928,6 +1935,8 @@ export interface InvokeContract {
   [IPC.media.resetRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
   [IPC.media.stopRowTrim]: { args: [itemId: string, mediaId: string]; result: RowTrimResult };
   [IPC.media.preparingTrims]: { args: []; result: string[] };
+  [IPC.media.trimStatuses]: { args: []; result: TrimStatuses };
+  [IPC.media.exportFile]: { args: [mediaId: string]; result: ExportFileResult };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
   [IPC.media.showSave]: { args: [jobId: string]; result: null };
@@ -2230,7 +2239,8 @@ export interface EventContract {
   [IPC.playlists.smartChanged]: SmartPlaylistView[];
   [IPC.app.undo]: { at: number };
   [IPC.app.redo]: { at: number };
-  [IPC.app.notice]: { text: string };
+  /** `mediaId`: the notice is of a new video in Media (alpha.22), offering Show in Media. */
+  [IPC.app.notice]: { text: string; mediaId?: string };
   [IPC.app.progress]: { progress: TaskProgress | null };
   [IPC.app.modeChanged]: { mode: OperatorMode };
   [IPC.backups.changed]: ScheduledBackupsView;
@@ -2296,6 +2306,7 @@ export interface EventContract {
   [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
+  [IPC.media.trimStatusesChanged]: TrimStatuses;
   [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' };
