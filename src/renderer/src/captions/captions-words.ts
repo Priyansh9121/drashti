@@ -6,7 +6,7 @@ import {
   type LanguageModelLanguage,
   type LanguageModelView,
 } from '../../../shared/captions';
-import type { SlowHold, SpeechLanguage } from '../../../shared/speech';
+import { SLOW_ANSWERS_IN_A_ROW, type SlowHold, type SpeechLanguage } from '../../../shared/speech';
 
 /* The Live captions dialog's words (Session 55, Part 10). */
 
@@ -46,13 +46,19 @@ export function captionsStateText(view: CaptionsStatus): string {
 
 /** Tenths of a second, as words say them: 9100 ms is 9.1. */
 const seconds = (ms: number): string => (Math.round(ms / 100) / 10).toFixed(1);
+/** A limit in tenths of a second, never said as more than it is: 2250 ms is 2.2. */
+const secondsBelow = (ms: number): string => (Math.floor(ms / 100) / 10).toFixed(1);
 
-/** What the engine measured when it rested (cap-threads): the answer's time, or how far behind it fell. */
+/**
+ * What the engine measured when it rested (cap-threads): how far behind it fell, or its answers' times: it rests for
+ * SLOW_ANSWERS_IN_A_ROW answers in a row each slower than its limit, so all of them are said, not only the last
+ * (cap-review-threads n4: a last answer of 2.3 s alone reads as not slow).
+ */
 function measured(slow: SlowHold): string {
   const threads = slow.threads === 1 ? '1 engine thread' : `${String(slow.threads)} engine threads`;
   return slow.behindMs > 8_000
     ? `it fell ${seconds(slow.behindMs)} seconds behind the speaker, with ${threads}`
-    : `an answer took ${seconds(slow.answerMs)} seconds, with ${threads}`;
+    : `${String(SLOW_ANSWERS_IN_A_ROW)} answers in a row took over ${secondsBelow(slow.limitMs)} seconds each, the last ${seconds(slow.answerMs)} seconds, with ${threads}`;
 }
 
 /** Resting because this computer cannot keep up (cap-threads): what was measured, and whether it keeps happening. */
@@ -107,8 +113,9 @@ export function captionsStatusLine(view: CaptionsStatus | null): string | null {
 export function threadsNote(view: CaptionsStatus): string | null {
   const p = view.processors;
   if (p >= view.timing.threads) return null;
+  // An IndicConformer model always runs two (cap-review-threads n7): on one processor, said so.
   return p === 1
-    ? 'This computer has 1 logical processor, so captions use 1 engine thread.'
+    ? 'This computer has 1 logical processor, so captions use 1 engine thread; an IndicConformer model always uses two.'
     : `This computer has ${String(p)} logical processors, so captions use ${String(p)} engine threads.`;
 }
 

@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { availableParallelism, constants, setPriority } from 'node:os';
 import { CAPTIONS_STOP_AFTER_RESTS, type CaptionTiming } from '../../shared/captions';
 import {
+  SLOW_ANSWERS_IN_A_ROW,
   SPEECH_RATE,
   type Heard,
   type HeardWord,
@@ -354,7 +355,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         return all;
       };
 
-      const hold = (measured: Pick<SlowHold, 'answerMs' | 'behindMs'>): void => {
+      const hold = (measured: Pick<SlowHold, 'answerMs' | 'behindMs' | 'limitMs'>): void => {
         if (busy || stopped) return;
         busy = true;
         rests += 1;
@@ -405,9 +406,10 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           const asked = await ask(samples);
           if (!asked || ended()) return;
           const behind = Date.now() - clipEndAt;
-          slowInARow = asked.tookMs > stepMs * 1.5 ? slowInARow + 1 : 0;
-          if (slowInARow >= 3 || behind > 8_000) {
-            hold({ answerMs: asked.tookMs, behindMs: behind });
+          const limitMs = stepMs * 1.5;
+          slowInARow = asked.tookMs > limitMs ? slowInARow + 1 : 0;
+          if (slowInARow >= SLOW_ANSWERS_IN_A_ROW || behind > 8_000) {
+            hold({ answerMs: asked.tookMs, behindMs: behind, limitMs });
             return;
           }
           const heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
