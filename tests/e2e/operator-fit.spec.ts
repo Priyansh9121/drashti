@@ -4,7 +4,9 @@ import axe from 'axe-core';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { NETWORK_ENV, networkOn } from './devices';
+import WebSocket from 'ws';
+import type { ToDevice } from '../../src/shared/network';
+import { NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -473,6 +475,85 @@ for (const mode of ['pro', 'simple'] as const)
         `${mode} ${String(size.width)} × ${String(size.height)}: ${String(findings.length)} findings\n${findings.join('\n')}`,
       );
       expect(findings).toEqual([]);
+      await app.close();
+    });
+
+/** A tablet's feed opened as its stage display's page opens it (paired-seats.spec.ts): the hello, then the welcome. */
+async function connectTablet(port: number, token: string): Promise<WebSocket> {
+  const ws = new WebSocket(`ws://127.0.0.1:${String(port)}/api/v1/feed`);
+  await new Promise<void>((resolve, reject) => {
+    ws.once('open', () => {
+      resolve();
+    });
+    ws.once('error', reject);
+  });
+  const welcome = new Promise<ToDevice>((resolve) =>
+    ws.once('message', (data: Buffer) => {
+      resolve(JSON.parse(data.toString('utf8')) as ToDevice);
+    }),
+  );
+  ws.send(JSON.stringify({ type: 'hello', token }));
+  expect(await welcome).toMatchObject({ type: 'welcome', device: { kind: 'stage' } });
+  return ws;
+}
+
+/** The status bar's parts and how wide each is, and the row's own width and what it needs, for the run's output. */
+const statusParts = (win: Page) =>
+  win.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>('footer[aria-label="Status"]');
+    if (!bar) return null;
+    return {
+      width: bar.clientWidth,
+      needs: bar.scrollWidth,
+      parts: [...bar.children].map((c) => ({
+        part: c.getAttribute('data-testid') ?? c.tagName.toLowerCase(),
+        width: Math.round(c.getBoundingClientRect().width),
+        words: c.textContent.slice(0, 60),
+      })),
+    };
+  });
+
+/*
+ * Stage off with a stage tablet connected (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)", and
+ * a22-review-stage8's third look, MUST 1): the status bar says beside "Stage off" that the tablet shows the audience
+ * picture. In CI's 1024 × 645, in both modes, with Audience on and off too (an ordinary end of a service), its words
+ * and every other part of the status bar fit: none cut short, nothing past the window's edge.
+ */
+for (const mode of ['pro', 'simple'] as const)
+  for (const audience of ['on', 'off'] as const)
+    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, Stage off with a stage tablet connected, Audience ${audience}: the status bar's words fit, none cut short, nothing past the window's edge`, async () => {
+      test.setTimeout(120_000);
+      const { app } = await launchApp(NETWORK_ENV);
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      await sizeOperatorWindow(app, win, CI_WINDOW);
+      const { port } = await networkOn(win);
+      const token = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
+      const feed = await connectTablet(port, token);
+      // Off from Pro Mode first (Simple Mode only turns them on).
+      for (const which of audience === 'off' ? (['stage', 'audience'] as const) : (['stage'] as const)) {
+        const turned = await win.evaluate(
+          (w) => (globalThis as PageGlobals).drashti.screenSwitches.turn(w, false),
+          which,
+        );
+        expect(turned.ok).toBe(true);
+      }
+      if (mode === 'simple') {
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+      }
+      await expect(win.getByTestId('switch-off-stage-hint')).toBeVisible();
+      await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience === 'off' ? 1 : 0);
+      await win.evaluate(() => document.fonts.ready.then(() => undefined));
+      console.log(`${mode}, Audience ${audience}: the status bar ${JSON.stringify(await statusParts(win))}`);
+      const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
+      if (faults.length > 0)
+        await test.info().attach(`${mode}-stage-off-tablet-audience-${audience}`, {
+          body: await win.screenshot(),
+          contentType: 'image/png',
+        });
+      expect(faults).toEqual([]);
+      feed.close();
       await app.close();
     });
 

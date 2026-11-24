@@ -1,5 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import WebSocket from 'ws';
+import type { ToDevice } from '../../src/shared/network';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import {
   launchApp,
@@ -74,6 +76,25 @@ async function stageIs(win: Page, on: boolean): Promise<void> {
   await expect(win.getByTestId('switch-stage')).toContainText(on ? 'On' : 'Off');
   expect((await switches(win)).stage).toBe(on);
   await expect(win.getByTestId('switch-off-stage')).toHaveCount(on ? 0 : 1);
+}
+
+/** A tablet's feed opened as its stage display's page opens it (paired-seats.spec.ts): the hello, then the welcome. */
+async function connectTablet(port: number, token: string): Promise<WebSocket> {
+  const ws = new WebSocket(`ws://127.0.0.1:${String(port)}/api/v1/feed`);
+  await new Promise<void>((resolve, reject) => {
+    ws.once('open', () => {
+      resolve();
+    });
+    ws.once('error', reject);
+  });
+  const welcome = new Promise<ToDevice>((resolve) =>
+    ws.once('message', (data: Buffer) => {
+      resolve(JSON.parse(data.toString('utf8')) as ToDevice);
+    }),
+  );
+  ws.send(JSON.stringify({ type: 'hello', token }));
+  expect(await welcome).toMatchObject({ type: 'welcome', device: { kind: 'stage' } });
+  return ws;
 }
 
 /** The line under the top bar: no screen is set to Stage, with Set up Stage screen…. */
@@ -278,12 +299,22 @@ test('(d) set to Stage with nothing showing it on this computer: only a tablet p
   // The hall's projector and one tablet paired as Stage. Stage still off (the owner's QA23-STAGE8-2, "Keep Off, say
   // so (Rec.)"): the status bar says the tablet shows the audience picture until Stage is on.
   const { port } = await networkOn(win);
-  await pairToken(win, port, 'stage', 'Placeholder tablet');
+  const token = await pairToken(win, port, 'stage', 'Placeholder tablet');
   await stageIs(win, false);
+  // Paired but not connected now (a22-review-stage8, third look, SHOULD): it shows nothing, so "Stage off" alone.
+  await expect(win.getByTestId('switch-off-stage')).toContainText('Stage off');
+  await expect(hint).toHaveCount(0);
+  // Its stage display's feed open: the tablet shows the audience picture until Stage is on, and the status bar says so.
+  const feed = await connectTablet(port, token);
   await expect(hint).toHaveText('the stage tablet shows the audience picture');
   await expect(win.getByTestId('switch-off-stage')).toContainText(
     'Stage off · the stage tablet shows the audience picture',
   );
+  // Its feed closed (the tablet switched off): "Stage off" alone again; open again, said again.
+  feed.close();
+  await expect(hint).toHaveCount(0);
+  const tabletFeed = await connectTablet(port, token);
+  await expect(hint).toHaveText('the stage tablet shows the audience picture');
   // On says nothing of no screen, here or in the panel.
   await win.getByTestId('switch-stage').click();
   await stageIs(win, true);
@@ -340,5 +371,6 @@ test('(d) set to Stage with nothing showing it on this computer: only a tablet p
   await offAndOn(win);
   await expect(noStageLine(win)).toHaveCount(0);
   await expect(panel.getByTestId('stage-no-screen')).toHaveCount(0);
+  tabletFeed.close();
   await app.close();
 });
