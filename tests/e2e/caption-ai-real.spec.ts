@@ -96,7 +96,9 @@ for (const route of ROUTES) {
       pack: { kind: 'zip', path: zip },
       // The stream-clock seam (alpha.23): the clips play on the stream page's own audio clock, never through
       // Chromium's fake microphone, which fell behind real time on CI's Mac and lost sound (cap-realc.md). Right words
-      // on the Mac here mean the fake device was the cause; wrong words would be the stream's own sound path.
+      // on the Mac here mean the fake device was the cause; wrong words would be the stream's own sound path. Each
+      // clip is placed where it played in the stream's graph (route-c-placement.ts), whose clock ran slower than real
+      // time on CI's Mac (run 45401342094; QA23-REALC-3, the owner's call).
       seam: 'stream-clock',
       wav,
       sounds,

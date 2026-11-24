@@ -14,6 +14,7 @@ import {
 } from './helpers';
 import { plainText, type PlacedSound } from './caption-clips';
 import { framesVerdict, meter, type SoundSeam } from './route-c-frames';
+import { latencyFromGraph, placeByGraph } from './route-c-placement';
 
 /*
  * Route C inside Drashti (alpha.23, cap-realc; a22-review-cap S4), with no stand-in engine (no DRASHTI_TEST_SPEECH):
@@ -385,12 +386,28 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     expect(helper.below, `${helper.args}: below the show`).toBe(true);
     expect((await packView())[0]?.inUse).toBe(true);
 
+    // Through the stream-clock seam each clip is placed where it played in the stream's graph (route-c-placement.ts:
+    // its level reports), as that graph's clock may run slower than real time (CI's Mac, run 45401342094); with the fake
+    // microphone, where the file holds it from soundAskedAt (the file began no earlier).
+    const onGraph = (o.seam ?? 'fake-microphone') === 'stream-clock';
+    const graphPlaced = async () =>
+      placeByGraph(
+        (await levels()).filter((l) => l.at >= soundAskedAt),
+        o.sounds.length,
+      );
     // Every sound heard: its phrase settled (the operator's review panel says so).
     await expect
       .poll(
-        async () =>
-          (await reviewed()).some((r) => r.status === 'settled' && r.at >= soundAskedAt + last.speechStartMs),
-        { timeout: last.endMs + o.gapMs + 30_000 },
+        async () => {
+          const lastStart = onGraph
+            ? (await graphPlaced())?.at(-1)?.startAt
+            : soundAskedAt + last.speechStartMs;
+          return (
+            lastStart !== undefined &&
+            (await reviewed()).some((r) => r.status === 'settled' && r.at >= lastStart)
+          );
+        },
+        { timeout: (onGraph ? 2 : 1) * last.endMs + o.gapMs + 30_000 },
       )
       .toBe(true);
     // The last one a moment to reach the places (each draws a settled phrase within the live limit, or fails).
@@ -415,6 +432,23 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       if (r.status === 'settled' && !settled.has(r.phraseId))
         settled.set(r.phraseId, { at: r.at, text: r.text, endAt: r.endAt + mainOffset });
     const phrases = [...settled.values()];
+    // Each sound's window: where its voice began, where its sound began, where its voice ended.
+    const placed = onGraph ? await graphPlaced() : null;
+    if (onGraph) summary['placedOnGraph'] = placed;
+    const windows = o.sounds.map((sound, i) => {
+      const p = placed?.[i];
+      return p
+        ? { startAt: p.startAt, soundAt: p.startAt, endAt: p.endAt }
+        : {
+            startAt: soundAskedAt + sound.speechStartMs,
+            soundAt: soundAskedAt + sound.startMs,
+            endAt: soundAskedAt + sound.speechEndMs,
+          };
+    });
+    if (onGraph) {
+      await say();
+      expect(placed, 'every clip placed where it played in the stream’s graph').not.toBeNull();
+    }
     // Every sound's numbers first (S3: kept even when one fails), then its checks.
     const report: Record<string, unknown>[] = [];
     const checks: {
@@ -425,11 +459,10 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     }[] = [];
     for (const [i, sound] of o.sounds.entries()) {
       const next = o.sounds[i + 1];
-      // A phrase is this sound's when it settled after the sound began (the file at its earliest) and before the next.
-      const own = phrases.filter(
-        (p) =>
-          p.at >= soundAskedAt + sound.speechStartMs && (!next || p.at < soundAskedAt + next.speechStartMs),
-      );
+      const w = windows[i] ?? { startAt: 0, soundAt: 0, endAt: 0 };
+      const nextW = windows[i + 1];
+      // A phrase is this sound's when it settled after the sound began and before the next began.
+      const own = phrases.filter((p) => p.at >= w.startAt && (!nextW || p.at < nextW.startAt));
       const finalText = own.at(-1)?.text ?? '';
       const heard = own.length
         ? o.heard(sound, own.map((p) => p.text).join(' '))
@@ -439,15 +472,17 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       for (const [name, drawn] of watched) {
         // The words of its settled phrase on that place (the first time they were drawn after the sound began).
         const at = own.length
-          ? ((await drawn()).find(
-              (d) => d.at >= soundAskedAt + sound.startMs && plainText(d.text) === plainText(finalText),
-            )?.at ?? null)
+          ? ((await drawn()).find((d) => d.at >= w.soundAt && plainText(d.text) === plainText(finalText))
+              ?.at ?? null)
           : null;
-        // From the end of the sound to its words on that place: the file began no earlier than soundAskedAt, so this
-        // is never less than the truth; soundOnAt gives the least it could be.
-        shown[name] = at === null ? null : at - (soundAskedAt + sound.speechEndMs);
-        row[`${name}Ms`] = at === null ? null : Math.round(at - (soundAskedAt + sound.speechEndMs));
-        row[`${name}AtLeastMs`] = at === null ? null : Math.round(at - (soundOnAt + sound.speechEndMs));
+        // From the end of the sound to its words on that place. With the fake microphone the file began no earlier
+        // than soundAskedAt, so this is never less than the truth (soundOnAt gives the least it could be); through
+        // the stream-clock seam, from the end of its sound in the graph with the meter's step added.
+        const latest = at === null ? null : onGraph ? latencyFromGraph(at, w) : at - w.endAt;
+        shown[name] = latest;
+        row[`${name}Ms`] = latest === null ? null : Math.round(latest);
+        if (!onGraph)
+          row[`${name}AtLeastMs`] = at === null ? null : Math.round(at - (soundOnAt + sound.speechEndMs));
       }
       // When the sound itself reached the stream's sound graph, against when the file holds it (the file at its
       // earliest): a fake microphone late or slow on a busy computer shows here, apart from the recogniser.
@@ -515,10 +550,11 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     // QR-1 A): worse only when every sound's window is worse than both controls (Q59-1).
     const all = await frames();
     const controls = [meter(all, controlFrom, controlTo), meter(all, offAt + 500, afterTo)];
-    const trials = o.sounds.map((sound) => {
-      const own = phrases.filter((p) => p.at >= soundAskedAt + sound.speechStartMs);
+    const trials = o.sounds.map((sound, i) => {
+      const startAt = windows[i]?.startAt ?? soundAskedAt + sound.speechStartMs;
+      const own = phrases.filter((p) => p.at >= startAt);
       const settledAt = own[0]?.at ?? soundAskedAt + sound.endMs + o.gapMs;
-      return meter(all, soundAskedAt + sound.speechStartMs, settledAt + 500, controls[0]?.period);
+      return meter(all, startAt, settledAt + 500, controls[0]?.period);
     });
     summary['controls'] = controls;
     summary['trials'] = trials;
