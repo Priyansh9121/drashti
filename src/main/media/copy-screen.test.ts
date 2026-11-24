@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { copyBox, copySize } from '../../shared/picture-look';
 import { NO_GEOMETRY } from '../../shared/screen-geometry';
 import type { DisplayInfo, NodeDisplays, ScreenConfig, ScreenRole } from '../../shared/screens';
-import { largestAudienceScreen } from './copy-screen';
+import { largestAudienceScreen, audienceScreenSizes } from './copy-screen';
 
 /*
  * The size sharpened copies are made at (Session 26g): the largest audience screen's picture as drawn.
@@ -149,4 +149,23 @@ describe("the sharpened copy's size", () => {
       height: 1080,
     });
   });
+});
+
+it('retains every physical aspect for display renditions, including equally large portrait and landscape canvases', () => {
+  const a = screen('landscape');
+  const b = screen('portrait', { canvasWidth: 1080, canvasHeight: 1920 });
+  expect(
+    audienceScreenSizes({
+      local: [
+        { screen: a, window: { width: 1920, height: 1080 } },
+        { screen: b, window: { width: 1080, height: 1920 } },
+      ],
+      screens: [a, b],
+      roleOf,
+      nodes: [],
+    }),
+  ).toEqual([
+    { width: 1920, height: 1080 },
+    { width: 1080, height: 1920 },
+  ]);
 });

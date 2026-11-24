@@ -1,5 +1,6 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { nativeDeckMotion } from '../../../shared/deck';
 import { type DeckNativeTransition, isDeckNativeTransition } from '../../../shared/deck-transition';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
@@ -11,6 +12,7 @@ import { hasPicture, lowerThird } from '../../../shared/program';
 import { placeContent, type Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
+import { decodeSlideImage, slideImageDecoded } from './slide-image-decoding';
 import { CanvasClip, OwnLayers } from './canvas-clip';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
 import type { TimerState } from '../../../shared/timers';
@@ -74,6 +76,8 @@ interface Showing {
      * the engine's clock. It is made in the very frame its pictures can be drawn in.
      */
     picturesBy?: number;
+    /** A new scene prepares its own DOM images, even when the initial preloader decoded their addresses. */
+    initial?: true;
   } | null;
 }
 
@@ -172,7 +176,7 @@ export function firstShowing(layer: SlideLayer | null, now: number, picturesFirs
     return {
       on: layer,
       off: null,
-      fade: { kind: 'cut', ms: 1, start: null, picturesBy: now + MEDIA_WAIT_MS },
+      fade: { kind: 'cut', ms: 1, start: null, picturesBy: now + MEDIA_WAIT_MS, initial: true },
     };
   return { on: layer, off: null, fade: null };
 }
@@ -504,9 +508,13 @@ export function paintWaiting(els: Pick<Layers, 'in' | 'out' | 'shadeOut'>): void
 function notDrawable(
   root: HTMLElement,
   layer: SlideLayer,
+  decodedPictures = false,
+  ownImages = false,
 ): { images: HTMLImageElement[]; videos: HTMLVideoElement[]; first: HTMLVideoElement | undefined } {
   const native = nativeDeckMotion(layer.slide.deck) !== undefined;
-  const images = Array.from(root.querySelectorAll('img')).filter((img) => !img.complete);
+  const images = Array.from(root.querySelectorAll('img')).filter(
+    (img) => !img.complete || (decodedPictures && (ownImages || !slideImageDecoded(img))),
+  );
   const all = Array.from(root.querySelectorAll('video'));
   const first = all.find((video) => video.dataset['deckFirstFrame'] !== undefined);
   const videos = all.filter((video) =>
@@ -521,9 +529,41 @@ function notDrawable(
 }
 
 /** Whether every picture and video in `root` can be drawn now (Session 58: asked before a frame is painted). */
-export function slideMediaDrawable(root: HTMLElement, layer: SlideLayer): boolean {
-  const { images, videos } = notDrawable(root, layer);
+export function slideMediaDrawable(
+  root: HTMLElement,
+  layer: SlideLayer,
+  decodedPictures = false,
+  ownImages = false,
+): boolean {
+  const { images, videos } = notDrawable(root, layer, decodedPictures, ownImages);
   return images.length === 0 && videos.length === 0;
+}
+
+/**
+ * A decode may reject before its file has loaded. That is not permission to show the slide's colour in its place:
+ * wait for the real load/error, then give a loaded picture one more native decode. The caller's original deadline
+ * still wins, and abort removes the fallback listeners when that wait is over.
+ */
+async function prepareSlideImage(img: HTMLImageElement, signal: AbortSignal): Promise<void> {
+  try {
+    await decodeSlideImage(img);
+  } catch {
+    if (!img.complete && !signal.aborted)
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          img.removeEventListener('load', done);
+          img.removeEventListener('error', done);
+          signal.removeEventListener('abort', done);
+          resolve();
+        };
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+        signal.addEventListener('abort', done, { once: true });
+        if (img.complete || signal.aborted) done();
+      });
+    if (!signal.aborted && img.complete && img.naturalWidth > 0)
+      await decodeSlideImage(img).catch(() => undefined);
+  }
 }
 
 /**
@@ -534,9 +574,15 @@ export function slideMediaReady(
   root: HTMLElement,
   deadline: number,
   layer: SlideLayer,
+  decodedPictures = false,
+  ownImages = false,
 ): true | Promise<void> {
-  const { images, videos, first } = notDrawable(root, layer);
-  const waits: Promise<unknown>[] = images.map((img) => img.decode().catch(() => undefined));
+  const { images, videos, first } = notDrawable(root, layer, decodedPictures, ownImages);
+  if (images.length === 0 && videos.length === 0) return true;
+  const stopImages = images.length > 0 ? new AbortController() : null;
+  const waits: Promise<unknown>[] = stopImages
+    ? images.map((img) => prepareSlideImage(img, stopImages.signal))
+    : [];
   for (const video of videos)
     waits.push(
       new Promise<void>((resolve) => {
@@ -546,14 +592,15 @@ export function slideMediaReady(
           video.addEventListener(event, () => resolve(), { once: true });
       }),
     );
-  if (waits.length === 0) return true;
   return Promise.race([
     Promise.all(waits).then(() => undefined),
     new Promise<void>((resolve) =>
       // eslint-disable-next-line no-restricted-syntax -- its deadline is the engine's (3 s after the slide went up), so every screen still waiting starts at once
       setTimeout(resolve, Math.max(0, deadline - engineNow())),
     ),
-  ]);
+  ]).finally(() => {
+    stopImages?.abort();
+  });
 }
 
 /**
@@ -604,7 +651,9 @@ function Zoomed({ layer, children }: { layer: SlideLayer; children: ReactNode })
  * words in a box along the bottom; a slide with no words but a picture or
  * video is drawn as designed either way.
  */
-function DrawnSlide({
+// Removing an outgoing layer keeps the incoming content and its props: avoid rebuilding its placed/native tree.
+// Its children still respond to their own state and context updates.
+const DrawnSlide = memo(function DrawnSlide({
   layer,
   canvas,
   scaling,
@@ -615,6 +664,7 @@ function DrawnSlide({
   movement,
   timers,
   settled = false,
+  picturesFirst,
 }: {
   layer: SlideLayer;
   canvas: Size;
@@ -630,6 +680,7 @@ function DrawnSlide({
   timers: readonly TimerState[] | undefined;
   /** The previous click's final frame while a new click uses Drashti's own transition. */
   settled?: boolean;
+  picturesFirst: boolean;
 }) {
   const { slide, step: index, stepAt, stepFromMs, shownAt } = layer;
   const { step, native } = useMemo(() => {
@@ -654,6 +705,7 @@ function DrawnSlide({
           <NativeDeckMotion slide={drawn} timing={native}>
             <SlideView
               slide={drawn}
+              imageDecoding={picturesFirst ? 'sync' : undefined}
               media={settled ? 'still' : 'live'}
               startedAt={layer.shownAt}
               // Its videos between their files' start and end points, the engine's (Session 52), from where the
@@ -669,7 +721,7 @@ function DrawnSlide({
       </SlideTimersContext.Provider>
     </SlideMovementContext.Provider>
   );
-}
+});
 
 export function SlideLayerView({
   layer,
@@ -737,11 +789,18 @@ export function SlideLayerView({
   // A cut waiting for its pictures (the stream's page and the hall's screens): the latest it waits to, and it is
   // made whole at once.
   const picturesBy = fade?.picturesBy;
+  const initialPictures = fade?.initial === true;
   const onKey = on ? keyOf(on) : null;
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = slideMediaReady(inRef.current, picturesBy ?? shownAt + MEDIA_WAIT_MS, on);
+    const ready = slideMediaReady(
+      inRef.current,
+      picturesBy ?? shownAt + MEDIA_WAIT_MS,
+      on,
+      picturesFirst,
+      initialPictures,
+    );
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
@@ -754,12 +813,19 @@ export function SlideLayerView({
     }
     let live = true;
     void ready.then(() => {
-      if (live) begin(whole() ?? (native ? shownAt : Math.max(shownAt, engineNow())));
+      if (!live) return;
+      const reveal = () => {
+        begin(whole() ?? (native ? shownAt : Math.max(shownAt, engineNow())));
+      };
+      // A decoded picture is retained for this frame. Commit the cut while it is ready, before a deferred React
+      // render can move that reveal to another frame. Prepared Next still takes the layout fast path below.
+      if (picturesBy !== undefined) flushSync(reveal);
+      else reveal();
     });
     return () => {
       live = false;
     };
-  }, [waiting, on, onKey, native, picturesBy]);
+  }, [waiting, on, onKey, native, picturesBy, picturesFirst, initialPictures]);
 
   // Run the transition, frame by frame, from the clock every screen shares.
   const start = fade?.start ?? null;
@@ -916,17 +982,19 @@ export function SlideLayerView({
   });
 
   // A cut on the stream's page whose pictures can already be drawn (loaded ahead, as the hall's screens load them) is
-  // made before this frame is painted, as every cut is: the wait above only ever holds back a picture still loading.
+  // made before this frame is painted, as every cut is. Its sync decoding preference keeps a loaded picture in that
+  // paint too if Chromium discarded an earlier decoded copy. A cold loaded picture takes the asynchronous decode
+  // wait above, keeping the previous slide moving instead of holding a whole frame while it decodes (X19 L7).
   useLayoutEffect(() => {
     if (!waiting || picturesBy === undefined || !on || !inRef.current) return;
-    if (!slideMediaDrawable(inRef.current, on)) return;
+    if (!slideMediaDrawable(inRef.current, on, picturesFirst, initialPictures)) return;
     const begin = (start: number) => {
       setShowing((s) =>
         s.on && keyOf(s.on) === onKey && s.fade?.start === null ? { ...s, fade: { ...s.fade, start } } : s,
       );
     };
     begin(engineNow() - 1);
-  }, [waiting, picturesBy, on, onKey]);
+  }, [waiting, picturesBy, on, onKey, picturesFirst, initialPictures]);
 
   if (!on && !off) return null;
   // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on); a timer
@@ -983,6 +1051,7 @@ export function SlideLayerView({
       {underlay && (
         <div aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>
           <DrawnSlide
+            picturesFirst={picturesFirst}
             layer={underlay}
             canvas={canvas}
             scaling={scaling}
@@ -1021,6 +1090,7 @@ export function SlideLayerView({
               <div data-wipe-band-slide="" style={SLIDE_BOX}>
                 <Zoomed layer={l}>
                   <DrawnSlide
+                    picturesFirst={picturesFirst}
                     layer={l}
                     canvas={canvas}
                     scaling={scaling}
@@ -1059,6 +1129,7 @@ export function SlideLayerView({
                 }}
               >
                 <DrawnSlide
+                  picturesFirst={picturesFirst}
                   layer={l}
                   canvas={canvas}
                   scaling={scaling}
