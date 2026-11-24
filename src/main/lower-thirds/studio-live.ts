@@ -1,5 +1,5 @@
 import type { ScreenRole } from '../../shared/screens';
-import type { StudioLivePicture, StudioLiveSource } from '../../shared/studio-live';
+import type { LiveUnseen, StudioLivePicture, StudioLiveSource } from '../../shared/studio-live';
 
 /*
  * Live behind the Lower Thirds studio's preview (alpha.22, the owner: "the background while selecting the animation
@@ -33,6 +33,8 @@ export interface StudioLiveDeps {
   /** To the studio's page. */
   send(picture: StudioLivePicture | null): void;
   log(line: string): void;
+  /** Stills stopped (another backdrop, minimized, closed): what was kept for them can go (Live's copy). */
+  stopped?(): void;
   everyMs?: number;
 }
 
@@ -144,6 +146,7 @@ export function livePictureOf(
   image: CapturedImage,
   source: StudioLiveSource,
   at: number,
+  _unseen: readonly LiveUnseen[] = [],
 ): StudioLivePicture | null {
   if (image.isEmpty()) return null;
   const width = Math.min(LIVE_WIDTH, image.getSize().width);

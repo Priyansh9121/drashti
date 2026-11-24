@@ -8,6 +8,7 @@ import {
   backdropDraw,
   DEFAULT_BACKDROP,
   isBackdrop,
+  LIVE_UNSEEN,
   NO_LIVE,
   NO_WALLPAPER,
   rememberBackdrop,
@@ -32,7 +33,7 @@ const WALL: ChosenWallpaper = {
   since: 0,
 };
 const LOOKS = { m1: { zoom: 1.2 } as never };
-const still = (source: 'screen', at = 1): StudioLivePicture => ({
+const still = (source: 'screen' | 'copy', at = 1): StudioLivePicture => ({
   url: `data:image/jpeg;base64,${source}`,
   source,
   at,
@@ -112,6 +113,18 @@ describe('the studio’s backdrop', () => {
     expect(backdropDraw('live', hall, null)).toEqual({ kind: 'plain', colour: '#000000', words: NO_LIVE });
     expect(watchesLive('live')).toBe(true);
     for (const b of ['wallpaper', 'dark', 'light'] as const) expect(watchesLive(b)).toBe(false);
+  });
+
+  it('Live from its copy (no hall screen here) draws the copy’s still; with a video input or another app’s window live, it says plainly that it cannot show it', () => {
+    const hall = { wallpaper: WALL, pictures: LOOKS };
+    expect(backdropDraw('live', hall, still('copy', 3))).toEqual({ kind: 'live', picture: still('copy', 3) });
+    for (const unseen of [['input'], ['window'], ['window', 'input']] as const) {
+      const picture: StudioLivePicture = { ...still('copy', 4), unseen: [...unseen] };
+      expect(backdropDraw('live', hall, picture)).toEqual({ kind: 'live', picture, words: LIVE_UNSEEN });
+    }
+    expect(LIVE_UNSEEN).toBe('No hall screen on this computer: Live here shows no video input or shown window.');
+    // A hall screen's still never says it (that screen draws them).
+    expect(backdropDraw('live', hall, still('screen', 5))).not.toHaveProperty('words');
   });
 
   it('Dark and Light are plain; the template tiles keep their own plain backdrop', () => {

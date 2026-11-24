@@ -30,6 +30,8 @@ export const DEFAULT_BACKDROP: Backdrop = 'wallpaper';
 export const BACKDROP_KEY = 'lower-third-studio-backdrop';
 export const NO_WALLPAPER = 'No wallpaper chosen';
 export const NO_LIVE = 'No live picture to show';
+/** Live from its copy (no hall screen here) while a video input or another app's window is live: the copy draws neither. */
+export const LIVE_UNSEEN = 'No hall screen on this computer: Live here shows no video input or shown window.';
 
 export const isBackdrop = (v: unknown): v is Backdrop =>
   typeof v === 'string' && (BACKDROPS as readonly string[]).includes(v);

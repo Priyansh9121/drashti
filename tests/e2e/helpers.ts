@@ -482,10 +482,14 @@ export async function relaunchApp(
 
 /**
  * An output window's page (not the setup wizard's display numbers, which use the same page, nor the Stage preview,
- * alpha.22: a stage screen's page in a window of its own, never a screen).
+ * alpha.22: a stage screen's page in a window of its own, nor Live's copy, alpha.23: the Lower Thirds studio's
+ * picture of what is live, drawn off screen; neither is a screen).
  */
 const isOutput = (w: Page) =>
-  w.url().includes('output.html') && !w.url().includes('identify=') && !w.url().includes('stagePreview=');
+  w.url().includes('output.html') &&
+  !w.url().includes('identify=') &&
+  !w.url().includes('stagePreview=') &&
+  !w.url().includes('liveCopy=');
 
 /** The first output window's page, waiting for it to open. */
 export function outputPage(app: ElectronApplication): Promise<Page> {

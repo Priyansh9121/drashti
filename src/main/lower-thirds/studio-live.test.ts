@@ -14,8 +14,8 @@ import {
 /*
  * Live behind the Lower Thirds studio's preview (alpha.22): a still of what is live, taken about once a second while
  * the studio shows Live and never otherwise (nothing left running once it is closed or shows another backdrop), each
- * taken only after the one before is done, from a hall screen's window on this computer, else LIVE in the operator
- * window.
+ * taken only after the one before is done, from a hall screen's window on this computer, else (alpha.23) from Live's
+ * copy, which goes the moment Live stops (live-copy.test.ts).
  */
 
 const picture = (n: number): StudioLivePicture => ({
@@ -165,6 +165,33 @@ describe('StudioLive', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('tells each stop once (another backdrop, minimized, closed), so what was kept for Live (its copy) goes at once', async () => {
+    const take = vi.fn(() => Promise.resolve(picture(1)));
+    const stopped = vi.fn();
+    const live = new StudioLive({ take, send: () => undefined, log: () => undefined, stopped });
+    // Never started: nothing to tell.
+    live.watch(false);
+    live.stop();
+    expect(stopped).not.toHaveBeenCalled();
+    live.watch(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stopped).not.toHaveBeenCalled();
+    // Another backdrop.
+    live.watch(false);
+    expect(stopped).toHaveBeenCalledTimes(1);
+    // Minimized, then back, then closed.
+    live.watch(true);
+    live.pause(true);
+    expect(stopped).toHaveBeenCalledTimes(2);
+    live.pause(false);
+    live.stop();
+    expect(stopped).toHaveBeenCalledTimes(3);
+    // Closed again, or another backdrop with nothing running: nothing more.
+    live.stop();
+    live.watch(false);
+    expect(stopped).toHaveBeenCalledTimes(3);
+  });
+
   it('started again after a stop, it takes one at once', async () => {
     const take = vi.fn(() => Promise.resolve(picture(1)));
     const { live } = make(take);
@@ -223,5 +250,22 @@ describe('where Live takes its picture', () => {
     expect(livePictureOf(image(640, 360), 'screen', 6)?.at).toBe(6);
     expect(asked).toEqual([LIVE_WIDTH, 640]);
     expect(livePictureOf(image(1920, 1080, true), 'screen', 7)).toBeNull();
+  });
+
+  it('a still from Live’s copy says so, and what is live that the copy does not draw (left out when nothing)', () => {
+    const image: CapturedImage = {
+      isEmpty: () => false,
+      getSize: () => ({ width: 960, height: 540 }),
+      resize: () => image,
+      toJPEG: () => Buffer.from('jpeg'),
+    };
+    expect(livePictureOf(image, 'copy', 8)).toEqual({
+      url: `data:image/jpeg;base64,${Buffer.from('jpeg').toString('base64')}`,
+      source: 'copy',
+      at: 8,
+    });
+    expect(livePictureOf(image, 'copy', 9, [])).not.toHaveProperty('unseen');
+    expect(livePictureOf(image, 'copy', 10, ['input'])).toMatchObject({ source: 'copy', unseen: ['input'] });
+    expect(livePictureOf(image, 'copy', 11, ['window', 'input'])?.unseen).toEqual(['window', 'input']);
   });
 });
