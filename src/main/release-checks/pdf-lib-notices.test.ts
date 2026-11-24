@@ -12,7 +12,7 @@ it('ships the complete installed PDF writer licences and the zlib notice on both
     ['@pdf-lib/upng', 'LICENSE', 'upng-MIT.txt'],
     ['pako', 'LICENSE', 'pako-MIT.txt'],
     ['tslib', 'LICENSE.txt', 'tslib-0BSD.txt'],
-  ]) {
+  ] as const) {
     expect(read(join('LICENSES/pdf-lib', shipped))).toBe(
       read(join(dirname(require.resolve(`${name}/package.json`)), file)),
     );
@@ -24,7 +24,7 @@ it('ships the complete installed PDF writer licences and the zlib notice on both
     read(join(dirname(require.resolve('tslib/package.json')), 'CopyrightNotice.txt')),
   );
   expect(read('LICENSES/pdf-lib/tslib-1-CopyrightNotice.txt')).toBe(
-    read(join(helper, 'node_modules/tslib/CopyrightNotice.txt')),
+    read(join(dirname(require.resolve('tslib/package.json', { paths: [helper] })), 'CopyrightNotice.txt')),
   );
   expect(zlib).toContain('This notice may not be removed or altered from any source distribution.');
   expect(read('electron-builder.yml')).toMatch(/from: LICENSES\s+to: licenses/);
