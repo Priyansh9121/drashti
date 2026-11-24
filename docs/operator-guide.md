@@ -577,6 +577,10 @@ For a clip, choose start and end under **Trim**, then **Preparation and export**
 
 ### Combining videos
 
-In Pro Mode, **Combine videos…** joins two or more videos into one new video that plays them one after the other. In **Media**, click the first video, then Cmd-click (Ctrl-click on Windows) the others, right-click one of them and choose **Combine videos…**. Put them in the order they should play with the up and down arrows, then press **Combine**.
+In Pro Mode, **Combine videos…** joins two or more videos into one new video that plays them one after the other. In **Media**, click the first video, then Cmd-click (Ctrl-click on Windows) the others, right-click one of them and choose **Combine videos…**. Put them in the order they should play with the up and down arrows, choose a **Transition**, then press **Combine**.
+
+**Transition** goes between each two: **Dissolve** (the picture and sound cross over), **Fade through black** (the sound dips with it) or **Cut** (none). **Length** is 0.5 to 3 seconds (1 second unless you choose). A transition overlaps the two videos, so the new video is shorter than the two together by its length at each join. A video shorter than the transition is joined with a plain cut, and the window says so.
 
 The new video is added to **Media** beside them, named after them (**Opening + Talk.mp4**). It has the first video's picture size and frame rate: a video of another shape is fitted inside it with black bars, never stretched, and a video with no sound is silent for its length. Combining waits while anything is up, streaming or recording, and starts again from the beginning if one starts while it runs. The window shows its progress, **Stop**, and when it is done or why it failed; you may close it meanwhile. The originals stay unchanged. A combine still waiting when Drashti quits is not kept: combine them again after the restart.
+
+To keep it as a file too, tick **Also save a copy to a file** before **Combine**: the save window opens first, in Downloads, at the new video's name. When it is done, **Show in Media** chooses it in **Media**, and **Export…** saves another copy to a file you choose. A copy is the same file, made once; your computer asks before replacing a file of that name. Nothing is exported while anything is up, streaming or recording.

@@ -8,6 +8,7 @@ import type {
   CombineJob,
   CombineRequest,
   CombineResult,
+  ExportCopyResult,
   VideoProxyResult,
 } from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
@@ -809,6 +810,8 @@ export interface DrashtiBridge {
     combineVideos(request: CombineRequest): Promise<CombineResult>;
     combineList(): Promise<CombineJob[]>;
     stopCombine(jobId: string): Promise<boolean>;
+    /** Export…: a finished combine's video saved to a file chosen in the system's save dialog (Downloads, its name). */
+    exportCombined(jobId: string): Promise<ExportCopyResult>;
     /** Cached source-time analysis; queues only through the idle conversion worker. Audio uses 0:a:N. */
     videoAnalysis(
       mediaId: string,

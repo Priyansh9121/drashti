@@ -6,9 +6,17 @@ import {
   COMBINE_MOST,
   type CombineJob,
   type CombineResult,
+  type ExportCopyResult,
 } from '../../shared/video-copies';
 import type { DetailsRow } from '../media/media-details';
-import { combinedName, combinePlan, type CombinePlan } from './combine-plan';
+import {
+  combinedName,
+  combineJoins,
+  combinePlan,
+  type CombineChoice,
+  type CombinePlan,
+} from './combine-plan';
+import { copyToChosen } from './export-copy';
 import type { ConvertService, CopyOptions } from './convert-service';
 import type { MediaInfo } from './plan';
 
@@ -40,11 +48,19 @@ export interface CombineDeps {
   prepareImport(file: string, info: MediaInfo, name: string, signal: AbortSignal): Promise<string>;
   /** List it in Media. */
   publishImport(mediaId: string): Promise<boolean>;
+  /**
+   * The system's save dialog, offering Downloads and `name` (Also save a copy to a file, and Export…): the file chosen,
+   * or null when cancelled. The system's own dialog asks before replacing a file there.
+   */
+  pickCopy(name: string): Promise<string | null>;
+  freeBytes(dir: string): number;
 }
 interface Entry {
   job: CombineJob;
   sources: CombineSource[];
   conversionId: string | null;
+  /** Also save a copy to a file: where, chosen before it combined. */
+  copyTo: string | null;
 }
 /** How many combines may wait at once. */
 const WAITING_MOST = 5;
@@ -56,8 +72,15 @@ export class CombineVideos {
     rmSync(deps.workDir, { recursive: true, force: true });
     mkdirSync(deps.workDir, { recursive: true });
   }
+  /** Read afresh after an await (the save dialog): Drashti may have started closing meanwhile. */
+  private closing(): boolean {
+    return this.closed;
+  }
   list(): CombineJob[] {
-    return this.entries.map((entry) => ({ ...entry.job, mediaIds: [...entry.job.mediaIds] }));
+    return this.entries.map((entry) => this.told(entry));
+  }
+  private told(entry: Entry): CombineJob {
+    return { ...entry.job, mediaIds: [...entry.job.mediaIds], short: [...entry.job.short] };
   }
   /** Each chosen video as Media holds it now, or why it cannot be combined. */
   private resolve(mediaId: string): CombineSource | string {
@@ -77,14 +100,14 @@ export class CombineVideos {
       return typeof now !== 'string' && now.path === source.path && now.sha256 === source.sha256;
     });
   }
-  start(raw: unknown): CombineResult {
+  async start(raw: unknown): Promise<CombineResult> {
     if (this.closed)
       return { ok: false, message: 'Drashti is closing. Combine the videos after restarting.' };
     const parsed = combineRequestSchema.safeParse(raw);
     if (!parsed.success)
       return {
         ok: false,
-        message: `Choose two or more videos (at most ${String(COMBINE_MOST)}), each once, then Combine.`,
+        message: `Choose two or more videos (at most ${String(COMBINE_MOST)}), each once, and a transition of 0.5 to 3 seconds, then Combine.`,
       };
     if (
       this.entries.filter((e) => e.job.state === 'waiting' || e.job.state === 'preparing').length >=
@@ -100,19 +123,38 @@ export class CombineVideos {
       if (typeof source === 'string') return { ok: false, message: source };
       sources.push(source);
     }
-    const lengths = parsed.data.mediaIds.map((id) => this.deps.row(id)?.durationMs ?? 0);
+    const request = parsed.data;
+    const choice = { transition: request.transition, transitionMs: request.transitionMs };
+    const known = combineJoins(
+      request.mediaIds.map((id) => this.deps.row(id)?.durationMs ?? 0),
+      choice,
+    );
+    const name = combinedName(sources.map((s) => s.name));
+    // Also save a copy to a file: chosen now, before anything is made (cancelled: nothing is).
+    let copyTo: string | null = null;
+    if (request.saveCopy) {
+      copyTo = await this.deps.pickCopy(name);
+      if (copyTo === null) return { ok: true, job: null };
+      if (this.closing() || !this.current(sources))
+        return { ok: false, message: 'The videos changed while the save dialog was open. Combine again.' };
+    }
     const entry: Entry = {
       sources,
       conversionId: null,
+      copyTo,
       job: {
         id: randomUUID(),
-        name: combinedName(sources.map((s) => s.name)),
-        mediaIds: [...parsed.data.mediaIds],
+        name,
+        mediaIds: [...request.mediaIds],
+        transition: request.transition,
+        transitionMs: request.transitionMs,
+        short: known.short.map((at) => sources[at]?.name ?? ''),
         state: 'waiting',
         progress: null,
         note: 'Waiting for an idle moment.',
         message: null,
         mediaId: null,
+        savedTo: null,
       },
     };
     if (this.entries.length >= 50) {
@@ -120,13 +162,10 @@ export class CombineVideos {
       if (at >= 0) this.entries.splice(at, 1);
     }
     this.entries.push(entry);
-    void this.run(
-      entry,
-      lengths.reduce((sum, ms) => sum + ms, 0),
-    );
-    return { ok: true, job: { ...entry.job, mediaIds: [...entry.job.mediaIds] } };
+    void this.run(entry, choice, known.lengthMs);
+    return { ok: true, job: this.told(entry) };
   }
-  private async run(entry: Entry, knownMs: number): Promise<void> {
+  private async run(entry: Entry, choice: CombineChoice, knownMs: number): Promise<void> {
     const { job, sources } = entry;
     const [first, ...rest] = sources;
     if (!first) return;
@@ -156,14 +195,17 @@ export class CombineVideos {
           return 'One of the videos changed in Media. Choose them again, then Combine.';
         if (words.more.length !== rest.length) return 'Drashti could not read every chosen video. Try again.';
         try {
-          made.plan = combinePlan([
-            { file: first.path, info: read, words: words.words },
-            ...rest.map((s, at) => ({
-              file: s.path,
-              info: words.more[at]?.info ?? { durationMs: null, video: null, audio: null },
-              words: words.more[at]?.words ?? '',
-            })),
-          ]);
+          made.plan = combinePlan(
+            [
+              { file: first.path, info: read, words: words.words },
+              ...rest.map((s, at) => ({
+                file: s.path,
+                info: words.more[at]?.info ?? { durationMs: null, video: null, audio: null },
+                words: words.more[at]?.words ?? '',
+              })),
+            ],
+            choice,
+          );
           options.lengthMs = Math.max(knownMs, made.plan.lengthMs);
         } catch (error) {
           return error instanceof Error
@@ -237,9 +279,45 @@ export class CombineVideos {
         'The combined video could not be added to Media. Check free disk space, then Combine again.';
       return;
     }
-    job.state = 'done';
     job.progress = 1;
     job.mediaId = made.importId;
+    // Also save a copy to a file: Media's new copy copied there, never encoded again.
+    if (entry.copyTo) {
+      job.note = 'Saving a copy to the file chosen…';
+      const saved = await this.copyOut(made.importId, entry.copyTo);
+      job.note = null;
+      if (saved.ok) job.savedTo = saved.path;
+      else
+        job.message = `Added to Media, but the copy could not be saved: ${saved.message} Use Export… to try again.`;
+    }
+    job.state = 'done';
+  }
+  /** Media's own copy of a finished combine copied to `dest`, whole or not at all, only while idle. */
+  private copyOut(mediaId: string | null, dest: string): Promise<ExportCopyResult> {
+    const row = mediaId ? this.deps.row(mediaId) : null;
+    if (!row || row.deleted || row.missing || !row.path)
+      return Promise.resolve({
+        ok: false,
+        message: 'The combined video is no longer in Media. Combine the videos again.',
+      });
+    return copyToChosen(join(this.deps.mediaDir, row.path), dest, {
+      idle: () => this.deps.idle(),
+      freeBytes: (dir) => this.deps.freeBytes(dir),
+    });
+  }
+  /** Export…: a finished combine's video saved to a file chosen in the system's save dialog (Downloads, its name). */
+  async exportCopy(id: string): Promise<ExportCopyResult> {
+    const entry = this.entries.find((e) => e.job.id === id && e.job.state === 'done' && e.job.mediaId);
+    if (!entry) return { ok: false, message: 'That combined video is not ready. Combine the videos again.' };
+    if (!this.deps.idle())
+      return {
+        ok: false,
+        message:
+          'Export… waits for an idle moment: nothing can be exported while anything is up, streaming or recording. Try again when the show is idle.',
+      };
+    const dest = await this.deps.pickCopy(entry.job.name);
+    if (dest === null) return { ok: true, path: null };
+    return this.copyOut(entry.job.mediaId, dest);
   }
   stop(id: string): boolean {
     const entry = this.entries.find(

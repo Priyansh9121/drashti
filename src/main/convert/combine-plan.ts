@@ -1,5 +1,5 @@
 import { basename, extname } from 'node:path';
-import { COMBINE_MOST } from '../../shared/video-copies';
+import { COMBINE_MOST, COMBINE_TRANSITION_MS, type CombineTransition } from '../../shared/video-copies';
 import { hasAlpha, PLAYER, type MediaInfo } from './plan';
 
 /*
@@ -24,8 +24,12 @@ export interface CombinePlan {
   height: number;
   /** Its frames per second, as FFmpeg's fps filter takes it ("25", "30000/1001"). */
   rate: string;
-  /** The lengths added up. */
+  /** The lengths added up, less each transition's overlap. */
   lengthMs: number;
+  /** Each join, in order: the transition chosen, or a plain cut (Cut, or a video too short for it). */
+  joins: ('transition' | 'cut')[];
+  /** The videos (by their place in the order) too short for the transition: joined with a cut. */
+  short: number[];
   args(dest: string): string[];
 }
 /** The fastest frame rate a combined video keeps. */
@@ -71,8 +75,64 @@ function pictureOf(input: CombineInput): { width: number; height: number; rate: 
   return { width: even(width * shrink), height: even(height * shrink), rate };
 }
 
+/** What goes between them, and for how long. */
+export interface CombineChoice {
+  transition: CombineTransition;
+  transitionMs: number;
+}
+const CUT: CombineChoice = { transition: 'cut', transitionMs: COMBINE_TRANSITION_MS.usual };
+
+/**
+ * Each join's transition or cut, from the videos' lengths in order: a join gets the transition only when the video
+ * before it has the transition's length left after its own start's transition, and the one after has it too; else a
+ * plain cut, the too-short video named. The new length: the sum, less each transition's overlap.
+ */
+export function combineJoins(
+  lengthsMs: readonly number[],
+  choice: CombineChoice,
+): { joins: ('transition' | 'cut')[]; lengthMs: number; short: number[] } {
+  const t = choice.transitionMs;
+  const joins: ('transition' | 'cut')[] = [];
+  const short = new Set<number>();
+  let used = 0;
+  for (let k = 1; k < lengthsMs.length; k++) {
+    const before = (lengthsMs[k - 1] ?? 0) - used;
+    const after = lengthsMs[k] ?? 0;
+    if (choice.transition !== 'cut' && before >= t && after >= t) {
+      joins.push('transition');
+      used = t;
+      continue;
+    }
+    if (choice.transition !== 'cut') {
+      if (before < t) short.add(k - 1);
+      if (after < t) short.add(k);
+    }
+    joins.push('cut');
+    used = 0;
+  }
+  const sum = lengthsMs.reduce((all, ms) => all + ms, 0);
+  return {
+    joins,
+    lengthMs: sum - t * joins.filter((j) => j === 'transition').length,
+    short: [...short].sort((a, b) => a - b),
+  };
+}
+
+/** xfade's and acrossfade's own words for each transition: a dissolve crosses over; through black, the sound dips. */
+const LOOKS: Record<Exclude<CombineTransition, 'cut'>, { picture: string; sound: string }> = {
+  dissolve: { picture: 'fade', sound: 'c1=tri:c2=tri' },
+  'fade-black': { picture: 'fadeblack', sound: 'c1=exp:c2=exp' },
+};
+
 /** Refuse what cannot be joined, in the operator's words; else the one FFmpeg command that joins them. */
-export function combinePlan(inputs: readonly CombineInput[]): CombinePlan {
+export function combinePlan(inputs: readonly CombineInput[], choice: CombineChoice = CUT): CombinePlan {
+  if (
+    choice.transition !== 'cut' &&
+    (!Number.isInteger(choice.transitionMs) ||
+      choice.transitionMs < COMBINE_TRANSITION_MS.least ||
+      choice.transitionMs > COMBINE_TRANSITION_MS.most)
+  )
+    throw new Error('Choose a transition of 0.5 to 3 seconds, then Combine again.');
   if (inputs.length < 2) throw new Error('Choose two or more videos to combine.');
   if (inputs.length > COMBINE_MOST)
     throw new Error(`Combine takes at most ${String(COMBINE_MOST)} videos at once. Choose fewer.`);
@@ -111,9 +171,41 @@ export function combinePlan(inputs: readonly CombineInput[]): CombinePlan {
     );
     joined.push(`[v${n}][a${n}]`);
   }
-  const filter = `${branches.join(';')};${joined.join('')}concat=n=${String(inputs.length)}:v=1:a=1[v][a]`;
-  const lengthMs = inputs.reduce((sum, input) => sum + (input.info.durationMs ?? 0), 0);
+  const lengths = inputs.map((input) => input.info.durationMs ?? 0);
+  const { joins, lengthMs, short } = combineJoins(lengths, choice);
+  const steps: string[] = [];
+  if (joins.every((join) => join === 'cut'))
+    steps.push(`${joined.join('')}concat=n=${String(inputs.length)}:v=1:a=1[v][a]`);
+  else {
+    // One join at a time, onto what is joined so far (its timeline from 0, `so far` long): xfade and acrossfade overlap
+    // the transition's length; a cut is the concat filter's.
+    const t = seconds(choice.transitionMs);
+    const look = choice.transition === 'cut' ? null : LOOKS[choice.transition];
+    let picture = 'v0';
+    let sound = 'a0';
+    let soFar = lengths[0] ?? 0;
+    for (const [at, join] of joins.entries()) {
+      const k = at + 1;
+      const last = k === joins.length;
+      const [v, a] = last ? ['v', 'a'] : [`x${String(k)}`, `y${String(k)}`];
+      if (join === 'transition' && look) {
+        steps.push(
+          `[${picture}][v${String(k)}]xfade=transition=${look.picture}:duration=${t}:offset=${seconds(soFar - choice.transitionMs)}[${v}]`,
+          `[${sound}][a${String(k)}]acrossfade=d=${t}:${look.sound}[${a}]`,
+        );
+        soFar += (lengths[k] ?? 0) - choice.transitionMs;
+      } else {
+        steps.push(`[${picture}][${sound}][v${String(k)}][a${String(k)}]concat=n=2:v=1:a=1[${v}][${a}]`);
+        soFar += lengths[k] ?? 0;
+      }
+      picture = v;
+      sound = a;
+    }
+  }
+  const filter = `${branches.join(';')};${steps.join(';')}`;
   return {
+    joins,
+    short,
     width,
     height,
     rate,

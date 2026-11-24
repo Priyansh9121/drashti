@@ -203,6 +203,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // Combine videos… (alpha.22): Pro Mode's; its list stays readable.
   IPC.media.combineVideos,
   IPC.media.stopCombine,
+  IPC.media.exportCombined,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
   IPC.media.savePicture,

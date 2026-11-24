@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { MediaSummary } from '../../../shared/playlists';
-import { COMBINE_MOST } from '../../../shared/video-copies';
+import { COMBINE_MOST, type CombineJob, type ExportCopyResult } from '../../../shared/video-copies';
 import { addFileMenuItems, type FileTarget } from '../files/file-menu';
 import { Layers } from '../ui/icons';
 import type { MenuEntry } from '../ui/Menu';
@@ -53,7 +53,31 @@ export function moved<T>(list: readonly T[], at: number, by: -1 | 1): T[] {
   return next;
 }
 
-/** Red first (the transition and Export…): not built yet. */
-export function combineJobWords(_job: unknown): string[] {
-  return [];
+/** A file's name from its full path, on a Mac or Windows. */
+const fileName = (path: string) => path.split(/[\\/]/u).pop() ?? path;
+const secondsWords = (ms: number) => `${String(ms / 1000)} s`;
+
+/** What a combine is doing, in plain words: its line, then what to know about it (a cut, a copy saved, a problem). */
+export function combineJobWords(job: CombineJob): string[] {
+  const lines: string[] = [];
+  if (job.state === 'done') lines.push(`Added “${job.name}” to Media.`);
+  else if (job.state === 'waiting') lines.push(job.note ?? `Waiting to combine “${job.name}”.`);
+  else if (job.state === 'preparing')
+    lines.push(job.note ?? `Combining “${job.name}”… ${String(Math.round((job.progress ?? 0) * 100))}%`);
+  else if (job.state === 'stopped') lines.push(job.message ?? 'Stopped. Nothing was added to Media.');
+  else lines.push(job.message ?? 'The videos could not be combined. Check them, then Combine again.');
+  if (job.state !== 'failed' && job.state !== 'stopped')
+    for (const name of job.short)
+      lines.push(
+        `“${name}” is too short for the ${secondsWords(job.transitionMs)} transition: it is joined with a plain cut.`,
+      );
+  if (job.state === 'done' && job.savedTo) lines.push(`A copy was saved as “${fileName(job.savedTo)}”.`);
+  if (job.state === 'done' && job.message) lines.push(job.message);
+  return lines;
+}
+
+/** Export…'s words: where it went, or why not (nothing when its save dialog was cancelled). */
+export function exportWords(result: ExportCopyResult): string | null {
+  if (!result.ok) return result.message;
+  return result.path ? `Exported as “${fileName(result.path)}”.` : null;
 }

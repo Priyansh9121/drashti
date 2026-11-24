@@ -57,12 +57,28 @@ export type ClipExportResult = { ok: true; job: ClipExportJob | null } | { ok: f
  */
 /** The most videos one combine takes. */
 export const COMBINE_MOST = 10;
+/**
+ * What goes between them (the owner, 24 Nov 2026: "transition between 2 merged videos"): Dissolve (picture and sound
+ * cross over), Fade through black (the sound dipping), or Cut (none); the same at every join.
+ */
+export type CombineTransition = 'dissolve' | 'fade-black' | 'cut';
+/** A transition's length: 0.5 to 3 s, 1 s unless chosen. */
+export const COMBINE_TRANSITION_MS = { least: 500, most: 3000, usual: 1000 } as const;
 export interface CombineRequest {
   /** The videos, in the order they play. */
   mediaIds: string[];
+  transition: CombineTransition;
+  transitionMs: number;
+  /** Also save a copy to a file chosen in the system's save dialog, before it combines. */
+  saveCopy: boolean;
 }
 export const combineRequestSchema: z.ZodType<CombineRequest> = z
-  .object({ mediaIds: z.array(idSchema).min(2).max(COMBINE_MOST) })
+  .object({
+    mediaIds: z.array(idSchema).min(2).max(COMBINE_MOST),
+    transition: z.enum(['dissolve', 'fade-black', 'cut']),
+    transitionMs: z.number().int().min(COMBINE_TRANSITION_MS.least).max(COMBINE_TRANSITION_MS.most),
+    saveCopy: z.boolean(),
+  })
   .strict()
   .refine((r) => new Set(r.mediaIds).size === r.mediaIds.length);
 export interface CombineJob {
@@ -70,11 +86,20 @@ export interface CombineJob {
   /** The new video's name in Media. */
   name: string;
   mediaIds: string[];
+  transition: CombineTransition;
+  transitionMs: number;
+  /** The videos too short for the transition, by name: each joined with a plain cut. */
+  short: string[];
   state: 'waiting' | 'preparing' | 'done' | 'failed' | 'stopped';
-  progress: number | null;
+  progress: null | number;
   note: string | null;
   message: string | null;
   /** The new video in Media, once it is there. */
   mediaId: string | null;
+  /** The file a copy was saved to (Also save a copy to a file), once it is there. */
+  savedTo: string | null;
 }
-export type CombineResult = { ok: true; job: CombineJob } | { ok: false; message: string };
+/** A combine queued (null: the save dialog of Also save a copy to a file was cancelled, so none), or why not. */
+export type CombineResult = { ok: true; job: CombineJob | null } | { ok: false; message: string };
+/** Export…: the file written (null: the save dialog was cancelled), or why none was. */
+export type ExportCopyResult = { ok: true; path: string | null } | { ok: false; message: string };

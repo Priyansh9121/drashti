@@ -111,7 +111,7 @@ It is for preparing slides: read pages before the sabha, not while slides are ch
 4. Press **Delete** to remove the chosen rows; **Undo** brings them back.
 5. To join videos into one, in Pro Mode, Cmd-click (Ctrl-click on Windows) two or more, right-click one and choose **Combine videos…**.
 
-**Combine videos…** shows the chosen videos in the order they will play: move one with its up and down arrows, then press **Combine**. One new video, playing them one after the other, is added to **Media**; the originals stay unchanged. It has the first video's picture size: another shape gets black bars, never stretched, and a video with no sound is silent for its length. It waits while anything is up, streaming or recording. The window shows its progress, **Stop**, and when it is done.
+**Combine videos…** shows the chosen videos in the order they will play: move one with its up and down arrows, choose a **Transition** (**Dissolve**, **Fade through black** or **Cut**, 0.5 to 3 seconds), then press **Combine**. One new video, playing them one after the other, is added to **Media**; the originals stay unchanged. Each transition overlaps the two videos by its length; a video shorter than it is joined with a plain cut. It has the first video's picture size: another shape gets black bars, never stretched, and a video with no sound is silent for its length. It waits while anything is up, streaming or recording. The window shows its progress, **Stop**, and when it is done, **Show in Media** and **Export…**, which saves a copy to a file (Downloads unless you choose); tick **Also save a copy to a file** to choose that file before it combines.
 
 ![Media while files convert, each with its progress](../screenshots/convert-media-list-done.png)
 
