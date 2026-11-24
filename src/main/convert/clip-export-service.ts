@@ -42,7 +42,11 @@ export interface ClipExportDeps {
    * its file in Media; `keep` (rows live exports hold) stays; nothing goes unless `allowed` says so (null: left for
    * later) (a22-exportclip, by a22-review-combine2's rules).
    */
-  discardUnlisted(file: string, keep: ReadonlySet<string>, allowed: () => boolean): Promise<unknown>;
+  discardUnlisted(
+    files: readonly string[],
+    keep: ReadonlySet<string>,
+    allowed: () => boolean,
+  ): Promise<unknown>;
   /**
    * Nothing plays, off air, not recording, and no import or deck preparation going (a22-review-combine2 R-S1, R-S2):
    * only then is anything unlisted removed.
@@ -87,12 +91,20 @@ export class ClipExports {
   private readonly holding = new Set<string>();
   /** Temporary files whose copies into Media (never listed) are still to go, at a quiet moment or a later start. */
   private readonly unclean = new Set<string>();
+  /** How many the list of what is left keeps: the newest, the oldest going first past it (a22-combineleaks). */
+  private static readonly LEFT_MOST = 1000;
   private closing(): boolean {
     return this.closed;
   }
   constructor(private readonly deps: ClipExportDeps) {
-    const loaded = z.array(z.string().min(1).max(4096)).max(500).safeParse(deps.left.load());
-    if (loaded.success) for (const file of loaded.data) this.unclean.add(file);
+    // Each entry on its own: one that is not a path is skipped, a list past the cap keeps its newest (never dropped whole).
+    const loaded = z.array(z.unknown()).safeParse(deps.left.load());
+    const files = loaded.success
+      ? loaded.data.filter(
+          (file): file is string => typeof file === 'string' && file.length > 0 && file.length <= 4096,
+        )
+      : [];
+    for (const file of files.slice(-ClipExports.LEFT_MOST)) this.unclean.add(file);
   }
   /** The request no longer names `made` (it is in the list of what is left now). */
   private forget(entry: ExportEntry, made: string): void {
@@ -109,21 +121,23 @@ export class ClipExports {
   }
   private saveLeft(): void {
     try {
-      this.deps.left.save([...this.unclean]);
+      this.deps.left.save([...this.unclean].slice(-ClipExports.LEFT_MOST));
     } catch {
       /* Kept in memory; the request list still names a file whose request is kept. */
     }
   }
   /**
-   * What an export copied into Media from `made` and never listed: kept in the list of what is left, removed now if it
-   * may be (the list forgets it then), else at a later start. Never throws.
+   * What exports copied into Media from these files and never listed: kept in the list of what is left, removed now if
+   * they may be, in ONE pass (one library-wide scan however many: a22-combineleaks), the list forgetting each once
+   * nothing of it is left; else at a later start. Never throws.
    */
-  private async removeLeft(made: string): Promise<void> {
-    this.unclean.add(made);
+  private async removeLeft(files: readonly string[]): Promise<void> {
+    if (files.length === 0) return;
+    for (const made of files) this.unclean.add(made);
     this.saveLeft();
     let done: unknown;
     try {
-      done = await this.deps.discardUnlisted(made, new Set(this.holding), () => this.allowed());
+      done = await this.deps.discardUnlisted(files, new Set(this.holding), () => this.allowed());
     } catch {
       done = null;
     }
@@ -131,16 +145,16 @@ export class ClipExports {
     // taken up by its bytes in this run) or used stays in the list, and a later start tries it again
     // (a22-review-combine2 L-E1). When in doubt, it stays.
     if (done === null || done === undefined) return;
-    let left: number;
-    try {
-      left = this.deps.leftFrom(made);
-    } catch {
-      left = 1;
+    for (const made of files) {
+      let left: number;
+      try {
+        left = this.deps.leftFrom(made);
+      } catch {
+        left = 1;
+      }
+      if (left === 0) this.unclean.delete(made);
     }
-    if (left === 0) {
-      this.unclean.delete(made);
-      this.saveLeft();
-    }
+    this.saveLeft();
   }
   list(): ClipExportJob[] {
     return this.entries.map((entry) => ({ ...entry.job }));
@@ -230,16 +244,18 @@ export class ClipExports {
     this.resumed = true;
     const parsed = pendingSchema.safeParse(this.deps.kept.load());
     const requests = parsed.success ? parsed.data : [];
-    // What earlier runs left (their requests ended, or the request list unreadable): removed now if it may be. A kept
-    // request's own file goes as it runs again.
-    for (const file of [...this.unclean])
-      if (!requests.some((saved) => saved.made === file)) void this.removeLeft(file);
-    if (!parsed.success) return;
+    // What earlier runs left (their requests ended, or the request list unreadable), and what a request refused below
+    // left: removed now if it may be, in one pass. A kept request's own file goes as it runs again.
+    const earlier = [...this.unclean].filter((file) => !requests.some((saved) => saved.made === file));
+    if (!parsed.success) {
+      void this.removeLeft(earlier);
+      return;
+    }
     for (const saved of parsed.data) {
       const resolved = this.deps.resolve(saved.request);
       if (!resolved.ok || resolved.source.identity !== saved.identity) {
         // What a quit left of it in Media (copied, never listed) goes too, when it may.
-        if (saved.made) void this.removeLeft(saved.made);
+        if (saved.made) earlier.push(saved.made);
         const source: ClipExportSource = {
           path: '',
           mediaId: saved.request.mediaId,
@@ -259,6 +275,7 @@ export class ClipExports {
       }
       void this.run(this.add(saved.request, resolved.source, saved.destination, saved.made ?? null));
     }
+    void this.removeLeft(earlier);
     this.keep();
   }
   private async run(entry: ExportEntry): Promise<void> {
@@ -267,7 +284,7 @@ export class ClipExports {
     if (entry.made !== null) {
       // Into the list of what is left first, so the request can forget it.
       const left = entry.made;
-      const removing = this.removeLeft(left);
+      const removing = this.removeLeft([left]);
       entry.made = null;
       this.keep();
       await removing;
@@ -378,7 +395,7 @@ export class ClipExports {
     if (prepared.importId !== null) this.holding.delete(prepared.importId);
     if (prepared.temporary !== null) {
       // Into the list of what is left before the request forgets it; once listed, nothing waits for it.
-      const removing = this.removeLeft(prepared.temporary);
+      const removing = this.removeLeft([prepared.temporary]);
       this.forget(entry, prepared.temporary);
       if (!job.added) await removing;
     }
