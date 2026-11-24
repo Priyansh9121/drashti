@@ -435,19 +435,18 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     });
     const worse = (t: ReturnType<typeof meter>, c: ReturnType<typeof meter>) =>
       t.p95 - c.p95 > 1 || t.longest - c.longest > 1 || t.over15 > c.over15;
+    const summary = {
+      model: o.model,
+      soundOnAfterMs: soundOnAt - soundAskedAt,
+      listeningAfterMs: listeningAt - soundAskedAt,
+      sounds: report,
+      controls,
+      trials,
+    };
+    // In the CI log too (times, counts and ids, never words), for the report's real numbers.
+    console.log(`${o.name}: ${JSON.stringify(summary)}`);
     await test.info().attach(`${o.name}.json`, {
-      body: JSON.stringify(
-        {
-          model: o.model,
-          soundOnAfterMs: soundOnAt - soundAskedAt,
-          listeningAfterMs: listeningAt - soundAskedAt,
-          sounds: report,
-          controls,
-          trials,
-        },
-        null,
-        2,
-      ),
+      body: JSON.stringify(summary, null, 2),
       contentType: 'application/json',
     });
     for (const c of controls) expect(c.frames, 'a control window drew').toBeGreaterThan(30);
