@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScreenRole } from '../../shared/screens';
-import type { StudioLivePicture } from '../../shared/studio-live';
+import type { StudioLiveMessage, StudioLivePicture } from '../../shared/studio-live';
 import {
   type CapturedImage,
   hallScreenOf,
@@ -32,8 +32,8 @@ describe('StudioLive', () => {
     vi.useRealTimers();
   });
 
-  function make(take: () => Promise<StudioLivePicture | null | undefined>) {
-    const sent: (StudioLivePicture | null)[] = [];
+  function make(take: () => Promise<StudioLiveMessage | undefined>) {
+    const sent: StudioLiveMessage[] = [];
     const lines: string[] = [];
     const live = new StudioLive({
       take,

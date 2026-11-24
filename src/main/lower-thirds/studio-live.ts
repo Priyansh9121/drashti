@@ -1,5 +1,10 @@
 import type { ScreenRole } from '../../shared/screens';
-import type { LiveUnseen, StudioLivePicture, StudioLiveSource } from '../../shared/studio-live';
+import type {
+  LiveUnseen,
+  StudioLiveMessage,
+  StudioLivePicture,
+  StudioLiveSource,
+} from '../../shared/studio-live';
 
 /*
  * Live behind the Lower Thirds studio's preview (alpha.22, the owner: "the background while selecting the animation
@@ -30,9 +35,9 @@ const LIVE_QUALITY = 75;
 
 export interface StudioLiveDeps {
   /** Take a still now: null when this computer has nothing to take it from; undefined when not ready yet. */
-  take(): Promise<StudioLivePicture | null | undefined>;
+  take(): Promise<StudioLiveMessage | undefined>;
   /** To the studio's page. */
-  send(picture: StudioLivePicture | null): void;
+  send(picture: StudioLiveMessage): void;
   log(line: string): void;
   /** Stills stopped (another backdrop, minimized, closed): what was kept for them can go (Live's copy). */
   stopped?(): void;
@@ -99,7 +104,7 @@ export class StudioLive {
   private async next(round: number): Promise<void> {
     this.taken++;
     let limit: ReturnType<typeof setTimeout> | undefined;
-    let picture: StudioLivePicture | null | undefined;
+    let picture: StudioLiveMessage | undefined;
     try {
       picture = await Promise.race([
         this.deps.take(),

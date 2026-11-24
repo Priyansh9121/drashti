@@ -37,6 +37,8 @@ export const LIVE_COPY_SCREEN_ID = 'live-copy';
 export interface LiveCopyWindow {
   /** Its last picture drawn, or null before its first. */
   latest(): CapturedImage | null;
+  /** How many pictures it has painted (tests: about one a second). */
+  paints(): number;
   isDestroyed(): boolean;
   close(): void;
 }
@@ -47,6 +49,8 @@ export interface LiveCopyDeps {
   log(line: string): void;
   /** This computer's clock (ms). */
   now?(): number;
+  /** Whether this computer has the memory for it now. Red: skeleton. */
+  room?(): boolean;
 }
 
 /** Its window is open and has not drawn yet (its page loading): Live sends nothing meanwhile. */
@@ -94,6 +98,11 @@ export class LiveCopy {
     return this.deps.now?.() ?? Date.now();
   }
 
+  /** Its page has drawn the show (its first painted frame). Red: skeleton. */
+  shown(): void {
+    // Red: nothing yet.
+  }
+
   /** Every other change (Live stopped or paused, a hall screen showing): closed at once. */
   close(): void {
     this.failed = false;
@@ -137,6 +146,15 @@ export function liveCopyContext(
     display: null,
     ...(clockStyle ? { clockStyle } : {}),
   };
+}
+
+/** Red: skeleton. */
+export function stoppedHallHere(
+  _screens: readonly { id: string; groupId: string; nodeId: string | null }[],
+  _roleOf: (groupId: string) => string | null,
+  _stateOf: (screenId: string) => string,
+): boolean {
+  return false;
 }
 
 /** What is live that the copy cannot draw (it is no screen): a video input, or another app's window, in either place. */

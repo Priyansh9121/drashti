@@ -12,6 +12,7 @@ import {
   liveCopyContext,
   liveCopyOptions,
   liveCopyQuery,
+  stoppedHallHere,
   unseenInCopy,
 } from './live-copy';
 import type { CapturedImage } from './studio-live';
@@ -33,16 +34,19 @@ const image = (width = 960): CapturedImage => ({
 function fakeWindows() {
   const made: { drawn: CapturedImage | null; closed: boolean; gone: () => void }[] = [];
   let quitting = false;
+  let room = true;
   let t = 1000;
   const lines: string[] = [];
   const copy = new LiveCopy({
     now: () => t,
+    room: () => room,
     open: (gone) => {
       if (quitting) return null;
       const w = { drawn: null as CapturedImage | null, closed: false, gone };
       made.push(w);
       const win: LiveCopyWindow = {
         latest: () => w.drawn,
+        paints: () => 0,
         isDestroyed: () => w.closed,
         close: () => {
           w.closed = true;
@@ -62,6 +66,9 @@ function fakeWindows() {
     advance: (ms: number) => {
       t += ms;
     },
+    roomFor: (yes: boolean) => {
+      room = yes;
+    },
   };
 }
 
@@ -77,11 +84,14 @@ describe('LiveCopy', () => {
     expect(copy.isOpen).toBe(true);
     expect(lines.join('\n')).toMatch(/no hall screen/i);
 
-    // Drawn: its last picture, the same window.
+    // Its page's first picture is its own black, before the show: still waiting until its page has drawn the show.
     const first = image();
     const w = made[0];
     if (!w) throw new Error('no window');
     w.drawn = first;
+    expect(copy.still()).toBe('waiting');
+    copy.shown();
+    // Drawn: its last picture, the same window.
     expect(copy.still()).toBe(first);
     const second = image(1920);
     w.drawn = second;
@@ -104,25 +114,56 @@ describe('LiveCopy', () => {
     expect(copy.isOpen).toBe(true);
   });
 
-  it('waits for its first picture at most LIVE_COPY_FIRST_MS after it opens; none drawn by then, none ("No live picture to show") until one is', () => {
+  it('waits for its page’s first drawn show at most LIVE_COPY_FIRST_MS after it opens; not drawn by then, none ("No live picture to show") until it is', () => {
     const { copy, made, advance } = fakeWindows();
-    expect(LIVE_COPY_FIRST_MS).toBeGreaterThanOrEqual(3000);
-    expect(LIVE_COPY_FIRST_MS).toBeLessThanOrEqual(10_000);
+    expect(LIVE_COPY_FIRST_MS).toBeGreaterThanOrEqual(10_000);
+    expect(LIVE_COPY_FIRST_MS).toBeLessThanOrEqual(15_000);
     expect(copy.still()).toBe('waiting');
+    const w = made[0];
+    if (!w) throw new Error('no window');
+    w.drawn = image();
     advance(LIVE_COPY_FIRST_MS - 1);
     expect(copy.still()).toBe('waiting');
     advance(1);
     expect(copy.still()).toBeNull();
-    const w = made[0];
-    if (!w) throw new Error('no window');
     const late = image();
     w.drawn = late;
+    copy.shown();
     expect(copy.still()).toBe(late);
     // Opened again later: it waits again, from then.
     copy.close();
     advance(60_000);
     expect(copy.still()).toBe('waiting');
     expect(made).toHaveLength(2);
+  });
+
+  it('opens no copy while this computer is short of memory (said once), none meanwhile; with room again, it opens', () => {
+    const { copy, made, lines, roomFor } = fakeWindows();
+    roomFor(false);
+    for (let i = 0; i < 3; i++) expect(copy.still()).toBeNull();
+    expect(made).toHaveLength(0);
+    expect(lines.filter((l) => /memory/i.test(l))).toHaveLength(1);
+    roomFor(true);
+    expect(copy.still()).toBe('waiting');
+    expect(made).toHaveLength(1);
+    // Short again later: said again, once.
+    copy.close();
+    roomFor(false);
+    copy.still();
+    copy.still();
+    expect(lines.filter((l) => /memory/i.test(l))).toHaveLength(2);
+  });
+
+  it('a shown signal from a closed window counts for nothing in the next', () => {
+    const { copy, made } = fakeWindows();
+    copy.still();
+    copy.shown();
+    copy.close();
+    expect(copy.still()).toBe('waiting');
+    const w = made[1];
+    if (!w) throw new Error('no window');
+    w.drawn = image();
+    expect(copy.still()).toBe('waiting');
   });
 
   it('never opens a window as Drashti quits', () => {
@@ -231,6 +272,24 @@ describe('the copy’s context', () => {
       canvasHeight: 1080,
       scaling: 'fit',
     });
+  });
+});
+
+describe('a hall screen here stopped', () => {
+  const roles: Record<string, 'audience' | 'stage'> = { hall: 'audience', stage: 'stage' };
+  const screens = [
+    { id: 'a', groupId: 'hall', nodeId: null },
+    { id: 'b', groupId: 'hall', nodeId: 'node-1' },
+    { id: 's', groupId: 'stage', nodeId: null },
+  ];
+  it('is an audience screen of this computer the watchdog gave up on: no copy then (its scene kept crashing); a node’s or a stage screen’s is not', () => {
+    const states = (map: Record<string, string>) => (id: string) => map[id] ?? 'missing-display';
+    const roleOf = (g: string) => roles[g] ?? null;
+    expect(stoppedHallHere(screens, roleOf, states({ a: 'stopped' }))).toBe(true);
+    expect(stoppedHallHere(screens, roleOf, states({ a: 'missing-display' }))).toBe(false);
+    expect(stoppedHallHere(screens, roleOf, states({ a: 'disabled', b: 'stopped' }))).toBe(false);
+    expect(stoppedHallHere(screens, roleOf, states({ s: 'stopped' }))).toBe(false);
+    expect(stoppedHallHere([], roleOf, states({}))).toBe(false);
   });
 });
 

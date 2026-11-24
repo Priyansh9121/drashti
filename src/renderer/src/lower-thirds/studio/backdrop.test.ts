@@ -8,12 +8,13 @@ import {
   backdropDraw,
   DEFAULT_BACKDROP,
   isBackdrop,
-  LIVE_UNSEEN,
+  LIVE_GETTING,
   NO_LIVE,
   NO_WALLPAPER,
   rememberBackdrop,
   rememberedBackdrop,
   TILE_BACKDROP,
+  unseenWords,
   watchesLive,
 } from './backdrop';
 
@@ -115,18 +116,39 @@ describe('the studio’s backdrop', () => {
     for (const b of ['wallpaper', 'dark', 'light'] as const) expect(watchesLive(b)).toBe(false);
   });
 
-  it('Live from its copy (no hall screen here) draws the copy’s still; with a video input or another app’s window live, it says plainly that it cannot show it', () => {
+  it('Live from its copy (no hall screen here) draws the copy’s still; with a video input or another app’s window live, it says plainly which it cannot show', () => {
     const hall = { wallpaper: WALL, pictures: LOOKS };
     expect(backdropDraw('live', hall, still('copy', 3))).toEqual({ kind: 'live', picture: still('copy', 3) });
+    const words = {
+      input: 'Live can’t show the video input here: there is no hall screen on this computer.',
+      window: 'Live can’t show another app’s window here: there is no hall screen on this computer.',
+      both: 'Live can’t show the video input or another app’s window here: there is no hall screen on this computer.',
+    };
+    expect(unseenWords(['input'])).toBe(words.input);
+    expect(unseenWords(['window'])).toBe(words.window);
+    expect(unseenWords(['window', 'input'])).toBe(words.both);
+    expect(unseenWords(['input', 'window'])).toBe(words.both);
     for (const unseen of [['input'], ['window'], ['window', 'input']] as const) {
       const picture: StudioLivePicture = { ...still('copy', 4), unseen: [...unseen] };
-      expect(backdropDraw('live', hall, picture)).toEqual({ kind: 'live', picture, words: LIVE_UNSEEN });
+      expect(backdropDraw('live', hall, picture)).toEqual({
+        kind: 'live',
+        picture,
+        words: unseenWords(unseen),
+      });
     }
-    expect(LIVE_UNSEEN).toBe(
-      'No hall screen on this computer: Live here shows no video input or shown window.',
-    );
     // A hall screen's still never says it (that screen draws them).
     expect(backdropDraw('live', hall, still('screen', 5))).not.toHaveProperty('words');
+  });
+
+  it('while Live’s copy opens: black, saying so (to screen readers too), never “No live picture to show”; the first still replaces it', () => {
+    const hall = { wallpaper: WALL, pictures: LOOKS };
+    expect(LIVE_GETTING).toBe('Getting the live picture…');
+    expect(backdropDraw('live', hall, { waiting: true })).toEqual({
+      kind: 'plain',
+      colour: '#000000',
+      words: LIVE_GETTING,
+    });
+    expect(backdropDraw('live', hall, still('copy', 6))).toEqual({ kind: 'live', picture: still('copy', 6) });
   });
 
   it('Dark and Light are plain; the template tiles keep their own plain backdrop', () => {

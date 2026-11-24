@@ -41,8 +41,18 @@ const isStudio = (p: Page) => p.url().includes('lower-thirds.html');
 interface LiveWork {
   watching: boolean;
   taken: number;
-  /** Live's copy (alpha.23) while it is open: its size inside, frames a second, muted, its warm-up as loaded. */
-  copy: { width: number; height: number; frameRate: number; muted: boolean; warmUp: string | null } | null;
+  /**
+   * Live's copy (alpha.23) while it is open: its size inside, frames a second, muted, its warm-up as loaded, and the
+   * pictures it has really painted.
+   */
+  copy: {
+    width: number;
+    height: number;
+    frameRate: number;
+    muted: boolean;
+    warmUp: string | null;
+    paints: number;
+  } | null;
 }
 const liveWork = (app: ElectronApplication): Promise<LiveWork | null> =>
   app.evaluate(
@@ -227,17 +237,40 @@ test('Behind the preview: Wallpaper by default (the hall’s wallpaper, or “No
 const noCopy = (app: ElectronApplication, what: string) =>
   expect.poll(async () => (await liveWork(app))?.copy ?? null, { message: what }).toBeNull();
 
-const COPY_UNSEEN = 'No hall screen on this computer: Live here shows no video input or shown window.';
+const COPY_UNSEEN_INPUT = 'Live can’t show the video input here: there is no hall screen on this computer.';
 
-test('with no hall screen on this computer (one display, or only nodes’ screens), Live shows its copy of the screens’ picture (the wallpaper, then a video): never a screen, 960 x 540, once a second, muted, no warm-up; a video input up is said plainly; closed on Dark and with the studio; axe passes', async () => {
+/** This computer's screens as Screens has them. */
+const screensNow = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.screens.get()).status);
+
+/** Whether Live's copy's page has any camera or capture open: a video playing a live stream (srcObject). */
+const copyHasCamera = (app: ElectronApplication): Promise<boolean | null> =>
+  app.evaluate(async ({ BrowserWindow }) => {
+    const copy = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('liveCopy='));
+    if (!copy) return null;
+    return (await copy.webContents.executeJavaScript(
+      "[...document.querySelectorAll('video')].some((v) => v.srcObject !== null)",
+    )) as boolean;
+  });
+
+test('with no hall screen showing on this computer (the hall’s projector set up here but unplugged), Live shows its copy of the screens’ picture (the wallpaper, then a video): never a screen, 960 x 540, about one picture a second, muted, no warm-up, no camera; a video input up is said plainly; closed on Dark and with the studio; axe passes', async () => {
   test.setTimeout(240_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-studio-backdrop-live-'));
   // Chromium's fake camera (a moving test pattern) stands in for a video input: never a real camera's picture.
-  const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const { app } = await launchApp({ ...SCREENS, DRASHTI_TEST_FAKE_DEVICES: '1' });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
-    expect(outputPages(app), 'no hall screen on this computer').toHaveLength(0);
+    // The owner's Mac on its own: the hall's projector was set up here, and is unplugged now (its display missing).
+    await audienceScreen(app, win);
+    await app.evaluate(() => {
+      (globalThis as { drashtiTestDisplays?: (n: number) => void }).drashtiTestDisplays?.(0);
+    });
+    await expect
+      .poll(async () => (await screensNow(win)).map((st) => st.state), { message: 'its display unplugged' })
+      .toEqual(['missing-display']);
+    await expect.poll(() => outputPages(app).length, { message: 'no hall screen showing here' }).toBe(0);
+    const screensBefore = await screensNow(win);
     const { wallId, videoId } = await wallpaperAndVideo(win, dir);
     await chooseWallpaper(win, wallId);
     const studio = await openStudio(app, win);
@@ -256,19 +289,19 @@ test('with no hall screen on this computer (one display, or only nodes’ screen
       })
       .toBe(true);
     await expect(preview.getByTestId('studio-backdrop-words')).toHaveCount(0);
-    // Off screen, 960 x 540 inside, once a second, muted, drawn without a warm-up; never one of the screens.
-    expect((await liveWork(app))?.copy).toEqual({
+    // Off screen, 960 x 540 inside, once a second, muted, drawn without a warm-up; never one of the screens: Screens
+    // lists the one screen set up, as before, and no window of a screen is open.
+    expect((await liveWork(app))?.copy).toMatchObject({
       width: 960,
       height: 540,
       frameRate: 1,
       muted: true,
       warmUp: 'skip',
     });
-    const screens = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
-    expect(screens.status, 'never counted as a screen').toEqual([]);
+    expect(await screensNow(win), 'never counted as a screen').toEqual(screensBefore);
     expect(outputPages(app)).toHaveLength(0);
 
-    // A video up: Live follows it.
+    // A video up: Live follows it, about one picture a second however much the video moves.
     await videoUp(win, videoId);
     await expect
       .poll(async () => ORANGE(await liveColour(studio)), {
@@ -276,10 +309,16 @@ test('with no hall screen on this computer (one display, or only nodes’ screen
         timeout: 20_000,
       })
       .toBe(true);
+    const painted = (await liveWork(app))?.copy?.paints ?? 0;
+    await holdStill(
+      async () => ((await liveWork(app))?.copy?.paints ?? 0) - painted <= 7,
+      5000,
+      'Live’s copy paints about once a second (at most 7 in 5 s)',
+    );
     await expectNoSeriousA11yIssues(studio, 'the studio on Live from its copy');
 
-    // A video input up: the copy draws none, and the studio says so plainly (to screen readers too); the video back,
-    // the words go.
+    // A video input up: the copy opens no camera and draws none, and the studio says so plainly (to screen readers
+    // too); the video back, the words go.
     const inputId = await win.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
       const added = await d.videoInputs.add({
@@ -291,9 +330,13 @@ test('with no hall screen on this computer (one display, or only nodes’ screen
       return added.view.inputs[0]?.id ?? '';
     });
     expect((await dispatch(win, { type: 'showInput', inputId })).ok).toBe(true);
-    await expect(preview.getByTestId('studio-backdrop-words')).toHaveText(COPY_UNSEEN, { timeout: 15_000 });
-    await expect(studio.locator('#studio-backdrop-said')).toHaveText(COPY_UNSEEN);
+    await expect(preview.getByTestId('studio-backdrop-words')).toHaveText(COPY_UNSEEN_INPUT, {
+      timeout: 15_000,
+    });
+    await expect(studio.locator('#studio-backdrop-said')).toHaveText(COPY_UNSEEN_INPUT);
     await expect(still).toHaveAttribute('data-live-source', 'copy');
+    await holdStill(async () => (await copyHasCamera(app)) === false, 2000, 'the copy opens no camera');
+    expect(await screensNow(win), 'still never counted as a screen').toEqual(screensBefore);
     await videoUp(win, videoId);
     await expect(preview.getByTestId('studio-backdrop-words')).toHaveCount(0, { timeout: 15_000 });
 
@@ -308,6 +351,26 @@ test('with no hall screen on this computer (one display, or only nodes’ screen
     await noCopy(app, 'the copy closes with the studio');
     await nothingTaken(app, 'the studio closed');
   } finally {
+    await app.close();
+  }
+});
+
+test('quitting with Live’s copy open, as it opens and once it has drawn, quits cleanly (a crash at quit fails)', async () => {
+  test.setTimeout(180_000);
+  for (const when of ['as it opens', 'once drawn'] as const) {
+    const { app } = await launchApp({});
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const studio = await openStudio(app, win);
+    await choose(studio, 'Live');
+    await expect
+      .poll(async () => (await liveWork(app))?.copy ?? null, { message: `the copy opens (${when})` })
+      .not.toBeNull();
+    if (when === 'once drawn')
+      await expect(studio.getByTestId('studio-live-picture')).toHaveAttribute('data-live-source', 'copy', {
+        timeout: 20_000,
+      });
+    // Quit with the studio and its copy open: the harness fails a quit that ends in a crash.
     await app.close();
   }
 });

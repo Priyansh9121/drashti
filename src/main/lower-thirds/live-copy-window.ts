@@ -30,6 +30,7 @@ export function createLiveCopyWindow(gone: () => void): { window: BrowserWindow;
     window: win,
     copy: {
       latest: () => (win.isDestroyed() ? null : latest),
+      paints: () => 0,
       isDestroyed: () => win.isDestroyed(),
       close: () => {
         latest = null;

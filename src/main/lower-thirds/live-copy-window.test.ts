@@ -97,6 +97,16 @@ describe('Live’s copy’s window', () => {
     expect(copy.latest()).toBe(next);
   });
 
+  it('counts the pictures it really paints (each one copied into the main process), for the tests', () => {
+    const { copy } = createLiveCopyWindow(() => undefined);
+    const paint = made[0]?.listeners.get('paint');
+    expect(copy.paints()).toBe(0);
+    paint?.({}, { x: 0, y: 0, width: 960, height: 540 }, picture(false));
+    paint?.({}, { x: 0, y: 0, width: 960, height: 540 }, picture(false));
+    paint?.({}, { x: 0, y: 0, width: 10, height: 10 }, picture(true));
+    expect(copy.paints()).toBe(3);
+  });
+
   it('its page gone: Live is told; closed: gone at once, and its last picture with it', () => {
     const gone = vi.fn();
     const { copy } = createLiveCopyWindow(gone);
