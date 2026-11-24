@@ -136,6 +136,8 @@ const offeredSaveAs = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as SaveAsGlobals).drashtiOffered ?? []);
 
 test('Combine videos…: two videos chosen in Media, put in order, joined with a dissolve or a cut into one new video in Media once off air, and exported', async () => {
+  // Two real encodes by the idle worker, two imports and two copies, as Edit Video's and Convert's specs allow.
+  test.setTimeout(180_000);
   const { app, userData } = await launchApp({ DRASHTI_TEST_ON_AIR_HOOK: '1' });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-combine-'));
   try {
