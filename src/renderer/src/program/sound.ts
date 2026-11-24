@@ -240,6 +240,13 @@ export class StreamSound {
         current.sound = sound;
         // A crossfade's Go reaching its cue's prepared player: started now, heard from the fade's moment (QA23-FADE-4).
         if (wasPrepared) this.leadIn(current);
+        // Held paused, it lets go of its lead (a22-review-fade R2-M1): nothing plays into the delay then, so no pitch
+        // changes, and Play resumes it in place, as it did before the lead, rather than a lead behind and a jump.
+        if (current.leadMs > 0 && sound.seek?.paused) {
+          current.lead.delayTime.setValueAtTime(0, this.ctx.currentTime);
+          current.leadMs = 0;
+          delete current.el.dataset['leadMs'];
+        }
         if (sound.prepared) reportLoadedVideoCue(sound.cueId, 'sound', current.el);
         if (moved) current.resync();
         current.el.loop = sound.loop && !sound.clip;
@@ -354,17 +361,18 @@ export class StreamSound {
   /** Every own sound's gain, as the show has it now, eased there so no change clicks. */
   private applyLevels(): void {
     const musicLevel = this.musicLevel();
+    // One reading of the engine's time for every sound (a22-review-fade R2-S3): a fade's two gains from the same
+    // moment, never split by a pause of this page's thread between two reads (one of ~100 was 63 ms stale on CI).
+    const now = engineNow();
     for (const own of this.own.values()) {
       if ((own.sound.prepared || own.sound.envelope) && !own.videoGain) {
         own.videoGain = this.ctx.createGain();
         own.gain.disconnect();
         own.gain.connect(own.videoGain).connect(this.mix);
       }
-      if (own.videoGain) applyVideoEnvelope(own.videoGain, own.sound, engineNow());
+      if (own.videoGain) applyVideoEnvelope(own.videoGain, own.sound, now);
       if (own.sound.envelope)
-        own.el.dataset['crossfadeGain'] = String(
-          Math.round(videoSoundGain(own.sound, engineNow()) * 1e6) / 1e6,
-        );
+        own.el.dataset['crossfadeGain'] = String(Math.round(videoSoundGain(own.sound, now) * 1e6) / 1e6);
       else delete own.el.dataset['crossfadeGain'];
       own.gain.gain.setTargetAtTime(this.levelOf(own.sound, musicLevel), this.ctx.currentTime, 0.015);
     }
