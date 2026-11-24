@@ -213,11 +213,17 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
     }
   }
   let interval = 1;
+  // Kept, never run by themselves: a test runs one when it says (the window's repaints).
+  const intervals: { id: number; run: () => void; ms: number | undefined }[] = [];
   vi.stubGlobal(
     'setInterval',
-    vi.fn(() => interval++),
+    vi.fn((run: () => void, ms?: number) => {
+      intervals.push({ id: interval, run, ms });
+      return interval++;
+    }),
   );
-  vi.stubGlobal('clearInterval', vi.fn());
+  const clearInterval = vi.fn();
+  vi.stubGlobal('clearInterval', clearInterval);
   vi.stubGlobal('window', page);
   vi.stubGlobal('document', document);
   vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia } });
@@ -254,7 +260,9 @@ async function platform(tracks: GeneratedTrack[], { onScreen = true }: { onScree
       )
       .toBe(tracks.filter((track) => track.processorStarted).length);
   };
-  return { capture, deliver, getDisplayMedia, body, ended, at };
+  /** Whether the unseen corner is now painted (it flips at each repaint asked for). */
+  const corner = () => corners.get('capture-nudge')?.dataset['on'];
+  return { capture, deliver, getDisplayMedia, body, ended, at, intervals, clearInterval, corner, lines };
 }
 
 describe('Program capture while its picture request is still pending', () => {
@@ -459,6 +467,77 @@ describe('the stream starts from the first frame that shows the show (Session 58
       Array<number>(32).fill(54),
     ]);
     expect(videoBytes(out), 'video out: the same').toEqual([Array<number>(32).fill(54)]);
+  });
+
+  /** The capture asked for at 1000 ms, its first frame captured then and read before the show came on screen at 1100. */
+  async function upBeforeTheShow() {
+    const track = new GeneratedTrack(4, 2);
+    const unexpected = new GeneratedTrack(4, 2);
+    const p = await platform([track, unexpected], { onScreen: false });
+    p.capture.setCaptureSize({ width: 4, height: 2 });
+    const encoder = new EncoderPort();
+    p.deliver(encoder);
+    await expect.poll(() => track.processorStarted).toBe(true);
+    track.frame(0, 1000);
+    await expect.poll(() => p.body.dataset['frames']).toBe('1');
+    p.at(1100);
+    showOnScreen(p.capture);
+    return { p, track, encoder };
+  }
+
+  it('keeps taking a capture’s frames once one captured after the show went, even when its stamps start again (a GPU restart mid-service)', async () => {
+    const { p, track, encoder } = await upBeforeTheShow();
+    p.at(1133);
+    track.frame(60, 1133);
+    await expect.poll(() => videoBytes(encoder).length).toBe(1);
+    // The capture's stamps start again on another base, far below: its frames still go.
+    p.at(1166);
+    track.frame(61, -50_000);
+    p.at(1200);
+    track.frame(62, -49_967);
+    await expect.poll(() => videoBytes(encoder).length).toBe(3);
+    expect(videoBytes(encoder).map((bytes) => bytes[0])).toEqual([60, 61, 62]);
+  });
+
+  it('takes the frames read 1 s after the show came on screen even when the capture’s stamps stand still, and says so once', async () => {
+    const { p, track, encoder } = await upBeforeTheShow();
+    // Stamps that never move on: judged by them, every frame was captured before the show.
+    p.at(1500);
+    track.frame(0, 1000);
+    p.at(2099);
+    track.frame(0, 1000);
+    await expect.poll(() => p.body.dataset['frames']).toBe('3');
+    expect(videoBytes(encoder), 'held for 1 s after the show').toEqual([]);
+    p.at(2100);
+    track.frame(70, 1000);
+    p.at(2133);
+    track.frame(71, 1000);
+    await expect.poll(() => videoBytes(encoder).length).toBe(2);
+    expect(videoBytes(encoder).map((bytes) => bytes[0])).toEqual([70, 71]);
+    expect(p.lines.filter((line) => line.includes('1 s after the show')).length, 'said once').toBe(1);
+  });
+
+  it('has the window paint again and again after a frame is let go, until one captured after the show goes (a still slide)', async () => {
+    const { p, track, encoder } = await upBeforeTheShow();
+    p.at(1110);
+    track.frame(0, 1033);
+    await expect.poll(() => p.body.dataset['frames']).toBe('2');
+    expect(videoBytes(encoder)).toEqual([]);
+    // A still page gives a frame only when it paints: the corner is painted anew at every repaint, never cancelled.
+    const repaint = p.intervals.find((i) => i.ms === 100);
+    expect(repaint, 'repaints asked for after the let-go').toBeDefined();
+    const seen = [p.corner()];
+    repaint?.run();
+    seen.push(p.corner());
+    repaint?.run();
+    seen.push(p.corner());
+    expect(seen[1], 'the first repaint changes the corner').not.toBe(seen[0]);
+    expect(seen[2], 'and the next one again').not.toBe(seen[1]);
+    p.at(1300);
+    track.frame(55, 1300);
+    await expect.poll(() => videoBytes(encoder).length).toBe(1);
+    expect(videoBytes(encoder)).toEqual([Array<number>(32).fill(55)]);
+    expect(p.clearInterval, 'the repaints stop once a frame went').toHaveBeenCalledWith(repaint?.id);
   });
 
   it('gives the encoder the page as it is 15 s after its port came when the show is still not on screen, a new port meanwhile not restarting the wait', async () => {
