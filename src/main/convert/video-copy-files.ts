@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { Db } from '../db/database';
+import { LIBRARY_BUSY_TIMEOUT_MS, type Db } from '../db/database';
 import { isBusy } from '../db/later-writes';
 import { mediaInUse } from '../library/media-uses';
 import { isTaken } from '../library/media-taken';
@@ -226,60 +226,77 @@ export async function discardUnlisted(options: {
   const until = Date.now() + 30_000;
   for (;;) {
     if (!allowed()) return null;
-    const previous = db.pragma('busy_timeout', { simple: true }) as number;
+    let done: { removed: number; shas: string[] } | null;
     try {
-      db.pragma('busy_timeout = 0');
-      const done = db
-        .transaction((): { removed: number; shas: string[] } | null => {
-          // Asked again under the lock, in the very turn it removes.
-          if (!allowed()) return null;
-          const rows = ids.flatMap(
-            (id) =>
-              (db.prepare(`SELECT id, path, sha256 FROM media WHERE id = ? AND ${unlisted}`).get(id) as
-                { id: string; path: string; sha256: string | null } | undefined) ?? [],
-          );
-          const used = mediaInUse(db, options.mediaDir, rows);
-          // Edit Video's records of its copies (references without a cascade).
-          const edited = db.prepare(
-            `SELECT 1 FROM video_edit_copies WHERE source_id = @id OR copy_id = @id
+      done = withoutWaiting(db, () =>
+        db
+          .transaction((): { removed: number; shas: string[] } | null => {
+            // Asked again under the lock, in the very turn it removes.
+            if (!allowed()) return null;
+            const rows = ids.flatMap(
+              (id) =>
+                (db.prepare(`SELECT id, path, sha256 FROM media WHERE id = ? AND ${unlisted}`).get(id) as
+                  { id: string; path: string; sha256: string | null } | undefined) ?? [],
+            );
+            const used = mediaInUse(db, options.mediaDir, rows);
+            // Edit Video's records of its copies (references without a cascade).
+            const edited = db.prepare(
+              `SELECT 1 FROM video_edit_copies WHERE source_id = @id OR copy_id = @id
              UNION ALL SELECT 1 FROM media WHERE video_edit_copy_id = @id LIMIT 1`,
-          );
-          const keeps = db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1');
-          const shared = db.prepare('SELECT 1 FROM media WHERE sha256 = ? LIMIT 1');
-          let removed = 0;
-          const shas: string[] = [];
-          for (const row of rows) {
-            const file = resolve(media, row.path);
-            if (row.path === '' || !file.startsWith(`${media}${sep}`)) continue;
-            // Taken up by its bytes in this run (MediaStore handed it back): perhaps named only later (L-S1).
-            if (used.has(row.id) || isTaken(row.id) || edited.get({ id: row.id }) !== undefined) continue;
-            try {
-              // The row and its file together: a file that cannot be removed puts its row back (a savepoint).
-              db.transaction(() => {
-                db.prepare('DELETE FROM media WHERE id = ?').run(row.id);
-                if (!keeps.get(row.path)) rmSync(file, { force: true });
-              })();
-            } catch (error) {
-              if (isBusy(error)) throw error;
-              continue;
+            );
+            const keeps = db.prepare('SELECT 1 FROM media WHERE path = ? LIMIT 1');
+            const shared = db.prepare('SELECT 1 FROM media WHERE sha256 = ? LIMIT 1');
+            let removed = 0;
+            const shas: string[] = [];
+            for (const row of rows) {
+              const file = resolve(media, row.path);
+              if (row.path === '' || !file.startsWith(`${media}${sep}`)) continue;
+              // Taken up by its bytes in this run (MediaStore handed it back): perhaps named only later (L-S1).
+              if (used.has(row.id) || isTaken(row.id) || edited.get({ id: row.id }) !== undefined) continue;
+              try {
+                // The row and its file together: a file that cannot be removed puts its row back (a savepoint).
+                db.transaction(() => {
+                  db.prepare('DELETE FROM media WHERE id = ?').run(row.id);
+                  if (!keeps.get(row.path)) rmSync(file, { force: true });
+                })();
+              } catch (error) {
+                if (isBusy(error)) throw error;
+                continue;
+              }
+              removed += 1;
+              if (row.sha256 && !shared.get(row.sha256)) shas.push(row.sha256);
             }
-            removed += 1;
-            if (row.sha256 && !shared.get(row.sha256)) shas.push(row.sha256);
-          }
-          return { removed, shas };
-        })
-        .immediate();
-      if (done === null) return null;
-      // Its still frame and copies, regenerable, by sha256 (no row has it now); only while still allowed.
-      for (const sha of done.shas)
-        if (allowed()) await removeDerived(options.mediaDir, sha).catch(() => undefined);
-      return done.removed;
+            return { removed, shas };
+          })
+          .immediate(),
+      );
     } catch (error) {
       if (!isBusy(error) || Date.now() >= until) throw error;
-    } finally {
-      db.pragma(`busy_timeout = ${String(previous)}`);
+      await delay(25);
+      continue;
     }
-    await delay(25);
+    if (done === null) return null;
+    // Its still frame and copies, regenerable, by sha256 (no row has it now); only while still allowed, and with Main's
+    // usual wait for the write lock back already (a22-review-combine2 MUST-C1).
+    for (const sha of done.shas)
+      if (allowed()) await removeDerived(options.mediaDir, sha).catch(() => undefined);
+    return done.removed;
+  }
+}
+
+/**
+ * `run` (synchronous: never an await inside) with Main's wait for the library's write lock set to 0, so an import
+ * holding the lock makes it fail at once instead of holding Main up to 5 s; the wait is put back in the same turn.
+ * As nothing else can run in between, two removals cannot interleave here; and a wait read as 0 (left so by anything
+ * else) is put back as the library's own, never left at 0 (a22-review-combine2 MUST-C1).
+ */
+function withoutWaiting<T>(db: Db, run: () => T): T {
+  const previous = db.pragma('busy_timeout', { simple: true }) as number;
+  db.pragma('busy_timeout = 0');
+  try {
+    return run();
+  } finally {
+    db.pragma(`busy_timeout = ${String(previous > 0 ? previous : LIBRARY_BUSY_TIMEOUT_MS)}`);
   }
 }
 
