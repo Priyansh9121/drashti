@@ -39,16 +39,11 @@ export function cuePresentation(
     stop();
     failed?.();
   };
+  /** The frame read is the one presented, to the microsecond (no frame rate assumed). */
+  const matches = () =>
+    decoded !== null && presented !== null && Math.abs(presented * 1_000_000 - decoded) <= 1;
   const release = () => {
-    if (
-      stopped ||
-      finished ||
-      decoded === null ||
-      presented === null ||
-      video.seeking ||
-      Math.abs(presented * 1_000_000 - decoded) > 1
-    )
-      return;
+    if (stopped || finished || video.seeking || !matches()) return;
     finished = true;
     ready();
   };
@@ -63,6 +58,12 @@ export function cuePresentation(
         fail();
         return;
       }
+    } else if (decoded !== null && !matches() && read() === 'failed') {
+      // Read again as another frame is presented: the frame read at the decoder's word can still be the file's
+      // start, from before the trim seek's frame reached the compositor (a22-cue-1124-113329-24953, CI's Mac: LIVE's
+      // read never matched the trimmed frame presented after it, and the cue failed). Only a forbidden read fails it.
+      fail();
+      return;
     }
     release();
     if (!finished) callback = video.requestVideoFrameCallback(onPresented);
