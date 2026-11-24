@@ -142,6 +142,12 @@ export interface NodeHealth {
  * A showing a node's screen could not play (Q60-44, the owner's answer A of 20 Nov 2026): its element failed there, its
  * first frame never came (shared/no-picture.ts FIRST_FRAME_MS), or its picture cannot be drawn there (code NO_PICTURE).
  */
+export interface NodeVideoCueReport {
+  cueId: string;
+  screenId: string;
+  state: 'ready' | 'loading' | 'failed';
+}
+
 export interface NodeCannotPlayReport {
   screenId: string;
   mediaId: string;
@@ -166,7 +172,8 @@ export type FromNode =
   /** A small picture of what a screen shows (while the dashboard is open): a JPEG, base64. */
   | { type: 'thumb'; screenId: string; jpeg: string }
   /** A showing one of its screens could not play (Q60-44): it keeps what it showed; Main tells the operator. */
-  | { type: 'cannot-play'; report: NodeCannotPlayReport };
+  | { type: 'cannot-play'; report: NodeCannotPlayReport }
+  | { type: 'video-cue'; report: NodeVideoCueReport };
 
 export type NodeByeReason = 'unauthorized' | 'revoked' | 'version' | 'too-slow' | 'closing' | 'replaced';
 

@@ -1,3 +1,4 @@
+import type { VideoCue, VideoCrossfade } from '../../../shared/video-cue';
 import type { BackgroundLayer, InputBackground } from '../../../shared/engine/state';
 
 /*
@@ -23,6 +24,8 @@ export interface Slot {
    * picture away, it gave the hall a black frame (CI x54-1121-023510-80364, Main's own readback).
    */
   state: 'loading' | 'loaded' | 'ready' | 'failed';
+  /** Decoded privately; it stays hidden until this showing is the live background. */
+  cued?: true;
   /** How many times it has been tried again (a node's copy that landed late); left out the first time. */
   attempt?: number;
   /**
@@ -60,6 +63,10 @@ export interface Slots {
 }
 
 export type SlotEvent =
+  | { type: 'cue'; cue: VideoCue | null }
+  | { type: 'activate'; key: string; at: number; fade?: VideoCrossfade | null }
+  | { type: 'pairDone' }
+  | { type: 'joinPair'; layer: MediaLayer; fade: VideoCrossfade }
   /** `joined`: the first the window hears of the layer (it has just opened or reloaded). */
   | { type: 'layer'; layer: BackgroundLayer | null; joined?: boolean }
   /** A video's data is in (alpha.20): drawn over what is there, which stays until it is presented ('ready'). */
@@ -87,7 +94,9 @@ export const drawnOver = (slots: Slots, slot: Slot): boolean =>
 
 /** The background drawn on screen now, by its key (null: none, the screen's nothing-up showing instead). */
 export const drawnKeyOf = (slots: Slots): string | null =>
-  slots.shown && isDrawn(slots.shown) ? slots.shown.key : null;
+  slots.shown && isDrawn(slots.shown) && !(slots.fade && slots.leaving && !isDrawn(slots.leaving))
+    ? slots.shown.key
+    : null;
 
 /**
  * A file that failed (as it loaded: the one coming in; or while it played: the one on screen), if one did; none while
@@ -135,13 +144,70 @@ function arrive(slots: Slots, ready: Slot, at: number | undefined): Slots {
 
 export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
   switch (event.type) {
+    case 'joinPair':
+      return {
+        shown: { key: slotKey(event.layer), layer: event.layer, state: 'loading' },
+        incoming: null,
+        leaving: { key: slotKey(event.fade.from), layer: event.fade.from, state: 'loading' },
+        fade: { start: event.fade.at, ms: event.fade.durationMs },
+      };
+    case 'pairDone':
+      return slots.leaving?.layer.kind === 'media' &&
+        slots.shown?.layer.kind === 'media' &&
+        slots.shown.layer.cueId
+        ? { ...slots, leaving: null, fade: null }
+        : slots;
+    case 'cue': {
+      const cue = event.cue?.error ? null : event.cue;
+      if (!cue) return slots.incoming?.cued ? { ...slots, incoming: null } : slots;
+      const key = slotKey(cue.background);
+      if (slots.shown?.key === key || slots.leaving?.key === key) return slots;
+      if (slots.incoming?.key === key) {
+        const { cued: _private, ...incoming } = slots.incoming;
+        // Go already armed this showing: errors must use the ordinary take-off path.
+        // It stays hidden in incoming until activate reaches the shared future moment.
+        return {
+          ...slots,
+          incoming: {
+            ...incoming,
+            layer: cue.background,
+            ...(cue.background.seek?.paused ? { cued: true as const } : {}),
+          },
+        };
+      }
+      if (slots.incoming && !slots.incoming.cued) return slots;
+      // An active dissolve owns both decoders: a third one is never prepared over it.
+      if (slots.leaving) return slots;
+      return { ...slots, incoming: { key, layer: cue.background, state: 'loading', cued: true } };
+    }
+    case 'activate': {
+      const coming = slots.incoming;
+      if (coming?.key !== event.key || coming.cued || coming.state !== 'ready') return slots;
+      if (event.fade)
+        return {
+          shown: coming,
+          incoming: null,
+          leaving: slots.shown ? { ...slots.shown, layer: event.fade.from } : null,
+          fade: { start: event.fade.at, ms: event.fade.durationMs },
+        };
+      return arrive(slots, coming, event.at);
+    }
     case 'layer': {
       const { layer } = event;
-      if (layer?.kind !== 'media' && layer?.kind !== 'input') return NO_SLOTS;
+      if (layer?.kind !== 'media' && layer?.kind !== 'input')
+        return slots.incoming?.cued ? { ...NO_SLOTS, incoming: slots.incoming } : NO_SLOTS;
       const key = slotKey(layer);
       // The same playback: new settings (fit, loop), and whatever was loading is not wanted any more.
-      if (slots.shown?.key === key) return { ...slots, shown: { ...slots.shown, layer }, incoming: null };
-      if (slots.incoming?.key === key) return { ...slots, incoming: { ...slots.incoming, layer } };
+      if (slots.shown?.key === key)
+        return {
+          ...slots,
+          shown: { ...slots.shown, layer },
+          incoming: slots.incoming?.cued ? slots.incoming : null,
+        };
+      if (slots.incoming?.key === key) {
+        const { cued: _cued, ...incoming } = slots.incoming;
+        return { ...slots, incoming: { ...incoming, layer } };
+      }
       // The picture going away is wanted again (Back during a dissolve): it comes back whole, at once.
       if (slots.leaving?.key === key)
         return { shown: { ...slots.leaving, layer }, incoming: null, leaving: null, fade: null };
@@ -157,11 +223,20 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       };
     }
     case 'loaded': {
+      // A page joining an existing S5 pair already owns both slots; keep its decoded-frame arrival.
+      if (slots.shown?.key === event.key && slots.shown.state === 'loading')
+        return { ...slots, shown: { ...slots.shown, state: 'ready' } };
+      if (slots.leaving?.key === event.key && slots.leaving.state === 'loading')
+        return { ...slots, leaving: { ...slots.leaving, state: 'ready' } };
       const incoming = slots.incoming;
       if (incoming?.key !== event.key || incoming.state !== 'loading') return slots;
       return { ...slots, incoming: { ...incoming, state: 'loaded' } };
     }
     case 'ready': {
+      if (slots.shown?.key === event.key && slots.shown.state === 'loading')
+        return { ...slots, shown: { ...slots.shown, state: 'ready' } };
+      if (slots.leaving?.key === event.key && slots.leaving.state === 'loading')
+        return { ...slots, leaving: { ...slots.leaving, state: 'ready' } };
       // A video input that could not start has started (Session 50: plugged in again): on at once, as nothing
       // was on screen for it meanwhile. A file that could not play stays so (a node's copy landing retries it).
       const failed = slots.shown;
@@ -174,7 +249,8 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       const ready: Slot = { ...incoming, state: 'ready' };
       // A dissolve still on screen finishes first (the picture part-way through never jumps back up);
       // this one follows it ('faded').
-      if (slots.fade) return { ...slots, incoming: ready };
+      if (slots.fade || incoming.cued || (incoming.layer.kind === 'media' && incoming.layer.cueId))
+        return { ...slots, incoming: ready };
       return arrive(slots, ready, event.at);
     }
     case 'faded': {

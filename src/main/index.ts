@@ -473,6 +473,7 @@ import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
+import type { FrameGrid } from '../shared/video-cue';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
@@ -910,6 +911,15 @@ async function paced(response: Response, mediaId: string | null): Promise<Respon
 // it, so nobody pauses the sabha's sound by pressing one. Keeping those controls up to date also took
 // the main process 60 to 180 ms each time a sound started on Windows (the performance check's trace).
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
+// Sound-only elements select no video track, avoiding unused software picture decoding (S5). The stream's own sound
+// players keep a second of sound decoded ahead (a21-s5b, renderer/src/program/sound-ahead.ts): a page's pictures
+// decode on its one media thread too, and held it longer than the 0.2 s a player keeps at first.
+app.commandLine.appendSwitch(
+  'enable-blink-features',
+  [app.commandLine.getSwitchValue('enable-blink-features'), 'AudioVideoTracks', 'MediaLatencyHint']
+    .filter(Boolean)
+    .join(','),
+);
 
 // The show's own process first (Session 15): on a two-core PC with no graphics chip, the windows decoding
 // video at the same priority kept the main process (every slide change, and the screens' media) waiting
@@ -2065,11 +2075,17 @@ function start(): void {
     }
     return kept;
   };
+  // The stream page's frame grid, told while a cue waits (S5, a21-s5): a manual Go is placed on its frames.
+  let streamFrames: (FrameGrid & { told: number }) | null = null;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
     Date.now,
-    { items: (id) => playlists.playItems(id), repeatAll: (id) => playlists.playOptions(id).repeatAll },
+    {
+      items: (id) => playlists.playItems(id),
+      repeatAll: (id) => playlists.playOptions(id).repeatAll,
+      crossfadeMs: (id) => playlists.playOptions(id).crossfadeMs ?? 0,
+    },
     {
       defaultTransition: () => defaultTransition(settings),
       looks: { start: () => lookService?.start() ?? NO_LOOK },
@@ -2080,6 +2096,42 @@ function start(): void {
           : simpleNow() && simpleModeRefuses(command, state, simpleChosen())
             ? simpleRefusalText(simpleAccess())
             : null,
+      videoCueParticipants: () => {
+        const ids: string[] = [];
+        if (operatorWindow && !operatorWindow.isDestroyed())
+          ids.push(`picture:${operatorWindow.webContents.id}`);
+        if (audioWindow && !audioWindow.isDestroyed()) ids.push(`sound:${audioWindow.webContents.id}`);
+        const groups = screenRepo.groups();
+        const audience = new Set(
+          screenRepo
+            .screens()
+            .filter((s) => groups.find((g) => g.id === s.groupId)?.role !== 'stage')
+            .map((s) => s.id),
+        );
+        for (const entry of manager.windows())
+          if (audience.has(entry.screenId) && !entry.window.isDestroyed())
+            ids.push(`picture:${entry.window.webContentsId}`);
+        const remote = new Set(
+          nodeService
+            ?.screenStatus()
+            .filter((s) => s.state === 'showing')
+            .map((s) => s.screenId) ?? [],
+        );
+        for (const screen of screenRepo.screens())
+          if (screen.nodeId && screen.enabled && audience.has(screen.id) && remote.has(screen.id))
+            ids.push(`node:${screen.nodeId}:${screen.id}`);
+        const program = streaming.programContents();
+        if (program && !program.isDestroyed()) ids.push(`picture:${program.id}`, `sound:${program.id}`);
+        return ids;
+      },
+      videoGoFrames: () => {
+        const program = streaming.programContents();
+        // Only a grid the stream's page told in the last 3 s (it tells four times a second while a cue waits).
+        if (!streamFrames || !program || program.isDestroyed() || Date.now() - streamFrames.told > 3000)
+          return null;
+        return { at: streamFrames.at, periodMs: streamFrames.periodMs };
+      },
+
       sourceMediaId: (id) => editedPlaying.sourceId(id),
       prepareVideoEdits: (previous, next, historic) => {
         const edited = prepareVideoEdits(previous, next, (id) => videoEdits.read(id), historic, {
@@ -2300,7 +2352,12 @@ function start(): void {
       const file = media.file(id);
       return !!file && !file.missing && !file.deleted && existsSync(join(mediaDir, file.path));
     },
-    changed: (edit) => sendToOperator(IPC.media.videoEditChanged, edit),
+    changed: (edit) => {
+      const cue = engine.current.videoCue;
+      if (cue && videoEdits.sourceId(cue.background.mediaId) === edit.mediaId)
+        engine.dispatch({ type: 'cancelVideoCue' });
+      sendToOperator(IPC.media.videoEditChanged, edit);
+    },
     write: sourceWrite(
       libraryDb,
       () => importer?.giveWay() ?? { ready: Promise.resolve(), done: () => undefined },
@@ -3046,6 +3103,7 @@ function start(): void {
     // Audience or Stage (Session 50), by the screen's group.
     switchOf: (s) => switchFor(screenRepo.groupRole(s.groupId) ?? 'audience'),
     onChange: () => {
+      engine.videoCuePageJoined('');
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
         screenId: st.screenId,
@@ -5801,9 +5859,22 @@ function start(): void {
     (globalThis as { drashtiTestReadable?: (name: string) => void }).drashtiTestReadable = (name) => {
       windowReads.readable(name);
     };
+  handle(IPC.engine.videoCueReady, (event, cueId, kind, ready) => {
+    if (typeof cueId !== 'string' || cueId.length > 128 || typeof ready !== 'boolean') return null;
+    const picture =
+      fromOperator(event) ||
+      manager.screenIdFor(event.sender.id) !== undefined ||
+      streaming.isProgram(event.sender);
+    const sound = event.sender.id === audioWindow?.webContents.id || streaming.isProgram(event.sender);
+    if ((kind === 'picture' && picture) || (kind === 'sound' && sound))
+      engine.reportVideoCue(cueId, `${kind}:${event.sender.id}`, ready);
+    return null;
+  });
   handle(IPC.engine.subscribe, (event) =>
     windowReads.read('engine', () => {
       transport.add(event.sender);
+      engine.videoCuePageJoined(`picture:${event.sender.id}`);
+      engine.videoCuePageJoined(`sound:${event.sender.id}`);
       return engine.snapshot();
     }),
   );
@@ -7473,6 +7544,7 @@ function start(): void {
         : Promise.resolve({ ok: false as const, message: 'Main is starting: the report goes in a moment.' }),
     onAir: () => streaming.inUse(),
     changed: (status) => {
+      engine.videoCuePageJoined('');
       sendToOperator(IPC.nodes.changed, status);
     },
     screensChanged: () => {
@@ -7486,6 +7558,16 @@ function start(): void {
     },
     // A paired computer's screen could not play a video (Q60-44, the owner's answer A): it keeps what it showed; the
     // video plays on everywhere else, and the operator is told, once for each node and showing (media/cannot-play.ts).
+    videoCue: (nodeId, report) => {
+      if (
+        screenRepo.screen(report.screenId)?.nodeId !== nodeId ||
+        engine.current.videoCue?.id !== report.cueId
+      )
+        return;
+      const participant = `node:${nodeId}:${report.screenId}`;
+      if (report.state === 'loading') engine.videoCuePageJoined(participant);
+      else engine.reportVideoCue(report.cueId, participant, report.state === 'ready');
+    },
     cannotPlay: (node, report) => {
       const file = media.kindAndName(report.mediaId);
       if (file?.kind !== 'video') return;
@@ -8597,7 +8679,7 @@ function start(): void {
     if (!drawsShow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
     if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
     const file = media.kindAndName(mediaId);
-    if (file?.kind !== 'video' || !engine.noPicture(mediaId)) return null;
+    if (file?.kind !== 'video' || !engine.noPicture(mediaId, startedAt)) return null;
     log.warn(`A video's picture cannot be drawn here (sound only): ${mediaId}; taken off`);
     const converting = conversions.convertUndrawable(mediaId);
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
@@ -8638,7 +8720,7 @@ function start(): void {
       `${mediaId}@${String(startedAt)}`,
       where,
       (named) => {
-        const took = engine.cannotPlay(mediaId);
+        const took = engine.cannotPlay(mediaId, startedAt);
         if (!took) return;
         const off = [
           took.background ? 'the background' : '',
@@ -8940,6 +9022,19 @@ function start(): void {
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);
+    return null;
+  });
+  handle(IPC.stream.pageFrames, (e, grid: unknown) => {
+    const told = grid as Partial<FrameGrid> | null;
+    if (
+      streaming.isProgram(e.sender) &&
+      typeof told?.at === 'number' &&
+      Number.isFinite(told.at) &&
+      typeof told.periodMs === 'number' &&
+      told.periodMs >= 10 &&
+      told.periodMs <= 100
+    )
+      streamFrames = { at: told.at, periodMs: told.periodMs, told: Date.now() };
     return null;
   });
 

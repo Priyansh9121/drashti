@@ -90,8 +90,8 @@ describe('a video’s Shape in the engine', () => {
     expect(engine.refreshVideoShapes()).toMatchObject({ ok: true, changed: false });
   });
 
-  it('is engine state 30 (31 since the stream link), an older page or node saying it cannot draw it; a state 29 or 30 saved is read whole', () => {
-    expect(ENGINE_STATE_VERSION).toBe(31);
+  it('is engine state 30 (32 since Cue and crossfade), an older page or node saying it cannot draw it; a state 29 or 30 saved is read whole', () => {
+    expect(ENGINE_STATE_VERSION).toBe(32);
     expect(readsEngineVersion(30)).toBe(true);
     expect(readsEngineVersion(29)).toBe(true);
   });

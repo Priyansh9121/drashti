@@ -145,3 +145,73 @@ describe('press freshness guards', () => {
     });
   }
 });
+
+/**
+ * Cue (alpha.22): the pages' first-frame reports and a page joining again change only the private cue's readiness. A
+ * press read a moment before one of them must still count (with x81's freshness check, a Next pressed while a cue got
+ * ready was refused as stale). The cue itself, made or cancelled, still invalidates an older press.
+ */
+describe('press revisions while a cued video gets ready', () => {
+  for (const route of routes) {
+    for (const intervening of ['ready', 'not ready', 'page joined', 'cue made', 'cue cancelled'] as const) {
+      it(`${route}: a page's ${intervening} between reading and pressing`, async () => {
+        let pages = ['hall', 'live'];
+        const h = controllerTest({
+          schedule: () => () => undefined,
+          mediaKind: () => 'video',
+          mediaLength: () => 10_000,
+          videoCueParticipants: () => pages,
+        });
+        try {
+          h.online();
+          h.service.setController(h.node.id, true);
+          h.service.setControllerAreas(h.node.id, ['show', 'media']);
+          expect(h.engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 }).ok).toBe(true);
+          if (intervening !== 'cue made')
+            expect(h.engine.dispatch({ type: 'cueVideo', mediaId: 'clip' }).ok).toBe(true);
+          const id = h.engine.current.videoCue?.id ?? '';
+          if (intervening === 'page joined') h.engine.reportVideoCue(id, 'hall', true);
+          const seen = { session: h.engine.session, rev: h.engine.rev };
+          const before = h.engine.rev;
+          if (intervening === 'ready')
+            expect(h.engine.reportVideoCue(id, 'hall', true)).toMatchObject({ ok: true, changed: true });
+          if (intervening === 'not ready')
+            expect(h.engine.reportVideoCue(id, 'hall', false)).toMatchObject({ ok: true, changed: true });
+          if (intervening === 'page joined') {
+            pages = ['hall', 'live', 'node-screen'];
+            h.engine.videoCuePageJoined('hall');
+          }
+          if (intervening === 'cue made')
+            expect(h.engine.dispatch({ type: 'cueVideo', mediaId: 'clip' }).ok).toBe(true);
+          if (intervening === 'cue cancelled')
+            expect(h.engine.dispatch({ type: 'cancelVideoCue' }).ok).toBe(true);
+          expect(h.engine.rev).toBe(before + 1);
+          const command = { type: 'next' as const };
+          const result =
+            route === 'phone'
+              ? h.engine.dispatch({ ...command, ...seen })
+              : route === 'operator'
+                ? runEngineCommand(h.engine, command, true, seen)
+                : h.service.controllerAction(h.node.id, { id: 'placeholder-press', ...seen, command });
+          if (intervening === 'cue made' || intervening === 'cue cancelled') {
+            expect(result).toMatchObject(
+              route === 'controller'
+                ? { status: 'stale' }
+                : route === 'operator'
+                  ? { ok: false, error: 'forbidden' }
+                  : { ok: true, changed: false },
+            );
+            expect(h.engine.current.live.slideIndex).toBe(0);
+          } else {
+            expect(result).toMatchObject(
+              route === 'controller' ? { status: 'accepted', changed: true } : { ok: true, changed: true },
+            );
+            expect(h.engine.current.live.slideIndex).toBe(1);
+          }
+        } finally {
+          await h.close();
+        }
+      });
+    }
+  }
+});
