@@ -839,6 +839,7 @@ function SlideVideo({
   seek,
   deck,
   deckStep,
+  imageDecoding,
 }: {
   el: MediaElement;
   startedAt: number | undefined;
@@ -851,6 +852,7 @@ function SlideVideo({
   deck?: DeckMedia;
   /** The step its slide shows (C review): it shows between its entrance and its exit only. */
   deckStep?: DeckVideoTiming | null;
+  imageDecoding?: 'sync';
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   // A Shape of its own (Sound and picture…, alpha.20, x55): drawn in its frame's box of that shape; a new shape moves
@@ -939,7 +941,9 @@ function SlideVideo({
         style={cover === 'hidden' ? { ...drawn, visibility: 'hidden' } : drawn}
       />
       {/* A deck's video's poster, over it until it plays (Session 54, C2). */}
-      {cover === 'poster' && deck?.posterId && <DeckPoster mediaId={deck.posterId} style={mediaStyle(el)} />}
+      {cover === 'poster' && deck?.posterId && (
+        <DeckPoster mediaId={deck.posterId} style={mediaStyle(el)} imageDecoding={imageDecoding} />
+      )}
       {/* Its play bar (Session 54), when the slide editor's setting is ticked: drawn from the same timing. */}
       {el.playBar === true && (
         <PlayBar
@@ -958,11 +962,20 @@ function SlideVideo({
 }
 
 /** A deck's video's poster (Session 54, C2), from this computer's media or, on a node, its copy. */
-function DeckPoster({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+function DeckPoster({
+  mediaId,
+  style,
+  imageDecoding,
+}: {
+  mediaId: string;
+  style: CSSProperties;
+  imageDecoding?: 'sync';
+}) {
   const attempt = useMediaAttempt(mediaId);
   const urlOf = useMediaUrl();
   return (
     <img
+      decoding={imageDecoding}
       key={attempt}
       data-deck-poster={mediaId}
       src={urlOf(mediaId, attempt)}
@@ -974,22 +987,39 @@ function DeckPoster({ mediaId, style }: { mediaId: string; style: CSSProperties 
 }
 
 /** A video's still frame, made once and kept (thumbnails never play video). */
-export function VideoStill({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+export function VideoStill({
+  mediaId,
+  style,
+  imageDecoding,
+}: {
+  mediaId: string;
+  style: CSSProperties;
+  imageDecoding?: 'sync';
+}) {
   return usePreviewsOnly() ? (
     <PreviewPicture mediaId={mediaId} style={style} />
   ) : (
-    <WindowVideoStill mediaId={mediaId} style={style} />
+    <WindowVideoStill mediaId={mediaId} style={style} imageDecoding={imageDecoding} />
   );
 }
 
 /** In Drashti's windows: the still the operator window made and keeps in the media folder. */
-function WindowVideoStill({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+function WindowVideoStill({
+  mediaId,
+  style,
+  imageDecoding,
+}: {
+  mediaId: string;
+  style: CSSProperties;
+  imageDecoding?: 'sync';
+}) {
   const still = useStill(mediaId);
   if (still.failed) {
     return <div data-media-id={mediaId} data-still="none" style={{ ...style, background: '#1f2937' }} />;
   }
   return (
     <img
+      decoding={imageDecoding}
       data-media-id={mediaId}
       data-still={still.version}
       src={stillUrl(mediaId, still.version)}
@@ -1011,6 +1041,7 @@ function MediaView({
   seeks,
   deck,
   deckStep,
+  imageDecoding,
 }: {
   el: MediaElement;
   media: MediaMode;
@@ -1021,6 +1052,7 @@ function MediaView({
   deck?: DeckMedia;
   /** The step its slide shows (C review). */
   deckStep?: DeckVideoTiming | null;
+  imageDecoding?: 'sync';
 }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
@@ -1028,16 +1060,26 @@ function MediaView({
   const showing = startedAt === undefined ? null : slideShowing(startedAt);
   const previews = usePreviewsOnly();
   if (el.kind === 'image')
-    return <SlidePicture el={el} showing={showing} attempt={attempt} previews={previews} />;
+    return (
+      <SlidePicture
+        el={el}
+        showing={showing}
+        attempt={attempt}
+        previews={previews}
+        imageDecoding={imageDecoding}
+      />
+    );
   // A phone or tablet: pictures and videos as small previews, and no video plays.
   if (previews)
     return deck && deckStep && videoShowsFrom(deck, deckStep) === null ? null : (
       // A deck's video outside its entrance and its exit (C review) shows nothing on a phone either.
       <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />
     );
-  if (media === 'still') return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} />;
+  if (media === 'still')
+    return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} imageDecoding={imageDecoding} />;
   return (
     <SlideVideo
+      imageDecoding={imageDecoding}
       key={attempt}
       el={el}
       startedAt={startedAt}
@@ -1056,11 +1098,13 @@ function SlidePicture({
   showing,
   attempt,
   previews,
+  imageDecoding,
 }: {
   el: MediaElement;
   showing: string | null;
   attempt: number;
   previews: boolean;
+  imageDecoding?: 'sync';
 }) {
   const urlOf = useMediaUrl();
   const crop = el.crop;
@@ -1079,12 +1123,19 @@ function SlidePicture({
       }
     : mediaStyle(el);
   const picture = (
-    <Looked mediaId={el.mediaId} showing={showing} style={style} box={crop ? { width, height } : el.frame}>
+    <Looked
+      imageDecoding={imageDecoding}
+      mediaId={el.mediaId}
+      showing={showing}
+      style={style}
+      box={crop ? { width, height } : el.frame}
+    >
       {(paint, copy) =>
         previews ? (
           <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={paint} />
         ) : (
           <img
+            decoding={imageDecoding}
             key={attempt}
             data-element={crop ? undefined : el.id}
             data-media-id={el.mediaId}
@@ -1117,6 +1168,7 @@ function ElementBody({
   band,
   deck,
   deckStep,
+  imageDecoding,
 }: {
   el: SlideElement;
   media?: MediaMode;
@@ -1136,6 +1188,7 @@ function ElementBody({
   deck?: DeckMedia;
   /** The step its slide shows (C review): a deck's video shows between its entrance and its exit only. */
   deckStep?: DeckVideoTiming | null;
+  imageDecoding?: 'sync';
 }) {
   if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} band={band} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
@@ -1144,6 +1197,7 @@ function ElementBody({
     return <TimerElementView el={el} box={timerBoxStyle(el)} animate={media === 'live'} band={band} />;
   return (
     <MediaView
+      imageDecoding={imageDecoding}
       el={el}
       media={media}
       startedAt={startedAt}
@@ -1233,9 +1287,11 @@ export function ElementView(props: Parameters<typeof ElementBody>[0] & { preview
 export function SlideBackdropView({
   slide,
   media = 'still',
+  imageDecoding,
 }: {
   slide: Pick<RenderSlide, 'id' | 'width' | 'height' | 'backdrop'>;
   media?: MediaMode;
+  imageDecoding?: 'sync';
 }) {
   const bg = slide.backdrop;
   if (!bg) return null;
@@ -1253,6 +1309,7 @@ export function SlideBackdropView({
   return (
     <div data-slide-backdrop="picture" style={{ position: 'absolute', inset: 0 }}>
       <ElementBody
+        imageDecoding={imageDecoding}
         el={{
           id: `backdrop-${slide.id}`,
           kind: 'image',
@@ -1286,6 +1343,7 @@ export const SlideView = memo(function SlideView({
   text = 'shown',
   reveal,
   step,
+  imageDecoding,
 }: {
   slide: RenderSlide;
   media?: MediaMode;
@@ -1303,6 +1361,7 @@ export const SlideView = memo(function SlideView({
    * engine's time. Left out (a thumbnail, any other slide), its picture is drawn as it is: the slide whole.
    */
   step?: StepTiming | null;
+  imageDecoding?: 'sync';
 }) {
   const darken = slide.darken;
   // The deck's picture, drawn as the step showing (Session 54, C2).
@@ -1327,7 +1386,7 @@ export const SlideView = memo(function SlideView({
           background: text === 'only' ? 'transparent' : (slide.background ?? 'transparent'),
         }}
       >
-        {text !== 'only' && <SlideBackdropView slide={slide} media={media} />}
+        {text !== 'only' && <SlideBackdropView slide={slide} media={media} imageDecoding={imageDecoding} />}
         {slide.elements.map((el) => [
           // The whole picture darkened (Sessions 31–36, SLD-3): over everything before the first words (a
           // picture, the colour, the background layer's video under the slide), under the words.
@@ -1349,18 +1408,28 @@ export const SlideView = memo(function SlideView({
             // The picture's kept look and the live zoom (Session 26e) apply to the step drawn in its place, as to the
             // picture itself: it is the picture the engine zooms (Session 54, D2 review).
             <Looked
+              imageDecoding={imageDecoding}
               key={el.id}
               mediaId={el.mediaId}
               showing={startedAt === undefined ? null : slideShowing(startedAt)}
               style={{ ...frameStyle(el), opacity: el.opacity ?? 1, objectFit: OBJECT_FIT[el.fit] }}
               box={el.frame}
             >
-              {(box) => <DeckStepView deck={deck} timing={step} style={box} fit={OBJECT_FIT[el.fit]} />}
+              {(box) => (
+                <DeckStepView
+                  deck={deck}
+                  timing={step}
+                  style={box}
+                  fit={OBJECT_FIT[el.fit]}
+                  imageDecoding={imageDecoding}
+                />
+              )}
             </Looked>
           ) : (
             <NativeDeckElement key={el.id} element={el}>
               {(placed) => (
                 <ElementView
+                  imageDecoding={imageDecoding}
                   el={placed}
                   media={media}
                   startedAt={startedAt}

@@ -8,17 +8,7 @@ import { Toggle } from '../ui/Toggle';
 import { useMode } from '../operator/mode-store';
 import { closeOsc, openOsc, saveOsc, useOsc } from './osc-store';
 
-export function OscTool() {
-  return (
-    <div className="px-6 pb-3">
-      <Button variant="secondary" size="sm" data-testid="open-osc" onClick={openOsc}>
-        OSC control…
-      </Button>
-    </div>
-  );
-}
-
-/** Keep the enabled door visible even with More tools folded away, in either mode. */
+/** Keep the enabled door visible even with OSC control's section folded away, in either mode. */
 export function OscBadge() {
   const status = useOsc((s) => s.status);
   if (!status?.settings.enabled) return null;

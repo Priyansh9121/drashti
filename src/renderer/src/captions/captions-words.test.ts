@@ -12,6 +12,7 @@ import {
 } from '../../../shared/captions';
 import {
   captionsStateText,
+  captionsSwitchDisabled,
   downloadText,
   languageModelText,
   LONGEST_NAMES,
@@ -125,5 +126,14 @@ describe('a model per language and live timing in the dialog (alpha.22)', () => 
       '2 (for a computer with two cores)',
       '1 (the lightest)',
     ]);
+  });
+});
+
+describe('the dialog’s On switch (review S1)', () => {
+  it('is greyed out only while off with no engine that can run: captions that are on can always be turned off', () => {
+    expect(captionsSwitchDisabled(view({ on: false, engine: false }))).toBe(true);
+    expect(captionsSwitchDisabled(view({ on: true, engine: false }))).toBe(false);
+    expect(captionsSwitchDisabled(view({ on: false, engine: true }))).toBe(false);
+    expect(captionsSwitchDisabled(view({ on: true, engine: true }))).toBe(false);
   });
 });

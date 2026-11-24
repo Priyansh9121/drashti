@@ -20,6 +20,7 @@ import {
   launchApp,
   letTimePass,
   openLibrary,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -317,6 +318,7 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
   );
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id, 0), listId);
   await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(one);
+  await openSection(win, 'audio');
   const musicBar = win
     .getByTestId('music-panel')
     .getByRole('slider', { name: 'Time of the track playing', exact: true });

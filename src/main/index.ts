@@ -59,6 +59,8 @@ import {
   blurOfId,
   copyMediaId,
   copyOfId,
+  displayMediaId,
+  displayOfId,
   IMAGE_FILE_FILTER,
   MEDIA_ID_PATTERN,
   MEDIA_SCHEME,
@@ -96,6 +98,8 @@ import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import { isOperatorMode, simpleModeRefuses, simplePhoneRefusalText, simpleRefusalText } from '../shared/mode';
 import { ModeKeeper } from './mode-keeper';
+import { SimpleFeaturesKeeper } from './simple-features';
+import type { SimpleFeature } from '../shared/simple-features';
 import { SimplePlaylist, simplePlaylistName } from './simple-playlist';
 import type { SimplePhoneScope } from './simple-mode-phones';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
@@ -229,6 +233,10 @@ import { takeSnapshot } from './media/snapshot';
 import { playingSchema } from '../shared/engine/playing';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
+import { DisplayCopies } from './media/display-copies';
+import { DisplayBlobFiles } from './pictures/display-blob-file';
+import { handleDisplaySourceRequest } from './media/display-worker-source';
+import { DEFAULT_DISPLAY_SIZE } from '../shared/picture-display';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
 import { pictureCannotSeeThrough } from './media/see-through';
 import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
@@ -247,7 +255,7 @@ import {
   type PixelSize,
   sharpenStep,
 } from '../shared/picture-look';
-import { largestAudienceScreen, type LocalOutput } from './media/copy-screen';
+import { audienceScreenSizes, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
@@ -331,7 +339,7 @@ import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createPicturesWindow } from './pictures/pictures-window';
-import { createSharpenWindow } from './pictures/sharpen-window';
+import { createSharpenWindow, pictureWorkerPriority } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { sourceReader } from './documents/source-reader';
 import { SourceReaderQueue } from './documents/source-reader-queue';
@@ -452,6 +460,7 @@ import { spawnStreamWorker } from './stream/stream-worker';
 import { AFTER_START_MS, ConvertService, readInfo } from './convert/convert-service';
 import { HevcAnswer, hevcKindsScript, playsHevcScript } from './convert/plays-hevc';
 import { askInOwnPage, type HevcPage } from './convert/hevc-page';
+import { transitionsEndAt } from '../shared/engine/transitions-running';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
@@ -471,6 +480,10 @@ import { packFileFor, packLanguageModelStore } from './speech/pack-language-mode
 import { createWhisperRoute } from './speech/whisper-route';
 import { createIndicRoute } from './speech/indic-route';
 import { handleModelPacks } from './model-packs/ipc';
+import { findTranslateHelper } from './translation/helper-place';
+import { handleTranslation } from './translation/ipc';
+import { TranslationEngine } from './translation/translation-engine';
+import { StandInTranslator } from '../shared/prepared-translations';
 import { ModelPackStore } from './model-packs/store';
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { findIndic, indicProblem } from './speech/indic-place';
@@ -1040,6 +1053,15 @@ const perfNodes = Math.min(50, Math.max(0, Number(sw('DRASHTI_PERF_NODES') ?? 0)
 // Main listens for nodes on.
 const testVersion = packaged() ? undefined : sw('DRASHTI_TEST_VERSION');
 const appVersion = () => testVersion ?? app.getVersion();
+/** How long after a running transition's end a new picture's display copy starts (alpha.21, Q60-59 A). */
+const TRANSITION_WAKE_MARGIN_MS = 250;
+/** The longest an import waits for the screens' transitions to end (Q60-60 A). */
+const IMPORT_QUIET_MAX_MS = 15_000;
+/** The import's wait for no running transition, set once the engine and the outputs exist (Q60-60 A). */
+let importQuiet: (() => Promise<void>) | null = null;
+/** QA22-L8-1 (the owner: "Keep wait, say why"): the screens' transitions' end, and the copies' hold, for the import. */
+let importTransitionsEnd: (() => number | null) | null = null;
+let importDisplayHeld: ((waiting: boolean) => void) | null = null;
 const nodeClockSkewMs = packaged() ? 0 : Number(sw('DRASHTI_TEST_CLOCK_SKEW_MS') ?? 0) || 0;
 const nodePortOverride = Number(sw('DRASHTI_NODE_PORT') ?? 0) || null;
 // Tests only (never a packaged Drashti): a test can make an output draw an element that throws, to see a
@@ -1937,6 +1959,8 @@ function start(): void {
   let lookService: LookService | null = null;
   /** Simple Mode is on (set once the mode is read, further down). */
   let simpleNow = () => false;
+  // Which of Pro Mode's tools Simple Mode has (alpha.22, Edit › Simple Mode Features…): made with the mode, below.
+  let simpleChosen = (): readonly SimpleFeature[] => [];
   /** A media file's length, once learned from playing it (the media repo, made further down). */
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** A picture's look (Session 26e; the media repo, made further down). */
@@ -2020,7 +2044,7 @@ function start(): void {
       refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
-          : simpleNow() && simpleModeRefuses(command, state)
+          : simpleNow() && simpleModeRefuses(command, state, simpleChosen())
             ? simpleRefusalText(simpleAccess())
             : null,
       sourceMediaId: (id) => editedPlaying.sourceId(id),
@@ -2254,12 +2278,18 @@ function start(): void {
   mediaKind = (mediaId) => media.kindAndName(mediaId)?.kind ?? null;
   /** The largest audience screen's picture as drawn, in pixels (set once the outputs are). */
   let audienceScreenSize: (() => PixelSize | null) | null = null;
+  let audienceDisplaySizes: () => PixelSize[] = () => [];
+  let streamDisplaySize: () => PixelSize = () => DEFAULT_DISPLAY_SIZE;
+  let displayOnAir: () => boolean = () => true;
+  const displayTargets = () => [...audienceDisplaySizes(), streamDisplaySize()];
+  let displayWorkerBusy: () => boolean = () => false;
   // ---- pictures' sharpened copies (Session 26f): made once each, drawn by every screen ----------
   const sharpened = new SharpenedCopies({
     mediaDir,
     wanted: () => media.sharpenWants(),
+    canWork: () => !displayWorkerBusy(),
     // The largest audience screen's picture as drawn (Session 26g): copies are made at that size.
-    screen: () => audienceScreenSize?.() ?? null,
+    screen: () => audienceScreenSize?.() ?? streamDisplaySize(),
     open: (gone) => {
       const win = createSharpenWindow(gone);
       return {
@@ -2284,6 +2314,96 @@ function start(): void {
   });
   handle(IPC.sharpen.next, (e) => sharpened.next(e.sender.id));
   handle(IPC.sharpen.made, (e, key, bytes) => sharpened.made(e.sender.id, key, bytes));
+  // No shared media permissions or cache: this Session can read only its one currently granted source.
+  const displaySession = session.fromPartition('drashti-display-copies');
+  applySessionSecurity(displaySession);
+  const displayBlobFiles = new DisplayBlobFiles(displaySession);
+  stops.add('display blob files', () => displayBlobFiles.close());
+  let displayWorkerId = 0;
+  // A new picture's copy is never made during a transition on the screens (alpha.21, Q60-59 A, answered for the owner
+  // by his assister under his 1-minute rule: made during a hall dissolve, its work held up the hall's frames): it waits
+  // for the running dissolve or fade to end, then starts at once (one wake-up at that end).
+  let transitionWake: ReturnType<typeof setTimeout> | null = null;
+  // An import waits the same way (Q60-60 A, the owner's own "A."): until no transition runs, re-checked at each end, at
+  // most IMPORT_QUIET_MAX_MS so a run of dissolves never holds it long.
+  const untilNoTransition = (): Promise<void> =>
+    new Promise((resolve) => {
+      const giveUp = Date.now() + IMPORT_QUIET_MAX_MS;
+      const check = () => {
+        const ends = transitionsEndAt(engine.current, Date.now());
+        if (ends === null || Date.now() >= giveUp) {
+          resolve();
+          return;
+        }
+        setTimeout(check, Math.min(ends, giveUp) - Date.now() + TRANSITION_WAKE_MARGIN_MS);
+      };
+      check();
+    });
+  importQuiet = untilNoTransition;
+  importTransitionsEnd = () => transitionsEndAt(engine.current, Date.now());
+  const noTransitionRunning = (): boolean => {
+    const ends = transitionsEndAt(engine.current, Date.now());
+    if (ends === null) return true;
+    transitionWake ??= setTimeout(
+      () => {
+        transitionWake = null;
+        displayCopies.activityChanged();
+      },
+      ends - Date.now() + TRANSITION_WAKE_MARGIN_MS,
+    );
+    return false;
+  };
+  stops.add('display copies’ transition wake', () => {
+    if (transitionWake) clearTimeout(transitionWake);
+  });
+  const displayCopies = new DisplayCopies({
+    mediaDir,
+    targets: displayTargets,
+    canStart: () => !sharpened.working && noTransitionRunning(),
+    // Held while a transition runs: a new picture's import says it waits for the screens' transitions (QA22-L8-1).
+    held: (waiting) => {
+      importDisplayHeld?.(waiting && transitionsEndAt(engine.current, Date.now()) !== null);
+    },
+    canWork: () => nothingUp(engine.current.layers) && !displayOnAir(),
+    open: (gone) => {
+      const win = createSharpenWindow(gone, true, displaySession);
+      const id = win.webContents.id;
+      displayWorkerId = id;
+      return {
+        id,
+        saveBlob: (blob, destination, signal) =>
+          displayBlobFiles.save(win.webContents, blob, destination, signal),
+        beforeBytes: () => {
+          const priority = pictureWorkerPriority(win.webContents.getOSProcessId());
+          log.info(`Display copy worker priority: ${String(priority)} (${process.platform})`);
+        },
+        destroy: () => {
+          if (displayWorkerId === id) displayWorkerId = 0;
+          if (!win.isDestroyed()) win.destroy();
+        },
+      };
+    },
+    changed: () => {
+      looksChanged();
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    },
+    log: (message) => log.info(message),
+  });
+  displaySession.protocol.handle(MEDIA_SCHEME, (request) =>
+    handleDisplaySourceRequest(request, {
+      mediaDir,
+      lookup: (key) => displayCopies.workerSource(displayWorkerId, key),
+      fetchFile: (url, init) => displaySession.fetch(url, init),
+    }),
+  );
+  const refreshDisplayCopies = () =>
+    db === null ? Promise.resolve() : displayCopies.refresh(media.displayCandidates());
+  displayWorkerBusy = () => displayCopies.working;
+  stops.add('display copies', () => displayCopies.close());
+  handle(IPC.displayCopies.next, (e) => displayCopies.next(e.sender.id));
+  handle(IPC.displayCopies.made, (e, key, bytes) => displayCopies.made(e.sender.id, key, bytes));
+
   // ---- pictures' blurred copies (Session 55, Part 5, D): made once each, drawn behind a photo that does not fill ----
   /** On air or recording (set once the stream is): no blurred copy is made meanwhile. */
   let blurOnAir: () => boolean = () => false;
@@ -2329,11 +2449,19 @@ function start(): void {
   const fillsWithBlur = (mediaId: string, look: PictureLook | null): boolean =>
     look?.fill ?? media.photoByDefault(mediaId);
   /** A look as the screens and thumbnails get it: with its sharpened copy, once that is ready. */
-  const shownLook = (mediaId: string, look: PictureLook | null): PictureLook | null => {
+  const shownLook = (
+    mediaId: string,
+    look: PictureLook | null,
+    targets?: readonly PixelSize[],
+  ): PictureLook | null => {
+    const sha = media.file(mediaId)?.sha256 ?? null;
+    const file = sha ? displayCopies.ready(sha, look, targets) : null;
+    const shown = file
+      ? { ...(look ?? PLAIN), display: { key: file.key, width: file.width, height: file.height } }
+      : look;
     const step = look ? sharpenStep(look.sharpness) : 0;
-    if (!look || step === 0) return look;
-    const ready = sharpened.readyStep(media.file(mediaId)?.sha256 ?? null);
-    return ready === step ? { ...look, copy: step } : look;
+    const ready = sharpened.readyStep(sha);
+    return step > 0 && ready === step ? { ...(shown ?? PLAIN), copy: step } : shown;
   };
   /**
    * A look as the screens get it (Session 55, D): with its blurred copy behind it, once that is ready, on for a photo
@@ -2346,13 +2474,21 @@ function start(): void {
     blurred.want([mediaId]);
     return look;
   };
-  const shownLooks = (): Record<string, PictureLook> =>
-    Object.fromEntries(
-      Object.entries(media.looks()).flatMap(([id, look]) => {
-        const shown = shownLook(id, look);
+  const shownLooks = (): Record<string, PictureLook> => {
+    // One fresh physical target snapshot for this synchronous publication.
+    const targets = displayTargets();
+    const looks = media.looks();
+    for (const candidate of media.displayCandidates()) {
+      if (!(candidate.mediaId in looks) && displayCopies.ready(candidate.sha256, candidate.look, targets))
+        looks[candidate.mediaId] = candidate.look ?? PLAIN;
+    }
+    return Object.fromEntries(
+      Object.entries(looks).flatMap(([id, look]) => {
+        const shown = shownLook(id, look, targets);
         return shown ? [[id, shown]] : [];
       }),
     );
+  };
   pictureLook = (mediaId) => screenLook(mediaId);
   // Which pictures can draw no see-through pixel (X11, media/see-through.ts), only where Chromium draws without a
   // graphics chip (only there do the screens back a moving slide; with one the state stays as it was): each file's first
@@ -2462,6 +2598,7 @@ function start(): void {
     looksChanged();
     // Its sharpened copy made (again), or gone with its sharpness (Session 26f).
     void sharpened.refresh();
+    void refreshDisplayCopies();
     // Its blurred copy, once its fill is on (Session 55, D).
     if (fillsWithBlur(mediaId, media.look(mediaId))) blurred.want([mediaId]);
     log.info('Pictures: a picture’s look was kept');
@@ -2566,6 +2703,7 @@ function start(): void {
       },
       selectedThumbnail: (id) => videoEdits.thumbnailOf(id),
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
+      display: (sha256, key) => displayCopies.relativePath(sha256, key),
       blurred: (sha256) => blurred.relativePath(sha256),
       // A picture one of the guides shows (only those, from the guides' own folder).
       guidePicture: (name) => {
@@ -2855,6 +2993,7 @@ function start(): void {
         resized = setTimeout(() => {
           resized = null;
           void sharpened.screensChanged();
+          void refreshDisplayCopies();
         }, 500);
       });
       return h;
@@ -2911,11 +3050,12 @@ function start(): void {
       }
       // Sharpened copies follow the screens' size (Session 26g).
       void sharpened.screensChanged();
+      void refreshDisplayCopies();
     },
   });
   // The audience screens on this computer, each its canvas as drawn in its window, in pixels: the largest.
   // A node's screens count too (Session 26h), at the size of the node's display each is given to.
-  audienceScreenSize = () => {
+  audienceDisplaySizes = () => {
     const local: LocalOutput[] = [];
     for (const [screenId, win] of outputWindows) {
       const s = screenRepo.screen(screenId);
@@ -2932,12 +3072,20 @@ function start(): void {
       const d = listDisplays().find((x) => x.id === st.displayId);
       if (s && d) local.push({ screen: s, window: { width: d.pixelWidth, height: d.pixelHeight } });
     }
-    return largestAudienceScreen({
+    return audienceScreenSizes({
       local,
       screens: screenRepo.allScreens(),
       roleOf: (groupId) => screenRepo.groupRole(groupId),
       nodes: nodeService?.displays() ?? [],
     });
+  };
+  audienceScreenSize = () => {
+    const all = audienceDisplaySizes();
+    return all.reduce<PixelSize | null>(
+      (largest, size) =>
+        !largest || size.width * size.height > largest.width * largest.height ? size : largest,
+      null,
+    );
   };
   stops.add('outputs', () => {
     manager.closeAll();
@@ -3452,6 +3600,7 @@ function start(): void {
     // The pictures' sharpened copies (Session 26f): any missing made, any no picture wants removed.
     .finally(() => {
       void sharpened.refresh();
+      void refreshDisplayCopies();
     });
   /** After media is deleted or brought back: everything that shows media reads again. */
   const mediaRemovalChanged = () => {
@@ -3721,6 +3870,7 @@ function start(): void {
       youtubeService?.streamChanged(status);
       captionsStreamUseChanged?.(stream?.inUse() === true);
       conversionActivityChanged?.();
+      if (nothingUp(engine.current.layers) && !displayOnAir()) void refreshDisplayCopies();
       trimActivityChanged?.();
       for (const check of [...pdfReadWaits]) check();
       eventsOut.emit(streamEvents(eventsStreamWas, status));
@@ -3826,6 +3976,12 @@ function start(): void {
   });
   // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
   blurOnAir = () => streaming.inUse() || testOnAir;
+  displayOnAir = () => streaming.inUse() || testOnAir;
+  streamDisplaySize = () => {
+    const { width, height } = streaming.context();
+    return { width, height };
+  };
+  void refreshDisplayCopies();
 
   // ---- live captions (Session 55, Part 10) ------------------------------------
   // Off until an admin turns them on (File › Live Captions…, Pro Mode); the model downloads once into the data folder.
@@ -3928,9 +4084,18 @@ function start(): void {
       const entry = languageModels.known().find((e) => e.sha256 === sha256);
       return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
     },
-    engine: (file, use) =>
+    // The pack's file is given back once whisper-server has exited (alpha.23); the stand-in runs no program.
+    engine: (file, use, exited) =>
       testSpeech !== undefined
-        ? speechEngine
+        ? {
+            start: (language, to) => {
+              const stop = speechEngine.start(language, to);
+              return () => {
+                stop();
+                exited();
+              };
+            },
+          }
         : createWhisperEngine({
             program: () => whisperProgram,
             model: () => file,
@@ -3940,6 +4105,7 @@ function start(): void {
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
             log,
+            onExited: exited,
           }),
   });
   // Route C (alpha.22, cap-ship-c / Codex x94): AI4Bharat's IndicConformer (CTC) from the pack on Drashti's helper
@@ -3951,17 +4117,21 @@ function start(): void {
     platform: process.platform,
     arch: process.arch,
   });
+  // What keeps Route C from running on this computer (a Mac before 13.4, no helper): its own reason, never whisper's.
+  const routeCProblem = (): string | null =>
+    indicProblem(process.platform, process.getSystemVersion()) ??
+    (indicProgram === null
+      ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
+      : null);
   const conformerRoute = createIndicRoute({
     store: modelPacks,
     program: () => indicProgram,
-    problem: () =>
-      indicProblem(process.platform, process.getSystemVersion()) ??
-      (indicProgram === null
-        ? 'This copy of Drashti has no IndicConformer captions engine: reinstall Drashti to restore it.'
-        : null),
+    problem: () => routeCProblem(),
     admission: 'below-show',
     // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
     threads: 2,
+    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review).
+    timing: () => captions.timing(),
     sound: { open: (chunk) => streaming.listenSound(chunk) },
     log,
   });
@@ -3999,6 +4169,8 @@ function start(): void {
           return routeC && testSpeech !== undefined ? speechEngine : routeC;
         },
       }),
+      // Route C's own reason when it cannot run here (the review's S1); none for the stand-in in tests, as whisper's.
+      problem: () => (testSpeech !== undefined ? null : routeCProblem()),
       coordinator: captionCoordinator,
     },
     engineProblem: () => captionsEngineProblem,
@@ -4064,21 +4236,6 @@ function start(): void {
       ? captions.setLanguageModel(language, id)
       : captions.view(),
   );
-  handle(IPC.captions.addLanguageModel, async (e, language) => {
-    if (!fromOperator(e) || !isLanguageModelLanguage(language)) return captions.view();
-    const parent = BrowserWindow.fromWebContents(e.sender);
-    const options = {
-      title: 'Add a Captions Model',
-      buttonLabel: 'Add Model',
-      properties: ['openFile'] as 'openFile'[],
-      filters: [{ name: 'Captions models (ggml)', extensions: ['bin'] }],
-    };
-    const picked = parent
-      ? await dialog.showOpenDialog(parent, options)
-      : await dialog.showOpenDialog(options);
-    const file = picked.canceled ? undefined : picked.filePaths[0];
-    return file === undefined ? captions.view() : captions.addLanguageModel(language, file);
-  });
   handle(IPC.captions.checkLanguageModel, (e, language) =>
     fromOperator(e) && isLanguageModelLanguage(language)
       ? captions.checkLanguageModel(language)
@@ -4403,6 +4560,22 @@ function start(): void {
       log.info(line);
     },
   });
+  // Simple Mode Features (alpha.22; the owner's "the features can be brought to simple mode, only 1-2 and max 3"): which
+  // of Pro Mode's tools Simple Mode has, kept with the library as the mode is, none to begin with. Simple Mode's lock
+  // and the engine read it as each request comes, so a tool turned off ends at once.
+  const simpleFeatures = new SimpleFeaturesKeeper({
+    saved: settings.get('simpleFeatures'),
+    save: (chosen) => {
+      laterSetting('simpleFeatures', chosen);
+    },
+    changed: (chosen) => {
+      sendToOperator(IPC.app.simpleFeaturesChanged, { chosen: [...chosen] });
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  simpleChosen = () => simpleFeatures.chosen();
   const modes = new ModeKeeper({
     saved: { mode: settings.get('operatorMode'), byAccess: settings.get('simpleByAccess') },
     recentStop: startup.recentStop,
@@ -4487,11 +4660,19 @@ function start(): void {
       () => audioOutput.status,
       () => simpleRefusalText(modes.simpleOnly()),
     ),
-    simpleModeBounds(simpleScope),
+    simpleModeBounds(simpleScope, () => simpleFeatures.chosen()),
   );
   handle(IPC.app.getMode, () => mode);
   // The playlist Simple Mode shows (Session 55, Part 18): null in Pro Mode.
   handle(IPC.app.simplePlaylist, () => (mode === 'simple' ? simplePlaylist.current() : null));
+  // Edit › Simple Mode Features… (alpha.22): read in either mode; changed in Pro Mode only (Simple Mode's lock refuses
+  // it before it comes here), at most three.
+  handle(IPC.app.simpleFeatures, () => [...simpleFeatures.chosen()]);
+  handle(IPC.app.setSimpleFeature, (e, feature, on) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can choose Simple Mode’s tools.' };
+    return simpleFeatures.set(feature, on);
+  });
   handle(IPC.app.setMode, (e, wanted): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
@@ -4511,6 +4692,8 @@ function start(): void {
       // Quitting: the library has closed (Session 23: a change during an import came 2 s later).
       if (db === null) return;
       lastChanged = Date.now();
+      // Renditions are known before an imported item is first drawn as a thumbnail.
+      looksChanged();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       // The slide editor's own window: its pictures, videos and sounds to choose from (Session 55, Part 17a).
       slideEditor?.send(IPC.library.changed, { at: lastChanged, what: 'presentations' });
@@ -4520,6 +4703,7 @@ function start(): void {
       nodeService?.libraryChanged();
       // A sharpened picture's file may have come back, or gone (Session 26f).
       void sharpened.refresh();
+      void refreshDisplayCopies();
       // A sound in an audio playlist may have been converted, found or lost.
       if (musicService) sendToOperator(IPC.music.changed, musicService.view());
       // A wallpaper's picture may have been deleted, found or lost (Session 55, Part 6).
@@ -4800,6 +4984,7 @@ function start(): void {
       standInHold: packaged() ? null : (sw('DRASHTI_TEST_DECK_BAKER_HOLD') ?? null),
     },
     drawPdf: (pdf, outDir, signal, readPageText) => pdfPictures.draw(pdf, outDir, signal, readPageText),
+    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
     // A deck with its animations where this computer's setting says so (Session 54, C2 and its review). Tests only
     // (never a packaged Drashti): a stand-in makes its movie, or (with the stand-ins or no converter above) no
     // deck's movie is made, as on a computer with no app for it.
@@ -4816,6 +5001,9 @@ function start(): void {
     playsHevc: () => hevc.wait(),
     // HEVC's other kinds, as the window said with its answer (Session 60, x36), read as the import starts.
     hevcKinds: () => hevc.kinds,
+    // Each import starts only once no transition runs on the screens (alpha.21, Q60-60 A).
+    quiet: () => importQuiet?.() ?? Promise.resolve(),
+    transitionsEndAt: () => importTransitionsEnd?.() ?? null,
     // While an import runs, its own connection copies the WAL into the library file, never a write of Main's (Session
     // 58: such a write copied the import's pages and waited for the disk on the main thread).
     running: leaveCopyingToImports(libraryDb),
@@ -4899,6 +5087,9 @@ function start(): void {
     },
   });
   importer = imports;
+  importDisplayHeld = (waiting) => {
+    imports.displayHeld(waiting);
+  };
   stops.add('imports', () => {
     imports.stop();
   });
@@ -4940,6 +5131,7 @@ function start(): void {
 
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({
+    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
     db: libraryDb,
     mediaDir,
     // Every video and sound FFmpeg never read, read once at idle moments (alpha.20, "Plays anything"); not in a test
@@ -5076,6 +5268,13 @@ function start(): void {
   });
   stops.add('video edits', () => editedCopies.close());
   conversionActivityChanged = () => conversions.activityChanged();
+  let displayWasIdle = nothingUp(engine.current.layers) && !displayOnAir();
+  const offDisplayActivity = engine.onChange(() => {
+    const idle = nothingUp(engine.current.layers) && !displayOnAir();
+    if (idle && !displayWasIdle) void refreshDisplayCopies();
+    displayWasIdle = idle;
+  });
+  stops.add('display activity', offDisplayActivity);
   const offConversionActivity = engine.onChange((state) => {
     if (!nothingUp(state.layers)) conversions.activityChanged();
   });
@@ -5694,6 +5893,7 @@ function start(): void {
   );
   const pdfReadIdle = () => !streaming.inUse() && nothingUp(engine.snapshot().state.layers);
   const slideEdits = registerSlidesIpc({
+    prepareDisplay: (candidate, signal) => displayCopies.prepare(candidate, signal),
     mayChangeTranslations: () => mode === 'pro',
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
@@ -5812,6 +6012,52 @@ function start(): void {
   pdfReadWaits.add(stopPdfOnAir);
   stops.add('PDF off-air guard', () => {
     pdfReadWaits.delete(stopPdfOnAir);
+  });
+  // Prepare translations (alpha.22, a22-mt): drafts from the offline engine (drashti-translate with a model pack's
+  // IndicTrans2 model) for the Translation… dialog only; a named reader checks each before it can show. Pro Mode, off
+  // air: what is under way stops when the stream goes on air. Nothing runs until the dialog asks.
+  const translateProgram = findTranslateHelper({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const translationEngine = new TranslationEngine({
+    program: () => translateProgram,
+    models: modelPacks,
+    log,
+  });
+  const translationOnAir = () => streaming.inUse() || testOnAir;
+  // Tests only (never a packaged Drashti): DRASHTI_TEST_TRANSLATE=1 stands in for the engine with x83's stand-in (a
+  // marked placeholder, never a translation), so the dialog's Prepare translations is driven without a model pack.
+  const testTranslate = !packaged() && sw('DRASHTI_TEST_TRANSLATE') === '1';
+  const standInTranslator = new StandInTranslator();
+  handleTranslation({
+    handle,
+    mayDraft: (e) =>
+      mayEditSlides() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+    onAir: translationOnAir,
+    engine: testTranslate
+      ? {
+          installed: () => true,
+          available: (from, to) => from !== to,
+          unknownModel: () => false,
+          translate: (source, from, to) => standInTranslator.translate(source, from, to),
+          cancel: () => undefined,
+        }
+      : translationEngine,
+  });
+  const stopTranslationOnAir = () => {
+    if (translationOnAir()) translationEngine.cancel();
+  };
+  pdfReadWaits.add(stopTranslationOnAir);
+  stops.add('translation engine', () => {
+    pdfReadWaits.delete(stopTranslationOnAir);
+    translationEngine.stop();
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp, pages) => pdfEditor.export(e, id, doc, stamp, pages));
   handle(
@@ -6819,6 +7065,10 @@ function start(): void {
         previewSource(mediaId, {
           mediaDir,
           kindAndFile: (id) => media.kindAndFile(id),
+          display: (id, key) => {
+            const found = media.file(id);
+            return found?.sha256 && !found.missing ? displayCopies.relativePath(found.sha256, key) : null;
+          },
           sharpened: (id, step) => {
             const found = media.file(id);
             return found && !found.missing ? sharpened.relativePath(found.sha256, step) : null;
@@ -7044,6 +7294,14 @@ function start(): void {
     // A picture's sharpened copy (Session 26f), once it is ready: one more file for the node, copied as
     // media is, right after the picture's own.
     {
+      display: (mediaId) => {
+        const found = media.file(mediaId);
+        const copy =
+          found?.sha256 && !found.missing ? displayCopies.ready(found.sha256, media.look(mediaId)) : null;
+        return copy
+          ? { id: displayMediaId(mediaId, copy.key), sha256: copy.hash, bytes: copy.bytes, ext: copy.ext }
+          : null;
+      },
       want: (mediaId) => {
         const look = media.look(mediaId);
         const step = look ? sharpenStep(look.sharpness) : 0;
@@ -7061,6 +7319,15 @@ function start(): void {
         return file ? { id: blurMediaId(mediaId), sha256: file.hash, bytes: file.bytes, ext: 'jpg' } : null;
       },
       source: (copyId) => {
+        const display = displayOfId(copyId);
+        if (display) {
+          const found = media.file(display.mediaId);
+          const file =
+            found?.sha256 && !found.missing ? displayCopies.fileOf(found.sha256, display.key) : null;
+          return file
+            ? { path: join(mediaDir, file.path), sha256: file.hash, bytes: file.bytes, ext: file.ext }
+            : null;
+        }
         const blurOf = blurOfId(copyId);
         if (blurOf) {
           const found = media.file(blurOf);
@@ -8616,7 +8883,8 @@ function start(): void {
 
   // ---- picture in picture's remembered place (Session 50) --------------------------------------
   handle(IPC.pip.place, () => pipPlaces.place());
-  // Locked in Simple Mode (simple-mode.ts); moving the box up remembers its place by itself (below).
+  // Locked in Simple Mode (simple-mode.ts) unless Picture in Picture is chosen for it (alpha.22); moving the box up
+  // remembers its place by itself (below).
   handle(IPC.pip.savePlace, (e, place) =>
     fromOperator(e)
       ? pipPlaces.save(place)
@@ -9768,6 +10036,10 @@ function start(): void {
     reportProblem: () => {
       sendToOperator(IPC.app.showReport, { at: Date.now() });
     },
+    // Edit › Simple Mode Features… (alpha.22): Pro Mode's, its window in the operator window.
+    simpleFeatures: () => {
+      if (mode === 'pro') sendToOperator(IPC.app.showSimpleFeatures, { at: Date.now() });
+    },
     // The Tools menu (Session 60, x36): Pro Mode's, each item opening its window in the operator window.
     tools: (tool) => {
       if (mode === 'pro') sendToOperator(IPC.app.showTool, { tool, at: Date.now() });
@@ -9999,6 +10271,8 @@ function start(): void {
           sharpened: async () => {
             await sharpened.refresh();
             await sharpened.idle();
+            await refreshDisplayCopies();
+            await displayCopies.idle();
           },
         },
         operatorContents: () =>

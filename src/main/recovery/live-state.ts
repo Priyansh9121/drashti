@@ -25,7 +25,12 @@ import { lowerThirdSchema } from '../../shared/lower-thirds';
 import type { PlaybackSeek } from '../../shared/media';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
-import { STAGE_MESSAGE_SIZES, STAGE_RECENT, type StageCall } from '../../shared/stage-message';
+import {
+  STAGE_MESSAGE_SIZES,
+  STAGE_RECENT,
+  type StageCall,
+  stageColorSchema,
+} from '../../shared/stage-message';
 
 /*
  * Restart recovery (PLAN.md Phase 1). What is live is saved to a small file
@@ -265,7 +270,14 @@ const savedSchema = z.object({
   // Session 55 (Part 15): the stage message's size and flash, the last few, and a timer for the audience; files saved
   // before have none.
   stageCall: z
-    .object({ size: z.enum(STAGE_MESSAGE_SIZES), flash: z.boolean(), shownAt: z.number() })
+    .object({
+      size: z.enum(STAGE_MESSAGE_SIZES),
+      flash: z.boolean(),
+      shownAt: z.number(),
+      // Its colours (24 Nov 2026), when chosen.
+      boxColor: stageColorSchema.optional(),
+      textColor: stageColorSchema.optional(),
+    })
     .nullable()
     .optional(),
   stageRecent: z.array(z.string().min(1).max(300)).max(STAGE_RECENT).optional(),

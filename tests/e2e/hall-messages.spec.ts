@@ -3,12 +3,13 @@ import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
   outputReady,
-  type PageGlobals,
   setUpScreen,
+  type PageGlobals,
 } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -58,6 +59,7 @@ test('a message keeps its own look: top left in a box, yellow, bigger, sliding i
   await setUpScreen(win);
   const output = await outputPage(app);
   await outputReady(output);
+  await openSection(win, 'messages');
   const panel = win.getByTestId('messages');
 
   const form = await newMessage(panel, 'Placeholder corner', 'Placeholder corner words');
@@ -170,6 +172,7 @@ test('a message dragged to its place in the small picture shows there; take off 
   await setUpScreen(win);
   const output = await outputPage(app);
   await outputReady(output);
+  await openSection(win, 'messages');
   const panel = win.getByTestId('messages');
   const form = await newMessage(panel, 'Placeholder dragged', 'Placeholder dragged words');
   const look = form.getByTestId('message-look');
@@ -226,6 +229,7 @@ test('the Messages panel and its look fit CI’s operator window and 1280 × 720
   await operatorReady(win);
   for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
     await sizeOperatorWindow(app, win, size);
+    await openSection(win, 'messages');
     const panel = win.getByTestId('messages');
     const form = await newMessage(panel, 'Placeholder fit', 'Placeholder fit words');
     await form.scrollIntoViewIfNeeded();

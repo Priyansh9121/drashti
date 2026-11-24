@@ -7,6 +7,7 @@ import {
   launchApp,
   NO_PLACEHOLDERS,
   openLibrary,
+  openSection,
   operatorPage,
   outputPage,
   outputReady,
@@ -78,6 +79,7 @@ test('the showTimer command puts a timer up alone, counting; Clear slide takes i
     await d.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 });
     await d.engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#204060' } });
   }, id);
+  await openSection(win, 'timers');
   const row = win.getByTestId('timers').getByTestId('timer-row').filter({ hasText: 'Placeholder starts in' });
   await row.getByRole('button', { name: 'Start' }).click();
   const library = await presentations(win);
@@ -167,6 +169,7 @@ test('New Timer Slide… adds a slide whose Timer shows the time live; at zero i
   await thumbs.nth(1).click();
   await expect(timerOn(output)).toHaveCount(1);
   await expect.poll(() => timeOn(output)).toBe('0:03');
+  await openSection(win, 'timers');
   const row = win
     .getByTestId('timers')
     .getByTestId('timer-row')

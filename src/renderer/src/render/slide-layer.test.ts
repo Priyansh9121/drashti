@@ -784,7 +784,11 @@ describe('the stream’s page draws a slide only once its pictures can be drawn 
 
   it('a page that comes along later draws the slide up only once its pictures can be drawn; a hall screen at once', () => {
     const a = layer('a', 1000);
-    expect(firstShowing(a, 60_000, true)).toEqual({ on: a, off: null, fade: wait(63_000) });
+    expect(firstShowing(a, 60_000, true)).toEqual({
+      on: a,
+      off: null,
+      fade: { ...wait(63_000), initial: true },
+    });
     expect(firstShowing(a, 60_000)).toEqual({ on: a, off: null, fade: null });
     expect(firstShowing(null, 60_000, true)).toEqual(none);
   });

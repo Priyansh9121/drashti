@@ -13,6 +13,7 @@ import { Button } from '../ui/Button';
 import { Pause, Play, RotateCcw, Square } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
+import { useOperateOnly } from '../simple/simple-features-store';
 
 /*
  * The stage screens' timers in the Stage screen panel (Session 54, Part A3): each timer the layout every stage screen
@@ -115,6 +116,9 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
   const counts = timer.kind === 'countdown' || timer.kind === 'countup';
   const style = useContext(ClockStyleContext);
   const words = countsToWords(timer, style);
+  // In Simple Mode (alpha.22, the Stage screen chosen for it): Start, Pause and Reset; what it counts to is said, and
+  // changed in Pro Mode.
+  const operateOnly = useOperateOnly();
   return (
     <li
       data-testid="stage-timer-row"
@@ -131,7 +135,7 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {/* What it counts to, changed here (Session 55); otherwise in words, wrapped, never cut, in the narrowest
             right column (300 px). */}
-        {stageTimerTarget(timer) !== null ? (
+        {!operateOnly && stageTimerTarget(timer) !== null ? (
           <TargetField timer={timer} />
         ) : (
           <span className="min-w-0 flex-1 text-xs text-muted" data-testid="stage-timer-counts">

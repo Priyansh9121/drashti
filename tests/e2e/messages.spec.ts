@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { launchApp, openSection, operatorPage, outputPage, setUpScreen } from './helpers';
 
 /*
  * Messages: a template with a field, filled in by the operator and shown on
@@ -13,6 +13,7 @@ test('a message with a field goes up on the screens, next to another, and comes 
   await setUpScreen(win);
   const output = await outputPage(app);
   const banner = output.locator('[data-layer="messages"]');
+  await openSection(win, 'messages');
   const panel = win.getByTestId('messages');
 
   // A template with a field.
@@ -34,6 +35,7 @@ test('a message with a field goes up on the screens, next to another, and comes 
   await expect(car).toHaveAttribute('data-shown', 'true');
 
   // A second message, with a timer in it: both are up at once.
+  await openSection(win, 'timers');
   const timers = win.getByTestId('timers');
   await timers.getByRole('button', { name: 'New timer' }).click();
   await timers.getByRole('textbox', { name: 'Timer name' }).fill('Placeholder start');

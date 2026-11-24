@@ -1,5 +1,6 @@
-import type { EngineCommand } from './engine/commands';
+import type { EngineCommand, EngineCommandType } from './engine/commands';
 import type { EngineState } from './engine/state';
+import type { SimpleFeature } from './simple-features';
 
 /*
  * Simple Mode and Pro Mode (PLAN.md section 3). Simple Mode (Session 55, Part 18: for a small sabha, or anywhere
@@ -110,16 +111,36 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
 ];
 
 /**
+ * Simple Mode Features (alpha.22, shared/simple-features.ts): the engine commands listed above that a tool chosen in
+ * Pro Mode's Edit › Simple Mode Features… lets Simple Mode run: Picture in Picture's box put up, swapped and moved, and
+ * the chosen video input's one press under LIVE. Media's own video input (showInput) stays Pro Mode's.
+ */
+export const SIMPLE_FEATURE_COMMANDS: Readonly<Record<SimpleFeature, readonly EngineCommandType[]>> = {
+  stage: [],
+  messages: [],
+  timers: [],
+  'lower-thirds': [],
+  'show-a-window': [],
+  'show-a-stream-link': [],
+  'video-inputs': ['toggleInput'],
+  'picture-in-picture': ['showPip', 'swapPip', 'placePip'],
+};
+
+/**
  * Whether Simple Mode refuses an engine command (the engine's refuse option, src/main/index.ts): those listed above,
  * but Audio's own Back 15 s and Forward 15 s on an audio playlist's track (Session 56: Simple Mode has Pro
  * Mode's Audio), which `state`, the show as it is, tells apart; a single sound's and the background's stay refused
- * (Simple Mode's window has no skips under LIVE). `state` decided the time bar's Pause too until Session 56.
+ * (Simple Mode's window has no skips under LIVE). `state` decided the time bar's Pause too until Session 56. Since
+ * alpha.22, a chosen tool's own commands (`chosen`, SIMPLE_FEATURE_COMMANDS): a phone asks with none chosen
+ * (simple-mode-phones.ts), so a chosen tool is the window's.
  */
 export function simpleModeRefuses(
   command: EngineCommand,
   state: Pick<EngineState, 'layers'> | null,
+  chosen: readonly SimpleFeature[] = [],
 ): boolean {
   if (command.type === 'skip' && command.layer === 'audio' && state?.layers.audio?.music !== undefined)
     return false;
+  if (chosen.some((f) => SIMPLE_FEATURE_COMMANDS[f].includes(command.type))) return false;
   return SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type);
 }

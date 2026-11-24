@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { CALENDAR_LANGS } from '../calendar';
 import { lowerThirdSchema } from '../lower-thirds';
 import { MESSAGE_SECONDS, messageLookSchema } from '../message-look';
-import { STAGE_MESSAGE_SIZES } from '../stage-message';
+import { STAGE_MESSAGE_SIZES, stageColorSchema } from '../stage-message';
 import { hexColorSchema, idSchema } from '../model-schema';
 import { playingSchema } from './playing';
 import {
@@ -193,13 +193,16 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resetTimer'), timerId: id }),
   /**
    * A message on stage screens only, for the performers; since Session 55 (Part 15) with its own size and a flash as
-   * it comes up (left out: the standard size, no flash). clearStageMessage is its Hide.
+   * it comes up (left out: the standard size, no flash), and since 24 Nov 2026 its box's and words' colours (#rrggbb;
+   * left out: amber and black, as before). clearStageMessage is its Hide.
    */
   z.object({
     type: z.literal('setStageMessage'),
     text: z.string().trim().min(1).max(300),
     size: z.enum(STAGE_MESSAGE_SIZES).optional(),
     flash: z.boolean().optional(),
+    boxColor: stageColorSchema.optional(),
+    textColor: stageColorSchema.optional(),
   }),
   z.object({ type: z.literal('clearStageMessage') }),
   /** Put a presentation first in line for Next (the arti at its time); clearCue takes it away. */

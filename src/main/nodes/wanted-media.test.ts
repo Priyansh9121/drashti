@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { initialEngineState } from '../../shared/engine/state';
+import { displayMediaId } from '../../shared/media';
 import type { SlideElement } from '../../shared/model';
 import { openDatabase } from '../db/database';
 import { PlaylistRepo } from '../db/playlists';
@@ -342,4 +343,39 @@ describe('a deck’s slides (Session 54, C2)', () => {
       'week-item',
     ]);
   });
+});
+
+it('puts a display rendition before its original in a node list and serves its own hash, never a path outside Media', () => {
+  const { db } = library();
+  const dir = mediaFolder();
+  const key = `p1-${sha(1).slice(0, 32)}-1920x1080`;
+  const copy = { id: displayMediaId('slide-pic', key), sha256: sha(9), bytes: 42, ext: 'jpg' };
+  const wanted = new WantedMedia(
+    db,
+    () => [],
+    () => Date.parse('2026-10-05T10:00:00Z'),
+    {
+      want: () => null,
+      display: (id) => (id === 'slide-pic' ? copy : null),
+      source: (id) =>
+        id === copy.id
+          ? {
+              path: join(dir, 'sharpened', `${sha(1)}-50.jpg`),
+              sha256: copy.sha256,
+              bytes: copy.bytes,
+              ext: copy.ext,
+            }
+          : null,
+    },
+  );
+  const state = initialEngineState();
+  state.live.playlist = { playlistId: 'live', itemId: 'live-0' };
+  expect(
+    wanted
+      .list(state, false)
+      .slice(0, 2)
+      .map((w) => w.id),
+  ).toEqual([copy.id, 'slide-pic']);
+  expect(wanted.source(copy.id, dir)).toMatchObject({ sha256: sha(9), bytes: 42, ext: 'jpg' });
+  expect(wanted.source(copy.id, '/elsewhere')).toBeNull();
 });

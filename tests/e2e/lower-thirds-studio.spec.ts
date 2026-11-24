@@ -14,7 +14,7 @@ import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import {
   launchApp,
-  openMoreTools,
+  openSection,
   operatorPage,
   operatorReady,
   outputPage,
@@ -50,9 +50,9 @@ async function start(
   return { app, win, out };
 }
 
-/** The studio, opened from the Lower Thirds panel as the operator would (More tools). */
+/** The studio, opened from the Lower Thirds panel as the operator would (its section under LIVE). */
 async function openStudio(app: ElectronApplication, win: Page): Promise<Page> {
-  await openMoreTools(win);
+  await openSection(win, 'lower-thirds');
   const panel = win.getByTestId('lower-thirds-panel');
   await panel.scrollIntoViewIfNeeded();
   const button = panel.getByTestId('lower-third-studio');
