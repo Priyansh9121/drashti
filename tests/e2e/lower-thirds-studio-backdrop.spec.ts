@@ -282,7 +282,11 @@ test('with no hall screen on this computer (one display, or only nodes’ screen
     // the words go.
     const inputId = await win.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
-      const added = await d.videoInputs.add({ name: 'Placeholder input', device: 'fake_device_0', fit: 'fit' });
+      const added = await d.videoInputs.add({
+        name: 'Placeholder input',
+        device: 'fake_device_0',
+        fit: 'fit',
+      });
       if (!added.ok) throw new Error(added.message);
       return added.view.inputs[0]?.id ?? '';
     });

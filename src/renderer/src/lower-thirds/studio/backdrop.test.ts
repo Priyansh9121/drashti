@@ -122,7 +122,9 @@ describe('the studio’s backdrop', () => {
       const picture: StudioLivePicture = { ...still('copy', 4), unseen: [...unseen] };
       expect(backdropDraw('live', hall, picture)).toEqual({ kind: 'live', picture, words: LIVE_UNSEEN });
     }
-    expect(LIVE_UNSEEN).toBe('No hall screen on this computer: Live here shows no video input or shown window.');
+    expect(LIVE_UNSEEN).toBe(
+      'No hall screen on this computer: Live here shows no video input or shown window.',
+    );
     // A hall screen's still never says it (that screen draws them).
     expect(backdropDraw('live', hall, still('screen', 5))).not.toHaveProperty('words');
   });

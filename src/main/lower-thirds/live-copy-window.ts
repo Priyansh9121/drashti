@@ -1,18 +1,40 @@
-import { BrowserWindow } from 'electron';
-import type { LiveCopyWindow } from './live-copy';
+import { BrowserWindow, type NativeImage } from 'electron';
+import { loadPage } from '../windows/renderer';
+import { LIVE_COPY_FPS, type LiveCopyWindow, liveCopyOptions, liveCopyQuery } from './live-copy';
 
 /*
- * Live's copy's window (alpha.23): skeleton (Red).
+ * Live's copy's window (alpha.23, live-copy.ts): the screens' page drawn off screen, never on a display, muted, about
+ * once a second (its frame rate), each picture it draws kept until the next for Live's still. Its page stopping tells
+ * Live (`gone`); closed, it is destroyed at once, its last picture with it.
  */
 
-export function createLiveCopyWindow(_gone: () => void): { window: BrowserWindow; copy: LiveCopyWindow } {
-  const win = new BrowserWindow({ show: false });
+export function createLiveCopyWindow(gone: () => void): { window: BrowserWindow; copy: LiveCopyWindow } {
+  const win = new BrowserWindow(liveCopyOptions());
+  // Muted: the screens' videos play without sound already (their sound is the audio player's); this holds it.
+  win.webContents.setAudioMuted(true);
+  win.webContents.setFrameRate(LIVE_COPY_FPS);
+  let latest: NativeImage | null = null;
+  win.webContents.on('paint', (_event, _dirty, image) => {
+    if (!image.isEmpty()) latest = image;
+  });
+  win.webContents.on('render-process-gone', () => {
+    latest = null;
+    gone();
+  });
+  // Its page's own title would take the window's: it keeps this one (seen only in a log or a test).
+  win.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+  void loadPage(win, 'output', liveCopyQuery());
   return {
     window: win,
     copy: {
-      latest: () => null,
-      isDestroyed: () => false,
-      close: () => undefined,
+      latest: () => (win.isDestroyed() ? null : latest),
+      isDestroyed: () => win.isDestroyed(),
+      close: () => {
+        latest = null;
+        if (!win.isDestroyed()) win.destroy();
+      },
     },
   };
 }

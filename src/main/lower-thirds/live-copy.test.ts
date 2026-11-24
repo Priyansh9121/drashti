@@ -227,7 +227,9 @@ describe('what the copy cannot draw', () => {
       ),
     ).toEqual([]);
     expect(
-      unseenInCopy(layers({ background: { kind: 'link', linkId: 'l', name: 'Placeholder link', startedAt: 0 } })),
+      unseenInCopy(
+        layers({ background: { kind: 'link', linkId: 'l', name: 'Placeholder link', startedAt: 0 } }),
+      ),
     ).toEqual([]);
     expect(
       unseenInCopy(
@@ -245,7 +247,9 @@ describe('what the copy cannot draw', () => {
     ).toEqual(['input']);
     expect(
       unseenInCopy(
-        layers({ background: { kind: 'window', sourceId: 'window:1:0', name: 'Placeholder app', startedAt: 0 } }),
+        layers({
+          background: { kind: 'window', sourceId: 'window:1:0', name: 'Placeholder app', startedAt: 0 },
+        }),
       ),
     ).toEqual(['window']);
     expect(unseenInCopy(layers({ pip: pip({ kind: 'slides' }) }))).toEqual([]);
