@@ -321,10 +321,10 @@ async function startDisplayCostPage(out: Page): Promise<void> {
 }
 
 /**
- * On Windows the hall's presented frames and the renderer's frames decide, each by its unchanged paired limits
- * (Q59-1); on the Mac the import's fixed order decides (QA23-L8-4 A), its frames recorded and reported.
+ * On both systems the import's fixed order decides (QA23-L8-4 A on the Mac, QA23-L8-5 on Windows); the hall's presented
+ * frames and the renderer's frames are recorded and attached, deciding nothing.
  */
-test('a large picture imported during a hall dissolve does not add sustained frame gaps: its display copy waits for the dissolve to end (Q60-59)', async () => {
+test('a large picture imported during a hall dissolve keeps its order: no import worker and no display copy work until the dissolve ends, its frames recorded (Q60-59)', async () => {
   const info = test.info();
   const subscribe = true;
   const lane = 0;
@@ -533,10 +533,10 @@ test('a large picture imported during a hall dissolve does not add sustained fra
         measured.p95 - control.p95 > oneMs ||
         measured.longest - control.longest > oneMs ||
         measured.over15 > control.over15;
-      // QA21-L8-1, the owner's "A, hall and renderer": on Windows the hall's presented frames (native presentation) and
-      // the renderer's frames (rAF) decide; on the Mac (QA23-L8-4 A) they are recorded and reported. Main's
-      // capture-callback times stay in the evidence below, deciding nothing: with no import at all they called a
-      // control worse than itself in 10 of 15 pairs on CI's Windows (a21-l8a's A/A).
+      // QA21-L8-1's pairs, the hall's presented frames (native presentation) and the renderer's frames (rAF), are
+      // recorded and reported on both systems, deciding nothing (QA23-L8-4 A, QA23-L8-5). Main's capture-callback times
+      // stay in the evidence too: with no import at all they called a control worse than itself in 10 of 15 pairs on
+      // CI's Windows (a21-l8a's A/A).
       allWorse.native.push(nativePair.presentationWorse);
       allWorse.raf.push(worse(rafImport, rafControl));
       const verdict = {
@@ -570,22 +570,14 @@ test('a large picture imported during a hall dissolve does not add sustained fra
     );
     paired.push({ drops, nativeAllWorse: allWorse.native, rafAllWorse: allWorse.raf });
     console.log('DISPLAY DISSOLVE DROPS ' + JSON.stringify(drops));
-    // QA23-L8-4 A, the owner's choice of 24 Nov 2026 ("A: check the import order"): on the Mac the verdict is the
-    // import's fixed order, checked in each import trial above on both systems: no display copy work and no import
-    // worker process during the dissolve. On CI's Mac the frame meters failed builds with no import cost: the rule below
-    // a build that changed nothing measurable 4 times in 5 (a22-l8-1123-232027-49482), and QA22-L8-3 B's drops margin
-    // about 1 attempt in 10 (35-41% of 5-repeat runs; a22-l8-1124-091901-78648, whose import worker started 275-304 ms
-    // after each dissolve). The drops and the rule's pairs stay in the evidence. Windows keeps the rule.
-    if (process.platform !== 'darwin') {
-      // Q59-1: each observation fails for a cost in every one of its three ordered paired rounds.
-      expect(
-        allWorse.native.every(Boolean),
-        'Import made the hall’s presented frames worse in all three pairs.',
-      ).toBe(false);
-      expect(allWorse.raf.every(Boolean), 'Import made renderer frames worse in all three pairs.').toBe(
-        false,
-      );
-    }
+    // The verdict on both systems is the import's fixed order, checked in each import trial above: no display copy work
+    // and no import worker process during the dissolve. The owner's choices of 24 Nov 2026: QA23-L8-4 A for the Mac
+    // ("A: check the import order") and QA23-L8-5 for Windows ("Import order on both"). The frame meters failed builds
+    // with no import cost: on CI's Mac the rule's pairs failed a build that changed nothing measurable 4 times in 5
+    // (a22-l8-1123-232027-49482) and QA22-L8-3 B's drops margin about 1 attempt in 10 (a22-l8-1124-091901-78648, whose
+    // import worker started 275-304 ms after each dissolve); on CI's Windows the rule's pairs about 1 attempt in 10
+    // (a22-l8-1124-105442-15305: by the longest presented frame alone, 1.8-2.3 ms). The drops and the rule's pairs stay
+    // in the evidence, deciding nothing.
   } finally {
     const unfinished = await app
       .evaluate(() => (globalThis as DisplayCostMainGlobals).drashtiDisplayCostMain)

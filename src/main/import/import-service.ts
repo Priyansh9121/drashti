@@ -290,10 +290,15 @@ export class ImportService {
     const queued = this.queue[0];
     if (this.waitingForQuiet && this.startHeld && queued)
       return { runId: queued.runId, phase: 'queued', done: 0, total: 0, current: null };
-    if (this.active && this.displayWaits > 0 && this.copyHeld)
-      return (
-        this.said ?? { runId: this.active.job.runId, phase: 'importing', done: 0, total: 0, current: null }
-      );
+    if (this.active && this.displayWaits > 0 && this.copyHeld) {
+      // Not in the moment after the transitions ended, before the queue looks again (a22-review-l8b: no flash in the
+      // 250 ms wake margin). Once told, it goes on saying so until the copy starts.
+      const running = this.deps.transitionsEndAt ? this.deps.transitionsEndAt() !== null : true;
+      if (running || this.told?.runId === this.active.job.runId)
+        return (
+          this.said ?? { runId: this.active.job.runId, phase: 'importing', done: 0, total: 0, current: null }
+        );
+    }
     return null;
   }
 
