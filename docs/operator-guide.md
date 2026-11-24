@@ -574,3 +574,9 @@ For a clip, choose start and end under **Trim**, then **Preparation and export**
 **Export clip…** opens **Save as…** for a new file. The accepted export waits while anything is up, streaming or recording, and stays across closing the editor or restarting Drashti. Open the editor again for progress, **Stop export** or **Show the file**. The original stays unchanged. The Manual's **Library › Exporting a clip, including vertical video** has the steps.
 
 ![Edit Video's Preparation and export choices for a vertical clip](screenshots/manual-edit-video-export.png)
+
+### Combining videos
+
+In Pro Mode, **Combine videos…** joins two or more videos into one new video that plays them one after the other. In **Media**, click the first video, then Cmd-click (Ctrl-click on Windows) the others, right-click one of them and choose **Combine videos…**. Put them in the order they should play with the up and down arrows, then press **Combine**.
+
+The new video is added to **Media** beside them, named after them (**Opening + Talk.mp4**). It has the first video's picture size and frame rate: a video of another shape is fitted inside it with black bars, never stretched, and a video with no sound is silent for its length. Combining waits while anything is up, streaming or recording, and starts again from the beginning if one starts while it runs. The window shows its progress, **Stop**, and when it is done or why it failed; you may close it meanwhile. The originals stay unchanged. A combine still waiting when Drashti quits is not kept: combine them again after the restart.

@@ -7,7 +7,7 @@ import {
   type CombineJob,
   type CombineResult,
 } from '../../shared/video-copies';
-import type { DetailsRow } from '../db/media';
+import type { DetailsRow } from '../media/media-details';
 import { combinedName, combinePlan, type CombinePlan } from './combine-plan';
 import type { ConvertService, CopyOptions } from './convert-service';
 import type { MediaInfo } from './plan';
@@ -229,12 +229,8 @@ export class CombineVideos {
       job.message = result.ok ? 'The combined video was not kept. Try Combine again.' : result.message;
       return;
     }
-    let listed = false;
-    try {
-      listed = made.importId !== null && (await this.deps.publishImport(made.importId));
-    } catch {
-      listed = false;
-    }
+    const listed =
+      made.importId !== null && (await this.deps.publishImport(made.importId).catch(() => false));
     if (!listed) {
       job.state = 'failed';
       job.message =

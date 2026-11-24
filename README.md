@@ -635,6 +635,8 @@ In Pro Mode, right-click a ready local video in Media or a playlist for **Edit V
 
 Media's silent frame strip and the editor's waveform and scene suggestions prepare while idle. Keeping a scene affects only the draft until Save, without replacing saved markers. Large videos on a slow computer get a lighter playing copy by themselves; Media information shows its status. **Preparation and export** saves a selected clip as a new MP4 or WebM from the full-quality original, with saved edits or its original picture, and an optional vertical 9:16 cut. Exports wait while anything is up, streaming or recording; accepted exports stay across closing the editor or restarting Drashti.
 
+In Pro Mode, **Combine videos…** (alpha.22) joins two or more videos chosen in Media into one new video in Media that plays them one after the other, in the order you set: each fitted to the first one's picture size without stretching, silence where one has no sound. It waits for an idle moment, as Edit Video's preparation does, with its progress and Stop; the originals stay unchanged.
+
 The Manual's [Library chapter](docs/manual/library.md#edit-video) has the steps; the [operator guide, section 14](docs/operator-guide.md#14-preparing-and-editing-videos) and [admin guide, section 28](docs/admin-guide.md#28-preparing-videos) cover preparation and recovery. For a file drawn with the wrong proportions, see [Sound and picture…](docs/manual/audio.md#sound-and-picture); for received live streams, see [Show a Stream Link](docs/manual/tools.md#show-a-stream-link).
 
 ## Streaming and recording

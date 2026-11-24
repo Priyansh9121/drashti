@@ -1371,7 +1371,7 @@ export class ConvertService {
           return;
         }
         // Combine videos… (alpha.22): its length as planned once every file was read (all of them together).
-        if (job.copy.alsoRead && job.copy.lengthMs > lengthMs) {
+        if (job.copy.alsoRead && job.copy.lengthMs > (lengthMs ?? 0)) {
           lengthMs = job.copy.lengthMs;
           running.limitMs = this.workMs(lengthMs);
         }

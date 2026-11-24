@@ -166,12 +166,10 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
       { name: 'Placeholder red + Placeholder blue.mp4', state: 'waiting', mediaId: null },
     ]);
     expect(stored(media)).toHaveLength(kept.size);
-    await test
-      .info()
-      .attach('Combine videos, waiting on air', {
-        body: await dialog.screenshot(),
-        contentType: 'image/png',
-      });
+    await test.info().attach('Combine videos, waiting on air', {
+      body: await dialog.screenshot(),
+      contentType: 'image/png',
+    });
 
     // Off air: it combines, and the new video is in Media.
     await app.evaluate(() =>
@@ -214,24 +212,28 @@ test('Combine videos…: two videos chosen in Media, put in order, joined into o
     expect(b2, 'blue second').toBeGreaterThan(r2);
 
     // It plays in Drashti: its length as the sum, and its time moves.
-    const played = await win.evaluate(async (id) => {
+    await win.evaluate(async (id) => {
       const video = document.createElement('video');
+      video.id = 'combine-videos-check';
       video.muted = true;
       video.src = `drashti-media://media/${id}`;
       document.body.append(video);
-      try {
-        await video.play();
-        const until = Date.now() + 10_000;
-        while (video.currentTime < 0.5 && Date.now() < until) await new Promise((r) => setTimeout(r, 100));
-        return { duration: video.duration, time: video.currentTime, error: video.error?.code ?? null };
-      } finally {
-        video.pause();
-        video.remove();
-      }
+      await video.play();
     }, madeId);
+    const check = () =>
+      win.evaluate(() => {
+        const video = document.getElementById('combine-videos-check') as HTMLVideoElement;
+        return { duration: video.duration, time: video.currentTime, error: video.error?.code ?? null };
+      });
+    await expect.poll(async () => (await check()).time, { timeout: 10_000 }).toBeGreaterThanOrEqual(0.5);
+    const played = await check();
+    await win.evaluate(() => {
+      const video = document.getElementById('combine-videos-check') as HTMLVideoElement;
+      video.pause();
+      video.remove();
+    });
     expect(played.error).toBeNull();
     expect(Math.abs(played.duration - 5)).toBeLessThanOrEqual(0.2);
-    expect(played.time).toBeGreaterThanOrEqual(0.5);
 
     // The originals unchanged: the files imported from, and Media's own copies.
     expect([digest(first), digest(second)]).toEqual(sources);

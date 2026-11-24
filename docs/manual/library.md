@@ -109,6 +109,9 @@ It is for preparing slides: read pages before the sabha, not while slides are ch
 2. Click a picture, video or video input to put it up at once.
 3. Right-click a row for its menu: **Rename…**, **Start, end and markers…**, **Picture editor…** and more.
 4. Press **Delete** to remove the chosen rows; **Undo** brings them back.
+5. To join videos into one, in Pro Mode, Cmd-click (Ctrl-click on Windows) two or more, right-click one and choose **Combine videos…**.
+
+**Combine videos…** shows the chosen videos in the order they will play: move one with its up and down arrows, then press **Combine**. One new video, playing them one after the other, is added to **Media**; the originals stay unchanged. It has the first video's picture size: another shape gets black bars, never stretched, and a video with no sound is silent for its length. It waits while anything is up, streaming or recording. The window shows its progress, **Stop**, and when it is done.
 
 ![Media while files convert, each with its progress](../screenshots/convert-media-list-done.png)
 
