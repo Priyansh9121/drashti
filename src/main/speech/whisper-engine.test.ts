@@ -658,7 +658,7 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
       await sound.play(3_500, 0);
       await waitFor(() => held().length >= rest, 10_000);
     }
-    expect(held().map((s) => (s.phase === 'held' ? s.slow : undefined))).toMatchObject([
+    expect(held().map((s) => s.slow)).toMatchObject([
       { rests: 1, keptUp: true, stops: false },
       { rests: 2, keptUp: true, stops: false },
       { rests: 3, keptUp: true, stops: false },
