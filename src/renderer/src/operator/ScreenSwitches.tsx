@@ -42,17 +42,23 @@ const say = (problem: string | null) => {
   if (problem) useNotice.setState({ text: problem });
 };
 
-/** A switch as the top bar shows it: a stub until the change lands (pressable at once, as before). */
+/**
+ * A switch as the top bar shows it (alpha.22, a22-review-stage S6): pressed only once the main process has said
+ * which are on, so it never says On and then flips to Off as a library with Stage kept off starts. The keys and the
+ * View menu are not held back: they ask first in those moments (Session 51, S2-4).
+ */
 export function switchButton(
   which: ScreenSwitch,
   switches: ScreenSwitches,
-  _known: boolean,
+  known: boolean,
 ): { on: boolean; disabled: boolean } {
-  return { on: switches[which], disabled: false };
+  return { on: switches[which], disabled: !known };
 }
 
 function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: string }) {
-  const on = useScreenSwitches((s) => s.switches[which]);
+  const switches = useScreenSwitches((s) => s.switches);
+  const known = useScreenSwitches((s) => s.known);
+  const { on, disabled } = switchButton(which, switches, known);
   const name = SWITCH_NAMES[which];
   return (
     <Tooltip
@@ -73,6 +79,7 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
         variant={on ? 'secondary' : 'warning'}
         role="switch"
         aria-checked={on}
+        disabled={disabled}
         data-testid={`switch-${which}`}
         data-on={on ? 'true' : 'false'}
         onClick={() => void toggleSwitch(which).then(say)}

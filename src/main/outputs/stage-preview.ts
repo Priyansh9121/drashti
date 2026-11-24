@@ -1,7 +1,12 @@
 /*
- * The Stage preview's window (alpha.22): a stub until the review's fixes land (as built at 42f604878).
+ * The Stage preview's window (alpha.22): a normal window on this computer, movable and sized as any window, over the
+ * controls' display (never full screen, never on top), showing a stage screen's page. It never takes the keyboard
+ * from the operator window (a22-review-stage S1): it is shown, and brought forward, without the focus, as the
+ * outputs are, so the show's keys stay with the operator; it can still be clicked, moved and sized. On Windows it has
+ * no menu bar of its own (S4), as every other Drashti window.
  */
 
+/** Its size and place, before the icon and the web preferences (electron-outputs.ts adds those). */
 export function stagePreviewOptions(near: { x: number; y: number; width: number; height: number } | null) {
   const width = 960;
   const height = 540;
@@ -17,18 +22,20 @@ export function stagePreviewOptions(near: { x: number; y: number; width: number;
     minWidth: 320,
     minHeight: 180,
     show: false,
+    autoHideMenuBar: true,
     title: 'Drashti – Stage preview',
     backgroundColor: '#000000',
   };
 }
 
+/** Shown, or brought forward again: in sight, above the other windows, the keyboard left where it is. */
 export function revealPreview(win: {
   isMinimized(): boolean;
   restore(): void;
-  show(): void;
-  focus(): void;
+  showInactive(): void;
+  moveTop(): void;
 }): void {
   if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
+  win.showInactive();
+  win.moveTop();
 }

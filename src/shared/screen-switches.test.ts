@@ -66,7 +66,7 @@ describe('Audience and Stage (Session 50)', () => {
     expect(switchFor('stage')).toBe('stage');
     expect(switchFor('stream')).toBeNull();
     expect(SWITCH_NAMES).toEqual({ audience: 'Audience', stage: 'Stage' });
-    // Both on at every start.
+    // Both on (Audience on at every start; Stage as it was left: STARTS, below).
     expect(ALL_ON).toEqual({ audience: true, stage: true });
   });
 

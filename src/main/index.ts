@@ -342,6 +342,7 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
+import { revealPreview } from './outputs/stage-preview';
 import { keepStage, STAGE_SETTING, stageStartsOn } from './outputs/stage-switch-setting';
 import { coverBox } from './network/desktop-consent';
 import type { DesktopLibrary } from './network/desktop-answers';
@@ -2928,11 +2929,12 @@ function start(): void {
     };
   };
   const openStagePreview = (): void => {
+    // Never a window opened as Drashti quits (Session 23: it would stop the quit; a22-review-stage S3).
+    if (quitStarted) return;
     const open = stagePreview;
     if (open && !open.isDestroyed()) {
-      if (open.isMinimized()) open.restore();
-      open.show();
-      open.focus();
+      // In sight again, the keyboard left with the operator (a22-review-stage S1).
+      revealPreview(open);
       return;
     }
     const near =
@@ -2946,6 +2948,10 @@ function start(): void {
       if (stagePreview === win) stagePreview = null;
       log.info('Stage preview closed');
     });
+  };
+  /** Closed as Simple Mode starts, as the Lower Thirds studio is (a22-review-stage S8). */
+  const closeStagePreview = (): void => {
+    if (stagePreview && !stagePreview.isDestroyed()) stagePreview.close();
   };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
   followOutputs(warmUps, outputWindows, outputNames, (screenId, win) => {
@@ -4775,6 +4781,7 @@ function start(): void {
       rebuildMenu();
       if (next === 'simple') {
         closeStudio();
+        closeStagePreview();
       }
       sendToOperator(IPC.app.modeChanged, { mode: next });
       // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist, and in Simple Mode its pictures to
@@ -9168,8 +9175,9 @@ function start(): void {
   screenSwitches.onChanged((switches) => {
     // Stage off (Session 55): every stage screen shows exactly the audience picture, from the engine's state.
     engine.setStage({ off: !switches.stage });
-    // Kept for the next start (alpha.22).
-    keepStage(settings, switches.stage);
+    // Kept for the next start (alpha.22), written as the mode is: never on the main thread under an import's lock
+    // (a22-review-stage S2).
+    keepStage({ set: laterSetting }, switches.stage);
     sendToOperator(IPC.screenSwitches.changed, switches);
     // The View menu's ticks, and a Remote's word on which are off.
     rebuildMenu();
