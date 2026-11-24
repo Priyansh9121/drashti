@@ -316,11 +316,11 @@ test('(d) set to Stage with nothing showing it on this computer: only a tablet p
     'Stage off · the stage tablet shows the audience picture',
   );
   await win.getByTestId('switch-off-stage').getByText('Stage off', { exact: true }).hover();
-  await expect(win.getByRole('tooltip')).toHaveText(
+  await expect(win.locator('[role="tooltip"]')).toHaveText(
     'Stage off: the stage tablet shows the audience picture.',
   );
   await win.mouse.move(0, 0);
-  await expect(win.getByRole('tooltip')).toHaveCount(0);
+  await expect(win.locator('[role="tooltip"]')).toHaveCount(0);
   // Its feed closed (the tablet switched off): "Stage off" alone again; open again, said again.
   feed.close();
   await expect(hint).toHaveCount(0);
