@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { useEffect, useState } from 'react';
+import { levelMeter } from './level-meter';
 import { watchProgram } from './stream-store';
 
 /*
@@ -57,6 +58,11 @@ export function usePreview(canvas: RefObject<HTMLCanvasElement | null>): Preview
     let closed = false;
     let made = 0;
     let drawn = 0;
+    // The meter between reports (./level-meter.ts).
+    const meter = levelMeter(level, () => performance.now());
+    const fall = setInterval(() => {
+      meter.tick();
+    }, 100);
     const onPort = (event: MessageEvent) => {
       if (event.source !== window) return;
       const data = event.data as { drashtiStreamPort?: string } | null;
@@ -86,9 +92,7 @@ export function usePreview(canvas: RefObject<HTMLCanvasElement | null>): Preview
             () => undefined,
           );
         } else if (m.kind === 'level' && typeof m.db === 'number') {
-          // Like a mixer's meter: a peak shows at once and falls back at 20 dB a second (2 dB a report).
-          const shown = Math.max(m.db, level.db() - 2);
-          if (Math.abs(level.db() - shown) >= 0.5) level.set(shown);
+          meter.report(m.db);
         }
       };
       next.start();
@@ -97,6 +101,7 @@ export function usePreview(canvas: RefObject<HTMLCanvasElement | null>): Preview
     const release = watchProgram();
     return () => {
       closed = true;
+      clearInterval(fall);
       window.removeEventListener('message', onPort);
       release();
       port?.close();
