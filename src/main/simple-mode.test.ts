@@ -823,6 +823,18 @@ it('keeps clip exports and manual preparation stops in Pro Mode with their expec
     expect(simpleModeRefusesWhole(channel), channel).toBe(false);
 });
 
+it('keeps Combine videos… in Pro Mode: combining and stopping refused in Simple Mode, its list readable', () => {
+  const answers = simpleModeRefusals(() => ({}) as AudioOutputStatus);
+  for (const channel of [IPC.media.combineVideos, IPC.media.stopCombine]) {
+    expect(channel, 'the channel exists').toMatch(/^media:/u);
+    expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+  }
+  expect(answers.get(IPC.media.combineVideos)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  expect(answers.get(IPC.media.stopCombine)?.()).toBe(false);
+  expect(IPC.media.combineList).toMatch(/^media:/u);
+  expect(simpleModeRefusesWhole(IPC.media.combineList)).toBe(false);
+});
+
 /*
  * Edit › Simple Mode Features… (alpha.22; the owner, 24 Nov 2026: "the features can be brought to simple mode, only
  * 1-2 and max 3"): a tool chosen there lifts Simple Mode's refusals of exactly its operate actions, from the window

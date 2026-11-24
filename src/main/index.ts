@@ -5394,6 +5394,16 @@ function start(): void {
     },
     showFile: (path) => shell.showItemInFolder(path),
     libraryChanged: () => libraryChanged(true),
+    // Combine videos…' Also save a copy to a file: Export…'s own save dialog (media:export-file, below).
+    exportDialog: async (name) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export video',
+        defaultPath: join(testDownloadsDir ?? app.getPath('downloads'), name),
+        buttonLabel: 'Export',
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
   });
   proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
   proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);

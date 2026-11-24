@@ -248,7 +248,14 @@ export interface CopyOptions {
   /** Record a managed Trim copy before it can appear at its final path. */
   beforePublish?(temporary: string, destination: string): void;
   /** Idle analysis: probe in this same worker, never alongside another conversion. */
-  inspect?: ((info: MediaInfo) => void) | ((info: MediaInfo) => false | string);
+  inspect?:
+    | ((info: MediaInfo, read: ReadWords) => void)
+    | ((info: MediaInfo, read: ReadWords) => false | string | undefined);
+  /**
+   * Combine videos… (alpha.22): more files read in this same worker, one after the other after the source, before
+   * `inspect`, which is given each one's information and FFmpeg's words (in this order) with the source's.
+   */
+  alsoRead?: readonly string[];
   /** Validate an encoded video in this worker before it receives a public filename. */
   validate?: ((info: MediaInfo) => void) | ((info: MediaInfo) => string);
   /** User-requested files go before speculative copies when the worker next becomes free. */
@@ -266,6 +273,12 @@ export interface CopyOptions {
   kind?: 'analysis' | 'proxy' | 'clip';
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
+}
+
+/** What the idle worker read: FFmpeg's words about the source, and about each of `alsoRead`'s files. */
+export interface ReadWords {
+  words: string;
+  more: { info: MediaInfo; words: string }[];
 }
 
 interface FileJob {
@@ -1188,7 +1201,7 @@ export class ConvertService {
     ffmpeg: string,
     file: string,
     running: RunningFile,
-  ): Promise<{ info: MediaInfo; priorityFailed: boolean; timedOut: boolean }> {
+  ): Promise<{ info: MediaInfo; priorityFailed: boolean; timedOut: boolean; words: string }> {
     return new Promise((resolve) => {
       const launched = this.preparationProcess(
         ffmpeg,
@@ -1223,7 +1236,7 @@ export class ConvertService {
           /^\s*alpha_mode[ \t]*:[ \t]*1\s*$/imu.test(reading.text)
         )
           info.video.pixFmt = 'yuva420p';
-        resolve({ info, priorityFailed, timedOut: reading.timedOut });
+        resolve({ info, priorityFailed, timedOut: reading.timedOut, words: reading.text });
       };
       child.once('error', () => {
         priorityFailed = true;
@@ -1336,8 +1349,33 @@ export class ConvertService {
         });
         return;
       }
+      // Combine videos… (alpha.22): the other files, read as the source was, each a moment the show can pause it.
+      const more: ReadWords['more'] = [];
+      for (const file of job.copy.alsoRead ?? []) {
+        const also = await this.preparationInfo(ffmpeg, file, running);
+        const held = this.pauseForActivity(running, job.waitForShow);
+        if (held === 'wait') {
+          this.runningFile = null;
+          this.files.unshift(job);
+          this.watch();
+          return;
+        }
+        if (held || also.priorityFailed || also.timedOut || !also.info.video) {
+          done({
+            ok: false,
+            message: also.priorityFailed
+              ? 'Drashti could not lower the preparation priority. Check this computer’s permissions, then try again.'
+              : held
+                ? 'Stopped.'
+                : 'Drashti could not read one of these videos. Check its file, then try again.',
+            ...(held ? { stopped: true } : {}),
+          });
+          return;
+        }
+        more.push({ info: also.info, words: also.words });
+      }
       try {
-        const issue = job.copy.inspect(info);
+        const issue = job.copy.inspect(info, { words: probe.words, more });
         if (issue === false) {
           done({ ok: true, copy: null });
           return;
@@ -1345,6 +1383,11 @@ export class ConvertService {
         if (typeof issue === 'string') {
           done({ ok: false, message: issue });
           return;
+        }
+        // Combine videos… (alpha.22): its length as planned once every file was read (all of them together).
+        if (job.copy.alsoRead && job.copy.lengthMs > (lengthMs ?? 0)) {
+          lengthMs = job.copy.lengthMs;
+          running.limitMs = this.workMs(lengthMs);
         }
         if (!lengthMs && info.durationMs) {
           lengthMs = info.durationMs;

@@ -2,7 +2,15 @@ import type { CaptionCorrection, CaptionReview } from './caption-coordinator';
 import type { SaveVideoEdit, VideoEditResult, VideoEditSnapshot } from './video-edit';
 import type { SimpleFeature, SimpleFeatureResult } from './simple-features';
 
-import type { ClipExportRequest, ClipExportResult, ClipExportJob, VideoProxyResult } from './video-copies';
+import type {
+  ClipExportRequest,
+  ClipExportResult,
+  ClipExportJob,
+  CombineJob,
+  CombineRequest,
+  CombineResult,
+  VideoProxyResult,
+} from './video-copies';
 import type { VideoAnalysisResult } from './video-analysis';
 import type { PlaybackSettings } from './playback-settings';
 import type { PlaylistPlayOptions } from './playlist-playback';
@@ -725,6 +733,14 @@ export const IPC = {
     clipExports: 'media:clip-clips',
     stopClipExport: 'media:stop-clip-export',
     showClipExport: 'media:show-clip-export',
+    /**
+     * Combine videos… (alpha.22): two or more videos in Media joined end to end into one new video in Media, by the
+     * idle worker (operator window, Pro Mode); the combines and how each is going (read every second while its
+     * window is open); and one stopped.
+     */
+    combineVideos: 'media:combine-videos',
+    combineList: 'media:list-combines',
+    stopCombine: 'media:stop-combine',
     /** Media information's Copy: its words on the clipboard (operator window only; a page's own clipboard is refused). */
     copyDetails: 'media:copy-details',
     /** Resume where it stopped (alpha.20): where a long file was taken off before its end, and when (operator window). */
@@ -1889,6 +1905,9 @@ export interface InvokeContract {
   [IPC.media.clipExports]: { args: []; result: ClipExportJob[] };
   [IPC.media.stopClipExport]: { args: [jobId: string]; result: boolean };
   [IPC.media.showClipExport]: { args: [jobId: string]; result: null };
+  [IPC.media.combineVideos]: { args: [request: CombineRequest]; result: CombineResult };
+  [IPC.media.combineList]: { args: []; result: CombineJob[] };
+  [IPC.media.stopCombine]: { args: [jobId: string]; result: boolean };
   [IPC.media.videoAnalysis]: {
     args: [mediaId: string, audioStream: number | null, retry: boolean];
     result: VideoAnalysisResult;
