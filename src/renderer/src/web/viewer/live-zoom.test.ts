@@ -251,7 +251,12 @@ function croppedPage(crop: CropRect): EngineState {
   return state;
 }
 
-type Box = { x: number; y: number; width: number; height: number };
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 /** Where the screens draw a point of the picture (fractions of its box) zoomed so, in the pixels its box is in. */
 const drawnAt = (z: Framing, box: Box, point: { x: number; y: number }) => ({
