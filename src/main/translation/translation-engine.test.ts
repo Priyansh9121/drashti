@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { fakeHelper, type FakeChild } from '../testing/fake-translate-helper';
 import {
@@ -48,8 +51,10 @@ function engineWith(
     models: store,
     log,
     idleMs: 60_000,
-    // Stand-in models: their files are not x74's conversions, so every one is taken as known here.
+    // Stand-in models: their files are not x74's conversions, so every one is taken as known here, and their
+    // folders (not on this disk) hold exactly the model's five files.
     checkFiles: () => true,
+    listFolder: () => Promise.resolve([...INDICTRANS2_FILES]),
     createHelper: (p) =>
       new TranslationHelper({
         program: p,
@@ -112,6 +117,107 @@ describe('Prepare translations’ engine', () => {
       for (const sha of Object.values(KNOWN_INDICTRANS2_MODELS[route]))
         expect(sha).toMatch(/^[0-9a-f]{64}$/u);
     }
+  });
+
+  it('runs a known model only as its own five files in one folder, nothing beside them (a22-review-mt2 S1)', async () => {
+    const known = (route: keyof typeof KNOWN_INDICTRANS2_MODELS, folder: string) =>
+      Object.entries(KNOWN_INDICTRANS2_MODELS[route]).map(([name, sha256]) => ({
+        name: `${route}/${name}`,
+        path: join(folder, name),
+        sha256,
+      }));
+    const engineFor = (files: ReturnType<typeof known>) =>
+      new TranslationEngine({
+        program: () => '/x/drashti-translate',
+        models: models([{ ...model('en-indic', ['translation-en-gu']), files }]),
+        log,
+      });
+    const folder = join('/packs', 'p', 'en-indic');
+    expect(engineFor(known('en-indic', folder)).available('en', 'gu')).toBe(true);
+    // A copy in a subfolder, listed first, with its own files: the helper would load that folder.
+    const copy = known('en-indic', join(folder, 'x')).map((f) => ({ ...f, sha256: 'e'.repeat(64) }));
+    expect(engineFor([...copy, ...known('en-indic', folder)]).available('en', 'gu')).toBe(false);
+    expect(engineFor([...copy, ...known('en-indic', folder)]).unknownModel('en', 'gu')).toBe(true);
+    // A file CTranslate2 opens by its name and prefers (a shared vocabulary, a vocabulary map), listed beside them.
+    for (const extra of ['shared_vocabulary.json', 'vmap.txt']) {
+      const more = [
+        ...known('en-indic', folder),
+        { name: `en-indic/${extra}`, path: join(folder, extra), sha256: 'd'.repeat(64) },
+      ];
+      expect(engineFor(more).available('en', 'gu'), extra).toBe(false);
+    }
+    // The five files, each once, but not in one folder.
+    const split = known('en-indic', folder).map((f, i) =>
+      i === 0 ? { ...f, path: join(folder, 'x', 'model.bin') } : f,
+    );
+    expect(engineFor(split).available('en', 'gu')).toBe(false);
+
+    // On this disk: the known five listed, but the folder holds another file the list never named. Refused before
+    // the helper loads anything; the same folder with the five files alone drafts.
+    const disk = mkdtempSync(join(tmpdir(), 'drashti-translate-folder-'));
+    try {
+      for (const name of INDICTRANS2_FILES) writeFileSync(join(disk, name), '');
+      writeFileSync(join(disk, 'vmap.txt'), '');
+      const loads: unknown[] = [];
+      const onDisk = new TranslationEngine({
+        program: () => '/x/drashti-translate',
+        models: models([{ ...model('en-indic', ['translation-en-gu']), files: known('en-indic', disk) }]),
+        log,
+        createHelper: (p) =>
+          new TranslationHelper({
+            program: p,
+            log,
+            lowerPriority: () => undefined,
+            spawn: () =>
+              fakeHelper((r) => {
+                if (r['op'] === 'load') loads.push(r);
+                return r['op'] === 'translate'
+                  ? `{"id":${String(r['id'])},"ok":true,"tokens":["\u2581x","</s>"]}`
+                  : `{"id":${String(r['id'])},"ok":true}`;
+              }),
+          }),
+      });
+      await expect(onDisk.translate('a b', 'en', 'gu')).rejects.toMatchObject({ code: 'model-changed' });
+      expect(loads).toEqual([]);
+      rmSync(join(disk, 'vmap.txt'));
+      await expect(onDisk.translate('a b', 'en', 'gu')).resolves.toBe('x');
+      expect(loads).toHaveLength(1);
+      onDisk.stop();
+    } finally {
+      rmSync(disk, { recursive: true, force: true });
+    }
+  });
+
+  it('stops checking the model at once when Stop comes or the stream goes on air (a22-review-mt2 S2)', async () => {
+    let signal: AbortSignal | undefined;
+    // As the pack store does: the check ends when its signal aborts.
+    const store = models([model('en-indic', ['translation-en-gu'])], (_id, s) => {
+      signal = s;
+      return new Promise((_resolve, reject) => {
+        s?.addEventListener('abort', () => reject(new Error('The hash stopped before it finished.')), {
+          once: true,
+        });
+      });
+    });
+    const { engine } = engineWith(store);
+    const pending = engine.translate('a b', 'en', 'gu');
+    await vi.waitFor(() => {
+      expect(signal).toBeDefined();
+    });
+    expect(signal?.aborted).toBe(false);
+    engine.cancel();
+    expect(signal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+    // The next run checks with a signal of its own, not the aborted one; letting the engine go aborts it too.
+    let next: AbortSignal | undefined;
+    store.acquire.mockImplementation((_id, s) => {
+      next = s;
+      return Promise.resolve({ release: vi.fn() });
+    });
+    await expect(engine.translate('c d', 'en', 'gu')).resolves.toBe('Placeholder words.');
+    expect(next?.aborted).toBe(false);
+    engine.stop();
+    expect(next?.aborted).toBe(true);
   });
 
   it('drafts each line on its own through the pack’s model, keeping empty lines, and holds the model while loaded', async () => {
