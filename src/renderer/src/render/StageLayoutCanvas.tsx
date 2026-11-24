@@ -22,6 +22,13 @@ import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
 import { stageMessageColors, stageMessageData } from './StageMessageBanner';
 import { STAGE_SIZE_FACTOR } from '../../../shared/stage-message';
+import {
+  atMessageFit,
+  messageAlign,
+  messageJustify,
+  useStageMessageFit,
+  wordsPast,
+} from './stage-message-fit';
 
 /*
  * A stage layout made in Drashti (shared/stage-layouts.ts): its boxes on a
@@ -105,6 +112,50 @@ function Sized({
       <div ref={inner} style={size === 'fit' ? words : { ...words, fontSize: size }}>
         {children}
       </div>
+    </div>
+  );
+}
+
+/** A message box's words, measured against the box (stage-message-fit.ts): the block of them inside it. */
+const messageWordsPast = (place: HTMLElement): boolean => {
+  const words = place.firstElementChild;
+  return words instanceof HTMLElement && wordsPast(place, words);
+};
+
+/**
+ * A message box of a size of its own (the owner, 24 Nov 2026): the stage message at its size while it fits the box; one
+ * that would run past it wraps, is centred in it and is drawn only as much smaller as it must be (never larger). Drawn
+ * as Sized draws a box of a size, so a message that fits looks exactly as before.
+ */
+function MessageSized({
+  size,
+  children,
+  again,
+  valign,
+  words,
+}: {
+  size: number;
+  children: ReactNode;
+  again: unknown;
+  valign: StageVAlign | undefined;
+  words: CSSProperties;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useStageMessageFit(box, messageWordsPast, again);
+  return (
+    <div
+      ref={box}
+      style={{
+        position: 'relative',
+        flex: 1,
+        minHeight: 0,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: messageJustify(VALIGN[valign ?? 'top']),
+      }}
+    >
+      <div style={{ ...words, fontSize: atMessageFit(`${String(size)}px`) }}>{children}</div>
     </div>
   );
 }
@@ -271,11 +322,14 @@ function BoxContents({
           {...stageMessageData(state.stageCall)}
           style={{
             fontSize: `${String(STAGE_SIZE_FACTOR[state.stageCall?.size ?? 'standard'])}em`,
-            background: stageMessageColors(state.stageCall, now).background,
+            // Its colours, or amber with the box's own words' colour (24 Nov 2026).
+            ...stageMessageColors(state.stageCall, now, box.color),
             borderRadius: '0.25em',
             padding: '0.15em 0.4em',
             fontWeight: 700,
             overflowWrap: 'anywhere',
+            // Centred while made smaller to fit its box (MessageSized), else aligned as the box says.
+            textAlign: messageAlign(box.align) as CSSProperties['textAlign'],
           }}
         >
           {state.stageMessage}
@@ -425,6 +479,23 @@ export function StageLayoutCanvas({
           ) : box.kind === 'next' && state.next?.kind === 'slide' && state.next.slide.deck ? (
             // A deck's next step, or its slide coming in: that step's last frame.
             <StageDeckNext slide={state.next.slide} step={state.next.step ?? 0} />
+          ) : box.kind === 'stageMessage' && box.size !== 'fit' ? (
+            // The stage message in a box of a size of its own: fitted in it when it would run past (the owner, 24 Nov).
+            <MessageSized
+              size={box.size}
+              again={`${state.stageMessage ?? ''}|${state.stageCall?.size ?? 'standard'}|${fitAgain(box, state, now, style)}|${String(box.size)}|${box.label}|${box.valign ?? 'top'}`}
+              valign={box.valign}
+              words={boxWordsStyle(box)}
+            >
+              <BoxContents
+                box={box}
+                state={state}
+                languages={languages}
+                clockStyle={style}
+                now={now}
+                hall={hall}
+              />
+            </MessageSized>
           ) : (
             <Sized
               size={box.size}
