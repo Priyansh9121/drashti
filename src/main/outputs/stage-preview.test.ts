@@ -37,24 +37,21 @@ describe('the Stage preview window', () => {
     expect(calls).toEqual(['restore', 'showInactive', 'moveTop']);
   });
 
-  // alpha.23 (lead 2's QA23-STAGE8-1): the video input live, as on a stage screen; never a say in how it stands, and
-  // never another app's window (named on it instead).
-  it('gets a camera as an output does and the video inputs’ list; never says how an input stands, never captures a window', () => {
-    expect(PREVIEW_LIVE).toEqual({ camera: 'output', list: true, report: false, window: false });
+  // alpha.23 (lead 2's QA23-STAGE8-1, its rule "If you can't prove it, name the camera too (C)"): on CI the hall's
+  // frames paused ~2 s each time the preview's camera joined, so the preview has none of this computer's live
+  // pictures: no camera, no inputs' list, never a report, never a window's capture; it names them, as a tablet does.
+  it('has no camera, no video inputs’ list, never says how an input stands, never captures a window', () => {
+    expect(PREVIEW_LIVE).toEqual({ camera: false, list: false, report: false, window: false });
   });
 
   // a22-review-stage8 S4: the answers Main's handlers give (index.ts: cameraPage, videoInputs.list,
   // videoInputs.report, liveWindow.ask and .ended), so a wrong one fails here, not only on a show.
-  it('Main answers the preview: a camera and the list yes; a report and a window capture refused, even were it counted a screen', () => {
-    const preview = { preview: true, screen: false };
-    expect(liveAnswer('camera', preview)).toBe('yes');
-    expect(liveAnswer('list', preview)).toBe('yes');
-    expect(liveAnswer('report', preview)).toBe('refused');
-    expect(liveAnswer('window', preview)).toBe('refused');
-    // Judged as the preview first: never let through as a screen's page.
-    const both = { preview: true, screen: true };
-    expect(liveAnswer('report', both)).toBe('refused');
-    expect(liveAnswer('window', both)).toBe('refused');
+  it('Main refuses the preview every ask, even were it counted a screen', () => {
+    for (const ask of ['camera', 'list', 'report', 'window'] as const) {
+      expect(liveAnswer(ask, { preview: true, screen: false })).toBe('refused');
+      // Judged as the preview first: never let through as a screen's page.
+      expect(liveAnswer(ask, { preview: true, screen: true })).toBe('refused');
+    }
   });
 
   it('Main answers a screen’s page yes to all, and any other page no', () => {
