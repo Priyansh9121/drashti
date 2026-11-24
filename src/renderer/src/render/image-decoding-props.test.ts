@@ -64,6 +64,18 @@ describe('a slide image decoding hint passed through the existing render tree', 
     expectSync(renderToStaticMarkup(createElement(SlideView, props)), 2);
   });
 
+  it('reaches the pictures and backdrop inside a cropped PDF page', () => {
+    const cropped: RenderSlide = {
+      ...slide,
+      width: 960,
+      height: 540,
+      pageCrop: { x: 120, y: 80, width: 1920, height: 1080 },
+    };
+    const html = renderToStaticMarkup(createElement(SlideView, { slide: cropped, imageDecoding: 'sync' }));
+    expect(html).toContain('data-page-crop');
+    expectSync(html, 2);
+  });
+
   it('reaches both the previous and last still of a baked deck step', () => {
     const props = { deck, timing, style: {}, imageDecoding: 'sync' as const };
     expectSync(renderToStaticMarkup(createElement(DeckStepView, props)), 2);

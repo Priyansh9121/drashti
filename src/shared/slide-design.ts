@@ -1,9 +1,10 @@
+import { cropRenderedPage } from './pdf-page-crop';
 import { nativeDeckMotion } from './deck';
 import { hasPdfPageNumbers, numberedPdfMaster, PDF_HANDOUT_PREFIX } from './pdf-handout';
 import { slidesOf } from './slide-edit';
 import type { RenderSlide, SlideDesign } from './model';
 import type { EditDoc, EditSlide } from './slide-edit';
-import { slideCanvas } from './document-page';
+import { slideCanvas, sourcePaperForCrop } from './document-page';
 import { fitElements } from './slide-size';
 import type { Size } from './scaling';
 import { withPdfMarkMotion } from './pdf-mark-motion';
@@ -66,7 +67,7 @@ export function composeSlide(
   };
 }
 
-export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
+export function renderEditedSlide(doc: EditDoc, slide: EditSlide, wholePage = false): RenderSlide {
   const own: RenderSlide = {
     id: slide.id,
     ...slideCanvas(slide, doc),
@@ -75,13 +76,17 @@ export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
     ...(slide.darken ? { darken: slide.darken } : {}),
     ...(slide.deck ? { deck: slide.deck } : {}),
   };
-  return composeSlide(
-    own,
-    slide.design,
-    doc.master?.id === slide.id ? null : doc.master,
-    slide.cues.some((c) => c.kind === 'background'),
-    slideCanvas(doc.master ?? undefined, doc),
-    hasPdfPageNumbers(doc.master) ? slidesOf(doc).findIndex((page) => page.id === slide.id) : undefined,
+  return cropRenderedPage(
+    composeSlide(
+      own,
+      slide.design,
+      doc.master?.id === slide.id ? null : doc.master,
+      slide.cues.some((c) => c.kind === 'background'),
+      slideCanvas(doc.master ?? undefined, doc),
+      hasPdfPageNumbers(doc.master) ? slidesOf(doc).findIndex((page) => page.id === slide.id) : undefined,
+    ),
+    wholePage ? undefined : slide.documentPage?.crop,
+    sourcePaperForCrop(slide.documentPage, slide.pageSize),
   );
 }
 
