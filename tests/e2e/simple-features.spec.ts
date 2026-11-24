@@ -224,3 +224,47 @@ test('in Simple Mode each chosen tool is its own section under Audio, folded to 
   expect(await chosen(win2)).toEqual(['messages']);
   await again.app.close();
 });
+
+test('the Stage screen in Simple Mode: the message and the stage’s timers; its Colours, the layout, its editor and the video input stay Pro Mode’s, and a message there takes the colours chosen in Pro Mode', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  const live = win.getByRole('complementary', { name: 'Live', exact: true });
+  const toggle = live.getByTestId('group-stage-toggle');
+  const panel = live.getByTestId('stage-message-control');
+  const colours = () => panel.getByRole('combobox', { name: 'Colours of the stage message' });
+  // Its colours chosen in Pro Mode (kept on this computer for the next message), then folded again.
+  await toggle.click();
+  await colours().selectOption({ label: 'Blue, white words' });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(await set(win, 'stage', true)).toEqual({ ok: true, chosen: ['stage'] });
+
+  await setMode(win, 'simple');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  const words = panel.getByRole('textbox', { name: 'Message for the stage' });
+  await expect(words).toBeVisible();
+  // What sets the stage up stays Pro Mode's: no Colours (nor its sample), no layout or its editor, no video input.
+  await expect(colours()).toHaveCount(0);
+  await expect(panel.getByTestId('stage-colours-sample')).toHaveCount(0);
+  await expect(panel.getByTestId('stage-layout-choice')).toHaveCount(0);
+  await expect(panel.getByTestId('stage-edit-layout')).toHaveCount(0);
+  await expect(panel.getByTestId('stage-input-choice')).toHaveCount(0);
+  await expectNoSeriousA11yIssues(win, 'Simple Mode’s Stage screen', '[data-testid="live-rest"]');
+  // The message goes up in the colours Pro Mode chose, and Hide takes it off.
+  await words.fill('Placeholder: two minutes left');
+  await panel.getByRole('button', { name: 'Show', exact: true }).click();
+  await expect.poll(async () => (await engineState(win)).stageMessage).toBe('Placeholder: two minutes left');
+  expect((await engineState(win)).stageCall).toMatchObject({ boxColor: '#1d4ed8', textColor: '#ffffff' });
+  await panel.getByRole('button', { name: 'Hide', exact: true }).click();
+  await expect.poll(async () => (await engineState(win)).stageMessage).toBeNull();
+  // The layout stays Pro Mode's in the main process too.
+  expect(
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.stageLayouts.choose(null)),
+  ).toMatchObject({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  await setMode(win, 'pro');
+  await app.close();
+});
