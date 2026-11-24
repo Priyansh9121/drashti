@@ -9,9 +9,12 @@ import type {
 
 export const megabytes = (bytes: number): string => `${String(Math.round(bytes / 1_000_000))} MB`;
 
-/** Whether the dialog's On switch is greyed out: with no engine that can run on this computer. */
+/**
+ * Whether the dialog's On switch is greyed out: off, with no engine that can run on this computer. Captions that are
+ * on can always be turned off (the review's S1: another language can leave them on with no engine).
+ */
 export function captionsSwitchDisabled(view: CaptionsStatus): boolean {
-  return !view.engine;
+  return !view.engine && !view.on;
 }
 
 /** What the listening is doing now, and what to do about it. */
