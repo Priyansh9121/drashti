@@ -440,7 +440,6 @@ import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { ManualPrinter, readManual } from './manual-service';
 import { RunningOrderPrinter, runningOrderLines } from './running-order';
-import { printPage } from './manual-print';
 import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
@@ -4953,7 +4952,6 @@ function start(): void {
       if (picked.canceled || !picked.filePath) return null;
       return picked.filePath.toLowerCase().endsWith('.pdf') ? picked.filePath : `${picked.filePath}.pdf`;
     },
-    print: (job) => printPage(job),
   });
   const wordsNotFromOperator = {
     ok: false,

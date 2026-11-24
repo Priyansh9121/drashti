@@ -4,7 +4,14 @@ import type { Lang } from '../shared/model';
 import { WORDS_PRINT_REFUSED, type WordsPrinted } from '../shared/words-print';
 import type { ContentRows } from './db/content';
 import { detailsOf, trackSlidesOf } from './library/tracks';
-import { escapeHtml, type PrintOutcome } from './manual-print';
+import {
+  escapeHtml,
+  type PrintOutcome,
+  type PrintPage,
+  printerBusy,
+  printPage,
+  takePrinter,
+} from './manual-print';
 import { fileProblem } from './plain-errors';
 
 /*
@@ -151,28 +158,9 @@ ${groups}
 `;
 }
 
-/** The footer on every page of the sheet's PDF: its name and the page (Chromium fills in the numbers). */
-export function wordsFooter(name: string): string {
-  return (
-    '<div style="width:100%;font-size:8px;color:#555;text-align:center;font-family:sans-serif">' +
-    `${escapeHtml(name)} · page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`
-  );
-}
-
 /** The PDF's name the save dialog suggests: the presentation's, with what no file name may hold made "_". */
 export function wordsPdfName(name: string): string {
   return `${name.replace(/[\\/:*?"<>|]/gu, '_')} words.pdf`;
-}
-
-/** A page to print from the hidden window: the sheet, its title and its PDF's footer (manual-print.ts). */
-export interface WordsPrintJob {
-  html: string;
-  /** Files the page may load: none (the sheet shows no picture). */
-  pictures: readonly string[];
-  tempDir: string;
-  kind: 'pdf' | 'print';
-  title: string;
-  footer: string;
 }
 
 export interface WordsPrinterDeps {
@@ -190,13 +178,14 @@ export interface WordsPrinterDeps {
   /** Where the save dialog suggests first (Documents). */
   suggestedFolder: () => string;
   /** Printing itself (the Manual's hidden window, manual-print.ts; a test's stand-in). */
-  print: (job: WordsPrintJob) => Promise<PrintOutcome>;
+  print?: typeof printPage;
   write?: (file: string, data: Buffer) => void;
 }
 
 const fail = (message: string): WordsPrinted => ({ ok: false, cancelled: false, message });
 const GONE = fail('That presentation is no longer in the library.');
-const BUSY = fail('Something is being printed already: wait until that is done, then try again.');
+/** The words' name for the shared printer ("A sheet of words is being printed already: …"). */
+const WORDS = 'A sheet of words';
 const NOT_PRINTED = fail(
   'The words were not printed: check the printer is on and chosen, then press Print words… again.',
 );
@@ -204,10 +193,11 @@ const NO_PDF = fail('The words were not made into a PDF: press Save words as PDF
 const noWords = (name: string) =>
   fail(`“${name}” has no words to print: none of its slides that play has any.`);
 
-/** Print words… and Save words as PDF…, one at a time, and only while the show is not live. */
+/**
+ * Print words… and Save words as PDF…, one page at a time (across the manual, the running orders and the words:
+ * manual-print.ts's `takePrinter`), and only while the show is not live.
+ */
 export class WordsPrinter {
-  private busy = false;
-
   constructor(private readonly deps: WordsPrinterDeps) {}
 
   /** Through the system's print dialog. */
@@ -241,29 +231,33 @@ export class WordsPrinter {
   ): Promise<WordsPrinted> {
     // Nothing printed, and nothing asked, while the show is live.
     if (this.deps.live()) return fail(WORDS_PRINT_REFUSED);
-    if (this.busy) return BUSY;
     const found = this.deps.read(presentationId);
     if (!found) return GONE;
     const sheet = wordsSheet(found.name, found.rows);
     if (!sheet) return noWords(found.name);
-    this.busy = true;
+    // The printer is held from the first question (the save dialog) to the end.
+    const printer = takePrinter(WORDS);
+    if ('heldBy' in printer) return fail(printerBusy(printer.heldBy));
     try {
       return await go({ name: found.name, html: wordsHtml(sheet) });
     } finally {
-      this.busy = false;
+      printer.release();
     }
   }
 
   private async run(page: { name: string; html: string }, kind: 'pdf' | 'print'): Promise<PrintOutcome> {
     try {
-      return await this.deps.print({
+      const job: PrintPage = {
         html: page.html,
+        // The sheet shows no picture: the page may load nothing but itself.
         pictures: [],
         tempDir: this.deps.tempDir(),
         kind,
         title: page.name,
-        footer: wordsFooter(page.name),
-      });
+        // Every page's footer names it: printPage escapes these words.
+        footer: `${page.name} · words`,
+      };
+      return await (this.deps.print ?? printPage)(job);
     } catch {
       return { ok: false, cancelled: false, why: 'it could not be printed' };
     }
