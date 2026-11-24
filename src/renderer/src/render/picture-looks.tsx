@@ -187,9 +187,10 @@ export function useDisplayCopy(mediaId: string, look: PictureLook | null): Sharp
   if (selection.mediaId !== mediaId) setSelection({ mediaId, source: desired });
   const replacement = !previews && current.url !== desired.url ? desired.url : null;
   const loaded = useLoadedCopy(replacement);
-  const previewLoaded = usePreviewLoaded(previews && descriptor ? id : null);
   if (loaded && current.url !== desired.url) setSelection({ mediaId, source: desired });
-  if (previews) return descriptor && previewLoaded ? { id, url: '' } : null;
+  // A phone or tablet draws the original at its own width, up to the original and sharper zoomed (Session 54, D1):
+  // the display copy is the screens' alone.
+  if (previews) return null;
   const selected = loaded ? desired : current;
   return selected.id === mediaId ? null : selected;
 }
