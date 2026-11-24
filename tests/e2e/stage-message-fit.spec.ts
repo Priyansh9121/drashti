@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { newStageBox, type StageBox } from '../../src/shared/stage-layouts';
 import {
   launchApp,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
@@ -150,6 +151,8 @@ test('a long stage message wraps, is centred and made only as small as it must b
   const stageId = await setUpScreen(win, 'Stage one', 1);
   await makeStage(win, 'Stage one');
   const stage = await outputFor(app, stageId);
+  // The Stage screen section under LIVE, folded at each start (alpha.22).
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
 
   // A short message on the Standard stage screen: its chosen size, as before, nothing made smaller.
@@ -263,6 +266,8 @@ test('a long Gujarati or Hindi stage message wraps at its words, conjuncts whole
   const stageId = await setUpScreen(win, 'Stage one', 1);
   await makeStage(win, 'Stage one');
   const stage = await outputFor(app, stageId);
+  // The Stage screen section under LIVE, folded at each start (alpha.22).
+  await openSection(win, 'stage');
   const panel = win.getByTestId('stage-message-control');
   const onStage = stage.getByTestId('stage-message');
   for (const [words, lang] of [
