@@ -76,11 +76,10 @@ export function SimpleFeaturesDialog() {
             );
           })}
         </ul>
-        {full && (
-          <p role="status" className="text-sm text-warning-fg" data-testid="simple-features-full">
-            {SIMPLE_FEATURES_FULL}
-          </p>
-        )}
+        {/* Always there, its words put in at three, so a screen reader hears them as they come. */}
+        <p role="status" className="min-h-5 text-sm text-warning-fg" data-testid="simple-features-full">
+          {full ? SIMPLE_FEATURES_FULL : ''}
+        </p>
         <p className="text-xs text-muted">
           In Simple Mode each one is a section of its own under Audio, folded until it is opened. Setting a
           tool up stays in Pro Mode.

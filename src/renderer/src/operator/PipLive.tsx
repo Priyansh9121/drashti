@@ -27,7 +27,7 @@ export function PipLiveStrip() {
   const box = useEngine((s) => s.state?.layers.pip ?? null);
   const media = useMedia((s) => s.media);
   const practising = usePractice((s) => s.on);
-  const simple = !useToolHere('picture-in-picture');
+  const boxLocked = !useToolHere('picture-in-picture');
   if (!box || practising) return null;
   const name = boxName(box.source, media);
   return (
@@ -42,7 +42,7 @@ export function PipLiveStrip() {
         <span className="font-bold">Picture in picture</span> · {name}
         {box.swapped ? ' · swapped' : ''}
       </span>
-      {!simple && (
+      {!boxLocked && (
         <Button
           size="sm"
           instant
@@ -62,7 +62,7 @@ export function PipLiveStrip() {
       >
         Take off
       </Button>
-      {!simple && (
+      {!boxLocked && (
         <IconButton
           icon={Settings}
           size="sm"
@@ -121,10 +121,10 @@ export function PipDragHandle({
   const [drag, setDrag] = useState<{ x: number; y: number; scale: number; dx: number; dy: number } | null>(
     null,
   );
-  const simple = !useToolHere('picture-in-picture');
+  const boxLocked = !useToolHere('picture-in-picture');
   const box = state.layers.pip;
   // Moving the box is Pro Mode's (and Simple Mode's with Picture in Picture chosen for it, alpha.22).
-  if (simple) return null;
+  if (boxLocked) return null;
   // Only where LIVE draws it: a box of the slides draws nothing with no slide up.
   const slidesAway = state.layers.slide === null || !look.layers.includes('slide');
   if (!box || !pipShownFor(look) || (box.source.kind === 'slides' && slidesAway)) return null;

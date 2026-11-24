@@ -105,7 +105,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.messages.create,
   IPC.messages.update,
   IPC.messages.remove,
-  // Session 55 (Part 15): a message put back (Undo), and Countdown to the start, Pro Mode's.
+  // Session 55 (Part 15): a message put back (Undo), and Countdown to the start, Pro Mode's; since alpha.22 Countdown to
+  // the start is Simple Mode's too while Timers is chosen for it in Edit › Simple Mode Features… (SIMPLE_FEATURE_CHANNELS
+  // below; the lead's one-minute answer for the owner, 24 Nov 2026), and Pro Mode's alone otherwise.
   IPC.messages.restore,
   IPC.timers.create,
   IPC.timers.update,
@@ -562,7 +564,8 @@ export function simpleModeRefusesWhole(channel: InvokeChannel): boolean {
 export const SIMPLE_FEATURE_CHANNELS: Readonly<Record<SimpleFeature, readonly InvokeChannel[]>> = {
   stage: [],
   messages: [],
-  // Countdown to the start: the sabha's time over the wallpaper, its one timer made or changed to that time, shown.
+  // Countdown to the start: the sabha's time over the wallpaper, its one timer made or changed to that time, shown (the
+  // lead's one-minute answer for the owner, 24 Nov 2026: allowed while Timers is chosen, Pro Mode's otherwise).
   timers: [IPC.timers.startCountdown],
   'lower-thirds': [],
   // The windows to choose from, one shown as the background, and the Mac's screen recording permission it asks for.

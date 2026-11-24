@@ -66,7 +66,7 @@ test('Edit › Simple Mode Features… in Pro Mode: a line saying to keep it to 
     await expect(switchOf(f.id)).toBeEnabled();
     await expect(dialog.getByText(f.line, { exact: true })).toBeVisible();
   }
-  await expect(dialog.getByTestId('simple-features-full')).toHaveCount(0);
+  await expect(dialog.getByTestId('simple-features-full')).toBeEmpty();
   await expectNoSeriousA11yIssues(
     win,
     'Simple Mode Features, none on',
@@ -99,7 +99,7 @@ test('Edit › Simple Mode Features… in Pro Mode: a line saying to keep it to 
   await switchOf('timers').click();
   await expect(switchOf('timers')).toHaveAttribute('aria-checked', 'false');
   await expect(switchOf('stage')).toBeEnabled();
-  await expect(dialog.getByTestId('simple-features-full')).toHaveCount(0);
+  await expect(dialog.getByTestId('simple-features-full')).toBeEmpty();
   await expect.poll(() => chosen(win)).toEqual(['messages', 'picture-in-picture']);
   await dialog.getByRole('button', { name: 'Done' }).click();
   await expect(dialog).toHaveCount(0);
@@ -151,6 +151,14 @@ test('in Simple Mode each chosen tool is its own section under Audio, folded to 
   for (const id of ['messages', 'picture-in-picture'])
     await expect(toggleOf(id), id).toHaveAttribute('aria-expanded', 'false');
   await expectNoSeriousA11yIssues(win, 'Simple Mode with two tools, folded', '[data-testid="live-rest"]');
+  // From the keyboard as in Pro Mode: Enter opens and folds a heading; Space stays Next, the heading as it was.
+  await toggleOf('messages').focus();
+  await win.keyboard.press('Enter');
+  await expect(toggleOf('messages')).toHaveAttribute('aria-expanded', 'true');
+  await win.keyboard.press('Enter');
+  await expect(toggleOf('messages')).toHaveAttribute('aria-expanded', 'false');
+  await win.keyboard.press('Space');
+  await expect(toggleOf('messages')).toHaveAttribute('aria-expanded', 'false');
 
   // Messages: Show and Take off; nothing to make, change, delete or pin.
   await toggleOf('messages').click();
@@ -214,6 +222,29 @@ test('in Simple Mode each chosen tool is its own section under Audio, folded to 
     (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'showPip', source: { kind: 'slides' } }),
   );
   expect(box.ok).toBe(false);
+
+  // A lifted request really runs in the main process: with Timers chosen, Countdown to the start (the one-minute
+  // answer, the lead's S2); with Timers turned off again, refused as before.
+  const countdown = () =>
+    win.evaluate(() => (globalThis as PageGlobals).drashti.timers.startCountdown('23:59'));
+  expect(await countdown()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  await setMode(win, 'pro');
+  expect(await set(win, 'timers', true)).toEqual({ ok: true, chosen: ['messages', 'timers'] });
+  await setMode(win, 'simple');
+  await expect(toggleOf('timers')).toBeVisible();
+  const ran = await countdown();
+  // It ran: up on the screens, or (in the day's last minute only) its own words that the time has come.
+  expect(ran).not.toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  if (ran.ok) {
+    await expect.poll(async () => (await engineState(win)).layers.timer?.timerId ?? null).toBe(ran.id);
+    await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'hideAudienceTimer' }),
+    );
+  } else expect(ran.message).toContain('already come today');
+  await setMode(win, 'pro');
+  expect(await set(win, 'timers', false)).toEqual({ ok: true, chosen: ['messages'] });
+  await setMode(win, 'simple');
+  expect(await countdown()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   await setMode(win, 'pro');
   await app.close();
 
