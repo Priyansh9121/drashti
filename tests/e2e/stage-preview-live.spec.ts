@@ -109,7 +109,7 @@ function hallTrack(hall: Page) {
     const video = document.querySelector<HTMLVideoElement>('[data-kind="input"] video');
     const stream = video?.srcObject instanceof MediaStream ? video.srcObject : null;
     const track = stream?.getVideoTracks()[0];
-    if (!track) return null;
+    if (!stream || !track) return null;
     const seen = window as unknown as { firstTrack?: MediaStreamTrack };
     seen.firstTrack ??= track;
     const s = track.getSettings();
@@ -121,7 +121,7 @@ function hallTrack(hall: Page) {
       height: s.height ?? null,
       frameRate: s.frameRate ?? null,
       deviceId: s.deviceId ?? null,
-      tracks: stream?.getVideoTracks().length ?? 0,
+      tracks: stream.getVideoTracks().length,
     };
   });
 }
