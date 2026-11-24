@@ -34,7 +34,7 @@ const pageWindow = globalThis as unknown as {
 // And video out's (x30): the page's frames to other software.
 ipcRenderer.on(
   IPC.stream.port,
-  (event, payload: { role: 'preview' | 'encoder' | 'speech' | 'video-out' }) => {
+  (event, payload: { role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' | 'video-out' }) => {
     pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
   },
 );
@@ -302,6 +302,7 @@ const bridge: DrashtiBridge = {
     pathFor: (file) => webUtils.getPathForFile(file),
   },
   engine: {
+    videoCueReady: (cueId, kind, ready) => invoke(IPC.engine.videoCueReady, cueId, kind, ready),
     onMessage: (listener) =>
       on(IPC.engine.message, (message) => {
         engineSeen.remember(message, true);
@@ -639,6 +640,7 @@ const bridge: DrashtiBridge = {
       context: () => invoke(IPC.stream.pageContext),
       onContext: (listener) => on(IPC.stream.context, listener),
       reportInputs: (inputs) => invoke(IPC.stream.pageInputs, inputs),
+      reportFrames: (grid) => invoke(IPC.stream.pageFrames, grid),
     },
   },
   youtube: {

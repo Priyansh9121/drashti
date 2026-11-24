@@ -453,3 +453,59 @@ describe('a video input in the background slots (Session 50)', () => {
     expect(retryAfterLanding(s, 3)).toBeNull();
   });
 });
+
+it('arms a loaded cue as a real showing before Go, retaining its old picture until activation and reporting failures normally', () => {
+  const old = video('old', 1);
+  const background = {
+    ...video('prepared', 2),
+    media: 'video' as const,
+    cueId: 'cue',
+    seek: { at: 100, toMs: 500, paused: true },
+  };
+  const cue = { id: 'cue', label: 'Placeholder', background, playlist: null, required: [], ready: [] };
+  const prepared = run(
+    { type: 'layer', layer: old },
+    { type: 'ready', key: slotKey(old) },
+    { type: 'cue', cue },
+    { type: 'ready', key: slotKey(background) },
+  );
+  const armed = slotsReducer(prepared, {
+    type: 'cue',
+    cue: { ...cue, background: { ...background, seek: { at: 500, toMs: 500 } } },
+  });
+  expect(armed.shown?.key).toBe(slotKey(old));
+  expect(armed.incoming).toMatchObject({ key: slotKey(background), state: 'ready' });
+  expect(
+    armed.incoming?.cued,
+    'Go is armed: decode errors must use the ordinary showing take-off path',
+  ).not.toBe(true);
+  const failed = slotsReducer(armed, { type: 'failed', key: slotKey(background) });
+  expect(slotsReducer(failed, { type: 'activate', key: slotKey(background), at: 500 }).shown?.key).toBe(
+    slotKey(old),
+  );
+  const started = slotsReducer(armed, { type: 'activate', key: slotKey(background), at: 500 });
+  expect(started.shown?.key).toBe(slotKey(background));
+  expect(started.shown?.layer).toMatchObject({ startedAt: 2, seek: { at: 500, toMs: 500 } });
+});
+
+it('an unavailable edited cue owns no source decoder and retains the live picture', () => {
+  const old = video('old', 1);
+  const background = {
+    ...video('new', 2),
+    media: 'video' as const,
+    cueId: 'cue',
+    seek: { at: 100, toMs: 0, paused: true },
+  };
+  const cue = { id: 'cue', label: 'Placeholder', playlist: null, required: [], ready: [], background };
+  const before = run(
+    { type: 'layer', layer: old },
+    { type: 'ready', key: slotKey(old) },
+    { type: 'cue', cue },
+  );
+  const waiting = slotsReducer(before, {
+    type: 'cue',
+    cue: { ...cue, error: 'The edited copy is preparing.' },
+  });
+  expect(waiting.shown?.key).toBe(slotKey(old));
+  expect(waiting.incoming).toBeNull();
+});

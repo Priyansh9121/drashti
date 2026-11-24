@@ -129,6 +129,7 @@ import { PlayingBars } from '../markers/PlayingBars';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SimpleFeaturesDialog } from '../simple/SimpleFeaturesDialog';
 import { connectSimpleFeatures } from '../simple/simple-features-store';
+import { connectStageColours } from './stage-colours';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
 import { StreamPanel } from '../stream/StreamPanel';
@@ -168,6 +169,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectMode();
     // Simple Mode Features (alpha.22): which of Pro Mode's tools Simple Mode has, and Edit's window for them.
     connectSimpleFeatures();
+    // The stage message's colours chosen on this computer (alpha.22): told to the show, in either mode.
+    connectStageColours();
     connectAppearance();
     // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
     connectSound();

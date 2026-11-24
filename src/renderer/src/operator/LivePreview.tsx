@@ -1,3 +1,4 @@
+import { VideoCueStrip } from './VideoCueStrip';
 import { PreparedTranslationStatus } from './PreparedTranslationStatus';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { usePractice, useShowRev, useShowState } from '../practice/practice-store';
@@ -200,6 +201,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         {help.button}
       </div>
       {help.card && <div className="-mx-3">{help.card}</div>}
+      <VideoCueStrip />
       {state?.repeat && <Repeating run={state.repeat} />}
       {state?.layers.slide?.timer && <TimerAlone shown={state.layers.slide.timer} />}
       {state?.layers.timer && <AudienceTimerUp state={state} />}

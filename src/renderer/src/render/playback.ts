@@ -1,3 +1,4 @@
+import { audioOnlyTracks } from './audio-only-tracks';
 import type { DrashtiBridge } from '../../../shared/bridge';
 import type { CorrectionLimits, PlaybackClip, PlaybackSeek } from '../../../shared/media';
 import {
@@ -59,6 +60,8 @@ export interface PlaybackOptions {
    * whatever the element holds.
    */
   reuseLoadedSource?: boolean;
+  /** S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame. */
+  prepareScheduledStart?: boolean;
   /**
    * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
    * pace is set from its first moving frame, not the next check. Left out (every other caller), nothing more listens to
@@ -264,6 +267,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (seekFrom === 0 && settleFrom === 0) startFrom = performance.now();
   };
   const onMetadata = () => {
+    if (audible) audioOnlyTracks(v);
     tellLength(mediaId, v.duration);
     const at = expected();
     // Within a moment of where it is, it plays from there at once: a file just loaded is at its start, and one loaded
@@ -337,6 +341,16 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (c.seek?.paused) {
       if (wrap) clearTimeout(wrap);
       wrap = null;
+      const intended = options.timing?.().seek;
+      const beginsAt = intended?.at ?? startedAt;
+      if (options.prepareScheduledStart && !intended?.paused && beginsAt > engineNow()) {
+        // The existing Go lead warms play() without moving the held frame or making sound. At Go only the
+        // rate changes: starting a paused decoder there presented its first motion 65–122 ms late on CI.
+        if (v.currentTime !== at) v.currentTime = at;
+        if (v.playbackRate !== 0) v.playbackRate = 0;
+        if (v.paused) void v.play().catch(() => undefined);
+        return;
+      }
       // A jump while paused (the time bar's move, or one frame back or on, alpha.20) lands exactly where it was sent,
       // however near: one frame of a 60 a second video is 1/60 s, the hold's own margin.
       if (moved) {
@@ -406,7 +420,12 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     else {
       // A late start catching up (Session 57) plays that much faster on top, never more than its fastest.
       const up = catchingUp(c);
-      const rate = up ? Math.min(up.maxRate, correction.rate + up.extra) : correction.rate;
+      // A prepared cue (S5) starts at its own speed at Go, however late this check: a first rate of 1.02-1.03 started
+      // its clock about 24 ms after it on CI (Chromium's time-stretch fills first), against 2 ms at 1 (a22-cue, 57
+      // starts). Brought into step, as every picture is, from its next check.
+      const preparedStart = options.prepareScheduledStart === true && v.playbackRate === 0;
+      const paced = up ? Math.min(up.maxRate, correction.rate + up.extra) : correction.rate;
+      const rate = preparedStart ? 1 : paced;
       if (v.playbackRate !== rate) v.playbackRate = rate;
     }
     // Paused where the clock says it plays: it plays on, once any jump is made (Session 51). Held at its own end

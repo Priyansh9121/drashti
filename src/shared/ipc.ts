@@ -215,6 +215,7 @@ import type {
   ReportStateView,
 } from './report';
 import type { PipPlace } from './engine/state';
+import type { FrameGrid } from './video-cue';
 import type {
   EvenResult,
   FileSoundView,
@@ -535,6 +536,7 @@ export const IPC = {
     changed: 'music:changed',
   },
   engine: {
+    videoCueReady: 'engine:video-cue-ready',
     /** Start receiving engine messages in this window; returns a snapshot. */
     subscribe: 'engine:subscribe',
     /** A fresh snapshot, for resyncing after a missed revision. */
@@ -1141,6 +1143,8 @@ export const IPC = {
     pageContext: 'stream:page-context',
     /** The stream's page tells what cameras and sound inputs it sees, and how they are. */
     pageInputs: 'stream:page-inputs',
+    /** The stream's page tells its off-screen frame grid while a cue waits (S5, a21-s5: a Go on its frames). */
+    pageFrames: 'stream:page-frames',
     /** main -> the stream's page: its context changed. */
     context: 'stream:context',
     /** Video out (x30): the stream's picture to other software, and how it is going. */
@@ -1665,6 +1669,10 @@ export interface InvokeContract {
   [IPC.links.showSaved]: { args: [runId: string | null]; result: null };
   [IPC.links.setMaxHeight]: { args: [height: number]; result: LinkResult };
   [IPC.links.setPlaylist]: { args: [playlistId: string]; result: LinkResult };
+  [IPC.engine.videoCueReady]: {
+    args: [cueId: string, kind: 'picture' | 'sound', ready: boolean];
+    result: null;
+  };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand, seen?: EngineSeen]; result: CommandResult };
@@ -2095,6 +2103,7 @@ export interface InvokeContract {
   [IPC.stream.setVideoOut]: { args: [settings: VideoOutSettings]; result: VideoOutResult };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
+  [IPC.stream.pageFrames]: { args: [grid: FrameGrid]; result: null };
   [IPC.youtube.status]: { args: []; result: YouTubeStatus };
   [IPC.youtube.setClient]: { args: [clientId: string, clientSecret: string]; result: YouTubeResult };
   [IPC.youtube.removeClient]: { args: []; result: YouTubeResult };
@@ -2285,7 +2294,7 @@ export interface EventContract {
   [IPC.media.preparingTrimsChanged]: string[];
   [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
-  [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
+  [IPC.stream.port]: { role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' };
   [IPC.stream.context]: ProgramContext;
   [IPC.liveLink.changed]: StreamLinkStatus;
   [IPC.liveWindow.changed]: LiveWindowStatus;

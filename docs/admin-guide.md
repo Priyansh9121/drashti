@@ -816,3 +816,11 @@ Since alpha.22, the models for better Gujarati and Hindi captions, and for trans
 **Where it is kept.** In Drashti's data folder on this computer (`model-packs`), outside the library, so a backup never holds it and a restore never removes it. Import it on each Main. Only this computer's user account can read its files. Importing a newer copy of the same pack replaces the old one once every file is checked. A copy that live captions or translation are using stays until they stop.
 
 **What is installed.** Each pack shows its release, its size and the day it was imported, then each model with what it is for, its size, its format, its licence and who made it. Press a licence's button to read its own text, kept with the pack. **Remove…** asks, then takes the pack off this computer; it is refused while live captions or translation are using it. If a file of an installed pack changes or goes, the pack says so, and nothing uses it until it is imported again.
+
+## 33. Looking after video cues
+
+Cue is a Pro Mode control. Allow the next video to prepare before it is needed. The cue waits for the first frame on the local playing pages and connected audience screens on paired computers. A disconnected screen joins by the usual file-copy and first-frame rules when it returns. An output that reloads loses its earlier ready acknowledgement. A failed cue keeps the live picture and sound as they were; Cancel and cue the video again after checking it in Media.
+
+While a video is cued, and while it plays from its Go, the hall's screens, the operator window and the stream page keep this computer's sound output open (a paired computer showing the cue keeps its own open too), sending it nothing that can be heard, so that a cue held for minutes still starts on time.
+
+Manual cues recover paused with new readiness checks after an unexpected restart, and a scheduled Go saved before its moment cannot become an audible start on recovery. No source file is rewritten.
