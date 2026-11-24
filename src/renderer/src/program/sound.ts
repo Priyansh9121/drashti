@@ -6,7 +6,7 @@ import { videoSoundGain } from '../audio/sounds';
 import { videoFadeProgress } from '../../../shared/video-cue';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
-import { FADE_SOUND_LIMITS, SOUND_LIMITS } from '../../../shared/media';
+import { FADE_SOUND_LIMITS, type PlaybackSeek, SOUND_LIMITS } from '../../../shared/media';
 import { musicAside, soundGain, StepAside } from '../../../shared/sound';
 import type { DeviceChoice } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
@@ -36,9 +36,23 @@ const LEVEL_MS = 50;
 
 export const STREAM_SAMPLE_RATE = 48_000;
 
+/** The most a crossfade's incoming sound is started ahead of its fade (QA23-FADE-4; its lead's delay, s). */
+const FADE_LEAD_MAX_S = 0.5;
+
+/** Its clock `leadMs` earlier (QA23-FADE-4): a crossfade's incoming sound, aimed that far ahead and heard as late. */
+function aheadBy(sound: Sound, leadMs: number): PlaybackSeek | undefined {
+  if (leadMs <= 0) return sound.seek;
+  const seek = sound.seek ?? { at: sound.startedAt, toMs: 0 };
+  return { ...seek, at: seek.at - leadMs };
+}
+
 interface OwnSound {
   el: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
+  /** Between its source and its level: no delay, or a crossfade's incoming sound's lead (QA23-FADE-4, leadIn). */
+  lead: DelayNode;
+  /** How far ahead it is aimed, heard that much later through `lead` (ms; 0 for none). Set once, never changed. */
+  leadMs: number;
   gain: GainNode;
   videoGain: GainNode | null;
   /** What it plays now (its start and end points and a jump, as the audio player follows them). */
@@ -211,6 +225,7 @@ export class StreamSound {
       if (wanted.has(key)) continue;
       own.stop();
       own.source.disconnect();
+      own.lead.disconnect();
       own.videoGain?.disconnect();
       own.tone?.disconnect();
       own.el.remove();
@@ -221,12 +236,15 @@ export class StreamSound {
       if (current) {
         // A jump, or new start or end points: it lands there at once, as the audio player's does (Session 52).
         const moved = soundMoved(current.sound, sound);
+        const wasPrepared = current.sound.prepared === true;
         current.sound = sound;
+        // A crossfade's Go reaching its cue's prepared player: started now, heard from the fade's moment (QA23-FADE-4).
+        if (wasPrepared) this.leadIn(current);
         if (sound.prepared) reportLoadedVideoCue(sound.cueId, 'sound', current.el);
         if (moved) current.resync();
         current.el.loop = sound.loop && !sound.clip;
         // Its tone (alpha.20), as the hall hears it, eased there while it plays.
-        current.tone = toneThrough(this.ctx, current.source, current.gain, current.tone, sound.tone ?? null);
+        current.tone = toneThrough(this.ctx, current.lead, current.gain, current.tone, sound.tone ?? null);
         continue;
       }
       const el = document.createElement('audio');
@@ -241,14 +259,19 @@ export class StreamSound {
       document.body.append(el);
       // Into the stream's mix only (an element taken into Web Audio no longer plays out loud).
       const source = this.ctx.createMediaElementSource(el);
+      // No delay unless it is a crossfade's incoming sound started ahead of its fade (QA23-FADE-4, leadIn).
+      const lead = this.ctx.createDelay(FADE_LEAD_MAX_S);
+      source.connect(lead);
       const gain = this.ctx.createGain();
       gain.gain.value = this.levelOf(sound);
-      source.connect(gain).connect(this.mix);
+      lead.connect(gain).connect(this.mix);
       // Its file's tone (alpha.20), as the hall hears it: only Drashti's own sounds, never the sound input.
-      const tone = toneThrough(this.ctx, source, gain, null, sound.tone ?? null);
+      const tone = toneThrough(this.ctx, lead, gain, null, sound.tone ?? null);
       const own: OwnSound = {
         el,
         source,
+        lead,
+        leadMs: 0,
         gain,
         videoGain: null,
         sound,
@@ -276,7 +299,7 @@ export class StreamSound {
         ease: () => (easeable && inFade() ? FADE_SOUND_LIMITS : null),
         onFrame: () => reportVideoCue(sound.cueId, 'sound', true),
         onError: () => reportVideoCue(sound.cueId, 'sound', false),
-        timing: () => ({ loop: own.sound.loop, clip: own.sound.clip, seek: own.sound.seek }),
+        timing: () => ({ loop: own.sound.loop, clip: own.sound.clip, seek: aheadBy(own.sound, own.leadMs) }),
       });
       own.stop = playback;
       own.resync = playback.resync;
@@ -292,6 +315,26 @@ export class StreamSound {
       clearInterval(this.levels);
       this.levels = null;
     }
+  }
+
+  /**
+   * QA23-FADE-4 (the owner: "A: strict test, fix late start (Rec.)"): a crossfade's incoming sound is started as its
+   * Go reaches this page, not when a timer comes at the fade's moment. On CI's two-core Windows that timer fired
+   * 34-228 ms late (this page's main thread starved) and the sound began the fade up to 0.2 s behind. From now on its
+   * player is aimed that far ahead, and its sound goes into the mix through a delay of just that much, set once before
+   * it plays (a delay changed while it plays would change its pitch): heard from the fade's own moment, by the audio
+   * clock. Only a real crossfade's (a length), from its cue's prepared player, once; a Go that comes after its moment,
+   * a manual Go (no crossfade) and the outgoing sound start as before.
+   */
+  private leadIn(own: OwnSound): void {
+    const s = own.sound;
+    const fade = s.envelope?.role === 'in' ? s.envelope.fade : null;
+    if (own.leadMs > 0 || !fade || fade.durationMs <= 0 || !s.seek || s.seek.paused) return;
+    const ahead = Math.min(FADE_LEAD_MAX_S * 1000 - 10, s.seek.at - engineNow());
+    if (ahead < 5) return;
+    own.lead.delayTime.setValueAtTime(ahead / 1000, this.ctx.currentTime);
+    own.leadMs = ahead;
+    own.el.dataset['leadMs'] = String(Math.round(ahead));
   }
 
   /**
