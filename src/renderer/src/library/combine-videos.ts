@@ -16,8 +16,12 @@ export interface CombineVideo {
   id: string;
   name: string;
 }
-export const useCombineVideos = create<{ videos: CombineVideo[] | null }>(() => ({ videos: null }));
-export const closeCombineVideos = () => useCombineVideos.setState({ videos: null });
+/** The videos to combine (at most COMBINE_MOST), and how many more were chosen than it takes (its window says so). */
+export const useCombineVideos = create<{ videos: CombineVideo[] | null; left: number }>(() => ({
+  videos: null,
+  left: 0,
+}));
+export const closeCombineVideos = () => useCombineVideos.setState({ videos: null, left: 0 });
 
 /** A video that can be combined: in Media, its file there, and one Drashti plays. */
 const combinable = (m: MediaSummary) => m.kind === 'video' && !m.missing && m.unplayable === null;
@@ -27,14 +31,16 @@ export function combineItems(
   target: FileTarget,
   media: readonly MediaSummary[],
   marked: readonly string[],
-  open = (videos: CombineVideo[]) => useCombineVideos.setState({ videos }),
+  open = (videos: CombineVideo[], left: number) => useCombineVideos.setState({ videos, left }),
 ): MenuEntry[] {
   const id = target.mediaId;
   if (target.place !== 'media' || target.kind !== 'video' || !id || !marked.includes(id)) return [];
   const chosen = media.filter((m) => marked.includes(m.id) && combinable(m));
   if (chosen.length < 2 || !chosen.some((m) => m.id === id)) return [];
+  // More chosen than one combine takes: the first ones, in Media's order, and the window says how many were left out.
   const videos = chosen.slice(0, COMBINE_MOST).map((m) => ({ id: m.id, name: m.name }));
-  return [{ label: 'Combine videos…', icon: Layers, onSelect: () => open(videos) }];
+  const left = chosen.length - videos.length;
+  return [{ label: 'Combine videos…', icon: Layers, onSelect: () => open(videos, left) }];
 }
 
 export function addCombineToMenu(): () => void {
@@ -42,6 +48,13 @@ export function addCombineToMenu(): () => void {
     const { media, marked } = useMedia.getState();
     return combineItems(target, media, marked);
   });
+}
+
+/** What the window says when more were chosen than one combine takes, or nothing. */
+export function leftWords(left: number): string | null {
+  if (left <= 0) return null;
+  const all = String(COMBINE_MOST + left);
+  return `You chose ${all} videos: Combine takes ${String(COMBINE_MOST)} at a time, so the first ${String(COMBINE_MOST)} are here.`;
 }
 
 /** The list moved: the video at `at` one place up (-1) or down (+1). */
@@ -70,7 +83,7 @@ export function combineJobWords(job: CombineJob): string[] {
   if (job.state !== 'failed' && job.state !== 'stopped')
     for (const name of job.short)
       lines.push(
-        `“${name}” is too short for the ${secondsWords(job.transitionMs)} transition: it is joined with a plain cut.`,
+        `“${name}” is too short for the ${secondsWords(job.transitionMs)} transition: it is joined with a plain cut there.`,
       );
   if (job.state === 'done' && job.savedTo) lines.push(`A copy was saved as “${fileName(job.savedTo)}”.`);
   if (job.state === 'done' && job.message) lines.push(job.message);
