@@ -8965,7 +8965,7 @@ function start(): void {
   });
   // A screen with no first frame of a showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a), "Words during the
   // wait (Rec.)"): LIVE says it is starting there until it draws or the verdict comes. Nothing on the screens changes.
-  handle(IPC.media.starting, (e, mediaId, startedAt) => {
+  handle(IPC.media.noFrameYet, (e, mediaId, startedAt) => {
     const screenId = manager.screenIdFor(e.sender.id);
     if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
     if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;

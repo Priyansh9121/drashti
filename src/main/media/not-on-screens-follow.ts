@@ -48,7 +48,7 @@ export class LiveLinesFollow {
 
   /**
    * A screen has no first frame of a showing up 2 s after it went up (the owner's QA23-HALLDROP-1 (a), "Words during the
-   * wait (Rec.)", media:starting): LIVE says "Starting on the screen “…”…" until it draws or the verdict comes. Whether
+   * wait (Rec.)", media:no-frame-yet): LIVE says "Starting on the screen “…”…" until it draws or the verdict comes. Whether
    * LIVE's lines changed (and the window was told).
    */
   starting(
