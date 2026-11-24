@@ -194,6 +194,67 @@ describe('Prepare translations’ engine', () => {
     }
   });
 
+  it('takes no note of the files Finder and Windows write into a folder; any other file is still refused (a22-review-mt2 follow-up)', async () => {
+    const files = INDICTRANS2_FILES.map((name) => ({
+      name: `en-indic/${name}`,
+      path: join('/packs', 'p', 'en-indic', name),
+      sha256: KNOWN_INDICTRANS2_MODELS['en-indic'][name],
+    }));
+    const run = async (listFolder: (folder: string) => Promise<readonly string[]>) => {
+      const loads: unknown[] = [];
+      const engine = new TranslationEngine({
+        program: () => '/x/drashti-translate',
+        models: models([{ ...model('en-indic', ['translation-en-gu']), files }]),
+        log,
+        listFolder,
+        createHelper: (p) =>
+          new TranslationHelper({
+            program: p,
+            log,
+            lowerPriority: () => undefined,
+            spawn: () =>
+              fakeHelper((r) => {
+                if (r['op'] === 'load') loads.push(r);
+                return r['op'] === 'translate'
+                  ? `{"id":${String(r['id'])},"ok":true,"tokens":["\u2581x","</s>"]}`
+                  : `{"id":${String(r['id'])},"ok":true}`;
+              }),
+          }),
+      });
+      try {
+        return { result: await engine.translate('a b', 'en', 'gu'), loads };
+      } catch (error) {
+        return { error: error as { code?: string; message?: string }, loads };
+      } finally {
+        engine.stop();
+      }
+    };
+    // An admin opened the folder: Finder's .DS_Store, Windows' Thumbs.db and desktop.ini beside the five.
+    for (const extra of ['.DS_Store', 'Thumbs.db', 'desktop.ini', 'Desktop.ini']) {
+      const done = await run(() => Promise.resolve([...INDICTRANS2_FILES, extra]));
+      expect(done.result, extra).toBe('x');
+      expect(done.loads, extra).toHaveLength(1);
+    }
+    // Any other file, a dot file among them, is still refused, and nothing loads.
+    for (const extra of ['vmap.txt', '.vmap.txt', 'shared_vocabulary.json', 'Thumbs.db.txt']) {
+      const done = await run(() => Promise.resolve([...INDICTRANS2_FILES, extra]));
+      expect(done.error?.code, extra).toBe('model-changed');
+      expect(done.loads, extra).toEqual([]);
+    }
+    // A read that fails for a moment (an antivirus holding the folder) says to try again, not to import the pack.
+    for (const code of ['EBUSY', 'EPERM', 'EACCES', 'EMFILE']) {
+      const done = await run(() => Promise.reject(Object.assign(new Error('busy'), { code })));
+      expect(done.error?.code, code).toBe('model-unreadable');
+      expect(done.error?.message, code).toBe(
+        'The translation model’s folder could not be read just now. Try Prepare translations again in a moment.',
+      );
+      expect(done.loads, code).toEqual([]);
+    }
+    // Gone since the check: changed, import again.
+    const gone = await run(() => Promise.reject(Object.assign(new Error('gone'), { code: 'ENOENT' })));
+    expect(gone.error?.code).toBe('model-changed');
+  });
+
   it('stops checking the model at once when Stop comes or the stream goes on air (a22-review-mt2 S2)', async () => {
     let signal: AbortSignal | undefined;
     // As the pack store does: the check ends when its signal aborts.
