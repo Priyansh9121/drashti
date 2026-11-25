@@ -575,9 +575,16 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     // seeking again), and one let go of before it landed was frozen until then.
     const pictureJumpWatch = (page: Page) =>
       page.evaluate(() => {
-        const jumps: { key: string; from: number; to: number | null }[] = [];
+        const jumps: { key: string; from: number; to: number | null; left: number | null }[] = [];
         (globalThis as { s5PictureJumps?: typeof jumps }).s5PictureJumps = jumps;
         const open = new Map<EventTarget, (typeof jumps)[number]>();
+        // Lead 2's QFP-11 B, a record only (the check is as it was; whether a jump ends when its element leaves is the
+        // owner's QFP-6 item 3): when the element of a jump still open left the page. Its 'emptied' then fires on a
+        // detached element and never reaches this page's listeners, so the jump stays open.
+        new MutationObserver(() => {
+          for (const [el, jump] of open)
+            if (jump.left === null && el instanceof Node && !el.isConnected) jump.left = Date.now();
+        }).observe(document, { subtree: true, childList: true });
         const land = (e: Event) => {
           const el = e.target;
           if (!(el instanceof HTMLVideoElement) || (e.type === 'seeked' && el.seeking)) return;
@@ -593,7 +600,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             if (!(el instanceof HTMLVideoElement) || open.has(el)) return;
             const key = el.dataset['bgSlot'];
             if (key === undefined || jumps.length >= 5000) return;
-            const jump = { key, from: Date.now(), to: null };
+            const jump = { key, from: Date.now(), to: null, left: null };
             open.set(el, jump);
             jumps.push(jump);
           },
@@ -951,8 +958,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       [hall, win, stream].map((page) =>
         page.evaluate(
           () =>
-            (globalThis as { s5PictureJumps?: { key: string; from: number; to: number | null }[] })
-              .s5PictureJumps ?? null,
+            (
+              globalThis as {
+                s5PictureJumps?: { key: string; from: number; to: number | null; left: number | null }[];
+              }
+            ).s5PictureJumps ?? null,
         ),
       ),
     );
@@ -963,6 +973,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             key: jump.key,
             from: Math.max(jump.from, fade.at),
             to: Math.min(jump.to ?? Number.POSITIVE_INFINITY, fade.at + fade.durationMs),
+            open: jump.to === null,
+            left: jump.left,
           }))
           .filter((jump) => jump.to > jump.from)
           .map((jump) => ({
@@ -971,6 +983,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             key: jump.key,
             t: jump.from - fade.at,
             ms: jump.to - jump.from,
+            // QFP-11 B, a record only: a jump still open at the end, and when its element left the page (ms from the
+            // fade's start; null: still in the page).
+            ...(jump.open
+              ? { stillOpen: true, leftPageMs: jump.left === null ? null : jump.left - fade.at }
+              : {}),
           })),
       ),
     );
@@ -1246,9 +1263,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     // page: none is frozen in a jump at any moment of a fade (CI's Windows, a22-fade-1124-103850-84620: 0.6 to 4.4 s of
     // each 2 s fade on a page; the Mac 13 to 230 ms).
     expect(pictureJumps, 'the hall’s, LIVE’s and the stream page’s pictures are watched').not.toContain(null);
+    // QFP-11 B, in the message only: how many of these were of an element gone from the page before the fade ended.
+    const gone = pictureFreezes.filter(
+      (f) =>
+        'leftPageMs' in f && f.leftPageMs !== null && f.leftPageMs !== undefined && f.leftPageMs < f.t + f.ms,
+    ).length;
     expect(
       pictureFreezes,
-      `no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade${note}`,
+      `no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade${note}${gone > 0 ? ` [${String(gone)} of ${String(pictureFreezes.length)} of an element that had left the page while its jump was open: QFP-6 item 3]` : ''}`,
     ).toEqual([]);
     // S7: the stream's own two sounds cross by the engine's fade, as the hall's audio player's do in the crossfade case
     // (back since applyLevels reads the engine's time once for all its sounds: a22-fade-1124-103850-84601's one sample
