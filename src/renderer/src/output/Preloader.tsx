@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PreloadMedia } from '../../../shared/engine/preload';
-import { mediaToPreload } from '../../../shared/engine/preload';
+import { mediaToPreload, nextBackgroundVideo } from '../../../shared/engine/preload';
 import type { UpNext } from '../../../shared/engine/state';
 import { mediaUrl, displayMediaId, displayUrl } from '../../../shared/media';
 import type { PictureLook } from '../../../shared/picture-look';
 import { deckClip, pointedBeside, usePointedClip } from '../render/clips-ahead';
 import { DeckClipAhead } from '../render/DeckStep';
 import { useMediaAttempt } from '../render/media-attempts';
+import { preloadVideoUrl } from '../render/page-copy';
 import { useSharpCopy } from '../render/picture-looks';
 import { decodeSlideImage } from '../render/slide-image-decoding';
 import {
@@ -71,11 +72,19 @@ function PreloadImage({
 }
 
 /** A video loaded up to its first frame out of sight (muted, never played). */
-function PreloadVideo({ mediaId, attempt }: { mediaId: string; attempt: number }) {
+function PreloadVideo({
+  mediaId,
+  attempt,
+  background,
+}: {
+  mediaId: string;
+  attempt: number;
+  background: boolean;
+}) {
   const [state, setState] = useState<LoadState>('loading');
   return (
     <video
-      src={mediaUrl(mediaId, attempt)}
+      src={preloadVideoUrl(mediaId, attempt, background)}
       muted
       playsInline
       preload="auto"
@@ -145,12 +154,21 @@ function PreloadPicture({
 }
 
 /** One file to load ahead; a node's copy that lands late is loaded again (a new element, a new URL). */
-function PreloadOne({ media, look }: { media: PreloadMedia; look: PictureLook | null }) {
+function PreloadOne({
+  media,
+  look,
+  background,
+}: {
+  media: PreloadMedia;
+  look: PictureLook | null;
+  /** Next puts it up as the background: loaded as its playback will take it (this page's page copy, S4). */
+  background: boolean;
+}) {
   const attempt = useMediaAttempt(media.mediaId);
   return media.media === 'image' ? (
     <PreloadPicture mediaId={media.mediaId} look={look} />
   ) : (
-    <PreloadVideo key={attempt} mediaId={media.mediaId} attempt={attempt} />
+    <PreloadVideo key={attempt} mediaId={media.mediaId} attempt={attempt} background={background} />
   );
 }
 
@@ -229,6 +247,7 @@ export function Preloader({
     };
   }, [initial, sceneReady]);
   const wanted: PreloadMedia[] = useMemo(() => mediaToPreload(next), [next]);
+  const backgroundVideo = nextBackgroundVideo(next);
   const clip = useMemo(() => deckClip(next), [next]);
   const pointed = pointedBeside(usePointedClip(), clip);
   return (
@@ -253,7 +272,12 @@ export function Preloader({
             if (m.media === 'video' && m.mediaId === clip?.mediaId)
               return clip.first ? <DeckClipAhead key={`deck:${m.mediaId}`} mediaId={m.mediaId} /> : null;
             return (
-              <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} look={pictures[m.mediaId] ?? null} />
+              <PreloadOne
+                key={`${m.media}:${m.mediaId}`}
+                media={m}
+                look={pictures[m.mediaId] ?? null}
+                background={m.mediaId === backgroundVideo}
+              />
             );
           })}
         {!initial && pointed && (

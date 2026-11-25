@@ -38,7 +38,11 @@ export function pageCopyFor(mediaId: string, attempt = 0): string | null {
   return pick === 720 || pick === 540 ? pageCopyUrl(mediaId, pick) : null;
 }
 
-/** RED STUB (a22-review-fadecopies S4): no-op body, filled in by the next commit. */
-export function preloadVideoUrl(mediaId: string, attempt: number, _background: boolean): string {
-  return mediaUrl(mediaId, attempt);
+/**
+ * The file a video is loaded ahead as (output/Preloader.tsx; a22-review-fadecopies S4): the one its playback will
+ * take, so the copy is warm and no full-size decoder is started for nothing. A background video takes this page's copy
+ * as a playback does; anything else, the original.
+ */
+export function preloadVideoUrl(mediaId: string, attempt: number, background: boolean): string {
+  return (background ? pageCopyFor(mediaId, attempt) : null) ?? mediaUrl(mediaId, attempt);
 }

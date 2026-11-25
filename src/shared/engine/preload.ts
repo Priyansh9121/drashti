@@ -32,7 +32,9 @@ export function mediaToPreload(next: UpNext | null): PreloadMedia[] {
   return [...found].map(([mediaId, media]) => ({ mediaId, media }));
 }
 
-/** RED STUB (a22-review-fadecopies S4): no-op body, filled in by the next commit. */
-export function nextBackgroundVideo(_next: UpNext | null): string | null {
+/** The video Next puts up as the background (a video item, or a slide's background video), or null. */
+export function nextBackgroundVideo(next: UpNext | null): string | null {
+  if (next?.kind === 'media') return next.media === 'video' ? next.mediaId : null;
+  if (next?.kind === 'slide' && next.background?.media === 'video') return next.background.mediaId;
   return null;
 }
