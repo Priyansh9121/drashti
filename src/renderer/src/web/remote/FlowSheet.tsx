@@ -136,7 +136,13 @@ export function FlowSection() {
 }
 
 /** In More: the flow's file, Now and Next up, and the sheet's button; or plain words. */
-export function FlowSectionView({ snapshot, problem }: Pick<FlowShown, 'snapshot' | 'problem'>) {
+export function FlowSectionView({
+  snapshot,
+  problem,
+}: Pick<FlowShown, 'snapshot' | 'problem'> & {
+  /** The Sabha flow's sheet is over More (Red, a22-flow-next: not used yet). */
+  sheetOpen?: boolean;
+}) {
   const flow = snapshot?.flow ?? null;
   const said = flow ? statusWords(flow.status) : null;
   return (
