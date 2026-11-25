@@ -247,17 +247,17 @@ function goingUp<T extends { value: number }>(list: readonly T[]): T[] {
 }
 
 /**
- * Of numbered lines, the rows: those standing one under another (their numbers' left edges within 6 points of each
- * other), going up. Of each such group (by a sort on the left edge), the longest run going up; the longest of those.
+ * Of numbered lines, the rows: those standing one under another (their numbers' left edges in one group: sorted by
+ * left edge, a new group wherever the next stands more than 6 points further right, so centred numbers of one and two
+ * digits stay together and a stray number apart; review S15), going up. Of each group, the longest run going up; the
+ * longest of those.
  */
 function numberedRun<T extends { x: number; y: number; value: number }>(list: readonly T[]): T[] {
   const byX = [...list].sort((a, b) => a.x - b.x);
   let best: T[] = [];
   for (let start = 0; start < byX.length;) {
-    const first = byX[start];
-    if (!first) break;
-    let end = start;
-    while (end < byX.length && (byX[end]?.x ?? Infinity) <= first.x + 12) end++;
+    let end = start + 1;
+    while (end < byX.length && (byX[end]?.x ?? Infinity) - (byX[end - 1]?.x ?? -Infinity) <= 6) end++;
     const group = byX.slice(start, end).sort((a, b) => a.y - b.y);
     const run = goingUp(group);
     if (run.length > best.length) best = run;
