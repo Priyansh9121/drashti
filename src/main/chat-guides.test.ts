@@ -66,15 +66,24 @@ function textOf(blocks: readonly Block[]): string {
 }
 
 /**
- * Every bold span's words in some blocks, in order. `leads: false` leaves out the bold words a paragraph or a point
- * starts with ("**The first time**, type…"): the guide's own words, not a name on a screen.
+ * A paragraph's or a point's lead: the bold words it starts with when they end in . : or , (inside the bold or just
+ * after it: "**What it is.**", "**How:**", "**The first time**, type…"). The guide's own words, not a name on a
+ * screen. A step that starts with a name ("**Clear chat** empties it") is no lead: its name is checked.
  */
+function isLead(list: readonly Inline[], i: number): boolean {
+  const n = list[i];
+  if (i !== 0 || n?.kind !== 'strong') return false;
+  const after = list[i + 1];
+  return /[.:,]$/u.test(inlineText(n.children)) || (after?.kind === 'text' && /^[.:,]/u.test(after.text));
+}
+
+/** Every bold span's words in some blocks, in order. `leads: false` leaves out the paragraphs' and points' leads. */
 function bold(blocks: readonly Block[], { leads = true }: { leads?: boolean } = {}): string[] {
   const out: string[] = [];
   const inline = (list: readonly Inline[], top: boolean) => {
     list.forEach((n, i) => {
       if (n.kind !== 'strong') return;
-      if (leads || !top || i > 0) out.push(inlineText(n.children));
+      if (leads || !top || !isLead(list, i)) out.push(inlineText(n.children));
       inline(n.children, false);
     });
   };
@@ -108,16 +117,26 @@ function sourcesIn(dir: string): string[] {
   });
 }
 
+/** A source's code without its comments (a comment's words are no name on a screen). */
+const shownText = (text: string): string =>
+  text
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/u.test(line))
+    .map((line) => line.replace(/\s\/\/\s.*$/u, ''))
+    .join('\n');
+
 /** What the chat's own parts show: the operator's section and Chat QR, the phone's page and tab, Main's words. */
 const chatSources = () =>
   [
     ...sourcesIn(join(app, 'src', 'renderer', 'src', 'chat')),
     ...sourcesIn(join(app, 'src', 'renderer', 'src', 'web', 'chat')),
+    // An Announcements phone's way into the chat (Open the chat).
+    join(app, 'src', 'renderer', 'src', 'web', 'announce', 'AnnouncePage.tsx'),
     join(app, 'src', 'renderer', 'src', 'web', 'remote', 'RemoteApp.tsx'),
     join(app, 'src', 'shared', 'chat.ts'),
     join(app, 'src', 'shared', 'simple-features.ts'),
   ]
-    .map(sourceText)
+    .map((path) => shownText(sourceText(path)))
     .join('\n');
 
 /**
