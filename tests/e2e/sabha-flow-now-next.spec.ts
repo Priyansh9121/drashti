@@ -372,6 +372,8 @@ const nextUpCut = (loc: Locator) =>
   loc.evaluate((el) => {
     const out: string[] = [];
     for (const e of [el, ...el.querySelectorAll('*')]) {
+      // Words only a screen reader hears (.sr-only, the commas between the parts) are never drawn: nothing to cut.
+      if (e.closest('.sr-only')) continue;
       const s = getComputedStyle(e);
       const what = e === el ? 'Next up' : `a part of it (${e.tagName.toLowerCase()})`;
       if (s.textOverflow === 'ellipsis') out.push(`${what} ends in an ellipsis`);
