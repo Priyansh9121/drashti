@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { flowScanPage, flowTablePage, makeFlowPdf } from '../../src/main/documents/testing/sabha-flow-pdfs';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
-import { OWNERS_WINDOW, smallestContent, sweep } from './fit-sweep';
+import { OWNERS_WINDOW, sizeWindow, smallestContent, sweep } from './fit-sweep';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage, operatorReady } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -185,6 +185,15 @@ test('Now and Next up in the Sabha flow panel: Next and Back, a row, two quick p
   await expect.poll(() => seen(nextLine)).toBe(`Next up: ${ROWS[3] ?? ''}`);
   await expect(nextLine).not.toHaveAttribute('data-video', 'true');
 
+  // Back and Next never move from under the pointer as Now moves: the read list keeps Now in sight by its own box,
+  // never by scrolling the panel.
+  const nextAt = await next.boundingBox();
+  await next.click();
+  await nowIs(3);
+  await back.click();
+  await nowIs(2);
+  expect(await next.boundingBox()).toEqual(nextAt);
+
   // A row's click marks it, and Back steps from it.
   await rows.nth(1).click();
   await nowIs(1);
@@ -295,25 +304,33 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
     .toBe(
       'Next up: 2 · Video: placeholder clip with a long name · Placeholder details of the clip written over three lines as a long cell has them · 25 minutes · Placeholder presenter with a long name',
     );
+  // The app's fit rule (operator-fit.spec.ts): the panel at each size, with the playlists' column at its least and its
+  // most, and the panel's body at its top and at its end; what the body has scrolled out of sight is its own.
+  const body = panel.getByTestId('sabha-flow-body');
   const sizes = [await smallestContent(app, 'index.html'), CI_WINDOW, OWNERS_WINDOW];
-  for (const key of ['Home', 'End'] as const) {
-    await playlistsColumn(win, key);
-    const column =
-      key === 'Home' ? 'the playlists’ column at its least' : 'the playlists’ column at its most';
-    await sweep(
-      app,
-      win,
-      'index.html',
-      panel.getByTestId('flow-now-next'),
-      `Now and Next up, ${column}`,
-      sizes,
-    );
-    // Back and Next whole in sight, inside the panel, at each.
-    for (const name of ['Sabha flow: Back', 'Sabha flow: Next'])
-      await expect(panel.getByRole('button', { name, exact: true }), `${name}, ${column}`).toBeInViewport({
-        ratio: 1,
-      });
-  }
+  for (const size of sizes)
+    for (const key of ['Home', 'End'] as const)
+      for (const end of [false, true]) {
+        await sizeWindow(app, win, 'index.html', size);
+        await playlistsColumn(win, key);
+        await body.evaluate((el, toEnd) => {
+          el.scrollTop = toEnd ? el.scrollHeight : 0;
+        }, end);
+        const where = `${key === 'Home' ? 'the playlists’ column at its least' : 'the playlists’ column at its most'}, the panel ${end ? 'at its end' : 'at its top'}`;
+        await sweep(app, win, 'index.html', panel, `Now and Next up in the Sabha flow panel, ${where}`, [
+          size,
+        ]);
+        if (!end)
+          // At its top: Now's line and Back and Next whole in sight.
+          for (const part of [
+            panel.getByTestId('flow-now'),
+            panel.getByRole('button', { name: 'Sabha flow: Back', exact: true }),
+            panel.getByRole('button', { name: 'Sabha flow: Next', exact: true }),
+          ])
+            await expect(part, `${where} at ${String(size.width)} × ${String(size.height)}`).toBeInViewport({
+              ratio: 1,
+            });
+      }
   await app.close();
 });
 

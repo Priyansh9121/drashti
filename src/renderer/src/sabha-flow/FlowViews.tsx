@@ -4,7 +4,8 @@ import { flowLine, statusWords, textLang } from '../../../shared/sabha-flow-line
 import { cx } from '../ui/cx';
 import { Film } from '../ui/icons';
 import { Notice } from '../ui/Notice';
-import { FlowLineWords } from './FlowNowNext';
+import { FlowLineWords, flowLineName } from './FlowNowNext';
+import { keepInSight } from './keep-in-sight';
 
 /*
  * The Sabha flow panel's views (alpha.23, QA23-FLOW-1 and QA23-FLOW-2), drawn from the flow alone so a test can draw
@@ -47,10 +48,13 @@ export function FlowReadList({
   // The PDF's language on the whole list; in a mixed one, on each part.
   const partsLang = mixed ? flow.lang : undefined;
   const langOf = (text: string) => (mixed ? textLang(text, flow.lang) : undefined);
-  // Now kept in sight as Back and Next move it (the list scrolls in its own box): the nearest way, never a jump.
+  // Now kept in sight as Back and Next move it, by the list's own scrolling box alone (keep-in-sight.ts): the nearest
+  // way, never a jump, and never the panel around it.
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    box.current?.querySelector('[aria-current="step"]')?.scrollIntoView({ block: 'nearest' });
+    const row = box.current?.querySelector<HTMLElement>('[aria-current="step"]');
+    const scroller = box.current?.parentElement;
+    if (row && scroller) keepInSight(scroller, row);
   }, [now]);
   return (
     <div
@@ -83,6 +87,7 @@ export function FlowReadList({
               <button
                 type="button"
                 data-testid="flow-row"
+                aria-label={flowLineName(line)}
                 aria-current={isNow ? 'step' : undefined}
                 onClick={() => {
                   onPick(i);

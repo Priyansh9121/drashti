@@ -20,14 +20,15 @@ import { ChevronLeft, ChevronRight, Film } from '../ui/icons';
  * PDF's own language (each part's lang) inside Drashti's English labels. Shown as text, never spoken; never on a
  * screen or the stream.
  *
- * The panel's has Back and Next under it, moving Now by one item (the operator marks where the sabha is; Main keeps it):
- * a button that cannot move (Back before anything is Now, Next on the last item) stays a Tab stop, dimmed, so pressing
- * Next from the keyboard up to the last item never drops the focus out of the panel. A press always goes to the store,
- * which steps from the Now last asked of Main (a press while an ask is on its way counts) and does nothing past either
- * end (flow-store.ts). They show Back and Next, and are named "Sabha flow: Back" and "Sabha flow: Next", so a screen
- * reader, a keyboard user or a test never takes them for the show's own Next or Next item. The phone's
- * is read only and larger. A change is said to a screen reader once, Now and Next up together (not the buttons); where
- * another copy is said instead (a phone's More under its open Sabha flow sheet) `live` is false.
+ * The panel's has Back and Next first, above Now and Next up (so a long Next up never pushes them out of reach),
+ * moving Now by one item (the operator marks where the sabha is; Main keeps it). A button that cannot move (Back before
+ * anything is Now, Next on the last item) stays a Tab stop, dimmed, so pressing Next from the keyboard up to the last
+ * item never drops the focus out of the panel. A press always goes to the store, which steps from the Now last asked
+ * of Main (a press while an ask is on its way counts) and does nothing past either end (flow-store.ts). They show Back
+ * and Next, and are named "Sabha flow: Back" and "Sabha flow: Next", so a screen reader, a keyboard user or a test
+ * never takes them for the show's own Next or Next item. The phone's is read only and larger. A change is said to a
+ * screen reader once, Now and Next up together (not the buttons); where another copy is said instead (a phone's More
+ * under its open Sabha flow sheet) `live` is false.
  */
 
 /**
@@ -50,6 +51,12 @@ export function FlowLineWords({ line, lang }: { line: FlowLine; lang?: SabhaFlow
     </span>
   );
 }
+
+/**
+ * A line's name for a screen reader, its parts with a comma between ("2, Video, Placeholder clip"): a button named by
+ * FlowLineWords' content would be read "2 , Video , …" (Chromium puts a space round each hidden comma).
+ */
+export const flowLineName = (line: FlowLine): string => [line.no, ...line.parts].join(', ');
 
 /** Each place's look and test ids: the operator panel's, in its narrow column, and a phone's, a thumb's size. */
 const LOOK = {
@@ -96,6 +103,32 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
   const canNext = nn.next !== null;
   return (
     <div className={look.box} data-testid={`${look.id}-now-next`}>
+      {onBack && onNext && (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            size="sm"
+            icon={ChevronLeft}
+            aria-label="Sabha flow: Back"
+            aria-disabled={canBack ? undefined : true}
+            className={CANNOT_MOVE}
+            data-testid="flow-back-button"
+            onClick={onBack}
+          >
+            Back
+          </Button>
+          <Button
+            size="sm"
+            iconEnd={ChevronRight}
+            aria-label="Sabha flow: Next"
+            aria-disabled={canNext ? undefined : true}
+            className={CANNOT_MOVE}
+            data-testid="flow-next-button"
+            onClick={onNext}
+          >
+            Next
+          </Button>
+        </div>
+      )}
       <div
         aria-live={live ? 'polite' : undefined}
         aria-atomic={live ? 'true' : undefined}
@@ -123,32 +156,6 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
           </span>
         </p>
       </div>
-      {onBack && onNext && (
-        <div className="flex flex-wrap gap-1">
-          <Button
-            size="sm"
-            icon={ChevronLeft}
-            aria-label="Sabha flow: Back"
-            aria-disabled={canBack ? undefined : true}
-            className={CANNOT_MOVE}
-            data-testid="flow-back-button"
-            onClick={onBack}
-          >
-            Back
-          </Button>
-          <Button
-            size="sm"
-            iconEnd={ChevronRight}
-            aria-label="Sabha flow: Next"
-            aria-disabled={canNext ? undefined : true}
-            className={CANNOT_MOVE}
-            data-testid="flow-next-button"
-            onClick={onNext}
-          >
-            Next
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
