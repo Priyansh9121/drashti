@@ -728,8 +728,10 @@ export function warmScenes(): WarmScene[] {
   // check that follows on the same Mac, as the GPU's other first-use drawings; the Zoom scene above has its zoom only
   // coming in. Calm, as a show's screens move: the slide going out came on by a Zoom 1.5 s before, part-way through its
   // slow zoom (held still as the Zoom scene's is); the slide coming in has no colour of its own, as the measured one (a
-  // see-through layer), over one background in both phases. Drawn again under the notched clip, and last of all: its
-  // slide going out is a layer of its own, so no other scene's layering changes (a22-review-firstwipe S1-S4, N2-N3).
+  // see-through layer), over one background in both phases (a22-review-firstwipe S1-S4, N2-N3). The pipeline it makes:
+  // the zoomed slide going out at the dissolve's opacity, added light for light (Plus), on the screen's own surface
+  // (trace a22-cue-macos-15). Drawn right after the transition scenes, so before the warm-up's cap; again under the
+  // notched clip, that twin last of all (QA23-FIRSTWIPE-3).
   const zoomGoingBackground = background(false, LONG_AGO, false);
   const zoomGoing: WarmScene = {
     key: 'zoom-going/calm',
@@ -759,11 +761,13 @@ export function warmScenes(): WarmScene[] {
     wideCover,
     { ...wideCover, key: `${wideCover.key}/clipped`, clip: NOTCHED },
     ...transitions,
+    // Among the transition scenes, before their notched twins: drawn last, it was never reached on CI's Mac, where the
+    // hall's warm-up hit its cap making the twins' multisampled pipelines (QA23-FIRSTWIPE-3, trace a22-cue-macos-15).
+    zoomGoing,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
     ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
     ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
-    zoomGoing,
     { ...zoomGoing, key: `${zoomGoing.key}/clipped`, clip: NOTCHED },
   ];
 }
