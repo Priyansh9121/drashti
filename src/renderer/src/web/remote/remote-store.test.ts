@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { initialEngineState } from '../../../../shared/engine/state';
 import type { NetworkChange } from '../../../../shared/network';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
@@ -163,6 +164,58 @@ describe('the phone’s open playlist', () => {
     await vi.waitFor(() => expect(remote.useRemote.getState().playlists).toEqual(lists));
     expect(asked()).toContain('/api/v1/playlists');
     expect(asked()).toContain('/api/v1/presentations/deck');
+  });
+
+  it('reads the hall before the playlists when they change: Simple Mode coming on (its playlist adopted first) asks for none (QA23-PHONE-1, CI run 45610620870)', async () => {
+    const asked = () => fetcher.mock.calls.map(([url]) => (typeof url === 'string' ? url : 'not a path'));
+    changed('mode');
+    reply(0, null);
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall).not.toBeNull());
+    // Drashti adopts Simple Mode's playlist (a 'playlists' hint) before it says the mode changed.
+    changed('playlists');
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(asked()).toEqual(['/api/v1/hall', '/api/v1/hall']);
+    reply(1, simple);
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple).toEqual(simple));
+    changed('mode');
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    reply(2, simple);
+    await vi.waitFor(() => expect(replies).toHaveLength(3));
+    expect(asked()).not.toContain('/api/v1/playlists');
+  });
+
+  it('marks the live row once its playlist’s rows are read: a phone that connects while a row is live (QA23-PHONE-1, CI run 45610620870)', async () => {
+    const deckRow: PlaylistItemInfo = {
+      id: 'i-deck',
+      kind: 'presentation',
+      label: 'Placeholder deck',
+      presentationId: 'deck',
+      presentationName: 'Placeholder deck',
+      order: { mode: 'presentation' },
+      arrangementName: null,
+      timers: [],
+      phonePlays: true,
+    };
+    fetcher.mockImplementation((url) =>
+      typeof url === 'string' && url.endsWith('/items')
+        ? Promise.resolve(json({ ok: true, items: [deckRow] }))
+        : new Promise<Response>((resolve) => replies.push(resolve)),
+    );
+    const { useEngine } = await import('../../engine/engine-store');
+    const state = initialEngineState();
+    // The row is live before this phone has its playlist's rows: its slides shown, the row not known yet.
+    useEngine.setState({
+      state: {
+        ...state,
+        live: { ...state.live, presentationId: 'deck', playlist: { playlistId: 'one', itemId: 'i-deck' } },
+      },
+    });
+    expect(remote.useRemote.getState().viewing).toEqual({ presentationId: 'deck', item: null });
+    await remote.showPlaylist('one');
+    expect(remote.useRemote.getState().viewing).toEqual({
+      presentationId: 'deck',
+      item: { playlistId: 'one', itemId: 'i-deck', order: { mode: 'presentation' } },
+    });
   });
 
   it('clears the previous playlist’s rows while reading the next one', async () => {
