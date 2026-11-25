@@ -11,6 +11,7 @@ import {
   SLIDE_PAD,
   SMALL_PAD,
   slidePad,
+  watchFold,
 } from './editor-fold';
 
 /*
@@ -60,6 +61,61 @@ describe('what folds in the layout itself, at once (the Mac’s CI, run 45571462
   it('is hidden by the same media queries as the fold, so the two never disagree once the fold is told', () => {
     expect(HIDE_WHEN_SHORT).toBe(`[@media${SHORT.replace(/\s/gu, '')}]:hidden`);
     expect(HIDE_WHEN_NARROW).toBe(`[@media${NARROW.replace(/\s/gu, '')}]:hidden`);
+  });
+});
+
+/** A window whose size can change, and whose media query lists say so when told to (as the next frame does). */
+function aWindow(width: number, height: number) {
+  let size = { width, height };
+  const listeners = new Set<() => void>();
+  return {
+    media: (query: string) => ({
+      get matches() {
+        return sized(size.width, size.height)(query);
+      },
+      addEventListener: (_type: 'change', listener: () => void) => {
+        listeners.add(listener);
+      },
+      removeEventListener: (_type: 'change', listener: () => void) => {
+        listeners.delete(listener);
+      },
+    }),
+    resize: (w: number, h: number) => {
+      size = { width: w, height: h };
+    },
+    tell: () => {
+      for (const listener of listeners) listener();
+    },
+    listening: () => listeners.size,
+  };
+}
+
+describe('the fold follows the window’s queries (a22-review-ribbonfold round 4)', () => {
+  it('is told at once of a change between the first render and its listening, so CSS never hides what no button reaches', () => {
+    const win = aWindow(884, 521);
+    // The first render reads the queries: nothing folds.
+    expect(foldFor((q) => win.media(q).matches)).toEqual({ ribbon: false, inspector: false });
+    // 200% text lands before the fold listens; its change event came and went.
+    win.resize(442, 260);
+    const told: { ribbon: boolean; inspector: boolean }[] = [];
+    const stop = watchFold(win.media, (fold) => told.push(fold));
+    expect(told.at(-1)).toEqual({ ribbon: true, inspector: true });
+    stop();
+  });
+
+  it('is told of each later change, and of none once it stops listening', () => {
+    const win = aWindow(442, 260);
+    const told: { ribbon: boolean; inspector: boolean }[] = [];
+    const stop = watchFold(win.media, (fold) => told.push(fold));
+    win.resize(884, 521);
+    win.tell();
+    expect(told.at(-1)).toEqual({ ribbon: false, inspector: false });
+    stop();
+    expect(win.listening()).toBe(0);
+    const before = told.length;
+    win.resize(442, 260);
+    win.tell();
+    expect(told).toHaveLength(before);
   });
 });
 

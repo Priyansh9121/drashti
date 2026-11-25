@@ -41,16 +41,31 @@ export function useEditorFold(): EditorFold {
   const [fold, setFold] = useState(foldNow);
   useEffect(() => {
     if (typeof matchMedia !== 'function') return;
-    const queries = [SHORT, NARROW].map((q) => matchMedia(q));
-    const on = () => {
-      setFold(foldNow());
-    };
-    for (const q of queries) q.addEventListener('change', on);
-    return () => {
-      for (const q of queries) q.removeEventListener('change', on);
-    };
+    // The same fold kept as it is (no render, no "fold ended" for a value that did not change).
+    return watchFold(matchMedia, (next) => {
+      setFold((was) => (was.ribbon === next.ribbon && was.inspector === next.inspector ? was : next));
+    });
   }, []);
   return fold;
+}
+
+/** A media query list as the fold watches it. */
+interface MediaList {
+  readonly matches: boolean;
+  addEventListener(type: 'change', listener: () => void): void;
+  removeEventListener(type: 'change', listener: () => void): void;
+}
+
+/** Tells `told` what folds whenever the window's queries change; returns how to stop. */
+export function watchFold(media: (query: string) => MediaList, told: (fold: EditorFold) => void): () => void {
+  const lists = [SHORT, NARROW].map((q) => media(q));
+  const on = () => {
+    told(foldFor((query) => media(query).matches));
+  };
+  for (const list of lists) list.addEventListener('change', on);
+  return () => {
+    for (const list of lists) list.removeEventListener('change', on);
+  };
 }
 
 /** The room kept round the slide in its area, each side. */
