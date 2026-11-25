@@ -1,4 +1,4 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import type { ToDevice } from '../../src/shared/network';
+import { settled } from './a11y';
 import { NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
 import {
@@ -81,14 +82,28 @@ const NAMES: string[] = [
 ];
 
 /**
+ * One element that may end in "…" though its words are none of NAMES: the element itself (a selector) and its words,
+ * which must be exactly these. Only the owner's own exception goes here: QA23-STAGE8-5 (25 Nov 2026, word for word: "End
+ * it in '…' (Recommended)"), Simple Mode's day playlist's name in the left column at 1024 × 645, whole in its title, to
+ * a screen reader and in the middle's header (each checked strictly where it is used).
+ */
+interface MayEndInEllipsis {
+  selector: string;
+  words: string;
+}
+
+/** What fitFaults's page script is given: NAMES, and the elements `mayCut` names besides. */
+const allowed = (mayCut: MayEndInEllipsis[]) => ({ names: NAMES, mayCut });
+
+/**
  * Everything that does not fit in the operator window as it is laid out now, each in words: a control, a heading or a
  * key hint cut (its contents run past it), cut off by what holds it, running out of its column, lying over another, or
  * under a notice; words lying over a control; words of Drashti's own cut short with an ellipsis (a name the operator
- * gave, placeholder here, may be); anything scrolling sideways. What a scroller has scrolled out of sight is not
- * looked at, nor what is hidden from people (aria-hidden, unseen).
+ * gave, placeholder here, may be; and the element `mayCut` names, with its words, may be); anything scrolling sideways.
+ * What a scroller has scrolled out of sight is not looked at, nor what is hidden from people (aria-hidden, unseen).
  */
-const fitFaults = (win: Page) =>
-  win.evaluate((names) => {
+const fitFaults = (win: Page, mayCut: MayEndInEllipsis[] = []) =>
+  win.evaluate(({ names, mayCut }) => {
     const out = new Set<string>();
     const REGIONS: [string, string][] = [
       ['the header', '[data-header]'],
@@ -229,7 +244,8 @@ const fitFaults = (win: Page) =>
         }
         parts.push({ el, region: name, seen, control: el.matches(CONTROLS) });
       }
-      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: NAMES).
+      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: NAMES; and the one element
+      // mayCut names, with exactly its words: the owner's QA23-STAGE8-5).
       for (const el of r.querySelectorAll('*')) {
         if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth + 1) continue;
         const style = getComputedStyle(el);
@@ -238,6 +254,7 @@ const fitFaults = (win: Page) =>
         if (
           words !== '' &&
           !names.some((n) => words.includes(n)) &&
+          !mayCut.some((m) => el.matches(m.selector) && words === m.words) &&
           inSight(el.parentElement, boxOf(el.getBoundingClientRect())).seen
         )
           out.add(`${name}: “${words.slice(0, 60)}” is cut short`);
@@ -297,7 +314,7 @@ const fitFaults = (win: Page) =>
       }
     }
     return [...out];
-  }, NAMES);
+  }, allowed(mayCut));
 
 /** axe's target-size findings (every target 24 px, or room around it): its words for each. */
 async function smallTargets(win: Page): Promise<string[]> {
@@ -582,6 +599,114 @@ for (const mode of ['pro', 'simple'] as const)
       feed.close();
       await app.close();
     });
+
+/** Text taken as itself in a regular expression. */
+const literally = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+
+/**
+ * Simple Mode's day playlist's name as the owner allowed it (QA23-STAGE8-5, 25 Nov 2026, word for word: "End it in '…'
+ * (Recommended)"), checked strictly: in the left column it ends in "…" when it does not fit, cut by CSS on one line,
+ * and is whole on hover (its own title, the one under the pointer) and to a screen reader (its row's name begins with
+ * it); in the middle's header it is whole, in sight, and its name. Whether the left column cuts it now.
+ */
+async function dayNameStrictly(win: Page, row: Locator, name: string, where: string): Promise<boolean> {
+  const shown = row.getByTestId('playlist-node-name');
+  await expect(shown, `${where}: the left column's name`).toHaveCount(1);
+  await expect(shown, `${where}: the left column's name, whole in its words`).toHaveText(name);
+  await expect(shown, `${where}: the left column's name, whole on hover`).toHaveAttribute('title', name);
+  await expect(row, `${where}: the left column's row, whole to a screen reader`).toHaveAccessibleName(
+    new RegExp(`^${literally(name)}(?: |$)`, 'u'),
+  );
+  const left = await shown.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const under = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return {
+      cut: el.scrollWidth > el.clientWidth + 1,
+      ellipsis: style.textOverflow === 'ellipsis' && style.overflowX === 'hidden',
+      oneLine:
+        style.whiteSpace === 'nowrap' &&
+        new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size === 1,
+      hoverShows: under?.closest('[title]') === el,
+    };
+  });
+  expect(left.ellipsis, `${where}: the left column's name ends in “…” by CSS`).toBe(true);
+  expect(left.oneLine, `${where}: the left column's name on one line`).toBe(true);
+  expect(left.hoverShows, `${where}: the pointer over the left column's name shows its own title`).toBe(true);
+  const header = win.getByTestId('column-middle').getByTestId('playlist-title');
+  await expect(header, `${where}: the middle's header`).toHaveText(name);
+  await expect(header, `${where}: the middle's header to a screen reader`).toHaveAccessibleName(name);
+  await expect(header, `${where}: the middle's header in sight`).toBeInViewport({ ratio: 1 });
+  expect(
+    await header.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+    `${where}: the middle's header whole, not cut`,
+  ).toBe(true);
+  return left.cut;
+}
+
+test('Simple Mode at 1024 × 645 with the day’s own playlist (the owner’s QA23-STAGE8-5): its name in the left column alone may end in “…”, whole in its title, to a screen reader and in the middle’s header; nothing else is cut, over another or out of its column, and every target is 24 px', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  // A new library with none open: Simple Mode makes the day's own "Sabha, <date>" playlist and opens it
+  // (main/simple-playlist.ts).
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  const day = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const id = await d.app.simplePlaylist();
+    return (await d.playlists.tree()).find((n) => n.id === id) ?? null;
+  });
+  expect(day?.name).toMatch(/^Sabha, \d{1,2} \p{L}{3,4} \d{4}$/u);
+  const { id, name } = day ?? { id: '', name: '' };
+  const row = win.getByTestId('column-left').locator(`[data-testid="playlist-node"][data-node-id="${id}"]`);
+  await expect(row).toHaveAttribute('data-open', 'true');
+  await expect(win.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(name);
+  await win.evaluate(() => document.fonts.ready.then(() => undefined));
+  // That one element, with exactly the day's name, may end in "…"; nothing else may that NAMES does not name.
+  const mayCut = [
+    {
+      selector: `[data-testid="column-left"] [data-testid="playlist-node"][data-node-id="${id}"] [data-testid="playlist-node-name"]`,
+      words: name,
+    },
+  ];
+  const states: [string, { left: string; right: string } | null][] = [
+    ['as Simple Mode opens', null],
+    ...Object.entries(COLUMNS),
+  ];
+  const findings: string[] = [];
+  const cutIn: string[] = [];
+  for (const [state, columns] of states) {
+    // As it opens: laid out and done arriving, as setColumns leaves it.
+    if (columns) await setColumns(win, columns);
+    else await settled(win);
+    for (const end of [false, true]) {
+      await scrollAll(win, end);
+      const where = `${state}${end ? ', scrolled to the end' : ''}`;
+      const faults = [...(await fitFaults(win, mayCut)), ...(await smallTargets(win))];
+      findings.push(...faults.map((f) => `${where}: ${f}`));
+      if (faults.length > 0)
+        await test.info().attach(`simple-day-playlist-${where}`, {
+          body: await win.screenshot(),
+          contentType: 'image/png',
+        });
+      if (await dayNameStrictly(win, row, name, where)) cutIn.push(where);
+    }
+  }
+  console.log(
+    `simple, the day's playlist “${name}”, 1024 × 645: ${String(findings.length)} findings; its name ends in “…” ${cutIn.length > 0 ? cutIn.join('; ') : 'nowhere'}\n${findings.join('\n')}`,
+  );
+  expect(findings).toEqual([]);
+  // The owner's case itself is met: with the columns at their least the left column cuts the name, so it ends in "…".
+  expect(cutIn, 'the left column cuts the day’s name with the columns at their least').toContain(
+    'both columns at their least',
+  );
+  await app.close();
+});
 
 /** Five refused files told by the main process, as a watched folder's automatic import tells them, and a notice. */
 const REFUSED = Array.from({ length: 5 }, (_, i) => ({
