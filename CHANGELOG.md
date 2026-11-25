@@ -5,6 +5,11 @@ Each version, newest first. A version's section is what Help › Check for Updat
 ## Unreleased
 
 - A cued video no longer fails now and then with “could not load its first frame” when a screen kept showing the video’s start.
+- Combine videos… and Export clip… no longer leave a hidden copy in Media’s folder when they fail, are stopped or are cut short by closing Drashti.
+- Phones: Show this zoom on the screens now shows the part you zoomed into on a cropped, turned or flipped picture and on a page cropped with Crop page….
+- With no hall screen on this computer, the Lower Thirds studio’s Live shows what is live from a small copy drawn out of sight.
+- A paused or waiting video that a screen cannot play now gets a notice naming the file and the screen, and LIVE says so; played anyway, it stops again with a notice.
+- Turning Stage on with only a stage tablet, or with the stage display unplugged, no longer says no screen is set to Stage.
 
 ## 1.0.0-alpha.22 (25 Nov 2026)
 
