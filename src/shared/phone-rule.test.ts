@@ -117,8 +117,7 @@ describe('the phone rule (QA23-PHONE-1)', () => {
     });
     // Every request and command refused has its group's words.
     for (const op of OPS)
-      if (REMOTE_PHONE_OPS[op] === 'never')
-        expect(Object.hasOwn(NEVER_OP_WORDS, op), op).toBe(true);
+      if (REMOTE_PHONE_OPS[op] === 'never') expect(Object.hasOwn(NEVER_OP_WORDS, op), op).toBe(true);
     for (const type of COMMAND_TYPES)
       if (REMOTE_PHONE_COMMANDS[type] === 'never')
         expect(Object.hasOwn(NEVER_COMMAND_WORDS, type), type).toBe(true);

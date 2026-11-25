@@ -177,7 +177,9 @@ describe('a PowerPoint or a PDF, as a phone may put it up (QA23-PHONE-1)', () =>
     expect(isPhoneDeck(song)).toBe(false);
     const words = await imported(
       'Placeholder Song One.txt',
-      readFileSync(join(__dirname, '..', '..', '..', 'tests', 'fixtures', 'lyrics', 'Placeholder Song One.txt')),
+      readFileSync(
+        join(__dirname, '..', '..', '..', 'tests', 'fixtures', 'lyrics', 'Placeholder Song One.txt'),
+      ),
     );
     expect(words.source?.kind).toBe('text');
     expect(isPhoneDeck(words)).toBe(false);

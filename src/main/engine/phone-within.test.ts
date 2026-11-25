@@ -49,7 +49,10 @@ function deckSlide(id: string, steps: number): RenderSlide {
  */
 function setup() {
   const source = new MemorySlideSource();
-  source.set('before', [textSlide('b1', 'Placeholder before one'), textSlide('b2', 'Placeholder before two')]);
+  source.set('before', [
+    textSlide('b1', 'Placeholder before one'),
+    textSlide('b2', 'Placeholder before two'),
+  ]);
   source.set('deck', [deckSlide('d1', 2), textSlide('d2', 'Placeholder page two')]);
   source.set('after', [textSlide('a1', 'Placeholder after')]);
   source.set('arti', [textSlide('c1', 'Placeholder cued')]);
