@@ -47,7 +47,9 @@ describe('the Undo line', () => {
     vi.advanceTimersByTime(1_000);
     expect(line()).toBeNull();
     // The change is still there to undo (Edit > Undo, Cmd/Ctrl+Z): the line going takes nothing out of it.
-    expect(useUndo.getState().stack.map((s) => s.text)).toEqual(['Deleted the wallpaper “Placeholder darshan blue”']);
+    expect(useUndo.getState().stack.map((s) => s.text)).toEqual([
+      'Deleted the wallpaper “Placeholder darshan blue”',
+    ]);
     expect(await undoRemoval()).toBe(true);
     expect(brought).toEqual(['Placeholder darshan blue']);
     expect(line()).toBeNull();

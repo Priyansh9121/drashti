@@ -280,7 +280,8 @@ test('wallpapers in the Playlists panel: pictures dropped or imported, anything 
   const undoOnLine = line.getByRole('button', { name: /Undo/u });
   const later = (ms: number) =>
     win.evaluate((by) => {
-      const move = (globalThis as { drashtiTestUndoLineLater?: (ms: number) => void }).drashtiTestUndoLineLater;
+      const move = (globalThis as { drashtiTestUndoLineLater?: (ms: number) => void })
+        .drashtiTestUndoLineLater;
       if (!move) throw new Error('the Undo line’s test clock is not there (DRASHTI_TEST_UNDO_LINE)');
       move(by);
     }, ms);
