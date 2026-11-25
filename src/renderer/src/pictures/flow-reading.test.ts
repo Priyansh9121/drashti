@@ -50,12 +50,12 @@ describe('the pictures window’s Sabha flow reading', () => {
     ).toBeNull();
   });
 
-  it('reads the flow from the pages; a reader that fails gives a plain unreadable, never a throw', () => {
+  it('reads the flow from the pages; a reader that fails gives none (Main says why and shows it unreadable), never a throw', () => {
     expect(readFlowSafely([])).toEqual({ status: 'no-text', lang: 'mixed', headers: [], items: [] });
     expect(
       readFlowSafely([], () => {
         throw new RangeError('placeholder');
       }),
-    ).toEqual({ status: 'unreadable', lang: 'mixed', headers: [], items: [] });
+    ).toBeNull();
   });
 });

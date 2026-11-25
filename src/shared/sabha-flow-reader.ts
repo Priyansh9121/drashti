@@ -247,17 +247,17 @@ function goingUp<T extends { value: number }>(list: readonly T[]): T[] {
 }
 
 /**
- * Of numbered lines, the rows: those standing one under another (their numbers' left edges within 6 points of each
- * other), going up. Of each such group (by a sort on the left edge), the longest run going up; the longest of those.
+ * Of numbered lines, the rows: those standing one under another (their numbers' left edges in one group: sorted by
+ * left edge, a new group wherever the next stands more than 6 points further right, so centred numbers of one and two
+ * digits stay together and a stray number apart; review S15), going up. Of each group, the longest run going up; the
+ * longest of those.
  */
 function numberedRun<T extends { x: number; y: number; value: number }>(list: readonly T[]): T[] {
   const byX = [...list].sort((a, b) => a.x - b.x);
   let best: T[] = [];
   for (let start = 0; start < byX.length;) {
-    const first = byX[start];
-    if (!first) break;
-    let end = start;
-    while (end < byX.length && (byX[end]?.x ?? Infinity) <= first.x + 12) end++;
+    let end = start + 1;
+    while (end < byX.length && (byX[end]?.x ?? Infinity) - (byX[end - 1]?.x ?? -Infinity) <= 6) end++;
     const group = byX.slice(start, end).sort((a, b) => a.y - b.y);
     const run = goingUp(group);
     if (run.length > best.length) best = run;
@@ -317,8 +317,8 @@ export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
   if (odd > UNREADABLE_SHARE * chars) return nothing('unreadable');
   const texts = raw.map((f) => f.s);
   const lang = langOf(texts);
-  // More text than a running order ever holds: none is read (its pages are shown).
-  if (tooMuch) return nothing('no-items', lang);
+  // More text than a running order ever holds: none is read (its pages are shown), and it is said as that.
+  if (tooMuch) return { ...nothing('no-items', lang), tooMuchText: true };
   if (lang !== 'gu' && lang !== 'hi' && oldTypingFont(texts)) return nothing('unreadable');
   // A character that would draw as a box is left out of the words.
   raw = raw
@@ -345,7 +345,7 @@ export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
   // More lines starting with a number than a running order ever has: none is read.
   let numberedLines = 0;
   for (const line of lines) if (NUMBER_START.test(line.frags[0]?.s.trim() ?? '')) numberedLines++;
-  if (numberedLines > FLOW_READ_LIMITS.numbered) return nothing('no-items', lang);
+  if (numberedLines > FLOW_READ_LIMITS.numbered) return { ...nothing('no-items', lang), tooMuchText: true };
   const textOf = (line: Line) => joined(line.frags);
   const pitch = median(
     lines.slice(1).map((line, k) => line.y - (lines[k]?.y ?? 0)),

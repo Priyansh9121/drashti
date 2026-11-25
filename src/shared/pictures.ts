@@ -91,7 +91,12 @@ export interface PicturesDone {
   error?: string;
   /** Sabha flow: what the window's reader made of the pages' text (a flow job only; Main checks it). */
   flowReading?: SabhaFlowReading;
+  /** Sabha flow: the window's reader stopped with an error (no reading). */
+  flowReadCrashed?: boolean;
 }
+
+/** Why a Sabha flow's drawing came with no reading that passed the check (for Main's log; never the PDF's words). */
+export type FlowReadProblem = 'crashed' | 'failed-check' | 'missing';
 
 /** Where pdf.js's own data comes from (fonts PDFs name without embedding them, and its decoders). */
 export type PictureAssetKind = 'standardFontDataUrl' | 'wasmUrl' | 'cMapUrl';
@@ -116,6 +121,8 @@ export type PicturesResult =
       failed: number[];
       /** Sabha flow: the window's reading of the pages' text, as checked (left out when none passed the check). */
       flowReading?: SabhaFlowReading;
+      /** Sabha flow: why there is no reading, when there is none. */
+      flowReadProblem?: FlowReadProblem;
     }
   | { ok: false; message: string };
 
