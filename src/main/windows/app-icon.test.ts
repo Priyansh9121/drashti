@@ -91,7 +91,7 @@ describe("Drashti's icon", () => {
   });
 
   it('is linked from every page a phone or browser opens', () => {
-    for (const page of ['pair', 'remote', 'stage-display', 'announce']) {
+    for (const page of ['pair', 'remote', 'stage-display', 'announce', 'chat']) {
       const html = file('src', 'renderer', `${page}.html`).toString();
       expect(html).toContain('<link rel="apple-touch-icon" href="./src/web/icons/apple-touch-icon.png" />');
       expect(html).toContain('sizes="32x32" href="./src/web/icons/favicon-32.png"');

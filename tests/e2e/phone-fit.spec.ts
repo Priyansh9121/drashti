@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { callBody, placeholderComputer, readAnswer } from '../access-core';
 import { type AccessStandIn, accessStandIn } from '../access-standin';
 import type { Engine } from './devices';
+import { CHAT_API } from '../../src/shared/chat';
 import { apiCall, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken, PHONE } from './devices';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
@@ -18,8 +19,9 @@ import { makeTestImage } from './test-media';
  * in 21", 22 Nov 2026): what people open on a phone or another browser. Each page at 360 × 740, 390 × 844 and
  * 430 × 932, upright and held sideways, and on a 768 × 1024 tablet, in Safari's engine and Chrome's, with long
  * placeholder names: the phone remote on each of its tabs and in each of its sheets, its viewer, a row's menu and the
- * Picture editor, files from phones (Add from this Phone… and Shared from Drashti), the pairing page (as a QR code opens
- * it, a wrong code, a device removed), the announcements page with what it sent, the stage display, and the access
+ * Picture editor, files from phones (Add from this Phone… and Shared from Drashti), the Chat (alpha.23: its messages with
+ * long names, Change name and a new message's banner), the pairing page (as a QR code opens it, a wrong code, a device
+ * removed), the announcements page with what it sent, the chat page (/chat), the stage display, and the access
  * list's pages an emailed Approve or Reject link opens (the link page on GitHub Pages, and the one a link sent before
  * x38 opens on the web app). On each, nothing is cut, lies over another, is under another, or is off the screen with no way to it; nothing
  * scrolls sideways; every target is 44 px (docs/design.md §5, §16); no box a phone types in has words under 16 px (a
@@ -62,6 +64,8 @@ const LONG = {
   name: 'Placeholder Volunteer with a Long Name Typed in Drashti',
   computer: 'Placeholder Mac in the Sabha Hall Office with a Long Name',
   photo: 'Placeholder Photo from the Volunteer Phone with a Long Name',
+  chat: 'Placeholder chat message from the car park gate, long enough to wrap over several lines on a phone 🙏',
+  reply: 'Placeholder answer from this phone, long enough to wrap over two or three lines on a small phone',
 } as const;
 
 /** What a page is checked for, by the kind of page it is. */
@@ -573,13 +577,17 @@ const sheet = (name: string, button: string, testId: string, from: (p: Page) => 
   },
 });
 
-/** The remote's views on a phone (tabs) or a tablet (the playlist or the library beside the show). */
-function remoteViews(layout: 'phone' | 'wide', playlistId: string): View[] {
+/**
+ * The remote's views on a phone (tabs) or a tablet (the playlist or the library beside the show). `say`: someone else
+ * writes in the chat (a new message's banner shows while the chat is not in view).
+ */
+function remoteViews(layout: 'phone' | 'wide', playlistId: string, say: () => Promise<void>): View[] {
   const phone = layout === 'phone';
   const show = phone ? (p: Page) => chosen(p, 'remote-tab-show') : () => Promise.resolve();
   const more = phone ? (p: Page) => chosen(p, 'remote-tab-more') : () => Promise.resolve();
   const playlist = (p: Page) => chosen(p, phone ? 'remote-tab-playlist' : 'remote-side-playlist');
   const library = (p: Page) => chosen(p, phone ? 'remote-tab-library' : 'remote-side-library');
+  const chat = (p: Page) => chosen(p, phone ? 'remote-tab-chat' : 'remote-side-chat');
   const openPlaylist = async (p: Page) => {
     await playlist(p);
     await p.getByTestId('remote-playlist').selectOption(playlistId);
@@ -650,6 +658,44 @@ function remoteViews(layout: 'phone' | 'wide', playlistId: string): View[] {
     },
     ...(phone ? [{ name: 'the More tab', open: more }] : []),
     {
+      name: 'the Chat, with long names and messages',
+      open: async (p) => {
+        await chat(p);
+        await expect(p.getByTestId('chat-message').filter({ hasText: LONG.reply })).toBeVisible();
+      },
+    },
+    {
+      name: 'Change name on the Chat',
+      open: async (p) => {
+        await chat(p);
+        await p.getByTestId('chat-rename').click();
+        await expect(p.getByTestId('chat-name')).toHaveValue(LONG.name);
+      },
+      close: async (p) => {
+        await p.getByTestId('chat-name-cancel').click();
+        await expect(p.getByTestId('chat-text-box')).toBeVisible();
+      },
+    },
+    // A new message's banner, in the header's place: on a phone off the Show tab (never over the show).
+    ...(phone
+      ? [
+          {
+            name: 'a new chat message’s banner, on the playlist',
+            open: async (p: Page) => {
+              await playlist(p);
+              await say();
+              await expect(p.getByTestId('chat-banner')).toContainText(LONG.from);
+            },
+            close: async (p: Page) => {
+              // It goes by itself after a few seconds: closed here if it is still up.
+              const banner = p.getByTestId('chat-banner');
+              if (await banner.isVisible()) await p.getByTestId('chat-banner-close').click();
+              await expect(banner).toHaveCount(0);
+            },
+          },
+        ]
+      : []),
+    {
       name: 'the viewer (Look closer)',
       open: async (p) => {
         await show(p);
@@ -697,6 +743,23 @@ for (const engine of ENGINES)
         body: { text: LONG.announcement, from: LONG.from, minutes: 10 },
       });
       expect(sent.status).toBe(202);
+      // Someone else in the chat with a long name (a script's Remote), who wrote a long message.
+      const chatter = await pairToken(win, port, 'remote', 'Placeholder chat script');
+      const named = await apiCall(port, CHAT_API.name, {
+        method: 'POST',
+        token: chatter,
+        body: { name: LONG.from },
+      });
+      expect(named.status).toBe(200);
+      const say = async () => {
+        const said = await apiCall(port, CHAT_API.send, {
+          method: 'POST',
+          token: chatter,
+          body: { text: LONG.chat },
+        });
+        expect(said.status).toBe(200);
+      };
+      await say();
       const p = phone.page;
       await pairByQr(p, base, await pairingCode(win, 'remote', LONG.device), '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
@@ -722,6 +785,16 @@ for (const engine of ENGINES)
         'added',
         { timeout: 60_000 },
       );
+      // In the chat with a long name, and a long message of its own.
+      await chosen(p, 'remote-tab-chat');
+      await p.getByTestId('chat-name').fill(LONG.name);
+      await p.getByTestId('chat-name-save').click();
+      await p.getByTestId('chat-text-box').fill(LONG.reply);
+      await p.getByTestId('chat-send').click();
+      await expect(p.getByTestId('chat-message').filter({ hasText: LONG.reply })).toHaveAttribute(
+        'data-own',
+        'true',
+      );
       const sweep = new Sweep(p, { ...DRASHTI_PAGE, remote: true });
       for (const size of SIZES) {
         await p.setViewportSize(size);
@@ -738,7 +811,7 @@ for (const engine of ENGINES)
           'data-layout',
           layout === 'wide' ? 'wide' : /^(phone|sideways)$/u,
         );
-        for (const view of remoteViews(layout, playlistId)) {
+        for (const view of remoteViews(layout, playlistId, say)) {
           await view.open(p);
           await sweep.look(size, view.name);
           await view.close?.(p);
@@ -753,7 +826,7 @@ for (const engine of ENGINES)
   });
 
 for (const engine of ENGINES)
-  test(`the pairing page, the announcements page and the stage display fit on phones upright and sideways and on a tablet, in ${engineName(engine)} engine, with long names`, async () => {
+  test(`the pairing page, the announcements page, the chat page and the stage display fit on phones upright and sideways and on a tablet, in ${engineName(engine)} engine, with long names`, async () => {
     test.setTimeout(300_000);
     const { app } = await launchApp(NETWORK_ENV);
     const phone = await phoneOf(engine);
@@ -794,6 +867,21 @@ for (const engine of ENGINES)
       await expect(p.getByTestId('announce-sent').first()).toContainText('Waiting for the operator');
       await everySize('the announcements page with what it sent');
 
+      // The chat page (alpha.23), as this Announcements phone (in the chat) opens it from its page's Open the chat:
+      // its name asked, then messages.
+      await p.getByTestId('announce-chat').click();
+      await p.waitForURL(`${base}/chat`);
+      await expect(p.getByTestId('chat-name')).toBeVisible();
+      await everySize('the chat page, asking the name');
+      await p.getByTestId('chat-name').fill(LONG.name);
+      await p.getByTestId('chat-name-save').click();
+      for (const text of [LONG.chat, LONG.reply]) {
+        await p.getByTestId('chat-text-box').fill(text);
+        await p.getByTestId('chat-send').click();
+        await expect(p.getByTestId('chat-message').filter({ hasText: text })).toBeVisible();
+      }
+      await everySize('the chat page with its messages');
+
       // The stage display: a screen, its own picture left out; its Full screen button and the page fit.
       await p.goto('about:blank');
       await pairByQr(p, base, await pairingCode(win, 'stage', LONG.device), '/stage');
@@ -802,7 +890,7 @@ for (const engine of ENGINES)
         textFloor: false,
         ignore: '[data-a11y-picture], [data-testid="stage-view"]',
       });
-      sweep.finish(`the pairing, announcements and stage pages in ${engine}`);
+      sweep.finish(`the pairing, announcements, chat and stage pages in ${engine}`);
     } finally {
       await phone.context.close();
       await phone.browser.close();

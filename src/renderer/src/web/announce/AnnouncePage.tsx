@@ -8,7 +8,9 @@ import {
 import type { DeviceKind } from '../../../../shared/network';
 import { Mark } from '../../ui/Mark';
 import { Badge } from '../../ui/Badge';
-import { Button } from '../../ui/Button';
+import { Button, buttonClass } from '../../ui/Button';
+import { MessageCircle } from '../../ui/icons';
+import { CHAT_PAGE } from '../../../../shared/chat';
 import { Notice } from '../../ui/Notice';
 import { api, current, PAGE_OF } from '../device';
 import { isStoppedAnswer } from '../stopped-store';
@@ -258,6 +260,17 @@ export function AnnouncePage() {
         <p className="text-base text-muted">
           The operator sees it first, and decides whether and how it goes on the screens.
         </p>
+        {/* A paired Announcements phone is in the chat too (alpha.23, QA23-CHAT-1); never the poster's link. */}
+        {poster === null && (
+          <a
+            href={CHAT_PAGE}
+            className={`${buttonClass('secondary', 'lg')} mt-3`}
+            data-testid="announce-chat"
+          >
+            <MessageCircle size={18} aria-hidden="true" />
+            Open the chat
+          </a>
+        )}
       </header>
       <form
         className="space-y-4"
