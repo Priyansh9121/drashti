@@ -66,6 +66,21 @@ export interface SabhaFlow {
 }
 
 /**
+ * What reading a PDF's text layer finds (the pictures window reads it; Main adds the id, the file's name and the page
+ * counts).
+ */
+export type SabhaFlowReading = Pick<SabhaFlow, 'status' | 'lang' | 'headers' | 'items'> &
+  Partial<Pick<SabhaFlow, 'title' | 'subtitle' | 'total'>>;
+
+/** What a PDF whose words could not be read reads as: its pages are shown. */
+export const UNREADABLE_READING: SabhaFlowReading = {
+  status: 'unreadable',
+  lang: 'mixed',
+  headers: [],
+  items: [],
+};
+
+/**
  * Where the sabha is (QA23-FLOW-2): `now` is an index into the flow's `items` (null: not started, or cleared).
  * Next up is the item after it. Remembered across restarts; reset to null when another PDF is chosen.
  */
@@ -107,11 +122,7 @@ export const sabhaFlowItemSchema: z.ZodType<SabhaFlowItem> = z.object({
   cells: z.array(text).max(SABHA_FLOW_LIMITS.maxColumns),
 });
 
-export const sabhaFlowSchema: z.ZodType<SabhaFlow> = z.object({
-  id: z.string().regex(/^[A-Za-z0-9-]{8,64}$/u),
-  fileName: z.string().min(1).max(SABHA_FLOW_LIMITS.maxFileName),
-  pageCount: z.number().int().min(0).max(100000),
-  drawnPages: z.number().int().min(0).max(SABHA_FLOW_LIMITS.maxPages),
+const readingShape = {
   status: z.enum(['read', 'no-text', 'unreadable', 'no-items']),
   lang: z.enum(['en', 'gu', 'hi', 'mixed']),
   title: text.optional(),
@@ -119,6 +130,17 @@ export const sabhaFlowSchema: z.ZodType<SabhaFlow> = z.object({
   headers: z.array(text).max(SABHA_FLOW_LIMITS.maxColumns),
   items: z.array(sabhaFlowItemSchema).max(SABHA_FLOW_LIMITS.maxItems),
   total: text.optional(),
+};
+
+/** What the pictures window's reader hands Main (checked there), as it reads a PDF's text layer. */
+export const sabhaFlowReadingSchema: z.ZodType<SabhaFlowReading> = z.object(readingShape);
+
+export const sabhaFlowSchema: z.ZodType<SabhaFlow> = z.object({
+  id: z.string().regex(/^[A-Za-z0-9-]{8,64}$/u),
+  fileName: z.string().min(1).max(SABHA_FLOW_LIMITS.maxFileName),
+  pageCount: z.number().int().min(0).max(100000),
+  drawnPages: z.number().int().min(0).max(SABHA_FLOW_LIMITS.maxPages),
+  ...readingShape,
 });
 
 export const sabhaFlowStateSchema: z.ZodType<SabhaFlowState> = z.object({

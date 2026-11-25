@@ -32,10 +32,13 @@ export interface FlowTextPage {
   rules: FlowRule[];
 }
 
-/** At most this many runs of text and lines are kept from one page. */
-export const FLOW_PAGE_LIMITS = { texts: 8000, rules: 8000, chars: 2000 } as const;
+/** At most this many runs of text and lines are kept from one page; nothing further off than `far` points. */
+export const FLOW_PAGE_LIMITS = { texts: 8000, rules: 8000, chars: 2000, far: 100000 } as const;
 
-const coord = z.number().min(-100000).max(100000);
+const coord = z.number().min(-FLOW_PAGE_LIMITS.far).max(FLOW_PAGE_LIMITS.far);
+/** Within what the page's check takes: one odd run or line is left out, never the page's whole text (review S5). */
+const near = (...values: number[]) =>
+  values.every((v) => Number.isFinite(v) && Math.abs(v) <= FLOW_PAGE_LIMITS.far);
 export const flowTextPageSchema: z.ZodType<FlowTextPage> = z.object({
   width: z.number().min(1).max(100000),
   height: z.number().min(1).max(100000),
@@ -111,7 +114,8 @@ export function flowTextsOf(content: FlowTextContent, viewport: FlowViewport): F
     if (!(h > 0)) continue;
     // Upright: no turn, and y downwards in the viewport.
     if (Math.abs(tx[1]) > 0.02 * h || Math.abs(tx[2]) > 0.02 * h || tx[0] <= 0 || tx[3] >= 0) continue;
-    const width = typeof item.width === 'number' && Number.isFinite(item.width) ? item.width : 0;
+    const width = typeof item.width === 'number' && Number.isFinite(item.width) ? Math.max(0, item.width) : 0;
+    if (!near(tx[4], tx[5], width, h)) continue;
     texts.push({
       s: cutText(item.str, FLOW_PAGE_LIMITS.chars),
       x: tx[4],
@@ -204,7 +208,7 @@ export function flowRulesOf(list: FlowOperatorList, ops: FlowOps, viewport: Flow
   const stack: Matrix[] = [];
   const add = (x0: number, y0: number, x1: number, y1: number) => {
     if (rules.length >= FLOW_PAGE_LIMITS.rules) return;
-    if (![x0, y0, x1, y1].every(Number.isFinite)) return;
+    if (!near(x0, y0, x1, y1)) return;
     const across = Math.abs(y1 - y0) <= THIN && Math.abs(x1 - x0) >= LONG;
     const down = Math.abs(x1 - x0) <= THIN && Math.abs(y1 - y0) >= LONG;
     if (across) {
@@ -246,12 +250,17 @@ export function flowRulesOf(list: FlowOperatorList, ops: FlowOps, viewport: Flow
         if (filling.has(paint)) {
           const solid = points.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
           if (solid.length < 3 || solid.length !== points.length) continue;
-          const xs = solid.map(([x]) => x);
-          const ys = solid.map(([, y]) => y);
-          const left = Math.min(...xs);
-          const right = Math.max(...xs);
-          const top = Math.min(...ys);
-          const bottom = Math.max(...ys);
+          // Loops, not spreads: a path can hold more points than a call takes (review S4).
+          let left = Infinity;
+          let right = -Infinity;
+          let top = Infinity;
+          let bottom = -Infinity;
+          for (const [x, y] of solid) {
+            if (x < left) left = x;
+            if (x > right) right = x;
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+          }
           // A thin filled box is a line; a cell's shading is not.
           if (bottom - top <= THIN && right - left >= LONG)
             add(left, (top + bottom) / 2, right, (top + bottom) / 2);
