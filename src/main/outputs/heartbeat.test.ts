@@ -428,6 +428,14 @@ describe('the operator is told of an output restarted again and again (a23-heart
     expect(told.map((t) => t.restarts)).toEqual([4, 5, 6, 7]);
   });
 
+  it('told, a page that reports but has not painted its first frame (paintedRev -1) is not drawing: still told after 2 minutes of it (review R2-S1)', () => {
+    restartedInARow(4);
+    run(2 * 60_000, { hall: () => -1 });
+    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+    // Nor is it judged for it, as before (why() is unchanged).
+    expect(stuck).toHaveLength(4);
+  });
+
   it('a gap in its reports longer than the limit starts its minute of drawing again (review S1)', () => {
     restartedInARow(4);
     // Inside its 60 s grace: 30 s drawing, 10 s silent, then drawing again.
