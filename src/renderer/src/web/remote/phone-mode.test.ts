@@ -118,6 +118,18 @@ describe('a PowerPoint or a PDF live, as a phone tells it', () => {
     expect(deckLiveIn(live('deck'), PDF, null)).toBe(true);
   });
 
+  it('is not live while a timer is shown alone in the slide’s place over it (Drashti refuses a phone’s deck commands then)', () => {
+    const state = live('deck', 'i-deck');
+    const timerAlone: EngineState = {
+      ...state,
+      layers: {
+        ...state.layers,
+        slide: { timer: { name: 'Placeholder timer' } } as unknown as EngineState['layers']['slide'],
+      },
+    };
+    expect(deckLiveIn(timerAlone, PDF, [row('i-deck', 'deck', true)])).toBe(false);
+  });
+
   it('is not live for a kirtan, words, nothing live, or a PDF read that is not the live one', () => {
     expect(deckLiveIn(live('kirtan', 'i-kirtan'), KIRTAN, [row('i-kirtan', 'kirtan', false)])).toBe(false);
     expect(deckLiveIn(live(null), PDF, [row('i-deck', 'deck', true)])).toBe(false);
