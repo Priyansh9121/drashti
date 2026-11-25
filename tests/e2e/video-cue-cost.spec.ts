@@ -296,9 +296,15 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     info.annotations.push({ type: 'runner', description: note.trim() });
     expect(features.gpu_compositing).not.toBe('enabled');
     expect(features.video_decode).not.toBe('enabled');
+    const port = await freePort(),
+      received = join(dir, 'received.flv');
+    receiver = rtmpListener(ffmpeg, port, received);
+    const closed = new Promise<void>((resolve) => receiver?.once('close', () => resolve()));
+    await setUpStream(app, win, port, dir, false);
     // QA23-FADE-9 candidate 1: the videos' page copies are made while idle, before the show, as Drashti makes them
     // for a crossfading playlist on a slow computer: a playlist that crossfades, then each video's 720p and 540p copies
-    // ready before the stream goes on air. A precondition only: every check is as it was.
+    // ready before the stream goes on air, once its weak preset is chosen (the 720p copy is made only for a preset below
+    // 1080p). A precondition only: every check is as it was.
     await win.evaluate(async (ids) => {
       const d = (globalThis as PageGlobals).drashti;
       const made = await d.playlists.create('Placeholder copies', null, false);
@@ -334,11 +340,6 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           runner: runner.processor,
         }),
     );
-    const port = await freePort(),
-      received = join(dir, 'received.flv');
-    receiver = rtmpListener(ffmpeg, port, received);
-    const closed = new Promise<void>((resolve) => receiver?.once('close', () => resolve()));
-    await setUpStream(app, win, port, dir, false);
     await win.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
       const all = await d.stream.profiles(),
