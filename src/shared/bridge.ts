@@ -186,6 +186,7 @@ import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
+import type { ChatOperatorView, ChatResult } from './chat';
 import type {
   ItemOrder,
   MediaSummary,
@@ -1174,6 +1175,19 @@ export interface DrashtiBridge {
     }): Promise<AnnouncementResult>;
     reject(which: { id: string }): Promise<AnnouncementResult>;
     takeOff(which: { id: string }): Promise<AnnouncementResult>;
+  };
+  /**
+   * The chat with paired phones (alpha.23, shared/chat.ts; operator window only): the day's messages and people, a
+   * message as the operator, Clear chat, a person removed (unpaired), and the pairing dialog's "Chat" QR.
+   */
+  chat: {
+    view(): Promise<ChatOperatorView>;
+    onChanged(listener: (view: ChatOperatorView) => void): () => void;
+    send(text: string): Promise<ChatResult>;
+    clear(): Promise<ChatResult>;
+    remove(personId: string): Promise<ChatResult>;
+    invite(): Promise<ChatResult>;
+    endInvite(): Promise<ChatResult>;
   };
   /** The setup wizard (operator window only; never in Simple Mode). */
   setup: {
