@@ -74,6 +74,9 @@ import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
 import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
 import { SimpleFirstRun } from './SimpleFirstRun';
 import { SimpleFeatureDialogs, SimpleFeatureNotices, SimpleFeatureSections } from './SimpleFeatureSections';
+import { OperateOnly, useSimpleFeatures } from './simple-features-store';
+import { SabhaFlowPanel } from '../sabha-flow/SabhaFlowPanel';
+import { useFlowPanel } from '../sabha-flow/flow-store';
 
 /*
  * Simple Mode (PLAN.md section 3; Session 55, Part 18: for a small sabha in the hall, or anywhere with one projector):
@@ -99,7 +102,8 @@ import { SimpleFeatureDialogs, SimpleFeatureNotices, SimpleFeatureSections } fro
  *   changes what Pro Mode's left column and a row's menu do, never a template, a slot or a share.
  * - Since alpha.22 (Pro Mode's Edit › Simple Mode Features…, the owner's "only 1-2 and max 3"): up to three of Pro
  *   Mode's tools under LIVE, each Pro Mode's own section under Audio, folded to begin with, with only what runs the
- *   show (simple/SimpleFeatureSections.tsx); none until an admin chooses.
+ *   show (simple/SimpleFeatureSections.tsx); none until an admin chooses. The Sabha flow (alpha.23), when chosen, is
+ *   at the top of the left column, as in Pro Mode, without what sets it up.
  * Back to Pro Mode: a double-click on Pro Mode at the top right, nothing typed (the owner's answer to question 12,
  * changed on 29 Oct 2026); from the keyboard, Enter twice. With Simple access (Part 19) there is no way to Pro Mode:
  * one line says so in its place, and the main process refuses it whatever asks.
@@ -235,6 +239,9 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   useDropsIntoPlaylist();
   // The open folder playlist's folders under the playlists, as in Pro Mode (Session 56).
   const byFolder = usePlaylistFolders();
+  // The Sabha flow (alpha.23), when chosen in Pro Mode's Simple Mode Features…: at the top of the left column.
+  const flowChosen = useSimpleFeatures((s) => s.chosen.includes('sabha-flow'));
+  const flowOpen = useFlowPanel((s) => s.open);
   const items = usePlaylists((s) => s.items);
   const openId = usePlaylists((s) => s.openId);
   const treeUnread = usePlaylists((s) => s.unread.playlists);
@@ -339,6 +346,15 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           // them, the wallpapers (Part 6) under both, and Undo at the foot.
           <LeftColumn
             head={null}
+            // The Sabha flow (alpha.23), as in Pro Mode, without Choose PDF…, Replace… or Remove (OperateOnly).
+            flow={
+              flowChosen ? (
+                <OperateOnly.Provider value={true}>
+                  <SabhaFlowPanel />
+                </OperateOnly.Provider>
+              ) : null
+            }
+            flowOpen={flowOpen}
             top={<PlaylistPanel platform={platform} simple />}
             bottom={byFolder ? <PlaylistFolders /> : null}
             wallpapers={<WallpapersPanel />}
