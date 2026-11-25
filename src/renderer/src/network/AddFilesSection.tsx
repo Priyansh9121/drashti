@@ -1,14 +1,13 @@
 import type { NetworkStatus } from '../../../shared/network';
-import { ADDED_FROM_PHONES, sizeWords } from '../../../shared/phone-files';
 import { SectionTitle } from '../ui/Panel';
 import { Toggle } from '../ui/Toggle';
 import { networkAction } from './network-store';
 
 /*
  * Files from phones (Session 54, D4), in the Phones and tablets panel: the switch, off until someone turns it on
- * (every person's), and what it lets a paired remote do (question 5, alpha.15: in Simple Mode a file goes to the end
- * of Simple Mode's playlist, a video or sound to Added from Phones while it is a Repeat Slides one). Turned off, a file
- * still coming stops.
+ * (every person's). Since alpha.23 (QA23-PHONE-1, shared/phone-rule.ts) no phone sends a file, whether it is on or
+ * off: the network refuses every upload from a Remote before reading it. The switch stays for now and its words say
+ * so (the owner's Q11, "Words now, hide later"); it goes in a later release.
  */
 
 export function AddFilesSection({ status }: { status: NetworkStatus }) {
@@ -24,11 +23,9 @@ export function AddFilesSection({ status }: { status: NetworkStatus }) {
         data-testid="network-add-files"
       />
       <p className="text-sm text-muted">
-        A paired remote can add a picture, video, sound, PDF, PowerPoint or Keynote file from the phone, up to{' '}
-        {sizeWords(files.maxBytes)} each, with Add from this Phone… in its Library. It comes into Media and
-        the playlist “{ADDED_FROM_PHONES}”, marked with the phone’s name, and never goes on the screens by
-        itself. In Simple Mode it goes to the end of Simple Mode’s playlist instead, but a video or sound goes
-        into “{ADDED_FROM_PHONES}” when that playlist is a Repeat Slides one, which holds no videos or sounds.
+        Phones no longer send files to Drashti: on or off, Drashti refuses every file a phone sends. Bring
+        files in on this computer with Add files… or by dropping them on a playlist. This switch stays here
+        for now.
       </p>
     </section>
   );

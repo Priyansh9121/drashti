@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { indexGuide, passagesHolding, searchGuides } from '../shared/guides';
 import { parseMarkdown, passagesOf } from '../shared/markdown';
 import { PANEL_HELP } from '../shared/panel-help';
+import { PHONE_REFUSAL } from '../shared/phone-rule';
 
 // These inspect the real bundled operator guide, not a fixture containing the new words.
 // Install/run this file before applying the guide/help drafts to observe the missing guidance.
@@ -75,42 +76,44 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
     expect(outputs).toContain('same updated build');
   });
 
-  it('keeps the Simple phone playlist, Play and photo destination exceptions explicit', () => {
+  it('keeps the Simple phone’s view, its refusal and what no phone does explicit', () => {
     const phone = passage('The phone in Simple Mode.');
-    // Item 7 (alpha.17): the phone starts with the playlist open on the computer and can open any other; Pause, Play
-    // and the time bar work there, and Audio; marker jumps stay Pro Mode's.
-    expect(phone).toContain('starts with the playlist open there');
-    expect(phone).toContain('can open any other');
-    expect(phone).toContain('Rename');
-    expect(phone).toContain('Remove');
-    expect(phone).toContain('Undo');
-    expect(phone).toContain('Pause and Play and the time bar');
-    expect(phone).toContain('Audio');
-    expect(phone).toContain('Marker jumps');
-    expect(phone).toContain('stay in Pro Mode');
+    // alpha.23 (QA23-PHONE-1, the owner: "in simple mode only show the flow, whats running in live, and chat"): a
+    // Simple Mode phone shows the Sabha flow (always, Q3), what is on the screens and the chat, with no controls, and
+    // its every control is refused in Main's own words. Until alpha.22 it ran the show as Simple Mode's window did
+    // (item 7, alpha.17: playlists, Pause, Play, the time bar, Audio, files to the open playlist): none of that stays.
+    expect(phone).toContain('Sabha flow');
+    expect(phone).toContain('what is on the screens');
+    expect(phone).toContain('Chat');
+    expect(phone).toContain('no controls');
+    expect(phone).toContain(PHONE_REFUSAL.simple);
     expect(phone).toContain('refused');
-    // Question 5 (alpha.15): a phone's files go to the end of the playlist open on the computer, a PDF or deck once the
-    // stream has ended.
-    expect(phone).toContain('goes to the end of the playlist open on the Drashti computer');
-    expect(phone).toContain('a PDF or deck waits');
+    expect(phone).toContain('Pro Mode');
+    expect(phone).not.toContain('Pause and Play and the time bar');
+    expect(phone).not.toContain('starts with the playlist open there');
     expect(phone).not.toContain('Added from Phones');
     expect(source).not.toContain("and a phone's markers still jump");
     const presenter = passagesOf(
       parseMarkdown(readFileSync(join(process.cwd(), 'docs/presenter-guide.md'), 'utf8')),
     );
     const summary = presenter.find((p) => p.text.startsWith('What the page never does on its own:'));
-    expect(summary, 'the presenter file-destination summary').toBeDefined();
+    expect(summary, 'the presenter summary of what a phone never does').toBeDefined();
     for (const detail of [
-      'Add photos',
-      'ordinary playlist open',
+      'videos',
+      'pictures',
+      'sounds',
+      'files',
+      'timers',
+      'messages',
       'Pro Mode',
       'Simple Mode',
-      'Added from Phones',
-      // Several playlists (alpha.16): the one open in Simple Mode, no longer "Simple Mode’s playlist".
-      'end of the playlist open in Simple Mode',
+      'PowerPoint',
+      'PDF',
     ]) {
       expect(summary?.text).toContain(detail);
     }
+    expect(summary?.text).not.toContain('Added from Phones');
+    expect(summary?.text).not.toContain('Add photos');
   });
 
   it('the Slides help card leads to the new window instructions, not a fallback heading', () => {
