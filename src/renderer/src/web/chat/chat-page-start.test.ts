@@ -93,6 +93,18 @@ describe('the chat page as it opens (a phone that scanned the Chat QR, or opened
     expect(none.asked).toEqual([]);
   });
 
+  it('a Stage screen that opens a Chat QR link keeps its Stage pairing and says why (a22-review-chat P-S4)', async () => {
+    const w = world({
+      hash: '#c=123456',
+      kept: 'stage',
+      me: { ok: true, device: { name: 'Placeholder screen', kind: 'stage' } },
+      pair: { ok: true, token: 'placeholder-new-token', device: chatDevice },
+    });
+    expect(await startChatPage(w.deps)).toEqual({ kind: 'notInChat', page: '/stage' });
+    expect(w.asked.map((a) => a.path)).toEqual(['/api/v1/me']);
+    expect(w.kept()?.kind).toBe('stage');
+  });
+
   it('a kept pairing not in the chat (a Stage screen) goes to its own page', async () => {
     const w = world({
       kept: 'stage',

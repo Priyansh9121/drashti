@@ -96,7 +96,7 @@ import { Swipes, type SwipeWay } from './swipe';
 import { StageScreen } from './StageScreen';
 import { Timers } from './Timers';
 import { ChatBanner, ChatPanel, useUnread } from '../chat/ChatView';
-import { startChat } from '../chat/chat-store';
+import { chatShowOnScreen, startChat, useChat } from '../chat/chat-store';
 
 /*
  * The remote for a phone or tablet (a Remote device): what is on the screens
@@ -1391,6 +1391,13 @@ function Layout() {
   const device = useFeed((s) => s.device);
   const layout = useLayout();
   const sideways = layout === 'sideways';
+  // A view of the show on the screen (a tablet's show column or presenter column, or the Show tab): the chat brings
+  // no banner then (it would move or cover the show's controls under the finger) and no sound (a22-review-chat P-M1).
+  const showOnScreen = layout === 'wide' || layout === 'landscape' || tab === 'show';
+  useEffect(() => {
+    chatShowOnScreen(showOnScreen);
+  }, [showOnScreen]);
+  const chatBanner = useChat((s) => s.banner !== null);
   const show = (
     <div className="space-y-4">
       <LivePicture state={state} sideways={sideways} />
@@ -1417,12 +1424,6 @@ function Layout() {
         </div>
       )}
       <SimpleNote />
-      {/* A new chat message from someone else, while the chat is not in view: a tap opens it. */}
-      <ChatBanner
-        onOpen={() => {
-          useRemote.setState(layout === 'wide' ? { side: 'chat' } : { tab: 'chat' });
-        }}
-      />
     </>
   );
   const tabbed = (
@@ -1440,16 +1441,25 @@ function Layout() {
     <div className="flex h-dvh flex-col bg-ink" data-testid="remote" data-layout={layout}>
       <header
         className={cx(
-          'flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4',
+          'relative flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4',
           sideways ? 'py-2' : 'py-3',
         )}
       >
-        <Mark size={36} />
-        <div className="min-w-0 flex-1">
-          <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
-          <p className="truncate text-base text-muted">{device?.name ?? current()?.name ?? ''}</p>
+        {/* Under a chat message's banner, which takes the header's place for a moment: nothing below it moves. */}
+        <div className={cx('flex min-w-0 flex-1 items-center gap-3', chatBanner && 'invisible')}>
+          <Mark size={36} />
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
+            <p className="truncate text-base text-muted">{device?.name ?? current()?.name ?? ''}</p>
+          </div>
+          <ConnectionChip />
         </div>
-        <ConnectionChip />
+        {/* A new chat message from someone else, off the show and the chat: a tap opens Chat. */}
+        <ChatBanner
+          onOpen={() => {
+            useRemote.setState({ tab: 'chat' });
+          }}
+        />
       </header>
       {!sideways && notes}
       {layout === 'landscape' ? (

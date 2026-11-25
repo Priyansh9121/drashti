@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   CHAT_API,
+  CHAT_HISTORY_MAX,
   CHAT_REFUSAL,
   type ChatEvent,
   type ChatMessage,
@@ -39,6 +40,12 @@ interface ChatView {
   banner: ChatMessage | null;
   /** The chat is on the screen now (its tab, its side or its page open, and the page shown). */
   inView: boolean;
+  /**
+   * A view of the show is on the Remote's screen (the Show tab, a tablet's show column or presenter column): no
+   * banner (it would move or cover the show's controls under the finger) and no sound (it would be heard in the
+   * sabha); the count, and an Android phone's spaced buzz, which moves nothing (lead 2, for the owner).
+   */
+  showOnScreen: boolean;
 }
 
 export const useChat = create<ChatView>(() => ({
@@ -50,7 +57,16 @@ export const useChat = create<ChatView>(() => ({
   unread: [],
   banner: null,
   inView: false,
+  showOnScreen: false,
 }));
+
+/** At most one buzz or sound in this long (ms): a busy chat never beeps through the sabha. */
+export const ALERT_GAP_MS = 5000;
+let alertedAt = -Infinity;
+
+/** The day's newest messages, as many as Drashti keeps (the oldest go first). */
+const newest = (messages: readonly ChatMessage[]): ChatMessage[] =>
+  messages.length > CHAT_HISTORY_MAX ? messages.slice(-CHAT_HISTORY_MAX) : [...messages];
 
 const shown = (): boolean => typeof document === 'undefined' || document.visibilityState === 'visible';
 
@@ -59,11 +75,20 @@ const shown = (): boolean => typeof document === 'undefined' || document.visibil
  * while the page is shown) a buzz or a sound.
  */
 function heard(news: readonly ChatMessage[], live: boolean): void {
-  const newest = news.at(-1);
-  if (!newest) return;
-  if (!useChat.getState().inView)
-    useChat.setState((s) => ({ unread: [...s.unread, ...news.map((m) => m.id)], banner: newest }));
-  if (live && shown()) alertNewMessage();
+  const last = news.at(-1);
+  if (!last) return;
+  const { inView, showOnScreen, chat } = useChat.getState();
+  if (!inView)
+    useChat.setState((s) => ({
+      // Only those still in the list (it keeps the day's newest).
+      unread: unreadStill([...s.unread, ...news.map((m) => m.id)], chat?.messages ?? []),
+      banner: showOnScreen ? null : last,
+    }));
+  if (!live || !shown()) return;
+  const now = Date.now();
+  if (now - alertedAt < ALERT_GAP_MS) return;
+  alertedAt = now;
+  alertNewMessage(showOnScreen ? { sound: false } : {});
 }
 
 /** The chat as Drashti has it now: what is new in it is heard (never with a buzz: it is a catch-up). */
@@ -122,7 +147,7 @@ function told(event: ChatEvent): void {
     case 'message': {
       const m = event.message;
       if (chat.messages.some((had) => had.id === m.id)) return;
-      useChat.setState({ chat: { ...chat, messages: [...chat.messages, m] } });
+      useChat.setState({ chat: { ...chat, messages: newest([...chat.messages, m]) } });
       if (m.from.id !== chat.you.id) heard([m], true);
       return;
     }
@@ -191,7 +216,7 @@ export async function sendChat(text: string): Promise<boolean> {
       me: s.me ?? sent.from.id,
       chat:
         s.chat && !s.chat.messages.some((m) => m.id === sent.id)
-          ? { ...s.chat, messages: [...s.chat.messages, sent] }
+          ? { ...s.chat, messages: newest([...s.chat.messages, sent]) }
           : s.chat,
     }));
     return true;
@@ -203,6 +228,11 @@ export async function sendChat(text: string): Promise<boolean> {
 /** The chat came into view (or left it): seen, it has nothing unread and no banner. */
 export function chatInView(on: boolean): void {
   useChat.setState(on ? { inView: true, unread: [], banner: null } : { inView: false });
+}
+
+/** A view of the show came onto the Remote's screen (or left it). */
+export function chatShowOnScreen(on: boolean): void {
+  useChat.setState(on ? { showOnScreen: true, banner: null } : { showOnScreen: false });
 }
 
 /** Put the banner away; its message stays unread until the chat is seen. */

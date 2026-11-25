@@ -75,6 +75,19 @@ async function send(p: Page, text: string): Promise<void> {
 
 const bubble = (p: Page, text: string) => p.getByTestId('chat-message').filter({ hasText: text });
 
+/** Where the controls of the show are on a Remote (each slide, each clear, Back and Next), in CSS pixels. */
+const showBoxes = (p: Page) =>
+  p.evaluate(() =>
+    [
+      ...document.querySelectorAll(
+        '[data-testid="remote-slide"], [data-testid="remote-clear-all"], [data-testid="remote-back"], [data-testid="remote-next-button"]',
+      ),
+    ].map((el) => {
+      const r = el.getBoundingClientRect();
+      return [r.left, r.top, r.width, r.height].map((n) => Math.round(n)).join(',');
+    }),
+  );
+
 test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style, a buzz on Android and a sound on an iPhone only after a first tap, the banner and the count, words never run, in Simple Mode too', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp(NETWORK_ENV);
@@ -83,9 +96,19 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
-    await setUpPlaceholderShow(win);
+    const show = await setUpPlaceholderShow(win);
     const { port, base } = await networkOn(win);
     for (const phone of [android, iphone]) await phone.context.addInitScript(COUNT_ALERTS);
+    // A presentation live: its slides on the Show tab of the phone that runs the show.
+    await win.evaluate(
+      (presentationId) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId,
+          slideIndex: 0,
+        } as never),
+      show.kirtanId,
+    );
 
     // A third person (a script's Remote) chatted before the phones opened the chat: the day's history.
     const third = await pairToken(win, port, 'remote', 'Placeholder script phone');
@@ -118,21 +141,44 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
     await expect(history.getByTestId('chat-from')).toHaveText('Placeholder Third Person');
     await expect(a.getByTestId('chat-mic-hint')).toHaveText('Tap 🎤 on your keyboard to speak');
 
-    // It sends: on the right, with no name above it, the newest at the bottom.
+    // The iPhone runs the show (Show tab, slides up) and has not been tapped yet. Where its controls are, before.
+    await expect(b.getByTestId('remote-slide').first()).toBeVisible();
+    const before = await showBoxes(b);
+
+    // The Android phone sends: on the right, with no name above it, the newest at the bottom.
     await send(a, 'Placeholder first message 🙏');
     const mine = bubble(a, 'Placeholder first message 🙏');
     await expect(mine).toHaveAttribute('data-own', 'true');
     await expect(mine.getByTestId('chat-from')).toHaveCount(0);
     await expect(a.getByTestId('chat-message').last()).toContainText('Placeholder first message 🙏');
 
-    // The iPhone, on Show and never tapped: a banner with who and what, the count on Chat, and no sound yet.
-    const banner = b.getByTestId('chat-banner');
-    await expect(banner).toContainText('Placeholder Volunteer A');
-    await expect(banner).toContainText('Placeholder first message 🙏');
+    // On the iPhone running the show: the count on Chat. Nothing under its finger moved (no banner over the slides,
+    // the clears or Back and Next: a tap meant for one slide never lands on the next), and no sound (it would be
+    // heard in the sabha; an Android phone there only buzzes).
     await expect(b.getByTestId('remote-tab-chat').getByTestId('chat-unread')).toContainText('1');
+    expect(await showBoxes(b)).toEqual(before);
+    await expect(b.getByTestId('chat-banner')).toHaveCount(0);
     expect(await alertsOf(b)).toEqual({ buzz: [], sound: 0 });
 
-    // A tap on the banner opens Chat (its first tap): seen, nothing unread; its name asked once.
+    // Off the Show tab (its first tap: Playlist), a new message: a banner in the header's place, which moves
+    // nothing, and (Safari's Web Audio; no vibration for web pages) a short sound, never a buzz.
+    expect(await b.evaluate(() => [typeof AudioContext, typeof navigator.vibrate])).toEqual([
+      'function',
+      'undefined',
+    ]);
+    await b.getByTestId('remote-tab-playlist').click();
+    await expect(b.getByTestId('remote-playlist')).toBeVisible();
+    const playlistBox = await b.getByTestId('remote-playlist').boundingBox();
+    await send(a, 'Placeholder second message');
+    const banner = b.getByTestId('chat-banner');
+    await expect(banner).toContainText('Placeholder Volunteer A');
+    await expect(banner).toContainText('Placeholder second message');
+    await expect(b.getByTestId('remote-tab-chat').getByTestId('chat-unread')).toContainText('2');
+    expect(await b.getByTestId('remote-playlist').boundingBox()).toEqual(playlistBox);
+    await expect.poll(async () => (await alertsOf(b)).sound).toBe(1);
+    expect((await alertsOf(b)).buzz).toEqual([]);
+
+    // A tap on the banner opens Chat: seen, nothing unread; its name asked once.
     await b.getByTestId('chat-banner-open').click();
     await expect(b.getByTestId('remote-tab-chat')).toHaveAttribute('aria-selected', 'true');
     await expect(b.getByTestId('chat-banner')).toHaveCount(0);
@@ -153,10 +199,9 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
     await expect.poll(() => alertsOf(a)).toEqual({ buzz: [[120, 80, 120]], sound: 0 });
     await expect(a.getByTestId('chat-banner')).toHaveCount(0);
 
-    // A reply: the iPhone (tapped) plays a short sound and never buzzes.
+    // A reply soon after: the iPhone shows it; one sound in a few seconds at most, and never a buzz.
     await send(a, 'Placeholder reply');
     await expect(bubble(b, 'Placeholder reply')).toHaveAttribute('data-own', 'false');
-    await expect.poll(async () => (await alertsOf(b)).sound).toBe(1);
     expect((await alertsOf(b)).buzz).toEqual([]);
     await expectNoSeriousA11yIssues(b, 'the remote’s Chat on an iPhone');
 
