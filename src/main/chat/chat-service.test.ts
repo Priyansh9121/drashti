@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CHAT_OPERATOR_ID,
   CHAT_OPERATOR_NAME,
@@ -118,6 +118,7 @@ describe('who is in the chat', () => {
         messages: [],
         people: [{ id: CHAT_OPERATOR_ID, name: CHAT_OPERATOR_NAME }],
         you: { id: 'device-1', name: null },
+        since: null,
       },
     });
     named(chat, 1);
@@ -352,8 +353,8 @@ describe('the operator’s Chat section', () => {
     chat.setName({ id: phone.id, kind: 'chat', poster: false }, { name: 'Person 2' });
     const members = chat.members((id) => (id === 'device-1' ? 'remote' : null), new Set([phone.id]));
     expect(members).toEqual([
-      { id: 'device-1', name: 'Person 1', kind: 'remote', connected: false },
-      { id: phone.id, name: 'Person 2', kind: 'chat', connected: true },
+      { id: 'device-1', name: 'Person 1', kind: 'remote', connected: false, named: true },
+      { id: phone.id, name: 'Person 2', kind: 'chat', connected: true, named: true },
     ]);
   });
 });
@@ -377,5 +378,89 @@ describe('the log', () => {
       expect(line).not.toMatch(/secret/iu);
       expect(line).not.toContain('Person');
     }
+  });
+});
+
+describe('round 1 of the review (a22-review-chat)', () => {
+  it('M1: one phone looping on Send never silences the others (its own rate is asked first)', () => {
+    const { chat } = setup();
+    const loud = named(chat, 1);
+    const quiet = named(chat, 2);
+    for (let i = 0; i < 50; i++) chat.send(loud, { text: 'Placeholder' });
+    expect(chat.send(quiet, { text: 'Placeholder' }).ok).toBe(true);
+  });
+
+  it('M3: lists every chat phone, named or not, so the operator can see and remove it', () => {
+    const { chat } = setup();
+    const quiet = chat.addDevice('a'.repeat(64));
+    const talker = chat.addDevice('b'.repeat(64));
+    if (!quiet || !talker) throw new Error('no phones');
+    chat.setName({ id: talker.id, kind: 'chat', poster: false }, { name: 'Person 2' });
+    expect(chat.members(() => null, new Set([quiet.id]))).toEqual([
+      { id: talker.id, name: 'Person 2', kind: 'chat', connected: false, named: true },
+      { id: quiet.id, name: 'Chat 1', kind: 'chat', connected: true, named: false },
+    ]);
+  });
+
+  it('M4: a phone reads the chat at most a few times at once, refused before anything is read', () => {
+    const { chat, store, clock } = setup();
+    const d = device(1);
+    const reads = vi.spyOn(store, 'state');
+    const answers = Array.from({ length: 6 }, () => chat.read(d));
+    expect(answers.filter((a) => a.ok)).toHaveLength(5);
+    const calls = reads.mock.calls.length;
+    expect(chat.read(d)).toEqual({ ok: false, status: 429, message: CHAT_REFUSAL.readTooFast });
+    expect(reads.mock.calls.length).toBe(calls);
+    clock.t += 1000;
+    expect(chat.read(d).ok).toBe(true);
+    // Another phone is not held up by the first.
+    expect(chat.read(device(2)).ok).toBe(true);
+  });
+
+  it('M4: a phone reads only what is new since the last message it has; else the whole day', () => {
+    const { chat } = setup();
+    const d = named(chat, 1);
+    const first = chat.send(d, { text: 'Placeholder one' });
+    const second = chat.send(d, { text: 'Placeholder two' });
+    if (!first.ok || !second.ok) throw new Error('not sent');
+    const after = chat.read(d, { after: first.message.id });
+    expect(after.ok && after.chat.messages.map((m) => m.text)).toEqual(['Placeholder two']);
+    expect(after.ok && after.chat.since).toBe(first.message.id);
+    const none = chat.read(d, { after: second.message.id });
+    expect(none.ok && none.chat.messages).toEqual([]);
+    // An id it no longer knows (Clear chat, a new day, too old): the whole day, since null.
+    const whole = chat.read(d, { after: 'unknown-id' });
+    expect(whole.ok && whole.chat.messages).toHaveLength(2);
+    expect(whole.ok && whole.chat.since).toBeNull();
+    expect(chat.read(d, {}).ok && chat.read(d, {})).toMatchObject({ chat: { since: null } });
+    for (const bad of [{ after: 5 }, { after: 'x'.repeat(200) }, { other: 1 }, 'text'])
+      expect(chat.read(d, bad)).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('S3: no name that reads as the operator’s, or as another person’s today', () => {
+    const { chat } = setup();
+    named(chat, 1);
+    for (const name of [
+      'Operator.',
+      '0perator',
+      '\uFF2F\uFF50\uFF45\uFF52\uFF41\uFF54\uFF4F\uFF52',
+      'Operator ✅',
+      'O p e r a t o r',
+    ])
+      expect(chat.setName(device(2), { name }), name).toEqual({
+        ok: false,
+        status: 400,
+        message: CHAT_REFUSAL.operatorName,
+      });
+    for (const name of ['Person 1', 'person  1', 'Person 1!', 'PERSON l'])
+      expect(chat.setName(device(2), { name }), name).toEqual({
+        ok: false,
+        status: 409,
+        message: CHAT_REFUSAL.nameTaken,
+      });
+    // One's own name again is no clash; names that differ only by a vowel sign are different names.
+    expect(chat.setName(device(1), { name: 'Person 1' }).ok).toBe(true);
+    expect(chat.setName(device(3), { name: 'રામ' }).ok).toBe(true);
+    expect(chat.setName(device(4), { name: 'રમ' }).ok).toBe(true);
   });
 });
