@@ -41,8 +41,9 @@ const COUNT_ALERTS = () => {
   // page's sound uses, which only counts, so the page's sound rules are checked there too (CI run 45532541843).
   const audio = window as unknown as { AudioContext?: typeof AudioContext; __chatAudioStandIn?: boolean };
   if (!audio.AudioContext) {
-    const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
-    const node = () => ({ connect() {}, disconnect() {} });
+    const none = () => undefined;
+    const param = () => ({ value: 0, setValueAtTime: none, exponentialRampToValueAtTime: none });
+    const node = () => ({ connect: none, disconnect: none });
     class StandInContext {
       state = 'running';
       currentTime = 0;
@@ -54,36 +55,34 @@ const COUNT_ALERTS = () => {
         return {};
       }
       createBufferSource() {
-        return { ...node(), buffer: null, start() {} };
+        return { ...node(), buffer: null, start: none };
       }
       createGain() {
         return { ...node(), gain: param() };
       }
       createOscillator() {
-        return { ...node(), type: 'sine', frequency: param(), start() {}, stop() {} };
+        return { ...node(), type: 'sine', frequency: param(), start: none, stop: none };
       }
     }
     audio.AudioContext = StandInContext as unknown as typeof AudioContext;
     audio.__chatAudioStandIn = true;
   }
   const Sound = audio.AudioContext;
-  if (Sound) {
-    const make = Object.getOwnPropertyDescriptor(Sound.prototype, 'createOscillator')?.value as
-      ((this: AudioContext) => OscillatorNode) | undefined;
-    if (make)
-      Object.defineProperty(Sound.prototype, 'createOscillator', {
-        configurable: true,
-        value: function (this: AudioContext) {
-          const tone = make.call(this);
-          const start = tone.start.bind(tone);
-          tone.start = (when?: number) => {
-            seen.sound++;
-            start(when);
-          };
-          return tone;
-        },
-      });
-  }
+  const make = Object.getOwnPropertyDescriptor(Sound.prototype, 'createOscillator')?.value as
+    ((this: AudioContext) => OscillatorNode) | undefined;
+  if (make)
+    Object.defineProperty(Sound.prototype, 'createOscillator', {
+      configurable: true,
+      value: function (this: AudioContext) {
+        const tone = make.call(this);
+        const start = tone.start.bind(tone);
+        tone.start = (when?: number) => {
+          seen.sound++;
+          start(when);
+        };
+        return tone;
+      },
+    });
 };
 
 const alertsOf = (p: Page) =>
