@@ -35,3 +35,9 @@ export function screensSummary(status: readonly ScreenStatus[]): {
   const text = status.length === 0 ? 'No screens set up' : parts.join(' · ');
   return { text, tone: stopped || restarting ? 'danger' : missing ? 'warning' : 'muted' };
 }
+
+/** Why a stopped screen is stopped, in its notice and in Screens. */
+export function stoppedSentence(status: ScreenStatus): string {
+  void status;
+  return '';
+}

@@ -335,6 +335,41 @@ describe('OutputManager', () => {
     expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 1 });
   });
 
+  it('held for the owner (QA23-HEARTBEAT-1, A): a screen kept as it is says so while Stopped, and no more once it is not', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    manager.setRestarting('audience', 4);
+    const before = changes;
+    manager.setNotAnswering('audience', true);
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]).toEqual({
+      screenId: 'audience',
+      state: 'stopped',
+      displayId: 2,
+      notAnswering: true,
+    });
+    expect(changes).toBe(before + 2);
+    manager.setNotAnswering('audience', true);
+    expect(changes).toBe(before + 2);
+    // Its window is left as it is, on its display.
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    // Back (by itself, or tried again and drawing): Stopped no more, and nor is it said.
+    manager.setStopped('audience', false);
+    expect(manager.status()[0]).toEqual({
+      screenId: 'audience',
+      state: 'showing',
+      displayId: 2,
+      restarts: 4,
+    });
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'stopped', displayId: 2 });
+    // Said only of a stopped screen.
+    manager.setStopped('audience', false);
+    manager.setRestarting('audience', null);
+    manager.setNotAnswering('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+  });
+
   // ---- Audience and Stage (Session 50) ----------------------------------------------------------------------
 
   const fill = display(4, 'Switcher fill', 5280);

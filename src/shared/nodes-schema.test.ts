@@ -36,6 +36,17 @@ describe("a node's health, an output its heartbeat restarted again and again (a2
   });
 });
 
+describe("a node's health, held for the owner (QA23-HEARTBEAT-1, A): an output kept as it is", () => {
+  it('keeps notAnswering: true on a stopped output, refuses any other value, and a node from before leaves it out', () => {
+    const base = health('stopped') as { outputs: Record<string, unknown>[] } & Record<string, unknown>;
+    const said = (notAnswering: unknown) => ({ ...base, outputs: [{ ...base.outputs[0], notAnswering }] });
+    expect(nodeHealthSchema.safeParse(said(true)).data?.outputs[0]?.notAnswering).toBe(true);
+    for (const bad of [false, 'yes', 1]) expect(nodeHealthSchema.safeParse(said(bad)).success).toBe(false);
+    const plain = nodeHealthSchema.safeParse(base);
+    expect(plain.data?.outputs[0] && 'notAnswering' in plain.data.outputs[0]).toBe(false);
+  });
+});
+
 describe("a node's health, whether it draws without a graphics chip (x27)", () => {
   it('keeps noGpu: true, refuses any other value, and says nothing without it', () => {
     const base = health('showing') as Record<string, unknown>;

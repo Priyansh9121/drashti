@@ -19,6 +19,9 @@ let judged: string[] = [];
 let stuck: { screenId: string; reason: string; at: number; inARow: number }[] = [];
 /** What the operator was told of outputs restarted again and again (a23-heartbeat). */
 let told: { screenId: string; restarts: number | null }[] = [];
+/** Held for the owner (QA23-HEARTBEAT-1, A): the outputs kept as they are instead of restarted, and back by themselves. */
+let kept: { screenId: string; reason: string; restarts: number; at: number }[] = [];
+let back: { screenId: string; at: number }[] = [];
 let beat: OutputHeartbeat;
 
 /**
@@ -35,13 +38,20 @@ function run(ms: number, reporting: Record<string, () => number> = {}, warming =
 }
 
 /** A heartbeat as Main makes one, its output 'hall' just opened; `translated` as under Rosetta (a23-heartbeat). */
-function make(translated = false) {
+function make(translated = false, keeps = false) {
   beat = new OutputHeartbeat({
     now: () => now,
     engineRev: () => rev,
     judged: () => judged,
     stuck: (screenId, reason, inARow) => stuck.push({ screenId, reason, at: now, inARow }),
     told: (screenId, restarts) => told.push({ screenId, restarts }),
+    ...(keeps
+      ? {
+          keep: (screenId: string, reason: string, restarts: number) =>
+            kept.push({ screenId, reason, restarts, at: now }),
+          back: (screenId: string) => back.push({ screenId, at: now }),
+        }
+      : {}),
     translated,
   });
   beat.opened('hall');
@@ -66,6 +76,8 @@ beforeEach(() => {
   judged = ['hall'];
   stuck = [];
   told = [];
+  kept = [];
+  back = [];
   make();
 });
 
@@ -492,5 +504,92 @@ describe('the operator is told of an output restarted again and again (a23-heart
     expect(told.map((t) => t.restarts)).toEqual([4, null, 4]);
     beat.closed('hall');
     expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
+  });
+});
+
+describe('held for the owner (QA23-HEARTBEAT-1, A): a page restarted 4 times in a row and stuck again is kept as it is', () => {
+  /** Restarted `n` times in a row, never heard from, each reloaded a second after. */
+  const restartedInARow = (n: number) => {
+    for (let i = 0; i < n; i++) {
+      untilStuck();
+      reloaded();
+    }
+  };
+
+  it('the 5th time it is judged stuck it is kept, not restarted, and not judged again however long it stays silent', () => {
+    make(false, true);
+    restartedInARow(4);
+    const fourth = now;
+    // Its reload's 60 s of grace, and stuck again: kept.
+    run(RESTART_GRACE_MAX_MS);
+    expect(stuck).toHaveLength(4);
+    expect(kept).toEqual([
+      { screenId: 'hall', reason: 'no report for 60 s', restarts: 4, at: fourth + 60_000 },
+    ]);
+    run(20 * 60_000);
+    expect(stuck).toHaveLength(4);
+    expect(kept).toHaveLength(1);
+    // The operator was told at the 4th restart, and still is.
+    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+  });
+
+  it('kept, it is back by itself once it reports and has painted the show, with no reload; silent again soon, it is kept again at once', () => {
+    make(false, true);
+    restartedInARow(4);
+    run(RESTART_GRACE_MAX_MS);
+    expect(kept).toHaveLength(1);
+    // A slow page catching up: it reports, behind the show, then having painted it.
+    rev++;
+    beat.changed(rev);
+    run(4000, { hall: () => rev - 1 });
+    expect(back).toEqual([]);
+    run(2000, { hall: () => rev });
+    expect(back.map((b) => b.screenId)).toEqual(['hall']);
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
+    // Healthy: never judged.
+    run(60_000, { hall: () => rev });
+    expect(stuck).toHaveLength(4);
+    expect(kept).toHaveLength(1);
+    // Silent again within 5 minutes of its last restart: kept again at once, 7 s after its last report, not restarted.
+    beat.report('hall', rev);
+    const last = now;
+    untilStuck(60_000);
+    expect(stuck).toHaveLength(4);
+    expect(kept.at(-1)).toEqual({
+      screenId: 'hall',
+      reason: 'no report for 7 s',
+      restarts: 4,
+      at: last + 7000,
+    });
+  });
+
+  it('tried afresh (Try again, or the watchdog’s own try 2 minutes on), it is judged from the first grace and restarted as before', () => {
+    make(false, true);
+    restartedInARow(4);
+    run(RESTART_GRACE_MAX_MS);
+    beat.afresh('hall');
+    beat.opened('hall');
+    const opened = now;
+    expect(untilStuck() - opened).toBe(OPEN_GRACE_MS);
+    expect(stuck.at(-1)?.inARow).toBe(1);
+    expect(kept).toHaveLength(1);
+    expect(back).toEqual([]);
+  });
+
+  it('a kept page whose window closes is forgotten: one made again starts afresh', () => {
+    make(false, true);
+    restartedInARow(4);
+    run(RESTART_GRACE_MAX_MS);
+    beat.closed('hall');
+    beat.opened('hall');
+    const opened = now;
+    expect(untilStuck() - opened).toBe(OPEN_GRACE_MS);
+    expect(stuck.at(-1)?.inARow).toBe(1);
+  });
+
+  it('without it (the owner’s B or C), the 5th time is a restart as before, and so is every one after', () => {
+    restartedInARow(6);
+    expect(stuck.map((s) => s.inARow)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(kept).toEqual([]);
   });
 });

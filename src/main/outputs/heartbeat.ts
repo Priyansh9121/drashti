@@ -92,6 +92,13 @@ export interface HeartbeatDeps {
    */
   told?(screenId: string, restarts: number | null): void;
   /**
+   * Held for the owner (QA23-HEARTBEAT-1, A): given, an output restarted RESTARTS_TOLD times in a row and judged stuck
+   * once more is kept as it is instead of restarted, and not judged again until it is back or tried afresh.
+   */
+  keep?(screenId: string, reason: string, restarts: number): void;
+  /** Held for the owner (QA23-HEARTBEAT-1, A): a kept output reported having painted the show, back by itself. */
+  back?(screenId: string): void;
+  /**
    * Drashti runs translated (an Intel build under Rosetta, x64 under Windows' emulation; a23-heartbeat): every
    * output's reports may come as far apart as a warming one's.
    */

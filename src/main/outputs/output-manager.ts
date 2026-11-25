@@ -202,6 +202,12 @@ export class OutputManager {
     this.deps.onChange();
   }
 
+  /** Held for the owner (QA23-HEARTBEAT-1, A): this screen's page is kept as it is, not answering, or no longer. */
+  setNotAnswering(screenId: string, on: boolean): void {
+    void screenId;
+    void on;
+  }
+
   /** A status with its restarts (a23-heartbeat): said only while it is showing. */
   private said(st: ScreenStatus): ScreenStatus {
     const restarts = this.restarting.get(st.screenId);

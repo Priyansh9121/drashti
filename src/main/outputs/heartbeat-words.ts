@@ -11,3 +11,11 @@ export function restartsWords(inARow: number): string {
 export function keepsRestartingLine(who: string, restarts: number): string {
   return `${who} was restarted ${String(restarts)} times in a row: its page stopped answering each time (this computer may be too slow for it, or something on it stops the page each time it loads). Drashti keeps restarting it, about once a minute; Screens and the status line say so, and Try again in Screens restarts it now.`;
 }
+
+/** Held for the owner (QA23-HEARTBEAT-1, A): said when a page is kept as it is instead of restarted. */
+export function keptLine(who: string, reason: string, restarts: number): string {
+  void who;
+  void reason;
+  void restarts;
+  return '';
+}
