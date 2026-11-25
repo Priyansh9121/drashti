@@ -96,30 +96,53 @@ export async function removeFlow(): Promise<void> {
   useFlow.setState({ flow: null, now: null });
 }
 
+/**
+ * The Now last asked of Main and not answered yet (a22-review-flow M3): Back and Next step from it, so two quick presses
+ * are two steps, never one from a Now Main has not said yet. `ask` counts the asks: only the latest one's answer is
+ * shown (an answer a newer ask overtook says nothing; Main keeps the newest Now and says it).
+ */
+let asked: { flowId: string; now: number | null } | null = null;
+let ask = 0;
+
+/** Where Back and Next step from: the Now last asked for this flow, while Main has not answered it; else Now. */
+function stepFrom(flow: SabhaFlow, now: number | null): number | null {
+  return asked !== null && asked.flowId === flow.id ? asked.now : now;
+}
+
 /** Mark Now (null: not started). Refused for a flow replaced meanwhile: the panel then shows the new one. */
 export async function setFlowNow(now: number | null): Promise<void> {
   const { flow } = useFlow.getState();
   if (flow === null) return;
-  const result = await window.drashti.flow.setNow(flow.id, now);
-  if (!result.ok) {
-    useFlow.setState({ problem: result.message });
-    return;
+  const mine = ++ask;
+  asked = { flowId: flow.id, now };
+  try {
+    const result = await window.drashti.flow.setNow(flow.id, now);
+    // A newer ask is on its way: its answer says where Now is.
+    if (mine !== ask) return;
+    if (!result.ok) {
+      useFlow.setState({ problem: result.message });
+      return;
+    }
+    const current = useFlow.getState().flow;
+    useFlow.setState({ now: nowOf(current, result.state), problem: null });
+  } finally {
+    if (mine === ask) asked = null;
   }
-  const current = useFlow.getState().flow;
-  useFlow.setState({ now: nowOf(current, result.state), problem: null });
 }
 
 /** Next: Now moves to the item after it (the first item when nothing is Now yet); nothing after the last. */
 export function flowNext(): void {
   const { flow, now } = useFlow.getState();
   if (flow === null) return;
-  const next = nextUpIndex(flow, now);
+  const next = nextUpIndex(flow, stepFrom(flow, now));
   if (next !== null) void setFlowNow(next);
 }
 
-/** Back: Now moves to the item before it; from the first item, back to not started. */
+/** Back: Now moves to the item before it; from the first item, back to not started; nothing before that. */
 export function flowBack(): void {
   const { flow, now } = useFlow.getState();
-  if (flow === null || now === null) return;
-  void setFlowNow(now > 0 ? now - 1 : null);
+  if (flow === null) return;
+  const from = stepFrom(flow, now);
+  if (from === null) return;
+  void setFlowNow(from > 0 ? from - 1 : null);
 }

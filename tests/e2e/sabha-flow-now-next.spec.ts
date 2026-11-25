@@ -210,7 +210,7 @@ test('Now and Next up in the Sabha flow panel: Next and Back, a row, two quick p
   await expect(back).toBeFocused();
 
   // A screen reader hears a change once, Now and Next up together, and each row by its words.
-  const live = panel.locator('[aria-live]');
+  const live = panel.getByTestId('flow-now-next').locator('[aria-live]');
   await expect(live).toHaveCount(1);
   await expect(live).toHaveAttribute('aria-live', 'polite');
   await expect(live).toHaveAttribute('aria-atomic', 'true');
