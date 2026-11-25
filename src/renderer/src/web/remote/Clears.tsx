@@ -59,9 +59,11 @@ const TEST_ID: Partial<Record<RemoteClear['action'], string>> = {
  */
 export function Clears({ state, only }: { state: EngineState | null; only?: readonly ClearedLayer[] }) {
   const keys = useMirror((s) => s.keys);
-  const shown = remoteClears(state, keys).filter(
-    (c) => only === undefined || (c.layer !== undefined && only.includes(c.layer)),
-  );
+  // A phone's Clear slide names no key (a23-review-phoneui's low point: the window's keys are no longer read from a
+  // phone, so its own keymap could not be named).
+  const shown = remoteClears(state, keys)
+    .filter((c) => only === undefined || (c.layer !== undefined && only.includes(c.layer)))
+    .map((c) => (only === undefined ? c : { ...c, key: '' }));
   return (
     <div
       role="group"

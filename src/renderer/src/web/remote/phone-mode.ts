@@ -21,6 +21,12 @@ import type { RemoteSide, RemoteTab } from './remote-store';
  * tested apart (phone-mode.test.ts).
  */
 
+/**
+ * Said while a timer is shown alone over the PDF (a23-review-phoneui MUST-2): nothing of it goes up from a phone until
+ * the computer takes the timer off (Drashti refuses a phone's every deck command then).
+ */
+export const TIMER_ALONE_WORDS = 'A timer is on the screens: the computer takes it off.';
+
 export interface PhoneControls {
   /** A phone's tabs under the middle, in order. */
   tabs: RemoteTab[];

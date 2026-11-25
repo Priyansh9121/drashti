@@ -63,7 +63,7 @@ import { LiveLines } from './LiveLines';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import { FlowLayer, FlowSection } from './FlowSheet';
 import { type RemoteLayout, useLayout } from './layout';
-import { deckLiveIn, phoneControls, type PhoneControls } from './phone-mode';
+import { deckLiveIn, phoneControls, type PhoneControls, TIMER_ALONE_WORDS } from './phone-mode';
 import { PlaylistTab } from './PlaylistTab';
 import { useSimple } from './simple';
 import { Swipes, type SwipeWay } from './swipe';
@@ -339,7 +339,6 @@ function NextLine({ state }: { state: EngineState | null }) {
     next?.kind === 'slide'
       ? ((next.itemId ? s.items?.find((i) => i.id === next.itemId)?.label : undefined) ??
         (s.doc?.id === next.presentationId ? s.doc.name : undefined) ??
-        s.library.list?.find((p) => p.id === next.presentationId)?.name ??
         null)
       : null,
   );
@@ -475,7 +474,7 @@ function SlideThumb({
   /** The slide a search found: brought into view and outlined. */
   focus: boolean;
   onTap: () => void;
-  /** Not to be put up from here (Simple Mode, Part 9: a slide of a presentation its playlist does not play). */
+  /** Not to be put up from here (a23-review-phoneui MUST-2: from no row of this playlist, or a timer shown alone). */
   dimmed?: boolean;
 }) {
   // The background cue it plays: its last, when it has more than one (Session 52).
@@ -552,7 +551,13 @@ export interface SlidesShown {
   live: EngineState['live'] | null;
   /** The live presentation's slide on the screens (a timer up alone is none of its slides). */
   shownIndex: number | null;
+  /** A timer shown alone in the slide's place: Drashti refuses a phone's every deck command then. */
+  timerAlone: boolean;
 }
+
+/** Said where the PDF up came from the computer, not from this phone's playlist row: its pages are not put up here. */
+const NOT_FROM_HERE =
+  'Put up on the computer, not from this phone’s playlist: Back and Next go through it here.';
 
 /** The slides shown (Pro Mode only, phone-mode.ts), from the remote's store. */
 function Slides() {
@@ -565,6 +570,7 @@ function Slides() {
     const shown = s.state?.layers.slide;
     return shown && !shown.timer ? shown.slideIndex : null;
   });
+  const timerAlone = useEngine((s) => Boolean(s.state?.layers.slide?.timer));
   // A slide a search found, once its presentation is open: into view.
   useEffect(() => {
     if (!focusSlideId || doc?.id !== viewing?.presentationId) return;
@@ -580,6 +586,7 @@ function Slides() {
       focusSlideId={focusSlideId}
       live={live}
       shownIndex={shownIndex}
+      timerAlone={timerAlone}
     />
   );
 }
@@ -591,7 +598,7 @@ const NO_DECK_SHOWN = PHONE_REFUSAL.noDeck;
  * The live PowerPoint's or PDF's slides, a tap putting one up (QA23-PHONE-1: only a PowerPoint or a PDF goes up from a
  * phone; a kirtan's, words' or a passage's slides are not shown here, nor the library's presentations).
  */
-export function SlidesView({ viewing, doc, items, focusSlideId, live, shownIndex }: SlidesShown) {
+export function SlidesView({ viewing, doc, items, focusSlideId, live, shownIndex, timerAlone }: SlidesShown) {
   if (!viewing || (doc?.id === viewing.presentationId && !isPhoneDeck(doc)))
     return (
       <p className="text-base text-muted" data-testid="remote-slides-none">
@@ -602,7 +609,13 @@ export function SlidesView({ viewing, doc, items, focusSlideId, live, shownIndex
   const isLiveItem =
     live?.presentationId === viewing.presentationId &&
     (viewing.item ? live.playlist?.itemId === viewing.item.itemId : live.playlist === null);
+  // This PDF up at all (from any row, the library or this phone's own playlist row).
+  const deckLive = live?.presentationId === viewing.presentationId;
   const item = viewing.item;
+  // A page goes up from a phone only from this playlist's row, and never while a timer is shown alone over it
+  // (a23-review-phoneui MUST-2: Drashti refuses a phone the rest; from no row, a page would also come off the
+  // operator's playlist row).
+  const tappable = item !== null && !timerAlone;
   // The item's order as the playlist has it now (Session 55, Part 4b: its own order of slides changes as rows are
   // dragged), else as it was when it was opened.
   const found = item ? items?.find((i) => i.id === item.itemId) : undefined;
@@ -631,7 +644,7 @@ export function SlidesView({ viewing, doc, items, focusSlideId, live, shownIndex
               : (order.slides.find((s) => s.slide.id === focusSlideId)?.position ?? 0)
           }
         />
-        {item && !isLiveItem && (
+        {item && !isLiveItem && !timerAlone && (
           <Button
             size="lg"
             icon={Play}
@@ -644,18 +657,29 @@ export function SlidesView({ viewing, doc, items, focusSlideId, live, shownIndex
           </Button>
         )}
       </div>
-      {!isLiveItem && !item && (
+      {timerAlone ? (
         <p className="text-base text-muted" data-testid="remote-slides-hint">
-          Not on the screens. Tap a slide to put it up.
+          {TIMER_ALONE_WORDS}
         </p>
+      ) : !item ? (
+        <p className="text-base text-muted" data-testid="remote-slides-hint">
+          {NOT_FROM_HERE}
+        </p>
+      ) : (
+        !deckLive && (
+          <p className="text-base text-muted" data-testid="remote-slides-hint">
+            Not on the screens. Tap a slide to put it up.
+          </p>
+        )
       )}
       <ul className="grid grid-cols-2 gap-2 @md:grid-cols-3 @3xl:grid-cols-4" data-testid="remote-slides">
         {order.slides.map((s) => (
           <SlideThumb
             key={`${s.position}`}
             s={s}
-            live={isLiveItem && shownIndex === s.position}
+            live={deckLive && (isLiveItem || !item) && shownIndex === s.position}
             focus={focusSlideId === s.slide.id}
+            dimmed={!tappable}
             onTap={() =>
               void tap(
                 post('/api/v1/trigger/slide', {
@@ -938,6 +962,24 @@ export function ShowColumn({
 /** The one clear a phone has (the owner's Q7). */
 const SLIDE_ONLY = ['slide'] as const;
 
+/**
+ * A tap's notice. In a sideways phone's middle, which scrolls, it is brought into view as it comes (a23-review-phoneui
+ * S2: with the middle scrolled down to the pages, a refused tap's words were off the screen).
+ */
+function TapNotice({ text, className, inMiddle }: { text: string; className: string; inMiddle: boolean }) {
+  const at = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (inMiddle) at.current?.scrollIntoView({ block: 'nearest' });
+  }, [text, inMiddle]);
+  return (
+    <div ref={at} className={className}>
+      <Notice tone="warning" onDismiss={() => useTapNotice.setState({ text: null })}>
+        {text}
+      </Notice>
+    </div>
+  );
+}
+
 function Layout() {
   const chosen = useRemote((s) => s.tab);
   const state = useEngine((s) => s.state);
@@ -951,6 +993,13 @@ function Layout() {
   const sideways = layout === 'sideways';
   const tab = shownTab(chosen, controls.tabs);
   const panelTab = shownTab(chosen, controls.panelTabs);
+  // Simple Mode coming on takes away what had the focus (Back, Next, a row, a tile): it goes to the Show tab
+  // (a23-review-phoneui's low point), never left on the page itself.
+  const inSimple = simple !== null;
+  useEffect(() => {
+    if (inSimple && document.activeElement === document.body)
+      document.querySelector<HTMLElement>('[data-testid="remote-tab-show"]')?.focus();
+  }, [inSimple]);
   // A view of the show on the screen (a tablet's show column or presenter column, or the Show tab): the chat brings
   // no banner then (it would move or cover the show's controls under the finger) and no sound (a22-review-chat P-M1).
   const showOnScreen = layout === 'wide' || layout === 'landscape' || tab === 'show';
@@ -969,13 +1018,7 @@ function Layout() {
     const place = inMiddle ? 'mb-4' : 'shrink-0 px-4 pt-3';
     return (
       <>
-        {notice && (
-          <div className={place}>
-            <Notice tone="warning" onDismiss={() => useTapNotice.setState({ text: null })}>
-              {notice}
-            </Notice>
-          </div>
-        )}
+        {notice && <TapNotice text={notice} className={place} inMiddle={inMiddle} />}
         <SimpleNote className={place} />
       </>
     );

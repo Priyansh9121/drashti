@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import type { PresentationDoc } from '../../../../shared/library';
 import type { PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
 import { backgroundCueOf } from '../../../../shared/library';
 import { useEngine } from '../../engine/engine-store';
@@ -11,6 +12,7 @@ import { cx } from '../../ui/cx';
 import { ChevronDown, ChevronRight } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
+import { TIMER_ALONE_WORDS } from './phone-mode';
 import { phoneRows, rowTap } from './phone-rows';
 import { readDocsFor, toggleFolded, usePhoneTools } from './phone-tools-store';
 import { playlistPaths } from './playlist-paths';
@@ -79,9 +81,20 @@ function useLive(playlistId: string | null) {
  * and a row a slide under it, one tap to put it up. No menu and nothing else of the row: a phone renames, removes and
  * pins nothing.
  */
-function Rows({ playlistId, items }: { playlistId: string; items: PlaylistItemInfo[] }) {
-  const docs = usePhoneTools((s) => s.docs);
-  const folded = usePhoneTools((s) => s.folded);
+function Rows({
+  playlistId,
+  items,
+  docs,
+  folded,
+  timerAlone,
+}: {
+  playlistId: string;
+  items: PlaylistItemInfo[];
+  docs: ReadonlyMap<string, PresentationDoc | null>;
+  folded: readonly string[];
+  /** A timer shown alone over the deck: no page goes up from a phone (a23-review-phoneui MUST-2). */
+  timerAlone: boolean;
+}) {
   const live = useLive(playlistId);
   useEffect(() => {
     readDocsFor(items);
@@ -104,13 +117,14 @@ function Rows({ playlistId, items }: { playlistId: string; items: PlaylistItemIn
                 type="button"
                 data-testid="remote-row"
                 data-kind="slide"
+                disabled={timerAlone}
                 data-live={up ? 'true' : undefined}
                 aria-label={`${row.label}${row.line ? `: ${row.line}` : ''}${up ? ', on the screens' : ''}`}
                 onClick={() => {
                   go(row);
                 }}
                 className={cx(
-                  'flex min-h-14 w-full items-center gap-2 rounded-lg border bg-panel-2 py-1 pr-2 pl-3 text-left text-base select-none',
+                  'flex min-h-14 w-full items-center gap-2 rounded-lg border bg-panel-2 py-1 pr-2 pl-3 text-left text-base select-none disabled:opacity-50',
                   up ? 'border-live' : 'border-line',
                 )}
               >
@@ -184,7 +198,19 @@ export function PlaylistTab() {
   const playlists = useRemote((s) => s.playlists);
   const playlistId = useRemote((s) => s.playlistId);
   const items = useRemote((s) => s.items);
-  return <PlaylistTabView playlists={playlists} playlistId={playlistId} items={items} />;
+  const docs = usePhoneTools((s) => s.docs);
+  const folded = usePhoneTools((s) => s.folded);
+  const timerAlone = useEngine((s) => Boolean(s.state?.layers.slide?.timer));
+  return (
+    <PlaylistTabView
+      playlists={playlists}
+      playlistId={playlistId}
+      items={items}
+      docs={docs}
+      folded={folded}
+      timerAlone={timerAlone}
+    />
+  );
 }
 
 /** The Playlist tab as drawn: which playlist, and its PowerPoint and PDF rows. */
@@ -192,10 +218,17 @@ export function PlaylistTabView({
   playlists,
   playlistId,
   items,
+  docs,
+  folded,
+  timerAlone,
 }: {
   playlists: PlaylistNode[] | null;
   playlistId: string | null;
   items: PlaylistItemInfo[] | null;
+  /** The rows' presentations as read (phone-tools-store.ts), and the rows folded on this phone. */
+  docs: ReadonlyMap<string, PresentationDoc | null>;
+  folded: readonly string[];
+  timerAlone: boolean;
 }) {
   const paths = useMemo(() => playlistPaths(playlists ?? []), [playlists]);
   const decks = useMemo(() => (items ? phoneDeckRows(items) : null), [items]);
@@ -231,7 +264,14 @@ export function PlaylistTabView({
       )}
       {playlistId && decks ? (
         decks.length > 0 ? (
-          <Rows playlistId={playlistId} items={decks} />
+          <>
+            {timerAlone && (
+              <p className="text-base text-muted" data-testid="remote-items-timer" role="status">
+                {TIMER_ALONE_WORDS}
+              </p>
+            )}
+            <Rows playlistId={playlistId} items={decks} docs={docs} folded={folded} timerAlone={timerAlone} />
+          </>
         ) : (
           <>
             <p className="text-base text-muted" data-testid="remote-items-none">
