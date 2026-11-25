@@ -274,6 +274,48 @@ test('a double click on the card under the chosen one never lands on its Up or D
   await app.close();
 });
 
+test('a double click on a row’s trash takes out that row only, as one click does: the row that moves up under the pointer stays', async () => {
+  test.setTimeout(180_000);
+  const { app, win, playlistId, items } = await start();
+  const trash = (name: string) =>
+    win
+      .getByTestId('open-playlist')
+      .locator(`[data-item-row="${items[name] ?? ''}"]`)
+      .getByTestId('row-delete');
+  const left = [VIDEO, SOUND, PDF, DECK].map((name) => items[name]);
+
+  // Nothing up and nothing chosen: the picture's trash shows as the pointer is over its row.
+  await card(win, PICTURE).hover();
+  await expect(trash(PICTURE)).toBeVisible();
+  const box = await trash(PICTURE).boundingBox();
+  if (!box) throw new Error('the picture’s trash is not in view');
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await win.mouse.move(x, y);
+  // The double click's first click: the picture comes out at once, with no question, as one click does.
+  await win.mouse.down({ clickCount: 1 });
+  await win.mouse.up({ clickCount: 1 });
+  await expect.poll(() => order(win, playlistId)).toEqual(left);
+  await expect(win.getByTestId('undo-removal')).toContainText(
+    'Removed “Placeholder backdrop” from “Placeholder one click”',
+  );
+  // The sound's row has moved up into its place, and its trash shows under the pointer (moved a pixel, as a
+  // hand does) ...
+  await win.mouse.move(x, y + 1);
+  await expect(trash(SOUND)).toBeVisible();
+  // ... where the second click lands (QA23-ROWDEL-1: it took the sound out too, with no question).
+  await win.mouse.down({ clickCount: 2 });
+  await win.mouse.up({ clickCount: 2 });
+  await holdStill(
+    async () => JSON.stringify(await order(win, playlistId)) === JSON.stringify(left),
+    1500,
+    'a double click’s second click takes out no other row',
+  );
+  await expect(win.getByRole('alertdialog')).toHaveCount(0);
+  await expect(trash(SOUND)).toBeVisible();
+  await app.close();
+});
+
 test('dragging a video’s or a picture’s card moves it and puts nothing up', async () => {
   test.setTimeout(180_000);
   const { app, win, playlistId, items } = await start();
