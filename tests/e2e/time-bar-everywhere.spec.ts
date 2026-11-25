@@ -21,6 +21,7 @@ import {
   testDisplays,
 } from './helpers';
 import { launchMain, launchNode, type MainRun, type NodeRun, pairNode } from './nodes';
+import { expectPhoneRefuses } from './phone-refuses';
 import { makeTestTone, makeTestVideo, setWebmDuration } from './test-media';
 import {
   audioPage,
@@ -43,8 +44,8 @@ import {
  * land on a Pause and a Play as Main's do (a prop's looping video and the logo's had bars of their own too, the owner's
  * answer of 28 Oct, until Session 55 took props and the logo out); what was paused and moved comes back after a crash
  * where it would be; and the worst fit, every kind playing at once, one paused, one file hours long, fits CI's operator
- * window in Pro and Simple Mode and a phone and a tablet, Next and Back never moving. Generated media only, quiet;
- * codes and tokens made at run time.
+ * window in Pro and Simple Mode, Next and Back never moving; a phone and a tablet are refused every row's Pause, Play
+ * and move (alpha.23, QA23-PHONE-1). Generated media only, quiet; codes and tokens made at run time.
  */
 
 /** A file played as the background, looping, from a screen of Drashti's (the window's own engine). */
@@ -301,7 +302,7 @@ async function rowsFit(page: Page, rows: Locator, width: number, what: string): 
   ).toBe(true);
 }
 
-test('the worst fit: the background (two hours long, paused), two slide videos, the box and a sound at once fit 1024 × 645 in Pro and Simple Mode, Next and Back never moving, and a phone and a tablet at 44 px', async () => {
+test('the worst fit: the background (two hours long, paused), two slide videos, the box and a sound at once fit 1024 × 645 in Pro and Simple Mode, Next and Back never moving; a phone and a tablet refused every row in words', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -358,7 +359,9 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   await rowsFit(win, rows(win), 1024, 'Pro Mode');
   await expectNoSeriousA11yIssues(win, 'every kind playing at 1024 × 645, Pro Mode');
 
-  // A phone and a tablet: every row, its Play or Pause and its bar 44 px tall at least, nothing sideways, axe.
+  // A phone and a tablet (alpha.23, QA23-PHONE-1: "they cant change videos"): every row's Play or Pause, and a move,
+  // refused in words, nothing moved; the phone's own rows went with the rule (its page, the UI builder's), and its page
+  // still lays itself out at each size, nothing sideways, axe.
   const { base } = await networkOn(win);
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
@@ -366,24 +369,38 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   try {
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
+    const fromPhone = { win, page: p };
+    for (const [playing, asked] of [
+      [{ layer: 'background' }, 'play'],
+      [{ layer: 'slide', mediaId: oneId }, 'pause'],
+      [{ layer: 'slide', mediaId: twoId }, 'pause'],
+      [{ layer: 'pip' }, 'pause'],
+      [{ layer: 'audio' }, 'pause'],
+    ] as const)
+      await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/playing/${asked}`, { playing }, 'media');
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      '/api/v1/playing/move',
+      { playing: { layer: 'background' }, toMs: 60_000 },
+      'media',
+    );
+    await expect(bg).toHaveAttribute('data-paused', 'true');
     for (const size of [
       { width: 375, height: 812, layout: 'phone' },
       { width: 768, height: 1024, layout: 'wide' },
     ]) {
       await p.setViewportSize({ width: size.width, height: size.height });
-      // The remote lays itself out for its new size a moment later (its media queries' change), drawing its rows anew:
-      // they are measured once it has.
+      const at = `${String(size.width)} × ${String(size.height)}`;
       await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', size.layout);
-      const phoneRows = p.getByTestId('remote-time-bar-row');
-      await expect(phoneRows).toHaveCount(5);
-      await rowsFit(p, phoneRows, size.width, `the remote at ${String(size.width)} × ${String(size.height)}`);
-      for (const r of await phoneRows.all())
-        for (const target of [r.getByRole('button'), r.getByRole('slider')]) {
-          const box = await target.boundingBox();
-          expect(box?.height ?? 0, 'a finger’s size').toBeGreaterThanOrEqual(44);
-          expect(box?.width ?? 0, 'a finger’s size').toBeGreaterThanOrEqual(44);
-        }
-      await expectNoSeriousA11yIssues(p, `every kind playing on the remote at ${String(size.width)} wide`);
+      expect(
+        await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        `the remote at ${at}: the page never scrolls sideways`,
+      ).toBe(true);
+      await expectNoSeriousA11yIssues(
+        p,
+        `the remote at ${String(size.width)} wide, every kind playing on Drashti`,
+      );
     }
   } finally {
     await phone.close();
@@ -401,7 +418,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   await app.close();
 });
 
-test('in Simple Mode a phone pauses, moves and plays a sound from a playlist; Media puts stay dimmed', async () => {
+test('in Simple Mode a phone is refused a sound’s Pause, move and Play and putting one up, in words; moved to the window: Simple Mode’s bar pauses, moves and plays a sound from its playlist', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -422,73 +439,85 @@ test('in Simple Mode a phone pauses, moves and plays a sound from a playlist; Me
   try {
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    /** A tone put up from the phone's Media, as a person would (a sound plays over the rest), then the Show tab. */
-    const putUp = async (name: string, mediaId: string) => {
-      await p.getByTestId('remote-tab-library').click();
-      await p.getByTestId('remote-library-media').click();
-      await p.getByTestId('remote-media-search').fill(name);
-      await p.getByTestId('remote-media-item').filter({ hasText: name }).getByRole('button').first().click();
-      await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(mediaId);
-      await p.getByTestId('remote-tab-show').click();
-    };
-    const phoneRow = p.locator('[data-testid="remote-time-bar-row"][data-playing="audio"]');
+    const fromPhone = { win, page: p };
+    const sound = { playing: { layer: 'audio' } };
 
-    // Pro Mode: the first tone up from the phone's Media, paused from its bar there.
-    await putUp('Placeholder first tone', first);
-    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
-    await phoneRow.getByRole('button', { name: 'Pause' }).click();
+    // Pro Mode: putting the first tone up from the phone's Media is refused (alpha.23, QA23-PHONE-1: "they cant change
+    // videos"; the phone's Media went with the rule, its page the UI builder's); moved to the window: put up by the
+    // engine's own playAudio (dispatched here, not the window's Media), then paused from the window's bar, the phone's
+    // Pause refused first.
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${first}/show`, {}, 'media');
+    await dispatch(win, {
+      type: 'playAudio',
+      audio: {
+        id: 'placeholder-first',
+        title: 'Placeholder first tone',
+        mediaId: first,
+        volume: 1,
+        loop: false,
+      },
+    });
+    await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(first);
+    const pauseIn = row(win, 'audio').getByRole('button', { name: 'Pause' });
+    await expect(pauseIn).toBeEnabled({ timeout: 15_000 });
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/playing/pause', sound, 'media');
+    await pauseIn.click();
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
     // Simple Mode: its window shows the bar, paused, with its Play (Session 54's question 14: Play while paused; its
-    // Pause, while it plays, Simple Mode's own since Session 56); the phone's Play plays it on.
+    // Pause, while it plays, Simple Mode's own since Session 56); the phone's Play is refused in Simple Mode's words,
+    // the window's plays it on.
     await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     await expect(row(win, 'audio')).toHaveAttribute('data-paused', 'true');
     await expect(win.getByTestId('time-bar-play')).toHaveCount(1);
     await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
-    await phoneRow.getByRole('button', { name: 'Play' }).click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/playing/play', sound, 'simple');
+    await win.getByTestId('time-bar-play').click();
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
-    await inStep(heard(first), () => soundTiming(win), 'played on from the phone in Simple Mode');
+    await inStep(heard(first), () => soundTiming(win), 'played on from the window in Simple Mode');
 
-    // The second tone from the phone's Media in Simple Mode: dimmed, the first playing on (Session 55, the owner's
-    // answer of 30 Oct 2026: a phone does only what Simple Mode's window does, which puts up its playlist's rows, never
-    // Media's; Part 9: the phone says why once, and dims what it may not do, the main process refusing it all the same).
-    await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
-    await p.getByTestId('remote-tab-library').click();
-    await p.getByTestId('remote-library-media').click();
-    await p.getByTestId('remote-media-search').fill('Placeholder second tone');
-    await expect(
-      p
-        .getByTestId('remote-media-item')
-        .filter({ hasText: 'Placeholder second tone' })
-        .getByRole('button')
-        .first(),
-    ).toBeDisabled();
+    // The second tone from the phone's Media in Simple Mode: refused in words, the first playing on (a phone never put
+    // up Media's in Simple Mode: Session 55, the owner's answer of 30 Oct 2026).
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${second}/show`, {}, 'media');
     expect((await snapshot(win)).layers.audio?.mediaId).toBe(first);
-    // A row of Simple Mode's playlist (brought in as its window brings files in), tapped on the phone: up.
+    // A row of Simple Mode's playlist (brought in as its window brings files in): the phone's tap refused in Simple
+    // Mode's words; moved to the window, one click on the row puts it up.
     const one = await win.evaluate(async (mediaId) => {
       const d = (globalThis as PageGlobals).drashti;
       const id = await d.app.simplePlaylist();
       if (id === null) throw new Error('Simple Mode has no playlist');
       const added = await d.playlists.addItems(id, null, [{ kind: 'media', mediaId }]);
       if (!added.ok) throw new Error(added.message);
-      return id;
+      return { playlistId: id, itemId: added.ids[0] ?? '' };
     }, second);
-    // The phone opens Simple Mode's playlist by itself (Part 9).
-    await p.getByTestId('remote-tab-playlist').click();
-    await expect(p.getByTestId('remote-playlist')).toHaveValue(one);
-    await p.getByTestId('remote-item').filter({ hasText: 'Placeholder second tone' }).click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/trigger/item', one, 'simple');
+    expect((await snapshot(win)).layers.audio?.mediaId).toBe(first);
+    await win
+      .getByTestId('open-playlist')
+      .getByTestId('playlist-item')
+      .filter({ hasText: 'Placeholder second tone' })
+      .click();
     await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(second);
-    await p.getByTestId('remote-tab-show').click();
-    const pause = phoneRow.getByRole('button', { name: 'Pause' });
-    await expect(pause).toBeEnabled({ timeout: 15_000 });
-    await pause.click();
+    // Moved to the window (were the phone's): Pause, a move while paused (it waits there), Play from the new position;
+    // the phone's each refused.
+    const simplePause = row(win, 'audio').getByTestId('time-bar-pause');
+    await expect(simplePause).toBeEnabled({ timeout: 15_000 });
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/playing/pause', sound, 'simple');
+    await simplePause.click();
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
     const pausedAt = (await soundTiming(win)).seek?.toMs ?? 0;
-    await phoneRow.getByRole('slider').press('ArrowRight');
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      '/api/v1/playing/move',
+      { ...sound, toMs: pausedAt + 20_000 },
+      'simple',
+    );
+    await clickAlong(win, row(win, 'audio').getByRole('slider'), 0.5);
     await expect.poll(async () => (await soundTiming(win)).seek?.toMs ?? 0).toBeGreaterThan(pausedAt + 4500);
     expect((await soundTiming(win)).seek?.paused).toBe(true);
-    await phoneRow.getByRole('button', { name: 'Play' }).click();
+    await row(win, 'audio').getByTestId('time-bar-play').click();
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
     await inStep(heard(second), () => soundTiming(win), 'played from the new position in Simple Mode');
   } finally {

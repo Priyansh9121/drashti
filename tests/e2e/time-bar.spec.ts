@@ -4,16 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
-import {
-  apiCall,
-  device,
-  type Engine,
-  NETWORK_ENV,
-  networkOn,
-  pairByQr,
-  pairingCode,
-  pairToken,
-} from './devices';
+import { device, type Engine, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -31,6 +22,7 @@ import {
   slideEditorClosed,
   slideEditorWindow,
 } from './helpers';
+import { expectPhoneRefuses } from './phone-refuses';
 import { holdClock } from './placeholder-slides';
 import { makeTestTone, makeTestVideo } from './test-media';
 import {
@@ -55,8 +47,9 @@ import {
  * elapsed time and time left, its start and end points and its markers as ticks. In Pro Mode a click or a drag moves
  * it (a drag shows the time under the finger and moves once, on release) and Play and Pause sit beside it: every
  * screen and the audio player land there in step, as a jump to a marker does. Simple Mode shows the bar and its time
- * left and moves nothing. Each fits CI's operator window, 1024 × 645, in both modes. A phone's remote has the same
- * bar (B2). Generated media only, quiet, on displays no wider than 1024; codes and tokens made at run time.
+ * left and moves nothing. Each fits CI's operator window, 1024 × 645, in both modes. A phone's remote had the same
+ * bar (B2): under the phone rule (alpha.23, QA23-PHONE-1) its move, Pause and Play are refused in words, in both modes.
+ * Generated media only, quiet, on displays no wider than 1024; codes and tokens made at run time.
  */
 
 test('the background video: a click on its bar moves it in step on two screens and the audio player; a drag moves it like an ordinary player, every copy following the finger, paused, and playing on from where it is let go; Pause holds every copy where it is and Play plays them on', async () => {
@@ -438,7 +431,7 @@ test('Simple Mode’s bar moves, pauses and plays what plays as Pro Mode’s (no
 });
 
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
-  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode also allows Pause, Play and moving`, async () => {
+  test(`the phone’s bar (${engine}) is refused in words, its move, Pause and Play, in Pro Mode and in Simple Mode; moved to the window’s bar: a click or a drag moves what plays in step on the screen, Pause and Play too, in both modes`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -473,94 +466,106 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
-      // A paired script also checks the same move through the HTTP route.
+      // A paired script also asks through the HTTP route.
       // Generated at run time, kept in memory and never printed, as in simple-phone.spec.ts.
       const script = await pairToken(win, port, 'remote', 'Placeholder time-bar script');
-      const playing = p.getByTestId('remote-time-bars');
-      const row = playing.locator('[data-testid="remote-time-bar-row"][data-playing="background"]');
-      const bar = row.getByRole('slider', { name: 'Time of the background video', exact: true });
+      // The window's bar (the phone's under its live picture went with the phone rule, alpha.23, QA23-PHONE-1: "they
+      // cant change videos"; its page is the UI builder's).
+      const bg = row(win, 'background');
+      const bar = bg.getByRole('slider', { name: 'Time of the background video', exact: true });
       await expect(bar).toBeVisible({ timeout: 15_000 });
-      // A finger's size: the bar and its button 44 px tall at least.
-      for (const target of [bar, row.getByRole('button', { name: 'Pause' })]) {
-        const box = await target.boundingBox();
-        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
-      }
-      await expect(row.getByTestId('remote-time-bar-left')).toHaveText(/^-\d+:\d\d$/);
-      await expectNoSeriousA11yIssues(p, `the phone’s time bar (${engine})`);
-      const bg = (await snapshot(win)).layers.background;
-      const durationMs = bg?.kind === 'media' ? (bg.durationMs ?? 0) : 0;
+      await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-\d+:\d\d$/);
+      const length = (await snapshot(win)).layers.background;
+      const durationMs = length?.kind === 'media' ? (length.durationMs ?? 0) : 0;
       expect(durationMs).toBeGreaterThan(8000);
+      const background = { layer: 'background' };
+      /** The phone's and the script's move, Pause and Play, each refused in these words, nothing moved. */
+      const refused = async (words: 'media' | 'simple') => {
+        for (const from of [
+          { win, page: p },
+          { win, port, token: script },
+        ]) {
+          await expectPhoneRefuses(
+            from,
+            'POST',
+            '/api/v1/playing/move',
+            { playing: background, toMs: Math.round(durationMs * 0.5) },
+            words,
+          );
+          await expectPhoneRefuses(from, 'POST', '/api/v1/playing/pause', { playing: background }, words);
+          await expectPhoneRefuses(from, 'POST', '/api/v1/playing/play', { playing: background }, words);
+        }
+      };
 
-      // A tap halfway along: the screen and the audio player land there in step.
-      await clickAlong(p, bar, 0.5);
+      // Pro Mode: the phone's tap, Pause and Play refused, the video playing on where it was.
+      await refused('media');
+      expect((await backgroundTiming(win)).seek).toBeUndefined();
+      // Moved to the window (was the phone's tap halfway along): the screen and the audio player land there in step.
+      await clickAlong(win, bar, 0.5);
       await expect
         .poll(async () => Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - durationMs * 0.5))
         .toBeLessThan(durationMs * 0.04);
-      await inStep(copies, () => backgroundTiming(win), 'tapped halfway along on the phone');
+      await inStep(copies, () => backgroundTiming(win), 'clicked halfway along in the window');
 
-      // A drag: the time under the finger shows, and it moves once, as the finger lets go.
+      // Moved to the window (was the phone's drag): the time under the finger shows, and on letting go it plays on
+      // from there.
       const box = await bar.boundingBox();
       if (!box) throw new Error('the bar is not drawn');
-      const seekBefore = (await backgroundTiming(win)).seek;
-      await p.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
-      await p.mouse.down();
-      await p.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2, { steps: 6 });
-      await expect(row.getByTestId('remote-time-bar-under')).toBeVisible();
+      await win.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
+      await win.mouse.down();
+      await win.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2, { steps: 6 });
+      await expect(bg.getByTestId('time-bar-under')).toBeVisible();
       const held = Number(await bar.getAttribute('data-held'));
-      expect((await backgroundTiming(win)).seek).toEqual(seekBefore);
-      await p.mouse.up();
+      await win.mouse.up();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.toMs).toBe(held);
-      await inStep(copies, () => backgroundTiming(win), 'dragged on the phone');
-
-      // Pause and Play, from the phone.
-      await row.getByRole('button', { name: 'Pause' }).click();
-      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
-      await heldAt(copies, ((await backgroundTiming(win)).seek?.toMs ?? 0) / 1000, 'paused from the phone');
-      await expect(row).toContainText('Paused');
-      await row.getByRole('button', { name: 'Play' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
-      await inStep(copies, () => backgroundTiming(win), 'played on from the phone');
+      await inStep(copies, () => backgroundTiming(win), 'dragged in the window');
 
-      // The same bar in Simple Mode, with the video still paused across the change.
-      await row.getByRole('button', { name: 'Pause' }).click();
+      // Moved to the window (was the phone's): Pause and Play.
+      await bg.getByRole('button', { name: 'Pause' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
+      await heldAt(copies, ((await backgroundTiming(win)).seek?.toMs ?? 0) / 1000, 'paused from the window');
+      await expect(bg).toHaveAttribute('data-paused', 'true');
+      // Paused: the phone's Play refused, still held.
+      await refused('media');
+      await bg.getByRole('button', { name: 'Play' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
+      await inStep(copies, () => backgroundTiming(win), 'played on from the window');
+
+      // Simple Mode, with the video paused across the change: the phone and the script refused in Simple Mode's
+      // words; the window's bar moves it, Play and Pause (the Simple Mode test above walks it too).
+      await bg.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
       await win
         .getByTestId('app-header')
         .getByRole('button', { name: 'Simple Mode', exact: true })
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
-      const simpleBar = row.getByRole('slider', { name: 'Time of the background video', exact: true });
+      await refused('simple');
+      const simpleBar = row(win, 'background').getByRole('slider', {
+        name: 'Time of the background video',
+        exact: true,
+      });
       await expect(simpleBar).toBeVisible();
-      const simpleBox = await simpleBar.boundingBox();
-      if (!simpleBox) throw new Error('The phone’s Simple Mode time bar is missing.');
-      await simpleBar.click({ position: { x: simpleBox.width * 0.7, y: simpleBox.height / 2 } });
+      await clickAlong(win, simpleBar, 0.7);
       await expect
         .poll(async () => Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - durationMs * 0.7))
-        .toBeLessThan(200);
+        .toBeLessThan(durationMs * 0.05);
       expect((await backgroundTiming(win)).seek?.paused).toBe(true);
-      const moved = await apiCall(port, '/api/v1/playing/move', {
-        method: 'POST',
-        token: script,
-        body: { playing: { layer: 'background' }, toMs: Math.round(durationMs * 0.5) },
-      });
-      expect(moved.status).toBe(200);
-      await expect
-        .poll(async () => (await backgroundTiming(win)).seek)
-        .toMatchObject({
-          toMs: Math.round(durationMs * 0.5),
-          paused: true,
-        });
-      await heldAt(copies, (durationMs * 0.5) / 1000, 'moved while paused in Simple Mode');
-      await row.getByRole('button', { name: 'Play' }).click();
+      await heldAt(
+        copies,
+        ((await backgroundTiming(win)).seek?.toMs ?? 0) / 1000,
+        'moved while paused in Simple Mode',
+      );
+      await row(win, 'background').getByTestId('time-bar-play').click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
-      await inStep(copies, () => backgroundTiming(win), 'played on from the phone in Simple Mode');
-      await row.getByRole('button', { name: 'Pause' }).click();
+      await inStep(copies, () => backgroundTiming(win), 'played on from the window in Simple Mode');
+      await row(win, 'background').getByTestId('time-bar-pause').click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
       await heldAt(
         copies,
         ((await backgroundTiming(win)).seek?.toMs ?? 0) / 1000,
-        'paused from the phone in Simple Mode',
+        'paused from the window in Simple Mode',
       );
     } finally {
       await phone.close();

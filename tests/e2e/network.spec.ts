@@ -5,6 +5,7 @@ import { connect } from 'node:net';
 import WebSocket from 'ws';
 import type { NetworkStatus, ToDevice } from '../../src/shared/network';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { expectPhoneRefuses } from './phone-refuses';
 import { freePort } from './stream-helpers';
 
 /*
@@ -130,8 +131,13 @@ test('off by default; on, a code pairs a device once, the feed follows the show,
     })
     .toBe(true);
   await expect.poll(async () => (await n.status()).connected).toBe(1);
-  const next = await call(port, '/api/v1/blackout', { method: 'POST', token, body: { on: true } });
-  expect(next.json).toMatchObject({ ok: true, changed: true });
+  // A Remote's black-out is refused in words (alpha.23, QA23-PHONE-1: a phone changes nothing of the set-up), the
+  // show as it was; moved to the window: its black-out, which the feed then follows.
+  await expectPhoneRefuses({ win, port, token }, 'POST', '/api/v1/blackout', { on: true }, 'computer');
+  const next = await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'setBlackout', on: true }),
+  );
+  expect(next).toMatchObject({ ok: true, changed: true });
   await expect
     .poll(() =>
       messages.some(
@@ -245,8 +251,10 @@ test('each kind of device may do only its own things', async () => {
   const remote = await tokenFor('remote');
   const stage = await tokenFor('stage');
   const poster = await tokenFor('announcements');
-  // A Remote runs the show and reads its lists; a Stage device only watches; Announcements only sends.
-  expect((await call(port, '/api/v1/trigger/next', { method: 'POST', token: remote })).status).not.toBe(403);
+  // A Remote reads its playlists (Pro Mode) and steps through a PowerPoint or a PDF only (alpha.23, QA23-PHONE-1): its
+  // Next with none up is refused in its own words, never a kind's 403; a Stage device only watches; Announcements
+  // only sends.
+  await expectPhoneRefuses({ win, port, token: remote }, 'POST', '/api/v1/trigger/next', undefined, 'noDeck');
   expect((await call(port, '/api/v1/playlists', { token: remote })).status).toBe(200);
   expect((await call(port, '/api/v1/state', { token: stage })).status).toBe(200);
   expect((await call(port, '/api/v1/stage', { token: stage })).status).toBe(200);

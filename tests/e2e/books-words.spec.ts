@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PHONE_REFUSAL } from '../../src/shared/phone-rule';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
 import {
@@ -15,12 +16,14 @@ import {
   showExtras,
 } from './helpers';
 import { importItem } from './import-details';
+import { expectPhoneRefuses } from './phone-refuses';
 
 /*
  * Books, never Shastra, wherever a person sees it (the owner's words, 3 Nov 2026, for alpha.15). The operator window
  * walked as an admin and a volunteer meet it: the library's Books tab with nothing loaded and with two books, its
  * dialogs, its notices and errors, a passage in a playlist and a template's slot asking for one, the kirtan details,
- * the menus, the guides inside Drashti and Simple Mode; then a phone's pages in Pro Mode and in Simple Mode. None
+ * the menus, the guides inside Drashti and Simple Mode; then a phone's pages in Pro Mode and in Simple Mode, and the
+ * words it is refused in (alpha.23, QA23-PHONE-1: a passage, a book's reference and a shared playlist from a phone). None
  * shows or says Shastra, in its words, its accessible names (what a screen reader reads), its tooltips or its
  * placeholders; the text format's file name (docs/shastra-format.md) is the one word kept. The made-up books of
  * docs/examples; placeholder names only.
@@ -318,7 +321,7 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
   await app.close();
 });
 
-test('a phone’s pages say Books, never Shastra: its pairing page and every tab of the remote, in Pro Mode and in Simple Mode', async () => {
+test('a phone’s pages say Books, never Shastra: its pairing page, every tab of the remote and its refusals, in Pro Mode and in Simple Mode', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -354,37 +357,39 @@ test('a phone’s pages say Books, never Shastra: its pairing page and every tab
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
 
-    // Pro Mode: every tab; the playlist with a passage (its name and slides, as a presentation's); the playlist
-    // shared with phones, where each file says what it is; More with its Books box.
-    await p.getByTestId('remote-tab-playlist').click();
-    await p.getByTestId('remote-playlist').selectOption(playlistId);
-    await expect(
-      p
-        .getByTestId('remote-item')
-        .and(p.locator('[data-kind="group"]'))
-        .filter({ hasText: 'Placeholder Granth 14' }),
-    ).toBeVisible();
-    await saysBooks(p, 'the phone’s Playlist tab');
+    // Pro Mode: every tab the phone has. The passage, the playlist shared with phones and More's Books box went with
+    // the phone rule (alpha.23, QA23-PHONE-1, the owner's Q4: "Only PPT and PDF"; "Phones cannot add or share files
+    // with Drashti."): each refused, in words that never say Shastra either.
+    for (const tab of ['show', 'playlist', 'library', 'more']) {
+      const button = p.getByTestId(`remote-tab-${tab}`);
+      if ((await button.count()) === 0) continue;
+      await button.click();
+      await saysBooks(p, `the phone’s ${tab} tab`);
+    }
+    const fromPhone = { win, page: p };
+    const passageRow =
+      (await win.evaluate(
+        async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id))[0]?.id,
+        playlistId,
+      )) ?? '';
+    expect(passageRow).not.toBe('');
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      '/api/v1/trigger/item',
+      { playlistId, itemId: passageRow },
+      'notDeck',
+    );
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shastra', undefined, 'library');
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/shastra', { reference: 'PG 14' }, 'notDeck');
     await win.evaluate(async (id) => {
       const shared = await (globalThis as PageGlobals).drashti.playlists.share(id, true);
       if (!shared.ok) throw new Error(shared.message);
     }, playlistId);
-    await p.getByTestId('remote-tab-library').click();
-    await p.getByTestId('remote-library-shared').click();
-    await p.getByTestId('remote-shared-playlist').filter({ hasText: 'Placeholder reading' }).click();
-    await expect(
-      p.getByTestId('remote-shared-item').filter({ hasText: 'Placeholder Granth 14' }),
-    ).toContainText('Passage from a book');
-    await saysBooks(p, 'a playlist shared with the phone');
-    await p.getByTestId('remote-tab-more').click();
-    const books = p.getByTestId('remote-shastra');
-    await expect(books).toBeVisible();
-    await expect(p.getByRole('heading', { name: 'Books', exact: true })).toBeVisible();
-    await saysBooks(p, 'the phone’s More tab');
-    for (const tab of ['show', 'library']) {
-      await p.getByTestId(`remote-tab-${tab}`).click();
-      await saysBooks(p, `the phone’s ${tab} tab`);
-    }
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shared', undefined, 'files');
+    await expectPhoneRefuses(fromPhone, 'GET', `/api/v1/shared/${playlistId}/items`, undefined, 'files');
+    expect(Object.values(PHONE_REFUSAL).filter((words) => /shastra/iu.test(words))).toEqual([]);
+    await saysBooks(p, 'the phone once refused');
 
     // Simple Mode: the passages' playlist is its one playlist, on the phone too.
     await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
