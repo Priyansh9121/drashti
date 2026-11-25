@@ -246,7 +246,7 @@ test('Report a Problem’s picture of the window has the open Chat section blank
   await expect(chat.getByTestId('chat-message')).toHaveCount(2);
   // Where the private box is, as a share of the window (the picture's small copy is the window at 320 wide).
   const share = await win.evaluate(() => {
-    const el = document.querySelector('[data-report-private]');
+    const el = document.querySelector('[data-testid="section-chat"][data-report-private]');
     const scroller = document.querySelector('[data-testid="live-rest"]');
     if (!el || !scroller) return null;
     const r = el.getBoundingClientRect();

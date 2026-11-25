@@ -34,8 +34,8 @@ import { chatRows, composerCheck, unreadWords } from './chat-view';
  * Simple Mode has it while Chat is chosen in Edit › Simple Mode Features… (off to begin with), reading and sending
  * only: Clear chat and removing a person stay Pro Mode's (OperateOnly), as the main process's lock keeps them.
  *
- * Every word and name of the chat is inside a box the page marks private (shared/report-private.ts): Report a
- * Problem's picture of this window blanks it (main/report/private-parts.ts). So is the Remove dialog's.
+ * The whole section is a box the page marks private (shared/report-private.ts), and so is its open part and the
+ * Remove dialog's name: Report a Problem's picture of this window blanks them (main/report/private-parts.ts).
  */
 
 /** What Report a Problem's picture of the window blanks (the chat's words and names). */
@@ -349,6 +349,9 @@ export function ChatSection() {
         icon={MessagesSquare}
         {...LIVE_SECTION}
         remember="chat"
+        // The whole section, folded or open, is blanked in Report a Problem's picture (a22-chat-core's ask), and its
+        // open part again on its own (ChatContentsView).
+        {...PRIVATE}
         data-testid="section-chat"
         bodyClassName="relative space-y-2 px-3 pb-3"
         badge={
