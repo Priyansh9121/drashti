@@ -7880,6 +7880,8 @@ function start(): void {
     phoneLists: {
       activePlaylist: (id) => playlists.activePlaylist(id),
       plays: (id, from) => playlists.playsPresentation(id, from),
+      // Which are a phone's PowerPoint or PDF, a playlist's rows in one query (the review's S2).
+      decks: (ids) => presentations.phoneDecks(ids),
     },
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
