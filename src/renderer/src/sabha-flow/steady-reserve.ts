@@ -25,6 +25,25 @@ export interface ReserveDeps {
   /** Load the faces the copies' words need (then the document's fonts are ready). */
   loadFonts(copies: Iterable<Measured>): Promise<void>;
   marginTop(el: Measured): number;
+  /** Settles once the layout has taken what loaded (a frame later). */
+  afterLayout?(): Promise<void>;
+}
+
+/** What a face's loading needs of an element: its own font, its own words (not its children's), its children. */
+export interface FaceNode {
+  font: string;
+  text: string;
+  children: readonly FaceNode[];
+}
+
+/** The faces the copies' words need: [font, words] for each face, each once (stub: the copy's own font, its words). */
+export function facesToLoad<T>(copies: Iterable<T>, nodeOf: (el: T) => FaceNode): [string, string][] {
+  const words = new Map<string, string>();
+  for (const el of copies) {
+    const n = nodeOf(el);
+    words.set(n.font, (words.get(n.font) ?? '') + n.text);
+  }
+  return [...words];
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { watchReserve, type Measured, type ReserveDeps } from './steady-reserve';
+import { facesToLoad, watchReserve, type Measured, type ReserveDeps } from './steady-reserve';
 
 /*
  * Sabha flow (alpha.23): the panel's steady room for Now and Next up, the tallest of all the flow's items (review S16).
@@ -22,6 +22,8 @@ function setup() {
   const changes: (() => void)[] = [];
   let fontsLoaded: () => void = () => undefined;
   const loading: { copies: number }[] = [];
+  let settled: () => void = () => undefined;
+  let settling = 0;
   const deps: ReserveDeps = {
     observe: (_targets, changed) => {
       changes.push(changed);
@@ -35,6 +37,13 @@ function setup() {
       loading.push({ copies: [...copies].length });
       return new Promise<void>((resolve) => {
         fontsLoaded = resolve;
+      });
+    },
+    // The layout takes the loaded faces a frame later.
+    afterLayout: () => {
+      settling++;
+      return new Promise<void>((resolve) => {
+        settled = resolve;
       });
     },
     marginTop: () => 2,
@@ -52,13 +61,30 @@ function setup() {
     },
     fontsLoad: async () => {
       fontsLoaded();
-      await Promise.resolve();
-      await Promise.resolve();
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+      settled();
+      for (let k = 0; k < 4; k++) await Promise.resolve();
     },
+    /** The faces have loaded, the layout not yet taken them. */
+    fontsOnly: async () => {
+      fontsLoaded();
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+    },
+    settling: () => settling,
   };
 }
 
 describe('the steady room for Now and Next up', () => {
+  it('is measured only once the layout has taken the loaded faces (a frame after they are ready), never before', async () => {
+    const s = setup();
+    watchReserve(s.box, (px) => s.said.push(px), s.deps);
+    await s.fontsOnly();
+    expect(s.settling()).toBe(1);
+    expect(s.said).toEqual([]);
+    await s.fontsLoad();
+    expect(s.said).toEqual([84]);
+  });
+
   it('is measured only once the faces of all its copies have loaded: the tallest Now and Next up (with its margin)', async () => {
     const s = setup();
     watchReserve(s.box, (px) => s.said.push(px), s.deps);
@@ -95,5 +121,24 @@ describe('the steady room for Now and Next up', () => {
     await s.fontsLoad();
     expect(s.said).toEqual([]);
     expect(s.changes).toHaveLength(0);
+  });
+});
+
+describe('the faces the copies need', () => {
+  it('are each word’s own: the face of every element with words of its own, with those words (a Gujarati part too)', () => {
+    // A copy: its line in one face, a Gujarati part in another (a lang of its own may draw in another face).
+    const span = { font: 'normal 700 16px "Noto Sans Gujarati"', text: 'નમૂનો કાર્યક્રમ', children: [] };
+    const line = { font: 'normal 700 16px "Noto Sans"', text: 'Next up: 2 · ', children: [span] };
+    const faces = facesToLoad([line], (el) => el);
+    expect(faces).toEqual([
+      ['normal 700 16px "Noto Sans"', 'Next up: 2 · '],
+      ['normal 700 16px "Noto Sans Gujarati"', 'નમૂનો કાર્યક્રમ'],
+    ]);
+  });
+
+  it('are each asked once, with all the words drawn in it', () => {
+    const a = { font: 'normal 400 12px "Noto Sans"', text: 'Now: ', children: [] };
+    const b = { font: 'normal 400 12px "Noto Sans"', text: 'પહેલો', children: [] };
+    expect(facesToLoad([a, b], (el) => el)).toEqual([['normal 400 12px "Noto Sans"', 'Now: પહેલો']]);
   });
 });
