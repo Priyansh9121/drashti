@@ -30,6 +30,8 @@ export const FLOW_WORDS = {
   changed: 'The Sabha flow changed on the Drashti computer. Read it again.',
   noPage: 'That page is not in the Sabha flow.',
   notDrawn: 'That page of the Sabha flow could not be drawn.',
+  /** Red: not built yet. */
+  off: '',
 } as const;
 
 /** GET /api/v1/flow: the current flow and its Now, or none (never a refusal: no flow is an answer too). */

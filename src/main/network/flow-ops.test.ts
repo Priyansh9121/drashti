@@ -10,7 +10,7 @@ import type { SimpleFeature } from '../../shared/simple-features';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { PHONE_OPS_IN_SIMPLE_MODE, type SimplePhoneScope } from '../simple-mode-phones';
-import type { FlowReads } from './flow-answers';
+import { FLOW_WORDS, type FlowReads } from './flow-answers';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
 /*
@@ -274,9 +274,23 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(ask(remote, 'hall').body).toMatchObject({ simple: { features: ['timers', 'sabha-flow'] } });
   });
 
-  it('reads in Simple Mode as the window reads (Simple Mode locks only the flow’s changes)', async () => {
-    const { ask, page, remote } = setup({ simple: true });
-    expect(ask(remote, 'flow').status).toBe(200);
+  it('in Simple Mode answers no flow, in plain words, unless Sabha flow is chosen in Simple Mode Features; chosen, as in Pro Mode', async () => {
+    const { ask, page, remote, choose, asked } = setup({ simple: true });
+    // Not chosen: as if there were none, saying why; its pages none either, never asked of the store.
+    const off = ask(remote, 'flow');
+    expect(off.status).toBe(200);
+    expect(off.body).toEqual({ ok: true, flow: null, state: null, off: FLOW_WORDS.off });
+    const none = await page(remote, { page: '0', flowId: FLOW.id });
+    expect(none).toEqual({ status: 404, body: { ok: false, message: FLOW_WORDS.off } });
+    choose(['timers']);
+    expect(ask(remote, 'flow').body).toMatchObject({ flow: null, off: FLOW_WORDS.off });
+    expect(asked).toEqual([]);
+    // Chosen: the flow and its pages, as in Pro Mode.
+    choose(['timers', 'sabha-flow']);
+    expect(ask(remote, 'flow')).toEqual({
+      status: 200,
+      body: { ok: true, flow: FLOW, state: { flowId: FLOW.id, now: 0 } },
+    });
     expect((await page(remote, { page: '0', flowId: FLOW.id })).status).toBe(200);
   });
 });
