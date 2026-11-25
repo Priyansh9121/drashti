@@ -1,12 +1,13 @@
 import { AnnotationMode, getDocument, OPS } from 'pdfjs-dist';
 import { drawEditablePdf } from './editable-main';
 import { pageTextOf } from './page-text';
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
 import { partDrawing } from '../../../shared/page-part';
 import type { PictureAssetKind } from '../../../shared/pictures';
 import { fitPage, inShare, tidyNotes } from '../../../shared/pictures';
-import { flowRulesOf, flowTextsOf, type FlowTextPage } from '../../../shared/sabha-flow-text';
+import type { FlowTextPage } from '../../../shared/sabha-flow-text';
+import { flowPageSafely, readFlowSafely } from './flow-reading';
 
 /*
  * The hidden window that draws a PDF's pages as pictures (Session 15): each
@@ -51,17 +52,6 @@ async function commentsOf(doc: PDFDocumentProxy, n: number): Promise<string> {
   );
 }
 
-/** A page's text layer and borders where they stand (the page at scale 1, its rotation applied). */
-async function flowPageOf(page: PDFPageProxy): Promise<FlowTextPage> {
-  const viewport = page.getViewport({ scale: 1 });
-  return {
-    width: viewport.width,
-    height: viewport.height,
-    texts: flowTextsOf(await page.getTextContent(), viewport),
-    rules: flowRulesOf(await page.getOperatorList({ annotationMode: AnnotationMode.DISABLE }), OPS, viewport),
-  };
-}
-
 async function draw(): Promise<void> {
   const job = await window.drashti.pictures.job();
   if (!job) return;
@@ -87,10 +77,15 @@ async function draw(): Promise<void> {
     await window.drashti.pictures.done({
       total: 0,
       failed: [],
+      // A Sabha flow is chosen, not imported: its own words for what to do next.
       error:
         name === 'PasswordException'
-          ? 'The PDF is protected with a password: save a copy without one and import that.'
-          : 'The PDF could not be read: it may be damaged. Save it again from the program that made it.',
+          ? job.flowText
+            ? 'The PDF is protected with a password: save a copy without one, then choose that.'
+            : 'The PDF is protected with a password: save a copy without one and import that.'
+          : job.flowText
+            ? 'The PDF could not be read: it may be damaged. Save it again from the program that made it, then choose it again.'
+            : 'The PDF could not be read: it may be damaged. Save it again from the program that made it.',
     });
     return;
   }
@@ -103,6 +98,8 @@ async function draw(): Promise<void> {
   const sheet = document.createElement('canvas');
   const sheetCtx = sheet.getContext('2d', { alpha: false });
   const failed: number[] = [];
+  // Sabha flow: each page's text layer, read once every page is drawn.
+  const flowPages: FlowTextPage[] = [];
   const count = Math.min(doc.numPages, job.maxPages);
   if (!ctx || !sheetCtx) {
     await window.drashti.pictures.done({ total: doc.numPages, failed: [], error: 'Nothing to draw with.' });
@@ -127,18 +124,14 @@ async function draw(): Promise<void> {
           annotationMode: AnnotationMode.DISABLE,
         }).promise;
         const png = await canvasPng(canvas);
-        // Sabha flow (alpha.23): the page's own words and borders, for its reader.
-        const flowPage = job.flowText ? await flowPageOf(page) : undefined;
+        // Sabha flow (alpha.23): the page's own words and borders, kept here for the reading; a page whose text layer
+        // cannot be read still sends its picture.
+        if (job.flowText) {
+          const flowPage = await flowPageSafely(page, OPS);
+          if (flowPage) flowPages.push(flowPage);
+        }
         page.cleanup();
-        if (
-          !(await window.drashti.pictures.page({
-            index: i,
-            png,
-            notes: '',
-            ...(flowPage ? { flowPage } : {}),
-          }))
-        )
-          break;
+        if (!(await window.drashti.pictures.page({ index: i, png, notes: '' }))) break;
         continue;
       }
       const at = fitPage(base.width, base.height, job.width, job.height);
@@ -169,7 +162,12 @@ async function draw(): Promise<void> {
     // A moment between pages: this window's process never holds on to the processor.
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  await window.drashti.pictures.done({ total: doc.numPages, failed });
+  await window.drashti.pictures.done({
+    total: doc.numPages,
+    failed,
+    // Sabha flow: read here, never in Main (which checks it).
+    ...(job.flowText ? { flowReading: readFlowSafely(flowPages) } : {}),
+  });
   await task.destroy();
 }
 

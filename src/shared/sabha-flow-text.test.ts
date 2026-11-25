@@ -39,7 +39,12 @@ describe('a page’s borders', () => {
     const list = { fnArray: [91], argsArray: [[22, [new Float32Array(points)], null]] };
     const ops = { constructPath: 91, fill: 22, stroke: 20, save: 10, restore: 11, transform: 12 };
     expect(flowRulesOf(list, ops, viewport)).toEqual([
-      { x0: 40, y0: expect.closeTo(742 - 0.1, 1), x1: 440, y1: expect.closeTo(742 - 0.1, 1) },
+      {
+        x0: 40,
+        y0: expect.closeTo(742 - 0.1, 1) as unknown,
+        x1: 440,
+        y1: expect.closeTo(742 - 0.1, 1) as unknown,
+      },
     ]);
   });
 });

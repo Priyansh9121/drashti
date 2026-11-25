@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type * as PdfJs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { flowRulesOf, flowTextsOf, type FlowTextPage } from '../../shared/sabha-flow-text';
 import { nodePdfAssets } from '../import/testing/pdfjs-assets';
-import { readSabhaFlow } from './sabha-flow-reader';
+import { readSabhaFlow } from '../../shared/sabha-flow-reader';
 import {
   flowListPage,
   flowScanPage,

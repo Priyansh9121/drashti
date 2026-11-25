@@ -126,8 +126,10 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
     hold: (on: boolean) => {
       holding = on;
     },
-    /** Let the drawing waiting longest go on. */
-    release: () => held.shift()?.(),
+    /** Let every drawing still waiting go on. */
+    releaseAll: () => {
+      for (let go = held.shift(); go; go = held.shift()) go();
+    },
     holdNextWrite: () => {
       holdWrite = true;
     },
@@ -392,7 +394,7 @@ describe('Sabha flow store: Main never reads a PDF’s words (review M1)', () =>
       }
     }
     expect(seen.size).toBeGreaterThan(100);
-    expect([...seen].filter((f) => /sabha-flow-reader/u.test(f))).toEqual([]);
+    expect([...seen].filter((f) => f.includes('sabha-flow-reader'))).toEqual([]);
   });
 });
 
@@ -400,6 +402,12 @@ describe('Sabha flow store: Main never reads a PDF’s words (review M1)', () =>
 const turns = async (n: number) => {
   for (let k = 0; k < n; k++) await new Promise((r) => setImmediate(r));
 };
+
+/** Wait until the store has asked for its `n`th drawing (its copy is made over a few turns of the disk first). */
+async function drawingAsked(s: { drawn: string[] }, n: number): Promise<void> {
+  for (let k = 0; k < 500 && s.drawn.length < n; k++) await turns(1);
+  expect(s.drawn).toHaveLength(n);
+}
 
 describe('Sabha flow store: what happens at once (review S6, S7)', () => {
   it('Now marked while the new PDF’s record is being written: the new flow is current, on disk and after a restart', async () => {
@@ -418,7 +426,7 @@ describe('Sabha flow store: what happens at once (review S6, S7)', () => {
     s.letWriteGo();
     await Promise.all([chosen, now]);
     expect(store.snapshot()).toEqual({
-      flow: expect.objectContaining({ id: 'flow-0002' }),
+      flow: expect.objectContaining({ id: 'flow-0002' }) as unknown,
       state: { flowId: 'flow-0002', now: null },
     });
     const again = s.make();
@@ -468,19 +476,19 @@ describe('Sabha flow store: what happens at once (review S6, S7)', () => {
     await store.load();
     s.hold(true);
     const first = store.choose(s.pdf('First.pdf'));
-    await turns(3);
+    await drawingAsked(s, 1);
     expect(s.signals[0]?.aborted).toBe(false);
     await store.remove();
     expect(s.signals[0]?.aborted).toBe(true);
     expect(await first).toMatchObject({ ok: false });
     const second = store.choose(s.pdf('Second.pdf'));
-    await turns(3);
+    await drawingAsked(s, 2);
     s.setDrawing({ pages: 1, reading: tableReading(4, 'Other') });
     const third = store.choose(s.pdf('Third.pdf'));
-    await turns(3);
+    // The second stops as soon as the third is chosen, before the third's own drawing is asked for.
     expect(s.signals[1]?.aborted).toBe(true);
-    s.release();
-    s.release();
+    await drawingAsked(s, 3);
+    s.releaseAll();
     expect(await second).toMatchObject({ ok: false });
     expect(await third).toMatchObject({ ok: true, flow: { fileName: 'Third.pdf' } });
     expect(store.snapshot().flow?.fileName).toBe('Third.pdf');
