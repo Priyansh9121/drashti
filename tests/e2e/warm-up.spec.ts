@@ -370,6 +370,33 @@ async function expectWarmUp(
     expect(s?.fade, `${what}: a deck's own ${effect} part-way`).toBeGreaterThan(0.3);
     expect(s?.fade, `${what}: a deck's own ${effect} part-way`).toBeLessThan(0.7);
   }
+  // The scene after a Zoom (a22-review-firstwipe S3): its slide going out drawn under its slow zoom, the slide coming
+  // in with none, by the dissolve, part-way; again under the notched clip.
+  for (const key of ['zoom-going/calm', 'zoom-going/calm/clipped']) {
+    const s = scenes.find((x) => x.key === key);
+    expect(s?.kind, `${what}: ${key}, by the dissolve`).toBe('dissolve');
+    expect(s?.fade, `${what}: ${key} part-way`).toBeGreaterThan(0.3);
+    expect(s?.fade, `${what}: ${key} part-way`).toBeLessThan(0.7);
+    const drawn = await page.evaluate(
+      ({ scope, key }) => {
+        const tree = document.querySelector(scope)?.querySelector('[data-warm-up]')?.shadowRoot;
+        const scene = tree?.querySelector<HTMLElement>(`[data-warm-scene="${key}"]`);
+        const going = [
+          ...(scene?.querySelectorAll<HTMLElement>('[data-layer="slide"] [data-slide-out] [data-zoom]') ??
+            []),
+        ];
+        const coming =
+          scene?.querySelectorAll('[data-layer="slide"] [data-slide-in] [data-zoom]').length ?? -1;
+        const transform = going[0] ? getComputedStyle(going[0]).transform : '';
+        const scale = Number(/^matrix\(([^,]+),/u.exec(transform)?.[1] ?? Number.NaN);
+        return { going: going.length, coming, scale };
+      },
+      { scope, key },
+    );
+    expect(drawn.going, `${what}: ${key}, the slide going out under its slow zoom`).toBe(1);
+    expect(drawn.scale, `${what}: ${key}, the slide going out zoomed`).toBeGreaterThan(1);
+    expect(drawn.coming, `${what}: ${key}, the slide coming in with no zoom of its own`).toBe(0);
+  }
   for (const movement of MOVEMENTS) {
     const fade = scenes.find((x) => x.key === `dissolve/${movement}`);
     expect(fade?.messages, `${what}: a message coming in on ${movement}`).toBe(true);
