@@ -3,6 +3,7 @@ import type { FlowLine } from '../../../shared/sabha-flow-lines';
 import {
   flowLine,
   LAST_ITEM,
+  statusWords,
   NEXT_LABEL,
   NOT_STARTED,
   NOTHING_NEXT,
@@ -23,24 +24,8 @@ import { Notice } from '../ui/Notice';
  * screen or the stream. Shown as text, never spoken.
  */
 
-export type FlowView = 'list' | 'page';
-
-/** The views a flow has: its read list and page, or only its page when nothing could be read from it. */
-export const flowViews = (status: SabhaFlowStatus): FlowView[] => (status === 'read' ? ['list', 'page'] : ['page']);
-
-/** Why there is no read list, in plain words; null when it was read. */
-export function statusWords(status: SabhaFlowStatus): string | null {
-  switch (status) {
-    case 'no-text':
-      return 'This PDF has no words Drashti can read: it may be a scan, or pictures of pages. Its page is shown instead.';
-    case 'unreadable':
-      return 'Drashti couldn’t read this PDF’s words: its fonts don’t say which letters they draw, so they come out wrong. Its page is shown instead.';
-    case 'no-items':
-      return 'Drashti read this PDF but found no numbered items in it. Its page is shown instead.';
-    case 'read':
-      return null;
-  }
-}
+export type { FlowView } from '../../../shared/sabha-flow-lines';
+export { flowViews, statusWords } from '../../../shared/sabha-flow-lines';
 
 export function FlowStatusNotice({ status }: { status: SabhaFlowStatus }) {
   const words = statusWords(status);
@@ -88,7 +73,11 @@ export function FlowReadList({
   // The PDF's language on the whole list; in a mixed one, on each part.
   const langOf = mixed ? ownLang(flow.lang) : () => undefined;
   return (
-    <div lang={mixed ? undefined : flow.lang} className="flex flex-col gap-2 px-2 py-2" data-testid="flow-read-list">
+    <div
+      lang={mixed ? undefined : flow.lang}
+      className="flex flex-col gap-2 px-2 py-2"
+      data-testid="flow-read-list"
+    >
       {(flow.title !== undefined || flow.subtitle !== undefined) && (
         <div className="px-1">
           {flow.title !== undefined && (

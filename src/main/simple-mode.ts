@@ -593,6 +593,9 @@ export const SIMPLE_FEATURE_CHANNELS: Readonly<Record<SimpleFeature, readonly In
   'video-inputs': [IPC.videoInputs.choose],
   // Where the box goes and how it looks, kept for the next box; and its window choice, from Show a Window…'s list.
   'picture-in-picture': [IPC.pip.savePlace, IPC.liveWindow.list, IPC.liveWindow.access],
+  // The Sabha flow (alpha.23): Now marked from its list, Back and Next; its PDF is chosen, replaced and removed in Pro
+  // Mode only (flow:choose and flow:remove stay locked).
+  'sabha-flow': [IPC.flow.setNow],
 };
 
 /**

@@ -98,6 +98,14 @@ export const PANEL_HELP = {
     text: 'The pictures the hall sees whenever nothing is up: click one to use it, and click it again to use none (black). Drop pictures here, from the computer or from Media, or press Import…; pictures dropped on a wallpaper go round in it, each fading into the next. Its right-click menu has Edit wallpaper… (their order, seconds and fade), Rename… and Delete…, each with Undo.',
     guide: '**Wallpapers.** Under the playlists',
   },
+  sabhaflow: {
+    title: 'Sabha flow',
+    chapter: 'playlists',
+    feature: 'Sabha flow',
+    doc: 'operator',
+    text: 'The sabha’s running order, from a PDF, for this window and a paired phone only: it never goes on the screens. Choose PDF… reads its numbered items in its own language, English, Gujarati or Hindi; click a row, or press Next, to mark Now, and Next up shows the item after it. A scanned PDF, or one whose letters come out wrong, says so and shows only its page.',
+    guide: '**Sabha flow.** At the top of the left column',
+  },
   playlist: {
     title: 'The open playlist',
     chapter: 'playlists',

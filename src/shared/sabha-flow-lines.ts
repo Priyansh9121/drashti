@@ -1,4 +1,4 @@
-import type { SabhaFlow, SabhaFlowLang } from './sabha-flow';
+import type { SabhaFlow, SabhaFlowLang, SabhaFlowStatus } from './sabha-flow';
 import { nextUpIndex, nowWithin } from './sabha-flow';
 
 /*
@@ -7,7 +7,8 @@ import { nextUpIndex, nowWithin } from './sabha-flow';
  * each row it covers, an empty one left out), Now as its number and first two cells, Next up in full, and "Last item"
  * after the last. A row whose Program (or Details) begins with the word for a video, in English, Gujarati or Hindi, is
  * marked as the video. The words of an item stay in the PDF's own language (textLang says which, for its lang
- * attribute); the labels around them are Drashti's.
+ * attribute); the labels around them are Drashti's. And the plain words for a PDF Drashti could not read (then only its
+ * page is shown), and for no flow yet.
  */
 
 /** Between an item's number and its cells, and between the cells. */
@@ -101,4 +102,28 @@ export function textLang(text: string, lang: SabhaFlowLang): 'en' | 'gu' | 'hi' 
   if (GUJARATI.test(text)) return 'gu';
   if (DEVANAGARI.test(text)) return 'hi';
   return 'en';
+}
+
+/** Said where there is no flow yet (the panel says how to choose one; a phone, that the operator has not). */
+export const NO_FLOW = 'No Sabha flow yet';
+
+/** The panel's (and a phone's) two views of a flow. */
+export type FlowView = 'list' | 'page';
+
+/** The views a flow has: its read list and page, or only its page when nothing could be read from it. */
+export const flowViews = (status: SabhaFlowStatus): FlowView[] =>
+  status === 'read' ? ['list', 'page'] : ['page'];
+
+/** Why there is no read list, in plain words; null when it was read. */
+export function statusWords(status: SabhaFlowStatus): string | null {
+  switch (status) {
+    case 'no-text':
+      return 'This PDF has no words Drashti can read: it may be a scan, or pictures of pages. Its page is shown instead.';
+    case 'unreadable':
+      return 'Drashti couldn’t read this PDF’s words: its fonts don’t say which letters they draw, so they come out wrong. Its page is shown instead.';
+    case 'no-items':
+      return 'Drashti read this PDF but found no numbered items in it. Its page is shown instead.';
+    case 'read':
+      return null;
+  }
 }
