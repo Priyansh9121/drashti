@@ -397,20 +397,61 @@ describe('the operator is told of an output restarted again and again (a23-heart
     expect(RESTARTS_TOLD).toBe(4);
   });
 
-  it('told, it is told no more once it reports and has painted the show (a report behind the show is not enough); its count is kept', () => {
+  it('told, it is told no more only once it has drawn the show and kept reporting for over a minute (review S1)', () => {
     restartedInARow(4);
     rev++;
     beat.changed(rev);
+    // A report behind the show (4 s after the change, not painted) is not drawing.
     run(4000, { hall: () => rev - 1 });
-    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+    // Drawing the show: one report is not enough, nor 60 s of them.
     run(2000, { hall: () => rev });
+    run(RESTART_GRACE_MAX_MS - 2000, { hall: () => rev });
+    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+    run(4000, { hall: () => rev });
     expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
-    run(30_000, { hall: () => rev });
     expect(told).toHaveLength(2);
-    // Silent again within 5 minutes: its next restart is the 5th in a row, said at once.
+    // Its count is kept: silent again within 5 minutes, its next restart is the 5th in a row, said at once.
     untilStuck();
     expect(stuck.at(-1)?.inARow).toBe(5);
     expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: 5 });
+  });
+
+  it('a page that draws the show after each reload and then stops again stays told the whole time (review S1)', () => {
+    restartedInARow(4);
+    for (let i = 0; i < 3; i++) {
+      // It draws for 20 s after its reload, then stops: restarted again.
+      run(20_000, { hall: () => rev });
+      untilStuck();
+      reloaded();
+    }
+    expect(stuck.map((s) => s.inARow)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(told.map((t) => t.restarts)).toEqual([4, 5, 6, 7]);
+  });
+
+  it('a gap in its reports longer than the limit starts its minute of drawing again (review S1)', () => {
+    restartedInARow(4);
+    // Inside its 60 s grace: 30 s drawing, 10 s silent, then drawing again.
+    run(30_000, { hall: () => rev });
+    run(10_000);
+    run(40_000, { hall: () => rev });
+    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+    run(24_000, { hall: () => rev });
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
+  });
+
+  it('while the show changes, a report that has not yet painted a change younger than 3 s still counts as drawing (review S3)', () => {
+    restartedInARow(4);
+    let painted = rev;
+    // The show changes every 3 s and each change is painted 1 s later: always a little behind, never late.
+    for (let i = 0; i < 30; i++) {
+      rev++;
+      beat.changed(rev);
+      run(1000, { hall: () => painted });
+      painted = rev;
+      run(2000, { hall: () => painted });
+    }
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
+    expect(stuck).toHaveLength(4);
   });
 
   it('tried afresh (Try again, or the watchdog’s own try), its count starts again and it is told no more', () => {

@@ -327,6 +327,12 @@ describe('OutputManager', () => {
     screens = [screen('audience', hall), screen('stage', stage)];
     manager.reconcile();
     expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+    // Moved to another display: its window is made again there, and nothing of the old one carries over (review S2).
+    manager.setRestarting('audience', 4);
+    screens = [screen('audience', laptop), screen('stage', stage)];
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3', 'audience@1']);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 1 });
   });
 
   // ---- Audience and Stage (Session 50) ----------------------------------------------------------------------
