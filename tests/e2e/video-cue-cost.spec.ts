@@ -223,6 +223,13 @@ function toneAmplitudes(pcm: Buffer): { a: number; b: number }[] {
   return amplitudes;
 }
 
+/**
+ * Lead 2's option B (QA23-FADE-9 candidate 1, S8; the owner's choice): only LIVE takes its 540p page copies, and the
+ * stream's picture page plays the originals, so no second encoding reaches the stream. As built: 'both' copies.
+ */
+const PAGE_COPIES = 'both' as 'both' | 'live-only';
+const LIVE_COPIES_ONLY = PAGE_COPIES === 'live-only';
+
 test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades while a loopback stream encodes, three rotating rounds', async () => {
   const info = test.info();
   test.setTimeout(180_000);
@@ -259,7 +266,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       expect(previousAffinity).toMatch(/^\d+$/);
     }
     // With each video's position sweep (QA23-FADE-9): where each sound was heard is read back from the recording.
-    const setup = await setupVideoCue(true, true);
+    const setup = await setupVideoCue(
+      true,
+      true,
+      LIVE_COPIES_ONLY ? { DRASHTI_TEST_PAGE_COPIES: 'live-only' } : {},
+    );
     running = setup;
     const { app, win, hall, stream, audio, ids, dir } = setup;
     const streamSound = await windowShowing(
@@ -306,7 +317,9 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       .poll(
         async () => {
           const ready = await win.evaluate(() => (globalThis as PageGlobals).drashti.media.pageCopies());
-          return ids.every((id) => (ready[id] ?? []).includes(720) && (ready[id] ?? []).includes(540));
+          return ids.every(
+            (id) => (LIVE_COPIES_ONLY || (ready[id] ?? []).includes(720)) && (ready[id] ?? []).includes(540),
+          );
         },
         { timeout: 60_000, message: 'each video’s page copies are made while idle' },
       )
@@ -314,7 +327,12 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     // How long the copies took on this runner (a22-review-fadecopies S8: their idle-time cost), and their videos' length.
     console.log(
       'S5_COPIES ' +
-        JSON.stringify({ ms: Date.now() - copiesAsked, videos: ids.length, runner: runner.processor }),
+        JSON.stringify({
+          ms: Date.now() - copiesAsked,
+          videos: ids.length,
+          liveCopiesOnly: LIVE_COPIES_ONLY,
+          runner: runner.processor,
+        }),
     );
     const port = await freePort(),
       received = join(dir, 'received.flv');
@@ -805,8 +823,12 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             'LIVE plays a video’s 540p page copy',
           ).toBe(true);
           expect(
-            ours(onStream).filter((v) => v.src !== pageCopyUrl(v.id, 720)),
-            'the stream’s picture page plays the videos’ 720p page copies',
+            ours(onStream).filter(
+              (v) => v.src !== (LIVE_COPIES_ONLY ? mediaUrl(v.id) : pageCopyUrl(v.id, 720)),
+            ),
+            LIVE_COPIES_ONLY
+              ? 'the stream’s picture page plays every original (option B)'
+              : 'the stream’s picture page plays the videos’ 720p page copies',
           ).toEqual([]);
           expect(ours(onStream).length).toBeGreaterThan(0);
         }

@@ -402,7 +402,7 @@ import {
 } from './events/sources';
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
-import { PageCopies, pageCopiesMayWork, pageCopySource } from './media/page-copies';
+import { PageCopies, pageCopiesMayWork, pageCopyHeightsFor, pageCopySource } from './media/page-copies';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
@@ -5537,6 +5537,8 @@ function start(): void {
   const copies = new PageCopies({
     mediaDir,
     slow: pageCopiesSlow,
+    // The tests' option B (lead 2, S8): LIVE's 540p copies only; the stream's picture page plays the originals.
+    heights: pageCopyHeightsFor(sw('DRASHTI_TEST_PAGE_COPIES')),
     // Not while a cue waits for its Go either: every page warms its decoder for it (a22-review-fadecopies S11).
     idle: () =>
       pageCopiesMayWork({

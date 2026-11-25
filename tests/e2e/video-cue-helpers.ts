@@ -30,9 +30,9 @@ export const COST_BANDS = [
   { lo: 6900, hi: 11_300 },
 ] as const;
 
-export async function setupVideoCue(software = false, sweeps = false) {
+export async function setupVideoCue(software = false, sweeps = false, env: Record<string, string> = {}) {
   const { app } = await launchApp(
-    { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_FAKE_DEVICES: '1' },
+    { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_FAKE_DEVICES: '1', ...env },
     undefined,
     {},
     software ? ['--disable-gpu', '--disable-gpu-compositing', '--disable-accelerated-video-decode'] : [],

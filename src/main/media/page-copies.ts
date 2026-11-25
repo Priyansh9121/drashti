@@ -295,13 +295,17 @@ export interface PageCopiesDeps {
   log(line: string): void;
   /** Deleting a file (tests: one another program holds). */
   remove?: (file: string) => Promise<void>;
-  /** RED STUB (lead 2's option B, S8): not used yet. */
+  /** The heights made (as built: both; the tests' option B: LIVE's 540p only). */
   heights?: readonly PageCopyHeight[];
 }
 
-/** RED STUB (lead 2's option B, S8): no-op body, filled in by the next commit. */
-export function pageCopyHeightsFor(_value: string | undefined): readonly PageCopyHeight[] {
-  return PAGE_COPY_HEIGHTS;
+/**
+ * The heights page copies are made at, from DRASHTI_TEST_PAGE_COPIES (unpackaged only): `live-only` is lead 2's
+ * option B (S8: the owner's choice between a stream copy's small loss and none): LIVE's 540p copies only, so the
+ * stream's picture page plays every original. Anything else, as built: both.
+ */
+export function pageCopyHeightsFor(value: string | undefined): readonly PageCopyHeight[] {
+  return value === 'live-only' ? [540] : PAGE_COPY_HEIGHTS;
 }
 
 /** Makes the page copies, one at a time while idle, and says which are there. */
@@ -353,7 +357,7 @@ export class PageCopies {
           this.infos.set(c.sha256, info);
         }
         if (!info) continue;
-        for (const height of PAGE_COPY_HEIGHTS) {
+        for (const height of this.deps.heights ?? PAGE_COPY_HEIGHTS) {
           const plan = pageCopyPlan(info, height);
           if (!plan || this.there.get(c.sha256)?.has(height)) continue;
           if (this.isClosed() || !this.deps.idle()) return;

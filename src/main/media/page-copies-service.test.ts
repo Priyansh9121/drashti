@@ -227,7 +227,9 @@ it('the tests’ option B (lead 2, S8): only LIVE’s 540p copies, so the stream
   await copies.start();
   await copies.step();
   await copies.step();
-  expect(made.map((m) => m.dest)).toEqual([join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 540, 'webm'))]);
+  expect(made.map((m) => m.dest)).toEqual([
+    join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 540, 'webm')),
+  ]);
   expect(copies.ready()).toEqual({ red: [540] });
   copies.close();
 });
