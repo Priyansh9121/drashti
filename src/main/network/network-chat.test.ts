@@ -18,7 +18,7 @@ import { ChatService } from '../chat/chat-service';
 import { ChatStore } from '../chat/chat-store';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
-import { PHONE_OPS_IN_SIMPLE_MODE } from '../simple-mode-phones';
+import { PHONE_OPS_IN_SIMPLE_MODE, type SimplePhoneScope } from '../simple-mode-phones';
 import type { NetworkWorker } from './network-worker';
 import { NetworkService, type NetworkDeps, OP_CHANNEL } from './network-service';
 import { hashToken } from './tokens';
@@ -36,7 +36,9 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-function setup(options: { refused?: (channel: InvokeChannel) => boolean; letIn?: { now: boolean } } = {}) {
+function setup(
+  options: { refused?: (channel: InvokeChannel) => boolean; letIn?: { now: boolean }; simple?: boolean } = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-network-chat-'));
   dirs.push(dir);
   const db = openDatabase(':memory:');
@@ -115,6 +117,8 @@ function setup(options: { refused?: (channel: InvokeChannel) => boolean; letIn?:
       chatChanges++;
     },
     refused: (channel) => options.refused?.(channel) ?? false,
+    // Simple Mode on (a phone does only what its window does); the chat's requests never ask its playlist.
+    ...(options.simple ? { simple: () => ({}) as SimplePhoneScope } : {}),
     changed: (s) => statuses.push(s),
     log,
     now: () => clock.t,
@@ -272,15 +276,19 @@ describe('the chat’s requests', () => {
     });
   });
 
-  it('works in Simple Mode as the window’s chat does: refused there only when Simple Mode refuses the window’s', () => {
+  it('works on a phone in Simple Mode whatever Simple Mode locks in the window (the owner: chat in the phone’s Simple Mode)', () => {
     for (const op of ['chat', 'chat.name', 'chat.send'] as const) {
-      expect(OP_CHANNEL[op], op).not.toBeNull();
+      // Network-only, as an announcement is: Simple Mode's window lock never stands between a phone and the chat.
+      expect(OP_CHANNEL[op], op).toBeNull();
       expect(['reads', 'apart'], op).toContain(PHONE_OPS_IN_SIMPLE_MODE[op]);
     }
-    const { service, ask } = setup({ refused: (channel) => channel === IPC.chat.send });
+    const { service, ask } = setup({ refused: () => true, simple: true });
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     expect(ask(remote, 'chat').status).toBe(200);
-    expect(ask(remote, 'chat.send', { text: 'Placeholder' })).toEqual({
+    expect(ask(remote, 'chat.name', { name: 'Person 1' }).status).toBe(200);
+    expect(ask(remote, 'chat.send', { text: 'Placeholder' }).status).toBe(200);
+    // The show's requests are refused there as before.
+    expect(ask(remote, 'playlists')).toEqual({
       status: 403,
       body: { ok: false, message: SIMPLE_MODE_REFUSAL },
     });
