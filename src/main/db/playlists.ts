@@ -582,7 +582,13 @@ export class PlaylistRepo {
 
   /** The media in the playlists that crossfade (QA23-FADE-9 candidate 1: the videos page copies are made of). */
   crossfadeMediaIds(): string[] {
-    return [];
+    const rows = this.db
+      .prepare(
+        `SELECT p.settings, i.media_id FROM playlists p JOIN playlist_items i ON i.playlist_id = p.id
+         WHERE p.deleted_at IS NULL AND p.is_template = 0 AND i.deleted_at IS NULL AND i.media_id IS NOT NULL`,
+      )
+      .all() as { settings: string | null; media_id: string }[];
+    return [...new Set(rows.filter((r) => storedCrossfadeMs(r.settings) > 0).map((r) => r.media_id))];
   }
 
   /** Reconcile during the edit that adds or removes rows, never during a show read. */
