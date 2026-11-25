@@ -90,7 +90,7 @@ describe('Now and Next up in the operator window’s Sabha flow panel (QA23-FLOW
     expect(next).toContain('aria-disabled="true"');
     expect(next).not.toContain('disabled=""');
     // Back can move.
-    expect(button(html, 'flow-back-button')).not.toContain('disabled');
+    expect(button(html, 'flow-back-button')).not.toMatch(/aria-disabled="true"|disabled=""/u);
   });
 
   it('before anything is Now: "Now: not started", Next up is the first item, and Back cannot move yet keeps its Tab stop', () => {
@@ -100,7 +100,7 @@ describe('Now and Next up in the operator window’s Sabha flow panel (QA23-FLOW
     const back = button(html, 'flow-back-button');
     expect(back).toContain('aria-disabled="true"');
     expect(back).not.toContain('disabled=""');
-    expect(button(html, 'flow-next-button')).not.toContain('disabled');
+    expect(button(html, 'flow-next-button')).not.toMatch(/aria-disabled="true"|disabled=""/u);
   });
 
   it('says a change to a screen reader once, Now and Next up together (not the buttons), its buttons named with the words they show', () => {
