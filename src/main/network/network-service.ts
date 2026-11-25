@@ -217,6 +217,11 @@ export interface NetworkDeps {
   chat?: ChatService;
   /** The operator's Chat section should read the chat again (the Chat QR, who is connected). */
   chatChanged?(): void;
+  /**
+   * The chat's clock (its day, the Chat QR's 10 minutes, its limits): the schedules' clock, which only a test moves
+   * (index.ts scheduleNow, DRASHTI_TEST_ARTI_CLOCK, never in a packaged Drashti). Left out: now.
+   */
+  chatNow?(): number;
   /** Files between Drashti and its phones (Session 54, phone-files.ts): shared playlists, and files phones add. */
   files?: {
     view(): AddFilesView;
@@ -491,7 +496,7 @@ export class NetworkService implements EngineTransport {
   constructor(private readonly deps: NetworkDeps) {
     this.audioChanges = new RateLimiter(5, 30, () => deps.now());
     this.slideSaves = new RateLimiter(5, 30, () => deps.now());
-    this.chatJoins = new RateLimiter(CHAT_JOIN_RATE.perSecond, CHAT_JOIN_RATE.burst, () => deps.now());
+    this.chatJoins = new RateLimiter(CHAT_JOIN_RATE.perSecond, CHAT_JOIN_RATE.burst, () => this.chatNow());
     this.desktop = deps.desktop
       ? new DesktopAnswers(deps.desktop, {
           // At the computer's yes, long after the ask: still let in, the phone still paired, Simple Mode not refusing.
@@ -565,7 +570,7 @@ export class NetworkService implements EngineTransport {
             expiresAt: this.pairing.expiresAt,
           }
         : null;
-    const invite = this.chatInvite && this.chatInvite.expiresAt > this.deps.now() ? this.chatInvite : null;
+    const invite = this.chatInvite && this.chatInvite.expiresAt > this.chatNow() ? this.chatInvite : null;
     const chatInvite: ChatInvite | null = invite
       ? {
           code: invite.code,
@@ -954,7 +959,7 @@ export class NetworkService implements EngineTransport {
     if (!this.letIn()) return { ok: false, status: 503, message: STOPPED_REFUSAL };
     const now = this.deps.now();
     const offer = this.pairing && this.pairing.expiresAt > now ? this.pairing : null;
-    if (this.chatInvite && this.chatInvite.expiresAt <= now) this.endChatCode();
+    if (this.chatInvite && this.chatInvite.expiresAt <= this.chatNow()) this.endChatCode();
     const invite = this.chatInvite;
     const wrong = {
       ok: false as const,
@@ -1515,6 +1520,11 @@ export class NetworkService implements EngineTransport {
 
   // ---- the chat (alpha.23, QA23-CHAT-1) ----------------------------------------------------------------------------
 
+  /** The chat's clock: the day, the Chat QR's 10 minutes and the joins' limits, all on one (round 5, T-S1). */
+  private chatNow(): number {
+    return this.deps.chatNow?.() ?? this.deps.now();
+  }
+
   private chatAnswer(device: DeviceRow, op: 'chat' | 'chat.name' | 'chat.send', args: unknown): DeviceAnswer {
     const chat = this.deps.chat;
     if (!chat) return deny(404, 'Drashti has no chat here.');
@@ -1559,7 +1569,7 @@ export class NetworkService implements EngineTransport {
     let code = newPairingCode();
     while (code === this.pairing?.code || this.endedChatCodes.includes(code)) code = newPairingCode();
     if (this.chatInvite) this.endChatCode();
-    this.chatInvite = { code, expiresAt: this.deps.now() + CHAT_INVITE_TTL_MS, wrong: 0, joins: new Map() };
+    this.chatInvite = { code, expiresAt: this.chatNow() + CHAT_INVITE_TTL_MS, wrong: 0, joins: new Map() };
     if (this.chatInviteTimer) clearTimeout(this.chatInviteTimer);
     this.chatInviteTimer = setTimeout(() => {
       this.chatInviteTimer = null;

@@ -31,7 +31,13 @@ afterEach(() => {
 });
 
 function setup(
-  options: { refused?: (channel: InvokeChannel) => boolean; letIn?: { now: boolean }; simple?: boolean } = {},
+  options: {
+    refused?: (channel: InvokeChannel) => boolean;
+    letIn?: { now: boolean };
+    simple?: boolean;
+    /** The network's own clock, apart from the chat's (a test clock moves the chat's alone). */
+    network?: { t: number };
+  } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-network-chat-'));
   dirs.push(dir);
@@ -115,7 +121,8 @@ function setup(
     ...(options.simple ? { simple: () => ({}) as SimplePhoneScope } : {}),
     changed: (s) => statuses.push(s),
     log,
-    now: () => clock.t,
+    now: () => (options.network ? options.network.t : clock.t),
+    ...(options.network ? { chatNow: () => clock.t } : {}),
     ...(options.letIn ? { letIn: () => options.letIn?.now ?? false } : {}),
   });
   const listen = () => {
@@ -465,6 +472,26 @@ describe('round 1 of the review (a22-review-chat)', () => {
     clock.t = Date.UTC(2026, 10, 26, 0, 0, 5);
     expect(ask(phone.id, 'chat').status).toBe(401);
     expect(lastDevices().some((d) => d.id === phone.id)).toBe(false);
+  });
+});
+
+describe('the chat’s clock (round 5, T-S1: a test steps midnight and the 10 minutes)', () => {
+  it('the Chat QR’s 10 minutes and its join limits follow the chat’s clock, not the network’s', () => {
+    const network = { t: Date.UTC(2026, 10, 25, 10, 0) };
+    const { service, clock } = setup({ network });
+    const code = invite(service);
+    expect(service.status().chatInvite?.expiresAt).toBe(clock.t + CHAT_INVITE_TTL_MS);
+    const joins = Array.from({ length: 11 }, (_, i) => service.pair(code, `10.0.5.${String(i)}`));
+    expect(joins.at(-1)).toMatchObject({ ok: false, status: 429 });
+    // A second on the chat's clock lets one more join, the network's clock standing still.
+    clock.t += 1000;
+    expect(service.pair(code, '10.0.5.50').ok).toBe(true);
+    // 9:59 on, still shown; 10:01 on, ended.
+    clock.t += CHAT_INVITE_TTL_MS - 2000;
+    expect(service.status().chatInvite?.code).toBe(code);
+    clock.t += 2000;
+    expect(service.status().chatInvite).toBeNull();
+    expect(service.pair(code, '10.0.5.51')).toMatchObject({ ok: false, status: 410 });
   });
 });
 

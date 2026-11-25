@@ -7360,9 +7360,11 @@ function start(): void {
     if (level === 'warn') log.warn(message);
     else log.info(message);
   };
+  // Its clock is the schedules' (scheduleNow): only a test moves it (DRASHTI_TEST_ARTI_CLOCK, never when packaged), so
+  // a test steps midnight and the Chat QR's 10 minutes; the day, the Chat QR and every chat limit read it alike.
   const chatStore = new ChatStore({
     file: join(userDataDir, 'chat', 'today.json'),
-    now: Date.now,
+    now: scheduleNow,
     log: chatLog,
   });
   chatStore.load();
@@ -7379,7 +7381,7 @@ function start(): void {
   };
   const chat = new ChatService({
     store: chatStore,
-    now: Date.now,
+    now: scheduleNow,
     toPhones: (event) => {
       net.chatEvent(event);
     },
@@ -7526,6 +7528,7 @@ function start(): void {
     },
     chat,
     chatChanged,
+    chatNow: scheduleNow,
     // The phone as a full Drashti (Session 54): the computer's screens and Audience and Stage, as the window's own
     // requests change them; covering the controls is asked in the computer's own box, never taken from a phone.
     desktop: {
