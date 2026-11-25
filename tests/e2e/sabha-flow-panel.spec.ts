@@ -62,7 +62,7 @@ const WIDTHS = [44, 140, 190, 70, 106];
 
 /**
  * Three placeholder running orders: an English table whose rows 2 and 3 share one Duration and one Presenter cell, with
- * a title, subtitle and total; a Gujarati one; and a scan (a picture, no text).
+ * a title, subtitle and total; a Gujarati one; and a 25-page scan (pictures, no text: more pages than the 20 drawn).
  */
 async function makePdfs(): Promise<{ table: string; gujarati: string; scan: string }> {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-flow-'));
@@ -104,7 +104,7 @@ async function makePdfs(): Promise<{ table: string; gujarati: string; scan: stri
       }),
     ]),
   );
-  writeFileSync(scan, await makeFlowPdf([flowScanPage()]));
+  writeFileSync(scan, await makeFlowPdf(Array.from({ length: 25 }, () => flowScanPage())));
   return { table, gujarati, scan };
 }
 
@@ -179,7 +179,7 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
 
   // The PDF page: drawn, at the panel's width, then zoomed in, and fitted again.
   await panel.getByRole('tab', { name: 'PDF page' }).click();
-  const picture = panel.getByRole('img', { name: 'Page 1 of 1, placeholder-flow.pdf' });
+  const picture = panel.getByRole('img', { name: 'Page 1 of 1', exact: true });
   await expect(picture).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   const fitted = (await picture.boundingBox())?.width ?? 0;
@@ -218,17 +218,21 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   await expect(rows2.first()).not.toHaveAttribute('aria-current', 'step');
   expect((await flowNow(win2))?.now ?? null).toBeNull();
 
-  // Replace… with a PDF that has no text: said in plain words, its page only.
+  // Replace… with a 25-page PDF that has no text: said in plain words, its pages only, the 20 Main drew (a22-review-flow
+  // M2: never a line for each page it did not), with one line saying so.
   await chooseThis(again.app, scan);
   await panel2.getByRole('button', { name: 'Replace… (choose another PDF)' }).click();
   await expect(panel2.getByTestId('flow-status')).toContainText('no words Drashti can read', {
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await expect(panel2.getByTestId('flow-row')).toHaveCount(0);
   await expect(panel2.getByRole('tablist')).toHaveCount(0);
-  await expect(panel2.getByRole('img', { name: 'Page 1 of 1, placeholder-scan.pdf' })).toBeVisible({
+  await expect(panel2.getByRole('img', { name: 'Page 1 of 25', exact: true })).toBeVisible({
     timeout: 30_000,
   });
+  await expect(panel2.getByTestId('flow-page')).toHaveCount(20, { timeout: 30_000 });
+  await expect(panel2.getByTestId('flow-pages-capped')).toHaveText('Only the first 20 pages are shown.');
+  await expect(panel2.getByTestId('flow-page-view')).not.toContainText('couldn’t be drawn');
   await expectFits(panel2, 'the Sabha flow panel, a PDF with no text, at 1024 × 645');
 
   // Remove asks first, then the panel is empty again.

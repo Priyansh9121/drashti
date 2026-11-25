@@ -181,4 +181,4 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 
 A scanned PDF, or one whose letters come out wrong, says so and shows only its page.
 
-![The operator window: Sabha flow sits at the top of its left column, under Library](../screenshots/operator-1280x720.png)
+![The operator window as it was before Sabha flow came: its left column with Library at the top](../screenshots/operator-1280x720.png)
