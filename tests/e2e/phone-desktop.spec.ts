@@ -876,11 +876,16 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
     await operatorReady(win);
-    const { base } = await networkOn(win);
+    const { base, port } = await networkOn(win);
+    // A script's token first: a pairing code is one at a time.
+    const script = await pairToken(win, port, 'remote', 'Placeholder script');
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
-    const asks = { win, page: p };
+    // The library's requests asked as a Remote script does (the rule is every Remote token's, the owner's Q1): the
+    // phone's page reads its playlists and library again at each of the window's changes here, and asked from the page
+    // too they went past one device's requests a second (429 on CI, a22-phonee2eb-1125-223801-13990).
+    const asks = { win, port, token: script };
     const tree = () => win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
     try {
       await pairByQr(p, base, code, '/remote');
@@ -1164,9 +1169,11 @@ test('a folder with its playlist deleted in the window and put back, and a runni
     // The folder deleted from the phone: refused; in the window (moved from the phone) its playlist goes with it, and
     // Undo puts both back.
     await expectPhoneRefuses(asks, 'POST', '/api/v1/playlists/delete', { ids: [folderId] }, 'computer', tree);
-    await inWindow(
-      win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.remove([id]), folderId),
+    const removed = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.playlists.remove([id]),
+      folderId,
     );
+    if (!removed.ok) throw new Error(removed.message);
     await expect.poll(() => playlistId(win, folderName)).toBeNull();
     await expect.poll(() => playlistId(win, repeatName)).toBeNull();
     await expectPhoneRefuses(
@@ -1177,8 +1184,9 @@ test('a folder with its playlist deleted in the window and put back, and a runni
       'computer',
       tree,
     );
+    // Undo: everything the delete took (the folder and the playlist in it), as the window's Undo puts it back.
     await inWindow(
-      win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.restore([id]), folderId),
+      win.evaluate((ids) => (globalThis as PageGlobals).drashti.playlists.restore(ids), removed.ids),
     );
     await expect.poll(() => playlistId(win, folderName)).toBe(folderId);
     await expect.poll(() => playlistId(win, repeatName)).toBe(repeatId);

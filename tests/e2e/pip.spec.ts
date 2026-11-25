@@ -713,7 +713,8 @@ test('the phone remote names the box, and is refused taking it off, swapping, mo
     await expectPhoneRefuses(asks, 'POST', '/api/v1/clear/pip', {}, 'computer');
     await expectPhoneRefuses(asks, 'POST', '/api/v1/pip/swap', {}, 'computer');
     await expectPhoneRefuses(asks, 'POST', '/api/v1/pip/place', { place: PLACE }, 'computer');
-    await expect(hall.getByTestId('pip-box')).toHaveCount(1);
+    expect(await pipNow(win)).toMatchObject({ source: { kind: 'slides' }, swapped: true });
+    await expect(named).toContainText('(swapped)');
     // Taken off in LIVE (moved from the phone).
     await win.getByTestId('live-pip-take-off').click();
     await expect.poll(() => pipNow(win)).toBeNull();
