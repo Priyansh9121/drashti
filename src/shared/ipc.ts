@@ -43,7 +43,7 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
-import type { StudioLivePicture } from './studio-live';
+import type { StudioLiveMessage } from './studio-live';
 import type { NotOnScreen } from './not-on-screens';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
@@ -2323,7 +2323,7 @@ export interface EventContract {
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
-  [IPC.lowerThirds.live]: StudioLivePicture | null;
+  [IPC.lowerThirds.live]: StudioLiveMessage;
   [IPC.slideEditor.edit]: EditSlidesOpen;
   [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;

@@ -146,6 +146,15 @@ import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
 import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
+import {
+  LiveCopy,
+  linkJoinFor,
+  liveCopyContext,
+  stoppedHallHere,
+  unseenInCopy,
+  WAITING,
+} from './lower-thirds/live-copy';
+import { createLiveCopyWindow } from './lower-thirds/live-copy-window';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
@@ -2972,6 +2981,52 @@ function start(): void {
   const closeStagePreview = (): void => {
     if (stagePreview && !stagePreview.isDestroyed()) stagePreview.close();
   };
+  // Live's copy (alpha.23, lower-thirds/live-copy.ts): with no audience screen showing on this computer, the screens'
+  // page drawn off screen (960 x 540, once a second, muted) for Live's still, open only while Live asks for one. It is
+  // no screen: never in the screens' lists (so never counted, never a node's, never waited for by a video cue), every
+  // output report refused from it, no camera or window capture (cameraPage, screenPage), and no warm-up.
+  let liveCopyWindow: BrowserWindow | null = null;
+  const liveCopy = new LiveCopy({
+    open: (gone) => {
+      // Never a window opened as Drashti quits (Session 23: it would stop the quit).
+      if (quitStarted) return null;
+      const { window: win, copy } = createLiveCopyWindow(gone);
+      liveCopyWindow = win;
+      win.on('closed', () => {
+        if (liveCopyWindow === win) liveCopyWindow = null;
+      });
+      return copy;
+    },
+    log: (line) => {
+      log.info(line);
+    },
+    // Short of memory (as Point Ahead asks): no copy, a whole renderer and one more video decode (a22-review-ltlive S4).
+    room: () => roomToLoadAhead(process.getSystemMemoryInfo(), process.platform),
+  });
+  /** The copy's last still sent, and what it said it could not draw: the same again is not sent (resized, JPEG'd). */
+  let copyStillSent: { image: unknown; unseen: string } | null = null;
+  /** "Getting the live picture…" said for this copy. */
+  let copyWaitingSaid = false;
+  /** The copy closed (Live stopped, a hall screen showing, the GPU process gone, quitting): what was kept for it goes. */
+  const closeLiveCopy = (): void => {
+    liveCopy.close();
+    copyStillSent = null;
+    copyWaitingSaid = false;
+  };
+  // The GPU process gone: the copy may stop painting with no word (a22-review-ltlive N4). Closed, it opens afresh at
+  // Live's next still.
+  app.on('child-process-gone', (_event, details) => {
+    if (details.type === 'GPU') closeLiveCopy();
+  });
+  const liveCopyContextNow = () => liveCopyContext(screenRepo.groups(), mainClockStyle());
+  /** Whether a page is Live's copy's (its context is asked for by it). */
+  const isLiveCopy = (contents: Electron.WebContents): boolean =>
+    liveCopyWindow !== null && !liveCopyWindow.isDestroyed() && liveCopyWindow.webContents.id === contents.id;
+  /** The screens changed: the copy follows the first audience group, as the hall's screens do. */
+  const liveCopyChanged = (): void => {
+    if (liveCopyWindow && !liveCopyWindow.isDestroyed())
+      sendToPage(liveCopyWindow, IPC.output.context, liveCopyContextNow());
+  };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
   followOutputs(warmUps, outputWindows, outputNames, (screenId, win) => {
     const context = contextFor(screenId);
@@ -3211,6 +3266,8 @@ function start(): void {
       // The Stage preview (alpha.22) follows the stage's group and the hall's picture as the stage screens do.
       if (stagePreview && !stagePreview.isDestroyed())
         sendToPage(stagePreview, IPC.output.context, stagePreviewContext());
+      // And Live's copy (alpha.23) the first audience group, as the hall's screens do.
+      liveCopyChanged();
       guardOperator();
       // Keep these screens? (Session 50): whether an output covers the controls, said again when that changed.
       keepScreens.refresh();
@@ -4635,7 +4692,10 @@ function start(): void {
   handle(IPC.liveLink.status, () => streamLinks.view());
   handle(IPC.liveLink.last, (e) => (fromOperator(e) ? lastStreamLink : null));
   // Any of Drashti's own pages that plays it (a screen, LIVE, a card, a stage screen's box, the audio player).
-  handle(IPC.liveLink.join, (_e, linkId) => (typeof linkId === 'string' ? streamLinks.join(linkId) : null));
+  // Live's copy (alpha.23) is never given a place in a stream link: its player never loads it (lead 2, N5).
+  handle(IPC.liveLink.join, (e, linkId) =>
+    typeof linkId === 'string' ? linkJoinFor(isLiveCopy(e.sender), () => streamLinks.join(linkId)) : null,
+  );
 
   // ---- the window for Zoom (Session 48) -------------------------------------------
   const zoom = new ZoomWindow({
@@ -7073,8 +7133,8 @@ function start(): void {
   lowerThirds.purge();
   // Live behind the studio's preview (alpha.22, lower-thirds/studio-live.ts): a still about once a second while the
   // studio shows Live (not while it is minimized), never otherwise, from a picture already drawn: this computer's first
-  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here, none (the
-  // studio says "No live picture to show"). Read only.
+  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here (alpha.23),
+  // from Live's copy, closed again the moment Live stops or a hall screen shows. Read only.
   const studioLive: StudioLive = new StudioLive({
     take: async () => {
       const roles = new Map(screenRepo.groupIds().map((g) => [g.id, g.role]));
@@ -7092,7 +7152,37 @@ function start(): void {
         (id) => showing.has(id) && pageAlive(outputWindows.get(id)),
       );
       const hall = screenId === null ? undefined : outputWindows.get(screenId);
-      if (screenId === null || !hall || hall.isDestroyed()) return null;
+      if (screenId === null || !hall || hall.isDestroyed()) {
+        // A hall screen here stopped (its page kept crashing): no copy of that scene (a22-review-ltlive S5).
+        const states = new Map(manager.status().map((st) => [st.screenId, st.state]));
+        if (
+          stoppedHallHere(
+            screenRepo.screens(),
+            (groupId) => roles.get(groupId) ?? null,
+            (id) => states.get(id) ?? 'unassigned',
+          )
+        ) {
+          closeLiveCopy();
+          return null;
+        }
+        // No hall screen showing here: Live's copy (opened now if it is not open). While its page loads, "Getting the
+        // live picture…" once; then each new picture, saying what is live that it cannot draw (a video input,
+        // another app's window); the same picture again is not sent.
+        const drawn = liveCopy.still();
+        if (drawn === WAITING) {
+          if (copyWaitingSaid) return undefined;
+          copyWaitingSaid = true;
+          return { waiting: true };
+        }
+        if (!drawn) return null;
+        const unseen = unseenInCopy(engine.current.layers);
+        const said = unseen.join(',');
+        if (copyStillSent?.image === drawn && copyStillSent.unseen === said) return undefined;
+        copyStillSent = { image: drawn, unseen: said };
+        return livePictureOf(drawn, 'copy', Date.now(), unseen);
+      }
+      // A hall screen here: its picture, as in alpha.22; the copy, if one was open, goes.
+      closeLiveCopy();
       const image = await hall.webContents.capturePage();
       // Taken as its window closed (its screen switched off, say), it is not what the hall shows: none (as captureLocal).
       if (hall.isDestroyed() || outputWindows.get(screenId) !== hall || !showingNow().has(screenId))
@@ -7105,12 +7195,35 @@ function start(): void {
     log: (line) => {
       log.info(line);
     },
+    // Another backdrop, the studio minimized or closed: the copy goes at once.
+    stopped: () => {
+      closeLiveCopy();
+    },
   });
-  // Tests only (never a packaged Drashti): whether Live's stills are being taken, and how many have been.
+  // Tests only (never a packaged Drashti): whether Live's stills are being taken, how many have been, and Live's copy
+  // while it is open (its size inside, frames a second, muted, its warm-up as loaded).
   if (!packaged())
-    (
-      globalThis as { drashtiTestStudioLive?: () => { watching: boolean; taken: number } }
-    ).drashtiTestStudioLive = () => ({ watching: studioLive.watching, taken: studioLive.taken });
+    (globalThis as { drashtiTestStudioLive?: () => unknown }).drashtiTestStudioLive = () => {
+      const win = liveCopyWindow;
+      const copy =
+        win && !win.isDestroyed() && liveCopy.isOpen
+          ? (() => {
+              const [width = 0, height = 0] = win.getContentSize();
+              const warmUp = URL.canParse(win.webContents.getURL())
+                ? new URL(win.webContents.getURL()).searchParams.get('warmUp')
+                : null;
+              return {
+                width,
+                height,
+                frameRate: win.webContents.getFrameRate(),
+                muted: win.webContents.isAudioMuted(),
+                warmUp,
+                paints: liveCopy.paints(),
+              };
+            })()
+          : null;
+      return { watching: studioLive.watching, taken: studioLive.taken, copy };
+    };
   // The Lower Thirds studio (Session 55, Part 16): a window of its own, where they are made, shown and hidden.
   const studio = new LowerThirdsStudio({
     workArea: () =>
@@ -7137,6 +7250,8 @@ function start(): void {
   };
   stops.add('Lower Thirds studio', () => {
     studio.close();
+    // Closing the studio stops Live, which closes its copy; said again here, so nothing keeps the quit waiting.
+    closeLiveCopy();
   });
   handleStudio({
     studio,
@@ -8002,6 +8117,13 @@ function start(): void {
   /** Told as each output page's first frame is said (the opening waits for them: set further down). */
   let firstPainted: () => void = () => undefined;
   handle(IPC.output.report, (e, raw) => {
+    // Live's copy (alpha.23) is no screen: of its report only its first painted frame counts, for Live's own wait
+    // (until then its pictures are its page's black, a22-review-ltlive S1).
+    if (isLiveCopy(e.sender)) {
+      const painted = (raw as { firstPaint?: { wallAt?: unknown } | null } | null)?.firstPaint;
+      if (typeof painted?.wallAt === 'number') liveCopy.shown();
+      return null;
+    }
     const screenId = manager.screenIdFor(e.sender.id);
     const r = raw as {
       droppedFrames?: unknown;
@@ -8087,6 +8209,7 @@ function start(): void {
       if (operatorWindow && !operatorWindow.isDestroyed() && sender.id === operatorWindow.webContents.id)
         return { name: 'operator', output: null };
       if (streaming.isProgram(sender)) return { name: 'the stream’s page', output: null };
+      if (isLiveCopy(sender)) return { name: 'Live’s copy', output: null };
       return { name: 'a window', output: null };
     },
   });
@@ -9869,6 +9992,8 @@ function start(): void {
   handle(IPC.output.getContext, (event) => {
     // The Stage preview (alpha.22): a stage screen's page, never a screen.
     if (isStagePreview(event.sender.id)) return stagePreviewContext();
+    // Live's copy (alpha.23): the screens' page off screen for the Lower Thirds studio, never a screen.
+    if (isLiveCopy(event.sender)) return liveCopyContextNow();
     const screenId = manager.screenIdFor(event.sender.id);
     // Keep these screens? on an output over the controls that opened, or loaded again, as a change waits: sent
     // before the answer, so after the page listens for it (output-store.ts listens first).
