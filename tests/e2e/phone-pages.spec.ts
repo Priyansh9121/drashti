@@ -219,6 +219,9 @@ for (const engine of ['webkit', 'chromium'] as const satisfies readonly Engine[]
           await expect(page.getByTestId(tab)).toHaveAttribute('aria-selected', 'true');
           await check(`the remote's ${tab} in Simple Mode`);
         }
+        // Back to Pro Mode: Simple Mode pairs nothing, and the next pages are paired.
+        const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+        expect(pro.ok, 'back to Pro Mode').toBe(true);
 
         // The announcement page.
         await page.goto('about:blank');

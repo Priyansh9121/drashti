@@ -212,8 +212,12 @@ test('Sabha flow on a paired phone: Now and Next up, the read list and the PDF p
     await expect(sheet).toHaveCount(0);
     await expect(section.getByTestId('remote-flow-none')).toBeVisible();
 
-    // Simple Mode on the computer, Sabha flow not among Simple Mode Features: the phone shows the flow all the same
-    // (the owner's Q3, "Always"), and its sheet.
+    // Never a Stage device's: it is never on a screen.
+    const stage = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
+    expect((await apiCall(port, '/api/v1/flow', { token: stage })).status).toBe(403);
+
+    // Last (Simple Mode pairs nothing): Simple Mode on the computer, Sabha flow not among Simple Mode Features: the
+    // phone shows the flow all the same (the owner's Q3, "Always"), and its sheet.
     await choose(app, win, english);
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(p.getByTestId('remote-simple')).toBeVisible();
@@ -222,10 +226,6 @@ test('Sabha flow on a paired phone: Now and Next up, the read list and the PDF p
     await expect(sheet.getByTestId('remote-flow-row')).toHaveCount(3);
     await sheet.getByTestId('remote-flow-sheet-close').click();
     await expect(sheet).toHaveCount(0);
-
-    // Never a Stage device's: it is never on a screen.
-    const stage = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
-    expect((await apiCall(port, '/api/v1/flow', { token: stage })).status).toBe(403);
   } finally {
     await phone.close();
     await app.close();

@@ -176,6 +176,9 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
         .soft(await smallText(page), `text under 16 px on the remote's ${tab} tab in Simple Mode`)
         .toEqual([]);
     }
+    // Back to Pro Mode: Simple Mode pairs nothing, and the next phones are paired.
+    const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+    expect(pro.ok, 'back to Pro Mode').toBe(true);
   } finally {
     await phone.close();
   }
