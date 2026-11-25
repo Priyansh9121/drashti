@@ -280,8 +280,8 @@ test('what a long press on a row offered is refused to a phone in words: Pin to 
     await expect.poll(() => nameOf(show.pictureMediaId)).toBe('Placeholder backdrop, renamed');
     await expect(card(win, 'Placeholder backdrop, renamed')).toBeVisible();
     // Session 58, X3: a name of hidden characters alone is refused in words, and a name kept leaves them out.
-    expect(await rename('‮')).toMatchObject({ ok: false, message: 'A name needs 1 to 200 characters.' });
-    expect(await rename('Placeholder backdrop, kept‏')).toMatchObject({ ok: true });
+    expect(await rename('\u202E')).toMatchObject({ ok: false, message: 'A name needs 1 to 200 characters.' });
+    expect(await rename('Placeholder backdrop, kept\u200F')).toMatchObject({ ok: true });
     await expect.poll(() => nameOf(show.pictureMediaId)).toBe('Placeholder backdrop, kept');
 
     // Remove from playlist: the phone's, and its Undo, refused; moved to the window (its bridge, as the row's Delete
