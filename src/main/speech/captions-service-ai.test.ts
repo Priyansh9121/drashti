@@ -434,6 +434,23 @@ describe('caption AI in the captions service', () => {
     }
   });
 
+  it('after an access stop, a language or a pack change starts nothing again: no recognizer, no download (cap-review-next n1)', async () => {
+    const t = setup({ ai: true, pack: { gu: GU } });
+    t.choose('gu');
+    await t.service.setOn(true);
+    expect(t.started).toEqual([{ engine: GU, language: 'gu' }]);
+    t.service.setPrototypeOn(true);
+    t.service.cancelPrototype();
+    t.choose('hi');
+    t.choose('gu');
+    t.service.aiPathChanged();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(t.started).toEqual([{ engine: GU, language: 'gu' }]);
+    expect(t.downloads).toEqual([]);
+    expect(t.service.view().speech).toEqual({ phase: 'off' });
+    t.service.close();
+  });
+
   it('where Route C cannot run either (a Mac before 13.4), it says Route C’s own reason and nothing starts (review S1)', async () => {
     const t = setup({
       ai: true,

@@ -20,6 +20,7 @@ import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices
 import type { PageGlobals } from './helpers';
 import {
   closeLibrary,
+  holdStill,
   killApp,
   launchApp,
   openLibrary,
@@ -38,12 +39,15 @@ import {
 } from './helpers';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { canvasPixels, near, pixels } from './pixels';
+import { expectPhoneRefuses } from './phone-refuses';
 import { holdClock } from './placeholder-slides';
+import { phoneAsks, phoneShowsLive, playlistOf } from './pro-phone';
 
 /*
  * A deck shown as it was (Session 54, C2), from a stand-in made in the test (deck-stand-in.ts: FFmpeg's flat colours
  * as each step's clip and last frame, written into the library as C2's import stores a deck), so no Office and no
- * import is needed. Next and Back go through the clicks with the keys and a phone; every screen draws each step from
+ * import is needed. Next and Back go through the clicks with the keys and a phone (alpha.23, QA23-PHONE-1: a Pro Mode
+ * phone puts a PowerPoint or a PDF up from its playlist row and steps inside it only); every screen draws each step from
  * the engine's time: two of the hall's screens, a node, key and fill, LIVE, the stage's current and next and the
  * phone, compared at moments the engine's clock is held at. A hold goes round; Drashti's own transition comes instead
  * of the deck's; a deck's video starts at its click with the time bar; its sound plays in step. Quiet, generated media
@@ -653,7 +657,7 @@ test('after an unexpected restart a deck’s slide comes back on the same click,
   }
 });
 
-test('a phone steps through a deck’s clicks with Next and Back, its live picture showing the step, and passes axe', async () => {
+test('a phone puts a deck up from its playlist row and steps through its clicks with Next and Back, its live picture showing the step, and passes axe; Next stops at its last slide, never the video or the words after it; its slide cleared from the phone, the other rows and Clear all refused', async () => {
   test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
   test.setTimeout(180_000);
   const { app } = await launchApp({
@@ -667,13 +671,44 @@ test('a phone steps through a deck’s clicks with Next and Back, its live pictu
     await operatorReady(win);
     const files = await makeDeckFiles(win);
     const id = await writeDeck(win, 'Placeholder phone deck', standInDecks(files));
+    // The deck in a playlist, a video and words after it (alpha.23: a phone puts up a PowerPoint or a PDF only).
+    const words = await win.evaluate(async () => {
+      const made = await (globalThis as PageGlobals).drashti.library.newFromWords(
+        'Placeholder words after the deck',
+        'Placeholder words one\n\nPlaceholder words two',
+      );
+      if (!made.ok) throw new Error(made.message);
+      return made.id;
+    });
+    const list = await playlistOf(win, 'Placeholder deck list', [
+      { kind: 'presentation', presentationId: id },
+      { kind: 'media', mediaId: files.video },
+      { kind: 'presentation', presentationId: words },
+    ]);
+    const [deckRow = '', videoRow = '', wordsRow = ''] = list.rows;
     await setUpScreen(win, 'Main Hall', 0);
-    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
     const { base } = await networkOn(win);
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const p = phone.page;
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // The video's row and the words' row from the phone: refused, nothing up.
+    for (const itemId of [videoRow, wordsRow])
+      await expectPhoneRefuses(
+        { win, page: p },
+        'POST',
+        '/api/v1/trigger/item',
+        { playlistId: list.playlistId, itemId },
+        'notDeck',
+      );
+    // The deck's row, put up from the phone (before alpha.23 the operator put it up).
+    expect(
+      (await phoneAsks(p, 'POST', '/api/v1/trigger/item', { playlistId: list.playlistId, itemId: deckRow }))
+        .status,
+    ).toBe(200);
+    await expect.poll(() => step(win)).toBe(0);
+    expect((await state(win)).live.presentationId).toBe(id);
+    await phoneShowsLive(p, win);
     await p.getByTestId('remote-next-button').click();
     await expect.poll(() => step(win)).toBe(1);
     await expect(p.getByTestId('remote-live').locator('[data-deck-step="1"]')).toHaveCount(1);
@@ -700,6 +735,32 @@ test('a phone steps through a deck’s clicks with Next and Back, its live pictu
     expect((await state(win)).layers.slide?.stepFromMs).toBe(CLIP_MS);
     await p.setViewportSize({ width: 375, height: 812 });
     await expectNoSeriousA11yIssues(p, 'the remote on a phone with a deck’s step up');
+
+    // On to its last slide with the phone's Next: there it stops, never the video or the words after it.
+    await p.getByTestId('remote-next-button').click();
+    await expect.poll(() => step(win)).toBe(2);
+    await p.getByTestId('remote-next-button').click();
+    await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
+    await phoneShowsLive(p, win);
+    await p.getByTestId('remote-next-button').click();
+    // A Next with no revision of its own (the review's MUST-2): a tap's carries the revision its page saw, and the
+    // engine lets an older one do nothing (TST-11), so only Next's `within` (the main process's) keeps the deck still.
+    expect(await phoneAsks(p, 'POST', '/api/v1/trigger/next', {})).toMatchObject({
+      status: 200,
+      json: { ok: true, changed: false },
+    });
+    await holdStill(
+      async () => {
+        const now = await state(win);
+        return now.live.presentationId === id && now.live.slideIndex === 1 && now.layers.background === null;
+      },
+      1500,
+      'Next on the phone at the deck’s last slide changes nothing',
+    );
+    // Clear all from the phone: refused; Clear slide (the owner's Q7): the slide goes.
+    await expectPhoneRefuses({ win, page: p }, 'POST', '/api/v1/clear/all', {}, 'computer');
+    expect((await phoneAsks(p, 'POST', '/api/v1/clear/slide', {})).status).toBe(200);
+    await expect.poll(async () => (await state(win)).layers.slide).toBeNull();
   } finally {
     await phone.close();
     await app.close();

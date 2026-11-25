@@ -6,7 +6,7 @@ import type {
   StudioOpen,
 } from '../../../../shared/lower-thirds';
 import { lowerThirdName, NEW_LOWER_THIRD } from '../../../../shared/lower-thirds';
-import type { StudioLivePicture } from '../../../../shared/studio-live';
+import type { StudioLiveMessage } from '../../../../shared/studio-live';
 
 /*
  * The Lower Thirds studio's state (Session 55, Part 16): the library's lower thirds, the one open (its id, as it is
@@ -37,7 +37,7 @@ interface StudioState {
    * Live's still behind the preview (alpha.22), while it shows Live: undefined until the first comes, null when this
    * computer has nothing to take it from.
    */
-  live: StudioLivePicture | null | undefined;
+  live: StudioLiveMessage | undefined;
 }
 
 /** A lower third's three lines, blank where it has none. */

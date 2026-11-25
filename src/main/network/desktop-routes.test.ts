@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { STOPPED_REFUSAL } from '../../shared/access';
-import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
+import type { DeviceAuth, DeviceOp, DeviceRequest } from '../../shared/network-api';
+import { phoneOpRefusal, REMOTE_PHONE_OPS } from '../../shared/phone-rule';
 import { API_ROUTES, NetworkServer, type ServerHost } from './server';
 import { hashToken } from './tokens';
 
@@ -12,7 +13,8 @@ import { hashToken } from './tokens';
  * The phone as a full Drashti (Session 54, the owner's item 3) as the network server takes it: each request reaches
  * the main process as its op with its arguments, the ids from its path winning over its body's, from a Remote
  * only, by POST where it changes something, and nothing at all while Drashti is not let in. On this computer only,
- * with a stand-in for the main process; made-up tokens.
+ * with a stand-in for the main process; made-up tokens. Since alpha.23 (QA23-PHONE-1, the owner's "Only PPT and
+ * PDF") only the command among them still reaches it from a Remote; the network's own process refuses the rest.
  */
 
 const REMOTE_TOKEN = 'test-made-up-remote-token-desktop-00';
@@ -100,7 +102,11 @@ function call(
   });
 }
 
-/** Each request, and what the main process is asked: the op and its arguments. */
+/**
+ * Each request, and what the main process is asked: the op and its arguments. Since alpha.23 (QA23-PHONE-1) the network's
+ * own process refuses a Remote each 'never' request (the arguments its route still makes stand here: the handlers stay
+ * until alpha.24); a command still reaches the main process, which weighs it (phone-rule-service.test.ts).
+ */
 const ASKED: [method: string, path: string, body: unknown, op: string, args: unknown][] = [
   ['GET', '/api/v1/screens', undefined, 'screens', {}],
   ['POST', '/api/v1/screens/keep', undefined, 'screens.keep', {}],
@@ -190,12 +196,26 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
 ];
 
 describe('the phone as a full Drashti’s requests (Session 54)', () => {
-  it('reach the main process as their ops with their arguments, the path’s ids first, from a Remote', async () => {
+  it('from a Remote: a command reaches the main process with its arguments, the path’s ids first; every other is refused in its group’s words before it is asked (QA23-PHONE-1)', async () => {
     const { port, requests } = await start();
     for (const [method, path, body, op, args] of ASKED) {
-      expect((await call(port, path, REMOTE_TOKEN, method, body)).status, path).toBe(200);
-      expect(requests.at(-1), path).toEqual({ deviceId: 'd-remote', op, args, address: '127.0.0.1' });
+      const asked = requests.length;
+      const said = await call(port, path, REMOTE_TOKEN, method, body);
+      if (REMOTE_PHONE_OPS[op as DeviceOp] === 'never') {
+        expect(said.status, path).toBe(403);
+        expect(JSON.parse(said.body), path).toEqual({
+          ok: false,
+          message: phoneOpRefusal(op as DeviceOp, false),
+        });
+        expect(requests.length, path).toBe(asked);
+      } else {
+        expect(op, path).toBe('command');
+        expect(said.status, path).toBe(200);
+        expect(requests.at(-1), path).toEqual({ deviceId: 'd-remote', op, args, address: '127.0.0.1' });
+      }
     }
+    // A video input put up is the one command here: only it reached the main process (which refuses it a phone).
+    expect(requests.map((r) => r.args)).toEqual([{ type: 'showInput', inputId: 'in-1' }]);
   });
 
   it('are refused to a Stage or Announcements device, and changes taken only by POST', async () => {

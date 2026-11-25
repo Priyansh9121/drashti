@@ -12,6 +12,7 @@ import {
   outputPage,
   setUpScreen,
 } from './helpers';
+import { logLines } from './log-lines';
 import { drawPicture, goLive, makeSlides } from './placeholder-slides';
 
 /*
@@ -91,11 +92,10 @@ function newPipelines(events: TraceEvent[]): { desc: string; tiles: boolean; com
  * (Session 57, Q57-17: "Warm-up: skipped, no graphics chip …, for output …"), as Drashti's log says it once a screen.
  */
 function hallWarmUps(userData: string): string[] {
-  const file = join(userData, 'logs', 'drashti.log');
-  if (!existsSync(file)) return [];
-  return readFileSync(file, 'utf8')
-    .split('\n')
-    .filter((line) => / Warm-up(?: of output |: skipped, no graphics chip .*, for output )/u.test(line));
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData).filter((line) =>
+    / Warm-up(?: of output |: skipped, no graphics chip .*, for output )/u.test(line),
+  );
 }
 /** A hall screen's warm-up skipped or cut short: this computer draws without a graphics chip (CI's Windows). */
 const chiplessLine = (line: string) =>

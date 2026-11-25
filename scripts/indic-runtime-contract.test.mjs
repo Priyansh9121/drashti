@@ -72,18 +72,66 @@ test('Indic unknown-token markers never reach displayed words, while malformed r
   );
 });
 
-test('the helper checks every allocation before using it: it says so and exits, never writes through null (review)', () => {
-  const source = readFileSync(new URL('../tools/indic-conformer/ic_ctc.c', import.meta.url), 'utf8');
-  const allocations = [...source.matchAll(/\b(\w+)\s*=\s*(?:malloc|calloc|realloc)\(/gu)];
-  assert.ok(allocations.length >= 10);
+/**
+ * The C source's allocations (`name = malloc(`, `calloc(`, `realloc(`), and those used before their null check: after
+ * the statement that allocates it, the name's first appearance must be `!name` (cap-review-next n3: any use, such as
+ * `memcpy(name, …)`, `name->` or a call with it, not only `name[` and `(name +`). Comments, strings and characters are
+ * no use.
+ */
+function allocationsUsedUnchecked(source) {
+  // One pass, left to right, so a quote in a comment or a slash in a string is read as C reads it.
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/gu, (t) =>
+    t.startsWith('/') ? ' ' : `${t[0] ?? ''}${t[0] ?? ''}`,
+  );
+  const allocations = [...code.matchAll(/\b(\w+)\s*=\s*(?:malloc|calloc|realloc)\(/gu)];
+  const unchecked = [];
   for (const allocation of allocations) {
     const name = allocation[1] ?? '';
-    const after = source.slice(allocation.index);
-    const checked = after.search(new RegExp(`!${name}\\b`, 'u'));
-    const used = after.search(new RegExp(`\\b${name}\\s*\\[|\\(${name}\\s*\\+`, 'u'));
-    assert.ok(
-      checked >= 0 && (used < 0 || checked < used),
-      `${name} is used before its allocation is checked`,
-    );
+    const end = code.indexOf(';', allocation.index);
+    const after = end < 0 ? '' : code.slice(end + 1);
+    const first = after.search(new RegExp(`\\b${name}\\b`, 'u'));
+    if (first < 1 || after[first - 1] !== '!') unchecked.push(name);
   }
+  return { count: allocations.length, unchecked };
+}
+
+test('the helper checks every allocation before using it: it says so and exits, never writes through null (review)', () => {
+  const source = readFileSync(new URL('../tools/indic-conformer/ic_ctc.c', import.meta.url), 'utf8');
+  const { count, unchecked } = allocationsUsedUnchecked(source);
+  assert.ok(count >= 10);
+  assert.deepEqual(unchecked, [], `${unchecked.join(', ')}: used before the allocation is checked`);
+});
+
+test('the allocation rule sees any use before the check: a copy into it, a member through it, a call with it (cap-review-next n3)', () => {
+  const unchecked = (body) => allocationsUsedUnchecked(`static void f(void) {\n${body}\n}\n`).unchecked;
+  assert.deepEqual(
+    unchecked('  char *buf = malloc(8);\n  memcpy(buf, "abc", 4);\n  if (!buf) die("allocation failed");'),
+    ['buf'],
+  );
+  assert.deepEqual(
+    unchecked('  struct s *p = calloc(1, sizeof *p);\n  p->len = 0;\n  if (!p) die("allocation failed");'),
+    ['p'],
+  );
+  assert.deepEqual(unchecked('  float *x = malloc(4);\n  fill(x, 1);\n  if (!x) die("allocation failed");'), [
+    'x',
+  ]);
+  // Checked first, then used: none, however it is used; a comment or a string naming it is no use.
+  assert.deepEqual(
+    unchecked(
+      '  int *ids = malloc(4), *fr = malloc(4);\n  if (!ids || !fr) die("allocation failed");\n  ids[0] = fr[0] = 0;',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    unchecked(
+      '  char *t = calloc(9, 1);\n  if (!t) die("allocation failed");\n  t = realloc(t, 18);\n  if (!t) die("allocation failed");\n  t->x = 0;',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    unchecked(
+      '  char *buf = malloc(8);\n  /* buf: the bytes */ puts("buf");\n  if (!buf) die("allocation failed");\n  memcpy(buf, "abc", 4);',
+    ),
+    [],
+  );
 });

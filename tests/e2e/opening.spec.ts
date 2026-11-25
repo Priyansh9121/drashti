@@ -26,6 +26,7 @@ import {
   relaunchApp,
   setUpScreen,
 } from './helpers';
+import { logLines } from './log-lines';
 import { PLACEHOLDER_OPENING_PHOTO } from './opening-photo';
 import { lightOf } from './pixels';
 import { drawPicture, engineState, goLive, halves, makeSlides, plain } from './placeholder-slides';
@@ -59,10 +60,8 @@ const GENTLE_DB = TONE_DB + 20 * Math.log10(GENTLY);
 
 /** The data folder's log lines that start "Opening:" (never its photo's or its sound's name: checked here too). */
 function openingLog(userData: string): string[] {
-  const file = join(userData, 'logs', 'drashti.log');
-  if (!existsSync(file)) return [];
-  return readFileSync(file, 'utf8')
-    .split('\n')
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((l) => l.includes('Opening: '))
     .map((l) => l.slice(l.indexOf('Opening: ')));
 }

@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { availableParallelism, constants, setPriority } from 'node:os';
 import { CAPTIONS_STOP_AFTER_RESTS, type CaptionTiming } from '../../shared/captions';
 import {
+  SLOW_ANSWERS_IN_A_ROW,
   SPEECH_RATE,
   type Heard,
   type HeardWord,
@@ -11,6 +12,7 @@ import {
   type SpeechLanguage,
 } from '../../shared/speech';
 import type { CaptionHints } from './caption-hints';
+import { audioContextFor } from './whisper-context';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
 import { isSpeech } from './speech-level';
@@ -83,6 +85,12 @@ export interface WhisperEngineOptions {
   restMs?: number;
   /** The admin's caption words for the language listened in (alpha.22), given to whisper.cpp as its prompt. */
   hints?: CaptionHints;
+  /**
+   * QWC-1 (the owner: "Yes, Windows small"): whether the language's engine sizes whisper's audio context to each piece, with the
+   * temperature fallback off (whisper-context.ts: a CPU engine with a small model only). Asked at each start; left
+   * out or false, the request is today's exactly.
+   */
+  sizedContext?: (language: SpeechLanguage | 'auto') => boolean;
   /**
    * Told once after each stop, when the program that start ran has exited, or at once when none is running
    * (alpha.23: Route W gives the pack's model file back only then, as Windows cannot remove a file a program still has
@@ -293,6 +301,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       let retrySound: NodeJS.Timeout | null = null;
       let allowFallback = true;
       let withTimestamps = true;
+      let sized = false;
       const abort = new AbortController();
       // The noise floor, learnt as it goes: speech is well above it.
       let floor = 300;
@@ -332,6 +341,8 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         // The admin's caption words, as whisper.cpp's initial prompt (about 220 tokens at most): none, none sent.
         const prompt = o.hints?.for(language).prompt ?? '';
         if (prompt !== '') form.append('prompt', prompt);
+        // QWC-1: the audio context sized to the piece, after every field today sends.
+        if (sized) form.append('audio_ctx', String(audioContextFor(samples.length)));
         const began = Date.now();
         const response = await get(`${address}/inference`, {
           method: 'POST',
@@ -354,7 +365,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         return all;
       };
 
-      const hold = (measured: Pick<SlowHold, 'answerMs' | 'behindMs'>): void => {
+      const hold = (measured: Pick<SlowHold, 'answerMs' | 'behindMs' | 'limitMs'>): void => {
         if (busy || stopped) return;
         busy = true;
         rests += 1;
@@ -405,9 +416,10 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           const asked = await ask(samples);
           if (!asked || ended()) return;
           const behind = Date.now() - clipEndAt;
-          slowInARow = asked.tookMs > stepMs * 1.5 ? slowInARow + 1 : 0;
-          if (slowInARow >= 3 || behind > 8_000) {
-            hold({ answerMs: asked.tookMs, behindMs: behind });
+          const limitMs = stepMs * 1.5;
+          slowInARow = asked.tookMs > limitMs ? slowInARow + 1 : 0;
+          if (slowInARow >= SLOW_ANSWERS_IN_A_ROW || behind > 8_000) {
+            hold({ answerMs: asked.tookMs, behindMs: behind, limitMs });
             return;
           }
           const heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
@@ -547,7 +559,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         );
         // The Windows server has an optional public files directory. Drashti serves no files.
         if (process.platform === 'win32') args.push('--public', '');
-        allowFallback = o.fallback(language);
+        sized = o.sizedContext?.(language) ?? false;
+        // A sized context goes with the fallback off (measured so: the words the same, the answers steadier).
+        allowFallback = sized ? false : o.fallback(language);
         withTimestamps = o.timestamps?.(language) ?? true;
         const started = run(program, args);
         child = started;

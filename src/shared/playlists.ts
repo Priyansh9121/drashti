@@ -155,6 +155,11 @@ export type PlaylistItemInfo =
       gone?: boolean;
       /** Added from a phone (Session 54): the device's name. */
       fromDevice?: string;
+      /**
+       * A PowerPoint or a PDF a phone may put up (alpha.23, QA23-PHONE-1: shared/phone-decks.ts), said to a phone only
+       * (a Remote's list of a playlist's rows): the only rows it lists.
+       */
+      phonePlays?: boolean;
     }
   | {
       id: string;

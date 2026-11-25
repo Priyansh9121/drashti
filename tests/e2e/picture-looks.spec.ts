@@ -19,6 +19,7 @@ import {
 } from './helpers';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import { launchMain, launchNode, pairNode } from './nodes';
+import { expectPhoneRefuses } from './phone-refuses';
 import { canvasPixels } from './pixels';
 
 /*
@@ -29,7 +30,8 @@ import { canvasPixels } from './pixels';
  * enhancement checked in the screens' pixels; and a node following.
  * Sharpness (Session 26f) is a sharpened copy made once per picture: the
  * screens and a node draw it with no filter in their pages, and its pixels
- * match the editor's preview. Pictures generated here only.
+ * match the editor's preview. A phone draws the sharpened copy too, and is refused changing the look or
+ * zooming the screens (alpha.23, QA23-PHONE-1). Pictures generated here only.
  */
 
 /** A picture drawn in the page: a colour, or two side by side, or a band of each across. */
@@ -699,6 +701,21 @@ test('a phone draws a sharpened picture from its copy at the width it draws it, 
     expect(loads).toContain(`/api/v1/media/${copyId}/picture`);
     // Only pictures, never a file in pieces (a video's, played on the phone), the copy's or the picture's.
     expect(loads.filter((path) => path.includes('/media/') && !path.endsWith('/picture'))).toEqual([]);
+
+    // The phone draws the look; it may not change it or zoom the screens (alpha.23, QA23-PHONE-1, the owner's Q8: "View
+    // only"): the phone's Picture editor's look, its save and the live zoom are refused in words, the look as kept.
+    const fromPhone = { win, page: p };
+    const kept = () => libraryLook(win, pictureId);
+    await expectPhoneRefuses(fromPhone, 'GET', `/api/v1/media/${pictureId}/look`, undefined, 'media', kept);
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      `/api/v1/media/${pictureId}/look`,
+      { zoom: 1, x: 0, y: 0, brightness: 0, contrast: 0, colour: 0, sharpness: 0 },
+      'media',
+      kept,
+    );
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/zoom', { zoom: 2, x: 0, y: 0 }, 'media', kept);
   } finally {
     await phone.close();
   }

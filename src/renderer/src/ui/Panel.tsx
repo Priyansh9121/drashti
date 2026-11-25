@@ -34,6 +34,7 @@ export function Panel({
   icon: IconShape,
   help: topic,
   actions,
+  badge,
   collapsible = false,
   remember,
   defaultOpen = true,
@@ -49,6 +50,11 @@ export function Panel({
   /** "What is this?": which words of shared/panel-help.ts it opens (every operator panel has some). */
   help?: PanelHelpId;
   actions?: ReactNode;
+  /**
+   * A small count beside the title, folded or not (alpha.23: the chat's new messages), part of its name for a screen
+   * reader (the toggle's, when it folds).
+   */
+  badge?: ReactNode;
   collapsible?: boolean;
   /** A name to remember whether it is folded (per computer, or while Drashti runs: `keep`). */
   remember?: string;
@@ -76,6 +82,7 @@ export function Panel({
     <span className="flex min-w-0 items-center gap-1.5">
       {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-heading" />}
       <span className="truncate">{title}</span>
+      {badge}
     </span>
   );
   return (

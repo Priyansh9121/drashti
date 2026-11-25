@@ -43,11 +43,13 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
-import type { StudioLivePicture } from './studio-live';
+import type { StudioLiveMessage } from './studio-live';
+import type { NotOnScreen } from './not-on-screens';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
+import type { SabhaFlowChoice, SabhaFlowNowResult, SabhaFlowSnapshot } from './sabha-flow';
 import type {
   OpeningChoice,
   OpeningEnd,
@@ -156,6 +158,7 @@ import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
+import type { ChatOperatorView, ChatResult } from './chat';
 import type {
   ItemOrder,
   MediaSummary,
@@ -184,6 +187,7 @@ import type {
   TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { OnSlide } from './picture-on-slide';
 import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -362,6 +366,22 @@ export const IPC = {
     changed: 'events:changed',
     /** main -> operator: File > Events Out… was chosen. */
     open: 'events:open',
+  },
+  /**
+   * Sabha flow (alpha.23, shared/sabha-flow.ts): the sabha's running order, a PDF chosen in the operator window's panel,
+   * read from its own text, and where the sabha is (Now). Operator window only; never on a screen.
+   */
+  flow: {
+    /** The flow and its Now, together. */
+    get: 'flow:get',
+    /** Main's file dialog: Drashti's own copy, read and drawn (null: cancelled). */
+    choose: 'flow:choose',
+    remove: 'flow:remove',
+    setNow: 'flow:set-now',
+    /** A page's PNG, as drawn when the PDF was chosen. */
+    page: 'flow:page',
+    /** main -> operator: the flow or Now changed. */
+    changed: 'flow:changed',
   },
   /** The drop folder (Session 28, shared/drop-folder.ts): in Pro Mode only. */
   drop: {
@@ -720,6 +740,22 @@ export const IPC = {
      * where its page can tell nothing else.
      */
     served: 'media:served',
+    /**
+     * The videos still up that one of this computer's screens could not play (alpha.23, a22-halldrop): what LIVE names
+     * under its picture (shared/not-on-screens.ts), read as the operator window opens, and told as it changes.
+     */
+    notOnScreens: 'media:not-on-screens',
+    notOnScreensChanged: 'media:not-on-screens-changed',
+    /**
+     * A screen's page that said a showing could not play drew it after all (a22-halldrop's review, MUST-2): LIVE no
+     * longer names that screen for it.
+     */
+    playsHere: 'media:plays-here',
+    /**
+     * A screen's page has no first frame of a showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a)): LIVE says
+     * it is starting there until it draws (media:plays-here) or the verdict comes.
+     */
+    noFrameYet: 'media:no-frame-yet',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1337,6 +1373,21 @@ export const IPC = {
     /** main -> operator: the queue changed. */
     changed: 'announcements:changed',
   },
+  /** The chat with paired phones (alpha.23, shared/chat.ts): the operator window's Chat section. */
+  chat: {
+    view: 'chat:view',
+    /** A message as the operator ("Operator"). */
+    send: 'chat:send',
+    /** Empty the day's chat, on every phone too. */
+    clear: 'chat:clear',
+    /** Remove a person: their device is unpaired and cut off at once. */
+    remove: 'chat:remove',
+    /** Show the pairing dialog's "Chat" QR (a new code; each phone that scans it is paired by itself), and stop it. */
+    invite: 'chat:invite',
+    endInvite: 'chat:end-invite',
+    /** main -> operator: the chat changed (a message, a person, cleared, the QR). */
+    changed: 'chat:changed',
+  },
   /** Output nodes, on Main (Session 13): pairing, the dashboard's status and actions (operator window only). */
   nodes: {
     status: 'nodes:status',
@@ -1619,6 +1670,11 @@ export interface InvokeContract {
   [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
   [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
+  [IPC.flow.get]: { args: []; result: SabhaFlowSnapshot };
+  [IPC.flow.choose]: { args: []; result: SabhaFlowChoice | null };
+  [IPC.flow.remove]: { args: []; result: null };
+  [IPC.flow.setNow]: { args: [flowId: string, now: number | null]; result: SabhaFlowNowResult };
+  [IPC.flow.page]: { args: [flowId: string, page: number]; result: Uint8Array | null };
   [IPC.drop.view]: { args: []; result: DropFolderView };
   [IPC.drop.pickFolder]: { args: []; result: DropFolderResult | null };
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
@@ -1908,6 +1964,9 @@ export interface InvokeContract {
     result: null;
   };
   [IPC.media.served]: { args: [mediaId: string]; result: number };
+  [IPC.media.notOnScreens]: { args: []; result: NotOnScreen[] };
+  [IPC.media.playsHere]: { args: [mediaId: string, startedAt: number]; result: null };
+  [IPC.media.noFrameYet]: { args: [mediaId: string, startedAt: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
   [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };
@@ -1952,7 +2011,10 @@ export interface InvokeContract {
   };
   [IPC.media.keepLiveZoom]: { args: []; result: { ok: true } | { ok: false; message: string } };
   [IPC.media.photo]: { args: [mediaId: string]; result: boolean };
-  [IPC.media.savePicture]: { args: [mediaId: string, name: string]; result: SavePictureResult };
+  [IPC.media.savePicture]: {
+    args: [mediaId: string, name: string, onSlide?: OnSlide];
+    result: SavePictureResult;
+  };
   [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
   [IPC.media.rowTrim]: { args: [itemId: string]; result: RowTrimView | null };
   [IPC.media.applyRowTrim]: { args: [itemId: string, request: RowTrimRequest]; result: RowTrimResult };
@@ -2218,6 +2280,12 @@ export interface InvokeContract {
   };
   [IPC.announcements.reject]: { args: [which: { id: string }]; result: AnnouncementResult };
   [IPC.announcements.takeOff]: { args: [which: { id: string }]; result: AnnouncementResult };
+  [IPC.chat.view]: { args: []; result: ChatOperatorView };
+  [IPC.chat.send]: { args: [text: string]; result: ChatResult };
+  [IPC.chat.clear]: { args: []; result: ChatResult };
+  [IPC.chat.remove]: { args: [personId: string]; result: ChatResult };
+  [IPC.chat.invite]: { args: []; result: ChatResult };
+  [IPC.chat.endInvite]: { args: []; result: ChatResult };
   [IPC.nodes.status]: { args: []; result: NodesStatus };
   [IPC.nodes.startPairing]: { args: []; result: NodesResult };
   [IPC.nodes.cancelPairing]: { args: []; result: NodesResult };
@@ -2272,6 +2340,7 @@ export interface EventContract {
   [IPC.backups.open]: { at: number };
   [IPC.events.changed]: EventsOutView;
   [IPC.events.open]: { at: number };
+  [IPC.flow.changed]: SabhaFlowSnapshot;
   [IPC.drop.changed]: DropFolderView;
   [IPC.drop.open]: { at: number };
   [IPC.opening.key]: { at: number };
@@ -2303,7 +2372,7 @@ export interface EventContract {
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
-  [IPC.lowerThirds.live]: StudioLivePicture | null;
+  [IPC.lowerThirds.live]: StudioLiveMessage;
   [IPC.slideEditor.edit]: EditSlidesOpen;
   [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;
@@ -2330,6 +2399,7 @@ export interface EventContract {
   [IPC.youtube.changed]: YouTubeStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
+  [IPC.media.notOnScreensChanged]: NotOnScreen[];
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
   [IPC.media.trimStatusesChanged]: TrimStatuses;
@@ -2352,6 +2422,7 @@ export interface EventContract {
   [IPC.accessList.changed]: AccessListView;
   [IPC.network.changed]: NetworkStatus;
   [IPC.announcements.changed]: AnnouncementsView;
+  [IPC.chat.changed]: ChatOperatorView;
   [IPC.nodes.changed]: NodesStatus;
   [IPC.nodes.thumbs]: ScreenThumb[];
   [IPC.node.changed]: NodeView;

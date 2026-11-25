@@ -10,18 +10,21 @@
  *
  * Which tools: those of Pro Mode's sections under LIVE that are used while the show runs. Not MIDI or OSC (they set a
  * controller or a console up), not QR code (it makes a new slide in the library, which Simple Mode does not show),
- * and not Audio (Simple Mode has it already).
+ * and not Audio (Simple Mode has it already). And (alpha.23, QA23-FLOW-1) the Sabha flow, which is not under LIVE: in
+ * Simple Mode it is at the top of the left column, as in Pro Mode, marking Now, its PDF chosen in Pro Mode.
  */
 
 export type SimpleFeature =
   | 'stage'
   | 'messages'
+  | 'chat'
   | 'timers'
   | 'lower-thirds'
   | 'show-a-window'
   | 'show-a-stream-link'
   | 'video-inputs'
-  | 'picture-in-picture';
+  | 'picture-in-picture'
+  | 'sabha-flow';
 
 export interface SimpleFeatureWords {
   id: SimpleFeature;
@@ -31,7 +34,7 @@ export interface SimpleFeatureWords {
   line: string;
 }
 
-/** The tools, in the order of Pro Mode's sections under LIVE (Simple Mode shows them in the same order). */
+/** The tools, in the order of Pro Mode's sections under LIVE (Simple Mode shows them in the same order), then the Sabha flow. */
 export const SIMPLE_FEATURES: readonly SimpleFeatureWords[] = [
   {
     id: 'stage',
@@ -42,6 +45,11 @@ export const SIMPLE_FEATURES: readonly SimpleFeatureWords[] = [
     id: 'messages',
     name: 'Messages',
     line: 'The messages made in Pro Mode shown on the screens and taken off.',
+  },
+  {
+    id: 'chat',
+    name: 'Chat',
+    line: 'The day’s chat with the paired phones read and written as the operator, a Chat QR phone removed and the Chat QR code stopped; Clear chat and showing the code stay in Pro Mode.',
   },
   {
     id: 'timers',
@@ -64,6 +72,11 @@ export const SIMPLE_FEATURES: readonly SimpleFeatureWords[] = [
     id: 'picture-in-picture',
     name: 'Picture in Picture',
     line: 'Something small in a corner of the screens: put in the box, swapped and taken off.',
+  },
+  {
+    id: 'sabha-flow',
+    name: 'Sabha flow',
+    line: 'The sabha’s running order at the top of the left column, with Now and Next up marked; its PDF is chosen in Pro Mode.',
   },
 ];
 

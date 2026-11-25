@@ -194,7 +194,7 @@ export function StudioApp() {
   const pictures = useEngine((s) => s.state?.pictures ?? NO_LOOKS);
   const behind = backdropDraw(backdrop, { wallpaper, pictures }, live);
   // The preview is a picture (hidden from screen readers): what it says over its backdrop is said beside it too.
-  const behindWords = behind.kind === 'plain' ? behind.words : undefined;
+  const behindWords = behind.kind === 'wallpaper' ? undefined : behind.words;
   const dirty = isDirty({ draft, saved });
   const hasWords = shownLines(draft.lines).length > 0;
   const up = id !== null && id === upId;

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mediaMarkersInputSchema } from './markers';
+import { VIDEO_EXTENSIONS } from './media';
 import type { MediaMarkers } from './markers';
 import { idSchema } from './model-schema';
 
@@ -104,6 +105,22 @@ export function trimStatusWords(status: TrimRowStatus | undefined): string | nul
   if (status.progress !== null)
     return `Saving the trimmed video: ${String(Math.round(Math.min(1, Math.max(0, status.progress)) * 100))}%`;
   return TRIM_TURN;
+}
+
+/**
+ * The name a row's trimmed video takes in Media, without its extension (alpha.22; main/convert/trim-copy.ts, the
+ * name its Trim dialog says before Save trimmed video): the original's, less a video's extension, and "trimmed". A
+ * dot that is part of the name stays ("Placeholder v1.2 trimmed"; the save-trim review's nit). Main makes it safe on
+ * both systems first, and a number goes after it when that name is taken.
+ */
+export function trimmedTitle(name: string): string {
+  // Everything before the last dot (at least one character), and what follows it.
+  const parts = /^(.+)\.([^.]+)$/su.exec(name);
+  const stem = parts?.[1];
+  const extension = parts?.[2]?.toLowerCase();
+  const title =
+    stem !== undefined && extension !== undefined && VIDEO_EXTENSIONS.includes(extension) ? stem : name;
+  return `${title} trimmed`;
 }
 
 /** The notice once a row's trimmed video is made (alpha.22). */

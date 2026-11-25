@@ -1,12 +1,10 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { BrowserContext, ElectronApplication, Page } from '@playwright/test';
 import { chromium, expect, test, webkit } from '@playwright/test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
-import { MIDI_NOT_LISTED } from '../../src/shared/network-desktop';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../../src/main/outputs/screen-switches';
-import { expectNoSeriousA11yIssues } from './a11y';
 import {
   apiCall,
   device,
@@ -21,23 +19,28 @@ import {
   importAndGetIds,
   launchApp,
   needsRealScreen,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
   type PageGlobals,
   setUpScreen,
 } from './helpers';
+import { expectPhoneRefuses } from './phone-refuses';
+import { phoneAsks } from './pro-phone';
 import { makeTestTone, makeTestVideo } from './test-media';
 
 /*
  * The phone as a full Drashti (Session 54, the owner's item 3: "the drashti phone should be just like a mirror …
- * full of drashti connection"): the Drashti computer's own screens set up from a phone as its Screens sheet sets
- * them up, Keep these screens? answered on the phone with its countdown, and Audience and Stage turned there, off
- * asking the window's question first; Simple Mode refusing on the phone just what it refuses in the window; none of
- * it for a Stage or Announcements device; an output a phone would put over the controls asked in the computer's own
- * box (a real screen: CI); laid out at 375 × 812 and 768 × 1024 in Safari's engine and Chrome's, with axe, 44 px
- * targets and nothing off the side. Drashti's pretend displays and windowed outputs; placeholder names; codes and
- * tokens made at run time and never printed.
+ * full of drashti connection") ended in alpha.23 (QA23-PHONE-1, the owner: "no video access in either of simple or
+ * pro mode in phone, they cant change videos, only ppts an pdfs, that also in pro mode, in simple mode only show the
+ * flow, whats running in live, and chat"). Every request the phone's sheets made (the computer's screens, Keep these
+ * screens?, Audience and Stage, video inputs and windows, picture in picture, the library and the playlists, an Audio
+ * track, a folder, MIDI and the announcements' queue) is refused in words, in Pro Mode and Simple Mode, from Safari's
+ * engine and Chrome's at 375 × 812 and 768 × 1024, and nothing changes; the same steps made in the operator window
+ * (moved from the phone) give what the phone's gave. A Stage or Announcements device can do none of it, and nothing a
+ * phone sends asks the computer's own box to cover the controls. Drashti's pretend displays and windowed outputs;
+ * placeholder names; codes and tokens made at run time and never printed.
  */
 
 /** The first pretend display's id (src/main/outputs/electron-outputs.ts, EXTRA_DISPLAY_ID). */
@@ -96,194 +99,214 @@ const switchesNow = (win: Page) =>
 
 const openOutputs = (app: ElectronApplication) => outputPages(app).filter((p) => !p.isClosed()).length;
 
-/** Every visible control under 44 × 44 CSS pixels (as phone-pages.spec.ts measures them). */
-const tooSmall = (page: Page) =>
-  page.evaluate(() =>
-    [
-      ...document.querySelectorAll<HTMLElement>(
-        'button, a[href], input:not([type="hidden"]), select, textarea, [role="tab"], [role="button"]',
-      ),
-    ]
-      .filter((el) => el.offsetParent !== null)
-      .map((el) => ({
-        name: (el.getAttribute('aria-label') ?? el.textContent).trim().slice(0, 30),
-        r: el.getBoundingClientRect(),
-      }))
-      .filter(({ r }) => r.width < 44 || r.height < 44)
-      .map(({ name, r }) => `${name} (${String(Math.round(r.width))} × ${String(Math.round(r.height))})`),
-  );
-
-/** Whatever reaches past the page's right edge, or makes the sheet or the remote scroll sideways. */
-const offTheSide = (page: Page) =>
-  page.evaluate(() => {
-    const width = document.documentElement.clientWidth;
-    const scrolls = [
-      document.scrollingElement,
-      ...document.querySelectorAll('main, main *, [role="dialog"], [role="dialog"] *'),
-    ].filter(
-      (el): el is Element =>
-        el !== null &&
-        el.scrollWidth > el.clientWidth + 1 &&
-        ['auto', 'scroll'].includes(getComputedStyle(el).overflowX),
-    );
-    const past = [...document.querySelectorAll<HTMLElement>('button, input, select, h2, h3')].filter(
-      (el) => el.offsetParent !== null && el.getBoundingClientRect().right > width + 1,
-    );
-    return [...scrolls, ...past].map((el) => `${el.tagName} ${el.textContent.trim().slice(0, 30)}`);
+/** A phone's page paired at this size (a phone's or a tablet's), on its own page in the browser given. */
+async function phoneAt(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  win: Page,
+  base: string,
+  size: (typeof SIZES)[number],
+): Promise<{ context: BrowserContext; page: Page }> {
+  const context = await browser.newContext({
+    viewport: { width: size.width, height: size.height },
+    isMobile: true,
+    hasTouch: true,
+    bypassCSP: true,
   });
-
-/** The phone's More, where the computer's screens are (a phone's tab; a tablet's column, scrolled to). */
-async function toScreens(page: Page, layout: 'phone' | 'wide'): Promise<void> {
-  if (layout === 'phone') await page.getByTestId('remote-tab-more').click();
-  await page.getByTestId('remote-open-screens').click();
-  await expect(page.getByTestId('remote-screens')).toBeVisible();
+  const page = await context.newPage();
+  await pairByQr(page, base, await pairingCode(win, 'remote', `Placeholder ${size.name}`), '/remote');
+  await expect(page.getByTestId('connection')).toHaveText('Connected');
+  return { context, page };
 }
 
+/** A screen group made in the window; its id. */
+const newGroup = (win: Page, name: string) =>
+  win.evaluate(async (n) => {
+    const made = await (globalThis as PageGlobals).drashti.screens.createGroup(n);
+    if (!made.ok) throw new Error(made.message);
+    return made.snapshot.groups.find((g) => g.name === n)?.id ?? '';
+  }, name);
+
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the computer’s screens set up from a phone as in Screens, Keep these screens? answered there with its countdown, laid out at 375 × 812 and 768 × 1024 (${engine})`, async () => {
+  test(`the computer’s screens set up in the window as in Screens, Keep these screens? answered there with its countdown; a phone at 375 × 812 and 768 × 1024 is refused each step in words (${engine})`, async () => {
     test.setTimeout(300_000);
     const { app } = await launchApp(ASKS);
     const win = await operatorPage(app);
     await operatorReady(win);
-    // The computer's own box agrees each time a phone asks to cover the (pretend) controls.
+    // The computer's own box would agree if a phone asked it to cover the (pretend) controls: no phone ever does now.
     await answerBoxWith(app, 1);
     const { base } = await networkOn(win);
+    const question = win.getByTestId('keep-screens');
+    const screens = () => screensNow(win);
     const browser = await (engine === 'webkit' ? webkit : chromium).launch();
     try {
       for (const size of SIZES) {
-        const context = await browser.newContext({
-          viewport: { width: size.width, height: size.height },
-          isMobile: true,
-          hasTouch: true,
-          bypassCSP: true,
-        });
-        const p = await context.newPage();
-        const at = `${size.name} (${String(size.width)} × ${String(size.height)}, ${engine})`;
+        const { context, page: p } = await phoneAt(browser, win, base, size);
         try {
-          await pairByQr(p, base, await pairingCode(win, 'remote', `Placeholder ${size.name}`), '/remote');
-          await expect(p.getByTestId('connection')).toHaveText('Connected');
-          // In More, first: Audience and Stage, said On, and Screens.
-          if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
-          await expect(p.getByTestId('remote-switch-audience')).toHaveAttribute('aria-checked', 'true');
-          await expect(p.getByTestId('remote-switch-stage')).toHaveAttribute('aria-checked', 'true');
-          await toScreens(p, size.layout);
-          const sheet = p.getByTestId('remote-screens');
-          // The computer's displays as it sees them: its main one and the two pretend ones.
-          await expect(sheet.getByTestId('remote-display')).toHaveCount(
-            (
-              await win.evaluate(
-                async () => (await (globalThis as PageGlobals).drashti.screens.get()).displays,
-              )
-            ).length,
-          );
-          const pretend = sheet.locator(
-            `[data-testid="remote-display"][data-display-id="${String(PRETEND)}"]`,
-          );
-          await expect(pretend).toBeVisible();
-
-          // A group added on the phone is the window's at once.
+          const asks = { win, page: p };
           const group = `Placeholder Hall ${size.name}`;
-          await sheet.getByTestId('remote-new-group').fill(group);
-          await sheet.getByRole('button', { name: 'Add group' }).click();
-          await expect(
-            sheet.locator(`[data-testid="remote-screen-group"][data-group-name="${group}"]`),
-          ).toHaveCount(1);
-          await expect.poll(async () => (await screensNow(win)).groups.map((g) => g.name)).toContain(group);
-
-          // A display's job in one tap (Session 55), on the other pretend display: the audience picture at once,
-          // asking nothing; Not used takes it off again.
-          const other = sheet.locator(
-            `[data-testid="remote-display"][data-display-id="${String(PRETEND + 1)}"]`,
+          // The phone's More: the screens read, a group added, a display's job, Identify, Audience and Stage; each
+          // refused in words, nothing changed.
+          await expectPhoneRefuses(asks, 'GET', '/api/v1/screens', undefined, 'computer');
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            '/api/v1/screen-groups',
+            { name: group },
+            'computer',
+            screens,
           );
-          await other.getByTestId('remote-display-job-audience').click();
-          await expect(other.getByTestId('remote-display-job')).toHaveAttribute('data-job', 'audience');
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            `/api/v1/displays/${String(PRETEND + 1)}/job`,
+            { job: 'audience' },
+            'computer',
+            screens,
+          );
+          await expectPhoneRefuses(asks, 'POST', '/api/v1/screens/identify', undefined, 'computer');
+          await expectPhoneRefuses(asks, 'POST', '/api/v1/switches/audience', { on: false }, 'computer', () =>
+            switchesNow(win),
+          );
+          expect(openOutputs(app)).toBe(0);
+
+          // A group added in the window (moved from the phone) is there at once.
+          const groupId = await newGroup(win, group);
+          await expect.poll(async () => (await screens()).groups.map((g) => g.name)).toContain(group);
+
+          // A display's job in one step (Session 55), on the other pretend display: the audience picture at once,
+          // asking nothing; Not used takes it off again.
+          const job = (j: 'audience' | 'none') =>
+            win.evaluate(({ id, j }) => (globalThis as PageGlobals).drashti.screens.setJob(id, j), {
+              id: PRETEND + 1,
+              j,
+            });
+          expect((await job('audience')).ok).toBe(true);
           await expect.poll(() => openOutputs(app)).toBe(1);
           expect(await pendingNow(win)).toBeNull();
-          await other.getByTestId('remote-display-job-none').click();
-          await expect(other.getByTestId('remote-display-job')).toHaveAttribute('data-job', 'none');
+          expect((await job('none')).ok).toBe(true);
           await expect.poll(() => openOutputs(app)).toBe(0);
 
-          // Use this display on the pretend one the controls are on: the computer agrees in its own box, it opens,
-          // and Keep these screens? asks on the phone, with its countdown, Keep holding the keyboard as in the
-          // window.
-          await pretend.locator('select').selectOption({ label: group });
-          await pretend.getByTestId('remote-use-display').click();
-          const keep = p.getByTestId('remote-keep-screens');
-          await expect(keep).toContainText('Keep these screens?');
-          const countdown = keep.getByTestId('remote-keep-countdown');
+          // Use this display on the pretend one the controls are on: the phone refused; in the window, the operator
+          // agreeing there, it opens, and Keep these screens? asks with its countdown, Keep holding the keyboard.
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            `/api/v1/screen-groups/${groupId}/display`,
+            { displayId: PRETEND },
+            'computer',
+            screens,
+          );
+          const used = await win.evaluate(
+            ({ groupId, displayId }) =>
+              (globalThis as PageGlobals).drashti.screens.assignDisplay(groupId, displayId, {
+                coverOperator: true,
+              }),
+            { groupId, displayId: PRETEND },
+          );
+          expect(used.ok).toBe(true);
+          await expect(question).toContainText('Keep these screens?');
+          const countdown = question.getByTestId('keep-screens-countdown');
           await expect(countdown).toHaveText(/^Going back by itself in \d+ seconds?\.$/u);
           expect(Number(await countdown.getAttribute('data-seconds'))).toBeGreaterThan(5);
           expect(Number(await countdown.getAttribute('data-seconds'))).toBeLessThanOrEqual(15);
-          await expect(keep.getByTestId('remote-keep-screens-act')).toBeFocused();
+          await expect(question.getByTestId('keep-screens-keep')).toBeFocused();
           await expect.poll(() => openOutputs(app)).toBe(1);
           expect(await pendingNow(win)).toMatchObject({ coversControls: true });
-          await expectNoSeriousA11yIssues(
-            p,
-            `Keep these screens? on ${at}`,
-            '[data-testid="remote-keep-screens"]',
+          // The phone's Keep: refused, the question still waits. Keep, in the window: the change stays.
+          await expectPhoneRefuses(asks, 'POST', '/api/v1/screens/keep', {}, 'computer', () =>
+            pendingNow(win),
           );
-          expect.soft(await tooSmall(p), `targets under 44 px: Keep these screens? on ${at}`).toEqual([]);
-          // Keep, on the phone: the change stays, and the window no longer asks.
-          await keep.getByTestId('remote-keep-screens-act').click();
-          await expect(keep).toHaveCount(0);
+          await question.getByTestId('keep-screens-keep').click();
+          await expect(question).toHaveCount(0);
           await expect.poll(() => pendingNow(win)).toBeNull();
           await expect.poll(() => openOutputs(app)).toBe(1);
-          const screen = sheet.getByTestId('remote-screen');
-          await expect(screen.getByTestId('remote-screen-state')).toContainText('Showing');
+          const screenId = (await screens()).groups.find((g) => g.id === groupId)?.screens[0]?.id ?? '';
+          expect(screenId).not.toBe('');
+          const screenNow = async () =>
+            (await screens()).groups.flatMap((g) => g.screens).find((sc) => sc.id === screenId);
 
-          // The sheet with a group and its screen: laid out for this size.
-          await expectNoSeriousA11yIssues(p, `the computer’s screens on ${at}`);
-          expect.soft(await tooSmall(p), `targets under 44 px: the screens on ${at}`).toEqual([]);
-          expect.soft(await offTheSide(p), `off the side: the screens on ${at}`).toEqual([]);
-
-          // Off asks nothing; On again (the computer agreeing) asks, and Go back on the phone puts it off again.
-          await screen.getByTestId('remote-screen-on').click();
+          // Off asks nothing; On again (the operator agreeing) asks, and Go back puts it off again; the phone's Off,
+          // On and Go back refused.
+          const change = (patch: { enabled?: boolean; scaling?: 'fill' }, cover = false) =>
+            win.evaluate(
+              ({ screenId, patch, cover }) =>
+                (globalThis as PageGlobals).drashti.screens.updateScreen(
+                  screenId,
+                  patch,
+                  cover ? { coverOperator: true } : undefined,
+                ),
+              { screenId, patch, cover },
+            );
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            `/api/v1/screens/${screenId}/change`,
+            { enabled: false },
+            'computer',
+            screens,
+          );
+          expect((await change({ enabled: false })).ok).toBe(true);
           await expect.poll(() => openOutputs(app)).toBe(0);
-          await expect(keep).toHaveCount(0);
-          await expect(screen.getByTestId('remote-screen-on')).toHaveAttribute('aria-checked', 'false');
-          await screen.getByTestId('remote-screen-on').click();
-          await expect(keep).toBeVisible();
-          await keep.getByTestId('remote-keep-screens-safe').click();
-          await expect(keep).toHaveCount(0);
+          await expect(question).toHaveCount(0);
+          expect((await screenNow())?.enabled).toBe(false);
+          expect((await change({ enabled: true }, true)).ok).toBe(true);
+          await expect(question).toBeVisible();
+          await expectPhoneRefuses(asks, 'POST', '/api/v1/screens/go-back', {}, 'computer', () =>
+            pendingNow(win),
+          );
+          await question.getByTestId('keep-screens-go-back').click();
+          await expect(question).toHaveCount(0);
           await expect.poll(() => openOutputs(app)).toBe(0);
-          await expect(screen.getByTestId('remote-screen-on')).toHaveAttribute('aria-checked', 'false');
+          await expect.poll(async () => (await screenNow())?.enabled).toBe(false);
 
-          // Its scaling, and the group's name, as the window then has them.
-          await screen.getByTestId('remote-screen-scaling').selectOption('fill');
+          // Its scaling, and the group's name, as the window then has them; the phone's refused.
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            `/api/v1/screens/${screenId}/change`,
+            { scaling: 'fill' },
+            'computer',
+            screens,
+          );
+          expect((await change({ scaling: 'fill' })).ok).toBe(true);
           await expect
-            .poll(async () => (await screensNow(win)).groups.flatMap((g) => g.screens).map((s) => s.scaling))
+            .poll(async () => (await screens()).groups.flatMap((g) => g.screens).map((sc) => sc.scaling))
             .toContain('fill');
           const renamed = `${group} renamed`;
-          const name = sheet
-            .locator(`[data-testid="remote-screen-group"][data-group-name="${group}"]`)
-            .getByLabel('Group name');
-          await name.fill(renamed);
-          await name.press('Enter');
-          await expect.poll(async () => (await screensNow(win)).groups.map((g) => g.name)).toContain(renamed);
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            `/api/v1/screen-groups/${groupId}/name`,
+            { name: renamed },
+            'computer',
+            screens,
+          );
+          const named = await win.evaluate(
+            ({ groupId, renamed }) =>
+              (globalThis as PageGlobals).drashti.screens.renameGroup(groupId, renamed),
+            { groupId, renamed },
+          );
+          expect(named.ok).toBe(true);
+          await expect.poll(async () => (await screens()).groups.map((g) => g.name)).toContain(renamed);
 
-          // A group the window adds shows on the phone with no reload.
-          await win.evaluate(async (n) => {
-            const made = await (globalThis as PageGlobals).drashti.screens.createGroup(n);
-            if (!made.ok) throw new Error(made.message);
-          }, `Placeholder Stage ${size.name}`);
-          await expect(
-            sheet.locator(
-              `[data-testid="remote-screen-group"][data-group-name="Placeholder Stage ${size.name}"]`,
-            ),
-          ).toHaveCount(1);
-
-          // Delete group, on the phone: gone from both.
-          for (const n of [renamed, `Placeholder Stage ${size.name}`])
-            await sheet
-              .locator(`[data-testid="remote-screen-group"][data-group-name="${n}"]`)
-              .getByTestId('remote-group-delete')
-              .click();
-          await expect(sheet.getByTestId('remote-screen-group')).toHaveCount(0);
-          await expect.poll(async () => (await screensNow(win)).groups).toEqual([]);
-
-          // Close, and the phone's own Back would close it as well: the remote is as it was.
-          await sheet.getByTestId('remote-screens-close').click();
-          await expect(sheet).toHaveCount(0);
+          // Another group the window adds; both deleted in the window (the phone's Delete group refused): gone.
+          const stageGroup = await newGroup(win, `Placeholder Stage ${size.name}`);
+          for (const id of [groupId, stageGroup]) {
+            await expectPhoneRefuses(
+              asks,
+              'POST',
+              `/api/v1/screen-groups/${id}/delete`,
+              {},
+              'computer',
+              screens,
+            );
+            const gone = await win.evaluate(
+              (id) => (globalThis as PageGlobals).drashti.screens.deleteGroup(id),
+              id,
+            );
+            expect(gone.ok).toBe(true);
+          }
+          await expect.poll(async () => (await screens()).groups).toEqual([]);
           await expect(p.getByTestId('remote')).toBeVisible();
         } finally {
           await context.close();
@@ -292,6 +315,8 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     } finally {
       await browser.close();
     }
+    // Nothing a phone sent asked the computer's own box.
+    expect(await boxes(app)).toEqual([]);
     await app.close();
   });
 
@@ -323,8 +348,11 @@ const backgroundNow = (win: Page) =>
 const inputsNow = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.videoInputs.list()).inputs);
 
+const dispatch = (win: Page, command: Parameters<PageGlobals['drashti']['engine']['dispatch']>[0]) =>
+  win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), command);
+
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`video inputs and windows from a phone as in Media: one named from the computer’s cameras, put up, changed and deleted (asked first), and a window from its list; at 375 × 812 and 768 × 1024 (${engine})`, async () => {
+  test(`video inputs and windows in the window as in Media: one named from the computer’s cameras, put up, changed and deleted, and a window from its list; a phone at 375 × 812 and 768 × 1024 is refused each in words (${engine})`, async () => {
     test.setTimeout(300_000);
     const { app } = await launchApp({
       ...NETWORK_ENV,
@@ -335,82 +363,113 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     await operatorReady(win);
     await openMeeting(app);
     const { base } = await networkOn(win);
+    const inputs = () => inputsNow(win);
     const browser = await (engine === 'webkit' ? webkit : chromium).launch();
     try {
       for (const [index, size] of SIZES.entries()) {
-        const context = await browser.newContext({
-          viewport: { width: size.width, height: size.height },
-          isMobile: true,
-          hasTouch: true,
-          bypassCSP: true,
-        });
-        const p = await context.newPage();
-        const at = `${size.name} (${String(size.width)} × ${String(size.height)}, ${engine})`;
+        const { context, page: p } = await phoneAt(browser, win, base, size);
         try {
-          await pairByQr(p, base, await pairingCode(win, 'remote', `Placeholder ${size.name}`), '/remote');
-          await expect(p.getByTestId('connection')).toHaveText('Connected');
-          if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
-          await p.getByTestId('remote-open-inputs').click();
-          const sheet = p.getByTestId('remote-inputs-sheet');
-          await expect(sheet).toBeVisible();
+          const asks = { win, page: p };
+          // The phone's Video inputs and windows sheet, as it asked: refused in words, nothing changed.
+          await expectPhoneRefuses(asks, 'GET', '/api/v1/video-inputs', undefined, 'computer');
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            '/api/v1/video-inputs',
+            { name: 'Placeholder input', device: FAKE_CAMERA, fit: 'fit' },
+            'computer',
+            inputs,
+          );
+          await expectPhoneRefuses(asks, 'GET', '/api/v1/windows', undefined, 'computer');
           if (index === 0) {
-            // Named from the cameras the computer lists: the fake one, as its window sees it.
-            await sheet.getByTestId('remote-input-add').click();
-            const form = sheet.getByTestId('remote-input-add-form');
-            await expect(form.getByLabel('Name')).toHaveValue('Input 1');
-            await form.getByLabel('Name').fill('Placeholder input');
-            await expect(form.getByTestId('remote-input-camera').locator('option')).toContainText([
-              FAKE_CAMERA,
-            ]);
-            await form.getByTestId('remote-input-camera').selectOption(FAKE_CAMERA);
-            await form.getByRole('button', { name: 'Add' }).click();
+            // In the window's Add a Video Input… (moved from the phone): named from the cameras the computer lists,
+            // the fake one among them.
+            await openSection(win, 'video-inputs');
+            await win.getByTestId('add-video-input').click();
+            const dialog = win.getByTestId('video-input-dialog');
+            const camera = dialog
+              .getByTestId('video-input-device')
+              .and(dialog.locator(`[data-name="${FAKE_CAMERA}"]`));
+            await expect(camera).toBeVisible({ timeout: 15_000 });
+            await camera.click();
+            await expect(dialog.getByTestId('video-input-name')).toHaveValue('Input 1');
+            await dialog.getByTestId('video-input-name').fill('Placeholder input');
+            await expect(dialog.getByTestId('video-input-fit')).toHaveValue('fit');
+            await dialog.getByTestId('video-input-save').click();
+            await expect(dialog).toHaveCount(0);
             await expect
-              .poll(() => inputsNow(win))
+              .poll(inputs)
               .toEqual([
                 expect.objectContaining({ name: 'Placeholder input', device: FAKE_CAMERA, fit: 'fit' }),
               ]);
-            // Put up as Media's click does, and cleared.
-            const row = sheet.locator('[data-testid="remote-input"][data-name="Placeholder input"]');
-            await row.getByTestId('remote-input-show').click();
+            const id = (await inputs())[0]?.id ?? '';
+            // Put up as Media's click does (the phone's refused), and cleared.
+            await expectPhoneRefuses(asks, 'POST', `/api/v1/video-inputs/${id}/show`, {}, 'computer');
+            await dispatch(win, { type: 'showInput', inputId: id });
             await expect.poll(async () => (await backgroundNow(win))?.kind).toBe('input');
-            await expect(row).toHaveAttribute('data-live', 'true');
-            await row.getByTestId('remote-input-clear').click();
+            await expectPhoneRefuses(asks, 'POST', '/api/v1/clear/background', {}, 'computer');
+            await dispatch(win, { type: 'clearLayer', layer: 'background' });
             await expect.poll(() => backgroundNow(win)).toBeNull();
-            // Changed: the window's Media has the new name.
-            await row.getByTestId('remote-input-change').click();
-            const change = sheet.getByTestId('remote-input-change-form');
-            await change.getByLabel('Name').fill('Placeholder stage camera');
-            await change.getByRole('button', { name: 'Keep' }).click();
+            // Changed: Media has the new name (the phone's change refused).
+            await expectPhoneRefuses(
+              asks,
+              'POST',
+              `/api/v1/video-inputs/${id}/change`,
+              { name: 'Placeholder stage camera' },
+              'computer',
+              inputs,
+            );
+            const changed = await win.evaluate(
+              (id) =>
+                (globalThis as PageGlobals).drashti.videoInputs.update(id, {
+                  name: 'Placeholder stage camera',
+                }),
+              id,
+            );
+            expect(changed.ok).toBe(true);
             await expect
-              .poll(async () => (await inputsNow(win)).map((i) => i.name))
+              .poll(async () => (await inputs()).map((i) => i.name))
               .toEqual(['Placeholder stage camera']);
           }
-          // Show a Window…'s list, by name only: the placeholder meeting, put up and cleared.
-          await sheet.getByTestId('remote-windows-look').click();
-          const meeting = sheet.locator(`[data-testid="remote-window"][data-name="${MEETING}"]`);
-          await expect(meeting).toHaveCount(1);
-          await expect(sheet.locator('[data-testid="remote-windows"] img')).toHaveCount(0);
-          await meeting.getByTestId('remote-window-show').click();
+          // Show a Window…'s list, by name: the placeholder meeting, put up and cleared in the window (the phone's
+          // refused).
+          const listed = await win.evaluate(() => (globalThis as PageGlobals).drashti.liveWindow.list());
+          const meeting = listed.ok ? listed.windows.find((w) => w.name === MEETING) : undefined;
+          expect(meeting, 'the placeholder meeting is listed').toBeDefined();
+          await expectPhoneRefuses(
+            asks,
+            'POST',
+            '/api/v1/windows/show',
+            { id: meeting?.id ?? '' },
+            'computer',
+          );
+          const shown = await win.evaluate(
+            (id) => (globalThis as PageGlobals).drashti.liveWindow.show(id),
+            meeting?.id ?? '',
+          );
+          expect(shown.ok).toBe(true);
           await expect.poll(async () => (await backgroundNow(win))?.kind).toBe('window');
-          await expect(sheet.getByTestId('remote-window-up')).toContainText(MEETING);
-          // The sheet with an input and a window up: laid out for this size.
-          await expectNoSeriousA11yIssues(p, `video inputs and windows on ${at}`);
-          expect.soft(await tooSmall(p), `targets under 44 px: inputs and windows on ${at}`).toEqual([]);
-          expect.soft(await offTheSide(p), `off the side: inputs and windows on ${at}`).toEqual([]);
-          await sheet.getByTestId('remote-window-clear').click();
+          await expectPhoneRefuses(asks, 'POST', '/api/v1/clear/background', {}, 'computer');
+          await dispatch(win, { type: 'clearLayer', layer: 'background' });
           await expect.poll(() => backgroundNow(win)).toBeNull();
           if (index === SIZES.length - 1) {
-            // Deleted, asked first in Media's words: Cancel keeps it, Delete takes it from Media.
-            const row = sheet.locator('[data-testid="remote-input"][data-name="Placeholder stage camera"]');
-            await row.getByTestId('remote-input-delete').click();
-            const ask = p.getByTestId('remote-input-delete-ask');
-            await expect(ask).toContainText('Delete the video input “Placeholder stage camera”?');
-            await expect(ask.getByTestId('remote-input-delete-ask-safe')).toBeFocused();
-            await ask.getByTestId('remote-input-delete-ask-safe').click();
-            expect(await inputsNow(win)).toHaveLength(1);
-            await row.getByTestId('remote-input-delete').click();
-            await ask.getByTestId('remote-input-delete-ask-act').click();
-            await expect.poll(() => inputsNow(win)).toEqual([]);
+            // Deleted from Media in the window (the phone's Delete refused).
+            const id = (await inputs())[0]?.id ?? '';
+            await expectPhoneRefuses(
+              asks,
+              'POST',
+              `/api/v1/video-inputs/${id}/remove`,
+              {},
+              'computer',
+              inputs,
+            );
+            expect(await inputs()).toHaveLength(1);
+            const removed = await win.evaluate(
+              (id) => (globalThis as PageGlobals).drashti.videoInputs.remove(id),
+              id,
+            );
+            expect(removed.ok).toBe(true);
+            await expect.poll(inputs).toEqual([]);
           }
         } finally {
           await context.close();
@@ -422,7 +481,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     await app.close();
   });
 
-test('Audience and Stage from a phone as from the window’s top bar: off asks the window’s question while its screens show something, on puts them back where they were', async () => {
+test('Audience and Stage from the window’s top bar: off asks its question while its screens show something, on puts them back where they were; a phone is refused each turn in words, and its live picture says what is off', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({
     ...NETWORK_ENV,
@@ -433,7 +492,7 @@ test('Audience and Stage from a phone as from the window’s top bar: off asks t
   await operatorReady(win);
   await setUpScreen(win, 'Placeholder Hall', 1);
   await expect.poll(() => openOutputs(app)).toBe(1);
-  // Something on the hall's screens: turning Audience off asks first, as in the window.
+  // Something on the hall's screens: turning Audience off asks first, in the window.
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const r = await d.engine.dispatch({ type: 'setBlackout', on: true });
@@ -445,61 +504,69 @@ test('Audience and Stage from a phone as from the window’s top bar: off asks t
   try {
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-more').click();
-    const audience = p.getByTestId('remote-switch-audience');
+    const asks = { win, page: p };
+    const switches = () => switchesNow(win);
+    // The phone's Audience off: refused in words, nothing asked or changed (its More before alpha.23).
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/switches/audience', { on: false }, 'computer', switches);
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      '/api/v1/switches/audience',
+      { on: false, confirmed: true },
+      'computer',
+      switches,
+    );
+    expect(openOutputs(app)).toBe(1);
+    // The window's top bar (moved from the phone): it asks first; Cancel changes nothing.
+    const audience = win.getByTestId('switch-audience');
+    const ask = win.getByTestId('screen-switch-ask');
     await audience.click();
-    const ask = p.getByTestId('remote-switch-ask');
     await expect(ask).toContainText('Turn Audience off?');
     await expect(ask).toContainText('The hall’s screens will show this computer’s desktop.');
-    // Cancel has the keyboard, as in the window: nothing changes.
-    await expect(ask.getByTestId('remote-switch-ask-safe')).toBeFocused();
-    await expectNoSeriousA11yIssues(p, 'Turn Audience off? on a phone', '[data-testid="remote-switch-ask"]');
-    await ask.getByTestId('remote-switch-ask-safe').click();
+    await ask.getByRole('button', { name: 'Cancel' }).click();
     await expect(ask).toHaveCount(0);
-    expect(await switchesNow(win)).toEqual({ audience: true, stage: true });
+    expect(await switches()).toEqual({ audience: true, stage: true });
     expect(openOutputs(app)).toBe(1);
-    // Turn off: the hall's window closes, and the window and the phone both say Audience is off.
+    // Turn off: the hall's window closes, and the window and the phone's live picture say Audience is off.
     await audience.click();
-    await ask.getByTestId('remote-switch-ask-act').click();
-    await expect.poll(() => switchesNow(win)).toEqual({ audience: false, stage: true });
+    await ask.getByRole('button', { name: 'Turn off' }).click();
+    await expect.poll(switches).toEqual({ audience: false, stage: true });
     await expect.poll(() => openOutputs(app)).toBe(0);
     await expect(audience).toHaveAttribute('aria-checked', 'false');
     await expect(win.getByTestId('switch-off-audience')).toBeVisible();
-    // The live picture (Show) says what the screens switched off show meanwhile (Session 55: the stage screens the
-    // audience picture, never the desktop).
+    // The phone's live picture (Show) says what the screens switched off show meanwhile (Session 55: the stage screens
+    // the audience picture, never the desktop): what is live, a phone still reads.
     const offLine = p.getByTestId('remote-switched-off');
-    const offLineSays = async (words: string) => {
-      await p.getByTestId('remote-tab-show').click();
-      await expect(offLine).toHaveText(words);
-      await p.getByTestId('remote-tab-more').click();
-    };
-    await offLineSays(
+    await expect(offLine).toHaveText(
       'Audience off on Drashti’s computer: the hall’s screens show its desktop until Audience is on again.',
     );
-    // Stage has no screens open: it goes off at once, asking nothing.
-    await p.getByTestId('remote-switch-stage').click();
-    await expect.poll(() => switchesNow(win)).toEqual({ audience: false, stage: false });
+    // Stage has no screens open: off at once from the top bar, asking nothing (the phone's refused).
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/switches/stage', { on: false }, 'computer', switches);
+    await win.getByTestId('switch-stage').click();
+    await expect.poll(switches).toEqual({ audience: false, stage: false });
     await expect(ask).toHaveCount(0);
-    await offLineSays(
+    await expect(offLine).toHaveText(
       'Audience and Stage off on Drashti’s computer: the hall’s screens show its desktop, and the stage screens the audience picture, until they are on again.',
     );
-    // On puts them back where they were, asking nothing.
+    // On puts them back where they were, asking nothing (the phone's On refused too).
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/switches/audience', { on: true }, 'computer', switches);
     await audience.click();
-    await expect.poll(() => switchesNow(win)).toEqual({ audience: true, stage: false });
-    await offLineSays(
+    await expect.poll(switches).toEqual({ audience: true, stage: false });
+    await expect(offLine).toHaveText(
       'Stage off on Drashti’s computer: the stage screens show the audience picture until Stage is on again.',
     );
-    await p.getByTestId('remote-switch-stage').click();
-    await expect.poll(() => switchesNow(win)).toEqual({ audience: true, stage: true });
+    await win.getByTestId('switch-stage').click();
+    await expect.poll(switches).toEqual({ audience: true, stage: true });
     await expect.poll(() => openOutputs(app)).toBe(1);
     await expect(audience).toHaveAttribute('aria-checked', 'true');
+    await expect(offLine).toHaveCount(0);
   } finally {
     await phone.close();
   }
   await app.close();
 });
 
-test('Simple Mode refuses on a phone just what it refuses in the window: the screens’ setup changed, a switch turned off; Keep, Identify and On stay', async () => {
+test('in Simple Mode a phone is refused every screens request in words, reading, Keep, Identify and On too; the window refuses just what it did: the screens’ setup changed, a switch turned off', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({
     ...NETWORK_ENV,
@@ -508,11 +575,7 @@ test('Simple Mode refuses on a phone just what it refuses in the window: the scr
   });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const groupId = await win.evaluate(async () => {
-    const made = await (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder Hall');
-    if (!made.ok) throw new Error(made.message);
-    return made.snapshot.groups.find((g) => g.name === 'Placeholder Hall')?.id ?? '';
-  });
+  const groupId = await newGroup(win, 'Placeholder Hall');
   const { port, base } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder script');
   const phone = await device('chromium');
@@ -520,71 +583,70 @@ test('Simple Mode refuses on a phone just what it refuses in the window: the scr
   try {
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    // Keep a Pro sheet open across the mode change: its entry goes away in Part 9,
-    // but an already-open sheet must still refuse every change in the computer.
-    await toScreens(p, 'phone');
     await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
-    await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
-    await expect(p.getByTestId('remote-open-screens')).toHaveCount(0);
-    // On the phone: refused in Simple Mode's own words, nothing changed.
-    const sheet = p.getByTestId('remote-screens');
-    await sheet.getByTestId('remote-new-group').fill('Placeholder Stage');
-    await sheet.getByRole('button', { name: 'Add group' }).click();
-    await expect(sheet.getByTestId('remote-screens-problem')).toContainText(SIMPLE_MODE_REFUSAL);
-    expect((await screensNow(win)).groups.map((g) => g.name)).toEqual(['Placeholder Hall']);
-    await sheet.getByTestId('remote-screens-close').click();
-    // A switch only goes on.
-    await p.getByTestId('remote-switch-audience').click();
-    await expect(p.getByTestId('remote-desktop-problem')).toContainText(ONLY_ON_IN_SIMPLE_MODE);
-    expect(await switchesNow(win)).toEqual({ audience: true, stage: true });
-    // Every change as a script sends it: refused alike; reading, Keep, Go back and Identify are not.
+    const screens = () => screensNow(win);
+    // Every change and read as the phone's page or a script sends it: refused in words (alpha.23: before, Simple Mode
+    // let a phone read the screens, Identify, Keep and turn a switch on), nothing changed.
     const changes: [string, unknown][] = [
       ['/api/v1/screen-groups', { name: 'Placeholder Stage' }],
       [`/api/v1/screen-groups/${groupId}/name`, { name: 'Placeholder renamed' }],
       [`/api/v1/screen-groups/${groupId}/role`, { role: 'stage' }],
       [`/api/v1/screen-groups/${groupId}/display`, { displayId: PRETEND }],
       [`/api/v1/screen-groups/${groupId}/delete`, undefined],
+      ['/api/v1/screens/identify', undefined],
+      ['/api/v1/screens/keep', undefined],
+      ['/api/v1/switches/stage', { on: false, confirmed: true }],
+      ['/api/v1/switches/stage', { on: true }],
+      ['/api/v1/video-inputs', { name: 'Input 1', device: 'Placeholder camera', fit: 'fit' }],
     ];
-    for (const [path, body] of changes)
-      expect(await apiCall(port, path, { method: 'POST', token, body }), path).toEqual({
-        status: 403,
-        json: { ok: false, message: SIMPLE_MODE_REFUSAL },
-      });
-    expect((await apiCall(port, '/api/v1/screens', { token })).status).toBe(200);
-    expect((await apiCall(port, '/api/v1/screens/identify', { method: 'POST', token })).status).toBe(200);
-    // Nothing waits: Keep says so (409), never Simple Mode's refusal.
-    expect((await apiCall(port, '/api/v1/screens/keep', { method: 'POST', token })).status).toBe(409);
+    // What each change would change: the screens, or Media's video inputs (the review: a reader that can see it).
+    const reader = (path: string) => (path === '/api/v1/video-inputs' ? () => inputsNow(win) : screens);
+    for (const [path, body] of changes) {
+      await expectPhoneRefuses({ win, page: p }, 'POST', path, body, 'computer', reader(path));
+      await expectPhoneRefuses({ win, port, token }, 'POST', path, body, 'computer', reader(path));
+    }
+    for (const path of ['/api/v1/screens', '/api/v1/video-inputs', '/api/v1/windows'])
+      await expectPhoneRefuses({ win, port, token }, 'GET', path, undefined, 'computer');
+    expect((await screens()).groups.map((g) => g.name)).toEqual(['Placeholder Hall']);
+    expect(await switchesNow(win)).toEqual({ audience: true, stage: true });
+
+    // The window in Simple Mode (what the phone did as its window does): the screens' setup refused in its words, a
+    // switch only going on.
     expect(
-      await apiCall(port, '/api/v1/switches/stage', {
-        method: 'POST',
-        token,
-        body: { on: false, confirmed: true },
-      }),
-    ).toEqual({ status: 403, json: { ok: false, message: ONLY_ON_IN_SIMPLE_MODE } });
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder Stage')),
+    ).toMatchObject({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    // The group renamed, given another role, given a display and deleted, and a video input added: each refused in
+    // the window too, in its words, as the phone was before alpha.23.
+    const refusedInWindow = await win.evaluate(
+      async ({ groupId, displayId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        return [
+          await d.screens.renameGroup(groupId, 'Placeholder renamed'),
+          await d.screens.setGroupRole(groupId, 'stage'),
+          await d.screens.assignDisplay(groupId, displayId),
+          await d.screens.deleteGroup(groupId),
+          await d.videoInputs.add({ name: 'Input 1', device: 'Placeholder camera', fit: 'fit' }),
+        ];
+      },
+      { groupId, displayId: PRETEND },
+    );
+    for (const result of refusedInWindow)
+      expect(result).toMatchObject({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(await inputsNow(win)).toEqual([]);
+    expect((await screens()).groups.map((g) => g.name)).toEqual(['Placeholder Hall']);
+    expect((await screens()).groups.flatMap((g) => g.screens)).toEqual([]);
     expect(
-      (await apiCall(port, '/api/v1/switches/stage', { method: 'POST', token, body: { on: true } })).status,
-    ).toBe(200);
-    // Media's video inputs are read, never changed; the windows are Pro Mode's.
-    expect((await apiCall(port, '/api/v1/video-inputs', { token })).status).toBe(200);
-    expect(
-      await apiCall(port, '/api/v1/video-inputs', {
-        method: 'POST',
-        token,
-        body: { name: 'Input 1', device: 'Placeholder camera', fit: 'fit' },
-      }),
-    ).toEqual({ status: 403, json: { ok: false, message: SIMPLE_MODE_REFUSAL } });
-    expect(await apiCall(port, '/api/v1/windows', { token })).toEqual({
-      status: 403,
-      json: { ok: false, message: SIMPLE_MODE_REFUSAL },
-    });
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.screenSwitches.turn('stage', false)),
+    ).toMatchObject({ ok: false, message: ONLY_ON_IN_SIMPLE_MODE });
+    expect(await switchesNow(win)).toEqual({ audience: true, stage: true });
   } finally {
     await phone.close();
   }
   await app.close();
 });
 
-test('a Stage or Announcements device can do none of it, and a phone never gives the operator’s consent to cover the controls', async () => {
+test('a Stage or Announcements device can do none of it, and a phone never gives the operator’s consent to cover the controls: refused in words, the window assigning the display', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp({
     ...NETWORK_ENV,
@@ -593,11 +655,7 @@ test('a Stage or Announcements device can do none of it, and a phone never gives
   });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const groupId = await win.evaluate(async () => {
-    const made = await (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder Hall');
-    if (!made.ok) throw new Error(made.message);
-    return made.snapshot.groups.find((g) => g.name === 'Placeholder Hall')?.id ?? '';
-  });
+  const groupId = await newGroup(win, 'Placeholder Hall');
   const { port } = await networkOn(win);
   const remote = await pairToken(win, port, 'remote', 'Placeholder script');
   const stage = await pairToken(win, port, 'stage', 'Placeholder tablet');
@@ -613,36 +671,34 @@ test('a Stage or Announcements device can do none of it, and a phone never gives
     for (const token of [stage, poster])
       expect((await apiCall(port, path, { method, token, body })).status, path).toBe(403);
   expect((await screensNow(win)).groups.map((g) => g.name)).toEqual(['Placeholder Hall']);
-  // The window's own consent, sent by a phone, is refused outright: nothing changes.
+  // The window's own consent, sent by a phone (before alpha.23, 400), and the plain request (before, 200): refused in
+  // words, nothing changes.
+  const screens = () => screensNow(win);
   for (const body of [
     { displayId: PRETEND, coverOperator: true },
     { displayId: PRETEND, options: { coverOperator: true } },
+    { displayId: PRETEND },
   ])
-    expect(
-      (
-        await apiCall(port, `/api/v1/screen-groups/${groupId}/display`, {
-          method: 'POST',
-          token: remote,
-          body,
-        })
-      ).status,
-    ).toBe(400);
-  expect((await screensNow(win)).groups.flatMap((g) => g.screens)).toEqual([]);
-  // And the Remote may.
-  expect(
-    (
-      await apiCall(port, `/api/v1/screen-groups/${groupId}/display`, {
-        method: 'POST',
-        token: remote,
-        body: { displayId: PRETEND },
-      })
-    ).status,
-  ).toBe(200);
-  await expect.poll(async () => (await screensNow(win)).groups.flatMap((g) => g.screens).length).toBe(1);
+    await expectPhoneRefuses(
+      { win, port, token: remote },
+      'POST',
+      `/api/v1/screen-groups/${groupId}/display`,
+      body,
+      'computer',
+      screens,
+    );
+  expect((await screens()).groups.flatMap((g) => g.screens)).toEqual([]);
+  // The window may (moved from the phone).
+  const used = await win.evaluate(
+    ({ groupId, displayId }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(groupId, displayId),
+    { groupId, displayId: PRETEND },
+  );
+  expect(used.ok).toBe(true);
+  await expect.poll(async () => (await screens()).groups.flatMap((g) => g.screens).length).toBe(1);
   await app.close();
 });
 
-test('an output a phone would put over the controls is asked in the computer’s own box: only its yes puts it there, and Keep these screens? is the phone’s to answer', async () => {
+test('an output over the controls is never a phone’s to ask for: refused in words, the computer’s own box never asked; the window’s Use this display asks its consent, and Keep these screens? is the window’s to answer', async () => {
   // The display the controls are on: a real screen (CI's one display), not the quiet test's windowed outputs.
   needsRealScreen();
   test.setTimeout(180_000);
@@ -653,63 +709,82 @@ test('an output a phone would put over the controls is asked in the computer’s
     const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('index.html'));
     return w ? screen.getDisplayMatching(w.getBounds()).id : -1;
   });
-  await win.evaluate(async () => {
-    const made = await (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder Hall');
-    if (!made.ok) throw new Error(made.message);
-  });
+  const groupId = await newGroup(win, 'Placeholder Hall');
   const { base } = await networkOn(win);
   const phone = await device('webkit');
   const p = phone.page;
   try {
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await toScreens(p, 'phone');
-    const sheet = p.getByTestId('remote-screens');
-    const card = sheet.locator(`[data-testid="remote-display"][data-display-id="${String(controls)}"]`);
-    await expect(card.getByTestId('remote-display-controls')).toContainText(
-      'The Drashti controls are on this display',
-    );
+    const asks = { win, page: p };
+    const screens = () => screensNow(win);
 
-    // Agreed on the computer: the output opens over the controls, and the phone answers Keep these screens?.
+    // The phone's Use this display on the controls' display: refused in words; the computer's box is never asked
+    // (before alpha.23 it asked, and the phone answered Keep these screens?).
     await answerBoxWith(app, 1);
-    await card.getByTestId('remote-use-display').click();
-    await expect.poll(() => boxes(app)).toHaveLength(1);
-    const [box] = await boxes(app);
-    expect(box?.message).toBe('Cover the Drashti controls?');
-    expect(box?.detail).toContain('Remote “Placeholder phone” asks to put “Placeholder Hall” on');
-    await expect(sheet.getByTestId('remote-screens-asked')).toHaveAttribute('data-state', 'agreed');
-    const keep = p.getByTestId('remote-keep-screens');
-    await expect(keep).toContainText('An output covers the Drashti controls on the computer now');
-    await keep.getByTestId('remote-keep-screens-act').click();
-    await expect.poll(() => pendingNow(win)).toBeNull();
-    await expect(sheet.getByTestId('remote-screen').getByTestId('remote-screen-state')).toContainText(
-      'Showing',
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      `/api/v1/screen-groups/${groupId}/display`,
+      { displayId: controls },
+      'computer',
+      screens,
     );
-
-    // Off from the phone asks nothing; On again over the controls is asked, and the computer's Cancel changes nothing.
-    await sheet.getByTestId('remote-screen').getByTestId('remote-screen-on').click();
-    await expect(sheet.getByTestId('remote-screen').getByTestId('remote-screen-on')).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
-    await answerBoxWith(app, 0);
-    await sheet.getByTestId('remote-screen').getByTestId('remote-screen-on').click();
-    await expect(sheet.getByTestId('remote-screens-asked')).toHaveAttribute('data-state', 'refused');
-    await expect(sheet.getByTestId('remote-screens-asked')).toContainText(
-      'The Drashti computer did not agree, so nothing changed.',
-    );
-    expect(await boxes(app)).toHaveLength(1);
-    await expect(sheet.getByTestId('remote-screen').getByTestId('remote-screen-on')).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
+    expect(await boxes(app)).toEqual([]);
     expect(await pendingNow(win)).toBeNull();
-    // Asked again at once: a moment first (nothing a phone sends keeps the box up).
-    await sheet.getByTestId('remote-screen').getByTestId('remote-screen-on').click();
-    await expect(sheet.getByTestId('remote-screens-problem')).toContainText(
-      'The Drashti computer said no just now',
+
+    // In the window (moved from the phone): asked first, nothing changed until the operator agrees; agreed, the output
+    // opens over the controls and Keep these screens? asks in the window, Keep answered there.
+    const assign = (cover: boolean) =>
+      win.evaluate(
+        ({ groupId, displayId, cover }) =>
+          (globalThis as PageGlobals).drashti.screens.assignDisplay(
+            groupId,
+            displayId,
+            cover ? { coverOperator: true } : undefined,
+          ),
+        { groupId, displayId: controls, cover },
+      );
+    expect(await assign(false)).toMatchObject({ ok: false, confirm: 'covers-operator' });
+    expect((await screens()).groups.flatMap((g) => g.screens)).toEqual([]);
+    expect((await assign(true)).ok).toBe(true);
+    await expect.poll(() => pendingNow(win)).toMatchObject({ coversControls: true });
+    await expect(win.getByTestId('keep-screens-covered')).toContainText(
+      'An output covers these controls now',
     );
-    expect(await boxes(app)).toHaveLength(1);
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/screens/keep', {}, 'computer', () => pendingNow(win));
+    expect((await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.keep())).ok).toBe(true);
+    await expect.poll(() => pendingNow(win)).toBeNull();
+    const screenId = (await screens()).groups.flatMap((g) => g.screens)[0]?.id ?? '';
+
+    // Off from the phone: refused; from the window, off asks nothing. On again from the phone: refused, the box never
+    // asked; the screen stays off.
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      `/api/v1/screens/${screenId}/change`,
+      { enabled: false },
+      'computer',
+      screens,
+    );
+    const off = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.screens.updateScreen(id, { enabled: false }),
+      screenId,
+    );
+    expect(off.ok).toBe(true);
+    expect(await pendingNow(win)).toBeNull();
+    await answerBoxWith(app, 0);
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      `/api/v1/screens/${screenId}/change`,
+      { enabled: true },
+      'computer',
+      screens,
+    );
+    expect(await boxes(app)).toEqual([]);
+    expect((await screens()).groups.flatMap((g) => g.screens)[0]?.enabled).toBe(false);
+    expect(await pendingNow(win)).toBeNull();
   } finally {
     await phone.close();
   }
@@ -721,7 +796,7 @@ const pipNow = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.pip);
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the picture-in-picture box set up from a phone as Picture in Picture… does: a Media video in it, moved to a corner and made Large, swapped and taken off, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+  test(`the picture-in-picture box set up in the window as Picture in Picture… does: a Media video in it, moved to a corner and made Large, swapped and taken off; a phone at 375 × 812 and 768 × 1024 is refused each in words, in Pro Mode and Simple Mode (${engine})`, async () => {
     test.setTimeout(240_000);
     const { app } = await launchApp({
       ...NETWORK_ENV,
@@ -741,49 +816,54 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
+      const asks = { win, page: p };
       for (const size of SIZES) {
         await p.setViewportSize(size);
-        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
-        await p.getByTestId('remote-open-pip').click();
-        await expect(p.getByTestId('remote-pip-sheet')).toBeVisible();
-        await expect(p.getByTestId('remote-pip-none')).toBeVisible();
-        // A video from Media, by its id: in the box on the screens, named on the phone.
-        await p.locator(`[data-testid="remote-pip-media-item"][data-media-id="${mediaId}"]`).click();
+        // The phone's Picture in picture sheet, as it asked: Media's videos, one in the box: refused in words.
+        await expectPhoneRefuses(asks, 'GET', '/api/v1/media?kind=video', undefined, 'media');
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          '/api/v1/pip/show',
+          { source: { kind: 'media', mediaId } },
+          'computer',
+        );
+        expect(await pipNow(win)).toBeNull();
+        // In the window (moved from the phone): a video from Media, by its id, in the box on the screens.
+        await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId } });
         await expect
           .poll(async () => (await pipNow(win))?.source)
           .toEqual({ kind: 'media', mediaId, media: 'video' });
-        await expect(p.getByTestId('remote-pip-now')).toContainText('Placeholder boxed clip');
-        // To the top left, then Large: on every screen at once (the engine's place).
-        await p.getByTestId('remote-pip-corner-top-left').click();
+        const place = (await pipNow(win))?.place;
+        if (!place) throw new Error('The box has no place.');
+        // To the top left, then Large: on every screen at once (the engine's place); the phone's refused.
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          '/api/v1/pip/place',
+          { place: { ...place, corner: 'top-left' } },
+          'computer',
+        );
+        await dispatch(win, { type: 'placePip', place: { ...place, corner: 'top-left' } });
         await expect.poll(async () => (await pipNow(win))?.place.corner).toBe('top-left');
-        await p.getByTestId('remote-pip-size-large').click();
+        await dispatch(win, { type: 'placePip', place: { ...place, corner: 'top-left', size: 'large' } });
         await expect.poll(async () => (await pipNow(win))?.place.size).toBe('large');
-        await expect(p.getByTestId('remote-pip-size-large')).toHaveAttribute('aria-pressed', 'true');
-        // Swap: the box's picture and the main picture change places.
-        await p.getByTestId('remote-pip-swap').click();
+        // Swap: the box's picture and the main picture change places (the phone's refused).
+        await expectPhoneRefuses(asks, 'POST', '/api/v1/pip/swap', {}, 'computer');
+        await dispatch(win, { type: 'swapPip' });
         await expect.poll(async () => (await pipNow(win))?.swapped).toBe(true);
-        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
-        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
-        await expectNoSeriousA11yIssues(p, `the box’s sheet on ${size.name} (${engine})`);
-        // Take off: the box goes.
-        await p.getByTestId('remote-pip-sheet-take-off').click();
+        // Take off: the box goes (the phone's, the box's own clear, refused).
+        await expectPhoneRefuses(asks, 'POST', '/api/v1/clear/pip', {}, 'computer');
+        await dispatch(win, { type: 'hidePip' });
         await expect.poll(() => pipNow(win)).toBeNull();
-        await expect(p.getByTestId('remote-pip-none')).toBeVisible();
-        await p.getByTestId('remote-pip-sheet-close').click();
-        await expect(p.getByTestId('remote-pip-sheet')).toHaveCount(0);
       }
-      // Simple Mode: the slides in the box refused, said on the phone, nothing up.
-      await p.getByTestId('remote-open-pip').click();
+      // Simple Mode: the slides in the box refused in Simple Mode's words, nothing up.
       await win
         .getByTestId('app-header')
         .getByRole('button', { name: 'Simple Mode', exact: true })
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
-      await expect(p.getByTestId('remote-open-pip')).toHaveCount(0);
-      await p.getByTestId('remote-pip-kind-slides').click();
-      await p.getByTestId('remote-pip-slides').click();
-      await expect(p.getByTestId('remote-pip-sheet-notice')).toContainText('Simple Mode');
+      await expectPhoneRefuses(asks, 'POST', '/api/v1/pip/show', { source: { kind: 'slides' } }, 'simple');
       expect(await pipNow(win)).toBeNull();
     } finally {
       await phone.close();
@@ -814,8 +894,11 @@ const presentationNames = (win: Page) =>
     (await (globalThis as PageGlobals).drashti.library.listPresentations()).map((p) => p.name),
   );
 
+/** A playlist change in the window, as Playlists and the library make it: ok. */
+const inWindow = async (result: Promise<{ ok: boolean }>) => expect((await result).ok).toBe(true);
+
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the library changed from a phone as the window changes it: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back, laid out at 375 × 812 and 768 × 1024, and Simple Mode keeps the playlist tools (${engine})`, async () => {
+  test(`the library changed in the window: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back; a phone at 375 × 812 and 768 × 1024 is refused each in words, in Pro Mode and Simple Mode, its own reads still answered after the window's changes (${engine})`, async () => {
     test.setTimeout(240_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -824,6 +907,14 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
+    // Each refusal asked from the phone's own page. A request it may never make is refused before its allowance is
+    // spent (s59-a22-phonecore 482c53bf3; on CI a22-phonee2eb-1125-223801-13990 these went 429 when the page also read
+    // its lists again at each of the window's changes), and after each burst of the window's changes the page's own
+    // allowed read is answered, never 429 (the review a23-review-phonetests §5).
+    const asks = { win, page: p };
+    const tree = () => win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
+    const pageStillAnswered = async (when: string) =>
+      expect((await phoneAsks(p, 'GET', '/api/v1/state')).status, `the page's own read ${when}`).toBe(200);
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
@@ -831,107 +922,166 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         const words = `Placeholder phone words ${size.layout}`;
         const list = `Placeholder phone list ${size.layout}`;
         await p.setViewportSize(size);
-        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
-        await p.getByTestId('remote-open-library').click();
-        await expect(p.getByTestId('remote-library-sheet')).toBeVisible();
-        // A presentation from words, made in the computer's library.
-        await p.getByTestId('remote-library-tab-presentations').click();
-        await p.getByTestId('remote-library-new-presentation-name').fill(words);
-        await p
-          .getByTestId('remote-library-new-presentation-words')
-          .fill('Placeholder line one\n\nPlaceholder line two');
-        await p
-          .getByTestId('remote-library-new-presentation')
-          .getByRole('button', { name: 'Make the presentation' })
-          .click();
+        // A presentation from words, and a playlist made: the phone's refused, the window's made.
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          '/api/v1/presentations/new',
+          { name: words, words: 'Placeholder line one\n\nPlaceholder line two' },
+          'computer',
+          () => presentationNames(win),
+        );
+        await expectPhoneRefuses(asks, 'POST', '/api/v1/playlists/new', { name: list }, 'computer', tree);
+        const presentationId = await win.evaluate(async (name) => {
+          const made = await (globalThis as PageGlobals).drashti.library.newFromWords(
+            name,
+            'Placeholder line one\n\nPlaceholder line two',
+          );
+          if (!made.ok) throw new Error(made.message);
+          return made.id;
+        }, words);
         await expect.poll(() => presentationNames(win)).toContain(words);
-        // A playlist made: in the window's list, and open on the phone.
-        await p.getByTestId('remote-library-tab-playlists').click();
-        await p.getByTestId('remote-library-new-playlist-name').fill(list);
-        await p
-          .getByTestId('remote-library-new-playlist')
-          .getByRole('button', { name: 'Make the playlist' })
-          .click();
+        await inWindow(
+          win.evaluate(
+            (name) => (globalThis as PageGlobals).drashti.playlists.create(name, null, false),
+            list,
+          ),
+        );
         await expect.poll(() => playlistNames(win)).toContain(list);
         const id = (await playlistId(win, list)) ?? '';
-        const row = p.locator(`[data-testid="remote-library-playlist"][data-playlist-id="${id}"]`);
-        await expect(row.getByTestId('remote-library-playlist-open')).toHaveAttribute('aria-pressed', 'true');
-        // The presentation added twice, then the second moved up: the window has the same order.
-        const choice = row.getByTestId('remote-library-add-choice');
+        // The presentation added twice, then the second moved up: the window has that order (the phone's refused).
+        const add = { items: [{ kind: 'presentation', presentationId }] };
+        await expectPhoneRefuses(asks, 'POST', `/api/v1/playlists/${id}/add`, add, 'computer', tree);
         for (let i = 0; i < 2; i += 1) {
-          await expect(choice.locator('option', { hasText: words })).toHaveCount(1);
-          await choice.selectOption({ label: words });
-          await row.getByTestId('remote-library-add-form').getByRole('button', { name: 'Add' }).click();
+          await inWindow(
+            win.evaluate(
+              ({ id, presentationId }) =>
+                (globalThis as PageGlobals).drashti.playlists.addItems(id, null, [
+                  { kind: 'presentation', presentationId },
+                ]),
+              { id, presentationId },
+            ),
+          );
           await expect.poll(async () => (await itemIds(win, id)).length).toBe(i + 1);
-          // On the phone too, its choice cleared for the next.
-          await expect(row.getByTestId('remote-library-item')).toHaveCount(i + 1);
-          await expect(choice).toHaveValue('');
         }
         const [first = '', second = ''] = await itemIds(win, id);
-        await row
-          .locator(`[data-testid="remote-library-item"][data-item-id="${second}"]`)
-          .getByTestId('remote-library-item-up')
-          .click();
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          `/api/v1/playlists/${id}/move`,
+          { ids: [second], to: 0 },
+          'computer',
+          () => itemIds(win, id),
+        );
+        await inWindow(
+          win.evaluate(
+            ({ id, second }) => (globalThis as PageGlobals).drashti.playlists.moveItems(id, [second], 0),
+            { id, second },
+          ),
+        );
         await expect.poll(() => itemIds(win, id)).toEqual([second, first]);
-        // One taken out, then put back by Undo, where it was.
-        await row
-          .locator(`[data-testid="remote-library-item"][data-item-id="${first}"]`)
-          .getByTestId('remote-library-item-remove')
-          .click();
+        // One taken out, then put back by Undo, where it was (the phone's both refused).
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          '/api/v1/playlist-items/delete',
+          { ids: [first] },
+          'computer',
+          () => itemIds(win, id),
+        );
+        await inWindow(
+          win.evaluate((first) => (globalThis as PageGlobals).drashti.playlists.removeItems([first]), first),
+        );
         await expect.poll(() => itemIds(win, id)).toEqual([second]);
-        await p.getByTestId('remote-library-undo').click();
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          '/api/v1/playlist-items/restore',
+          { ids: [first] },
+          'computer',
+          () => itemIds(win, id),
+        );
+        await inWindow(
+          win.evaluate((first) => (globalThis as PageGlobals).drashti.playlists.restoreItems([first]), first),
+        );
         await expect.poll(() => itemIds(win, id)).toEqual([second, first]);
-        // Renamed, then deleted and put back by Undo.
-        await row.getByTestId('remote-library-playlist-rename').click();
-        await p.getByTestId('remote-library-rename-name').fill(`${list}, renamed`);
-        await p.getByTestId('remote-library-rename-form').getByRole('button', { name: 'Rename' }).click();
+        // Renamed, then deleted and put back by Undo (the phone's refused).
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          `/api/v1/playlists/${id}/rename`,
+          { name: `${list}, renamed` },
+          'computer',
+          tree,
+        );
+        await inWindow(
+          win.evaluate(({ id, name }) => (globalThis as PageGlobals).drashti.playlists.rename(id, name), {
+            id,
+            name: `${list}, renamed`,
+          }),
+        );
         await expect.poll(() => playlistNames(win)).toContain(`${list}, renamed`);
-        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
-        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
-        await expectNoSeriousA11yIssues(p, `the library’s sheet on ${size.name} (${engine})`);
-        await row.getByTestId('remote-library-playlist-delete').click();
+        await expectPhoneRefuses(asks, 'POST', '/api/v1/playlists/delete', { ids: [id] }, 'computer', tree);
+        await inWindow(win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.remove([id]), id));
         await expect.poll(() => playlistNames(win)).not.toContain(`${list}, renamed`);
-        await p.getByTestId('remote-library-undo').click();
+        await expectPhoneRefuses(asks, 'POST', '/api/v1/playlists/restore', { ids: [id] }, 'computer', tree);
+        await inWindow(win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.restore([id]), id));
         await expect.poll(() => playlistNames(win)).toContain(`${list}, renamed`);
-        await p.getByTestId('remote-library-sheet-close').click();
-        await expect(p.getByTestId('remote-library-sheet')).toHaveCount(0);
+        await pageStillAnswered(`after the window's changes at ${size.name}`);
       }
-      // A sheet already open when Simple Mode starts keeps the playlist tools and hides presentation editing.
-      await p.getByTestId('remote-open-library').click();
+      // Simple Mode: the playlist tools refused to the phone in words too; Simple Mode's window keeps them.
       await win
         .getByTestId('app-header')
         .getByRole('button', { name: 'Simple Mode', exact: true })
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
-      await expect(p.getByTestId('remote-open-library')).toHaveCount(0);
-      await expect(p.getByTestId('remote-library-tab-presentations')).toHaveCount(0);
-      await p.getByTestId('remote-library-new-playlist-name').fill('Placeholder Simple list');
-      await p
-        .getByTestId('remote-library-new-playlist')
-        .getByRole('button', { name: 'Make the playlist' })
-        .click();
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        '/api/v1/playlists/new',
+        { name: 'Placeholder Simple list' },
+        'computer',
+        tree,
+      );
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        '/api/v1/presentations/new',
+        { name: 'Placeholder Simple words', words: 'Placeholder line' },
+        'computer',
+        () => presentationNames(win),
+      );
+      await inWindow(
+        win.evaluate(() =>
+          (globalThis as PageGlobals).drashti.playlists.create('Placeholder Simple list', null, false),
+        ),
+      );
       await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple list');
       const simpleList = await playlistId(win, 'Placeholder Simple list');
-      if (simpleList === null) throw new Error('The phone did not create its playlist.');
-      const simpleRow = p.locator(
-        '[data-testid="remote-library-playlist"][data-playlist-id="' + simpleList + '"]',
+      if (simpleList === null) throw new Error('The window did not create its playlist.');
+      await inWindow(
+        win.evaluate(
+          (id) => (globalThis as PageGlobals).drashti.playlists.rename(id, 'Placeholder Simple renamed'),
+          simpleList,
+        ),
       );
-      await simpleRow.getByTestId('remote-library-playlist-rename').click();
-      await p.getByTestId('remote-library-rename-name').fill('Placeholder Simple renamed');
-      await p.getByTestId('remote-library-rename-form').getByRole('button', { name: 'Rename' }).click();
       await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple renamed');
-      await simpleRow.getByTestId('remote-library-playlist-delete').click();
+      await inWindow(
+        win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.remove([id]), simpleList),
+      );
       await expect.poll(() => playlistNames(win)).not.toContain('Placeholder Simple renamed');
-      await p.getByTestId('remote-library-undo').click();
+      await inWindow(
+        win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.restore([id]), simpleList),
+      );
       await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple renamed');
+      await pageStillAnswered("after Simple Mode's window's changes");
     } finally {
       await phone.close();
       await app.close();
     }
   });
 
-test('a Pro Mode phone renames an Audio track through the existing file Rename', async () => {
+test('an Audio track renamed in the window through the existing file Rename; a Pro Mode phone is refused the Audio requests in words', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-pro-phone-audio-'));
   const { app } = await launchApp(NETWORK_ENV);
   const phone = await device('chromium');
@@ -947,29 +1097,54 @@ test('a Pro Mode phone renames an Audio track through the existing file Rename',
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-more').click();
-    const audio = p.getByTestId('remote-music');
-    await audio.getByTestId('remote-audio-new').click();
-    await p.getByTestId('remote-audio-name').fill('Placeholder phone tunes');
-    await p.getByRole('button', { name: 'Create audio playlist', exact: true }).click();
-    const editor = p.getByTestId('remote-audio-editor');
-    await editor.getByTestId('remote-audio-add').click();
-    await p
-      .getByTestId('remote-audio-library')
-      .getByRole('button', { name: /Placeholder rename tone/u })
-      .click();
-    const track = editor.getByTestId('remote-audio-track');
-    await track.getByRole('button', { name: 'Rename track: Placeholder rename tone' }).click();
-    const rename = p.getByTestId('remote-rename');
-    await rename.getByLabel('Its new name').fill('Placeholder renamed tone');
-    await rename.getByTestId('remote-rename-save').click();
-    await expect(track).toContainText('Placeholder renamed tone');
+    const asks = { win, page: p };
+    const music = () => win.evaluate(() => (globalThis as PageGlobals).drashti.music.view());
+    // The phone's Audio (its More before alpha.23): an audio playlist made, the tone added, renamed: refused in words.
+    await expectPhoneRefuses(asks, 'GET', '/api/v1/music', undefined, 'media');
+    await expectPhoneRefuses(asks, 'GET', '/api/v1/music/audio', undefined, 'media');
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      '/api/v1/music/new',
+      { name: 'Placeholder phone tunes' },
+      'media',
+      music,
+    );
+    // In the window (moved from the phone): made, the tone added, and the track renamed by the file's own Rename.
+    const made = await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.music.create('Placeholder phone tunes'),
+    );
+    if (!made.ok) throw new Error(made.message);
+    const playlistId = made.id ?? made.view.playlists[0]?.id ?? '';
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      `/api/v1/music/${playlistId}/tracks/add`,
+      { mediaIds: [mediaId] },
+      'media',
+      music,
+    );
+    const added = await win.evaluate(
+      ({ playlistId, mediaId }) =>
+        (globalThis as PageGlobals).drashti.music.addTracks(playlistId, [mediaId], null),
+      { playlistId, mediaId },
+    );
+    expect(added.ok).toBe(true);
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      `/api/v1/media/${mediaId}/rename`,
+      { name: 'Placeholder renamed tone' },
+      'media',
+      music,
+    );
+    const renamed = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.media.rename(id, 'Placeholder renamed tone'),
+      mediaId,
+    );
+    expect(renamed.ok).toBe(true);
     await expect
-      .poll(async () =>
-        win.evaluate(
-          async () => (await (globalThis as PageGlobals).drashti.music.view()).playlists[0]?.tracks[0]?.name,
-        ),
-      )
+      .poll(async () => (await music()).playlists[0]?.tracks[0]?.name)
       .toBe('Placeholder renamed tone');
   } finally {
     await phone.close();
@@ -978,7 +1153,7 @@ test('a Pro Mode phone renames an Audio track through the existing file Rename',
   }
 });
 
-test('a Pro Mode phone deletes a folder with its playlist, restores both, and asks before deleting a running Repeat Slides playlist', async () => {
+test('a folder with its playlist deleted in the window and put back, and a running Repeat Slides playlist; a Pro Mode phone is refused deleting either, putting them back and starting it going round, in words', async () => {
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -1011,36 +1186,53 @@ test('a Pro Mode phone deletes a folder with its playlist, restores both, and as
   const { base } = await networkOn(win);
   const phone = await device('chromium');
   const p = phone.page;
-  const node = (id: string) => p.locator(`[data-testid="remote-library-playlist"][data-playlist-id="${id}"]`);
+  const tree = () => win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
+  const running = () =>
+    win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.repeat?.playlistId,
+    );
   try {
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-playlist').click();
-    await p.getByTestId('remote-open-playlists').click();
-    await node(folderId).getByTestId('remote-library-playlist-delete').click();
-    const ask = p.getByTestId('remote-library-playlist-delete-confirm');
-    await expect(ask).toContainText('This also deletes the playlists and folders inside it.');
-    await ask.getByRole('button', { name: 'Delete', exact: true }).click();
+    const asks = { win, page: p };
+    // The folder deleted from the phone: refused; in the window (moved from the phone) its playlist goes with it, and
+    // Undo puts both back.
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/playlists/delete', { ids: [folderId] }, 'computer', tree);
+    const removed = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.playlists.remove([id]),
+      folderId,
+    );
+    if (!removed.ok) throw new Error(removed.message);
     await expect.poll(() => playlistId(win, folderName)).toBeNull();
     await expect.poll(() => playlistId(win, repeatName)).toBeNull();
-    await p.getByTestId('remote-library-undo').click();
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      '/api/v1/playlists/restore',
+      { ids: [folderId] },
+      'computer',
+      tree,
+    );
+    // Undo: everything the delete took (the folder and the playlist in it), as the window's Undo puts it back.
+    await inWindow(
+      win.evaluate((ids) => (globalThis as PageGlobals).drashti.playlists.restore(ids), removed.ids),
+    );
     await expect.poll(() => playlistId(win, folderName)).toBe(folderId);
     await expect.poll(() => playlistId(win, repeatName)).toBe(repeatId);
 
-    await p.getByTestId('remote-library-sheet-close').click();
-    await p.getByTestId('remote-playlist').selectOption(repeatId);
-    await p.getByTestId('remote-going-round').click();
-    const running = () =>
-      win.evaluate(
-        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.repeat?.playlistId,
-      );
+    // Going round: the phone's start refused (not a PowerPoint or a PDF), the window's own (moved from the phone);
+    // the phone's delete of it refused too, so it keeps going round.
+    await expectPhoneRefuses(asks, 'POST', `/api/v1/repeat/${repeatId}/start`, {}, 'notDeck');
+    expect(await running()).toBeUndefined();
+    const started = await win.evaluate(
+      (playlistId) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startRepeat', playlistId }),
+      repeatId,
+    );
+    expect(started.ok).toBe(true);
     await expect.poll(running).toBe(repeatId);
-    await p.getByTestId('remote-open-playlists').click();
-    await node(repeatId).getByTestId('remote-library-playlist-delete').click();
-    await expect(ask).toContainText('This Repeat Slides playlist is going round.');
-    await ask.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(ask).toHaveCount(0);
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/playlists/delete', { ids: [repeatId] }, 'computer', tree);
     expect(await playlistId(win, repeatName)).toBe(repeatId);
     expect(await running()).toBe(repeatId);
   } finally {
@@ -1053,7 +1245,7 @@ test('a Pro Mode phone deletes a folder with its playlist, restores both, and as
 const midiNow = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.midi.get());
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`MIDI from a phone as MIDI… sets it up on the computer: its device and mappings read, Learn asked of the computer and cancelled, a mapping forgotten, None chosen, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+  test(`MIDI set up in the window as MIDI… does: a mapping forgotten, None chosen; a phone at 375 × 812 and 768 × 1024 is refused reading it, Learn, forgetting and choosing a device, in words, in Pro Mode and Simple Mode (${engine})`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -1073,62 +1265,56 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
+    const asks = { win, page: p };
+    const midi = () => midiNow(win);
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       for (const size of SIZES) {
         await p.setViewportSize(size);
-        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
-        await p.getByTestId('remote-open-midi').click();
-        await expect(p.getByTestId('remote-midi-sheet')).toBeVisible();
-        // The chosen device, not plugged in here; the computer's window has listed what it sees.
-        const chosen = p.locator('[data-testid="remote-midi-device"][data-device="Placeholder pad"]');
-        await expect(chosen).toHaveAttribute('aria-pressed', 'true');
-        await expect(chosen).toContainText('not plugged in');
-        await expect(p.getByText(MIDI_NOT_LISTED)).toHaveCount(0);
-        await expect(p.getByTestId('remote-midi-mapping')).toHaveCount(size.layout === 'phone' ? 2 : 1);
-        // Learn: the computer waits for a press on its controller; Cancel stops it. A computer that refuses Drashti
-        // MIDI (a test computer may) says so, and Learn is off: it would wait for a press that could never come.
-        const learnBlackout = p.getByTestId('remote-midi-learn-blackout');
-        if (await learnBlackout.isEnabled()) {
-          await learnBlackout.click();
-          await expect(p.getByTestId('remote-midi-learning')).toContainText('Black-out');
-          await p.getByTestId('remote-midi-learning').getByRole('button', { name: 'Cancel' }).click();
-          await expect(p.getByTestId('remote-midi-learning')).toHaveCount(0);
-        } else {
-          await expect(p.getByTestId('remote-midi-devices')).toContainText(/refused MIDI|cannot be used/u);
-        }
-        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
-        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
-        await expectNoSeriousA11yIssues(p, `the MIDI sheet on ${size.name} (${engine})`);
-        // On the phone's pass, Back's mapping is forgotten: the window has it so.
-        if (size.layout === 'phone') {
-          await p.getByTestId('remote-midi-forget').nth(1).click();
-          await expect
-            .poll(async () => (await midiNow(win)).mappings.map((m) => m.action.kind))
-            .toEqual(['next']);
-        }
-        await p.getByTestId('remote-midi-sheet-close').click();
+        // The phone's MIDI sheet, as it asked: its device and mappings read, Learn, a mapping forgotten: refused in
+        // words, MIDI as it was.
+        await expectPhoneRefuses(asks, 'GET', '/api/v1/midi', undefined, 'computer');
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          '/api/v1/midi/learn',
+          { action: { kind: 'blackout' } },
+          'computer',
+          midi,
+        );
+        await expectPhoneRefuses(asks, 'POST', '/api/v1/midi/forget', { index: 1 }, 'computer', midi);
+        expect((await midi()).deviceName).toBe('Placeholder pad');
       }
-      // Simple Mode: forgetting refused in words, nothing changed.
-      await p.getByTestId('remote-open-midi').click();
+      // In the window (moved from the phone): Back's mapping forgotten.
+      const forgot = await win.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        const now = await d.midi.get();
+        return d.midi.set({ deviceName: now.deviceName, mappings: now.mappings.slice(0, 1) });
+      });
+      expect(forgot.ok).toBe(true);
+      await expect.poll(async () => (await midi()).mappings.map((m) => m.action.kind)).toEqual(['next']);
+      // Simple Mode: forgetting refused to the phone in words, nothing changed.
       await win
         .getByTestId('app-header')
         .getByRole('button', { name: 'Simple Mode', exact: true })
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
-      await expect(p.getByTestId('remote-open-midi')).toHaveCount(0);
-      await p.getByTestId('remote-midi-forget').first().click();
-      await expect(p.getByTestId('remote-midi-problem')).toContainText('Simple Mode');
-      expect((await midiNow(win)).mappings).toHaveLength(1);
-      // Pro Mode again: None chosen from the phone.
+      await expectPhoneRefuses(asks, 'POST', '/api/v1/midi/forget', { index: 0 }, 'computer', midi);
+      expect((await midi()).mappings).toHaveLength(1);
+      // Pro Mode again: None chosen, the phone refused, the window choosing it (moved from the phone).
       expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'))).toMatchObject({
         ok: true,
       });
       await expect(win.getByTestId('simple-mode')).toHaveCount(0);
-      await p.locator('[data-testid="remote-midi-device"][data-device=""]').click();
-      await expect.poll(async () => (await midiNow(win)).deviceName).toBeNull();
+      await expectPhoneRefuses(asks, 'POST', '/api/v1/midi/device', { deviceName: null }, 'computer', midi);
+      const none = await win.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        const now = await d.midi.get();
+        return d.midi.set({ deviceName: null, mappings: now.mappings });
+      });
+      expect(none.ok).toBe(true);
+      await expect.poll(async () => (await midi()).deviceName).toBeNull();
     } finally {
       await phone.close();
       await app.close();
@@ -1144,7 +1330,7 @@ const inTicker = (win: Page) =>
   );
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the announcements’ queue from a phone as Announcements decides: one put in the ticker and taken off, one rejected, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+  test(`the announcements’ queue decided in the window as Announcements does: one put in the ticker and taken off, one rejected; a phone at 375 × 812 and 768 × 1024 is refused each in words, in Pro Mode and Simple Mode (${engine})`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -1160,9 +1346,12 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       expect(sent.status).toBe(202);
       return (sent.json['announcement'] as { id: string }).id;
     };
+    const queue = () => win.evaluate(() => (globalThis as PageGlobals).drashti.announcements.list());
+    const waitingIds = async () => (await queue()).waiting.map((a) => a.id);
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
+    const asks = { win, page: p };
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
@@ -1170,41 +1359,69 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         const first = await send(`Placeholder car notice ${size.layout}`);
         const second = await send(`Placeholder lost keys ${size.layout}`);
         await p.setViewportSize(size);
-        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
-        await p.getByTestId('remote-open-queue').click();
-        await expect(p.getByTestId('remote-queue-sheet')).toBeVisible();
-        const waiting = (id: string) => p.locator(`[data-testid="remote-queue-waiting"][data-id="${id}"]`);
-        await expect(waiting(first)).toContainText('Placeholder volunteer');
-        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
-        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
-        await expectNoSeriousA11yIssues(p, `the announcements’ queue on ${size.name} (${engine})`);
-        // In the ticker: on the hall's screens; then taken off.
-        await waiting(first).getByTestId('remote-queue-ticker').click();
+        await expect.poll(waitingIds).toEqual(expect.arrayContaining([first, second]));
+        // The phone's queue, read and decided: refused in words, the queue as it was.
+        await expectPhoneRefuses(asks, 'GET', '/api/v1/announcement-queue', undefined, 'computer');
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          `/api/v1/announcement-queue/${first}/approve`,
+          { as: 'ticker' },
+          'computer',
+          queue,
+        );
+        // In the ticker from the window (moved from the phone): on the hall's screens; then taken off.
+        const approved = await win.evaluate(
+          (id) => (globalThis as PageGlobals).drashti.announcements.approve({ id, as: 'ticker' }),
+          first,
+        );
+        expect(approved.ok).toBe(true);
         await expect.poll(() => inTicker(win)).toContain(first);
-        const showing = p.locator(`[data-testid="remote-queue-showing"][data-id="${first}"]`);
-        await expect(showing).toContainText('in the ticker');
-        await showing.getByTestId('remote-queue-take-off').click();
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          `/api/v1/announcement-queue/${first}/take-off`,
+          {},
+          'computer',
+        );
+        expect(await inTicker(win)).toContain(first);
+        const off = await win.evaluate(
+          (id) => (globalThis as PageGlobals).drashti.announcements.takeOff({ id }),
+          first,
+        );
+        expect(off.ok).toBe(true);
         await expect.poll(() => inTicker(win)).not.toContain(first);
-        // Rejected: gone from the queue.
-        await waiting(second).getByTestId('remote-queue-reject').click();
-        await expect(waiting(second)).toHaveCount(0);
-        await p.getByTestId('remote-queue-sheet-close').click();
+        // Rejected in the window (the phone's refused): gone from the queue.
+        await expectPhoneRefuses(
+          asks,
+          'POST',
+          `/api/v1/announcement-queue/${second}/reject`,
+          {},
+          'computer',
+          queue,
+        );
+        const rejected = await win.evaluate(
+          (id) => (globalThis as PageGlobals).drashti.announcements.reject({ id }),
+          second,
+        );
+        expect(rejected.ok).toBe(true);
+        await expect.poll(waitingIds).not.toContain(second);
       }
-      // Simple Mode: approving refused in words, nothing up.
+      // Simple Mode: approving refused to the phone in words, nothing up.
       const third = await send('Placeholder refused notice');
-      await p.getByTestId('remote-open-queue').click();
       await win
         .getByTestId('app-header')
         .getByRole('button', { name: 'Simple Mode', exact: true })
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
-      await expect(p.getByTestId('remote-open-queue')).toHaveCount(0);
-      await p
-        .locator(`[data-testid="remote-queue-waiting"][data-id="${third}"]`)
-        .getByTestId('remote-queue-ticker')
-        .click();
-      await expect(p.getByTestId('remote-queue-problem')).toContainText('Simple Mode');
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        `/api/v1/announcement-queue/${third}/approve`,
+        { as: 'ticker' },
+        'computer',
+        queue,
+      );
       expect(await inTicker(win)).not.toContain(third);
     } finally {
       await phone.close();

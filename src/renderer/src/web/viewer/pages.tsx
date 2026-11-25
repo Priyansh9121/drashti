@@ -5,6 +5,7 @@ import type { EngineState } from '../../../../shared/engine/state';
 import { backgroundCueOf } from '../../../../shared/library';
 import { groupLookIn } from '../../../../shared/looks';
 import { hasEdit, shownSize } from '../../../../shared/picture-look';
+import { onSlideOf } from '../../../../shared/picture-on-slide';
 import type { OrderedSlide } from '../../../../shared/order';
 import { useEngine } from '../../engine/engine-store';
 import { OBJECT_FIT } from '../../render/media-style';
@@ -114,10 +115,14 @@ export const slideTitle = (s: OrderedSlide): string =>
 
 /** One slide of a presentation, to look through on this device (a deck's or a PDF's page is one too). */
 export function slidePage(presentationId: string, s: OrderedSlide): ViewerPage {
-  // A slide that is a picture (a deck's or a PDF's page): Save picture… (Session 55, Part 5).
+  // A slide that is a picture (a deck's or a PDF's page): Save picture… (Session 55, Part 5), as its slide shows it
+  // (a page cropped with Crop page… or turned with Turn page right: a22-x95nits).
   const picture = s.slide.slide.elements.find((e) => e.kind === 'image');
+  const onSlide = picture?.kind === 'image' ? onSlideOf(picture, s.slide.slide) : null;
   return {
-    ...(picture?.kind === 'image' ? { save: { mediaId: picture.mediaId, slide: s.position + 1 } } : {}),
+    ...(picture?.kind === 'image'
+      ? { save: { mediaId: picture.mediaId, slide: s.position + 1, ...(onSlide ? { onSlide } : {}) } }
+      : {}),
     key: `slide:${presentationId}:${String(s.position)}:${s.slide.id}`,
     title: slideTitle(s),
     size: { width: s.slide.slide.width, height: s.slide.slide.height },

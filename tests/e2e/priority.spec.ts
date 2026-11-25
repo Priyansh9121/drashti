@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { constants, getPriority } from 'node:os';
 import { join } from 'node:path';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { logLines } from './log-lines';
 
 /*
  * The main process's priority on Windows (Session 16). Drashti runs ahead of
@@ -23,9 +24,7 @@ test('Drashti runs ahead of other programs, and an admin sets it back to normal 
   const win = await operatorPage(app);
   await operatorReady(win);
   // What Drashti saw as it set it, from its log (Chromium's start can change it after).
-  const said = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-    .split('\n')
-    .filter((l) => l.includes('Main process priority'));
+  const said = logLines(userData).filter((l) => l.includes('Main process priority'));
   console.log(said.join('\n'));
   const pid = await mainPid(app);
   expect(getPriority(pid)).toBe(PRIORITY_ABOVE_NORMAL);

@@ -55,7 +55,7 @@
 1. Choose **Help**, then **Report a Problem…**.
 2. Tick the feature the problem is in, in its chapter or by typing its name in **Find a feature**. You can tick up to eight.
 3. Say what went wrong with each, and what you expected if you like.
-4. Tick **Diagnostics**, **Crash files** or **A picture of this window** if they would help. Crash files and a picture may contain what was on the screens: check before sending.
+4. Tick **Diagnostics**, **Crash files** or **A picture of this window** if they would help. Crash files and a picture may contain what was on the screens: check before sending. The picture greys out the chat and every QR code.
 5. Press **Review…**, read what goes, then **Send**. Without the internet, or while the stream or a recording is on, it waits on this computer and goes by itself later.
 
 It works in both modes and on a node. A node hands its report to the Main it is paired with, which sends it. **Your reports** says whether a report is waiting or sent; **Save a Copy…** lets you send it another way. If reports keep waiting for the access list to be updated, its owner follows **Putting in a change later** in `docs/access-setup.md`.

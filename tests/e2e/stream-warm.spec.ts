@@ -1,8 +1,9 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchApp, operatorPage, operatorReady, setUpScreen, windowShowing } from './helpers';
+import { logLines } from './log-lines';
 
 /*
  * The stream's page's own warm-up as it opens (Session 60, X21; C19's finding; the owner's answer A to Q60-1). Opened
@@ -20,10 +21,8 @@ const NONE = 'Warm-up: none of its own, the hall’s screens drew theirs at this
 
 /** Drashti's log lines so far, each from its "Warm-up" on. */
 function warmUpLog(userData: string): string[] {
-  const file = join(userData, 'logs', 'drashti.log');
-  if (!existsSync(file)) return [];
-  return readFileSync(file, 'utf8')
-    .split('\n')
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((line) => / Warm-up(?::| of )/u.test(line))
     .map((line) => line.slice(line.indexOf('Warm-up')).trimEnd());
 }

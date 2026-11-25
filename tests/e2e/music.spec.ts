@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
+import { NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -16,13 +16,14 @@ import {
   operatorReady,
   relaunchApp,
 } from './helpers';
+import { expectPhoneRefuses } from './phone-refuses';
 import { makeTestTone } from './test-media';
 
 /*
  * Audio playlists (Session 14): tracks one after another on the one audio
  * player, with fades; pause and play on; how they meet Clear audio, Put it
  * back and a sound put up; recovery; Simple Mode's Play and Pause; and the
- * remote's (the API's) play and pause. Generated tones only.
+ * remote's (the API's) play and pause refused (alpha.23, QA23-PHONE-1). Generated tones only.
  */
 
 async function audioPage(app: ElectronApplication): Promise<Page> {
@@ -154,14 +155,20 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
   );
   await expect.poll(async () => (await audioLayer(win))?.music).toBeUndefined();
 
-  // The remote (the API) plays and pauses it.
+  // The remote (the API) plays and pauses it no more (alpha.23, QA23-PHONE-1: a phone plays no sound): each refused in
+  // words, the sound as it was. Moved to the window: the Music panel's Play brings the list back, Pause and Play.
   const { port } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder phone');
-  expect((await apiCall(port, '/api/v1/music/play', { method: 'POST', token })).status).toBe(200);
+  const fromPhone = { win, port, token };
+  await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/play', undefined, 'media');
+  await panel.getByTestId('music-play').click();
   await expect.poll(async () => (await audioLayer(win))?.music?.name).toBe('Music before sabha');
-  expect((await apiCall(port, '/api/v1/music/pause', { method: 'POST', token })).status).toBe(200);
+  await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBeUndefined();
+  await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/pause', undefined, 'media');
+  await panel.getByTestId('music-pause').click();
   await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBeGreaterThanOrEqual(0);
-  expect((await apiCall(port, '/api/v1/music/play', { method: 'POST', token })).status).toBe(200);
+  await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/play', undefined, 'media');
+  await panel.getByTestId('music-play').click();
   await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBeUndefined();
 
   // After an unexpected stop it comes back, playing on where it would be.

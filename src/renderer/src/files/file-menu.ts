@@ -1,3 +1,4 @@
+import type { OnSlide } from '../../../shared/picture-on-slide';
 import type { MenuEntry } from '../ui/Menu';
 import { Bookmark, FolderOpen, Pencil, SlidersHorizontal, SquarePen, Trash2 } from '../ui/icons';
 
@@ -36,6 +37,8 @@ export interface FileTarget {
   place: FilePlace;
   /** A picture's, video's or sound's media id (a picture slide's picture too, for Part 5's Save picture…). */
   mediaId?: string;
+  /** A picture slide's: how its slide shows its picture beyond its own look, for Save picture… (a22-x95nits). */
+  onSlide?: OnSlide;
   /** A presentation's, a deck's or a slide's presentation. */
   presentationId?: string;
   /** A slide's id. */

@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { logText } from './log-lines';
 import { freePort, setUpStream, streamPage, testFfmpeg } from './stream-helpers';
 
 test('Record sound off air saves generated audio and adds a draft only when captions run', async () => {
@@ -171,7 +171,7 @@ test('quitting while Record sound runs finishes its WAV first, its header saying
     expect(wave.toString('ascii', 0, 4)).toBe('RIFF');
     expect(wave.readUInt32LE(4)).toBe(wave.length - 8);
     expect(wave.readUInt32LE(40)).toBe(wave.length - 44);
-    const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const log = logText(userData);
     expect(log).toContain('Sound recording stopped');
     expect(log).not.toContain('did not answer in time');
   } finally {

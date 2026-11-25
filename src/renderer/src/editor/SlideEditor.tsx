@@ -1,6 +1,6 @@
 import { slideCanvas } from '../../../shared/document-page';
 import { DECK_MOTION_APPROXIMATION } from '../../../shared/deck-edit-motion';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { EditDoc } from '../../../shared/slide-edit';
 import type { TextElement } from '../../../shared/model';
 import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
@@ -11,7 +11,8 @@ import { loadMedia } from '../library/library-store';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
+import { usePersistentState } from '../ui/persist';
 import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog, useFocusTrap } from '../ui/Dialog';
@@ -27,15 +28,21 @@ import {
   Languages,
   ListPlus,
   Palette,
+  AlertTriangle,
+  Pin,
+  PinOff,
   Redo2,
+  SlidersHorizontal,
   Sparkles,
   Type,
   Undo2,
+  X,
 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { Canvas } from './Canvas';
+import { foldNow, HIDE_WHEN_NARROW, HIDE_WHEN_SHORT, tabDropsRibbon, useEditorFold } from './editor-fold';
 import type { EditorGroup } from './editor-store';
 import {
   acceptSourceConversion,
@@ -87,7 +94,7 @@ import { PdfHandoutDialog } from './PdfHandoutDialog';
 import { replacePdfPage, splitPdfPages } from './pdf-pages';
 import type { PdfPendingAction } from './PdfTools';
 import { SourceLinkDialog } from './SourceLinkDialog';
-import { SourceIssues } from './SourceIssues';
+import { SourceIssues, sourceNotes } from './SourceIssues';
 import { isPdfPage, pdfEditorTabs, visibleEditorGroup } from './pdf-context';
 import { deletePdfPage, turnPdfPageRight } from './pdf-page-ops';
 import { restyle, selectedLook } from './runs-doc';
@@ -152,6 +159,132 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const group = useEditor((s) => s.group);
   const strip = useEditor((s) => s.strip);
   const finding = useEditor((s) => s.finding);
+  // A small window (a22-ribbonfold): the ribbon folds when it is short, a group's tab dropping it over the slide; the
+  // Inspector folds when it is narrow, its button opening it over the slide. Either kept open by choice, for this
+  // window while Drashti runs.
+  const fold = useEditorFold();
+  const [ribbonKept, keepRibbon] = usePersistentState('editor.ribbonKept', false, isBoolean, 'run');
+  const [inspectorKept, keepInspector] = usePersistentState('editor.inspectorKept', false, isBoolean, 'run');
+  const [ribbonDropped, setRibbonDropped] = useState(false);
+  const [inspectorOver, setInspectorOver] = useState(false);
+  // A PDF's "Source document limits" notes fold too in a short window, behind a button over the slide (QA23-X95N-1d).
+  const [notesOver, setNotesOver] = useState(false);
+  const ribbonFolded = fold.ribbon && !ribbonKept;
+  const inspectorFolded = fold.inspector && !inspectorKept;
+  const dropped = ribbonFolded && ribbonDropped;
+  const over = inspectorFolded && inspectorOver;
+  const notesFolded = fold.ribbon;
+  const notesShown = notesFolded && notesOver;
+  // Nothing comes back open by itself: what was open when its fold ended is closed (a22-review-ribbonfold nit).
+  const [foldSeen, setFoldSeen] = useState(fold);
+  if (foldSeen !== fold) {
+    setFoldSeen(fold);
+    if (!fold.ribbon) {
+      setRibbonDropped(false);
+      setNotesOver(false);
+    }
+    if (!fold.inspector) setInspectorOver(false);
+  }
+  const notesBox = useRef<HTMLDivElement>(null);
+  const notesButton = useRef<HTMLButtonElement>(null);
+  const notesId = useId();
+  const header = useRef<HTMLElement>(null);
+  const droppedBox = useRef<HTMLDivElement>(null);
+  const overBox = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const overId = useId();
+  const foldInspector = useRef<HTMLButtonElement>(null);
+  // Where the keyboard goes once a button that keeps or folds something is gone or hidden (round 2, R2-S1: it fell to
+  // the page): the control that takes its place, given the keyboard after the render that shows it.
+  const keyboardTo = useRef<'tab' | 'opener' | 'fold-inspector' | null>(null);
+  useLayoutEffect(() => {
+    const to = keyboardTo.current;
+    if (!to) return;
+    keyboardTo.current = null;
+    if (to === 'tab') tabsIn(header.current)?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+    else if (to === 'opener') opener.current?.focus();
+    else foldInspector.current?.focus();
+  });
+  // What is open over the slide folds again when it is left for elsewhere in the editor: a press there, or the
+  // keyboard moving there (Tab, Shift+Tab), so no control it covers ever has the keyboard (WCAG 2.4.11,
+  // a22-review-ribbonfold M1). Menus and dialogs opened from it are drawn outside the editor, and keep it. A field in
+  // it pressed away from lets go of the keyboard first, so what was typed in it is kept (S2). Escape is its first
+  // step back (below).
+  useEffect(() => {
+    if (!dropped && !over && !notesShown) return;
+    const leave = (target: EventTarget | null, press: boolean) => {
+      const t = target instanceof Node ? target : null;
+      if (!t || !root.current?.contains(t)) return;
+      const away = (box: HTMLElement | null, toggle: HTMLElement | null) =>
+        !box?.contains(t) && !toggle?.contains(t);
+      if (notesShown && away(notesBox.current, notesButton.current)) {
+        if (press) letGo(notesBox.current);
+        setNotesOver(false);
+      }
+      // The ribbon's own: its tabs for a press (a press on the title folds it), the whole top for the keyboard, which
+      // goes from the tabs through the top's buttons into the ribbon (round 2, R2-M1: WCAG 2.1.1). The ribbon hangs
+      // under the top and never covers it, so 2.4.11 still holds.
+      if (dropped && away(droppedBox.current, press ? tabsIn(header.current) : header.current)) {
+        if (press) letGo(droppedBox.current);
+        setRibbonDropped(false);
+      }
+      if (over && away(overBox.current, opener.current)) {
+        if (press) letGo(overBox.current);
+        setInspectorOver(false);
+      }
+    };
+    const onDown = (e: PointerEvent) => {
+      leave(e.target, true);
+    };
+    const onFocus = (e: FocusEvent) => {
+      leave(e.target, false);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('focusin', onFocus, true);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('focusin', onFocus, true);
+    };
+  }, [dropped, over, notesShown]);
+  /** Escape's first step back in a small window: what is open over the slide folds, the keyboard back on its button. */
+  const foldOver = (): boolean => {
+    const at = document.activeElement;
+    if (notesShown) {
+      setNotesOver(false);
+      if (notesBox.current?.contains(at) || notesButton.current === at) notesButton.current?.focus();
+      return true;
+    }
+    if (over) {
+      setInspectorOver(false);
+      if (overBox.current?.contains(at) || opener.current === at) opener.current?.focus();
+      return true;
+    }
+    if (dropped) {
+      setRibbonDropped(false);
+      if (droppedBox.current?.contains(at) || tabsIn(header.current)?.contains(at))
+        tabsIn(header.current)?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+      return true;
+    }
+    return false;
+  };
+  // The dropped ribbon reaches no lower than the window: it scrolls within it there. Measured again at every render
+  // (the top can gain a row while it is down: Save a PDF copy…, Adding the picture…; a22-review-ribbonfold S3) and
+  // as the window changes size.
+  useLayoutEffect(() => {
+    const box = droppedBox.current;
+    if (dropped && box) box.style.maxHeight = roomBelow(box);
+  });
+  useEffect(() => {
+    const box = droppedBox.current;
+    if (!dropped || !box) return;
+    const room = () => {
+      box.style.maxHeight = roomBelow(box);
+    };
+    window.addEventListener('resize', room);
+    return () => {
+      window.removeEventListener('resize', room);
+    };
+  }, [dropped]);
   // Its slide is on the screens now: saving changes them at once.
   const presentationId = useEditor((s) => s.open?.presentationId);
   const live = useEngine(
@@ -466,10 +599,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     }
   };
 
-  // Esc steps back: close find, stop typing, then let go of the selection, then close (asking first).
+  // Esc steps back: fold what is open over the slide (a small window), close find, stop typing, then let go of the
+  // selection, then close (asking first).
   useFocusTrap(root, () => {
     const s = useEditor.getState();
     if (pdfJob.current || s.askDiscard || s.conflict || s.sourceConversion) return;
+    if (foldOver()) return;
     if (s.finding) useEditor.setState({ finding: false });
     else if (s.pdfTool) {
       if (s.slideId) revokeSourceContent(s.slideId);
@@ -545,6 +680,16 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     };
   }, [mac, saveWhenReady, outsideBusy, translating]);
 
+  // A source page can be linked where it is a picture of a deck's or an old file's page (Link source page…).
+  const sourceLink =
+    shownPage &&
+    (!shownPage.documentPage ||
+      shownPage.documentPage.ext === 'ppt' ||
+      shownPage.documentPage.ext === 'key') &&
+    shownPage.elements.some((element) => element.kind === 'image')
+      ? openSourceLink
+      : undefined;
+  const notes = sourceNotes(sourceIssues);
   return (
     <div
       ref={root}
@@ -561,7 +706,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           dropped to a second row at 1024 × 645). Its least is 5rem: at the window's least on Windows (884 inside) one
           row needs the title at 91 px or less, so with 6rem Done went to a second row there. From xl up it never
           wraps. */}
-      <header className="@container/editor-top flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5 max-xl:flex-wrap">
+      <header
+        ref={header}
+        className="@container/editor-top flex shrink-0 items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5 max-xl:flex-wrap"
+      >
         <h1 id={titleId} className="min-w-20 flex-[1_1_5rem] text-sm font-bold">
           <Truncate text={`Slides of “${name}”`} />
         </h1>
@@ -572,12 +720,15 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           value={shownGroup}
           size="sm"
           className="max-xl:[&_svg]:hidden"
+          {...(ribbonFolded ? { expanded: dropped } : {})}
           onChange={(next) => {
             const now = useEditor.getState();
             if (next !== 'pdf') {
               if (now.pdfTool && now.slideId) revokeSourceContent(now.slideId);
               useEditor.setState({ group: next, pdfTool: null, pdfDrawing: false });
             } else useEditor.setState({ group: next });
+            // Folded, a group's tab drops its ribbon over the slide.
+            if (tabDropsRibbon(ribbonKept, ribbonFolded, foldNow())) setRibbonDropped(true);
           }}
         />
         <Tooltip content="Undo the last change" kbd={`${mod}Z`} side="bottom">
@@ -684,102 +835,160 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           Adding the picture…
         </p>
       )}
-      <TabPanel
-        group="editor"
-        id={shownGroup}
-        className="flex shrink-0 items-center overflow-x-auto border-b border-line bg-panel-2 px-3 py-1"
+      {/* Folded (a short window), the ribbon is dropped over the slide by its tab, under the top; else in its place,
+          its wrappers no boxes of their own (display: contents), so it is laid out exactly as before. */}
+      <div
+        className={
+          ribbonFolded
+            ? 'relative z-30 h-0 shrink-0'
+            : ribbonKept
+              ? 'contents'
+              : cx('contents', HIDE_WHEN_SHORT)
+        }
+        hidden={ribbonFolded && !dropped}
+        data-testid={ribbonFolded ? 'editor-ribbon-folded' : undefined}
       >
-        <div data-testid="editor-ribbon" data-group={shownGroup} className="flex min-w-0 items-start">
-          {shownGroup === 'words' && (
-            <WordsGroup
-              findKbd={`${mod}F`}
-              onFind={() => {
-                useEditor.setState({ finding: true });
-              }}
-            />
-          )}
-          {shownGroup === 'insert' && (
-            <InsertGroup
-              onPicture={() => {
-                setPicking('picture');
-              }}
-              onPictureFile={() => pictureFromComputer(null)}
-              pictureBusy={pickingBusy}
-              onSound={() => setPicking('sound')}
-            />
-          )}
-          {shownGroup === 'arrange' && <ArrangeGroup />}
-          {shownGroup === 'design' && <DesignGroup key={slideId} />}
-          {shownGroup === 'motion' && <MotionGroup key={slideId} />}
-          {shownGroup === 'slides' && <SlidesGroup />}
-          {pdfRowVisible && (
-            <PdfTools
-              available={{
-                highlight: true,
-                underline: true,
-                strike: true,
-                draw: true,
-                cover: true,
-                rotateRight:
-                  !!shownPage?.pageSize ||
-                  (shownPage?.documentPage?.width !== undefined &&
-                    shownPage.documentPage.height !== undefined &&
-                    !shownPage.documentPage.rotation),
-                deletePage: !!doc && slidesOf(doc).length > 1,
-                insertPages: !!doc,
-                saveCopy: !!doc,
-                makeSlide: !!doc,
-              }}
-              activeTool={pdfTool}
-              underlined={underlined}
-              struckThrough={struckThrough}
-              pending={pdfPending}
-              blocked={
-                loading || saving || outsideBusy || pickingBusy || pdfDrawing || sourceConversion !== null
-              }
-              // Crop and x85's page actions wait while the stream is on air or recording; marks, Save,
-              // a single Make a slide… and Save a PDF copy… go on during a show.
-              pagesWait={!pdfStreamOffAir}
-              onHighlight={() => choosePdfTool('highlight')}
-              onUnderline={() => applyPdfMark('underline')}
-              onStrikeThrough={() => applyPdfMark('strike')}
-              onDraw={() => choosePdfTool('draw')}
-              onCover={() => choosePdfTool('cover')}
-              onCropPage={() => {
-                void beginPageAction('crop');
-              }}
-              onRotateRight={rotatePdfPage}
-              onDeletePage={deleteCurrentPdfPage}
-              onInsertPages={openInsertion}
-              onReplacePage={() => {
-                void mayWorkOnPdf().then((ok) => {
-                  if (ok) {
-                    setReplacing(true);
-                    openInsertion();
+        <div
+          ref={droppedBox}
+          className={
+            ribbonFolded
+              ? 'absolute inset-x-0 top-0 overflow-y-auto border-b border-line bg-panel-2 shadow-overlay'
+              : 'contents'
+          }
+        >
+          <TabPanel
+            group="editor"
+            id={shownGroup}
+            className={
+              ribbonFolded
+                ? 'flex shrink-0 items-center overflow-x-auto px-3 py-1'
+                : 'flex shrink-0 items-center overflow-x-auto border-b border-line bg-panel-2 px-3 py-1'
+            }
+          >
+            {/* First in its row, in view however far the row scrolls sideways: Show the ribbon where it is dropped,
+                Fold the ribbon where it is kept open in a short window. */}
+            {ribbonFolded ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Pin}
+                className="mr-2 shrink-0"
+                onClick={() => {
+                  keepRibbon(true);
+                  setRibbonDropped(false);
+                }}
+              >
+                Show the ribbon
+              </Button>
+            ) : (
+              fold.ribbon && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={PinOff}
+                  className="mr-2 shrink-0"
+                  onClick={() => {
+                    keyboardTo.current = 'tab';
+                    keepRibbon(false);
+                  }}
+                >
+                  Fold the ribbon
+                </Button>
+              )
+            )}
+            <div data-testid="editor-ribbon" data-group={shownGroup} className="flex min-w-0 items-start">
+              {shownGroup === 'words' && (
+                <WordsGroup
+                  findKbd={`${mod}F`}
+                  onFind={() => {
+                    useEditor.setState({ finding: true });
+                  }}
+                />
+              )}
+              {shownGroup === 'insert' && (
+                <InsertGroup
+                  onPicture={() => {
+                    setPicking('picture');
+                  }}
+                  onPictureFile={() => pictureFromComputer(null)}
+                  pictureBusy={pickingBusy}
+                  onSound={() => setPicking('sound')}
+                />
+              )}
+              {shownGroup === 'arrange' && <ArrangeGroup />}
+              {shownGroup === 'design' && <DesignGroup key={slideId} />}
+              {shownGroup === 'motion' && <MotionGroup key={slideId} />}
+              {shownGroup === 'slides' && <SlidesGroup />}
+              {pdfRowVisible && (
+                <PdfTools
+                  available={{
+                    highlight: true,
+                    underline: true,
+                    strike: true,
+                    draw: true,
+                    cover: true,
+                    rotateRight:
+                      !!shownPage?.pageSize ||
+                      (shownPage?.documentPage?.width !== undefined &&
+                        shownPage.documentPage.height !== undefined &&
+                        !shownPage.documentPage.rotation),
+                    deletePage: !!doc && slidesOf(doc).length > 1,
+                    insertPages: !!doc,
+                    saveCopy: !!doc,
+                    makeSlide: !!doc,
+                  }}
+                  activeTool={pdfTool}
+                  underlined={underlined}
+                  struckThrough={struckThrough}
+                  pending={pdfPending}
+                  blocked={
+                    loading || saving || outsideBusy || pickingBusy || pdfDrawing || sourceConversion !== null
                   }
-                });
-              }}
-              onExtractPages={() => {
-                void beginPageAction('extract');
-              }}
-              onSplit={
-                doc && slidesOf(doc).findIndex((page) => page.id === slideId) > 0
-                  ? () => {
-                      void beginPageAction('split');
-                    }
-                  : undefined
-              }
-              onHandout={() => {
-                void beginPageAction('handout');
-              }}
-              onSaveCopy={() => {
-                void savePdfCopy();
-              }}
-              onMakeSlide={openMakeSlide}
-            />
-          )}
+                  // Crop and x85's page actions wait while the stream is on air or recording; marks, Save,
+                  // a single Make a slide… and Save a PDF copy… go on during a show.
+                  pagesWait={!pdfStreamOffAir}
+                  onHighlight={() => choosePdfTool('highlight')}
+                  onUnderline={() => applyPdfMark('underline')}
+                  onStrikeThrough={() => applyPdfMark('strike')}
+                  onDraw={() => choosePdfTool('draw')}
+                  onCover={() => choosePdfTool('cover')}
+                  onCropPage={() => {
+                    void beginPageAction('crop');
+                  }}
+                  onRotateRight={rotatePdfPage}
+                  onDeletePage={deleteCurrentPdfPage}
+                  onInsertPages={openInsertion}
+                  onReplacePage={() => {
+                    void mayWorkOnPdf().then((ok) => {
+                      if (ok) {
+                        setReplacing(true);
+                        openInsertion();
+                      }
+                    });
+                  }}
+                  onExtractPages={() => {
+                    void beginPageAction('extract');
+                  }}
+                  onSplit={
+                    doc && slidesOf(doc).findIndex((page) => page.id === slideId) > 0
+                      ? () => {
+                          void beginPageAction('split');
+                        }
+                      : undefined
+                  }
+                  onHandout={() => {
+                    void beginPageAction('handout');
+                  }}
+                  onSaveCopy={() => {
+                    void savePdfCopy();
+                  }}
+                  onMakeSlide={openMakeSlide}
+                />
+              )}
+            </div>
+          </TabPanel>
         </div>
-      </TabPanel>
+      </div>
       {doc?.master?.id === slideId && (
         <div
           className="flex shrink-0 items-center justify-between gap-3 border-b border-second/30 bg-second/10 px-3 py-1"
@@ -828,24 +1037,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           is kept as it is, but not shown here.
         </Notice>
       )}
-      <SourceIssues
-        issues={sourceIssues}
-        blocked={exportBusy}
-        onLink={
-          shownPage &&
-          (!shownPage.documentPage ||
-            shownPage.documentPage.ext === 'ppt' ||
-            shownPage.documentPage.ext === 'key') &&
-          shownPage.elements.some((element) => element.kind === 'image')
-            ? openSourceLink
-            : undefined
-        }
-      />
+      {/* In a short window they fold behind a button over the slide (below), never dropped. */}
+      {!notesFolded && (
+        <SourceIssues
+          issues={sourceIssues}
+          blocked={exportBusy}
+          onLink={sourceLink}
+          className={cx('m-2', HIDE_WHEN_SHORT)}
+        />
+      )}
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (
         <main className="flex min-h-0 flex-1 flex-col" aria-label="The slides">
-          <div className="flex min-h-0 flex-1">
+          <div className="relative flex min-h-0 flex-1">
             {!strip && <SlideList doc={doc} current={slideId} />}
             <div className="relative flex min-w-0 flex-1">
               <Canvas
@@ -873,8 +1078,121 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                   }}
                 />
               )}
+              {notesFolded && notes.length > 0 && (
+                // Folded (a short window), the source notes are behind this button at the slide's top left, in the
+                // warning's colours, and open over the slide. A small square, its name in its tooltip, so it covers
+                // as little of the slide as it can (a22-review-ribbonfold S4).
+                <IconButton
+                  ref={notesButton}
+                  variant="warning"
+                  size="sm"
+                  icon={AlertTriangle}
+                  label={`Source notes (${String(notes.length)})`}
+                  tooltipSide="bottom"
+                  className="absolute top-2 left-2 z-10 shadow-overlay"
+                  aria-expanded={notesShown}
+                  aria-controls={notesShown ? notesId : undefined}
+                  onClick={() => {
+                    setNotesOver(!notesShown);
+                  }}
+                />
+              )}
+              {notesShown && notes.length > 0 && (
+                <div
+                  ref={notesBox}
+                  id={notesId}
+                  className="absolute inset-x-2 top-11 z-20 max-h-[calc(100%-3.25rem)] overflow-y-auto rounded-md shadow-overlay"
+                >
+                  <SourceIssues
+                    issues={sourceIssues}
+                    blocked={exportBusy}
+                    onLink={sourceLink}
+                    className="m-0 pr-10"
+                    over
+                  />
+                  <IconButton
+                    icon={X}
+                    size="sm"
+                    label="Close the source notes"
+                    className="absolute top-1 right-1"
+                    onClick={() => {
+                      setNotesOver(false);
+                      notesButton.current?.focus();
+                    }}
+                  />
+                </div>
+              )}
+              {inspectorFolded && (
+                // Folded (a narrow window), the Inspector is behind this button, at the slide's bottom left (the
+                // zoom is at its bottom right, Find at its top right): a small square, its name in its tooltip (S4).
+                <IconButton
+                  ref={opener}
+                  variant="secondary"
+                  size="sm"
+                  icon={SlidersHorizontal}
+                  label="Inspector"
+                  className="absolute bottom-2 left-2 z-10 shadow-overlay"
+                  aria-expanded={over}
+                  aria-controls={over ? overId : undefined}
+                  onClick={() => {
+                    setInspectorOver(!over);
+                  }}
+                />
+              )}
             </div>
-            <Inspector />
+            {!fold.inspector ? (
+              <Inspector {...(inspectorKept ? {} : { className: HIDE_WHEN_NARROW })} />
+            ) : !inspectorFolded ? (
+              <div className="grid shrink-0 grid-rows-[auto_minmax(0,1fr)]">
+                <div className="flex justify-start border-b border-l border-line bg-panel px-2 py-1">
+                  <Button
+                    ref={foldInspector}
+                    size="sm"
+                    variant="ghost"
+                    icon={PinOff}
+                    onClick={() => {
+                      keyboardTo.current = 'opener';
+                      keepInspector(false);
+                    }}
+                  >
+                    Fold the Inspector
+                  </Button>
+                </div>
+                <Inspector />
+              </div>
+            ) : over ? (
+              <div
+                ref={overBox}
+                id={overId}
+                // Clear of the slide's bottom row of buttons, its own among them (M1): never over its button.
+                className="absolute top-0 right-0 bottom-11 z-20 grid grid-rows-[auto_minmax(0,1fr)] shadow-overlay"
+              >
+                <div className="flex items-center justify-end gap-1 border-b border-l border-line bg-panel px-2 py-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={Pin}
+                    onClick={() => {
+                      keyboardTo.current = 'fold-inspector';
+                      keepInspector(true);
+                      setInspectorOver(false);
+                    }}
+                  >
+                    Keep it open
+                  </Button>
+                  <IconButton
+                    icon={X}
+                    size="sm"
+                    label="Close the Inspector"
+                    onClick={() => {
+                      setInspectorOver(false);
+                      opener.current?.focus();
+                    }}
+                  />
+                </div>
+                <Inspector />
+              </div>
+            ) : null}
           </div>
           {strip && <SlideList doc={doc} current={slideId} horizontal />}
         </main>
@@ -1352,4 +1670,25 @@ function SlideList({
       </div>
     </nav>
   );
+}
+
+/** A remembered choice that is yes or no. */
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
+/** The editor's group tabs in its top. */
+function tabsIn(top: HTMLElement | null): HTMLElement | null {
+  return top?.querySelector<HTMLElement>('[role="tablist"]') ?? null;
+}
+
+/** A field in `box` with the keyboard lets go of it, so what was typed is kept before the box closes. */
+function letGo(box: HTMLElement | null): void {
+  const at = document.activeElement;
+  if (box && at instanceof HTMLElement && box.contains(at)) at.blur();
+}
+
+/** The height from `box`'s top to the window's bottom, as a max-height. */
+function roomBelow(box: HTMLElement): string {
+  return `${String(Math.max(0, innerHeight - box.getBoundingClientRect().top))}px`;
 }

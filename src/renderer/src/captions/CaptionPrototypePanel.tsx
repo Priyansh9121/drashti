@@ -3,6 +3,7 @@ import {
   captionCorrectionSchema,
   type CaptionCorrection,
   type CaptionReview,
+  type CaptionRevision,
 } from '../../../shared/caption-coordinator';
 import { Button } from '../ui/Button';
 import { Field, Textarea } from '../ui/Field';
@@ -11,6 +12,30 @@ import { Notice } from '../ui/Notice';
 /** A response to an earlier IPC read cannot resurrect an old session in the review panel. */
 export function latestCaptionReview(current: CaptionReview | null, next: CaptionReview): CaptionReview {
   return current && current.version > next.version ? current : next;
+}
+
+/**
+ * How the operator's open correction stands against the phrase on the screens now: none open, open on it as it is,
+ * open on an earlier revision of it (it changed since), or gone: its phrase has left the screens (its time is over,
+ * or the next phrase took its place). A correction being typed stays open until closed, and says so (review n2).
+ */
+export type CorrectionStanding = 'none' | 'open' | 'changed' | 'gone';
+
+export function correctionStanding(
+  draft: CaptionCorrection | null,
+  current: CaptionRevision | null,
+): CorrectionStanding {
+  if (draft === null) return 'none';
+  if (current?.sessionId !== draft.sessionId || current.phraseId !== draft.phraseId) return 'gone';
+  return draft.revision === current.revision ? 'open' : 'changed';
+}
+
+/** Why an open correction cannot be applied as it stands, or null. */
+export function correctionProblem(standing: CorrectionStanding, valid: boolean): string | null {
+  if (standing === 'gone')
+    return 'That phrase has left the screens, so this correction cannot be applied. Close this edit.';
+  if (standing !== 'open') return 'The phrase changed. Close this edit and open it again.';
+  return valid ? null : 'Use a shorter correction with plain text.';
 }
 
 export function CaptionPrototypeControls({
@@ -23,10 +48,9 @@ export function CaptionPrototypeControls({
   const [draft, setDraft] = useState<CaptionCorrection | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const current = review.current;
-  const sameDraft =
-    current !== null && draft?.sessionId === current.sessionId && draft.phraseId === current.phraseId;
-  const stale = !draft || !current || !sameDraft || draft.revision !== current.revision;
+  const standing = correctionStanding(draft, current);
   const validDraft = draft !== null && captionCorrectionSchema.safeParse(draft).success;
+  const problem = correctionProblem(standing, validDraft);
   // Only while a language with a model of its own is heard (caption AI): nothing of an ended session is shown.
   if (!review.on) return null;
   return (
@@ -70,18 +94,9 @@ export function CaptionPrototypeControls({
           </Button>
         </div>
       )}
-      {sameDraft && (
+      {draft !== null && (
         <div className="space-y-2">
-          <Field
-            label="Corrected phrase"
-            error={
-              stale
-                ? 'The phrase changed. Close this edit and open it again.'
-                : !validDraft
-                  ? 'Use a shorter correction with plain text.'
-                  : null
-            }
-          >
+          <Field label="Corrected phrase" error={problem}>
             <Textarea
               rows={3}
               maxLength={4_096}
@@ -92,7 +107,7 @@ export function CaptionPrototypeControls({
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              disabled={stale || !validDraft || !review.canCorrect}
+              disabled={problem !== null || !review.canCorrect}
               onClick={() => {
                 void window.drashti.captions.correctPrototype(draft).then((ok) => {
                   if (ok) {

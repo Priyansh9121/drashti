@@ -3,6 +3,8 @@ import { type OperatorAction, shortcutText } from '../../../shared/keymap';
 import {
   SCREEN_SWITCHES,
   type ScreenSwitch,
+  stageOffHint,
+  stageTabletsShowing,
   type ScreenSwitches,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
@@ -11,8 +13,9 @@ import {
 } from '../../../shared/screen-switches';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
-import { MonitorOff } from '../ui/icons';
+import { MonitorOff, TabletSmartphone } from '../ui/icons';
 import { Tooltip } from '../ui/Tooltip';
+import { useNetwork } from '../network/network-store';
 import { useNotice } from './actions';
 import {
   answerFromOutput,
@@ -176,31 +179,66 @@ export function ScreenSwitchAsk({ platform }: { platform: string }) {
   return <Asking key={covered ? 'covered' : 'here'} which={asking} covered={covered} platform={platform} />;
 }
 
-/** The status bar's word while one is off, with Turn on: one click (both modes). */
+/**
+ * The status bar's word while one is off, with Turn on: one click (both modes). With Stage off and a stage tablet
+ * connected (alpha.23, the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)"), Stage's says that the tablet shows the
+ * audience picture: a tablet in place of the screen icon, the sentence as its tooltip and in its words for screen
+ * readers, so the status bar is not one pixel wider (a22-review-stage8, third look: in CI's 1024 × 645 with Audience
+ * off too, the row has no room for more words).
+ */
 export function SwitchedOffStatus() {
   const switches = useScreenSwitches((s) => s.switches);
+  const tablets = useNetwork((s) => (s.status ? stageTabletsShowing(s.status) : 0));
+  const hint = stageOffHint(tablets);
   return (
     <>
-      {SCREEN_SWITCHES.filter((which) => !switches[which]).map((which) => (
-        <div
-          key={which}
-          role="status"
-          data-testid={`switch-off-${which}`}
-          className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
-        >
-          <MonitorOff size={13} aria-hidden="true" className="shrink-0" />
-          <span className="font-medium">{SWITCH_NAMES[which]} off</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-5"
-            aria-label={`Turn on ${SWITCH_NAMES[which]}`}
-            onClick={() => void turnOnIfOff(which).then(say)}
+      {SCREEN_SWITCHES.filter((which) => !switches[which]).map((which) => {
+        // Said only of Stage, only with a tablet connected.
+        const said = which === 'stage' ? hint : null;
+        const item = (
+          <div
+            key={which}
+            role="status"
+            data-testid={`switch-off-${which}`}
+            className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
           >
-            Turn on
-          </Button>
-        </div>
-      ))}
+            {said !== null ? (
+              <TabletSmartphone
+                size={13}
+                aria-hidden="true"
+                className="shrink-0"
+                data-testid="switch-off-stage-tablet"
+              />
+            ) : (
+              <MonitorOff size={13} aria-hidden="true" className="shrink-0" />
+            )}
+            <span className="font-medium">{SWITCH_NAMES[which]} off</span>
+            {said !== null && (
+              <span className="sr-only">
+                {' · '}
+                <span data-testid="switch-off-stage-hint">{said}</span>
+              </span>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-5"
+              aria-label={`Turn on ${SWITCH_NAMES[which]}`}
+              onClick={() => void turnOnIfOff(which).then(say)}
+            >
+              Turn on
+            </Button>
+          </div>
+        );
+        return said !== null ? (
+          // The words are in the item already, for screen readers: the tooltip only shows them.
+          <Tooltip key={which} content={`Stage off: ${said}.`} describes={false}>
+            {item}
+          </Tooltip>
+        ) : (
+          item
+        );
+      })}
     </>
   );
 }

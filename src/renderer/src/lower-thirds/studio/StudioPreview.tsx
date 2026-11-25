@@ -49,14 +49,26 @@ function Behind({ draw }: { draw: BackdropDraw }) {
       return <WallpaperBehind draw={draw} />;
     case 'live':
       return (
-        <img
-          data-testid="studio-live-picture"
-          data-live-source={draw.picture.source}
-          src={draw.picture.url}
-          alt=""
-          draggable={false}
-          style={{ ...FULL, width: '100%', height: '100%', objectFit: 'contain' }}
-        />
+        <>
+          <img
+            data-testid="studio-live-picture"
+            data-live-source={draw.picture.source}
+            src={draw.picture.url}
+            alt=""
+            draggable={false}
+            style={{ ...FULL, width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+          {draw.words !== undefined && (
+            // Over the picture (Live's copy, a video input or shown window live): on a dark band, so it reads on any.
+            <p
+              data-testid="studio-backdrop-words"
+              className="absolute inset-x-0 top-[12%] mx-auto w-fit max-w-[90%] rounded px-3 py-1 text-center text-sm"
+              style={{ color: '#f3f4f6', background: 'rgba(0, 0, 0, 0.72)' }}
+            >
+              {draw.words}
+            </p>
+          )}
+        </>
       );
     case 'plain':
       return draw.words === undefined ? null : (

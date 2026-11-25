@@ -16,3 +16,14 @@ export function useLiveHere(): boolean {
   const previews = usePreviewsOnly();
   return here && !previews;
 }
+
+/**
+ * The Stage preview's page (alpha.23; lead 2's QA23-STAGE8-1): LiveHere is false there (output/main.tsx), so it names a
+ * video input and another app's window as a tablet does; and, where that alone would not keep it so, it never captures
+ * a window (LiveWindowView) and never says how an input stands (it is no screen). Its OutputContext says so (`preview`).
+ */
+export const StagePreviewPage = createContext(false);
+
+export function useStagePreview(): boolean {
+  return useContext(StagePreviewPage);
+}

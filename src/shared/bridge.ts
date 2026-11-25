@@ -36,7 +36,8 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
-import type { StudioLivePicture } from './studio-live';
+import type { StudioLiveMessage } from './studio-live';
+import type { NotOnScreen } from './not-on-screens';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -110,6 +111,7 @@ import type { DisplayCopyBlob, PictureAssetKind, SharpenJobView } from './pictur
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
+import type { SabhaFlowChoice, SabhaFlowNowResult, SabhaFlowSnapshot } from './sabha-flow';
 import type {
   OpeningChoice,
   OpeningEnd,
@@ -186,6 +188,7 @@ import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
+import type { ChatOperatorView, ChatResult } from './chat';
 import type {
   ItemOrder,
   MediaSummary,
@@ -210,6 +213,7 @@ import type {
   TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { OnSlide } from './picture-on-slide';
 import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -370,6 +374,19 @@ export interface DrashtiBridge {
     onChanged(listener: (view: EventsOutView) => void): () => void;
     /** File > Events Out… was chosen. */
     onOpen(listener: () => void): () => void;
+  };
+  /** Sabha flow (alpha.23, operator window): the running order's PDF, read, and Now. */
+  flow: {
+    /** The flow and its Now, together. */
+    get(): Promise<SabhaFlowSnapshot>;
+    /** "Choose PDF…" (and Replace): Main's file dialog (null: cancelled). */
+    choose(): Promise<SabhaFlowChoice | null>;
+    remove(): Promise<null>;
+    /** Mark Now: an index into the flow's items, or null (refused for a flow that is no longer the current one). */
+    setNow(flowId: string, now: number | null): Promise<SabhaFlowNowResult>;
+    /** A page (from 0) as a PNG, or null. */
+    page(flowId: string, page: number): Promise<Uint8Array | null>;
+    onChanged(listener: (snapshot: SabhaFlowSnapshot) => void): () => void;
   };
   /** The drop folder (Session 28, operator window; Pro Mode). */
   drop: {
@@ -886,8 +903,11 @@ export interface DrashtiBridge {
     keepLiveZoom(): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Session 55 (Part 5): a photo (its blurred fill on by itself), not a deck's page. */
     photo(mediaId: string): Promise<boolean>;
-    /** Save picture… (Session 55, Part 5): the picture full size, as it shows, where the operator chooses. */
-    savePicture(mediaId: string, name: string): Promise<SavePictureResult>;
+    /**
+     * Save picture… (Session 55, Part 5): the picture full size, as it shows, where the operator chooses; a slide's
+     * picture as its slide shows it (`onSlide`, a22-x95nits).
+     */
+    savePicture(mediaId: string, name: string, onSlide?: OnSlide): Promise<SavePictureResult>;
     onLooks(listener: (looks: Record<string, PictureLook>) => void): () => void;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;
@@ -933,6 +953,22 @@ export interface DrashtiBridge {
     cannotPlay(mediaId: string, startedAt: number, code: number, words: string): Promise<null>;
     /** How many bytes of a library file Main has sent the pages so far (Q60-51; 0 for none). */
     served(mediaId: string): Promise<number>;
+    /**
+     * The videos still up that one of this computer's screens could not play (alpha.23, a22-halldrop), what LIVE names
+     * under its picture; and told as they change (operator window).
+     */
+    notOnScreens(): Promise<NotOnScreen[]>;
+    /**
+     * A page that said this showing could not play drew its first frame after all (a22-halldrop's review, MUST-2):
+     * heeded from this computer's screens.
+     */
+    playsHere(mediaId: string, startedAt: number): Promise<null>;
+    /**
+     * A page has no first frame of this showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a)): heeded from
+     * this computer's screens.
+     */
+    starting(mediaId: string, startedAt: number): Promise<null>;
+    onNotOnScreens(listener: (list: NotOnScreen[]) => void): () => void;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,
@@ -1175,6 +1211,19 @@ export interface DrashtiBridge {
     reject(which: { id: string }): Promise<AnnouncementResult>;
     takeOff(which: { id: string }): Promise<AnnouncementResult>;
   };
+  /**
+   * The chat with paired phones (alpha.23, shared/chat.ts; operator window only): the day's messages and people, a
+   * message as the operator, Clear chat, a person removed (unpaired), and the pairing dialog's "Chat" QR.
+   */
+  chat: {
+    view(): Promise<ChatOperatorView>;
+    onChanged(listener: (view: ChatOperatorView) => void): () => void;
+    send(text: string): Promise<ChatResult>;
+    clear(): Promise<ChatResult>;
+    remove(personId: string): Promise<ChatResult>;
+    invite(): Promise<ChatResult>;
+    endInvite(): Promise<ChatResult>;
+  };
   /** The setup wizard (operator window only; never in Simple Mode). */
   setup: {
     state(): Promise<SetupState>;
@@ -1277,7 +1326,7 @@ export interface DrashtiBridge {
     /** The studio shows Live behind its preview (true) or another backdrop (alpha.22): stills only while it does. */
     watchLive(on: boolean): Promise<null>;
     /** Live's still, about once a second while it is watched (null: nothing on this computer to take it from). */
-    onLive(listener: (picture: StudioLivePicture | null) => void): () => void;
+    onLive(listener: (live: StudioLiveMessage) => void): () => void;
   };
   /** OSC: explicitly allowed local UDP senders, independent of Phones. */
   osc: {

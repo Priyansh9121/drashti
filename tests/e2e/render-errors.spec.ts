@@ -1,6 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { TEST_LINES } from '../../src/main/db/seed';
 import {
   launchApp,
@@ -11,6 +9,7 @@ import {
   setUpScreen,
   type PageGlobals,
 } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * A render error on an output (Session 23). An element that throws as it
@@ -66,7 +65,7 @@ test('a render error on an output: black (never text), logged, and the output re
   await expect.poll(() => seen).toContain('black fallback: rgb(0, 0, 0), text ""');
   expect(seen).not.toContain('output-root gone');
   // The error reaches the main process's log.
-  const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = () => logText(userData);
   await expect
     .poll(log)
     .toMatch(/Render error in output "[^"]+" \(caught\): Error: A test asked this output to fail/u);
@@ -98,7 +97,7 @@ test('an output whose page fails to load: said in the log at once, and its own p
     );
     void w?.webContents.loadURL('file:///drashti-no-such-page.html').catch(() => undefined);
   });
-  const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = () => logText(userData);
   await expect.poll(log, { timeout: 10_000 }).toContain('its page failed to load');
   // Its own page again, ready to draw the show.
   await expect.poll(() => out.url(), { timeout: 15_000 }).toContain('output.html');

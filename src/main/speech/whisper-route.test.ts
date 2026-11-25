@@ -66,6 +66,32 @@ describe('Route W from the pack', () => {
     expect(t.released).toEqual(['engine', 'pack']);
   });
 
+  it('hands engine() the very object known() returned (QWC-1: index.ts marks the sized uses by that object)', async () => {
+    const given: object[] = [];
+    const engines: object[] = [];
+    let finish: (h: { model: PackModel; release(): void } | null) => void = () => undefined;
+    const route = createWhisperRoute({
+      store: { acquire: () => new Promise((resolve) => (finish = resolve)) },
+      known: (sha) => {
+        if (sha !== KNOWN) return null;
+        const use = { fallback: true, timestamps: false };
+        given.push(use);
+        return use;
+      },
+      engine: (_file, use): SpeechEngine => {
+        engines.push(use);
+        return { start: () => () => undefined };
+      },
+    });
+    const stop = route.make(model(), 'gu')?.start('gu', { heard: () => undefined, state: () => undefined });
+    finish({ model: model(), release: () => undefined });
+    await settle();
+    expect(engines).toHaveLength(1);
+    expect(given).toContain(engines[0]);
+    expect(engines[0]).toBe(given.at(-1));
+    stop?.();
+  });
+
   it('a model the pack no longer has, or changed since, is never loaded: one plain reason', async () => {
     const t = setup({ held: null });
     t.route.make(model(), 'gu')?.start('gu', t.to);

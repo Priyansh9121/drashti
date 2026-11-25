@@ -1,10 +1,11 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { clearOfShowControls } from './fit';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { logText } from './log-lines';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -79,7 +80,7 @@ test('the stream’s page crashing a sixth time in a minute stays stopped, with 
   await expect.poll(async () => (await status(win)).programOn, { timeout: 20_000 }).toBe(true);
   await expect(win.getByTestId('stream-page-stopped-notice')).toBeHidden();
   expect((await status(win)).pageStopped).toBe(false);
-  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = logText(userData);
   expect(log).toContain('for the sixth time in a minute');
   expect(log).toContain("The stream's page is tried again");
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));

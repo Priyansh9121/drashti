@@ -121,12 +121,16 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
 export const SIMPLE_FEATURE_COMMANDS: Readonly<Record<SimpleFeature, readonly EngineCommandType[]>> = {
   stage: [],
   messages: [],
+  // The chat (alpha.23): its Send is a request of its own (main/simple-mode.ts), not an engine command.
+  chat: [],
   timers: [],
   'lower-thirds': [],
   'show-a-window': [],
   'show-a-stream-link': [],
   'video-inputs': ['toggleInput'],
   'picture-in-picture': ['showPip', 'swapPip', 'placePip'],
+  // The Sabha flow (alpha.23) sends nothing to the show: it is never on a screen.
+  'sabha-flow': [],
 };
 
 /**

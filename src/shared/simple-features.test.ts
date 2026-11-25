@@ -18,22 +18,27 @@ describe('Simple Mode Features (alpha.22)', () => {
     expect(SIMPLE_FEATURES.map((f) => f.id)).toEqual([
       'stage',
       'messages',
+      'chat',
       'timers',
       'lower-thirds',
       'show-a-window',
       'show-a-stream-link',
       'video-inputs',
       'picture-in-picture',
+      // alpha.23 (QA23-FLOW-1): the Sabha flow, at the top of the left column rather than under LIVE.
+      'sabha-flow',
     ]);
     expect(SIMPLE_FEATURES.map((f) => f.name)).toEqual([
       'Stage screen',
       'Messages',
+      'Chat',
       'Timers',
       'Lower Thirds',
       'Show a Window',
       'Show a Stream Link',
       'Video inputs',
       'Picture in Picture',
+      'Sabha flow',
     ]);
     // Each says in a line what Simple Mode can do with it; setting up stays Pro Mode's.
     for (const f of SIMPLE_FEATURES) expect(f.line.length, f.id).toBeGreaterThan(20);

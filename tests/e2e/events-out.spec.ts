@@ -19,6 +19,7 @@ import {
   operatorReady,
   setTicked,
 } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * Events out (Session 28, decision 20): an address on this computer is added, and what it gets ticked;
@@ -271,7 +272,7 @@ test('a receiver that never answers changes neither slide changes nor quitting',
     // 2026), and 11,793 ms in a test with no receiver at all (alpha.14's gate). The log has each stop's own time.
     // The whole quit (Electron's closing and the processes' exits, which a busy CI computer can slow) gets 30 s
     // (Priyansh's answer, Sessions 31–36).
-    const quitLog = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const quitLog = logText(userData);
     const own = /Quit: Drashti's own stops took (\d+) ms \((\d+) ms of it working\)/u.exec(quitLog);
     const each = /Quit: how long each stop took, in ms: (.*)/u.exec(quitLog)?.[1] ?? '';
     const stopMs = new Map(

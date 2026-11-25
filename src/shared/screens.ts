@@ -114,6 +114,16 @@ export interface ScreenStatus {
   screenId: string;
   state: ScreenState;
   displayId: number | null;
+  /**
+   * Showing, but its page stopped answering and the heartbeat restarted it this many times in a row, 4 or more
+   * (a23-heartbeat): Screens and the status line say so. Left out otherwise.
+   */
+  restarts?: number;
+  /**
+   * Held for the owner (QA23-HEARTBEAT-1, A): Stopped because its page stopped answering after 4 restarts or more in a row,
+   * and kept as it is (often black: a page that has not drawn since its last restart). Left out otherwise.
+   */
+  notAnswering?: true;
 }
 
 /** A node and the displays it last reported, as Screens lists them under it (Session 13). */
@@ -251,6 +261,12 @@ export interface OutputContext {
   geometry?: ScreenGeometry | null;
   /** Its picture is being adjusted in Screens (x27): a grid over the show, warped with it. Never kept. */
   grid?: true;
+  /**
+   * The Stage preview's page (alpha.22), no screen: it draws none of this computer's live pictures (alpha.23, lead 2's
+   * QA23-STAGE8-1): it names a video input and another app's window, as a tablet does, and never says how an input
+   * stands.
+   */
+  preview?: true;
 }
 
 /** What an output window says about how it draws (every few seconds). */

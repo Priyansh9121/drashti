@@ -31,6 +31,7 @@ import {
   crashReporter,
   dialog,
   globalShortcut,
+  nativeImage,
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
@@ -84,7 +85,7 @@ import { z } from 'zod';
 import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
 import { drawnGeometry } from '../shared/screen-geometry';
-import { NO_STAGE_SCREEN, type ScreenSwitch, switchFor } from '../shared/screen-switches';
+import { NO_STAGE_SCREEN, type ScreenSwitch, stageDevicesPaired, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
 import { keptTemplateSchema, messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
@@ -128,6 +129,7 @@ import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
+import { scheduleClock } from './schedule-clock';
 import {
   CHROMIUM_FAKE_DEVICES,
   CHROMIUM_FAKE_SOUND_FILE,
@@ -146,6 +148,15 @@ import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
 import { hallScreenOf, livePictureOf, StudioLive } from './lower-thirds/studio-live';
+import {
+  LiveCopy,
+  linkJoinFor,
+  liveCopyContext,
+  stoppedHallHere,
+  unseenInCopy,
+  WAITING,
+} from './lower-thirds/live-copy';
+import { createLiveCopyWindow } from './lower-thirds/live-copy-window';
 import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
@@ -206,20 +217,17 @@ import { CommandLog, requestLogged } from './log-commands';
 import { type DiagnosticsWho, installId } from './log-who';
 import { type LogPeriod, periodDays, periodText } from '../shared/log-period';
 import { computerName } from './access/identity';
-import {
-  cannotPlayNotice,
-  cannotStartInTimeNotice,
-  NO_FIRST_FRAME,
-  NO_START_IN_TIME,
-  noPictureNotice,
-} from '../shared/no-picture';
+import { cannotPlayNotice, NO_FIRST_FRAME, NO_START_IN_TIME, noPictureNotice } from '../shared/no-picture';
 import {
   CannotPlay,
   type CannotPlayWhere,
   errorKindWords,
+  HallWords,
   NodeCannotPlay,
   whereWords,
 } from './media/cannot-play';
+import { stillUp } from '../shared/not-on-screens';
+import { LiveLinesFollow } from './media/not-on-screens-follow';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -263,11 +271,13 @@ import {
   type PixelSize,
   sharpenStep,
 } from '../shared/picture-look';
+import { lookOnSlide, onSlideSchema } from '../shared/picture-on-slide';
 import { audienceScreenSizes, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema, trimSavedNotice } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
+import { conversionsLookAt, SaveWake } from './convert/save-wake';
 import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
 import { exportMediaFile } from './convert/export-file';
@@ -342,7 +352,7 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
-import { revealPreview } from './outputs/stage-preview';
+import { liveAnswer, revealPreview } from './outputs/stage-preview';
 import { keepStage, STAGE_SETTING, stageStartsOn } from './outputs/stage-switch-setting';
 import { coverBox } from './network/desktop-consent';
 import type { DesktopLibrary } from './network/desktop-answers';
@@ -353,6 +363,7 @@ import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createPicturesWindow } from './pictures/pictures-window';
 import { createSharpenWindow, pictureWorkerPriority } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
+import { FLOW_PAGE_ROOM, SabhaFlowStore } from './sabha-flow/sabha-flow-store';
 import { sourceReader } from './documents/source-reader';
 import { SourceReaderQueue } from './documents/source-reader-queue';
 import { pptxReader } from './documents/pptx-reader-service';
@@ -372,7 +383,16 @@ import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
-import { CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './outputs/heartbeat';
+import {
+  CHECK_EVERY_MS,
+  OPEN_GRACE_MS,
+  OutputHeartbeat,
+  REPORT_STALE_MS,
+  TEST_GRACES,
+} from './outputs/heartbeat';
+import { judgedOutputs } from './outputs/judged-outputs';
+import { HEARTBEAT_KEEPS_A_PAGE } from '../shared/screens-summary';
+import { keepsRestartingLine, keptLine, restartsWords } from './outputs/heartbeat-words';
 import {
   quitDetail,
   RendererWatchdog,
@@ -403,6 +423,7 @@ import {
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
+import { SABHA_FLOW_LIMITS } from '../shared/sabha-flow';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamPageWarmUp } from './stream/stream-warm';
@@ -449,6 +470,7 @@ import { printWaits } from '../shared/print-waits';
 import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
+import { blankPrivateParts, PRIVATE_PARTS_SCRIPT, takePrivately } from './report/private-parts';
 import { ErrorReports } from './error-reports/service';
 import { ErrorReportRuntime } from './error-reports/runtime';
 import { automaticIdentity } from './error-reports/identity';
@@ -488,6 +510,7 @@ import { CaptionCoordinator } from './speech/caption-coordinator';
 import { ownModelCaptionAi } from './speech/caption-routes';
 import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
+import { sizesContext, whisperModelFor } from './speech/whisper-context';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
@@ -519,13 +542,15 @@ import {
   parseCaptionTiming,
 } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
-import { saveWaitsFor } from '../shared/save-waits';
+import { saveWaitEndsAt, saveWaitsFor } from '../shared/save-waits';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { OscService } from './osc/service';
 import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
+import { ChatService } from './chat/chat-service';
+import { ChatStore } from './chat/chat-store';
 import { AnnouncementRepo } from './db/announcements';
 import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-worker';
 import { startPerfDevices } from './network/perf-devices';
@@ -706,6 +731,16 @@ const gpuStops = new GpuStops();
  */
 /** A paired computer's screen that could not play a video (Q60-44): told once for each node and showing. */
 const nodeCannotPlay = new NodeCannotPlay();
+/**
+ * What the operator was told of, and LIVE names, for each showing up that one of this computer's screens could not play
+ * (alpha.23, a22-halldrop; media/cannot-play.ts): told again to the operator window as it changes.
+ */
+const hallWords = new HallWords();
+let hallWordsChanged: (() => void) | null = null;
+/** What Main does with LIVE's lines as things happen around them (media/not-on-screens-follow.ts). */
+const liveLines = new LiveLinesFollow(hallWords, () => {
+  hallWordsChanged?.();
+});
 const cannotPlay = new CannotPlay({
   now: () => Date.now(),
   later: (ms, run) => {
@@ -720,6 +755,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
   cannotPlay.gpuGone();
+  liveLines.gpuStopped();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -1036,13 +1072,13 @@ const announceMinuteMs = Math.min(
   60_000,
   Math.max(100, Number(sw('DRASHTI_TEST_ANNOUNCE_MINUTE_MS') ?? 60_000) || 60_000),
 );
-// Tests only: the schedules (backups; the arti's and macros' too, until Session 44) read this computer's
-// clock moved on by this much (ms), and a test can move it with globalThis.drashtiArtiClock(wallMs).
-// The engine's clock is never moved.
+// Tests only: the schedules (backups; the arti's and macros' too, until Session 44; the chat) read this computer's
+// clock moved on by this much (ms), and a test can move it with globalThis.drashtiArtiClock(wallMs) and hold it with
+// globalThis.drashtiArtiClockHold(true), let go with false (a22-phonemac). The engine's clock is never moved.
 const artiTestClock = sw('DRASHTI_TEST_ARTI_CLOCK') === '1' && !packaged();
-let artiClockOffset = artiTestClock ? Number(sw('DRASHTI_TEST_ARTI_OFFSET_MS') ?? 0) || 0 : 0;
-/** The schedules' clock: this computer's, moved by a test only. */
-const scheduleNow = () => Date.now() + artiClockOffset;
+const artiClock = scheduleClock(artiTestClock ? Number(sw('DRASHTI_TEST_ARTI_OFFSET_MS') ?? 0) || 0 : 0);
+/** The schedules' clock: this computer's, moved or held by a test only. */
+const scheduleNow = () => artiClock.now();
 // Tests only (never a packaged Drashti): updates come from this server instead of GitHub Releases, and
 // install by writing what they would run into a file; a download goes at this rate; and a test can say
 // the stream is on air (globalThis.drashtiTestOnAir), for updates and link downloads (the drop folder and
@@ -1785,12 +1821,17 @@ function start(): void {
       ((zoomWindow?.isZoomPage(contents) ?? false) || (liveWindows?.mayCapture(contents.mainFrame) ?? false)),
     // A camera for a video input (Session 50), video alone: the operator window's page (its LIVE picture, Media's
     // small live pictures) and every output of this computer (audience, stage, key and fill), each known by its
-    // window and its address (windows/security.ts cameraAllowed). Nothing else in this session ever gets one; the
-    // stream's page has its own session, which already may.
+    // window and its address (windows/security.ts cameraAllowed). Nothing else in this session ever gets one (the
+    // Stage preview neither: alpha.23, outputs/stage-preview.ts); the stream's page has its own session, which
+    // already may.
     cameraPage: (contents) => {
       if (contents === null) return null;
       if (contents.id === operatorWindow?.webContents.id) return 'operator';
-      return manager.screenIdFor(contents.id) !== undefined ? 'output' : null;
+      if (manager.screenIdFor(contents.id) !== undefined) return 'output';
+      // The Stage preview: none (alpha.23, QA23-STAGE8-1's C; outputs/stage-preview.ts liveAnswer).
+      return liveAnswer('camera', { preview: isStagePreview(contents.id), screen: false }) === 'yes'
+        ? 'output'
+        : null;
     },
     // On a Mac, no camera until System Settings' Camera says granted: macOS never asks before the page has said
     // why (Media's askAccess asks). Chromium's fake camera (tests) counts as granted.
@@ -2714,9 +2755,16 @@ function start(): void {
   handle(IPC.media.photo, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.photoByDefault(mediaId) : false,
   );
-  handle(IPC.media.savePicture, async (e, mediaId, name) => {
+  handle(IPC.media.savePicture, async (e, mediaId, name, onSlide) => {
     if (!fromOperator(e) || !operatorWindow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
       return { ok: false as const, message: 'Only the operator window can save a picture.' };
+    // A slide's picture as its slide shows it (a page cropped or turned: a22-x95nits); nothing else is taken.
+    const shown = onSlide === undefined ? null : onSlideSchema.safeParse(onSlide);
+    if (shown && !shown.success)
+      return {
+        ok: false as const,
+        message: 'Drashti could not tell how that slide shows its picture: choose Save picture… on it again.',
+      };
     const found = media.kindAndFile(mediaId);
     if (found?.kind !== 'image' || found.missing || found.path === '' || isAbsolute(found.path))
       return {
@@ -2747,7 +2795,7 @@ function start(): void {
       join(mediaDir, found.path),
       ext,
       target,
-      media.look(mediaId),
+      lookOnSlide(media.look(mediaId), shown?.data ?? null),
       ffmpegBlurRun(pictureFfmpeg),
     );
     if (!saved.ok) return saved;
@@ -2909,6 +2957,9 @@ function start(): void {
   // job, and this shows what a stage screen would, its layout with Stage on and the audience picture with it off,
   // as the first stage group draws it. It is no screen: never counted, never opened by itself, never covering.
   let stagePreview: BrowserWindow | null = null;
+  /** The Stage preview's page, by its web contents' id. */
+  const isStagePreview = (id: number): boolean =>
+    stagePreview !== null && !stagePreview.isDestroyed() && stagePreview.webContents.id === id;
   const stagePreviewContext = (): OutputContext => {
     const group = screenRepo.groups().find((g) => g.role === 'stage');
     const first = group?.screens[0];
@@ -2926,6 +2977,9 @@ function start(): void {
       clockStyle: mainClockStyle(),
       hall: hallHere(),
       ...warmUpFact(warmUps, stagePreview ?? undefined, 'the Stage preview', 'stage'),
+      // It draws none of this computer's live pictures and names them, as a tablet does, and never says how an input
+      // stands (alpha.23, QA23-STAGE8-1).
+      preview: true,
     };
   };
   const openStagePreview = (): void => {
@@ -2953,6 +3007,52 @@ function start(): void {
   const closeStagePreview = (): void => {
     if (stagePreview && !stagePreview.isDestroyed()) stagePreview.close();
   };
+  // Live's copy (alpha.23, lower-thirds/live-copy.ts): with no audience screen showing on this computer, the screens'
+  // page drawn off screen (960 x 540, once a second, muted) for Live's still, open only while Live asks for one. It is
+  // no screen: never in the screens' lists (so never counted, never a node's, never waited for by a video cue), every
+  // output report refused from it, no camera or window capture (cameraPage, screenPage), and no warm-up.
+  let liveCopyWindow: BrowserWindow | null = null;
+  const liveCopy = new LiveCopy({
+    open: (gone) => {
+      // Never a window opened as Drashti quits (Session 23: it would stop the quit).
+      if (quitStarted) return null;
+      const { window: win, copy } = createLiveCopyWindow(gone);
+      liveCopyWindow = win;
+      win.on('closed', () => {
+        if (liveCopyWindow === win) liveCopyWindow = null;
+      });
+      return copy;
+    },
+    log: (line) => {
+      log.info(line);
+    },
+    // Short of memory (as Point Ahead asks): no copy, a whole renderer and one more video decode (a22-review-ltlive S4).
+    room: () => roomToLoadAhead(process.getSystemMemoryInfo(), process.platform),
+  });
+  /** The copy's last still sent, and what it said it could not draw: the same again is not sent (resized, JPEG'd). */
+  let copyStillSent: { image: unknown; unseen: string } | null = null;
+  /** "Getting the live picture…" said for this copy. */
+  let copyWaitingSaid = false;
+  /** The copy closed (Live stopped, a hall screen showing, the GPU process gone, quitting): what was kept for it goes. */
+  const closeLiveCopy = (): void => {
+    liveCopy.close();
+    copyStillSent = null;
+    copyWaitingSaid = false;
+  };
+  // The GPU process gone: the copy may stop painting with no word (a22-review-ltlive N4). Closed, it opens afresh at
+  // Live's next still.
+  app.on('child-process-gone', (_event, details) => {
+    if (details.type === 'GPU') closeLiveCopy();
+  });
+  const liveCopyContextNow = () => liveCopyContext(screenRepo.groups(), mainClockStyle());
+  /** Whether a page is Live's copy's (its context is asked for by it). */
+  const isLiveCopy = (contents: Electron.WebContents): boolean =>
+    liveCopyWindow !== null && !liveCopyWindow.isDestroyed() && liveCopyWindow.webContents.id === contents.id;
+  /** The screens changed: the copy follows the first audience group, as the hall's screens do. */
+  const liveCopyChanged = (): void => {
+    if (liveCopyWindow && !liveCopyWindow.isDestroyed())
+      sendToPage(liveCopyWindow, IPC.output.context, liveCopyContextNow());
+  };
   // An output open before Chromium said how it draws is sent its context again once it skips its warm-up (Session 57).
   followOutputs(warmUps, outputWindows, outputNames, (screenId, win) => {
     const context = contextFor(screenId);
@@ -2961,33 +3061,67 @@ function start(): void {
   // ---- hung, stale and given-up outputs (Session 23; outputs/heartbeat.ts, watchdog.ts) ----------
   // Each output's 2-second report is its heartbeat: one that stops, or stops painting the show, is
   // crashed into the watchdog's reload. One the watchdog gave up on is shown as Stopped.
+  /** The outputs the log said keep restarting (a23-heartbeat): said once each time it starts. */
+  const keepsRestarting = new Set<string>();
+  // Tests only (never a packaged Drashti; review SA4): shorter graces, and a hook that drops an output's reports, as a
+  // page that does not answer sends none.
+  const heartbeatFast = !packaged() && sw('DRASHTI_TEST_HEARTBEAT_FAST') === '1';
+  const heartbeatDeaf = new Set<string>();
+  if (heartbeatFast)
+    (
+      globalThis as { drashtiTestHeartbeatDeaf?: (screenId: string, on: boolean) => void }
+    ).drashtiTestHeartbeatDeaf = (screenId, on) => {
+      if (on) heartbeatDeaf.add(screenId);
+      else heartbeatDeaf.delete(screenId);
+    };
   const heartbeat = new OutputHeartbeat({
     now: Date.now,
     engineRev: () => engine.rev,
     // Showing, or stopped and tried again since (a retry that hangs is noticed too); never a page
-    // that has crashed and waits for the watchdog.
-    judged: () =>
-      manager
-        .status()
-        .filter((st) => st.state === 'showing' || st.state === 'stopped')
-        .map((st) => st.screenId)
-        .filter((id) => {
-          const w = outputWindows.get(id);
-          return (
-            w !== undefined &&
-            !w.isDestroyed() &&
-            !w.webContents.isCrashed() &&
-            w.isVisible() &&
-            !w.isMinimized()
-          );
-        }),
-    stuck: (screenId, reason) => {
+    // that has crashed and waits for the watchdog (outputs/judged-outputs.ts, a node's too).
+    judged: () => judgedOutputs(manager.status(), (id) => outputWindows.get(id)),
+    ...(heartbeatFast ? { graces: TEST_GRACES } : {}),
+    stuck: (screenId, reason, inARow) => {
       const w = outputWindows.get(screenId);
       if (!w || w.isDestroyed()) return;
       const name = outputNames.get(screenId) ?? 'an output';
-      log.warn(`Output ${name} is stuck (${reason}): restarting it`);
+      log.warn(`Output ${name} is stuck (${reason}): restarting it${restartsWords(inARow)}`);
       watchdog.stuck(w.webContents, name, reason);
     },
+    // Restarted again and again (a23-heartbeat): Screens and the status line say so, and the log once, in plain words.
+    told: (screenId, restarts) => {
+      manager.setRestarting(screenId, restarts);
+      const name = outputNames.get(screenId) ?? 'an output';
+      if (restarts === null) {
+        if (keepsRestarting.delete(screenId)) log.info(`Output ${name} no longer keeps restarting`);
+      } else if (!keepsRestarting.has(screenId)) {
+        keepsRestarting.add(screenId);
+        log.warn(keepsRestartingLine(`Output ${name}`, restarts, HEARTBEAT_KEEPS_A_PAGE));
+      }
+    },
+    // HELD FOR THE OWNER (QA23-HEARTBEAT-1, A): stuck once more after RESTARTS_TOLD restarts in a row, it is kept as it is
+    // (a slow page may still catch up), Stopped with its own words, and tried again by the watchdog's own tries.
+    keep: (screenId, reason, restarts) => {
+      const w = outputWindows.get(screenId);
+      if (!w || w.isDestroyed()) return;
+      const name = outputNames.get(screenId) ?? 'an output';
+      log.warn(keptLine(`Output ${name}`, reason, restarts));
+      manager.setNotAnswering(screenId, true);
+      watchdog.stopTrying(
+        w.webContents,
+        name,
+        `stuck again (${reason}) after ${String(restarts)} restarts in a row`,
+      );
+    },
+    // Kept, and it reported having painted the show: back by itself, no reload, and no try waits.
+    back: (screenId) => {
+      const w = outputWindows.get(screenId);
+      log.info(`Output ${outputNames.get(screenId) ?? 'an output'} draws the show again by itself`);
+      manager.setStopped(screenId, false);
+      if (w && !w.isDestroyed()) watchdog.backByItself(w.webContents);
+    },
+    // Translated, a page's reports may come 30 s apart (a23-heartbeat: alpha.22's Intel build under Rosetta on CI).
+    translated: app.runningUnderARM64Translation,
   });
   const heartbeatTimer = setInterval(() => {
     heartbeat.check();
@@ -3021,8 +3155,14 @@ function start(): void {
       audioOutput.setPlayerStopped(e.kind === 'gave-up');
     const screenId = screenOfOutput(e.window);
     if (screenId === undefined) return;
-    // A page loaded again gets its grace before it is judged.
+    // A page loaded again gets its grace before it is judged; tried again (Try again, or by itself after giving up), its
+    // heartbeat restarts are forgotten too (a23-heartbeat).
     if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
+    if (e.kind === 'retried') {
+      heartbeat.afresh(screenId);
+      // Tried again: no longer kept as it is (QA23-HEARTBEAT-1, A; review SA2), whatever its page does next.
+      manager.setNotAnswering(screenId, false);
+    }
     // Given up on: Stopped (the status line and Screens say so) until it draws again.
     if (e.kind === 'gave-up') stopOutput(screenId);
   };
@@ -3120,13 +3260,19 @@ function start(): void {
           log.warn(message);
         },
       });
+      // A new window (made again on another display, say: its old one's 'closed' comes after this one is in
+      // outputWindows) starts afresh: nothing of the old one carries over (a23-heartbeat, review S2).
+      heartbeat.closed(config.id);
       heartbeat.opened(config.id);
       // However it loads again (the watchdog, the dashboard's Reload, a test), it gets its grace.
       window.webContents.on('did-start-loading', () => {
         heartbeat.opened(config.id);
         loadedSinceStopped.add(config.id);
+        // A screen whose page loads again draws its videos afresh: LIVE no longer names it (a22-halldrop).
+        liveLines.pageLoading(config.id);
       });
       window.on('closed', () => {
+        liveLines.windowClosed(config.id);
         warmUps.forget(h.webContentsId);
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
@@ -3167,6 +3313,8 @@ function start(): void {
       : ['stage'],
     onChange: () => {
       engine.videoCuePageJoined('');
+      // LIVE's "Not on the screen" lines name the screens as they are now (a22-halldrop).
+      liveLines.screensChanged();
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
         screenId: st.screenId,
@@ -3187,6 +3335,8 @@ function start(): void {
       // The Stage preview (alpha.22) follows the stage's group and the hall's picture as the stage screens do.
       if (stagePreview && !stagePreview.isDestroyed())
         sendToPage(stagePreview, IPC.output.context, stagePreviewContext());
+      // And Live's copy (alpha.23) the first audience group, as the hall's screens do.
+      liveCopyChanged();
       guardOperator();
       // Keep these screens? (Session 50): whether an output covers the controls, said again when that changed.
       keepScreens.refresh();
@@ -3293,6 +3443,8 @@ function start(): void {
   adjustingScreen = (screenId) => screens.adjusting(screenId);
   // ---- Audience and Stage (Session 50; outputs/screen-switches.ts): this computer's screens off and on --------
   // Audience is on at every start; Stage (alpha.22) as it was left, kept in the library's settings as it changes.
+  // The devices paired as Stage, read from the library as Stage goes on (alpha.23).
+  const stageTablets = new DeviceRepo(libraryDb);
   const screenSwitches = new ScreenSwitchService({
     // Turned through the screens, which remember what each screen showed as its switch went off (Session 51).
     outputs: screens,
@@ -3317,6 +3469,11 @@ function start(): void {
         displayIds: [...ids.filter((id) => id !== controls), ...ids.filter((id) => id === controls)],
       });
     },
+    // A tablet paired as Stage is a stage display (alpha.23, a22-review-stage S8): Stage On with one says nothing of
+    // no screen set to Stage, as with a stage screen whose display is unplugged or whose node is offline.
+    // Only while the Network is on (a22-review-stage8 S5): with it off a tablet shows nothing.
+    // (`net` is made further down and read only as Stage goes on: the return type is written, never inferred from it.)
+    stageDevices: (): number => stageDevicesPaired({ on: net.on, devices: stageTablets.list() }),
   });
   // The engine's Stage off as the switch starts (alpha.22: off on a new library), and the log says how it started.
   engine.setStage({ off: !manager.switches().stage });
@@ -4229,6 +4386,15 @@ function start(): void {
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
   const captionSettingsRepo = new CaptionSettingsRepo(opened.db);
+  // The model today's engine loads, and the one QWC-1's sizing judges: one helper for both (whisper-context.ts).
+  // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
+  const whisperModel = (language: SpeechLanguage | 'auto') =>
+    whisperModelFor(
+      captions.languageModelFor(language),
+      (own) => packFileFor(modelPacks, own)?.path,
+      captions.selectedModel(),
+      (id) => modelFile(captionsData, id),
+    );
   const speechEngine =
     testSpeech !== undefined
       ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
@@ -4241,17 +4407,12 @@ function start(): void {
       : createWhisperEngine({
           program: () => whisperProgram,
           // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
-          model: (language) => {
-            const own = captions.languageModelFor(language);
-            // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
-            const file =
-              own && (own.format ?? 'whisper-ggml') === 'whisper-ggml'
-                ? packFileFor(modelPacks, own)?.path
-                : undefined;
-            return file ?? modelFile(captionsData, captions.selectedModel());
-          },
+          model: (language) => whisperModel(language).file,
           // Asked before every start of the program: a language's own model not ready is never loaded.
           modelProblem: (language) => captions.modelProblem(language),
+          // QWC-1 (the owner: "Yes, Windows small"): the audio context sized to the piece, fallback off, for the model model()
+          // gives, only on a CPU engine with a small model (Windows); every other engine asks as today.
+          sizedContext: (language) => sizesContext(process.platform, whisperModel(language).id),
           fallback: (language) =>
             captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
           // The tuned language models are decoded without timestamps (alpha.22).
@@ -4266,11 +4427,18 @@ function start(): void {
         });
   // Route W (alpha.22, cap-integration): a Gujarati, Hindi or English model of its own from the pack, on Drashti's
   // whisper engine (the stand-in in tests), decoded as that model needs (no timestamps for the tuned ones).
+  // QWC-1 (the owner: "Yes, Windows small"): Route W sizes whisper's audio context for a small model on Windows (the
+  // WeakSet marks which use is sized).
+  const sizedUses = new WeakSet<object>();
   const whisperRoute = createWhisperRoute({
     store: modelPacks,
     known: (sha256) => {
       const entry = languageModels.known().find((e) => e.sha256 === sha256);
-      return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
+      if (!entry) return null;
+      const use = { fallback: entry.fallback, timestamps: entry.timestamps };
+      // QWC-1: whisper-route.ts hands this same object to engine() below, so the set says which use is sized.
+      if (sizesContext(process.platform, entry.id)) sizedUses.add(use);
+      return use;
     },
     // The pack's file is given back once whisper-server has exited (alpha.23); the stand-in runs no program.
     engine: (file, use, exited) =>
@@ -4289,6 +4457,7 @@ function start(): void {
             model: () => file,
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
+            sizedContext: () => sizedUses.has(use),
             timing: () => captions.timing(),
             keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
@@ -4604,7 +4773,10 @@ function start(): void {
   handle(IPC.liveLink.status, () => streamLinks.view());
   handle(IPC.liveLink.last, (e) => (fromOperator(e) ? lastStreamLink : null));
   // Any of Drashti's own pages that plays it (a screen, LIVE, a card, a stage screen's box, the audio player).
-  handle(IPC.liveLink.join, (_e, linkId) => (typeof linkId === 'string' ? streamLinks.join(linkId) : null));
+  // Live's copy (alpha.23) is never given a place in a stream link: its player never loads it (lead 2, N5).
+  handle(IPC.liveLink.join, (e, linkId) =>
+    typeof linkId === 'string' ? linkJoinFor(isLiveCopy(e.sender), () => streamLinks.join(linkId)) : null,
+  );
 
   // ---- the window for Zoom (Session 48) -------------------------------------------
   const zoom = new ZoomWindow({
@@ -4829,6 +5001,8 @@ function start(): void {
       inMusic: (mediaId) =>
         musicService?.view().playlists.some((p) => p.tracks.some((t) => t.mediaId === mediaId)) ?? false,
       revisionCovers: (revisionId) => revisions.covers(revisionId),
+      // The chat (alpha.23): today's chat phones, which Simple Mode may remove (made below, before any request).
+      isChatPhone: (id) => chat.device(id) !== null,
     };
   };
   /** Simple Mode's phone controls use every active playlist, with the same bounds as the window. */
@@ -4991,6 +5165,66 @@ function start(): void {
     return null;
   });
   handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
+  // ---- Sabha flow (alpha.23, QA23-FLOW-1/2) ---------------------------------------------------------------
+  // The sabha's running order: a PDF the operator chooses in the operator window's panel, Drashti's own copy in the data
+  // folder (main/sabha-flow/), its pages drawn once by the pictures window with their text layer read, and Now. The
+  // operator window's only: never on a screen; a paired phone gets the same snapshot and pages through its own routes.
+  // Paired phones hear of each change too (the network's 'flow' hint): set once the network is made, below.
+  let flowToPhones = (): void => undefined;
+  const flowStore = new SabhaFlowStore({
+    dir: join(app.getPath('userData'), 'sabha-flow'),
+    draw: (pdf, outDir, signal) =>
+      pdfPictures.drawForFlow(pdf, outDir, SABHA_FLOW_LIMITS.maxPages, FLOW_PAGE_ROOM, signal),
+    changed: (snapshot) => {
+      sendToOperator(IPC.flow.changed, snapshot);
+      flowToPhones();
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  const flowLoaded = flowStore.load().catch((error: unknown) => {
+    log.warn(
+      `Sabha flow: the kept flow could not be read (${error instanceof Error ? error.message : 'unknown'})`,
+    );
+  });
+  const notFlowOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change the Sabha flow.',
+  };
+  handle(IPC.flow.get, async (e) => {
+    await flowLoaded;
+    return fromOperator(e) ? flowStore.snapshot() : { flow: null, state: null };
+  });
+  handle(IPC.flow.choose, async (e) => {
+    if (!fromOperator(e) || !operatorWindow) return notFlowOperator;
+    const picked = await dialog.showOpenDialog(operatorWindow, {
+      title: 'Sabha flow',
+      message: 'Choose the running order of the sabha, saved as a PDF.',
+      buttonLabel: 'Use This PDF',
+      properties: ['openFile'],
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    const file = picked.canceled ? null : (picked.filePaths[0] ?? null);
+    if (file === null) return null;
+    await flowLoaded;
+    return flowStore.choose(file);
+  });
+  handle(IPC.flow.remove, async (e) => {
+    if (!fromOperator(e)) return null;
+    await flowLoaded;
+    return flowStore.remove();
+  });
+  handle(IPC.flow.setNow, async (e, flowId, now) => {
+    if (!fromOperator(e)) return notFlowOperator;
+    await flowLoaded;
+    return flowStore.setNow(flowId, now);
+  });
+  handle(IPC.flow.page, async (e, flowId, page) => {
+    if (!fromOperator(e)) return null;
+    await flowLoaded;
+    return flowStore.page(flowId, page);
+  });
   // ---- book OCR (alpha.21, the owner's Q60-58: "A, Tesseract inside") ----------------------------------
   // New presentation's Read Words from a Page…: scanned pictures, or a PDF's pages drawn by the pictures window, read
   // by Tesseract inside Drashti in a reading process of their own (src/main/ocr/), never on Main's thread.
@@ -5371,11 +5605,17 @@ function start(): void {
   // What holds a save the operator asked for (alpha.22, the owner's "Trim on a row"; shared/save-waits.ts): a row's
   // Trim, Edit Video's Save and Export clip… wait only while a video or a sound plays, the stream is on air (the tests'
   // hook too) or a recording goes on, never for a still slide, a picture or the Wallpaper up; in the operator's words.
+  // A video or a sound that does not go round no longer holds them once it has played to its end (alpha.23), by the
+  // engine's clock (Date.now, as the engine's own).
   const saveWaits = (): string | null =>
-    saveWaitsFor(engine.current, {
-      onAir: testOnAir || streaming.wanted().live,
-      recording: streaming.wanted().recording,
-    });
+    saveWaitsFor(
+      engine.current,
+      {
+        onAir: testOnAir || streaming.wanted().live,
+        recording: streaming.wanted().recording,
+      },
+      Date.now(),
+    );
   const saveIdle = () => saveWaits() === null;
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({
@@ -5450,7 +5690,11 @@ function start(): void {
       ? videoAnalysis.get(mediaId, audioStream, retry)
       : { ok: false as const, message: 'Open the video in the operator window, then try again.' },
   );
+  // A deck's source preparation going (registerSlidesIpc, below): set once it exists.
+  let sourcePreparing = (): boolean => false;
   const videoCopies = registerVideoCopies({
+    // No unlisted copy is removed while an import or a deck's preparation goes (a22-review-combine2 R-S1).
+    importing: () => imports.busy || sourcePreparing(),
     editedExport: (request) =>
       editedClipSource(request, {
         mediaDir,
@@ -5537,7 +5781,7 @@ function start(): void {
   });
   stops.add('display activity', offDisplayActivity);
   const offConversionActivity = engine.onChange((state) => {
-    if (!nothingUp(state.layers)) conversions.activityChanged();
+    if (conversionsLookAt(state)) conversions.activityChanged();
   });
   stops.add('conversions', () => {
     conversionActivityChanged = undefined;
@@ -5895,12 +6139,24 @@ function start(): void {
     trimCleanup.activityChanged();
   };
   testTrimActivityChanged = trimActivityChanged;
+  // A video or a sound up that does not go round stops holding a save at its end point, nothing changing on LIVE when
+  // its last picture stays up (alpha.23): the row's cuts look again then (save-wake.ts).
+  const saveWake = new SaveWake({
+    endsAt: () => saveWaitEndsAt(engine.current, Date.now()),
+    now: Date.now,
+    wake: () => {
+      playlistTrims.activityChanged();
+    },
+  });
+  saveWake.changed();
   const offTrimActivity = engine.onChange(() => {
     playlistTrims.activityChanged();
     trimCleanup.activityChanged();
+    saveWake.changed();
   });
   stops.add('playlist trims', () => {
     offTrimActivity();
+    saveWake.close();
     trimActivityChanged = undefined;
     testTrimActivityChanged = undefined;
     trimCleanup.close();
@@ -6263,6 +6519,7 @@ function start(): void {
       sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
+  sourcePreparing = () => slideEdits.sourcePreparing();
   /** Make a slide…'s keeping (set below, where the open playlist is known). */
   let keepPageSlide: (
     png: Uint8Array | Uint8Array[],
@@ -6946,11 +7203,20 @@ function start(): void {
     if (fromOperator(e) && saved) shell.showItemInFolder(saved);
     return null;
   });
-  if (artiTestClock)
-    (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
-      artiClockOffset = wallMs - Date.now();
+  if (artiTestClock) {
+    const testClock = globalThis as {
+      drashtiArtiClock?: (wallMs: number) => void;
+      drashtiArtiClockHold?: (held: boolean) => void;
+    };
+    testClock.drashtiArtiClock = (wallMs) => {
+      artiClock.move(wallMs);
       scheduledBackups.check();
     };
+    // Let go, it runs on from where it was held: nothing jumps, so no backup comes due by it.
+    testClock.drashtiArtiClockHold = (held) => {
+      artiClock.hold(held);
+    };
+  }
   // ---- Samvat and tithi: today's entry from the loaded calendars -------------------------
   const calendars = new CalendarService({
     repo: new CalendarRepo(db),
@@ -7037,8 +7303,8 @@ function start(): void {
   lowerThirds.purge();
   // Live behind the studio's preview (alpha.22, lower-thirds/studio-live.ts): a still about once a second while the
   // studio shows Live (not while it is minimized), never otherwise, from a picture already drawn: this computer's first
-  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here, none (the
-  // studio says "No live picture to show"). Read only.
+  // audience screen showing, as the Screens dashboard's pictures are taken (captureLocal). With none here (alpha.23),
+  // from Live's copy, closed again the moment Live stops or a hall screen shows. Read only.
   const studioLive: StudioLive = new StudioLive({
     take: async () => {
       const roles = new Map(screenRepo.groupIds().map((g) => [g.id, g.role]));
@@ -7056,7 +7322,37 @@ function start(): void {
         (id) => showing.has(id) && pageAlive(outputWindows.get(id)),
       );
       const hall = screenId === null ? undefined : outputWindows.get(screenId);
-      if (screenId === null || !hall || hall.isDestroyed()) return null;
+      if (screenId === null || !hall || hall.isDestroyed()) {
+        // A hall screen here stopped (its page kept crashing): no copy of that scene (a22-review-ltlive S5).
+        const states = new Map(manager.status().map((st) => [st.screenId, st.state]));
+        if (
+          stoppedHallHere(
+            screenRepo.screens(),
+            (groupId) => roles.get(groupId) ?? null,
+            (id) => states.get(id) ?? 'unassigned',
+          )
+        ) {
+          closeLiveCopy();
+          return null;
+        }
+        // No hall screen showing here: Live's copy (opened now if it is not open). While its page loads, "Getting the
+        // live picture…" once; then each new picture, saying what is live that it cannot draw (a video input,
+        // another app's window); the same picture again is not sent.
+        const drawn = liveCopy.still();
+        if (drawn === WAITING) {
+          if (copyWaitingSaid) return undefined;
+          copyWaitingSaid = true;
+          return { waiting: true };
+        }
+        if (!drawn) return null;
+        const unseen = unseenInCopy(engine.current.layers);
+        const said = unseen.join(',');
+        if (copyStillSent?.image === drawn && copyStillSent.unseen === said) return undefined;
+        copyStillSent = { image: drawn, unseen: said };
+        return livePictureOf(drawn, 'copy', Date.now(), unseen);
+      }
+      // A hall screen here: its picture, as in alpha.22; the copy, if one was open, goes.
+      closeLiveCopy();
       const image = await hall.webContents.capturePage();
       // Taken as its window closed (its screen switched off, say), it is not what the hall shows: none (as captureLocal).
       if (hall.isDestroyed() || outputWindows.get(screenId) !== hall || !showingNow().has(screenId))
@@ -7069,12 +7365,35 @@ function start(): void {
     log: (line) => {
       log.info(line);
     },
+    // Another backdrop, the studio minimized or closed: the copy goes at once.
+    stopped: () => {
+      closeLiveCopy();
+    },
   });
-  // Tests only (never a packaged Drashti): whether Live's stills are being taken, and how many have been.
+  // Tests only (never a packaged Drashti): whether Live's stills are being taken, how many have been, and Live's copy
+  // while it is open (its size inside, frames a second, muted, its warm-up as loaded).
   if (!packaged())
-    (
-      globalThis as { drashtiTestStudioLive?: () => { watching: boolean; taken: number } }
-    ).drashtiTestStudioLive = () => ({ watching: studioLive.watching, taken: studioLive.taken });
+    (globalThis as { drashtiTestStudioLive?: () => unknown }).drashtiTestStudioLive = () => {
+      const win = liveCopyWindow;
+      const copy =
+        win && !win.isDestroyed() && liveCopy.isOpen
+          ? (() => {
+              const [width = 0, height = 0] = win.getContentSize();
+              const warmUp = URL.canParse(win.webContents.getURL())
+                ? new URL(win.webContents.getURL()).searchParams.get('warmUp')
+                : null;
+              return {
+                width,
+                height,
+                frameRate: win.webContents.getFrameRate(),
+                muted: win.webContents.isAudioMuted(),
+                warmUp,
+                paints: liveCopy.paints(),
+              };
+            })()
+          : null;
+      return { watching: studioLive.watching, taken: studioLive.taken, copy };
+    };
   // The Lower Thirds studio (Session 55, Part 16): a window of its own, where they are made, shown and hidden.
   const studio = new LowerThirdsStudio({
     workArea: () =>
@@ -7101,6 +7420,8 @@ function start(): void {
   };
   stops.add('Lower Thirds studio', () => {
     studio.close();
+    // Closing the studio stops Live, which closes its copy; said again here, so nothing keeps the quit waiting.
+    closeLiveCopy();
   });
   handleStudio({
     studio,
@@ -7347,6 +7668,44 @@ function start(): void {
   let quickBarNow: { view(): QuickPin[]; set(pins: QuickPin[]): QuickBarResult } | null = null;
   const STILL_STARTING = { ok: false as const, message: 'Drashti is still starting: try again in a moment.' };
   let presentationChanges: Pick<DesktopLibrary, 'removePresentations' | 'restorePresentations'> | null = null;
+  // The chat with paired phones (alpha.23, QA23-CHAT-1, main/chat/): the day's chat in one file of the data folder
+  // (never the library, so never a backup or a Report a Problem), its rules, and the phones from the Chat QR, paired
+  // for the day. Nothing of a message or a name is ever logged.
+  const chatLog = (level: 'info' | 'warn', message: string) => {
+    if (level === 'warn') log.warn(message);
+    else log.info(message);
+  };
+  // Its clock is the schedules' (scheduleNow): only a test moves it (DRASHTI_TEST_ARTI_CLOCK, never when packaged), so
+  // a test steps midnight and the Chat QR's 10 minutes; the day, the Chat QR and every chat limit read it alike.
+  const chatStore = new ChatStore({
+    file: join(userDataDir, 'chat', 'today.json'),
+    now: scheduleNow,
+    log: chatLog,
+  });
+  chatStore.load();
+  // The operator's Chat section reads the chat again a moment after a change: one view for a burst of messages, at
+  // most twice a second (review S2).
+  let chatViewWaiting = false;
+  const chatChanged = () => {
+    if (chatViewWaiting) return;
+    chatViewWaiting = true;
+    setTimeout(() => {
+      chatViewWaiting = false;
+      sendToOperator(IPC.chat.changed, net.chatView());
+    }, 500);
+  };
+  const chat = new ChatService({
+    store: chatStore,
+    now: scheduleNow,
+    toPhones: (event) => {
+      net.chatEvent(event);
+    },
+    changed: chatChanged,
+    devicesChanged: () => {
+      net.chatDevicesChanged();
+    },
+    log: chatLog,
+  });
   const net = new NetworkService({
     // Phones and tablets work only while Drashti is let in (Session 54): every request, pairing and file refused.
     letIn: isLetIn,
@@ -7482,6 +7841,9 @@ function start(): void {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),
     },
+    chat,
+    chatChanged,
+    chatNow: scheduleNow,
     // The phone as a full Drashti (Session 54): the computer's screens and Audience and Stage, as the window's own
     // requests change them; covering the controls is asked in the computer's own box, never taken from a phone.
     desktop: {
@@ -7597,6 +7959,13 @@ function start(): void {
     refusal: () => simpleRefusalText(modes.simpleOnly()),
     // In Simple Mode a phone does only what its window does (Session 55, the owner's answer of 30 Oct 2026).
     simple: simplePhones,
+    // A phone's PowerPoint or PDF from an open playlist, in its row (alpha.23, QA23-PHONE-1), as Simple Mode's reads.
+    phoneLists: {
+      activePlaylist: (id) => playlists.activePlaylist(id),
+      plays: (id, from) => playlists.playsPresentation(id, from),
+      // Which are a phone's PowerPoint or PDF, a playlist's rows in one query (the review's S2).
+      decks: (ids) => presentations.phoneDecks(ids),
+    },
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
     },
@@ -7606,10 +7975,34 @@ function start(): void {
     },
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
     now: Date.now,
+    // Sabha flow (alpha.23): the operator's current flow and its pages, read only, as the window's flow:get and
+    // flow:page answer them; and the tools Simple Mode Features brought in (a phone shows the flow there only while it
+    // is one).
+    flow: {
+      snapshot: () => flowStore.snapshot(),
+      page: (flowId, page) => flowStore.page(flowId, page),
+    },
+    simpleFeatures: () => simpleChosen(),
   });
   network = net;
+  // Each change of the Sabha flow, and the one kept from the last run once it is loaded (a phone may have read none
+  // before), told to the phones.
+  flowToPhones = () => {
+    net.hint('flow');
+  };
+  void flowLoaded.then(flowToPhones);
   net.resume();
   stops.add('network', () => net.close());
+  // The chat's day (alpha.23): a new day empties it (and unpairs its phones) within a minute of midnight, even with no
+  // one asking; what waits to be written is written as Drashti quits.
+  const chatDayCheck = setInterval(() => {
+    chat.tick();
+  }, 60_000);
+  chatDayCheck.unref();
+  stops.add('chat', () => {
+    clearInterval(chatDayCheck);
+    chatStore.flush();
+  });
   const osc = new OscService({
     settings: { get: (key) => settings.get(key), set: laterSetting },
     letIn: isLetIn,
@@ -7912,6 +8305,8 @@ function start(): void {
         watchdog.retryNow(win.webContents, 'Try again');
       } else {
         log.info('Reloading an output from the screens dashboard');
+        // Screens' Try again for a screen that keeps restarting (a23-heartbeat) too: its restarts start afresh.
+        heartbeat.afresh(sid.data);
         win.webContents.reload();
       }
       return { ok: true as const, status: nodes.status() };
@@ -7966,7 +8361,16 @@ function start(): void {
   /** Told as each output page's first frame is said (the opening waits for them: set further down). */
   let firstPainted: () => void = () => undefined;
   handle(IPC.output.report, (e, raw) => {
+    // Live's copy (alpha.23) is no screen: of its report only its first painted frame counts, for Live's own wait
+    // (until then its pictures are its page's black, a22-review-ltlive S1).
+    if (isLiveCopy(e.sender)) {
+      const painted = (raw as { firstPaint?: { wallAt?: unknown } | null } | null)?.firstPaint;
+      if (typeof painted?.wallAt === 'number') liveCopy.shown();
+      return null;
+    }
     const screenId = manager.screenIdFor(e.sender.id);
+    // Tests only (DRASHTI_TEST_HEARTBEAT_FAST): a page that does not answer sends no report.
+    if (screenId && heartbeatDeaf.has(screenId)) return null;
     const r = raw as {
       droppedFrames?: unknown;
       paintedRev?: unknown;
@@ -8051,6 +8455,7 @@ function start(): void {
       if (operatorWindow && !operatorWindow.isDestroyed() && sender.id === operatorWindow.webContents.id)
         return { name: 'operator', output: null };
       if (streaming.isProgram(sender)) return { name: 'the stream’s page', output: null };
+      if (isLiveCopy(sender)) return { name: 'Live’s copy', output: null };
       return { name: 'a window', output: null };
     },
   });
@@ -8146,6 +8551,39 @@ function start(): void {
   handle(IPC.announcements.takeOff, (e, which) =>
     fromOperator(e) ? announcements.takeOff(which) : notQueueOperator,
   );
+
+  // The chat (alpha.23): the operator window's Chat section only. Simple Mode's lock answers Clear chat, Remove and
+  // the Chat QR (simple-mode.ts); sending as the operator is Simple Mode Features' (a22-chat-operator).
+  const notChatOperator = { ok: false as const, message: 'Only the operator window can use the chat.' };
+  const chatViewNow = () => ({ ok: true as const, view: net.chatView() });
+  handle(IPC.chat.view, (e) =>
+    fromOperator(e)
+      ? net.chatView()
+      : { day: '', messages: [], people: [], members: [], invite: null, reachable: false },
+  );
+  handle(IPC.chat.send, (e, text) => {
+    if (!fromOperator(e)) return notChatOperator;
+    const sent = chat.sendAsOperator(text);
+    return sent.ok ? chatViewNow() : sent;
+  });
+  handle(IPC.chat.clear, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    chat.clear();
+    return chatViewNow();
+  });
+  handle(IPC.chat.remove, (e, personId) =>
+    fromOperator(e) ? net.removeChatPerson(personId) : notChatOperator,
+  );
+  handle(IPC.chat.invite, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    const shown = net.startChatInvite();
+    return shown.ok ? chatViewNow() : { ok: false as const, message: shown.message };
+  });
+  handle(IPC.chat.endInvite, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    net.endChatInvite();
+    return chatViewNow();
+  });
 
   // Timers: made and edited here, started and paused through the engine.
   const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {
@@ -8926,6 +9364,57 @@ function start(): void {
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
     return null;
   });
+  // The videos still up that a screen could not play (alpha.23, a22-halldrop), as LIVE names them under its picture:
+  // read as the operator window opens, and told again as one goes off.
+  const nameOfScreen = (screenId: string) => screenRepo.screens().find((s) => s.id === screenId)?.name;
+  const notOnList = () => hallWords.list(nameOfScreen);
+  hallWordsChanged = () => {
+    sendToOperator(IPC.media.notOnScreensChanged, notOnList());
+  };
+  handle(IPC.media.notOnScreens, (e) => (fromOperator(e) ? notOnList() : []));
+  // Play on a video a screen said it could not play is followed by the take-off (the owner's QA23-HALLDROP-1 (b),
+  // "Take it off at Play (Rec.)", as his Q60-31; media/not-on-screens-follow.ts).
+  liveLines.connectPlay({
+    later: (run) => {
+      setImmediate(run);
+    },
+    state: () => engine.current,
+    takeOff: (mediaId, startedAt) => engine.cannotPlay(mediaId, startedAt),
+    tell: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    log: (line) => {
+      log.warn(line);
+    },
+    nameOf: nameOfScreen,
+  });
+  // A screen with no first frame of a showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a), "Words during the
+  // wait (Rec.)"): LIVE says it is starting there until it draws or the verdict comes. Nothing on the screens changes.
+  handle(IPC.media.noFrameYet, (e, mediaId, startedAt) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video' || !stillUp(engine.current, mediaId, startedAt)) return null;
+    const screenName = nameOfScreen(screenId) ?? screenId;
+    if (liveLines.starting(mediaId, startedAt, screenId, screenName, file.name))
+      log.info(`A video had no first frame on the screen “${screenName}” 2 s after it went up: ${mediaId}`);
+    return null;
+  });
+  // A screen's page that said a showing could not play drew it after all (the review's MUST-2): no longer named.
+  handle(IPC.media.playsHere, (e, mediaId, startedAt) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    const changed = liveLines.drew(mediaId, startedAt, screenId);
+    log.info(
+      `A video drew on the screen “${nameOfScreen(screenId) ?? screenId}” after all: ${mediaId}${changed ? '' : ' (nothing named there)'}`,
+    );
+    return null;
+  });
+  engine.onChange((state) => {
+    liveLines.showChanged(state);
+  });
   // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
   // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
   // it; on the slide, paused; the box off), said by its name and where it failed, and logged with the error's kind,
@@ -8934,7 +9423,7 @@ function start(): void {
     const screenId = manager.screenIdFor(e.sender.id);
     const where: CannotPlayWhere | null =
       screenId !== undefined
-        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId }
+        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId, id: screenId }
         : fromOperator(e)
           ? 'live'
           : streaming.isProgram(e.sender)
@@ -8945,6 +9434,8 @@ function start(): void {
     if (typeof code !== 'number' || typeof words !== 'string') return null;
     const file = media.kindAndName(mediaId);
     if (file?.kind !== 'video') return null;
+    // A screen's new word: a drawing it said before is not this one's (a22-halldrop's re-review, MUST-4).
+    if (screenId !== undefined) hallWords.saidAgain(mediaId, startedAt, screenId);
     // The error's kind and Chromium's words, for the log only (the notice names the file and where).
     const kind = errorKindWords(code);
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
@@ -8956,28 +9447,30 @@ function start(): void {
       );
       return null;
     }
-    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords).
+    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords). What it took, or
+    // that it was up but not playing (alpha.23, a22-halldrop: until then dropped without a word), is said and logged,
+    // and LIVE names the screens while it stays up (cannot-play.ts heardOutcome); what the screens show is not changed.
     cannotPlay.heard(
       `${mediaId}@${String(startedAt)}`,
       where,
-      (named) => {
+      (_named, wheres) => {
         const took = engine.cannotPlay(mediaId, startedAt);
-        if (!took) return;
-        const off = [
-          took.background ? 'the background' : '',
-          took.slide ? 'paused on the slide' : '',
-          took.box ? 'the box' : '',
-        ]
-          .filter((w) => w !== '')
-          .join(', ');
-        log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
-        sendToOperator(IPC.app.notice, {
-          text:
-            code === NO_START_IN_TIME
-              ? cannotStartInTimeNotice(file.name, named, took)
-              : cannotPlayNotice(file.name, named, took),
-        });
+        const { outcome: said, changed } = hallWords.heard(
+          {
+            name: file.name,
+            mediaId,
+            wheres,
+            code,
+            words,
+            took,
+            stillUp: stillUp(engine.current, mediaId, startedAt),
+          },
+          startedAt,
+        );
+        if (said.log?.level === 'warn') log.warn(said.log.line);
+        else if (said.log) log.info(said.log.line);
+        if (said.notice !== null) sendToOperator(IPC.app.notice, { text: said.notice });
+        if (changed) hallWordsChanged?.();
       },
       (named) => {
         log.info(
@@ -9354,11 +9847,26 @@ function start(): void {
   // The screens' pages only: an output, the stream's page, and the operator window's pictures of them.
   const screenPage = (e: IpcMainInvokeEvent) =>
     fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined || streaming.isProgram(e.sender);
-  handle(IPC.liveWindow.ask, (e, sourceId) =>
-    screenPage(e) && typeof sourceId === 'string' ? shownWindows.ask(e.senderFrame, sourceId) : false,
-  );
+  /** Who asks (outputs/stage-preview.ts liveAnswer): the Stage preview, or a screen's page. */
+  const livePage = (e: IpcMainInvokeEvent) => ({
+    preview: isStagePreview(e.sender.id),
+    screen: screenPage(e),
+  });
+  handle(IPC.liveWindow.ask, (e, sourceId) => {
+    // The Stage preview never captures another app's window: it names it (alpha.23, QA23-STAGE8-1). Its page never
+    // asks; were it to, said in the log and refused.
+    const answer = liveAnswer('window', livePage(e));
+    if (answer === 'refused') {
+      log.warn('Show a Window: the Stage preview asked to capture the window: refused (it names it)');
+      return false;
+    }
+    return answer === 'yes' && typeof sourceId === 'string'
+      ? shownWindows.ask(e.senderFrame, sourceId)
+      : false;
+  });
   handle(IPC.liveWindow.ended, (e, sourceId) => {
-    if (screenPage(e) && typeof sourceId === 'string') shownWindows.ended(sourceId);
+    if (liveAnswer('window', livePage(e)) === 'yes' && typeof sourceId === 'string')
+      shownWindows.ended(sourceId);
     return null;
   });
 
@@ -9370,8 +9878,11 @@ function start(): void {
   };
   // The list: the operator window's Media, and every screen's page, which opens only an input listed here.
   // The slide editor's window too (Session 55, Part 17a): a slide's background is a video input by its name.
+  // Never the Stage preview (alpha.23, QA23-STAGE8-1): it names the input, and opens no camera.
   handle(IPC.videoInputs.list, (e) =>
-    screenPage(e) || (slideEditor?.isPage(e.sender) ?? false) ? inputs.view() : { inputs: [] },
+    liveAnswer('list', livePage(e)) === 'yes' || (slideEditor?.isPage(e.sender) ?? false)
+      ? inputs.view()
+      : { inputs: [] },
   );
   handle(IPC.videoInputs.add, (e, fields) => (fromOperator(e) ? inputs.add(fields) : notOperatorInputs));
   handle(IPC.videoInputs.update, (e, id, fields) =>
@@ -9393,7 +9904,14 @@ function start(): void {
   // operator window's LIVE picture); a page that closes is forgotten.
   const reportingPages = new Set<number>();
   handle(IPC.videoInputs.report, (e, report) => {
-    if (!screenPage(e)) return null;
+    // The Stage preview is no screen: it never says how the input stands (alpha.23, QA23-STAGE8-1). Its page never
+    // does; were it to, said in the log and never heard.
+    const answer = liveAnswer('report', livePage(e));
+    if (answer === 'refused') {
+      log.warn('Video inputs: the Stage preview said how an input stands: not heard (it is no screen)');
+      return null;
+    }
+    if (answer === 'no') return null;
     const page = e.sender;
     const id = page.id;
     if (!reportingPages.has(id)) {
@@ -9752,8 +10270,9 @@ function start(): void {
 
   handle(IPC.output.getContext, (event) => {
     // The Stage preview (alpha.22): a stage screen's page, never a screen.
-    if (stagePreview && !stagePreview.isDestroyed() && event.sender.id === stagePreview.webContents.id)
-      return stagePreviewContext();
+    if (isStagePreview(event.sender.id)) return stagePreviewContext();
+    // Live's copy (alpha.23): the screens' page off screen for the Lower Thirds studio, never a screen.
+    if (isLiveCopy(event.sender)) return liveCopyContextNow();
     const screenId = manager.screenIdFor(event.sender.id);
     // Keep these screens? on an output over the controls that opened, or loaded again, as a change waits: sent
     // before the answer, so after the page listens for it (output-store.ts listens first).
@@ -10185,27 +10704,47 @@ function start(): void {
     if (isLetIn() && !reportsLetIn) reports.wake();
     reportsLetIn = isLetIn();
   });
-  /** The operator window as it is now, before Report a Problem draws: its pixels and a small copy. */
+  /**
+   * The operator window as it is now, before Report a Problem draws: its pixels and a small copy, with what the page
+   * marks private (the chat's words and names, alpha.23) blanked in both; no picture when the page cannot say where.
+   */
   const captureOperator = async (): Promise<HeldPicture | null> => {
     const win = operatorWindow;
     if (!win || win.isDestroyed()) return null;
     try {
-      const image = await win.webContents.capturePage();
+      const contents = win.webContents;
+      const held = await takePrivately(
+        () => contents.executeJavaScript(PRIVATE_PARTS_SCRIPT, true) as Promise<unknown>,
+        () => contents.capturePage(),
+      );
+      if (!held) return null;
+      const image = held.taken;
       if (image.isEmpty()) return null;
       // A Retina window's picture is at twice its size in points: its pixels at the scale they were taken.
       for (const scaleFactor of [...image.getScaleFactors(), 1]) {
         const { width, height } = image.getSize(scaleFactor);
         const pixels = image.toBitmap({ scaleFactor });
-        if (width > 0 && height > 0 && pixels.length === width * height * 4)
-          return {
-            picture: {
+        if (width > 0 && height > 0 && pixels.length === width * height * 4) {
+          const picture = blankPrivateParts(
+            {
               width,
               height,
               pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
               order: capturedPixelOrder(),
             },
-            thumb: `data:image/jpeg;base64,${image.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
+            held.parts,
+          );
+          // The small copy from the blanked pixels, never from the picture as taken.
+          const blanked = nativeImage.createFromBitmap(Buffer.from(picture.pixels), {
+            width,
+            height,
+            scaleFactor,
+          });
+          return {
+            picture,
+            thumb: `data:image/jpeg;base64,${blanked.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
           };
+        }
       }
       return null;
     } catch {

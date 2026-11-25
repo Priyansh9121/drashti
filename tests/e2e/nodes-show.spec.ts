@@ -1,9 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { apiCall, networkOn, pairToken } from './devices';
+import { logText } from './log-lines';
 import { lightOf } from './pixels';
 import { holdClock } from './placeholder-slides';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OutputGlobals, PageGlobals } from './helpers';
@@ -460,7 +461,7 @@ test('a node whose link drops in the middle of a dissolve, in either order, ends
     await endsOn('Placeholder node slide 4');
     await expect(node.page.getByTestId('node-link-state')).toHaveText('Online');
     // The link did drop, both times: the node's own log says so.
-    const nodeLog = readFileSync(join(node.userData, 'logs', 'drashti.log'), 'utf8');
+    const nodeLog = logText(node.userData);
     expect(nodeLog.match(/Node: link offline/gu)?.length ?? 0).toBeGreaterThanOrEqual(2);
   } finally {
     await node.app.close();

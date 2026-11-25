@@ -3,14 +3,16 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
+import type { DeviceAuth, DeviceOp, DeviceRequest } from '../../shared/network-api';
+import { phoneOpRefusal, REMOTE_PHONE_OPS } from '../../shared/phone-rule';
 import { API_ROUTES, NetworkServer, type ServerHost } from './server';
 import { hashToken } from './tokens';
 
 /*
  * The phone's own requests (Session 55, Part 9) as the network server takes them: each reaches the main process as its
  * op with its arguments (the id from its path), from a Remote only, never a Stage device or the announcements poster.
- * On this computer only, with a stand-in for the main process; made-up tokens and placeholder ids.
+ * On this computer only, with a stand-in for the main process; made-up tokens and placeholder ids. Since alpha.23
+ * (QA23-PHONE-1, the owner's "Only PPT and PDF") a Remote is refused each, by the network's own process.
  */
 
 const REMOTE_TOKEN = 'test-made-up-remote-token-phone-0000';
@@ -64,6 +66,17 @@ async function start() {
 }
 
 function call(port: number, path: string, token: string, method = 'GET', body?: unknown): Promise<number> {
+  return answer(port, path, token, method, body).then((a) => a.status);
+}
+
+/** A request's answer: its status and its body's words. */
+function answer(
+  port: number,
+  path: string,
+  token: string,
+  method = 'GET',
+  body?: unknown,
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const text = body === undefined ? undefined : JSON.stringify(body);
     const req = request(
@@ -79,9 +92,10 @@ function call(port: number, path: string, token: string, method = 'GET', body?: 
         },
       },
       (res) => {
-        res.resume();
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => {
-          resolve(res.statusCode ?? 0);
+          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') });
         });
       },
     );
@@ -93,7 +107,10 @@ function call(port: number, path: string, token: string, method = 'GET', body?: 
 
 const PIN = { kind: 'media', mediaId: 'm-1', media: 'image', label: 'Placeholder backdrop' };
 
-/** Each request, and what the main process is asked: the op and its arguments. */
+/**
+ * Each request, and what the main process was asked before alpha.23 (its op and the arguments its route still makes:
+ * the handlers stay until alpha.24). Since QA23-PHONE-1 no Remote reaches it: the network's own process refuses each.
+ */
 const ASKED: [method: string, path: string, body: unknown, op: string, args: unknown][] = [
   ['GET', '/api/v1/wallpapers', undefined, 'wallpapers', {}],
   ['POST', '/api/v1/wallpapers/choose', { wallpaperId: 'w-1' }, 'wallpaper.choose', { wallpaperId: 'w-1' }],
@@ -145,12 +162,18 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
 const READ_TOO = new Set(['/api/v1/quick-bar', '/api/v1/media/m-1/look']);
 
 describe('the phone’s own requests (Session 55, Part 9)', () => {
-  it('reach the main process as their ops with their arguments, the id from the path', async () => {
+  it('are refused to a Remote by the network’s own process, in their group’s words, before the main process is asked (QA23-PHONE-1)', async () => {
     const { port, requests } = await start();
-    for (const [method, path, body, op, args] of ASKED) {
-      expect(await call(port, path, REMOTE_TOKEN, method, body), path).toBe(200);
-      expect(requests.at(-1), path).toEqual({ deviceId: 'd-remote', op, args, address: '127.0.0.1' });
+    for (const [method, path, body, op] of ASKED) {
+      const said = await answer(port, path, REMOTE_TOKEN, method, body);
+      expect(said.status, path).toBe(403);
+      expect(JSON.parse(said.body), path).toEqual({
+        ok: false,
+        message: phoneOpRefusal(op as DeviceOp, false),
+      });
+      expect(REMOTE_PHONE_OPS[op as DeviceOp], path).toBe('never');
     }
+    expect(requests).toEqual([]);
   });
 
   it('are refused to a Stage device and to the announcements poster, and changes are taken only by POST', async () => {

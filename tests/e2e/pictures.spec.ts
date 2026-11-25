@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
@@ -18,6 +18,7 @@ import {
   setUpScreen,
 } from './helpers';
 import { importItem } from './import-details';
+import { logLines } from './log-lines';
 import { makeTestImage } from './test-media';
 import { canvasPixels, near } from './pixels';
 
@@ -182,9 +183,7 @@ test('a PDF’s pages are drawn several at once while nothing is up and the stre
   };
   /** How many windows drew the last PDF at once, as Drashti's log says. */
   const atOnce = () => {
-    const lines = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-      .split('\n')
-      .filter((l) => l.includes('Pictures: drew 6 page(s) of 6'));
+    const lines = logLines(userData).filter((l) => l.includes('Pictures: drew 6 page(s) of 6'));
     return Number(/, (\d+) at once/u.exec(lines.at(-1) ?? '')?.[1] ?? 0);
   };
   const slidesOf = (id: string) =>

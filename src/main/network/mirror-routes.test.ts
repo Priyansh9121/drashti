@@ -3,14 +3,16 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
+import type { DeviceAuth, DeviceOp, DeviceRequest } from '../../shared/network-api';
+import { phoneOpRefusal, REMOTE_PHONE_OPS } from '../../shared/phone-rule';
 import { API_ROUTES, NetworkServer, type ServerHost } from './server';
 import { hashToken } from './tokens';
 
 /*
  * The mirror's requests (Session 54, D5) as the network server takes them: each reaches the main process as its op
  * with its arguments, from a Remote only. On this computer only, with a stand-in for the main process; made-up
- * tokens.
+ * tokens. Since alpha.23 (QA23-PHONE-1, the owner's "Only PPT and PDF") only the commands among them still reach it
+ * from a Remote; the network's own process refuses the rest.
  */
 
 const REMOTE_TOKEN = 'test-made-up-remote-token-mirror-000';
@@ -63,6 +65,17 @@ async function start() {
 }
 
 function call(port: number, path: string, token: string, method = 'GET', body?: unknown): Promise<number> {
+  return answer(port, path, token, method, body).then((a) => a.status);
+}
+
+/** A request's answer: its status and its body's words. */
+function answer(
+  port: number,
+  path: string,
+  token: string,
+  method = 'GET',
+  body?: unknown,
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const text = body === undefined ? undefined : JSON.stringify(body);
     const req = request(
@@ -78,9 +91,10 @@ function call(port: number, path: string, token: string, method = 'GET', body?: 
         },
       },
       (res) => {
-        res.resume();
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => {
-          resolve(res.statusCode ?? 0);
+          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') });
         });
       },
     );
@@ -90,7 +104,11 @@ function call(port: number, path: string, token: string, method = 'GET', body?: 
   });
 }
 
-/** Each request, and what the main process is asked: the op and its arguments. */
+/**
+ * Each request, and what the main process is asked: the op and its arguments. Since alpha.23 (QA23-PHONE-1) the network's
+ * own process refuses a Remote each 'never' request (the arguments its route still makes stand here: the handlers stay
+ * until alpha.24); a command still reaches the main process, which weighs it (phone-rule-service.test.ts).
+ */
 const ASKED: [method: string, path: string, body: unknown, op: string, args: unknown][] = [
   ['GET', '/api/v1/keys', undefined, 'keys', {}],
   // (The props' requests were here until Session 55 took props out, and the idle rotation's at the end.)
@@ -209,12 +227,28 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
 ];
 
 describe('the mirror’s requests (Session 54, D5)', () => {
-  it('reach the main process as their ops with their arguments, from a Remote', async () => {
+  it('from a Remote: a command reaches the main process with its arguments; every other is refused in its group’s words before it is asked (QA23-PHONE-1)', async () => {
     const { port, requests } = await start();
     for (const [method, path, body, op, args] of ASKED) {
-      expect(await call(port, path, REMOTE_TOKEN, method, body), path).toBe(200);
-      expect(requests.at(-1), path).toEqual({ deviceId: 'd-remote', op, args, address: '127.0.0.1' });
+      const asked = requests.length;
+      const said = await answer(port, path, REMOTE_TOKEN, method, body);
+      if (REMOTE_PHONE_OPS[op as DeviceOp] === 'never') {
+        expect(said.status, path).toBe(403);
+        expect(JSON.parse(said.body), path).toEqual({
+          ok: false,
+          message: phoneOpRefusal(op as DeviceOp, false),
+        });
+        expect(requests.length, path).toBe(asked);
+      } else {
+        expect(op, path).toBe('command');
+        expect(said.status, path).toBe(200);
+        expect(requests.at(-1), path).toEqual({ deviceId: 'd-remote', op, args, address: '127.0.0.1' });
+      }
     }
+    // The commands alone reached it: the audience timer, the stage message, the skips and the lower third's Hide.
+    expect(requests.map((r) => r.op)).toEqual(
+      ASKED.filter(([, , , op]) => op === 'command').map(() => 'command'),
+    );
   });
 
   it('are refused to a Stage device, and actions taken only by POST', async () => {

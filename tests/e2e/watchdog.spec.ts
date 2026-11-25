@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { launchApp, needsRealScreen, openLibrary, operatorPage } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * Playwright cannot stay attached to a renderer that crashes and reloads,
@@ -82,7 +83,7 @@ test('watchdog self-test: operator crash and reload never touch the output or th
   expect(result?.passed).toBe(true);
   expect(code).toBe(0);
   // The hung output's stack is in the log, naming the function it hung in (Sessions 31–36, ROB-1).
-  const logged = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const logged = logText(userData);
   expect(logged).toMatch(
     /Watchdog: output ".+" hung \(.+\); its JavaScript: at drashtiSelfTestHangsHere \(/u,
   );
