@@ -1,19 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NetworkChange } from '../../../../shared/network';
-import type { ChatMessage, ChatState } from './chat-contract';
+import {
+  CHAT_API,
+  CHAT_REFUSAL,
+  type ChatEvent,
+  type ChatMessage,
+  type ChatPhoneView,
+} from '../../../../shared/chat';
 import type * as ChatStore from './chat-store';
 
 const feed = vi.hoisted(() => ({
-  changed: [] as ((what: NetworkChange) => void)[],
   online: [] as (() => void)[],
+  chat: [] as ((event: ChatEvent) => void)[],
 }));
 vi.mock('../feed', () => ({
   onOnline: (listener: () => void) => {
     feed.online.push(listener);
     return () => undefined;
   },
-  onListsChanged: (listener: (what: NetworkChange) => void) => {
-    feed.changed.push(listener);
+  onChatEvent: (listener: (event: ChatEvent) => void) => {
+    feed.chat.push(listener);
     return () => undefined;
   },
 }));
@@ -31,11 +36,10 @@ vi.mock('./chat-alert', () => ({
 const ME = 'phone-me';
 const message = (id: string, from: string, text = `Placeholder message ${id}`): ChatMessage => ({
   id,
-  at: 1_764_000_000_000 + Number(id),
+  at: new Date(Date.UTC(2026, 10, 25, 8, Number(id) % 60)).toISOString(),
   from: { id: from, name: from === ME ? 'Placeholder Me' : `Placeholder ${from}` },
   text,
 });
-const chat = (...messages: ChatMessage[]): ChatState => ({ day: '2026-11-25', messages, people: [] });
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -48,46 +52,69 @@ class Page extends EventTarget {
   }
 }
 
+/** Drashti's side, as the phone's requests meet it. */
+interface Drashti {
+  messages: ChatMessage[];
+  /** The name Drashti has for this phone (null: not given yet, or Drashti was restarted and forgot it). */
+  name: string | null;
+  names: string[];
+  sent: string[];
+  refuse: { status: number; message: string } | null;
+}
+
 let store: typeof ChatStore;
 let page: Page;
-let answers: ChatState[];
-let sent: unknown[];
-let refuse: { status: number; message: string } | null;
+let drashti: Drashti;
 let fetcher: ReturnType<typeof vi.fn<typeof fetch>>;
 
+const view = (): ChatPhoneView => ({
+  day: '2026-11-25',
+  messages: [...drashti.messages],
+  people: [{ id: 'operator', name: 'Operator' }],
+  you: { id: ME, name: drashti.name },
+});
 const reads = () => fetcher.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET').length;
-const changed = (what: string) => {
-  for (const l of feed.changed) l(what as NetworkChange);
+const tell = (event: ChatEvent) => {
+  for (const l of feed.chat) l(event);
+};
+/** A message someone else sent: in Drashti's chat, and told on the feed. */
+const arrives = (m: ChatMessage) => {
+  drashti.messages.push(m);
+  tell({ kind: 'message', message: m });
 };
 
 beforeEach(async () => {
   vi.resetModules();
-  feed.changed = [];
   feed.online = [];
+  feed.chat = [];
   alerts.armed = 0;
   alerts.alerted = 0;
-  answers = [chat(message('1', 'other'), message('2', ME))];
-  sent = [];
-  refuse = null;
+  drashti = { messages: [message('1', 'other'), message('2', ME)], name: null, names: [], sent: [], refuse: null };
   page = new Page();
   vi.stubGlobal('document', page);
   fetcher = vi.fn<typeof fetch>((url, init) => {
-    if (url !== '/api/v1/chat') return Promise.resolve(json({ ok: false, message: 'Not here.' }, 404));
-    if (init?.method === 'POST') {
-      const body = JSON.parse(init.body as string) as { text: string; name: string };
-      sent.push(body);
-      if (refuse) return Promise.resolve(json({ ok: false, message: refuse.message }, refuse.status));
-      const made = {
-        id: `s${String(sent.length)}`,
-        at: 1,
-        from: { id: ME, name: body.name },
-        text: body.text,
+    const body = init?.body === undefined ? {} : (JSON.parse(init.body as string) as Record<string, string>);
+    if (init?.method === 'POST' && drashti.refuse)
+      return Promise.resolve(json({ ok: false, message: drashti.refuse.message }, drashti.refuse.status));
+    if (url === CHAT_API.read && init?.method !== 'POST') return Promise.resolve(json({ ok: true, chat: view() }));
+    if (url === CHAT_API.name && init?.method === 'POST') {
+      drashti.names.push(body['name'] ?? '');
+      drashti.name = body['name'] ?? null;
+      return Promise.resolve(json({ ok: true, chat: view() }));
+    }
+    if (url === CHAT_API.send && init?.method === 'POST') {
+      const text = body['text'] ?? '';
+      drashti.sent.push(text);
+      const made: ChatMessage = {
+        id: `s${String(drashti.sent.length)}`,
+        at: '2026-11-25T09:00:00.000Z',
+        from: { id: ME, name: drashti.name ?? '' },
+        text,
       };
+      drashti.messages.push(made);
       return Promise.resolve(json({ ok: true, message: made }));
     }
-    const now = answers[0] ?? chat();
-    if (answers.length > 1) answers.shift();
-    return Promise.resolve(json({ ok: true, chat: now, you: ME }));
+    return Promise.resolve(json({ ok: false, message: 'Not here.' }, 404));
   });
   vi.stubGlobal('fetch', fetcher);
   store = await import('./chat-store');
@@ -100,6 +127,10 @@ afterEach(() => {
 const started = async () => {
   store.startChat();
   await vi.waitFor(() => expect(store.useChat.getState().chat).not.toBeNull());
+};
+const named = async () => {
+  await started();
+  expect(await store.setChatName('Placeholder Volunteer')).toBeNull();
 };
 
 describe('the phone’s chat: history on opening', () => {
@@ -121,50 +152,99 @@ describe('the phone’s chat: history on opening', () => {
   });
 });
 
-describe('a new message from someone else', () => {
+describe('the name, asked once', () => {
+  it('is checked on the phone in Drashti’s words, then given to Drashti and kept', async () => {
+    await started();
+    expect(store.useChat.getState().name).toBeNull();
+    expect(await store.setChatName('   ')).toBe(CHAT_REFUSAL.name);
+    expect(drashti.names).toEqual([]);
+    expect(await store.setChatName(' Placeholder\tVolunteer ')).toBeNull();
+    expect(drashti.names).toEqual(['Placeholder Volunteer']);
+    expect(store.useChat.getState().name).toBe('Placeholder Volunteer');
+  });
+
+  it('refused by Drashti (the chat is full), is shown in its words and not kept', async () => {
+    await started();
+    drashti.refuse = { status: 403, message: CHAT_REFUSAL.full };
+    expect(await store.setChatName('Placeholder Volunteer')).toBe(CHAT_REFUSAL.full);
+    expect(store.useChat.getState().name).toBeNull();
+  });
+
+  it('kept on the phone, is given to Drashti again when the page opens and Drashti has none (it was restarted)', async () => {
+    await named();
+    vi.resetModules();
+    feed.online = [];
+    feed.chat = [];
+    drashti.name = null;
+    drashti.names = [];
+    store = await import('./chat-store');
+    await started();
+    await vi.waitFor(() => expect(drashti.names).toEqual(['Placeholder Volunteer']));
+    expect(store.useChat.getState().name).toBe('Placeholder Volunteer');
+  });
+
+  it('is not given again when Drashti already has it', async () => {
+    await named();
+    vi.resetModules();
+    feed.online = [];
+    feed.chat = [];
+    drashti.names = [];
+    store = await import('./chat-store');
+    await started();
+    expect(drashti.names).toEqual([]);
+  });
+});
+
+describe('a new message from someone else, told on the feed', () => {
   it('while the page is open: buzzes or sounds, shows a banner, and is unread while the chat is not in view', async () => {
     await started();
-    answers = [chat(message('1', 'other'), message('2', ME), message('3', 'other'))];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().chat?.messages).toHaveLength(3));
+    arrives(message('3', 'other'));
     const s = store.useChat.getState();
+    expect(s.chat?.messages.map((m) => m.id)).toEqual(['1', '2', '3']);
     expect(alerts.alerted).toBe(1);
     expect(s.banner?.id).toBe('3');
     expect(s.unread).toEqual(['3']);
+    // Brought by the feed itself: no read needed.
+    expect(reads()).toBe(1);
   });
 
   it('with the chat in view: buzzes or sounds, but needs no banner and is not unread', async () => {
     await started();
     store.chatInView(true);
-    answers = [chat(message('1', 'other'), message('2', ME), message('3', 'other'))];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().chat?.messages).toHaveLength(3));
+    arrives(message('3', 'operator'));
     expect(alerts.alerted).toBe(1);
     expect(store.useChat.getState().banner).toBeNull();
     expect(store.useChat.getState().unread).toEqual([]);
   });
 
-  it('never for this phone’s own message', async () => {
+  it('never for this phone’s own message, and the same message is shown once', async () => {
     await started();
-    answers = [chat(message('1', 'other'), message('2', ME), message('4', ME))];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().chat?.messages).toHaveLength(3));
+    arrives(message('4', ME));
+    tell({ kind: 'message', message: message('4', ME) });
+    expect(store.useChat.getState().chat?.messages.filter((m) => m.id === '4')).toHaveLength(1);
     expect(alerts.alerted).toBe(0);
     expect(store.useChat.getState().banner).toBeNull();
   });
 
-  it('is read for no other change the feed tells of', async () => {
-    await started();
-    changed('playlists');
-    changed('messages');
-    expect(reads()).toBe(1);
+  it('told before the first read is in, is not lost', async () => {
+    let release: () => void = () => undefined;
+    fetcher.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => {
+            resolve(json({ ok: true, chat: { ...view(), messages: [message('1', 'other')] } }));
+          };
+        }),
+    );
+    store.startChat();
+    arrives(message('5', 'other'));
+    release();
+    await vi.waitFor(() => expect(store.useChat.getState().chat?.messages.map((m) => m.id)).toContain('5'));
   });
 
   it('seeing the chat takes the banner and the unread count away', async () => {
     await started();
-    answers = [chat(message('1', 'other'), message('2', ME), message('3', 'other'))];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().unread).toEqual(['3']));
+    arrives(message('3', 'other'));
     store.chatInView(true);
     expect(store.useChat.getState().unread).toEqual([]);
     expect(store.useChat.getState().banner).toBeNull();
@@ -172,12 +252,24 @@ describe('a new message from someone else', () => {
 
   it('the banner can be put away without opening the chat (the message stays unread)', async () => {
     await started();
-    answers = [chat(message('1', 'other'), message('3', 'other'))];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().banner?.id).toBe('3'));
+    arrives(message('3', 'other'));
     store.dismissBanner();
     expect(store.useChat.getState().banner).toBeNull();
     expect(store.useChat.getState().unread).toEqual(['3']);
+  });
+
+  it('told while the page is put away, is unread with no buzz (the browser allows none then)', async () => {
+    await started();
+    page.visibilityState = 'hidden';
+    arrives(message('8', 'other'));
+    expect(store.useChat.getState().unread).toEqual(['8']);
+    expect(alerts.alerted).toBe(0);
+  });
+
+  it('the people told of are the chat’s people now', async () => {
+    await started();
+    tell({ kind: 'people', people: [{ id: 'operator', name: 'Operator' }, { id: 'p2', name: 'Placeholder Two' }] });
+    expect(store.useChat.getState().chat?.people.map((p) => p.id)).toEqual(['operator', 'p2']);
   });
 });
 
@@ -185,9 +277,7 @@ describe('catching up after the phone wakes or its connection comes back', () =>
   it('reads again when the page is shown again: what came meanwhile is unread with a banner, and no buzz', async () => {
     await started();
     page.show('hidden');
-    answers = [
-      chat(message('1', 'other'), message('2', ME), message('5', 'other'), message('6', 'operator')),
-    ];
+    drashti.messages.push(message('5', 'other'), message('6', 'operator'));
     page.show('visible');
     await vi.waitFor(() => expect(store.useChat.getState().chat?.messages).toHaveLength(4));
     const s = store.useChat.getState();
@@ -198,95 +288,58 @@ describe('catching up after the phone wakes or its connection comes back', () =>
 
   it('reads again each time the feed is back online', async () => {
     await started();
-    answers = [chat(message('1', 'other'), message('2', ME), message('7', 'other'))];
+    drashti.messages.push(message('7', 'other'));
     for (const l of feed.online) l();
     await vi.waitFor(() => expect(store.useChat.getState().chat?.messages).toHaveLength(3));
     expect(store.useChat.getState().unread).toEqual(['7']);
     expect(alerts.alerted).toBe(0);
   });
 
-  it('a message told of while the page is put away is unread, with no buzz (the browser allows none then)', async () => {
+  it('Clear chat on the computer (or the next day) empties the list, the unread count and the banner', async () => {
     await started();
-    page.visibilityState = 'hidden';
-    answers = [chat(message('1', 'other'), message('8', 'other'))];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().unread).toEqual(['8']));
-    expect(alerts.alerted).toBe(0);
-  });
-
-  it('Clear chat on the computer empties the list and the unread count', async () => {
-    await started();
-    answers = [chat(message('1', 'other'), message('3', 'other'))];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().unread).toEqual(['3']));
-    answers = [chat()];
-    changed('chat');
-    await vi.waitFor(() => expect(store.useChat.getState().chat?.messages).toEqual([]));
-    expect(store.useChat.getState().unread).toEqual([]);
-    expect(store.useChat.getState().banner).toBeNull();
-  });
-});
-
-describe('the name, asked once', () => {
-  it('is kept for the page once given, tidied, and refused in plain words when empty', async () => {
-    await started();
-    expect(store.useChat.getState().name).toBeNull();
-    expect(store.setChatName('   ')).toBe('Type your name first.');
-    expect(store.useChat.getState().name).toBeNull();
-    expect(store.setChatName(' Placeholder  Volunteer ')).toBeNull();
-    expect(store.useChat.getState().name).toBe('Placeholder Volunteer');
+    arrives(message('3', 'other'));
+    drashti.messages = [];
+    tell({ kind: 'cleared', day: '2026-11-25' });
+    const s = store.useChat.getState();
+    expect(s.chat?.messages).toEqual([]);
+    expect(s.unread).toEqual([]);
+    expect(s.banner).toBeNull();
   });
 });
 
 describe('sending', () => {
-  it('needs the name first, and words, and sends nothing until then', async () => {
+  it('needs the name first, and words, in Drashti’s words, and sends nothing until then', async () => {
     await started();
     expect(await store.sendChat('Placeholder hello')).toBe(false);
-    expect(store.useChat.getState().problem).toBe('Type your name first.');
-    store.setChatName('Placeholder Volunteer');
+    expect(store.useChat.getState().problem).toBe(CHAT_REFUSAL.noName);
+    expect(await store.setChatName('Placeholder Volunteer')).toBeNull();
     expect(await store.sendChat('   ')).toBe(false);
-    expect(store.useChat.getState().problem).toBe('Type a message first.');
+    expect(store.useChat.getState().problem).toBe(CHAT_REFUSAL.empty);
     expect(await store.sendChat('a'.repeat(501))).toBe(false);
-    expect(sent).toEqual([]);
+    expect(store.useChat.getState().problem).toBe(CHAT_REFUSAL.tooLong);
+    expect(drashti.sent).toEqual([]);
   });
 
-  it('sends the words and the name, and shows the message at once on the right (its own)', async () => {
-    await started();
-    store.setChatName('Placeholder Volunteer');
+  it('sends the words and shows the message at once on the right (its own), with no buzz', async () => {
+    await named();
     expect(await store.sendChat('Placeholder hello 🙏')).toBe(true);
-    expect(sent).toEqual([{ text: 'Placeholder hello 🙏', name: 'Placeholder Volunteer' }]);
+    expect(drashti.sent).toEqual(['Placeholder hello 🙏']);
     const s = store.useChat.getState();
     expect(s.problem).toBeNull();
     const last = s.chat?.messages.at(-1);
     expect(last?.text).toBe('Placeholder hello 🙏');
     expect(last?.from.id).toBe(s.me);
+    // The feed brings the same message to every phone, this one too: shown once.
+    tell({ kind: 'message', message: last as ChatMessage });
+    expect(store.useChat.getState().chat?.messages.filter((m) => m.id === last?.id)).toHaveLength(1);
     expect(alerts.alerted).toBe(0);
   });
 
-  it('the same message read again from Drashti is shown once', async () => {
-    await started();
-    store.setChatName('Placeholder Volunteer');
-    await store.sendChat('Placeholder hello');
-    answers = [
-      chat(message('1', 'other'), message('2', ME), {
-        ...message('9', ME),
-        id: 's1',
-        text: 'Placeholder hello',
-      }),
-    ];
-    changed('chat');
-    await vi.waitFor(() => expect(reads()).toBe(2));
-    await vi.waitFor(() =>
-      expect(store.useChat.getState().chat?.messages.filter((m) => m.id === 's1')).toHaveLength(1),
-    );
-  });
-
   it('a refusal (too many at once, a removed phone) is shown in Drashti’s words and nothing is added', async () => {
-    await started();
-    store.setChatName('Placeholder Volunteer');
-    refuse = { status: 403, message: 'Placeholder refusal in plain words.' };
+    await named();
+    drashti.refuse = { status: 429, message: CHAT_REFUSAL.tooFast };
     expect(await store.sendChat('Placeholder hello')).toBe(false);
-    expect(store.useChat.getState().problem).toBe('Placeholder refusal in plain words.');
+    expect(store.useChat.getState().problem).toBe(CHAT_REFUSAL.tooFast);
     expect(store.useChat.getState().chat?.messages).toHaveLength(2);
   });
 });

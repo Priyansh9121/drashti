@@ -6,7 +6,7 @@ import { textLang } from '../../render/lang';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { ArrowDown, MessageCircle, Send, X } from '../../ui/icons';
-import { CHAT_NAME_MAX, CHAT_TEXT_MAX, type ChatMessage } from './chat-contract';
+import { CHAT_NAME_MAX, CHAT_TEXT_MAX, type ChatMessage } from '../../../../shared/chat';
 import { chatInView, dismissBanner, sendChat, setChatName, useChat } from './chat-store';
 
 /*
@@ -54,7 +54,7 @@ function Bubble({ message, own, clock }: { message: ChatMessage; own: boolean; c
         </p>
         <p className="text-right text-base text-muted">
           {own && <span className="sr-only">You, </span>}
-          <time dateTime={new Date(message.at).toISOString()}>{formatClock(message.at, clock)}</time>
+          <time dateTime={message.at}>{formatClock(Date.parse(message.at), clock)}</time>
         </p>
       </div>
     </li>

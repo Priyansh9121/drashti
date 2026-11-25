@@ -44,7 +44,7 @@ describe('the name a phone keeps for the chat', () => {
   it('is remembered on the phone, tidied, after it is given once', async () => {
     const kept = storage();
     vi.stubGlobal('localStorage', kept);
-    names.keepChatName('  Placeholder   Volunteer ');
+    names.keepChatName('  Placeholder\tVolunteer ');
     expect(names.keptChatName()).toBe('Placeholder Volunteer');
     // The page opened again later (a new load of the module): still known.
     vi.resetModules();

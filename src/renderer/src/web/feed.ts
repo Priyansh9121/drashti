@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ChatEvent } from '../../../shared/chat';
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../../shared/engine/state';
 import {
@@ -55,6 +56,11 @@ const changeListeners = new Set<(what: NetworkChange) => void>();
 export function onListsChanged(listener: (what: NetworkChange) => void): () => void {
   changeListeners.add(listener);
   return () => changeListeners.delete(listener);
+}
+
+/** The chat's events (alpha.23, QA23-CHAT-1). Red: not built yet. */
+export function onChatEvent(_listener: (event: ChatEvent) => void): () => void {
+  return () => undefined;
 }
 
 /** Called each time the feed is (back) online, so a page can read its lists again. */

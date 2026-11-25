@@ -1,40 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { CHAT_NAME_MAX, CHAT_TEXT_MAX, type ChatMessage } from './chat-contract';
+import { CHAT_NAME_MAX, CHAT_REFUSAL, CHAT_TEXT_MAX, type ChatMessage } from '../../../../shared/chat';
 import { chatNameProblem, chatTextProblem, newFromOthers, tidyChatName, unreadStill } from './chat-words';
 
 const message = (id: string, from: string, text = `Placeholder message ${id}`): ChatMessage => ({
   id,
-  at: 1_764_000_000_000,
+  at: '2026-11-25T08:05:00.000Z',
   from: { id: from, name: `Placeholder ${from}` },
   text,
 });
 
 describe('a person’s name in the chat, asked once on the phone', () => {
-  it('is tidied: spaces at its ends and runs of spaces, tabs or new lines become one space', () => {
-    expect(tidyChatName('  Placeholder \t Volunteer\n ')).toBe('Placeholder Volunteer');
+  it('is cleaned as Drashti cleans it: a tab or new line a space, spaces at its ends gone', () => {
+    expect(tidyChatName('  Placeholder\tVolunteer\n ')).toBe('Placeholder Volunteer');
   });
-  it('must be given, in plain words', () => {
-    expect(chatNameProblem('   ')).toBe('Type your name first.');
+  it('must be given, in Drashti’s own words', () => {
+    expect(chatNameProblem('   ')).toBe(CHAT_REFUSAL.name);
+    expect(chatNameProblem('‍')).toBe(CHAT_REFUSAL.name);
     expect(chatNameProblem('Placeholder Volunteer')).toBeNull();
   });
   it('is at most the contract’s length, and says so', () => {
     expect(chatNameProblem('a'.repeat(CHAT_NAME_MAX))).toBeNull();
-    expect(chatNameProblem('a'.repeat(CHAT_NAME_MAX + 1))).toBe(
-      `A name is ${String(CHAT_NAME_MAX)} letters at most.`,
-    );
+    expect(chatNameProblem('a'.repeat(CHAT_NAME_MAX + 1))).toBe(CHAT_REFUSAL.name);
   });
 });
 
-describe('a message’s words', () => {
+describe('a message’s words, checked on the phone as Drashti checks them', () => {
   it('must have some words', () => {
-    expect(chatTextProblem('  \n ')).toBe('Type a message first.');
+    expect(chatTextProblem('  \n ')).toBe(CHAT_REFUSAL.empty);
   });
   it('are at most 500 characters, counted as the text box counts them; emoji are words too', () => {
     expect(CHAT_TEXT_MAX).toBe(500);
     expect(chatTextProblem('a'.repeat(CHAT_TEXT_MAX))).toBeNull();
     expect(chatTextProblem('🙏 Placeholder thank you 🎉')).toBeNull();
-    expect(chatTextProblem('a'.repeat(CHAT_TEXT_MAX + 1))).toBe(
-      `A message is ${String(CHAT_TEXT_MAX)} characters at most (this one is ${String(CHAT_TEXT_MAX + 1)}).`,
+    expect(chatTextProblem('a'.repeat(CHAT_TEXT_MAX + 1))).toBe(CHAT_REFUSAL.tooLong);
+  });
+  it('have at most the contract’s lines', () => {
+    expect(chatTextProblem(Array.from({ length: 21 }, (_, i) => `Placeholder ${String(i)}`).join('\n'))).toBe(
+      CHAT_REFUSAL.tooManyLines,
     );
   });
 });

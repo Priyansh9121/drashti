@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import type { ChatMessage, ChatState } from './chat-contract';
+import { CHAT_API, type ChatMessage, type ChatPhoneView } from '../../../../shared/chat';
 import { api } from '../device';
-import { onListsChanged, onOnline } from '../feed';
+import { onChatEvent, onOnline } from '../feed';
 import { oneAtATime } from '../one-at-a-time';
 import { alertNewMessage, armAlerts } from './chat-alert';
 import { keepChatName, keptChatName } from './chat-name';
@@ -17,7 +17,7 @@ import { chatNameProblem, chatTextProblem, newFromOthers, tidyChatName, unreadSt
 
 interface ChatView {
   /** The day's chat as last read (null until the first read is in). */
-  chat: ChatState | null;
+  chat: ChatPhoneView | null;
   /** This phone in the chat (its own messages are on the right), as Drashti says. */
   me: string | null;
   /** The name this phone gave (asked once), or null. */
@@ -44,7 +44,7 @@ export const useChat = create<ChatView>(() => ({
   inView: false,
 }));
 
-const PATH = '/api/v1/chat';
+const PATH = CHAT_API.read;
 
 const shown = (): boolean => typeof document === 'undefined' || document.visibilityState === 'visible';
 
@@ -55,20 +55,20 @@ let live = false;
 const read = oneAtATime(async () => {
   const alerting = live && shown();
   live = false;
-  const answer = await api<{ chat: ChatState; you: string }>(PATH);
+  const answer = await api<{ chat: ChatPhoneView }>(PATH);
   if (!answer.ok) {
     useChat.setState({ problem: answer.message });
     return;
   }
   const { chat: before, unread, banner, inView } = useChat.getState();
   // A message this phone sent and already shows (sendChat) is the same message: Drashti's copy replaces it.
-  const news = newFromOthers(before?.messages ?? null, answer.chat.messages, answer.you);
+  const news = newFromOthers(before?.messages ?? null, answer.chat.messages, answer.chat.you.id);
   const still = unreadStill(unread, answer.chat.messages);
   const newest = news.at(-1) ?? null;
   const bannerStill = banner && answer.chat.messages.some((m) => m.id === banner.id) ? banner : null;
   useChat.setState({
     chat: answer.chat,
-    me: answer.you,
+    me: answer.chat.you.id,
     problem: null,
     unread: inView ? [] : [...still, ...news.map((m) => m.id)],
     banner: inView ? null : (newest ?? bannerStill),
@@ -90,10 +90,7 @@ export function startChat(): void {
   started = true;
   useChat.setState({ name: keptChatName() });
   armAlerts();
-  // The stand-in's hint (core's contract names the real one).
-  onListsChanged((what) => {
-    if ((what as string) === 'chat') readAgain(true);
-  });
+  onChatEvent(() => undefined);
   onOnline(() => {
     readAgain(false);
   });

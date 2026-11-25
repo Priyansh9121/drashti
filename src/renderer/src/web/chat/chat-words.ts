@@ -1,27 +1,30 @@
-import { CHAT_NAME_MAX, CHAT_TEXT_MAX, type ChatMessage } from './chat-contract';
+import {
+  CHAT_REFUSAL,
+  type ChatMessage,
+  chatNameSchema,
+  chatTextSchema,
+} from '../../../../shared/chat';
+import { cleanRenameName } from '../../../../shared/rename-name';
 
 /*
- * The phone's chat (QA23-CHAT-1), its rules in words before anything is sent: a name and a message as the page checks
- * them (Main checks them again and has the last word), and which messages are news to this phone.
+ * The phone's chat (QA23-CHAT-1), its rules before anything is sent: a name and a message checked by the contract's
+ * own rules (shared/chat.ts), so the page says what Main would say, in its words, without asking (Main checks them
+ * again and has the last word); and which messages are news to this phone.
  */
 
-/** A name as the chat keeps it: one space between words, none at its ends. */
-export const tidyChatName = (name: string): string => name.replace(/\s+/gu, ' ').trim();
+/** A name as Drashti keeps it (cleaned as Rename… cleans a name). */
+export const tidyChatName = (name: string): string => cleanRenameName(name);
 
-/** What is wrong with a name, in plain words, or null. */
+/** What is wrong with a name, in Drashti's words, or null. */
 export function chatNameProblem(name: string): string | null {
-  const tidy = tidyChatName(name);
-  if (tidy === '') return 'Type your name first.';
-  if (tidy.length > CHAT_NAME_MAX) return `A name is ${String(CHAT_NAME_MAX)} letters at most.`;
-  return null;
+  return chatNameSchema.safeParse(name).success ? null : CHAT_REFUSAL.name;
 }
 
-/** What is wrong with a message's words, in plain words, or null. Counted as the text box counts them. */
+/** What is wrong with a message's words, in Drashti's words, or null. */
 export function chatTextProblem(text: string): string | null {
-  if (text.trim() === '') return 'Type a message first.';
-  if (text.length > CHAT_TEXT_MAX)
-    return `A message is ${String(CHAT_TEXT_MAX)} characters at most (this one is ${String(text.length)}).`;
-  return null;
+  const checked = chatTextSchema.safeParse(text);
+  if (checked.success) return null;
+  return checked.error.issues[0]?.message ?? CHAT_REFUSAL.empty;
 }
 
 /**

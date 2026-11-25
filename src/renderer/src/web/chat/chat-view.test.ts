@@ -1,14 +1,14 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage } from './chat-contract';
+import type { ChatMessage } from '../../../../shared/chat';
 import { ChatBannerView, ChatList, ChatNameForm, MIC_HINT } from './ChatView';
 
 const ME = 'phone-me';
 const AT = Date.UTC(2026, 10, 25, 8, 5);
 const message = (id: string, from: { id: string; name: string }, text: string, at = AT): ChatMessage => ({
   id,
-  at,
+  at: new Date(at).toISOString(),
   from,
   text,
 });
