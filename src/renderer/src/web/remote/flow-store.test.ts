@@ -95,7 +95,15 @@ beforeEach(() => {
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url: string) => {
     revoked.push(url);
   });
-  useFlow.setState({ snapshot: null, problem: null, open: false, view: 'list', page: 0, zoom: 1, pictures: {} });
+  useFlow.setState({
+    snapshot: null,
+    problem: null,
+    open: false,
+    view: 'list',
+    page: 0,
+    zoom: 1,
+    pictures: {},
+  });
 });
 
 afterEach(() => {
@@ -205,7 +213,7 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     answer({ flow: A, state: { flowId: A.id, now: 0 } });
     await loadFlow();
     // Replaced on the computer while the page was on its way.
-    let replace = () => undefined as void;
+    let replace: () => void = () => undefined;
     pageAnswer = () => {
       replace();
       return new Response(new Uint8Array([0x89, 0x50]), { status: 200 });

@@ -92,7 +92,7 @@ function call(port: number, path: string, token: string, method = 'GET'): Promis
         res.on('end', () => {
           resolve({
             status: res.statusCode ?? 0,
-            type: String(res.headers['content-type'] ?? ''),
+            type: res.headers['content-type'] ?? '',
             body: Buffer.concat(parts),
           });
         });
@@ -103,7 +103,10 @@ function call(port: number, path: string, token: string, method = 'GET'): Promis
   });
 }
 
-const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({ status: 200, body: { ok: true, ...body } });
+const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
+  status: 200,
+  body: { ok: true, ...body },
+});
 
 /** Each request, and what the main process is asked: the op and its arguments. */
 const ASKED: [path: string, op: string, args: unknown][] = [
@@ -131,9 +134,10 @@ describe('Sabha flow on a phone (alpha.23): the network server', () => {
       expect((await call(port, path, REMOTE_TOKEN, 'POST')).status, path).toBe(405);
     }
     for (const page of ['-1', 'one', '1000', '1.5'])
-      expect((await call(port, `/api/v1/flow/pages/${page}?flow=${FLOW_ID}`, REMOTE_TOKEN)).status, page).toBe(
-        404,
-      );
+      expect(
+        (await call(port, `/api/v1/flow/pages/${page}?flow=${FLOW_ID}`, REMOTE_TOKEN)).status,
+        page,
+      ).toBe(404);
     expect(requests).toEqual([]);
   });
 

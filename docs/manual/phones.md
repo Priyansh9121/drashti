@@ -44,6 +44,7 @@
 2. Tap a row of the **Playlist** to put it up; tap **Next** or **Back**, or swipe left and right on the picture.
 3. Tap **Look closer** to see the screens' picture full screen.
 4. Its **More** has the clears, the wallpapers and this computer's screens.
+5. Its **More** also has the **Sabha flow** you chose, to read only: **Now** and **Next up** as you mark them, and **Open Sabha flow…** for the read list and the PDF page.
 
 ![The phone remote with a placeholder slide live](../screenshots/phone-remote.png)
 

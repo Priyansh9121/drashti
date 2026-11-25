@@ -76,7 +76,14 @@ function setup(options: { simple?: boolean; flow?: boolean } = {}) {
     spawn: () => {
       throw new Error('no worker here');
     },
-    serverOptions: (port) => ({ port, bind: '127.0.0.1', webDir: '', ffmpeg: null, previewDir: '', localName: null }),
+    serverOptions: (port) => ({
+      port,
+      bind: '127.0.0.1',
+      webDir: '',
+      ffmpeg: null,
+      previewDir: '',
+      localName: null,
+    }),
     localName: () => null,
     engine: {
       dispatch: (): CommandResult => ({ ok: true, changed: true, rev: 1 }),
@@ -217,7 +224,9 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     ]) {
       const answer = await page(remote, args);
       expect(answer.status, JSON.stringify(args)).toBe(400);
-      expect(answer.body, JSON.stringify(args)).toMatchObject({ ok: false, message: expect.any(String) });
+      const body = answer.body as { ok: boolean; message: unknown };
+      expect(body.ok, JSON.stringify(args)).toBe(false);
+      expect(typeof body.message, JSON.stringify(args)).toBe('string');
     }
     // Not drawn, or not a PNG: no page.
     setPages({ 0: null, 1: Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9]) });
