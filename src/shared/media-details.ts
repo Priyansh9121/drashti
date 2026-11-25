@@ -128,7 +128,7 @@ export type MediaDetailsResult = { ok: true; details: MediaDetails } | { ok: fal
 export interface DetailExtras {
   points?: { startMs: number | null; endMs: number | null; markers: number } | null;
   loudness?: { even: boolean; measured: boolean; lufs: number | null; gainDb: number } | null;
-  /** RED STUB (a22-review-fadecopies S5): not said yet. */
+  /** The heights of this video's page copies made for crossfades (QA23-FADE-9 candidate 1), or none. */
   pageCopies?: number[] | null;
 }
 
@@ -385,10 +385,20 @@ export function detailSections(d: MediaDetails, extras: DetailExtras = {}, local
           : null,
       ],
       ['Even loudness', extras.loudness ? loudnessWords(extras.loudness) : null],
+      ['Smaller copies', extras.pageCopies?.length ? pageCopiesWords(extras.pageCopies) : null],
       ['Played', d.plays ? playedWords(d.plays.count, d.plays.lastAt, locale) : null],
     ]),
   });
   return sections;
+}
+
+/** A video's page copies (QA23-FADE-9 candidate 1, a22-review-fadecopies S5): which, and for which page. */
+function pageCopiesWords(heights: readonly number[]): string {
+  const said = [
+    ...(heights.includes(720) ? ['720p for the stream'] : []),
+    ...(heights.includes(540) ? ['540p for LIVE'] : []),
+  ];
+  return `${said.join(' and ')}, for crossfades on this computer`;
 }
 
 /** What Copy gives: the title, why the file was not read (if it was not), then each part and its lines. */
