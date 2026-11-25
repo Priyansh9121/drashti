@@ -44,6 +44,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'engine',
     'events',
     'files',
+    // The Sabha flow panel (alpha.23, QA23-FLOW-1): the running order's PDF, read, and Now.
+    'flow',
     'guides',
     'kirtans',
     'library',
