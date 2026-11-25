@@ -177,8 +177,20 @@ function receive(message: ToDevice): void {
   }
 }
 
-function scheduleReconnect(reason: string): void {
-  const wait = WAITS_MS[Math.min(attempt, WAITS_MS.length - 1)] ?? 8000;
+/** The longest wait before trying again (ms). */
+const LONGEST_WAIT_MS = WAITS_MS[WAITS_MS.length - 1] ?? 8000;
+
+/**
+ * Replaced (alpha.23, the chat): this device opened the chat in another page, so Drashti ended this page's feed. It
+ * tries again only when it is shown again, never on its own: two tabs would otherwise take the chat from each other
+ * every second, for good (a22-review-chat I-M1).
+ */
+let waitingToBeShown = false;
+
+function scheduleReconnect(reason: string, longest = false): void {
+  const wait = longest
+    ? LONGEST_WAIT_MS
+    : (WAITS_MS[Math.min(attempt, WAITS_MS.length - 1)] ?? LONGEST_WAIT_MS);
   attempt++;
   useFeed.setState({ state: 'offline', reason, retryAt: Date.now() + wait });
   if (retry) clearTimeout(retry);
@@ -221,6 +233,13 @@ function open(): void {
       unpaired(bye);
       return;
     }
+    if (bye === 'replaced') {
+      waitingToBeShown = true;
+      if (retry) clearTimeout(retry);
+      retry = null;
+      useFeed.setState({ state: 'offline', reason: BYE_TEXT.replaced, retryAt: null });
+      return;
+    }
     // Drashti stopped (Session 54): still paired, the page says so, and it tries again as for any loss.
     if (bye === 'stopped') heardStopped();
     scheduleReconnect(
@@ -230,14 +249,20 @@ function open(): void {
           ? 'The connection was too slow to keep up.'
           : bye === 'stopped'
             ? BYE_TEXT.stopped
-            : 'Not connected to Drashti.',
+            : bye === 'busy'
+              ? BYE_TEXT.busy
+              : 'Not connected to Drashti.',
+      // As many pages follow the chat as Drashti takes: the longest wait, so the show's devices keep their seats.
+      bye === 'busy',
     );
   };
 }
 
-/** Try now (the phone woke up, or its Wi-Fi came back). */
-function reconnectNow(): void {
+/** Try now (the phone woke up, or its Wi-Fi came back); a page replaced by another only once it is shown again. */
+function reconnectNow(shown: boolean): void {
   if (socket || useFeed.getState().state === 'online') return;
+  if (waitingToBeShown && !shown) return;
+  waitingToBeShown = false;
   if (retry) clearTimeout(retry);
   open();
 }
@@ -257,8 +282,12 @@ export function startFeed(): void {
     },
   });
   open();
-  window.addEventListener('online', reconnectNow);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') reconnectNow();
+  window.addEventListener('online', () => {
+    reconnectNow(false);
+  });
+  // This page's own document (each tab has its own).
+  const page = document;
+  page.addEventListener('visibilitychange', () => {
+    if (page.visibilityState === 'visible') reconnectNow(true);
   });
 }

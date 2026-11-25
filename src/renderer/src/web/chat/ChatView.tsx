@@ -7,6 +7,9 @@ import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { ArrowDown, MessageCircle, Send, X } from '../../ui/icons';
 import { CHAT_NAME_MAX, CHAT_OPERATOR_ID, CHAT_TEXT_MAX, type ChatMessage } from '../../../../shared/chat';
+import { BYE_TEXT } from '../../../../shared/network';
+import { Notice } from '../../ui/Notice';
+import { useFeed } from '../feed';
 import { Badge } from '../../ui/Badge';
 import { chatInView, dismissBanner, sendChat, setChatName, useChat } from './chat-store';
 
@@ -276,6 +279,8 @@ export function ChatPanel({ fill }: { fill: boolean }) {
   const name = useChat((s) => s.name);
   const problem = useChat((s) => s.problem);
   const clock = useContext(ClockStyleContext);
+  // The chat opened on this device in another page: this one waits until it is shown again (feed.ts).
+  const elsewhere = useFeed((s) => s.state === 'offline' && s.reason === BYE_TEXT.replaced);
   const [renaming, setRenaming] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   // At the bottom of the list (as its scrolling last said), and how many messages there were when it left it.
@@ -318,6 +323,11 @@ export function ChatPanel({ fill }: { fill: boolean }) {
       data-testid="chat"
       aria-labelledby="chat-title"
     >
+      {elsewhere && (
+        <Notice tone="info" data-testid="chat-elsewhere" className="shrink-0">
+          {BYE_TEXT.replaced} Come back to this page to follow it here.
+        </Notice>
+      )}
       <div className="flex shrink-0 items-center gap-2">
         <h2 id="chat-title" className="shrink-0 text-base font-bold tracking-wider text-muted uppercase">
           Chat

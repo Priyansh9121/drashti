@@ -85,8 +85,11 @@ const view = (after?: string): ChatPhoneView => {
   };
 };
 const reads = () => fetcher.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET').length;
+/** A request's address as fetch was given it. */
+const hrefOf = (url: string | URL | Request): string =>
+  typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
 const readUrls = () =>
-  fetcher.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET').map(([url]) => String(url));
+  fetcher.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET').map(([url]) => hrefOf(url));
 const tell = (event: ChatEvent) => {
   for (const l of feed.chat) l(event);
 };
@@ -124,7 +127,7 @@ beforeEach(async () => {
     const body = init?.body === undefined ? {} : (JSON.parse(init.body as string) as Record<string, string>);
     if (init?.method === 'POST' && drashti.refuse)
       return Promise.resolve(json({ ok: false, message: drashti.refuse.message }, drashti.refuse.status));
-    const [path = '', query = ''] = String(url).split('?');
+    const [path = '', query = ''] = hrefOf(url).split('?');
     if (path === CHAT_API.read && init?.method !== 'POST')
       return Promise.resolve(
         json({ ok: true, chat: view(new URLSearchParams(query).get('after') ?? undefined) }),

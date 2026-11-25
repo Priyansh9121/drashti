@@ -91,6 +91,18 @@ function heard(news: readonly ChatMessage[], live: boolean): void {
   alertNewMessage(showOnScreen ? { sound: false } : {});
 }
 
+/**
+ * A read's answer as the whole list: what came after `after` added to what this page has (`since` is that message),
+ * or, when Drashti no longer has it (`since` null: cleared, a new day, or more than it keeps came), the day's whole
+ * list in its place.
+ */
+function withWhatCame(view: ChatPhoneView, after: string | undefined): ChatPhoneView {
+  const had = useChat.getState().chat?.messages ?? [];
+  if (after === undefined || view.since !== after) return view;
+  const known = new Set(had.map((m) => m.id));
+  return { ...view, messages: newest([...had, ...view.messages.filter((m) => !known.has(m.id))]) };
+}
+
 /** The chat as Drashti has it now: what is new in it is heard (never with a buzz: it is a catch-up). */
 function took(view: ChatPhoneView): void {
   const { chat: before, unread, banner } = useChat.getState();
@@ -120,13 +132,17 @@ const toldEarly = () => early.told;
 /** One read at a time, and one more if asked meanwhile (one-at-a-time.ts). */
 const read = oneAtATime(async () => {
   early.told = false;
-  const answer = await api<{ chat: ChatPhoneView }>(CHAT_API.read);
+  // Only what came after the last message this page has (review M4); none yet, the whole day.
+  const after = useChat.getState().chat?.messages.at(-1)?.id;
+  const answer = await api<{ chat: ChatPhoneView }>(
+    after === undefined ? CHAT_API.read : `${CHAT_API.read}?after=${encodeURIComponent(after)}`,
+  );
   if (!answer.ok) {
     useChat.setState({ problem: answer.message });
     return;
   }
   useChat.setState({ problem: null });
-  took(answer.chat);
+  took(withWhatCame(answer.chat, after));
   // The name kept on this phone, given again when Drashti has none (or another): asked once, never again.
   const { name } = useChat.getState();
   if (name !== null && answer.chat.you.name !== name) {
