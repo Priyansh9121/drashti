@@ -23,6 +23,8 @@ import {
   savedLive,
   setUpScreen,
 } from './helpers';
+import { PHONE_REFUSAL } from '../../src/shared/phone-rule';
+import { addPhoneDeck, DECK } from './phone-deck';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-show';
 
 /*
@@ -68,7 +70,7 @@ async function where(win: Page) {
   return { presentationId: state.live.presentationId, slideIndex: state.layers.slide?.slideIndex ?? null };
 }
 
-test('the remote’s waits are said as a status, and its empty places say where they are filled (Sessions 31–36)', async () => {
+test('the remote’s waits are said as a status, and its empty places say where they are filled (Sessions 31–36); it asks for nothing Drashti refuses a phone, in either mode (QA23-PHONE-1)', async () => {
   // A new library as a person's starts (Session 50): without the tests' placeholder presentations either.
   const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_TEST_SEED_PLACEHOLDERS: '' });
   const win = await operatorPage(app);
@@ -77,15 +79,20 @@ test('the remote’s waits are said as a status, and its empty places say where 
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   const p = phone.page;
+  // Every request of the page that Drashti refuses a phone (403): none, in Pro Mode or Simple Mode.
+  const refused: string[] = [];
+  p.on('response', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (path.startsWith('/api/') && r.status() === 403) refused.push(path);
+  });
   try {
-    // The playlists, the library and the messages are held back until each wait has been seen.
+    // The playlists are held back until their wait has been seen.
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const asked = new Set(['/api/v1/playlists', '/api/v1/presentations', '/api/v1/messages']);
     await p.route(
-      (url) => asked.has(url.pathname),
+      (url) => url.pathname === '/api/v1/playlists',
       async (route) => {
         await held;
         await route.continue();
@@ -95,27 +102,30 @@ test('the remote’s waits are said as a status, and its empty places say where 
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await p.getByTestId('remote-tab-playlist').click();
     await expect(p.getByRole('status').filter({ hasText: 'Loading the playlists…' })).toBeVisible();
-    await p.getByTestId('remote-tab-library').click();
-    await expect(p.getByRole('status').filter({ hasText: 'Loading the library…' })).toBeVisible();
-    await p.getByTestId('remote-tab-more').click();
-    await expect(p.getByRole('status').filter({ hasText: 'Loading the messages…' })).toBeVisible();
+    // No library and no More on a phone (QA23-PHONE-1).
+    await expect(p.getByTestId('remote-tab-library')).toHaveCount(0);
+    await expect(p.getByTestId('remote-tab-more')).toHaveCount(0);
     release();
-    // A new library has no messages, no playlists and no presentations: each place says where they are made.
+    // A new library has no playlists: the Playlist says where they are made, with nothing to make one here.
     await expect(
-      p.getByText('There are no messages yet: they are made in Drashti on the computer'),
+      p.getByText('There are no playlists yet: they are made in Drashti on the computer.'),
     ).toBeVisible();
-    await p.getByTestId('remote-tab-playlist').click();
-    await expect(p.getByText('Choose Manage playlists… to make a playlist.')).toBeVisible();
-    await expect(p.getByRole('button', { name: 'Manage playlists…' })).toBeVisible();
+    await expect(p.getByRole('button', { name: 'Manage playlists…' })).toHaveCount(0);
     await expectNoSeriousA11yIssues(p, 'the remote with no playlists');
-    await p.getByTestId('remote-tab-library').click();
-    await expect(
-      p.getByText('The library is empty. Import a presentation in Drashti on the computer.'),
-    ).toBeVisible();
-    await p.getByTestId('remote-library-media').click();
-    await expect(
-      p.getByText('There are no pictures, videos or sounds yet. Import files in Drashti on the computer.'),
-    ).toBeVisible();
+    // The Show tab: nothing a phone puts up is live, and there is no Sabha flow yet.
+    await p.getByTestId('remote-tab-show').click();
+    await expect(p.getByTestId('remote-slides-none')).toHaveText(PHONE_REFUSAL.noDeck);
+    await expect(p.getByTestId('remote-flow-none')).toBeVisible();
+    await expect(p.getByTestId('remote-next-button')).toHaveCount(0);
+    // Simple Mode on the computer: Show and Chat, and nothing more is asked for.
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    await expect(p.getByTestId('remote-simple')).toContainText(PHONE_REFUSAL.simple);
+    await expect(p.getByTestId('remote-tab-playlist')).toHaveCount(0);
+    await expect(p.getByTestId('remote-flow-none')).toBeVisible();
+    await p.getByTestId('remote-tab-chat').click();
+    await expect(p.getByTestId('remote-tab-chat')).toHaveAttribute('aria-selected', 'true');
+    await expectNoSeriousA11yIssues(p, 'the remote in Simple Mode');
+    expect(refused, 'requests Drashti refused this phone').toEqual([]);
   } finally {
     await phone.close();
   }
@@ -236,12 +246,13 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
   });
 }
 
-test('the remote on a tablet shows the playlist beside the show, and an item tapped shows its slides', async () => {
+test('the remote on a tablet shows the playlist’s PDF beside the show, and its page tapped goes up with its slides shown', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
-  await setUpPlaceholderShow(win);
+  const show = await setUpPlaceholderShow(win);
+  const deck = await addPhoneDeck(win, show.playlistId);
   const { base } = await networkOn(win);
   const code = await pairingCode(win, 'remote', 'Placeholder tablet');
   const tablet = await device('webkit', TABLET);
@@ -252,14 +263,22 @@ test('the remote on a tablet shows the playlist beside the show, and an item tap
     // Wide: no tabs; the playlist and the show side by side.
     await expect(t.getByTestId('remote-tab-show')).toHaveCount(0);
     await expect(t.getByTestId('remote-items')).toBeVisible();
-    // The playlist is rows (Session 55, Part 9): the welcome's slide row, tapped, goes up, and its slides show beside.
+    await expect(t.getByTestId('remote-playlist')).toHaveText(new RegExp(PLAYLIST, 'u'));
+    // Its PDF's rows only (QA23-PHONE-1, the owner's "Only PPT and PDF"): never the welcome's or the kirtan's.
+    await expect(t.getByTestId('remote-row').filter({ hasText: `${DECK}_1` })).toBeVisible();
+    await expect(t.getByTestId('remote-items')).not.toContainText(WELCOME);
+    await expect(t.getByTestId('remote-items')).not.toContainText(KIRTAN);
+    // Its first page's row, tapped, goes up, and its pages show beside.
     await t
       .getByTestId('remote-row')
-      .filter({ hasText: `${WELCOME}_1` })
+      .filter({ hasText: `${DECK}_1` })
       .click();
+    await expect.poll(async () => (await where(win)).presentationId).toBe(deck.deckId);
     await expect(t.getByTestId('remote-slides')).toBeVisible();
+    await expect(t.getByTestId('remote-slide')).toHaveCount(deck.pages);
     await expect(t.getByTestId('remote-slide').nth(0)).toHaveAttribute('data-live', 'true');
-    await expect(t.getByTestId('remote-playlist')).toHaveText(new RegExp(PLAYLIST, 'u'));
+    // Back and Next while it is up.
+    await expect(t.getByTestId('remote-next-button')).toBeVisible();
     await expectNoSeriousA11yIssues(t, 'the remote on a tablet');
   } finally {
     await tablet.close();
