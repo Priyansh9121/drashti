@@ -321,9 +321,6 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 **Simple Mode on the Drashti computer.** Since alpha.23 a phone in Simple Mode shows the Sabha flow, what is on the screens and the chat, with no controls, and Main refuses anything else it asks in one sentence: “Simple Mode is on at Drashti’s computer: this phone shows the Sabha flow, what is on the screens and the chat. Run the show on the computer.” Until alpha.22 it did what Simple Mode's window does (its playlists, Next and Back, the clears, the time bar, Audio and files). The volunteer runs the show on the computer.
 
 **The phone’s playlist.** In Pro Mode a phone's **Playlist** lists the playlist open on it, with only its PowerPoint and PDF items (a Keynote deck too), each with a row for each slide: a tap on the name folds its slide rows, and a tap on a slide puts it up once. Nothing on a phone renames, removes or moves a row, or changes a picture, a wallpaper or a video's **When it ends**: those are done on Main. Pair phones and turn on **Let paired phones and tablets connect** in Pro Mode before a Simple Mode rehearsal. The presenter guide gives the phone’s steps.
-![The phone’s picture row menu in Pro Mode](screenshots/phone-row-menu-375x812.png)
-
-![The same phone’s picture row menu in Simple Mode](screenshots/phone-simple-row-menu-375x812.png)
 
 ## 8. The network: firewalls and a fixed address
 

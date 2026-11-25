@@ -198,6 +198,30 @@ describe('the phone rule’s words (alpha.23, QA23-PHONE-1)', () => {
         expect(passages[where].toLowerCase(), `${where}: ${words}`).toContain(words.toLowerCase());
   });
 
+  it('the guides show no picture of what the rule takes away: the phone’s pictures from before alpha.23 are out', () => {
+    // The pictures of a phone's control the rule removes, as the guides showed them until alpha.22. The Drashti Manual
+    // keeps its own until they are retaken (the owner's Q11); the guides show none.
+    const old = [
+      'phone-add-files.png',
+      'phone-playlist-rows-375x812.png',
+      'phone-remote-clears.png',
+      'phone-remote-search.png',
+      'phone-row-menu-375x812.png',
+      'phone-shared.png',
+      'phone-simple-controls-375x812.png',
+      'phone-simple-row-menu-375x812.png',
+      'phone-viewer-zoom.png',
+      'tablet-remote-more.png',
+      'tablet-remote-sideways.png',
+    ];
+    const shown = ['presenter-guide.md', 'operator-guide.md', 'admin-guide.md'].flatMap((file) =>
+      old.filter((name) => read(file).includes(`screenshots/${name}`)).map((name) => `${file}: ${name}`),
+    );
+    expect(shown).toEqual([]);
+    // The phone's guide, its pictures' descriptions too, offers nothing the rule takes away.
+    expect(offered(read('presenter-guide.md'))).toEqual([]);
+  });
+
   it('the API’s guide names every request a Remote may still make, by its route, and quotes every refusal', () => {
     const api = blocksOf('api.md');
     const rule = textOf(section(api, 'The phone rule (alpha.23)', { fences: true }));
