@@ -137,6 +137,7 @@ import { StreamPanel } from '../stream/StreamPanel';
 import { NetworkPanel } from '../network/NetworkPanel';
 import { connectNetwork, useNetwork } from '../network/network-store';
 import { AnnouncementsPanel } from '../network/AnnouncementsPanel';
+import { ChatSection } from '../chat/ChatSection';
 import { connectAnnouncements, useAnnouncements } from '../network/announcements-store';
 import { StreamSettings } from '../stream/StreamSettings';
 import { connectStream, useStream } from '../stream/stream-store';
@@ -459,15 +460,18 @@ function ProApp({ info }: { info: AppInfo | null }) {
                 </>
               }
               rest={
-                /* Session 26a's order: LIVE, Audio, the stage screen, messages, timers; then each tool in a section
-                of its own (alpha.22, the owner's "remove more tools, bring out all the features with collapsable"):
-                Lower Thirds, the tools that put something on the screens in the Tools menu's order, QR code, then
-                the MIDI controller and OSC. Every section is folded at each start (ui/Panel.tsx, LIVE_SECTION). */
+                /* Session 26a's order: LIVE, Audio, the stage screen, messages (and the chat, alpha.23), timers; then
+                each tool in a section of its own (alpha.22, the owner's "remove more tools, bring out all the features
+                with collapsable"): Lower Thirds, the tools that put something on the screens in the Tools menu's
+                order, QR code, then the MIDI controller and OSC. Every section is folded at each start (ui/Panel.tsx,
+                LIVE_SECTION). */
                 <div className="divide-y divide-line">
                   {/* Audio, one part with Simple Mode's (Session 56). */}
                   <AudioGroup platform={platform} section />
                   <StageMessageControl />
                   <MessagesPanel />
+                  {/* The chat with the paired phones (alpha.23): this window only, never a screen. */}
+                  <ChatSection />
                   <TimersPanel />
                   <LowerThirdsPanel platform={platform} />
                   {/* Each with its line and the button that opens its window (operator/SetupTools.tsx); the Tools

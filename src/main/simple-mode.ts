@@ -305,6 +305,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.updates.setInstallOnQuit,
   IPC.updates.setAutoCheck,
   IPC.updates.showFile,
+  // The chat (alpha.23): a message as the operator, Simple Mode's while Chat is chosen (SIMPLE_FEATURE_CHANNELS).
+  IPC.chat.send,
   // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
   IPC.announcements.edit,
   IPC.announcements.approve,
@@ -577,6 +579,9 @@ export function simpleModeRefusesWhole(channel: InvokeChannel): boolean {
 export const SIMPLE_FEATURE_CHANNELS: Readonly<Record<SimpleFeature, readonly InvokeChannel[]>> = {
   stage: [],
   messages: [],
+  // The chat (alpha.23, QA23-CHAT-1): reading it is no request Simple Mode locks; a message as the operator is Simple
+  // Mode's while Chat is chosen. Clear chat, removing a person and the Chat QR stay Pro Mode's (locked above).
+  chat: [IPC.chat.send],
   // Countdown to the start: the sabha's time over the wallpaper, its one timer made or changed to that time, shown (the
   // lead's one-minute answer for the owner, 24 Nov 2026: allowed while Timers is chosen, Pro Mode's otherwise).
   timers: [IPC.timers.startCountdown],
