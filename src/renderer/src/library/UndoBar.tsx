@@ -36,6 +36,8 @@ export function UndoBar({ platform }: { platform: string }) {
  * The line, while its minute is on (`timed`). With the keyboard on its Undo when the minute is up,
  * it stays until the keyboard leaves it (QA23-UNDOLINE-1): taken away under it, the keyboard, and a
  * screen reader with it, would drop back to the window's start, and nothing here moves the focus.
+ * Only the keyboard's focus (:focus-visible, as ui/Tooltip.tsx) holds it: a mouse click on Undo
+ * focuses the button too, and the line still goes on time then (the review's F1).
  */
 function UndoLine({ text, timed, platform }: { text: string; timed: boolean; platform: string }) {
   const [focused, setFocused] = useState(false);
@@ -46,15 +48,15 @@ function UndoLine({ text, timed, platform }: { text: string; timed: boolean; pla
       // Its words whole, Undo under them in a narrow column (alpha.21: the owner's column at its least cut "Deleted
       // folder" short).
       className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-line bg-panel-2 px-3 py-2 text-xs"
-      onFocus={() => {
-        setFocused(true);
+      onFocus={(e) => {
+        setFocused(e.target.matches(':focus-visible'));
       }}
       // Left for somewhere else in the window (Tab, a click), not the window put behind another app's: its
-      // button keeps the keyboard then, so the line stays.
+      // button keeps the keyboard then, so a keyboard's hold stays.
       onBlur={(e) => {
         const box = e.currentTarget;
         setTimeout(() => {
-          setFocused(box.contains(document.activeElement));
+          setFocused((held) => held && box.contains(document.activeElement));
         }, 0);
       }}
     >
