@@ -5,9 +5,15 @@ import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
 import type * as RemoteStore from './remote-store';
 
-const feed = vi.hoisted(() => ({ changed: [] as ((what: NetworkChange) => void)[] }));
+const feed = vi.hoisted(() => ({
+  changed: [] as ((what: NetworkChange) => void)[],
+  online: [] as (() => void)[],
+}));
 vi.mock('../feed', () => ({
-  onOnline: () => () => undefined,
+  onOnline: (listener: () => void) => {
+    feed.online.push(listener);
+    return () => undefined;
+  },
   onListsChanged: (listener: (what: NetworkChange) => void) => {
     feed.changed.push(listener);
     return () => undefined;
@@ -31,11 +37,24 @@ const answer = (mode: RemoteSimple | null, groupId = 'hall') =>
 const changed = (what: NetworkChange) => {
   for (const listener of feed.changed) listener(what);
 };
+/** The feed connected (its welcome): each new connection, the first and every one after a drop. */
+const online = () => {
+  for (const listener of feed.online) listener();
+};
 const reply = (at: number, mode: RemoteSimple | null, groupId?: string) => {
   const resolve = replies[at];
   if (!resolve) throw new Error('No pending hall read');
   resolve(answer(mode, groupId));
 };
+
+/** The hall answered once, in Pro Mode: what a phone waits for before it reads a playlist (a23-review-phoneui MUST-1). */
+async function proHall(): Promise<void> {
+  changed('mode');
+  const resolve = replies.at(-1);
+  if (!resolve) throw new Error('No pending hall read');
+  resolve(answer(null));
+  await vi.waitFor(() => expect(remote.useRemote.getState().hall).not.toBeNull());
+}
 
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
@@ -61,6 +80,7 @@ const header = (id: string): PlaylistItemInfo => ({
 beforeEach(async () => {
   vi.resetModules();
   feed.changed = [];
+  feed.online = [];
   replies = [];
   fetcher = vi.fn<typeof fetch>(() => new Promise<Response>((resolve) => replies.push(resolve)));
   vi.stubGlobal('fetch', fetcher);
@@ -139,6 +159,7 @@ describe('the phone’s open playlist', () => {
     const smart = playlist('smart', { kind: 'smart', parentId: folder.id });
     const ordinary = playlist('one');
     listsFromComputer([folder, smart, ordinary, playlist('template', { template: true })]);
+    await proHall();
     await remote.loadPlaylists();
     expect(remote.useRemote.getState().playlists).toEqual([folder, smart, ordinary]);
     expect(remote.useRemote.getState().playlistId).toBe('one');
@@ -150,9 +171,12 @@ describe('the phone’s open playlist', () => {
     const lists = [playlist('one'), playlist('two')];
     listsFromComputer(lists);
     const asked = () => fetcher.mock.calls.map(([url]) => (typeof url === 'string' ? url : 'not a path'));
+    // What Pro Mode had read, hours old by the time Simple Mode ends (a23-review-phoneui S4): let go on entering it.
+    remote.useRemote.setState({ playlists: lists, items: [header('old')] });
     changed('mode');
     reply(0, simple);
     await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple).toEqual(simple));
+    expect(remote.useRemote.getState()).toMatchObject({ playlists: null, items: null, doc: null });
     await remote.loadPlaylists();
     changed('playlists');
     remote.view({ presentationId: 'deck', item: null });
@@ -216,6 +240,72 @@ describe('the phone’s open playlist', () => {
       presentationId: 'deck',
       item: { playlistId: 'one', itemId: 'i-deck', order: { mode: 'presentation' } },
     });
+  });
+
+  it('keeps the phone’s own playlist until it is gone, then the live one, else the first (Pro Mode; a23-review-phoneui S3)', async () => {
+    const lists = [playlist('one'), playlist('two'), playlist('three')];
+    listsFromComputer(lists);
+    await proHall();
+    await remote.showPlaylist('two');
+    await remote.loadPlaylists();
+    expect(remote.useRemote.getState().playlistId).toBe('two');
+    // Its own choice gone: the live playlist.
+    const { useEngine } = await import('../../engine/engine-store');
+    const state = initialEngineState();
+    useEngine.setState({
+      state: { ...state, live: { ...state.live, playlist: { playlistId: 'three', itemId: 'i-three' } } },
+    });
+    lists.splice(1, 1);
+    await remote.loadPlaylists();
+    expect(remote.useRemote.getState().playlistId).toBe('three');
+    // The live one gone too: the first.
+    lists.splice(1, 1);
+    await remote.loadPlaylists();
+    expect(remote.useRemote.getState().playlistId).toBe('one');
+  });
+
+  it('reads no presentation or playlist on a new connection until its hall answers: in Simple Mode none, in Pro Mode the live one once (a23-review-phoneui MUST-1)', async () => {
+    const asked = () => fetcher.mock.calls.map(([url]) => (typeof url === 'string' ? url : 'not a path'));
+    const read = () => asked().filter((url) => url !== '/api/v1/hall');
+    // A phone opens /remote: the feed's welcome, then its snapshot with a kirtan live, before the hall has answered.
+    online();
+    const { useEngine } = await import('../../engine/engine-store');
+    const state = initialEngineState();
+    useEngine.setState({ state: { ...state, live: { ...state.live, presentationId: 'kirtan' } } });
+    expect(remote.useRemote.getState().viewing).toMatchObject({ presentationId: 'kirtan' });
+    expect(read()).toEqual([]);
+    reply(0, simple);
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple).toEqual(simple));
+    expect(read()).toEqual([]);
+    // Locked, then back after the computer went into Pro Mode: nothing until this connection's hall says so.
+    online();
+    expect(read()).toEqual([]);
+    reply(1, null);
+    await vi.waitFor(() =>
+      expect(read().filter((url) => url.startsWith('/api/v1/presentations/'))).toEqual([
+        '/api/v1/presentations/kirtan',
+      ]),
+    );
+    expect(read().filter((url) => url === '/api/v1/playlists')).toEqual(['/api/v1/playlists']);
+  });
+
+  it('forgets the Playlist’s PDF pages on a library change and on each connection, after the hall, so they are read again (a23-review-phoneui MUST-3)', async () => {
+    fetcher.mockImplementation((url) =>
+      url === '/api/v1/playlists'
+        ? Promise.resolve(json({ ok: true, playlists: [] }))
+        : new Promise<Response>((resolve) => replies.push(resolve)),
+    );
+    const tools = await import('./phone-tools-store');
+    const kept = () => tools.usePhoneTools.getState().docs.size;
+    tools.usePhoneTools.setState({ docs: new Map([['deck', null]]) });
+    changed('presentations');
+    reply(0, null);
+    await vi.waitFor(() => expect(kept()).toBe(0));
+    tools.usePhoneTools.setState({ docs: new Map([['deck', null]]) });
+    online();
+    expect(kept()).toBe(1);
+    reply(1, null);
+    await vi.waitFor(() => expect(kept()).toBe(0));
   });
 
   it('clears the previous playlist’s rows while reading the next one', async () => {

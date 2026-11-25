@@ -152,8 +152,16 @@ const slidesOf = (presentationId: 'deck' | 'kirtan'): SlidesShown => {
     focusSlideId: null,
     live: state.live,
     shownIndex: 0,
+    timerAlone: false,
   };
 };
+
+/** Each page tile: whether it may be tapped, and whether it is marked as on the screens. */
+const tiles = (html: string) =>
+  [...html.matchAll(/<button[^>]*data-testid="remote-slide"[^>]*>/gu)].map((m) => ({
+    tappable: !/\sdisabled=""/u.test(m[0]),
+    live: /data-live="true"/u.test(m[0]),
+  }));
 
 const show = (state: EngineState, simple: RemoteSimple | null, deckLive: boolean) =>
   renderToStaticMarkup(
@@ -235,6 +243,47 @@ describe('a phone’s Show tab in Pro Mode (QA23-PHONE-1)', () => {
     for (const id of [...NEVER, 'remote-clear-slide']) expect(has(html, id), id).toBe(false);
   });
 
+  it('while a timer is shown alone over the PDF: no tile tapped, no Start this item, and it says why (a23-review-phoneui MUST-2a)', () => {
+    const shown = slidesOf('deck');
+    const html = renderToStaticMarkup(
+      createElement(SlidesView, {
+        ...shown,
+        viewing: shown.viewing
+          ? { ...shown.viewing, item: { ...shown.viewing.item!, itemId: 'i-other' } }
+          : null,
+        shownIndex: null,
+        timerAlone: true,
+      }),
+    );
+    expect(tiles(html).map((t) => t.tappable)).toEqual([false, false]);
+    expect(has(html, 'remote-start-item')).toBe(false);
+    expect(html).toContain('A timer is on the screens: the computer takes it off.');
+  });
+
+  it('a PDF up from the computer but not from this playlist’s row: its page marked live, no tile tapped, and no “Not on the screens” (a23-review-phoneui MUST-2b, 2c)', () => {
+    const shown = slidesOf('deck');
+    // b: from the library, in no playlist; c: from another playlist than the one this phone has open.
+    for (const playlist of [null, { playlistId: 'other', itemId: 'i-elsewhere' }]) {
+      const live = shown.live ? { ...shown.live, playlist } : null;
+      const html = renderToStaticMarkup(
+        createElement(SlidesView, {
+          ...shown,
+          viewing: { presentationId: 'deck', item: null },
+          live,
+          shownIndex: 1,
+        }),
+      );
+      expect(tiles(html), JSON.stringify(playlist)).toEqual([
+        { tappable: false, live: false },
+        { tappable: false, live: true },
+      ]);
+      expect(html, JSON.stringify(playlist)).not.toContain('Not on the screens');
+      expect(html).toContain(
+        'Put up on the computer, not from this phone’s playlist: Back and Next go through it here.',
+      );
+    }
+  });
+
   it('shows a PowerPoint’s or a PDF’s slides to put up, and never a kirtan’s', () => {
     const deck = renderToStaticMarkup(createElement(SlidesView, slidesOf('deck')));
     expect(has(deck, 'remote-slides')).toBe(true);
@@ -288,8 +337,28 @@ describe('Back, Next and the tabs (QA23-PHONE-1)', () => {
 });
 
 describe('the Playlist tab in Pro Mode (QA23-PHONE-1)', () => {
-  const tab = (items: PlaylistItemInfo[]) =>
-    renderToStaticMarkup(createElement(PlaylistTabView, { playlists: [PLAYLIST], playlistId: 'one', items }));
+  const tab = (items: PlaylistItemInfo[], timerAlone = false) =>
+    renderToStaticMarkup(
+      createElement(PlaylistTabView, {
+        playlists: [PLAYLIST],
+        playlistId: 'one',
+        items,
+        docs: new Map([['deck', PDF]]),
+        folded: [],
+        timerAlone,
+      }),
+    );
+
+  it('while a timer is shown alone over the PDF, its page rows are not tapped and it says why (a23-review-phoneui MUST-2)', () => {
+    const rows = (html: string) =>
+      [...html.matchAll(/<button[^>]*data-testid="remote-row"[^>]*>/gu)].map(
+        (m) => !/\sdisabled=""/u.test(m[0]),
+      );
+    expect(rows(tab(ITEMS))).toEqual([true, true]);
+    const alone = tab(ITEMS, true);
+    expect(rows(alone)).toEqual([false, false]);
+    expect(alone).toContain('A timer is on the screens: the computer takes it off.');
+  });
 
   it('lists the open playlist’s PowerPoint and PDF rows only, with nothing to manage, pin, or choose a wallpaper from', () => {
     const html = tab(ITEMS);
