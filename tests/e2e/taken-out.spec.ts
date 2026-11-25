@@ -1,13 +1,21 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, openAllSections, operatorPage, operatorReady, outputPages } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openAllSections,
+  operatorPage,
+  operatorReady,
+  outputPages,
+} from './helpers';
 import { expectPhoneRefuses } from './phone-refuses';
 
 /*
@@ -103,11 +111,22 @@ test('Props, Looks, Masks, the Idle rotation, Themes and the Logo are gone from 
   await app.close();
 });
 
-test('the phone and the API have none of them; the phone’s and the API’s /api/v1/wallpaper are refused in words, and F12 in the window puts the wallpaper up and takes it off', async () => {
+test('the phone and the API have none of them; the phone’s and the API’s /api/v1/wallpaper are refused in words, F12 in the window puts the wallpaper up and takes it off, and of the phone’s clears only a PDF’s Clear slide is left', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp(NETWORK_ENV);
+  // A PDF comes in as pictures of its pages (a phone's deck), nothing on this computer asked to convert it.
+  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_TEST_NO_CONVERTER: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
+  const pdf = join(mkdtempSync(join(tmpdir(), 'drashti-taken-out-')), 'Placeholder handout.pdf');
+  writeFileSync(
+    pdf,
+    makeTestPdf([
+      { width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder handout page one' },
+      { width: 960, height: 540, color: [127, 29, 29], text: 'Placeholder handout page two' },
+    ]),
+  );
+  const [deckId = ''] = await importAndGetIds(win, [pdf]);
+  expect(deckId).not.toBe('');
   const { port, base } = await networkOn(win);
   const phone = await device('chromium');
   const p = phone.page;
@@ -115,8 +134,7 @@ test('the phone and the API have none of them; the phone’s and the API’s /ap
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     // The phone's Wallpaper (alpha.23, QA23-PHONE-1: a phone changes no pictures) is refused in words, the wallpaper
-    // as it was; moved to the window: F12 puts it up and takes it off (as the first test's keys do). The phone's
-    // clears and its More tab went with the rule (the phone's own page, the UI builder's), so their list is not read.
+    // as it was; moved to the window: F12 puts it up and takes it off (as the first test's keys do).
     const fromPhone = { win, page: p };
     await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/wallpaper', {}, 'media');
     expect(await wallpaperUp(win)).toBe(false);
@@ -125,6 +143,36 @@ test('the phone and the API have none of them; the phone’s and the API’s /ap
     await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/wallpaper', {}, 'media');
     await win.keyboard.press('F12');
     await expect.poll(() => wallpaperUp(win)).toBe(false);
+
+    // The phone's clears (were the window's bottom bar: Clear all, each layer, the Wallpaper, Black-out), under the
+    // rule: with a PDF up (from the window), Clear all, the background's and Black-out are refused in words, the PDF
+    // still up; Clear slide alone is left to a phone in Pro Mode (the owner's Q7), and takes the PDF's page off.
+    await win.evaluate(
+      (presentationId) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId,
+          slideIndex: 0,
+        }),
+      deckId,
+    );
+    await expect.poll(async () => (await snapshot(win)).state.layers.slide?.presentationId).toBe(deckId);
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/all', {}, 'computer');
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/background', {}, 'computer');
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/blackout', {}, 'computer');
+    const cleared = await p.evaluate(async () => {
+      const token =
+        (JSON.parse(localStorage.getItem('drashti.device') ?? '{}') as { token?: string }).token ?? '';
+      const r = await fetch('/api/v1/clear/slide', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      return { status: r.status, json: (await r.json()) as Record<string, unknown> };
+    });
+    expect(cleared).toMatchObject({ status: 200, json: { ok: true } });
+    await expect.poll(async () => (await snapshot(win)).state.layers.slide).toBeNull();
+
     // No Props, Masks, Idle rotation or Looks anywhere on the phone's page.
     for (const id of ['remote-props', 'remote-masks', 'remote-idle', 'remote-looks'])
       await expect(p.getByTestId(id), id).toHaveCount(0);
