@@ -63,7 +63,7 @@ import { LiveLines } from './LiveLines';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import { FlowLayer, FlowSection } from './FlowSheet';
 import { type RemoteLayout, useLayout } from './layout';
-import { deckLiveIn, phoneControls, type PhoneControls, TIMER_ALONE_WORDS } from './phone-mode';
+import { deckLiveIn, focusesShow, phoneControls, type PhoneControls, TIMER_ALONE_WORDS } from './phone-mode';
 import { PlaylistTab } from './PlaylistTab';
 import { useSimple } from './simple';
 import { Swipes, type SwipeWay } from './swipe';
@@ -555,9 +555,13 @@ export interface SlidesShown {
   timerAlone: boolean;
 }
 
-/** Said where the PDF up came from the computer, not from this phone's playlist row: its pages are not put up here. */
-const NOT_FROM_HERE =
-  'Put up on the computer, not from this phone’s playlist: Back and Next go through it here.';
+/**
+ * Said where the PDF shown is not from this phone's playlist row, so its pages are not put up here (a23-review-phoneui
+ * LOW-2): while it is up, by whoever put it up (the computer, another phone from its own playlist), Back and Next go
+ * through it; once it is not, nothing is promised.
+ */
+const NOT_FROM_HERE = 'Not from this phone’s playlist: Back and Next go through it here.';
+const NOT_UP_NOW = 'Not on the screens now.';
 
 /** The slides shown (Pro Mode only, phone-mode.ts), from the remote's store. */
 function Slides() {
@@ -663,7 +667,7 @@ export function SlidesView({ viewing, doc, items, focusSlideId, live, shownIndex
         </p>
       ) : !item ? (
         <p className="text-base text-muted" data-testid="remote-slides-hint">
-          {NOT_FROM_HERE}
+          {deckLive ? NOT_FROM_HERE : NOT_UP_NOW}
         </p>
       ) : (
         !deckLive && (
@@ -993,13 +997,18 @@ function Layout() {
   const sideways = layout === 'sideways';
   const tab = shownTab(chosen, controls.tabs);
   const panelTab = shownTab(chosen, controls.panelTabs);
-  // Simple Mode coming on takes away what had the focus (Back, Next, a row, a tile): it goes to the Show tab
-  // (a23-review-phoneui's low point), never left on the page itself.
+  // Simple Mode coming on over Pro Mode's controls takes away what had the focus (Back, Next, a row, a tile): it goes to
+  // the Show tab, never left on the page itself. Never as a page opens in Simple Mode (a23-review-phoneui LOW-3: a
+  // screen reader's cursor would move on its own as the page loads).
   const inSimple = simple !== null;
+  const hallHeard = useRemote((s) => s.hall !== null);
+  const simpleBefore = useRef<boolean | null>(null);
   useEffect(() => {
-    if (inSimple && document.activeElement === document.body)
+    if (!hallHeard) return;
+    if (focusesShow(simpleBefore.current, inSimple) && document.activeElement === document.body)
       document.querySelector<HTMLElement>('[data-testid="remote-tab-show"]')?.focus();
-  }, [inSimple]);
+    simpleBefore.current = inSimple;
+  }, [inSimple, hallHeard]);
   // A view of the show on the screen (a tablet's show column or presenter column, or the Show tab): the chat brings
   // no banner then (it would move or cover the show's controls under the finger) and no sound (a22-review-chat P-M1).
   const showOnScreen = layout === 'wide' || layout === 'landscape' || tab === 'show';

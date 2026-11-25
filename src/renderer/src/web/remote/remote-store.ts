@@ -9,7 +9,7 @@ import { useEngine } from '../../engine/engine-store';
 import { api } from '../device';
 import { oneAtATime } from '../one-at-a-time';
 import { onListsChanged, onOnline } from '../feed';
-import { forgetDocs } from './phone-tools-store';
+import { forgetDocs, gateDocs } from './phone-tools-store';
 
 /*
  * What the remote shows besides the engine's state: the playlists, a
@@ -328,11 +328,15 @@ export function startRemote(): void {
   if (started) return;
   started = true;
   followLive();
+  // The Playlist's rows read their presentations only when a playlist may be read (a23-review-phoneui LOW-1).
+  gateDocs(mayRead);
   onOnline(() => {
     // This connection's hall first (a23-review-phoneui MUST-1): in Simple Mode the phone reads no playlist or
     // presentation. Then what Pro Mode shows, read afresh: the playlists, the slides shown, the rows' pages (MUST-3).
     hallKnown = false;
     void loadHall().then(() => {
+      // Its hall not heard (the read failed): nothing let go or read, until the next connection or change.
+      if (!hallKnown) return;
       forgetDocs();
       void loadPlaylists();
       const v = useRemote.getState().viewing;
@@ -344,6 +348,7 @@ export function startRemote(): void {
     // before it says the mode changed, and a phone in Simple Mode reads no playlist or presentation.
     if (what === 'playlists' || what === 'presentations')
       void loadHall().then(() => {
+        if (!hallKnown) return;
         // The library changed: the rows' pages read again too (a23-review-phoneui MUST-3).
         if (what === 'presentations') forgetDocs();
         void loadPlaylists();

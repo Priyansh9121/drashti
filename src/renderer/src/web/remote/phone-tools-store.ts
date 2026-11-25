@@ -109,8 +109,24 @@ export function toggleFolded(itemId: string): void {
 /** Read now, or being read. */
 const asked = new Set<string>();
 
+/**
+ * Whether the rows' presentations may be read now: remote-store.ts gives its own (this connection's hall heard, and it
+ * says Pro Mode), so a Playlist still mounted on an old hall never asks Simple Mode for one (a23-review-phoneui LOW-1).
+ */
+let docsMay: () => boolean = () => true;
+
+export function gateDocs(may: () => boolean): void {
+  docsMay = may;
+}
+
+/** How many times the rows' presentations were let go: an answer to a read from before is dropped (LOW-5). */
+let generation = 0;
+
 async function readDoc(id: string): Promise<void> {
+  const from = generation;
   const r = await api<{ presentation: PresentationDoc }>(`/api/v1/presentations/${encodeURIComponent(id)}`);
+  // Let go meanwhile (a library change, a new connection): this answer may be of the old presentation.
+  if (from !== generation) return;
   asked.delete(id);
   usePhoneTools.setState((s) => {
     const docs = new Map(s.docs);
@@ -121,7 +137,7 @@ async function readDoc(id: string): Promise<void> {
 
 /** The presentations (and Shastra passages) a playlist's rows come from, each read once until they change. */
 export function readDocsFor(items: readonly PlaylistItemInfo[] | null): void {
-  if (!items) return;
+  if (!items || !docsMay()) return;
   const { docs } = usePhoneTools.getState();
   for (const item of items) {
     if (item.kind !== 'presentation' && item.kind !== 'shastra') continue;
@@ -133,9 +149,9 @@ export function readDocsFor(items: readonly PlaylistItemInfo[] | null): void {
   }
 }
 
-/** The library changed: every presentation is read again as its rows show. */
 /** The rows' presentations let go, to be read again as the rows show (remote-store.ts: a library change, a connection). */
 export function forgetDocs(): void {
+  generation += 1;
   asked.clear();
   usePhoneTools.setState({ docs: new Map() });
 }

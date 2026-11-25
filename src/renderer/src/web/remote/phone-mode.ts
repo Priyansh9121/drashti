@@ -67,6 +67,13 @@ export function phoneControls(simple: RemoteSimple | null, deckLive: boolean): P
 }
 
 /**
+ * Whether Simple Mode coming on moves the focus to the Show tab (a23-review-phoneui LOW-3): only over Pro Mode's
+ * controls (`before`: Simple Mode as the page last knew it, null before any hall was heard on this page), never as a
+ * page opens in Simple Mode, where nothing of Pro Mode's had the focus and a screen reader's cursor would move on its own.
+ */
+export const focusesShow = (before: boolean | null, now: boolean): boolean => before === false && now;
+
+/**
  * Whether a PowerPoint or a PDF is live, as the phone can tell (the main process decides each request itself): the
  * live presentation's playlist row as Drashti marks it for a phone (phonePlays), or its slides once read (the remote
  * reads the live presentation: remote-store.ts follows what goes live); never while a timer is shown alone over it.
