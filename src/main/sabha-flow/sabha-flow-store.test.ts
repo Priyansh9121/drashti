@@ -42,6 +42,8 @@ interface Drawing {
   pages: number;
   /** The window's reading as it hands it over (undefined: none came). */
   reading?: unknown;
+  /** Why there is none, as PdfPictures says it. */
+  problem?: 'crashed' | 'failed-check' | 'missing';
 }
 
 function setup(options: { drawing?: Drawing; fail?: string } = {}) {
@@ -90,6 +92,7 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
           total: mine.pages,
           failed: [],
           ...(mine.reading !== undefined ? { flowReading: mine.reading as FlowReading } : {}),
+          ...(mine.problem ? { flowReadProblem: mine.problem } : {}),
         };
       },
       changed: (snapshot) => changes.push(snapshot),
@@ -373,6 +376,27 @@ describe('Sabha flow store: Main never reads a PDF’s words (review M1)', () =>
     s.setDrawing({ pages: 1, reading: { status: 'read', lang: 'en', headers: 'No.', items: [] } });
     expect(await store.choose(s.pdf('Second.pdf'))).toMatchObject({ ok: true, flow: unreadable });
     expect(await store.page('flow-0002', 0)).toEqual(new Uint8Array(PNG));
+  });
+
+  it('says in its log why a flow shows as unreadable, with nothing of the PDF’s name or words', async () => {
+    const s = setup({ drawing: { pages: 1, problem: 'crashed' } });
+    const store = s.make();
+    await store.load();
+    await store.choose(s.pdf('Placeholder first.pdf'));
+    s.setDrawing({ pages: 1, problem: 'failed-check' });
+    await store.choose(s.pdf('Placeholder second.pdf'));
+    s.setDrawing({ pages: 1, reading: { status: 'read', lang: 'en', headers: 'Placeholder', items: [] } });
+    await store.choose(s.pdf('Placeholder third.pdf'));
+    s.setDrawing({ pages: 1 });
+    await store.choose(s.pdf('Placeholder fourth.pdf'));
+    const why = s.log.filter((line) => line.includes('unreadable'));
+    expect(why).toEqual([
+      'Sabha flow: its words were not read (the reader in the pictures window stopped with an error): shown as unreadable, its pages shown',
+      'Sabha flow: its words were not read (the reading failed its check): shown as unreadable, its pages shown',
+      'Sabha flow: its words were not read (the reading failed its check): shown as unreadable, its pages shown',
+      'Sabha flow: its words were not read (no reading came from the pictures window): shown as unreadable, its pages shown',
+    ]);
+    expect(s.log.join('\n')).not.toMatch(/Placeholder/u);
   });
 
   it("Main's own code never reaches the reader (it runs in the pictures window)", () => {

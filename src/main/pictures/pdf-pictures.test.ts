@@ -446,6 +446,26 @@ describe('drawing a Sabha flow’s pages (alpha.23)', () => {
     expect(await whole).not.toHaveProperty('flowReading');
   });
 
+  it('says why there is no reading (for the log): the window’s reader stopped, the reading failed the check, none came', async () => {
+    const ask = async (done: Record<string, unknown>) => {
+      const t = setup();
+      const drawn = t.pictures.drawForFlow(t.pdf, join(t.dir, 'flow'), 20, { width: 2000, height: 2000 });
+      const w = await t.opened();
+      await t.pictures.page(t.sender(w.webContents.id), { index: 0, png: PNG, notes: '' });
+      t.pictures.done(t.sender(w.webContents.id), { total: 1, failed: [], ...done });
+      return drawn;
+    };
+    expect(await ask({ flowReadCrashed: true })).toMatchObject({ ok: true, flowReadProblem: 'crashed' });
+    expect(await ask({ flowReading: { status: 'read' } })).toMatchObject({
+      ok: true,
+      flowReadProblem: 'failed-check',
+    });
+    expect(await ask({})).toMatchObject({ ok: true, flowReadProblem: 'missing' });
+    const good = await ask({ flowReading });
+    expect(good).toMatchObject({ ok: true, flowReading });
+    expect(good).not.toHaveProperty('flowReadProblem');
+  });
+
   it('gives up a flow whose drawing takes too long (S7: within its own bound, not the import’s 15 minutes)', async () => {
     const t = setup([], { flowTimeoutMs: 40 });
     const drawn = t.pictures.drawForFlow(t.pdf, join(t.dir, 'flow'), 20, { width: 2000, height: 2000 });
