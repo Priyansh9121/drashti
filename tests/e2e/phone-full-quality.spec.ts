@@ -388,33 +388,79 @@ test('a deck’s slide on the screens, zoomed on a phone alone (its zoom on the 
   await app.close();
 });
 
-test('a deck looked through on a phone is refused in words: the library it was found in and each click’s motion, its link and its file; nothing on the screens (Session 54, D1/D2 review; alpha.23, QA23-PHONE-1)', async () => {
+test('a deck looked through on a phone shows each click’s last frame at once, no video playing, Next and Previous going click by click on the phone only; its library and every click’s motion (link and file) refused in words (Session 54, D1/D2 review; alpha.23, QA23-PHONE-1)', async () => {
   test.skip(deckFfmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
   test.setTimeout(240_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
   const files = await makeDeckFiles(win);
-  await writeDeck(win, 'Placeholder deck', standInDecks(files));
+  const deckId = await writeDeck(win, 'Placeholder deck', standInDecks(files));
   const { base } = await networkOn(win);
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   const p = phone.page;
   await p.setViewportSize({ width: 375, height: 812 });
+  const asked: string[] = [];
+  p.on('request', (r) => {
+    const url = new URL(r.url());
+    if (url.pathname.startsWith('/api/v1/media/')) asked.push(url.pathname);
+  });
   try {
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     const fromPhone = { win, page: p };
-    // The library (the owner's Q2: the playlist only), where the deck was looked through.
+    // The library (the owner's Q2: the playlist only), where the deck was found to look through.
     await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/presentations', undefined, 'library');
-    // Each click's motion was a video, asked for through a link made for this phone and played there: its link and
-    // its file are refused ("no video access in either of simple or pro mode in phone").
+    // Each click's motion was a video, asked for through a link made for this phone and played there first: its link
+    // and its file are refused ("no video access in either of simple or pro mode in phone").
     for (const clip of [...files.clips, files.nextClip]) {
       await expectPhoneRefuses(fromPhone, 'GET', `/api/v1/media/${clip}/link`, undefined, 'media');
       await expectPhoneRefuses(fromPhone, 'GET', `/api/v1/media/${clip}/original`, undefined, 'media');
     }
-    // Nothing of it on the screens.
-    expect((await snapshot(win)).layers.slide).toBeNull();
+    asked.length = 0;
+
+    // The deck up from the window (a phone finds it under what is on the screens now, not in the library); looked
+    // through on the phone, from its slide: three clicks' pages for the first slide, one for the second.
+    await dispatch(win, { type: 'goLive', presentationId: deckId, slideIndex: 0 });
+    await expect.poll(async () => (await snapshot(win)).layers.slide?.presentationId).toBe(deckId);
+    const onScreens = (await snapshot(win)).layers.slide;
+    await p.getByTestId('remote-look-through').click();
+    const viewer = p.getByTestId('viewer');
+    const step = p.getByTestId('viewer-deck-step');
+    await expect(viewer).toHaveAttribute('data-page', /:step:0$/u);
+    await expect(p.locator('#viewer-place')).toContainText('1 of 4');
+    // The slide coming in: its last frame at once, at the width the phone draws it (its motion, a video, never plays
+    // on a phone now: no <video> on the page, no link asked for).
+    await expect(step).toHaveAttribute('data-phase', 'held');
+    await expect(step.locator(`img[data-media-id="${files.lasts[0] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    await expect(p.locator('video')).toHaveCount(0);
+    // Next: the first click, its own last frame at once.
+    await p.getByTestId('viewer-next').click();
+    await expect(viewer).toHaveAttribute('data-page', /:step:1$/u);
+    await expect(p.getByTestId('viewer-title')).toContainText('click 1 of 2');
+    await expect(step).toHaveAttribute('data-phase', 'held');
+    await expect(step.locator(`img[data-media-id="${files.lasts[1] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    await expect(p.locator('video')).toHaveCount(0);
+    // Previous: the slide coming in again, its last frame, as Back shows a step.
+    await p.getByTestId('viewer-previous').click();
+    await expect(viewer).toHaveAttribute('data-page', /:step:0$/u);
+    await expect(step.locator(`img[data-media-id="${files.lasts[0] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    // Past the first slide's last click: the second slide's coming in, its last frame.
+    for (let i = 0; i < 3; i++) await p.getByTestId('viewer-next').click();
+    await expect(p.locator('#viewer-place')).toContainText('4 of 4');
+    await expect(step.locator(`img[data-media-id="${files.nextLast}"]`)).toHaveCount(1, { timeout: 30_000 });
+    await expect(p.locator('video')).toHaveCount(0);
+    // Never a link or a file in pieces asked for, only pictures; and on the phone only: the screens where they were.
+    expect(asked.filter((path) => !path.endsWith('/picture') && !path.endsWith('/preview'))).toEqual([]);
+    expect((await snapshot(win)).layers.slide).toEqual(onScreens);
+    await expectNoSeriousA11yIssues(p, 'the viewer looking through a deck (chromium)');
   } finally {
     await phone.close();
   }
