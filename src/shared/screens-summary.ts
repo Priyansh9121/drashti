@@ -50,6 +50,6 @@ export function screensSummary(status: readonly ScreenStatus[]): {
 export function stoppedSentence(status: ScreenStatus): string {
   // Held for the owner (QA23-HEARTBEAT-1, A): its page kept as it is (it may well be black: one that never drew).
   return status.notAnswering
-    ? 'It stopped answering after 4 restarts in a row, so Drashti stopped restarting it and left it as it is: it may still catch up. Drashti tries it again by itself every few minutes.'
+    ? 'It stopped answering after Drashti restarted it 4 times or more in a row, so Drashti stopped restarting it and left it as it is: it may still catch up. Drashti tries it again by itself every few minutes.'
     : 'It kept failing, so it is black for now. Drashti tries it again by itself every few minutes.';
 }

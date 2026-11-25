@@ -128,6 +128,7 @@ export class OutputManager {
       this.open.delete(screenId);
       if (entry.window.isDestroyed()) {
         this.restarting.delete(screenId);
+        this.notAnswering.delete(screenId);
         continue;
       }
       if (wanted.has(screenId) && (displayId === undefined || displayId === null))
@@ -135,6 +136,7 @@ export class OutputManager {
       else {
         // Closed (and perhaps made again on another display in this same turn): nothing of it carries over (review S2).
         this.restarting.delete(screenId);
+        this.notAnswering.delete(screenId);
         entry.window.close();
       }
     }

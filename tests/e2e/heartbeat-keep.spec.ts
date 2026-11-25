@@ -80,7 +80,7 @@ test('held for the owner (QA23-HEARTBEAT-1, A): an output that does not answer i
     await expect.poll(async () => (await status())?.state, { timeout: 30_000 }).toBe('stopped');
     expect((await status())?.notAnswering).toBe(true);
     await expect(win.getByTestId('screen-stopped-notice')).toContainText(
-      'stopped answering after 4 restarts in a row',
+      'stopped answering after Drashti restarted it 4 times or more in a row',
     );
     const kept = await outputEvents(app);
     expect(restarts(kept)).toBe(4);
@@ -167,7 +167,7 @@ test("held for the owner (QA23-HEARTBEAT-1, A): a node's output that does not an
     await expect.poll(async () => (await status())?.state, { timeout: 30_000 }).toBe('stopped');
     expect((await status())?.notAnswering).toBe(true);
     await expect(main.win.getByTestId('screen-stopped-notice')).toContainText(
-      'stopped answering after 4 restarts in a row',
+      'stopped answering after Drashti restarted it 4 times or more in a row',
     );
     expect(restarts(await outputEvents(node.app))).toBe(4);
 
