@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { flowScanPage, flowTablePage, makeFlowPdf } from '../../src/main/documents/testing/sabha-flow-pdfs';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import { OWNERS_WINDOW, smallestContent, sweep } from './fit-sweep';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage, operatorReady } from './helpers';
@@ -19,7 +20,9 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * M3: each press steps from the Now last asked, not the one Main has answered). From the keyboard Back and Next keep
  * their Tab stop when they cannot move, so the focus stays in the panel; a screen reader hears each change once. It
  * fits at the window's least, CI's 1024 × 645 and the owner's 1410 × 900, with the playlists' column at its least and
- * its most. Simple Mode, when Sabha flow is chosen there, marks Now as Pro Mode does.
+ * its most. Simple Mode, when Sabha flow is chosen there, marks Now as Pro Mode does. A paired phone shows the same Now
+ * and Next up as the panel, as each mark is made there, read only, said to a screen reader once (More's not while the
+ * Sabha flow sheet is over it).
  *
  * Placeholder PDFs only, made here by a22-flow-core's maker (pdf-lib, the bundled Noto fonts with ToUnicode maps, a
  * table's borders as lines): never a real running order.
@@ -307,4 +310,81 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
       await expect(panel.getByRole('button', { name }), `${name}, ${column}`).toBeInViewport({ ratio: 1 });
   }
   await app.close();
+});
+
+test('a paired phone shows the panel’s Now and Next up as each is marked there (a row, Next, a double click, Back), in the same words, read only, said once: More’s not while the sheet is over it', async () => {
+  test.setTimeout(180_000);
+  const { table } = await makePdfs();
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await p.setViewportSize({ width: 390, height: 844 });
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-more').click();
+    const more = p.getByTestId('remote-flow');
+    const panel = await openWith(app, win, table, 4);
+    const rows = panel.getByTestId('flow-row');
+    const next = panel.getByRole('button', { name: 'Next item' });
+    const flowId = (await flowNow(win))?.flowId ?? '';
+    /** Main keeps this Now, the panel says it, and the phone (in `where`) says the same words. */
+    const phoneSays = async (now: number | null, where: Locator) => {
+      await expect.poll(() => flowNow(win)).toEqual({ flowId, now });
+      await expect(panel.locator('[aria-current="step"]')).toHaveCount(now === null ? 0 : 1);
+      const said = [await seen(panel.getByTestId('flow-now')), await seen(panel.getByTestId('flow-next'))];
+      await expect
+        .poll(async () => [
+          await seen(where.getByTestId('remote-flow-now')),
+          await seen(where.getByTestId('remote-flow-next')),
+        ])
+        .toEqual(said);
+    };
+
+    await phoneSays(null, more);
+    expect(await seen(more.getByTestId('remote-flow-next'))).toBe(`Next up: ${ROWS[0] ?? ''}`);
+    // A row clicked in the panel: on the phone at once, the video's row marked as the video.
+    await rows.first().click();
+    await phoneSays(0, more);
+    await expect(more.getByTestId('remote-flow-next')).toHaveAttribute('data-video', 'true');
+    // Two quick presses of Next, two steps; Back one.
+    await next.dblclick();
+    await phoneSays(2, more);
+    await panel.getByRole('button', { name: 'Back one item' }).click();
+    await phoneSays(1, more);
+    // Read only: nothing to press in it; said to a screen reader as it changes.
+    const moreNowNext = more.getByTestId('remote-flow-now-next');
+    await expect(moreNowNext.getByRole('button')).toHaveCount(0);
+    await expect(moreNowNext.locator('[aria-live="polite"]')).toHaveCount(1);
+
+    // The sheet over More: its Now and Next up follows and is the one said; More's is not said under it.
+    await more.getByTestId('remote-open-flow').click();
+    const sheet = p.getByTestId('remote-flow-sheet');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByTestId('remote-flow-now-next').locator('[aria-live="polite"]')).toHaveCount(1);
+    await expect(moreNowNext.locator('[aria-live]')).toHaveCount(0);
+    await next.click();
+    await next.click();
+    await phoneSays(3, sheet);
+    await expect(sheet.getByTestId('remote-flow-next')).toHaveText('Last item');
+    await expect(sheet.getByTestId('remote-flow-now-next').getByRole('button')).toHaveCount(0);
+    await expectNoSeriousA11yIssues(
+      p,
+      'Now and Next up in the phone’s Sabha flow sheet',
+      '[data-testid="remote-flow-sheet"]',
+    );
+    // Closed: More's is said again, as the panel has it.
+    await sheet.getByTestId('remote-flow-sheet-close').click();
+    await expect(sheet).toHaveCount(0);
+    await expect(moreNowNext.locator('[aria-live="polite"]')).toHaveCount(1);
+    await phoneSays(3, more);
+  } finally {
+    await phone.close();
+    await app.close();
+  }
 });
