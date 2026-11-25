@@ -129,14 +129,17 @@ export function statusWords(status: SabhaFlowStatus): string | null {
 }
 
 /**
- * The pages a flow's page view shows: those Main drew when the PDF was chosen, the first SABHA_FLOW_LIMITS.maxPages
- * (a22-review-flow M2: a 600-page scan is never 600 asks, nor a line for each page not drawn).
+ * The pages a flow's page view shows: those Main drew when the PDF was chosen (drawnPages: the first, at most
+ * SABHA_FLOW_LIMITS.maxPages), never more than the PDF has (a22-review-flow M2: a 600-page scan is never 600 asks, nor
+ * a line for each page not drawn).
  */
 export const pagesShown = (flow: SabhaFlow): number =>
-  Math.max(0, Math.min(flow.pageCount, SABHA_FLOW_LIMITS.maxPages));
+  Math.max(0, Math.min(flow.drawnPages, flow.pageCount, SABHA_FLOW_LIMITS.maxPages));
 
-/** Said under the pages when the PDF has more than were drawn; null otherwise. */
-export const pagesCapped = (flow: SabhaFlow): string | null =>
-  flow.pageCount > SABHA_FLOW_LIMITS.maxPages
-    ? `Only the first ${String(SABHA_FLOW_LIMITS.maxPages)} pages are shown.`
-    : null;
+/** Said under the pages when the PDF has more than were drawn (or none could be); null otherwise. */
+export function pagesCapped(flow: SabhaFlow): string | null {
+  const shown = pagesShown(flow);
+  if (flow.pageCount <= shown) return null;
+  if (shown === 0) return 'Drashti couldn’t draw this PDF’s pages.';
+  return shown === 1 ? 'Only the first page is shown.' : `Only the first ${String(shown)} pages are shown.`;
+}
