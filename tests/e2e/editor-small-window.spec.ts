@@ -185,6 +185,72 @@ for (const mode of ['pro', 'simple'] as const)
       }
     });
 
+// A PDF's "Source document limits" notes (QA23-X95N-1d, lead 2's A): in a short window they took the room under the
+// top (190+ of 260 px at 200%, run 45516285077), so they fold behind a warning-coloured button over the slide's top
+// left, opening over the slide; Escape folds them first, as it does the ribbon and the Inspector. Never dropped.
+test('at its least window with 200% text, a PDF’s source notes fold behind a button over the slide, opening and closing there', async () => {
+  test.setTimeout(120_000);
+  const { app, ed, editor } = await openEditor('pro', 'PDF');
+  try {
+    await sizeSlideEditor(app, ed, await smallestContent(app, 'slide-editor.html'));
+    await zoomEditor(app, ed, 2);
+    const notes = editor.getByTestId('editor-source-issues');
+    const button = editor.getByRole('button', { name: /^Source notes \([1-9][0-9]*\)$/u });
+    await expect(button).toBeVisible();
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    await expect(notes).toBeHidden();
+    // Over the slide's area, at its top left, inside the window.
+    const area = await editor.getByTestId('editor-canvas-area').boundingBox();
+    const place = await button.boundingBox();
+    const page = await pageSize(ed);
+    if (!area || !place) throw new Error('no slide area or button');
+    expect(place.x).toBeGreaterThanOrEqual(area.x);
+    expect(place.y).toBeGreaterThanOrEqual(area.y);
+    expect(place.x + place.width).toBeLessThanOrEqual(area.x + area.width / 2 + place.width);
+    expect(place.y + place.height).toBeLessThanOrEqual(page.height);
+    // Enter opens the notes over the slide; Escape folds them first, the keyboard back on the button.
+    await button.focus();
+    await ed.keyboard.press('Enter');
+    await expect(notes).toBeVisible();
+    await expect(notes).toContainText('Source document limits');
+    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    await expectNoSeriousA11yIssues(ed, 'PDF editor: the source notes over the slide');
+    await ed.keyboard.press('Escape');
+    await expect(notes).toBeHidden();
+    await expect(button).toBeFocused();
+    await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+    // Their close button, and a press elsewhere in the editor, close them too.
+    await button.click();
+    await expect(notes).toBeVisible();
+    await editor.getByRole('button', { name: 'Close the source notes' }).click();
+    await expect(notes).toBeHidden();
+    await button.click();
+    await expect(notes).toBeVisible();
+    await editor.getByRole('heading', { level: 1 }).click();
+    await expect(notes).toBeHidden();
+  } finally {
+    await app.close();
+  }
+});
+
+// At 1024 x 645 and 100% a PDF's source notes are exactly as today: in their place above the slides, no button.
+test('at 1024 x 645 and 100% a PDF’s source notes stay in their place above the slides, with no button', async () => {
+  const { app, ed, editor } = await openEditor('pro', 'PDF');
+  try {
+    await sizeSlideEditor(app, ed, CI_WINDOW);
+    await settled(ed);
+    const notes = editor.getByTestId('editor-source-issues');
+    await expect(notes).toBeVisible();
+    await expect(editor.getByRole('button', { name: /^Source notes/u })).toHaveCount(0);
+    const box = await notes.boundingBox();
+    const slides = await editor.getByRole('main', { name: 'The slides' }).boundingBox();
+    if (!box || !slides) throw new Error('no notes or slides');
+    expect(box.y + box.height).toBeLessThanOrEqual(slides.y + 1);
+  } finally {
+    await app.close();
+  }
+});
+
 // At CI's 1024 x 645 and at 100% the editor is as it was: the ribbon and the Inspector in their places, no folding.
 test('at 1024 x 645 and 100% nothing folds: the ribbon and the Inspector in their places, as in the guides’ pictures', async () => {
   const { app, ed, editor } = await openEditor('pro', 'native');
