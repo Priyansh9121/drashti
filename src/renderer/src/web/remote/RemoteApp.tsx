@@ -82,6 +82,7 @@ import { LiveLines } from './LiveLines';
 import { MessageFields } from './MessageFields';
 import { startMirror } from './mirror-store';
 import { MoreTools } from './MoreTools';
+import { FlowLayer, FlowSection } from './FlowSheet';
 import { MusicList } from './MusicList';
 import { Playing } from './Playing';
 import { RemotePlaying } from './RemotePlaying';
@@ -1146,6 +1147,8 @@ function TimersAndMessages() {
       >
         {/* The computer's own screens first, as the window's top bar has them (Session 54). */}
         <DesktopTools />
+        {/* The Sabha flow (alpha.23): Now and Next up, and its sheet, read only. */}
+        <FlowSection />
         <Music />
         <StageScreen />
         <section className="space-y-2" aria-labelledby="messages-title" data-testid="remote-messages">
@@ -1486,6 +1489,7 @@ export function RemoteApp() {
         <Layout />
         <DeviceViewer />
         <DesktopLayer />
+        <FlowLayer />
         <PhoneToolsLayer />
         <PhoneStopped />
       </ClockStyleContext.Provider>

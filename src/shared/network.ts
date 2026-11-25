@@ -135,7 +135,9 @@ export type NetworkChange =
    */
   | 'mode'
   | 'wallpapers'
-  | 'quickBar';
+  | 'quickBar'
+  /** Sabha flow (alpha.23): the operator chose, replaced or removed its PDF, or marked Now: a Remote reads it again. */
+  | 'flow';
 
 /** What the feed sends a device. */
 export type ToDevice =
