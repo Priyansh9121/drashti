@@ -28,23 +28,31 @@ const COUNT_ALERTS = () => {
   (window as unknown as { __chatAlerts: typeof seen }).__chatAlerts = seen;
   if (typeof navigator.vibrate === 'function') {
     const vibrate = navigator.vibrate.bind(navigator);
-    navigator.vibrate = (pattern: VibratePattern) => {
-      seen.buzz.push(Array.isArray(pattern) ? [...pattern] : [pattern]);
-      return vibrate(pattern);
-    };
+    Object.defineProperty(navigator, 'vibrate', {
+      configurable: true,
+      value: (pattern: number | number[]) => {
+        seen.buzz.push(Array.isArray(pattern) ? [...pattern] : [pattern]);
+        return vibrate(pattern);
+      },
+    });
   }
   const Sound = (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext;
   if (Sound) {
-    const make = Sound.prototype.createOscillator;
-    Sound.prototype.createOscillator = function (this: AudioContext) {
-      const tone = make.call(this);
-      const start = tone.start.bind(tone);
-      tone.start = (when?: number) => {
-        seen.sound++;
-        start(when);
-      };
-      return tone;
-    };
+    const make = Object.getOwnPropertyDescriptor(Sound.prototype, 'createOscillator')?.value as
+      ((this: AudioContext) => OscillatorNode) | undefined;
+    if (make)
+      Object.defineProperty(Sound.prototype, 'createOscillator', {
+        configurable: true,
+        value: function (this: AudioContext) {
+          const tone = make.call(this);
+          const start = tone.start.bind(tone);
+          tone.start = (when?: number) => {
+            seen.sound++;
+            start(when);
+          };
+          return tone;
+        },
+      });
   }
 };
 

@@ -1,4 +1,5 @@
 import { CHAT_REFUSAL, type ChatMessage, chatNameSchema, chatTextSchema } from '../../../../shared/chat';
+import { parsePlain } from '../../../../shared/plain-parse';
 import { cleanRenameName } from '../../../../shared/rename-name';
 
 /*
@@ -15,11 +16,10 @@ export function chatNameProblem(name: string): string | null {
   return chatNameSchema.safeParse(name).success ? null : CHAT_REFUSAL.name;
 }
 
-/** What is wrong with a message's words, in Drashti's words, or null. */
+/** What is wrong with a message's words, in Drashti's words (the schema's own), or null. */
 export function chatTextProblem(text: string): string | null {
-  const checked = chatTextSchema.safeParse(text);
-  if (checked.success) return null;
-  return checked.error.issues[0]?.message ?? CHAT_REFUSAL.empty;
+  const checked = parsePlain(chatTextSchema, text, CHAT_REFUSAL.empty);
+  return checked.success ? null : checked.message;
 }
 
 /**
