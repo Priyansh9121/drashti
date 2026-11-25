@@ -1,3 +1,4 @@
+import type { ChatEvent, ChatInvite } from './chat';
 import type { EngineMessage } from './engine/protocol';
 import type { AddFilesView } from './phone-files';
 
@@ -13,7 +14,12 @@ import type { AddFilesView } from './phone-files';
  * clock) is the same one output nodes will follow (Session 13).
  */
 
-export type DeviceKind = 'remote' | 'stage' | 'announcements';
+/**
+ * 'chat' (alpha.23, shared/chat.ts): a phone that scanned the pairing dialog's "Chat" QR, in the chat and nothing
+ * else. It is paired for the day only, kept with the chat (never in the library), so it is not one of DEVICE_KINDS,
+ * the kinds the operator pairs one at a time under Phones and tablets.
+ */
+export type DeviceKind = 'remote' | 'stage' | 'announcements' | 'chat';
 
 export const DEVICE_KINDS = ['remote', 'stage', 'announcements'] as const satisfies readonly DeviceKind[];
 
@@ -21,6 +27,7 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
   remote: 'Remote',
   stage: 'Stage',
   announcements: 'Announcements',
+  chat: 'Chat',
 };
 
 /** What each kind of device is for, as the operator reads it when pairing one. */
@@ -30,6 +37,7 @@ export const DEVICE_KIND_HELP: Record<DeviceKind, string> = {
     'In Pro Mode, puts up a PowerPoint or a PDF from a playlist and moves through it with Next and Back; in Simple Mode, shows the Sabha flow and what is on the screens. The chat in both; never videos, pictures or sounds.',
   stage: 'Watches only: shows what a stage screen shows.',
   announcements: 'Sends announcements for the operator to approve; nothing else.',
+  chat: 'Reads and writes the chat; nothing else. Paired for today only.',
 };
 
 /** The port Drashti listens on unless the operator chooses another. */
@@ -88,6 +96,8 @@ export interface NetworkStatus {
   poster: { url: string; madeAt: string } | null;
   /** Whether phones and tablets may add files, and how large (Session 54: "Phones and tablets may add files"). */
   addFiles?: AddFilesView;
+  /** The pairing dialog's "Chat" QR while it is shown (alpha.23, shared/chat.ts), or null. */
+  chatInvite?: ChatInvite | null;
 }
 
 export type NetworkResult = { ok: true; status: NetworkStatus } | { ok: false; message: string };
@@ -102,7 +112,16 @@ export const PHONE_LOWER_THIRD_MOTIONS = 'alpha.18';
 
 /** What a device sends on the feed. The first message must be `hello`, within a few seconds. */
 export type FromDevice =
-  | { type: 'hello'; token: string; lowerThirdMotions?: typeof PHONE_LOWER_THIRD_MOTIONS }
+  | {
+      type: 'hello';
+      token: string;
+      lowerThirdMotions?: typeof PHONE_LOWER_THIRD_MOTIONS;
+      /**
+       * This page follows the chat (alpha.23): it hears each chat event. A chat phone's always does; an Announcements
+       * device's feed is only for the chat, so it is refused without this.
+       */
+      chat?: true;
+    }
   /** Clock sync: the device's time when it asked. */
   | { type: 'clock'; t0: number }
   /** The device's copy fell behind (a revision went missing): send the whole state again. */
@@ -146,10 +165,22 @@ export type ToDevice =
   /** The answer to a clock message: the device's t0, and the engine's clock when it was answered. */
   | { type: 'clock'; t0: number; server: number }
   | { type: 'changed'; what: NetworkChange }
+  /** The chat (alpha.23): to the devices in it only (shared/chat.ts CHAT_DEVICE_KINDS), each as it happens. */
+  | { type: 'chat'; event: ChatEvent }
   /** The connection is ending, and why (the device was revoked, the network turned off...). */
   | { type: 'bye'; reason: ByeReason };
 
-export type ByeReason = 'unauthorized' | 'revoked' | 'network-off' | 'too-slow' | 'not-allowed' | 'stopped';
+export type ByeReason =
+  | 'unauthorized'
+  | 'revoked'
+  | 'network-off'
+  | 'too-slow'
+  | 'not-allowed'
+  | 'stopped'
+  /** The chat (alpha.23): this device opened the chat in another page; this one stops following it. */
+  | 'replaced'
+  /** The chat (alpha.23): as many pages follow the chat alone as Drashti takes; the show's devices keep the rest. */
+  | 'busy';
 
 export const BYE_TEXT: Record<ByeReason, string> = {
   unauthorized: 'This device is not paired with Drashti (or its pairing was removed). Pair it again.',
@@ -159,6 +190,8 @@ export const BYE_TEXT: Record<ByeReason, string> = {
   'not-allowed': 'This device cannot show the state.',
   // Session 54 (access by Gmail): Drashti stopped, or not let in yet. The device stays paired.
   stopped: 'Drashti has stopped on its computer: nothing works here until it is let in again.',
+  replaced: 'The chat is open on this device in another page: this one has stopped following it.',
+  busy: 'Many phones are following the chat: try again in a moment.',
 };
 
 /**

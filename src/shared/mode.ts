@@ -121,6 +121,8 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
 export const SIMPLE_FEATURE_COMMANDS: Readonly<Record<SimpleFeature, readonly EngineCommandType[]>> = {
   stage: [],
   messages: [],
+  // The chat (alpha.23): its Send is a request of its own (main/simple-mode.ts), not an engine command.
+  chat: [],
   timers: [],
   'lower-thirds': [],
   'show-a-window': [],

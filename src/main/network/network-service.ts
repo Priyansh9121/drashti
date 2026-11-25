@@ -87,6 +87,19 @@ import { isPhoneDeck } from '../../shared/phone-decks';
 import { PHONE_REFUSAL, phoneCommandRefusal, phoneOpRefusal } from '../../shared/phone-rule';
 import { isRepeatId } from '../../shared/repeat';
 import { isPassageId } from '../../shared/shastra';
+import {
+  CHAT_INVITE_TTL_MS,
+  CHAT_JOIN_RATE,
+  CHAT_JOINS_PER_ADDRESS,
+  CHAT_PAGE,
+  CHAT_REFUSAL,
+  type ChatEvent,
+  type ChatInvite,
+  type ChatOperatorView,
+  type ChatResult,
+} from '../../shared/chat';
+import type { ChatService } from '../chat/chat-service';
+import type { ChatDevice } from '../chat/chat-store';
 
 /*
  * The local network, as the main process runs it (README "The local
@@ -201,6 +214,18 @@ export interface NetworkDeps {
    * When it ends, as the window's own requests do them. Left out (a test of something else): a phone cannot.
    */
   phone?: PhoneActs;
+  /**
+   * The chat with paired phones (alpha.23, main/chat/): its rules and its day, and the phones from the Chat QR (paired
+   * for the day, kept with the chat, never in the library). Left out (a test of something else): no chat.
+   */
+  chat?: ChatService;
+  /** The operator's Chat section should read the chat again (the Chat QR, who is connected). */
+  chatChanged?(): void;
+  /**
+   * The chat's clock (its day, the Chat QR's 10 minutes, its limits): the schedules' clock, which only a test moves
+   * (index.ts scheduleNow, DRASHTI_TEST_ARTI_CLOCK, never in a packaged Drashti). Left out: now.
+   */
+  chatNow?(): number;
   /** Files between Drashti and its phones (Session 54, phone-files.ts): shared playlists, and files phones add. */
   files?: {
     view(): AddFilesView;
@@ -369,6 +394,11 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'media.rename': IPC.media.rename,
   'presentation.rename': IPC.library.renamePresentation,
   'playlist.whenEnds': IPC.playlists.setWhenEnds,
+  // The chat (alpha.23): the network's own, as announcements are: a phone chats in Simple Mode too (the owner's "in
+  // phone simple mode, we want chat"), whatever Simple Mode locks in the window.
+  chat: null,
+  'chat.name': null,
+  'chat.send': null,
 };
 
 const idsWithin = (ids: unknown, max: number): unknown =>
@@ -453,6 +483,14 @@ export class NetworkService implements EngineTransport {
   private pairing: { code: string; kind: DeviceKind; name: string; expiresAt: number; wrong: number } | null =
     null;
   private pairingTimer: NodeJS.Timeout | null = null;
+  /** The Chat QR (alpha.23): a code each phone that scans it pairs by, while it is shown. */
+  private chatInvite: { code: string; expiresAt: number; wrong: number; joins: Map<string, number> } | null =
+    null;
+  private chatInviteTimer: NodeJS.Timeout | null = null;
+  /** The day's earlier Chat QR codes (review S4): answered "ended", never a wrong try against a live code. */
+  private endedChatCodes: string[] = [];
+  /** Phones joining by the Chat QR together (review M2). */
+  private readonly chatJoins: RateLimiter;
   private poster: { url: string; madeAt: string } | null = null;
   private stopping: Promise<void> | null = null;
   private seenWriter: NodeJS.Timeout | null = null;
@@ -468,6 +506,7 @@ export class NetworkService implements EngineTransport {
   constructor(private readonly deps: NetworkDeps) {
     this.audioChanges = new RateLimiter(5, 30, () => deps.now());
     this.slideSaves = new RateLimiter(5, 30, () => deps.now());
+    this.chatJoins = new RateLimiter(CHAT_JOIN_RATE.perSecond, CHAT_JOIN_RATE.burst, () => this.chatNow());
     this.desktop = deps.desktop
       ? new DesktopAnswers(deps.desktop, {
           // At the computer's yes, long after the ask: still let in, the phone still paired, Simple Mode not refusing.
@@ -541,6 +580,15 @@ export class NetworkService implements EngineTransport {
             expiresAt: this.pairing.expiresAt,
           }
         : null;
+    const invite = this.chatInvite && this.chatInvite.expiresAt > this.chatNow() ? this.chatInvite : null;
+    const chatInvite: ChatInvite | null = invite
+      ? {
+          code: invite.code,
+          // The chat's own page: a phone already paired keeps its pairing and joins with it (else pairs by the code).
+          url: `${addresses[0] ?? `http://localhost:${port}`}${CHAT_PAGE}#c=${invite.code}`,
+          expiresAt: invite.expiresAt,
+        }
+      : null;
     return {
       on: this.on,
       state: this.serverState,
@@ -553,6 +601,7 @@ export class NetworkService implements EngineTransport {
       pairing,
       poster: this.poster,
       ...(this.deps.files ? { addFiles: this.deps.files.view() } : {}),
+      ...(this.deps.chat ? { chatInvite } : {}),
     };
   }
 
@@ -715,8 +764,15 @@ export class NetworkService implements EngineTransport {
           if (!m.deviceIds.includes(id)) this.deps.log('info', `Network: ${this.label(id)} disconnected`);
         for (const id of m.deviceIds)
           if (!this.connected.has(id)) this.deps.log('info', `Network: ${this.label(id)} connected`);
+        // The operator's Chat section hears only of the chat's people coming and going (review S2).
+        const chat = this.deps.chat;
+        const came = (id: string) => this.connected.has(id) !== m.deviceIds.includes(id);
+        const chatMoved =
+          chat !== undefined &&
+          [...this.connected, ...m.deviceIds].some((id) => came(id) && chat.isMember(id));
         this.connected = new Set(m.deviceIds);
         this.changed();
+        if (chatMoved) this.deps.chatChanged?.();
         return;
       }
       case 'seen':
@@ -798,12 +854,34 @@ export class NetworkService implements EngineTransport {
       tokenHash: d.tokenHash,
       ...(d.poster ? { poster: true } : {}),
     }));
+    // The chat's phones (alpha.23), paired for the day: known by their tokens' hashes as any device is.
+    for (const d of this.deps.chat?.devices() ?? [])
+      devices.push({ id: d.id, name: d.name, kind: 'chat', tokenHash: d.tokenHash });
     this.worker?.send({ type: 'devices', devices });
   }
 
   private label(id: string): string {
     const d = this.deps.devices.get(id);
+    if (!d && this.deps.chat?.device(id)) return 'a chat phone';
     return d ? `${DEVICE_KIND_LABEL[d.kind]} “${d.name}”` : 'a removed device';
+  }
+
+  /** A paired device: in the library, or one of the chat's phones (alpha.23) as a row of its own. */
+  private deviceRow(id: string): DeviceRow | null {
+    const d = this.deps.devices.get(id);
+    if (d) return d;
+    const phone: ChatDevice | null = this.deps.chat?.device(id) ?? null;
+    return phone
+      ? {
+          id: phone.id,
+          name: phone.name,
+          kind: 'chat',
+          tokenHash: phone.tokenHash,
+          poster: false,
+          pairedAt: phone.pairedAt,
+          lastSeenAt: null,
+        }
+      : null;
   }
 
   private noteSeen(id: string, at: string): void {
@@ -860,8 +938,11 @@ export class NetworkService implements EngineTransport {
       const candidate = `${DEVICE_KIND_LABEL[kind.data]} ${n}`;
       if (!names.has(candidate)) name = candidate;
     }
+    // Never the live Chat QR's code (pair() asks the Chat QR first).
+    let code = newPairingCode();
+    while (code === this.chatInvite?.code) code = newPairingCode();
     this.pairing = {
-      code: newPairingCode(),
+      code,
       kind: kind.data,
       name,
       expiresAt: this.deps.now() + PAIRING_CODE_TTL_MS,
@@ -886,19 +967,35 @@ export class NetworkService implements EngineTransport {
   /** The device typed (or its QR code carried) this code: a new device, and its token, once. */
   pair(code: string, address: string): PairAnswer {
     if (!this.letIn()) return { ok: false, status: 503, message: STOPPED_REFUSAL };
-    const offer = this.pairing;
+    const now = this.deps.now();
+    const offer = this.pairing && this.pairing.expiresAt > now ? this.pairing : null;
+    if (this.chatInvite && this.chatInvite.expiresAt <= this.chatNow()) this.endChatCode();
+    const invite = this.chatInvite;
     const wrong = {
       ok: false as const,
       status: 403,
       message: 'That code is wrong or has expired. Ask the operator for a new one.',
     };
-    if (!offer || offer.expiresAt <= this.deps.now()) return wrong;
-    if (!sameCode(code, offer.code)) {
-      offer.wrong++;
-      if (offer.wrong >= WRONG_TRIES) {
-        this.pairing = null;
-        this.deps.log('warn', 'Network: a pairing code was dropped after too many wrong tries');
+    // The Chat QR (alpha.23): each phone that scans it is paired by itself, as a chat phone for the day.
+    if (invite && this.deps.chat && sameCode(code, invite.code)) return this.joinChat(address, invite.joins);
+    // An earlier Chat QR's code (a photo of it, yesterday's link): it says so, and is no wrong try (review S4).
+    if (!(offer && sameCode(code, offer.code)) && this.endedChatCodes.some((c) => sameCode(code, c)))
+      return { ok: false, status: 410, message: CHAT_REFUSAL.ended };
+    if (!offer || !sameCode(code, offer.code)) {
+      for (const shown of [offer, invite]) {
+        if (!shown) continue;
+        shown.wrong++;
+        if (shown.wrong < WRONG_TRIES) continue;
+        if (shown === offer) this.pairing = null;
+        else this.endChatCode();
+        this.deps.log(
+          'warn',
+          shown === offer
+            ? 'Network: a pairing code was dropped after too many wrong tries'
+            : 'Network: the Chat QR’s code was dropped after too many wrong tries',
+        );
         this.changed();
+        if (shown === invite) this.deps.chatChanged?.();
       }
       return wrong;
     }
@@ -938,6 +1035,14 @@ export class NetworkService implements EngineTransport {
   revokeDevice(rawId: unknown): NetworkResult {
     const id = idSchema.safeParse(rawId);
     if (!id.success) return { ok: false, message: 'That device is no longer paired.' };
+    // A chat phone (alpha.23): unpaired by the chat, which tells the network's process (chatDevicesChanged).
+    if (this.deps.chat?.device(id.data)) {
+      this.deps.chat.forget(id.data);
+      this.lastSeen.delete(id.data);
+      this.unsaved.delete(id.data);
+      this.changed();
+      return { ok: true, status: this.status() };
+    }
     const label = this.label(id.data);
     const device = this.deps.devices.get(id.data);
     if (!device || !this.deps.devices.remove(id.data))
@@ -947,6 +1052,8 @@ export class NetworkService implements EngineTransport {
     this.unsaved.delete(id.data);
     this.deps.log('info', `Network: removed ${label}`);
     this.pushDevices();
+    // Out of the chat too (alpha.23).
+    this.deps.chat?.forget(id.data);
     this.changed();
     return { ok: true, status: this.status() };
   }
@@ -986,7 +1093,7 @@ export class NetworkService implements EngineTransport {
     request: DeviceRequest,
   ): { device: DeviceRow; args: Record<string, unknown>; who: string } | DeviceAnswer {
     if (!this.letIn()) return deny(503, STOPPED_REFUSAL);
-    const device = this.deps.devices.get(request.deviceId);
+    const device = this.deviceRow(request.deviceId);
     if (!device) return deny(401, 'This device was removed in Drashti. Pair it again.');
     if (!isDeviceOp(request.op) || !deviceMay(device.kind, request.op))
       return deny(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
@@ -1410,6 +1517,11 @@ export class NetworkService implements EngineTransport {
         return this.phone
           ? this.phone.answer(request.op, args, device, who)
           : deny(404, 'Drashti cannot do that from a phone here.');
+      // The chat (alpha.23): its rules are the chat's own (main/chat/chat-service.ts); nothing of it is logged here.
+      case 'chat':
+      case 'chat.name':
+      case 'chat.send':
+        return this.chatAnswer(device, request.op, args);
       case 'announce':
         return this.deps.announcements.submit(device, request.address, args);
       case 'announcement':
@@ -1494,9 +1606,141 @@ export class NetworkService implements EngineTransport {
   close(): Promise<void> {
     if (this.seenWriter) clearInterval(this.seenWriter);
     if (this.pairingTimer) clearTimeout(this.pairingTimer);
+    if (this.chatInviteTimer) clearTimeout(this.chatInviteTimer);
     if (this.seenNotice) clearTimeout(this.seenNotice);
     this.saveSeen();
     return this.stopServer();
+  }
+
+  // ---- the chat (alpha.23, QA23-CHAT-1) ----------------------------------------------------------------------------
+
+  /** The chat's clock: the day, the Chat QR's 10 minutes and the joins' limits, all on one (round 5, T-S1). */
+  private chatNow(): number {
+    return this.deps.chatNow?.() ?? this.deps.now();
+  }
+
+  private chatAnswer(device: DeviceRow, op: 'chat' | 'chat.name' | 'chat.send', args: unknown): DeviceAnswer {
+    const chat = this.deps.chat;
+    if (!chat) return deny(404, 'Drashti has no chat here.');
+    const who = { id: device.id, kind: device.kind, poster: device.poster };
+    const answer =
+      op === 'chat'
+        ? chat.read(who, args)
+        : op === 'chat.name'
+          ? chat.setName(who, args)
+          : chat.send(who, args);
+    if (!answer.ok) return deny(answer.status, answer.message);
+    return 'message' in answer ? ok({ message: answer.message }) : ok({ chat: answer.chat });
+  }
+
+  /**
+   * A phone scanned the Chat QR: a new chat phone, paired for the day, and its token, once. At most a couple from one
+   * address by one Chat QR, and a few phones at once, then one a second (review M2): one phone can never pair a crowd.
+   */
+  private joinChat(address: string, joins: Map<string, number>): PairAnswer {
+    const chat = this.deps.chat;
+    if (!chat) return { ok: false, status: 404, message: 'Drashti has no chat here.' };
+    const from = joins.get(address) ?? 0;
+    if (from >= CHAT_JOINS_PER_ADDRESS) return { ok: false, status: 429, message: CHAT_REFUSAL.joinTooMany };
+    if (!this.chatJoins.take('all')) return { ok: false, status: 429, message: CHAT_REFUSAL.joinTooFast };
+    joins.set(address, from + 1);
+    const token = newToken();
+    const phone = chat.addDevice(hashToken(token));
+    if (!phone) return { ok: false, status: 409, message: CHAT_REFUSAL.full };
+    this.deps.log('info', `Network: paired a chat phone from ${address}`);
+    this.pushDevices();
+    this.changed();
+    return {
+      ok: true,
+      token,
+      device: { id: phone.id, name: phone.name, kind: 'chat', tokenHash: phone.tokenHash },
+    };
+  }
+
+  /** Show the Chat QR: a new code, for CHAT_INVITE_TTL_MS; each phone that scans it is paired by itself. */
+  startChatInvite(): NetworkResult {
+    if (!this.deps.chat) return { ok: false, message: 'Drashti has no chat here.' };
+    let code = newPairingCode();
+    while (code === this.pairing?.code || this.endedChatCodes.includes(code)) code = newPairingCode();
+    if (this.chatInvite) this.endChatCode();
+    this.chatInvite = { code, expiresAt: this.chatNow() + CHAT_INVITE_TTL_MS, wrong: 0, joins: new Map() };
+    if (this.chatInviteTimer) clearTimeout(this.chatInviteTimer);
+    this.chatInviteTimer = setTimeout(() => {
+      this.chatInviteTimer = null;
+      this.changed();
+      this.deps.chatChanged?.();
+    }, CHAT_INVITE_TTL_MS + 50);
+    this.chatInviteTimer.unref();
+    this.deps.log('info', 'Network: showing the Chat QR');
+    this.changed();
+    this.deps.chatChanged?.();
+    return { ok: true, status: this.status() };
+  }
+
+  /** The Chat QR's code ended (stopped, its time up, too many wrong tries): kept to say so (the day's last few). */
+  private endChatCode(): void {
+    if (this.chatInvite) this.endedChatCodes = [...this.endedChatCodes, this.chatInvite.code].slice(-20);
+    this.chatInvite = null;
+  }
+
+  endChatInvite(): NetworkResult {
+    this.endChatCode();
+    if (this.chatInviteTimer) clearTimeout(this.chatInviteTimer);
+    this.chatInviteTimer = null;
+    this.changed();
+    this.deps.chatChanged?.();
+    return { ok: true, status: this.status() };
+  }
+
+  /** A chat event for the phones in the chat (the network's process sends it to those that follow it). */
+  chatEvent(event: ChatEvent): void {
+    if (this.worker && this.serverState === 'listening') this.worker.send({ type: 'chat', event });
+  }
+
+  /** The chat's phones changed (one removed, a new day): the network's process hears at once, and cuts any gone. */
+  chatDevicesChanged(): void {
+    this.pushDevices();
+  }
+
+  /** What the operator's Chat section reads. */
+  chatView(): ChatOperatorView {
+    const status = this.status();
+    const chat = this.deps.chat;
+    const state = chat?.state() ?? { day: '', messages: [], people: [] };
+    const kindOf = (id: string) => {
+      const d = this.deps.devices.get(id);
+      return d && !d.poster ? d.kind : null;
+    };
+    return {
+      ...state,
+      members: chat?.members(kindOf, this.connected) ?? [],
+      invite: status.chatInvite ?? null,
+      reachable: status.state === 'listening',
+    };
+  }
+
+  /**
+   * The operator's Remove in the Chat section: out of the chat at once. A chat phone is unpaired; a Remote or an
+   * Announcements device is unpaired as Phones and tablets' Remove does, so only where that may (Pro Mode).
+   */
+  removeChatPerson(rawId: unknown): ChatResult {
+    const chat = this.deps.chat;
+    const id = idSchema.safeParse(rawId);
+    if (!chat || !id.success) return { ok: false, message: CHAT_REFUSAL.gone };
+    if (chat.device(id.data)) {
+      chat.forget(id.data);
+      this.changed();
+      return { ok: true, view: this.chatView() };
+    }
+    if (this.deps.devices.get(id.data)) {
+      if (this.deps.refused(IPC.network.revokeDevice))
+        return { ok: false, message: this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL };
+      const removed = this.revokeDevice(id.data);
+      return removed.ok ? { ok: true, view: this.chatView() } : { ok: false, message: CHAT_REFUSAL.gone };
+    }
+    return chat.forget(id.data)
+      ? { ok: true, view: this.chatView() }
+      : { ok: false, message: CHAT_REFUSAL.gone };
   }
 
   /** The performance check: a paired device and its token, without the pairing dance. */

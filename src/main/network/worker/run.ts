@@ -83,6 +83,9 @@ export function runNetworkWorker(
       case 'hint':
         server.hint(message.what);
         return;
+      case 'chat':
+        server.chat(message.event);
+        return;
       case 'answer': {
         const resolve = waiting.get(message.id);
         waiting.delete(message.id);

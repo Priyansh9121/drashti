@@ -16,6 +16,7 @@
 export type SimpleFeature =
   | 'stage'
   | 'messages'
+  | 'chat'
   | 'timers'
   | 'lower-thirds'
   | 'show-a-window'
@@ -42,6 +43,11 @@ export const SIMPLE_FEATURES: readonly SimpleFeatureWords[] = [
     id: 'messages',
     name: 'Messages',
     line: 'The messages made in Pro Mode shown on the screens and taken off.',
+  },
+  {
+    id: 'chat',
+    name: 'Chat',
+    line: 'The day’s chat with the paired phones read and written as the operator, a Chat QR phone removed and the Chat QR code stopped; Clear chat and showing the code stay in Pro Mode.',
   },
   {
     id: 'timers',

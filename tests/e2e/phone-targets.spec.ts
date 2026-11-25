@@ -116,7 +116,7 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
     // The remote, on each of its tabs (from another page first: the pairing address differs only by its #).
     await page.goto('about:blank');
     await pairByQr(page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
-    for (const tab of ['show', 'playlist', 'library', 'more']) {
+    for (const tab of ['show', 'playlist', 'library', 'more', 'chat']) {
       await page.getByTestId(`remote-tab-${tab}`).click();
       await expect(page.getByTestId(`remote-tab-${tab}`)).toHaveAttribute('aria-selected', 'true');
       expect.soft(await tooSmall(page), `the remote's ${tab} tab`).toEqual([]);

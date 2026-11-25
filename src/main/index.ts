@@ -31,6 +31,7 @@ import {
   crashReporter,
   dialog,
   globalShortcut,
+  nativeImage,
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
@@ -456,6 +457,7 @@ import { printWaits } from '../shared/print-waits';
 import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
+import { blankPrivateParts, PRIVATE_PARTS_SCRIPT, takePrivately } from './report/private-parts';
 import { ErrorReports } from './error-reports/service';
 import { ErrorReportRuntime } from './error-reports/runtime';
 import { automaticIdentity } from './error-reports/identity';
@@ -533,6 +535,8 @@ import { OscService } from './osc/service';
 import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
+import { ChatService } from './chat/chat-service';
+import { ChatStore } from './chat/chat-store';
 import { AnnouncementRepo } from './db/announcements';
 import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-worker';
 import { startPerfDevices } from './network/perf-devices';
@@ -4921,6 +4925,8 @@ function start(): void {
       inMusic: (mediaId) =>
         musicService?.view().playlists.some((p) => p.tracks.some((t) => t.mediaId === mediaId)) ?? false,
       revisionCovers: (revisionId) => revisions.covers(revisionId),
+      // The chat (alpha.23): today's chat phones, which Simple Mode may remove (made below, before any request).
+      isChatPhone: (id) => chat.device(id) !== null,
     };
   };
   /** Simple Mode's phone controls use every active playlist, with the same bounds as the window. */
@@ -7517,6 +7523,44 @@ function start(): void {
   let quickBarNow: { view(): QuickPin[]; set(pins: QuickPin[]): QuickBarResult } | null = null;
   const STILL_STARTING = { ok: false as const, message: 'Drashti is still starting: try again in a moment.' };
   let presentationChanges: Pick<DesktopLibrary, 'removePresentations' | 'restorePresentations'> | null = null;
+  // The chat with paired phones (alpha.23, QA23-CHAT-1, main/chat/): the day's chat in one file of the data folder
+  // (never the library, so never a backup or a Report a Problem), its rules, and the phones from the Chat QR, paired
+  // for the day. Nothing of a message or a name is ever logged.
+  const chatLog = (level: 'info' | 'warn', message: string) => {
+    if (level === 'warn') log.warn(message);
+    else log.info(message);
+  };
+  // Its clock is the schedules' (scheduleNow): only a test moves it (DRASHTI_TEST_ARTI_CLOCK, never when packaged), so
+  // a test steps midnight and the Chat QR's 10 minutes; the day, the Chat QR and every chat limit read it alike.
+  const chatStore = new ChatStore({
+    file: join(userDataDir, 'chat', 'today.json'),
+    now: scheduleNow,
+    log: chatLog,
+  });
+  chatStore.load();
+  // The operator's Chat section reads the chat again a moment after a change: one view for a burst of messages, at
+  // most twice a second (review S2).
+  let chatViewWaiting = false;
+  const chatChanged = () => {
+    if (chatViewWaiting) return;
+    chatViewWaiting = true;
+    setTimeout(() => {
+      chatViewWaiting = false;
+      sendToOperator(IPC.chat.changed, net.chatView());
+    }, 500);
+  };
+  const chat = new ChatService({
+    store: chatStore,
+    now: scheduleNow,
+    toPhones: (event) => {
+      net.chatEvent(event);
+    },
+    changed: chatChanged,
+    devicesChanged: () => {
+      net.chatDevicesChanged();
+    },
+    log: chatLog,
+  });
   const net = new NetworkService({
     // Phones and tablets work only while Drashti is let in (Session 54): every request, pairing and file refused.
     letIn: isLetIn,
@@ -7652,6 +7696,9 @@ function start(): void {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),
     },
+    chat,
+    chatChanged,
+    chatNow: scheduleNow,
     // The phone as a full Drashti (Session 54): the computer's screens and Audience and Stage, as the window's own
     // requests change them; covering the controls is asked in the computer's own box, never taken from a phone.
     desktop: {
@@ -7785,6 +7832,16 @@ function start(): void {
   network = net;
   net.resume();
   stops.add('network', () => net.close());
+  // The chat's day (alpha.23): a new day empties it (and unpairs its phones) within a minute of midnight, even with no
+  // one asking; what waits to be written is written as Drashti quits.
+  const chatDayCheck = setInterval(() => {
+    chat.tick();
+  }, 60_000);
+  chatDayCheck.unref();
+  stops.add('chat', () => {
+    clearInterval(chatDayCheck);
+    chatStore.flush();
+  });
   const osc = new OscService({
     settings: { get: (key) => settings.get(key), set: laterSetting },
     letIn: isLetIn,
@@ -8329,6 +8386,39 @@ function start(): void {
   handle(IPC.announcements.takeOff, (e, which) =>
     fromOperator(e) ? announcements.takeOff(which) : notQueueOperator,
   );
+
+  // The chat (alpha.23): the operator window's Chat section only. Simple Mode's lock answers Clear chat, Remove and
+  // the Chat QR (simple-mode.ts); sending as the operator is Simple Mode Features' (a22-chat-operator).
+  const notChatOperator = { ok: false as const, message: 'Only the operator window can use the chat.' };
+  const chatViewNow = () => ({ ok: true as const, view: net.chatView() });
+  handle(IPC.chat.view, (e) =>
+    fromOperator(e)
+      ? net.chatView()
+      : { day: '', messages: [], people: [], members: [], invite: null, reachable: false },
+  );
+  handle(IPC.chat.send, (e, text) => {
+    if (!fromOperator(e)) return notChatOperator;
+    const sent = chat.sendAsOperator(text);
+    return sent.ok ? chatViewNow() : sent;
+  });
+  handle(IPC.chat.clear, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    chat.clear();
+    return chatViewNow();
+  });
+  handle(IPC.chat.remove, (e, personId) =>
+    fromOperator(e) ? net.removeChatPerson(personId) : notChatOperator,
+  );
+  handle(IPC.chat.invite, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    const shown = net.startChatInvite();
+    return shown.ok ? chatViewNow() : { ok: false as const, message: shown.message };
+  });
+  handle(IPC.chat.endInvite, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    net.endChatInvite();
+    return chatViewNow();
+  });
 
   // Timers: made and edited here, started and paused through the engine.
   const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {
@@ -10449,27 +10539,47 @@ function start(): void {
     if (isLetIn() && !reportsLetIn) reports.wake();
     reportsLetIn = isLetIn();
   });
-  /** The operator window as it is now, before Report a Problem draws: its pixels and a small copy. */
+  /**
+   * The operator window as it is now, before Report a Problem draws: its pixels and a small copy, with what the page
+   * marks private (the chat's words and names, alpha.23) blanked in both; no picture when the page cannot say where.
+   */
   const captureOperator = async (): Promise<HeldPicture | null> => {
     const win = operatorWindow;
     if (!win || win.isDestroyed()) return null;
     try {
-      const image = await win.webContents.capturePage();
+      const contents = win.webContents;
+      const held = await takePrivately(
+        () => contents.executeJavaScript(PRIVATE_PARTS_SCRIPT, true) as Promise<unknown>,
+        () => contents.capturePage(),
+      );
+      if (!held) return null;
+      const image = held.taken;
       if (image.isEmpty()) return null;
       // A Retina window's picture is at twice its size in points: its pixels at the scale they were taken.
       for (const scaleFactor of [...image.getScaleFactors(), 1]) {
         const { width, height } = image.getSize(scaleFactor);
         const pixels = image.toBitmap({ scaleFactor });
-        if (width > 0 && height > 0 && pixels.length === width * height * 4)
-          return {
-            picture: {
+        if (width > 0 && height > 0 && pixels.length === width * height * 4) {
+          const picture = blankPrivateParts(
+            {
               width,
               height,
               pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
               order: capturedPixelOrder(),
             },
-            thumb: `data:image/jpeg;base64,${image.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
+            held.parts,
+          );
+          // The small copy from the blanked pixels, never from the picture as taken.
+          const blanked = nativeImage.createFromBitmap(Buffer.from(picture.pixels), {
+            width,
+            height,
+            scaleFactor,
+          });
+          return {
+            picture,
+            thumb: `data:image/jpeg;base64,${blanked.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
           };
+        }
       }
       return null;
     } catch {

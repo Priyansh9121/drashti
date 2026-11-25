@@ -12,7 +12,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Field, NumberInput, TextInput } from '../ui/Field';
-import { Megaphone, Pencil, Printer, Smartphone, TabletSmartphone, Trash2 } from '../ui/icons';
+import { Megaphone, MessageSquare, Pencil, Printer, Smartphone, TabletSmartphone, Trash2 } from '../ui/icons';
 import type { Icon } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
@@ -20,7 +20,9 @@ import { Toggle } from '../ui/Toggle';
 import { useNow } from '../render/useNow';
 import { closeNetwork, networkAction, useNetwork } from './network-store';
 import { AddFilesSection } from './AddFilesSection';
+import { ChatInviteSection } from '../chat/ChatInvite';
 import { QrCode } from './QrCode';
+import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 
 /*
  * The local network's panel (Pro Mode): on or off, the address a phone
@@ -33,6 +35,7 @@ const KIND_ICON: Record<DeviceKind, Icon> = {
   remote: Smartphone,
   stage: TabletSmartphone,
   announcements: Megaphone,
+  chat: MessageSquare,
 };
 
 /** "just now", "5 min ago", "3 h ago", or the date. */
@@ -133,7 +136,11 @@ function Pairing({ status }: { status: NetworkStatus }) {
             <p className="text-sm text-muted">
               Scan it with the phone’s camera, or open the address above and type:
             </p>
-            <p className="font-mono text-4xl font-bold tracking-widest text-fg" data-testid="pairing-code">
+            <p
+              className="font-mono text-4xl font-bold tracking-widest text-fg"
+              data-testid="pairing-code"
+              {...{ [REPORT_PRIVATE_ATTR]: '' }}
+            >
               {spaced(offer.code)}
             </p>
             <p className="text-xs text-muted" aria-live="off">
@@ -380,6 +387,8 @@ export function NetworkPanel() {
         <>
           <OnOff status={status} />
           <Pairing status={status} />
+          {/* The chat's QR (alpha.23): more people into the chat, each phone paired by itself, for today. */}
+          <ChatInviteSection status={status} />
           <Devices status={status} />
           <AddFilesSection status={status} />
           <Poster status={status} />
