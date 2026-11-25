@@ -27,13 +27,14 @@ vi.mock('../feed', () => ({
     return () => undefined;
   },
 }));
-const alerts = vi.hoisted(() => ({ armed: 0, alerted: 0 }));
+const alerts = vi.hoisted(() => ({ armed: 0, alerted: 0, ways: [] as string[] }));
 vi.mock('./chat-alert', () => ({
   armAlerts: () => {
     alerts.armed++;
   },
-  alertNewMessage: () => {
+  alertNewMessage: (how?: { sound?: boolean }) => {
     alerts.alerted++;
+    alerts.ways.push(how?.sound === false ? 'buzz only' : 'buzz or sound');
     return 'buzz';
   },
 }));
@@ -41,7 +42,7 @@ vi.mock('./chat-alert', () => ({
 const ME = 'phone-me';
 const message = (id: string, from: string, text = `Placeholder message ${id}`): ChatMessage => ({
   id,
-  at: new Date(Date.UTC(2026, 10, 25, 8, Number(id) % 60)).toISOString(),
+  at: new Date(Date.UTC(2026, 10, 25, 8, (Number(id) || 0) % 60)).toISOString(),
   from: { id: from, name: from === ME ? 'Placeholder Me' : `Placeholder ${from}` },
   text,
 });
@@ -95,6 +96,7 @@ beforeEach(async () => {
   feed.followed = 0;
   alerts.armed = 0;
   alerts.alerted = 0;
+  alerts.ways = [];
   drashti = {
     messages: [message('1', 'other'), message('2', ME)],
     name: null,
@@ -302,14 +304,16 @@ describe('a new message from someone else, told on the feed', () => {
 });
 
 describe('the Remote of the phone that runs the show (a22-review-chat P-M1, P-S1)', () => {
-  it('with the show on its screen: only the count, never a banner over the show, and no buzz or sound', async () => {
+  it('with the show on its screen: the count, never a banner over the show, and a buzz but never a sound', async () => {
     await started();
     store.chatShowOnScreen(true);
     arrives(message('3', 'other'));
     const s = store.useChat.getState();
     expect(s.unread).toEqual(['3']);
     expect(s.banner).toBeNull();
-    expect(alerts.alerted).toBe(0);
+    // The owner's vibration moves nothing on the screen (lead 2, answered for the owner); a sound would be heard in
+    // the sabha.
+    expect(alerts.ways).toEqual(['buzz only']);
   });
 
   it('off the show again: the banner and the buzz or sound come back', async () => {
@@ -318,7 +322,7 @@ describe('the Remote of the phone that runs the show (a22-review-chat P-M1, P-S1
     store.chatShowOnScreen(false);
     arrives(message('3', 'other'));
     expect(store.useChat.getState().banner?.id).toBe('3');
-    expect(alerts.alerted).toBe(1);
+    expect(alerts.ways).toEqual(['buzz or sound']);
   });
 
   it('buzzes or sounds at most once in a few seconds, however many messages come (each still counts)', async () => {

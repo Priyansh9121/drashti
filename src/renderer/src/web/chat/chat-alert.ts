@@ -28,7 +28,7 @@ const TAPS = ['pointerup', 'touchend', 'click', 'keydown'] as const;
 const TONES = [880, 1320] as const;
 const TONE_S = 0.12;
 
-export function makeAlerts(place: AlertPlace): { arm(): void; alert(): AlertWay } {
+export function makeAlerts(place: AlertPlace): { arm(): void; alert(how?: { sound?: boolean }): AlertWay } {
   let tapped = false;
   let armed = false;
   let sound: AudioContext | null = null;

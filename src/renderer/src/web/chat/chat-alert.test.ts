@@ -144,6 +144,21 @@ describe('a new message from someone else: a buzz on Android, a sound on an iPho
     expect(alerts.alert()).toBe('none');
   });
 
+  it('asked for no sound (the show on a Remote’s screen): an Android phone still buzzes, an iPhone stays quiet', () => {
+    const android = place({ vibrates: true, touch: true });
+    const buzzing = makeAlerts(android.place);
+    buzzing.arm();
+    android.page.dispatchEvent(new Event('pointerup'));
+    expect(buzzing.alert({ sound: false })).toBe('buzz');
+    expect(android.buzzed).toEqual([[...BUZZ_MS]]);
+    const iphone = place({ vibrates: false, touch: true });
+    const quiet = makeAlerts(iphone.place);
+    quiet.arm();
+    iphone.page.dispatchEvent(new Event('pointerup'));
+    expect(quiet.alert({ sound: false })).toBe('none');
+    expect(FakeSound.made[0]?.started).toEqual([]);
+  });
+
   it('a sound the phone paused since (a call, the page put away) is resumed before it plays', () => {
     const iphone = place({ vibrates: false, touch: true });
     const alerts = makeAlerts(iphone.place);

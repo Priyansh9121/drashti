@@ -152,8 +152,9 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
     await expect(mine.getByTestId('chat-from')).toHaveCount(0);
     await expect(a.getByTestId('chat-message').last()).toContainText('Placeholder first message 🙏');
 
-    // On the iPhone running the show: only the count on Chat. Nothing under its finger moved (no banner over the
-    // slides, the clears or Back and Next: a tap meant for one slide never lands on the next), and nothing sounded.
+    // On the iPhone running the show: the count on Chat. Nothing under its finger moved (no banner over the slides,
+    // the clears or Back and Next: a tap meant for one slide never lands on the next), and no sound (it would be
+    // heard in the sabha; an Android phone there only buzzes).
     await expect(b.getByTestId('remote-tab-chat').getByTestId('chat-unread')).toContainText('1');
     expect(await showBoxes(b)).toEqual(before);
     await expect(b.getByTestId('chat-banner')).toHaveCount(0);
