@@ -133,7 +133,8 @@ describe('a PowerPoint or a PDF, as a phone may put it up (QA23-PHONE-1)', () =>
   it('is a deck’s slide with its clicks wherever it came from, but never as a passage or Repeat Slides', async () => {
     const pdf = await imported(
       'Placeholder clicks.pdf',
-      makeTestPdf([{ width: 960, height: 540, color: [0, 0, 0] }]),
+      // Its own bytes: the same file again would be known, and skipped.
+      makeTestPdf([{ width: 960, height: 540, color: [20, 40, 60] }]),
     );
     const [group] = pdf.groups;
     const [first] = group?.slides ?? [];
