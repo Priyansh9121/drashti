@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { watchReserve, type Measured, type ReserveDeps } from './steady-reserve';
+import { facesToLoad, watchReserve, type Measured, type ReserveDeps } from './steady-reserve';
 
 /*
- * Sabha flow (alpha.23): the panel's steady room for Now and Next up, the tallest of all the flow's items (review S16,
- * S17). A Gujarati or Devanagari font loaded after the first measure (the bundled fonts load by unicode-range, only
- * when their letters are first drawn) makes the lines taller: the room is measured again, never left short.
+ * Sabha flow (alpha.23): the panel's steady room for Now and Next up, the tallest of all the flow's items (review S16).
+ * It is set ONCE per flow, before Now and Next can be used: only after the faces its words need have loaded (the
+ * bundled Gujarati and Devanagari faces load by unicode-range, late on a slow computer), so a later font load never
+ * moves it while the flow is current (CI's Mac moved the playlists on the operator's first Next). Only a new width
+ * (or a new PDF) measures it again.
  */
 
 function setup() {
@@ -16,54 +18,127 @@ function setup() {
     querySelectorAll: (selector: string) =>
       selector.includes('"now"') ? [el('now', 0), el('now', 1)] : [el('next', 0), el('next', 1)],
   };
-  const observed: { targets: readonly unknown[]; changed: () => void }[] = [];
-  const fontListeners = new Set<() => void>();
+  let width = 220;
+  const changes: (() => void)[] = [];
+  let fontsLoaded: () => void = () => undefined;
+  const loading: { copies: number }[] = [];
+  let settled: () => void = () => undefined;
+  let settling = 0;
   const deps: ReserveDeps = {
-    observe: (targets, changed) => {
-      const entry = { targets, changed };
-      observed.push(entry);
+    observe: (_targets, changed) => {
+      changes.push(changed);
       changed();
       return () => {
-        observed.splice(observed.indexOf(entry), 1);
+        changes.splice(changes.indexOf(changed), 1);
       };
     },
-    fonts: {
-      addEventListener: (_type, listener) => fontListeners.add(listener),
-      removeEventListener: (_type, listener) => fontListeners.delete(listener),
+    widthOf: () => width,
+    loadFonts: (copies) => {
+      loading.push({ copies: [...copies].length });
+      return new Promise<void>((resolve) => {
+        fontsLoaded = resolve;
+      });
+    },
+    // The layout takes the loaded faces a frame later.
+    afterLayout: () => {
+      settling++;
+      return new Promise<void>((resolve) => {
+        settled = resolve;
+      });
     },
     marginTop: () => 2,
   };
   const said: number[] = [];
-  return { heights, box, deps, said, observed, fontListeners };
+  return {
+    heights,
+    box,
+    deps,
+    said,
+    loading,
+    changes,
+    setWidth: (w: number) => {
+      width = w;
+    },
+    fontsLoad: async () => {
+      fontsLoaded();
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+      settled();
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+    },
+    /** The faces have loaded, the layout not yet taken them. */
+    fontsOnly: async () => {
+      fontsLoaded();
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+    },
+    settling: () => settling,
+  };
 }
 
 describe('the steady room for Now and Next up', () => {
-  it('is the tallest Now and the tallest Next up (with its margin), rounded up', () => {
+  it('is measured only once the layout has taken the loaded faces (a frame after they are ready), never before', async () => {
     const s = setup();
     watchReserve(s.box, (px) => s.said.push(px), s.deps);
-    expect(s.said.at(-1)).toBe(18 + 64 + 2);
+    await s.fontsOnly();
+    expect(s.settling()).toBe(1);
+    expect(s.said).toEqual([]);
+    await s.fontsLoad();
+    expect(s.said).toEqual([84]);
   });
 
-  it('is measured again when a late font has loaded (S17): the lines grew, the room grows', () => {
+  it('is measured only once the faces of all its copies have loaded: the tallest Now and Next up (with its margin)', async () => {
     const s = setup();
-    const stop = watchReserve(s.box, (px) => s.said.push(px), s.deps);
-    expect(s.said.at(-1)).toBe(84);
-    // The Gujarati font arrives: the same lines draw taller.
-    s.heights.now = [18, 20];
+    watchReserve(s.box, (px) => s.said.push(px), s.deps);
+    expect(s.loading).toEqual([{ copies: 4 }]);
+    expect(s.said).toEqual([]);
+    await s.fontsLoad();
+    expect(s.said).toEqual([18 + 64 + 2]);
+  });
+
+  it('is not moved by a font that loads later while the flow is current, nor by a copy alone', async () => {
+    const s = setup();
+    watchReserve(s.box, (px) => s.said.push(px), s.deps);
+    await s.fontsLoad();
+    // A late face makes the copies taller; the box's observer fires, its width the same.
     s.heights.next = [44, 71];
-    for (const listener of s.fontListeners) listener();
-    expect(s.said.at(-1)).toBe(20 + 71 + 2);
-    stop();
-    expect(s.fontListeners.size).toBe(0);
+    for (const changed of s.changes) changed();
+    expect(s.said).toEqual([84]);
   });
 
-  it('watches the box and each of the copies, so a copy that grows by itself is measured again', () => {
+  it('is measured again when its width changes (a resized column)', async () => {
+    const s = setup();
+    watchReserve(s.box, (px) => s.said.push(px), s.deps);
+    await s.fontsLoad();
+    s.heights.next = [44, 90];
+    s.setWidth(300);
+    for (const changed of s.changes) changed();
+    expect(s.said).toEqual([84, 18 + 90 + 2]);
+  });
+
+  it('measures nothing once stopped (a new PDF, the panel folded) before its faces have loaded', async () => {
     const s = setup();
     const stop = watchReserve(s.box, (px) => s.said.push(px), s.deps);
-    const watched = s.observed.flatMap((o) => o.targets);
-    expect(watched).toContain(s.box);
-    expect(watched.length).toBeGreaterThanOrEqual(5);
     stop();
-    expect(s.observed).toHaveLength(0);
+    await s.fontsLoad();
+    expect(s.said).toEqual([]);
+    expect(s.changes).toHaveLength(0);
+  });
+});
+
+describe('the faces the copies need', () => {
+  it('are each word’s own: the face of every element with words of its own, with those words (a Gujarati part too)', () => {
+    // A copy: its line in one face, a Gujarati part in another (a lang of its own may draw in another face).
+    const span = { font: 'normal 700 16px "Noto Sans Gujarati"', text: 'નમૂનો કાર્યક્રમ', children: [] };
+    const line = { font: 'normal 700 16px "Noto Sans"', text: 'Next up: 2 · ', children: [span] };
+    const faces = facesToLoad([line], (el) => el);
+    expect(faces).toEqual([
+      ['normal 700 16px "Noto Sans"', 'Next up: 2 · '],
+      ['normal 700 16px "Noto Sans Gujarati"', 'નમૂનો કાર્યક્રમ'],
+    ]);
+  });
+
+  it('are each asked once, with all the words drawn in it', () => {
+    const a = { font: 'normal 400 12px "Noto Sans"', text: 'Now: ', children: [] };
+    const b = { font: 'normal 400 12px "Noto Sans"', text: 'પહેલો', children: [] };
+    expect(facesToLoad([a, b], (el) => el)).toEqual([['normal 400 12px "Noto Sans"', 'Now: પહેલો']]);
   });
 });

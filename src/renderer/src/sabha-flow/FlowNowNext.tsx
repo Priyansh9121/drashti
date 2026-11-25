@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SabhaFlow, SabhaFlowLang } from '../../../shared/sabha-flow';
 import type { FlowLine } from '../../../shared/sabha-flow-lines';
 import {
@@ -90,6 +90,8 @@ export interface FlowNowNextProps {
   onNext?: () => void;
   /** Said to a screen reader as it changes (the default); false where another copy of it is said instead. */
   live?: boolean;
+  /** The panel's: whether its steady room is set (Now and Next shown and usable); false until it is. */
+  onMeasured?: (measured: boolean) => void;
 }
 
 type Look = (typeof LOOK)[keyof typeof LOOK];
@@ -165,42 +167,72 @@ function NowNextLines({
   look,
   live,
   steady,
+  onMeasured,
+  children,
 }: {
   flow: SabhaFlow;
   nn: ReturnType<typeof nowNext>;
   look: Look;
   live: boolean;
   steady: boolean;
+  onMeasured?: (measured: boolean) => void;
+  /** Back and Next (the panel's): shown with the lines, once the room is set. */
+  children?: ReactNode;
 }) {
   const [measure, setMeasure] = useState<HTMLDivElement | null>(null);
-  const [reserve, setReserve] = useState(0);
-  // Measured as the copies are laid out, on any change of their size, and when a late font has loaded (S17).
+  // The flow as first met, kept while its id stays (each Now marked brings a new copy of the same flow): the copies and
+  // the room are this one's, never measured again for a Now.
+  const [kept, setKept] = useState(flow);
+  if (kept.id !== flow.id) setKept(flow);
+  const current = kept.id === flow.id ? kept : flow;
+  // The room, set once for this flow: after its faces have loaded and the layout has taken them, before Now and Next
+  // can be used; again only on a new width (steady-reserve.ts).
+  const [reserve, setReserve] = useState<{ id: string; px: number } | null>(null);
   useLayoutEffect(
-    () => (measure ? watchReserve(measure, setReserve, windowReserveDeps()) : undefined),
-    [measure, flow],
+    () =>
+      measure
+        ? watchReserve(
+            measure,
+            (px) => {
+              setReserve({ id: current.id, px });
+            },
+            windowReserveDeps(),
+          )
+        : undefined,
+    [measure, current],
   );
+  const measured = !steady || reserve?.id === current.id;
+  useEffect(() => {
+    onMeasured?.(measured);
+  }, [measured, onMeasured]);
   // The unseen copies, made once per flow (and look).
   const copies = useMemo(
     () =>
       steady &&
-      [null, ...flow.items.map((_, i) => i)].map((k) => {
-        const each = nowNext(flow, k);
+      [null, ...current.items.map((_, i) => i)].map((k) => {
+        const each = nowNext(current, k);
         return (
           <div key={k ?? 'none'} className={look.lines}>
-            <NowLine flow={flow} nn={each} look={look} measure="now" />
-            <NextLine flow={flow} nn={each} look={look} measure="next" />
+            <NowLine flow={current} nn={each} look={look} measure="now" />
+            <NextLine flow={current} nn={each} look={look} measure="next" />
           </div>
         );
       }),
-    [flow, look, steady],
+    [current, look, steady],
   );
+  // Until the room is set (a moment, the faces loading), Back, Next, Now and Next up are laid out unseen: nothing can be
+  // pressed, and nothing moves after it can.
+  const unseen = measured ? undefined : 'invisible';
   return (
     <>
+      {children !== undefined && children !== false && <div className={unseen}>{children}</div>}
       <div
         aria-live={live ? 'polite' : undefined}
         aria-atomic={live ? 'true' : undefined}
-        className={look.lines}
-        style={steady && reserve > 0 ? { minHeight: reserve } : undefined}
+        className={unseen ? `${look.lines} ${unseen}` : look.lines}
+        data-measured={steady ? String(measured) : undefined}
+        data-reserve={steady && measured && reserve ? String(reserve.px) : undefined}
+        style={steady && measured && reserve ? { minHeight: reserve.px } : undefined}
       >
         <NowLine flow={flow} nn={nn} look={look} testId={`${look.id}-now`} />
         <NextLine flow={flow} nn={nn} look={look} testId={`${look.id}-next`} />
@@ -219,7 +251,7 @@ function NowNextLines({
   );
 }
 
-export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: FlowNowNextProps) {
+export function FlowNowNext({ flow, now, size, onBack, onNext, onMeasured, live = true }: FlowNowNextProps) {
   const look = LOOK[size];
   const nn = nowNext(flow, now);
   const canBack = nn.now !== null;
@@ -227,33 +259,41 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
 
   return (
     <div className={look.box} data-testid={`${look.id}-now-next`}>
-      {onBack && onNext && (
-        <div className="flex flex-wrap gap-1">
-          <Button
-            size="sm"
-            icon={ChevronLeft}
-            aria-label="Sabha flow: Back"
-            aria-disabled={canBack ? undefined : true}
-            className={CANNOT_MOVE}
-            data-testid="flow-back-button"
-            onClick={onBack}
-          >
-            Back
-          </Button>
-          <Button
-            size="sm"
-            iconEnd={ChevronRight}
-            aria-label="Sabha flow: Next"
-            aria-disabled={canNext ? undefined : true}
-            className={CANNOT_MOVE}
-            data-testid="flow-next-button"
-            onClick={onNext}
-          >
-            Next
-          </Button>
-        </div>
-      )}
-      <NowNextLines flow={flow} nn={nn} look={look} live={live} steady={size === 'panel'} />
+      <NowNextLines
+        flow={flow}
+        nn={nn}
+        look={look}
+        live={live}
+        steady={size === 'panel'}
+        onMeasured={onMeasured}
+      >
+        {onBack && onNext && (
+          <div className="flex flex-wrap gap-1">
+            <Button
+              size="sm"
+              icon={ChevronLeft}
+              aria-label="Sabha flow: Back"
+              aria-disabled={canBack ? undefined : true}
+              className={CANNOT_MOVE}
+              data-testid="flow-back-button"
+              onClick={onBack}
+            >
+              Back
+            </Button>
+            <Button
+              size="sm"
+              iconEnd={ChevronRight}
+              aria-label="Sabha flow: Next"
+              aria-disabled={canNext ? undefined : true}
+              className={CANNOT_MOVE}
+              data-testid="flow-next-button"
+              onClick={onNext}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </NowNextLines>
     </div>
   );
 }

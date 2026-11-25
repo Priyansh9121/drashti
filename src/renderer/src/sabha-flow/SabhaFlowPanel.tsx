@@ -170,7 +170,10 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
   // Measured from when the part is there (it comes only once the flow is read; useElementSize binds at mount).
   const [pinned, setPinned] = useState<HTMLDivElement | null>(null);
   const pinnedHeight = useHeightOf(pinned);
-  const keepWhole = flow?.status === 'read' && pinnedHeight > 0;
+  // Only once Now and Next up's room is set (their faces loaded): until then the panel keeps its share, so the area
+  // changes once, before Now and Next can be used, and never after while this flow is current.
+  const [measured, setMeasured] = useState(false);
+  const keepWhole = flow?.status === 'read' && pinnedHeight > 0 && measured;
   const need = keepWhole ? pinnedHeight + (shown === 'list' ? LIST_ROOM : PAGE_ROOM) : 0;
   useEffect(() => {
     onNeed(need);
@@ -244,15 +247,20 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
             </>
           )}
         </div>
-        {choosing && <Loading label="Reading the PDF…" immediate className="py-1" />}
-        {problemNotice}
         {flow.status !== 'read' && (
           <div className="shrink-0 px-3 pt-2">
             <FlowStatusNotice status={flow.status} tooMuchText={flow.tooMuchText === true} />
           </div>
         )}
         {flow.status === 'read' && (
-          <FlowNowNext flow={flow} now={now} size="panel" onBack={flowBack} onNext={flowNext} />
+          <FlowNowNext
+            flow={flow}
+            now={now}
+            size="panel"
+            onBack={flowBack}
+            onNext={flowNext}
+            onMeasured={setMeasured}
+          />
         )}
         {views.length > 1 && (
           <Tabs
@@ -266,6 +274,10 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
           />
         )}
       </div>
+      {/* A choice still being read and a problem to say come under the pinned part, in the list's room: they come and go
+          without moving Now and Next up, the splitter or the playlists (lead 2, CI 8967). */}
+      {choosing && <Loading label="Reading the PDF…" immediate className="shrink-0 py-1" />}
+      {problemNotice}
       {views.length > 1 ? (
         // The read list scrolls on its own, Now and Next up staying in view above it; the page view has its own.
         <TabPanel
