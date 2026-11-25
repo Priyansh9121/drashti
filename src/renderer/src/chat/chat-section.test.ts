@@ -67,11 +67,26 @@ describe('the Chat section’s open part', () => {
     expect(html.match(/data-testid="chat-remove-person"/g)).toHaveLength(2);
   });
 
-  it('in Simple Mode reads and sends, and removes no one', () => {
+  it('in Simple Mode reads and sends, and removes a chat phone only, never a Remote (core’s S5)', () => {
     const html = render({ operateOnly: true });
     expect(html).toContain('Placeholder secret words');
     expect(html).toContain('data-testid="chat-send"');
-    expect(html).not.toContain('data-testid="chat-remove-person"');
+    // VIEW's members: one chat phone, one Remote.
+    expect(html.match(/data-testid="chat-remove-person"/g)).toHaveLength(1);
+    expect(html).toContain('aria-label="Remove Placeholder Sender from the chat"');
+    expect(html).not.toContain('aria-label="Remove Placeholder Member from the chat"');
+  });
+
+  it('says while the Chat QR lets phones join, with Stop, in either mode, in a line that is always there', () => {
+    const invite = { code: '000000', url: 'http://192.0.2.1:8080/chat#c=000000', expiresAt: Date.now() + 600_000 };
+    for (const operateOnly of [false, true]) {
+      const shown = render({ operateOnly, view: { ...VIEW, invite } });
+      expect(shown).toContain('Phones can join by the Chat QR code');
+      expect(shown).toContain('data-testid="chat-section-invite-end"');
+    }
+    const none = render();
+    expect(none).toContain('data-testid="chat-invite-slot"');
+    expect(none).not.toContain('data-testid="chat-section-invite-end"');
   });
 
   it('keeps every word and name of the chat inside the box Report a Problem’s picture blanks', () => {
