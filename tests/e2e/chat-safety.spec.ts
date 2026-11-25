@@ -368,7 +368,7 @@ test('the day’s change: at midnight every phone’s chat empties at once, a ch
     await expect
       .poll(() => dayFeed.frames.some((f) => f.includes('"bye"') && f.includes('"revoked"')))
       .toBe(true);
-    await dayPhone.page.waitForURL(`${base}/pair?why=revoked`);
+    await dayPhone.page.waitForURL(`${base}/pair?why=revoked`, { timeout: 15_000 });
     expect((await readAs(port, dayToken)).status).toBe(401);
     expect((await sayAs(port, dayToken, 'Placeholder: after midnight')).status).toBe(401);
 

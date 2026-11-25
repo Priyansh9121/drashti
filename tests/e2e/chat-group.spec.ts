@@ -388,7 +388,7 @@ test('a person removed by the operator is cut off at once (their phone neither r
     await expect
       .poll(() => leavingFeed.frames.some((f) => f.includes('"bye"') && f.includes('"revoked"')))
       .toBe(true);
-    await leaving.page.waitForURL(`${base}/pair?why=revoked`);
+    await leaving.page.waitForURL(`${base}/pair?why=revoked`, { timeout: 15_000 });
     // What is said after it never reaches it; its words from before stay, under its name.
     await sendFrom(staying.page, 'Placeholder: said after the removal');
     await expect(bubble(section, 'Placeholder: said after the removal')).toHaveCount(1);

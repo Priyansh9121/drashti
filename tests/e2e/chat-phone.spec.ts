@@ -37,7 +37,36 @@ const COUNT_ALERTS = () => {
       },
     });
   }
-  const Sound = (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext;
+  // An engine with no Web Audio (Playwright's WebKit on Windows; an iPhone's Safari has it): a stand-in with what the
+  // page's sound uses, which only counts, so the page's sound rules are checked there too (CI run 45532541843).
+  const audio = window as unknown as { AudioContext?: typeof AudioContext; __chatAudioStandIn?: boolean };
+  if (!audio.AudioContext) {
+    const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
+    const node = () => ({ connect() {}, disconnect() {} });
+    class StandInContext {
+      state = 'running';
+      currentTime = 0;
+      destination = node();
+      resume() {
+        return Promise.resolve();
+      }
+      createBuffer() {
+        return {};
+      }
+      createBufferSource() {
+        return { ...node(), buffer: null, start() {} };
+      }
+      createGain() {
+        return { ...node(), gain: param() };
+      }
+      createOscillator() {
+        return { ...node(), type: 'sine', frequency: param(), start() {}, stop() {} };
+      }
+    }
+    audio.AudioContext = StandInContext as unknown as typeof AudioContext;
+    audio.__chatAudioStandIn = true;
+  }
+  const Sound = audio.AudioContext;
   if (Sound) {
     const make = Object.getOwnPropertyDescriptor(Sound.prototype, 'createOscillator')?.value as
       ((this: AudioContext) => OscillatorNode) | undefined;
@@ -167,6 +196,14 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
       'function',
       'undefined',
     ]);
+    // Safari's own Web Audio where the engine has it (a Mac); elsewhere the counting stand-in above.
+    if (process.platform === 'darwin')
+      expect(
+        await b.evaluate(
+          () => (window as unknown as { __chatAudioStandIn?: boolean }).__chatAudioStandIn ?? false,
+        ),
+        'WebKit’s own Web Audio on a Mac',
+      ).toBe(false);
     await b.getByTestId('remote-tab-playlist').click();
     await expect(b.getByTestId('remote-playlist')).toBeVisible();
     const playlistBox = await b.getByTestId('remote-playlist').boundingBox();
@@ -287,7 +324,7 @@ test('the chat page (/chat): a phone in the chat opens it with its own pairing a
       const revoked = await d.network.revokeDevice(it?.id ?? '');
       if (!revoked.ok) throw new Error(revoked.message);
     });
-    await p.waitForURL(`${base}/pair?why=revoked`);
+    await p.waitForURL(`${base}/pair?why=revoked`, { timeout: 15_000 });
     await expect(p.getByTestId('pair-page')).toBeVisible();
   } finally {
     await phone.close();
@@ -310,6 +347,9 @@ test('a new phone scans the Chat QR: paired by itself for the chat alone, its na
     const invited = await win.evaluate(() => (globalThis as PageGlobals).drashti.chat.invite());
     if (!invited.ok || !invited.view.invite) throw new Error('no Chat QR');
     const p = phone.page;
+    // The page's own errors, none: this WebKit has no Web Audio on Windows (the sound simply is not made).
+    const errors: string[] = [];
+    p.on('pageerror', (error) => errors.push(error.message));
     // The QR's address (whatever core makes it: /pair#c= or /chat#c=) ends on the chat page.
     await p.goto(invited.view.invite.url.replace(/^https?:\/\/[^/]+/u, base));
     await p.waitForURL(`${base}/chat`);
@@ -343,7 +383,8 @@ test('a new phone scans the Chat QR: paired by itself for the chat alone, its na
       person?.id ?? '',
     );
     expect(removed.ok).toBe(true);
-    await p.waitForURL(`${base}/pair?why=revoked`);
+    await p.waitForURL(`${base}/pair?why=revoked`, { timeout: 15_000 });
+    expect(errors, 'the chat page’s own errors').toEqual([]);
   } finally {
     await phone.close();
     await app.close();
