@@ -1,10 +1,10 @@
 # Phones and network
 
-**Phones**, in the top bar, lets phones and tablets on the mandir's Wi-Fi work with Drashti: as a remote, as a stage display, or to send announcements. It needs no internet and costs nothing. Pair them in Pro Mode.
+**Phones**, in the top bar, lets phones and tablets on the mandir's Wi-Fi work with Drashti: as a remote, as a stage display, to send announcements, or to chat. It needs no internet and costs nothing. Pair them in Pro Mode.
 
 ## Phones and tablets
 
-**What it is.** The Phones panel: **Let paired phones and tablets connect**, the paired devices (each **Connected** or when it was last seen), **Pair a device**, and **Files from phones**.
+**What it is.** The Phones panel: **Let paired phones and tablets connect**, the paired devices (each **Connected** or when it was last seen), **Pair a device**, **Show the Chat QR code** and **Files from phones**.
 
 **When you would use it.** Before a sabha where a phone remote, a stage tablet or announcements are used.
 
@@ -78,17 +78,17 @@
 
 ## The chat
 
-**What it is.** One group chat for this computer and the phones paired with it, as a WhatsApp group: each message with its sender's name and time. It is kept for today only, and never shows on the screens or the stream.
+**What it is.** One group chat for this computer and the phones paired with it, as a WhatsApp group: each message with its sender's name and time. Phone remotes and Announcements devices are in it, and the phones that scan the **Chat QR code**. It goes over the mandir's Wi-Fi only, is kept for today only, and never shows on the screens or the stream.
 
-**When you would use it.** When volunteers with phones need to tell each other something during the sabha.
+**When you would use it.** When volunteers with phones need to tell each other, or the operator, something during the sabha.
 
 **How:**
 
 1. Open **Chat** under LIVE, below **Messages**.
-2. Type in the box and press **Send** (or Enter).
-3. For more people, press **Show the Chat QR code** in **Phones**, and let each phone scan it.
+2. Type in the box and press **Send** (or Enter). You write as **Operator**.
+3. For more people, press **Show the Chat QR code** in **Phones**, and let each phone scan it within 10 minutes.
 4. Folded, its heading shows how many new messages came in.
-5. **Clear chat** empties it for everyone. **Remove…** under **People in the chat** cuts a phone off.
+5. **Clear chat** empties it for everyone. **Remove…** under **People in the chat** cuts a phone off at once.
 
 ![The Phones panel](../screenshots/phones-panel.png)
 

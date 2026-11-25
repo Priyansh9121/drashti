@@ -25,7 +25,7 @@ So it opens like an app, from one tap:
 
 ![The live picture with your notes under it, on an iPhone](screenshots/phone-remote-notes.png)
 
-On a phone, **Show**, **Playlist**, **Library**, **More** and **Chat** along the bottom change what the page shows. On an iPad held upright, **Playlist**, **Library** and **Chat** are beside the show.
+On a phone, **Show**, **Playlist**, **Library**, **More** and **Chat** along the bottom change what the page shows.
 
 - **At the top: what is on the screens now**, with a red LIVE badge (or **Black-out** or **Wallpaper** while one of them covers the picture). With nothing up, it shows the wallpaper the operator chose, as the screens do. Under it are the lines the operator sees under LIVE: **File missing** when the live slide's background or sound is not there, **Moves on by itself in** with the time left when a slide moves on by itself, and **Timer for the audience** with its name and **Hide** while a timer is up on the hall's screens.
 - **While a video or a sound plays**, a time bar for it sits under the picture, named for what plays (**Background**, **Slide video**, **Slide sound**, **Box video**, **Sound**, **Music**): the time gone and the time left, with small marks for its start and end points and its markers. Tap or drag along it to move there: every screen moves with it as your finger lifts. **Pause** and **Play** are beside it, and under **Playing** are **Back 15 s**, **Forward 15 s** and the file's markers.
@@ -46,7 +46,7 @@ On a phone, **Show**, **Playlist**, **Library**, **More** and **Chat** along the
 
 ![The clears on a phone, in the operator's order with their keys: those with something to clear are lit](screenshots/phone-remote-clears.png)
 
-**On an iPad held sideways** (or a laptop): the live picture, your notes, what comes next and the clears are on the left, and the slides are on the right, with the Playlist, the Library and More (in two columns) a tab away above them; Back and Next run along the bottom. Held upright, the iPad shows the playlist or the library beside the show, and More under it. A phone held sideways keeps a phone's tabs, with Back, Next and the tabs at the right-hand side (since alpha.21), so the live picture and the rest have the screen's whole height.
+**On an iPad held sideways** (or a laptop): the live picture, your notes, what comes next and the clears are on the left, and the slides are on the right, with the Playlist, the Library, More (in two columns) and the Chat a tab away above them; Back and Next run along the bottom. Held upright, the iPad shows the playlist, the library or the chat beside the show, and More under it. A phone held sideways keeps a phone's tabs, with Back, Next and the tabs at the right-hand side (since alpha.21), so the live picture and the rest have the screen's whole height.
 
 ![An iPad held sideways: the live picture and notes beside the slides](screenshots/tablet-remote-sideways.png)
 
@@ -83,14 +83,15 @@ The operator can always change the screens from the computer too; your page foll
 
 ## The chat
 
-**Chat** is one group chat for everyone whose phone is paired with this Drashti computer today, as a WhatsApp group is: the operator, the Remote phones (in Simple Mode too), the Announcements phones, and the phones that scanned the operator's **Chat** QR code. It goes over the mandir's Wi-Fi to the Drashti computer only, never the internet, and never on the screens or the stream.
+**Chat** is one group chat for everyone whose phone is paired with this Drashti computer, as a WhatsApp group is: the operator, the Remote phones and iPads (in Simple Mode too), the Announcements phones, and the phones that scanned the operator's Chat QR code. Everyone in it sees every message and every name. It goes over the mandir's Wi-Fi to the Drashti computer only, never the internet, and it is never on the screens or the stream.
 
-- **The first time**, type **Your name in the chat** and tap **Join the chat**. Everyone sees it above your messages, and your phone remembers it. **Change name** changes it.
+- **The first time**, type your name under **Your name in the chat** and tap **Join the chat**. Everyone sees it above your messages, and your phone remembers it. **Change name**, then **Save name**, changes it. Only the operator is called **Operator**.
 - **The messages**: the newest at the bottom, each with the sender's name above it and the time under it; yours are on the right. The day's messages are there when you open the chat. Scrolled up to read, **New messages** takes you back down.
-- **To write**: type in **Message** (up to 500 characters, emoji too) and tap **Send**. **To speak instead**: tap 🎤 on your phone's keyboard, say the words, and when they are typed, tap **Send**. Drashti does not listen to the microphone itself: the keyboard types what you say.
-- **A new message from someone else** while the page is open: an Android phone buzzes, an iPhone plays a short sound, and a banner shows who it is from and the words (tap it to open **Chat**). The buzz and the sound only start once you have tapped the page once after opening it: phones allow neither before that. **Chat** shows how many you have not read. With the phone locked, or the browser put away, nothing buzzes: the messages are there when you open the page again.
-- **From the Chat QR code**: the phone opens a page with the chat alone. It works today only; tomorrow, scan the code again.
-- The chat is kept on the Drashti computer for the day only. The operator can clear it, and can remove a person from it (that phone is no longer paired).
+- **To write**: type in **Message** (up to 500 characters, emoji too) and tap **Send**. After a few at once, the page asks you to wait a moment.
+- **To speak instead**: the page says **Tap 🎤 on your keyboard to speak**. Tap the microphone on your phone's keyboard, say the words, and when they are typed, tap **Send**. Drashti never listens to your microphone: your keyboard types what you say (and, depending on your phone, may send your voice to the keyboard's maker, such as Apple or Google, to do it).
+- **A new message from someone else** while the page is open: an Android phone buzzes, an iPhone or iPad plays a short sound, and a banner shows who it is from and the words (tap it to open **Chat**). Neither starts until you have tapped the page once after opening it: phones allow neither before that. **Chat** shows how many you have not read. With the phone locked, or the browser put away, nothing comes: the messages are there when you open the page again.
+- **From the Chat QR code**: the phone opens **Drashti chat**, a page with the chat alone. It works for today only; tomorrow, scan a new code. A Remote phone needs none: its **Chat** tab is the same chat, and scanning the code never undoes its pairing.
+- The chat is kept on the Drashti computer for today only. The operator can clear it, and can remove a person from it (that phone is no longer paired).
 
 ## If something is not right
 
@@ -98,6 +99,7 @@ The operator can always change the screens from the computer too; your page foll
 - **"This device was removed"**: ask the operator to pair it again (a new code).
 - **"Drashti has stopped"** over the whole page: Drashti stopped on its computer because that computer's access was removed or ended, or could not be checked for 15 days (Drashti opens only for a Gmail its owner has let in, and checks over the internet). A video or a sound playing on your phone stops with it, and nothing on your page works until Drashti is started there again and let in: tell the operator. Your phone stays paired, and the page carries on by itself once Drashti is back.
 - **No buzz or sound for a new chat message**: tap the page once after opening it (phones allow neither before that). An iPhone never buzzes for a web page, and its sound follows the ring switch and the volume. With the phone locked, nothing comes until you open the page again.
+- **"That code is wrong or has expired"** after scanning the Chat QR code: it works for 10 minutes after the operator shows it. Ask for it again.
 - **The screen goes dark during the talk**: on an iPhone or iPad, **Settings**, **Display & Brightness**, **Auto-Lock**, and choose a longer time for the evening. Put it back afterwards.
 - **A button says it cannot be done**: the Drashti computer is probably in Simple Mode. There your phone starts with the playlist open on the computer: use **Playlist** to open another, the time bar under LIVE to pause, play or move what is playing, and **More** for **Audio**. Marker jumps, the stage screen's setup, timers, messages, lower thirds and setting up are Pro Mode's, and trimming and editing slides are done at the computer; taking things off the screens always works. With Pro access the page says how to switch the computer back to Pro Mode; with Simple-only access there is no way to Pro Mode.
   ![Simple Mode on the phone: what it does there, and a paused clip's time bar with Play](screenshots/phone-simple-controls-375x812.png)

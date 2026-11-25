@@ -28,8 +28,17 @@ const blocksOf = (file: string): Block[] => parseMarkdown(readFileSync(join(docs
 const led = (blocks: readonly Block[], words: string): Block[] =>
   blocks.filter(
     (b) =>
-      b.kind === 'paragraph' && b.children[0]?.kind === 'strong' && inlineText(b.children[0].children) === words,
+      b.kind === 'paragraph' &&
+      b.children[0]?.kind === 'strong' &&
+      inlineText(b.children[0].children) === words,
   );
+
+/** Those paragraphs, each with the list right under it (its points). */
+const ledWithList = (blocks: readonly Block[], words: string): Block[] =>
+  led(blocks, words).flatMap((p) => {
+    const next = blocks[blocks.indexOf(p) + 1];
+    return next?.kind === 'list' ? [p, next] : [p];
+  });
 
 /** A level-2 section's blocks: from its heading up to the next heading of level 2 or above. */
 function section(blocks: readonly Block[], title: string): Block[] {
@@ -37,9 +46,9 @@ function section(blocks: readonly Block[], title: string): Block[] {
     (b) => b.kind === 'heading' && b.level === 2 && inlineText(b.children) === title,
   );
   if (start < 0) return [];
-  const rest = blocks.slice(start + 1);
-  const end = rest.findIndex((b) => b.kind === 'heading' && b.level <= 2);
-  return [blocks[start] as Block, ...(end < 0 ? rest : rest.slice(0, end))];
+  const from = blocks.slice(start);
+  const end = from.findIndex((b, i) => i > 0 && b.kind === 'heading' && b.level <= 2);
+  return end < 0 ? from : from.slice(0, end);
 }
 
 /** Every word some blocks show, in order (headings, paragraphs, lists' items, tables). */
@@ -56,19 +65,22 @@ function textOf(blocks: readonly Block[]): string {
   return out.join('\n');
 }
 
-/** Every bold span's words in some blocks, in order. */
-function bold(blocks: readonly Block[]): string[] {
+/**
+ * Every bold span's words in some blocks, in order. `leads: false` leaves out the bold words a paragraph or a point
+ * starts with ("**The first time**, type…"): the guide's own words, not a name on a screen.
+ */
+function bold(blocks: readonly Block[], { leads = true }: { leads?: boolean } = {}): string[] {
   const out: string[] = [];
-  const inline = (list: readonly Inline[]) => {
-    for (const n of list)
-      if (n.kind === 'strong') {
-        out.push(inlineText(n.children));
-        inline(n.children);
-      }
+  const inline = (list: readonly Inline[], top: boolean) => {
+    list.forEach((n, i) => {
+      if (n.kind !== 'strong') return;
+      if (leads || !top || i > 0) out.push(inlineText(n.children));
+      inline(n.children, false);
+    });
   };
   const walk = (list: readonly Block[]) => {
     for (const b of list) {
-      if (b.kind === 'heading' || b.kind === 'paragraph') inline(b.children);
+      if (b.kind === 'heading' || b.kind === 'paragraph') inline(b.children, b.kind === 'paragraph');
       else if (b.kind === 'list') for (const item of b.items) walk(item.blocks);
     }
   };
@@ -79,7 +91,7 @@ function bold(blocks: readonly Block[]): string[] {
 /** The chat's passage in each guide and the Manual. */
 const passages = () => ({
   operator: led(blocksOf('operator-guide.md'), 'Chat.'),
-  admin: led(blocksOf('admin-guide.md'), 'The chat'),
+  admin: ledWithList(blocksOf('admin-guide.md'), 'The chat'),
   phone: section(blocksOf('presenter-guide.md'), 'The chat'),
   manual: section(blocksOf('manual/phones.md'), 'The chat'),
 });
@@ -128,7 +140,9 @@ describe('the chat’s words (alpha.23, QA23-CHAT-1)', () => {
   it('each guide and the Manual tell the chat in a passage of their own', () => {
     const found = passages();
     expect(found.operator, 'the operator’s guide: a paragraph led by **Chat.**').toHaveLength(1);
-    expect(found.admin, 'the admin’s guide: a paragraph led by **The chat**').toHaveLength(1);
+    expect(led(found.admin, 'The chat'), 'the admin’s guide: a paragraph led by **The chat**').toHaveLength(
+      1,
+    );
     expect(found.phone.length, 'the phone guide: ## The chat').toBeGreaterThan(1);
     expect(found.manual.length, 'the Manual’s Phones and network: ## The chat').toBeGreaterThan(1);
   });
@@ -136,12 +150,9 @@ describe('the chat’s words (alpha.23, QA23-CHAT-1)', () => {
   it('names in bold only what the window and the phone’s page show, as they show it', () => {
     const shown = chatSources();
     const found = passages();
-    const names = [...new Set(Object.values(found).flatMap((blocks) => bold(blocks)))];
+    const names = [...new Set(Object.values(found).flatMap((blocks) => bold(blocks, { leads: false })))];
     expect(names.length).toBeGreaterThan(5);
-    const unknown = names.filter(
-      // A passage's own lead ("The chat", "Chat.", "How:"…) is the guide's, not a name on the screen.
-      (n) => !/[.:]$/u.test(n) && n !== 'The chat' && !shown.includes(n) && !(n in OTHER_NAMES),
-    );
+    const unknown = names.filter((n) => !shown.includes(n) && !(n in OTHER_NAMES));
     expect(unknown).toEqual([]);
   });
 
@@ -182,8 +193,14 @@ describe('the chat’s words (alpha.23, QA23-CHAT-1)', () => {
       [/Clear chat/u, 'the operator empties it'],
       [/never written to a log/u, 'its words and names are never logged'],
       [/Remove…/u, 'the operator removes a person'],
-      [/iPhone[^.]*(?:no vibration|never (?:buzzes|vibrates))|no vibration[^.]*iPhone/u, 'an iPhone has no vibration'],
-      [/keyboard[^.]*(?:voice typing|microphone)|(?:voice typing|microphone)[^.]*keyboard/u, 'the keyboard’s voice typing'],
+      [
+        /iPhone[^.]*(?:no vibration|never (?:buzzes|vibrates))|no vibration[^.]*iPhone/u,
+        'an iPhone has no vibration',
+      ],
+      [
+        /keyboard[^.]*(?:voice typing|microphone)|(?:voice typing|microphone)[^.]*keyboard/u,
+        'the keyboard’s voice typing',
+      ],
     ];
     expect(facts.filter(([fact]) => !fact.test(text)).map(([, why]) => why)).toEqual([]);
   });
