@@ -318,6 +318,8 @@ describe('the phone’s open playlist', () => {
     const kept = () => tools.usePhoneTools.getState().docs.size;
     tools.usePhoneTools.setState({ docs: new Map([['deck', null]]) });
     changed('presentations');
+    // The change is read a moment later, its hall first (LIST_REFRESH_GAP_MS: a run of changes read once).
+    await vi.waitFor(() => expect(replies).toHaveLength(1));
     reply(0, null);
     await vi.waitFor(() => expect(kept()).toBe(0));
     tools.usePhoneTools.setState({ docs: new Map([['deck', null]]) });
