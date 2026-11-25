@@ -159,7 +159,18 @@ export async function refreshPlaylist(playlistId: string): Promise<void> {
   );
   if (r.ok && read === itemsRead && useRemote.getState().playlistId === playlistId) {
     useRemote.setState({ items: r.items });
+    catchUpLive();
   }
+}
+
+/**
+ * The live row, once the phone has its playlist's rows (CI run 45610620870): a phone that connects while a row is live
+ * showed its slides before it had the rows, so none was marked live and a slide tapped went up from no row.
+ */
+function catchUpLive(): void {
+  const { viewing } = useRemote.getState();
+  const v = liveViewing();
+  if (v?.item && viewing?.presentationId === v.presentationId && viewing.item === null) view(v, false);
 }
 
 async function loadDoc(presentationId: string): Promise<void> {
@@ -307,10 +318,15 @@ export function startRemote(): void {
     if (v) void loadDoc(v.presentationId);
   });
   onListsChanged((what) => {
-    if (what === 'playlists' || what === 'presentations') void loadPlaylists();
+    // The hall first (QA23-PHONE-1, CI run 45610620870): Drashti adopts Simple Mode's playlist, a 'playlists' change,
+    // before it says the mode changed, and a phone in Simple Mode reads no playlist or presentation.
+    if (what === 'playlists' || what === 'presentations')
+      void loadHall().then(() => {
+        void loadPlaylists();
+        const v = useRemote.getState().viewing;
+        if (what === 'presentations' && v) void loadDoc(v.presentationId);
+      });
     if (what === 'presentations') {
-      const v = useRemote.getState().viewing;
-      if (v) void loadDoc(v.presentationId);
       // The library changed: the list again if it was read, and the search again if one is up.
       const { library } = useRemote.getState();
       if (library.list) void loadLibrary();
