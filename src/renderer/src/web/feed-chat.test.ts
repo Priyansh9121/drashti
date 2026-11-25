@@ -82,6 +82,21 @@ describe('the feed brings the chat to its pages (QA23-CHAT-1)', () => {
     expect(other).toEqual([message]);
   });
 
+  it('a page that shows the chat says so in its hello (Drashti then sends it the chat)', () => {
+    feed.followChat();
+    feed.startFeed();
+    const socket = FakeSocket.made[0];
+    socket?.onopen?.();
+    expect(JSON.parse(socket?.sent[0] ?? '{}')).toMatchObject({ type: 'hello', chat: true });
+  });
+
+  it('a page that never shows the chat (the stage display) does not ask for it', () => {
+    feed.startFeed();
+    const socket = FakeSocket.made[0];
+    socket?.onopen?.();
+    expect(JSON.parse(socket?.sent[0] ?? '{}')).not.toHaveProperty('chat');
+  });
+
   it('a chat-only phone says hello with its token and is online, with no engine state ever coming', () => {
     const online = vi.fn();
     feed.onOnline(online);

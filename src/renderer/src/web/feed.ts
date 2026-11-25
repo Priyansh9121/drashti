@@ -69,6 +69,11 @@ export function onChatEvent(listener: (event: ChatEvent) => void): () => void {
   return () => chatListeners.delete(listener);
 }
 
+/** Red: not built yet. */
+export function followChat(): void {
+  return;
+}
+
 /** Called each time the feed is (back) online, so a page can read its lists again. */
 const onlineListeners = new Set<() => void>();
 export function onOnline(listener: () => void): () => void {
