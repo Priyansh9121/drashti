@@ -477,7 +477,7 @@ const PLACES = {
 } as const;
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the phone’s page laid out for a phone and a tablet, upright and held sideways, in ${engine === 'webkit' ? 'Safari’s' : 'Chrome’s'} engine, with everything up on the screens (each refused to it in words): axe, 44 px targets, nothing off the side, Back and Next in reach, and Add to Home Screen`, async () => {
+  test(`the phone’s page laid out for a phone and a tablet, upright and held sideways, in ${engine === 'webkit' ? 'Safari’s' : 'Chrome’s'} engine, with everything up on the screens (each refused to it in words): axe, 44 px targets, nothing off the side, its tabs in reach (no Back or Next for Repeat Slides), and Add to Home Screen`, async () => {
     test.setTimeout(240_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -580,13 +580,17 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
             expect.soft(await tooSmall(page), `targets under 44 px: ${place} on ${at}`).toEqual([]);
             expect.soft(await offTheSide(page), `off the side: ${place} on ${at}`).toEqual([]);
           }
-          // Back and Next always in reach, a phone held sideways too.
           if (size.layout === 'phone' || size.layout === 'sideways')
             await page.getByTestId('remote-tab-show').click();
           // LIVE's own line of what is live (Repeat Slides going round: "Moves on by itself"), there to be checked.
           await expect(page.getByTestId('remote-auto-advance')).toBeVisible();
-          await expect(page.getByTestId('remote-next-button')).toBeInViewport();
-          await expect(page.getByTestId('remote-back')).toBeInViewport();
+          // Repeat Slides going round is no PowerPoint or PDF: no Back or Next on a phone (QA23-PHONE-1; before it,
+          // always in reach). Its tabs are in reach instead, a phone held sideways too.
+          await expect(page.getByTestId('remote-next-button')).toHaveCount(0);
+          await expect(page.getByTestId('remote-back')).toHaveCount(0);
+          if (size.layout === 'phone' || size.layout === 'sideways')
+            for (const tab of ['remote-tab-show', 'remote-tab-playlist', 'remote-tab-chat'])
+              await expect(page.getByTestId(tab), `${tab} on ${at}`).toBeInViewport({ ratio: 1 });
           // Add to Home Screen: iOS's tags and Android Chrome's, and the icons they name.
           const tags = await page.evaluate(() =>
             Object.fromEntries(

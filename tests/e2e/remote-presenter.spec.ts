@@ -340,10 +340,14 @@ test('a presenter’s iPad held sideways: the live picture, the notes and Next b
     // The library beside it: refused (before alpha.23 a tab away).
     await expectPhoneRefuses({ win, page: t }, 'GET', '/api/v1/presentations', undefined, 'library');
 
-    // Held upright: the playlist beside the show.
+    // Held upright: the playlist beside the show. The iPad opened the first playlist when it connected (nothing was
+    // live then) and keeps its own choice (the owner's Q10: the playlist the phone opens), so the presenter opens the
+    // talk's list: its PDF's row (QA23-PHONE-1: a playlist's PowerPoints and PDFs only).
     await t.setViewportSize({ width: 810, height: 1080 });
     await expect(t.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
+    await t.getByTestId('remote-playlist').selectOption(list.playlistId);
     await expect(t.getByTestId('remote-items')).toBeVisible();
+    await expect(t.getByTestId('remote-items').getByTestId('remote-item')).toHaveCount(1);
     await expectNoSeriousA11yIssues(t, 'the playlist beside the show on an iPad held upright');
   } finally {
     await tablet.close();
