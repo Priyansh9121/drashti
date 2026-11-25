@@ -730,12 +730,12 @@ function SidePanel({ controls }: { controls: PhoneControls }) {
  * What the phone offers in Simple Mode (QA23-PHONE-1: the Sabha flow, what is on the screens and the chat), in the
  * network's own words for a phone there (phone-rule.ts). Dismissed, the note stays away until Simple Mode next comes on.
  */
-function SimpleNote() {
+function SimpleNote({ className }: { className: string }) {
   const simple = useSimple();
   const said = useRemote((s) => s.simpleSaid);
   if (!simple || said) return null;
   return (
-    <div className="shrink-0 px-4 pt-3">
+    <div className={className}>
       <Notice
         tone="info"
         role="status"
@@ -963,19 +963,23 @@ function Layout() {
   const show = (
     <ShowColumn state={state} simple={simple} controls={controls} sideways={sideways} withSlides />
   );
-  // A tap's notice and Simple Mode's note: over the middle (on a phone held sideways, over its column alone).
-  const notes = (
-    <>
-      {notice && (
-        <div className="shrink-0 px-4 pt-3">
-          <Notice tone="warning" onDismiss={() => useTapNotice.setState({ text: null })}>
-            {notice}
-          </Notice>
-        </div>
-      )}
-      <SimpleNote />
-    </>
-  );
+  // A tap's notice and Simple Mode's note: over the middle; on a phone held sideways, at the top of the middle itself,
+  // which scrolls (CI run 45610620870: over it they left the middle shorter than the live picture at 740 x 360).
+  const notes = (inMiddle: boolean) => {
+    const place = inMiddle ? 'mb-4' : 'shrink-0 px-4 pt-3';
+    return (
+      <>
+        {notice && (
+          <div className={place}>
+            <Notice tone="warning" onDismiss={() => useTapNotice.setState({ text: null })}>
+              {notice}
+            </Notice>
+          </div>
+        )}
+        <SimpleNote className={place} />
+      </>
+    );
+  };
   const tabbed = (
     <>
       {tab === 'show' && show}
@@ -1011,7 +1015,7 @@ function Layout() {
           />
         )}
       </header>
-      {!sideways && notes}
+      {!sideways && notes(false)}
       {layout === 'landscape' ? (
         // Held sideways: the live picture, the notes and what comes next beside the slides, the playlist or the chat.
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] gap-6 p-4">
@@ -1046,12 +1050,12 @@ function Layout() {
         // Held sideways: the middle the screen's whole height under the header, Back, Next and the tabs at its side.
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col">
-            {notes}
             <main
               className="relative min-h-0 flex-1 overflow-y-auto p-4"
               role="tabpanel"
               aria-label={TAB[tab].label}
             >
+              {notes(true)}
               {tabbed}
             </main>
           </div>
