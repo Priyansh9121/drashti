@@ -283,15 +283,17 @@ test('Simple Mode with Chat chosen: the section under Audio, reading and sending
   await expect(chat.getByTestId('chat-person')).toHaveCount(1);
   await expect(chat.getByTestId('chat-remove-person')).toHaveCount(0);
   await expectSectionFits(chat, 'Simple Mode’s Chat section at 1024 × 645');
-  // The live column's full rule too (operator-fit.spec.ts's fitFaults, a22-review-chat): Simple Mode's window with Chat
-  // and its people open, every scroller at its top and at its end. The names given here may be cut short with an
-  // ellipsis; Drashti's own words may not.
+  // The live column's full rule too (operator-fit.spec.ts's fitFaults, unchanged; a22-review-chat): the column the
+  // Chat section lives in, Simple Mode's LIVE column, with Chat and its people open, every scroller at its top and at
+  // its end. The names given here may be cut short with an ellipsis; Drashti's own words may not. The other columns
+  // stay operator-fit.spec.ts's (lead 2: Simple Mode's day playlist name in the left column is QA23-STAGE8-5's).
   const given = ['Placeholder Sender', 'Placeholder phone', 'Placeholder from Simple Mode'];
   for (const end of [false, true]) {
     await scrollEverything(win, end);
+    const inLive = (await fitFaults(win, given)).filter((fault) => fault.startsWith('the live column:'));
     expect(
-      await fitFaults(win, given),
-      `Simple Mode, Chat and its people open${end ? ', scrolled to the end' : ''}`,
+      inLive,
+      `Simple Mode's live column, Chat and its people open${end ? ', scrolled to the end' : ''}`,
     ).toEqual([]);
   }
   // Its Clear chat and Remove stay Pro Mode's in the main process too.
