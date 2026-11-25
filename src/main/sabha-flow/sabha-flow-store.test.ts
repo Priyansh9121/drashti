@@ -286,6 +286,30 @@ describe('Sabha flow store: Now, Replace, Remove and restarts', () => {
     });
   });
 
+  it('says each refusal truly: replaced, removed; and a Now overtaken by a newer one is not refused at all', async () => {
+    const s = setup();
+    const store = s.make();
+    await store.load();
+    await store.choose(s.pdf('First.pdf'));
+    // Two presses at once (Next, Next): each answered for itself, in turn, the newer last; neither said to be stale.
+    const [older, newer] = await Promise.all([store.setNow('flow-0001', 1), store.setNow('flow-0001', 2)]);
+    expect(older).toEqual({ ok: true, state: { flowId: 'flow-0001', now: 1 } });
+    expect(newer).toEqual({ ok: true, state: { flowId: 'flow-0001', now: 2 } });
+    expect(store.snapshot().state).toEqual({ flowId: 'flow-0001', now: 2 });
+    // Another PDF chosen: the old flow's Now is refused as replaced.
+    await store.choose(s.pdf('Second.pdf'));
+    expect(await store.setNow('flow-0001', 0)).toEqual({
+      ok: false,
+      message: 'The Sabha flow has been replaced since: Now was not moved.',
+    });
+    // Removed: said as removed, not as replaced.
+    await store.remove();
+    expect(await store.setNow('flow-0002', 0)).toEqual({
+      ok: false,
+      message: 'The Sabha flow has been removed since: Now was not moved.',
+    });
+  });
+
   it('remembers the flow and Now across a restart', async () => {
     const s = setup();
     const first = s.make();
