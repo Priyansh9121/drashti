@@ -580,6 +580,11 @@ export class PlaylistRepo {
     };
   }
 
+  /** The media in the playlists that crossfade (QA23-FADE-9 candidate 1: the videos page copies are made of). */
+  crossfadeMediaIds(): string[] {
+    return [];
+  }
+
   /** Reconcile during the edit that adds or removes rows, never during a show read. */
   private keepPlayOrder(playlistId: string): void {
     const options = this.playOptions(playlistId);

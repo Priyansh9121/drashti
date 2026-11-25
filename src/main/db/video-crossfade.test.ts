@@ -21,3 +21,31 @@ it('keeps crossfade seconds across reads without changing Shuffle, Repeat all or
     db.close();
   }
 });
+
+it('lists the videos of the playlists that crossfade, for their page copies (QA23-FADE-9 candidate 1)', () => {
+  const db = openDatabase(':memory:');
+  try {
+    for (const id of ['red', 'blue', 'green'])
+      db.prepare(
+        "INSERT INTO media (id, kind, name, path, playable, format) VALUES (?, 'video', ?, ?, 1, 'VP8 video (WebM)')",
+      ).run(id, `Placeholder ${id}.webm`, `${id}.webm`);
+    const repo = new PlaylistRepo(db);
+    const fading = repo.create('Placeholder fading', null, false);
+    const plain = repo.create('Placeholder plain', null, false);
+    if (!fading || !plain) throw new Error('No playlists');
+    expect(repo.crossfadeMediaIds(), 'none crossfades yet').toEqual([]);
+    expect(
+      repo.addItems(fading, null, [
+        { kind: 'media', mediaId: 'red' },
+        { kind: 'media', mediaId: 'blue' },
+      ]).ok,
+    ).toBe(true);
+    expect(repo.addItems(plain, null, [{ kind: 'media', mediaId: 'green' }]).ok).toBe(true);
+    repo.setPlayOptions(fading, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
+    expect(repo.crossfadeMediaIds().sort()).toEqual(['blue', 'red']);
+    repo.setPlayOptions(fading, { shuffle: false, repeatAll: false, crossfadeMs: 0 });
+    expect(repo.crossfadeMediaIds(), 'its crossfade off: none').toEqual([]);
+  } finally {
+    db.close();
+  }
+});
