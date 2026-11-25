@@ -307,18 +307,32 @@ test('wallpapers in the Playlists panel: pictures dropped or imported, anything 
   await later(59_000);
   await drawn();
   await expect(line).toContainText('Deleted the wallpaper “Placeholder darshan blue”');
+  // Its Undo, clicked with the mouse, works until then; the focus that click gives it does not keep the line past the
+  // minute (the review's F1): the line says the change before, then goes.
   await undoOnLine.click();
   await expect(tile(win, 'Placeholder darshan blue')).toBeVisible();
-  // The minute up with the keyboard on its Undo: the line stays (nothing takes the keyboard from it) until the
-  // keyboard leaves it.
-  await undoOnLine.focus();
+  await expect(line).toBeVisible();
   await later(1_000);
+  await expect(line).toHaveCount(0);
+  // A new change has a minute of its own. With the keyboard (Tab) on its Undo when the minute is up, the line stays
+  // (nothing takes the keyboard from it) until the keyboard leaves it.
+  await deleteBlue();
+  await undoOnLine.focus();
+  await win.keyboard.press('Shift+Tab');
+  await expect(undoOnLine).not.toBeFocused();
+  await win.keyboard.press('Tab');
+  await expect(undoOnLine).toBeFocused();
+  await later(60_000);
   await drawn();
   await expect(line).toBeVisible();
   await expect(undoOnLine).toBeFocused();
   await tile(win, 'Placeholder sunrise').focus();
   await expect(line).toHaveCount(0);
-  // A new change has a minute of its own; after it, the line gone, Edit > Undo still brings the wallpaper back.
+  // The line gone, Edit > Undo still brings the wallpaper back.
+  await chooseMenuItem(app, 'undo');
+  await expect(tile(win, 'Placeholder darshan blue')).toBeVisible();
+  await expect(line).toHaveCount(0);
+  // Once more, nothing on the line: there at 59.999 s, gone at 60 s, then Edit > Undo.
   await deleteBlue();
   await expect(undoOnLine).not.toBeFocused();
   await later(59_999);
