@@ -191,6 +191,14 @@ export function mediaUrl(mediaId: string, attempt = 0): string {
 }
 
 /**
+ * The URL of a video's page copy at a height (QA23-FADE-9 candidate 1, src/main/media/page-copies.ts): a smaller copy
+ * for a page that draws the video smaller (the stream page at its preset's height, the operator window at 540p).
+ */
+export function pageCopyUrl(mediaId: string, height: 720 | 540): string {
+  return `${MEDIA_SCHEME}://page/${mediaId}/${String(height)}`;
+}
+
+/**
  * The URL of a small JPEG of an image or video (a still frame), for
  * thumbnails. `version` changes the URL once a still has just been made.
  */

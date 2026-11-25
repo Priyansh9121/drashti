@@ -59,6 +59,8 @@ export interface MediaProtocolDeps {
   display?: (sha256: string, key: string) => string | null;
   /** A picture's blurred copy, relative to the media folder, if it is ready (Session 55, Part 5, D). */
   blurred?: (sha256: string) => string | null;
+  /** A video's page copy at a height, relative to the media folder, if it is ready (QA23-FADE-9 candidate 1). */
+  pageCopy?: (sha256: string, height: 720 | 540) => string | null;
   /**
    * A picture one of the guides shows (Sessions 31–36): its file in the guides' own folder, or null for a
    * name no guide shows. `dir` is that folder: the file must be inside it.
@@ -194,6 +196,8 @@ export { isInside } from './contained';
 export type MediaRequest =
   | { what: 'media'; mediaId: string }
   | { what: 'display'; mediaId: string; key: string }
+  /** A video's page copy at a height (QA23-FADE-9 candidate 1). */
+  | { what: 'page'; mediaId: string; height: 720 | 540 }
   | { what: 'still'; mediaId: string }
   /** A picture's sharpened copy (Session 26f), made at a step of 5 %. */
   | { what: 'sharp'; mediaId: string; step: number }
