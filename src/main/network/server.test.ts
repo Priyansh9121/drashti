@@ -18,6 +18,7 @@ import { lowerThirdSchema, NEW_LOWER_THIRD } from '../../shared/lower-thirds';
 import type { ToDevice } from '../../shared/network';
 import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
 import { PHONE_REFUSAL } from '../../shared/phone-rule';
+import type * as PhoneRule from '../../shared/phone-rule';
 import { alpha17LowerThirdSchema } from '../../shared/testing/alpha17-lower-third';
 import { NetworkServer, type ServerHost, SOCKET_LIMITS } from './server';
 import { hashToken } from './tokens';
@@ -25,6 +26,22 @@ import { hashToken } from './tokens';
 vi.mock('node:fs', async (original) => {
   const fs = await original<typeof NodeFs>();
   return { ...fs, createReadStream: vi.fn(fs.createReadStream) };
+});
+
+/**
+ * The phone rule (alpha.23, QA23-PHONE-1) in the network's process, stood aside while `ruleAside.on`: what this process
+ * did for a request a phone may no longer make (a file's original and its link, a body's own limit, the library's
+ * pages) stays until alpha.24 deletes it, and no other kind of device reaches it, so each such test proves a phone's
+ * refusal first, then that handling as before with the rule aside.
+ */
+const ruleAside = vi.hoisted(() => ({ on: false }));
+vi.mock('../../shared/phone-rule', async (original) => {
+  const rule = await original<typeof PhoneRule>();
+  return {
+    ...rule,
+    phoneOpRefusal: (...args: Parameters<typeof rule.phoneOpRefusal>) =>
+      ruleAside.on ? null : rule.phoneOpRefusal(...args),
+  };
 });
 
 /*
@@ -50,6 +67,7 @@ const devices: DeviceAuth[] = [
 let dir = '';
 let server: NetworkServer | null = null;
 afterEach(async () => {
+  ruleAside.on = false;
   await server?.stop();
   server = null;
   if (dir) rmSync(dir, { recursive: true, force: true });
@@ -160,6 +178,12 @@ function call(
 }
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+/** A phone's answer in the phone rule's words (QA23-PHONE-1). */
+const phoneRefused = (r: { status: number; body: string }, words: string, what: string) => {
+  expect(r.status, what).toBe(403);
+  expect(JSON.parse(r.body), what).toEqual({ ok: false, message: words });
+};
 
 /** A PNG read back: each chunk's CRC checked, its header, and its rows as stored (each with its filter byte first). */
 function readPng(png: Uint8Array): {
@@ -442,7 +466,7 @@ describe('the network server', () => {
     await expect(feed(outside.port)).rejects.toThrow(/403/u);
   });
 
-  it('needs a token for anything with data, and lets each kind of device do only its own things', async () => {
+  it('needs a token for anything with data, and lets each kind of device do only its own things; never a phone the library’s pages or its search (QA23-PHONE-1)', async () => {
     const { port, host } = await start();
     const none = await call(port, '/api/v1/me');
     expect(none.status).toBe(401);
@@ -519,7 +543,15 @@ describe('the network server', () => {
         })
       ).status,
     ).toBe(404);
-    // The presenter's remote (Session 18): the library a page at a time, and searched, by query string.
+    // A phone (QA23-PHONE-1, the owner's Q2: the playlist only): neither the library's pages nor its search, in the
+    // phone rule's words, the main process never asked.
+    const askedBefore = host.requests.length;
+    for (const path of ['/api/v1/presentations?offset=100&limit=50', '/api/v1/search?q=placeholder%20words'])
+      phoneRefused(await call(port, path, { headers: bearer(REMOTE_TOKEN) }), PHONE_REFUSAL.notDeck, path);
+    expect(host.requests).toHaveLength(askedBefore);
+    // With the rule aside, as the presenter's remote had them (Session 18): a page at a time, and searched, by query
+    // string.
+    ruleAside.on = true;
     expect(
       (await call(port, '/api/v1/presentations?offset=100&limit=50', { headers: bearer(REMOTE_TOKEN) }))
         .status,
@@ -532,6 +564,7 @@ describe('the network server', () => {
       (await call(port, '/api/v1/search?q=placeholder%20words', { headers: bearer(REMOTE_TOKEN) })).status,
     ).toBe(200);
     expect(host.requests.at(-1)).toMatchObject({ op: 'search', args: { query: 'placeholder words' } });
+    ruleAside.on = false;
     expect((await call(port, '/api/v1/search?q=x', { headers: bearer(STAGE_TOKEN) })).status).toBe(403);
     expect(
       (await call(port, '/api/v1/presentations', { method: 'POST', headers: bearer(REMOTE_TOKEN) })).status,
@@ -774,7 +807,7 @@ describe('the network server', () => {
   });
 });
 
-it('fits a thousand playlist IDs in one paired Undo request under its own body limit', async () => {
+it('refuses a phone a playlist’s Undo and a new playlist before their bodies are read (QA23-PHONE-1); with the rule aside, fits a thousand playlist IDs in one paired Undo request under its own body limit', async () => {
   const { host, port } = await start();
   const ids = Array.from(
     { length: 1000 },
@@ -783,6 +816,11 @@ it('fits a thousand playlist IDs in one paired Undo request under its own body l
   const body = JSON.stringify({ ids });
   const headers = { ...bearer(REMOTE_TOKEN), 'Content-Type': 'application/json' };
   expect(Buffer.byteLength(body)).toBeGreaterThan(16 * 1024);
+  // A phone: the library's changes are the computer's; a body over any limit is never read (403, not 413).
+  for (const path of ['/api/v1/playlists/restore', '/api/v1/playlists/new'])
+    phoneRefused(await call(port, path, { method: 'POST', headers, body }), PHONE_REFUSAL.computer, path);
+  expect(host.requests).toEqual([]);
+  ruleAside.on = true;
   const restore = await call(port, '/api/v1/playlists/restore', { method: 'POST', headers, body });
   expect(restore.status).toBe(200);
   const request = host.requests[0];
@@ -866,8 +904,16 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
     ).toBe(400);
   });
 
-  it('streams a video’s own file to a Remote in pieces, by its token or a link made for it, and to no other kind', async () => {
-    const { port } = await withMedia();
+  it('refuses a Remote a video’s own file and its link in the phone rule’s words (QA23-PHONE-1); with the rule aside, streams it to a Remote in pieces, by its token or a link made for it, and to no other kind', async () => {
+    const { port, host } = await withMedia();
+    for (const path of ['/api/v1/media/m-video/original', '/api/v1/media/m-video/link'])
+      phoneRefused(
+        await call(port, path, { headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-10' } }),
+        PHONE_REFUSAL.media,
+        path,
+      );
+    expect(host.requests).toEqual([]);
+    ruleAside.on = true;
     const piece = await call(port, '/api/v1/media/m-video/original', {
       headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-10' },
     });
@@ -900,8 +946,14 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
     );
   });
 
-  it('refuses a link for another file, with a token beside it, made up, or once its device is removed', async () => {
+  it('refuses a Remote a link (QA23-PHONE-1), and one made with the rule aside once it is back; with the rule aside, refuses a link for another file, with a token beside it, made up, or once its device is removed', async () => {
     const { port, server: s } = await withMedia();
+    phoneRefused(
+      await call(port, '/api/v1/media/m-video/link', { headers: bearer(REMOTE_TOKEN) }),
+      PHONE_REFUSAL.media,
+      'link',
+    );
+    ruleAside.on = true;
     const made = await call(port, '/api/v1/media/m-video/link', { headers: bearer(REMOTE_TOKEN) });
     const { url } = JSON.parse(made.body) as { url: string };
     const ticket = url.split('link=')[1] ?? '';
@@ -923,18 +975,34 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
     ).toBe(401);
     // The device removed in Drashti: its links stop at once.
     expect((await call(port, url)).status).toBe(200);
+    // The rule back: the link made while it was aside plays nothing, its token-less request a phone's too.
+    ruleAside.on = false;
+    phoneRefused(await call(port, url), PHONE_REFUSAL.media, 'a link made with the rule aside');
+    ruleAside.on = true;
     s.setDevices(devices.filter((d) => d.id !== 'd-remote'));
     expect((await call(port, url)).status).toBe(401);
   });
 
-  it('streams a sound’s own file to a Remote only while a playlist shared with phones has it (D3)', async () => {
+  it('refuses a Remote a sound’s own file and its link, the main process never asked (QA23-PHONE-1); with the rule aside, streams it to a Remote only while a playlist shared with phones has it (D3)', async () => {
     const { port, host } = await withMedia();
     const TONE = 'Placeholder tone bytes. '.repeat(20);
     const tone = join(dir, 'placeholder-tone.wav');
     writeFileSync(tone, TONE);
     // The stand-in main process: the sound while its playlist is shared, nothing once it is not.
     let shared = true;
-    host.sharedSound = (mediaId) => Promise.resolve(mediaId === 'm-sound' && shared ? tone : null);
+    const soundsAsked: string[] = [];
+    host.sharedSound = (mediaId) => {
+      soundsAsked.push(mediaId);
+      return Promise.resolve(mediaId === 'm-sound' && shared ? tone : null);
+    };
+    for (const path of ['/api/v1/media/m-sound/original', '/api/v1/media/m-sound/link'])
+      phoneRefused(
+        await call(port, path, { headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-9' } }),
+        PHONE_REFUSAL.media,
+        path,
+      );
+    expect(soundsAsked).toEqual([]);
+    ruleAside.on = true;
     const piece = await call(port, '/api/v1/media/m-sound/original', {
       headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-9' },
     });
@@ -1097,13 +1165,21 @@ describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
     again.ws.close();
   });
 
-  it('cuts off a file still being sent the moment Drashti stops, or its device is removed', async () => {
+  it('never starts sending a phone a video’s file (QA23-PHONE-1); with the rule aside, cuts off a file still being sent the moment Drashti stops, or its device is removed', async () => {
     const { port, host, server: s } = await start();
     // A video's original, far larger than what a connection holds unread.
     const big = join(dir, 'placeholder-big.mp4');
     writeFileSync(big, Buffer.alloc(24 * 1024 * 1024, 7));
     host.mediaSource = (mediaId) =>
       Promise.resolve(mediaId === 'm-video' ? { path: big, kind: 'video' as const } : null);
+    phoneRefused(
+      await call(port, '/api/v1/media/m-video/original', {
+        headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-' },
+      }),
+      PHONE_REFUSAL.media,
+      'the whole file',
+    );
+    ruleAside.on = true;
     /** A <video>'s request for the whole file, read slowly (here: not at all until told). */
     const playing = () => {
       let answer: IncomingMessage | null = null;
@@ -1149,16 +1225,19 @@ describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
     expect((await second.ended).complete).toBe(false);
   });
 
-  it('refuses every request, those answered here too: pairing, the state, a command, a preview, a picture, an original, a link, an upload', async () => {
+  it('refuses every request, those answered here too: pairing, the state, a command, a preview, a picture, an original, a link, an upload (the link made with the phone rule aside, QA23-PHONE-1)', async () => {
     const started = await start();
     const { port, host, server: s } = started;
     const video = join(dir, 'placeholder-clip.mp4');
     writeFileSync(video, 'Placeholder clip bytes. '.repeat(10));
     host.mediaSource = (mediaId) =>
       Promise.resolve(mediaId === 'm-video' ? { path: video, kind: 'video' as const } : null);
-    // A link made while let in: a <video>'s way to the file, without the token.
+    // A link made while let in, with the phone rule aside (a phone is refused one: QA23-PHONE-1): a <video>'s way to
+    // the file, without the token.
+    ruleAside.on = true;
     const made = await call(port, '/api/v1/media/m-video/link', { headers: bearer(REMOTE_TOKEN) });
     expect(made.status).toBe(200);
+    ruleAside.on = false;
     const { url } = JSON.parse(made.body) as { url: string };
     const asked = host.requests.length;
     s.setLetIn(false);
@@ -1193,9 +1272,10 @@ describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
     expect(host.requests.length).toBe(asked);
     // The pages themselves still load, to say so.
     expect((await call(port, '/remote')).status).toBe(200);
-    // Let in again (as a new start would be): as before.
+    // Let in again (as a new start would be): as before, and the link a phone's request, so refused.
     s.setLetIn(true);
     expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
+    phoneRefused(await call(port, url), PHONE_REFUSAL.media, 'the link once let in again');
   });
 });
 
