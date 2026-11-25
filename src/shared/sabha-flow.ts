@@ -63,6 +63,11 @@ export interface SabhaFlow {
   headers: string[];
   items: SabhaFlowItem[];
   total?: string;
+  /**
+   * With 'no-items': the PDF holds more text than a running order does (over SABHA_FLOW_LIMITS' reading caps), so none
+   * of it was read: say so ("This PDF has more text than a running order holds"), not that it has no numbered items.
+   */
+  tooMuchText?: true;
 }
 
 /**
@@ -70,7 +75,7 @@ export interface SabhaFlow {
  * counts).
  */
 export type SabhaFlowReading = Pick<SabhaFlow, 'status' | 'lang' | 'headers' | 'items'> &
-  Partial<Pick<SabhaFlow, 'title' | 'subtitle' | 'total'>>;
+  Partial<Pick<SabhaFlow, 'title' | 'subtitle' | 'total' | 'tooMuchText'>>;
 
 /** What a PDF whose words could not be read reads as: its pages are shown. */
 export const UNREADABLE_READING: SabhaFlowReading = {
@@ -130,6 +135,7 @@ const readingShape = {
   headers: z.array(text).max(SABHA_FLOW_LIMITS.maxColumns),
   items: z.array(sabhaFlowItemSchema).max(SABHA_FLOW_LIMITS.maxItems),
   total: text.optional(),
+  tooMuchText: z.literal(true).optional(),
 };
 
 /** What the pictures window's reader hands Main (checked there), as it reads a PDF's text layer. */

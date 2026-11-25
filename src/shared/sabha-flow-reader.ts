@@ -317,8 +317,8 @@ export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
   if (odd > UNREADABLE_SHARE * chars) return nothing('unreadable');
   const texts = raw.map((f) => f.s);
   const lang = langOf(texts);
-  // More text than a running order ever holds: none is read (its pages are shown).
-  if (tooMuch) return nothing('no-items', lang);
+  // More text than a running order ever holds: none is read (its pages are shown), and it is said as that.
+  if (tooMuch) return { ...nothing('no-items', lang), tooMuchText: true };
   if (lang !== 'gu' && lang !== 'hi' && oldTypingFont(texts)) return nothing('unreadable');
   // A character that would draw as a box is left out of the words.
   raw = raw
@@ -345,7 +345,7 @@ export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
   // More lines starting with a number than a running order ever has: none is read.
   let numberedLines = 0;
   for (const line of lines) if (NUMBER_START.test(line.frags[0]?.s.trim() ?? '')) numberedLines++;
-  if (numberedLines > FLOW_READ_LIMITS.numbered) return nothing('no-items', lang);
+  if (numberedLines > FLOW_READ_LIMITS.numbered) return { ...nothing('no-items', lang), tooMuchText: true };
   const textOf = (line: Line) => joined(line.frags);
   const pitch = median(
     lines.slice(1).map((line, k) => line.y - (lines[k]?.y ?? 0)),
