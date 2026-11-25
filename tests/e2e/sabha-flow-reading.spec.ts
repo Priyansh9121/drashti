@@ -23,6 +23,7 @@ import {
   seen,
   seenAll,
   STATUS_PHRASE,
+  TYPING_FONT,
   UNREADABLE,
   writeFlows,
 } from './sabha-flow';
@@ -33,10 +34,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * should read the pdf, which can be in english, gujarati,and hindi. and say whats on number 1, 2, 3, 4, 5 and so on"):
  * what Drashti reads from a running order, the same in the operator window's panel and on a paired phone. English,
  * Gujarati and Hindi tables and a numbered list, each item in its own language (its lang), a merged cell on every row
- * it covers, the title and the total; and a PDF it cannot read (a scan, fonts with no Unicode map, words with no
- * numbered items) said plainly, in the same words on both, with its page alone. Chosen and replaced with the panel's
- * own buttons (Main's file dialog answered by the test), read by the real pictures window. Placeholder PDFs made by the
- * test (tests/e2e/sabha-flow.ts), never a real running order.
+ * it covers, the title and the total; and a PDF it cannot read (a scan, fonts with no Unicode map, an old typing font's
+ * ASCII, words with no numbered items) said plainly, in the same words on both, with its page alone. Chosen and replaced
+ * with the panel's own buttons (Main's file dialog answered by the test), read by the real pictures window. Placeholder
+ * PDFs made by the test (tests/e2e/sabha-flow-fixtures.ts), never a real running order.
  */
 
 /** Every word an item shows (its number and each cell that says something). */
@@ -140,9 +141,9 @@ test('English, Gujarati and Hindi tables and a numbered list, chosen and replace
   }
 });
 
-test('A PDF Drashti cannot read is said so plainly, in the same words on the panel and a paired phone, with its page alone and no Now or Next up: a scan, fonts with no Unicode map, words with no numbered items; a readable one brings the read list back on both', async () => {
+test('A PDF Drashti cannot read is said so plainly, in the same words on the panel and a paired phone, with its page alone and no Now or Next up: a scan, fonts with no Unicode map, an old typing font’s ASCII, words with no numbered items; a readable one brings the read list back on both', async () => {
   test.setTimeout(240_000);
-  const files = await writeFlows({ ENGLISH, SCAN, UNREADABLE, NO_ITEMS });
+  const files = await writeFlows({ ENGLISH, SCAN, UNREADABLE, TYPING_FONT, NO_ITEMS });
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -161,6 +162,7 @@ test('A PDF Drashti cannot read is said so plainly, in the same words on the pan
     for (const [key, f] of [
       ['SCAN', SCAN],
       ['UNREADABLE', UNREADABLE],
+      ['TYPING_FONT', TYPING_FONT],
       ['NO_ITEMS', NO_ITEMS],
     ] as const) {
       if (f.status === 'read') throw new Error(`${f.fileName} is meant not to be read`);

@@ -196,6 +196,30 @@ export const UNREADABLE: FlowFixture = {
   items: [],
 };
 
+/**
+ * Hindi typed in an old typing font that is not Unicode: its text layer is the keys pressed, plain ASCII that means
+ * nothing as English (a22-flow-core's S1 shape: placeholder words, "sample programme" and the like, as those keys).
+ */
+export const TYPING_FONT: FlowFixture = {
+  fileName: 'Flowcheck typing font order.pdf',
+  pages: [
+    flowTablePage({
+      title: 'uewuk dk;Zdze',
+      headers: ['dze', 'dk;Zdze', 'fooj.k', 'le;', 'oDrk'],
+      widths: FIVE,
+      rows: [
+        ['1', 'izFke dk;Zdze', 'uewuk fooj.k', '5 feuV', 'oDrk ,d'],
+        ['2', 'f}rh; dk;Zdze', 'uewuk', '10 feuV', 'oDrk nks'],
+        ['3', 'r`rh; dk;Zdze', 'uewuk', '5 feuV', 'oDrk rhu'],
+      ],
+      total: 'dqy le;% 20 feuV',
+    }),
+  ],
+  status: 'unreadable',
+  lang: 'mixed',
+  items: [],
+};
+
 /** Readable words, but no numbered item among them. */
 export const NO_ITEMS: FlowFixture = {
   fileName: 'Flowcheck notice.pdf',
