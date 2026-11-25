@@ -44,6 +44,16 @@ async function where(win: Page) {
   return { presentationId: state.live.presentationId, slideIndex: state.layers.slide?.slideIndex ?? null };
 }
 
+/** The hall's screen draws the slide live now: by its id (a PDF's page is a picture, with no words to read). */
+async function hallDrawsLive(win: Page, output: Page): Promise<void> {
+  const id = await win.evaluate(
+    async () =>
+      (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide?.slide.id ?? '',
+  );
+  expect(id, 'a slide is live').not.toBe('');
+  await expect(output.locator(`[data-layer="slide"] [data-slide="${id}"]`).first()).toBeVisible();
+}
+
 /** The presenter's PDF: three placeholder pages, the first two with notes (their comments). */
 const presenterPdf = (win: Page) =>
   placeholderPdf(win, 'Placeholder presenter PDF', [
@@ -117,7 +127,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
           .status,
       ).toBe(200);
       await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 0 });
-      await expect(output.locator('[data-layer="slide"]')).toBeVisible();
+      await hallDrawsLive(win, output);
       await phoneShowsLive(p, win);
 
       // The live slide's notes, and the next slide's, under the live picture.
@@ -125,6 +135,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('remote-notes-next')).toHaveText(`Next: ${NOTE_TWO}`);
       await p.getByTestId('remote-next-button').click();
       await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 1 });
+      await hallDrawsLive(win, output);
       await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_TWO);
       await expect(p.getByTestId('remote-notes-next')).toHaveText('Next: no notes');
       await p.getByTestId('remote-back').click();
@@ -151,6 +162,12 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
         await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex });
       }
       await p.getByTestId('remote-next-button').click();
+      // A Next with no revision of its own (the review's MUST-2): a tap's carries the revision its page saw, and the
+      // engine lets an older one do nothing (TST-11), so only Next's `within` (the main process's) keeps the deck still.
+      expect(await phoneAsks(p, 'POST', '/api/v1/trigger/next', {})).toMatchObject({
+        status: 200,
+        json: { ok: true, changed: false },
+      });
       await holdStill(
         async () => {
           const now = await where(win);
@@ -304,7 +321,7 @@ test('a presenter’s iPad held sideways: the live picture, the notes and Next b
       ).status,
     ).toBe(200);
     await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 0 });
-    await expect(output.locator('[data-layer="slide"]')).toBeVisible();
+    await hallDrawsLive(win, output);
     await expect(presenter.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
     await expect(presenter.getByTestId('remote-notes-next')).toHaveText(`Next: ${NOTE_TWO}`);
     await phoneShowsLive(t, win);

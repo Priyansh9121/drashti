@@ -241,6 +241,12 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       await page.getByTestId('remote-next-button').click();
       await expect.poll(async () => (await current(win))?.step).toBe(1);
       await page.getByTestId('remote-next-button').click();
+      // A Next with no revision of its own (the review's MUST-2): a tap's carries the revision its page saw, and the
+      // engine lets an older one do nothing (TST-11), so only Next's `within` (the main process's) keeps the deck still.
+      expect(await phoneAsks(page, 'POST', '/api/v1/trigger/next', {})).toMatchObject({
+        status: 200,
+        json: { ok: true, changed: false },
+      });
       await holdStill(
         async () => {
           const now = await current(win);

@@ -184,6 +184,8 @@ test('one layout for every stage screen: the Stage screen panel’s Layout chang
     await expect(picker).toHaveValue(band);
     await picker.selectOption({ label: 'Placeholder other' });
     await expect(picker).toHaveValue(other);
+    await expect.poll(() => shows(one)).toBe(`layout ${other}`);
+    await expect.poll(() => shows(two)).toBe(`layout ${other}`);
   } finally {
     await phone.close();
   }

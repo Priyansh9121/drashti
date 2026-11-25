@@ -20,8 +20,8 @@ import {
  * never refused), remembered on this computer. Every stage screen shows them at once, wherever the message shows
  * (the Standard stage screen, the operator's preview, a layout's message box, the banner, Stage off's picture). The
  * flash keeps its rhythm, with white (amber for a white box), its words readable in both. A message sent with no
- * colours of its own (OSC, the API; a phone and its Shown before until alpha.23, which refuses a phone the stage
- * message, QA23-PHONE-1) shows the colours chosen on this computer (alpha.22), amber and black until others are;
+ * colours of its own (OSC; a phone, its Shown before and the HTTP API until alpha.23, which refuses every Remote the
+ * stage message, QA23-PHONE-1) shows the colours chosen on this computer (alpha.22), amber and black until others are;
  * colours the API gives win. Placeholder words only.
  */
 
@@ -172,7 +172,7 @@ test('the stage message in the colours chosen, a preset or its own, on every sta
   await app.close();
 });
 
-test('a stage message sent with no colours, as the API and OSC send it, or again from Shown before, shows the colours chosen on this computer (amber and black, its flash white, until others are); colours the API gives win; a paired phone is refused it', async () => {
+test('a stage message sent with no colours, as OSC sends it, or again from Shown before, shows the colours chosen on this computer (amber and black, its flash white, until others are); colours the API gives win; a paired phone is refused it', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...SCREENS, ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -198,7 +198,8 @@ test('a stage message sent with no colours, as the API and OSC send it, or again
   expect(await stageCall(win)).not.toHaveProperty('boxColor');
 
   // Blue chosen on this computer: a paired phone's message (and its Shown before) is refused, the stage as it was;
-  // the same message with no colours, as the API and OSC send it (moved from the phone), shows it on the stage, and so
+  // the same message with no colours, as OSC sends it (moved from the phone; the HTTP API's is refused to every Remote
+  // since alpha.23), shows it on the stage, and so
   // does a tap on the Stage screen panel's Shown before; amber chosen again, the next one is amber with black words.
   await choice.selectOption({ label: 'Blue, white words' });
   const { base } = await networkOn(win);

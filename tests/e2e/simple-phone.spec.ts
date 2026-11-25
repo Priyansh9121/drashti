@@ -414,13 +414,24 @@ test('a Simple Mode phone is refused choosing a playlist’s rows, the time bar 
     );
     expect(restored.ok).toBe(true);
     await expect.poll(async () => (await items()).map((i) => i.id)).toEqual(before);
+    // The picture's name as the library has it: the phone's Rename refused leaves it, the window's changes it.
+    const pictureName = (id: string) =>
+      win.evaluate(
+        async (mediaId) =>
+          (await (globalThis as PageGlobals).drashti.library.listMedia()).find((m) => m.id === mediaId)?.name,
+        id,
+      );
+    const nameBefore = await pictureName(show.pictureMediaId);
+    expect(nameBefore).not.toBe('Placeholder backdrop, simple');
     await expectPhoneRefuses(
       asks,
       'POST',
       `/api/v1/media/${show.pictureMediaId}/rename`,
       { name: 'Placeholder backdrop, simple' },
       'media',
+      () => pictureName(show.pictureMediaId),
     );
+    expect(await pictureName(show.pictureMediaId)).toBe(nameBefore);
     const renamed = await win.evaluate(
       (id) => (globalThis as PageGlobals).drashti.media.rename(id, 'Placeholder backdrop, simple'),
       show.pictureMediaId,
@@ -553,7 +564,20 @@ test('a Simple Mode phone is refused Audio in words: an audio playlist made, its
     expect(back.ok).toBe(true);
     await expect.poll(async () => (await tracks()).length).toBe(2);
     // Music steps aside, Loop and Shuffle: the phone's refused; the options set in the window.
-    await expectPhoneRefuses(asks, 'POST', '/api/v1/music/steps-aside', { on: false }, 'media');
+    // Music steps aside (on by default): the phone's Off refused, the switch as it was; turned off and on again in
+    // the window (moved from the phone), as Simple Mode's switch does.
+    const stepsAside = async () =>
+      (await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.view())).stepsAside;
+    expect(await stepsAside()).toBe(true);
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/music/steps-aside', { on: false }, 'media', stepsAside);
+    for (const on of [false, true]) {
+      const turned = await win.evaluate(
+        (on) => (globalThis as PageGlobals).drashti.sound.setStepsAside(on),
+        on,
+      );
+      expect(turned.ok).toBe(true);
+      await expect.poll(stepsAside).toBe(on);
+    }
     await expectPhoneRefuses(
       asks,
       'POST',

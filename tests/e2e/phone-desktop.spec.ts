@@ -19,6 +19,7 @@ import {
   importAndGetIds,
   launchApp,
   needsRealScreen,
+  openSection,
   operatorPage,
   operatorReady,
   outputPages,
@@ -380,17 +381,21 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           );
           await expectPhoneRefuses(asks, 'GET', '/api/v1/windows', undefined, 'computer');
           if (index === 0) {
-            // In the window (moved from the phone): named from the cameras the computer lists, the fake one.
-            const added = await win.evaluate(
-              (device) =>
-                (globalThis as PageGlobals).drashti.videoInputs.add({
-                  name: 'Placeholder input',
-                  device,
-                  fit: 'fit',
-                }),
-              FAKE_CAMERA,
-            );
-            expect(added.ok).toBe(true);
+            // In the window's Add a Video Input… (moved from the phone): named from the cameras the computer lists,
+            // the fake one among them.
+            await openSection(win, 'video-inputs');
+            await win.getByTestId('add-video-input').click();
+            const dialog = win.getByTestId('video-input-dialog');
+            const camera = dialog
+              .getByTestId('video-input-device')
+              .and(dialog.locator(`[data-name="${FAKE_CAMERA}"]`));
+            await expect(camera).toBeVisible({ timeout: 15_000 });
+            await camera.click();
+            await expect(dialog.getByTestId('video-input-name')).toHaveValue('Input 1');
+            await dialog.getByTestId('video-input-name').fill('Placeholder input');
+            await expect(dialog.getByTestId('video-input-fit')).toHaveValue('fit');
+            await dialog.getByTestId('video-input-save').click();
+            await expect(dialog).toHaveCount(0);
             await expect
               .poll(inputs)
               .toEqual([
@@ -594,9 +599,11 @@ test('in Simple Mode a phone is refused every screens request in words, reading,
       ['/api/v1/switches/stage', { on: true }],
       ['/api/v1/video-inputs', { name: 'Input 1', device: 'Placeholder camera', fit: 'fit' }],
     ];
+    // What each change would change: the screens, or Media's video inputs (the review: a reader that can see it).
+    const reader = (path: string) => (path === '/api/v1/video-inputs' ? () => inputsNow(win) : screens);
     for (const [path, body] of changes) {
-      await expectPhoneRefuses({ win, page: p }, 'POST', path, body, 'computer', screens);
-      await expectPhoneRefuses({ win, port, token }, 'POST', path, body, 'computer', screens);
+      await expectPhoneRefuses({ win, page: p }, 'POST', path, body, 'computer', reader(path));
+      await expectPhoneRefuses({ win, port, token }, 'POST', path, body, 'computer', reader(path));
     }
     for (const path of ['/api/v1/screens', '/api/v1/video-inputs', '/api/v1/windows'])
       await expectPhoneRefuses({ win, port, token }, 'GET', path, undefined, 'computer');
@@ -608,7 +615,26 @@ test('in Simple Mode a phone is refused every screens request in words, reading,
     expect(
       await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder Stage')),
     ).toMatchObject({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    // The group renamed, given another role, given a display and deleted, and a video input added: each refused in
+    // the window too, in its words, as the phone was before alpha.23.
+    const refusedInWindow = await win.evaluate(
+      async ({ groupId, displayId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        return [
+          await d.screens.renameGroup(groupId, 'Placeholder renamed'),
+          await d.screens.setGroupRole(groupId, 'stage'),
+          await d.screens.assignDisplay(groupId, displayId),
+          await d.screens.deleteGroup(groupId),
+          await d.videoInputs.add({ name: 'Input 1', device: 'Placeholder camera', fit: 'fit' }),
+        ];
+      },
+      { groupId, displayId: PRETEND },
+    );
+    for (const result of refusedInWindow)
+      expect(result).toMatchObject({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(await inputsNow(win)).toEqual([]);
     expect((await screens()).groups.map((g) => g.name)).toEqual(['Placeholder Hall']);
+    expect((await screens()).groups.flatMap((g) => g.screens)).toEqual([]);
     expect(
       await win.evaluate(() => (globalThis as PageGlobals).drashti.screenSwitches.turn('stage', false)),
     ).toMatchObject({ ok: false, message: ONLY_ON_IN_SIMPLE_MODE });
@@ -871,7 +897,7 @@ const presentationNames = (win: Page) =>
 const inWindow = async (result: Promise<{ ok: boolean }>) => expect((await result).ok).toBe(true);
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the library changed in the window: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back; a phone at 375 × 812 and 768 × 1024 is refused each in words, in Pro Mode and Simple Mode (${engine})`, async () => {
+  test(`the library changed in the window: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back; a phone at 375 × 812 and 768 × 1024 is refused a playlist made, and a Remote script each change, in words, in Pro Mode and Simple Mode (${engine})`, async () => {
     test.setTimeout(240_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -890,11 +916,23 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
+      // The phone's own page at each size, before the window's changes start: a playlist made, refused.
+      for (const size of SIZES) {
+        await p.setViewportSize(size);
+        await expectPhoneRefuses(
+          { win, page: p },
+          'POST',
+          '/api/v1/playlists/new',
+          { name: `Placeholder phone list ${size.layout}` },
+          'computer',
+          tree,
+        );
+      }
       for (const size of SIZES) {
         const words = `Placeholder phone words ${size.layout}`;
         const list = `Placeholder phone list ${size.layout}`;
         await p.setViewportSize(size);
-        // A presentation from words, and a playlist made: the phone's refused, the window's made.
+        // A presentation from words, and a playlist made: the script's refused, the window's made.
         await expectPhoneRefuses(
           asks,
           'POST',

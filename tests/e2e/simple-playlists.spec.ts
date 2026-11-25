@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import { expectPhoneRefuses } from './phone-refuses';
@@ -264,6 +265,13 @@ test('a paired Simple Mode phone is refused managing the playlists and reading t
   const items = (id: string) =>
     win.evaluate(async (playlistId) => (globalThis as PageGlobals).drashti.playlists.items(playlistId), id);
   expect(await items(other)).toEqual([]);
+  // Into a folder: Simple Mode's window refuses it, in its words (as it refused the phone before alpha.23).
+  const intoFolder = await win.evaluate(
+    ({ folderId, mediaId }) =>
+      (globalThis as PageGlobals).drashti.playlists.addItems(folderId, null, [{ kind: 'media', mediaId }]),
+    { folderId: folder?.id ?? '', mediaId: show.pictureMediaId },
+  );
+  expect(intoFolder).toMatchObject({ ok: false, message: SIMPLE_MODE_REFUSAL });
   // The imported media added by the operator window.
   const added = await win.evaluate(
     ({ playlistId, mediaId }) =>

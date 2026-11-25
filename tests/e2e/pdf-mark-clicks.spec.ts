@@ -144,6 +144,12 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
     await phoneShowsLive(remote, s.win);
     const atEnd = await step();
     await remote.getByTestId('remote-next-button').click();
+    // A Next with no revision of its own (the review's MUST-2): a tap's carries the revision its page saw, and the
+    // engine lets an older one do nothing (TST-11), so only Next's `within` (the main process's) keeps the deck still.
+    expect(await phoneAsks(remote, 'POST', '/api/v1/trigger/next', {})).toMatchObject({
+      status: 200,
+      json: { ok: true, changed: false },
+    });
     await holdStill(
       async () => {
         const now = await step();

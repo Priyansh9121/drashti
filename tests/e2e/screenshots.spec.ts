@@ -58,11 +58,10 @@ import { callBody, COMPUTERS, PEOPLE, placeholderComputer } from '../access-core
 import {
   KIRTAN,
   NOTE_ONE,
+  NOTE_TWO,
   PICTURE,
-  placeholderTalk,
   PLAYLIST,
   setUpPlaceholderShow,
-  TALK,
   VIDEO,
   WELCOME,
 } from './placeholder-show';
@@ -78,6 +77,8 @@ import { addTestPptxShadow } from '../../src/main/import/testing/pptx-shadow';
 import { makeZip } from '../../src/main/import/testing/zip-writer';
 import { dropboxStandIn, folderLink } from './dropbox-stand-in';
 import { longPress } from './phone-gestures';
+import { expectPhoneRefuses } from './phone-refuses';
+import { PDF_ENV, phoneAsks, placeholderPdf, playlistOf } from './pro-phone';
 import { linkFinished, linkView, pasteLink } from './paste-link';
 import { importItem } from './import-details';
 import { liveColumnToTop } from './window-size';
@@ -707,7 +708,7 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
-  await running(win);
+  const show = await running(win);
   await setUpScreen(win);
   const output = await outputPage(app);
   const { base } = await networkOn(win);
@@ -789,9 +790,22 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     await expect.poll(() => words.evaluate((el) => el.getAnimations()[0]?.playState)).toBe('paused');
     await shot(output, 'output-ticker', [], false, true);
     await holdClock(app, null);
+    // A PDF in the open playlist, after the operator's pictures: what a phone's Playlist tab offers (alpha.23,
+    // QA23-PHONE-1: a playlist's PowerPoints and PDFs only).
+    const pdfId = await placeholderPdf(win, 'Placeholder announcements PDF');
+    await win.evaluate(
+      async ({ playlistId, presentationId }) => {
+        const added = await (globalThis as PageGlobals).drashti.playlists.addItems(playlistId, null, [
+          { kind: 'presentation', presentationId },
+        ]);
+        if (!added.ok) throw new Error(added.message);
+      },
+      { playlistId: show.playlistId, presentationId: pdfId },
+    );
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
     await shot(phone.page, 'phone-remote');
     await phone.page.getByTestId('remote-tab-playlist').click();
+    await expect(phone.page.getByTestId('remote-items')).toContainText('Placeholder announcements PDF');
     await shot(phone.page, 'phone-remote-playlist');
     await expect(tablet.page.getByTestId('remote-items')).toBeVisible();
     await shot(tablet.page, 'tablet-remote');
@@ -809,24 +823,24 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
   await app.close();
 });
 
-test('the presenter’s remote: the library and the notes on an iPhone, and an iPad held sideways (Session 18)', async () => {
+test('the presenter’s remote: a PDF put up from its playlist with its notes on an iPhone, and an iPad held sideways and upright (Session 18; the library refused since alpha.23)', async () => {
   test.setTimeout(180_000);
-  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const { app } = await launchApp({ ...NETWORK_ENV, ...PDF_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   await setUpPlaceholderShow(win);
-  const talkId = await placeholderTalk(win);
+  // The presenter's PDF (its pages' comments its notes), in a playlist: a Pro phone puts up a PowerPoint or a PDF only
+  // (alpha.23, QA23-PHONE-1; before, a talk of words from the whole library).
+  const pdfId = await placeholderPdf(win, 'Placeholder presenter PDF', [
+    { width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder PDF opening', note: NOTE_ONE },
+    { width: 960, height: 540, color: [127, 29, 29], text: 'Placeholder PDF point two', note: NOTE_TWO },
+    { width: 960, height: 540, color: [20, 83, 45], text: 'Placeholder PDF closing' },
+  ]);
+  const list = await playlistOf(win, 'Placeholder presenter list', [
+    { kind: 'presentation', presentationId: pdfId },
+  ]);
   await setUpScreen(win);
   await outputPage(app);
-  await win.evaluate(
-    (id) =>
-      (globalThis as PageGlobals).drashti.engine.dispatch({
-        type: 'goLive',
-        presentationId: id,
-        slideIndex: 0,
-      }),
-    talkId,
-  );
   const { base } = await networkOn(win);
   const phone = await device('webkit');
   const sideways = await device('webkit', 'iPad (gen 7) landscape');
@@ -847,29 +861,37 @@ test('the presenter’s remote: the library and the notes on an iPhone, and an i
     await pairByQr(upright.page, base, await pairingCode(win, 'remote', 'Placeholder tablet'), '/remote');
     const p = phone.page;
     await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // The PDF's row, put up from the phone.
+    expect(
+      (
+        await phoneAsks(p, 'POST', '/api/v1/trigger/item', {
+          playlistId: list.playlistId,
+          itemId: list.rows[0] ?? '',
+        })
+      ).status,
+    ).toBe(200);
     // The live slide's notes and the next one's, under the live picture.
     await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
+    await expect(p.getByTestId('remote-notes-next')).toHaveText(`Next: ${NOTE_TWO}`);
     await shot(p, 'phone-remote-notes');
-    // The whole library, by name, then searched by words on a slide.
-    await p.getByTestId('remote-tab-library').click();
-    await expect(p.getByTestId('remote-library-item').filter({ hasText: TALK })).toBeVisible();
-    await shot(p, 'phone-remote-library');
-    await p.getByTestId('remote-library-search').fill('talk point two');
-    await expect(
-      p.getByTestId('remote-library-item').filter({ hasText: 'Placeholder talk point two' }),
-    ).toBeVisible();
-    await shot(p, 'phone-remote-search');
-    // Held sideways: the live picture, the notes and Next beside the slides.
+    // The whole library and its search: refused to a phone, so no picture of them (phone-remote-library and
+    // phone-remote-search were taken here before alpha.23).
+    await expectPhoneRefuses({ win, page: p }, 'GET', '/api/v1/presentations', undefined, 'library');
+    await expectPhoneRefuses({ win, page: p }, 'GET', '/api/v1/search?q=talk', undefined, 'library');
+    await expect(p.getByTestId('remote-tab-library')).toHaveCount(0);
+    // Held sideways: the live picture, the notes and Next beside the PDF's pages.
     const t = sideways.page;
     await expect(t.getByTestId('remote')).toHaveAttribute('data-layout', 'landscape');
     await expect(t.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
     await expect(t.getByTestId('remote-slide').first()).toHaveAttribute('data-live', 'true');
+    await expect(t.getByTestId('remote-next-button')).toBeVisible();
     await shot(t, 'tablet-remote-sideways');
-    // Held upright: the library beside the show.
+    // Held upright: the playlist beside the show, never the library (tablet-remote-library was taken here before
+    // alpha.23).
     const u = upright.page;
-    await u.getByTestId('remote-side-library').click();
-    await expect(u.getByTestId('remote-library-item').filter({ hasText: TALK })).toBeVisible();
-    await shot(u, 'tablet-remote-library');
+    await expect(u.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
+    await expect(u.getByTestId('remote-side-library')).toHaveCount(0);
+    await expect(u.getByTestId('remote-items')).toBeVisible();
   } finally {
     for (const d of [phone, sideways, upright]) await d.close();
   }
@@ -1040,16 +1062,26 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
   await together.ed.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
   await slideEditorClosed(app);
 
-  // The phone remote's More tab (its Looks until Session 55).
+  // The phone remote's More tab (its Looks until Session 55) went with alpha.23 (QA23-PHONE-1: the stage layouts, MIDI
+  // and the screens are the computer's): a Pro phone has Show, Playlist and Chat, and no picture of More is taken
+  // (phone-remote-more was, before).
   const { base } = await networkOn(win);
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   try {
     await pairByQr(phone.page, base, code, '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
-    await phone.page.getByTestId('remote-tab-more').click();
-    await expect(phone.page.getByTestId('remote-tab-more')).toHaveAttribute('aria-selected', 'true');
-    await shot(phone.page, 'phone-remote-more');
+    await expect(phone.page.getByTestId('remote-tab-more')).toHaveCount(0);
+    for (const tab of ['show', 'playlist', 'chat'])
+      await expect(phone.page.getByTestId(`remote-tab-${tab}`), tab).toBeVisible();
+    await expectPhoneRefuses(
+      { win, page: phone.page },
+      'GET',
+      '/api/v1/stage-layouts',
+      undefined,
+      'computer',
+    );
+    await expectPhoneRefuses({ win, page: phone.page }, 'GET', '/api/v1/midi', undefined, 'computer');
   } finally {
     await phone.close();
   }
