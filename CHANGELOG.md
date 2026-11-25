@@ -21,7 +21,7 @@ Update after a sabha, and update Main and nodes together.
 - Stage starts off; turning it on with no screen set to Stage says so and opens Screens; a Stage preview window shows the stage layout without a third screen.
 - The Lower Thirds studio previews a lower third over the hall’s wallpaper by default, or over what the screens show now, or plain dark or light.
 - The slide editor’s top row wraps at 200% zoom instead of scrolling sideways, and Back and Next fit at every width of the LIVE column.
-- Fixed: Gujarati words in live captions are no longer joined together, the LIVE picture’s corners are no longer tinted as Drashti starts, and a stream or recording begun as its screen comes up no longer starts with a black frame.
+- Fixed: Gujarati words in live captions are no longer joined together, the LIVE picture’s corners are no longer tinted as Drashti starts, a stream or recording begun as its screen comes up no longer starts with a black frame, and on a busy computer the stream’s and recording’s sound no longer skips a moment.
 
 ## 1.0.0-alpha.21 (24 Nov 2026)
 
