@@ -251,6 +251,11 @@ export class MediaRepo {
    * when and from where it came in, whether it plays as it is, and the copy everything uses when it was converted (or
    * the original, when it is Drashti's copy). Null for no such item.
    */
+  /** RED STUB (a22-review-fadecopies S6): no-op body, filled in by the next commit. */
+  liveSha256s(): Set<string> {
+    return new Set();
+  }
+
   about(mediaId: string): DetailsRow | null {
     const row = this.db
       .prepare(
