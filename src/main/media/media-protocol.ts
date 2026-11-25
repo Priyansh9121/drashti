@@ -235,6 +235,12 @@ export function mediaRequestOf(url: string): MediaRequest | null {
       ? { what, mediaId, key }
       : null;
   }
+  if (what === 'page') {
+    const m = /^\/([^/]+)\/(720|540)$/u.exec(parsed.pathname);
+    return m?.[1] && MEDIA_ID_PATTERN.test(m[1])
+      ? { what, mediaId: m[1], height: Number(m[2]) as 720 | 540 }
+      : null;
+  }
   if (what === 'sharp') {
     const m = /^\/([^/]+)\/(\d{1,3})$/u.exec(parsed.pathname);
     const step = Number(m?.[2]);
@@ -344,6 +350,10 @@ async function fileFor(
     row = { path: copy };
   } else if (asked.what === 'display') {
     const copy = deps.display?.(sha, asked.key) ?? null;
+    if (!copy) return null;
+    row = { path: copy };
+  } else if (asked.what === 'page') {
+    const copy = deps.pageCopy?.(sha, asked.height) ?? null;
     if (!copy) return null;
     row = { path: copy };
   } else {
