@@ -55,8 +55,11 @@ function useScrolls(box: RefObject<HTMLElement | null>, content: unknown): boole
   return scrolls;
 }
 
-/** A person who has given a name (core's M3: every chat phone is listed, named or not). */
-const named = (m: ChatMember): boolean => m.name.trim() !== '';
+/**
+ * How a person is listed (core's M3: every chat phone is listed, named or not; one with no name yet has its device's
+ * name, "Chat 3", and `named` false).
+ */
+const listedName = (m: ChatMember): string => (m.named ? m.name : `${m.name} (no name yet)`);
 
 const KIND_WORDS: Record<ChatMember['kind'], string> = {
   remote: 'Remote',
@@ -116,10 +119,10 @@ export function ChatPeople({
                   <span
                     className={cx(
                       'block text-sm break-words [overflow-wrap:anywhere]',
-                      named(m) ? 'text-fg' : 'text-muted italic',
+                      m.named ? 'text-fg' : 'text-muted italic',
                     )}
                   >
-                    {named(m) ? m.name : 'No name yet'}
+                    {listedName(m)}
                   </span>
                   <span className="block text-xs text-muted">
                     {KIND_WORDS[m.kind]} · {m.connected ? 'Connected' : 'Not connected'}
@@ -130,11 +133,7 @@ export function ChatPeople({
                     variant="ghost"
                     size="sm"
                     icon={Trash2}
-                    aria-label={
-                      named(m)
-                        ? `Remove ${m.name} from the chat`
-                        : 'Remove a phone with no name yet from the chat'
-                    }
+                    aria-label={`Remove ${listedName(m)} from the chat`}
                     className="shrink-0"
                     onClick={() => onRemove(m)}
                     data-testid="chat-remove-person"
@@ -374,7 +373,7 @@ export function ChatContentsView({
               {/* The dialog lies over the window, outside the section's box: its name is marked on its own. */}
               <p>
                 <span {...PRIVATE} className="font-medium text-fg">
-                  {named(removing) ? `${removing.name}’s phone` : 'This phone (no name yet)'}
+                  {removing.named ? `${removing.name}’s phone` : `${removing.name} (no name yet)`}
                 </span>{' '}
                 is cut off at once, from the chat and from anything else it does with Drashti. To come back,
                 it is paired again.
