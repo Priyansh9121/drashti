@@ -91,7 +91,7 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 ## Pro Mode's tools in Simple Mode
 
-**What it is.** Up to three of Pro Mode's tools under LIVE, brought into Simple Mode by an admin in Pro Mode, each with its own on/off switch: **Stage screen**, **Messages**, **Timers**, **Lower Thirds**, **Show a Window**, **Show a Stream Link**, **Video inputs** and **Picture in Picture**. In Simple Mode each is a folding section under **Audio**, folded until it is opened, with only what runs the show. None is on to begin with.
+**What it is.** Up to three of Pro Mode's tools, brought into Simple Mode by an admin in Pro Mode, each with its own on/off switch: **Stage screen**, **Messages**, **Timers**, **Lower Thirds**, **Show a Window**, **Show a Stream Link**, **Video inputs**, **Picture in Picture** and **Sabha flow**. In Simple Mode each is a folding section under **Audio**, folded until it is opened, with only what runs the show; **Sabha flow** is at the top of the left column, as in Pro Mode, its PDF chosen in Pro Mode. None is on to begin with.
 
 **When you would use it.** When a volunteer's sabha needs one or two of Pro Mode's tools, a message or a countdown, say, and nothing more.
 

@@ -49,6 +49,7 @@ import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from '
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
+import type { SabhaFlowChoice, SabhaFlowNowResult, SabhaFlowSnapshot } from './sabha-flow';
 import type {
   OpeningChoice,
   OpeningEnd,
@@ -364,6 +365,22 @@ export const IPC = {
     changed: 'events:changed',
     /** main -> operator: File > Events Out… was chosen. */
     open: 'events:open',
+  },
+  /**
+   * Sabha flow (alpha.23, shared/sabha-flow.ts): the sabha's running order, a PDF chosen in the operator window's panel,
+   * read from its own text, and where the sabha is (Now). Operator window only; never on a screen.
+   */
+  flow: {
+    /** The flow and its Now, together. */
+    get: 'flow:get',
+    /** Main's file dialog: Drashti's own copy, read and drawn (null: cancelled). */
+    choose: 'flow:choose',
+    remove: 'flow:remove',
+    setNow: 'flow:set-now',
+    /** A page's PNG, as drawn when the PDF was chosen. */
+    page: 'flow:page',
+    /** main -> operator: the flow or Now changed. */
+    changed: 'flow:changed',
   },
   /** The drop folder (Session 28, shared/drop-folder.ts): in Pro Mode only. */
   drop: {
@@ -1637,6 +1654,11 @@ export interface InvokeContract {
   [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
   [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
+  [IPC.flow.get]: { args: []; result: SabhaFlowSnapshot };
+  [IPC.flow.choose]: { args: []; result: SabhaFlowChoice | null };
+  [IPC.flow.remove]: { args: []; result: null };
+  [IPC.flow.setNow]: { args: [flowId: string, now: number | null]; result: SabhaFlowNowResult };
+  [IPC.flow.page]: { args: [flowId: string, page: number]; result: Uint8Array | null };
   [IPC.drop.view]: { args: []; result: DropFolderView };
   [IPC.drop.pickFolder]: { args: []; result: DropFolderResult | null };
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
@@ -2296,6 +2318,7 @@ export interface EventContract {
   [IPC.backups.open]: { at: number };
   [IPC.events.changed]: EventsOutView;
   [IPC.events.open]: { at: number };
+  [IPC.flow.changed]: SabhaFlowSnapshot;
   [IPC.drop.changed]: DropFolderView;
   [IPC.drop.open]: { at: number };
   [IPC.opening.key]: { at: number };

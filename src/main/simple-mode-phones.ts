@@ -152,6 +152,10 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'media.rename': 'within',
   'presentation.rename': 'within',
   'playlist.whenEnds': 'simple',
+  // Sabha flow (alpha.23): read only (Simple Mode's lock refuses only its changes, the window's flow:choose,
+  // flow:remove and flow:set-now, none of them a phone's).
+  flow: 'reads',
+  'flow.page': 'reads',
 };
 
 /**
