@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { PHONE_REFUSAL, type PhoneWords } from '../../src/shared/phone-rule';
+import type { EngineState } from '../../src/shared/engine/state';
 import { apiCall } from './devices';
 import type { PageGlobals } from './helpers';
 
@@ -18,27 +19,40 @@ import type { PageGlobals } from './helpers';
  */
 export type RefusingPhone = { win: Page; port: number; token: string } | { win: Page; page: Page };
 
-/** What Drashti learns by itself as screens play (a file's length, its pixels, captions): never a phone's change. */
-const LEARNED = new Set([
-  'durationMs',
+/**
+ * What Drashti learns by itself as screens play, never a phone's change, left out of the comparison (and nothing
+ * more: the review's narrowing): a whole-state field kept only as bookkeeping (each video's file as the time bar shows
+ * it, whether a picture can draw a see-through pixel, the captions heard, today's calendar and quote); a layer's own
+ * `durationMs` (the file's length, learned as a screen plays it); and of the sound, `gains` (even loudness, measured)
+ * and `silent` (files found to have no sound). Everything else is compared: the operator's sound settings (Music steps
+ * aside, the levels and mutes, tones, delays), a timer's length, Repeat Slides' timing and every fade.
+ */
+const LEARNED: readonly string[] = [
   'videoFiles',
   'opaquePictures',
   'captions',
   'videoCaptions',
   'calendar',
   'quote',
-  'sound',
-]);
+];
+const LEARNED_IN_LAYER: readonly string[] = ['durationMs'];
+const LEARNED_IN_SOUND: readonly string[] = ['gains', 'silent'];
+
+/** An object without these keys (anything else as it is). */
+const without = (value: unknown, keys: readonly string[]): unknown =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)))
+    : value;
 
 /** The show as the engine has it, without what it learns by itself meanwhile. */
-function showOf(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(showOf);
-  if (value === null || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => !LEARNED.has(key))
-      .map(([key, v]) => [key, showOf(v)]),
-  );
+function showOf(state: EngineState): unknown {
+  return {
+    ...(without(state, LEARNED) as Record<string, unknown>),
+    layers: Object.fromEntries(
+      Object.entries(state.layers).map(([name, layer]) => [name, without(layer, LEARNED_IN_LAYER)]),
+    ),
+    ...(state.sound === undefined ? {} : { sound: without(state.sound, LEARNED_IN_SOUND) }),
+  };
 }
 
 const deskShow = async (win: Page): Promise<unknown> =>
