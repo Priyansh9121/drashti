@@ -76,7 +76,9 @@ describe('a row’s trash and rename, and a double click', () => {
 
   it('rename and a row’s other buttons (a video input’s Change) count only the first click of a run too', () => {
     const onRename = vi.fn();
-    const rename = pressOf(RowRename({ label: 'Rename playlist “Placeholder Sunday”', chosen: false, onRename }));
+    const rename = pressOf(
+      RowRename({ label: 'Rename playlist “Placeholder Sunday”', chosen: false, onRename }),
+    );
     const onChange = vi.fn();
     const change = pressOf(
       RowAction({
