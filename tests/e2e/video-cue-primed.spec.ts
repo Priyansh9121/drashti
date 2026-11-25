@@ -3,9 +3,34 @@ import type { PageGlobals } from './helpers';
 import { decodePng } from './png-decode';
 import { dispatch } from './time-bar-helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
+import { beginCueDiagnostics, retainCueDiagnostics } from './video-cue-diagnostics';
 
 test('Cue ready includes a native trimmed frame on every picture page while the audience picture stays unchanged', async () => {
   const { app, win, hall, stream, ids } = await setupVideoCue();
+  // Diagnostics only (QA23-CUEPRIME-1; alpha.22 gate 5, LIVE's cue never confirmed on CI's Windows): each picture
+  // page's presented frames, frame reads, media events and visibility, and every window's own state as Cue readiness is
+  // waited for. Recorded; no check changes.
+  await beginCueDiagnostics([hall, win, stream]);
+  const windows: unknown[] = [];
+  const windowsNow = async (moment: string) => ({
+    moment,
+    at: Date.now(),
+    windows: await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().map((w) => ({
+        id: w.webContents.id,
+        page: w.webContents.getURL().split('/').pop()?.split('?')[0],
+        visible: w.isVisible(),
+        focused: w.isFocused(),
+        minimized: w.isMinimized(),
+        bounds: w.getBounds(),
+      })),
+    ),
+    pages: await Promise.all(
+      [hall, win, stream].map((p) =>
+        p.evaluate(() => ({ visibility: document.visibilityState, focus: document.hasFocus() })),
+      ),
+    ),
+  });
   try {
     const id = ids[1] ?? '';
     await win.evaluate(
@@ -43,6 +68,7 @@ test('Cue ready includes a native trimmed frame on every picture page while the 
         });
       }, id);
     expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
+    windows.push(await windowsNow('cue'));
     await cueReady(win);
     for (const page of [hall, win, stream]) {
       const v = page.locator(`video[data-media-id="${id}"]`).first();
@@ -76,6 +102,12 @@ test('Cue ready includes a native trimmed frame on every picture page while the 
       body: Buffer.from(JSON.stringify(frames)),
       contentType: 'application/json',
     });
+    windows.push(await windowsNow('end').catch((error: unknown) => String(error)));
+    await test.info().attach('s5-cue-windows.json', {
+      body: Buffer.from(JSON.stringify(windows)),
+      contentType: 'application/json',
+    });
+    await retainCueDiagnostics([hall, win, stream], test.info());
     await app.close();
   }
 });
