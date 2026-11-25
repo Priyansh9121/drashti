@@ -9,6 +9,7 @@ import { windowShowing, type PageGlobals } from './helpers';
 import { dispatch, snapshot } from './time-bar-helpers';
 import { COST_BANDS, COST_SWEEPS, cueReady, setupVideoCue } from './video-cue-helpers';
 import { heardFades, readSweeps, type FadeInput, type FadeSound } from './sweep-position';
+import { watchPictureJumps } from './picture-jumps';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 import {
   type PlaybackClock,
@@ -573,41 +574,9 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     // Lead 2's QF-1 (a22-fade-picture): each background picture's jumps on the hall, LIVE and the stream's picture page.
     // A jumping picture is frozen until it lands; one sent again as it lands stays frozen (its 'seeked' comes with it
     // seeking again), and one let go of before it landed was frozen until then.
-    const pictureJumpWatch = (page: Page) =>
-      page.evaluate(() => {
-        const jumps: { key: string; from: number; to: number | null; left: number | null }[] = [];
-        (globalThis as { s5PictureJumps?: typeof jumps }).s5PictureJumps = jumps;
-        const open = new Map<EventTarget, (typeof jumps)[number]>();
-        // Lead 2's QFP-11 B, a record only (the check is as it was; whether a jump ends when its element leaves is the
-        // owner's QFP-6 item 3): when the element of a jump still open left the page. Its 'emptied' then fires on a
-        // detached element and never reaches this page's listeners, so the jump stays open.
-        new MutationObserver(() => {
-          for (const [el, jump] of open)
-            if (jump.left === null && el instanceof Node && !el.isConnected) jump.left = Date.now();
-        }).observe(document, { subtree: true, childList: true });
-        const land = (e: Event) => {
-          const el = e.target;
-          if (!(el instanceof HTMLVideoElement) || (e.type === 'seeked' && el.seeking)) return;
-          const jump = open.get(el);
-          if (!jump) return;
-          jump.to = Date.now();
-          open.delete(el);
-        };
-        document.addEventListener(
-          'seeking',
-          (e) => {
-            const el = e.target;
-            if (!(el instanceof HTMLVideoElement) || open.has(el)) return;
-            const key = el.dataset['bgSlot'];
-            if (key === undefined || jumps.length >= 5000) return;
-            const jump = { key, from: Date.now(), to: null, left: null };
-            open.set(el, jump);
-            jumps.push(jump);
-          },
-          true,
-        );
-        document.addEventListener('seeked', land, true);
-        document.addEventListener('emptied', land, true);
+    const pictureJumpWatch = async (page: Page) => {
+      await page.evaluate(watchPictureJumps);
+      await page.evaluate(() => {
         // QA23-FADE-6 (B), evidence: each picture's clock as it changes (data-cue-clock: 'graph' a cue's, 'fade' its
         // crossfade's, none its own muted one).
         const clocks: {
@@ -638,6 +607,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           }
         }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-cue-clock'] });
       });
+    };
     await Promise.all([hall, win, stream].map(pictureJumpWatch));
     const fadeClocks: { askedAt: number; fade: VideoCrossfade; to: PlaybackClock & { mediaId: string } }[] =
       [];
