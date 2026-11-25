@@ -16,7 +16,13 @@ afterEach(() => {
 });
 
 it('the background video Next puts up: a video item, or a slide’s background video; never a slide’s own video', () => {
-  const item: UpNext = { kind: 'media', itemId: 'i', mediaId: 'clip', media: 'video', label: 'Placeholder clip' };
+  const item: UpNext = {
+    kind: 'media',
+    itemId: 'i',
+    mediaId: 'clip',
+    media: 'video',
+    label: 'Placeholder clip',
+  };
   expect(nextBackgroundVideo(item)).toBe('clip');
   expect(nextBackgroundVideo({ ...item, media: 'image' })).toBeNull();
   expect(nextBackgroundVideo(null)).toBeNull();

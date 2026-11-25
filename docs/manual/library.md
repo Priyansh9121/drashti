@@ -238,13 +238,13 @@ For the waveform and scene suggestions, see **Waveforms and suggested scene mark
 
 ## Lighter playing copies
 
-**What it is.** On a slow computer, a large video gets a smaller playing copy while Drashti is idle. The original is kept for editing and export. A current showing keeps its file; the next showing uses its prepared copy.
+**What it is.** On a slow computer, a large video gets a smaller playing copy while Drashti is idle. The original is kept for editing and export. A current showing keeps its file; the next showing uses its prepared copy. The videos in playlists that crossfade also get a 720p copy for the stream and a 540p copy for LIVE; the hall’s screens always play the original.
 
 **When you would use it.** To play a large video more smoothly on a computer with few processor cores or software video drawing.
 
 **How:**
 
-1. Open the video's **Media information…** to read its lighter copy's status.
+1. Open the video's **Media information…** to read its lighter copy's status and its smaller copies for crossfades.
 2. Finish the show and stop streaming and recording so waiting preparation can run.
 3. In **Edit Video…**, choose **Preparation and export**. **Stop lighter copy** stops preparation. If it failed or was stopped, check the original video and free space, then use **Retry lighter copy**.
 4. Wait for the status to say the next showing uses the lighter copy. It retains the picture's proportions and transparency.

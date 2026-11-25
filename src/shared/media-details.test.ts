@@ -340,7 +340,9 @@ describe('a video’s smaller copies for crossfades (QA23-FADE-9 candidate 1, a2
       .find((s) => s.heading === 'In Drashti')
       ?.rows.find((r) => r.label === 'Smaller copies')?.value ?? null;
   it('says which are made, for the stream and for LIVE; nothing when there are none', () => {
-    expect(smaller([540, 720])).toBe('720p for the stream and 540p for LIVE, for crossfades on this computer');
+    expect(smaller([540, 720])).toBe(
+      '720p for the stream and 540p for LIVE, for crossfades on this computer',
+    );
     expect(smaller([720])).toBe('720p for the stream, for crossfades on this computer');
     expect(smaller([540])).toBe('540p for LIVE, for crossfades on this computer');
     expect(smaller([])).toBeNull();
