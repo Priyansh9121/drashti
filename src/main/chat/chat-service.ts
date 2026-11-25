@@ -90,8 +90,9 @@ export class ChatService {
     const hadPhones = this.deps.store.devices().length > 0;
     if (!this.deps.store.newDay()) return;
     this.deps.log('info', 'Chat: a new day began; the chat was emptied');
-    this.deps.toPhones({ kind: 'cleared', day: this.deps.store.state().day });
+    // The chat's phones cut off first (their feeds end 'revoked'), so none of them is told to read the new day.
     if (hadPhones) this.deps.devicesChanged();
+    this.deps.toPhones({ kind: 'cleared', day: this.deps.store.state().day });
     this.deps.changed();
   }
 
@@ -200,8 +201,9 @@ export class ChatService {
     const wasPhone = this.deps.store.removeDevice(id);
     if (!wasPerson && !wasPhone) return false;
     this.deps.log('info', wasPhone ? 'Chat: a chat phone was removed' : 'Chat: a person left the chat');
-    if (wasPerson) this.deps.toPhones({ kind: 'people', people: this.deps.store.state().people });
+    // A chat phone cut off first (its feed ends 'revoked'), then the others told of the people.
     if (wasPhone) this.deps.devicesChanged();
+    if (wasPerson) this.deps.toPhones({ kind: 'people', people: this.deps.store.state().people });
     this.deps.changed();
     return true;
   }
