@@ -64,10 +64,12 @@ export const YT_DLP_BUILDS = {
 };
 
 /**
- * yt-dlp's licence and its list of what its builds bundle, as in its repository at the pinned tag, by their
- * SHA-256: Drashti ships them as LICENSES/yt-dlp/LICENSE and LICENSES/yt-dlp/THIRD_PARTY_LICENSES.txt
- * (QA23-YTDLP-1: a newer yt-dlp brings its own list with it).
+ * yt-dlp's licence and its list of what its builds bundle, as in its repository at tag YT_DLP_NOTICES_TAG, by
+ * their SHA-256: Drashti ships them as LICENSES/yt-dlp/LICENSE and LICENSES/yt-dlp/THIRD_PARTY_LICENSES.txt
+ * (QA23-YTDLP-1: a newer yt-dlp brings its own list with it). The tag must be YT_DLP_VERSION (a test says so),
+ * so a newer yt-dlp moves these on purpose.
  */
+export const YT_DLP_NOTICES_TAG = '2026.11.23';
 export const YT_DLP_NOTICES = {
   LICENSE: '7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c',
   'THIRD_PARTY_LICENSES.txt': '510233b06ab5222b087d3384ac82ee3f369fde9991fb71e08175d88b72383584',
