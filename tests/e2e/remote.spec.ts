@@ -13,6 +13,7 @@ import {
   TABLET,
 } from './devices';
 import {
+  holdStill,
   killApp,
   launchApp,
   operatorPage,
@@ -28,13 +29,12 @@ import { addPhoneDeck, DECK } from './phone-deck';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-show';
 
 /*
- * The phone remote runs a sabha, each step seen on a real output: a slide
- * tapped, Next and Back, Clear, black-out, the Wallpaper, Put it back, a timer
- * and a message. Next twice quickly goes on, never restarting an item. The
- * remote comes back by itself after the server stops and starts again, and
- * a remote and a stage display left open while Drashti restarts follow its
- * new run (Session 53). Placeholder content; codes and tokens are made at
- * run time.
+ * The phone remote runs a PDF, each step seen on a real output: a page's row and a page tapped, Next and Back inside
+ * it (Next stops at its last page), and Clear slide. Since alpha.23 (QA23-PHONE-1, the owner's "Only PPT and PDF")
+ * that is all a phone puts up or changes: the other clears, black-out, the Wallpaper, Put it back, timers and messages
+ * are the computer's, and Drashti refuses them from a phone in its words. The remote comes back by itself after the
+ * server stops and starts again, and a remote and a stage display left open while Drashti restarts follow its new run
+ * (Session 53). Placeholder content and a generated PDF; codes and tokens are made at run time.
  */
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
@@ -132,16 +132,23 @@ test('the remote’s waits are said as a status, and its empty places say where 
   await app.close();
 });
 
+/** The slide the engine has up, drawn on the output (by its id), or none drawn there. */
+async function outputDraws(win: Page, output: Page): Promise<boolean> {
+  const id = (await snapshot(win)).state.layers.slide?.slide.id ?? null;
+  return id !== null && (await output.locator(`[data-layer="slide"] [data-slide="${id}"]`).count()) > 0;
+}
+
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
-  test(`the remote runs a sabha on a real output (${engine})`, async () => {
+  test(`the remote runs a PDF on a real output (${engine}): its pages tapped, Next and Back inside it, Clear slide; the rest refused from a phone (QA23-PHONE-1)`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win);
+    const deck = await addPhoneDeck(win, show.playlistId);
     await setUpScreen(win);
     const output = await outputPage(app);
-    const { base } = await networkOn(win);
+    const { base, port } = await networkOn(win);
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
@@ -162,73 +169,79 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expectNoSeriousA11yIssues(p, `the remote at 375 x 812 (${engine})`);
       if (size) await p.setViewportSize(size);
 
-      // Next twice quickly with nothing live: the first starts the playlist, the second goes on (never restarts it).
+      // Nothing a phone puts up is live: no Back or Next yet (Next no longer starts the playlist).
+      const nextButton = p.getByTestId('remote-next-button');
+      const backButton = p.getByTestId('remote-back');
+      await expect(nextButton).toHaveCount(0);
+      await expect(backButton).toHaveCount(0);
+
+      // The playlist's PDF alone: its first page's row, tapped, goes up.
       await p.getByTestId('remote-tab-playlist').click();
       await expect(p.getByTestId('remote-playlist')).toHaveValue(show.playlistId);
-      await expect(p.getByTestId('remote-item').filter({ hasText: KIRTAN })).toBeVisible();
-      const nextButton = p.getByTestId('remote-next-button');
-      await nextButton.click();
-      await nextButton.click();
-      await expect.poll(() => where(win)).toEqual({ presentationId: show.kirtanId, slideIndex: 0 });
-      await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
+      const rows = p.getByTestId('remote-items');
+      await expect(rows.getByTestId('remote-row').filter({ hasText: `${DECK}_1` })).toBeVisible();
+      await expect(rows).not.toContainText(KIRTAN);
+      await expect(rows).not.toContainText(WELCOME);
+      await rows
+        .getByTestId('remote-row')
+        .filter({ hasText: `${DECK}_1` })
+        .click();
+      await expect.poll(() => where(win)).toEqual({ presentationId: deck.deckId, slideIndex: 0 });
+      await expect.poll(() => outputDraws(win, output)).toBe(true);
 
-      // A slide tapped goes up; Next and Back.
+      // A page tapped goes up; Back and Next, inside the PDF: Next stops at its last page (the owner's Q6).
       await p.getByTestId('remote-tab-show').click();
-      await p.getByTestId('remote-slide').nth(3).click();
-      await expect.poll(() => where(win)).toEqual({ presentationId: show.kirtanId, slideIndex: 3 });
-      await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder second verse');
-      await expect(p.getByTestId('remote-slide').nth(3)).toHaveAttribute('data-live', 'true');
-      await nextButton.click();
-      await expect.poll(async () => (await where(win)).slideIndex).toBe(4);
-      await p.getByTestId('remote-back').click();
-      await expect.poll(async () => (await where(win)).slideIndex).toBe(3);
-
-      // Clear the slide; Clear all, then Put it back.
-      const actions = p.getByTestId('remote-actions');
-      await actions.getByRole('button', { name: 'Clear slide' }).click();
-      await expect(
-        output.locator('[data-layer="slide"]', { hasText: 'Placeholder second verse' }),
-      ).toHaveCount(0);
       await p.getByTestId('remote-slide').nth(2).click();
-      await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
-      await actions.getByRole('button', { name: 'Clear all' }).click();
-      await expect.poll(async () => (await snapshot(win)).state.canPutBack).toBe(true);
-      await actions.getByRole('button', { name: 'Put it back' }).click();
-      await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
+      await expect.poll(() => where(win)).toEqual({ presentationId: deck.deckId, slideIndex: 2 });
+      await expect(p.getByTestId('remote-slide').nth(2)).toHaveAttribute('data-live', 'true');
+      await expect.poll(() => outputDraws(win, output)).toBe(true);
+      await backButton.click();
+      await expect.poll(async () => (await where(win)).slideIndex).toBe(1);
+      await nextButton.click();
+      await expect.poll(async () => (await where(win)).slideIndex).toBe(2);
+      await nextButton.click();
+      await holdStill(
+        async () => {
+          const at = await where(win);
+          return at.presentationId === deck.deckId && at.slideIndex === 2;
+        },
+        700,
+        'Next stops at the PDF’s last page, never the next item',
+      );
 
-      // Black-out and the Wallpaper, on and off, each with its key's name as on the desktop (Session 54, D5).
-      // On, each says so in words, as Pro Mode and Simple Mode do (Session 26g), with no aria-pressed.
-      await actions.getByRole('button', { name: 'Black-out B', exact: true }).click();
-      await expect(output.getByTestId('blackout')).toBeVisible();
-      const on = actions.getByRole('button', { name: 'Black-out is on' });
-      await expect(on).toBeVisible();
-      await expect(on).not.toHaveAttribute('aria-pressed');
-      await on.click();
+      // Clear slide, the one clear a phone has (the owner's Q7); a page tapped puts it back up.
+      const actions = p.getByTestId('remote-actions');
+      await expect(actions.getByRole('button')).toHaveCount(1);
+      await actions.getByRole('button', { name: /^Clear slide/u }).click();
+      await expect.poll(async () => (await snapshot(win)).state.layers.slide).toBeNull();
+      await expect(output.locator('[data-layer="slide"] [data-slide]')).toHaveCount(0);
+      await p.getByTestId('remote-slide').nth(0).click();
+      await expect.poll(() => where(win)).toEqual({ presentationId: deck.deckId, slideIndex: 0 });
+      await expect.poll(() => outputDraws(win, output)).toBe(true);
+
+      // What the phone did before alpha.23, now the computer's: refused from a Remote in Drashti's words, nothing on
+      // the screens changing (Clear all, Put it back, black-out, the Wallpaper, a timer, a message).
+      const remote = await pairToken(win, port, 'remote', 'Placeholder script remote');
+      const timerId = (await snapshot(win)).state.timers[0]?.id ?? 'placeholder';
+      const before = await where(win);
+      for (const [path, body, words] of [
+        ['/api/v1/clear/all', {}, PHONE_REFUSAL.computer],
+        ['/api/v1/put-back', {}, PHONE_REFUSAL.computer],
+        ['/api/v1/blackout', { on: true }, PHONE_REFUSAL.computer],
+        ['/api/v1/wallpaper', { on: true }, PHONE_REFUSAL.media],
+        [`/api/v1/timers/${encodeURIComponent(timerId)}/start`, {}, PHONE_REFUSAL.computer],
+        ['/api/v1/messages/placeholder/show', { values: { plate: '12' } }, PHONE_REFUSAL.computer],
+      ] as const) {
+        const answer = await apiCall(port, path, { method: 'POST', token: remote, body });
+        expect({ path, status: answer.status, json: answer.json }).toEqual({
+          path,
+          status: 403,
+          json: { ok: false, message: words },
+        });
+      }
+      expect(await where(win)).toEqual(before);
       await expect(output.getByTestId('blackout')).toHaveCount(0);
-      // The Wallpaper (Session 55, in the Logo's place): black until Part 6 brings wallpapers.
-      await actions.getByRole('button', { name: 'Wallpaper F12', exact: true }).click();
-      await expect(output.getByTestId('wallpaper')).toBeVisible();
-      await expect(actions.getByRole('button', { name: 'Wallpaper is on' })).toBeVisible();
-      await actions.getByRole('button', { name: 'Wallpaper is on' }).click();
       await expect(output.getByTestId('wallpaper')).toHaveCount(0);
-
-      // A timer started, paused and reset; a message filled in, shown and taken off.
-      await p.getByTestId('remote-tab-more').click();
-      const timer = p.getByTestId('remote-timer').first();
-      await timer.getByRole('button', { name: 'Start' }).click();
-      await expect.poll(async () => (await snapshot(win)).state.timers[0]?.startedAt ?? null).not.toBeNull();
-      await timer.getByRole('button', { name: 'Pause' }).click();
-      await expect.poll(async () => (await snapshot(win)).state.timers[0]?.startedAt).toBeNull();
-      await timer.getByRole('button', { name: 'Reset' }).click();
-      await expect.poll(async () => (await snapshot(win)).state.timers[0]?.elapsedMs ?? -1).toBe(0);
-      const message = p.getByTestId('remote-message').first();
-      await message.getByRole('button', { name: 'Show' }).click();
-      await expect(p.getByRole('alert')).toContainText('Fill in {plate} first');
-      await message.getByRole('textbox').fill('12');
-      await message.getByRole('button', { name: 'Show' }).click();
-      await expect(output.locator('[data-layer="messages"]')).toContainText('Car 12 please move');
-      await message.getByRole('button', { name: 'Take off' }).click();
-      await expect(output.locator('[data-layer="messages"]')).toHaveCount(0);
 
       // The server stops and starts again: the remote says so, comes back by itself and works.
       await win.evaluate(() => (globalThis as PageGlobals).drashti.network.setOn(false));
@@ -237,7 +250,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('connection')).toHaveText('Connected', { timeout: 20_000 });
       await p.getByTestId('remote-tab-show').click();
       await nextButton.click();
-      await expect.poll(async () => (await where(win)).slideIndex).toBe(3);
+      await expect.poll(async () => (await where(win)).slideIndex).toBe(1);
       expect(await win.evaluate(() => document.title)).not.toContain(code);
     } finally {
       await phone.close();
@@ -286,24 +299,27 @@ test('the remote on a tablet shows the playlist’s PDF beside the show, and its
   await app.close();
 });
 
-test('two remotes pressing Next at once move one slide; a phone’s Next says what it saw, and one without still acts (Sessions 31–36, TST-11)', async () => {
+test('two remotes pressing Next at once move one slide; a phone’s Next says what it saw, and one without still acts (Sessions 31–36, TST-11), a PDF up', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
   const show = await setUpPlaceholderShow(win);
+  // A PDF: what a phone's Next turns since alpha.23 (QA23-PHONE-1).
+  const deck = await addPhoneDeck(win, show.playlistId);
   const { base, port } = await networkOn(win);
   const goLive = (slideIndex: number) =>
     win.evaluate(
-      ({ id, slideIndex }) =>
+      ({ id, slideIndex, playlist }) =>
         (globalThis as PageGlobals).drashti.engine.dispatch({
           type: 'goLive',
           presentationId: id,
           slideIndex,
+          playlist,
         }),
-      { id: show.kirtanId, slideIndex },
+      { id: deck.deckId, slideIndex, playlist: { playlistId: show.playlistId, itemId: deck.itemId } },
     );
-  await goLive(1);
+  await goLive(0);
   // Two remotes, each having seen the show as it is now, press Next in the same moment: one slide on.
   const tokens = [
     await pairToken(win, port, 'remote', 'Placeholder remote one'),
@@ -314,24 +330,26 @@ test('two remotes pressing Next at once move one slide; a phone’s Next says wh
     tokens.map((token) => apiCall(port, '/api/v1/trigger/next', { method: 'POST', token, body: { rev } })),
   );
   expect(answers.map((a) => a.json['changed']).sort()).toEqual([false, true]);
-  expect(await where(win)).toEqual({ presentationId: show.kirtanId, slideIndex: 2 });
-  // A Next without a revision (Companion, an older phone) acts as ever.
+  expect(await where(win)).toEqual({ presentationId: deck.deckId, slideIndex: 1 });
+  // A Next without a revision (a script, an older phone) acts as ever.
   const plain = await apiCall(port, '/api/v1/trigger/next', { method: 'POST', token: tokens[0], body: {} });
   expect(plain.json).toMatchObject({ ok: true, changed: true });
-  expect((await where(win)).slideIndex).toBe(3);
+  expect((await where(win)).slideIndex).toBe(2);
+  // Back to its first page from the computer, for the phone's own Next.
+  await goLive(0);
 
   // A phone's Next button sends the revision it saw.
   const phone = await device('chromium');
   try {
     await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
-    await expect(phone.page.getByTestId('remote-slide').nth(3)).toHaveAttribute('data-live', 'true');
+    await expect(phone.page.getByTestId('remote-slide').nth(0)).toHaveAttribute('data-live', 'true');
     const { rev: seen, session } = await snapshot(win);
     const sent = phone.page.waitForRequest((r) => r.url().endsWith('/api/v1/trigger/next'));
     await phone.page.getByTestId('remote-next-button').click();
     // With the run of the engine that revision is from (Session 53).
     expect((await sent).postDataJSON()).toEqual({ rev: seen, session });
-    await expect.poll(async () => (await where(win)).slideIndex).toBe(4);
+    await expect.poll(async () => (await where(win)).slideIndex).toBe(1);
   } finally {
     await phone.close();
   }
@@ -341,12 +359,14 @@ test('two remotes pressing Next at once move one slide; a phone’s Next says wh
 // Session 53: a run of the engine counts its revisions from 0, and the feed's snapshot did not say its run, so a page
 // left open while Drashti restarted (a crash, an update) kept the last run's picture and stage, and its Next, sent
 // with the last run's revision, did nothing.
-test('a phone’s remote and a tablet’s stage display left open while Drashti restarts follow its new run at once, with no reload: the picture, what is next, Next itself and the stage (Session 53)', async () => {
+test('a phone’s remote and a tablet’s stage display left open while Drashti restarts follow its new run at once, with no reload: the picture, what is next, Next itself (a PDF’s) and the stage (Session 53)', async () => {
   test.setTimeout(240_000);
   const { app, userData } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
   const show = await setUpPlaceholderShow(win);
+  // A PDF, for the phone's Next after the restart (a phone turns a PowerPoint or a PDF alone: QA23-PHONE-1).
+  const deck = await addPhoneDeck(win, show.playlistId);
   const { base, port } = await networkOn(win);
   const phone = await device('chromium');
   const tablet = await device('webkit', TABLET);
@@ -368,7 +388,9 @@ test('a phone’s remote and a tablet’s stage display left open while Drashti 
     }
     const before = await snapshot(win);
     await expect(t.getByTestId('stage-current')).toContainText('Placeholder second verse');
-    await expect(p.getByTestId('remote-slide').nth(3)).toHaveAttribute('data-live', 'true');
+    await expect(p.getByTestId('remote-live').locator('[data-layer="slide"]')).toContainText(
+      'Placeholder second verse',
+    );
     // A mark on each page, which loading it again would take away.
     for (const page of [p, t])
       await page.evaluate((m) => {
@@ -402,11 +424,16 @@ test('a phone’s remote and a tablet’s stage display left open while Drashti 
       'Placeholder chorus line',
     );
     await expect(p.getByTestId('remote-next')).toContainText('Placeholder first verse');
+    // The phone's Next works, the new run's: the PDF up from its row, then on to its second page.
+    await dispatch(win2, {
+      type: 'goLive',
+      presentationId: deck.deckId,
+      slideIndex: 0,
+      playlist: { playlistId: show.playlistId, itemId: deck.itemId },
+    });
     await expect(p.getByTestId('remote-slide').nth(0)).toHaveAttribute('data-live', 'true');
-    // The phone's Next works: on to the first verse, the stage display with it.
     await p.getByTestId('remote-next-button').click();
-    await expect.poll(async () => (await where(win2)).slideIndex).toBe(1);
-    await expect(t.getByTestId('stage-current')).toContainText('Placeholder first verse');
+    await expect.poll(async () => await where(win2)).toEqual({ presentationId: deck.deckId, slideIndex: 1 });
     await expect(p.getByTestId('remote-slide').nth(1)).toHaveAttribute('data-live', 'true');
     // Neither page was loaded again.
     expect(await marked(p)).toBe(mark);
