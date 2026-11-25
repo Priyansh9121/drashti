@@ -614,31 +614,6 @@ export function warmScenes(): WarmScene[] {
         },
       });
   }
-  // A slide going out under its slow zoom while a slide with none comes in by the dissolve (a22-cue): the first change
-  // after a Zoom. On CI's Mac every plain Performance check (308 of 308) drew one frame of 67-600 ms at its first wipe 800
-  // after the Zoom runs (a Calm slide Wipe is drawn as a dissolve), never in the streaming check that follows on the same
-  // Mac, as the GPU's other first-use drawings; the Zoom scene above has its zoom only coming in. Calm, as a show's
-  // screens move; its Zoom over and its slow zoom running, as the measured one's was (shown 1.5 s before).
-  list.push({
-    key: 'zoom-going/calm',
-    look: look('calm'),
-    state: (during, at) => ({
-      ...base,
-      layers: {
-        ...base.layers,
-        background: background(false, at, false),
-        slide: during
-          ? layerOf(slide('zoom-going-b', true), at - PART * MAX_TRANSITION_MS, {
-              kind: 'dissolve',
-              durationMs: MAX_TRANSITION_MS,
-            })
-          : layerOf(slide('zoom-going-a', false), at - ZOOMED_FOR_MS, {
-              kind: 'zoom',
-              durationMs: ZOOM_IN_MS,
-            }),
-      },
-    }),
-  });
   // A deck Drashti plays itself (Session 57, warm-up-deck.ts): its own Wipe (PowerPoint's band since Session 58) and
   // Cover (the slide coming in a shade darker), part-way, from its slide whose picture, shape and words are each
   // part-way through a Split (a mask the size of each), for the Cover through a Shape (Session 58: a Circle's radial
@@ -747,6 +722,35 @@ export function warmScenes(): WarmScene[] {
       <CoverShadeCanvas analytic={analytic} notched={notched} x={x} y={y} available={canvas} />
     ),
   });
+  // A slide going out under its slow zoom while a slide with none comes in by the dissolve (a22-cue): the first change
+  // after a Zoom. On CI's Mac the plain Performance check drew one frame over 60 ms at its first wipe 800 after the Zoom
+  // runs in 306 of 308 checks (51-600 ms, median 169; a Calm slide Wipe is drawn as a dissolve), never in the streaming
+  // check that follows on the same Mac, as the GPU's other first-use drawings; the Zoom scene above has its zoom only
+  // coming in. Calm, as a show's screens move: the slide going out came on by a Zoom 1.5 s before, part-way through its
+  // slow zoom (held still as the Zoom scene's is); the slide coming in has no colour of its own, as the measured one (a
+  // see-through layer), over one background in both phases. Drawn again under the notched clip, and last of all: its
+  // slide going out is a layer of its own, so no other scene's layering changes (a22-review-firstwipe S1-S4, N2-N3).
+  const zoomGoingBackground = background(false, LONG_AGO, false);
+  const zoomGoing: WarmScene = {
+    key: 'zoom-going/calm',
+    look: look('calm'),
+    state: (during, at) => ({
+      ...base,
+      layers: {
+        ...base.layers,
+        background: zoomGoingBackground,
+        slide: during
+          ? layerOf({ ...slide('zoom-going-b', true), background: null }, at - PART * MAX_TRANSITION_MS, {
+              kind: 'dissolve',
+              durationMs: MAX_TRANSITION_MS,
+            })
+          : layerOf(slide('zoom-going-a', false), at - ZOOMED_FOR_MS, {
+              kind: 'zoom',
+              durationMs: ZOOM_IN_MS,
+            }),
+      },
+    }),
+  };
   return [
     shadeCanvas('cover-shaded-quad', true, false, 0, 0),
     shadeCanvas('cover-shaded-quad-notched', true, true, 480, 0),
@@ -759,6 +763,8 @@ export function warmScenes(): WarmScene[] {
     ...offGrid(deckWipe, 'deck-wipe/calm/off-grid'),
     ...offGrid(deckCover && fourThreeScene(deckCover), 'deck-cover-four-three/calm/off-grid'),
     ...list,
+    zoomGoing,
+    { ...zoomGoing, key: `${zoomGoing.key}/clipped`, clip: NOTCHED },
   ];
 }
 
