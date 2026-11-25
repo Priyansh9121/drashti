@@ -176,36 +176,37 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const opener = useRef<HTMLButtonElement>(null);
   const overId = useId();
   // What is open over the slide folds again at a press elsewhere in the editor (menus and dialogs opened from it are
-  // drawn outside the editor, and keep it), or at Escape where the keyboard is in it, the keyboard back where it was.
+  // drawn outside the editor, and keep it), and at Escape, its first step back (below).
   useEffect(() => {
     if (!dropped && !over) return;
-    const tablist = () => header.current?.querySelector<HTMLElement>('[role="tablist"]') ?? null;
     const onDown = (e: PointerEvent) => {
       const t = e.target instanceof Node ? e.target : null;
       if (!t || !root.current?.contains(t)) return;
-      if (dropped && !droppedBox.current?.contains(t) && !tablist()?.contains(t)) setRibbonDropped(false);
+      if (dropped && !droppedBox.current?.contains(t) && !tabsIn(header.current)?.contains(t))
+        setRibbonDropped(false);
       if (over && !overBox.current?.contains(t) && !opener.current?.contains(t)) setInspectorOver(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      const at = document.activeElement;
-      if (over && (overBox.current?.contains(at) || opener.current === at)) {
-        e.preventDefault();
-        setInspectorOver(false);
-        opener.current?.focus();
-      } else if (dropped && (droppedBox.current?.contains(at) || tablist()?.contains(at))) {
-        e.preventDefault();
-        setRibbonDropped(false);
-        tablist()?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
-      }
-    };
     window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
     };
   }, [dropped, over]);
+  /** Escape's first step back in a small window: what is open over the slide folds, the keyboard back on its button. */
+  const foldOver = (): boolean => {
+    const at = document.activeElement;
+    if (over) {
+      setInspectorOver(false);
+      if (overBox.current?.contains(at) || opener.current === at) opener.current?.focus();
+      return true;
+    }
+    if (dropped) {
+      setRibbonDropped(false);
+      if (droppedBox.current?.contains(at) || tabsIn(header.current)?.contains(at))
+        tabsIn(header.current)?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+      return true;
+    }
+    return false;
+  };
   // The dropped ribbon reaches no lower than the window: it scrolls within it there.
   useLayoutEffect(() => {
     const box = droppedBox.current;
@@ -533,10 +534,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     }
   };
 
-  // Esc steps back: close find, stop typing, then let go of the selection, then close (asking first).
+  // Esc steps back: fold what is open over the slide (a small window), close find, stop typing, then let go of the
+  // selection, then close (asking first).
   useFocusTrap(root, () => {
     const s = useEditor.getState();
     if (pdfJob.current || s.askDiscard || s.conflict || s.sourceConversion) return;
+    if (foldOver()) return;
     if (s.finding) useEditor.setState({ finding: false });
     else if (s.pdfTool) {
       if (s.slideId) revokeSourceContent(s.slideId);
@@ -1546,4 +1549,9 @@ function SlideList({
 /** A remembered choice that is yes or no. */
 function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean';
+}
+
+/** The editor's group tabs in its top. */
+function tabsIn(top: HTMLElement | null): HTMLElement | null {
+  return top?.querySelector<HTMLElement>('[role="tablist"]') ?? null;
 }
