@@ -13,7 +13,7 @@ import { TranslitSourceContext } from '../render/lang';
 import { translitSource } from '../../../shared/tracks';
 import { MeasureContext, type MeasureReport } from '../render/measure';
 import { useElementSize } from '../render/useElementSize';
-import { slidePad } from './editor-fold';
+import { foldNow, slidePad, useEditorFold } from './editor-fold';
 import {
   allowSourceContent,
   beginGesture,
@@ -195,6 +195,7 @@ export function Canvas({
   const area = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const size = useElementSize(area);
+  const fold = useEditorFold();
   // Zoomed about a point (a pinch): the area scrolled, once drawn at the new size, so that point stays put.
   const keepPoint = useRef<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
@@ -221,7 +222,7 @@ export function Canvas({
       const pageSize = current?.pageSize ?? editingCanvas(current?.documentPage, d);
       const w = el.clientWidth;
       const h = el.clientHeight;
-      const pad = slidePad(w, h);
+      const pad = slidePad(foldNow());
       const fit = Math.max(0.05, Math.min((w - 2 * pad) / pageSize.width, (h - 2 * pad) / pageSize.height));
       const scale = scaleFor(now.zoom, fit);
       const next = zoomBy(now.zoom, fit, Math.exp(-e.deltaY * 0.01));
@@ -278,8 +279,8 @@ export function Canvas({
   const pageSize = slide.pageSize ?? editingCanvas(slide.documentPage, doc);
 
   // Fitted to the area, as the editor always opened; zoomed, a size of its own (Session 55, Part 17a). The room round
-  // it is less in a small area (a folded editor's: a22-ribbonfold).
-  const pad = slidePad(size.width, size.height);
+  // it is less where the window folds the editor (a22-ribbonfold).
+  const pad = slidePad(fold);
   const fit = Math.max(
     0.05,
     Math.min((size.width - 2 * pad) / pageSize.width, (size.height - 2 * pad) / pageSize.height),

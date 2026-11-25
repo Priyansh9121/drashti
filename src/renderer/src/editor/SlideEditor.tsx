@@ -175,6 +175,16 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const over = inspectorFolded && inspectorOver;
   const notesFolded = fold.ribbon;
   const notesShown = notesFolded && notesOver;
+  // Nothing comes back open by itself: what was open when its fold ended is closed (a22-review-ribbonfold nit).
+  const [foldSeen, setFoldSeen] = useState(fold);
+  if (foldSeen !== fold) {
+    setFoldSeen(fold);
+    if (!fold.ribbon) {
+      setRibbonDropped(false);
+      setNotesOver(false);
+    }
+    if (!fold.inspector) setInspectorOver(false);
+  }
   const notesBox = useRef<HTMLDivElement>(null);
   const notesButton = useRef<HTMLButtonElement>(null);
   const notesId = useId();
@@ -183,22 +193,42 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const overBox = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const overId = useId();
-  // What is open over the slide folds again at a press elsewhere in the editor (menus and dialogs opened from it are
-  // drawn outside the editor, and keep it), and at Escape, its first step back (below).
+  // What is open over the slide folds again when it is left for elsewhere in the editor: a press there, or the
+  // keyboard moving there (Tab, Shift+Tab), so no control it covers ever has the keyboard (WCAG 2.4.11,
+  // a22-review-ribbonfold M1). Menus and dialogs opened from it are drawn outside the editor, and keep it. A field in
+  // it pressed away from lets go of the keyboard first, so what was typed in it is kept (S2). Escape is its first
+  // step back (below).
   useEffect(() => {
     if (!dropped && !over && !notesShown) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target instanceof Node ? e.target : null;
+    const leave = (target: EventTarget | null, press: boolean) => {
+      const t = target instanceof Node ? target : null;
       if (!t || !root.current?.contains(t)) return;
-      if (notesShown && !notesBox.current?.contains(t) && !notesButton.current?.contains(t))
+      const away = (box: HTMLElement | null, toggle: HTMLElement | null) =>
+        !box?.contains(t) && !toggle?.contains(t);
+      if (notesShown && away(notesBox.current, notesButton.current)) {
+        if (press) letGo(notesBox.current);
         setNotesOver(false);
-      if (dropped && !droppedBox.current?.contains(t) && !tabsIn(header.current)?.contains(t))
+      }
+      if (dropped && away(droppedBox.current, tabsIn(header.current))) {
+        if (press) letGo(droppedBox.current);
         setRibbonDropped(false);
-      if (over && !overBox.current?.contains(t) && !opener.current?.contains(t)) setInspectorOver(false);
+      }
+      if (over && away(overBox.current, opener.current)) {
+        if (press) letGo(overBox.current);
+        setInspectorOver(false);
+      }
+    };
+    const onDown = (e: PointerEvent) => {
+      leave(e.target, true);
+    };
+    const onFocus = (e: FocusEvent) => {
+      leave(e.target, false);
     };
     window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('focusin', onFocus, true);
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('focusin', onFocus, true);
     };
   }, [dropped, over, notesShown]);
   /** Escape's first step back in a small window: what is open over the slide folds, the keyboard back on its button. */
@@ -222,14 +252,19 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     }
     return false;
   };
-  // The dropped ribbon reaches no lower than the window: it scrolls within it there.
+  // The dropped ribbon reaches no lower than the window: it scrolls within it there. Measured again at every render
+  // (the top can gain a row while it is down: Save a PDF copy…, Adding the picture…; a22-review-ribbonfold S3) and
+  // as the window changes size.
   useLayoutEffect(() => {
+    const box = droppedBox.current;
+    if (dropped && box) box.style.maxHeight = roomBelow(box);
+  });
+  useEffect(() => {
     const box = droppedBox.current;
     if (!dropped || !box) return;
     const room = () => {
-      box.style.maxHeight = `${String(Math.max(0, innerHeight - box.getBoundingClientRect().top))}px`;
+      box.style.maxHeight = roomBelow(box);
     };
-    room();
     window.addEventListener('resize', room);
     return () => {
       window.removeEventListener('resize', room);
@@ -1016,21 +1051,22 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               )}
               {notesFolded && notes.length > 0 && (
                 // Folded (a short window), the source notes are behind this button at the slide's top left, in the
-                // warning's colours, and open over the slide.
-                <Button
+                // warning's colours, and open over the slide. A small square, its name in its tooltip, so it covers
+                // as little of the slide as it can (a22-review-ribbonfold S4).
+                <IconButton
                   ref={notesButton}
                   variant="warning"
                   size="sm"
                   icon={AlertTriangle}
+                  label={`Source notes (${String(notes.length)})`}
+                  tooltipSide="bottom"
                   className="absolute top-2 left-2 z-10 shadow-overlay"
                   aria-expanded={notesShown}
                   aria-controls={notesShown ? notesId : undefined}
                   onClick={() => {
                     setNotesOver(!notesShown);
                   }}
-                >
-                  Source notes ({String(notes.length)})
-                </Button>
+                />
               )}
               {notesShown && notes.length > 0 && (
                 <div
@@ -1059,27 +1095,27 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               )}
               {inspectorFolded && (
                 // Folded (a narrow window), the Inspector is behind this button, at the slide's bottom left (the
-                // zoom is at its bottom right, Find at its top right).
-                <Button
+                // zoom is at its bottom right, Find at its top right): a small square, its name in its tooltip (S4).
+                <IconButton
                   ref={opener}
+                  variant="secondary"
                   size="sm"
                   icon={SlidersHorizontal}
+                  label="Inspector"
                   className="absolute bottom-2 left-2 z-10 shadow-overlay"
                   aria-expanded={over}
                   aria-controls={over ? overId : undefined}
                   onClick={() => {
                     setInspectorOver(!over);
                   }}
-                >
-                  Inspector
-                </Button>
+                />
               )}
             </div>
             {!fold.inspector ? (
               <Inspector />
             ) : !inspectorFolded ? (
               <div className="grid shrink-0 grid-rows-[auto_minmax(0,1fr)]">
-                <div className="flex justify-end border-b border-l border-line bg-panel px-2 py-1">
+                <div className="flex justify-start border-b border-l border-line bg-panel px-2 py-1">
                   <Button
                     size="sm"
                     variant="ghost"
@@ -1097,7 +1133,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               <div
                 ref={overBox}
                 id={overId}
-                className="absolute inset-y-0 right-0 z-20 grid grid-rows-[auto_minmax(0,1fr)] shadow-overlay"
+                // Clear of the slide's bottom row of buttons, its own among them (M1): never over its button.
+                className="absolute top-0 right-0 bottom-11 z-20 grid grid-rows-[auto_minmax(0,1fr)] shadow-overlay"
               >
                 <div className="flex items-center justify-end gap-1 border-b border-l border-line bg-panel px-2 py-1">
                   <Button
@@ -1611,4 +1648,15 @@ function isBoolean(value: unknown): value is boolean {
 /** The editor's group tabs in its top. */
 function tabsIn(top: HTMLElement | null): HTMLElement | null {
   return top?.querySelector<HTMLElement>('[role="tablist"]') ?? null;
+}
+
+/** A field in `box` with the keyboard lets go of it, so what was typed is kept before the box closes. */
+function letGo(box: HTMLElement | null): void {
+  const at = document.activeElement;
+  if (box && at instanceof HTMLElement && box.contains(at)) at.blur();
+}
+
+/** The height from `box`'s top to the window's bottom, as a max-height. */
+function roomBelow(box: HTMLElement): string {
+  return `${String(Math.max(0, innerHeight - box.getBoundingClientRect().top))}px`;
 }

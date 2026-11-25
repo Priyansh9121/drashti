@@ -28,16 +28,12 @@ export function foldFor(matches: (query: string) => boolean): EditorFold {
 
 /** What folds now, again as the window or its text size changes. */
 export function useEditorFold(): EditorFold {
-  const read = (): EditorFold =>
-    typeof matchMedia === 'function'
-      ? foldFor((query) => matchMedia(query).matches)
-      : { ribbon: false, inspector: false };
-  const [fold, setFold] = useState(read);
+  const [fold, setFold] = useState(foldNow);
   useEffect(() => {
     if (typeof matchMedia !== 'function') return;
     const queries = [SHORT, NARROW].map((q) => matchMedia(q));
     const on = () => {
-      setFold(read());
+      setFold(foldNow());
     };
     for (const q of queries) q.addEventListener('change', on);
     return () => {
@@ -49,13 +45,18 @@ export function useEditorFold(): EditorFold {
 
 /** The room kept round the slide in its area, each side. */
 export const SLIDE_PAD = 32;
-/** In an area this small (a folded editor's, or a narrow one's), only this much, so the slide keeps the room there is. */
+/** In a folded editor (a short or a narrow window), only this much, so the slide keeps the room there is. */
 export const SMALL_PAD = 8;
 
 /**
- * The room round the slide in an area `width` x `height` CSS pixels big: 32 px, or 8 in an area narrower than 400
- * or shorter than 160 (never at 100% text: at the least window the slide's area is at least 420 wide and 196 high,
- * the slide list across the bottom included).
+ * The room round the slide: 8 px where the window folds the ribbon or the Inspector, else 32. Decided by the window's
+ * media queries, as the folds are, never by the slide's area: a scrollbar coming and going with the room would
+ * change the area and the room again, round and round (a22-review-ribbonfold S1), and at 100% text it is always 32.
  */
-export const slidePad = (width: number, height: number): number =>
-  width < 400 || height < 160 ? SMALL_PAD : SLIDE_PAD;
+export const slidePad = (fold: EditorFold): number => (fold.ribbon || fold.inspector ? SMALL_PAD : SLIDE_PAD);
+
+/** What folds now, read once (a wheel's zoom, outside React). */
+export const foldNow = (): EditorFold =>
+  typeof matchMedia === 'function'
+    ? foldFor((query) => matchMedia(query).matches)
+    : { ribbon: false, inspector: false };

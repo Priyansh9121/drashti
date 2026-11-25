@@ -48,22 +48,25 @@ describe('what a small window folds (a22-ribbonfold)', () => {
 });
 
 describe('the room round the slide', () => {
-  it('is 32 px wherever 100% text puts the slide, the slide list across the bottom too', () => {
-    // The least window's slide area: 884 less the list (176) and the Inspector (288); its height less the top and
-    // the ribbon, and less the list across the bottom (160) for a PDF's two-row top.
+  // Decided by what the window folds, never by the slide's area (a22-review-ribbonfold S1: a scrollbar coming and
+  // going with the room changed the area and the room again, round and round; and at 100% text an area made small by
+  // the slide list across the bottom and a PDF's notes got 8 px).
+  it('is 32 px wherever the window folds nothing: every window the editor allows at 100% text', () => {
     for (const [w, h] of [
-      [420, 390],
-      [436, 356],
-      [596, 196],
-      [560, 500],
+      [884, 521],
+      [1024, 645],
+      [1410, 900],
     ] as const)
-      expect(slidePad(w, h), `${String(w)} x ${String(h)}`).toBe(SLIDE_PAD);
+      expect(slidePad(foldFor(sized(w, h))), `${String(w)} x ${String(h)}`).toBe(SLIDE_PAD);
   });
 
-  it('is 8 px in a folded editor’s small area, so the slide keeps the room there is', () => {
-    expect(slidePad(266, 158)).toBe(SMALL_PAD);
-    expect(slidePad(442, 124)).toBe(SMALL_PAD);
-    expect(slidePad(0, 0)).toBe(SMALL_PAD);
+  it('is 8 px where the window folds the ribbon or the Inspector, so the slide keeps the room there is', () => {
+    expect(slidePad({ ribbon: true, inspector: true })).toBe(SMALL_PAD);
+    expect(slidePad({ ribbon: true, inspector: false })).toBe(SMALL_PAD);
+    expect(slidePad({ ribbon: false, inspector: true })).toBe(SMALL_PAD);
+    expect(slidePad(foldFor(sized(442, 260)))).toBe(SMALL_PAD);
+    // 175% text at CI's 1024 wide (about 585 x 368): both fold, whatever a scrollbar does to the slide's area.
+    expect(slidePad(foldFor(sized(1024 / 1.75, 645 / 1.75)))).toBe(SMALL_PAD);
   });
 });
 
