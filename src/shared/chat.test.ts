@@ -39,6 +39,10 @@ describe('the chat’s plain text', () => {
     expect(cleanChatText('pay \u202Egnp.exe\u202C now \u2066x\u2069 \u200Fy')).toBe('pay gnp.exe now x y');
   });
 
+  it('leaves out a lone half of an emoji (it could not be kept as it is)', () => {
+    expect(cleanChatText('a\uD83Db\uDE00c 😀')).toBe('abc 😀');
+  });
+
   it('is empty when nothing visible is left', () => {
     expect(cleanChatText('  \n\u200B\u200D \u00AD\n ')).toBe('');
     expect(refusal(chatTextSchema.safeParse(' \n '))).toBe(CHAT_REFUSAL.empty);
