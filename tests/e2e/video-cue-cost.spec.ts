@@ -301,6 +301,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       if (!rows.ok) throw new Error(rows.message);
       await d.playlists.setPlayOptions(id, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
     }, ids);
+    const copiesAsked = Date.now();
     await expect
       .poll(
         async () => {
@@ -310,6 +311,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         { timeout: 60_000, message: 'each video’s page copies are made while idle' },
       )
       .toBe(true);
+    // How long the copies took on this runner (a22-review-fadecopies S8: their idle-time cost), and their videos' length.
+    console.log(
+      'S5_COPIES ' +
+        JSON.stringify({ ms: Date.now() - copiesAsked, videos: ids.length, runner: runner.processor }),
+    );
     const port = await freePort(),
       received = join(dir, 'received.flv');
     receiver = rtmpListener(ffmpeg, port, received);
@@ -787,7 +793,8 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
                 .filter((v) => v.src !== ''),
             );
           const [onHall, onLive, onStream] = await Promise.all([hall, win, stream].map(sources));
-          const ours = (list: { id: string; src: string }[]) => list.filter((v) => ids.includes(v.id));
+          const ours = (list: { id: string; src: string }[] | undefined) =>
+            (list ?? []).filter((v) => ids.includes(v.id));
           expect(ours(onHall).length, 'the hall plays the videos').toBeGreaterThan(0);
           expect(
             ours(onHall).filter((v) => v.src !== mediaUrl(v.id)),
