@@ -367,21 +367,26 @@ const filler = (count: number, length = 1) =>
 describe('Sabha flow reader: what it takes in is bounded (review M1; it runs in the pictures window, never Main)', () => {
   it('a table among more than 12,000 runs of text in all is no running order (no-items); with a few more it reads', () => {
     expect(readSabhaFlow([handTable(3), filler(100)]).status).toBe('read');
+    // Said as it is: more text than a running order holds, not "no numbered items".
     expect(readSabhaFlow([handTable(3), filler(12_000)])).toEqual({
       status: 'no-items',
       lang: 'en',
       headers: [],
       items: [],
+      tooMuchText: true,
     });
   });
 
   it('a table among more than 200,000 characters in all is no running order (no-items)', () => {
-    expect(readSabhaFlow([handTable(3), filler(120, 2000)]).status).toBe('no-items');
+    expect(readSabhaFlow([handTable(3), filler(120, 2000)])).toMatchObject({
+      status: 'no-items',
+      tooMuchText: true,
+    });
   });
 
   it('more than 2,000 numbered lines are no running order (no-items)', () => {
     expect(readSabhaFlow([handTable(200)]).status).toBe('read');
-    expect(readSabhaFlow([handTable(2100)]).status).toBe('no-items');
+    expect(readSabhaFlow([handTable(2100)])).toMatchObject({ status: 'no-items', tooMuchText: true });
   });
 });
 
