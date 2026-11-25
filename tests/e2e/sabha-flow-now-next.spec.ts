@@ -599,7 +599,7 @@ test('the panel holds steady through a sabha: Next and Back through every item n
   });
   const now = () =>
     win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state?.now ?? null);
-  /** The numbers behind a move, for its message: the room set, the shown lines' heights, the faces' state. */
+  /** The numbers behind a move, for its message: the room set and what set it, the shown lines' heights, the faces. */
   const behind = () =>
     panel.evaluate((p) => {
       const lines = p.querySelector('[data-measured]');
@@ -609,7 +609,7 @@ test('the panel holds steady through a sabha: Next and Back through every item n
         .filter((f) => /Gujarati|Devanagari/u.test(f.family))
         .map((f) => `${f.family} ${f.weight} ${f.status}`)
         .join(', ');
-      return `room ${lines?.getAttribute('data-reserve') ?? '-'}, lines ${String(h('[data-measured]'))}, now ${String(h('[data-testid="flow-now"]'))}, next ${String(h('[data-testid="flow-next"]'))}; faces: ${faces}`;
+      return `room ${lines?.getAttribute('data-reserve') ?? '-'} by ${lines?.getAttribute('data-reserve-by') ?? '-'}, lines ${String(h('[data-measured]'))}, now ${String(h('[data-testid="flow-now"]'))}, next ${String(h('[data-testid="flow-next"]'))}; faces: ${faces}`;
     });
   // Steady from the first: each of Next up's lengths (a short one, the long Video row, Last item) already allowed for,
   // the baseline taken once the panel says its room is set (its faces loaded; nothing moves after).

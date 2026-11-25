@@ -137,6 +137,23 @@ describe('Now and Next up in the operator window’s Sabha flow panel (QA23-FLOW
     expect(html).toContain('<span aria-hidden="true"> · </span>');
     expect(html).toContain('<span class="sr-only">, </span>');
   });
+
+  it('says "Getting Now and Next up ready…" while their room is being set, a status of its own over the unseen Back and Next that takes no room (review S18)', () => {
+    // Drawn before the room is set (nothing is laid out here): Back, Next, Now and Next up unseen, the note over them.
+    const html = draw({ now: 0 });
+    expect(tag(html, 'flow-now')).not.toBe('');
+    const note = tag(html, 'flow-getting-ready');
+    expect(note).toContain('absolute');
+    expect(note).toContain('pointer-events-none');
+    const said = /data-testid="flow-getting-ready"[^>]*>(.*?)<\/div><\/div>/u.exec(html)?.[1] ?? '';
+    expect(said).toContain('role="status"');
+    expect(words(said)).toBe('Getting Now and Next up ready…');
+    // Not in the lines a change is said in, and never on a phone (its sheet has no room to set).
+    expect(/<div[^>]*aria-live="polite"[^>]*>(.*?)<\/div>/u.exec(html)?.[1]).not.toContain('Getting');
+    expect(draw({ now: 0, size: 'phone', onBack: undefined, onNext: undefined })).not.toContain(
+      'getting-ready',
+    );
+  });
 });
 
 /** The element with this test id in what FlowNowNext returns (it has no hooks, so it can be called as it is). */
