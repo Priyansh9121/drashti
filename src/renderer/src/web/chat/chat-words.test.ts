@@ -15,7 +15,7 @@ describe('a person’s name in the chat, asked once on the phone', () => {
   });
   it('must be given, in Drashti’s own words', () => {
     expect(chatNameProblem('   ')).toBe(CHAT_REFUSAL.name);
-    expect(chatNameProblem('‍')).toBe(CHAT_REFUSAL.name);
+    expect(chatNameProblem('\u200d')).toBe(CHAT_REFUSAL.name);
     expect(chatNameProblem('Placeholder Volunteer')).toBeNull();
   });
   it('is at most the contract’s length, and says so', () => {

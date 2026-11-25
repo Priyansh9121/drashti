@@ -89,7 +89,7 @@ The operator can always change the screens from the computer too; your page foll
 - **The messages**: the newest at the bottom, each with the sender's name above it and the time under it; yours are on the right. The day's messages are there when you open the chat. Scrolled up to read, **New messages** takes you back down.
 - **To write**: type in **Message** (up to 500 characters, emoji too) and tap **Send**. **To speak instead**: tap 🎤 on your phone's keyboard, say the words, and when they are typed, tap **Send**. Drashti does not listen to the microphone itself: the keyboard types what you say.
 - **A new message from someone else** while the page is open: an Android phone buzzes, an iPhone plays a short sound, and a banner shows who it is from and the words (tap it to open **Chat**). The buzz and the sound only start once you have tapped the page once after opening it: phones allow neither before that. **Chat** shows how many you have not read. With the phone locked, or the browser put away, nothing buzzes: the messages are there when you open the page again.
-- **From the Chat QR code**: the phone opens a page with the chat alone. It works today only; tomorrow, scan the code again.
+- **From the Chat QR code**: the phone opens a page with the chat alone. It works today only; tomorrow, scan the code again. An Announcements phone opens the same page with **Open the chat** on its announcements page.
 - The chat is kept on the Drashti computer for the day only. The operator can clear it, and can remove a person from it (that phone is no longer paired).
 
 ## If something is not right

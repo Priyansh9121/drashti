@@ -863,8 +863,10 @@ for (const engine of ENGINES)
       await expect(p.getByTestId('announce-sent').first()).toContainText('Waiting for the operator');
       await everySize('the announcements page with what it sent');
 
-      // The chat page (alpha.23), as this Announcements phone (in the chat) opens it: its name asked, then messages.
-      await p.goto(`${base}/chat`);
+      // The chat page (alpha.23), as this Announcements phone (in the chat) opens it from its page's Open the chat:
+      // its name asked, then messages.
+      await p.getByTestId('announce-chat').click();
+      await p.waitForURL(`${base}/chat`);
       await expect(p.getByTestId('chat-name')).toBeVisible();
       await everySize('the chat page, asking the name');
       await p.getByTestId('chat-name').fill(LONG.name);
