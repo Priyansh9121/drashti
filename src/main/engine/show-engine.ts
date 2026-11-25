@@ -2966,13 +2966,35 @@ export class ShowEngine {
   /** Next is being pressed (Session 56): a deck's slide still being prepared waits (showSlide). */
   private byNext = false;
 
-  private step(delta: 1 | -1): Resolved {
+  private step(delta: 1 | -1, within?: string): Resolved {
     this.byNext = delta > 0;
     try {
-      return this.stepping(delta);
+      return within === undefined ? this.stepping(delta) : this.steppingWithin(delta, within);
     } finally {
       this.byNext = false;
     }
+  }
+
+  /**
+   * A phone's Next, Previous and Back (alpha.23, QA23-PHONE-1: the owner's "Only PPT and PDF"): inside `within`, the
+   * PowerPoint or PDF the main process found live, only: its clicks (deckStep) and its slides (showSlide), in the
+   * playlist row it plays from; never what was cued, a video cue or the playlist's next or previous item. At either end,
+   * and once another presentation (or none) is live, nothing changes.
+   */
+  private steppingWithin(delta: 1 | -1, within: string): Resolved {
+    const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
+    if (presentationId !== within || slideIndex === null) return NO_CHANGE;
+    const clicked = this.deckStep(delta);
+    if (clicked) return clicked;
+    const order = this.source.order(presentationId, arrangementId);
+    if (!order) return NO_CHANGE;
+    const count = order.slides.length;
+    let target = slideIndex + delta;
+    // If the presentation got shorter underneath us, Previous goes to its last slide.
+    if (delta < 0 && target >= count) target = count - 1;
+    if (target < 0 || target >= count) return NO_CHANGE;
+    const entry: DeckEntry = delta < 0 ? 'back' : target === slideIndex + 1 ? 'order' : 'jump';
+    return this.showSlide(presentationId, target, order.arrangementId, playlist, entry);
   }
 
   private stepping(delta: 1 | -1): Resolved {
@@ -3274,11 +3296,15 @@ export class ShowEngine {
           ? { ok: true, actions: [{ type: 'repeat/set', repeat: null }] }
           : { ok: false, error: 'not-repeating', message: 'Nothing is repeating.' };
       case 'next':
-        if (this.state.videoCue?.automatic) return this.goVideoCue(this.state.videoCue.id, true, true);
-        return this.step(1);
+        // A phone's, inside its deck (QA23-PHONE-1), never goes to a video cue.
+        if (command.within === undefined && this.state.videoCue?.automatic)
+          return this.goVideoCue(this.state.videoCue.id, true, true);
+        return this.step(1, command.within);
       case 'previous':
-        return this.step(-1);
+        return this.step(-1, command.within);
       case 'back': {
+        // A phone's, inside its deck (QA23-PHONE-1): one step back there, never what was up before the last Next.
+        if (command.within !== undefined) return this.step(-1, command.within);
         // Undo the last Next exactly, while what it left is still on the screens.
         const last = this.steps.at(-1);
         if (last?.toLive === this.state.live && last.toLayers === this.state.layers) {
