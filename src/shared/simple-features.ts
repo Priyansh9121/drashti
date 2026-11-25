@@ -47,7 +47,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeatureWords[] = [
   {
     id: 'chat',
     name: 'Chat',
-    line: 'The day’s chat with the paired phones read, and messages sent as the operator; Clear chat and removing a person stay in Pro Mode.',
+    line: 'The day’s chat with the paired phones read and written as the operator, a Chat QR phone removed and the Chat QR code stopped; Clear chat and showing the code stay in Pro Mode.',
   },
   {
     id: 'timers',
