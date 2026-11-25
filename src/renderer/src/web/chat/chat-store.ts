@@ -87,8 +87,8 @@ function heard(news: readonly ChatMessage[], live: boolean): void {
   if (!live || !shown()) return;
   const now = Date.now();
   if (now - alertedAt < ALERT_GAP_MS) return;
-  alertedAt = now;
-  alertNewMessage(showOnScreen ? { sound: false } : {});
+  // Only a buzz or a sound that happened holds the next one back (none before a first tap, or an iPhone on the show).
+  if (alertNewMessage(showOnScreen ? { sound: false } : {}) !== 'none') alertedAt = now;
 }
 
 /**

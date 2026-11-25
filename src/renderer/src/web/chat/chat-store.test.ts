@@ -27,7 +27,7 @@ vi.mock('../feed', () => ({
     return () => undefined;
   },
 }));
-const alerts = vi.hoisted(() => ({ armed: 0, alerted: 0, ways: [] as string[] }));
+const alerts = vi.hoisted(() => ({ armed: 0, alerted: 0, ways: [] as string[], answer: 'buzz' }));
 vi.mock('./chat-alert', () => ({
   armAlerts: () => {
     alerts.armed++;
@@ -35,7 +35,7 @@ vi.mock('./chat-alert', () => ({
   alertNewMessage: (how?: { sound?: boolean }) => {
     alerts.alerted++;
     alerts.ways.push(how?.sound === false ? 'buzz only' : 'buzz or sound');
-    return 'buzz';
+    return alerts.answer;
   },
 }));
 
@@ -107,6 +107,7 @@ beforeEach(async () => {
   alerts.armed = 0;
   alerts.alerted = 0;
   alerts.ways = [];
+  alerts.answer = 'buzz';
   drashti = {
     messages: [message('1', 'other'), message('2', ME)],
     name: null,
@@ -352,6 +353,18 @@ describe('the Remote of the phone that runs the show (a22-review-chat P-M1, P-S1
     expect(store.useChat.getState().banner?.id).toBe('5');
     now += store.ALERT_GAP_MS;
     arrives(message('6', 'other'));
+    expect(alerts.alerted).toBe(2);
+  });
+
+  it('a message that could not buzz or sound (no tap yet, an iPhone on the show) holds the next one back not at all', async () => {
+    await started();
+    let now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    alerts.answer = 'none';
+    arrives(message('3', 'other'));
+    alerts.answer = 'sound';
+    now += 1000;
+    arrives(message('4', 'other'));
     expect(alerts.alerted).toBe(2);
   });
 });
