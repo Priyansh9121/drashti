@@ -1,6 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOWER_THIRD_FONT_CHOICES } from '../../src/shared/lower-third-fonts';
 import { MOVEMENTS } from '../../src/shared/looks';
@@ -14,6 +14,7 @@ import {
   type PageGlobals,
   setUpScreen,
 } from './helpers';
+import { logLines } from './log-lines';
 import { goLive, makeSlides } from './placeholder-slides';
 import { decodePng } from './png-decode';
 
@@ -58,10 +59,8 @@ const SCENE_FAILS = { DRASHTI_TEST_WARM_UP_FAILS: 'deck-cover/calm' };
 
 /** What Drashti's log has said of render errors (Session 23), each line from its "Render error in". */
 function renderErrorLines(userData: string): string[] {
-  const file = join(userData, 'logs', 'drashti.log');
-  if (!existsSync(file)) return [];
-  return readFileSync(file, 'utf8')
-    .split('\n')
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((line) => line.includes('Render error in '))
     .map((line) => line.slice(line.indexOf('Render error in ')).trimEnd());
 }
@@ -73,20 +72,16 @@ interface WatchdogGlobals {
 
 /** What Drashti's log has said of its outputs' warm-ups (Session 57), each line from its "Warm-up:". */
 function warmUpLines(userData: string): string[] {
-  const file = join(userData, 'logs', 'drashti.log');
-  if (!existsSync(file)) return [];
-  return readFileSync(file, 'utf8')
-    .split('\n')
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((line) => line.includes('Warm-up: '))
     .map((line) => line.slice(line.indexOf('Warm-up: ')).trimEnd());
 }
 
 /** What Drashti's log has said of how its outputs' warm-ups ended (Session 58, WU-2), each line from its "Warm-up of". */
 function warmUpEndLines(userData: string): string[] {
-  const file = join(userData, 'logs', 'drashti.log');
-  if (!existsSync(file)) return [];
-  return readFileSync(file, 'utf8')
-    .split('\n')
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((line) => line.includes('Warm-up of '))
     .map((line) => line.slice(line.indexOf('Warm-up of ')).trimEnd());
 }

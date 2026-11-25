@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
@@ -16,6 +16,7 @@ import {
   shown,
   wallpaperAndPicture,
 } from './hall-looks';
+import { logLines } from './log-lines';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -87,11 +88,9 @@ async function start(env: Record<string, string>) {
   const hall = await audienceScreen(app, win);
   await installLooks(hall.page, OUT);
   // Main's lines about videos (which page's word took one off, with what its watch saw), said by a failure.
-  const log = join(userData, 'logs', 'drashti.log');
   const mainSaid = (): string =>
-    existsSync(log)
-      ? readFileSync(log, 'utf8')
-          .split('\n')
+    existsSync(join(userData, 'logs'))
+      ? logLines(userData)
           .filter((l) => l.includes('A video'))
           .slice(-6)
           .join(' | ')

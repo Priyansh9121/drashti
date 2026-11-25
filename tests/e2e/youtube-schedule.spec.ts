@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
@@ -16,6 +16,7 @@ import {
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import { launchApp, letTimePass, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { logText } from './log-lines';
 import { filesUnder, findSecrets } from './secrets';
 import { freePort, readFlv, rtmpListener, streamPage, testFfmpeg } from './stream-helpers';
 
@@ -321,7 +322,7 @@ test('a test reaches only the stand-in: without it, Google’s own page is never
   expect(said).toEqual(['kept', YOUTUBE_WORDS.testGuard]);
   expect(await opened()).toEqual([]);
   await app.close();
-  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = logText(userData);
   expect(log).toContain('TEST GUARD: opening Google’s sign-in page was refused: not 127.0.0.1');
   expect(
     findSecrets(filesUnder(userData), [{ label: 'the made-up client secret', value: STANDIN_CLIENT_SECRET }]),

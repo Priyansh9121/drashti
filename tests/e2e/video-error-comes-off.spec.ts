@@ -4,8 +4,6 @@ import {
   existsSync,
   mkdtempSync,
   openSync,
-  readdirSync,
-  readFileSync,
   statSync,
   truncateSync,
   writeFileSync,
@@ -44,6 +42,7 @@ import {
   wallpaperAndPicture,
   watch,
 } from './hall-looks';
+import { logText } from './log-lines';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -63,14 +62,9 @@ test.beforeAll(() => {
   expect(ffmpeg, 'the bundled FFmpeg').not.toBeNull();
 });
 
-/** Everything this Drashti wrote to its log (logs/drashti.log, then drashti.1.log… as it fills). */
+/** Everything this Drashti wrote to its log, every file of it (each earlier day's drashti-YYYY-MM-DD.log and its parts, then drashti.log). */
 function logOf(userData: string): string {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return '';
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .map((f) => readFileSync(join(dir, f), 'utf8'))
-    .join('\n');
+  return existsSync(join(userData, 'logs')) ? logText(userData) : '';
 }
 
 /** Bytes from 40 % to 60 % of the file written over with made-up noise (always the same), as a damaged disk would. */

@@ -8,6 +8,7 @@ import type { DrashtiBridge } from '../../src/shared/bridge';
 import type { AccessStandIn } from '../access-standin';
 import { type AccessOptions, letInBeforeStart, sayIfFirstCheckMissed } from './access';
 import type { EngineState } from '../../src/shared/engine/state';
+import { logLines } from './log-lines';
 
 /** Globals inside our pages, for code passed to page.evaluate(). */
 export type PageGlobals = typeof globalThis & { drashti: DrashtiBridge };
@@ -231,10 +232,7 @@ function sayIfQuittingIsSlow(app: ElectronApplication, userData: string): void {
     // Asked for before closing: once closed, Playwright no longer gives it.
     const child = app.process();
     const timer = setTimeout(() => {
-      const file = join(userData, 'logs', 'drashti.log');
-      const tail = existsSync(file)
-        ? readFileSync(file, 'utf8').split('\n').slice(-40).join('\n')
-        : '(no log)';
+      const tail = existsSync(join(userData, 'logs')) ? logLines(userData).slice(-40).join('\n') : '(no log)';
       console.log(
         `Drashti has taken over ${String(SLOW_QUIT_MS / 1000)} s to quit. The end of its log:\n${tail}`,
       );
@@ -378,10 +376,9 @@ export async function operatorReady(win: Page): Promise<void> {
  */
 function sayHowItStarted(win: Page, first: string): void {
   const folder = pageDataFolder.get(win);
-  const file = folder === undefined ? null : join(folder, 'logs', 'drashti.log');
   let lines = '(no log)';
-  if (file !== null && existsSync(file)) {
-    const all = readFileSync(file, 'utf8').split('\n');
+  if (folder !== undefined && existsSync(join(folder, 'logs'))) {
+    const all = logLines(folder);
     const from = all.findLastIndex((l) => l.includes('Start: the main process running'));
     lines = all.slice(Math.max(0, from), Math.max(0, from) + 80).join('\n');
   }

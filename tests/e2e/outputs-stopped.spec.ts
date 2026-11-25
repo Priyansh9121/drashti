@@ -1,6 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { TEST_LINES } from '../../src/main/db/seed';
 import { clearOfShowControls } from './fit';
 import {
@@ -12,6 +10,7 @@ import {
   setUpScreen,
   type PageGlobals,
 } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * An output the watchdog gave up on (Session 23): before, it stayed black for
@@ -69,9 +68,7 @@ test('an output given up on is Stopped in Screens and the status line, never a m
   );
   expect(events).toContain('retried Try again');
   // Never a modal (quiet test mode answers any dialog, and says so in the log).
-  expect(readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')).not.toContain(
-    'Quiet test mode: answered',
-  );
+  expect(logText(userData)).not.toContain('Quiet test mode: answered');
   await app.close();
 });
 

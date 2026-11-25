@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,6 +15,7 @@ import {
   relaunchApp,
   setUpScreen,
 } from '../e2e/helpers';
+import { logLines } from '../e2e/log-lines';
 import { testFfmpeg } from '../e2e/stream-helpers';
 import { makeMedia } from './media';
 import { accessEnvOf } from '../e2e/access';
@@ -60,13 +61,10 @@ interface MemorySample {
   windows: Record<string, { ws: number; priv?: number }>;
 }
 
-/** Drashti's memory lines, oldest first (every log file: it rotates). */
+/** Drashti's memory lines, oldest first (every log file: it moves to its day, and fills parts). */
 function memoryLines(userData: string): MemorySample[] {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .flatMap((line) => {
       const i = line.indexOf('Memory (test): ');
       if (i < 0) return [];

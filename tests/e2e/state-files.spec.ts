@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { relaunchApp, type PageGlobals } from './helpers';
+import { logText } from './log-lines';
 import { COMMON, launchMain, launchNode, nodesStatus, nodeWindow, pairNode } from './nodes';
 
 /*
@@ -24,7 +25,7 @@ test('a node whose role file cannot be read starts as a node, with no question, 
   const page = await nodeWindow(app);
   await expect(page.getByTestId('node-start-note')).toContainText('could not be read');
   await expect(page.getByTestId('node-start-note')).toContainText('started as a node');
-  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = logText(userData);
   // No question was asked (quiet test mode answers any dialog, and says so in the log).
   expect(log).not.toContain('Quiet test mode: answered');
   expect(log).toContain('Starting as a node');
@@ -60,7 +61,7 @@ test('Main’s identity for its nodes cannot be read: kept aside, never remade b
       true,
     );
     expect(readdirSync(join(userData, 'node-link'))).not.toContain('identity.json');
-    const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const log = logText(userData);
     expect(log).toContain('node-link/identity.json could not be read');
     await again.win.getByRole('button', { name: 'Screens', exact: true }).click();
     const hold = again.win.getByTestId('nodes-identity-problem');

@@ -13,6 +13,7 @@ import {
   operatorReady,
   type PageGlobals,
 } from './helpers';
+import { logLines, logText } from './log-lines';
 
 /*
  * Help > Save diagnostics writes one file an operator can send: versions,
@@ -24,9 +25,7 @@ import {
 
 /** How many times Main's log says Diagnostics were saved (each said once the file is written whole). */
 const savedLines = (userData: string) =>
-  readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-    .split('\n')
-    .filter((l) => l.includes('[info] Diagnostics saved to the Desktop')).length;
+  logLines(userData).filter((l) => l.includes('[info] Diagnostics saved to the Desktop')).length;
 
 /** Save Diagnostics of the period whose menu item this is: the file it wrote on the Desktop, read, then removed. */
 async function saveOf(
@@ -222,7 +221,7 @@ test('the log has a line for every show command, operator request and notice, wi
     await d.engine.dispatch({ type: 'toggleBlackout' });
     await d.engine.dispatch({ type: 'toggleBlackout' });
   }, id ?? '');
-  const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = () => logText(userData);
   await expect
     .poll(log)
     .toMatch(
@@ -243,7 +242,7 @@ test('the log has a line for every show command, operator request and notice, wi
     .poll(log)
     .toMatch(/^\S+ \[info\] Notice: Diagnostics saved on the Desktop: \[library name\] .+\.txt$/mu);
   const text = log();
-  // The file's first line: its day, and who writes it.
+  // The log's first line (its oldest file's): its day, and who writes it.
   expect(text.split('\n')[0]).toMatch(
     /^\S+ \[info\] Drashti’s log of \d{4}-\d{2}-\d{2} \(this computer’s day; each line’s time is UTC\): Drashti \S+ on \S+ .*, install [0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/u,
   );

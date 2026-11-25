@@ -1,7 +1,6 @@
 import type { ElectronApplication } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   EXAMPLE_TEMPLATES,
@@ -12,6 +11,7 @@ import {
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import { launchApp, NO_PLACEHOLDERS, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { logLines } from './log-lines';
 
 /*
  * Deleting the test presentations (Session 50). A new library starts without Drashti's two placeholder
@@ -40,15 +40,12 @@ async function library(app: ElectronApplication): Promise<{ presentations: strin
   });
 }
 
-/** Drashti's log, line by line, each without its time and level. */
-const logLines = (userData: string) =>
-  readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-    .split('\n')
-    .map((line) => line.replace(/^\S+ \[\w+\] /u, ''));
+/** Drashti's log, line by line (every file of it), each without its time and level. */
+const saidLines = (userData: string) => logLines(userData).map((line) => line.replace(/^\S+ \[\w+\] /u, ''));
 
 /** What the log said of each placeholder presentation it removed or kept. */
 const saidOfPlaceholders = (userData: string) =>
-  logLines(userData).filter((line) => /^(Removed|Kept) the placeholder presentation “/u.test(line));
+  saidLines(userData).filter((line) => /^(Removed|Kept) the placeholder presentation “/u.test(line));
 
 test('a new library starts without the placeholder presentations, with the example sabha templates', async () => {
   const { app, userData } = await launchApp(NO_PLACEHOLDERS);
@@ -66,7 +63,7 @@ test('a new library starts without the placeholder presentations, with the examp
   const again = await relaunchApp(userData);
   expect((await library(again.app)).presentations).toEqual([]);
   await again.app.close();
-  const said = logLines(userData);
+  const said = saidLines(userData);
   expect(said).toContain('Added the example sabha templates');
   expect(said).not.toContain('Added the placeholder presentations');
   expect(saidOfPlaceholders(userData)).toEqual([]);
