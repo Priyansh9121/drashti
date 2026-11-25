@@ -286,7 +286,16 @@ test('Simple Mode with Chat chosen: the section under Audio, reading and sending
   // The live column's full rule too (operator-fit.spec.ts's fitFaults, a22-review-chat): Simple Mode's window with Chat
   // and its people open, every scroller at its top and at its end. The names given here may be cut short with an
   // ellipsis; Drashti's own words may not.
-  const given = ['Placeholder Sender', 'Placeholder phone', 'Placeholder from Simple Mode'];
+  // The playlists' names are names too (Simple Mode's own "Sabha, <day>" among them), as operator-fit.spec.ts's NAMES
+  // has the library's: a name may be cut short with an ellipsis (CI run 45538435977 found that one cut, in the left
+  // column), Drashti's own words may not.
+  const lists = await win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
+  const given = [
+    'Placeholder Sender',
+    'Placeholder phone',
+    'Placeholder from Simple Mode',
+    ...lists.map((list) => list.name),
+  ];
   for (const end of [false, true]) {
     await scrollEverything(win, end);
     expect(
