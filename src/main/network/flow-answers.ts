@@ -30,12 +30,16 @@ export const FLOW_WORDS = {
   changed: 'The Sabha flow changed on the Drashti computer. Read it again.',
   noPage: 'That page is not in the Sabha flow.',
   notDrawn: 'That page of the Sabha flow could not be drawn.',
-  /** Red: not built yet. */
-  off: '',
+  /** Simple Mode on the computer, without Sabha flow among its tools (Simple Mode Features): off, as in its window. */
+  off: 'The Sabha flow is off while the Drashti computer is in Simple Mode. It shows there only while Sabha flow is chosen in Simple Mode Features, in Pro Mode’s Edit menu.',
 } as const;
 
-/** GET /api/v1/flow: the current flow and its Now, or none (never a refusal: no flow is an answer too). */
-export function flowAnswer(reads: FlowReads | undefined): DeviceAnswer {
+/**
+ * GET /api/v1/flow: the current flow and its Now, or none (never a refusal: no flow is an answer too). `off`: Simple
+ * Mode on the computer without Sabha flow among its tools: none, saying why (FLOW_WORDS.off).
+ */
+export function flowAnswer(reads: FlowReads | undefined, off = false): DeviceAnswer {
+  if (off) return ok({ ...NO_FLOW, off: FLOW_WORDS.off });
   const { flow, state } = reads?.snapshot() ?? NO_FLOW;
   return ok({ flow, state });
 }
@@ -48,7 +52,10 @@ const flowIdOk = (id: unknown): id is string =>
 export async function flowPageAnswer(
   reads: FlowReads | undefined,
   args: Record<string, unknown>,
+  off = false,
 ): Promise<DeviceAnswer> {
+  // Off in Simple Mode (as flowAnswer): no page either, never asked of the store.
+  if (off) return deny(404, FLOW_WORDS.off);
   const raw = args['page'];
   const page = typeof raw === 'string' && /^\d{1,3}$/u.test(raw) ? Number(raw) : -1;
   const flowId = args['flowId'];
