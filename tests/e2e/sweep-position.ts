@@ -347,11 +347,26 @@ function quantile(values: readonly number[], share: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? 0;
 }
 
-/** RED STUB (the owner's QFP-6 item 2): the raw readings from `afterMs` on, as judged before. */
+/**
+ * What a fade's 50 ms bound is judged on from `afterMs` on (the owner's QFP-6 item 2, "Median of 5"): the median of each
+ * `n` readings in a row (5: 100 ms of the recording), each at its middle reading's time, the last group however many
+ * are left. Single readings jump 15-50 ms and back (most likely the time-stretch's own splices while a sound plays a few
+ * percent fast or slow); a sound out of step for 100 ms or more is still out of step. The bound itself is the caller's.
+ */
 export function closedMedians(
   readings: readonly { t: number; ms: number }[],
   afterMs: number,
-  _n = 5,
+  n = 5,
 ): { t: number; ms: number }[] {
-  return readings.filter((r) => r.t >= afterMs).map((r) => ({ t: r.t, ms: r.ms }));
+  const late = readings.filter((r) => r.t >= afterMs).sort((a, b) => a.t - b.t);
+  const out: { t: number; ms: number }[] = [];
+  for (let i = 0; i < late.length; i += n) {
+    const group = late.slice(i, i + n);
+    const sorted = group.map((r) => r.ms).sort((a, b) => a - b);
+    const half = Math.floor(sorted.length / 2);
+    const ms =
+      sorted.length % 2 === 1 ? (sorted[half] ?? 0) : ((sorted[half - 1] ?? 0) + (sorted[half] ?? 0)) / 2;
+    out.push({ t: group[Math.floor((group.length - 1) / 2)]?.t ?? 0, ms });
+  }
+  return out;
 }

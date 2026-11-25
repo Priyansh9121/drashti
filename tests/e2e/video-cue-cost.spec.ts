@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { windowShowing, type PageGlobals } from './helpers';
 import { dispatch, snapshot } from './time-bar-helpers';
 import { COST_BANDS, COST_SWEEPS, cueReady, setupVideoCue } from './video-cue-helpers';
-import { heardFades, readSweeps, type FadeInput, type FadeSound } from './sweep-position';
+import { closedMedians, heardFades, readSweeps, type FadeInput, type FadeSound } from './sweep-position';
 import { watchPictureJumps } from './picture-jumps';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 import {
@@ -1221,11 +1221,13 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
           Math.max(...sound.readings.map((r) => Math.abs(r.ms))),
           `the ${sound.role} sound is heard within ${String(FADE_MOST_OFF_MS)} ms of its clock through the fade${note}`,
         ).toBeLessThanOrEqual(FADE_MOST_OFF_MS);
+        // The owner's QFP-6 item 2 ("Median of 5"): judged on the median of each 5 readings (100 ms of the
+        // recording), the bound unchanged; the 100 ms bound and the floor above stay on every reading.
         expect(
-          sound.readings
-            .filter((r) => r.t >= FADE_CLOSED_AFTER_MS && Math.abs(r.ms) > FADE_CLOSED_WITHIN_MS)
+          closedMedians(sound.readings, FADE_CLOSED_AFTER_MS)
+            .filter((r) => Math.abs(r.ms) > FADE_CLOSED_WITHIN_MS)
             .map((r) => ({ t: Math.round(r.t), ms: Math.round(r.ms) })),
-          `the ${sound.role} sound is heard back within ${String(FADE_CLOSED_WITHIN_MS)} ms of its clock ${String(FADE_CLOSED_AFTER_MS)} ms into the fade${note}`,
+          `the ${sound.role} sound is heard back within ${String(FADE_CLOSED_WITHIN_MS)} ms of its clock ${String(FADE_CLOSED_AFTER_MS)} ms into the fade (the median of each 5 readings)${note}`,
         ).toEqual([]);
       }
     // Lead 2's QF-1: a crossfade's pictures are brought back by speed, not jumps, on the hall, LIVE and the stream's
