@@ -40,8 +40,8 @@ describe('the operator’s chat list', () => {
 
   it('is a log a screen reader follows, each message saying who sent it and when', () => {
     const html = render([row({}), row({ id: 'r2', mine: true, name: null, sender: 'You', text: 'Reply' })]);
-    expect(html).toMatch(/<ol[^>]*role="log"/);
-    expect(html).toMatch(/<ol[^>]*aria-label="Chat messages"/);
+    // The log is the list's box: the <ol> inside it keeps its list (and its items theirs) for a screen reader.
+    expect(html).toMatch(/<div[^>]*role="log"[^>]*aria-label="Chat messages"[^>]*><ol/);
     expect(html).toContain('Placeholder A, 10:01:');
     expect(html).toContain('You, 10:01:');
   });
