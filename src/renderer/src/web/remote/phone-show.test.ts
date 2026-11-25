@@ -160,7 +160,7 @@ const slidesOf = (presentationId: 'deck' | 'kirtan'): SlidesShown => {
 const tiles = (html: string) =>
   [...html.matchAll(/<button[^>]*data-testid="remote-slide"[^>]*>/gu)].map((m) => ({
     tappable: !/\sdisabled=""/u.test(m[0]),
-    live: /data-live="true"/u.test(m[0]),
+    live: m[0].includes('data-live="true"'),
   }));
 
 const show = (state: EngineState, simple: RemoteSimple | null, deckLive: boolean) =>
@@ -248,9 +248,11 @@ describe('a phone’s Show tab in Pro Mode (QA23-PHONE-1)', () => {
     const html = renderToStaticMarkup(
       createElement(SlidesView, {
         ...shown,
-        viewing: shown.viewing
-          ? { ...shown.viewing, item: { ...shown.viewing.item!, itemId: 'i-other' } }
-          : null,
+        // This phone's playlist row of it, not the live row.
+        viewing: {
+          presentationId: 'deck',
+          item: { playlistId: 'one', itemId: 'i-other', order: { mode: 'presentation' } },
+        },
         shownIndex: null,
         timerAlone: true,
       }),
