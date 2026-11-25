@@ -269,6 +269,7 @@ import {
   type PixelSize,
   sharpenStep,
 } from '../shared/picture-look';
+import { lookOnSlide, onSlideSchema } from '../shared/picture-on-slide';
 import { audienceScreenSizes, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema, trimSavedNotice } from '../shared/trim';
@@ -2747,9 +2748,16 @@ function start(): void {
   handle(IPC.media.photo, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.photoByDefault(mediaId) : false,
   );
-  handle(IPC.media.savePicture, async (e, mediaId, name) => {
+  handle(IPC.media.savePicture, async (e, mediaId, name, onSlide) => {
     if (!fromOperator(e) || !operatorWindow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
       return { ok: false as const, message: 'Only the operator window can save a picture.' };
+    // A slide's picture as its slide shows it (a page cropped or turned: a22-x95nits); nothing else is taken.
+    const shown = onSlide === undefined ? null : onSlideSchema.safeParse(onSlide);
+    if (shown && !shown.success)
+      return {
+        ok: false as const,
+        message: 'Drashti could not tell how that slide shows its picture: choose Save picture… on it again.',
+      };
     const found = media.kindAndFile(mediaId);
     if (found?.kind !== 'image' || found.missing || found.path === '' || isAbsolute(found.path))
       return {
@@ -2780,7 +2788,7 @@ function start(): void {
       join(mediaDir, found.path),
       ext,
       target,
-      media.look(mediaId),
+      lookOnSlide(media.look(mediaId), shown?.data ?? null),
       ffmpegBlurRun(pictureFfmpeg),
     );
     if (!saved.ok) return saved;

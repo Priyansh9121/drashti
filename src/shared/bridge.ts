@@ -211,6 +211,7 @@ import type {
   TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { OnSlide } from './picture-on-slide';
 import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -887,8 +888,11 @@ export interface DrashtiBridge {
     keepLiveZoom(): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Session 55 (Part 5): a photo (its blurred fill on by itself), not a deck's page. */
     photo(mediaId: string): Promise<boolean>;
-    /** Save picture… (Session 55, Part 5): the picture full size, as it shows, where the operator chooses. */
-    savePicture(mediaId: string, name: string): Promise<SavePictureResult>;
+    /**
+     * Save picture… (Session 55, Part 5): the picture full size, as it shows, where the operator chooses; a slide's
+     * picture as its slide shows it (`onSlide`, a22-x95nits).
+     */
+    savePicture(mediaId: string, name: string, onSlide?: OnSlide): Promise<SavePictureResult>;
     onLooks(listener: (looks: Record<string, PictureLook>) => void): () => void;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;
