@@ -24,7 +24,8 @@ import { ChevronLeft, ChevronRight, Film } from '../ui/icons';
  * a button that cannot move (Back before anything is Now, Next on the last item) stays a Tab stop, dimmed, so pressing
  * Next from the keyboard up to the last item never drops the focus out of the panel. A press always goes to the store,
  * which steps from the Now last asked of Main (a press while an ask is on its way counts) and does nothing past either
- * end (flow-store.ts). The phone's
+ * end (flow-store.ts). They show Back and Next, and are named "Sabha flow: Back" and "Sabha flow: Next", so a screen
+ * reader, a keyboard user or a test never takes them for the show's own Next or Next item. The phone's
  * is read only and larger. A change is said to a screen reader once, Now and Next up together (not the buttons); where
  * another copy is said instead (a phone's More under its open Sabha flow sheet) `live` is false.
  */
@@ -127,7 +128,7 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
           <Button
             size="sm"
             icon={ChevronLeft}
-            aria-label="Back one item"
+            aria-label="Sabha flow: Back"
             aria-disabled={canBack ? undefined : true}
             className={CANNOT_MOVE}
             data-testid="flow-back-button"
@@ -138,7 +139,7 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
           <Button
             size="sm"
             iconEnd={ChevronRight}
-            aria-label="Next item"
+            aria-label="Sabha flow: Next"
             aria-disabled={canNext ? undefined : true}
             className={CANNOT_MOVE}
             data-testid="flow-next-button"
