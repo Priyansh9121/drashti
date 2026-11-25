@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import type { PresentationDoc } from '../../../../shared/library';
-import type { MessageTemplate } from '../../../../shared/messages';
 import type { RemoteLibraryPage, RemotePresentation } from '../../../../shared/network-api';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { ItemOrder, PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
@@ -13,17 +12,19 @@ import { onListsChanged, onOnline } from '../feed';
 
 /*
  * What the remote shows besides the engine's state: the playlists, a
- * playlist's items, the presentation whose slides are shown, the message
- * templates and whether a logo is marked. Read over the network as the
- * operator window reads them, and again when Drashti says they changed.
- * The slides shown follow the live item, until the operator picks another.
+ * playlist's items, the presentation whose slides are shown, and the hall.
+ * Read over the network as the operator window reads them, and again when
+ * Drashti says they changed. The slides shown follow the live item.
+ * Since alpha.23 (QA23-PHONE-1) a phone in Simple Mode reads none of the
+ * playlists or presentations (it shows what is live, the Sabha flow and the
+ * chat: phone-mode.ts), and no phone reads the messages or the books.
  */
 
-/** The phone's tabs; Chat (alpha.23, QA23-CHAT-1) is the day's group chat of the paired phones. */
-export type RemoteTab = 'show' | 'playlist' | 'library' | 'more' | 'chat';
+/** The phone's tabs (phone-mode.ts says which a mode has); Chat (alpha.23, QA23-CHAT-1) is the day's group chat. */
+export type RemoteTab = 'show' | 'playlist' | 'chat';
 
-/** What a tablet's side shows beside the show: the playlist or the whole library (Session 18), or the chat. */
-export type RemoteSide = 'playlist' | 'library' | 'chat';
+/** What a tablet's side shows beside the show: the playlist (Pro Mode), or the chat. */
+export type RemoteSide = 'playlist' | 'chat';
 
 /** The library as a Remote reads it (Session 18): by name a page at a time, or searched. */
 export interface RemoteLibrary {
@@ -57,9 +58,6 @@ interface RemoteView {
   items: PlaylistItemInfo[] | null;
   viewing: Viewing | null;
   doc: PresentationDoc | null;
-  templates: MessageTemplate[] | null;
-  /** The loaded Shastra texts (a reference box shows when there are any). */
-  shastra: { name: string; abbreviation: string; itemCount: number }[] | null;
   /**
    * The hall's group, whose live Look the picture follows, and how Drashti's computer writes the time
    * (Sessions 31–36, SLD-6), and which of Main's screens are on, Audience and Stage (Session 50: said, never
@@ -112,8 +110,6 @@ export const useRemote = create<RemoteView>(() => ({
   items: null,
   viewing: null,
   doc: null,
-  templates: null,
-  shastra: null,
   hall: null,
   simpleSaid: false,
 }));
@@ -121,27 +117,29 @@ export const useRemote = create<RemoteView>(() => ({
 /** The playlists, as Drashti's "changed" asks for them again: one read at a time (one-at-a-time.ts). */
 export const loadPlaylists = oneAtATime(readPlaylists);
 
+/** Simple Mode on the computer, as the hall last said: a phone there reads no playlist or presentation. */
+const inSimpleMode = (): boolean => (useRemote.getState().hall?.simple ?? null) !== null;
+
 async function readPlaylists(): Promise<void> {
+  if (inSimpleMode()) return;
   const r = await api<{ playlists: PlaylistNode[] }>('/api/v1/playlists');
   if (!r.ok) return;
   const lists = r.playlists.filter((p) => !p.template);
-  const { playlistId, hall } = useRemote.getState();
+  const { playlistId } = useRemote.getState();
   const live = useEngine.getState().state?.live.playlist?.playlistId ?? null;
-  const desktop = hall?.simple?.playlistId ?? null;
   const playableIds = new Set(lists.filter((p) => !p.isFolder).map((p) => p.id));
-  // On entering Simple Mode, start where the computer is. Later reads keep the phone's own choice.
-  const choices = preferDesktopPlaylist ? [desktop, playlistId, live] : [playlistId, desktop, live];
+  // The phone's own choice, else the live playlist, else the first.
   const chosen =
-    choices.find((id) => id !== null && playableIds.has(id)) ?? playableIds.values().next().value ?? null;
+    [playlistId, live].find((id) => id !== null && playableIds.has(id)) ??
+    playableIds.values().next().value ??
+    null;
   useRemote.setState({ playlists: lists });
   await showPlaylist(chosen);
 }
 
-let preferDesktopPlaylist = false;
 let itemsRead = 0;
 
 export async function showPlaylist(playlistId: string | null): Promise<void> {
-  preferDesktopPlaylist = false;
   if (playlistId === null) {
     useRemote.setState({ playlistId, items: [] });
     return;
@@ -165,6 +163,7 @@ export async function refreshPlaylist(playlistId: string): Promise<void> {
 }
 
 async function loadDoc(presentationId: string): Promise<void> {
+  if (inSimpleMode()) return;
   const r = await api<{ presentation: PresentationDoc }>(
     `/api/v1/presentations/${encodeURIComponent(presentationId)}`,
   );
@@ -216,18 +215,6 @@ export function openPresentation(presentationId: string, slideId: string | null 
   view({ presentationId, item: null });
 }
 
-async function loadTemplates(): Promise<void> {
-  const r = await api<{ messages: MessageTemplate[] }>('/api/v1/messages');
-  if (r.ok) useRemote.setState({ templates: r.messages });
-}
-
-async function loadShastra(): Promise<void> {
-  const r = await api<{ texts: { name: string; abbreviation: string; itemCount: number }[] }>(
-    '/api/v1/shastra',
-  );
-  if (r.ok) useRemote.setState({ shastra: r.texts });
-}
-
 /** Mode and screen changes can arrive together: never let an older hall answer win a race. */
 const loadHall = oneAtATime(readHall);
 
@@ -240,9 +227,10 @@ async function readHall(): Promise<void> {
     simple?: RemoteSimple | null;
   }>('/api/v1/hall');
   if (!r.ok) return;
-  const { hall, playlistId } = useRemote.getState();
+  const { hall, viewing } = useRemote.getState();
   const simple = r.simple ?? null;
   const enteringSimple = simple !== null && (hall?.simple ?? null) === null;
+  const leavingSimple = simple === null && (hall?.simple ?? null) !== null;
   useRemote.setState({
     hall: {
       groupId: r.groupId,
@@ -253,10 +241,10 @@ async function readHall(): Promise<void> {
     },
     ...(enteringSimple ? { simpleSaid: false } : {}),
   });
-  if (simple === null) preferDesktopPlaylist = false;
-  if (simple?.playlistId && (playlistId === null || (enteringSimple && simple.playlistId !== playlistId))) {
-    preferDesktopPlaylist = enteringSimple;
+  // Back in Pro Mode: the playlists and the slides shown, read again (none were read in Simple Mode).
+  if (leavingSimple) {
     void loadPlaylists();
+    if (viewing) void loadDoc(viewing.presentationId);
   }
 }
 
@@ -313,10 +301,8 @@ export function startRemote(): void {
   started = true;
   followLive();
   onOnline(() => {
-    void loadPlaylists();
-    void loadTemplates();
-    void loadHall();
-    void loadShastra();
+    // The hall first: in Simple Mode the phone reads no playlist (QA23-PHONE-1).
+    void loadHall().then(() => loadPlaylists());
     const v = useRemote.getState().viewing;
     if (v) void loadDoc(v.presentationId);
   });
@@ -330,8 +316,6 @@ export function startRemote(): void {
       if (library.list) void loadLibrary();
       if (library.query !== '') void searchLibrary(library.query);
     }
-    if (what === 'messages') void loadTemplates();
     if (what === 'screens' || what === 'mode') void loadHall();
-    if (what === 'shastra') void loadShastra();
   });
 }

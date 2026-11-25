@@ -1211,17 +1211,9 @@ export class NetworkService implements EngineTransport {
     const checked = this.checked(request);
     if ('status' in checked) return checked;
     if (request.op !== 'flow.page') return deny(400, 'Ask for a page of the Sabha flow by its number.');
-    return flowPageAnswer(this.deps.flow, checked.args, this.flowOff());
-  }
-
-  /**
-   * The Sabha flow is off for phones while the computer is in Simple Mode without Sabha flow among its tools (Simple
-   * Mode Features), as it is off in Simple Mode's window (lead 2 for the owner: "Simple Mode: off unless chosen").
-   */
-  private flowOff(): boolean {
-    return (
-      (this.deps.simple?.() ?? null) !== null && !(this.deps.simpleFeatures?.() ?? []).includes('sabha-flow')
-    );
+    // In Simple Mode too, whatever Simple Mode Features has (QA23-PHONE-1, the owner's Q3 "Always"; until then only
+    // while Sabha flow was chosen there, as in Simple Mode's window, which is unchanged).
+    return flowPageAnswer(this.deps.flow, checked.args);
   }
 
   async presentationPicture(request: DeviceRequest): Promise<DeviceAnswer> {
@@ -1577,7 +1569,8 @@ export class NetworkService implements EngineTransport {
       }
       // Sabha flow (alpha.23): read only, as the window's flow:get answers it; a page is answered apart (flowPage).
       case 'flow':
-        return flowAnswer(this.deps.flow, this.flowOff());
+        // In Simple Mode too (the owner's Q3), as flowPage.
+        return flowAnswer(this.deps.flow);
       case 'flow.page':
         return deny(400, 'A page of the Sabha flow comes as a picture of its own: ask for it by its number.');
       case 'me':
