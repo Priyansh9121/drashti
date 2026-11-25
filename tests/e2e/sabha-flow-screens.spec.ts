@@ -1,6 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
+import type { SimpleFeature } from '../../src/shared/simple-features';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import {
   chooseMenuItem,
@@ -168,6 +169,12 @@ test('Simple Mode has the Sabha flow only while it is chosen in Simple Mode Feat
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
+  // A feature by its id as a plain string: SimpleFeature has 'sabha-flow' once a22-flow-panel's entry is in.
+  const chooseFeature = (feature: string, on: boolean) =>
+    win.evaluate(
+      ([f, o]) => (globalThis as PageGlobals).drashti.app.setSimpleFeature(f as SimpleFeature, o),
+      [feature, on] as const,
+    );
   const setMode = async (mode: 'pro' | 'simple') => {
     await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
     await expect.poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode())).toBe(mode);
@@ -220,9 +227,7 @@ test('Simple Mode has the Sabha flow only while it is chosen in Simple Mode Feat
 
     // Chosen in Simple Mode Features… (QA23-FLOWP-1 A, lead 2’s answer): Simple Mode's window has it at the
     // top of its left column, marking Now, and the paired phone shows it too, following a Now marked there.
-    expect(
-      await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('sabha-flow', true)),
-    ).toEqual({ ok: true, chosen: ['sabha-flow'] });
+    expect(await chooseFeature('sabha-flow', true)).toEqual({ ok: true, chosen: ['sabha-flow'] });
     await setMode('simple');
     const simple = win.getByTestId('column-left').getByTestId('sabha-flow');
     await expect(simple.getByTestId('flow-row').nth(1)).toHaveAttribute('aria-current', 'step');
@@ -235,9 +240,7 @@ test('Simple Mode has the Sabha flow only while it is chosen in Simple Mode Feat
 
     // Taken out of Simple Mode Features… again: Simple Mode has none of it, on the phone either.
     await setMode('pro');
-    expect(
-      await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('sabha-flow', false)),
-    ).toEqual({ ok: true, chosen: [] });
+    expect(await chooseFeature('sabha-flow', false)).toEqual({ ok: true, chosen: [] });
     await setMode('simple');
     await expect(win.getByTestId('sabha-flow')).toHaveCount(0);
     await expect(p.getByTestId('remote-flow')).toHaveCount(0);
