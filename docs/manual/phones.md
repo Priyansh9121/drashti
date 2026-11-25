@@ -76,6 +76,22 @@
 
 ![Announcements from phones, waiting for approval](../screenshots/announcements-queue.png)
 
+## The chat
+
+**What it is.** One group chat for this computer and the phones paired with it, as a WhatsApp group: each message with its sender's name and time. It is kept for today only, and never shows on the screens or the stream.
+
+**When you would use it.** When volunteers with phones need to tell each other something during the sabha.
+
+**How:**
+
+1. Open **Chat** under LIVE, below **Messages**.
+2. Type in the box and press **Send** (or Enter).
+3. For more people, press **Show the Chat QR code** in **Phones**, and let each phone scan it.
+4. Folded, its heading shows how many new messages came in.
+5. **Clear chat** empties it for everyone. **Remove…** under **People in the chat** cuts a phone off.
+
+![The Phones panel](../screenshots/phones-panel.png)
+
 ## Files from phones
 
 **What it is.** **Phones and tablets may add files**: a paired remote can send a picture, video, sound, PDF or deck into Drashti. Off until someone turns it on. Nothing a phone sends goes on the screens by itself.

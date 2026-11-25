@@ -82,6 +82,14 @@ export const PANEL_HELP = {
     text: 'A message for the hall’s screens, such as “Car 12 please move”, keeps its own look: where it sits (drag it in the small picture), how it comes in and goes out, how long it stays up, and its font, size, colours and what is behind it. Fill in its fields and press Show; Take off removes it, and Undo brings back a change or a deleted message.',
     guide: '**Messages.**',
   },
+  chat: {
+    title: 'Chat',
+    chapter: 'phones',
+    feature: 'The chat',
+    doc: 'operator',
+    text: 'One group chat for this computer and the phones paired with it on the mandir’s Wi-Fi, kept for today only and never on the screens or the stream. Type in the box and press Send to write as Operator; while it is folded, its heading shows how many new messages came in. For more people, show the Chat QR code in Phones; Clear chat empties it for everyone, and Remove… beside a person cuts their phone off.',
+    guide: '**Chat.** In **Chat**',
+  },
   timers: {
     title: 'Timers',
     chapter: 'messages',

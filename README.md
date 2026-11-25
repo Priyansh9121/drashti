@@ -738,6 +738,8 @@ Phones, tablets and browsers on the mandir's Wi-Fi can run the show (**Remote**)
 
 Either way it comes off by itself when its time is up, or with **Take off** in the queue. The phone sees what became of each one it sent: waiting, on the screens until a time, shown, or not shown.
 
+**The chat** (alpha.23, `src/renderer/src/chat/`, `src/main/chat/`, `src/shared/chat.ts`). One group chat for this computer and the phones paired with it: each Remote and Announcements device, and each phone that scans the **Chat QR code** in **Phones** (paired by itself, for today only, as a chat-only device). The operator window's **Chat** section under LIVE, after **Messages**, shows the day's messages as a WhatsApp group does (the sender's name above, the operator's own on the right), sends as **Operator**, counts new messages on its folded heading, and has **Clear chat** (asked first) and **Remove…** for a person (unpaired at once). Main keeps it for the day only, checks every message's size and rate, and never logs its words or names; it is never on a screen or the stream, and Report a Problem's picture blanks the section (`data-report-private`). Simple Mode has it only when **Chat** is chosen in **Edit › Simple Mode Features…**, to read and send.
+
 - **Kept:** every announcement is kept in the library with what happened to it. Those that ended or were rejected are forgotten after 30 days.
 - **Logged:** the log names the device, never the words.
 - **Limits:** one phone (a device from one address) can have 3 waiting, and the queue holds 30.
