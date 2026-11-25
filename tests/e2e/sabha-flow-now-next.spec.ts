@@ -647,7 +647,10 @@ test('the panel holds steady through a sabha: Next and Back through every item n
     expect(await where(), `the Gujarati flow, Now on ${String(to + 1)}`).toEqual(firstGujarati);
   }
 
-  // Simple Mode with Sabha flow chosen in Simple Mode Features: the same rule, Next up whole at 1410 x 900.
+  // Simple Mode with Sabha flow chosen in Simple Mode Features: the same rule, Next up whole at 1410 x 900, on the
+  // English flow again (its item 2 is the long Video row; the Gujarati flow has none).
+  await openWith(app, win, long, 3);
+  await expect.poll(now).toBeNull();
   expect(
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('sabha-flow', true)),
   ).toEqual({ ok: true, chosen: ['sabha-flow'] });
