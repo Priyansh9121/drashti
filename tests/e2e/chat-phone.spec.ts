@@ -13,7 +13,8 @@ import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
  * this phone's own on the right, newest at the bottom, the day's history on opening; the hint to speak with the
  * keyboard's own microphone; a new message from someone else buzzes an Android phone, or plays a short sound on an
  * iPhone, only after a first tap, with a banner and a count while the chat is not in view; every word shown as words
- * (nothing a message says ever runs); a removed phone cut off at once. Placeholder names and messages only; codes and
+ * (nothing a message says ever runs); a removed phone cut off at once; and a new phone from the Chat QR, paired for the
+ * chat alone, catching up on what came while the network was off. Placeholder names and messages only; codes and
  * tokens are made at run time and never printed.
  */
 
@@ -288,6 +289,61 @@ test('the chat page (/chat): a phone in the chat opens it with its own pairing a
     });
     await p.waitForURL(`${base}/pair?why=revoked`);
     await expect(p.getByTestId('pair-page')).toBeVisible();
+  } finally {
+    await phone.close();
+    await app.close();
+  }
+});
+
+test('a new phone scans the Chat QR: paired by itself for the chat alone, its name once, the history; it catches up on what came while it was not connected, and a removed person is cut off', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const phone = await device('webkit');
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const { base } = await networkOn(win);
+    const said = await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.chat.send('Placeholder from the operator'),
+    );
+    expect(said.ok).toBe(true);
+    const invited = await win.evaluate(() => (globalThis as PageGlobals).drashti.chat.invite());
+    if (!invited.ok || !invited.view.invite) throw new Error('no Chat QR');
+    const p = phone.page;
+    // The QR's address (whatever core makes it: /pair#c= or /chat#c=) ends on the chat page.
+    await p.goto(invited.view.invite.url.replace(/^https?:\/\/[^/]+/u, base));
+    await p.waitForURL(`${base}/chat`);
+    expect(
+      await p.evaluate(
+        () => (JSON.parse(localStorage.getItem('drashti.device') ?? '{}') as { kind?: string }).kind,
+      ),
+    ).toBe('chat');
+    await join(p, 'Placeholder QR Person');
+    await expect(bubble(p, 'Placeholder from the operator').getByTestId('chat-from')).toHaveText('Operator');
+    // Not connected for a while (the network off): what the operator wrote meanwhile is there once it is back.
+    await win.evaluate(async () => {
+      const off = await (globalThis as PageGlobals).drashti.network.setOn(false);
+      if (!off.ok) throw new Error(off.message);
+    });
+    await expect(p.getByTestId('connection')).not.toHaveText('Connected');
+    await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.chat.send('Placeholder while you were away'),
+    );
+    await win.evaluate(async () => {
+      const on = await (globalThis as PageGlobals).drashti.network.setOn(true);
+      if (!on.ok) throw new Error(on.message);
+    });
+    await expect(p.getByTestId('connection')).toHaveText('Connected', { timeout: 30_000 });
+    await expect(bubble(p, 'Placeholder while you were away')).toBeVisible();
+    // Removed by the operator: cut off at once.
+    const view = await win.evaluate(() => (globalThis as PageGlobals).drashti.chat.view());
+    const person = view.members.find((m) => m.name === 'Placeholder QR Person');
+    const removed = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.chat.remove(id),
+      person?.id ?? '',
+    );
+    expect(removed.ok).toBe(true);
+    await p.waitForURL(`${base}/pair?why=revoked`);
   } finally {
     await phone.close();
     await app.close();
