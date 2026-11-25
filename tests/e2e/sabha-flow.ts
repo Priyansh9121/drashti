@@ -9,7 +9,7 @@ export * from './sabha-flow-fixtures';
 /*
  * Sabha flow (alpha.23, QA23-FLOW-1 and QA23-FLOW-2) across the operator window's panel, a paired phone and Now / Next
  * up: the steps the end-to-end scenarios share (choosing in the panel with Main's dialog answered, what a person reads,
- * each word's language where it is shown, a phone paired on its More tab), with the placeholder running orders of
+ * each word's language where it is shown, a phone paired on its Show tab), with the placeholder running orders of
  * sabha-flow-fixtures.ts.
  */
 
@@ -93,17 +93,20 @@ export async function chooseInPanel(app: ElectronApplication, panel: Locator, fi
   await expect(panel.getByTestId('flow-file')).toHaveText(name, { timeout: 30_000 });
 }
 
-/** A phone (Chrome's engine on an Android phone, or Safari's on an iPhone) paired as a remote, on its More tab. */
-export async function phoneOnMore(win: Page, base: string, engine: Engine, name: string): Promise<Device> {
+/**
+ * A phone (Chrome's engine on an Android phone, or Safari's on an iPhone) paired as a remote, on its Show tab, where a
+ * phone has the flow since alpha.23 (QA23-PHONE-1; in More until then, which a phone no longer has).
+ */
+export async function phoneOnShow(win: Page, base: string, engine: Engine, name: string): Promise<Device> {
   const phone = await device(engine);
   await pairByQr(phone.page, base, await pairingCode(win, 'remote', name), '/remote');
   await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
-  await phone.page.getByTestId('remote-tab-more').click();
+  await phone.page.getByTestId('remote-tab-show').click();
   await expect(phone.page.getByTestId('remote-flow')).toBeVisible();
   return phone;
 }
 
-/** Now and Next up, as the panel and a phone's view (More's section or the open sheet) both show them. */
+/** Now and Next up, as the panel and a phone's view (the Show tab's section or the open sheet) both show them. */
 export async function expectNowNext(
   panel: Locator,
   phone: Locator,

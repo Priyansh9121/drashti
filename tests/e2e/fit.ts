@@ -54,15 +54,33 @@ export async function clearOfShowControls(win: Page, notice: Locator): Promise<v
 }
 
 /**
+ * One element that may end in "…" though its words are none of the names: the element itself (a selector) and its
+ * words, which must be exactly these. Only the owner's own exception goes here: QA23-STAGE8-5 (25 Nov 2026, word for
+ * word: "End it in '…' (Recommended)"), Simple Mode's day playlist's name in the left column at 1024 × 645, whole in its
+ * title, to a screen reader and in the middle's header (each checked strictly where it is used).
+ */
+export interface MayEndInEllipsis {
+  selector: string;
+  words: string;
+}
+
+/**
+ * What fitFaults's page script is given: the names, and the elements `mayCut` names besides (one call's one argument, so
+ * prettier keeps the page script where it was).
+ */
+const allowed = (given: { names: string[]; mayCut: MayEndInEllipsis[] }) => given;
+
+/**
  * Everything that does not fit in the operator window as it is laid out now, each in words: a control, a heading or a
  * key hint cut (its contents run past it), cut off by what holds it, running out of its column, lying over another, or
  * under a notice; words lying over a control; words of Drashti's own cut short with an ellipsis (a name the operator
- * gave, placeholder here, may be); anything scrolling sideways. What a scroller has scrolled out of sight is not
- * looked at, nor what is hidden from people (aria-hidden, unseen). `names`: the names the operator gave in the test
- * (operator-fit.spec.ts's NAMES); moved here from it unchanged for chat-operator.spec.ts (alpha.23).
+ * gave, placeholder here, may be; and the element `mayCut` names, with its words, may be); anything scrolling sideways.
+ * What a scroller has scrolled out of sight is not looked at, nor what is hidden from people (aria-hidden, unseen).
+ * `names`: the names the operator gave in the test (operator-fit.spec.ts's NAMES); moved here from it unchanged for
+ * chat-operator.spec.ts (alpha.23).
  */
-export const fitFaults = (win: Page, names: string[]) =>
-  win.evaluate((names) => {
+export const fitFaults = (win: Page, names: string[], mayCut: MayEndInEllipsis[] = []) =>
+  win.evaluate(({ names, mayCut }) => {
     const out = new Set<string>();
     const REGIONS: [string, string][] = [
       ['the header', '[data-header]'],
@@ -203,7 +221,8 @@ export const fitFaults = (win: Page, names: string[]) =>
         }
         parts.push({ el, region: name, seen, control: el.matches(CONTROLS) });
       }
-      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: NAMES).
+      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: NAMES; and the one element
+      // mayCut names, with exactly its words: the owner's QA23-STAGE8-5).
       for (const el of r.querySelectorAll('*')) {
         if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth + 1) continue;
         const style = getComputedStyle(el);
@@ -212,6 +231,7 @@ export const fitFaults = (win: Page, names: string[]) =>
         if (
           words !== '' &&
           !names.some((n) => words.includes(n)) &&
+          !mayCut.some((m) => el.matches(m.selector) && words === m.words) &&
           inSight(el.parentElement, boxOf(el.getBoundingClientRect())).seen
         )
           out.add(`${name}: “${words.slice(0, 60)}” is cut short`);
@@ -271,4 +291,4 @@ export const fitFaults = (win: Page, names: string[]) =>
       }
     }
     return [...out];
-  }, names);
+  }, allowed({ names, mayCut }));

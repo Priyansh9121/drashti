@@ -3,7 +3,12 @@ import type { DeckSlide } from '../../../../shared/deck';
 import { type EngineState, initialEngineState } from '../../../../shared/engine/state';
 import type { OrderedSlide } from '../../../../shared/order';
 import { PLAIN } from '../../../../shared/picture-look';
-import { picturePage, presentationPages, screensPage, slidePages } from './pages';
+import { lookOnSlide } from '../../../../shared/picture-on-slide';
+import { renderEditedSlide } from '../../../../shared/slide-design';
+import type { EditDoc, EditSlide } from '../../../../shared/slide-edit';
+import { findSlide, newSlide } from '../../editor/ops';
+import { turnPdfPageRight } from '../../editor/pdf-page-ops';
+import { picturePage, presentationPages, screensPage, slidePage, slidePages } from './pages';
 
 /*
  * A deck looked through on a phone (Session 54, D1/D2 review): one page for each of a deck slide's steps, in order,
@@ -180,5 +185,73 @@ describe('a picture looked at on a phone while it is the background (Session 54,
       y: 0,
     });
     expect(picturePage('m-other', 'Placeholder other').onScreens?.(up) ?? null).toBeNull();
+  });
+});
+
+/*
+ * Save picture… of a PDF page on a phone (a22-x95nits): the page as the screens show it, turned with Turn page right
+ * and cropped with Crop page…, not the whole page as it was imported (a22-review-x95's nit). A made-up 480 x 320 page
+ * whose picture is the whole page, by the real Turn page right and the real page drawing.
+ */
+
+/** The page turned right `turns` times and kept to `crop` of the turned page, as the phone has it in the order. */
+function pdfPage(turns: number, crop?: { x: number; y: number; w: number; h: number }): OrderedSlide {
+  const page: EditSlide = {
+    ...newSlide(null),
+    id: 'page',
+    documentPage: { sha256: 'a'.repeat(64), ext: 'pdf', page: 0, width: 480, height: 320 },
+    pageSize: { width: 480, height: 320 },
+    elements: [
+      {
+        id: 'e1',
+        kind: 'image',
+        mediaId: 'm-page',
+        fit: 'fill',
+        frame: { x: 0, y: 0, width: 480, height: 320 },
+      },
+    ],
+  };
+  let doc: EditDoc = {
+    presentationId: 'placeholder-pdf',
+    name: 'Placeholder PDF',
+    width: 1920,
+    height: 1080,
+    transition: null,
+    loop: false,
+    groups: [{ id: 'g', name: '', color: null, slides: [page] }],
+  };
+  for (let turn = 0; turn < turns; turn += 1) doc = turnPdfPageRight(doc, 'page');
+  const turned = findSlide(doc, 'page');
+  if (!turned?.documentPage) throw new Error('no page');
+  const shown = crop ? { ...turned, documentPage: { ...turned.documentPage, crop } } : turned;
+  const s = ordered(0, false);
+  return { ...s, slide: { ...s.slide, slide: renderEditedSlide(doc, shown) } };
+}
+
+/** The look Save picture… draws the page's picture with, from its kept look (PLAIN here). */
+function savedLook(s: OrderedSlide) {
+  const save = slidePage('placeholder-pdf', s).save;
+  if (!save || typeof save === 'function' || !('slide' in save) || 'presentationId' in save)
+    throw new Error('no save');
+  expect(save.mediaId).toBe('m-page');
+  return lookOnSlide(PLAIN, save.onSlide ?? null);
+}
+
+describe('Save picture… of a PDF page on a phone (a22-x95nits)', () => {
+  it('saves the page as it was imported where it is neither turned nor cropped', () => {
+    expect(savedLook(pdfPage(0))).toBe(PLAIN);
+  });
+
+  it('saves a page turned with Turn page right turned, and one cropped with Crop page… cropped', () => {
+    expect(savedLook(pdfPage(1))).toMatchObject({ turn: 90 });
+    expect(savedLook(pdfPage(3))).toMatchObject({ turn: 270 });
+    expect(savedLook(pdfPage(0, { x: 0, y: 0, w: 0.6, h: 1 }))).toMatchObject({
+      crop: { x: 0, y: 0, w: 0.6, h: 1 },
+    });
+    // Turned right, then its top right quarter kept (the crop in the turned page's parts).
+    expect(savedLook(pdfPage(1, { x: 0.5, y: 0, w: 0.5, h: 0.5 }))).toMatchObject({
+      turn: 90,
+      crop: { x: 0.5, y: 0, w: 0.5, h: 0.5 },
+    });
   });
 });

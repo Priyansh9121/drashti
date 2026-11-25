@@ -101,3 +101,25 @@ it('four turns retain decimal crop edges without floating point drift or negativ
   for (let n = 0; n < 4; n++) doc = turnPdfPageRight(doc, 'p0');
   expect(doc.groups[0]?.slides[0]?.documentPage?.crop).toEqual(crop);
 });
+
+it('Keep crop with the crop each chosen page already has changes nothing: the same document, no step for Undo', () => {
+  const before = useEditor.getState().doc;
+  if (!before) throw new Error('Missing generated document');
+  // The whole page on pages that show the whole page already.
+  expect(cropPdfPages(before, 'p0', { x: 0, y: 0, w: 1, h: 1 }, 'this')).toBe(before);
+  expect(cropPdfPages(before, 'p0', { x: 0, y: 0, w: 1, h: 1 }, 'every')).toBe(before);
+  commit(cropPdfPages(before, 'p0', crop, 'every'));
+  const cropped = useEditor.getState().doc;
+  if (!cropped) throw new Error('Missing cropped document');
+  // The same crop again, on every page or on some of them, as the dialog opens on it.
+  for (const pages of ['this', 'every', 'odd', 'even'] as const)
+    expect(cropPdfPages(cropped, 'p1', { ...crop }, pages)).toBe(cropped);
+  commit(cropPdfPages(cropped, 'p1', { ...crop }, 'odd'));
+  expect(useEditor.getState().past).toHaveLength(1);
+  undo();
+  expect(useEditor.getState().doc).toEqual(before);
+  // One page that differs is still a change, of that page alone.
+  const one = cropPdfPages(cropped, 'p1', { ...crop, x: 0.25 }, 'this');
+  expect(one).not.toBe(cropped);
+  expect(one.groups[0]?.slides.map((s) => s.documentPage?.crop?.x)).toEqual([0.125, 0.25, 0.125, 0.125]);
+});

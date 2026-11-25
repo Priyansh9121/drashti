@@ -206,8 +206,14 @@ test('the phone remote at 375 x 812: axe on every tab, targets large enough to t
     });
     const phone = await context.newPage();
     await pairByQr(phone, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
-    // Every tab, the Library's too (Sessions 31–36, A11Y-3).
-    for (const tab of ['show', 'playlist', 'library', 'more', 'chat']) {
+    // Every tab (Sessions 31–36, A11Y-3): since alpha.23 a phone in Pro Mode has exactly Show, Playlist and Chat
+    // (QA23-PHONE-1: the owner's Q2/Q10 "Playlist only (Recommended)", no Library; More's tools a phone may not use).
+    await expect(phone.getByRole('tablist', { name: 'What to show' }).getByRole('tab')).toHaveText([
+      'Show',
+      'Playlist',
+      'Chat',
+    ]);
+    for (const tab of ['show', 'playlist', 'chat']) {
       await phone.getByTestId(`remote-tab-${tab}`).click();
       await expectNoSeriousA11yIssues(phone, `the remote's ${tab} tab at 375 x 812`);
       // Every control at least 24 x 24 CSS pixels (WCAG 2.5.8), or spaced so a 24-pixel circle fits.

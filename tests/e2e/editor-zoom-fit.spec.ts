@@ -126,6 +126,14 @@ for (const mode of ['pro', 'simple'] as const)
           await expect(tabs.nth((i + 1) % count)).toBeFocused();
           await expectFits(header, 'Each editor group keeps the top row within the zoomed page');
         }
+        // Every command of the top is there, Undo and Redo too while nothing can be undone yet (a22-review-x96's nit:
+        // the loop below skips a disabled button, and would pass with one gone).
+        for (const name of [/^Undo/u, /^Redo/u, /^Translat/u, /^Cancel/u])
+          await expect(
+            header.getByRole('button', { name }),
+            `${format}, ${mode}: ${String(name)}`,
+          ).toHaveCount(1);
+        await expect(header.getByTestId('save-slides'), `${format}, ${mode}: Done`).toHaveCount(1);
         // Trial clicks prove pointer hit targets without invoking exports or closing the editor.
         const buttons = header.getByRole('button');
         for (let i = 0; i < (await buttons.count()); i++) {

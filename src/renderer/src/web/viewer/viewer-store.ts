@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { create } from 'zustand';
 import type { EngineState } from '../../../../shared/engine/state';
+import type { OnSlide } from '../../../../shared/picture-on-slide';
 import { useEngine } from '../../engine/engine-store';
 import type { Framing, ZoomFrame } from './live-zoom';
 import type { Size } from './zoom-math';
@@ -26,7 +27,11 @@ export interface NativeSlideSave {
   click: number;
 }
 
-type ViewerSave = { mediaId: string; name: string } | { mediaId: string; slide: number } | NativeSlideSave;
+type ViewerSave =
+  | { mediaId: string; name: string }
+  // A slide's picture: and how its slide shows it beyond its own look (a page cropped or turned: a22-x95nits).
+  | { mediaId: string; slide: number; onSlide?: OnSlide }
+  | NativeSlideSave;
 
 export interface ViewerPage {
   /** Names what it shows; the phone's own zoom starts again from the whole when another page comes. */
