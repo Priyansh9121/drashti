@@ -28,11 +28,13 @@ import { CI_WINDOW } from './window-size';
 async function openEditor(
   mode: 'pro' | 'simple',
   format: 'native' | 'PDF',
+  prepare?: (win: Page) => Promise<void>,
 ): Promise<{ app: ElectronApplication; ed: Page; editor: Locator }> {
   const { app, userData } = await launchApp();
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
+    await prepare?.(win);
     const file = join(userData, `Placeholder small window.${format === 'PDF' ? 'pdf' : 'txt'}`);
     writeFileSync(
       file,
@@ -228,6 +230,129 @@ test('at its least window with 200% text, a PDF’s source notes fold behind a b
     await expect(notes).toBeVisible();
     await editor.getByRole('heading', { level: 1 }).click();
     await expect(notes).toBeHidden();
+  } finally {
+    await app.close();
+  }
+});
+
+/** The last control in `box` the keyboard can reach, given the keyboard. */
+const focusLast = (box: Locator) =>
+  box.evaluate((root) => {
+    const reachable = [
+      ...root.querySelectorAll<HTMLElement>('button, input, select, textarea, [href], [tabindex]'),
+    ].filter((el) => el.tabIndex >= 0 && !el.hasAttribute('disabled') && el.getClientRects().length > 0);
+    const last = reachable.at(-1);
+    if (!last) throw new Error('nothing to reach');
+    last.focus();
+  });
+
+/** The control with the keyboard is not covered: at its middle the window shows it, not something over it. */
+async function expectFocusUncovered(ed: Page, what: string): Promise<void> {
+  const seen = await ed.evaluate(() => {
+    const named = (el: Element | null) =>
+      el
+        ? `${el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') ?? el.textContent).trim().slice(0, 40)}"`
+        : 'nothing';
+    const at = document.activeElement;
+    if (!(at instanceof HTMLElement) || at === document.body)
+      return { ok: false, why: 'nothing has the keyboard' };
+    const r = at.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return {
+      ok: hit !== null && (hit === at || at.contains(hit)),
+      why: `${named(at)} at ${String(Math.round(x))}, ${String(Math.round(y))} is under ${named(hit)}`,
+    };
+  });
+  expect(seen.ok, `${what}: ${seen.why}`).toBe(true);
+}
+
+// The keyboard never stops on a control covered by what is open over the slide (a22-review-ribbonfold M1, WCAG
+// 2.4.11): leaving what is open folds it, and what is open never covers its own button.
+test('at its least window with 200% text, Tab and Shift+Tab never stop on a control covered by what is open over the slide', async () => {
+  test.setTimeout(120_000);
+  const { app, ed, editor } = await openEditor('pro', 'PDF');
+  try {
+    await sizeSlideEditor(app, ed, await smallestContent(app, 'slide-editor.html'));
+    await zoomEditor(app, ed, 2);
+    await steadyCanvas(ed);
+    // Tab past the dropped ribbon's last control: the slides under it.
+    await editor.getByRole('tab', { selected: true }).click();
+    const ribbon = editor.getByRole('tabpanel');
+    await expect(ribbon).toBeVisible();
+    await focusLast(ribbon);
+    await ed.keyboard.press('Tab');
+    await expectFocusUncovered(ed, 'Tab past the dropped ribbon');
+    await expect(ribbon).toBeHidden();
+    // Shift+Tab from the Inspector's Keep it open: its own button.
+    const opener = editor.getByRole('button', { name: 'Inspector', exact: true });
+    await opener.click();
+    await editor.getByRole('button', { name: 'Keep it open' }).focus();
+    await ed.keyboard.press('Shift+Tab');
+    await expectFocusUncovered(ed, 'Shift+Tab from Keep it open');
+    await ed.keyboard.press('Escape');
+    await expect(editor.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+    // Tab out of the source notes: the Inspector's button below them.
+    await editor.getByRole('button', { name: /^Source notes/u }).click();
+    const notes = editor.getByTestId('editor-source-issues');
+    await expect(notes).toBeVisible();
+    await editor.getByRole('button', { name: 'Close the source notes' }).focus();
+    await ed.keyboard.press('Tab');
+    await expectFocusUncovered(ed, 'Tab out of the source notes');
+  } finally {
+    await app.close();
+  }
+});
+
+// A field the Inspector keeps only as it lets go of the keyboard (a timer's Length) keeps what was typed when a press
+// elsewhere closes the Inspector over the slide (a22-review-ribbonfold S2), as it does beside the slide.
+test('at its least window with 200% text, a timer length typed in the Inspector over the slide is kept at a press elsewhere', async () => {
+  test.setTimeout(120_000);
+  let timerId = '';
+  let operator: Page | null = null;
+  const { app, ed, editor } = await openEditor('pro', 'native', async (win) => {
+    operator = win;
+    timerId = await win.evaluate(async () => {
+      const made = await (globalThis as PageGlobals).drashti.timers.create({
+        name: 'Placeholder small countdown',
+        kind: 'countdown',
+        durationMs: 90_000,
+        targetTime: null,
+        allowsOverrun: false,
+      });
+      if (!made.ok) throw new Error(made.message);
+      return made.id;
+    });
+  });
+  try {
+    await sizeSlideEditor(app, ed, await smallestContent(app, 'slide-editor.html'));
+    await zoomEditor(app, ed, 2);
+    // A Timer from the dropped Insert ribbon, then the ribbon folded.
+    await editor.getByTestId('editor-tab-insert').click();
+    await editor.getByTestId('add-timer').click();
+    await ed.getByRole('menuitem', { name: 'Placeholder small countdown (Countdown)' }).click();
+    await ed.keyboard.press('Escape');
+    await expect(editor.getByRole('tabpanel')).toBeHidden();
+    // Its Length typed in the Inspector over the slide, then a press elsewhere.
+    await editor.getByRole('button', { name: 'Inspector', exact: true }).click();
+    const length = editor.getByTestId('inspector-timer').getByTestId('field-timer-length');
+    await length.fill('0:04');
+    await editor.getByRole('heading', { level: 1 }).click();
+    await expect(editor.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+    const win = operator as Page | null;
+    if (!win) throw new Error('no operator window');
+    await expect
+      .poll(async () =>
+        win.evaluate(
+          async (id) =>
+            (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.timers.find(
+              (t) => t.id === id,
+            )?.durationMs,
+          timerId,
+        ),
+      )
+      .toBe(4000);
   } finally {
     await app.close();
   }
