@@ -134,7 +134,8 @@ export function readDocsFor(items: readonly PlaylistItemInfo[] | null): void {
 }
 
 /** The library changed: every presentation is read again as its rows show. */
-function forgetDocs(): void {
+/** The rows' presentations let go, to be read again as the rows show (remote-store.ts: a library change, a connection). */
+export function forgetDocs(): void {
   asked.clear();
   usePhoneTools.setState({ docs: new Map() });
 }
