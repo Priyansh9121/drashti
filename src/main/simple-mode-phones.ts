@@ -152,6 +152,9 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'media.rename': 'within',
   'presentation.rename': 'within',
   'playlist.whenEnds': 'simple',
+  // Red: not built yet.
+  flow: 'pro',
+  'flow.page': 'pro',
 };
 
 /**

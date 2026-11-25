@@ -81,6 +81,7 @@ import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { type DesktopActs, DesktopAnswers } from './desktop-answers';
 import { phoneCommandInSimpleMode, phoneMayInSimpleMode, type SimplePhoneScope } from '../simple-mode-phones';
 import { type PhoneActs, PhoneAnswers } from './phone-answers';
+import { flowAnswer, flowPageAnswer, type FlowReads } from './flow-answers';
 import { cutText } from '../../shared/text';
 import { nfcDeep } from '../../shared/nfc';
 
@@ -231,6 +232,11 @@ export interface NetworkDeps {
    * and every file is refused, here and in the worker. Left out (a test): let in.
    */
   letIn?: () => boolean;
+  /**
+   * Sabha flow (alpha.23, flow-answers.ts): the operator's current flow and its Now, and its pages, as the window's
+   * flow:get and flow:page answer them. Left out (a test of something else): no flow.
+   */
+  flow?: FlowReads;
 }
 
 /**
@@ -359,6 +365,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'media.rename': IPC.media.rename,
   'presentation.rename': IPC.library.renamePresentation,
   'playlist.whenEnds': IPC.playlists.setWhenEnds,
+  // Red: not built yet.
+  flow: null,
+  'flow.page': null,
 };
 
 const idsWithin = (ids: unknown, max: number): unknown =>
@@ -761,6 +770,8 @@ export class NetworkService implements EngineTransport {
           (request.args as Record<string, unknown> | null)?.['format'] === 'png'
         )
           answer = await this.presentationPicture(request);
+        // A page of the Sabha flow (alpha.23): its PNG, read from the flow's store.
+        else if (request.op === 'flow.page') answer = await this.flowPage(request);
         else answer = this.answer(request);
       } else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
       // No file while Drashti is not let in (Session 54): a preview, a picture, an original, a shared sound.
@@ -999,6 +1010,14 @@ export class NetworkService implements EngineTransport {
     if (request.op !== 'windows' || !this.desktop)
       return deny(404, 'Drashti cannot list windows for a phone here.');
     return this.desktop.windows(checked.device);
+  }
+
+  /** A page of the Sabha flow (alpha.23) for a phone: checked as every request is, then read from the flow's store. */
+  async flowPage(request: DeviceRequest): Promise<DeviceAnswer> {
+    const checked = this.checked(request);
+    if ('status' in checked) return checked;
+    if (request.op !== 'flow.page') return deny(400, 'Ask for a page of the Sabha flow by its number.');
+    return flowPageAnswer(this.deps.flow, checked.args);
   }
 
   async presentationPicture(request: DeviceRequest): Promise<DeviceAnswer> {
@@ -1328,6 +1347,11 @@ export class NetworkService implements EngineTransport {
         const items = id.success ? (this.deps.files?.sharedItems(id.data) ?? null) : null;
         return items ? ok({ items }) : deny(404, 'That playlist is not shared with phones.');
       }
+      // Sabha flow (alpha.23): read only, as the window's flow:get answers it; a page is answered apart (flowPage).
+      case 'flow':
+        return flowAnswer(this.deps.flow);
+      case 'flow.page':
+        return deny(400, 'A page of the Sabha flow comes as a picture of its own: ask for it by its number.');
       case 'me':
       case 'state':
       case 'preview':
