@@ -36,12 +36,15 @@ interface Frag {
   r: number;
   y: number;
   h: number;
+  pageTop: number;
 }
 
 interface Line {
   y: number;
   h: number;
   frags: Frag[];
+  /** Where its page starts (pages are read one under another). */
+  pageTop: number;
 }
 
 /** More than this share of odd characters, and the text is unreadable. */
@@ -202,7 +205,7 @@ export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
     for (const t of page.texts) {
       const s = t.s.normalize('NFC');
       if (s.trim() === '') continue;
-      raw.push({ s, x: t.x, r: t.x + t.w, y: t.y + offset, h: t.h > 0 ? t.h : 1 });
+      raw.push({ s, x: t.x, r: t.x + t.w, y: t.y + offset, h: t.h > 0 ? t.h : 1, pageTop: offset });
     }
     for (const rule of page.rules)
       rules.push({ x0: rule.x0, y0: rule.y0 + offset, x1: rule.x1, y1: rule.y1 + offset });
@@ -229,7 +232,7 @@ export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
     if (last && Math.abs(last.y - f.y) <= 0.35 * Math.max(last.h, f.h)) {
       last.frags.push(f);
       last.h = Math.max(last.h, f.h);
-    } else lines.push({ y: f.y, h: f.h, frags: [f] });
+    } else lines.push({ y: f.y, h: f.h, frags: [f], pageTop: f.pageTop });
   }
   for (const line of lines) line.frags.sort((a, b) => a.x - b.x);
   const lang = langOf(raw.map((f) => f.s));
@@ -280,7 +283,7 @@ function numberedRows(lines: readonly Line[]): Row[] {
   lines.forEach((line, index) => {
     const frag = line.frags[0];
     const m = frag ? NUMBER.exec(frag.s.trim()) : null;
-    if (!frag || !m?.[1] || line.frags.length < 2) return;
+    if (!frag || !m?.[1]) return;
     candidates.push({ line, index, no: m[1], value: valueOf(m[1]), x: frag.x, y: line.y, frag });
   });
   return goingUp(aligned(candidates));
@@ -301,22 +304,58 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
     rows.map((r) => r.line.h),
     10,
   );
-  // The header row: the line just above the first row, with at least two runs, close enough.
-  const before = lines[firstRow.index - 1];
-  const header =
-    before && before.frags.length >= 2 && firstRow.y - before.y <= 3 * Math.max(pitch, h)
-      ? before
-      : undefined;
-  const top = header ? firstRow.index - 1 : firstRow.index;
-  // Where the table spans across, from its header and rows.
-  const spanLines = lines.slice(top, lastRow.index + 1);
-  const leftmost = Math.min(...spanLines.flatMap((l) => l.frags.map((f) => f.x)));
-  const rightmost = Math.max(...spanLines.flatMap((l) => l.frags.map((f) => f.r)));
-  const across = rules.filter((r) => r.y0 === r.y1);
-  const down = rules.filter((r) => r.x0 === r.x1);
+  // Where the table spans across, from its rows; the borders over it.
+  const rowLines = lines.slice(firstRow.index, lastRow.index + 1);
+  const leftmost = Math.min(...rowLines.flatMap((l) => l.frags.map((f) => f.x)));
+  const rightmost = Math.max(...rowLines.flatMap((l) => l.frags.map((f) => f.r)));
+  const width = rightmost - leftmost;
+  // Borders across that reach over its words, and the upright ones within them (a short last column's border stands
+  // well right of its words).
+  const across = rules.filter((r) => r.y0 === r.y1 && r.x1 > leftmost && r.x0 < rightmost);
+  const outerLeft = Math.min(leftmost, ...across.map((r) => r.x0)) - 3;
+  const outerRight = Math.max(rightmost, ...across.map((r) => r.x1)) + 3;
+  const down = rules.filter((r) => r.x0 === r.x1 && r.x0 >= outerLeft && r.x0 <= outerRight);
+  const heights = bordersAcross(across);
+  // Bordered: borders across between its rows.
+  const bordered = heights.some((g) => g.y0 > firstRow.y && g.y0 < lastRow.y);
+  // Where each row starts: the border above it (a number may sit in the middle of a tall row), else just above its
+  // number's line.
+  const starts = rows.map((row, k) => {
+    const previous = rows[k - 1];
+    if (bordered) {
+      const above = heights.filter(
+        (g) =>
+          g.y0 < row.y - 0.3 * row.line.h &&
+          (previous ? g.y0 > previous.y : g.y0 > row.y - 8 * h && g.length >= 0.5 * width),
+      );
+      const border = previous
+        ? [...above].sort((a, b) => b.length - a.length)[0]
+        : [...above].sort((a, b) => b.y0 - a.y0)[0];
+      if (border) return border.y0;
+    }
+    return row.y - 0.5 * row.line.h;
+  });
+  const start = starts[0] ?? firstRow.y;
+  // The header row: in a bordered table, the lines between its top border and the first row; else the one line just
+  // above the first row, with at least two runs, close enough.
+  const before = lines.filter((l) => l.y < start);
+  let headerLines: Line[] = [];
+  const topBorder = bordered
+    ? heights
+        .filter((g) => g.y0 < start - 0.5 * h && g.y0 >= start - 6 * h && g.length >= 0.5 * width)
+        .sort((a, b) => b.y0 - a.y0)[0]
+    : undefined;
+  if (topBorder) headerLines = before.filter((l) => l.y > topBorder.y0);
+  else {
+    const line = before[before.length - 1];
+    if (line && line.frags.length >= 2 && firstRow.y - line.y <= 3 * Math.max(pitch, h)) headerLines = [line];
+  }
+  if (headerLines.reduce((n, l) => n + l.frags.length, 0) < 2) headerLines = [];
+  const header = headerLines.length > 0;
+  const top = lines.indexOf(headerLines[0] ?? lines.find((l) => l.y >= start) ?? firstRow.line);
   // Its end: its bottom border (the first border across most of it under the last row), or where its lines stop.
-  const wide = bordersAcross(across)
-    .filter((r) => r.y0 > lastRow.y && r.length >= 0.6 * (rightmost - leftmost))
+  const wide = heights
+    .filter((r) => r.y0 > lastRow.y && r.length >= 0.6 * width)
     .sort((a, b) => a.y0 - b.y0)[0];
   let end = lastRow.index + 1;
   if (wide) while (end < lines.length && (lines[end]?.y ?? Infinity) < wide.y0) end++;
@@ -331,12 +370,13 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
       if (first && first.x < lastRow.frag.r + 2) break;
       end++;
     }
-  const tableLines = lines.slice(top, end);
-  const tableTop = (header ?? firstRow.line).y - 1.2 * h;
-  const tableBottom = wide ? wide.y0 : (lines[end - 1]?.y ?? lastRow.y) + 0.5 * h;
+  // A header row repeated at the top of a later page is not a row's words.
+  const headerTexts = new Set(headerLines.map((l) => joined(l.frags)));
+  const tableLines = lines
+    .slice(top, end)
+    .filter((l) => headerLines.includes(l) || !headerTexts.has(joined(l.frags)));
 
-  const columns =
-    columnsByBorders(down, tableTop, tableBottom) ?? columnsByGaps(tableLines, rightmost - leftmost);
+  const columns = columnsByBorders(down, tableLines, h) ?? columnsByGaps(tableLines, width);
   // From the number's column on.
   const numberAt = columns.findIndex(
     (c) => firstRow.frag.x + 0.5 < c.right && firstRow.frag.x + 0.5 >= c.left - 2,
@@ -349,11 +389,11 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
     return k >= 0 && at >= (used[0]?.left ?? 0) - 2 ? k : -1;
   };
 
-  // Each row's lines: from its number's line down to the next row's.
+  // Each row's lines: from where it starts down to where the next one starts.
   const rowOf = (line: Line): number => {
     let found = -1;
-    rows.forEach((row, k) => {
-      if (line.y >= row.y - 0.5 * row.line.h) found = k;
+    starts.forEach((at, k) => {
+      if (line.y >= at) found = k;
     });
     return found;
   };
@@ -361,7 +401,8 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
   const placed: { line: Line; col: number; row: number }[] = [];
   const headerCells: string[][] = used.map(() => []);
   for (const line of tableLines) {
-    const row = line === header ? -1 : rowOf(line);
+    const row = headerLines.includes(line) ? -1 : rowOf(line);
+    if (row < 0 && !headerLines.includes(line)) continue;
     const byColumn = new Map<number, Frag[]>();
     for (const f of line.frags) {
       const col = columnOf(f);
@@ -484,13 +525,27 @@ function bordersAcross(across: readonly FlowRule[]): { y0: number; length: numbe
   return out;
 }
 
-/** Columns between upright borders that run down most of the table. */
-function columnsByBorders(down: readonly FlowRule[], top: number, bottom: number): Column[] | null {
-  const height = bottom - top;
+/** Columns between upright borders that run down most of the table (on each page it is on). */
+function columnsByBorders(down: readonly FlowRule[], lines: readonly Line[], h: number): Column[] | null {
+  const spans: { top: number; bottom: number }[] = [];
+  for (const line of lines) {
+    const span = spans.find((s) => s.top === line.pageTop);
+    if (span) span.bottom = Math.max(span.bottom, line.y + 0.5 * h);
+    else spans.push({ top: line.pageTop, bottom: line.y + 0.5 * h });
+  }
+  // Each page's part of the table: from its first line to its last.
+  const parts = spans.map((s) => {
+    const first = Math.min(...lines.filter((l) => l.pageTop === s.top).map((l) => l.y)) - 1.2 * h;
+    return { top: first, bottom: s.bottom };
+  });
+  const height = parts.reduce((n, p) => n + p.bottom - p.top, 0);
   if (height <= 0) return null;
   const xs: { x: number; length: number }[] = [];
   for (const rule of down) {
-    const length = Math.min(rule.y1, bottom) - Math.max(rule.y0, top);
+    const length = parts.reduce(
+      (n, p) => n + Math.max(0, Math.min(rule.y1, p.bottom) - Math.max(rule.y0, p.top)),
+      0,
+    );
     if (length <= 0) continue;
     const near = xs.find((e) => Math.abs(e.x - rule.x0) <= 3);
     if (near) near.length += length;
