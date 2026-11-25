@@ -1,3 +1,4 @@
+import { pageCopyFor } from './page-copy';
 import { audioOnlyTracks } from './audio-only-tracks';
 import type { DrashtiBridge } from '../../../shared/bridge';
 import type { CorrectionLimits, PlaybackClip, PlaybackSeek } from '../../../shared/media';
@@ -507,7 +508,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   for (const event of ['seeked', 'playing', 'ratechange']) v.addEventListener(event, rearm);
   // eslint-disable-next-line no-restricted-syntax -- checks every 250 ms that the video is where the engine's time says (check)
   const timer = setInterval(check, CHECK_MS);
-  const url = mediaUrl(mediaId, attempt);
+  // A background video on a page that draws smaller: its page copy if one is ready now (QA23-FADE-9 candidate 1); for
+  // this playback's life, whatever comes ready later. Every other playback, and every page that never says, the original.
+  const url =
+    (options.pageCopy === true ? pageCopyFor(mediaId, attempt) : null) ?? mediaUrl(mediaId, attempt);
   // A deck's clip loaded ahead (Session 57, item 6): the same file, with no error, is played from where it is; what
   // its load would have told comes now (its length known, its first frame in), or as it comes (its events, above).
   // One that failed is loaded again, as any file is.
