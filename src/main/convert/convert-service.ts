@@ -274,6 +274,8 @@ export interface CopyOptions {
    * and move it to the front, rewriting the whole part-file just as a show starts; a22-review-fadecopies S9).
    */
   stopAtOnce?: boolean;
+  /** RED STUB (a22-review-fadecopies R2-M1 a): no effect yet. */
+  waitWhile?: () => string | null;
   /** Bounded artifacts reserve their actual upper bound, rather than a whole source-sized video. */
   estimatedBytes?: number;
   kind?: 'analysis' | 'proxy' | 'clip' | 'page-copy';

@@ -650,6 +650,121 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
     expect(order).toEqual(['operator’s save', 'background copy']);
   }, 120_000);
 
+  it('a page copy waits while a cue is armed (one running stops at once, one waiting does not start) and gives way to an import’s conversion; each goes on after (a22-review-fadecopies R2-M1 a, b)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
+    const mediaDir = join(dir, 'Media');
+    mkdirSync(join(mediaDir, 'in'), { recursive: true });
+    const source = join(dir, 'Placeholder clip.mp4');
+    make([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=320x180:r=25',
+      '-t',
+      '6',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      source,
+    ]);
+    // An import's file Drashti cannot play as it is, to convert.
+    make(['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25', '-t', '2', '-c:v', 'mpeg4', join(mediaDir, 'in', 'clip.avi')]);
+    db = openDatabase(join(dir, 'drashti.sqlite'));
+    db.prepare(
+      "INSERT INTO media (id, kind, name, path, playable) VALUES ('m-avi', 'video', 'Placeholder clip.avi', 'in/clip.avi', 0)",
+    ).run();
+    let started = 0,
+      ended = 0;
+    let jobs: ConversionJob[] = [];
+    service = new ConvertService({
+      db,
+      mediaDir,
+      ffmpegPath: () => ffmpeg,
+      busy: () => null,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: (j) => {
+        jobs = j;
+      },
+      libraryChanged: () => undefined,
+      log: () => undefined,
+      children: {
+        started: () => {
+          started += 1;
+        },
+        ended: () => {
+          ended += 1;
+        },
+      },
+    });
+    const out = join(dir, 'copies');
+    mkdirSync(out);
+    const info = {
+      durationMs: 6000,
+      video: { codec: 'h264', pixFmt: 'yuv420p', width: 320, height: 180, still: false },
+      audio: null,
+    };
+    let armed: string | null = null;
+    const pageCopy = {
+      args: (tmp: string) => [
+        '-nostdin',
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-re',
+        '-i',
+        source,
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-f',
+        'mp4',
+        tmp,
+      ],
+      lengthMs: 6000,
+      waitForShow: true,
+      background: true,
+      stopAtOnce: true,
+      kind: 'page-copy' as const,
+      waitWhile: () => armed,
+    };
+    // (a) A cue armed while it runs: stopped at once, and not started again while the cue waits.
+    const first = service.saveCopy(source, join(out, 'First.mp4'), info, pageCopy);
+    await until(() => started === 1);
+    await sleep(1000);
+    armed = 'Waits while a cue is armed.';
+    service.activityChanged();
+    await sleep(2500);
+    expect(ended, 'stopped at once').toBe(1);
+    expect(started, 'not started again while the cue waits').toBe(1);
+    expect(existsSync(join(out, 'First.mp4')), 'stopped, not finished').toBe(false);
+    armed = null;
+    expect(await first.done).toEqual({ ok: true, copy: join(out, 'First.mp4') });
+    // One asked while a cue waits does not start until it is gone.
+    armed = 'Waits while a cue is armed.';
+    const before = started;
+    const second = service.saveCopy(source, join(out, 'Second.mp4'), info, pageCopy);
+    await sleep(2500);
+    expect(started, 'not started while the cue waits').toBe(before);
+    armed = null;
+    expect(await second.done).toEqual({ ok: true, copy: join(out, 'Second.mp4') });
+    // (b) An import's conversion asked while a page copy runs goes first; the copy starts again after it.
+    const order: string[] = [];
+    const third = service.saveCopy(source, join(out, 'Third.mp4'), info, pageCopy);
+    void third.done.then(() => order.push('page copy'));
+    await sleep(1500);
+    expect(service.convert(['m-avi'])).toMatchObject({ ok: true });
+    await until(() => jobs[0]?.state === 'done' || jobs[0]?.state === 'failed');
+    order.push('conversion');
+    expect(jobs[0]?.state).toBe('done');
+    expect(order, 'the conversion first').toEqual(['conversion']);
+    expect(await third.done).toEqual({ ok: true, copy: join(out, 'Third.mp4') });
+    expect(order).toEqual(['conversion', 'page copy']);
+  }, 120_000);
+
   it('stops a conversion, a look at a file and a Save as MP4 that take too long, saying so plainly; and FFmpeg never gets Drashti’s own environment (Session 31, MED-6)', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
     const mediaDir = join(dir, 'Media');
