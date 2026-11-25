@@ -1043,6 +1043,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                     blocked={exportBusy}
                     onLink={sourceLink}
                     className="m-0 pr-10"
+                    over
                   />
                   <IconButton
                     icon={X}
