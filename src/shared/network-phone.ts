@@ -4,6 +4,7 @@ import { idSchema } from './model-schema';
 import { pictureLookSchema } from './picture-look';
 import { quickPinsSchema } from './quick-bar';
 import { cleanNameSchema } from './rename-name';
+import type { SimpleFeature } from './simple-features';
 import { WHEN_ENDS } from './wallpapers';
 import { wallpaperNameSchema } from './wallpapers';
 
@@ -40,6 +41,11 @@ export interface RemoteWallpapers {
 export interface RemoteSimple {
   playlistId: string | null;
   words: string;
+  /**
+   * The tools Simple Mode Features brought into Simple Mode (alpha.23; left out by a Drashti before it): the phone shows
+   * the Sabha flow in Simple Mode only while 'sabha-flow' is one, as the window does (QA23-FLOWP-1).
+   */
+  features?: SimpleFeature[];
 }
 
 /** The file and presentation names a phone takes as the window's Rename… does. */

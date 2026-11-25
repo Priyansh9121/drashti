@@ -204,6 +204,14 @@ export const DEVICE_OPS = {
   chat: ['remote', 'announcements', 'chat'],
   'chat.name': ['remote', 'announcements', 'chat'],
   'chat.send': ['remote', 'announcements', 'chat'],
+  /**
+   * Sabha flow (alpha.23; shared/sabha-flow.ts): the running order the operator chose in the operator window's panel,
+   * read from its PDF, and where the sabha is (Now), as the window's flow:get answers it; and one of its pages as a
+   * PNG, as flow:page draws it. Read only, never changed from a phone. A Remote's only: never a Stage device (it is
+   * never on a screen) or the poster's.
+   */
+  flow: ['remote'],
+  'flow.page': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;

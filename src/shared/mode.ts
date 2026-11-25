@@ -129,6 +129,8 @@ export const SIMPLE_FEATURE_COMMANDS: Readonly<Record<SimpleFeature, readonly En
   'show-a-stream-link': [],
   'video-inputs': ['toggleInput'],
   'picture-in-picture': ['showPip', 'swapPip', 'placePip'],
+  // The Sabha flow (alpha.23) sends nothing to the show: it is never on a screen.
+  'sabha-flow': [],
 };
 
 /**

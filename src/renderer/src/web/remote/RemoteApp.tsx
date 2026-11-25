@@ -83,6 +83,8 @@ import { LiveLines } from './LiveLines';
 import { MessageFields } from './MessageFields';
 import { startMirror } from './mirror-store';
 import { MoreTools } from './MoreTools';
+import type { RemoteSimple } from '../../../../shared/network-phone';
+import { FlowLayer, FlowSection } from './FlowSheet';
 import { MusicList } from './MusicList';
 import { Playing } from './Playing';
 import { RemotePlaying } from './RemotePlaying';
@@ -1138,13 +1140,22 @@ function Shastra() {
 }
 
 function TimersAndMessages() {
+  return <MoreColumns simple={useSimple()} />;
+}
+
+/**
+ * More: the computer's screens, the Sabha flow, Audio, and (Pro Mode) the stage screen, messages, timers and Books.
+ * `simple`: Simple Mode on the computer now (null: Pro Mode); given, so a test can draw either.
+ */
+export function MoreColumns({ simple }: { simple: RemoteSimple | null }) {
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const templates = useRemote((s) => s.templates);
-  const simple = useSimple();
   if (simple)
     return (
       <div className="space-y-5" data-testid="remote-more-columns">
         <DesktopTools />
+        {/* The Sabha flow, only while it is chosen in Simple Mode Features (a22-review-flow M6, QA23-FLOWP-1 A). */}
+        <FlowSection simple={simple} />
         <Music />
       </div>
     );
@@ -1158,6 +1169,8 @@ function TimersAndMessages() {
       >
         {/* The computer's own screens first, as the window's top bar has them (Session 54). */}
         <DesktopTools />
+        {/* The Sabha flow (alpha.23): Now and Next up, and its sheet, read only. */}
+        <FlowSection simple={simple} />
         <Music />
         <StageScreen />
         <section className="space-y-2" aria-labelledby="messages-title" data-testid="remote-messages">
@@ -1552,6 +1565,7 @@ export function RemoteApp() {
         <Layout />
         <DeviceViewer />
         <DesktopLayer />
+        <FlowLayer />
         <PhoneToolsLayer />
         <PhoneStopped />
       </ClockStyleContext.Provider>

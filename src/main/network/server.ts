@@ -52,6 +52,7 @@ import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
 import { engineForAlpha17Phone } from './phone-lower-third-motion';
 import { phoneRoutes } from './phone-routes';
+import { flowPagePng, flowRoutes } from './flow-routes';
 import {
   connectionSeats,
   PairedSeats,
@@ -296,6 +297,8 @@ const ROUTES: Route[] = [
   ...desktopRoutes(route),
   // The phone's own (Session 55, Part 9): the wallpapers, the quick bar, a picture's look, Rename… and When it ends.
   ...phoneRoutes(route),
+  // Sabha flow (alpha.23): the operator's current flow and its Now, and a page as a PNG, read only.
+  ...flowRoutes(route),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
   // The chat (alpha.23, shared/chat.ts): read, a name given, a message written; the main process checks the rest.
@@ -904,6 +907,19 @@ export class NetworkServer {
           'Cache-Control': 'no-store',
         });
         res.end(png);
+        return;
+      }
+      // A page of the Sabha flow (alpha.23): the PNG the main process read, only when it is one.
+      if (r.op === 'flow.page' && answer.status === 200) {
+        const page = flowPagePng(reply);
+        if (!page) throw new Error('A page of the Sabha flow was not a PNG.');
+        res.writeHead(200, {
+          ...SECURITY_HEADERS,
+          'Content-Type': 'image/png',
+          'Content-Length': page.byteLength,
+          'Cache-Control': 'no-store',
+        });
+        res.end(page);
         return;
       }
       this.json(res, answer.status, reply);

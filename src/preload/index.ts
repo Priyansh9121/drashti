@@ -171,6 +171,14 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  flow: {
+    get: () => invoke(IPC.flow.get),
+    choose: () => invoke(IPC.flow.choose),
+    remove: () => invoke(IPC.flow.remove),
+    setNow: (flowId, now) => invoke(IPC.flow.setNow, flowId, now),
+    page: (flowId, page) => invoke(IPC.flow.page, flowId, page),
+    onChanged: (listener) => on(IPC.flow.changed, listener),
+  },
   drop: {
     view: () => invoke(IPC.drop.view),
     pickFolder: () => invoke(IPC.drop.pickFolder),

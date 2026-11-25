@@ -63,6 +63,7 @@ import type {
   UploadPolicy,
 } from '../../shared/phone-files';
 import type { ScreenSwitches } from '../../shared/screen-switches';
+import type { SimpleFeature } from '../../shared/simple-features';
 import type { SearchResult } from '../../shared/search';
 import type { PassageResult } from '../../shared/shastra';
 import { referenceInputSchema } from '../../shared/shastra';
@@ -81,6 +82,7 @@ import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { type DesktopActs, DesktopAnswers } from './desktop-answers';
 import { phoneCommandInSimpleMode, phoneMayInSimpleMode, type SimplePhoneScope } from '../simple-mode-phones';
 import { type PhoneActs, PhoneAnswers } from './phone-answers';
+import { flowAnswer, flowPageAnswer, type FlowReads } from './flow-answers';
 import { cutText } from '../../shared/text';
 import { nfcDeep } from '../../shared/nfc';
 import { isPhoneDeck } from '../../shared/phone-decks';
@@ -266,6 +268,16 @@ export interface NetworkDeps {
    * and every file is refused, here and in the worker. Left out (a test): let in.
    */
   letIn?: () => boolean;
+  /**
+   * Sabha flow (alpha.23, flow-answers.ts): the operator's current flow and its Now, and its pages, as the window's
+   * flow:get and flow:page answer them. Left out (a test of something else): no flow.
+   */
+  flow?: FlowReads;
+  /**
+   * The tools Edit › Simple Mode Features… brought into Simple Mode (alpha.22): the hall tells a phone, which shows the
+   * Sabha flow in Simple Mode only while it is one (QA23-FLOWP-1). Left out: none.
+   */
+  simpleFeatures?: () => readonly SimpleFeature[];
 }
 
 /**
@@ -399,6 +411,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   chat: null,
   'chat.name': null,
   'chat.send': null,
+  // Sabha flow (alpha.23): the window's own reads, so Simple Mode's lock says to a phone what it says to the window.
+  flow: IPC.flow.get,
+  'flow.page': IPC.flow.page,
 };
 
 const idsWithin = (ids: unknown, max: number): unknown =>
@@ -827,6 +842,8 @@ export class NetworkService implements EngineTransport {
           (request.args as Record<string, unknown> | null)?.['format'] === 'png'
         )
           answer = await this.presentationPicture(request);
+        // A page of the Sabha flow (alpha.23): its PNG, read from the flow's store.
+        else if (request.op === 'flow.page') answer = await this.flowPage(request);
         else answer = this.answer(request);
       } else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
       // No file while Drashti is not let in (Session 54): a preview, a picture, an original, a shared sound.
@@ -1189,6 +1206,24 @@ export class NetworkService implements EngineTransport {
     return this.desktop.windows(checked.device);
   }
 
+  /** A page of the Sabha flow (alpha.23) for a phone: checked as every request is, then read from the flow's store. */
+  async flowPage(request: DeviceRequest): Promise<DeviceAnswer> {
+    const checked = this.checked(request);
+    if ('status' in checked) return checked;
+    if (request.op !== 'flow.page') return deny(400, 'Ask for a page of the Sabha flow by its number.');
+    return flowPageAnswer(this.deps.flow, checked.args, this.flowOff());
+  }
+
+  /**
+   * The Sabha flow is off for phones while the computer is in Simple Mode without Sabha flow among its tools (Simple
+   * Mode Features), as it is off in Simple Mode's window (lead 2 for the owner: "Simple Mode: off unless chosen").
+   */
+  private flowOff(): boolean {
+    return (
+      (this.deps.simple?.() ?? null) !== null && !(this.deps.simpleFeatures?.() ?? []).includes('sabha-flow')
+    );
+  }
+
   async presentationPicture(request: DeviceRequest): Promise<DeviceAnswer> {
     const checked = this.checked(request);
     if ('status' in checked) return checked;
@@ -1335,7 +1370,13 @@ export class NetworkService implements EngineTransport {
           switches: this.deps.reads.switches(),
           // The stage screens' group (Session 54): a Remote runs the timers of its layout in the live Look.
           stageGroupId: this.deps.reads.stage().groupId,
-          simple: simple ? { playlistId: simple.playlistId, words: simple.refusal() } : null,
+          simple: simple
+            ? {
+                playlistId: simple.playlistId,
+                words: simple.refusal(),
+                features: [...(this.deps.simpleFeatures?.() ?? [])],
+              }
+            : null,
         });
       }
       case 'shastra.texts':
@@ -1534,6 +1575,11 @@ export class NetworkService implements EngineTransport {
         const items = id.success ? (this.deps.files?.sharedItems(id.data) ?? null) : null;
         return items ? ok({ items }) : deny(404, 'That playlist is not shared with phones.');
       }
+      // Sabha flow (alpha.23): read only, as the window's flow:get answers it; a page is answered apart (flowPage).
+      case 'flow':
+        return flowAnswer(this.deps.flow, this.flowOff());
+      case 'flow.page':
+        return deny(400, 'A page of the Sabha flow comes as a picture of its own: ask for it by its number.');
       case 'me':
       case 'state':
       case 'preview':

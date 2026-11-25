@@ -361,6 +361,7 @@ import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createPicturesWindow } from './pictures/pictures-window';
 import { createSharpenWindow, pictureWorkerPriority } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
+import { FLOW_PAGE_ROOM, SabhaFlowStore } from './sabha-flow/sabha-flow-store';
 import { sourceReader } from './documents/source-reader';
 import { SourceReaderQueue } from './documents/source-reader-queue';
 import { pptxReader } from './documents/pptx-reader-service';
@@ -411,6 +412,7 @@ import {
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
+import { SABHA_FLOW_LIMITS } from '../shared/sabha-flow';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamPageWarmUp } from './stream/stream-warm';
@@ -5089,6 +5091,66 @@ function start(): void {
     return null;
   });
   handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
+  // ---- Sabha flow (alpha.23, QA23-FLOW-1/2) ---------------------------------------------------------------
+  // The sabha's running order: a PDF the operator chooses in the operator window's panel, Drashti's own copy in the data
+  // folder (main/sabha-flow/), its pages drawn once by the pictures window with their text layer read, and Now. The
+  // operator window's only: never on a screen; a paired phone gets the same snapshot and pages through its own routes.
+  // Paired phones hear of each change too (the network's 'flow' hint): set once the network is made, below.
+  let flowToPhones = (): void => undefined;
+  const flowStore = new SabhaFlowStore({
+    dir: join(app.getPath('userData'), 'sabha-flow'),
+    draw: (pdf, outDir, signal) =>
+      pdfPictures.drawForFlow(pdf, outDir, SABHA_FLOW_LIMITS.maxPages, FLOW_PAGE_ROOM, signal),
+    changed: (snapshot) => {
+      sendToOperator(IPC.flow.changed, snapshot);
+      flowToPhones();
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  const flowLoaded = flowStore.load().catch((error: unknown) => {
+    log.warn(
+      `Sabha flow: the kept flow could not be read (${error instanceof Error ? error.message : 'unknown'})`,
+    );
+  });
+  const notFlowOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change the Sabha flow.',
+  };
+  handle(IPC.flow.get, async (e) => {
+    await flowLoaded;
+    return fromOperator(e) ? flowStore.snapshot() : { flow: null, state: null };
+  });
+  handle(IPC.flow.choose, async (e) => {
+    if (!fromOperator(e) || !operatorWindow) return notFlowOperator;
+    const picked = await dialog.showOpenDialog(operatorWindow, {
+      title: 'Sabha flow',
+      message: 'Choose the running order of the sabha, saved as a PDF.',
+      buttonLabel: 'Use This PDF',
+      properties: ['openFile'],
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    const file = picked.canceled ? null : (picked.filePaths[0] ?? null);
+    if (file === null) return null;
+    await flowLoaded;
+    return flowStore.choose(file);
+  });
+  handle(IPC.flow.remove, async (e) => {
+    if (!fromOperator(e)) return null;
+    await flowLoaded;
+    return flowStore.remove();
+  });
+  handle(IPC.flow.setNow, async (e, flowId, now) => {
+    if (!fromOperator(e)) return notFlowOperator;
+    await flowLoaded;
+    return flowStore.setNow(flowId, now);
+  });
+  handle(IPC.flow.page, async (e, flowId, page) => {
+    if (!fromOperator(e)) return null;
+    await flowLoaded;
+    return flowStore.page(flowId, page);
+  });
   // ---- book OCR (alpha.21, the owner's Q60-58: "A, Tesseract inside") ----------------------------------
   // New presentation's Read Words from a Page…: scanned pictures, or a PDF's pages drawn by the pictures window, read
   // by Tesseract inside Drashti in a reading process of their own (src/main/ocr/), never on Main's thread.
@@ -7828,8 +7890,22 @@ function start(): void {
     },
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
     now: Date.now,
+    // Sabha flow (alpha.23): the operator's current flow and its pages, read only, as the window's flow:get and
+    // flow:page answer them; and the tools Simple Mode Features brought in (a phone shows the flow there only while it
+    // is one).
+    flow: {
+      snapshot: () => flowStore.snapshot(),
+      page: (flowId, page) => flowStore.page(flowId, page),
+    },
+    simpleFeatures: () => simpleChosen(),
   });
   network = net;
+  // Each change of the Sabha flow, and the one kept from the last run once it is loaded (a phone may have read none
+  // before), told to the phones.
+  flowToPhones = () => {
+    net.hint('flow');
+  };
+  void flowLoaded.then(flowToPhones);
   net.resume();
   stops.add('network', () => net.close());
   // The chat's day (alpha.23): a new day empties it (and unpairs its phones) within a minute of midnight, even with no
