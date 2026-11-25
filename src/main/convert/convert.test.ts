@@ -545,6 +545,110 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
     expect(service.cancelFile('no such save')).toBe(false);
   }, 120_000);
 
+  it('a background copy asked to stop at once leaves FFmpeg no time to finish its file as a show starts, and gives way to an operator’s save, starting again after (a22-review-fadecopies S9, S10)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
+    const source = join(dir, 'Placeholder clip.mp4');
+    make([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=320x180:r=25',
+      '-t',
+      '6',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-g',
+      '25',
+      '-pix_fmt',
+      'yuv420p',
+      source,
+    ]);
+    db = openDatabase(join(dir, 'drashti.sqlite'));
+    let busy: string | null = null;
+    // Each FFmpeg's part-file as it ended, before anything removed it: whether FFmpeg finished it (its moov written).
+    const parts = new Map<number, string>();
+    const ended: boolean[] = [];
+    service = new ConvertService({
+      db,
+      mediaDir: join(dir, 'Media'),
+      ffmpegPath: () => ffmpeg,
+      busy: () => busy,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: () => undefined,
+      libraryChanged: () => undefined,
+      log: () => undefined,
+      children: {
+        started: (pid, part) => {
+          if (pid !== undefined && part) parts.set(pid, part);
+        },
+        ended: (pid) => {
+          const part = pid === undefined ? undefined : parts.get(pid);
+          if (part && existsSync(part)) ended.push(readFileSync(part).includes('moov'));
+        },
+      },
+    });
+    const out = join(dir, 'saved');
+    mkdirSync(out);
+    const info = {
+      durationMs: 6000,
+      video: { codec: 'h264', pixFmt: 'yuv420p', width: 320, height: 180, still: false },
+      audio: null,
+    };
+    // A page copy's way: read at its own speed (-re: 6 s), an MP4 whose index is moved to its front as it finishes.
+    const slowCopy = {
+      args: (tmp: string) => [
+        '-nostdin',
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-re',
+        '-i',
+        source,
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-movflags',
+        '+faststart',
+        '-f',
+        'mp4',
+        tmp,
+      ],
+      lengthMs: 6000,
+      waitForShow: true,
+      background: true,
+      stopAtOnce: true,
+    };
+    // S9: a show starts while it runs: stopped at once, its part-file never finished (on a Mac, a plain stop lets
+    // FFmpeg write its index and move it to the front, rewriting the whole part-file just as the show starts).
+    const first = service.saveCopy(source, join(out, 'First.mp4'), info, slowCopy);
+    await sleep(1500);
+    busy = 'Waits while a show is up.';
+    service.activityChanged();
+    await until(() => ended.length === 1);
+    expect(ended[0], 'stopped at once: FFmpeg did not finish its file').toBe(false);
+    busy = null;
+    expect(await first.done).toEqual({ ok: true, copy: join(out, 'First.mp4') });
+    // S10: an operator's save while it runs: it gives way at once, and starts again from the beginning after.
+    const order: string[] = [];
+    const second = service.saveCopy(source, join(out, 'Second.mp4'), info, slowCopy);
+    void second.done.then(() => order.push('background copy'));
+    await sleep(1500);
+    const asked = Date.now();
+    const saved = service.saveCopy(source, join(out, 'Part.mp4'), info, {
+      args: (tmp) => trimArgs(source, tmp, 1000, 3000),
+      lengthMs: 2000,
+    });
+    void saved.done.then(() => order.push('operator’s save'));
+    expect(await saved.done).toEqual({ ok: true, copy: join(out, 'Part.mp4') });
+    expect(order, 'the operator’s save first').toEqual(['operator’s save']);
+    expect(Date.now() - asked, 'without waiting for the background copy').toBeLessThan(4000);
+    expect(await second.done).toEqual({ ok: true, copy: join(out, 'Second.mp4') });
+    expect(order).toEqual(['operator’s save', 'background copy']);
+  }, 120_000);
+
   it('stops a conversion, a look at a file and a Save as MP4 that take too long, saying so plainly; and FFmpeg never gets Drashti’s own environment (Session 31, MED-6)', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
     const mediaDir = join(dir, 'Media');

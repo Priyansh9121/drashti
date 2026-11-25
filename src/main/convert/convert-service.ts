@@ -268,6 +268,8 @@ export interface CopyOptions {
   finish?(temporary: string): void;
   /** Refuse preparation when below-normal priority cannot be verified. */
   strictPriority?: boolean;
+  /** RED STUB (a22-review-fadecopies S9): no effect yet. */
+  stopAtOnce?: boolean;
   /** Bounded artifacts reserve their actual upper bound, rather than a whole source-sized video. */
   estimatedBytes?: number;
   kind?: 'analysis' | 'proxy' | 'clip';
