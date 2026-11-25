@@ -337,7 +337,7 @@ for (const mode of ['pro', 'simple'] as const)
         console.log(
           `${mode}, Audience ${audience}, ${label}: the status bar ${JSON.stringify(await statusParts(win))}`,
         );
-        const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
+        const faults = [...(await fitFaults(win, NAMES)), ...(await smallTargets(win))];
         if (faults.length > 0)
           await test.info().attach(`${mode}-stage-off-audience-${audience}-${label}`, {
             body: await win.screenshot(),

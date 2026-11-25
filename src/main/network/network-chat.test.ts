@@ -8,6 +8,7 @@ import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import type { NetworkStatus } from '../../shared/network';
 import type { DeviceOp } from '../../shared/network-api';
+import { PHONE_REFUSAL } from '../../shared/phone-rule';
 import { ChatService } from '../chat/chat-service';
 import { ChatStore } from '../chat/chat-store';
 import { openDatabase } from '../db/database';
@@ -293,10 +294,11 @@ describe('the chat’s requests', () => {
     expect(ask(remote, 'chat').status).toBe(200);
     expect(ask(remote, 'chat.name', { name: 'Person 1' }).status).toBe(200);
     expect(ask(remote, 'chat.send', { text: 'Placeholder' }).status).toBe(200);
-    // The show's requests are refused there as before.
+    // The show's requests are refused there, in the phone rule's Simple Mode words (alpha.23, QA23-PHONE-1: weighed
+    // before Simple Mode's own table).
     expect(ask(remote, 'playlists')).toEqual({
       status: 403,
-      body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+      body: { ok: false, message: PHONE_REFUSAL.simple },
     });
   });
 

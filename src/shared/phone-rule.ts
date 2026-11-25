@@ -48,8 +48,13 @@ export const REMOTE_PHONE_OPS = {
   hall: 'both',
   preview: 'both',
   'media.picture': 'both',
-  // s59-a22-chat and s59-a22-flow add their requests here, in both modes, as they merge (the later one with a Simple
-  // Mode unit test): chat: 'both', 'chat.name': 'both', 'chat.send': 'both', flow: 'both', 'flow.page': 'both'.
+  // The chat (s59-a22-chat) and the Sabha flow (s59-a22-flow), in both modes (the owner: "in simple mode only show the
+  // flow, whats running in live, and chat"): reading and writing the chat, reading the flow and its pages.
+  chat: 'both',
+  'chat.name': 'both',
+  'chat.send': 'both',
+  flow: 'both',
+  'flow.page': 'both',
 
   // Pro Mode: a playlist's PowerPoint and PDF rows, a presentation's slides (as JSON: never a click's picture, which
   // checked() refuses), and the deck commands (REMOTE_PHONE_COMMANDS).
