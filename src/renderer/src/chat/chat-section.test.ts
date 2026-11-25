@@ -34,8 +34,8 @@ const VIEW: ChatOperatorView = {
     { id: 'phone-b', name: 'Placeholder Member' },
   ],
   members: [
-    { id: 'phone-a', name: 'Placeholder Sender', kind: 'chat', connected: true },
-    { id: 'phone-b', name: 'Placeholder Member', kind: 'remote', connected: false },
+    { id: 'phone-a', name: 'Placeholder Sender', kind: 'chat', connected: true, named: true },
+    { id: 'phone-b', name: 'Placeholder Member', kind: 'remote', connected: false, named: true },
   ],
   invite: null,
   reachable: true,
@@ -78,7 +78,11 @@ describe('the Chat section’s open part', () => {
   });
 
   it('says while the Chat QR lets phones join, with Stop, in either mode, in a line that is always there', () => {
-    const invite = { code: '000000', url: 'http://192.0.2.1:8080/chat#c=000000', expiresAt: Date.now() + 600_000 };
+    const invite = {
+      code: '000000',
+      url: 'http://192.0.2.1:8080/chat#c=000000',
+      expiresAt: Date.now() + 600_000,
+    };
     for (const operateOnly of [false, true]) {
       const shown = render({ operateOnly, view: { ...VIEW, invite } });
       expect(shown).toContain('Phones can join by the Chat QR code');
@@ -118,11 +122,15 @@ describe('the Chat section’s open part', () => {
 
   it('lists a phone with no name yet, removable as anyone (core’s M3, a22-review-chat O-S3)', () => {
     const html = render({
-      view: { ...VIEW, members: [{ id: 'phone-c', name: '', kind: 'chat', connected: true }] },
+      // Core's M3: its device's name, and named false.
+      view: {
+        ...VIEW,
+        members: [{ id: 'phone-c', name: 'Chat 3', kind: 'chat', connected: true, named: false }],
+      },
     });
-    expect(html).toContain('No name yet');
+    expect(html).toContain('Chat 3 (no name yet)');
     expect(html).toContain('data-testid="chat-remove-person"');
-    expect(html).toContain('aria-label="Remove a phone with no name yet from the chat"');
+    expect(html).toContain('aria-label="Remove Chat 3 (no name yet) from the chat"');
     // No word says a phone is in the chat only once it has a name.
     expect(render({ view: { ...VIEW, members: [] } })).not.toContain('gives their name');
   });
