@@ -23,6 +23,10 @@ export interface ReserveDeps {
     removeEventListener(type: 'loadingdone', listener: () => void): void;
   };
   marginTop(el: Measured): number;
+  /** The box's width now (a change of it, and only that, measures again). */
+  widthOf?(box: ReserveBox): number;
+  /** Load the faces the copies' words need (then the document's fonts are ready). */
+  loadFonts?(copies: Iterable<Measured>): Promise<void>;
 }
 
 /** Watch the copies in `box`, saying the room they need (px) each time it is measured; returns the stop. */
