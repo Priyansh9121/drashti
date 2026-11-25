@@ -1,6 +1,6 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ConvertService } from '../convert/convert-service';
+import type { ConvertService, ReadWords } from '../convert/convert-service';
 import { hasAlpha, type MediaInfo } from '../convert/plan';
 
 /*
@@ -97,6 +97,31 @@ export function pageCopyArgs(source: string, tmp: string, info: MediaInfo, plan:
   ];
 }
 
+// RED STUBS (a22-review-fadecopies): no-op bodies, filled in by the next commit.
+export function pageCopyInspect(_info: MediaInfo, _read: ReadWords): false | undefined {
+  return undefined;
+}
+export function pageCopyCheck(_source: MediaInfo, _plan: PageCopyPlan): (copy: MediaInfo) => string | undefined {
+  return () => undefined;
+}
+export function pageCopiesMayWork(_now: {
+  streamInUse: boolean;
+  onAir: boolean;
+  layersUp: boolean;
+  cueArmed: boolean;
+}): boolean {
+  return true;
+}
+export function pageCopySource(
+  listed: string,
+  _how: {
+    edit(id: string): { readyMediaId: string | null } | null;
+    proxy(id: string): { mediaId: string | null };
+  },
+): string | null {
+  return listed;
+}
+
 /** A copy's name, and nothing else: its source's sha256, a height made, and its container. */
 const NAME = /^([a-f0-9]{64})-(720|540)p\.(webm|mp4)$/u;
 
@@ -130,7 +155,11 @@ export async function pageCopiesIn(mediaDir: string): Promise<Map<string, PageCo
  * Deletes the copies whose source is gone or changed: those named by a sha256 no media row has now. Only files named
  * exactly as copies are in the folder are looked at; nothing else is ever touched. Says which it deleted.
  */
-export async function sweepPageCopies(mediaDir: string, liveShas: ReadonlySet<string>): Promise<string[]> {
+export async function sweepPageCopies(
+  mediaDir: string,
+  liveShas: ReadonlySet<string>,
+  _remove?: (file: string) => Promise<void>,
+): Promise<string[]> {
   const gone: string[] = [];
   for (const c of copiesOf(await filesIn(mediaDir))) {
     if (liveShas.has(c.sha256)) continue;
@@ -141,7 +170,11 @@ export async function sweepPageCopies(mediaDir: string, liveShas: ReadonlySet<st
 }
 
 /** Deletes one source's copies, as its own file goes (media-removal.ts). */
-export async function removePageCopiesOf(mediaDir: string, sha256: string): Promise<void> {
+export async function removePageCopiesOf(
+  mediaDir: string,
+  sha256: string,
+  _remove?: (file: string) => Promise<void>,
+): Promise<void> {
   for (const c of copiesOf(await filesIn(mediaDir)))
     if (c.sha256 === sha256) await rm(join(mediaDir, PAGE_COPIES_DIR, c.name), { force: true });
 }
@@ -168,6 +201,8 @@ export interface PageCopiesDeps {
   /** The copies ready changed: the pages are told (media:page-copies-changed). */
   changed(): void;
   log(line: string): void;
+  /** Deleting a file (tests: one another program holds). */
+  remove?: (file: string) => Promise<void>;
 }
 
 /** Makes the page copies, one at a time while idle, and says which are there. */

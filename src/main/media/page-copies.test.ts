@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { rm as rmPromise } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,9 +11,13 @@ import {
   PAGE_COPIES_DIR,
   PAGE_COPY_HEIGHTS,
   pageCopiesIn,
+  pageCopiesMayWork,
   pageCopyArgs,
+  pageCopyCheck,
+  pageCopyInspect,
   pageCopyName,
   pageCopyPlan,
+  pageCopySource,
   removePageCopiesOf,
   sweepPageCopies,
 } from './page-copies';
@@ -75,6 +80,67 @@ describe('which videos get a page copy', () => {
     expect(at({}, 'avi')).toBeNull();
     expect(at({ codec: 'hevc' }, 'mov,mp4,m4a,3gp,3g2,mj2')).toBeNull();
     expect(pageCopyPlan({ ...webm1080, video: null }, 720)).toBeNull();
+  });
+});
+
+describe('how a page copy is made and checked (a22-review-fadecopies)', () => {
+  it('one thread for its decoding and filtering too, given before the input as the lighter copies do (S2), and never a cover picture', () => {
+    const plan = pageCopyPlan(webm1080, 720);
+    if (!plan) throw new Error('no plan');
+    const args = pageCopyArgs('in.webm', 'out.webm', webm1080, plan);
+    const input = args.indexOf('-i');
+    const at = (name: string) => args.findIndex((a, i) => a === name && args[i + 1] === '1');
+    expect(at('-threads'), '-threads 1 before the input').toBeGreaterThanOrEqual(0);
+    expect(at('-threads')).toBeLessThan(input);
+    expect(at('-filter_threads'), '-filter_threads 1 before the input').toBeGreaterThanOrEqual(0);
+    expect(at('-filter_threads')).toBeLessThan(input);
+    expect(args[args.indexOf('-map') + 1], 'the first real video, never an attached picture').toBe('0:V:0');
+  });
+
+  it('a copy is published only if FFmpeg reads it back as planned: its size, its length within a frame, its sound (M1)', () => {
+    const plan = pageCopyPlan(webm1080, 720);
+    if (!plan) throw new Error('no plan');
+    const check = pageCopyCheck(webm1080, plan);
+    const good: MediaInfo = { ...webm1080, video: { ...VIDEO_1080, width: 1280, height: 720 } };
+    expect(check(good)).toBeUndefined();
+    expect(check({ ...good, durationMs: 3020 }), 'within a frame').toBeUndefined();
+    expect(typeof check({ ...good, video: { ...VIDEO_1080, width: 1920, height: 1080 } })).toBe('string');
+    expect(typeof check({ ...good, video: null })).toBe('string');
+    expect(typeof check({ ...good, durationMs: 2900 }), 'a tenth of a second short').toBe('string');
+    expect(typeof check({ ...good, durationMs: null })).toBe('string');
+    expect(typeof check({ ...good, audio: null }), 'its sound lost').toBe('string');
+  });
+
+  it('copies are made only while nothing is up or armed: not on air, not recording, no cue waiting for Go (S11)', () => {
+    const idle = { streamInUse: false, onAir: false, layersUp: false, cueArmed: false };
+    expect(pageCopiesMayWork(idle)).toBe(true);
+    expect(pageCopiesMayWork({ ...idle, cueArmed: true }), 'every page warms its decoder for a cue').toBe(false);
+    expect(pageCopiesMayWork({ ...idle, layersUp: true })).toBe(false);
+    expect(pageCopiesMayWork({ ...idle, streamInUse: true })).toBe(false);
+    expect(pageCopiesMayWork({ ...idle, onAir: true })).toBe(false);
+  });
+
+  it('a copy is made of what the engine plays for a playlist’s video: its Edit Video version, then its lighter copy (S1)', () => {
+    const edit = (readyMediaId: string | null) => ({ readyMediaId });
+    const proxyNone = (id: string) => ({ mediaId: id });
+    // Plain: the video itself.
+    expect(pageCopySource('clip', { edit: () => edit('clip'), proxy: proxyNone })).toBe('clip');
+    expect(pageCopySource('clip', { edit: () => null, proxy: proxyNone })).toBe('clip');
+    // Edited: its prepared version; still preparing (or failed): none, the engine does not show the original for it.
+    expect(pageCopySource('clip', { edit: () => edit('clip-edited'), proxy: proxyNone })).toBe('clip-edited');
+    expect(pageCopySource('clip', { edit: () => edit(null), proxy: proxyNone })).toBeNull();
+    // Over 1080p on a slow computer: its lighter copy, or none while that is preparing.
+    expect(pageCopySource('clip', { edit: () => edit('clip'), proxy: () => ({ mediaId: 'clip-lighter' }) })).toBe(
+      'clip-lighter',
+    );
+    expect(pageCopySource('clip', { edit: () => edit('clip'), proxy: () => ({ mediaId: null }) })).toBeNull();
+    // Both: the edited version's lighter copy.
+    expect(
+      pageCopySource('clip', {
+        edit: () => edit('clip-edited'),
+        proxy: (id) => ({ mediaId: id === 'clip-edited' ? 'clip-edited-lighter' : id }),
+      }),
+    ).toBe('clip-edited-lighter');
   });
 });
 
@@ -230,6 +296,47 @@ describe.skipIf(!ffmpegHere(ffmpeg))('a page copy keeps its source’s timeline 
       });
 });
 
+describe.skipIf(!ffmpegHere(ffmpeg))('a turned video gets no page copy (a22-review-fadecopies M2)', () => {
+  it('a phone video stored on its side and turned upright by its display matrix: none (FFmpeg turns it before scaling)', () => {
+    const dir = temp();
+    const plain = join(dir, 'plain.mp4'),
+      turned = join(dir, 'turned.mp4');
+    const made = spawnSync(
+      ffmpeg,
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc2=s=1920x1080:r=30:d=1',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-pix_fmt',
+        'yuv420p',
+        '-y',
+        plain,
+      ],
+      { env: ffmpegEnv() },
+    );
+    expect(made.status).toBe(0);
+    const turn = spawnSync(
+      ffmpeg,
+      ['-hide_banner', '-loglevel', 'error', '-display_rotation', '90', '-i', plain, '-c', 'copy', '-y', turned],
+      { env: ffmpegEnv() },
+    );
+    expect(turn.status, String(turn.stderr)).toBe(0);
+    const words = (file: string) =>
+      spawnSync(ffmpeg, ['-hide_banner', '-i', file], { encoding: 'utf8', env: ffmpegEnv() }).stderr;
+    expect(words(turned)).toMatch(/rotation of/u);
+    expect(pageCopyInspect(MP4, { words: words(turned), more: [] }), 'turned: none').toBe(false);
+    expect(pageCopyInspect(MP4, { words: words(plain), more: [] }), 'upright: made').toBeUndefined();
+  });
+});
+
 describe('the sweep deletes a copy only with its source, or when its source changes', () => {
   const folder = (mediaDir: string) => join(mediaDir, PAGE_COPIES_DIR);
   const put = (mediaDir: string, names: string[]) => {
@@ -300,6 +407,21 @@ describe('the sweep deletes a copy only with its source, or when its source chan
     ]);
     await removePageCopiesOf(dir, SHA_A);
     expect(left(dir)).toEqual([pageCopyName(SHA_B, 720, 'webm'), 'notes.txt'].sort());
+  });
+
+  it('a copy that cannot be deleted (held by another program) is left, and the sweep goes on with the rest (M4)', async () => {
+    const dir = temp();
+    put(dir, [pageCopyName(SHA_A, 720, 'webm'), pageCopyName(SHA_B, 720, 'webm'), pageCopyName(SHA_B, 540, 'webm')]);
+    const held = join(folder(dir), pageCopyName(SHA_B, 720, 'webm'));
+    const remove = async (file: string) => {
+      if (file === held) throw Object.assign(new Error('placeholder: in use'), { code: 'EBUSY' });
+      await rmPromise(file, { force: true });
+    };
+    expect(await sweepPageCopies(dir, new Set([SHA_A]), remove)).toEqual([pageCopyName(SHA_B, 540, 'webm')]);
+    expect(left(dir)).toEqual([pageCopyName(SHA_A, 720, 'webm'), pageCopyName(SHA_B, 720, 'webm')].sort());
+    put(dir, [pageCopyName(SHA_B, 540, 'webm')]);
+    await expect(removePageCopiesOf(dir, SHA_B, remove)).resolves.toBeUndefined();
+    expect(left(dir)).toEqual([pageCopyName(SHA_A, 720, 'webm'), pageCopyName(SHA_B, 720, 'webm')].sort());
   });
 
   it('lists the copies there by source, with their heights', async () => {

@@ -138,3 +138,72 @@ it('a copy that fails is not tried again and again, and tells no one; nothing is
   expect(none.copies.ready()).toEqual({});
   none.copies.close();
 });
+
+it('each copy is made with its checks: a turned video refused, the copy read back before it is published, stopped at once for a show (a22-review-fadecopies M1, M2, S9)', async () => {
+  const { copies, made } = setup();
+  await copies.start();
+  await copies.step();
+  const copy = made[0]?.copy;
+  expect(copy).toMatchObject({ stopAtOnce: true, kind: 'page-copy', background: true });
+  expect(
+    copy?.inspect?.(tall, { words: 'Side data:\n      displaymatrix: rotation of -90.00 degrees', more: [] }),
+  ).toBe(false);
+  expect(copy?.inspect?.(tall, { words: 'Stream #0:0: Video: vp8, yuv420p, 1920x1080', more: [] })).toBeUndefined();
+  expect(typeof copy?.validate).toBe('function');
+  expect(typeof copy?.validate?.({ ...tall })).toBe('string');
+  expect(copy?.validate?.({ ...tall, video: { ...TALL_VIDEO, width: 1280, height: 720 } })).toBeFalsy();
+  copies.close();
+});
+
+it('a video it turns out needs none (a turned one): not tried again, and no one told', async () => {
+  const none = vi.fn<ConvertService['saveCopy']>(() => ({
+    id: 'x',
+    done: Promise.resolve({ ok: true as const, copy: null }),
+  }));
+  const { copies, changed } = setup({ conversions: { saveCopy: none } });
+  await copies.start();
+  await copies.step();
+  await copies.step();
+  expect(none).toHaveBeenCalledTimes(1);
+  expect(changed).not.toHaveBeenCalled();
+  expect(copies.ready()).toEqual({});
+  copies.close();
+});
+
+it('nothing it does can throw: a copy it cannot delete at its start, a Media folder it cannot write, a library it cannot read (M4)', async () => {
+  // A copy another program holds, at the start's sweep: logged, and the start goes on.
+  const log = vi.fn();
+  const held = setup({
+    liveShas: () => new Set(),
+    log,
+    remove: () => Promise.reject(Object.assign(new Error('placeholder: in use'), { code: 'EBUSY' })),
+  });
+  mkdirSync(join(held.mediaDir, PAGE_COPIES_DIR), { recursive: true });
+  writeFileSync(join(held.mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_B, 720, 'webm')), 'placeholder copy');
+  await expect(held.copies.start()).resolves.toBeUndefined();
+  held.copies.close();
+  // A Media folder that is a file (no folder can be made in it): the step rejects nothing, says so once, and that
+  // video is not tried again.
+  const unwritable = setup({ log });
+  const file = join(unwritable.mediaDir, 'not a folder');
+  writeFileSync(file, 'placeholder');
+  const blocked = setup({ mediaDir: file, log });
+  await blocked.copies.start();
+  await expect(blocked.copies.step()).resolves.toBeUndefined();
+  await expect(blocked.copies.step()).resolves.toBeUndefined();
+  expect(blocked.saveCopy).not.toHaveBeenCalled();
+  expect(log.mock.calls.filter(([line]) => String(line).includes('could not')).length).toBeGreaterThanOrEqual(1);
+  blocked.copies.close();
+  unwritable.copies.close();
+  // The library unreadable for a moment: nothing rejects.
+  const broken = setup({
+    candidates: () => {
+      throw new Error('placeholder: the library is busy');
+    },
+    log,
+  });
+  await broken.copies.start();
+  await expect(broken.copies.step()).resolves.toBeUndefined();
+  expect(broken.copies.ready()).toEqual({});
+  broken.copies.close();
+});
