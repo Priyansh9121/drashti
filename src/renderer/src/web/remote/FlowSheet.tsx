@@ -161,7 +161,7 @@ function ReadAgain({ problem }: { problem: string | null }) {
 /** In More: the flow's file, Now and Next up, and the sheet's button; or plain words. */
 export function FlowSectionView({ snapshot, problem }: Pick<FlowShown, 'snapshot' | 'problem'>) {
   const flow = snapshot?.flow ?? null;
-  const said = flow ? statusWords(flow.status) : null;
+  const said = flow ? statusWords(flow.status, flow.tooMuchText === true) : null;
   return (
     <section className="space-y-2" aria-labelledby="remote-flow-title" data-testid="remote-flow">
       <h2 id="remote-flow-title" className="text-base font-bold tracking-wider text-muted uppercase">
@@ -452,7 +452,7 @@ function PageView({
 export function FlowSheetView({ snapshot, problem, view, page, zoom, pictures }: FlowShown) {
   const flow = snapshot?.flow ?? null;
   const views = flowViews(flow);
-  const said = flow ? statusWords(flow.status) : null;
+  const said = flow ? statusWords(flow.status, flow.tooMuchText === true) : null;
   return (
     <PhoneSheet title={FLOW_PHONE_WORDS.title} onClose={closeFlow} testId="remote-flow-sheet">
       {flow === null ? (

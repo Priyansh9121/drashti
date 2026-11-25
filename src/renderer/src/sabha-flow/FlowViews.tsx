@@ -28,8 +28,14 @@ import { Notice } from '../ui/Notice';
 export type { FlowView } from '../../../shared/sabha-flow-lines';
 export { flowViews, statusWords } from '../../../shared/sabha-flow-lines';
 
-export function FlowStatusNotice({ status }: { status: SabhaFlowStatus }) {
-  const words = statusWords(status);
+export function FlowStatusNotice({
+  status,
+  tooMuchText,
+}: {
+  status: SabhaFlowStatus;
+  tooMuchText?: boolean;
+}) {
+  const words = statusWords(status, tooMuchText === true);
   if (words === null) return null;
   return (
     <Notice tone="info" compact data-testid="flow-status">

@@ -191,7 +191,7 @@ function FlowBody() {
       {problemNotice}
       {flow.status !== 'read' && (
         <div className="shrink-0 px-3 pt-2">
-          <FlowStatusNotice status={flow.status} />
+          <FlowStatusNotice status={flow.status} tooMuchText={flow.tooMuchText === true} />
         </div>
       )}
       {flow.status === 'read' && <FlowNowNext flow={flow} now={now} onBack={flowBack} onNext={flowNext} />}

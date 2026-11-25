@@ -114,15 +114,20 @@ export type FlowView = 'list' | 'page';
 export const flowViews = (status: SabhaFlowStatus): FlowView[] =>
   status === 'read' ? ['list', 'page'] : ['page'];
 
-/** Why there is no read list, in plain words; null when it was read. */
-export function statusWords(status: SabhaFlowStatus): string | null {
+/**
+ * Why there is no read list, in plain words; null when it was read. `tooMuchText` (with 'no-items'): the PDF holds
+ * more text than a running order does, so none was read: said as that, not as no numbered items.
+ */
+export function statusWords(status: SabhaFlowStatus, tooMuchText = false): string | null {
   switch (status) {
     case 'no-text':
       return 'This PDF has no words Drashti can read: it may be a scan, or pictures of pages. Its page is shown instead.';
     case 'unreadable':
       return 'Drashti couldn’t read this PDF’s words: its fonts don’t say which letters they draw, so they come out wrong. Its page is shown instead.';
     case 'no-items':
-      return 'Drashti read this PDF but found no numbered items in it. Its page is shown instead.';
+      return tooMuchText
+        ? 'This PDF has more text than a running order holds, so Drashti read none of it. Its page is shown instead.'
+        : 'Drashti read this PDF but found no numbered items in it. Its page is shown instead.';
     case 'read':
       return null;
   }
