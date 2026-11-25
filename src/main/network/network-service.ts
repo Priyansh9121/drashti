@@ -376,10 +376,11 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'media.rename': IPC.media.rename,
   'presentation.rename': IPC.library.renamePresentation,
   'playlist.whenEnds': IPC.playlists.setWhenEnds,
-  // The chat (alpha.23): the window's own chat requests, so Simple Mode (and its Features) answer a phone as the window.
-  chat: IPC.chat.view,
-  'chat.name': IPC.chat.send,
-  'chat.send': IPC.chat.send,
+  // The chat (alpha.23): the network's own, as announcements are: a phone chats in Simple Mode too (the owner's "in
+  // phone simple mode, we want chat"), whatever Simple Mode locks in the window.
+  chat: null,
+  'chat.name': null,
+  'chat.send': null,
 };
 
 const idsWithin = (ids: unknown, max: number): unknown =>
