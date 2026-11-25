@@ -48,7 +48,13 @@ export interface SabhaFlow {
   id: string;
   /** The operator's file name, shown in the panel. */
   fileName: string;
+  /** The PDF's own pages. */
   pageCount: number;
+  /**
+   * The pages drawn, from the first (at most SABHA_FLOW_LIMITS.maxPages): `flow:page` 0 to drawnPages - 1 (one that
+   * could not be drawn answers null). The panel and the phone show these, never `pageCount`'s.
+   */
+  drawnPages: number;
   status: SabhaFlowStatus;
   lang: SabhaFlowLang;
   title?: string;
@@ -105,6 +111,7 @@ export const sabhaFlowSchema: z.ZodType<SabhaFlow> = z.object({
   id: z.string().regex(/^[A-Za-z0-9-]{8,64}$/u),
   fileName: z.string().min(1).max(SABHA_FLOW_LIMITS.maxFileName),
   pageCount: z.number().int().min(0).max(100000),
+  drawnPages: z.number().int().min(0).max(SABHA_FLOW_LIMITS.maxPages),
   status: z.enum(['read', 'no-text', 'unreadable', 'no-items']),
   lang: z.enum(['en', 'gu', 'hi', 'mixed']),
   title: text.optional(),
