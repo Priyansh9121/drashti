@@ -12,6 +12,8 @@ import { pageCopyUrl } from '../../../shared/media';
 let pageHeight: number | null = null;
 export function setPageCopyHeight(height: number | null): void {
   pageHeight = height;
+  // A page saying its height afresh starts afresh (each test does).
+  if (height === null) failed.clear();
 }
 
 /** The copies Main has ready, by media id (media:page-copies and its changes). */
@@ -20,10 +22,17 @@ export function setReadyPageCopies(next: Record<string, number[]>): void {
   ready = next;
 }
 
+/** Videos whose copy failed on this page (a22-review-fadecopies M1): the original from then on, here. */
+const failed = new Set<string>();
+/** A copy that failed to play here: this page plays that video's original from now on. */
+export function pageCopyFailed(mediaId: string): void {
+  failed.add(mediaId);
+}
+
 /** The copy a playback starting now takes, or null for the original. */
 export function pageCopyFor(mediaId: string, attempt = 0): string | null {
   const height = pageHeight;
-  if (height === null || attempt > 0) return null;
+  if (height === null || attempt > 0 || failed.has(mediaId)) return null;
   const heights = Object.hasOwn(ready, mediaId) ? (ready[mediaId] ?? []) : [];
   const pick = heights.filter((h) => h >= height).sort((a, b) => a - b)[0];
   return pick === 720 || pick === 540 ? pageCopyUrl(mediaId, pick) : null;

@@ -1,4 +1,4 @@
-import { pageCopyFor } from './page-copy';
+import { pageCopyFailed, pageCopyFor } from './page-copy';
 import { audioOnlyTracks } from './audio-only-tracks';
 import type { DrashtiBridge } from '../../../shared/bridge';
 import type { CorrectionLimits, PlaybackClip, PlaybackSeek } from '../../../shared/media';
@@ -283,7 +283,21 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     waitingToPlay = true;
     for (const event of READY_EVENTS) v.addEventListener(event, canPlay);
   };
+  // Playing this page's page copy (QA23-FADE-9 candidate 1), until it fails.
+  let onCopy = false;
   const failed = () => {
+    if (onCopy) {
+      // A page copy that fails is this page's own trouble (a stale ready list, a copy gone from the disk, one Chromium
+      // can't decode): the original is loaded here instead, and Main is told nothing, since LIVE's or the stream page's
+      // word would take the video off the hall's screens too (a22-review-fadecopies M1). Only the original failing is
+      // said. This page plays that video's original from now on.
+      onCopy = false;
+      pageCopyFailed(mediaId);
+      v.removeEventListener('loadedmetadata', onMetadata);
+      v.addEventListener('loadedmetadata', onMetadata, { once: true });
+      v.src = mediaUrl(mediaId, attempt);
+      return;
+    }
     onError?.({ code: v.error?.code ?? 0, message: v.error?.message ?? '' });
   };
   const whenFrame = () => {
@@ -510,8 +524,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   const timer = setInterval(check, CHECK_MS);
   // A background video on a page that draws smaller: its page copy if one is ready now (QA23-FADE-9 candidate 1); for
   // this playback's life, whatever comes ready later. Every other playback, and every page that never says, the original.
-  const url =
-    (options.pageCopy === true ? pageCopyFor(mediaId, attempt) : null) ?? mediaUrl(mediaId, attempt);
+  const copy = options.pageCopy === true ? pageCopyFor(mediaId, attempt) : null;
+  onCopy = copy !== null;
+  const url = copy ?? mediaUrl(mediaId, attempt);
   // A deck's clip loaded ahead (Session 57, item 6): the same file, with no error, is played from where it is; what
   // its load would have told comes now (its length known, its first frame in), or as it comes (its events, above).
   // One that failed is loaded again, as any file is.
