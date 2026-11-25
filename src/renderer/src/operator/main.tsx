@@ -10,6 +10,7 @@ import { reportRenderError } from '../ui/render-errors';
 import { reportFitFailuresTo } from '../render/shrink-to-fit';
 import { installFitFailureTestIfAsked } from '../render/fit-failure-test';
 import { setLiveWindowSize } from '../render/live-window';
+import { setPageCopyHeight, setReadyPageCopies } from '../render/page-copy';
 import { holdClock } from '../render/clock';
 import { OPERATOR_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
 
@@ -17,6 +18,11 @@ import { OPERATOR_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe
 // (Session 48) is captured for them at a quarter of a hall screen's size, half as often. A video input
 // (Session 50) is not: Chromium opens a camera once for every page, so all ask for the hall's full picture.
 setLiveWindowSize({ width: 960, height: 540, frameRate: 15 });
+// And a background video plays its 540p page copy, once one is ready (QA23-FADE-9 candidate 1: no more decoding than the
+// window's small pictures show); the hall's screens always play the original.
+setPageCopyHeight(540);
+void window.drashti.media.pageCopies().then(setReadyPageCopies);
+window.drashti.media.onPageCopies(setReadyPageCopies);
 
 // Tests only (main sends it only under a test switch): LIVE's clock held at one moment, so its picture can be compared
 // with the screens' at held moments (Session 54, C review).

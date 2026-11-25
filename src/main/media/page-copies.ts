@@ -216,7 +216,7 @@ export class PageCopies {
         for (const height of PAGE_COPY_HEIGHTS) {
           const plan = pageCopyPlan(info, height);
           if (!plan || this.there.get(c.sha256)?.has(height)) continue;
-          if (this.closed || !this.deps.idle()) return;
+          if (this.isClosed() || !this.deps.idle()) return;
           const name = pageCopyName(c.sha256, height, plan.ext);
           const dest = join(this.deps.mediaDir, PAGE_COPIES_DIR, name);
           await mkdir(join(this.deps.mediaDir, PAGE_COPIES_DIR), { recursive: true });
@@ -258,6 +258,10 @@ export class PageCopies {
       if (heights.length > 0) out[c.mediaId] = heights;
     }
     return out;
+  }
+  /** Closed meanwhile (a read or a copy awaited in between). */
+  private isClosed(): boolean {
+    return this.closed;
   }
   close(): void {
     this.closed = true;

@@ -7,6 +7,7 @@ import type { ProgramContext } from '../../../shared/stream';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { holdClock } from '../render/clock';
 import { StreamPictureClock } from '../render/cue-clock';
+import { setPageCopyHeight, setReadyPageCopies } from '../render/page-copy';
 import { setPictureClock } from '../render/playback';
 import { watchGpuRestarts } from '../render/media-attempts';
 import { preloadFonts } from '../render/fonts';
@@ -67,6 +68,9 @@ function apply(context: ProgramContext): void {
   setCaptureSize({ width: context.width, height: context.height });
   // Another app's window up as the background (Session 48), at the stream's own size.
   setLiveWindowSize({ width: context.width, height: context.height, frameRate: 30 });
+  // A background video at the stream's own size: its page copy, below 1080p and once one is ready (QA23-FADE-9
+  // candidate 1). The hall's screens always play the original.
+  setPageCopyHeight(context.height < 1080 ? context.height : null);
   if (!context.preview) stopPreview();
   if (!context.capturing) stopEncoder();
   if (!context.videoOut) stopVideoOut();
@@ -277,6 +281,9 @@ function Program() {
 startCapture();
 // Before any picture plays: each is given to the stream's picture clock as its playback starts.
 setPictureClock((v) => pictures.take(v));
+// The page copies ready, and as they change (QA23-FADE-9 candidate 1).
+void window.drashti.media.pageCopies().then(setReadyPageCopies);
+window.drashti.media.onPageCopies(setReadyPageCopies);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');

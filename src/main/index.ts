@@ -42,7 +42,7 @@ import {
 } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
-import { release as osRelease, tmpdir } from 'node:os';
+import { availableParallelism, release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
@@ -402,6 +402,7 @@ import {
 } from './events/sources';
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
+import { PageCopies } from './media/page-copies';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
@@ -2064,6 +2065,8 @@ function start(): void {
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
   let proxySourceOf: (id: string) => string = (id) => id;
+  // Made beside the video copies (below); the media protocol asks it for a page copy's file (QA23-FADE-9 candidate 1).
+  let pageCopies: PageCopies | null = null;
   let proxyReadyFor: (id: string) => { mediaId: string | null; message: string | null } = (id) => ({
     mediaId: id,
     message: null,
@@ -2807,6 +2810,8 @@ function start(): void {
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
       display: (sha256, key) => displayCopies.relativePath(sha256, key),
       blurred: (sha256) => blurred.relativePath(sha256),
+      // A video's page copy (QA23-FADE-9 candidate 1), once it is made.
+      pageCopy: (sha256, height) => pageCopies?.relativePath(sha256, height) ?? null,
       // A picture one of the guides shows (only those, from the guides' own folder).
       guidePicture: (name) => {
         const file = guideFiles.picture(name);
@@ -5509,6 +5514,66 @@ function start(): void {
       return picked.canceled || !picked.filePath ? null : picked.filePath;
     },
   });
+  // Page copies (QA23-FADE-9 candidate 1): a 720p and a 540p copy of the crossfading playlists' videos, made while
+  // idle on a two-core or software-video computer, for the stream's picture page and the operator window (never the
+  // hall's screens). Each kept with its source's bytes, and deleted only with them.
+  const pageCopiesSlow = () => {
+    const status = gpuStatus();
+    const soft =
+      typeof status === 'object' &&
+      status !== null &&
+      ['gpu_compositing', 'video_decode'].some((key) => {
+        const value = (status as Record<string, unknown>)[key];
+        return typeof value === 'string' && value.includes('software');
+      });
+    return soft || availableParallelism() <= 2;
+  };
+  const tellPageCopies = () => {
+    const ready = pageCopies?.ready() ?? {};
+    sendToOperator(IPC.media.pageCopiesChanged, ready);
+    const program = streaming.programContents();
+    if (program && !program.isDestroyed()) program.send(IPC.media.pageCopiesChanged, ready);
+  };
+  const copies = new PageCopies({
+    mediaDir,
+    slow: pageCopiesSlow,
+    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    candidates: () =>
+      playlists.crossfadeMediaIds().flatMap((mediaId) => {
+        const row = media.about(mediaId);
+        return row?.kind === 'video' && !row.deleted && !row.missing && row.sha256 && row.path
+          ? [{ mediaId, sha256: row.sha256, path: row.path }]
+          : [];
+      }),
+    liveShas: () =>
+      new Set(
+        (
+          libraryDb.prepare('SELECT sha256 FROM media WHERE sha256 IS NOT NULL').all() as { sha256: string }[]
+        ).map((r) => r.sha256),
+      ),
+    info: (file) => {
+      const ffmpeg = findFfmpeg({
+        packaged: packaged(),
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+        platform: process.platform,
+        arch: process.arch,
+        override: sw('DRASHTI_FFMPEG'),
+      });
+      return ffmpeg ? readInfo(ffmpeg, file) : Promise.reject(new Error('No FFmpeg here'));
+    },
+    conversions,
+    changed: tellPageCopies,
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  pageCopies = copies;
+  void copies.start();
+  stops.add('page copies', () => {
+    copies.close();
+  });
+  handle(IPC.media.pageCopies, () => copies.ready());
   proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
   proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
   stops.add('video copies', () => videoCopies.close());

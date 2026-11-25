@@ -9,6 +9,7 @@ import { stillPath } from '../media/media-protocol';
 import { removeCopiesOf, SHARPENED_DIR } from '../media/sharpened';
 import { BLURRED_DIR, removeBlurredOf } from '../media/blurred';
 import { DISPLAY_DIR, removeDisplayCopiesOf } from '../media/display-copies';
+import { PAGE_COPIES_DIR, removePageCopiesOf } from '../media/page-copies';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
 import { MediaStore } from '../import/media-store';
@@ -64,11 +65,13 @@ async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
   await removeCopiesOf(mediaDir, sha256);
   await removeBlurredOf(mediaDir, sha256);
   await removeDisplayCopiesOf(mediaDir, sha256);
+  // Its videos' page copies (QA23-FADE-9 candidate 1): only with their source.
+  await removePageCopiesOf(mediaDir, sha256);
 }
 
 /** Hashes with a still or a picture copy left in Media, read once across all gone cuts in this sweep. */
 async function derivativesIn(mediaDir: string): Promise<Set<string>> {
-  const folders = [dirname(stillPath('')), SHARPENED_DIR, BLURRED_DIR, DISPLAY_DIR];
+  const folders = [dirname(stillPath('')), SHARPENED_DIR, BLURRED_DIR, DISPLAY_DIR, PAGE_COPIES_DIR];
   const names = await Promise.all(folders.map((folder) => readdir(join(mediaDir, folder)).catch(() => [])));
   return new Set(
     names.flatMap((files) =>

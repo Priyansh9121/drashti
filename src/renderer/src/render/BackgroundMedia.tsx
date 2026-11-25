@@ -138,6 +138,8 @@ function VideoSlot({
       mediaId,
       attempt,
       startedAt,
+      // This page's page copy, where it draws its videos smaller and one is ready (QA23-FADE-9 candidate 1).
+      pageCopy: true,
       prepareScheduledStart: layer.cueId !== undefined,
       // In a crossfade, out of step, by speed and not a jump (a jump freezes it until it lands: on a two-core PC again
       // and again through the fade, the hall's screens too); a picture made inside its fade is put in place as ever.

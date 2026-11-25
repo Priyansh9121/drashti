@@ -770,6 +770,12 @@ export const IPC = {
     savePicture: 'media:save-picture',
     /** main -> operator: a picture's look changed. */
     looksChanged: 'media:looks-changed',
+    /**
+     * The videos' page copies ready (QA23-FADE-9 candidate 1, src/main/media/page-copies.ts): by media id, their
+     * heights; and main -> the operator window and the stream's picture page, as they change.
+     */
+    pageCopies: 'media:page-copies',
+    pageCopiesChanged: 'media:page-copies-changed',
     setMarkers: 'media:set-markers',
     /** Where media is used, asked before deleting it (Session 26a). */
     usage: 'media:usage',
@@ -1946,6 +1952,7 @@ export interface InvokeContract {
   [IPC.media.keyframe]: { args: [mediaId: string, startMs: number]; result: KeyframeResult };
   [IPC.media.look]: { args: [mediaId: string]; result: PictureLook | null };
   [IPC.media.looks]: { args: []; result: Record<string, PictureLook> };
+  [IPC.media.pageCopies]: { args: []; result: Record<string, number[]> };
   [IPC.media.setLook]: {
     args: [mediaId: string, look: PictureLook | null];
     result: { ok: true } | { ok: false; message: string };
@@ -2335,6 +2342,7 @@ export interface EventContract {
   [IPC.media.trimStatusesChanged]: TrimStatuses;
   [IPC.media.videoEditChanged]: VideoEditSnapshot;
   [IPC.media.looksChanged]: Record<string, PictureLook>;
+  [IPC.media.pageCopiesChanged]: Record<string, number[]>;
   [IPC.stream.port]: {
     role: 'preview' | 'encoder' | 'encoder-audio' | 'speech' | 'sound-meter' | 'video-out';
   };

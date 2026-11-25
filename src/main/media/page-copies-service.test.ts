@@ -17,10 +17,17 @@ const dirs: string[] = [];
 afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
+const TALL_VIDEO: NonNullable<MediaInfo['video']> = {
+  codec: 'vp8',
+  pixFmt: 'yuv420p',
+  width: 1920,
+  height: 1080,
+  still: false,
+};
 const tall: MediaInfo = {
   container: 'matroska,webm',
   durationMs: 8000,
-  video: { codec: 'vp8', pixFmt: 'yuv420p', width: 1920, height: 1080, still: false },
+  video: TALL_VIDEO,
   audio: { codec: 'opus' },
 };
 
@@ -79,7 +86,7 @@ it('makes nothing on a computer that is not slow, or while something is up, and 
   await busy.copies.step();
   expect(busy.made).toEqual([]);
   const small = setup({}, {});
-  const smallInfo = { ...tall, video: { ...tall.video!, width: 1280, height: 720 } };
+  const smallInfo = { ...tall, video: { ...TALL_VIDEO, width: 1280, height: 720 } };
   const s = setup({ info: () => Promise.resolve(smallInfo) });
   await s.copies.start();
   await s.copies.step();

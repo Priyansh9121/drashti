@@ -889,6 +889,9 @@ export interface DrashtiBridge {
     /** Save picture… (Session 55, Part 5): the picture full size, as it shows, where the operator chooses. */
     savePicture(mediaId: string, name: string): Promise<SavePictureResult>;
     onLooks(listener: (looks: Record<string, PictureLook>) => void): () => void;
+    /** The videos' page copies ready, by media id: their heights (QA23-FADE-9 candidate 1). */
+    pageCopies(): Promise<Record<string, number[]>>;
+    onPageCopies(listener: (ready: Record<string, number[]>) => void): () => void;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;
     /** Delete media from the library, taking it out of playlists and music; Undo with restore. */

@@ -36,10 +36,17 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
+const VIDEO_1080: NonNullable<MediaInfo['video']> = {
+  codec: 'vp8',
+  pixFmt: 'yuv420p',
+  width: 1920,
+  height: 1080,
+  still: false,
+};
 const webm1080: MediaInfo = {
   container: 'matroska,webm',
   durationMs: 3000,
-  video: { codec: 'vp8', pixFmt: 'yuv420p', width: 1920, height: 1080, still: false },
+  video: VIDEO_1080,
   audio: { codec: 'opus' },
 };
 
@@ -50,14 +57,14 @@ describe('which videos get a page copy', () => {
     const mp4 = {
       ...webm1080,
       container: 'mov,mp4,m4a,3gp,3g2,mj2',
-      video: { ...webm1080.video!, codec: 'h264' },
+      video: { ...VIDEO_1080, codec: 'h264' },
     };
     expect(pageCopyPlan(mp4, 720)).toEqual({ width: 1280, height: 720, ext: 'mp4' });
   });
 
   it('none for a video no taller than the page draws it, a still, transparency, interlacing or another format', () => {
     const at = (video: Partial<NonNullable<MediaInfo['video']>>, container = 'matroska,webm') =>
-      pageCopyPlan({ ...webm1080, container, video: { ...webm1080.video!, ...video } }, 720);
+      pageCopyPlan({ ...webm1080, container, video: { ...VIDEO_1080, ...video } }, 720);
     expect(at({ width: 1280, height: 720 })).toBeNull();
     expect(at({ width: 960, height: 540 })).toBeNull();
     expect(at({ still: true })).toBeNull();
@@ -139,7 +146,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))('a page copy keeps its source’s timeline 
       info: {
         ...webm1080,
         container: 'mov,mp4,m4a,3gp,3g2,mj2',
-        video: { ...webm1080.video!, codec: 'h264' },
+        video: { ...VIDEO_1080, codec: 'h264' },
         audio: { codec: 'aac' },
       },
       video: ['-c:v', 'libx264', '-preset', 'ultrafast'],
