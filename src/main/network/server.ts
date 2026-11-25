@@ -43,6 +43,7 @@ import type { Uploads } from './uploads';
 import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/phone-files';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
+import { phoneOpRefusal } from '../../shared/phone-rule';
 import { isCapturedPicture, pngOf } from './png';
 import { whileScreensMove } from './slide-picture';
 import { audioRoutes } from './audio-routes';
@@ -816,6 +817,14 @@ export class NetworkServer {
       const { route: r, params } = found;
       if (!deviceMay(device.kind, r.op))
         throw new HttpError(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
+      // A phone (alpha.23, QA23-PHONE-1, shared/phone-rule.ts): what it never asks for, refused here before its body is
+      // read (what it still sends is dropped unread, as for a request too large) or this process answers it itself (a
+      // file's original, an upload). Pro Mode's own, and Simple Mode, the main process weighs.
+      const never = device.kind === 'remote' ? phoneOpRefusal(r.op, false) : null;
+      if (never !== null) {
+        req.resume();
+        throw new HttpError(403, never);
+      }
       if (r.op === 'me') {
         this.json(res, 200, { ok: true, device: { name: device.name, kind: device.kind } });
         return;
