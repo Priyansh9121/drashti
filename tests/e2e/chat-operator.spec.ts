@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { CHAT_API, CHAT_TEXT_MAX } from '../../src/shared/chat';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
-import { expectFits } from './fit';
+import { expectFits, fitFaults } from './fit';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -65,6 +65,23 @@ async function expectSectionFits(chat: Locator, what: string): Promise<void> {
 }
 
 const chatView = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.chat.view());
+
+/** Every part of the window that scrolls, at its top or at its end, then two frames (as operator-fit.spec.ts does). */
+async function scrollEverything(win: Page, end: boolean): Promise<void> {
+  await win.evaluate((end) => {
+    for (const el of document.querySelectorAll('*')) {
+      if (!(el instanceof HTMLElement) || el.scrollHeight <= el.clientHeight + 1) continue;
+      const y = getComputedStyle(el).overflowY;
+      if (y === 'auto' || y === 'scroll') el.scrollTop = end ? el.scrollHeight : 0;
+    }
+  }, end);
+  await win.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
 
 test('the Chat section under LIVE: folded after Messages, then Send as the operator (its words stay words), the count near the limit, Clear chat asked first; it fits 1024 × 645 ', async () => {
   test.setTimeout(120_000);
@@ -266,6 +283,17 @@ test('Simple Mode with Chat chosen: the section under Audio, reading and sending
   await expect(chat.getByTestId('chat-person')).toHaveCount(1);
   await expect(chat.getByTestId('chat-remove-person')).toHaveCount(0);
   await expectSectionFits(chat, 'Simple Mode’s Chat section at 1024 × 645');
+  // The live column's full rule too (operator-fit.spec.ts's fitFaults, a22-review-chat): Simple Mode's window with Chat
+  // and its people open, every scroller at its top and at its end. The names given here may be cut short with an
+  // ellipsis; Drashti's own words may not.
+  const given = ['Placeholder Sender', 'Placeholder phone', 'Placeholder from Simple Mode'];
+  for (const end of [false, true]) {
+    await scrollEverything(win, end);
+    expect(
+      await fitFaults(win, given),
+      `Simple Mode, Chat and its people open${end ? ', scrolled to the end' : ''}`,
+    ).toEqual([]);
+  }
   // Its Clear chat and Remove stay Pro Mode's in the main process too.
   const refused = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
