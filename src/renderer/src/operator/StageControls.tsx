@@ -3,7 +3,13 @@ import { useEngine } from '../engine/engine-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageScreen } from '../render/StageScreen';
 import { askForScreens, useFirstGroupLook, useScreens } from '../screens/screens-store';
-import { NO_STAGE_SCREEN, SET_UP_STAGE, stageScreensSet } from '../../../shared/screen-switches';
+import {
+  NO_STAGE_SCREEN,
+  SET_UP_STAGE,
+  stageDevicesPaired,
+  stageScreensSet,
+} from '../../../shared/screen-switches';
+import { useNetwork } from '../network/network-store';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -120,10 +126,15 @@ function StagePreviewButton() {
 /**
  * No screen is set to Stage (alpha.22; the owner, 24 Nov 2026: "right now i am unable to setup stage screen even its
  * on"): said plainly, with Set up Stage screen…, which opens Screens, where one click gives a display the Stage job.
- * Nothing is said before the screens are known.
+ * A stage screen whose display is unplugged or whose node is offline, and a tablet paired as Stage while the Network
+ * is on, are set to Stage (alpha.23, a22-review-stage S8). Nothing is said before the screens and the paired devices
+ * are known.
  */
 function NoStageScreen() {
-  const none = useScreens((s) => (s.snapshot ? stageScreensSet(s.snapshot) === 0 : false));
+  const tablets = useNetwork((s) => (s.status ? stageDevicesPaired(s.status) : null));
+  const none = useScreens((s) =>
+    s.snapshot && tablets !== null ? stageScreensSet(s.snapshot, tablets) === 0 : false,
+  );
   if (!none) return null;
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="stage-no-screen">

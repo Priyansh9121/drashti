@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useRef } from 'react';
 import type { WindowBackground } from '../../../shared/engine/state';
 import { useLiveWindow } from './live-window';
+import { useStagePreview } from './live-here';
 import { usePreviewsOnly } from './previews';
 
 /*
@@ -9,7 +10,8 @@ import { usePreviewsOnly } from './previews';
  * one, and the operator's notice says why. As its capture ends the video shows black, and after a still while (a
  * shared slide) that black was the next frame and was kept (caught by show-a-window.spec.ts): nothing is kept
  * once it has ended, and what shows is the copy kept a second before the newest. Phones and tablets draw
- * nothing for it (a phone names it instead), nor does a node's screen (the window is on Main's computer).
+ * nothing for it (a phone names it instead), nor does a node's screen (the window is on Main's computer), nor the
+ * Stage preview (alpha.23, QA23-STAGE8-1: never a second capture of the window; its audience picture names it).
  */
 
 const FITTED: CSSProperties = {
@@ -32,7 +34,8 @@ export function LiveWindowView({
   as?: 'background' | 'pip';
 }) {
   const previews = usePreviewsOnly();
-  if (previews) return null;
+  const preview = useStagePreview();
+  if (previews || preview) return null;
   return <LiveWindowPicture layer={layer} as={as} />;
 }
 

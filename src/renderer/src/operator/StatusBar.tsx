@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { useEngine } from '../engine/engine-store';
 import type { AppInfo } from '../../../shared/app-info';
-import { describeAppInfo } from '../../../shared/app-info';
+import { appInfoParts, describeAppInfo } from '../../../shared/app-info';
 import { cancelImport, dismissFinished, useImports } from '../library/import-store';
 import { showInMedia } from '../library/library-store';
 import { exportMedia } from '../library/export-file';
@@ -20,6 +20,7 @@ import { Button } from '../ui/Button';
 import { AlertTriangle, CalendarDays, Info, Volume2, X } from '../ui/icons';
 import { Progress } from '../ui/Progress';
 import { plural } from '../ui/text';
+import { Tooltip } from '../ui/Tooltip';
 import { Truncate } from '../ui/Truncate';
 import { cx } from '../ui/cx';
 import { useArrival, useLeaving } from '../ui/motion';
@@ -319,9 +320,7 @@ export function StatusBar({
           <SaveStatus platform={info?.platform ?? 'darwin'} />
           <TaskStatus />
         </div>
-        <span data-testid="app-info" className="shrink-0 text-faint">
-          {info ? describeAppInfo(info) : ''}
-        </span>
+        <AppInfoWords info={info} />
       </footer>
     </>
   );
@@ -472,5 +471,23 @@ function NoticeCard({ notice, canShowMedia }: { notice: string; canShowMedia: bo
         <X size={12} aria-hidden="true" />
       </button>
     </div>
+  );
+}
+
+/**
+ * The version, last in the row (alpha.23, lead 2's QA23-STAGE8-4): "Drashti 1.0.0" shown; Electron's version and the
+ * system's after it for screen readers and in its tooltip, the whole line there, so the row fits CI's 1024 × 645.
+ */
+function AppInfoWords({ info }: { info: AppInfo | null }) {
+  if (!info) return <span data-testid="app-info" className="shrink-0 text-faint" />;
+  const { short, rest } = appInfoParts(info);
+  return (
+    // Its words are in it already, for screen readers: the tooltip only shows the whole line.
+    <Tooltip content={describeAppInfo(info)} describes={false}>
+      <span data-testid="app-info" className="shrink-0 text-faint">
+        {short}
+        <span className="sr-only">{rest}</span>
+      </span>
+    </Tooltip>
   );
 }
