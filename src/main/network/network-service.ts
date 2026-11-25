@@ -365,9 +365,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'media.rename': IPC.media.rename,
   'presentation.rename': IPC.library.renamePresentation,
   'playlist.whenEnds': IPC.playlists.setWhenEnds,
-  // Red: not built yet.
-  flow: null,
-  'flow.page': null,
+  // Sabha flow (alpha.23): the window's own reads, so Simple Mode's lock says to a phone what it says to the window.
+  flow: IPC.flow.get,
+  'flow.page': IPC.flow.page,
 };
 
 const idsWithin = (ids: unknown, max: number): unknown =>
