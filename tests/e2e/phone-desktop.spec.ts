@@ -27,6 +27,7 @@ import {
   setUpScreen,
 } from './helpers';
 import { expectPhoneRefuses } from './phone-refuses';
+import { phoneAsks } from './pro-phone';
 import { makeTestTone, makeTestVideo } from './test-media';
 
 /*
@@ -897,42 +898,31 @@ const presentationNames = (win: Page) =>
 const inWindow = async (result: Promise<{ ok: boolean }>) => expect((await result).ok).toBe(true);
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the library changed in the window: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back; a phone at 375 × 812 and 768 × 1024 is refused a playlist made, and a Remote script each change, in words, in Pro Mode and Simple Mode (${engine})`, async () => {
+  test(`the library changed in the window: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back; a phone at 375 × 812 and 768 × 1024 is refused each in words, in Pro Mode and Simple Mode, its own reads still answered after the window's changes (${engine})`, async () => {
     test.setTimeout(240_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
     await operatorReady(win);
-    const { base, port } = await networkOn(win);
-    // A script's token first: a pairing code is one at a time.
-    const script = await pairToken(win, port, 'remote', 'Placeholder script');
+    const { base } = await networkOn(win);
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
-    // The library's requests asked as a Remote script does (the rule is every Remote token's, the owner's Q1): the
-    // phone's page reads its playlists and library again at each of the window's changes here, and asked from the page
-    // too they went past one device's requests a second (429 on CI, a22-phonee2eb-1125-223801-13990).
-    const asks = { win, port, token: script };
+    // Each refusal asked from the phone's own page. A request it may never make is refused before its allowance is
+    // spent (s59-a22-phonecore 482c53bf3; on CI a22-phonee2eb-1125-223801-13990 these went 429 when the page also read
+    // its lists again at each of the window's changes), and after each burst of the window's changes the page's own
+    // allowed read is answered, never 429 (the review a23-review-phonetests §5).
+    const asks = { win, page: p };
     const tree = () => win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
+    const pageStillAnswered = async (when: string) =>
+      expect((await phoneAsks(p, 'GET', '/api/v1/state')).status, `the page's own read ${when}`).toBe(200);
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
-      // The phone's own page at each size, before the window's changes start: a playlist made, refused.
-      for (const size of SIZES) {
-        await p.setViewportSize(size);
-        await expectPhoneRefuses(
-          { win, page: p },
-          'POST',
-          '/api/v1/playlists/new',
-          { name: `Placeholder phone list ${size.layout}` },
-          'computer',
-          tree,
-        );
-      }
       for (const size of SIZES) {
         const words = `Placeholder phone words ${size.layout}`;
         const list = `Placeholder phone list ${size.layout}`;
         await p.setViewportSize(size);
-        // A presentation from words, and a playlist made: the script's refused, the window's made.
+        // A presentation from words, and a playlist made: the phone's refused, the window's made.
         await expectPhoneRefuses(
           asks,
           'POST',
@@ -1037,6 +1027,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         await expectPhoneRefuses(asks, 'POST', '/api/v1/playlists/restore', { ids: [id] }, 'computer', tree);
         await inWindow(win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.restore([id]), id));
         await expect.poll(() => playlistNames(win)).toContain(`${list}, renamed`);
+        await pageStillAnswered(`after the window's changes at ${size.name}`);
       }
       // Simple Mode: the playlist tools refused to the phone in words too; Simple Mode's window keeps them.
       await win
@@ -1083,6 +1074,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.restore([id]), simpleList),
       );
       await expect.poll(() => playlistNames(win)).toContain('Placeholder Simple renamed');
+      await pageStillAnswered("after Simple Mode's window's changes");
     } finally {
       await phone.close();
       await app.close();
