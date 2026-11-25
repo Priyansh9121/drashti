@@ -22,7 +22,7 @@ import {
   nextOf,
   nowOf,
   openPanel,
-  phoneOnMore,
+  phoneOnShow,
   seen,
   writeFlows,
 } from './sabha-flow';
@@ -33,8 +33,9 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * screen, and in Simple Mode only when chosen in Simple Mode Features…. The hall's output and a stage screen's (two
  * windowed outputs, the second on a pretend display) and a tablet paired as a Stage device watch every word they show
  * while a flow is chosen, marked, its page looked at, replaced and removed: none of the flow's. A new library's Simple
- * Mode has none of it, a paired phone shows none while the computer is in Simple Mode, and Now cannot be moved there;
- * once chosen in Simple Mode Features…, both have it (the phone too: QA23-FLOWP-1 A), until it is taken out again.
+ * Mode window has none of it and Now cannot be moved there; once chosen in Simple Mode Features…, it has it, until it
+ * is taken out again. A paired phone shows the flow in Simple Mode always, chosen or not (QA23-PHONE-1, the owner's
+ * Q3 "Always (Recommended)"; before it, only while chosen: QA23-FLOWP-1 A).
  * Placeholder PDFs only ("Flowcheck" marks their English words).
  */
 
@@ -162,7 +163,7 @@ test('Nothing of the Sabha flow reaches a screen: the hall’s and the stage’s
   }
 });
 
-test('Simple Mode has the Sabha flow only while it is chosen in Simple Mode Features…: off in a new library, none of it in Simple Mode’s window or on a paired phone and Now not moved there; chosen, both have it and the phone follows a Now marked in Simple Mode; taken out again, neither; Pro Mode keeps the flow and Now throughout', async () => {
+test('Simple Mode’s window has the Sabha flow only while it is chosen in Simple Mode Features…: off in a new library, none of it there and Now not moved there; chosen, it has it and the phone follows a Now marked in Simple Mode; taken out again, none; a paired phone shows the flow in Simple Mode always (the owner’s Q3); Pro Mode keeps the flow and Now throughout', async () => {
   test.setTimeout(240_000);
   const files = await writeFlows({ ENGLISH });
   const { app } = await launchApp(NETWORK_ENV);
@@ -202,15 +203,18 @@ test('Simple Mode has the Sabha flow only while it is chosen in Simple Mode Feat
   const flowId = (await flowState(win))?.flowId ?? 'none';
   expect(await flowState(win)).toEqual({ flowId, now: 1 });
   const { base } = await networkOn(win);
-  const phone = await phoneOnMore(win, base, 'chromium', 'Placeholder phone');
+  const phone = await phoneOnShow(win, base, 'chromium', 'Placeholder phone');
   const p = phone.page;
   try {
     await expect.poll(() => seen(p.getByTestId('remote-flow-now'))).toBe(nowOf(itemOf(ENGLISH, 1)));
 
-    // Simple Mode: none of it in the window or on the phone, and Now is not Simple Mode's to move.
+    // Simple Mode: none of it in the window, and Now is not Simple Mode's to move. The phone shows the flow all the
+    // same, Now as marked (QA23-PHONE-1, the owner's Q3 "Always (Recommended)").
     await setMode('simple');
     await expect(win.getByTestId('sabha-flow')).toHaveCount(0);
-    await expect(p.getByTestId('remote-flow')).toHaveCount(0);
+    await expect(p.getByTestId('remote-simple')).toBeVisible();
+    await expect(p.getByTestId('remote-flow-file')).toHaveText(ENGLISH.fileName);
+    await expect.poll(() => seen(p.getByTestId('remote-flow-now'))).toBe(nowOf(itemOf(ENGLISH, 1)));
     expect(
       await win.evaluate((id) => (globalThis as PageGlobals).drashti.flow.setNow(id, 3), flowId),
     ).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
@@ -238,12 +242,15 @@ test('Simple Mode has the Sabha flow only while it is chosen in Simple Mode Feat
     await expect.poll(() => seen(p.getByTestId('remote-flow-now'))).toBe(nowOf(itemOf(ENGLISH, 2)));
     await expect.poll(() => seen(p.getByTestId('remote-flow-next'))).toBe(nextOf(itemOf(ENGLISH, 3)));
 
-    // Taken out of Simple Mode Features… again: Simple Mode has none of it, on the phone either.
+    // Taken out of Simple Mode Features… again: Simple Mode's window has none of it; the phone shows the flow all the
+    // same, Now as marked in Simple Mode (the owner's Q3).
     await setMode('pro');
     expect(await chooseFeature('sabha-flow', false)).toEqual({ ok: true, chosen: [] });
     await setMode('simple');
     await expect(win.getByTestId('sabha-flow')).toHaveCount(0);
-    await expect(p.getByTestId('remote-flow')).toHaveCount(0);
+    await expect(p.getByTestId('remote-simple')).toBeVisible();
+    await expect(p.getByTestId('remote-flow-file')).toHaveText(ENGLISH.fileName);
+    await expect.poll(() => seen(p.getByTestId('remote-flow-now'))).toBe(nowOf(itemOf(ENGLISH, 2)));
 
     // Pro Mode: the Now marked in Simple Mode kept, on the phone too.
     await setMode('pro');

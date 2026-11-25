@@ -18,7 +18,7 @@ import {
   NOW_NOT_STARTED,
   nextOf,
   openPanel,
-  phoneOnMore,
+  phoneOnShow,
   SCAN,
   seen,
   seenAll,
@@ -83,7 +83,7 @@ test('English, Gujarati and Hindi tables and a numbered list, chosen and replace
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const { base } = await networkOn(win);
-  const phone = await phoneOnMore(win, base, 'chromium', 'Placeholder phone');
+  const phone = await phoneOnShow(win, base, 'chromium', 'Placeholder phone');
   const p = phone.page;
   try {
     await p.setViewportSize({ width: 390, height: 844 });
@@ -149,7 +149,7 @@ test('A PDF Drashti cannot read is said so plainly, in the same words on the pan
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const { base } = await networkOn(win);
-  const phone = await phoneOnMore(win, base, 'chromium', 'Placeholder phone');
+  const phone = await phoneOnShow(win, base, 'chromium', 'Placeholder phone');
   const p = phone.page;
   try {
     await p.setViewportSize({ width: 390, height: 844 });
@@ -186,7 +186,7 @@ test('A PDF Drashti cannot read is said so plainly, in the same words on the pan
         })
         .toBe(true);
 
-      // The phone, in More: the same file and the same words, and no Now or Next up.
+      // The phone, on its Show tab: the same file and the same words, and no Now or Next up.
       await expect(section.getByTestId('remote-flow-file'), f.fileName).toHaveText(f.fileName);
       await expect
         .poll(() => seen(section.getByTestId('remote-flow-said')), { message: f.fileName })
