@@ -287,6 +287,8 @@ test('from a phone, refused in words; from the operator window as before: media 
     await dispatch(win, { type: 'showAudienceTimer', timerId });
     await expect.poll(async () => (await layers(win)).timer?.timerId).toBeTruthy();
     await expect(win.getByTestId('live-audience-timer')).toContainText('Sabha starts in');
+    // Named under LIVE on the phone's Show tab too, as the window's LIVE names it (what is live: the rule keeps it).
+    await expect(p.getByTestId('remote-audience-timer')).toContainText('Sabha starts in');
     await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/timers/hide', {}, 'computer');
     await dispatch(win, { type: 'hideAudienceTimer' });
     await expect.poll(async () => (await layers(win)).timer ?? null).toBeNull();
@@ -380,21 +382,21 @@ test('from a phone, refused in words; from the operator window as before: media 
     await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/trigger/next', {}, 'noDeck');
 
     // Media: the phone's list of the library's pictures, videos and sounds, and each put up from it, refused. Moved to
-    // the window: a picture up as the background, the slide taken off (the commands the phone's Media ran, as the
-    // window's Media runs them), then taken off.
+    // the window, by its engine's own commands (dispatched here, not the window's Media): a picture up as the
+    // background, then taken off. (Taking the slide off with it was the phone's Media's own, its mirror-answers.ts
+    // mediaCommands, now refused: not checked here.)
     await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/media', undefined, 'media');
     await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${show.pictureMediaId}/show`, {}, 'media');
-    await dispatch(win, { type: 'clearLayer', layer: 'slide' });
     await dispatch(win, {
       type: 'setBackground',
       background: { kind: 'media', mediaId: show.pictureMediaId, media: 'image', fit: 'fit', loop: false },
     });
     await expect
       .poll(async () => {
-        const l = await layers(win);
-        return { background: l.background?.kind === 'media' ? l.background.mediaId : null, slide: l.slide };
+        const bg = (await layers(win)).background;
+        return bg?.kind === 'media' ? bg.mediaId : null;
       })
-      .toEqual({ background: show.pictureMediaId, slide: null });
+      .toBe(show.pictureMediaId);
     await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/background', {}, 'computer');
     await dispatch(win, { type: 'clearLayer', layer: 'background' });
     await expect.poll(async () => (await layers(win)).background).toBeNull();
@@ -436,7 +438,8 @@ test('from a phone, refused in words; from the operator window as before: media 
       })
       .not.toBeNull();
     await expectNoSeriousA11yIssues(p, 'the phone’s page with a video playing on the screens');
-    // A sound plays over the rest: the phone's refused; the window's up, and taken off.
+    // A sound plays over the rest: the phone's refused; the window's engine command puts it up (dispatched here, not the
+    // window's Media), and takes it off.
     await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${toneId}/show`, {}, 'media');
     await dispatch(win, {
       type: 'playAudio',
@@ -580,6 +583,8 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           // Back and Next always in reach, a phone held sideways too.
           if (size.layout === 'phone' || size.layout === 'sideways')
             await page.getByTestId('remote-tab-show').click();
+          // LIVE's own line of what is live (Repeat Slides going round: "Moves on by itself"), there to be checked.
+          await expect(page.getByTestId('remote-auto-advance')).toBeVisible();
           await expect(page.getByTestId('remote-next-button')).toBeInViewport();
           await expect(page.getByTestId('remote-back')).toBeInViewport();
           // Add to Home Screen: iOS's tags and Android Chrome's, and the icons they name.
@@ -726,6 +731,8 @@ test('Repeat Slides from a phone are refused in words: Next with nothing up, an 
     );
     await dispatch(win, { type: 'startRepeat', playlistId, slideIndex: 1 });
     await expect.poll(going).toEqual({ repeat: playlistId, item: secondItem });
+    // Under LIVE on the phone's Show tab: Repeating, by the playlist's name (what is live: the rule keeps it).
+    await expect(p.getByTestId('remote-repeating')).toContainText('Placeholder Hall Pictures');
     await dispatch(win, { type: 'stopRepeat' });
     await expect.poll(going).toEqual({ repeat: null, item: secondItem });
 
