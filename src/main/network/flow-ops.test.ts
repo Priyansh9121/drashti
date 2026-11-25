@@ -217,6 +217,17 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(asked).toEqual([]);
   });
 
+  it('gives only the pages drawn, the first 20 of a longer PDF, never asking the store past them', async () => {
+    const { page, remote, setSnapshot, setPages, asked } = setup();
+    const long = { ...FLOW, pageCount: 300, drawnPages: 20 };
+    setSnapshot({ flow: long, state: { flowId: long.id, now: null } });
+    setPages({ 19: PNG });
+    expect((await page(remote, { page: '19', flowId: long.id })).status).toBe(200);
+    expect((await page(remote, { page: '20', flowId: long.id })).status).toBe(404);
+    expect((await page(remote, { page: '299', flowId: long.id })).status).toBe(404);
+    expect(asked).toEqual([[long.id, 19]]);
+  });
+
   it('refuses a page it does not have, or one asked for wrongly, in plain words', async () => {
     const { page, remote, setPages, asked } = setup();
     // Past the flow's pages: never asked of the store.

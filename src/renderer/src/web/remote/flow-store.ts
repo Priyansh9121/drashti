@@ -51,8 +51,8 @@ export const useFlow = create<FlowPhone>(() => ({
 
 export const pictureKey = (flowId: string, page: number): string => `${flowId}:${String(page)}`;
 
-/** Red: not built yet. */
-export const shownPages = (flow: SabhaFlow): number => flow.pageCount;
+/** The pages the phone shows: those Drashti drew, from the first (at most 20; a PDF can have more). */
+export const shownPages = (flow: SabhaFlow): number => flow.drawnPages;
 
 /** The views a flow has: the read list and the page when it was read, else the page alone (none without a flow). */
 export function flowViews(flow: SabhaFlow | null): FlowView[] {
@@ -189,7 +189,7 @@ export function showFlowView(view: FlowView): void {
 /** The page before or after, within the flow's pages. */
 export function turnPage(by: number): void {
   const { page, snapshot } = useFlow.getState();
-  const last = Math.max(0, (snapshot?.flow?.pageCount ?? 1) - 1);
+  const last = Math.max(0, (snapshot?.flow ? shownPages(snapshot.flow) : 1) - 1);
   useFlow.setState({ page: Math.min(last, Math.max(0, page + by)) });
 }
 

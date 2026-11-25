@@ -67,7 +67,13 @@ const flow = (id: string, over: Partial<SabhaFlow> = {}): SabhaFlow => ({
 });
 
 const A = flow('flow-placeholder-000a');
-const B = flow('flow-placeholder-000b', { status: 'no-text', items: [], headers: [], pageCount: 1, drawnPages: 1 });
+const B = flow('flow-placeholder-000b', {
+  status: 'no-text',
+  items: [],
+  headers: [],
+  pageCount: 1,
+  drawnPages: 1,
+});
 
 const answer = (snapshot: SabhaFlowSnapshot) => {
   drashti.answers.set('/api/v1/flow', { ok: true, ...snapshot });

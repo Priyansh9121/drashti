@@ -35,6 +35,7 @@ import {
   openFlow,
   pictureKey,
   showFlowView,
+  shownPages,
   startFlow,
   turnPage,
   useFlow,
@@ -67,8 +68,11 @@ export const FLOW_PHONE_WORDS = {
   page: 'PDF page',
   drawing: 'Getting the page…',
   noPage: 'This page could not be shown. The read list still follows the computer.',
-  /** Red: not built yet. */
-  firstPages: (_n: number) => '',
+  /** A PDF with more pages than Drashti drew (20 at most). */
+  firstPages: (n: number) =>
+    n === 1
+      ? 'Only the first page of this PDF is shown.'
+      : `Only the first ${String(n)} pages of this PDF are shown.`,
 } as const;
 
 /** A part's lang: the PDF's own, each part's by its script in a mixed one. */
@@ -334,10 +338,16 @@ function PageView({
   useEffect(() => {
     if (online) void loadFlowPage(flow.id, page);
   }, [flow.id, page, online]);
-  const count = flow.pageCount;
+  // The pages drawn (at most 20), never the PDF's own count.
+  const count = shownPages(flow);
   const shown = `Page ${String(page + 1)} of ${String(count)}`;
   return (
     <div className="space-y-3" data-testid="remote-flow-page">
+      {flow.pageCount > count && (
+        <p className="text-base text-muted" data-testid="remote-flow-first-pages">
+          {FLOW_PHONE_WORDS.firstPages(count)}
+        </p>
+      )}
       {count > 1 && (
         <div className="flex items-center gap-2">
           <Button
