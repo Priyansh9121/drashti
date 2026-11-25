@@ -193,6 +193,18 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const overBox = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const overId = useId();
+  const foldInspector = useRef<HTMLButtonElement>(null);
+  // Where the keyboard goes once a button that keeps or folds something is gone or hidden (round 2, R2-S1: it fell to
+  // the page): the control that takes its place, given the keyboard after the render that shows it.
+  const keyboardTo = useRef<'tab' | 'opener' | 'fold-inspector' | null>(null);
+  useLayoutEffect(() => {
+    const to = keyboardTo.current;
+    if (!to) return;
+    keyboardTo.current = null;
+    if (to === 'tab') tabsIn(header.current)?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+    else if (to === 'opener') opener.current?.focus();
+    else foldInspector.current?.focus();
+  });
   // What is open over the slide folds again when it is left for elsewhere in the editor: a press there, or the
   // keyboard moving there (Tab, Shift+Tab), so no control it covers ever has the keyboard (WCAG 2.4.11,
   // a22-review-ribbonfold M1). Menus and dialogs opened from it are drawn outside the editor, and keep it. A field in
@@ -209,7 +221,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         if (press) letGo(notesBox.current);
         setNotesOver(false);
       }
-      if (dropped && away(droppedBox.current, tabsIn(header.current))) {
+      // The ribbon's own: its tabs for a press (a press on the title folds it), the whole top for the keyboard, which
+      // goes from the tabs through the top's buttons into the ribbon (round 2, R2-M1: WCAG 2.1.1). The ribbon hangs
+      // under the top and never covers it, so 2.4.11 still holds.
+      if (dropped && away(droppedBox.current, press ? tabsIn(header.current) : header.current)) {
         if (press) letGo(droppedBox.current);
         setRibbonDropped(false);
       }
@@ -867,6 +882,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                   icon={PinOff}
                   className="mr-2 shrink-0"
                   onClick={() => {
+                    keyboardTo.current = 'tab';
                     keepRibbon(false);
                   }}
                 >
@@ -1117,10 +1133,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               <div className="grid shrink-0 grid-rows-[auto_minmax(0,1fr)]">
                 <div className="flex justify-start border-b border-l border-line bg-panel px-2 py-1">
                   <Button
+                    ref={foldInspector}
                     size="sm"
                     variant="ghost"
                     icon={PinOff}
                     onClick={() => {
+                      keyboardTo.current = 'opener';
                       keepInspector(false);
                     }}
                   >
@@ -1142,6 +1160,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                     variant="ghost"
                     icon={Pin}
                     onClick={() => {
+                      keyboardTo.current = 'fold-inspector';
                       keepInspector(true);
                       setInspectorOver(false);
                     }}
