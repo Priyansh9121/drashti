@@ -301,9 +301,9 @@ test('a double click on a row’s trash takes out that row only, as one click do
   await win.mouse.down({ clickCount: 1 });
   await win.mouse.up({ clickCount: 1 });
   await expect.poll(() => order(win, playlistId)).toEqual(left);
-  await expect(win.getByTestId('undo-removal')).toContainText(
-    'Removed “Placeholder backdrop” from “Placeholder one click”',
-  );
+  // The row's label is the file's name in Media.
+  const removed = `Removed “${PICTURE}.png” from “Placeholder one click”`;
+  await expect(win.getByTestId('undo-removal')).toContainText(removed);
   // The sound's row has moved up into its place, and its trash shows under the pointer (moved a pixel, as a
   // hand does) ...
   await win.mouse.move(x, y + 1);
@@ -317,6 +317,8 @@ test('a double click on a row’s trash takes out that row only, as one click do
     'a double click’s second click takes out no other row',
   );
   await expect(win.getByRole('alertdialog')).toHaveCount(0);
+  // One removal, the picture's: the Undo notice still names it, not the sound.
+  await expect(win.getByTestId('undo-removal')).toContainText(removed);
   await expect(trash(SOUND)).toBeVisible();
   await app.close();
 });
