@@ -266,8 +266,13 @@ test('a double click on the card under the chosen one never lands on its Up or D
   await expect(card(win, PDF)).toHaveAttribute('aria-expanded', 'false');
   await holdStill(kept, 1500, 'a double click’s second click never moves the PDF');
 
-  // The same over the picture, under the video chosen: up once, and nothing moves.
+  // The same over the picture, under the video chosen alone: up once, and nothing moves. The PDF is let go first
+  // (Cmd/Ctrl-click), so no bar of chosen items shows and goes with the first click, and the second lands on the
+  // picture's own Up and Down, as the PDF's did (QA23-ROWDEL-1: it fell on the sound's trash).
+  await card(win, PDF).click({ modifiers: [mod] });
+  await expect(card(win, PDF)).toHaveAttribute('aria-pressed', 'false');
   await card(win, VIDEO).click({ modifiers: [mod] });
+  await expect(win.getByTestId('open-playlist').getByTestId('chosen-bar')).toHaveCount(0);
   await doubleClickLow(PICTURE);
   await expect.poll(async () => (await up(win)).background).toBe(ids[PICTURE]);
   await holdStill(kept, 1500, 'a double click’s second click never moves the picture');
