@@ -139,6 +139,8 @@ import { connectNetwork, useNetwork } from '../network/network-store';
 import { AnnouncementsPanel } from '../network/AnnouncementsPanel';
 import { connectAnnouncements, useAnnouncements } from '../network/announcements-store';
 import { StreamSettings } from '../stream/StreamSettings';
+import { SabhaFlowPanel } from '../sabha-flow/SabhaFlowPanel';
+import { useFlowPanel } from '../sabha-flow/flow-store';
 import { connectStream, useStream } from '../stream/stream-store';
 
 // The window is still opening until its first data is in: taken as this code loads (ui/motion.ts).
@@ -272,6 +274,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const streamOpen = useStream((s) => s.panelOpen);
   const networkOpen = useNetwork((s) => s.open);
   const announcementsOpen = useAnnouncements((s) => s.open);
+  // The Sabha flow panel (alpha.23): open or folded, remembered on this computer.
+  const flowOpen = useFlowPanel((s) => s.open);
   const platform = info?.platform ?? 'darwin';
 
   const openScreens = useCallback(() => {
@@ -423,6 +427,10 @@ function ProApp({ info }: { info: AppInfo | null }) {
             // and the library opens over both from the Library button.
             <LeftColumn
               head={<LibraryButton />}
+              // The Sabha flow (alpha.23, the owner's "a different window on left side with toggle button saying
+              // sabha flow"): at the top, under the Library button; this window only, never a screen.
+              flow={<SabhaFlowPanel />}
+              flowOpen={flowOpen}
               top={<PlaylistPanel platform={platform} />}
               bottom={byFolder ? <PlaylistFolders /> : null}
               // The wallpapers (Session 55, Part 6), under the playlists, just above the bar of clears.
