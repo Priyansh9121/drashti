@@ -155,16 +155,23 @@ function find(node: ReactNode, testId: string): { onClick?: () => void } | null 
 }
 
 describe('the read list’s rows, for a screen reader', () => {
-  it('are named by their number and parts with a comma between, as said: no middle dot, no space before a comma', () => {
-    const html = renderToStaticMarkup(createElement(FlowReadList, { flow: flow(), now: 1, onPick: nothing }));
-    const names = [...html.matchAll(/<button[^>]*data-testid="flow-row"[^>]*>/gu)].map(
-      (m) => /aria-label="([^"]*)"/u.exec(m[0])?.[1] ?? '',
-    );
-    expect(names).toEqual([
-      '1, Opening, Placeholder words one, 10 min, Speaker A',
-      '2, Video, Placeholder clip, 15 min, Speaker B',
-      '3, Talk, Placeholder words three, 15 min, Speaker B',
-    ]);
+  it('are named by their own words, each part in its own language (no aria-label, which would lose it)', () => {
+    // A mixed flow: each part says its own language to a screen reader, so a row's name is its words as drawn.
+    const mixed = flow({
+      lang: 'mixed',
+      items: [
+        { no: '1', cells: ['Opening', 'Placeholder words one', '10 min', 'Speaker A'] },
+        { no: '2', cells: ['નમૂનો', 'Placeholder clip', '15 min', 'Speaker B'] },
+      ],
+    });
+    const html = renderToStaticMarkup(createElement(FlowReadList, { flow: mixed, now: 1, onPick: nothing }));
+    const rows = [...html.matchAll(/<button[^>]*data-testid="flow-row"[^>]*>(.*?)<\/button>/gu)];
+    expect(rows).toHaveLength(2);
+    for (const [row] of rows) expect(row).not.toMatch(/<button[^>]*aria-label=/u);
+    // The Gujarati part keeps lang="gu", the English ones lang="en", with a comma for a screen reader between.
+    expect(rows[1]?.[1]).toMatch(/<span lang="gu">નમૂનો<\/span>/u);
+    expect(rows[1]?.[1]).toMatch(/<span lang="en">Placeholder clip<\/span>/u);
+    expect(rows[1]?.[1]).toMatch(/<span class="sr-only">, <\/span>/u);
   });
 });
 
