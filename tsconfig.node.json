@@ -13,6 +13,7 @@
     "vitest.config.ts",
     "playwright.config.ts",
     "playwright.perf.config.ts",
-    "playwright.soak.config.ts"
+    "playwright.soak.config.ts",
+    "playwright.intel.config.ts"
   ]
 }
