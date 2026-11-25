@@ -92,7 +92,13 @@ export async function chooseFlow(): Promise<void> {
 /** Remove: Drashti's copy goes (the operator's own PDF stays where it is). */
 export async function removeFlow(): Promise<void> {
   useFlow.setState({ problem: null });
-  await window.drashti.flow.remove();
+  try {
+    await window.drashti.flow.remove();
+  } catch {
+    // Refused (Drashti stopped, say): the flow stays, and the panel says so (a22-review-flow S10).
+    useFlow.setState({ problem: 'Drashti couldn’t remove the Sabha flow. Try again.' });
+    return;
+  }
   useFlow.setState({ flow: null, now: null });
 }
 

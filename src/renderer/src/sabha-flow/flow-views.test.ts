@@ -13,6 +13,7 @@ const flow = (over: Partial<SabhaFlow> = {}): SabhaFlow => ({
   id: 'flow-0001-test',
   fileName: 'placeholder-flow.pdf',
   pageCount: 1,
+  drawnPages: 1,
   status: 'read',
   lang: 'en',
   title: 'Placeholder evening',

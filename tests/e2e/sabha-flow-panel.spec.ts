@@ -16,9 +16,11 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * left side with toggle button saying sabha flow ... the window should show the pdf ... and say whats on number 1, 2,
  * 3, 4, 5 and so on", and "if we are on 1, it should say next up this program, video"). At the top of the left column,
  * its heading the toggle (folded to begin with, remembered); Choose PDF…, the read list (each item as "1 · Program ·
- * Details · Duration · Presenter", a merged cell on each row it covers, the total at the bottom), the PDF page (zoomable),
- * Now and Next up with Back and Next, Replace… and Remove; a PDF with no text says so and shows its page only. Never on a
- * screen. Simple Mode has it only when chosen in Simple Mode Features…, without its setup.
+ * Details · Duration · Presenter", a merged cell on each row it covers, the total at the bottom; a row's click marks it
+ * Now), the PDF page (zoomable), Replace… and Remove; a PDF with no text says so and shows its page only. Never on a
+ * screen. Simple Mode has it only when chosen in Simple Mode Features…, without its setup. Now and Next up themselves
+ * are a22-flow-next's (tests/e2e/sabha-flow-now-next.spec.ts); the scenarios across the panel and a phone are
+ * a22-flow-tests'.
  *
  * Placeholder PDFs only, made here by a22-flow-core's maker (the reader's own tests use it: pdf-lib, the bundled Noto
  * fonts with ToUnicode maps, a table's borders as lines): never a real running order.
@@ -60,7 +62,7 @@ const WIDTHS = [44, 140, 190, 70, 106];
 
 /**
  * Three placeholder running orders: an English table whose rows 2 and 3 share one Duration and one Presenter cell, with
- * a title, subtitle and total; a Gujarati one; and a scan (a picture, no text).
+ * a title, subtitle and total; a Gujarati one; and a 25-page scan (pictures, no text: more pages than the 20 drawn).
  */
 async function makePdfs(): Promise<{ table: string; gujarati: string; scan: string }> {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-flow-'));
@@ -102,11 +104,11 @@ async function makePdfs(): Promise<{ table: string; gujarati: string; scan: stri
       }),
     ]),
   );
-  writeFileSync(scan, await makeFlowPdf([flowScanPage()]));
+  writeFileSync(scan, await makeFlowPdf(Array.from({ length: 25 }, () => flowScanPage())));
   return { table, gujarati, scan };
 }
 
-test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the read list in order with merged cells and the total, Now and Next up, the PDF page zoomed, kept over a restart, fitting 1024 × 645, never on a screen', async () => {
+test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the read list in order with merged cells and the total, a row marked Now, the PDF page zoomed, kept over a restart, a Gujarati one, a scan, Remove, fitting 1024 × 645, never on a screen', async () => {
   test.setTimeout(180_000);
   const { table, gujarati, scan } = await makePdfs();
   const { app, userData } = await launchApp();
@@ -152,38 +154,18 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
     (await rows.last().boundingBox())?.y ?? Infinity,
   );
 
-  // Nothing is Now yet: Next up is the first item, Back is off.
-  const nowLine = panel.getByTestId('flow-now');
-  const nextLine = panel.getByTestId('flow-next');
-  expect(await seen(nowLine)).toBe('Now: not started');
-  expect(await seen(nextLine)).toBe(`Next up: ${ROWS[0] ?? ''}`);
-  await expect(panel.getByRole('button', { name: 'Back one item' })).toBeDisabled();
-
-  // A click marks a row Now; Next up is the next item, in full; the video's row shows as the video.
+  // A row's click marks it Now (Now and Next up themselves are a22-flow-next's, sabha-flow-now-next.spec.ts): the list
+  // says which (aria-current), and Main keeps it.
+  await expect(rows.first()).not.toHaveAttribute('aria-current', 'step');
   await rows.first().click();
   await expect(rows.first()).toHaveAttribute('aria-current', 'step');
-  await expect.poll(() => seen(nowLine)).toBe('Now: 1 · Opening · Placeholder words one');
-  expect(await seen(nextLine)).toBe(`Next up: ${ROWS[1] ?? ''}`);
-  await expect(nextLine).toHaveAttribute('data-video', 'true');
+  await expect.poll(async () => (await flowNow(win))?.now).toBe(0);
   const flowId = (await flowNow(win))?.flowId ?? '';
-  expect(await flowNow(win)).toEqual({ flowId, now: 0 });
-
-  // Next and Back, to the last item: "Last item", and Next is off.
-  const next = panel.getByRole('button', { name: 'Next item' });
-  await next.click();
-  await expect(rows.nth(1)).toHaveAttribute('aria-current', 'step');
-  await next.click();
-  await next.click();
-  await expect(rows.nth(3)).toHaveAttribute('aria-current', 'step');
-  await expect.poll(() => seen(nextLine)).toBe('Last item');
-  await expect(next).toBeDisabled();
-  await panel.getByRole('button', { name: 'Back one item' }).click();
-  await expect(rows.nth(2)).toHaveAttribute('aria-current', 'step');
-  await expect.poll(() => flowNow(win)).toEqual({ flowId, now: 2 });
-  // From the keyboard: Enter on a row marks it.
+  // From the keyboard: Enter on a row marks it; one row is Now at a time.
   await rows.nth(1).focus();
   await win.keyboard.press('Enter');
   await expect(rows.nth(1)).toHaveAttribute('aria-current', 'step');
+  await expect(rows.first()).not.toHaveAttribute('aria-current', 'step');
   await rows.nth(2).click();
   await expect.poll(() => flowNow(win)).toEqual({ flowId, now: 2 });
 
@@ -197,7 +179,7 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
 
   // The PDF page: drawn, at the panel's width, then zoomed in, and fitted again.
   await panel.getByRole('tab', { name: 'PDF page' }).click();
-  const picture = panel.getByRole('img', { name: 'Page 1 of 1, placeholder-flow.pdf' });
+  const picture = panel.getByRole('img', { name: 'Page 1 of 1', exact: true });
   await expect(picture).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   const fitted = (await picture.boundingBox())?.width ?? 0;
@@ -235,22 +217,22 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   await expect(panel2.getByTestId('flow-total')).toHaveText('કુલ સમય: ૧૦ મિનિટ');
   await expect(rows2.first()).not.toHaveAttribute('aria-current', 'step');
   expect((await flowNow(win2))?.now ?? null).toBeNull();
-  expect(await seen(panel2.getByTestId('flow-now'))).toBe('Now: not started');
-  // Next up's words keep the PDF's language inside Drashti's English label.
-  await expect(panel2.getByTestId('flow-next').locator('[lang="gu"]').first()).toHaveText('૧');
 
-  // Replace… with a PDF that has no text: said in plain words, its page only.
+  // Replace… with a 25-page PDF that has no text: said in plain words, its pages only, the 20 Main drew (a22-review-flow
+  // M2: never a line for each page it did not), with one line saying so.
   await chooseThis(again.app, scan);
   await panel2.getByRole('button', { name: 'Replace… (choose another PDF)' }).click();
   await expect(panel2.getByTestId('flow-status')).toContainText('no words Drashti can read', {
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await expect(panel2.getByTestId('flow-row')).toHaveCount(0);
   await expect(panel2.getByRole('tablist')).toHaveCount(0);
-  await expect(panel2.getByTestId('flow-now-next')).toHaveCount(0);
-  await expect(panel2.getByRole('img', { name: 'Page 1 of 1, placeholder-scan.pdf' })).toBeVisible({
+  await expect(panel2.getByRole('img', { name: 'Page 1 of 25', exact: true })).toBeVisible({
     timeout: 30_000,
   });
+  await expect(panel2.getByTestId('flow-page')).toHaveCount(20, { timeout: 30_000 });
+  await expect(panel2.getByTestId('flow-pages-capped')).toHaveText('Only the first 20 pages are shown.');
+  await expect(panel2.getByTestId('flow-page-view')).not.toContainText('couldn’t be drawn');
   await expectFits(panel2, 'the Sabha flow panel, a PDF with no text, at 1024 × 645');
 
   // Remove asks first, then the panel is empty again.
@@ -292,7 +274,7 @@ test('Simple Mode has the Sabha flow only when chosen in Simple Mode Features…
   await expect(win.getByTestId('sabha-flow')).toHaveCount(0);
   await setMode('pro');
 
-  // Chosen: there, as in Pro Mode, with Now and Next up, and nothing that sets it up.
+  // Chosen: there, as in Pro Mode, marking Now, and nothing that sets it up.
   expect(
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('sabha-flow', true)),
   ).toEqual({ ok: true, chosen: ['sabha-flow'] });
@@ -309,7 +291,11 @@ test('Simple Mode has the Sabha flow only when chosen in Simple Mode Features…
   await expect(panel.getByTestId('flow-remove')).toHaveCount(0);
   await rows.nth(1).click();
   await expect(rows.nth(1)).toHaveAttribute('aria-current', 'step');
-  expect(await seen(panel.getByTestId('flow-next'))).toBe(`Next up: ${ROWS[2] ?? ''}`);
+  await expect
+    .poll(async () =>
+      win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state?.now),
+    )
+    .toBe(1);
   // Choosing or removing it stays Pro Mode's, in the main process too.
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.flow.remove())).toBeNull();
   await expect(rows).toHaveCount(4);
