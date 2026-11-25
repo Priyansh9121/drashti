@@ -1,11 +1,12 @@
-import { AnnotationMode, getDocument } from 'pdfjs-dist';
+import { AnnotationMode, getDocument, OPS } from 'pdfjs-dist';
 import { drawEditablePdf } from './editable-main';
 import { pageTextOf } from './page-text';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
 import { partDrawing } from '../../../shared/page-part';
 import type { PictureAssetKind } from '../../../shared/pictures';
 import { fitPage, inShare, tidyNotes } from '../../../shared/pictures';
+import { flowRulesOf, flowTextsOf, type FlowTextPage } from '../../../shared/sabha-flow-text';
 
 /*
  * The hidden window that draws a PDF's pages as pictures (Session 15): each
@@ -48,6 +49,17 @@ async function commentsOf(doc: PDFDocumentProxy, n: number): Promise<string> {
       .filter((text) => text.trim() !== '')
       .join('\n\n'),
   );
+}
+
+/** A page's text layer and borders where they stand (the page at scale 1, its rotation applied). */
+async function flowPageOf(page: PDFPageProxy): Promise<FlowTextPage> {
+  const viewport = page.getViewport({ scale: 1 });
+  return {
+    width: viewport.width,
+    height: viewport.height,
+    texts: flowTextsOf(await page.getTextContent(), viewport),
+    rules: flowRulesOf(await page.getOperatorList({ annotationMode: AnnotationMode.DISABLE }), OPS, viewport),
+  };
 }
 
 async function draw(): Promise<void> {
@@ -115,8 +127,18 @@ async function draw(): Promise<void> {
           annotationMode: AnnotationMode.DISABLE,
         }).promise;
         const png = await canvasPng(canvas);
+        // Sabha flow (alpha.23): the page's own words and borders, for its reader.
+        const flowPage = job.flowText ? await flowPageOf(page) : undefined;
         page.cleanup();
-        if (!(await window.drashti.pictures.page({ index: i, png, notes: '' }))) break;
+        if (
+          !(await window.drashti.pictures.page({
+            index: i,
+            png,
+            notes: '',
+            ...(flowPage ? { flowPage } : {}),
+          }))
+        )
+          break;
         continue;
       }
       const at = fitPage(base.width, base.height, job.width, job.height);

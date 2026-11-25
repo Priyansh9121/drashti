@@ -375,3 +375,58 @@ describe('drawing pages for reading their words (book OCR, alpha.21)', () => {
     expect(await whole).toEqual({ ok: false, message: 'No page could be drawn.' });
   });
 });
+
+describe('drawing a Sabha flow’s pages (alpha.23)', () => {
+  const flowPage = {
+    width: 595,
+    height: 842,
+    texts: [{ s: 'Placeholder', x: 40, y: 60, w: 50, h: 10 }],
+    rules: [{ x0: 30, y0: 70, x1: 300, y1: 70 }],
+  };
+
+  it('draws every page up to its limit by one window, each whole at its own shape, and keeps its text layer', async () => {
+    const t = setup([], { wide: () => true, atOnce: 3 });
+    const out = join(t.dir, 'flow');
+    const drawn = t.pictures.drawForFlow(t.pdf, out, 20, { width: 2000, height: 2000 });
+    const w = await t.opened();
+    const sender = t.sender(w.webContents.id);
+    expect(t.windows).toHaveLength(1);
+    const job = t.pictures.job(sender);
+    expect(job).toMatchObject({
+      width: 2000,
+      height: 2000,
+      maxPages: 20,
+      part: { x: 0, y: 0, w: 1, h: 1 },
+      flowText: true,
+    });
+    expect(job).not.toHaveProperty('share');
+    await t.pictures.page(sender, { index: 0, png: PNG, notes: '', flowPage });
+    // A page's text layer that is not as it should be is left out; the page is kept.
+    await t.pictures.page(sender, { index: 1, png: PNG, notes: '', flowPage: { width: 'wide', texts: 3 } });
+    t.pictures.done(sender, { total: 2, failed: [] });
+    expect(await drawn).toEqual({
+      ok: true,
+      width: 2000,
+      height: 2000,
+      pages: [
+        { index: 0, file: join(out, 'page-0001.png'), notes: '', flowPage },
+        { index: 1, file: join(out, 'page-0002.png'), notes: '' },
+      ],
+      total: 2,
+      failed: [],
+    });
+  });
+
+  it('never keeps a text layer from any other drawing', async () => {
+    const t = setup();
+    const out = join(t.dir, 'pages');
+    const drawn = t.pictures.draw(t.pdf, out);
+    const w = await t.opened();
+    const sender = t.sender(w.webContents.id);
+    expect(t.pictures.job(sender)).not.toHaveProperty('flowText');
+    await t.pictures.page(sender, { index: 0, png: PNG, notes: '', flowPage });
+    t.pictures.done(sender, { total: 1, failed: [] });
+    const result = await drawn;
+    expect(result.ok && result.pages).toEqual([{ index: 0, file: join(out, 'page-0001.png'), notes: '' }]);
+  });
+});
