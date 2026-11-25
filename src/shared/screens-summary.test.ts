@@ -49,7 +49,7 @@ describe('a screen restarted again and again, in Screens (a23-heartbeat)', () =>
   it('is named so beside it, and why in plain words, with what Try again does', () => {
     expect(RESTARTING_WORDS).toBe('Keeps restarting');
     expect(restartingSentence(4)).toBe(
-      'It stopped answering, so Drashti restarted it 4 times in a row. It keeps trying, waiting longer each time. Try again restarts it now.',
+      'It stopped answering, so Drashti restarted it 4 times in a row. It keeps trying, about once a minute. Try again restarts it now.',
     );
     expect(restartingSentence(7)).toContain('7 times in a row');
   });

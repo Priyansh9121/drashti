@@ -13,7 +13,7 @@ describe('the log of an output restarted again and again (a23-heartbeat)', () =>
 
   it('says once, in plain words, why the screen keeps restarting, what Drashti does and what Try again does', () => {
     expect(keepsRestartingLine('Output "Main Hall"', RESTARTS_TOLD)).toBe(
-      'Output "Main Hall" was restarted 4 times in a row: its page stopped answering each time (this computer may be too slow for it, or something on it stops the page each time it loads). Drashti keeps restarting it, waiting longer each time; Screens and the status line say so, and Try again in Screens restarts it now.',
+      'Output "Main Hall" was restarted 4 times in a row: its page stopped answering each time (this computer may be too slow for it, or something on it stops the page each time it loads). Drashti keeps restarting it, about once a minute; Screens and the status line say so, and Try again in Screens restarts it now.',
     );
   });
 });

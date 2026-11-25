@@ -88,9 +88,12 @@ interface DisplayCardProps {
   simple: boolean;
   /** Switched off (Session 50): its switch's words, "Audience off" or "Stage off". */
   offWords?: string | null;
+  /** Showing, but restarted this many times in a row by the heartbeat (a23-heartbeat). */
+  restarts?: number;
 }
 
-function DisplayCard({
+/** One display's card (exported for its render test, a23-heartbeat). */
+export function DisplayCard({
   display,
   number,
   screen,
