@@ -160,6 +160,8 @@ for (const mode of ['pro', 'simple'] as const)
         await expect(ribbon).toBeVisible();
         await ed.getByRole('button', { name: 'Fold the ribbon' }).click();
         await expect(ribbon).toBeHidden();
+        // The keyboard goes to what takes the button's place, not to the page (a22-review-ribbonfold R2-S1).
+        await expect(editor.getByRole('tab', { selected: true })).toBeFocused();
 
         // The Inspector, folded behind its button: it opens over the slide and keeps the keyboard.
         const inspector = editor.getByRole('complementary', { name: 'Inspector' });
@@ -179,9 +181,11 @@ for (const mode of ['pro', 'simple'] as const)
         await editor.getByRole('button', { name: 'Keep it open' }).click();
         await expect(inspector).toBeVisible();
         await expect(opener).toBeHidden();
+        await expect(editor.getByRole('button', { name: 'Fold the Inspector' })).toBeFocused();
         await editor.getByRole('button', { name: 'Fold the Inspector' }).click();
         await expect(inspector).toBeHidden();
         await expect(opener).toBeVisible();
+        await expect(opener).toBeFocused();
       } finally {
         await app.close();
       }
@@ -305,6 +309,38 @@ test('at its least window with 200% text, Tab and Shift+Tab never stop on a cont
   }
 });
 
+// The dropped ribbon is reached by the keyboard alone (a22-review-ribbonfold R2-M1, WCAG 2.1.1): from the chosen tab,
+// Tab goes through the rest of the top into the ribbon, which stays dropped, never covering what has the keyboard.
+test('at its least window with 200% text, Tab from the chosen tab reaches the dropped ribbon, which stays dropped', async () => {
+  test.setTimeout(120_000);
+  const { app, ed, editor } = await openEditor('pro', 'native');
+  try {
+    await sizeSlideEditor(app, ed, await smallestContent(app, 'slide-editor.html'));
+    await zoomEditor(app, ed, 2);
+    await steadyCanvas(ed);
+    const ribbon = editor.getByRole('tabpanel');
+    await editor.getByRole('tab', { selected: true }).focus();
+    await ed.keyboard.press('Enter');
+    await expect(ribbon).toBeVisible();
+    let inside = false;
+    for (let n = 1; n <= 12 && !inside; n += 1) {
+      await ed.keyboard.press('Tab');
+      await expect(ribbon, `after Tab ${String(n)}`).toBeVisible();
+      await expectFocusUncovered(ed, `Tab ${String(n)} from the chosen tab`);
+      inside = await ribbon.evaluate((panel) => panel.contains(document.activeElement));
+    }
+    expect(inside, 'the keyboard reached the dropped ribbon by Tab').toBe(true);
+    // Shift+Tab from its first control, Show the ribbon, goes back into the top, the ribbon still dropped.
+    await ribbon.getByRole('button', { name: 'Show the ribbon' }).focus();
+    await ed.keyboard.press('Shift+Tab');
+    await expect(ribbon).toBeVisible();
+    expect(await editor.locator('header').evaluate((top) => top.contains(document.activeElement))).toBe(true);
+    await expectFocusUncovered(ed, 'Shift+Tab from Show the ribbon');
+  } finally {
+    await app.close();
+  }
+});
+
 // A field the Inspector keeps only as it lets go of the keyboard (a timer's Length) keeps what was typed when a press
 // elsewhere closes the Inspector over the slide (a22-review-ribbonfold S2), as it does beside the slide.
 test('at its least window with 200% text, a timer length typed in the Inspector over the slide is kept at a press elsewhere', async () => {
@@ -342,17 +378,21 @@ test('at its least window with 200% text, a timer length typed in the Inspector 
     await expect(editor.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
     const win = operator as Page | null;
     if (!win) throw new Error('no operator window');
-    await expect
-      .poll(async () =>
-        win.evaluate(
-          async (id) =>
-            (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.timers.find(
-              (t) => t.id === id,
-            )?.durationMs,
-          timerId,
-        ),
-      )
-      .toBe(4000);
+    const kept = () =>
+      win.evaluate(
+        async (id) =>
+          (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.timers.find((t) => t.id === id)
+            ?.durationMs,
+        timerId,
+      );
+    await expect.poll(kept).toBe(4000);
+    // And at Escape, which folds the Inspector first (a22-review-ribbonfold round 2's nit).
+    await editor.getByRole('button', { name: 'Inspector', exact: true }).click();
+    await length.fill('0:07');
+    await ed.keyboard.press('Escape');
+    await expect(editor.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+    await expect(editor.getByRole('button', { name: 'Inspector', exact: true })).toBeFocused();
+    await expect.poll(kept).toBe(7000);
   } finally {
     await app.close();
   }
