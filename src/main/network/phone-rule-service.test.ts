@@ -186,7 +186,7 @@ function setup(mode: 'pro' | 'simple') {
     simple: () => (mode === 'simple' ? ONE : null),
     phoneLists: {
       activePlaylist: (id: string) => id === 'sabha',
-      plays: ONE.plays,
+      plays: (id: string, from?: { playlistId: string; itemId: string }) => ONE.plays(id, from),
     },
     changed: () => undefined,
     log: () => undefined,
