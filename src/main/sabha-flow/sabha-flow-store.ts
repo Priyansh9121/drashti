@@ -91,6 +91,7 @@ const NOT_A_PDF = 'That file is not a PDF: choose the running order saved as a P
 const NOT_THERE = 'The PDF could not be read: it may have been moved or deleted. Choose it again.';
 const TOO_BIG = `That PDF is too big for a Sabha flow (over ${String(SABHA_FLOW_LIMITS.maxPdfBytes / 1024 / 1024)} MB): save it again with smaller pictures.`;
 const STALE = 'The Sabha flow has been replaced since: Now was not moved.';
+const REMOVED = 'The Sabha flow has been removed since: Now was not moved.';
 const NO_ITEM = 'There is no such item in the Sabha flow.';
 const CANCELLED = 'Cancelled.';
 
@@ -264,7 +265,10 @@ export class SabhaFlowStore {
   setNow(flowId: unknown, now: unknown): Promise<SabhaFlowNowResult> {
     return this.inTurn(async (): Promise<SabhaFlowNowResult> => {
       const c = this.current;
-      if (!c || typeof flowId !== 'string' || flowId !== c.flow.id) return { ok: false, message: STALE };
+      // Each refusal says what is true: no flow now (removed), or another one (replaced). A Now asked while another is
+      // being kept waits its turn and is answered for itself, never refused for it.
+      if (!c) return { ok: false, message: REMOVED };
+      if (typeof flowId !== 'string' || flowId !== c.flow.id) return { ok: false, message: STALE };
       const parsed = nowSchema.safeParse(now);
       if (!parsed.success || (parsed.data !== null && parsed.data >= c.flow.items.length))
         return { ok: false, message: NO_ITEM };
