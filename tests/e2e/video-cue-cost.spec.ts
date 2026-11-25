@@ -10,7 +10,14 @@ import { dispatch, snapshot } from './time-bar-helpers';
 import { COST_BANDS, COST_SWEEPS, cueReady, setupVideoCue } from './video-cue-helpers';
 import { heardFades, readSweeps, type FadeInput, type FadeSound } from './sweep-position';
 import { freePort, readFlv, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
-import { type PlaybackClock, playbackBounds, playbackOffset, playbackPosition } from '../../src/shared/media';
+import {
+  type PlaybackClock,
+  mediaUrl,
+  pageCopyUrl,
+  playbackBounds,
+  playbackOffset,
+  playbackPosition,
+} from '../../src/shared/media';
 import type { VideoCrossfade } from '../../src/shared/video-cue';
 
 /** Where one stream sound played (its element on the stream's sound page), every 50 ms. */
@@ -770,6 +777,32 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         }
         const pages = await sampling,
           state = await status();
+        // a22-review-fadecopies S12: which file each page plays, in the first crossfade: the hall's screens every
+        // original, LIVE its videos' 540p copies and the stream's picture page (the weak preset) their 720p ones.
+        if (mode === 'crossfade' && round === 0) {
+          const sources = (page: Page) =>
+            page.evaluate(() =>
+              [...document.querySelectorAll<HTMLVideoElement>('video[data-media-id]')]
+                .map((v) => ({ id: v.dataset['mediaId'] ?? '', src: v.getAttribute('src') ?? '' }))
+                .filter((v) => v.src !== ''),
+            );
+          const [onHall, onLive, onStream] = await Promise.all([hall, win, stream].map(sources));
+          const ours = (list: { id: string; src: string }[]) => list.filter((v) => ids.includes(v.id));
+          expect(ours(onHall).length, 'the hall plays the videos').toBeGreaterThan(0);
+          expect(
+            ours(onHall).filter((v) => v.src !== mediaUrl(v.id)),
+            'the hall’s screens play every original',
+          ).toEqual([]);
+          expect(
+            ours(onLive).some((v) => v.src === pageCopyUrl(v.id, 540)),
+            'LIVE plays a video’s 540p page copy',
+          ).toBe(true);
+          expect(
+            ours(onStream).filter((v) => v.src !== pageCopyUrl(v.id, 720)),
+            'the stream’s picture page plays the videos’ 720p page copies',
+          ).toEqual([]);
+          expect(ours(onStream).length).toBeGreaterThan(0);
+        }
         if (tracing && tracePath) {
           await app.evaluate(
             async ({ contentTracing }, path) => contentTracing.stopRecording(path),
