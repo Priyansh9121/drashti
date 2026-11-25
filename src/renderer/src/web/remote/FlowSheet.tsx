@@ -89,11 +89,11 @@ export type FlowShown = Pick<
 >;
 
 /** In More: the flow, read from the phone's store; in Simple Mode only while it is one of Simple Mode's tools. */
-export function FlowSection() {
+export function FlowSection({ simple }: { simple: RemoteSimple | null }) {
   const snapshot = useFlow((s) => s.snapshot);
   const problem = useFlow((s) => s.problem);
   const sheetOpen = useFlow((s) => s.open);
-  const shown = flowOnPhone(useSimple());
+  const shown = flowOnPhone(simple);
   return shown ? <FlowSectionView snapshot={snapshot} problem={problem} sheetOpen={sheetOpen} /> : null;
 }
 
