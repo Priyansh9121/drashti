@@ -73,13 +73,20 @@ let page: Page;
 let drashti: Drashti;
 let fetcher: ReturnType<typeof vi.fn<typeof fetch>>;
 
-const view = (): ChatPhoneView => ({
-  day: '2026-11-25',
-  messages: [...drashti.messages],
-  people: [{ id: 'operator', name: 'Operator' }],
-  you: { id: ME, name: drashti.name },
-});
+/** What Drashti answers a read: after a message it still has, only what came since; else the whole day (since null). */
+const view = (after?: string): ChatPhoneView => {
+  const at = after === undefined ? -1 : drashti.messages.findIndex((m) => m.id === after);
+  return {
+    day: '2026-11-25',
+    messages: at >= 0 ? drashti.messages.slice(at + 1) : [...drashti.messages],
+    people: [{ id: 'operator', name: 'Operator' }],
+    you: { id: ME, name: drashti.name },
+    since: at >= 0 && after !== undefined ? after : null,
+  };
+};
 const reads = () => fetcher.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET').length;
+const readUrls = () =>
+  fetcher.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET').map(([url]) => String(url));
 const tell = (event: ChatEvent) => {
   for (const l of feed.chat) l(event);
 };
@@ -117,8 +124,11 @@ beforeEach(async () => {
     const body = init?.body === undefined ? {} : (JSON.parse(init.body as string) as Record<string, string>);
     if (init?.method === 'POST' && drashti.refuse)
       return Promise.resolve(json({ ok: false, message: drashti.refuse.message }, drashti.refuse.status));
-    if (url === CHAT_API.read && init?.method !== 'POST')
-      return Promise.resolve(json({ ok: true, chat: view() }));
+    const [path = '', query = ''] = String(url).split('?');
+    if (path === CHAT_API.read && init?.method !== 'POST')
+      return Promise.resolve(
+        json({ ok: true, chat: view(new URLSearchParams(query).get('after') ?? undefined) }),
+      );
     if (url === CHAT_API.name && init?.method === 'POST') {
       drashti.names.push(body['name'] ?? '');
       drashti.name = body['name'] ?? null;
@@ -368,6 +378,25 @@ describe('catching up after the phone wakes or its connection comes back', () =>
     expect(s.unread).toEqual(['5', '6']);
     expect(s.banner?.id).toBe('6');
     expect(alerts.alerted).toBe(0);
+  });
+
+  it('asks only for what is new (after the last message it has), and adds it to the list (review M4)', async () => {
+    await started();
+    drashti.messages.push(message('5', 'other'));
+    page.show('visible');
+    await vi.waitFor(() =>
+      expect(store.useChat.getState().chat?.messages.map((m) => m.id)).toEqual(['1', '2', '5']),
+    );
+    expect(readUrls()).toEqual([CHAT_API.read, `${CHAT_API.read}?after=2`]);
+    expect(store.useChat.getState().unread).toEqual(['5']);
+  });
+
+  it('when Drashti answers with the whole day (since: null: it no longer has that message), shows it in the list’s place', async () => {
+    await started();
+    drashti.messages = [message('7', 'other')];
+    for (const l of feed.online) l();
+    await vi.waitFor(() => expect(store.useChat.getState().chat?.messages.map((m) => m.id)).toEqual(['7']));
+    expect(readUrls()[1]).toBe(`${CHAT_API.read}?after=2`);
   });
 
   it('reads again each time the feed is back online', async () => {
