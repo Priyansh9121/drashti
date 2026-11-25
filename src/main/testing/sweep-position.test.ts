@@ -170,6 +170,24 @@ describe('the position sweep read back from a recording', () => {
     expect(f.anchor.settledReadings).toBeGreaterThanOrEqual(30);
   });
 
+  it('counts a crossfade only where both sounds are heard window after window, never a few clicks (QFP-6)', () => {
+    // CI's Windows (a22-fadeprep-1125-105151-7516): a sound's start or stop is a click that lifts both bands over their
+    // floor for 1-4 windows; three such clicks within 3 s were taken for a crossfade (8 counted for 3 fades).
+    const samples = record(10, 3217, scene(inClock));
+    let seed = 11;
+    for (const at of [4500, 5100, 5700]) {
+      const first = Math.round(((at - 3217) / 1000) * RATE);
+      for (let i = first; i < first + 480; i++) {
+        seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+        samples[i] = (samples[i] ?? 0) + 0.8 * (seed / 1_073_741_824 - 1);
+      }
+    }
+    const result = heardFades(readSweeps(samples, RATE, BANDS), [fade()]);
+    expect('error' in result ? result.error : '').toBe('');
+    const [only] = 'fades' in result ? result.fades : [];
+    expect(Math.abs((only?.anchor.firstSampleAt ?? 0) - 3217)).toBeLessThanOrEqual(3);
+  });
+
   it('says why when it cannot read: no settled seconds before the ask, or not every fade heard', () => {
     // The recording begins after the ask.
     const samples = record(4, FADE_AT - 50, scene(inClock));
