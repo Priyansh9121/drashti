@@ -1,4 +1,6 @@
-import type { MediaInfo } from '../convert/plan';
+import { readdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { hasAlpha, type MediaInfo } from '../convert/plan';
 
 /*
  * Page copies (QA23-FADE-9, candidate 1; lead 2, answered by lead, owner away): a smaller copy of a video for a page
@@ -27,8 +29,17 @@ export interface PageCopyPlan {
 }
 
 /** The copy a source can have at a height: none for a video not taller than it, a still, or one this can't keep exact. */
-export function pageCopyPlan(_info: MediaInfo, _height: PageCopyHeight): PageCopyPlan | null {
-  return null;
+export function pageCopyPlan(info: MediaInfo, height: PageCopyHeight): PageCopyPlan | null {
+  const v = info.video;
+  if (!v || v.still || v.interlaced === true || hasAlpha(info) || v.width < 2 || v.height < 2) return null;
+  // Landscape only: the pages draw 16:9.
+  if (v.width < v.height || v.height <= height) return null;
+  const container = info.container ?? '';
+  const ext = container.includes('webm') ? 'webm' : container.includes('mp4') ? 'mp4' : null;
+  if (ext === 'webm' && v.codec !== 'vp8' && v.codec !== 'vp9') return null;
+  if (ext === 'mp4' && v.codec !== 'h264') return null;
+  if (!ext) return null;
+  return { width: Math.max(2, Math.round((v.width * height) / v.height / 2) * 2), height, ext };
 }
 
 /** A copy's file name: its source's sha256 and its height. */
@@ -37,24 +48,99 @@ export function pageCopyName(sha256: string, height: PageCopyHeight, ext: 'webm'
 }
 
 /** FFmpeg's arguments for a copy written to `tmp`: the source's timeline kept exactly, only the picture smaller. */
-export function pageCopyArgs(_source: string, _tmp: string, _info: MediaInfo, _plan: PageCopyPlan): string[] {
-  return [];
+export function pageCopyArgs(source: string, tmp: string, info: MediaInfo, plan: PageCopyPlan): string[] {
+  const picture =
+    plan.ext === 'webm'
+      ? [
+          '-c:v',
+          info.video?.codec === 'vp9' ? 'libvpx-vp9' : 'libvpx',
+          '-b:v',
+          plan.height >= 720 ? '1500k' : '900k',
+          '-deadline',
+          'good',
+          '-cpu-used',
+          '4',
+        ]
+      : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-sc_threshold', '0'];
+  return [
+    '-nostdin',
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    // The source's own times, each frame kept at its own (no frame added or dropped), keyframes where it has them
+    // and nowhere else (the encoder's own turned off), and its sound's packets copied as they are.
+    '-copyts',
+    '-i',
+    source,
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a?',
+    '-vf',
+    `scale=${String(plan.width)}:${String(plan.height)}`,
+    '-fps_mode',
+    'passthrough',
+    '-force_key_frames',
+    'source',
+    '-g',
+    '100000',
+    '-keyint_min',
+    '100000',
+    ...picture,
+    '-c:a',
+    'copy',
+    '-threads',
+    '1',
+    ...(plan.ext === 'mp4' ? ['-movflags', '+faststart', '-f', 'mp4'] : ['-f', 'webm']),
+    tmp,
+  ];
+}
+
+/** A copy's name, and nothing else: its source's sha256, a height made, and its container. */
+const NAME = /^([a-f0-9]{64})-(720|540)p\.(webm|mp4)$/u;
+
+/** The copies in a list of names, each with its source's sha256 and height. */
+function copiesOf(names: readonly string[]): { name: string; sha256: string; height: PageCopyHeight }[] {
+  return names.flatMap((name) => {
+    const m = NAME.exec(name);
+    return m?.[1] && m[2] ? [{ name, sha256: m[1], height: Number(m[2]) as PageCopyHeight }] : [];
+  });
+}
+
+/** The names of the plain files in the copies' folder (none when there is no folder). */
+async function filesIn(mediaDir: string): Promise<string[]> {
+  try {
+    const entries = await readdir(join(mediaDir, PAGE_COPIES_DIR), { withFileTypes: true });
+    return entries.filter((e) => e.isFile()).map((e) => e.name);
+  } catch {
+    return [];
+  }
 }
 
 /** The copies in the folder, by their source's sha256 (each with its heights). Any other file is not a copy. */
-export async function pageCopiesIn(_mediaDir: string): Promise<Map<string, PageCopyHeight[]>> {
-  return Promise.resolve(new Map());
+export async function pageCopiesIn(mediaDir: string): Promise<Map<string, PageCopyHeight[]>> {
+  const found = new Map<string, PageCopyHeight[]>();
+  for (const c of copiesOf(await filesIn(mediaDir)))
+    found.set(c.sha256, [...(found.get(c.sha256) ?? []), c.height]);
+  return found;
 }
 
 /**
  * Deletes the copies whose source is gone or changed: those named by a sha256 no media row has now. Only files named
  * exactly as copies are in the folder are looked at; nothing else is ever touched. Says which it deleted.
  */
-export async function sweepPageCopies(_mediaDir: string, _liveShas: ReadonlySet<string>): Promise<string[]> {
-  return Promise.resolve([]);
+export async function sweepPageCopies(mediaDir: string, liveShas: ReadonlySet<string>): Promise<string[]> {
+  const gone: string[] = [];
+  for (const c of copiesOf(await filesIn(mediaDir))) {
+    if (liveShas.has(c.sha256)) continue;
+    await rm(join(mediaDir, PAGE_COPIES_DIR, c.name), { force: true });
+    gone.push(c.name);
+  }
+  return gone;
 }
 
 /** Deletes one source's copies, as its own file goes (media-removal.ts). */
-export async function removePageCopiesOf(_mediaDir: string, _sha256: string): Promise<void> {
-  return Promise.resolve();
+export async function removePageCopiesOf(mediaDir: string, sha256: string): Promise<void> {
+  for (const c of copiesOf(await filesIn(mediaDir)))
+    if (c.sha256 === sha256) await rm(join(mediaDir, PAGE_COPIES_DIR, c.name), { force: true });
 }
