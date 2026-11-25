@@ -33,8 +33,7 @@ export function ChatInviteView({
   onEnd: () => void;
 }) {
   const left = invite ? Math.max(0, Math.ceil((invite.expiresAt - now) / 1000)) : 0;
-  // Red: not built yet.
-  const shown = invite !== null && left < 0;
+  const shown = invite !== null && left > 0;
   return (
     <section className="space-y-3" data-testid="chat-invite">
       <SectionTitle>Chat</SectionTitle>
@@ -58,7 +57,7 @@ export function ChatInviteView({
       ) : (
         <>
           <p className="text-sm text-muted">
-            For more people, show a QR code
+            Everyone paired as a Remote or for Announcements is in the chat already. For more people, show a QR code
             for the chat: each phone that scans it joins the chat only, and its person gives their name there.
           </p>
           <Button icon={MessagesSquare} onClick={onShow} data-testid="chat-invite-show">
