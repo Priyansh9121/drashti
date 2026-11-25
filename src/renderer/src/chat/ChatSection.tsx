@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -12,8 +12,17 @@ import { useOperateOnly } from '../simple/simple-features-store';
 import { ChatList } from './ChatList';
 import type { ChatMember, ChatOperatorView } from '../../../shared/chat';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
-import { chatAction, clearChatError, connectChat, markChatSeen, useChat, useChatUnread } from './chat-store';
+import {
+  chatAction,
+  clearChatError,
+  connectChat,
+  markChatSeen,
+  setChatDraft,
+  useChat,
+  useChatUnread,
+} from './chat-store';
 import { chatRows, composerCheck, unreadWords } from './chat-view';
+import { usePictureHold } from './picture-hold-standin';
 
 /*
  * The operator window's Chat section (alpha.23, QA23-CHAT-1; the owner: "a few people scan and a group is created,
@@ -38,20 +47,23 @@ const KIND_WORDS: Record<ChatMember['kind'], string> = {
 /** The people in the chat, each with Remove… in Pro Mode. */
 export function ChatPeople({
   members,
+  open,
+  onOpen,
   canRemove,
   onRemove,
 }: {
   members: readonly ChatMember[];
+  open: boolean;
+  onOpen: (open: boolean) => void;
   canRemove: boolean;
   onRemove: (member: ChatMember) => void;
 }) {
-  const [open, setOpen] = useState(false);
   return (
     <div className="space-y-1.5" data-testid="chat-people">
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => onOpen(!open)}
         className="-ml-1 flex min-h-6 items-center gap-0.5 rounded-sm px-1 text-xs text-muted hover:text-fg"
         data-testid="chat-people-toggle"
       >
@@ -108,19 +120,18 @@ export function ChatEmpty({ operateOnly }: { operateOnly: boolean }) {
   );
 }
 
-/** The text box and Send: Enter sends, Shift+Enter starts a new line. */
-function Composer() {
-  const [text, setText] = useState('');
+/** The text box and Send: Enter sends, Shift+Enter starts a new line. Its words are kept in the store (`draft`). */
+function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) => void }) {
   const [sending, setSending] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
-  const check = composerCheck(text);
-  const lineId = 'chat-composer-line';
+  const check = composerCheck(draft);
+  const lineId = useId();
   const send = async () => {
     if (!check.canSend || sending) return;
     setSending(true);
-    const result = await chatAction((chat) => chat.send(text));
+    const result = await chatAction((chat) => chat.send(draft));
     setSending(false);
-    if (result.ok) setText('');
+    if (result.ok) onDraft('');
     box.current?.focus();
   };
   return (
@@ -140,10 +151,9 @@ function Composer() {
           aria-invalid={!check.canSend && check.line !== null ? true : undefined}
           placeholder="Write a message"
           rows={2}
-          value={text}
+          value={draft}
           onChange={(e) => {
-            setText(e.target.value);
-            clearChatError();
+            onDraft(e.target.value);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -205,16 +215,45 @@ function Messages({ view }: { view: ChatOperatorView }) {
   );
 }
 
-/** The open section: the messages, the text box, the people, and the refusal of the last request. */
-function ChatBody({ operateOnly }: { operateOnly: boolean }) {
-  const view = useChat((s) => s.view);
-  const error = useChat((s) => s.error);
-  const networkOn = useNetwork((s) => s.status?.state === 'listening');
+/** What the open section shows, as the stores have it (ChatContents reads them). */
+export interface ChatContentsProps {
+  view: ChatOperatorView | null;
+  /** Report a Problem is taking the window's picture: none of the chat's words or names are drawn. */
+  held: boolean;
+  operateOnly: boolean;
+  /** The phones' network is on and listening. */
+  networkOn: boolean;
+  error: string | null;
+  draft: string;
+  onDraft: (text: string) => void;
+  peopleOpen: boolean;
+  onPeopleOpen: (open: boolean) => void;
+}
+
+/**
+ * The open section: the messages, the text box, the people, and the refusal of the last request; or, while Report a
+ * Problem takes the window's picture, only a line saying the chat is left out of it (the words half typed and whether
+ * the people are open are the store's, so they come back as they were).
+ */
+export function ChatContentsView({
+  view,
+  held,
+  operateOnly,
+  networkOn,
+  error,
+  draft,
+  onDraft,
+  peopleOpen,
+  onPeopleOpen,
+}: ChatContentsProps) {
   const [removing, setRemoving] = useState<ChatMember | null>(null);
-  // Open, everything in it is seen: the count on the heading goes as it comes.
-  useEffect(() => {
-    markChatSeen();
-  }, [view?.messages]);
+  // Red: the hold is not kept yet.
+  if (held && Number.isNaN(0))
+    return (
+      <p className="text-xs text-muted" data-testid="chat-held">
+        The chat’s words and names are left out of this picture.
+      </p>
+    );
   if (!view) return <Loading label="Loading the chat…" />;
   return (
     <>
@@ -226,7 +265,7 @@ function ChatBody({ operateOnly }: { operateOnly: boolean }) {
         </p>
       )}
       {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
-      <Composer />
+      <Composer draft={draft} onDraft={onDraft} />
       {error !== null && (
         <p role="alert" className="text-xs text-warning-fg" data-testid="chat-problem">
           {error}
@@ -234,6 +273,8 @@ function ChatBody({ operateOnly }: { operateOnly: boolean }) {
       )}
       <ChatPeople
         members={view.members}
+        open={peopleOpen}
+        onOpen={onPeopleOpen}
         canRemove={!operateOnly}
         onRemove={(m) => {
           clearChatError();
@@ -263,9 +304,30 @@ function ChatBody({ operateOnly }: { operateOnly: boolean }) {
   );
 }
 
-/** The section's open part. */
+/** The section's open part, from the stores. Open, everything in the chat is seen: the heading's count goes. */
 export function ChatContents({ operateOnly }: { operateOnly: boolean }) {
-  return <ChatBody operateOnly={operateOnly} />;
+  const view = useChat((s) => s.view);
+  const error = useChat((s) => s.error);
+  const draft = useChat((s) => s.draft);
+  const peopleOpen = useChat((s) => s.peopleOpen);
+  const held = usePictureHold((s) => s.held);
+  const networkOn = useNetwork((s) => s.status?.state === 'listening');
+  useEffect(() => {
+    markChatSeen();
+  }, [view?.messages]);
+  return (
+    <ChatContentsView
+      view={view}
+      held={held}
+      operateOnly={operateOnly}
+      networkOn={networkOn}
+      error={error}
+      draft={draft}
+      onDraft={setChatDraft}
+      peopleOpen={peopleOpen}
+      onPeopleOpen={(open) => useChat.setState({ peopleOpen: open })}
+    />
+  );
 }
 
 /** The Chat section under LIVE (Simple Mode's too, while it is chosen). */

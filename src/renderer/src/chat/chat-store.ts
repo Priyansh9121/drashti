@@ -15,9 +15,19 @@ interface ChatWindow {
   /** The newest message seen with the section open; what the unread count counts after. */
   seen: string | null;
   error: string | null;
+  /** The text box's words not sent yet: kept while the section folds, and through Report a Problem's picture. */
+  draft: string;
+  /** People in the chat, opened under the text box. */
+  peopleOpen: boolean;
 }
 
-export const useChat = create<ChatWindow>(() => ({ view: null, seen: null, error: null }));
+export const useChat = create<ChatWindow>(() => ({
+  view: null,
+  seen: null,
+  error: null,
+  draft: '',
+  peopleOpen: false,
+}));
 
 const newest = (view: ChatOperatorView | null): string | null => view?.messages.at(-1)?.id ?? null;
 
@@ -65,4 +75,9 @@ export async function chatAction(
 
 export function clearChatError(): void {
   useChat.setState({ error: null });
+}
+
+/** The text box's words, as typed (a refusal shown goes as the words change). */
+export function setChatDraft(draft: string): void {
+  useChat.setState({ draft, error: null });
 }
