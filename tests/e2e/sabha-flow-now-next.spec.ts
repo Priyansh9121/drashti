@@ -322,21 +322,25 @@ const nextUpOutOfSight = (loc: Locator, how: 'whole' | 'first line' | 'reachable
             `${part} (${String(Math.round(box.left))},${String(Math.round(box.top))} to ${String(Math.round(box.right))},${String(Math.round(box.bottom))}) is out of ${what} (${String(Math.round(r.left))},${String(Math.round(r.top))} to ${String(Math.round(r.right))},${String(Math.round(r.bottom))})`,
           );
     };
-    // Its lines: the line boxes of all its words, one per height.
+    // Its lines: the line boxes of its words (each text's own line pieces, never an element's whole box), one per height.
     const lines = (): DOMRect[] => {
-      const range = document.createRange();
-      range.selectNodeContents(el);
       const byTop: DOMRect[] = [];
-      for (const r of range.getClientRects()) {
-        if (r.width === 0 || r.height === 0) continue;
-        const same = byTop.find((l) => Math.abs(l.top - r.top) < r.height / 2);
-        if (same) {
-          const left = Math.min(same.left, r.left);
-          const right = Math.max(same.right, r.right);
-          const top = Math.min(same.top, r.top);
-          const bottom = Math.max(same.bottom, r.bottom);
-          byTop[byTop.indexOf(same)] = new DOMRect(left, top, right - left, bottom - top);
-        } else byTop.push(new DOMRect(r.left, r.top, r.width, r.height));
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if ((node.textContent ?? '').trim() === '') continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const r of range.getClientRects()) {
+          if (r.width === 0 || r.height === 0) continue;
+          const same = byTop.find((l) => Math.abs(l.top - r.top) < r.height / 2);
+          if (same) {
+            const left = Math.min(same.left, r.left);
+            const right = Math.max(same.right, r.right);
+            const top = Math.min(same.top, r.top);
+            const bottom = Math.max(same.bottom, r.bottom);
+            byTop[byTop.indexOf(same)] = new DOMRect(left, top, right - left, bottom - top);
+          } else byTop.push(new DOMRect(r.left, r.top, r.width, r.height));
+        }
       }
       return byTop.sort((a, b) => a.top - b.top);
     };
