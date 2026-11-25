@@ -322,6 +322,46 @@ function followLive(): void {
   });
 }
 
+/**
+ * The playlists and the library changed (Drashti's 'playlists' and 'presentations' hints): read again at most once each
+ * LIST_REFRESH_GAP_MS, whatever the number of changes (CI Mac run 45653717757: an operator's quick edits, each with its
+ * own hall, playlists, rows, slides and every deck row read again, used up the phone's allowance, so its own Next could
+ * be refused). The first change is read at once, the rest of a run once more after the gap; each read is the hall
+ * first, as a phone in Simple Mode reads no playlist or presentation.
+ */
+export const LIST_REFRESH_GAP_MS = 500;
+
+/** A library change seen since the last refresh began: the rows' decks and the slides shown read again too. */
+let libraryChanged = false;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let lastRefreshAt = Number.NEGATIVE_INFINITY;
+
+const refreshLists = oneAtATime(async () => {
+  const library = libraryChanged;
+  libraryChanged = false;
+  lastRefreshAt = Date.now();
+  await loadHall();
+  // Its hall not heard (the read failed): nothing let go or read, until the next change or connection.
+  if (!hallKnown) return;
+  // The library changed: the rows' pages read again too (a23-review-phoneui MUST-3).
+  if (library) forgetDocs();
+  await loadPlaylists();
+  const v = useRemote.getState().viewing;
+  if (library && v) await loadDoc(v.presentationId);
+});
+
+function listsChanged(library: boolean): void {
+  if (library) libraryChanged = true;
+  if (refreshTimer) return;
+  refreshTimer = setTimeout(
+    () => {
+      refreshTimer = null;
+      void refreshLists();
+    },
+    Math.max(0, lastRefreshAt + LIST_REFRESH_GAP_MS - Date.now()),
+  );
+}
+
 let started = false;
 
 export function startRemote(): void {
@@ -346,15 +386,7 @@ export function startRemote(): void {
   onListsChanged((what) => {
     // The hall first (QA23-PHONE-1, CI run 45610620870): Drashti adopts Simple Mode's playlist, a 'playlists' change,
     // before it says the mode changed, and a phone in Simple Mode reads no playlist or presentation.
-    if (what === 'playlists' || what === 'presentations')
-      void loadHall().then(() => {
-        if (!hallKnown) return;
-        // The library changed: the rows' pages read again too (a23-review-phoneui MUST-3).
-        if (what === 'presentations') forgetDocs();
-        void loadPlaylists();
-        const v = useRemote.getState().viewing;
-        if (what === 'presentations' && v) void loadDoc(v.presentationId);
-      });
+    if (what === 'playlists' || what === 'presentations') listsChanged(what === 'presentations');
     if (what === 'screens' || what === 'mode') void loadHall();
   });
 }
