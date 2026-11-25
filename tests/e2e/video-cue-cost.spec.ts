@@ -278,6 +278,31 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     info.annotations.push({ type: 'runner', description: note.trim() });
     expect(features.gpu_compositing).not.toBe('enabled');
     expect(features.video_decode).not.toBe('enabled');
+    // QA23-FADE-9 candidate 1: the videos' page copies are made while idle, before the show, as Drashti makes them
+    // for a crossfading playlist on a slow computer: a playlist that crossfades, then each video's 720p and 540p copies
+    // ready before the stream goes on air. A precondition only: every check is as it was.
+    await win.evaluate(async (ids) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.playlists.create('Placeholder copies', null, false);
+      if (!made.ok) throw new Error(made.message);
+      const id = made.ids[0] ?? '';
+      const rows = await d.playlists.addItems(
+        id,
+        null,
+        ids.map((mediaId) => ({ kind: 'media', mediaId })),
+      );
+      if (!rows.ok) throw new Error(rows.message);
+      await d.playlists.setPlayOptions(id, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
+    }, ids);
+    await expect
+      .poll(
+        async () => {
+          const ready = await win.evaluate(() => (globalThis as PageGlobals).drashti.media.pageCopies());
+          return ids.every((id) => (ready[id] ?? []).includes(720) && (ready[id] ?? []).includes(540));
+        },
+        { timeout: 60_000, message: 'each video’s page copies are made while idle' },
+      )
+      .toBe(true);
     const port = await freePort(),
       received = join(dir, 'received.flv');
     receiver = rtmpListener(ffmpeg, port, received);

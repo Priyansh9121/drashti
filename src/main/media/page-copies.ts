@@ -58,9 +58,9 @@ export function pageCopyArgs(source: string, tmp: string, info: MediaInfo, plan:
           '-b:v',
           plan.height >= 720 ? '1500k' : '900k',
           '-deadline',
-          'good',
+          'realtime',
           '-cpu-used',
-          '4',
+          '8',
         ]
       : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-sc_threshold', '0'];
   return [
@@ -180,7 +180,7 @@ export class PageCopies {
   private closed = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   constructor(private readonly deps: PageCopiesDeps) {}
-  /** Sweeps once (a copy whose source is gone or changed), reads what is there, then looks every few seconds. */
+  /** Sweeps once (a copy whose source is gone or changed), reads what is there, then looks every 2 s. */
   async start(): Promise<void> {
     const gone = await sweepPageCopies(this.deps.mediaDir, this.deps.liveShas());
     if (gone.length > 0)
@@ -197,7 +197,7 @@ export class PageCopies {
     if (this.closed || this.timer) return;
     this.timer = setInterval(() => {
       void this.step();
-    }, 5000);
+    }, 2000);
     this.timer.unref();
   }
   /** One step: the next copy wanted, made (or nothing). */
