@@ -185,9 +185,40 @@ jobs:
       - name: Build video out for Intel Macs too (both Mac builds are packaged here)
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-video-out.mjs --target darwin-x64
+      # ONNX Runtime's package for Route C's helper (alpha.23, the owner's QA23-ORTCACHE-1): kept in CI's cache by its
+      # exact version, the runner's platform and the SHA-256 scripts/fetch-indic.mjs pins. Whatever the cache gives is
+      # checked by size and SHA-256 before use, as a download is (the build below runs either way); a miss downloads it
+      # as before. Saved after a miss by pushes to main and phase1 only (a quick check's branch never runs again).
+      - name: ONNX Runtime's package, its cache key (version, platform, pinned SHA-256)
+        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions') || contains(inputs.specs, 'caption-ai-chain')
+        id: ort
+        shell: bash
+        run: node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"
+      - name: Restore ONNX Runtime's package (by that key only)
+        if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions') || contains(inputs.specs, 'caption-ai-chain')
+        id: ort-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
+      # A miss downloads exactly as before (cap-review-ortcache S2): whatever a restore that failed part-way left is
+      # removed first. A hit (the exact key, restored whole) stays, and the build checks it.
+      - name: A miss starts clean (anything a restore that failed part-way left is removed)
+        if: steps.ort-cache.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true'
+        env:
+          ORT_PATH: ${{ steps.ort.outputs.path }}
+        shell: bash
+        run: rm -f "$ORT_PATH"
       - name: Build the approved native IndicConformer runtime (no model download)
         if: env.QUICK != 'true' || contains(inputs.specs, 'indic-captions') || contains(inputs.specs, 'caption-ai-chain')
+        id: indic
         run: node scripts/fetch-indic.mjs
+      - name: Save ONNX Runtime's package (checked above; pushes to main and phase1)
+        if: steps.indic.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
       - name: Unit tests (inside Electron's Node)
         if: env.QUICK != 'true'
         run: pnpm test
@@ -434,8 +465,34 @@ jobs:
       - name: Video out sends a picture that a receiver on this runner reads back
         run: node scripts/check-video-out.mjs
       # Route C's helper: tests/e2e/indic-captions.spec.ts runs it in whichever part it falls in (no model download).
+      # ONNX Runtime's package from CI's cache as in the first job (QA23-ORTCACHE-1), checked before use either way.
+      - name: ONNX Runtime's package, its cache key (version, platform, pinned SHA-256)
+        id: ort
+        shell: bash
+        run: node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"
+      - name: Restore ONNX Runtime's package (by that key only)
+        id: ort-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
+      # A miss downloads exactly as before (cap-review-ortcache S2): whatever a restore that failed part-way left is
+      # removed first. A hit (the exact key, restored whole) stays, and the build checks it.
+      - name: A miss starts clean (anything a restore that failed part-way left is removed)
+        if: steps.ort-cache.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true'
+        env:
+          ORT_PATH: ${{ steps.ort.outputs.path }}
+        shell: bash
+        run: rm -f "$ORT_PATH"
       - name: Build the approved native IndicConformer runtime (no model download)
+        id: indic
         run: node scripts/fetch-indic.mjs
+      - name: Save ONNX Runtime's package (checked above; pushes to main and phase1)
+        if: steps.indic.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
       - name: Cache Playwright's browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -520,8 +577,34 @@ jobs:
       - name: Video out sends a picture that a receiver on this runner reads back
         run: node scripts/check-video-out.mjs
       # Route C's helper: tests/e2e/indic-captions.spec.ts runs it in whichever part it falls in (no model download).
+      # ONNX Runtime's package from CI's cache as in the first job (QA23-ORTCACHE-1), checked before use either way.
+      - name: ONNX Runtime's package, its cache key (version, platform, pinned SHA-256)
+        id: ort
+        shell: bash
+        run: node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"
+      - name: Restore ONNX Runtime's package (by that key only)
+        id: ort-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
+      # A miss downloads exactly as before (cap-review-ortcache S2): whatever a restore that failed part-way left is
+      # removed first. A hit (the exact key, restored whole) stays, and the build checks it.
+      - name: A miss starts clean (anything a restore that failed part-way left is removed)
+        if: steps.ort-cache.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true'
+        env:
+          ORT_PATH: ${{ steps.ort.outputs.path }}
+        shell: bash
+        run: rm -f "$ORT_PATH"
       - name: Build the approved native IndicConformer runtime (no model download)
+        id: indic
         run: node scripts/fetch-indic.mjs
+      - name: Save ONNX Runtime's package (checked above; pushes to main and phase1)
+        if: steps.indic.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
       - name: Cache Playwright's browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
