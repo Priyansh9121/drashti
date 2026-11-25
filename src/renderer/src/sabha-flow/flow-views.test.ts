@@ -41,7 +41,11 @@ const words = (html: string) =>
     .replace(/&#x27;/gu, '’')
     .replace(/&amp;/gu, '&');
 const rows = (html: string) =>
-  [...html.matchAll(/<li[^>]*>(.*?)<\/li>/gu)].map((m) => words(m[1] ?? '').replace(/\s+/gu, ' ').trim());
+  [...html.matchAll(/<li[^>]*>(.*?)<\/li>/gu)].map((m) =>
+    words(m[1] ?? '')
+      .replace(/\s+/gu, ' ')
+      .trim(),
+  );
 
 describe('the read list', () => {
   it('shows each numbered item as "1 · Program · Details · Duration · Presenter", in order, with the total at the bottom', () => {
@@ -109,14 +113,18 @@ describe('Now and Next up (QA23-FLOW-2)', () => {
   it('on the last item says "Last item", and Next is off', () => {
     const html = nowNext(flow(), 2);
     expect(words(html)).toContain('Last item');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-testid="flow-next-button"|<button[^>]*data-testid="flow-next-button"[^>]*disabled=""/u);
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*data-testid="flow-next-button"|<button[^>]*data-testid="flow-next-button"[^>]*disabled=""/u,
+    );
   });
 
   it('before anything is Now: Next up is the first item, and Back is off', () => {
     const html = nowNext(flow(), null);
     expect(words(html)).toContain('Now: not started');
     expect(words(html)).toContain('Next up: 1 · Opening');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-testid="flow-back-button"|<button[^>]*data-testid="flow-back-button"[^>]*disabled=""/u);
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*data-testid="flow-back-button"|<button[^>]*data-testid="flow-back-button"[^>]*disabled=""/u,
+    );
   });
 
   it('says its changes to a screen reader, and its buttons are named with the words they show', () => {

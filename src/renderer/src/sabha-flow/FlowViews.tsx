@@ -26,7 +26,8 @@ import { Notice } from '../ui/Notice';
 export type FlowView = 'list' | 'page';
 
 /** The views a flow has: its read list and page, or only its page when nothing could be read from it. */
-export const flowViews = (status: SabhaFlowStatus): FlowView[] => (status === 'read' ? ['list', 'page'] : ['page']);
+export const flowViews = (status: SabhaFlowStatus): FlowView[] =>
+  status === 'read' ? ['list', 'page'] : ['page'];
 
 /** Why there is no read list, in plain words; null when it was read. */
 export function statusWords(status: SabhaFlowStatus): string | null {
@@ -88,7 +89,11 @@ export function FlowReadList({
   // The PDF's language on the whole list; in a mixed one, on each part.
   const langOf = mixed ? ownLang(flow.lang) : () => undefined;
   return (
-    <div lang={mixed ? undefined : flow.lang} className="flex flex-col gap-2 px-2 py-2" data-testid="flow-read-list">
+    <div
+      lang={mixed ? undefined : flow.lang}
+      className="flex flex-col gap-2 px-2 py-2"
+      data-testid="flow-read-list"
+    >
       {(flow.title !== undefined || flow.subtitle !== undefined) && (
         <div className="px-1">
           {flow.title !== undefined && (

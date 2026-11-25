@@ -108,7 +108,7 @@ const seen = (el: Locator) =>
   el.evaluate((node) => {
     const copy = node.cloneNode(true) as HTMLElement;
     for (const hidden of copy.querySelectorAll('.sr-only')) hidden.remove();
-    return (copy.textContent ?? '').replace(/\s+/gu, ' ').trim();
+    return copy.textContent.replace(/\s+/gu, ' ').trim();
   });
 
 async function seenAll(list: Locator): Promise<string[]> {
@@ -170,7 +170,9 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   const total = panel.getByTestId('flow-total');
   await expect(total).toContainText('45 min');
   await total.scrollIntoViewIfNeeded();
-  expect((await total.boundingBox())?.y ?? 0).toBeGreaterThan((await rows.last().boundingBox())?.y ?? Infinity);
+  expect((await total.boundingBox())?.y ?? 0).toBeGreaterThan(
+    (await rows.last().boundingBox())?.y ?? Infinity,
+  );
 
   // Nothing is Now yet: Next up is the first item, Back is off.
   const nowLine = panel.getByTestId('flow-now');
@@ -246,7 +248,9 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   // Replace… with a PDF that has no text: said in plain words, its page only, and Now starts again.
   await chooseThis(again.app, scan);
   await panel2.getByRole('button', { name: 'Replace… (choose another PDF)' }).click();
-  await expect(panel2.getByTestId('flow-status')).toContainText('no words Drashti can read', { timeout: 30_000 });
+  await expect(panel2.getByTestId('flow-status')).toContainText('no words Drashti can read', {
+    timeout: 30_000,
+  });
   await expect(panel2.getByTestId('flow-row')).toHaveCount(0);
   await expect(panel2.getByRole('tablist')).toHaveCount(0);
   await expect(panel2.getByTestId('flow-now-next')).toHaveCount(0);
