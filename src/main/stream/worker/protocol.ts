@@ -36,6 +36,11 @@ export type ToStreamWorker =
    */
   | { type: 'record'; file: string; keepFreeBytes: number; partBytes?: number }
   | { type: 'stopRecording'; message?: string }
+  /**
+   * A crossfade is on (QA23-FADE-9, item 3: the owner's "Try fixes, keep held (Rec.)"): the encoder runs at normal
+   * priority until it ends, then below normal again.
+   */
+  | { type: 'crossfade'; on: boolean }
   /** Stop everything and exit. */
   | { type: 'stop' };
 

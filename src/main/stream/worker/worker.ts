@@ -50,6 +50,9 @@ port.on('message', (event) => {
     case 'stopRecording':
       pipeline.stopRecording(message.message);
       return;
+    case 'crossfade':
+      pipeline.setCrossfade(message.on);
+      return;
     case 'stop':
       pipeline.stop();
       // FFmpeg gets a moment to finish the recording's last cluster.

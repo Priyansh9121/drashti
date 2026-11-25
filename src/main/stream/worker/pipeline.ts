@@ -76,9 +76,14 @@ export function reconnectDelay(attempt: number): number {
 
 /** Lower priority than the show: streaming must never slow a slide change. */
 function belowNormal(pid: number | undefined): void {
+  priorityOf(pid, 10);
+}
+
+/** A process's priority (os.setPriority's number: 0 normal, 10 below normal), where the system allows it. */
+function priorityOf(pid: number | undefined, priority: number): void {
   if (pid === undefined) return;
   try {
-    setPriority(pid, 10);
+    setPriority(pid, priority);
   } catch {
     // Not allowed here: it runs at normal priority.
   }
@@ -448,7 +453,7 @@ export class StreamPipeline {
       'pipe:1',
     ];
     const child = spawn(this.ffmpeg, args, { stdio: 'pipe', windowsHide: true, env: ffmpegEnv() });
-    belowNormal(child.pid);
+    priorityOf(child.pid, this.encoderPriority());
     this.encodeProcess = child;
     this.log(
       'info',
@@ -1070,6 +1075,16 @@ export class StreamPipeline {
   }
 
   /** Stop everything (the worker then exits). */
+  /** A crossfade is on (QA23-FADE-9, item 3): the encoder's priority while it lasts. */
+  setCrossfade(_on: boolean): void {
+    // Not yet: the encoder stays below normal.
+  }
+
+  /** The encoder's priority now (os.setPriority's number): below normal, 10. */
+  private encoderPriority(): number {
+    return 10;
+  }
+
   stop(): void {
     this.stopping = true;
     this.endLive();

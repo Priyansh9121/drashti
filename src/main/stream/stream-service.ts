@@ -1567,6 +1567,11 @@ export class StreamService {
   }
 
   /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */
+  /** A crossfade is on in the show (QA23-FADE-9, item 3): the worker's encoder is told. */
+  setCrossfade(_on: boolean): void {
+    // Not yet.
+  }
+
   close(): void {
     this.closing = true;
     void this.soundRecording.stop();
