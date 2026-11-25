@@ -1,10 +1,18 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { PicturesResult } from '../../shared/pictures';
 import type { SabhaFlowSnapshot } from '../../shared/sabha-flow';
-import type { FlowText, FlowTextPage } from '../../shared/sabha-flow-text';
+import type { FlowReading } from '../../shared/sabha-flow-reader';
 import { SabhaFlowStore } from './sabha-flow-store';
 
 /*
@@ -16,58 +24,84 @@ import { SabhaFlowStore } from './sabha-flow-store';
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 7, 7]);
 
-const t = (s: string, x: number, y: number): FlowText => ({ s, x, y, w: s.length * 5, h: 10 });
-
-/** A small placeholder table's text layer: No. | Program | Duration, rows 1 to `rows`. */
-function tablePage(rows: number, word = 'Item'): FlowTextPage {
-  const texts = [
-    t('Placeholder order', 40, 60),
-    t('No.', 40, 100),
-    t('Program', 90, 100),
-    t('Duration', 260, 100),
-  ];
-  for (let r = 1; r <= rows; r++)
-    texts.push(
-      t(String(r), 40, 100 + 20 * r),
-      t(`${word} ${String(r)}`, 90, 100 + 20 * r),
-      t('5 min', 260, 100 + 20 * r),
-    );
-  return { width: 595, height: 842, texts, rules: [] };
+/** What the pictures window's reader made of a small placeholder table: No. | Program | Duration, rows 1 to `rows`. */
+function tableReading(rows: number, word = 'Item') {
+  return {
+    status: 'read' as const,
+    lang: 'en' as const,
+    title: 'Placeholder order',
+    headers: ['No.', 'Program', 'Duration'],
+    items: Array.from({ length: rows }, (_, k) => ({
+      no: String(k + 1),
+      cells: [`${word} ${String(k + 1)}`, '5 min'],
+    })),
+  };
 }
 
-function setup(options: { pages?: FlowTextPage[]; fail?: string } = {}) {
+interface Drawing {
+  pages: number;
+  /** The window's reading as it hands it over (undefined: none came). */
+  reading?: unknown;
+}
+
+function setup(options: { drawing?: Drawing; fail?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'drashti-sabha-flow-'));
   const dir = join(root, 'data', 'sabha-flow');
   const changes: SabhaFlowSnapshot[] = [];
   const log: string[] = [];
   const drawn: string[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
   let ids = 0;
-  let pages = options.pages ?? [tablePage(3)];
+  let drawing: Drawing = options.drawing ?? { pages: 1, reading: tableReading(3) };
   let fail = options.fail;
+  /** While set, each drawing waits for its own release (or its stop). */
+  let holding = false;
+  const held: (() => void)[] = [];
+  /** The next record written waits inside its writing until let go. */
+  let holdWrite = false;
+  let writeHeld: (() => void) | null = null;
   const make = () =>
     new SabhaFlowStore({
       dir,
-      draw: async (pdf, outDir): Promise<PicturesResult> => {
+      draw: async (pdf, outDir, signal): Promise<PicturesResult> => {
         drawn.push(pdf);
-        await Promise.resolve();
+        signals.push(signal);
+        const mine = drawing;
+        if (holding)
+          await new Promise<void>((resolve) => {
+            held.push(resolve);
+            signal?.addEventListener('abort', () => {
+              resolve();
+            });
+          });
+        else await Promise.resolve();
+        if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
         if (fail) return { ok: false, message: fail };
         mkdirSync(outDir, { recursive: true });
         return {
           ok: true,
           width: 1414,
           height: 2000,
-          pages: pages.map((flowPage, index) => {
+          pages: Array.from({ length: mine.pages }, (_, index) => {
             const file = join(outDir, `page-${String(index + 1).padStart(4, '0')}.png`);
             writeFileSync(file, PNG);
-            return { index, file, notes: '', flowPage };
+            return { index, file, notes: '' };
           }),
-          total: pages.length,
+          total: mine.pages,
           failed: [],
+          ...(mine.reading !== undefined ? { flowReading: mine.reading as FlowReading } : {}),
         };
       },
       changed: (snapshot) => changes.push(snapshot),
       log: (m) => log.push(m),
       newId: () => `flow-${String(++ids).padStart(4, '0')}`,
+      whileWriting: async () => {
+        if (!holdWrite) return;
+        holdWrite = false;
+        await new Promise<void>((resolve) => {
+          writeHeld = resolve;
+        });
+      },
     });
   const pdf = (name: string, bytes: string | Buffer = '%PDF-1.7 placeholder') => {
     const file = join(root, name);
@@ -80,13 +114,31 @@ function setup(options: { pages?: FlowTextPage[]; fail?: string } = {}) {
     changes,
     log,
     drawn,
+    signals,
     make,
     pdf,
-    setPages: (next: FlowTextPage[]) => {
-      pages = next;
+    setDrawing: (next: Drawing) => {
+      drawing = next;
     },
     setFail: (message: string | undefined) => {
       fail = message;
+    },
+    hold: (on: boolean) => {
+      holding = on;
+    },
+    /** Let every drawing still waiting go on. */
+    releaseAll: () => {
+      for (let go = held.shift(); go; go = held.shift()) go();
+    },
+    holdNextWrite: () => {
+      holdWrite = true;
+    },
+    /** Whether a record's writing is waiting now. */
+    writeWaiting: () => writeHeld !== null,
+    letWriteGo: () => {
+      const go = writeHeld;
+      writeHeld = null;
+      go?.();
     },
   };
 }
@@ -102,6 +154,7 @@ describe('Sabha flow store: choosing a PDF', () => {
       id: 'flow-0001',
       fileName: 'Placeholder order.pdf',
       pageCount: 1,
+      drawnPages: 1,
       status: 'read',
       lang: 'en',
       title: 'Placeholder order',
@@ -168,7 +221,9 @@ describe('Sabha flow store: choosing a PDF', () => {
   });
 
   it('keeps a PDF it cannot read the words of as the current flow, its pages to be shown', async () => {
-    const s = setup({ pages: [{ width: 595, height: 842, texts: [], rules: [] }] });
+    const s = setup({
+      drawing: { pages: 1, reading: { status: 'no-text', lang: 'mixed', headers: [], items: [] } },
+    });
     const store = s.make();
     await store.load();
     const chosen = await store.choose(s.pdf('Scan.pdf'));
@@ -227,7 +282,7 @@ describe('Sabha flow store: Now, Replace, Remove and restarts', () => {
     await store.load();
     await store.choose(s.pdf('First.pdf'));
     await store.setNow('flow-0001', 2);
-    s.setPages([tablePage(4, 'Other')]);
+    s.setDrawing({ pages: 1, reading: tableReading(4, 'Other') });
     const chosen = await store.choose(s.pdf('Second.pdf'));
     expect(chosen).toMatchObject({ ok: true, flow: { id: 'flow-0002', fileName: 'Second.pdf' } });
     expect(store.snapshot().state).toEqual({ flowId: 'flow-0002', now: null });
@@ -268,11 +323,11 @@ describe('Sabha flow store: Now, Replace, Remove and restarts', () => {
 
 describe('Sabha flow store: its pages', () => {
   it('gives a page of the current flow as its PNG, and nothing for another flow or no such page', async () => {
-    const s = setup({ pages: [tablePage(2), tablePage(2)] });
+    const s = setup({ drawing: { pages: 2, reading: tableReading(2) } });
     const store = s.make();
     await store.load();
     await store.choose(s.pdf('Two pages.pdf'));
-    expect(store.snapshot().flow?.pageCount).toBe(2);
+    expect(store.snapshot().flow).toMatchObject({ pageCount: 2, drawnPages: 2 });
     expect(await store.page('flow-0001', 1)).toEqual(new Uint8Array(PNG));
     expect(store.pageFile('flow-0001', 1)).toBe(join(s.dir, 'flow-0001', 'page-0002.png'));
     for (const [id, page] of [
@@ -287,5 +342,156 @@ describe('Sabha flow store: its pages', () => {
       expect(await store.page(id, page)).toBeNull();
       expect(store.pageFile(id, page)).toBeNull();
     }
+  });
+});
+
+describe('Sabha flow store: Main never reads a PDF’s words (review M1)', () => {
+  it('takes the reading the pictures window made, as it is', async () => {
+    const reading = {
+      status: 'read',
+      lang: 'gu',
+      subtitle: 'નમૂનો',
+      headers: [],
+      items: [{ no: '૧', cells: ['નમૂનો'] }],
+      total: 'કુલ ૫',
+    };
+    const s = setup({ drawing: { pages: 1, reading } });
+    const store = s.make();
+    await store.load();
+    expect(await store.choose(s.pdf('First.pdf'))).toEqual({
+      ok: true,
+      flow: { id: 'flow-0001', fileName: 'First.pdf', pageCount: 1, drawnPages: 1, ...reading },
+    });
+  });
+
+  it('a drawing with no reading, or one that does not pass the check, is unreadable: its pages are shown', async () => {
+    const s = setup({ drawing: { pages: 1 } });
+    const store = s.make();
+    await store.load();
+    const unreadable = { status: 'unreadable', lang: 'mixed', headers: [], items: [] };
+    expect(await store.choose(s.pdf('First.pdf'))).toMatchObject({ ok: true, flow: unreadable });
+    s.setDrawing({ pages: 1, reading: { status: 'read', lang: 'en', headers: 'No.', items: [] } });
+    expect(await store.choose(s.pdf('Second.pdf'))).toMatchObject({ ok: true, flow: unreadable });
+    expect(await store.page('flow-0002', 0)).toEqual(new Uint8Array(PNG));
+  });
+
+  it("Main's own code never reaches the reader (it runs in the pictures window)", () => {
+    const IMPORT =
+      /^\s*(?:import|export)\s+(?!type\b)[^'"]*?from\s+['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)/gmu;
+    const seen = new Set<string>();
+    const todo = [join(__dirname, '..', 'index.ts')];
+    for (let file = todo.pop(); file !== undefined; file = todo.pop()) {
+      if (seen.has(file)) continue;
+      seen.add(file);
+      for (const m of readFileSync(file, 'utf8').matchAll(IMPORT)) {
+        const spec = m[1] ?? m[2];
+        if (!spec) continue;
+        const base = resolve(dirname(file), spec);
+        const next = [base, `${base}.ts`, join(base, 'index.ts')].find(
+          (f) => f.endsWith('.ts') && existsSync(f) && statSync(f).isFile(),
+        );
+        if (next) todo.push(next);
+      }
+    }
+    expect(seen.size).toBeGreaterThan(100);
+    expect([...seen].filter((f) => f.includes('sabha-flow-reader'))).toEqual([]);
+  });
+});
+
+/** Let what is waiting on the disk and the timers go on, `n` turns. */
+const turns = async (n: number) => {
+  for (let k = 0; k < n; k++) await new Promise((r) => setImmediate(r));
+};
+
+/** Wait until the store has asked for its `n`th drawing (its copy is made over a few turns of the disk first). */
+async function drawingAsked(s: { drawn: string[] }, n: number): Promise<void> {
+  for (let k = 0; k < 500 && s.drawn.length < n; k++) await turns(1);
+  expect(s.drawn).toHaveLength(n);
+}
+
+describe('Sabha flow store: what happens at once (review S6, S7)', () => {
+  it('Now marked while the new PDF’s record is being written: the new flow is current, on disk and after a restart', async () => {
+    const s = setup();
+    const store = s.make();
+    await store.load();
+    await store.choose(s.pdf('First.pdf'));
+    s.setDrawing({ pages: 1, reading: tableReading(4, 'Other') });
+    s.holdNextWrite();
+    const chosen = store.choose(s.pdf('Second.pdf'));
+    for (let k = 0; k < 200 && !s.writeWaiting(); k++) await turns(1);
+    expect(s.writeWaiting()).toBe(true);
+    // Next ▸ on the old flow, its record half written.
+    const now = store.setNow('flow-0001', 2);
+    await turns(5);
+    s.letWriteGo();
+    await Promise.all([chosen, now]);
+    expect(store.snapshot()).toEqual({
+      flow: expect.objectContaining({ id: 'flow-0002' }) as unknown,
+      state: { flowId: 'flow-0002', now: null },
+    });
+    const again = s.make();
+    await again.load();
+    expect(again.snapshot()).toEqual(store.snapshot());
+    expect(readdirSync(s.dir).sort()).toEqual(['current.json', 'flow-0002']);
+  });
+
+  it('Now marked at any moment of a choice: the new flow is current, on disk and after a restart', async () => {
+    for (let at = 0; at <= 12; at++) {
+      const s = setup();
+      const store = s.make();
+      await store.load();
+      await store.choose(s.pdf('First.pdf'));
+      s.setDrawing({ pages: 1, reading: tableReading(4, 'Other') });
+      const chosen = store.choose(s.pdf('Second.pdf'));
+      await turns(at);
+      const now = store.setNow('flow-0001', 2);
+      await Promise.all([chosen, now]);
+      expect(store.snapshot().flow?.id, `Now ${String(at)} turns in`).toBe('flow-0002');
+      const again = s.make();
+      await again.load();
+      expect(again.snapshot(), `after a restart, Now ${String(at)} turns in`).toEqual(store.snapshot());
+    }
+  });
+
+  it('Remove while a new PDF is being read or kept: no flow, nothing kept, none after a restart, whenever it comes', async () => {
+    for (let at = 0; at <= 12; at++) {
+      const s = setup();
+      const store = s.make();
+      await store.load();
+      await store.choose(s.pdf('First.pdf'));
+      const chosen = store.choose(s.pdf('Second.pdf'));
+      await turns(at);
+      await Promise.all([chosen, store.remove()]);
+      expect(store.snapshot(), `Remove ${String(at)} turns in`).toEqual({ flow: null, state: null });
+      expect(readdirSync(s.dir), `Remove ${String(at)} turns in`).toEqual([]);
+      const again = s.make();
+      await again.load();
+      expect(again.snapshot()).toEqual({ flow: null, state: null });
+    }
+  });
+
+  it('Remove stops a drawing under way (S7), and another PDF chosen stops the one before', async () => {
+    const s = setup();
+    const store = s.make();
+    await store.load();
+    s.hold(true);
+    const first = store.choose(s.pdf('First.pdf'));
+    await drawingAsked(s, 1);
+    expect(s.signals[0]?.aborted).toBe(false);
+    await store.remove();
+    expect(s.signals[0]?.aborted).toBe(true);
+    expect(await first).toMatchObject({ ok: false });
+    const second = store.choose(s.pdf('Second.pdf'));
+    await drawingAsked(s, 2);
+    s.setDrawing({ pages: 1, reading: tableReading(4, 'Other') });
+    const third = store.choose(s.pdf('Third.pdf'));
+    // The second stops as soon as the third is chosen, before the third's own drawing is asked for.
+    expect(s.signals[1]?.aborted).toBe(true);
+    await drawingAsked(s, 3);
+    s.releaseAll();
+    expect(await second).toMatchObject({ ok: false });
+    expect(await third).toMatchObject({ ok: true, flow: { fileName: 'Third.pdf' } });
+    expect(store.snapshot().flow?.fileName).toBe('Third.pdf');
+    expect(readdirSync(s.dir).sort()).toEqual(['current.json', store.snapshot().flow?.id]);
   });
 });

@@ -1,11 +1,11 @@
 import {
   SABHA_FLOW_LIMITS,
-  type SabhaFlow,
   type SabhaFlowItem,
   type SabhaFlowLang,
-} from '../../shared/sabha-flow';
-import type { FlowRule, FlowTextPage } from '../../shared/sabha-flow-text';
-import { cutText } from '../../shared/text';
+  type SabhaFlowReading,
+} from './sabha-flow';
+import type { FlowRule, FlowTextPage } from './sabha-flow-text';
+import { cutText } from './text';
 
 /*
  * Sabha flow (alpha.23): the reader. From a PDF's own text layer and its straight lines (shared/sabha-flow-text.ts,
@@ -22,13 +22,24 @@ import { cutText } from '../../shared/text';
  *   it that are set in from the number;
  * - above the table or list: its title and subtitle; under it: the total (the line that says total, or a duration);
  * - the language by the script most of the words are in (Gujarati, Devanagari, Latin);
- * - no text at all: 'no-text' (a scan); text that comes out as private-use, replacement or control characters, or as
- *   unlikely Latin and Greek letters (fonts with no real Unicode map): 'unreadable'. Never OCR, never a guess.
+ * - no text (a scan, or a few words on one): 'no-text'; text that comes out as private-use, replacement or control
+ *   characters, as unlikely Latin and Greek letters, or as the plain ASCII an old typing font writes for its Gujarati
+ *   or Hindi letters (fonts with no real Unicode map): 'unreadable'. Never OCR, never a guess.
+ *
+ * It runs in the hidden pictures window (renderer/src/pictures/flow-reading.ts), never in Main, and what it takes in
+ * is bounded: more text than a running order has (12,000 runs, 200,000 characters, 2,000 numbered lines) is no
+ * running order ('no-items'), and every step is at most a sort over what is left.
  */
 
-/** What reading a PDF finds (Main adds the id, the file's name and the page count). */
-export type FlowReading = Pick<SabhaFlow, 'status' | 'lang' | 'headers' | 'items'> &
-  Partial<Pick<SabhaFlow, 'title' | 'subtitle' | 'total'>>;
+/** What reading a PDF finds (the contract's SabhaFlowReading). */
+export type FlowReading = SabhaFlowReading;
+
+/** More than a running order ever holds: read no further. */
+export const FLOW_READ_LIMITS = { runs: 12_000, chars: 200_000, numbered: 2_000 } as const;
+/** Fewer characters than this in all: no text (a scan's page number or watermark). */
+const FEW_CHARS = 20;
+/** How many rows a merged cell with no borders round it may cover, either way. */
+const SPAN_REACH = 6;
 
 interface Frag {
   s: string;
@@ -63,6 +74,37 @@ function isOdd(cp: number): boolean {
     (cp >= 0x00c0 && cp <= 0x02ff && cp !== 0x00d7 && cp !== 0x00f7) ||
     (cp >= 0x0370 && cp <= 0x03ff)
   );
+}
+
+/** A character the panel and the phone would draw as a box: left out of a flow's words. */
+const isBox = (cp: number) =>
+  (cp >= 0xe000 && cp <= 0xf8ff) || cp >= 0xf0000 || cp === 0xfffd || cp < 0x20 || (cp >= 0x7f && cp <= 0x9f);
+
+const isSpace = (cp: number) =>
+  cp === 0x20 || (cp >= 0x09 && cp <= 0x0d) || cp === 0xa0 || cp === 0x2007 || cp === 0x202f || cp === 0x3000;
+
+const OLD_FONT_SHARE = 0.3;
+const FLIP = /[a-z][A-Z]/u;
+const INNER_SYMBOL = /[A-Za-z][[\]{}\\|^~`;=+<>@#$%&*][A-Za-z]/u;
+const VOWEL = /[aeiouyAEIOUY]/u;
+
+/**
+ * The plain ASCII an old (pre-Unicode) Gujarati or Hindi typing font writes for its letters: of the words of two or
+ * more Latin letters, how many have a capital inside after a small letter, a symbol between letters, or no vowel.
+ * English running orders stay well under a tenth; such text is most of its words.
+ */
+function oldTypingFont(texts: readonly string[]): boolean {
+  let words = 0;
+  let odd = 0;
+  for (const text of texts)
+    for (const word of text.split(/\s+/u)) {
+      let letters = 0;
+      for (const c of word) if (isLatin(c.codePointAt(0) ?? 0)) letters++;
+      if (letters < 2) continue;
+      words++;
+      if (FLIP.test(word) || INNER_SYMBOL.test(word) || !VOWEL.test(word)) odd++;
+    }
+  return words > 0 && odd > OLD_FONT_SHARE * words;
 }
 
 const isGujarati = (cp: number) => cp >= 0x0a80 && cp <= 0x0aff;
@@ -126,8 +168,11 @@ function shortIRepairs(texts: readonly string[]): ((s: string) => string)[] {
 }
 
 const DIGIT_BASES = [0x30, 0x0ae6, 0x0966];
+const NUMBER_START = /^\(?[0-9\u0AE6-\u0AEF\u0966-\u096F]/u;
 const NUMBER = /^\(?([0-9\u0AE6-\u0AEF\u0966-\u096F]{1,3})[.):]?$/u;
-const LIST_LINE = /^\(?([0-9\u0AE6-\u0AEF\u0966-\u096F]{1,3})(?:[.):]\s*|\s+)(\S.*)$/u;
+// A time (3:30) is no item's number: no digit straight after the number's stop.
+const LIST_LINE =
+  /^\(?([0-9\u0AE6-\u0AEF\u0966-\u096F]{1,3})(?:[.):](?![0-9\u0AE6-\u0AEF\u0966-\u096F])\s*|\s+)(\S.*)$/u;
 
 function valueOf(digits: string): number {
   let n = 0;
@@ -139,8 +184,10 @@ function valueOf(digits: string): number {
   return n;
 }
 
-const TOTAL = /total|કુલ|कुल/iu;
-const DURATION = /\d.*(min|minute|hr|hour|મિનિટ|કલાક|मिनट|घंटा)|\d:\d\d/iu;
+/** "Total" as a word of its own (a letter or mark either side makes it part of another word). */
+const TOTAL = /(?<![\p{L}\p{M}])(?:total|કુલ|कुल)(?![\p{L}\p{M}])/iu;
+const DURATION =
+  /\d.*(?<![\p{L}\p{M}])(min|mins|minute|minutes|hr|hrs|hour|hours|મિનિટ|કલાક|मिनट|घंटा)(?![\p{L}\p{M}])/iu;
 
 const tidy = (s: string): string => s.replace(/\s+/gu, ' ').trim();
 const cut = (s: string): string => cutText(s, SABHA_FLOW_LIMITS.maxText);
@@ -163,26 +210,64 @@ function median(values: readonly number[], fallback: number): number {
   return sorted[Math.floor(sorted.length / 2)] ?? fallback;
 }
 
-/** The longest run going up, kept in place: each number above the one before. */
+/** The smallest and largest of many numbers (no spread: a page can hand over more than a call takes). */
+function least(values: Iterable<number>, fallback: number): number {
+  let out = Infinity;
+  for (const v of values) if (v < out) out = v;
+  return out === Infinity ? fallback : out;
+}
+function most(values: Iterable<number>, fallback: number): number {
+  let out = -Infinity;
+  for (const v of values) if (v > out) out = v;
+  return out === -Infinity ? fallback : out;
+}
+
+/** The longest run of numbers going up, kept in their order (each above the one before), in n log n. */
 function goingUp<T extends { value: number }>(list: readonly T[]): T[] {
-  const out: T[] = [];
-  for (const item of list)
-    if (out.length === 0 || item.value > (out[out.length - 1]?.value ?? 0)) out.push(item);
-  return out;
-}
-
-/** Of numbered lines, those standing one under another (their numbers' left edges within 6 points): the most. */
-function aligned<T extends { x: number; y: number }>(list: readonly T[]): T[] {
-  let best: T[] = [];
-  for (const first of list) {
-    const group = list.filter((other) => Math.abs(other.x - first.x) <= 6);
-    if (group.length > best.length) best = group;
+  const tails: number[] = [];
+  const before: number[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const value = list[i]?.value ?? 0;
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((list[tails[mid] ?? 0]?.value ?? 0) < value) lo = mid + 1;
+      else hi = mid;
+    }
+    before[i] = lo > 0 ? (tails[lo - 1] ?? -1) : -1;
+    tails[lo] = i;
   }
-  return [...best].sort((a, b) => a.y - b.y);
+  const out: T[] = [];
+  for (let at = tails[tails.length - 1] ?? -1; at >= 0; at = before[at] ?? -1) {
+    const item = list[at];
+    if (item) out.push(item);
+  }
+  return out.reverse();
 }
 
-function nothing(status: 'no-text' | 'unreadable'): FlowReading {
-  return { status, lang: 'mixed', headers: [], items: [] };
+/**
+ * Of numbered lines, the rows: those standing one under another (their numbers' left edges within 6 points of each
+ * other), going up. Of each such group (by a sort on the left edge), the longest run going up; the longest of those.
+ */
+function numberedRun<T extends { x: number; y: number; value: number }>(list: readonly T[]): T[] {
+  const byX = [...list].sort((a, b) => a.x - b.x);
+  let best: T[] = [];
+  for (let start = 0; start < byX.length;) {
+    const first = byX[start];
+    if (!first) break;
+    let end = start;
+    while (end < byX.length && (byX[end]?.x ?? Infinity) <= first.x + 12) end++;
+    const group = byX.slice(start, end).sort((a, b) => a.y - b.y);
+    const run = goingUp(group);
+    if (run.length > best.length) best = run;
+    start = end;
+  }
+  return best;
+}
+
+function nothing(status: 'no-text' | 'unreadable' | 'no-items', lang: SabhaFlowLang = 'mixed'): FlowReading {
+  return { status, lang, headers: [], items: [] };
 }
 
 interface Row {
@@ -197,30 +282,52 @@ interface Row {
 }
 
 export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
-  // Every page one under another.
+  // Every page one under another; no more than a running order ever holds.
   let raw: Frag[] = [];
   const rules: FlowRule[] = [];
   let offset = 0;
+  let chars = 0;
+  let odd = 0;
+  let tooMuch = false;
   for (const page of pages) {
     for (const t of page.texts) {
       const s = t.s.normalize('NFC');
-      if (s.trim() === '') continue;
+      let solid = 0;
+      for (const c of s) {
+        const cp = c.codePointAt(0) ?? 0;
+        if (isSpace(cp)) continue;
+        solid++;
+        if (isOdd(cp)) odd++;
+      }
+      if (solid === 0) continue;
+      chars += solid;
+      if (raw.length >= FLOW_READ_LIMITS.runs || chars > FLOW_READ_LIMITS.chars) {
+        tooMuch = true;
+        break;
+      }
       raw.push({ s, x: t.x, r: t.x + t.w, y: t.y + offset, h: t.h > 0 ? t.h : 1, pageTop: offset });
     }
+    if (tooMuch) break;
     for (const rule of page.rules)
-      rules.push({ x0: rule.x0, y0: rule.y0 + offset, x1: rule.x1, y1: rule.y1 + offset });
+      if (rules.length < FLOW_READ_LIMITS.runs)
+        rules.push({ x0: rule.x0, y0: rule.y0 + offset, x1: rule.x1, y1: rule.y1 + offset });
     offset += page.height;
   }
-  let chars = 0;
-  let odd = 0;
-  for (const f of raw)
-    for (const c of f.s) {
-      if (/\s/u.test(c)) continue;
-      chars++;
-      if (isOdd(c.codePointAt(0) ?? 0)) odd++;
-    }
-  if (chars === 0) return nothing('no-text');
+  if (!tooMuch && chars < FEW_CHARS) return nothing('no-text');
   if (odd > UNREADABLE_SHARE * chars) return nothing('unreadable');
+  const texts = raw.map((f) => f.s);
+  const lang = langOf(texts);
+  // More text than a running order ever holds: none is read (its pages are shown).
+  if (tooMuch) return nothing('no-items', lang);
+  if (lang !== 'gu' && lang !== 'hi' && oldTypingFont(texts)) return nothing('unreadable');
+  // A character that would draw as a box is left out of the words.
+  raw = raw
+    .map((f) => {
+      let clean = '';
+      for (const c of f.s) if (!isBox(c.codePointAt(0) ?? 0)) clean += c;
+      return clean === f.s ? f : { ...f, s: clean };
+    })
+    .filter((f) => f.s.trim() !== '');
   const repairs = shortIRepairs(raw.map((f) => f.s));
   if (repairs.length > 0) raw = raw.map((f) => ({ ...f, s: repairs.reduce((s, fix) => fix(s), f.s) }));
 
@@ -235,7 +342,10 @@ export function readSabhaFlow(pages: readonly FlowTextPage[]): FlowReading {
     } else lines.push({ y: f.y, h: f.h, frags: [f], pageTop: f.pageTop });
   }
   for (const line of lines) line.frags.sort((a, b) => a.x - b.x);
-  const lang = langOf(raw.map((f) => f.s));
+  // More lines starting with a number than a running order ever has: none is read.
+  let numberedLines = 0;
+  for (const line of lines) if (NUMBER_START.test(line.frags[0]?.s.trim() ?? '')) numberedLines++;
+  if (numberedLines > FLOW_READ_LIMITS.numbered) return nothing('no-items', lang);
   const textOf = (line: Line) => joined(line.frags);
   const pitch = median(
     lines.slice(1).map((line, k) => line.y - (lines[k]?.y ?? 0)),
@@ -286,7 +396,7 @@ function numberedRows(lines: readonly Line[]): Row[] {
     if (!frag || !m?.[1]) return;
     candidates.push({ line, index, no: m[1], value: valueOf(m[1]), x: frag.x, y: line.y, frag });
   });
-  return goingUp(aligned(candidates));
+  return candidates.length > FLOW_READ_LIMITS.numbered ? [] : numberedRun(candidates);
 }
 
 /** A column: its left and right edges. */
@@ -296,7 +406,10 @@ interface Column {
 }
 
 function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: number): Found | null {
-  const rows = numberedRows(lines);
+  // At most the items a flow holds: the table ends where the next would start.
+  const numbered = numberedRows(lines);
+  const rows = numbered.slice(0, SABHA_FLOW_LIMITS.maxItems);
+  const stopAt = numbered[SABHA_FLOW_LIMITS.maxItems]?.index ?? lines.length;
   const firstRow = rows[0];
   const lastRow = rows[rows.length - 1];
   if (!firstRow || !lastRow || rows.length < 2) return null;
@@ -306,14 +419,34 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
   );
   // Where the table spans across, from its rows; the borders over it.
   const rowLines = lines.slice(firstRow.index, lastRow.index + 1);
-  const leftmost = Math.min(...rowLines.flatMap((l) => l.frags.map((f) => f.x)));
-  const rightmost = Math.max(...rowLines.flatMap((l) => l.frags.map((f) => f.r)));
+  const leftmost = least(
+    rowLines.flatMap((l) => l.frags.map((f) => f.x)),
+    0,
+  );
+  const rightmost = most(
+    rowLines.flatMap((l) => l.frags.map((f) => f.r)),
+    0,
+  );
   const width = rightmost - leftmost;
   // Borders across that reach over its words, and the upright ones within them (a short last column's border stands
   // well right of its words).
   const across = rules.filter((r) => r.y0 === r.y1 && r.x1 > leftmost && r.x0 < rightmost);
-  const outerLeft = Math.min(leftmost, ...across.map((r) => r.x0)) - 3;
-  const outerRight = Math.max(rightmost, ...across.map((r) => r.x1)) + 3;
+  const outerLeft =
+    Math.min(
+      leftmost,
+      least(
+        across.map((r) => r.x0),
+        leftmost,
+      ),
+    ) - 3;
+  const outerRight =
+    Math.max(
+      rightmost,
+      most(
+        across.map((r) => r.x1),
+        rightmost,
+      ),
+    ) + 3;
   const down = rules.filter((r) => r.x0 === r.x1 && r.x0 >= outerLeft && r.x0 <= outerRight);
   const heights = bordersAcross(across);
   // Bordered: borders across between its rows.
@@ -358,9 +491,9 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
     .filter((r) => r.y0 > lastRow.y && r.length >= 0.6 * width)
     .sort((a, b) => a.y0 - b.y0)[0];
   let end = lastRow.index + 1;
-  if (wide) while (end < lines.length && (lines[end]?.y ?? Infinity) < wide.y0) end++;
+  if (wide) while (end < stopAt && (lines[end]?.y ?? Infinity) < wide.y0) end++;
   else
-    while (end < lines.length) {
+    while (end < stopAt) {
       const line = lines[end];
       const previous = lines[end - 1];
       if (!line || !previous) break;
@@ -422,12 +555,32 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
   // Merged cells.
   const text: string[][] = cells.map((row) => row.map((parts) => tidy(parts.join(' '))));
   const n = rows.length;
-  const acrossBetween = (k: number) => {
-    const upper = rows[k];
-    const lower = rows[k + 1];
-    if (!upper || !lower) return [];
-    return across.filter((r) => r.y0 > upper.y && r.y0 <= lower.y - 0.5 * lower.line.h);
+  // The borders across between each row and the next (the rules sorted by height once: each found by halving).
+  const acrossByY = [...across].sort((a, b) => a.y0 - b.y0);
+  const firstAtOrAbove = (y: number) => {
+    let lo = 0;
+    let hi = acrossByY.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((acrossByY[mid]?.y0 ?? Infinity) <= y) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   };
+  const betweenRows = rows.slice(0, -1).map((upper, k) => {
+    const lower = rows[k + 1];
+    if (!lower) return [];
+    return acrossByY.slice(firstAtOrAbove(upper.y), firstAtOrAbove(lower.y - 0.5 * lower.line.h));
+  });
+  // Each row's words, column by column: the lines they are on, and how low each column's words reach.
+  const placedAt = new Map<string, Line[]>();
+  const lowest = rows.map(() => used.map(() => -Infinity));
+  for (const p of placed) {
+    const key = `${String(p.row)}:${String(p.col)}`;
+    placedAt.set(key, [...(placedAt.get(key) ?? []), p.line]);
+    const reach = lowest[p.row];
+    if (reach) reach[p.col] = Math.max(reach[p.col] ?? -Infinity, p.line.y);
+  }
   for (let col = 1; col < used.length; col++) {
     const column = used[col];
     if (!column) continue;
@@ -438,7 +591,7 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
     const known: boolean[] = [];
     const joinedDown: boolean[] = [];
     for (let k = 0; k < n - 1; k++) {
-      const between = acrossBetween(k);
+      const between = betweenRows[k] ?? [];
       known[k] = between.length > 0;
       joinedDown[k] = known[k] === true && !between.some(covered);
     }
@@ -463,18 +616,27 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
     // No borders between rows: words in the middle of rows whose cells there are empty cover them all.
     for (let r = 0; r < n; r++) {
       const row = rows[r];
-      const own = placed.filter((p) => p.row === r && p.col === col);
+      const own = placedAt.get(`${String(r)}:${String(col)}`) ?? [];
       if (!row || own.length === 0) continue;
-      if (own.some((p) => Math.abs(p.line.y - row.y) <= 0.5 * row.line.h)) continue;
-      const middle = (Math.min(...own.map((p) => p.line.y)) + Math.max(...own.map((p) => p.line.y))) / 2;
+      if (own.some((line) => Math.abs(line.y - row.y) <= 0.5 * row.line.h)) continue;
+      const middle =
+        (least(
+          own.map((line) => line.y),
+          row.y,
+        ) +
+          most(
+            own.map((line) => line.y),
+            row.y,
+          )) /
+        2;
       const empty = (k: number) =>
         (text[k]?.[col] ?? '') === '' && (k === 0 || !known[k - 1]) && (k === n - 1 || !known[k]);
       let best: { a: number; b: number; off: number } | null = null;
-      for (let a = r; a >= 0 && (a === r || empty(a)); a--)
-        for (let b = r; b < n && (b === r || empty(b)); b++) {
+      for (let a = r; a >= 0 && a >= r - SPAN_REACH && (a === r || empty(a)); a--)
+        for (let b = r; b < n && b <= r + SPAN_REACH && (b === r || empty(b)); b++) {
           if (b === a) continue;
-          const lastLines = placed.filter((p) => p.row === b && p.col !== col).map((p) => p.line.y);
-          const centre = ((rows[a]?.y ?? 0) + Math.max(rows[b]?.y ?? 0, ...lastLines)) / 2;
+          const others = (lowest[b] ?? []).filter((_, c) => c !== col);
+          const centre = ((rows[a]?.y ?? 0) + Math.max(rows[b]?.y ?? 0, most(others, -Infinity))) / 2;
           const off = Math.abs(centre - middle);
           if (!best || off < best.off) best = { a, b, off };
         }
@@ -518,7 +680,9 @@ function readTable(lines: readonly Line[], rules: readonly FlowRule[], pitch: nu
 function bordersAcross(across: readonly FlowRule[]): { y0: number; length: number }[] {
   const out: { y0: number; length: number }[] = [];
   for (const rule of [...across].sort((a, b) => a.y0 - b.y0)) {
-    const near = out.find((e) => Math.abs(e.y0 - rule.y0) <= 1.5);
+    // Sorted by height: only the last group can be near.
+    const last = out[out.length - 1];
+    const near = last && Math.abs(last.y0 - rule.y0) <= 1.5 ? last : undefined;
     if (near) near.length += rule.x1 - rule.x0;
     else out.push({ y0: rule.y0, length: rule.x1 - rule.x0 });
   }
@@ -535,19 +699,26 @@ function columnsByBorders(down: readonly FlowRule[], lines: readonly Line[], h: 
   }
   // Each page's part of the table: from its first line to its last.
   const parts = spans.map((s) => {
-    const first = Math.min(...lines.filter((l) => l.pageTop === s.top).map((l) => l.y)) - 1.2 * h;
+    const first =
+      least(
+        lines.filter((l) => l.pageTop === s.top).map((l) => l.y),
+        s.bottom,
+      ) -
+      1.2 * h;
     return { top: first, bottom: s.bottom };
   });
   const height = parts.reduce((n, p) => n + p.bottom - p.top, 0);
   if (height <= 0) return null;
   const xs: { x: number; length: number }[] = [];
-  for (const rule of down) {
+  for (const rule of [...down].sort((a, b) => a.x0 - b.x0)) {
     const length = parts.reduce(
       (n, p) => n + Math.max(0, Math.min(rule.y1, p.bottom) - Math.max(rule.y0, p.top)),
       0,
     );
     if (length <= 0) continue;
-    const near = xs.find((e) => Math.abs(e.x - rule.x0) <= 3);
+    // Sorted by place: only the last group can be near.
+    const last = xs[xs.length - 1];
+    const near = last && Math.abs(last.x - rule.x0) <= 3 ? last : undefined;
     if (near) near.length += length;
     else xs.push({ x: rule.x0, length });
   }
@@ -591,7 +762,7 @@ function readList(lines: readonly Line[], pitch: number): Found | null {
     if (!frag || !m?.[1] || !m[2]) return;
     candidates.push({ line, index, no: m[1], value: valueOf(m[1]), x: frag.x, y: line.y, frag, rest: m[2] });
   });
-  const rows = goingUp(aligned(candidates));
+  const rows = candidates.length > FLOW_READ_LIMITS.numbered ? [] : numberedRun(candidates);
   const first = rows[0];
   if (!first || rows.length < 2) return null;
   const items: SabhaFlowItem[] = [];
