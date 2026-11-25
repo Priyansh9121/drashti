@@ -1,0 +1,310 @@
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { flowScanPage, flowTablePage, makeFlowPdf } from '../../src/main/documents/testing/sabha-flow-pdfs';
+import { expectNoSeriousA11yIssues } from './a11y';
+import { OWNERS_WINDOW, smallestContent, sweep } from './fit-sweep';
+import type { PageGlobals } from './helpers';
+import { launchApp, operatorPage, operatorReady } from './helpers';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+
+/*
+ * Now and Next up in the operator window's Sabha flow panel (alpha.23, QA23-FLOW-2; the owner: "if we are on 1, it
+ * should say next up this program, video which is also seen on phone paired"). The operator marks where the sabha is,
+ * with a row's click or Back and Next; the panel says "Now: 1 · Program · Details" and, larger, "Next up: 2 · Program ·
+ * Details · Duration · Presenter" (a Video row marked as the video), "Last item" at the end, the PDF's own language on
+ * its words; nothing of it for a PDF Drashti could not read. Two quick presses of Next are two steps (a22-review-flow
+ * M3: each press steps from the Now last asked, not the one Main has answered). From the keyboard Back and Next keep
+ * their Tab stop when they cannot move, so the focus stays in the panel; a screen reader hears each change once. It
+ * fits at the window's least, CI's 1024 × 645 and the owner's 1410 × 900, with the playlists' column at its least and
+ * its most. Simple Mode, when Sabha flow is chosen there, marks Now as Pro Mode does.
+ *
+ * Placeholder PDFs only, made here by a22-flow-core's maker (pdf-lib, the bundled Noto fonts with ToUnicode maps, a
+ * table's borders as lines): never a real running order.
+ */
+
+const ROWS = [
+  '1 · Opening · Placeholder words one · 10 min · Speaker A',
+  '2 · Video · Placeholder clip · 15 min · Speaker B',
+  '3 · Talk · Placeholder words three · 15 min · Speaker B',
+  '4 · Closing · Placeholder words four · 5 min · Speaker C',
+];
+
+const WIDTHS = [44, 140, 190, 70, 106];
+
+/** Choose PDF… (or Replace…) answered with this file: Main's file dialog, stood in for by the test. */
+async function chooseThis(app: ElectronApplication, file: string): Promise<void> {
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
+  }, file);
+}
+
+/** What a person reads in an element: its words without those only a screen reader hears (.sr-only). */
+const seen = (el: Locator) =>
+  el.evaluate((node) => {
+    const copy = node.cloneNode(true) as HTMLElement;
+    for (const hidden of copy.querySelectorAll('.sr-only')) hidden.remove();
+    return copy.textContent.replace(/\s+/gu, ' ').trim();
+  });
+
+/** Now, as Main keeps it. */
+const flowNow = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state);
+
+/**
+ * Four placeholder running orders: an English table whose rows 2 and 3 share one Duration and one Presenter cell, a
+ * Video in row 2; a Gujarati one; a scan (a picture, no text); and one whose words are as long as a running order's
+ * get, for the fit.
+ */
+async function makePdfs(): Promise<{ table: string; gujarati: string; scan: string; long: string }> {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-flow-now-next-'));
+  const file = (name: string) => join(dir, name);
+  writeFileSync(
+    file('placeholder-flow.pdf'),
+    await makeFlowPdf([
+      flowTablePage({
+        title: 'Placeholder evening',
+        headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+        widths: WIDTHS,
+        rows: [
+          ['1', 'Opening', 'Placeholder words one', '10 min', 'Speaker A'],
+          ['2', 'Video', 'Placeholder clip', { text: '15 min', rows: 2 }, { text: 'Speaker B', rows: 2 }],
+          ['3', 'Talk', 'Placeholder words three', null, null],
+          ['4', 'Closing', 'Placeholder words four', '5 min', 'Speaker C'],
+        ],
+        total: 'Total 45 min',
+        borders: 'lines',
+      }),
+    ]),
+  );
+  writeFileSync(
+    file('placeholder-gujarati.pdf'),
+    await makeFlowPdf([
+      flowTablePage({
+        title: 'નમૂનો કાર્યક્રમ',
+        headers: ['ક્રમ', 'કાર્યક્રમ', 'વિગત', 'સમય', 'વક્તા'],
+        widths: WIDTHS,
+        rows: [
+          ['૧', 'પહેલો કાર્યક્રમ', 'નમૂનો વિગત', '૫ મિનિટ', 'વક્તા એક'],
+          ['૨', 'બીજો કાર્યક્રમ', 'નમૂનો', '૫ મિનિટ', 'વક્તા બે'],
+        ],
+        borders: 'boxes',
+      }),
+    ]),
+  );
+  writeFileSync(file('placeholder-scan.pdf'), await makeFlowPdf([flowScanPage()]));
+  writeFileSync(
+    file('placeholder-long-flow.pdf'),
+    await makeFlowPdf([
+      flowTablePage({
+        headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+        widths: [40, 150, 180, 70, 115],
+        rows: [
+          ['1', 'Placeholder opening', 'Placeholder words', '5 min', 'Placeholder A'],
+          [
+            '2',
+            'Video: placeholder\nclip with a long name',
+            'Placeholder details of the clip\nwritten over three lines\nas a long cell has them',
+            '25 minutes',
+            'Placeholder\npresenter with a\nlong name',
+          ],
+          ['3', 'Placeholder closing', 'Placeholder words', '5 min', 'Placeholder B'],
+        ],
+        borders: 'lines',
+      }),
+    ]),
+  );
+  return {
+    table: file('placeholder-flow.pdf'),
+    gujarati: file('placeholder-gujarati.pdf'),
+    scan: file('placeholder-scan.pdf'),
+    long: file('placeholder-long-flow.pdf'),
+  };
+}
+
+/** The panel open, this PDF chosen and read. */
+async function openWith(app: ElectronApplication, win: Page, file: string, rows: number): Promise<Locator> {
+  const toggle = win.getByTestId('column-left').getByRole('button', { name: 'Sabha flow', exact: true });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  const panel = win.getByTestId('sabha-flow');
+  await chooseThis(app, file);
+  const replace = panel.getByTestId('flow-replace');
+  await ((await replace.count()) > 0 ? replace : panel.getByRole('button', { name: 'Choose PDF…' })).click();
+  await expect(panel.getByTestId('flow-row')).toHaveCount(rows, { timeout: 30_000 });
+  return panel;
+}
+
+test('Now and Next up in the Sabha flow panel: Next and Back, a row, two quick presses stepping twice, Last item, the video, the keyboard keeping its place, said to a screen reader, the PDF’s language, none for a scan, and Simple Mode', async () => {
+  test.setTimeout(180_000);
+  const { table, gujarati, scan } = await makePdfs();
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  const panel = await openWith(app, win, table, 4);
+  const rows = panel.getByTestId('flow-row');
+  const nowLine = panel.getByTestId('flow-now');
+  const nextLine = panel.getByTestId('flow-next');
+  const back = panel.getByRole('button', { name: 'Back one item' });
+  const next = panel.getByRole('button', { name: 'Next item' });
+  const flowId = (await flowNow(win))?.flowId ?? '';
+  expect(flowId).not.toBe('');
+  /** Now as the panel says it, the row marked, and as Main keeps it, all agreeing. */
+  const nowIs = async (now: number | null) => {
+    await expect.poll(() => flowNow(win)).toEqual({ flowId, now });
+    await expect(panel.locator('[aria-current="step"]')).toHaveCount(now === null ? 0 : 1);
+    if (now !== null) await expect(rows.nth(now)).toHaveAttribute('aria-current', 'step');
+  };
+
+  // Nothing is Now yet: Next up is the first item, in full; Back cannot move.
+  expect(await seen(nowLine)).toBe('Now: not started');
+  expect(await seen(nextLine)).toBe(`Next up: ${ROWS[0] ?? ''}`);
+  await expect(back).toHaveAttribute('aria-disabled', 'true');
+  await expect(next).not.toHaveAttribute('aria-disabled', 'true');
+
+  // Next: on 1, "Now: 1 · Program · Details", and Next up the next item in full; a Video row shows as the video.
+  await next.click();
+  await nowIs(0);
+  await expect.poll(() => seen(nowLine)).toBe('Now: 1 · Opening · Placeholder words one');
+  expect(await seen(nextLine)).toBe(`Next up: ${ROWS[1] ?? ''}`);
+  await expect(nextLine).toHaveAttribute('data-video', 'true');
+  await expect(nextLine.locator('svg')).toHaveCount(1);
+  await expect(back).not.toHaveAttribute('aria-disabled', 'true');
+
+  // Two quick presses (a double click: the second before Main has answered the first) are two steps (M3).
+  await next.dblclick();
+  await nowIs(2);
+  await expect.poll(() => seen(nextLine)).toBe(`Next up: ${ROWS[3] ?? ''}`);
+  await expect(nextLine).not.toHaveAttribute('data-video', 'true');
+
+  // A row's click marks it, and Back steps from it.
+  await rows.nth(1).click();
+  await nowIs(1);
+  await back.click();
+  await nowIs(0);
+
+  // From the keyboard: Enter on Next, twice at once, then once more: the last item, "Last item". Next cannot move on,
+  // and the focus stays on it (a pressed Next that went off would drop it out of the panel); Enter again moves nothing.
+  await next.focus();
+  await win.keyboard.press('Enter');
+  await win.keyboard.press('Enter');
+  await nowIs(2);
+  await win.keyboard.press('Enter');
+  await nowIs(3);
+  await expect.poll(() => seen(nextLine)).toBe('Last item');
+  expect(await seen(nowLine)).toBe('Now: 4 · Closing · Placeholder words four');
+  await expect(next).toHaveAttribute('aria-disabled', 'true');
+  await expect(next).toBeFocused();
+  await win.keyboard.press('Enter');
+  await nowIs(3);
+  await expect(next).toBeFocused();
+  // Back from the keyboard, all the way: one Tab stop back, Enter four times at once, to not started.
+  await win.keyboard.press('Shift+Tab');
+  await expect(back).toBeFocused();
+  for (let i = 0; i < 4; i++) await win.keyboard.press('Enter');
+  await nowIs(null);
+  await expect.poll(() => seen(nowLine)).toBe('Now: not started');
+  await expect(back).toHaveAttribute('aria-disabled', 'true');
+  await expect(back).toBeFocused();
+
+  // A screen reader hears a change once, Now and Next up together, and each row by its words.
+  const live = panel.locator('[aria-live]');
+  await expect(live).toHaveCount(1);
+  await expect(live).toHaveAttribute('aria-live', 'polite');
+  await expect(live).toHaveAttribute('aria-atomic', 'true');
+  await expect(live.getByTestId('flow-now')).toHaveCount(1);
+  await expect(live.getByTestId('flow-next')).toHaveCount(1);
+  await expect(live.getByRole('button')).toHaveCount(0);
+  await rows.nth(1).click();
+  await nowIs(1);
+  await expect(live).toContainText('Now: 2');
+  await expect(rows.nth(1)).toHaveAccessibleName('2, Video, Placeholder clip, 15 min, Speaker B');
+  await expectNoSeriousA11yIssues(win, 'Sabha flow, Now and Next up', '[data-testid="sabha-flow"]');
+
+  // Replace… with a Gujarati one: Now starts again, and Next up's words keep the PDF's language inside Drashti's
+  // English label.
+  await openWith(app, win, gujarati, 2);
+  const gujaratiId = (await flowNow(win))?.flowId ?? '';
+  await expect.poll(() => flowNow(win)).toEqual({ flowId: gujaratiId, now: null });
+  expect(await seen(nowLine)).toBe('Now: not started');
+  expect(await seen(nextLine)).toBe('Next up: ૧ · પહેલો કાર્યક્રમ · નમૂનો વિગત · ૫ મિનિટ · વક્તા એક');
+  await expect(nextLine.locator('[lang="gu"]').first()).toHaveText('૧');
+  await expect(panel.getByTestId('flow-now-next')).not.toHaveAttribute('lang', /.+/u);
+  await next.click();
+  await expect.poll(() => seen(nextLine)).toBe('Next up: ૨ · બીજો કાર્યક્રમ · નમૂનો · ૫ મિનિટ · વક્તા બે');
+
+  // A PDF with no text: no Now and Next up at all, its page only.
+  await chooseThis(app, scan);
+  await panel.getByTestId('flow-replace').click();
+  await expect(panel.getByTestId('flow-status')).toContainText('no words Drashti can read', {
+    timeout: 30_000,
+  });
+  await expect(panel.getByTestId('flow-now-next')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Next item' })).toHaveCount(0);
+
+  // Simple Mode, with Sabha flow chosen there: Now and Next up, Back and Next, as in Pro Mode.
+  await openWith(app, win, table, 4);
+  const tableId = (await flowNow(win))?.flowId ?? '';
+  expect(
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('sabha-flow', true)),
+  ).toEqual({ ok: true, chosen: ['sabha-flow'] });
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toHaveCount(1);
+  const simple = win.getByTestId('sabha-flow');
+  await expect(simple.getByTestId('flow-now-next')).toBeVisible();
+  await simple.getByRole('button', { name: 'Next item' }).dblclick();
+  await expect.poll(() => flowNow(win)).toEqual({ flowId: tableId, now: 1 });
+  await expect.poll(() => seen(simple.getByTestId('flow-next'))).toBe(`Next up: ${ROWS[2] ?? ''}`);
+  await simple.getByRole('button', { name: 'Back one item' }).click();
+  await expect.poll(() => flowNow(win)).toEqual({ flowId: tableId, now: 0 });
+  await app.close();
+});
+
+/** The playlists' column (with the Sabha flow at its top) at its least or its most, by its splitter's keys. */
+async function playlistsColumn(win: Page, key: 'Home' | 'End'): Promise<void> {
+  const splitter = win.getByRole('separator', { name: 'Resize the playlists', exact: true });
+  await splitter.focus();
+  await splitter.press(key);
+  await win.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+}
+
+test('Now and Next up fit: a Video row with long words as Next up, at the window’s least, CI’s 1024 × 645 and the owner’s 1410 × 900, with the playlists’ column at its least and its most: nothing cut, over another or out of its box, every target 24 px', async () => {
+  test.setTimeout(150_000);
+  const { long } = await makePdfs();
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  const panel = await openWith(app, win, long, 3);
+  // On 1: Next up is the long Video row, in full.
+  await panel.getByTestId('flow-row').first().click();
+  const nextLine = panel.getByTestId('flow-next');
+  await expect(nextLine).toHaveAttribute('data-video', 'true');
+  await expect
+    .poll(() => seen(nextLine))
+    .toBe(
+      'Next up: 2 · Video: placeholder clip with a long name · Placeholder details of the clip written over three lines as a long cell has them · 25 minutes · Placeholder presenter with a long name',
+    );
+  const sizes = [await smallestContent(app, 'index.html'), CI_WINDOW, OWNERS_WINDOW];
+  for (const key of ['Home', 'End'] as const) {
+    await playlistsColumn(win, key);
+    const column =
+      key === 'Home' ? 'the playlists’ column at its least' : 'the playlists’ column at its most';
+    await sweep(
+      app,
+      win,
+      'index.html',
+      panel.getByTestId('flow-now-next'),
+      `Now and Next up, ${column}`,
+      sizes,
+    );
+    // Back and Next whole in sight, inside the panel, at each.
+    for (const name of ['Back one item', 'Next item'])
+      await expect(panel.getByRole('button', { name }), `${name}, ${column}`).toBeInViewport({ ratio: 1 });
+  }
+  await app.close();
+});
