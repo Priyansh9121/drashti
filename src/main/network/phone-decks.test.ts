@@ -218,7 +218,7 @@ describe('a PowerPoint or a PDF, as a phone may put it up (QA23-PHONE-1)', () =>
     expect(isPhoneDeck(clicks)).toBe(false);
   });
 
-  it('is said the same by the library’s own quick query, for every presentation it has (the review’s S2)', async () => {
+  it('is said the same by the library’s own quick query, for every presentation it has (the review’s S2)', () => {
     const repo = new PresentationRepo(db);
     // A Drashti file's deck (its source not the document's), a slide of it holding its clicks; and one switched off.
     const libraryId = repo.ensureLibrary('Placeholder library');

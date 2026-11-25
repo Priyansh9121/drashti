@@ -822,6 +822,10 @@ export class NetworkServer {
       // file's original, an upload). Pro Mode's own, and Simple Mode, the main process weighs.
       const never = device.kind === 'remote' ? phoneOpRefusal(r.op, false) : null;
       if (never !== null) {
+        // A body still coming (a file's piece of megabytes, say) is never waited for: the connection ends with the
+        // answer, as for a request too large (the review's L2).
+        if (req.headers['content-length'] !== undefined || req.headers['transfer-encoding'] !== undefined)
+          res.setHeader('Connection', 'close');
         req.resume();
         throw new HttpError(403, never);
       }

@@ -228,9 +228,13 @@ export interface NetworkDeps {
   /**
    * The playlists a phone puts a PowerPoint or a PDF up from (alpha.23, QA23-PHONE-1), in Pro Mode: an open playlist,
    * and whether a presentation is listed in one (in exactly the row named, when one is). Left out (a test of something
-   * else): a phone puts nothing up.
+   * else): a phone puts nothing up. `decks`: which of these library presentations are a phone's PowerPoint or PDF, read
+   * at once (db/presentations.ts phoneDecks, the review's S2: a playlist's rows in one query); left out, each is read
+   * whole (shared/phone-decks.ts isPhoneDeck).
    */
-  phoneLists?: Pick<SimplePhoneScope, 'activePlaylist' | 'plays'>;
+  phoneLists?: Pick<SimplePhoneScope, 'activePlaylist' | 'plays'> & {
+    decks?(presentationIds: readonly string[]): ReadonlySet<string>;
+  };
   /** The status changed: the operator window is told. */
   changed(status: NetworkStatus): void;
   log(level: 'info' | 'warn', message: string): void;
@@ -1032,6 +1036,9 @@ export class NetworkService implements EngineTransport {
     if (never !== null) return { refused: never };
     const lists = this.deps.phoneLists;
     const notDeck = { refused: PHONE_REFUSAL.notDeck };
+    // A timer shown alone in the slide's place, the deck staying live (the review's MUST-2): a phone's deck command
+    // would cover it or take it off. Timers are the computer's.
+    if (this.deps.engine.state().layers.slide?.timer) return { refused: PHONE_REFUSAL.computer };
     switch (command.type) {
       case 'playItem': {
         const row = lists?.activePlaylist(command.playlistId)
@@ -1066,10 +1073,26 @@ export class NetworkService implements EngineTransport {
 
   /** A PowerPoint or a PDF a phone may put up (shared/phone-decks.ts): never a passage or Repeat Slides, by id too. */
   private isDeck(presentationId: string): boolean {
-    return (
-      !isPassageId(presentationId) &&
-      !isRepeatId(presentationId) &&
-      isPhoneDeck(this.deps.reads.presentation(presentationId))
+    if (isPassageId(presentationId) || isRepeatId(presentationId)) return false;
+    const lists = this.deps.phoneLists;
+    return lists?.decks
+      ? lists.decks([presentationId]).has(presentationId)
+      : isPhoneDeck(this.deps.reads.presentation(presentationId));
+  }
+
+  /** A playlist's rows as a phone lists them (QA23-PHONE-1): each presentation's marked, in one read where it can be. */
+  private phoneRows(items: PlaylistItemInfo[]): PlaylistItemInfo[] {
+    const ids = items.flatMap((item) => (item.kind === 'presentation' ? [item.presentationId] : []));
+    const decks = this.deps.phoneLists?.decks?.(ids);
+    return items.map((item) =>
+      item.kind === 'presentation'
+        ? {
+            ...item,
+            phonePlays:
+              item.presentationName !== null &&
+              (decks ? decks.has(item.presentationId) : this.isDeck(item.presentationId)),
+          }
+        : item,
     );
   }
 
@@ -1283,19 +1306,7 @@ export class NetworkService implements EngineTransport {
         if (!id.success) return deny(404, 'There is no such playlist.');
         const items = this.deps.reads.items(id.data);
         // A phone's (QA23-PHONE-1): its PowerPoint and PDF rows marked, the only ones it may put up.
-        return ok({
-          items:
-            device.kind === 'remote'
-              ? items.map((item) =>
-                  item.kind === 'presentation'
-                    ? {
-                        ...item,
-                        phonePlays: item.presentationName !== null && this.isDeck(item.presentationId),
-                      }
-                    : item,
-                )
-              : items,
-        });
+        return ok({ items: device.kind === 'remote' ? this.phoneRows(items) : items });
       }
       case 'presentation': {
         const id = idSchema.safeParse(args['presentationId']);
