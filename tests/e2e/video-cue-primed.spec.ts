@@ -68,7 +68,7 @@ test('Cue ready includes a native trimmed frame on every picture page while the 
         });
       }, id);
     expect((await dispatch(win, { type: 'cueVideo', mediaId: id })).ok).toBe(true);
-    windows.push(await windowsNow('cue'));
+    windows.push(await windowsNow('cue').catch((error: unknown) => String(error)));
     await cueReady(win);
     for (const page of [hall, win, stream]) {
       const v = page.locator(`video[data-media-id="${id}"]`).first();

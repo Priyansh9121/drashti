@@ -85,9 +85,9 @@ export function cuePresentation(
     // eslint-disable-next-line no-restricted-syntax -- decides no frame: only when a held cue asks again for the frame it holds
     staleWait = setTimeout(() => {
       staleWait = null;
-      // A seek landing now (playback's own) brings its own frame; a video playing on (after its Go) is not held.
-      if (stopped || finished || video.seeking || matches()) return;
-      if (!video.paused && video.playbackRate !== 0) return;
+      // A seek landing now (playback's own) brings its own frame. Only a paused video is held: one playing, at rate 0
+      // in its Go lead (render/playback.ts) as much as on after Go, has had its Go pressed (a22-review-cueprime M1).
+      if (stopped || finished || video.seeking || matches() || !video.paused) return;
       reseeked = true;
       video.addEventListener('seeked', onReseeked);
       video.currentTime += RESEEK_STEP_S;

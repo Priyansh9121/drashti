@@ -100,6 +100,11 @@ const CHECK_MS = 250;
 const SETTLE_MS = 300;
 /** Held at an end point: further from it than this (one frame at 60 Hz), it is put exactly there. */
 const HOLD_TOLERANCE = 1 / 60;
+/**
+ * An armed cue already where it waits (s): Chromium keeps media time in whole µs, and a held cue's one more seek
+ * (render/cue-presentation.ts, RESEEK_STEP_S) leaves it 2 µs past its trim, in the same frame.
+ */
+const SAME_PLACE_S = 0.000_01;
 /** How far before an end point (seconds) the stop is aimed, half a frame. */
 const HOLD_EARLY = 0.008;
 /** In step: within two frames (at 30 a second) of the clock. */
@@ -345,8 +350,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       const beginsAt = intended?.at ?? startedAt;
       if (options.prepareScheduledStart && !intended?.paused && beginsAt > engineNow()) {
         // The existing Go lead warms play() without moving the held frame or making sound. At Go only the
-        // rate changes: starting a paused decoder there presented its first motion 65–122 ms late on CI.
-        if (v.currentTime !== at) v.currentTime = at;
+        // rate changes: starting a paused decoder there presented its first motion 65–122 ms late on CI. Within
+        // SAME_PLACE_S it is there: a seek back from a cue's one more seek could land after Go (review M2).
+        if (Math.abs(v.currentTime - at) > SAME_PLACE_S) v.currentTime = at;
         if (v.playbackRate !== 0) v.playbackRate = 0;
         if (v.paused) void v.play().catch(() => undefined);
         return;
