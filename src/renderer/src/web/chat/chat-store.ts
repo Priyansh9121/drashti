@@ -205,6 +205,12 @@ export function chatInView(on: boolean): void {
   useChat.setState(on ? { inView: true, unread: [], banner: null } : { inView: false });
 }
 
+/** Red: not built yet. */
+export const ALERT_GAP_MS = 5000;
+export function chatShowOnScreen(_on: boolean): void {
+  return;
+}
+
 /** Put the banner away; its message stays unread until the chat is seen. */
 export function dismissBanner(): void {
   useChat.setState({ banner: null });

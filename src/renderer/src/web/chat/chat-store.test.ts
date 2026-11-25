@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CHAT_API,
+  CHAT_HISTORY_MAX,
   CHAT_REFUSAL,
   type ChatEvent,
   type ChatMessage,
@@ -297,6 +298,58 @@ describe('a new message from someone else, told on the feed', () => {
       ],
     });
     expect(store.useChat.getState().chat?.people.map((p) => p.id)).toEqual(['operator', 'p2']);
+  });
+});
+
+describe('the Remote of the phone that runs the show (a22-review-chat P-M1, P-S1)', () => {
+  it('with the show on its screen: only the count, never a banner over the show, and no buzz or sound', async () => {
+    await started();
+    store.chatShowOnScreen(true);
+    arrives(message('3', 'other'));
+    const s = store.useChat.getState();
+    expect(s.unread).toEqual(['3']);
+    expect(s.banner).toBeNull();
+    expect(alerts.alerted).toBe(0);
+  });
+
+  it('off the show again: the banner and the buzz or sound come back', async () => {
+    await started();
+    store.chatShowOnScreen(true);
+    store.chatShowOnScreen(false);
+    arrives(message('3', 'other'));
+    expect(store.useChat.getState().banner?.id).toBe('3');
+    expect(alerts.alerted).toBe(1);
+  });
+
+  it('buzzes or sounds at most once in a few seconds, however many messages come (each still counts)', async () => {
+    await started();
+    let now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    arrives(message('3', 'other'));
+    now += 1000;
+    arrives(message('4', 'other'));
+    now += 1000;
+    arrives(message('5', 'operator'));
+    expect(alerts.alerted).toBe(1);
+    expect(store.useChat.getState().unread).toEqual(['3', '4', '5']);
+    expect(store.useChat.getState().banner?.id).toBe('5');
+    now += store.ALERT_GAP_MS;
+    arrives(message('6', 'other'));
+    expect(alerts.alerted).toBe(2);
+  });
+});
+
+describe('the list on the phone, between reads (a22-review-chat P-S2)', () => {
+  it('keeps the newest of the day as Drashti does, however many messages the feed brings', async () => {
+    await started();
+    store.chatShowOnScreen(true);
+    for (let i = 0; i < CHAT_HISTORY_MAX + 5; i++)
+      tell({ kind: 'message', message: message(`f${String(i)}`, 'other') });
+    const messages = store.useChat.getState().chat?.messages ?? [];
+    expect(messages).toHaveLength(CHAT_HISTORY_MAX);
+    expect(messages.at(-1)?.id).toBe(`f${String(CHAT_HISTORY_MAX + 4)}`);
+    // The unread are only those still in the list.
+    expect(store.useChat.getState().unread).toHaveLength(CHAT_HISTORY_MAX);
   });
 });
 

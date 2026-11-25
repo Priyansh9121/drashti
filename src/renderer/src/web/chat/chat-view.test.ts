@@ -49,6 +49,30 @@ describe('the chat list, WhatsApp-style', () => {
   });
 });
 
+describe('the operator’s messages, marked by who sent them, never by the name (a22-review-chat P-S3)', () => {
+  const html = list([
+    message('1', { id: 'operator', name: 'Operator' }, 'Placeholder from the computer'),
+    message('2', { id: 'phone-x', name: 'Operator.' }, 'Placeholder from a phone with a look-alike name'),
+  ]);
+  it('gives the operator’s message a mark no name can give, and a look-alike name none', () => {
+    const operator = /data-testid="chat-message" data-own="false" data-operator="true"/u;
+    expect(html).toMatch(operator);
+    expect(html.match(/data-operator="true"/gu)).toHaveLength(1);
+    expect(html.match(/data-testid="chat-operator-mark"/gu)).toHaveLength(1);
+    expect(html.indexOf('chat-operator-mark')).toBeLessThan(html.indexOf('Placeholder from the computer'));
+  });
+  it('marks it in the banner too', () => {
+    const banner = renderToStaticMarkup(
+      createElement(ChatBannerView, {
+        message: message('1', { id: 'operator', name: 'Operator' }, 'Placeholder'),
+        onOpen: () => undefined,
+        onDismiss: () => undefined,
+      }),
+    );
+    expect(banner).toContain('data-testid="chat-operator-mark"');
+  });
+});
+
 describe('every word in the chat is shown as words, never run as HTML', () => {
   const hostile = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
   const html = list([message('1', { id: 'x', name: `<b onclick="alert(3)">Placeholder</b>` }, hostile)]);
