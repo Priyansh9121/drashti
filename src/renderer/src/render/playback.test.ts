@@ -3,12 +3,14 @@ import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 import {
   FADE_SOUND_LIMITS,
   mediaUrl,
+  pageCopyUrl,
   PICTURE_LIMITS,
   playbackOffset,
   playbackPosition,
   SOUND_LIMITS,
 } from '../../../shared/media';
 import { type SilentGraph, StreamPictureClock } from './cue-clock';
+import { setPageCopyHeight, setReadyPageCopies } from './page-copy';
 import { catchUpLeftMs, type PlaybackCatchUp, setPictureClock, startPlayback } from './playback';
 
 /*
@@ -253,6 +255,45 @@ describe('a file played once to an end point', () => {
       expect(v.playbackRate).toBeGreaterThan(1);
     } finally {
       stop();
+    }
+  });
+
+  it('takes this page’s ready page copy only for a playback that asks (a background video), else the original (QA23-FADE-9 candidate 1)', () => {
+    vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
+    setReadyPageCopies({ clip: [720] });
+    setPageCopyHeight(720);
+    try {
+      for (const pageCopy of [true, false, undefined]) {
+        const v = new FakeMedia(6);
+        const stop = startPlayback(v as unknown as HTMLMediaElement, {
+          mediaId: 'clip',
+          startedAt: Date.now(),
+          ...(pageCopy === undefined ? {} : { pageCopy }),
+        });
+        try {
+          expect(v.getAttribute('src'), String(pageCopy)).toBe(
+            pageCopy === true ? pageCopyUrl('clip', 720) : mediaUrl('clip'),
+          );
+        } finally {
+          stop();
+        }
+      }
+      // A page that never says its height (the hall's screens): the original even when asked.
+      setPageCopyHeight(null);
+      const v = new FakeMedia(6);
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'clip',
+        startedAt: Date.now(),
+        pageCopy: true,
+      });
+      try {
+        expect(v.getAttribute('src')).toBe(mediaUrl('clip'));
+      } finally {
+        stop();
+      }
+    } finally {
+      setPageCopyHeight(null);
+      setReadyPageCopies({});
     }
   });
 

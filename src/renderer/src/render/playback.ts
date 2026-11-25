@@ -63,6 +63,12 @@ export interface PlaybackOptions {
   /** S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame. */
   prepareScheduledStart?: boolean;
   /**
+   * A background video (render/BackgroundMedia.tsx alone asks; QA23-FADE-9 candidate 1): this page's page copy, if it
+   * draws its videos smaller and one is ready as the playback starts (render/page-copy.ts); else, and for every other
+   * caller, the original, as before.
+   */
+  pageCopy?: boolean;
+  /**
    * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
    * pace is set from its first moving frame, not the next check. Left out (every other caller), nothing more listens to
    * it than before (C3T-1).
