@@ -57,7 +57,7 @@ import { type LogPeriod, periodText } from '../../shared/log-period';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
 import { CHECK_EVERY_MS, OutputHeartbeat } from '../outputs/heartbeat';
-import { keepsRestartingLine, restartsWords } from '../outputs/heartbeat-words';
+import { keepsRestartingLine, keptLine, restartsWords } from '../outputs/heartbeat-words';
 import { log } from '../log';
 import { handleMediaRequest, mediaRequestOf } from '../media/media-protocol';
 import {
@@ -562,6 +562,26 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         log.warn(keepsRestartingLine(`Node: output ${name}`, restarts));
       }
     },
+    // HELD FOR THE OWNER (QA23-HEARTBEAT-1, A), as on Main: kept as it is, Stopped (Main's notice says why), tried
+    // again by the node's watchdog's own tries; back by itself once it paints the show.
+    keep: (screenId, reason, restarts) => {
+      const w = outputWindows.get(screenId);
+      if (!w || w.isDestroyed()) return;
+      const name = outputNames.get(screenId) ?? 'an output';
+      log.warn(keptLine(`Node: output ${name}`, reason, restarts));
+      manager.setNotAnswering(screenId, true);
+      deps.watchdog.stopTrying(
+        w.webContents,
+        name,
+        `stuck again (${reason}) after ${String(restarts)} restarts in a row`,
+      );
+    },
+    back: (screenId) => {
+      const w = outputWindows.get(screenId);
+      log.info(`Node: output ${outputNames.get(screenId) ?? 'an output'} draws the show again by itself`);
+      manager.setStopped(screenId, false);
+      if (w && !w.isDestroyed()) deps.watchdog.backByItself(w.webContents);
+    },
     // Translated, a page's reports may come 30 s apart (a23-heartbeat), as on Main.
     translated: app.runningUnderARM64Translation,
   });
@@ -656,6 +676,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
             // Restarted again and again by its heartbeat (a23-heartbeat): Main says so.
             // Held under the health's own limit (review N1: past it Main would drop the node's whole health).
             ...(st.restarts === undefined ? {} : { restarts: Math.min(st.restarts, 100_000) }),
+            // Held for the owner (QA23-HEARTBEAT-1, A): stopped, its page kept as it is.
+            ...(st.notAnswering === true ? { notAnswering: true as const } : {}),
           },
         ];
       }),

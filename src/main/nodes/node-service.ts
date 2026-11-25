@@ -1013,6 +1013,10 @@ export class NodeService implements EngineTransport {
               displayId: out.displayId,
               // Restarted again and again by the node's heartbeat (a23-heartbeat): Screens says so on Main too.
               ...(out.state === 'showing' && out.restarts !== undefined ? { restarts: out.restarts } : {}),
+              // Held for the owner (QA23-HEARTBEAT-1, A): stopped, its page kept as it is.
+              ...(out.state === 'stopped' && out.notAnswering === true
+                ? { notAnswering: true as const }
+                : {}),
             }
           : { screenId: s.id, state: 'missing-display', displayId: null },
       ];

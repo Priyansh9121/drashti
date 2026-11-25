@@ -38,6 +38,8 @@ export function screensSummary(status: readonly ScreenStatus[]): {
 
 /** Why a stopped screen is stopped, in its notice and in Screens. */
 export function stoppedSentence(status: ScreenStatus): string {
-  void status;
-  return '';
+  // Held for the owner (QA23-HEARTBEAT-1, A): its page kept as it is, not black.
+  return status.notAnswering
+    ? 'It stopped answering after 4 restarts in a row, so Drashti stopped restarting it and left it as it is: it may still catch up. Drashti tries it again by itself every few minutes.'
+    : 'It kept failing, so it is black for now. Drashti tries it again by itself every few minutes.';
 }

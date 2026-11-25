@@ -373,7 +373,7 @@ import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
 import { CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './outputs/heartbeat';
-import { keepsRestartingLine, restartsWords } from './outputs/heartbeat-words';
+import { keepsRestartingLine, keptLine, restartsWords } from './outputs/heartbeat-words';
 import {
   quitDetail,
   RendererWatchdog,
@@ -3001,6 +3001,27 @@ function start(): void {
         keepsRestarting.add(screenId);
         log.warn(keepsRestartingLine(`Output ${name}`, restarts));
       }
+    },
+    // HELD FOR THE OWNER (QA23-HEARTBEAT-1, A): stuck once more after RESTARTS_TOLD restarts in a row, it is kept as it is
+    // (a slow page may still catch up), Stopped with its own words, and tried again by the watchdog's own tries.
+    keep: (screenId, reason, restarts) => {
+      const w = outputWindows.get(screenId);
+      if (!w || w.isDestroyed()) return;
+      const name = outputNames.get(screenId) ?? 'an output';
+      log.warn(keptLine(`Output ${name}`, reason, restarts));
+      manager.setNotAnswering(screenId, true);
+      watchdog.stopTrying(
+        w.webContents,
+        name,
+        `stuck again (${reason}) after ${String(restarts)} restarts in a row`,
+      );
+    },
+    // Kept, and it reported having painted the show: back by itself, no reload, and no try waits.
+    back: (screenId) => {
+      const w = outputWindows.get(screenId);
+      log.info(`Output ${outputNames.get(screenId) ?? 'an output'} draws the show again by itself`);
+      manager.setStopped(screenId, false);
+      if (w && !w.isDestroyed()) watchdog.backByItself(w.webContents);
     },
     // Translated, a page's reports may come 30 s apart (a23-heartbeat: alpha.22's Intel build under Rosetta on CI).
     translated: app.runningUnderARM64Translation,

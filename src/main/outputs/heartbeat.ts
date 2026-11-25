@@ -111,6 +111,8 @@ export class OutputHeartbeat {
   private readonly restarts = new Map<string, { count: number; at: number }>();
   /** The outputs the operator is told of, restarted RESTARTS_TOLD times in a row or more (a23-heartbeat). */
   private readonly toldOf = new Set<string>();
+  /** Held for the owner (QA23-HEARTBEAT-1, A): outputs kept as they are, not judged until back or tried afresh. */
+  private readonly kept = new Set<string>();
   /** When each recent engine revision happened. */
   private readonly revAt = new Map<number, number>();
   private checkedAt: number | null = null;
@@ -132,12 +134,14 @@ export class OutputHeartbeat {
   closed(screenId: string): void {
     this.seen.delete(screenId);
     this.restarts.delete(screenId);
+    this.kept.delete(screenId);
     this.untell(screenId);
   }
 
   /** Tried afresh (a23-heartbeat: Try again, or the watchdog's own try): its restarts forgotten. */
   afresh(screenId: string): void {
     this.restarts.delete(screenId);
+    this.kept.delete(screenId);
     this.untell(screenId);
   }
 
@@ -194,6 +198,8 @@ export class OutputHeartbeat {
     const drawing = !warming && paintedRev >= 0 && (late === null || late < BEHIND_MS);
     if (!drawing || (gap !== null && gap > this.staleLimit(s))) s.drewAt = null;
     if (drawing) s.drewAt ??= now;
+    // Held for the owner (QA23-HEARTBEAT-1, A): one kept as it is is back by itself at its first report drawing the show.
+    if (drawing && this.kept.delete(screenId)) this.deps.back?.(screenId);
     // Said to keep restarting: no longer once it has drawn the show and kept reporting for longer than the longest grace
     // (review S1), so a page that paints after each reload and stops again stays said. Its count is kept, so a page
     // that stops again soon is said to at once.
@@ -212,18 +218,27 @@ export class OutputHeartbeat {
       for (const screenId of this.seen.keys()) this.opened(screenId);
       return;
     }
-    // Its count forgotten, RESTARTS_FORGET_MS with no restart (a23-heartbeat): no longer said to keep restarting.
-    for (const screenId of [...this.toldOf]) if (this.restartsInARow(screenId) === 0) this.untell(screenId);
+    // Its count forgotten, RESTARTS_FORGET_MS with no restart (a23-heartbeat): no longer said to keep restarting. Not
+    // while it is kept as it is (QA23-HEARTBEAT-1, A): it still does not answer.
+    for (const screenId of [...this.toldOf])
+      if (!this.kept.has(screenId) && this.restartsInARow(screenId) === 0) this.untell(screenId);
     for (const screenId of this.deps.judged()) {
       const s = this.seen.get(screenId);
       if (!s) {
         this.opened(screenId);
         continue;
       }
+      if (this.kept.has(screenId)) continue;
       const inARow = this.restartsInARow(screenId);
       if (now - s.since < graceAfter(inARow)) continue;
       const reason = this.why(s, now);
       if (!reason) continue;
+      // Held for the owner (QA23-HEARTBEAT-1, A): restarted RESTARTS_TOLD times in a row already, it is kept as it is.
+      if (this.deps.keep && inARow >= RESTARTS_TOLD) {
+        this.kept.add(screenId);
+        this.deps.keep(screenId, reason, inARow);
+        continue;
+      }
       // Judged: a longer grace while it restarts, the longer the more times in a row (a23-heartbeat).
       const count = inARow + 1;
       this.restarts.set(screenId, { count, at: now });

@@ -63,6 +63,8 @@ export class OutputManager {
   private readonly stopped = new Set<string>();
   /** Screens the heartbeat restarted again and again (a23-heartbeat), with how many times in a row. */
   private readonly restarting = new Map<string, number>();
+  /** Held for the owner (QA23-HEARTBEAT-1, A): stopped screens whose page is kept as it is, not answering. */
+  private readonly notAnswering = new Set<string>();
   /**
    * Audience and Stage turned off (Session 50): Audience's screens' windows closed, their displays the computer's,
    * until on again. Stage starts as it was left (alpha.22, told as the manager is made); Audience on at every start.
@@ -168,6 +170,8 @@ export class OutputManager {
     for (const id of this.stopped) if (!this.open.has(id) && !this.held.has(id)) this.stopped.delete(id);
     for (const id of this.restarting.keys())
       if (!this.open.has(id) && !this.held.has(id)) this.restarting.delete(id);
+    for (const id of this.notAnswering)
+      if (!this.open.has(id) && !this.held.has(id)) this.notAnswering.delete(id);
     this.statuses = screens.map((s) => {
       if (!s.enabled) return { screenId: s.id, state: 'disabled', displayId: null };
       if (!s.displayKey) return { screenId: s.id, state: 'unassigned', displayId: null };
@@ -176,7 +180,7 @@ export class OutputManager {
         return { screenId: s.id, state: 'switched-off', displayId: matches.get(s.id) ?? null };
       const entry = this.open.get(s.id);
       if (entry && this.stopped.has(s.id))
-        return { screenId: s.id, state: 'stopped', displayId: entry.displayId };
+        return this.said({ screenId: s.id, state: 'stopped', displayId: entry.displayId });
       return entry
         ? this.said({ screenId: s.id, state: 'showing', displayId: entry.displayId })
         : { screenId: s.id, state: 'missing-display', displayId: null };
@@ -188,7 +192,11 @@ export class OutputManager {
   setStopped(screenId: string, stopped: boolean): void {
     if (this.stopped.has(screenId) === stopped) return;
     if (stopped) this.stopped.add(screenId);
-    else this.stopped.delete(screenId);
+    else {
+      this.stopped.delete(screenId);
+      // Back: no longer kept as it is either (QA23-HEARTBEAT-1, A).
+      this.notAnswering.delete(screenId);
+    }
     this.reconcile();
   }
 
@@ -204,8 +212,11 @@ export class OutputManager {
 
   /** Held for the owner (QA23-HEARTBEAT-1, A): this screen's page is kept as it is, not answering, or no longer. */
   setNotAnswering(screenId: string, on: boolean): void {
-    void screenId;
-    void on;
+    if (this.notAnswering.has(screenId) === on) return;
+    if (on) this.notAnswering.add(screenId);
+    else this.notAnswering.delete(screenId);
+    this.statuses = this.statuses.map((st) => (st.screenId === screenId ? this.said(st) : st));
+    this.deps.onChange();
   }
 
   /** A status with its restarts (a23-heartbeat): said only while it is showing. */
@@ -216,6 +227,10 @@ export class OutputManager {
       state: st.state,
       displayId: st.displayId,
       ...(st.state === 'showing' && restarts !== undefined ? { restarts } : {}),
+      // Held for the owner (QA23-HEARTBEAT-1, A): kept as it is, said only while Stopped.
+      ...(st.state === 'stopped' && this.notAnswering.has(st.screenId)
+        ? { notAnswering: true as const }
+        : {}),
     };
   }
 

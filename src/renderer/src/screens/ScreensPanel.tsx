@@ -37,7 +37,7 @@ import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
 import { useControlsDisplay } from './controls-display';
 import { AdjustPicture } from './AdjustPicture';
-import { RESTARTING_WORDS, restartingSentence } from '../../../shared/screens-summary';
+import { RESTARTING_WORDS, restartingSentence, stoppedSentence } from '../../../shared/screens-summary';
 import { WidePicture } from './WidePicture';
 
 // The words are a phone's too (Session 54, the phone as a full Drashti).
@@ -117,6 +117,10 @@ function ScreenRow({
   const restarts = useScreens(
     (s) => s.snapshot?.status.find((st) => st.screenId === screen.id && st.state === 'showing')?.restarts,
   );
+  // Held for the owner (QA23-HEARTBEAT-1, A): Stopped, its page kept as it is, not answering.
+  const notAnswering = useScreens(
+    (s) => s.snapshot?.status.find((st) => st.screenId === screen.id && st.state === 'stopped')?.notAnswering,
+  );
   const node = useScreens((s) =>
     screen.nodeId ? s.snapshot?.nodes.find((n) => n.id === screen.nodeId) : undefined,
   );
@@ -169,7 +173,12 @@ function ScreenRow({
         {state === 'stopped' && (
           <>
             <span className="text-xs text-danger-fg" data-testid="screen-stopped">
-              It kept failing, so it is black for now. Drashti tries it again by itself every few minutes.
+              {stoppedSentence({
+                screenId: screen.id,
+                state,
+                displayId: null,
+                ...(notAnswering ? { notAnswering } : {}),
+              })}
             </span>
             {/* The stopped screen's next step, its one primary (Session 26g). */}
             <Button

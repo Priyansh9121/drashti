@@ -14,8 +14,5 @@ export function keepsRestartingLine(who: string, restarts: number): string {
 
 /** Held for the owner (QA23-HEARTBEAT-1, A): said when a page is kept as it is instead of restarted. */
 export function keptLine(who: string, reason: string, restarts: number): string {
-  void who;
-  void reason;
-  void restarts;
-  return '';
+  return `${who} is stuck again (${reason}) after ${String(restarts)} restarts in a row: Drashti stopped restarting it and left it as it is, so a slow computer can catch up; it is shown as Stopped, tried again by itself in a few minutes, and Try again restarts it now.`;
 }

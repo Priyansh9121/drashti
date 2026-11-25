@@ -225,14 +225,12 @@ export class RendererWatchdog {
    * loop is.
    */
   stopTrying(target: WatchTarget, name: string, why: string): void {
-    void target;
-    void name;
-    void why;
+    this.giveUp(target, name, why);
   }
 
   /** Held for the owner (QA23-HEARTBEAT-1, A): a window given up on is back by itself, its page drawing: no retry. */
   backByItself(target: WatchTarget): void {
-    void target;
+    this.states.get(target)?.settle();
   }
 
   /**

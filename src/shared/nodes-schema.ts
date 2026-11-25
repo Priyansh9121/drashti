@@ -108,6 +108,8 @@ export const nodeHealthSchema: z.ZodType<NodeHealth> = z.object({
         missingFonts: z.array(z.string().min(1).max(200)).max(20).optional(),
         // A node from before alpha.23 leaves it out; Main from before it drops it (a23-heartbeat).
         restarts: z.number().int().min(1).max(100_000).optional(),
+        // Held for the owner (QA23-HEARTBEAT-1, A): stopped, its page kept as it is.
+        notAnswering: z.literal(true).optional(),
       }),
     )
     .max(16),
