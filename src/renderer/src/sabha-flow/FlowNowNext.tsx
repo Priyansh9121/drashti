@@ -180,23 +180,28 @@ function NowNextLines({
   children?: ReactNode;
 }) {
   const [measure, setMeasure] = useState<HTMLDivElement | null>(null);
-  // The room, set once for this flow: after its faces have loaded, before Now and Next can be used; again only on a
-  // new width (steady-reserve.ts).
-  const [reserve, setReserve] = useState<{ flow: SabhaFlow; px: number } | null>(null);
+  // The flow as first met, kept while its id stays (each Now marked brings a new copy of the same flow): the copies and
+  // the room are this one's, never measured again for a Now.
+  const [kept, setKept] = useState(flow);
+  if (kept.id !== flow.id) setKept(flow);
+  const current = kept.id === flow.id ? kept : flow;
+  // The room, set once for this flow: after its faces have loaded and the layout has taken them, before Now and Next
+  // can be used; again only on a new width (steady-reserve.ts).
+  const [reserve, setReserve] = useState<{ id: string; px: number } | null>(null);
   useLayoutEffect(
     () =>
       measure
         ? watchReserve(
             measure,
             (px) => {
-              setReserve({ flow, px });
+              setReserve({ id: current.id, px });
             },
             windowReserveDeps(),
           )
         : undefined,
-    [measure, flow],
+    [measure, current],
   );
-  const measured = !steady || reserve?.flow === flow;
+  const measured = !steady || reserve?.id === current.id;
   useEffect(() => {
     onMeasured?.(measured);
   }, [measured, onMeasured]);
@@ -204,16 +209,16 @@ function NowNextLines({
   const copies = useMemo(
     () =>
       steady &&
-      [null, ...flow.items.map((_, i) => i)].map((k) => {
-        const each = nowNext(flow, k);
+      [null, ...current.items.map((_, i) => i)].map((k) => {
+        const each = nowNext(current, k);
         return (
           <div key={k ?? 'none'} className={look.lines}>
-            <NowLine flow={flow} nn={each} look={look} measure="now" />
-            <NextLine flow={flow} nn={each} look={look} measure="next" />
+            <NowLine flow={current} nn={each} look={look} measure="now" />
+            <NextLine flow={current} nn={each} look={look} measure="next" />
           </div>
         );
       }),
-    [flow, look, steady],
+    [current, look, steady],
   );
   // Until the room is set (a moment, the faces loading), Back, Next, Now and Next up are laid out unseen: nothing can be
   // pressed, and nothing moves after it can.
@@ -226,7 +231,8 @@ function NowNextLines({
         aria-atomic={live ? 'true' : undefined}
         className={unseen ? `${look.lines} ${unseen}` : look.lines}
         data-measured={steady ? String(measured) : undefined}
-        style={steady && reserve?.flow === flow ? { minHeight: reserve.px } : undefined}
+        data-reserve={steady && measured && reserve ? String(reserve.px) : undefined}
+        style={steady && measured && reserve ? { minHeight: reserve.px } : undefined}
       >
         <NowLine flow={flow} nn={nn} look={look} testId={`${look.id}-now`} />
         <NextLine flow={flow} nn={nn} look={look} testId={`${look.id}-next`} />

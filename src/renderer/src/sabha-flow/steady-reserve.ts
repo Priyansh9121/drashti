@@ -36,13 +36,18 @@ export interface FaceNode {
   children: readonly FaceNode[];
 }
 
-/** The faces the copies' words need: [font, words] for each face, each once (stub: the copy's own font, its words). */
+/**
+ * The faces the copies' words need: [font, words] for each face, each once, in the order first met. Each element with
+ * words of its own counts with its own font (a part in another script, or with a lang of its own, may draw in another
+ * face than its line), so every face the words need, and the subset by unicode-range their letters fall in, is asked.
+ */
 export function facesToLoad<T>(copies: Iterable<T>, nodeOf: (el: T) => FaceNode): [string, string][] {
   const words = new Map<string, string>();
-  for (const el of copies) {
-    const n = nodeOf(el);
-    words.set(n.font, (words.get(n.font) ?? '') + n.text);
-  }
+  const walk = (n: FaceNode) => {
+    if (n.text.trim() !== '') words.set(n.font, cutText((words.get(n.font) ?? '') + n.text, 20_000));
+    for (const child of n.children) walk(child);
+  };
+  for (const el of copies) walk(nodeOf(el));
   return [...words];
 }
 
@@ -77,6 +82,9 @@ export function watchReserve(
   void deps
     .loadFonts([...nows, ...nexts])
     .catch(() => undefined)
+    // The layout takes what loaded a frame later: measured after it, never before.
+    .then(() => deps.afterLayout?.())
+    .catch(() => undefined)
     .then(() => {
       if (stopped) return;
       loaded = true;
@@ -101,18 +109,29 @@ export function windowReserveDeps(): ReserveDeps {
     },
     widthOf: (box) => (box instanceof Element ? box.getBoundingClientRect().width : 0),
     loadFonts: async (copies) => {
-      // One load per face (its style, weight, size and family) with all the words drawn in it, so every face their
-      // letters need (by unicode-range) is loaded; then whatever else the document still loads.
-      const words = new Map<string, string>();
-      for (const el of copies) {
-        if (!(el instanceof Element)) continue;
-        const s = getComputedStyle(el);
-        const font = `${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
-        words.set(font, cutText((words.get(font) ?? '') + el.textContent, 20_000));
-      }
-      await Promise.all([...words].map(([font, text]) => document.fonts.load(font, text)));
+      const nodeOf = (el: Element): FaceNode => {
+        const st = getComputedStyle(el);
+        let text = '';
+        for (const child of el.childNodes)
+          if (child.nodeType === Node.TEXT_NODE) text += child.textContent ?? '';
+        return {
+          font: `${st.fontStyle} ${st.fontWeight} ${st.fontSize} ${st.fontFamily}`,
+          text,
+          children: [...el.children].map(nodeOf),
+        };
+      };
+      const elements = [...copies].filter((el): el is Element & Measured => el instanceof Element);
+      await Promise.all(facesToLoad(elements, nodeOf).map(([font, text]) => document.fonts.load(font, text)));
       await document.fonts.ready;
     },
+    afterLayout: () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      }),
     marginTop: (el) => (el instanceof Element ? parseFloat(getComputedStyle(el).marginTop) || 0 : 0),
   };
 }

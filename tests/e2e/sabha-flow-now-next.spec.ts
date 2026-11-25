@@ -599,6 +599,18 @@ test('the panel holds steady through a sabha: Next and Back through every item n
   });
   const now = () =>
     win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state?.now ?? null);
+  /** The numbers behind a move, for its message: the room set, the shown lines' heights, the faces' state. */
+  const behind = () =>
+    panel.evaluate((p) => {
+      const lines = p.querySelector('[data-measured]');
+      const h = (sel: string) =>
+        Math.round((p.querySelector(sel)?.getBoundingClientRect().height ?? 0) * 10) / 10;
+      const faces = [...document.fonts]
+        .filter((f) => /Gujarati|Devanagari/u.test(f.family))
+        .map((f) => `${f.family} ${f.weight} ${f.status}`)
+        .join(', ');
+      return `room ${lines?.getAttribute('data-reserve') ?? '-'}, lines ${String(h('[data-measured]'))}, now ${String(h('[data-testid="flow-now"]'))}, next ${String(h('[data-testid="flow-next"]'))}; faces: ${faces}`;
+    });
   // Steady from the first: each of Next up's lengths (a short one, the long Video row, Last item) already allowed for,
   // the baseline taken once the panel says its room is set (its faces loaded; nothing moves after).
   await expect.poll(now).toBeNull();
@@ -622,7 +634,7 @@ test('the panel holds steady through a sabha: Next and Back through every item n
     await win.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
-    expect(await where(), `Now on ${String(to + 1)}`).toEqual(first);
+    expect(await where(), `Now on ${String(to + 1)} (${await behind()})`).toEqual(first);
   }
 
   // A Gujarati flow (review S17): its face loads by unicode-range once its letters are first drawn, after the first
@@ -646,7 +658,9 @@ test('the panel holds steady through a sabha: Next and Back through every item n
     await win.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
-    expect(await where(), `the Gujarati flow, Now on ${String(to + 1)}`).toEqual(firstGujarati);
+    expect(await where(), `the Gujarati flow, Now on ${String(to + 1)} (${await behind()})`).toEqual(
+      firstGujarati,
+    );
   }
 
   // Simple Mode with Sabha flow chosen in Simple Mode Features: the same rule, Next up whole at 1410 x 900, on the
