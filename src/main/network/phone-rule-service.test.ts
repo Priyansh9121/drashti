@@ -264,7 +264,9 @@ describe('the phone rule in the main process (QA23-PHONE-1)', () => {
         ['command', { type: 'moveTo', playing: { layer: 'background', mediaId: 'm-video' }, toMs: 1000 }],
         ['command', { type: 'jumpToMarker', layer: 'background', markerId: 'placeholder-marker' }],
         ['command', { type: 'skip', layer: 'background', jump: 'forward' }],
+        // The owner's Q8: Look closer is the phone's own view, never a zoom on the screens.
         ['command', { type: 'zoomLive', zoom: 2, x: 0, y: 0 }],
+        ['command', { type: 'resetLiveZoom' }],
       ],
       'media',
     );
@@ -464,18 +466,40 @@ describe('the phone rule in the main process (QA23-PHONE-1)', () => {
     expect(t.commands).toEqual([]);
   });
 
-  it('refuses Next, Previous and Back with no PowerPoint or PDF live, in both modes', () => {
+  it('refuses Next, Previous, Back and Clear slide with no PowerPoint or PDF live, in both modes', () => {
     for (const mode of ['pro', 'simple'] as const)
       for (const live of [null, 'kirtan', 'words', 'shastra:pg#1']) {
         const t = setup(mode);
         t.live(live);
-        for (const type of ['next', 'previous', 'back'])
-          expect(t.ask('command', { type }), `${mode} ${String(live)} ${type}`).toEqual({
+        for (const command of [
+          { type: 'next' },
+          { type: 'previous' },
+          { type: 'back' },
+          { type: 'clearLayer', layer: 'slide' },
+        ])
+          expect(t.ask('command', command), `${mode} ${String(live)} ${command.type}`).toEqual({
             status: 403,
             body: { ok: false, message: mode === 'pro' ? PHONE_REFUSAL.noDeck : PHONE_REFUSAL.simple },
           });
         expect(t.commands).toEqual([]);
       }
+  });
+
+  it('clears the slide only, while a PowerPoint or a PDF is live, never another layer (the owner’s Q7)', () => {
+    refusesInBoth(
+      [
+        ['command', { type: 'clearLayer', layer: 'background' }],
+        ['command', { type: 'clearLayer', layer: 'audio' }],
+        ['command', { type: 'clearLayer', layer: 'messages' }],
+        ['command', { type: 'clearAll' }],
+        ['command', { type: 'putBack' }],
+      ],
+      'computer',
+    );
+    const t = setup('pro');
+    t.live('deck');
+    expect(t.ask('command', { type: 'clearLayer', layer: 'slide' }).status).toBe(200);
+    expect(t.commands).toEqual([{ type: 'clearLayer', layer: 'slide' }]);
   });
 
   it('lets Simple Mode read only what is live: the status and the hall; the playlists and every command are Pro Mode’s', () => {

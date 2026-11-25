@@ -98,11 +98,12 @@ describe('the phone rule (QA23-PHONE-1)', () => {
       expect(REMOTE_PHONE_OPS[op], op).toBe('never');
   });
 
-  it('decides every engine command: only goLive, playItem, Next, Previous and Back, each for a deck', () => {
+  it('decides every engine command: only goLive, playItem, Next, Previous, Back and Clear slide, each for a deck', () => {
     expect(Object.keys(REMOTE_PHONE_COMMANDS).sort()).toEqual([...COMMAND_TYPES].sort());
+    // The owner's Q7: a Pro phone clears the slide only (clearLayer of the slide layer, while a deck is live).
     expect(
       COMMAND_TYPES.filter((t) => REMOTE_PHONE_COMMANDS[t] === 'deck').sort((a, b) => a.localeCompare(b)),
-    ).toEqual(['back', 'goLive', 'next', 'playItem', 'previous']);
+    ).toEqual(['back', 'clearLayer', 'goLive', 'next', 'playItem', 'previous']);
   });
 
   it('says each refusal in plain words: one set for each group', () => {
@@ -162,7 +163,10 @@ describe('the phone rule (QA23-PHONE-1)', () => {
     expect(phoneCommandRefusal('pauseMusic')).toBe(PHONE_REFUSAL.media);
     expect(phoneCommandRefusal('moveTo')).toBe(PHONE_REFUSAL.media);
     expect(phoneCommandRefusal('jumpToMarker')).toBe(PHONE_REFUSAL.media);
+    // The owner's Q8: Look closer is the phone's own view: never a zoom on the screens, nor back to whole.
     expect(phoneCommandRefusal('zoomLive')).toBe(PHONE_REFUSAL.media);
+    expect(phoneCommandRefusal('resetLiveZoom')).toBe(PHONE_REFUSAL.media);
+    expect(phoneCommandRefusal('clearLayer')).toBeNull();
     expect(phoneCommandRefusal('setWallpaper')).toBe(PHONE_REFUSAL.media);
     expect(phoneCommandRefusal('startTimer')).toBe(PHONE_REFUSAL.computer);
     expect(phoneCommandRefusal('setStageMessage')).toBe(PHONE_REFUSAL.computer);
