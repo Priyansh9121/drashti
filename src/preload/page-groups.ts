@@ -37,6 +37,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'backups',
     'calendar',
     'captions',
+    // The chat with paired phones (alpha.23): its section under LIVE, and the Chat QR in Phones.
+    'chat',
     // Caption words (alpha.22, cap-glossary): File › Live Captions… › Caption Words…, Pro Mode.
     'captionWords',
     'videoCaptions',

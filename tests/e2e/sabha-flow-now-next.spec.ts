@@ -21,7 +21,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * their Tab stop when they cannot move, so the focus stays in the panel; a screen reader hears each change once. It
  * fits at the window's least, CI's 1024 × 645 and the owner's 1410 × 900, with the playlists' column at its least and
  * its most. Simple Mode, when Sabha flow is chosen there, marks Now as Pro Mode does. A paired phone shows the same Now
- * and Next up as the panel, as each mark is made there, read only, said to a screen reader once (More's not while the
+ * and Next up as the panel, as each mark is made there, read only, said to a screen reader once (its Show tab's not while the
  * Sabha flow sheet is over it).
  *
  * Placeholder PDFs only, made here by a22-flow-core's maker (pdf-lib, the bundled Noto fonts with ToUnicode maps, a
@@ -502,7 +502,7 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
   await app.close();
 });
 
-test('a paired phone shows the panel’s Now and Next up as each is marked there (a row, Next, a double click, Back), in the same words, read only, said once: More’s not while the sheet is over it', async () => {
+test('a paired phone shows the panel’s Now and Next up as each is marked there (a row, Next, a double click, Back), in the same words, read only, said once: the Show tab’s not while the sheet is over it', async () => {
   test.setTimeout(180_000);
   const { table } = await makePdfs();
   const { app } = await launchApp(NETWORK_ENV);
@@ -517,7 +517,8 @@ test('a paired phone shows the panel’s Now and Next up as each is marked there
     await p.setViewportSize({ width: 390, height: 844 });
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-more').click();
+    // The flow on the Show tab (QA23-PHONE-1; in More until then).
+    await p.getByTestId('remote-tab-show').click();
     const more = p.getByTestId('remote-flow');
     const panel = await openWith(app, win, table, 4);
     const rows = panel.getByTestId('flow-row');
@@ -552,7 +553,7 @@ test('a paired phone shows the panel’s Now and Next up as each is marked there
     await expect(moreNowNext.getByRole('button')).toHaveCount(0);
     await expect(moreNowNext.locator('[aria-live="polite"]')).toHaveCount(1);
 
-    // The sheet over More: its Now and Next up follows and is the one said; More's is not said under it.
+    // The sheet over the Show tab: its Now and Next up follows and is the one said; the Show tab's is not said under it.
     await more.getByTestId('remote-open-flow').click();
     const sheet = p.getByTestId('remote-flow-sheet');
     await expect(sheet).toBeVisible();
@@ -568,7 +569,7 @@ test('a paired phone shows the panel’s Now and Next up as each is marked there
       'Now and Next up in the phone’s Sabha flow sheet',
       '[data-testid="remote-flow-sheet"]',
     );
-    // Closed: More's is said again, as the panel has it.
+    // Closed: the Show tab's is said again, as the panel has it.
     await sheet.getByTestId('remote-flow-sheet-close').click();
     await expect(sheet).toHaveCount(0);
     await expect(moreNowNext.locator('[aria-live="polite"]')).toHaveCount(1);

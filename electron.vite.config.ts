@@ -140,6 +140,8 @@ export default defineConfig({
           remote: resolve('src/renderer/remote.html'),
           'stage-display': resolve('src/renderer/stage-display.html'),
           announce: resolve('src/renderer/announce.html'),
+          // The chat for paired phones (alpha.23, QA23-CHAT-1): a chat-only phone's page.
+          chat: resolve('src/renderer/chat.html'),
           // The hidden window that draws a PDF's pages as pictures (Session 15).
           pdf: resolve('src/renderer/pdf.html'),
           'pdf-export': resolve('src/renderer/pdf-export.html'),

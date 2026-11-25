@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import { encode } from 'uqr';
+import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 
 /**
  * A QR code, drawn as one SVG path from uqr's modules (black on white, with
- * a quiet border, so every phone camera reads it, in dark mode too).
+ * a quiet border, so every phone camera reads it, in dark mode too). Private
+ * in Report a Problem's picture (alpha.23): it carries a working code or key.
  */
 export function QrCode({ text, label, size = 192 }: { text: string; label: string; size?: number }) {
   const { n, d } = useMemo(() => {
@@ -33,6 +35,7 @@ export function QrCode({ text, label, size = 192 }: { text: string; label: strin
       shapeRendering="crispEdges"
       className="rounded-md"
       data-testid="qr-code"
+      {...{ [REPORT_PRIVATE_ATTR]: '' }}
     >
       <rect width={n} height={n} fill="#ffffff" />
       <path d={d} fill="#000000" />

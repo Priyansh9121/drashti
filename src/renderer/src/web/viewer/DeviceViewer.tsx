@@ -1,53 +1,31 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { ZOOM } from '../../../../shared/picture-look';
-import { lookOnSlide } from '../../../../shared/picture-on-slide';
 import { useEngine } from '../../engine/engine-store';
 import { PictureScaleContext } from '../../render/previews';
 import { useElementSize } from '../../render/useElementSize';
 import { LiveBadge } from '../../ui/Badge';
 import { Button, IconButton } from '../../ui/Button';
 import { useFocusTrap } from '../../ui/Dialog';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ImageDown,
-  Maximize2,
-  Minimize2,
-  Tv,
-  X,
-  ZoomIn,
-  ZoomOut,
-} from '../../ui/icons';
+import { ChevronLeft, ChevronRight, Maximize2, X, ZoomIn, ZoomOut } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
-import { api } from '../device';
-import { tap, useTapNotice } from '../taps';
-import {
-  type Framing,
-  liveFramingOf,
-  liveZoomFor,
-  phoneZoomTarget,
-  screensFollow,
-  viewForLive,
-} from './live-zoom';
-import { backCloses, closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
+import { useTapNotice } from '../taps';
+import { liveFramingOf, viewForLive } from './live-zoom';
+import { backCloses, closeOnStop, closeViewer, turnPage, useViewer, type ViewerPage } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
-import { saveNativeSlideHere, savePictureHere } from './save-picture';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
+import type { EngineState } from '../../../../shared/engine/state';
 
 /*
- * Looking closer on a phone or tablet (Session 54, D1 and D2): one page at a time, full screen, drawn sharp and
- * zoomed with two fingers on this device only, with the pages before and after it (a presentation looked
- * through). When the page is what the screens show and it is zoomed, a large button at the side puts that zoom
- * on the screens (the engine's live zoom, Session 26e), and Back to Whole undoes it; on anything not live there is
- * neither. Esc or Close goes back to the remote. Mounted once, by the remote (RemoteApp.tsx). Its bars keep clear of
- * a phone's notch and rounded corners however it is held (the safe areas, D1/D2 review).
+ * Looking closer on a phone or tablet (Session 54, D1): one page at a time, full screen, drawn sharp and zoomed with
+ * two fingers on this device only, with the pages before and after it (a presentation looked through). A view only
+ * since alpha.23 (QA23-PHONE-1, the owner's Q8 "View only (Recommended)"): until then a zoomed page the screens showed
+ * had a button putting that zoom on the screens and Back to Whole (D2), and a picture Save picture… (Session 55, Part
+ * 5); none now (the network refuses a phone's zoom; save-picture.ts and the pages' `save` are no longer used). A page
+ * the screens show zoomed by the operator still starts where they are. Esc or Close goes back to the remote. Mounted
+ * once, by the remote (RemoteApp.tsx). Its bars keep clear of a phone's notch and rounded corners however it is held
+ * (the safe areas, D1/D2 review).
  */
-
-const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
-
-const near = (a: Framing, b: Framing) =>
-  Math.abs(a.zoom - b.zoom) < 0.005 && Math.abs(a.x - b.x) < 0.005 && Math.abs(a.y - b.y) < 0.005;
 
 /** The zoom buttons' step: half as big again, or back. */
 const STEP = 1.5;
@@ -64,9 +42,28 @@ export function DeviceViewer() {
 
 function Viewer() {
   const { pages, index, of, sizes } = useViewer();
-  const page = pages[Math.min(index, pages.length - 1)] ?? pages[0];
   const state = useEngine((s) => s.state);
   const notice = useTapNotice((s) => s.text);
+  return <ViewerView pages={pages} index={index} of={of} sizes={sizes} state={state} notice={notice} />;
+}
+
+/** The viewer as drawn: the pages looked at and where it is in them, the show now, and a tap's notice. */
+export function ViewerView({
+  pages,
+  index,
+  of,
+  sizes,
+  state,
+  notice,
+}: {
+  pages: readonly ViewerPage[];
+  index: number;
+  of: string | null;
+  sizes: Readonly<Record<string, { width: number; height: number }>>;
+  state: EngineState | null;
+  notice: string | null;
+}) {
+  const page = pages[Math.min(index, pages.length - 1)] ?? pages[0];
   const root = useRef<HTMLDivElement>(null);
   useFocusTrap(root, closeViewer);
   // The phone's own Back closes it (D1/D2 review).
@@ -89,7 +86,7 @@ function Viewer() {
   const content = sizes[page.key] ?? page.size;
   const onScreens = page.onScreens?.(state) ?? null;
   const live = onScreens !== null || (page.live?.(state) ?? false);
-  // This device zooms to 400 % whatever it shows; the side button only as far as the screens follow (D1/D2 review).
+  // This device zooms to 400 % whatever it shows (D1/D2 review).
   const maxZoom = ZOOM.max;
   // The screens' live zoom now (null: as the picture is kept), while this page is what they show.
   const screensAt = onScreens ? liveFramingOf(state) : null;
@@ -112,10 +109,6 @@ function Viewer() {
     settle();
   };
 
-  // D2: this device's zoom as the screens' live zoom, and whether they show it now.
-  const offerZoom = view.zoom > 1.001 && onScreens !== null && screensFollow(view, onScreens.kept);
-  const mine = onScreens ? liveZoomFor(view, onScreens.frame, onScreens.kept) : null;
-  const showsThis = mine !== null && screensAt !== null && near(mine, screensAt);
   // Where it is in what is looked through; one page alone says how it zooms.
   const place =
     pages.length > 1
@@ -157,36 +150,6 @@ function Viewer() {
           </p>
         </div>
         {live && <LiveBadge />}
-        {(typeof page.save === 'function' ? page.save(state) : page.save) && (
-          // Save picture… (Session 55, Part 5): the phone's Share sheet, or a download where it has none.
-          <Button
-            size="lg"
-            icon={ImageDown}
-            data-testid="viewer-save"
-            onClick={() => {
-              const current = useEngine.getState().state;
-              const save = typeof page.save === 'function' ? page.save(current) : page.save;
-              if (!save) return;
-              const name = 'name' in save ? save.name : `${of ?? 'Slide'}_${String(save.slide)}`;
-              const saved =
-                'presentationId' in save
-                  ? saveNativeSlideHere(save, name, current?.pictures ?? {})
-                  : savePictureHere(
-                      save.mediaId,
-                      name,
-                      lookOnSlide(
-                        current?.pictures[save.mediaId] ?? null,
-                        'onSlide' in save ? (save.onSlide ?? null) : null,
-                      ),
-                    );
-              void saved.then((problem) => {
-                if (problem) useTapNotice.setState({ text: problem });
-              });
-            }}
-          >
-            Save
-          </Button>
-        )}
         {/* Close takes the keyboard first, as it did before Save came beside it (Session 55, Part 5). */}
         <Button size="lg" icon={X} data-testid="viewer-close" data-autofocus onClick={closeViewer}>
           Close
@@ -215,48 +178,6 @@ function Viewer() {
             <Fragment key={page.key}>{drawn}</Fragment>
           </ZoomSurface>
         </PictureScaleContext.Provider>
-        {/* D2: at the side, while this page is what the screens show; never on anything else. */}
-        {onScreens && (offerZoom || screensAt) && (
-          <div
-            className="absolute top-1/2 right-[max(0.5rem,env(safe-area-inset-right))] flex w-40 -translate-y-1/2 flex-col gap-2"
-            data-testid="viewer-screens"
-          >
-            {offerZoom && (
-              <Button
-                size="lg"
-                variant={showsThis ? 'live' : 'primary'}
-                icon={Tv}
-                wrap
-                className="h-auto min-h-16 py-2 text-left"
-                data-testid="viewer-show-zoom"
-                onClick={() => {
-                  // With the showing it is for: nothing, should another picture be up by the time it arrives.
-                  const showing = phoneZoomTarget(state)?.showing;
-                  if (mine) void tap(post('/api/v1/zoom', { ...mine, ...(showing ? { showing } : {}) }));
-                }}
-              >
-                {showsThis ? 'This zoom is on the screens' : 'Show this zoom on the screens'}
-              </Button>
-            )}
-            {screensAt && (
-              <Button
-                size="lg"
-                icon={Minimize2}
-                wrap
-                className="h-auto min-h-12 py-2 text-left"
-                data-testid="viewer-whole"
-                onClick={() => {
-                  setView(WHOLE);
-                  settle();
-                  const showing = phoneZoomTarget(state)?.showing;
-                  void tap(post('/api/v1/zoom/whole', showing ? { showing } : undefined));
-                }}
-              >
-                Back to Whole
-              </Button>
-            )}
-          </div>
-        )}
       </div>
       {page.below?.()}
       <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">

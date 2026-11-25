@@ -2,6 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   launchApp,
   openSection,
@@ -18,9 +19,9 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Timers for the audience (Session 55, Part 15): a timer in its own look on the hall's screens (full screen or in a
  * corner, over the wallpaper or over what is up, a label above it, a ring or a bar of the time left, a warning colour
  * and a flash near the end, and at zero: it stays, shows a message, shows the wallpaper or goes by itself), started,
- * paused, reset, shown and hidden from Timers, the Stage screen panel and a phone; and Countdown to the start, the
- * sabha's time counted down over the wallpaper on the audience and the stage, gone by itself at zero. Placeholder
- * words only.
+ * paused, reset, shown and hidden from Timers and the Stage screen panel (a phone is refused them since alpha.23,
+ * QA23-PHONE-1: the owner's "only ppts an pdfs"); and Countdown to the start, the sabha's time counted down over the
+ * wallpaper on the audience and the stage, gone by itself at zero. Placeholder words only.
  */
 
 const SCREENS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -259,7 +260,7 @@ test('Countdown to the start: the sabha’s time, counted down over the wallpape
   await app.close();
 });
 
-test('a phone shows and hides a timer for the audience, and starts and pauses it', async () => {
+test('Timers shows and hides a timer for the audience, and starts and pauses it; a phone is refused each, in words', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -274,18 +275,33 @@ test('a phone shows and hides a timer for the audience, and starts and pauses it
     const p = phone.page;
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-more').click();
-    const timer = p.getByTestId('remote-timer').filter({ hasText: 'Placeholder phone timer' });
-    await timer.getByRole('button', { name: 'Start' }).click();
-    await timer.getByTestId('remote-timer-show').click();
+    // The phone's Start, Show, Pause and Hide (its More before alpha.23), and reading the timers: refused, nothing
+    // counts and nothing shows.
+    const asks = { win, page: p };
+    await expectPhoneRefuses(asks, 'GET', '/api/v1/timers', undefined, 'computer');
+    await expectPhoneRefuses(asks, 'POST', `/api/v1/timers/${id}/start`, {}, 'computer');
+    await expectPhoneRefuses(asks, 'POST', `/api/v1/timers/${id}/show`, {}, 'computer');
+    expect((await state(win)).layers.timer ?? null).toBeNull();
+    await expect(hall.locator('[data-layer="timer"]')).toHaveCount(0);
+    // The same from Timers in the window (moved from the phone): started and shown on the hall's screens.
+    const row = win
+      .getByTestId('timers')
+      .getByTestId('timer-row')
+      .filter({ hasText: 'Placeholder phone timer' });
+    await row.getByRole('button', { name: 'Start' }).click();
+    await row.getByRole('button', { name: 'Show for the audience' }).click();
     await expect.poll(async () => (await state(win)).layers.timer?.timerId).toBe(id);
     await expect(hall.locator('[data-layer="timer"]')).toHaveCount(1);
-    await expect(timer.getByTestId('remote-timer-show')).toHaveText('Hide');
-    await timer.getByRole('button', { name: 'Pause' }).click();
+    await expect(row.getByTestId('timer-show')).toHaveAccessibleName('Hide');
+    // The phone's Pause and Hide: refused, it counts on and stays up.
+    await expectPhoneRefuses(asks, 'POST', `/api/v1/timers/${id}/pause`, {}, 'computer');
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/timers/hide', {}, 'computer');
+    await expect(hall.locator('[data-layer="timer"]')).toHaveCount(1);
+    // Paused and hidden from Timers (moved from the phone).
+    await row.getByRole('button', { name: 'Pause' }).click();
     await expect.poll(async () => (await state(win)).timers.find((t) => t.id === id)?.startedAt).toBeNull();
-    await timer.getByTestId('remote-timer-show').click();
+    await row.getByTestId('timer-show').click();
     await expect(hall.locator('[data-layer="timer"]')).toHaveCount(0);
-    await expectNoSeriousA11yIssues(p, 'the phone’s timers for the audience');
   } finally {
     await phone.close();
   }

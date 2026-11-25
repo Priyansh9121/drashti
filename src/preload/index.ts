@@ -635,6 +635,15 @@ const bridge: DrashtiBridge = {
     reject: (which) => invoke(IPC.announcements.reject, which),
     takeOff: (which) => invoke(IPC.announcements.takeOff, which),
   },
+  chat: {
+    view: () => invoke(IPC.chat.view),
+    onChanged: (listener) => on(IPC.chat.changed, listener),
+    send: (text) => invoke(IPC.chat.send, text),
+    clear: () => invoke(IPC.chat.clear),
+    remove: (personId) => invoke(IPC.chat.remove, personId),
+    invite: () => invoke(IPC.chat.invite),
+    endInvite: () => invoke(IPC.chat.endInvite),
+  },
   stream: {
     status: () => invoke(IPC.stream.status),
     onChanged: (listener) => on(IPC.stream.changed, listener),

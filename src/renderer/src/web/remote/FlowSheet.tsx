@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { SabhaFlow, SabhaFlowLang } from '../../../../shared/sabha-flow';
 import {
   flowLine,
@@ -42,17 +41,17 @@ import {
 } from './flow-store';
 import { useFeed } from '../feed';
 import { PhoneSheet } from './PhoneSheet';
-import { useSimple } from './simple';
 
 /*
- * Sabha flow on a phone (alpha.23, QA23-FLOW-1 and QA23-FLOW-2): in More, under The Drashti computer, the running
+ * Sabha flow on a phone (alpha.23, QA23-FLOW-1 and QA23-FLOW-2): on the Show tab, under what is live, the running
  * order the operator chose on the computer, read only: Now and, larger, Next up (a Video row as the video, "Last item"
  * after the last), the operator window's panel's own (sabha-flow/FlowNowNext.tsx), and Open Sabha flow…, a sheet
  * with the read list (each item as "1 · Program · Details · Duration · Presenter", in the PDF's own language, a merged
  * cell on each row it covers, Now and Next up marked, the total at the bottom) and the PDF page, zoomed from the
  * screen's width. Both follow the computer: another PDF chosen, it removed, Now marked. Plain words when there is no
- * flow, or its words could not be read (its page only, then). Never on a screen; shown as text, never spoken. Simple
- * Mode on the computer: shown only while Sabha flow is chosen in Simple Mode Features (flowOnPhone).
+ * flow, or its words could not be read (its page only, then). Never on a screen; shown as text, never spoken. In Pro
+ * Mode and in Simple Mode alike, whatever Simple Mode Features has (QA23-PHONE-1, the owner's Q3 "Always": until then
+ * only while Sabha flow was chosen there, QA23-FLOWP-1).
  */
 
 /** The phone's words. */
@@ -75,26 +74,18 @@ export const FLOW_PHONE_WORDS = {
 /** A part's lang: the PDF's own, each part's by its script in a mixed one. */
 const langOf = (lang: SabhaFlowLang) => (text: string) => textLang(text, lang);
 
-/**
- * Whether the phone shows the Sabha flow: in Pro Mode, and in Simple Mode only while Sabha flow is chosen in Simple
- * Mode Features, as the window shows it (QA23-FLOWP-1, answered by lead, owner away).
- */
-export const flowOnPhone = (simple: RemoteSimple | null): boolean =>
-  simple === null || simple.features?.includes('sabha-flow') === true;
-
 /** What the phone has of the flow, as its store keeps it (flow-store.ts). */
 export type FlowShown = Pick<
   ReturnType<typeof useFlow.getState>,
   'snapshot' | 'problem' | 'view' | 'page' | 'zoom' | 'pictures'
 >;
 
-/** In More: the flow, read from the phone's store; in Simple Mode only while it is one of Simple Mode's tools. */
-export function FlowSection({ simple }: { simple: RemoteSimple | null }) {
+/** On the Show tab: the flow, read from the phone's store, in either mode. */
+export function FlowSection() {
   const snapshot = useFlow((s) => s.snapshot);
   const problem = useFlow((s) => s.problem);
   const sheetOpen = useFlow((s) => s.open);
-  const shown = flowOnPhone(simple);
-  return shown ? <FlowSectionView snapshot={snapshot} problem={problem} sheetOpen={sheetOpen} /> : null;
+  return <FlowSectionView snapshot={snapshot} problem={problem} sheetOpen={sheetOpen} />;
 }
 
 /** Why the flow could not be read again, beside the flow last read. */
@@ -106,13 +97,13 @@ function ReadAgain({ problem }: { problem: string | null }) {
   ) : null;
 }
 
-/** In More: the flow's file, Now and Next up, and the sheet's button; or plain words. */
+/** On the Show tab: the flow's file, Now and Next up, and the sheet's button; or plain words. */
 export function FlowSectionView({
   snapshot,
   problem,
   sheetOpen = false,
 }: Pick<FlowShown, 'snapshot' | 'problem'> & {
-  /** The Sabha flow's sheet is over More: its Now and Next up is said to a screen reader, not this one. */
+  /** The Sabha flow's sheet is over the Show tab: its Now and Next up is said to a screen reader, not this one. */
   sheetOpen?: boolean;
 }) {
   const flow = snapshot?.flow ?? null;
@@ -452,12 +443,10 @@ export function FlowSheetView({ snapshot, problem, view, page, zoom, pictures }:
 /** Over the remote: the Sabha flow's sheet while it is open; and the phone follows the flow. Mounted once. */
 export function FlowLayer() {
   const open = useFlow((s) => s.open);
-  // In Simple Mode only while it is one of Simple Mode's tools, as in More.
-  const shown = flowOnPhone(useSimple());
   useEffect(() => {
     startFlow();
   }, []);
-  return open && shown ? <FlowSheet /> : null;
+  return open ? <FlowSheet /> : null;
 }
 
 function FlowSheet() {

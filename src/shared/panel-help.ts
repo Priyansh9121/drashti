@@ -31,7 +31,7 @@ export const PANEL_HELP = {
     chapter: 'playlists',
     feature: 'Playlists and folders',
     doc: 'operator',
-    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it in the middle, then click its first row: a slide, a picture, a video or a sound goes on the screens at once. While a phone or tablet is paired as a remote, right-click a playlist for Share with Phones and Tablets: remotes then show its files under Shared from Drashti until you choose Stop Sharing.',
+    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it in the middle, then click its first row: a slide, a picture, a video or a sound goes on the screens at once. Share with Phones and Tablets, in a playlist’s right-click menu, only marks it now: phones no longer see shared playlists.',
     guide: "**Open tonight's playlist.**",
   },
   library: {
@@ -81,6 +81,14 @@ export const PANEL_HELP = {
     doc: 'operator',
     text: 'A message for the hall’s screens, such as “Car 12 please move”, keeps its own look: where it sits (drag it in the small picture), how it comes in and goes out, how long it stays up, and its font, size, colours and what is behind it. Fill in its fields and press Show; Take off removes it, and Undo brings back a change or a deleted message.',
     guide: '**Messages.**',
+  },
+  chat: {
+    title: 'Chat',
+    chapter: 'phones',
+    feature: 'The chat',
+    doc: 'operator',
+    text: 'One group chat for this computer and the phones paired with it on the mandir’s Wi-Fi, kept for today only and never on the screens or the stream. Type in the box and press Send to write as Operator; while it is folded, its heading shows how many new messages came in. For more people, show the Chat QR code in Phones; Clear chat empties it for everyone, and Remove… beside a person cuts their phone off.',
+    guide: '**Chat.** In **Chat**',
   },
   timers: {
     title: 'Timers',
@@ -143,7 +151,7 @@ export const PANEL_HELP = {
     chapter: 'phones',
     feature: 'Phones and tablets',
     doc: 'operator',
-    text: 'Phones and tablets on the local Wi-Fi pair as a remote, stage display or for announcements: in Pro Mode turn on Let paired phones and tablets connect, then check Connected. A remote shows playlist slide rows, menus, protected show swipes and wallpapers; in Simple Mode it opens and changes any playlist, with Pause, Play, the time bar and Audio, and refuses Pro-only actions. Phones and tablets may add files allows Add from this Phone… into Added from Phones and Add photos into the ordinary playlist open in Pro Mode; in Simple Mode a phone’s files go to the end of the playlist open on the computer, but a video or sound goes into Added from Phones when that playlist is a Repeat Slides one, and nothing a phone adds goes live by itself.',
+    text: 'Phones and tablets on the local Wi-Fi pair as a remote, stage display, for announcements or for the chat: in Pro Mode turn on Let paired phones and tablets connect, then check Connected. A remote shows the Sabha flow, what is on the screens and the chat, and in Pro Mode also puts up a PowerPoint or a PDF from a playlist and moves through it; it never plays or changes videos, pictures, sounds, timers or messages. Phones no longer send or receive files, whether Phones and tablets may add files is on or off.',
     guide: '**Phones** (if a phone remote or a stage tablet is used)',
   },
   announcements: {

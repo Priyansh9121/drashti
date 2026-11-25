@@ -18,6 +18,8 @@ export const WEB_PAGES: Record<string, string> = {
   '/remote': 'remote.html',
   '/stage': 'stage-display.html',
   '/announce': 'announce.html',
+  // A chat-only phone's page (alpha.23, shared/chat.ts CHAT_PAGE).
+  '/chat': 'chat.html',
 };
 
 const TYPES: Record<string, string> = {

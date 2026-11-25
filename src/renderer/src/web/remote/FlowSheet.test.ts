@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { SabhaFlow, SabhaFlowSnapshot } from '../../../../shared/sabha-flow';
-import { FLOW_PHONE_WORDS, flowOnPhone, FlowSectionView, type FlowShown, FlowSheetView } from './FlowSheet';
+import { FLOW_PHONE_WORDS, FlowSection, FlowSectionView, type FlowShown, FlowSheetView } from './FlowSheet';
 
 /*
  * Sabha flow on a phone (alpha.23), drawn as the phone draws it: in More, Now and Next up (a video's row marked) or
@@ -141,13 +141,10 @@ describe('Sabha flow on a phone (alpha.23), drawn', () => {
     }
   });
 
-  it('is on the phone in Pro Mode, and in Simple Mode only while Sabha flow is chosen in Simple Mode Features (QA23-FLOWP-1)', () => {
-    expect(flowOnPhone(null)).toBe(true);
-    const simple = { playlistId: null, words: 'Placeholder words: Simple Mode on the computer.' };
-    expect(flowOnPhone(simple)).toBe(false);
-    expect(flowOnPhone({ ...simple, features: [] })).toBe(false);
-    expect(flowOnPhone({ ...simple, features: ['timers', 'messages'] })).toBe(false);
-    expect(flowOnPhone({ ...simple, features: ['timers', 'sabha-flow'] })).toBe(true);
+  it('is on the phone in either mode: it takes nothing of Simple Mode Features (the owner’s Q3: always)', () => {
+    // Until QA23-PHONE-1, in Simple Mode only while Sabha flow was chosen in Simple Mode Features (QA23-FLOWP-1):
+    // FlowSection then took the mode. Each mode's Show tab with it: more-simple.test.ts.
+    expect(renderToStaticMarkup(createElement(FlowSection))).toContain('data-testid="remote-flow"');
   });
 
   it('counts only the pages Drashti drew (the first 20), and says so for a longer PDF (S11)', () => {

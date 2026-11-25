@@ -2,7 +2,8 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import WebSocket from 'ws';
 import type { ToDevice } from '../../src/shared/network';
-import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
+import { NETWORK_ENV, networkOn, pairToken } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   launchApp,
   openSection,
@@ -21,8 +22,9 @@ import {
  * am unable to start"). Until alpha.22 Stage was On at every start, and its switch only changed what stage screens
  * that already existed showed: with the laptop alone, or the laptop and the hall's projector, no display had the
  * Stage job, so Stage On started nothing, said nothing and offered nothing. Now: Stage starts off on a new library
- * (and once after the update), then as it was left; On and Off work every time, from the top bar, the status bar,
- * the keys and a phone; On with no screen set to Stage says so, with Set up Stage screen… (Screens); and the Stage
+ * (and once after the update), then as it was left; On and Off work every time, from the top bar, the status bar
+ * and the keys (a phone is refused them since alpha.23, QA23-PHONE-1); On with no screen set to Stage says so, with
+ * Set up Stage screen… (Screens); and the Stage
  * screen panel's Stage preview opens a window on this computer that shows what a stage screen would. The second
  * display plugged in still becomes the stage by itself, and the hall's screens never change with Stage.
  *
@@ -153,7 +155,7 @@ test('(a) the controls alone: Stage starts off; on says no screen is set to Stag
   await third.app.close();
 });
 
-test('(b) the controls and the hall’s projector: Stage starts off and the hall never changes with it; Edit layouts… works; Stage preview shows what a stage screen would, the layout with Stage on and the audience picture with it off; a phone turns it on and off too', async () => {
+test('(b) the controls and the hall’s projector: Stage starts off and the hall never changes with it; Edit layouts… works; Stage preview shows what a stage screen would, the layout with Stage on and the audience picture with it off; a phone is refused it, in words', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...AUTO, ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -190,20 +192,29 @@ test('(b) the controls and the hall’s projector: Stage starts off and the hall
   await panel.getByTestId('stage-preview-open').click();
   await expect.poll(() => app.windows().filter(isPreview).length).toBe(1);
 
-  // On from a phone: the preview shows the layout; the hall's screen is the same window, still the audience's.
+  // On from a phone: refused in words, Stage still off (alpha.23, QA23-PHONE-1); on from the top bar (moved from the
+  // phone): the preview shows the layout; the hall's screen is the same window, still the audience's.
   const { port } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder phone');
-  const turn = (on: boolean) =>
-    apiCall(port, '/api/v1/switches/stage', { method: 'POST', token, body: { on } });
-  expect((await turn(true)).status).toBe(200);
+  const asks = { win, port, token };
+  await expectPhoneRefuses(asks, 'POST', '/api/v1/switches/stage', { on: true }, 'computer', () =>
+    switches(win),
+  );
+  await stageIs(win, false);
+  await win.getByTestId('switch-stage').click();
   await stageIs(win, true);
   await expect.poll(() => stageShows(preview)).toBe('standard');
   await expect(noStageLine(win).getByTestId('screens-said-text')).toHaveText('No screen is set to Stage.');
   expect(hall.isClosed()).toBe(false);
   expect(await roleOf(hall)).toBe('audience');
   expect(await stageShows(hall)).toBeNull();
-  // Off from the phone (no stage screen open, nothing to confirm), on again from the top bar, off again.
-  expect((await turn(false)).status).toBe(200);
+  // Off from the phone: refused, Stage still on; off from the top bar (no stage screen open, nothing to confirm), on
+  // again, off again.
+  await expectPhoneRefuses(asks, 'POST', '/api/v1/switches/stage', { on: false }, 'computer', () =>
+    switches(win),
+  );
+  await stageIs(win, true);
+  await win.getByTestId('switch-stage').click();
   await stageIs(win, false);
   await expect.poll(() => stageShows(preview)).toBe('audience');
   await win.getByTestId('switch-stage').click();

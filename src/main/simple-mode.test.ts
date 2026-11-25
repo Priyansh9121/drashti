@@ -883,6 +883,8 @@ describe('Simple Mode Features (alpha.22): a chosen tool’s operate actions, an
     // Messages, Lower Thirds and the Stage screen's message and timers run through engine commands Simple Mode never
     // refused: what changes is that their section is there.
     expect(SIMPLE_FEATURE_CHANNELS.messages).toEqual([]);
+    // The chat (alpha.23): a message as the operator, while Chat is chosen; the rest of it stays Pro Mode's.
+    expect(SIMPLE_FEATURE_CHANNELS.chat).toEqual([IPC.chat.send]);
     expect(SIMPLE_FEATURE_CHANNELS['lower-thirds']).toEqual([]);
     expect(SIMPLE_FEATURE_CHANNELS.stage).toEqual([]);
     // The Sabha flow (alpha.23): marking Now; choosing, replacing and removing its PDF stay Pro Mode's.

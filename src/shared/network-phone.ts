@@ -42,8 +42,9 @@ export interface RemoteSimple {
   playlistId: string | null;
   words: string;
   /**
-   * The tools Simple Mode Features brought into Simple Mode (alpha.23; left out by a Drashti before it): the phone shows
-   * the Sabha flow in Simple Mode only while 'sabha-flow' is one, as the window does (QA23-FLOWP-1).
+   * The tools Simple Mode Features brought into Simple Mode (alpha.23; left out by a Drashti before it). Until
+   * QA23-PHONE-1 the phone showed the Sabha flow in Simple Mode only while 'sabha-flow' was one (QA23-FLOWP-1); since
+   * the owner's Q3 ("Always") it shows it whatever this has.
    */
   features?: SimpleFeature[];
 }

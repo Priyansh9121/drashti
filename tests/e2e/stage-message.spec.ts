@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { newStageBox, type StageBox } from '../../src/shared/stage-layouts';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   launchApp,
   openSection,
@@ -18,8 +19,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * The stage message (Session 55, Part 15), as the old program had its own: typed in the Stage screen panel, Show
  * puts it on every stage screen and Hide takes it off; never on the hall's screens; whatever the layout (the
  * Standard stage screen's own place, a layout's message box, a banner over a layout with none, and over the audience
- * picture with Stage off); its own size and a flash; the last few a tap away; and a phone does the same. Placeholder
- * words only.
+ * picture with Stage off); its own size and a flash; the last few a tap away; and a phone is refused it, in words
+ * (alpha.23, QA23-PHONE-1: before, a phone did the same). Placeholder words only.
  */
 
 const SCREENS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -135,7 +136,7 @@ test('the stage message: its size and flash, on every stage screen whatever the 
   await app.close();
 });
 
-test('a phone shows the stage message with its size and flash, hides it, and has the last few a tap away', async () => {
+test('a phone is refused the stage message, its Hide and the last few, in words; the Stage screen panel shows it with its size and flash, hides it, and has the last few a tap away', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...SCREENS, ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -150,27 +151,39 @@ test('a phone shows the stage message with its size and flash, hides it, and has
     const p = phone.page;
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-more').click();
-    const section = p.getByTestId('remote-stage');
-    await p.getByTestId('remote-stage-text').fill(WORDS);
-    await section
+    // The phone's Show (its More before alpha.23), as its page sent it: refused, nothing on the stage screens.
+    const asks = { win, page: p };
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      '/api/v1/stage-message',
+      { text: WORDS, size: 'huge', flash: true },
+      'computer',
+    );
+    await expect(stage.getByTestId('stage-message')).toHaveCount(0);
+    expect((await state(win)).stageMessage).toBeNull();
+    // The same from the Stage screen panel (moved from the phone): its size and flash.
+    await openSection(win, 'stage');
+    const panel = win.getByTestId('stage-message-control');
+    await panel.getByRole('textbox', { name: 'Message for the stage' }).fill(WORDS);
+    await panel
       .getByRole('combobox', { name: 'Size of the stage message' })
       .selectOption({ label: 'Very large' });
-    // The phone's flash is a switch a finger finds (44 px or more, as every phone target).
-    const flash = section.getByRole('switch', { name: 'Flash as it comes up' });
-    await flash.click();
-    await expect(flash).toHaveAttribute('aria-checked', 'true');
-    await section.getByRole('button', { name: 'Show', exact: true }).click();
+    await panel.getByRole('checkbox', { name: 'Flash as it comes up' }).check();
+    await panel.getByRole('button', { name: 'Show', exact: true }).click();
     await expect(stage.getByTestId('stage-message')).toHaveText(WORDS);
     await expect(stage.getByTestId('stage-message')).toHaveAttribute('data-size', 'huge');
     await expect.poll(async () => (await state(win)).stageCall?.flash).toBe(true);
-    await expect(p.getByTestId('remote-stage-message')).toContainText(WORDS);
-    await section.getByRole('button', { name: 'Hide', exact: true }).click();
-    await expect(stage.getByTestId('stage-message')).toHaveCount(0);
-    // The last few, a tap away on the phone too.
-    await section.getByTestId('remote-stage-recent').getByRole('button', { name: WORDS }).click();
+    // The phone's Hide: refused, it stays; the panel's Hide takes it off.
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/stage-message/clear', {}, 'computer');
     await expect(stage.getByTestId('stage-message')).toHaveText(WORDS);
-    await expectNoSeriousA11yIssues(p, 'the phone’s stage message');
+    await panel.getByRole('button', { name: 'Hide', exact: true }).click();
+    await expect(stage.getByTestId('stage-message')).toHaveCount(0);
+    // The last few: the phone's tap refused (it sent the words again); a tap away in the panel.
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/stage-message', { text: WORDS }, 'computer');
+    await expect(stage.getByTestId('stage-message')).toHaveCount(0);
+    await panel.getByTestId('stage-recent').getByRole('button', { name: WORDS }).click();
+    await expect(stage.getByTestId('stage-message')).toHaveText(WORDS);
   } finally {
     await phone.close();
   }

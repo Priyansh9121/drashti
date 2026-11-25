@@ -18,7 +18,7 @@ import {
   NOW_NOT_STARTED,
   nowOf,
   openPanel,
-  phoneOnMore,
+  phoneOnShow,
   seen,
   writeFlows,
 } from './sabha-flow';
@@ -47,7 +47,7 @@ test('Marked in the panel, followed by paired phones at once: Now, Next up and L
   await operatorReady(win);
   await sizeOperatorWindow(first.app, win, CI_WINDOW);
   const { base, port } = await networkOn(win);
-  const phone = await phoneOnMore(win, base, 'chromium', 'Placeholder phone');
+  const phone = await phoneOnShow(win, base, 'chromium', 'Placeholder phone');
   const p = phone.page;
   let safari: Device | null = null;
   let second: Awaited<ReturnType<typeof relaunchApp>> | null = null;
@@ -117,7 +117,7 @@ test('Marked in the panel, followed by paired phones at once: Now, Next up and L
     await expect(sheet).toHaveCount(0);
 
     // A phone paired now, in Safari's engine: it reads where the sabha is at once.
-    safari = await phoneOnMore(win, base, 'webkit', 'Placeholder iPhone');
+    safari = await phoneOnShow(win, base, 'webkit', 'Placeholder iPhone');
     const late = safari.page.getByTestId('remote-flow');
     await expect(late.getByTestId('remote-flow-file')).toHaveText(ENGLISH.fileName);
     await expect.poll(() => seen(late.getByTestId('remote-flow-now'))).toBe(nowOf(i4));

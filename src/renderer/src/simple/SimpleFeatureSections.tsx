@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import type { SimpleFeature } from '../../../shared/simple-features';
 import { SIMPLE_FEATURES } from '../../../shared/simple-features';
+import { ChatSection } from '../chat/ChatSection';
 import { StreamLinkDialog } from '../live-link/StreamLinkDialog';
 import { StreamLinkNotice } from '../live-link/StreamLinkNotice';
 import { WindowPicker } from '../live-window/WindowPicker';
@@ -27,6 +28,7 @@ import { OperateOnly, useSimpleFeatures } from './simple-features-store';
 const SECTION: Record<SimpleFeature, (platform: string) => ReactNode> = {
   stage: () => <StageMessageControl />,
   messages: () => <MessagesPanel />,
+  chat: () => <ChatSection />,
   timers: () => <TimersPanel />,
   'lower-thirds': (platform) => <LowerThirdsPanel platform={platform} />,
   'show-a-window': () => <ShowAWindowSection />,

@@ -158,6 +158,7 @@ import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { OscResult, OscSettings, OscStatus } from './osc';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
+import type { ChatOperatorView, ChatResult } from './chat';
 import type {
   ItemOrder,
   MediaSummary,
@@ -1372,6 +1373,21 @@ export const IPC = {
     /** main -> operator: the queue changed. */
     changed: 'announcements:changed',
   },
+  /** The chat with paired phones (alpha.23, shared/chat.ts): the operator window's Chat section. */
+  chat: {
+    view: 'chat:view',
+    /** A message as the operator ("Operator"). */
+    send: 'chat:send',
+    /** Empty the day's chat, on every phone too. */
+    clear: 'chat:clear',
+    /** Remove a person: their device is unpaired and cut off at once. */
+    remove: 'chat:remove',
+    /** Show the pairing dialog's "Chat" QR (a new code; each phone that scans it is paired by itself), and stop it. */
+    invite: 'chat:invite',
+    endInvite: 'chat:end-invite',
+    /** main -> operator: the chat changed (a message, a person, cleared, the QR). */
+    changed: 'chat:changed',
+  },
   /** Output nodes, on Main (Session 13): pairing, the dashboard's status and actions (operator window only). */
   nodes: {
     status: 'nodes:status',
@@ -2264,6 +2280,12 @@ export interface InvokeContract {
   };
   [IPC.announcements.reject]: { args: [which: { id: string }]; result: AnnouncementResult };
   [IPC.announcements.takeOff]: { args: [which: { id: string }]; result: AnnouncementResult };
+  [IPC.chat.view]: { args: []; result: ChatOperatorView };
+  [IPC.chat.send]: { args: [text: string]; result: ChatResult };
+  [IPC.chat.clear]: { args: []; result: ChatResult };
+  [IPC.chat.remove]: { args: [personId: string]; result: ChatResult };
+  [IPC.chat.invite]: { args: []; result: ChatResult };
+  [IPC.chat.endInvite]: { args: []; result: ChatResult };
   [IPC.nodes.status]: { args: []; result: NodesStatus };
   [IPC.nodes.startPairing]: { args: []; result: NodesResult };
   [IPC.nodes.cancelPairing]: { args: []; result: NodesResult };
@@ -2400,6 +2422,7 @@ export interface EventContract {
   [IPC.accessList.changed]: AccessListView;
   [IPC.network.changed]: NetworkStatus;
   [IPC.announcements.changed]: AnnouncementsView;
+  [IPC.chat.changed]: ChatOperatorView;
   [IPC.nodes.changed]: NodesStatus;
   [IPC.nodes.thumbs]: ScreenThumb[];
   [IPC.node.changed]: NodeView;
