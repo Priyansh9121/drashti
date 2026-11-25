@@ -107,14 +107,14 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 ## A phone in Simple Mode
 
-**What it is.** A paired phone does what Simple Mode's window does: the playlists, **Next** and **Back**, the clears, **Pause**, **Play** and the time bar, and **Audio** under **More**. Its **Chat** works as in Pro Mode. It refuses what Simple Mode refuses, in words.
+**What it is.** A paired phone shows the **Sabha flow**, what is on the screens and the **Chat**, with no controls (since alpha.23). Anything else it asks is refused in plain words.
 
-**When you would use it.** When the volunteer runs the slides from a phone.
+**When you would use it.** When a presenter or a volunteer follows the sabha on a phone while this computer runs it in Simple Mode.
 
 **How:**
 
 1. Pair the phone in Pro Mode first, and turn on **Let paired phones and tablets connect**.
-2. Switch the computer to Simple Mode. The phone says once what it does there.
-3. Open any playlist from the phone's **Playlist** tab, and tap rows to put them up.
+2. Switch the computer to Simple Mode. The phone then shows the flow, LIVE's picture and the chat.
+3. Run the show on this computer: everything goes up and comes off here.
 
 ![Simple Mode on a phone: what it does there, and a placeholder clip's time bar](../screenshots/phone-simple-controls-375x812.png)

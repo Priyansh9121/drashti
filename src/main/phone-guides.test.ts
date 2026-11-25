@@ -30,14 +30,20 @@ const led = (blocks: readonly Block[], words: string): Block[] =>
       inlineText(b.children[0].children) === words,
   );
 
-/** A section's blocks: from its heading (of this level) up to the next heading of that level or above. */
-function section(blocks: readonly Block[], title: string, level = 2): Block[] {
+/**
+ * A level-2 section's blocks: from its heading up to the next heading of level 2 or above. `fences: true` for the API's
+ * guide, whose shell examples' comments ("# {"ok":true,…}") Drashti's own Markdown reader (which has no code fences)
+ * reads as level-1 headings: there a section ends only at the next level-2 heading (its one real level 1 is its title).
+ */
+function section(blocks: readonly Block[], title: string, { fences = false } = {}): Block[] {
   const start = blocks.findIndex(
-    (b) => b.kind === 'heading' && b.level === level && inlineText(b.children) === title,
+    (b) => b.kind === 'heading' && b.level === 2 && inlineText(b.children) === title,
   );
   if (start < 0) return [];
   const from = blocks.slice(start);
-  const end = from.findIndex((b, i) => i > 0 && b.kind === 'heading' && b.level <= level);
+  const end = from.findIndex(
+    (b, i) => i > 0 && b.kind === 'heading' && (fences ? b.level === 2 : b.level <= 2),
+  );
   return end < 0 ? from : from.slice(0, end);
 }
 
@@ -80,9 +86,16 @@ const GONE = [
 
 const offered = (text: string): string[] => GONE.filter((name) => text.includes(name));
 
+/**
+ * A guide's words without its pictures: a picture's description says what the picture shows, as it was taken. Whether
+ * the guides keep the phone's pictures from before alpha.23 until they are retaken is the owner's to say (lead 2's
+ * question, Wed 25 Nov), so the words are pinned here and the pictures apart.
+ */
+const withoutPictures = (text: string): string => text.replace(/!\[[^\]]*\]\([^)]*\)/gu, '');
+
 /** The phone's own passages: the phone's guide, and the phone's parts of the other guides and the Manual. */
 const phonePassages = () => ({
-  presenter: read('presenter-guide.md'),
+  presenter: withoutPictures(read('presenter-guide.md')),
   operatorRemote: textOf(led(blocksOf('operator-guide.md'), 'The phone remote.')),
   operatorSimple: textOf(led(blocksOf('operator-guide.md'), 'The phone in Simple Mode.')),
   adminRule: textOf(led(blocksOf('admin-guide.md'), 'The phone rule (alpha.23).')),
@@ -128,7 +141,7 @@ const API_SECTIONS = [
   'Running the show (Remote)',
   'Files: shared playlists and adding from a phone (Remote)',
   "The computer's screens, video inputs and windows (Remote)",
-  'Companion (Stream Deck)',
+  'Companion (Stream Deck) over OSC',
 ];
 
 /**
@@ -187,7 +200,7 @@ describe('the phone rule’s words (alpha.23, QA23-PHONE-1)', () => {
 
   it('the API’s guide names every request a Remote may still make, by its route, and quotes every refusal', () => {
     const api = blocksOf('api.md');
-    const rule = textOf(section(api, 'The phone rule (alpha.23)'));
+    const rule = textOf(section(api, 'The phone rule (alpha.23)', { fences: true }));
     expect(rule.length, 'api.md: ## The phone rule (alpha.23)').toBeGreaterThan(100);
     const routes = [...Object.values(BOTH), ...Object.values(PRO), ...Object.values(DECK)];
     expect(routes.filter((route) => !rule.includes(route))).toEqual([]);
@@ -199,7 +212,7 @@ describe('the phone rule’s words (alpha.23, QA23-PHONE-1)', () => {
   it('each of the API guide’s sections with requests a Remote is refused says so in a line of its own', () => {
     const api = blocksOf('api.md');
     const missing = API_SECTIONS.filter(
-      (title) => led(section(api, title), 'The phone rule (alpha.23).').length === 0,
+      (title) => led(section(api, title, { fences: true }), 'The phone rule (alpha.23).').length === 0,
     );
     expect(missing).toEqual([]);
   });
@@ -251,8 +264,14 @@ describe('the phone rule’s words (alpha.23, QA23-PHONE-1)', () => {
   });
 
   it('the operator window says phones no longer send or receive files, where its controls stay for now (Q11)', () => {
-    const section = readFileSync(join(app, 'src', 'renderer', 'src', 'network', 'AddFilesSection.tsx'), 'utf8');
-    const share = readFileSync(join(app, 'src', 'renderer', 'src', 'playlists', 'share-with-phones.tsx'), 'utf8');
+    const section = readFileSync(
+      join(app, 'src', 'renderer', 'src', 'network', 'AddFilesSection.tsx'),
+      'utf8',
+    );
+    const share = readFileSync(
+      join(app, 'src', 'renderer', 'src', 'playlists', 'share-with-phones.tsx'),
+      'utf8',
+    );
     expect(section).toContain('Phones no longer send files to Drashti');
     expect(section).not.toContain('Add from this Phone');
     expect(share).toContain('Phones no longer see shared playlists');
