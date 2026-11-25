@@ -4997,12 +4997,15 @@ function start(): void {
   // The sabha's running order: a PDF the operator chooses in the operator window's panel, Drashti's own copy in the data
   // folder (main/sabha-flow/), its pages drawn once by the pictures window with their text layer read, and Now. The
   // operator window's only: never on a screen; a paired phone gets the same snapshot and pages through its own routes.
+  // Paired phones hear of each change too (the network's 'flow' hint): set once the network is made, below.
+  let flowToPhones = (): void => undefined;
   const flowStore = new SabhaFlowStore({
     dir: join(app.getPath('userData'), 'sabha-flow'),
     draw: (pdf, outDir, signal) =>
       pdfPictures.drawForFlow(pdf, outDir, SABHA_FLOW_LIMITS.maxPages, FLOW_PAGE_ROOM, signal),
     changed: (snapshot) => {
       sendToOperator(IPC.flow.changed, snapshot);
+      flowToPhones();
     },
     log: (message) => {
       log.info(message);
@@ -7665,8 +7668,22 @@ function start(): void {
     },
     notice: (text) => sendToOperator(IPC.app.notice, { text }),
     now: Date.now,
+    // Sabha flow (alpha.23): the operator's current flow and its pages, read only, as the window's flow:get and
+    // flow:page answer them; and the tools Simple Mode Features brought in (a phone shows the flow there only while it
+    // is one).
+    flow: {
+      snapshot: () => flowStore.snapshot(),
+      page: (flowId, page) => flowStore.page(flowId, page),
+    },
+    simpleFeatures: () => simpleChosen(),
   });
   network = net;
+  // Each change of the Sabha flow, and the one kept from the last run once it is loaded (a phone may have read none
+  // before), told to the phones.
+  flowToPhones = () => {
+    net.hint('flow');
+  };
+  void flowLoaded.then(flowToPhones);
   net.resume();
   stops.add('network', () => net.close());
   const osc = new OscService({

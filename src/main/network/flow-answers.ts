@@ -53,7 +53,8 @@ export async function flowPageAnswer(
   if (page < 0 || !flowIdOk(flowId)) return deny(400, FLOW_WORDS.asked);
   const current = reads?.snapshot().flow ?? null;
   if (!reads || current?.id !== flowId) return deny(409, FLOW_WORDS.changed);
-  if (page >= Math.min(current.pageCount, SABHA_FLOW_LIMITS.maxPages)) return deny(404, FLOW_WORDS.noPage);
+  // Only the pages drawn (at most SABHA_FLOW_LIMITS.maxPages), never past them however many the PDF has.
+  if (page >= Math.min(current.drawnPages, SABHA_FLOW_LIMITS.maxPages)) return deny(404, FLOW_WORDS.noPage);
   const png = await reads.page(flowId, page);
   // Replaced while the page was read: the phone reads the flow again.
   if (reads.snapshot().flow?.id !== flowId) return deny(409, FLOW_WORDS.changed);

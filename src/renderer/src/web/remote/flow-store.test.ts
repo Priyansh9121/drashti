@@ -9,6 +9,7 @@ import {
   openFlow,
   pictureKey,
   showFlowView,
+  shownPages,
   startFlow,
   turnPage,
   useFlow,
@@ -54,6 +55,7 @@ const flow = (id: string, over: Partial<SabhaFlow> = {}): SabhaFlow => ({
   id,
   fileName: 'Placeholder evening order.pdf',
   pageCount: 3,
+  drawnPages: 3,
   status: 'read',
   lang: 'en',
   headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
@@ -65,7 +67,13 @@ const flow = (id: string, over: Partial<SabhaFlow> = {}): SabhaFlow => ({
 });
 
 const A = flow('flow-placeholder-000a');
-const B = flow('flow-placeholder-000b', { status: 'no-text', items: [], headers: [], pageCount: 1 });
+const B = flow('flow-placeholder-000b', {
+  status: 'no-text',
+  items: [],
+  headers: [],
+  pageCount: 1,
+  drawnPages: 1,
+});
 
 const answer = (snapshot: SabhaFlowSnapshot) => {
   drashti.answers.set('/api/v1/flow', { ok: true, ...snapshot });
@@ -136,18 +144,21 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(drashti.asked).toEqual([]);
   });
 
-  it('says why when the flow cannot be read, in Drashti’s words, and forgets the flow it had', async () => {
+  it('says why when the flow cannot be read, in Drashti’s words, keeping the flow it had (a 429 in a burst, say)', async () => {
+    drashti.answers.set('/api/v1/flow', { ok: false, status: 500, message: 'Placeholder words: not now.' });
+    await loadFlow();
+    expect(useFlow.getState()).toMatchObject({ snapshot: null, problem: 'Placeholder words: not now.' });
     answer({ flow: A, state: { flowId: A.id, now: null } });
     await loadFlow();
     drashti.answers.set('/api/v1/flow', {
       ok: false,
-      status: 403,
-      message: 'Placeholder words: Simple Mode on the computer.',
+      status: 429,
+      message: 'Placeholder words: too many requests.',
     });
     await loadFlow();
     expect(useFlow.getState()).toMatchObject({
-      snapshot: null,
-      problem: 'Placeholder words: Simple Mode on the computer.',
+      snapshot: { flow: A, state: { flowId: A.id, now: null } },
+      problem: 'Placeholder words: too many requests.',
     });
     answer({ flow: null, state: null });
     await loadFlow();
@@ -235,6 +246,77 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(useFlow.getState().snapshot?.flow?.id).toBe(B.id);
   });
 
+  it('asks again, waiting longer each time, for a page that failed for a passing reason (503, 429, 500), while its flow is current', async () => {
+    vi.useFakeTimers();
+    try {
+      answer({ flow: A, state: { flowId: A.id, now: 0 } });
+      await loadFlow();
+      for (const status of [503, 429, 500]) {
+        fetched.length = 0;
+        useFlow.setState({ pictures: {} });
+        let answers = [status, status, 200];
+        pageAnswer = () => {
+          const next = answers[0] ?? 200;
+          answers = answers.slice(1);
+          return next === 200
+            ? new Response(new Uint8Array([0x89, 0x50]), { status: 200 })
+            : new Response('{}', { status: next });
+        };
+        await loadFlowPage(A.id, 0);
+        // Not marked as failed: not had yet.
+        expect(useFlow.getState().pictures[pictureKey(A.id, 0)], String(status)).toBeUndefined();
+        expect(fetched, String(status)).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(999);
+        expect(fetched, String(status)).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(fetched, String(status)).toHaveLength(2);
+        // Longer the second time.
+        await vi.advanceTimersByTimeAsync(1999);
+        expect(fetched, String(status)).toHaveLength(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(fetched, String(status)).toHaveLength(3);
+        expect(useFlow.getState().pictures[pictureKey(A.id, 0)], String(status)).toMatch(/^blob:/u);
+      }
+      // Replaced meanwhile: not asked again.
+      fetched.length = 0;
+      useFlow.setState({ pictures: {} });
+      pageAnswer = () => new Response('{}', { status: 503 });
+      await loadFlowPage(A.id, 1);
+      useFlow.setState({ snapshot: { flow: B, state: { flowId: B.id, now: null } } });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetched).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks again for the page shown when Drashti next says the flow changed, once its own tries are over', async () => {
+    vi.useFakeTimers();
+    try {
+      answer({ flow: A, state: { flowId: A.id, now: 0 } });
+      await loadFlow();
+      openFlow();
+      showFlowView('page');
+      pageAnswer = () => new Response('{}', { status: 503 });
+      await loadFlowPage(A.id, 0);
+      await vi.advanceTimersByTimeAsync(120_000);
+      const tries = fetched.length;
+      expect(tries).toBeGreaterThan(1);
+      await vi.advanceTimersByTimeAsync(120_000);
+      // Its tries are over: no more by itself.
+      expect(fetched).toHaveLength(tries);
+      // Now marked on the computer: the flow is read again, and the page shown is asked for again.
+      pageAnswer = () => new Response(new Uint8Array([0x89, 0x50]), { status: 200 });
+      answer({ flow: A, state: { flowId: A.id, now: 1 } });
+      await loadFlow();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetched).toHaveLength(tries + 1);
+      expect(useFlow.getState().pictures[pictureKey(A.id, 0)]).toMatch(/^blob:/u);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('marks a page that could not be had, so the view says so and does not ask again and again', async () => {
     answer({ flow: A, state: { flowId: A.id, now: 0 } });
     await loadFlow();
@@ -262,6 +344,16 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(useFlow.getState().zoom).toBe(1);
     for (let i = 0; i < 10; i++) zoomBy(-1);
     expect(useFlow.getState().zoom).toBe(1);
+  });
+
+  it('turns the pages only within those Drashti drew, the first 20 of a longer PDF (S11)', async () => {
+    const long = flow('flow-placeholder-000d', { pageCount: 300, drawnPages: 20 });
+    answer({ flow: long, state: { flowId: long.id, now: null } });
+    await loadFlow();
+    turnPage(100);
+    expect(useFlow.getState().page).toBe(19);
+    expect(shownPages(long)).toBe(20);
+    expect(shownPages(A)).toBe(3);
   });
 
   it('opens and closes the sheet, its view one the flow has', async () => {

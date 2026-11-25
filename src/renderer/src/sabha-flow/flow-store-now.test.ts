@@ -13,6 +13,7 @@ const flow = (id: string, count = 4): SabhaFlow => ({
   id,
   fileName: 'placeholder-flow.pdf',
   pageCount: 1,
+  drawnPages: 1,
   status: 'read',
   lang: 'en',
   headers: ['No.', 'Program'],

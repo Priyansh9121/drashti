@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { SabhaFlow, SabhaFlowSnapshot } from '../../../../shared/sabha-flow';
-import { FLOW_PHONE_WORDS, FlowSectionView, type FlowShown, FlowSheetView } from './FlowSheet';
+import { FLOW_PHONE_WORDS, flowOnPhone, FlowSectionView, type FlowShown, FlowSheetView } from './FlowSheet';
 
 /*
  * Sabha flow on a phone (alpha.23), drawn as the phone draws it: in More, Now and Next up (a video's row marked) or
@@ -16,6 +16,7 @@ const FLOW: SabhaFlow = {
   id: 'flow-placeholder-0001',
   fileName: 'Placeholder evening order.pdf',
   pageCount: 2,
+  drawnPages: 2,
   status: 'read',
   lang: 'mixed',
   title: 'Placeholder Evening',
@@ -124,6 +125,35 @@ describe('Sabha flow on a phone (alpha.23), drawn', () => {
       { view: 'page', pictures: { [`${FLOW.id}:0`]: 'failed' } },
     );
     expect(words(sheet())).toContain(FLOW_PHONE_WORDS.noPage);
+  });
+
+  it('shows Drashti’s words beside the flow it had when it could not be read again', () => {
+    showing({ flow: FLOW, state: { flowId: FLOW.id, now: 0 } }, { problem: 'Placeholder words: not now.' });
+    for (const html of [section(), sheet()]) {
+      expect(words(html)).toContain('Placeholder words: not now.');
+      expect(words(html)).toContain('Placeholder evening order.pdf');
+    }
+  });
+
+  it('is on the phone in Pro Mode, and in Simple Mode only while Sabha flow is chosen in Simple Mode Features (QA23-FLOWP-1)', () => {
+    expect(flowOnPhone(null)).toBe(true);
+    const simple = { playlistId: null, words: 'Placeholder words: Simple Mode on the computer.' };
+    expect(flowOnPhone(simple)).toBe(false);
+    expect(flowOnPhone({ ...simple, features: [] })).toBe(false);
+    expect(flowOnPhone({ ...simple, features: ['timers', 'messages'] })).toBe(false);
+    expect(flowOnPhone({ ...simple, features: ['timers', 'sabha-flow'] })).toBe(true);
+  });
+
+  it('counts only the pages Drashti drew (the first 20), and says so for a longer PDF (S11)', () => {
+    const long: SabhaFlow = { ...SCAN, id: 'flow-placeholder-0003', pageCount: 300, drawnPages: 20 };
+    showing({ flow: long, state: { flowId: long.id, now: null } }, { view: 'page' });
+    const html = sheet();
+    expect(words(html)).toContain('Page 1 of 20');
+    expect(words(html)).toContain(FLOW_PHONE_WORDS.firstPages(20));
+    // A short one: all of them, and nothing said.
+    showing({ flow: FLOW, state: { flowId: FLOW.id, now: null } }, { view: 'page' });
+    expect(words(sheet())).toContain('Page 1 of 2');
+    expect(words(sheet())).not.toContain(FLOW_PHONE_WORDS.firstPages(20));
   });
 
   it('says there is none once the flow is removed while the sheet is open', () => {
