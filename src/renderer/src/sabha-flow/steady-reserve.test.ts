@@ -20,7 +20,6 @@ function setup() {
   };
   let width = 220;
   const changes: (() => void)[] = [];
-  const fontListeners = new Set<() => void>();
   let fontsLoaded: () => void = () => undefined;
   const loading: { copies: number }[] = [];
   const deps: ReserveDeps = {
@@ -38,10 +37,6 @@ function setup() {
         fontsLoaded = resolve;
       });
     },
-    fonts: {
-      addEventListener: (_type, listener) => fontListeners.add(listener),
-      removeEventListener: (_type, listener) => fontListeners.delete(listener),
-    },
     marginTop: () => 2,
   };
   const said: number[] = [];
@@ -51,7 +46,6 @@ function setup() {
     deps,
     said,
     loading,
-    fontListeners,
     changes,
     setWidth: (w: number) => {
       width = w;
@@ -78,8 +72,8 @@ describe('the steady room for Now and Next up', () => {
     const s = setup();
     watchReserve(s.box, (px) => s.said.push(px), s.deps);
     await s.fontsLoad();
+    // A late face makes the copies taller; the box's observer fires, its width the same.
     s.heights.next = [44, 71];
-    for (const listener of s.fontListeners) listener();
     for (const changed of s.changes) changed();
     expect(s.said).toEqual([84]);
   });

@@ -599,9 +599,13 @@ test('the panel holds steady through a sabha: Next and Back through every item n
   });
   const now = () =>
     win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state?.now ?? null);
-  // Steady from the first: each of Next up's lengths (a short one, the long Video row, Last item) already allowed for.
+  // Steady from the first: each of Next up's lengths (a short one, the long Video row, Last item) already allowed for,
+  // the baseline taken once the panel says its room is set (its faces loaded; nothing moves after).
   await expect.poll(now).toBeNull();
-  await expect.poll(async () => (await where()).area).toBeGreaterThan(0);
+  await expect(panel.locator('[data-measured="true"]')).toHaveCount(1);
+  await win.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
   const first = await where();
   const next = panel.getByRole('button', { name: 'Sabha flow: Next', exact: true });
   const back = panel.getByRole('button', { name: 'Sabha flow: Back', exact: true });
@@ -625,9 +629,7 @@ test('the panel holds steady through a sabha: Next and Back through every item n
   // measure; once the fonts have settled, Next and Back through every item still move nothing.
   await openWith(app, win, longGujarati, 3);
   await expect.poll(now).toBeNull();
-  await win.evaluate(async () => {
-    await document.fonts.ready;
-  });
+  await expect(panel.locator('[data-measured="true"]')).toHaveCount(1);
   await win.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );

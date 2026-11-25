@@ -170,7 +170,10 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
   // Measured from when the part is there (it comes only once the flow is read; useElementSize binds at mount).
   const [pinned, setPinned] = useState<HTMLDivElement | null>(null);
   const pinnedHeight = useHeightOf(pinned);
-  const keepWhole = flow?.status === 'read' && pinnedHeight > 0;
+  // Only once Now and Next up's room is set (their faces loaded): until then the panel keeps its share, so the area
+  // changes once, before Now and Next can be used, and never after while this flow is current.
+  const [measured, setMeasured] = useState(false);
+  const keepWhole = flow?.status === 'read' && pinnedHeight > 0 && measured;
   const need = keepWhole ? pinnedHeight + (shown === 'list' ? LIST_ROOM : PAGE_ROOM) : 0;
   useEffect(() => {
     onNeed(need);
@@ -252,7 +255,14 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
           </div>
         )}
         {flow.status === 'read' && (
-          <FlowNowNext flow={flow} now={now} size="panel" onBack={flowBack} onNext={flowNext} />
+          <FlowNowNext
+            flow={flow}
+            now={now}
+            size="panel"
+            onBack={flowBack}
+            onNext={flowNext}
+            onMeasured={setMeasured}
+          />
         )}
         {views.length > 1 && (
           <Tabs
