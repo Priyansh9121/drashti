@@ -8,6 +8,7 @@ import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import {
   PAGE_COPIES_DIR,
+  PAGE_COPY_HEIGHTS,
   pageCopiesIn,
   pageCopyArgs,
   pageCopyName,
@@ -77,11 +78,15 @@ describe('which videos get a page copy', () => {
   });
 });
 
-/** Each frame's time and whether it is a keyframe, and the sound's packets' hashes, as FFmpeg reads a file. */
+/**
+ * Each frame's time and whether it is a keyframe, and the sound's packets' hashes, as FFmpeg reads a file on its own
+ * timeline (`-copyts`: a copy shifted as a whole against its source is caught), and the file's own Duration and start
+ * (a looping background is placed at `elapsed mod` its element's duration: a frame longer drifts on every loop).
+ */
 function timeline(file: string) {
   const video = spawnSync(
     ffmpeg,
-    ['-hide_banner', '-i', file, '-map', '0:v:0', '-vf', 'showinfo', '-f', 'null', '-'],
+    ['-hide_banner', '-copyts', '-i', file, '-map', '0:v:0', '-vf', 'showinfo', '-f', 'null', '-'],
     {
       encoding: 'utf8',
       env: ffmpegEnv(),
@@ -93,7 +98,7 @@ function timeline(file: string) {
   }));
   const sound = spawnSync(
     ffmpeg,
-    ['-hide_banner', '-i', file, '-map', '0:a:0', '-c', 'copy', '-f', 'framemd5', '-'],
+    ['-hide_banner', '-copyts', '-i', file, '-map', '0:a:0', '-c', 'copy', '-f', 'framemd5', '-'],
     {
       encoding: 'utf8',
       env: ffmpegEnv(),
@@ -101,11 +106,26 @@ function timeline(file: string) {
   );
   const packets = sound.stdout.split('\n').filter((l) => l.trim() && !l.startsWith('#'));
   const size = [...video.stderr.matchAll(/ s:(\d+)x(\d+)/gu)][0];
-  return { frames, packets, width: Number(size?.[1]), height: Number(size?.[2]) };
+  const length = /Duration: (\S+), start: (\S+),/u.exec(video.stderr);
+  return {
+    frames,
+    packets,
+    width: Number(size?.[1]),
+    height: Number(size?.[2]),
+    duration: length?.[1] ?? null,
+    start: length?.[2] ?? null,
+  };
 }
 
+const MP4: MediaInfo = {
+  ...webm1080,
+  container: 'mov,mp4,m4a,3gp,3g2,mj2',
+  video: { ...VIDEO_1080, codec: 'h264' },
+  audio: { codec: 'aac' },
+};
+
 describe.skipIf(!ffmpegHere(ffmpeg))('a page copy keeps its source’s timeline exactly', () => {
-  const make = (dir: string, name: string, video: string[], sound: string[]) => {
+  const make = (dir: string, name: string, video: string[], sound: string[], more: string[] = []) => {
     const file = join(dir, name);
     const r = spawnSync(
       ffmpeg,
@@ -125,6 +145,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))('a page copy keeps its source’s timeline 
         'expr:gte(t,n_forced*0.5)',
         ...video,
         ...sound,
+        ...more,
         '-shortest',
         '-y',
         file,
@@ -134,48 +155,79 @@ describe.skipIf(!ffmpegHere(ffmpeg))('a page copy keeps its source’s timeline 
     if (r.status !== 0) throw new Error('could not make the placeholder video');
     return file;
   };
-  for (const kind of [
+  // As real files are (a22-review-fadecopies M3): VP8 and VP9 in WebM; camera-like H.264 with B-frames and AAC (whose
+  // priming is an edit list in MP4); and a file whose timeline starts 1.5 s in.
+  const kinds = [
     {
-      name: 'placeholder.webm',
+      name: 'vp8.webm',
       info: webm1080,
       video: ['-c:v', 'libvpx', '-b:v', '2M', '-deadline', 'realtime', '-cpu-used', '8'],
       sound: ['-c:a', 'libopus'],
     },
     {
-      name: 'placeholder.mp4',
-      info: {
-        ...webm1080,
-        container: 'mov,mp4,m4a,3gp,3g2,mj2',
-        video: { ...VIDEO_1080, codec: 'h264' },
-        audio: { codec: 'aac' },
-      },
+      name: 'vp9.webm',
+      info: { ...webm1080, video: { ...VIDEO_1080, codec: 'vp9' } },
+      video: ['-c:v', 'libvpx-vp9', '-b:v', '2M', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1'],
+      sound: ['-c:a', 'libopus'],
+    },
+    {
+      name: 'h264.mp4',
+      info: MP4,
       video: ['-c:v', 'libx264', '-preset', 'ultrafast'],
       sound: ['-c:a', 'aac'],
     },
-  ])
-    it(`${kind.name}: every frame at the same time, the same keyframes, the same sound, only smaller`, () => {
-      const dir = temp();
-      const source = make(dir, kind.name, kind.video, kind.sound);
-      const plan = pageCopyPlan(kind.info, 720);
-      if (!plan) throw new Error('no plan');
-      const out = join(dir, `copy.${plan.ext}`);
-      const r = spawnSync(ffmpeg, pageCopyArgs(source, out, kind.info, plan), { env: ffmpegEnv() });
-      expect(r.status, String(r.stderr)).toBe(0);
-      const a = timeline(source),
-        b = timeline(out);
-      expect(a.frames.length).toBe(90);
-      expect(
-        b.frames.map((f) => f.t),
-        'each frame at its source frame’s time',
-      ).toEqual(a.frames.map((f) => f.t));
-      expect(
-        b.frames.filter((f) => f.key).map((f) => f.t),
-        'keyframes where the source has them, and nowhere else',
-      ).toEqual(a.frames.filter((f) => f.key).map((f) => f.t));
-      expect(b.packets.length).toBeGreaterThan(50);
-      expect(b.packets, 'the sound’s own packets, copied').toEqual(a.packets);
-      expect([b.width, b.height]).toEqual([1280, 720]);
-    });
+    {
+      name: 'h264-bframes.mp4',
+      info: MP4,
+      video: ['-c:v', 'libx264', '-preset', 'veryfast', '-bf', '2', '-pix_fmt', 'yuv420p'],
+      sound: ['-c:a', 'aac'],
+    },
+    {
+      name: 'h264-later-start.mp4',
+      info: MP4,
+      video: ['-c:v', 'libx264', '-preset', 'veryfast', '-bf', '2', '-pix_fmt', 'yuv420p'],
+      sound: ['-c:a', 'aac'],
+      more: ['-output_ts_offset', '1.5'],
+    },
+    {
+      name: 'vp8-later-start.webm',
+      info: webm1080,
+      video: ['-c:v', 'libvpx', '-b:v', '2M', '-deadline', 'realtime', '-cpu-used', '8'],
+      sound: ['-c:a', 'libopus'],
+      more: ['-output_ts_offset', '1.5'],
+    },
+  ];
+  for (const kind of kinds)
+    for (const height of PAGE_COPY_HEIGHTS)
+      it(`${kind.name} at ${String(height)}p: every frame at the same time, the same keyframes, the same sound, the same length and start, only smaller`, () => {
+        const dir = temp();
+        const source = make(dir, kind.name, kind.video, kind.sound, kind.more);
+        const plan = pageCopyPlan(kind.info, height);
+        if (!plan) throw new Error('no plan');
+        const out = join(dir, `copy.${plan.ext}`);
+        const r = spawnSync(ffmpeg, pageCopyArgs(source, out, kind.info, plan), { env: ffmpegEnv() });
+        expect(r.status, String(r.stderr)).toBe(0);
+        const a = timeline(source),
+          b = timeline(out);
+        expect(a.frames.length).toBe(90);
+        expect(
+          b.frames.map((f) => f.t),
+          'each frame at its source frame’s time',
+        ).toEqual(a.frames.map((f) => f.t));
+        expect(
+          b.frames.filter((f) => f.key).map((f) => f.t),
+          'keyframes where the source has them, and nowhere else',
+        ).toEqual(a.frames.filter((f) => f.key).map((f) => f.t));
+        expect(b.packets.length).toBeGreaterThan(50);
+        expect(b.packets, 'the sound’s own packets, copied').toEqual(a.packets);
+        expect(a.duration).not.toBeNull();
+        expect({ duration: b.duration, start: b.start }, 'the same Duration and start').toEqual({
+          duration: a.duration,
+          start: a.start,
+        });
+        expect([b.width, b.height]).toEqual([plan.width, height]);
+        expect(plan.width).toBe(height === 720 ? 1280 : 960);
+      });
 });
 
 describe('the sweep deletes a copy only with its source, or when its source changes', () => {
