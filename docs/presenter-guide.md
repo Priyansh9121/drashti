@@ -99,7 +99,7 @@ The operator can always change the screens from the computer; your page follows 
   - "No PowerPoint or PDF is on the screens: put one up from the playlist first." Next, Back or Clear slide with no PowerPoint or PDF up.
   - "A phone cannot play, put up or change videos, pictures or sounds. Use Drashti’s computer."
   - "Phones cannot add files to Drashti or open the files it shares. Use Drashti’s computer." Files go into Drashti on the computer.
-  - "A phone cannot change this. Use Drashti’s computer." Timers (a timer the operator shows over your PowerPoint or PDF too: Next, Back and Clear slide wait until it is off), messages, the stage, announcements, the screens and setting Drashti up.
+  - "A phone cannot change this. Use Drashti’s computer." Timers (a timer the operator shows over your PowerPoint or PDF too: Next, Back, Clear slide, its slides and the Playlist’s slide rows wait until it is off, and the page says so), messages, the stage, announcements, the screens and setting Drashti up.
 
 ![Simple Mode on the phone: what it does there, and a paused clip's time bar with Play](screenshots/phone-simple-controls-375x812.png)
 
