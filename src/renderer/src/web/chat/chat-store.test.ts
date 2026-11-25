@@ -27,7 +27,7 @@ vi.mock('../feed', () => ({
     return () => undefined;
   },
 }));
-const alerts = vi.hoisted(() => ({ armed: 0, alerted: 0, ways: [] as string[], answer: 'buzz' as string }));
+const alerts = vi.hoisted(() => ({ armed: 0, alerted: 0, ways: [] as string[], answer: 'buzz' }));
 vi.mock('./chat-alert', () => ({
   armAlerts: () => {
     alerts.armed++;

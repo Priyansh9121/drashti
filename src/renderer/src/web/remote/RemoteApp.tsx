@@ -1397,7 +1397,9 @@ function Layout() {
   useEffect(() => {
     chatShowOnScreen(showOnScreen);
   }, [showOnScreen]);
-  const chatBanner = useChat((s) => s.banner !== null);
+  // While the feed is up only: the connection's chip under it says so the moment it is not (a22-review-chat nit).
+  const online = useFeed((s) => s.state === 'online');
+  const chatBanner = useChat((s) => s.banner !== null) && online;
   const show = (
     <div className="space-y-4">
       <LivePicture state={state} sideways={sideways} />
@@ -1455,11 +1457,13 @@ function Layout() {
           <ConnectionChip />
         </div>
         {/* A new chat message from someone else, off the show and the chat: a tap opens Chat. */}
-        <ChatBanner
-          onOpen={() => {
-            useRemote.setState({ tab: 'chat' });
-          }}
-        />
+        {online && (
+          <ChatBanner
+            onOpen={() => {
+              useRemote.setState({ tab: 'chat' });
+            }}
+          />
+        )}
       </header>
       {!sideways && notes}
       {layout === 'landscape' ? (
