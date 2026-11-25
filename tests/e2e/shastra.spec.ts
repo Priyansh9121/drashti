@@ -19,6 +19,7 @@ import {
   testDisplays,
 } from './helpers';
 import { importItem } from './import-details';
+import { expectPhoneRefuses } from './phone-refuses';
 
 /*
  * Books (Session 12; the Shastra module until alpha.15), with the made-up books in docs/examples
@@ -28,7 +29,8 @@ import { importItem } from './import-details';
  * long passage goes on over several slides and Next goes on to the next
  * item; passages are playlist items and fill template slots; two groups
  * show their own languages (Sanskrit in both scripts) and a lower third;
- * the remote and the API put up a reference; Simple Mode refuses changing
+ * the remote and the API are refused a reference (alpha.23, QA23-PHONE-1), the window's Books tab putting it up;
+ * Simple Mode refuses changing
  * texts; the new panel and dialogs pass the accessibility checks.
  */
 
@@ -429,7 +431,7 @@ test('each group shows its own languages, Sanskrit in either script, and a lower
   await app.close();
 });
 
-test('the remote and the API put up a reference', async () => {
+test('the remote and the API are refused a reference in words; the window’s Books tab puts it up, and a phone still sees it', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -438,46 +440,64 @@ test('the remote and the API put up a reference', async () => {
   await load(win, [exampleFiles().granth, exampleFiles().vachan]);
   const { port, base } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder script');
-  const listed = await apiCall(port, '/api/v1/shastra', { token });
-  expect(listed.json['texts']).toEqual([
-    { name: 'Placeholder Granth', abbreviation: 'PG', itemCount: 21 },
-    { name: 'Placeholder Vachan', abbreviation: 'PV', itemCount: 8 },
-  ]);
-  const put = await apiCall(port, '/api/v1/shastra', {
-    method: 'POST',
-    token,
-    body: { reference: 'PG 4-5' },
-  });
-  expect(put.status).toBe(200);
-  expect(put.json['reference']).toBe('Placeholder Granth 4–5');
-  await expect.poll(async () => (await live(win)).presentationId).toBe('shastra:pg#4-5');
-  const nonsense = await apiCall(port, '/api/v1/shastra', {
-    method: 'POST',
-    token,
-    body: { reference: 'XY 4' },
-  });
-  expect(nonsense).toEqual({
-    status: 404,
-    json: { ok: false, message: 'No loaded book is called “XY”. The books are: PG, PV.' },
-  });
+  // A book's passage from a Remote (alpha.23, QA23-PHONE-1, the owner's Q4: "Only PPT and PDF"): the books' list, a
+  // reference and nonsense alike are refused in words, nothing put up.
+  const script = { win, port, token };
+  await expectPhoneRefuses(script, 'GET', '/api/v1/shastra', undefined, 'notDeck');
+  await expectPhoneRefuses(script, 'POST', '/api/v1/shastra', { reference: 'PG 4-5' }, 'notDeck');
+  await expectPhoneRefuses(script, 'POST', '/api/v1/shastra', { reference: 'XY 4' }, 'notDeck');
+  expect((await live(win)).presentationId).toBeNull();
 
-  // A phone: the More tab's reference box.
+  // Moved to the window (was the API's): the Books tab's reference, a range, its first slide clicked puts it up.
+  await openLibrary(win);
+  await win.getByRole('tab', { name: 'Books', exact: true }).click();
+  const panel = win.getByTestId('shastra-panel');
+  const grid = win.getByTestId('slide-grid');
+  const putUp = async (reference: string, id: string) => {
+    await panel.getByTestId('shastra-reference').fill(reference);
+    await panel.getByTestId('shastra-reference').press('Enter');
+    await expect(grid).toHaveAttribute('data-presentation-id', id);
+    await grid.getByTestId('slide-thumb').first().click();
+    await expect.poll(async () => (await live(win)).presentationId).toBe(id);
+  };
+  await putUp('PG 4-5', 'shastra:pg#4-5');
+  // Named as the API named it.
+  expect(
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.shastra.resolve('PG 4-5')),
+  ).toMatchObject({
+    ok: true,
+    passage: { passageId: 'shastra:pg#4-5', reference: 'Placeholder Granth 4–5' },
+  });
+  // Nonsense says why in the window, as the API did.
+  await panel.getByTestId('shastra-reference').fill('XY 4');
+  await panel.getByTestId('shastra-reference').press('Enter');
+  await expect(panel.getByTestId('shastra-problem')).toHaveText(
+    'No loaded book is called “XY”. The books are: PG, PV.',
+  );
+
+  // A phone: its More tab's reference box is refused the same (the box went with the rule, the UI builder's);
+  // moved to the window: the reference with its section's abbreviation. The phone still sees what is up (its state,
+  // as its Show tab reads it), and the operator window's header names it.
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   try {
     await pairByQr(phone.page, base, code, '/remote');
-    await phone.page.getByTestId('remote-tab-more').click();
-    const form = phone.page.getByTestId('remote-shastra');
-    await form.getByRole('textbox', { name: 'Reference' }).fill('PV P.Pr. 3');
-    await form.getByRole('button', { name: 'Show' }).click();
-    await expect.poll(async () => (await live(win)).presentationId).toBe('shastra:pv/ppr#3');
-    // The phone shows the passage's slides under its reference, the one on the screens marked
-    // (its id holds "/" and "#": Session 13), and the operator window's header names it too.
-    await phone.page.getByTestId('remote-tab-show').click();
-    await expect(
-      phone.page.getByRole('heading', { name: 'Placeholder Vachan Placeholder Pratham 3' }),
-    ).toBeVisible();
-    await expect(phone.page.getByTestId('remote-slides').locator('[data-live="true"]')).toHaveCount(1);
+    await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
+    await expectPhoneRefuses(
+      { win, page: phone.page },
+      'POST',
+      '/api/v1/shastra',
+      { reference: 'PV P.Pr. 3' },
+      'notDeck',
+    );
+    expect((await live(win)).presentationId).toBe('shastra:pg#4-5');
+    await putUp('PV P.Pr. 3', 'shastra:pv/ppr#3');
+    // Its id holds "/" and "#" (Session 13): the phone's state says it whole.
+    const seen = await apiCall(port, '/api/v1/state', { token });
+    expect(seen.status).toBe(200);
+    expect((seen.json['state'] as { live: { presentationId: string | null } }).live.presentationId).toBe(
+      'shastra:pv/ppr#3',
+    );
     await expect(win.getByTestId('live-text')).toContainText(
       'Live: Placeholder Vachan Placeholder Pratham 3',
     );
