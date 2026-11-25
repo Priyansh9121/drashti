@@ -587,6 +587,57 @@ test('the panel holds steady through a sabha: Next and Back through every item n
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeWindow(app, win, 'index.html', OWNERS_WINDOW);
+  // Diagnosis for a move's message only (review S18, CI's Mac 76461): from here on, each room set (px, what set it,
+  // whether Now and Next can be used, the copies' laid-out width), each face that came, the area's height and the
+  // panel body's scrollbar, with the ms since. No check reads it.
+  await win.evaluate(() => {
+    const g = globalThis as unknown as { flowSteadyLog?: string[]; flowSteadySay?: (line: string) => void };
+    const log: string[] = [];
+    const t0 = performance.now();
+    const say = (line: string) => {
+      log.push(`${String(Math.round(performance.now() - t0))} ${line}`);
+      if (log.length > 80) log.splice(0, log.length - 80);
+    };
+    g.flowSteadyLog = log;
+    g.flowSteadySay = say;
+    const sizes = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const el = entry.target as HTMLElement;
+        say(
+          el.dataset['testid'] === 'flow-area'
+            ? `area ${String(Math.round(el.getBoundingClientRect().height))}`
+            : `body scrollbar ${String(el.offsetWidth - el.clientWidth)}, width ${String(el.clientWidth)}`,
+        );
+      }
+    });
+    const watched = new Set<Element>();
+    const watch = () => {
+      for (const id of ['flow-area', 'sabha-flow-body']) {
+        const el = document.querySelector(`[data-testid="${id}"]`);
+        if (el && !watched.has(el)) {
+          watched.add(el);
+          sizes.observe(el);
+        }
+      }
+    };
+    watch();
+    let last = '';
+    new MutationObserver(() => {
+      watch();
+      const lines = document.querySelector('[data-measured]');
+      const copies = document.querySelector('[data-testid="flow-now-next"] [aria-hidden="true"]');
+      const now = `room ${lines?.getAttribute('data-reserve') ?? '-'} by ${lines?.getAttribute('data-reserve-by') ?? '-'}, measured ${lines?.getAttribute('data-measured') ?? '-'}, copies ${String(copies?.clientWidth ?? '-')}`;
+      if (now !== last) say(now);
+      last = now;
+    }).observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-measured', 'data-reserve', 'data-reserve-by'],
+    });
+    document.fonts.addEventListener('loadingdone', (e) => {
+      say(`faces in: ${e.fontfaces.map((f) => `${f.family} ${f.weight}`).join(', ')}`);
+    });
+  });
   const panel = await openWith(app, win, long, 3);
   await playlistsColumn(win, 'Home');
   const splitter = win.getByRole('separator', {
@@ -600,9 +651,10 @@ test('the panel holds steady through a sabha: Next and Back through every item n
   });
   const now = () =>
     win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state?.now ?? null);
-  /** The numbers behind a move, for its message: the room set, the shown lines' heights, the faces' state. */
+  /** The numbers behind a move, for its message: the room set and what set it, the shown lines' heights, the faces. */
   const behind = () =>
     panel.evaluate((p) => {
+      const log = (globalThis as unknown as { flowSteadyLog?: string[] }).flowSteadyLog ?? [];
       const lines = p.querySelector('[data-measured]');
       const h = (sel: string) =>
         Math.round((p.querySelector(sel)?.getBoundingClientRect().height ?? 0) * 10) / 10;
@@ -610,7 +662,7 @@ test('the panel holds steady through a sabha: Next and Back through every item n
         .filter((f) => /Gujarati|Devanagari/u.test(f.family))
         .map((f) => `${f.family} ${f.weight} ${f.status}`)
         .join(', ');
-      return `room ${lines?.getAttribute('data-reserve') ?? '-'}, lines ${String(h('[data-measured]'))}, now ${String(h('[data-testid="flow-now"]'))}, next ${String(h('[data-testid="flow-next"]'))}; faces: ${faces}`;
+      return `room ${lines?.getAttribute('data-reserve') ?? '-'} by ${lines?.getAttribute('data-reserve-by') ?? '-'}, lines ${String(h('[data-measured]'))}, now ${String(h('[data-testid="flow-now"]'))}, next ${String(h('[data-testid="flow-next"]'))}; faces: ${faces}; ms since: ${log.slice(-45).join(' | ')}`;
     });
   // Steady from the first: each of Next up's lengths (a short one, the long Video row, Last item) already allowed for,
   // the baseline taken once the panel says its room is set (its faces loaded; nothing moves after).
@@ -640,6 +692,11 @@ test('the panel holds steady through a sabha: Next and Back through every item n
 
   // A Gujarati flow (review S17): its face loads by unicode-range once its letters are first drawn, after the first
   // measure; once the fonts have settled, Next and Back through every item still move nothing.
+  await win.evaluate(() => {
+    (globalThis as unknown as { flowSteadySay?: (line: string) => void }).flowSteadySay?.(
+      'the Gujarati PDF chosen',
+    );
+  });
   await openWith(app, win, longGujarati, 3);
   await expect.poll(now).toBeNull();
   await expect(panel.locator('[data-measured="true"]')).toHaveCount(1);

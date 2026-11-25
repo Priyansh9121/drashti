@@ -11,7 +11,8 @@ import {
   textLang,
 } from '../../../shared/sabha-flow-lines';
 import { Button } from '../ui/Button';
-import { watchReserve, windowReserveDeps } from './steady-reserve';
+import { Loading } from '../ui/States';
+import { watchReserve, windowReserveDeps, type ReserveBy } from './steady-reserve';
 import { ChevronLeft, ChevronRight, Film } from '../ui/icons';
 
 /*
@@ -155,11 +156,14 @@ function NextLine({
   );
 }
 
+/** Said while Now and Next up wait for their room (review S18). */
+const GETTING_READY = 'Getting Now and Next up ready…';
+
 /**
  * Now's and Next up's lines, said to a screen reader as they change (`live`). `steady` (the panel): the lines keep the
- * height of the flow's tallest Now and Next up of all its items, measured once per flow and on every change of their
- * width from unseen copies (review S16): Next and Back never move the read list, the splitter or the playlists under
- * the operator's pointer mid-sabha. A phone's sheet scrolls as a whole.
+ * height of the flow's tallest Now and Next up of all its items, measured once per flow and on every change of the
+ * panel's width from unseen copies (review S16): Next and Back never move the read list, the splitter or the playlists
+ * under the operator's pointer mid-sabha. A phone's sheet scrolls as a whole.
  */
 function NowNextLines({
   flow,
@@ -185,16 +189,16 @@ function NowNextLines({
   const [kept, setKept] = useState(flow);
   if (kept.id !== flow.id) setKept(flow);
   const current = kept.id === flow.id ? kept : flow;
-  // The room, set once for this flow: after its faces have loaded and the layout has taken them, before Now and Next
-  // can be used; again only on a new width (steady-reserve.ts).
-  const [reserve, setReserve] = useState<{ id: string; px: number } | null>(null);
+  // The room, set once for this flow: after its faces have loaded and the layout has taken them (or by the bound, once
+  // its own faces are in), before Now and Next can be used; again only on a new panel width (steady-reserve.ts).
+  const [reserve, setReserve] = useState<{ id: string; px: number; by: ReserveBy } | null>(null);
   useLayoutEffect(
     () =>
       measure
         ? watchReserve(
             measure,
-            (px) => {
-              setReserve({ id: current.id, px });
+            (px, by) => {
+              setReserve({ id: current.id, px, by });
             },
             windowReserveDeps(),
           )
@@ -220,8 +224,8 @@ function NowNextLines({
       }),
     [current, look, steady],
   );
-  // Until the room is set (a moment, the faces loading), Back, Next, Now and Next up are laid out unseen: nothing can be
-  // pressed, and nothing moves after it can.
+  // Until the room is set (a moment, the faces loading; FACES_BOUND_MS at most), Back, Next, Now and Next up are laid
+  // out unseen: nothing can be pressed, and nothing moves after it can.
   const unseen = measured ? undefined : 'invisible';
   return (
     <>
@@ -232,19 +236,32 @@ function NowNextLines({
         className={unseen ? `${look.lines} ${unseen}` : look.lines}
         data-measured={steady ? String(measured) : undefined}
         data-reserve={steady && measured && reserve ? String(reserve.px) : undefined}
+        data-reserve-by={steady && measured && reserve ? reserve.by : undefined}
         style={steady && measured && reserve ? { minHeight: reserve.px } : undefined}
       >
         <NowLine flow={flow} nn={nn} look={look} testId={`${look.id}-now`} />
         <NextLine flow={flow} nn={nn} look={look} testId={`${look.id}-next`} />
       </div>
       {steady && (
-        // Every item's Now and Next up, unseen, at the lines' own width: what the lines must have room for.
+        // Every item's Now and Next up, unseen: what the lines must have room for. Laid out at the lines' width with the
+        // panel body's scrollbar shown, shown or not (a scrollbar's room of their own, reaching over the body's while it
+        // shows: steady-reserve.ts), so a scrollbar coming or going never changes the room (review S18, CI's Mac).
         <div
           ref={setMeasure}
           aria-hidden="true"
-          className="pointer-events-none invisible absolute inset-x-3 top-0 h-0 overflow-hidden"
+          className="pointer-events-none invisible absolute inset-x-3 top-0 h-0 overflow-hidden [scrollbar-gutter:stable]"
         >
           {copies}
+        </div>
+      )}
+      {steady && !measured && (
+        // Said only after half a second (most waits are shorter), over the unseen Back and Next: it takes no room, so
+        // nothing moves when it goes.
+        <div
+          className="pointer-events-none absolute inset-x-3 top-2 flex"
+          data-testid={`${look.id}-getting-ready`}
+        >
+          <Loading label={GETTING_READY} className="px-0 py-0" />
         </div>
       )}
     </>
