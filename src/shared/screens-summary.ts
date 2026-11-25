@@ -10,7 +10,7 @@ export const RESTARTING_WORDS = 'Keeps restarting';
 
 /** Why, in Screens. */
 export function restartingSentence(restarts: number): string {
-  return `It stopped answering, so Drashti restarted it ${String(restarts)} times in a row. It keeps trying, waiting longer each time. Try again restarts it now.`;
+  return `It stopped answering, so Drashti restarted it ${String(restarts)} times in a row. It keeps trying, about once a minute. Try again restarts it now.`;
 }
 
 /**
