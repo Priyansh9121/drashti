@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '../../../shared/chat';
 import { CHAT_LINES_MAX, CHAT_OPERATOR_ID as OPERATOR_ID, CHAT_TEXT_MAX } from '../../../shared/chat';
-import { chatRows, composerCheck, unreadCount, unreadWords } from './chat-view';
+import { chatRows, composerCheck, composerKey, unreadCount, unreadWords } from './chat-view';
 
 /*
  * The operator's Chat section (QA23-CHAT-1), its words and counts worked out apart from the window: the day's messages
@@ -139,5 +139,25 @@ describe('the text box before Send', () => {
       canSend: false,
       line: `${String(CHAT_LINES_MAX)} lines at most`,
     });
+  });
+});
+
+describe('the text box’s keys (a22-review-chat O-S2: the show’s keys reach the show unless the operator is typing)', () => {
+  const key = (k: string, over: { shiftKey?: boolean; isComposing?: boolean } = {}) =>
+    composerKey({ key: k, shiftKey: false, isComposing: false, ...over });
+
+  it('sends with Enter, and starts a new line with Shift+Enter', () => {
+    expect(key('Enter')).toBe('send');
+    expect(key('Enter', { shiftKey: true })).toBeNull();
+  });
+
+  it('leaves the box with Escape, so the next key is the show’s', () => {
+    expect(key('Escape')).toBe('leave');
+  });
+
+  it('leaves Enter and Escape to a keyboard composing a word (an IME), and every other key to the box', () => {
+    expect(key('Enter', { isComposing: true })).toBeNull();
+    expect(key('Escape', { isComposing: true })).toBeNull();
+    for (const k of ['a', ' ', 'PageDown', 'ArrowRight', 'Backspace']) expect(key(k), k).toBeNull();
   });
 });

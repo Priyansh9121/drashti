@@ -84,6 +84,31 @@ describe('the Chat section’s open part', () => {
     expect(render({ operateOnly: true }).startsWith(`<div ${REPORT_PRIVATE_ATTR}=""`)).toBe(true);
   });
 
+  it('keeps its messages in a box of one height, empty or full, and a slot for a refusal, so nothing under it moves as messages come (a22-review-chat O-S1)', () => {
+    const box = (html: string) => /data-testid="chat-messages-box"[^>]*/u.exec(html)?.[0] ?? '';
+    const empty = render({ view: { ...VIEW, messages: [] } });
+    const full = render();
+    expect(box(empty)).toContain('h-[clamp(10rem,30vh,20rem)]');
+    expect(box(full)).toContain('h-[clamp(10rem,30vh,20rem)]');
+    expect(full).not.toContain('max-h-[40vh]');
+    // The refusal's line is there before any refusal, the same height with one.
+    expect(full).toMatch(/data-testid="chat-problem"[^>]*min-h-4/u);
+    expect(render({ error: 'Placeholder refusal.' })).toMatch(/data-testid="chat-problem"[^>]*min-h-4/u);
+    // The people, open, in a box of their own height whoever joins.
+    expect(full).toMatch(/data-testid="chat-people-list"[^>]*h-28/u);
+  });
+
+  it('lists a phone with no name yet, removable as anyone (core’s M3, a22-review-chat O-S3)', () => {
+    const html = render({
+      view: { ...VIEW, members: [{ id: 'phone-c', name: '', kind: 'chat', connected: true }] },
+    });
+    expect(html).toContain('No name yet');
+    expect(html).toContain('data-testid="chat-remove-person"');
+    expect(html).toContain('aria-label="Remove a phone with no name yet from the chat"');
+    // No word says a phone is in the chat only once it has a name.
+    expect(render({ view: { ...VIEW, members: [] } })).not.toContain('gives their name');
+  });
+
   it('says plainly when phones cannot reach it, and how to let them', () => {
     const off = render({ view: { ...VIEW, reachable: false }, networkOn: false });
     expect(off).toContain('turn on Let paired phones and tablets connect');

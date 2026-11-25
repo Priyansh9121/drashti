@@ -91,3 +91,12 @@ export function composerCheck(text: string): { canSend: boolean; line: string | 
   const left = CHAT_TEXT_MAX - words.length;
   return { canSend: true, line: left <= NEAR ? `${characters(left)} left` : null };
 }
+
+/** What a key in the text box does: Enter sends, Escape leaves the box; anything else is the box's. Red: not built. */
+export function composerKey(_e: {
+  key: string;
+  shiftKey: boolean;
+  isComposing: boolean;
+}): 'send' | 'leave' | null {
+  return null;
+}

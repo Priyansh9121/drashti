@@ -66,6 +66,14 @@ test('the Chat section under LIVE: folded after Messages, then Send as the opera
   await expect(mine.locator('b')).toHaveCount(0);
   await expect(mine.getByTestId('chat-sender')).toHaveCount(0);
   await expect(box).toHaveValue('');
+  // Sent, the box lets the focus go: the next key (a clicker's Next) is the show's (a22-review-chat O-S2).
+  await expect(box).not.toBeFocused();
+  expect(await win.evaluate(() => document.activeElement?.tagName)).not.toBe('TEXTAREA');
+  // Escape leaves the box too, the words kept.
+  await box.fill('Placeholder half typed');
+  await box.press('Escape');
+  await expect(box).not.toBeFocused();
+  await expect(box).toHaveValue('Placeholder half typed');
   await expect.poll(async () => (await chatView(win)).messages.map((m) => m.text)).toEqual([words]);
 
   // Shift+Enter starts a new line; Enter sends both.
@@ -136,9 +144,25 @@ test('a phone’s message: counted on the folded heading, named above it on the 
   const chat = await openChat(win);
   const theirs = chat.getByTestId('chat-message');
   await expect(theirs).toHaveCount(1);
-  await expect(theirs).toHaveAttribute('data-mine', 'false');
-  await expect(theirs.getByTestId('chat-sender')).toHaveText('Placeholder Sender');
-  await expect(theirs.getByTestId('chat-text')).toHaveText('Placeholder from a phone');
+  // More coming in move nothing under the section (a22-review-chat O-S1): Timers' heading stays where it is.
+  const timersTop = async () => (await win.getByTestId('group-timers-toggle').boundingBox())?.y ?? null;
+  const before = await timersTop();
+  for (const n of [2, 3, 4])
+    expect(
+      (
+        await apiCall(port, CHAT_API.send, {
+          method: 'POST',
+          token,
+          body: { text: `Placeholder more ${String(n)}` },
+        })
+      ).status,
+    ).toBe(200);
+  await expect(theirs).toHaveCount(4);
+  expect(await timersTop()).toBe(before);
+  for (const one of await theirs.all()) await expect(one).toHaveAttribute('data-mine', 'false');
+  // Named above the first of the run only, as a WhatsApp group does.
+  await expect(chat.getByTestId('chat-sender')).toHaveText(['Placeholder Sender']);
+  await expect(theirs.getByTestId('chat-text').first()).toHaveText('Placeholder from a phone');
   await expect(unread).toHaveCount(0);
 
   // The people: Remove… asks first, then the phone is cut off at once.
