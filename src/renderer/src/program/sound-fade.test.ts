@@ -407,6 +407,84 @@ it('starts a crossfade’s incoming sound a second early when its Go comes a sec
   );
 });
 
+it('shortens the lead by how late the incoming sound’s start landed, while its sound is still in the delay’s leading silence (QFP-7 3)', async () => {
+  // CI's two-core Windows (a22-fadeprep-1125-115335-81323): with its second's lead, an incoming player's start still
+  // landed about 0.1 s late (its play() from paused on a busy page), and it was heard 102 ms behind from the fade's
+  // start. Its sound is in the delay's leading silence until the fade's moment: the delay is shortened then by how late
+  // the start landed, so it is heard on time. Nothing passes the delay yet, so no pitch changes; no jump.
+  vi.useFakeTimers();
+  vi.stubGlobal('AudioContext', GeneratedContext);
+  vi.stubGlobal('document', {
+    body: { dataset: {}, append: () => undefined },
+    createElement: () => ({ dataset: {}, remove: () => undefined }),
+  });
+  const { StreamSound } = await import('./sound');
+  const sound = new StreamSound();
+  const show = { layers: {} } as unknown as EngineState;
+  const run = (incoming: string, lateS: number, measuredAfterMs: number) => {
+    const outgoing: Sound = {
+      key: `background:generated out ${incoming}@1000`,
+      mediaId: `generated out ${incoming}`,
+      startedAt: 1000,
+      loop: true,
+      volume: 1,
+      kind: 'video',
+    };
+    const prepared: Sound = {
+      key: `background:${incoming}@2000`,
+      mediaId: incoming,
+      startedAt: 2000,
+      loop: false,
+      volume: 1,
+      kind: 'video',
+      cueId: `cue ${incoming}`,
+      prepared: true,
+      seek: { at: Date.now(), toMs: 0, paused: true },
+    };
+    const fade = {
+      id: `generated cue ${incoming}`,
+      from: {
+        kind: 'media',
+        media: 'video',
+        mediaId: outgoing.mediaId,
+        startedAt: 1000,
+        loop: true,
+        fit: 'fit',
+      },
+      at: Date.now() + 1000,
+      durationMs: 2000,
+    } as unknown as VideoCrossfade;
+    h.sounds = [outgoing, prepared];
+    sound.setOwnSound(true, show);
+    const { cueId: _cue, prepared: _prepared, ...rest } = prepared;
+    h.sounds = [
+      { ...outgoing, envelope: { fade, role: 'out' } },
+      { ...rest, seek: { at: fade.at, toMs: 0 }, envelope: { fade, role: 'in' } },
+    ];
+    sound.setOwnSound(true, show);
+    const player = h.started.find((p) => p.key === prepared.key);
+    if (!player) throw new Error('no incoming player');
+    const el = player.el as unknown as Record<string, unknown>;
+    const delay = h.delays.at(-1);
+    // Its start lands `lateS` late: where it plays, against its clock aimed a second ahead, when it is measured.
+    Object.assign(el, { paused: false, seeking: false, readyState: 4, duration: 8 });
+    vi.advanceTimersByTime(measuredAfterMs - 1);
+    el['currentTime'] = measuredAfterMs / 1000 - lateS;
+    vi.advanceTimersByTime(1);
+    return { player, delay, fade };
+  };
+  const late = run('generated late', 0.12, 250);
+  expect(late.player.el.dataset['leadMs'], 'its lead less the 120 ms its start was late').toBe('880');
+  expect(late.delay?.value).toBeCloseTo(0.88, 9);
+  expect(late.player.options.timing?.().seek?.at, 'aimed that much less ahead too').toBe(late.fade.at - 880);
+  const early = run('generated early', -0.03, 250);
+  expect(early.player.el.dataset['leadMs'], 'a start 30 ms early: its lead 30 ms longer').toBe('1030');
+  // A start measured only after its sound has begun to come out of the delay (a page held up for 1.2 s): left as it is.
+  const held = run('generated held', 0.12, 1200);
+  expect(held.player.el.dataset['leadMs']).toBe('1000');
+  expect(held.delay?.value).toBeCloseTo(1, 9);
+});
+
 it('a crossfaded sound held paused lets go of its lead, so Play resumes it in place (a22-review-fade R2-M1)', async () => {
   // The lead stayed for the sound's whole life: a pause of a video that came in by a crossfade, then Play, gave the lead's
   // silence and then a silent jump (up to 1.9 s on a two-core PC), where before Play resumed it in place.
