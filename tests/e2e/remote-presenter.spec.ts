@@ -84,8 +84,8 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       // The whole library, searched or a page of it, the talk (words, outside the playlist), the kirtan's row and a
       // passage: refused in words, nothing up (before alpha.23 the phone found the talk in the library and put it up).
       const asks = { win, page: p };
-      await expectPhoneRefuses(asks, 'GET', '/api/v1/presentations', undefined, 'notDeck');
-      await expectPhoneRefuses(asks, 'GET', '/api/v1/search?q=talk%20point%20two', undefined, 'notDeck');
+      await expectPhoneRefuses(asks, 'GET', '/api/v1/presentations', undefined, 'library');
+      await expectPhoneRefuses(asks, 'GET', '/api/v1/search?q=talk%20point%20two', undefined, 'library');
       await expectPhoneRefuses(
         asks,
         'POST',
@@ -321,7 +321,7 @@ test('a presenter’s iPad held sideways: the live picture, the notes and Next b
     await expect(presenter.getByTestId('remote-notes-live')).toHaveText(NOTE_TWO);
     await expectNoSeriousA11yIssues(t, 'the remote on an iPad held sideways');
     // The library beside it: refused (before alpha.23 a tab away).
-    await expectPhoneRefuses({ win, page: t }, 'GET', '/api/v1/presentations', undefined, 'notDeck');
+    await expectPhoneRefuses({ win, page: t }, 'GET', '/api/v1/presentations', undefined, 'library');
 
     // Held upright: the playlist beside the show.
     await t.setViewportSize({ width: 810, height: 1080 });
@@ -351,8 +351,8 @@ test('in Simple Mode a Remote reads only what is live: the library, a presentati
 
   // The library, a page at a time and searched: refused (alpha.23, QA23-PHONE-1: the library is never a phone's);
   // a presentation's slides: Pro Mode's, refused in Simple Mode's words.
-  await expectPhoneRefuses(asks, 'GET', '/api/v1/presentations?limit=2', undefined, 'notDeck');
-  await expectPhoneRefuses(asks, 'GET', '/api/v1/search?q=talk%20point%20two', undefined, 'notDeck');
+  await expectPhoneRefuses(asks, 'GET', '/api/v1/presentations?limit=2', undefined, 'library');
+  await expectPhoneRefuses(asks, 'GET', '/api/v1/search?q=talk%20point%20two', undefined, 'library');
   await expectPhoneRefuses(asks, 'GET', `/api/v1/presentations/${talkId}`, undefined, 'simple');
 
   // Putting one of its slides up: refused in Simple Mode's words, nothing up; and still refused once the talk is in
