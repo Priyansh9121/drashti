@@ -1,5 +1,6 @@
 import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { ConvertService } from '../convert/convert-service';
 import { hasAlpha, type MediaInfo } from '../convert/plan';
 
 /*
@@ -143,4 +144,52 @@ export async function sweepPageCopies(mediaDir: string, liveShas: ReadonlySet<st
 export async function removePageCopiesOf(mediaDir: string, sha256: string): Promise<void> {
   for (const c of copiesOf(await filesIn(mediaDir)))
     if (c.sha256 === sha256) await rm(join(mediaDir, PAGE_COPIES_DIR, c.name), { force: true });
+}
+
+/** A video a page copy may be made of: in a playlist that crossfades (index.ts). */
+export interface PageCopyCandidate {
+  mediaId: string;
+  sha256: string;
+  /** Relative to the media folder. */
+  path: string;
+}
+
+export interface PageCopiesDeps {
+  mediaDir: string;
+  /** A two-core computer, or one that draws and decodes video in software: the only ones copies are made on. */
+  slow(): boolean;
+  /** Nothing up, not on air, not recording: copies are made only then (and saveCopy waits while a show is up). */
+  idle(): boolean;
+  candidates(): PageCopyCandidate[];
+  /** Every media row's sha256 now: a copy named by any other is its source's no more. */
+  liveShas(): ReadonlySet<string>;
+  info(file: string): Promise<MediaInfo>;
+  conversions: Pick<ConvertService, 'saveCopy'>;
+  /** The copies ready changed: the pages are told (media:page-copies-changed). */
+  changed(): void;
+  log(line: string): void;
+}
+
+/** Makes the page copies, one at a time while idle, and says which are there. */
+export class PageCopies {
+  constructor(private readonly deps: PageCopiesDeps) {}
+  /** Sweeps once (a copy whose source is gone or changed), reads what is there, then looks every few seconds. */
+  async start(): Promise<void> {
+    return Promise.resolve();
+  }
+  /** One step: the next copy wanted, made (or nothing). */
+  async step(): Promise<void> {
+    return Promise.resolve();
+  }
+  /** The copy of these bytes at this height, relative to the media folder, if it is there. */
+  relativePath(_sha256: string, _height: PageCopyHeight): string | null {
+    return null;
+  }
+  /** The heights ready for each candidate video now, by its media id (what the pages are told). */
+  ready(): Record<string, PageCopyHeight[]> {
+    return {};
+  }
+  close(): void {
+    // Nothing yet.
+  }
 }
