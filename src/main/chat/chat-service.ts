@@ -22,6 +22,7 @@ import {
   chatTextSchema,
 } from '../../shared/chat';
 import type { DeviceKind } from '../../shared/network';
+import { parsePlain } from '../../shared/plain-parse';
 import { RateLimiter } from '../network/limits';
 import type { ChatDevice, ChatStore } from './chat-store';
 
@@ -151,8 +152,9 @@ export class ChatService {
     this.tick();
     const input = chatSendSchema.safeParse(raw);
     if (!input.success) return refuse(400, CHAT_REFUSAL.empty);
-    const text = chatTextSchema.safeParse(input.data.text);
-    if (!text.success) return refuse(400, text.error.issues[0]?.message ?? CHAT_REFUSAL.empty);
+    // The schema's own words (CHAT_REFUSAL), never zod's (shared/plain-parse.ts).
+    const text = parsePlain(chatTextSchema, input.data.text, CHAT_REFUSAL.empty);
+    if (!text.success) return refuse(400, text.message);
     const from = this.deps.store.person(device.id);
     if (!from) return refuse(409, CHAT_REFUSAL.noName);
     // The person's own rate first: one looping phone spends only its own, never the group's (review M1).
@@ -165,8 +167,8 @@ export class ChatService {
   sendAsOperator(raw: unknown): { ok: true } | { ok: false; message: string } {
     this.tick();
     if (typeof raw !== 'string') return { ok: false, message: CHAT_REFUSAL.empty };
-    const text = chatTextSchema.safeParse(raw);
-    if (!text.success) return { ok: false, message: text.error.issues[0]?.message ?? CHAT_REFUSAL.empty };
+    const text = parsePlain(chatTextSchema, raw, CHAT_REFUSAL.empty);
+    if (!text.success) return { ok: false, message: text.message };
     if (!this.perPerson.take(CHAT_OPERATOR_ID)) return { ok: false, message: CHAT_REFUSAL.tooFast };
     this.post({ id: CHAT_OPERATOR_ID, name: CHAT_OPERATOR_NAME }, text.data);
     return { ok: true };
