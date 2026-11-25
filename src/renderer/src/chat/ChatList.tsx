@@ -1,4 +1,4 @@
-import type { Ref } from 'react';
+import type { Ref, UIEventHandler } from 'react';
 import { cx } from '../ui/cx';
 import type { ChatRow } from './chat-view';
 
@@ -12,11 +12,32 @@ import type { ChatRow } from './chat-view';
 
 const WRAP = 'break-words whitespace-pre-wrap [overflow-wrap:anywhere]';
 
-export function ChatList({ rows, ref }: { rows: readonly ChatRow[]; ref?: Ref<HTMLDivElement> }) {
+export function ChatList({
+  rows,
+  ref,
+  className,
+  tabIndex,
+  onScroll,
+}: {
+  rows: readonly ChatRow[];
+  ref?: Ref<HTMLDivElement>;
+  /** Its box's own (the section makes it scroll). */
+  className?: string;
+  tabIndex?: number;
+  onScroll?: UIEventHandler<HTMLDivElement>;
+}) {
   return (
     // The log's own box (an <ol> keeps its list for a screen reader inside it), positioned so its screen-reader
     // words (sr-only, absolute) stay inside what scrolls.
-    <div ref={ref} role="log" aria-label="Chat messages" className="relative" data-testid="chat-list">
+    <div
+      ref={ref}
+      role="log"
+      aria-label="Chat messages"
+      className={cx('relative', className)}
+      tabIndex={tabIndex}
+      onScroll={onScroll}
+      data-testid="chat-list"
+    >
       <ol className="flex flex-col gap-1.5">
         {rows.map((r) => (
           <li
