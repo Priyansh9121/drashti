@@ -380,7 +380,7 @@ test('a phone’s pages say Books, never Shastra: its pairing page, every tab of
       { playlistId, itemId: passageRow },
       'notDeck',
     );
-    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shastra', undefined, 'notDeck');
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shastra', undefined, 'library');
     await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/shastra', { reference: 'PG 14' }, 'notDeck');
     await win.evaluate(async (id) => {
       const shared = await (globalThis as PageGlobals).drashti.playlists.share(id, true);

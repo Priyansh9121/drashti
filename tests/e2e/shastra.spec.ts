@@ -443,7 +443,7 @@ test('the remote and the API are refused a reference in words; the window’s Bo
   // A book's passage from a Remote (alpha.23, QA23-PHONE-1, the owner's Q4: "Only PPT and PDF"): the books' list, a
   // reference and nonsense alike are refused in words, nothing put up.
   const script = { win, port, token };
-  await expectPhoneRefuses(script, 'GET', '/api/v1/shastra', undefined, 'notDeck');
+  await expectPhoneRefuses(script, 'GET', '/api/v1/shastra', undefined, 'library');
   await expectPhoneRefuses(script, 'POST', '/api/v1/shastra', { reference: 'PG 4-5' }, 'notDeck');
   await expectPhoneRefuses(script, 'POST', '/api/v1/shastra', { reference: 'XY 4' }, 'notDeck');
   expect((await live(win)).presentationId).toBeNull();

@@ -285,13 +285,13 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
 
       // The library, where a presentation not on the screens was looked through, is refused (the owner's Q2: the
       // playlist only), its search too.
-      await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/presentations', undefined, 'notDeck');
+      await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/presentations', undefined, 'library');
       await expectPhoneRefuses(
         fromPhone,
         'GET',
         `/api/v1/search?q=${encodeURIComponent(KIRTAN)}`,
         undefined,
-        'notDeck',
+        'library',
       );
 
       // A kirtan's slide of words on the screens, over the picture: the phone's Next (not a PowerPoint or a PDF) is
@@ -406,7 +406,7 @@ test('a deck looked through on a phone is refused in words: the library it was f
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     const fromPhone = { win, page: p };
     // The library (the owner's Q2: the playlist only), where the deck was looked through.
-    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/presentations', undefined, 'notDeck');
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/presentations', undefined, 'library');
     // Each click's motion was a video, asked for through a link made for this phone and played there: its link and
     // its file are refused ("no video access in either of simple or pro mode in phone").
     for (const clip of [...files.clips, files.nextClip]) {
