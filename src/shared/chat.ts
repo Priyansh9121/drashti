@@ -239,14 +239,14 @@ const LOOK_ALIKE: Record<string, string> = { '0': 'o', '1': 'l', '3': 'e', '4': 
  * A name as two names are compared (review S3): full-width and other compatibility forms as their plain letters
  * (NFKC), case folded, only letters, marks and digits kept (spaces, punctuation and emoji left out), digits that read as
  * letters as those letters. "Operator.", "0perator", "Ｏｐｅｒａｔｏｒ" and "O p e r a t o r" all read "operator"; a
- * Gujarati or Hindi vowel sign stays, so names that differ by one stay different.
+ * Gujarati or Hindi vowel sign stays, so names that differ by one stay different. A name of emoji or signs alone is
+ * compared as it is, spaces left out.
  */
 export function chatNameKey(name: string): string {
-  return name
-    .normalize('NFKC')
-    .toLocaleLowerCase('en')
-    .replace(/[^\p{L}\p{M}\p{N}]/gu, '')
-    .replace(/[013457]/gu, (d) => LOOK_ALIKE[d] ?? d);
+  const folded = name.normalize('NFKC').toLocaleLowerCase('en');
+  const words = folded.replace(/[^\p{L}\p{M}\p{N}]/gu, '').replace(/[013457]/gu, (d) => LOOK_ALIKE[d] ?? d);
+  // A name of emoji or signs alone is itself, spaces left out ("🙏" is not "🌼🌼").
+  return words !== '' ? words : folded.replace(/[\p{Z}\s]/gu, '');
 }
 export const chatNameInputSchema = z.object({ name: z.string() }).strict();
 

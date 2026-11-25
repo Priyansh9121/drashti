@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import {
@@ -282,7 +282,9 @@ export class ChatStore {
         await rm(temp, { force: true });
         return;
       }
-      await rename(temp, file);
+      // Put in place on Main's thread, at once after the check (a rename is quick): a quit's flush, also on Main's
+      // thread, is then either before it (this one is stale and skipped) or after it (and wins).
+      renameSync(temp, file);
     } catch (error) {
       this.deps.log('warn', `Chat: the day's chat could not be kept on disk (${codeOf(error)})`);
       try {
