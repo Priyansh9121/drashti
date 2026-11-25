@@ -826,23 +826,17 @@ export class NetworkServer {
           'This device is not paired with Drashti. Pair it again from Phones and tablets in Drashti.',
         );
       }
-      // A file's pieces count apart (Session 54): a phone sending one can still tap Next.
-      const limit = isPiece(req.method, segments) ? this.pieces : this.perDevice;
-      if (!limit.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
-      this.host.seen(device.id);
       const found = matchRoute(req.method ?? 'GET', segments);
-      if (!found.found)
-        throw found.method
-          ? new HttpError(405, 'That request takes another method.')
-          : new HttpError(404, 'There is no such request.');
-      const { route: r, params } = found;
-      if (!deviceMay(device.kind, r.op))
-        throw new HttpError(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
       // A phone (alpha.23, QA23-PHONE-1, shared/phone-rule.ts): what it never asks for, refused here before its body is
       // read (what it still sends is dropped unread, as for a request too large) or this process answers it itself (a
-      // file's original, an upload). Pro Mode's own, and Simple Mode, the main process weighs.
-      const never = device.kind === 'remote' ? phoneOpRefusal(r.op, false) : null;
+      // file's original, an upload), and before its allowance is spent: a page still asking for what it may not never
+      // makes its own Next wait (a23-review-phonetests). Pro Mode's own, and Simple Mode, the main process weighs.
+      const never =
+        found.found && device.kind === 'remote' && deviceMay(device.kind, found.route.op)
+          ? phoneOpRefusal(found.route.op, false)
+          : null;
       if (never !== null) {
+        this.host.seen(device.id);
         // A body still coming (a file's piece of megabytes, say) is never waited for: the connection ends with the
         // answer, as for a request too large (the review's L2).
         if (req.headers['content-length'] !== undefined || req.headers['transfer-encoding'] !== undefined)
@@ -850,6 +844,17 @@ export class NetworkServer {
         req.resume();
         throw new HttpError(403, never);
       }
+      // A file's pieces count apart (Session 54): a phone sending one can still tap Next.
+      const limit = isPiece(req.method, segments) ? this.pieces : this.perDevice;
+      if (!limit.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
+      this.host.seen(device.id);
+      if (!found.found)
+        throw found.method
+          ? new HttpError(405, 'That request takes another method.')
+          : new HttpError(404, 'There is no such request.');
+      const { route: r, params } = found;
+      if (!deviceMay(device.kind, r.op))
+        throw new HttpError(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
       if (r.op === 'me') {
         this.json(res, 200, { ok: true, device: { name: device.name, kind: device.kind } });
         return;
