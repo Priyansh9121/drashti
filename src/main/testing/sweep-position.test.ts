@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  closedMedians,
   heardFades,
   readSweeps,
   sweepHz,
@@ -196,5 +197,37 @@ describe('the position sweep read back from a recording', () => {
     // Two fades asked, one heard.
     const one = heardFades(readSweeps(record(10, 3217, scene(inClock)), RATE, BANDS), [fade(), fade()]);
     expect('error' in one ? one.error : '').toMatch(/fades/u);
+  });
+});
+
+describe('the 50 ms bound judged on the median of each 5 readings (the owner’s QFP-6 item 2, "Median of 5")', () => {
+  /** Readings every 20 ms from `from` ms, each `ms` off unless set. */
+  const every20 = (from: number, count: number, ms: number, set: Record<number, number> = {}) =>
+    Array.from({ length: count }, (_, i) => ({ t: from + i * 20, ms: set[i] ?? ms }));
+  const over = (readings: { t: number; ms: number }[]) =>
+    closedMedians(readings, 1500).filter((r) => Math.abs(r.ms) > 50);
+
+  it('single readings that jump past 50 ms and back (the time-stretch’s splices) are not a sound out of step', () => {
+    // +61 and -55, each alone among readings 10 ms off: the raw rule failed these.
+    const readings = every20(1500, 25, 10, { 3: 61, 11: -55, 12: 51 });
+    expect(readings.filter((r) => Math.abs(r.ms) > 50).length, 'the raw rule').toBe(3);
+    expect(over(readings), 'the median of each 5').toEqual([]);
+  });
+
+  it('a sound out of step for 100 ms or more still fails, as does one at the end’s last few readings', () => {
+    // Five in a row 60 ms off: their median is 60.
+    expect(over(every20(1500, 25, 10, { 5: 60, 6: 62, 7: 58, 8: 61, 9: 60 }))).toEqual([{ t: 1640, ms: 60 }]);
+    // The whole late part 55 ms off.
+    expect(over(every20(1500, 25, 55)).length).toBe(5);
+    // The last 3 (a part group) 70 ms off.
+    expect(over(every20(1500, 23, 10, { 20: 70, 21: 70, 22: 70 }))).toEqual([{ t: 1920, ms: 70 }]);
+  });
+
+  it('only readings from 1.5 s into the fade are judged, in groups from the first of them; the bound is still 50 ms', () => {
+    // Out of step before 1.5 s: not this bound's.
+    expect(over([...every20(1000, 25, 80), ...every20(1500, 10, 10)])).toEqual([]);
+    // 50 is within; 51 for a whole group is not.
+    expect(over(every20(1500, 5, 50))).toEqual([]);
+    expect(over(every20(1500, 5, 51))).toEqual([{ t: 1540, ms: 51 }]);
   });
 });

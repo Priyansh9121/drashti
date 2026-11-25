@@ -346,3 +346,12 @@ function quantile(values: readonly number[], share: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? 0;
 }
+
+/** RED STUB (the owner's QFP-6 item 2): the raw readings from `afterMs` on, as judged before. */
+export function closedMedians(
+  readings: readonly { t: number; ms: number }[],
+  afterMs: number,
+  _n = 5,
+): { t: number; ms: number }[] {
+  return readings.filter((r) => r.t >= afterMs).map((r) => ({ t: r.t, ms: r.ms }));
+}
