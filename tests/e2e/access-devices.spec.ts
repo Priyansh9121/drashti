@@ -61,6 +61,10 @@ test('phones and tablets stop with their Drashti: every request refused, files t
       undefined,
       'media',
     );
+    // The phone's own attempt to make that link (as its viewer asked for a video's), with the token its page keeps:
+    // refused in the media words while let in; once stopped, turned away as every request is (below).
+    const linkPath = `/api/v1/media/${pictureId}/link`;
+    await expectPhoneRefuses({ win, page: phone.page }, 'GET', linkPath, undefined, 'media');
     // A link's own address (no token: what a phone's video played), with none made: still turned away once stopped.
     const link = `/api/v1/media/${pictureId}/original?link=placeholder`;
     await expect(phone.page.getByTestId('phone-stopped')).toHaveCount(0);
@@ -98,6 +102,15 @@ test('phones and tablets stop with their Drashti: every request refused, files t
     ];
     for (const r of refused)
       expect(r).toEqual({ status: 503, json: { ok: false, message: STOPPED_REFUSAL } });
+    // The phone's own attempt to make the link, once stopped: the stop's words (the stop is weighed before the phone
+    // rule), from its page as from the script.
+    const fromPage = await phone.page.evaluate(async (path) => {
+      const token =
+        (JSON.parse(localStorage.getItem('drashti.device') ?? '{}') as { token?: string }).token ?? '';
+      const r = await fetch(path, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      return { status: r.status, json: (await r.json()) as Record<string, unknown> };
+    }, linkPath);
+    expect(fromPage).toEqual({ status: 503, json: { ok: false, message: STOPPED_REFUSAL } });
   } finally {
     await phone.close();
     await main.app.close();
