@@ -1,6 +1,6 @@
 # Running Drashti alongside the old presentation program
 
-This guide is for **1.0.0-alpha.22**. Imports ask nothing and open no report; a notice says what did not come in. **From a Link…** checks a pasted link, then lets you choose **Save in** and press **Download**. The tools each have a section under **LIVE** (folded at each start) and are in **Tools**. Use **Help › Drashti Manual…** for their steps, and **Help › Report a Problem…** after a problem. Keep Main and nodes on the same version, and the existing fallback program and its library untouched.
+This guide is for **1.0.0-alpha.23**. Imports ask nothing and open no report; a notice says what did not come in. **From a Link…** checks a pasted link, then lets you choose **Save in** and press **Download**. The tools each have a section under **LIVE** (folded at each start) and are in **Tools**. Use **Help › Drashti Manual…** for their steps, and **Help › Report a Problem…** after a problem. Keep Main and nodes on the same version, and the existing fallback program and its library untouched.
 
 This guide is for the volunteers who try Drashti on the mandir's two computers, the Mac and the Windows PC, before it is used for a real sabha. It follows the plan's "parallel run" (PLAN.md, section 5.1): Drashti runs on the real computers and screens on evenings **without** a sabha, and the old presentation program stays installed, untouched, the whole time.
 

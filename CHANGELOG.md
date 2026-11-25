@@ -2,7 +2,9 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.23 (26 Nov 2026)
+
+Update after a sabha, and update Main and nodes together.
 
 - A cued video no longer fails now and then with “could not load its first frame” when a screen kept showing the video’s start.
 - Combine videos… and Export clip… no longer leave a hidden copy in Media’s folder when they fail, are stopped or are cut short by closing Drashti, and what an earlier failure left is cleared at the start, even after the library has moved.
