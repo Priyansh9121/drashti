@@ -202,11 +202,11 @@ describe('the chat’s store', () => {
     const store = make();
     store.load();
     store.add(person(1), 'Placeholder one');
-    let hit = () => undefined as void;
+    let hit: () => void = () => undefined;
     const renamed = new Promise<void>((r) => {
       hit = r;
     });
-    let release = () => undefined as void;
+    let release: () => void = () => undefined;
     hold.rename = {
       hit: () => {
         hit();
