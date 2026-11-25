@@ -442,6 +442,39 @@ describe('Sabha flow reader: what the review found (S1, S2, S3, nits)', () => {
     expect(flow.headers).toEqual(['No.', 'Program', 'Details']);
   });
 
+  it('S15: centred numbers (1 to 12) and a stray number left of them stay one column, on no fixed grid', async () => {
+    const page = flowTablePage({
+      title: 'Placeholder running order',
+      subtitle: 'th placeholder evening',
+      headers: ['No.', 'Program', 'Details'],
+      widths: [44, 200, 200],
+      rows: Array.from({ length: 12 }, (_, k) => [String(k + 1), `Item ${String(k + 1)}`, 'Placeholder']),
+      numbersCentred: true,
+    });
+    // A lone number left of the centred column (as "7th"): within 12 points of the two-digit numbers, not of the rest.
+    const subtitle = page.texts.find((t) => t.text === 'th placeholder evening');
+    const ten = page.texts.find((t) => t.text === '10');
+    if (!subtitle || !ten) throw new Error('no subtitle');
+    page.texts.push({ text: '7', x: ten.x - 10, y: subtitle.y, size: subtitle.size });
+    subtitle.x = ten.x + 4;
+    subtitle.size *= 0.7;
+    const flow = await read([page]);
+    expect(flow.items.map((i) => i.no)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      '10',
+      '11',
+      '12',
+    ]);
+  });
+
   it("S3: 'total' only as a whole word: a row's 'totally' is its words, a clock time under the table no total", async () => {
     const flow = await read([
       flowTablePage({
