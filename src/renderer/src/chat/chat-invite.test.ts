@@ -44,7 +44,9 @@ describe('the Chat QR in Phones', () => {
     expect(html).toContain('aria-label="QR code that joins the chat"');
     expect(html).toContain('Works for 10:00 more');
     expect(html).toContain('data-testid="chat-invite-end"');
-    expect(render({ invite: INVITE, now: NOW + CHAT_INVITE_TTL_MS - 61_000 })).toContain('Works for 1:01 more');
+    expect(render({ invite: INVITE, now: NOW + CHAT_INVITE_TTL_MS - 61_000 })).toContain(
+      'Works for 1:01 more',
+    );
   });
 
   it('offers it again once its time is up', () => {

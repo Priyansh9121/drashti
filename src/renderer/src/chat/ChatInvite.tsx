@@ -14,7 +14,8 @@ import { connectChat, useChat } from './chat-store';
  * by itself as a chat-only device (it reads and writes the chat, and nothing else). Pro Mode's, as pairing is.
  */
 
-const minutes = (seconds: number) => `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, '0')}`;
+const minutes = (seconds: number) =>
+  `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, '0')}`;
 
 /** What the section shows: the button, or the code and how long it still works; refusals in plain words. */
 export function ChatInviteView({
@@ -44,7 +45,8 @@ export function ChatInviteView({
           <QrCode text={invite.url} label="QR code that joins the chat" />
           <div className="min-w-0 space-y-2">
             <p className="text-sm text-muted">
-              Let each phone scan it with its camera: each joins the chat only, and runs nothing on the screens.
+              Let each phone scan it with its camera: each joins the chat only, and runs nothing on the
+              screens.
             </p>
             <p className="text-xs text-muted" aria-live="off" data-testid="chat-invite-left">
               Works for {minutes(left)} more, for every phone that scans it. Each is paired for today only.
@@ -57,8 +59,9 @@ export function ChatInviteView({
       ) : (
         <>
           <p className="text-sm text-muted">
-            Everyone paired as a Remote or for Announcements is in the chat already. For more people, show a QR code
-            for the chat: each phone that scans it joins the chat only, and its person gives their name there.
+            Everyone paired as a Remote or for Announcements is in the chat already. For more people, show a
+            QR code for the chat: each phone that scans it joins the chat only, and its person gives their
+            name there.
           </p>
           <Button icon={MessagesSquare} onClick={onShow} data-testid="chat-invite-show">
             Show the Chat QR code

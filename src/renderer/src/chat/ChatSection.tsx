@@ -12,6 +12,7 @@ import { useOperateOnly } from '../simple/simple-features-store';
 import { ChatList } from './ChatList';
 import type { ChatMember, ChatOperatorView } from '../../../shared/chat';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
+import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import {
   chatAction,
   clearChatError,
@@ -22,7 +23,6 @@ import {
   useChatUnread,
 } from './chat-store';
 import { chatRows, composerCheck, unreadWords } from './chat-view';
-import { usePictureHold } from './picture-hold-standin';
 
 /*
  * The operator window's Chat section (alpha.23, QA23-CHAT-1; the owner: "a few people scan and a group is created,
@@ -34,9 +34,12 @@ import { usePictureHold } from './picture-hold-standin';
  * Simple Mode has it while Chat is chosen in Edit › Simple Mode Features… (off to begin with), reading and sending
  * only: Clear chat and removing a person stay Pro Mode's (OperateOnly), as the main process's lock keeps them.
  *
- * While Report a Problem takes this window's picture (the picture hold), the section draws none of the chat's words
- * or names: what is open is kept (a message half typed too), only not drawn, with a line saying why.
+ * Every word and name of the chat is inside a box the page marks private (shared/report-private.ts): Report a
+ * Problem's picture of this window blanks it (main/report/private-parts.ts). So is the Remove dialog's.
  */
+
+/** What Report a Problem's picture of the window blanks (the chat's words and names). */
+const PRIVATE = { [REPORT_PRIVATE_ATTR]: '' };
 
 const KIND_WORDS: Record<ChatMember['kind'], string> = {
   remote: 'Remote',
@@ -218,8 +221,6 @@ function Messages({ view }: { view: ChatOperatorView }) {
 /** What the open section shows, as the stores have it (ChatContents reads them). */
 export interface ChatContentsProps {
   view: ChatOperatorView | null;
-  /** Report a Problem is taking the window's picture: none of the chat's words or names are drawn. */
-  held: boolean;
   operateOnly: boolean;
   /** The phones' network is on and listening. */
   networkOn: boolean;
@@ -231,13 +232,11 @@ export interface ChatContentsProps {
 }
 
 /**
- * The open section: the messages, the text box, the people, and the refusal of the last request; or, while Report a
- * Problem takes the window's picture, only a line saying the chat is left out of it (the words half typed and whether
- * the people are open are the store's, so they come back as they were).
+ * The open section: the messages, the text box, the people, and the refusal of the last request, all in one box marked
+ * private (Report a Problem's picture blanks it).
  */
 export function ChatContentsView({
   view,
-  held,
   operateOnly,
   networkOn,
   error,
@@ -247,59 +246,63 @@ export function ChatContentsView({
   onPeopleOpen,
 }: ChatContentsProps) {
   const [removing, setRemoving] = useState<ChatMember | null>(null);
-  if (held)
-    return (
-      <p className="text-xs text-muted" data-testid="chat-held">
-        The chat’s words and names are left out of this picture.
-      </p>
-    );
-  if (!view) return <Loading label="Loading the chat…" />;
   return (
-    <>
-      {!view.reachable && (
-        <p className="text-xs text-warning-fg" data-testid="chat-unreachable">
-          {networkOn || operateOnly
-            ? 'Phones cannot reach the chat now.'
-            : 'Phones cannot reach the chat while Phones is off: turn on Let paired phones and tablets connect.'}
-        </p>
+    <div {...PRIVATE} className="space-y-2" data-testid="chat-contents">
+      {view === null ? (
+        <Loading label="Loading the chat…" />
+      ) : (
+        <>
+          {!view.reachable && (
+            <p className="text-xs text-warning-fg" data-testid="chat-unreachable">
+              {networkOn || operateOnly
+                ? 'Phones cannot reach the chat now.'
+                : 'Phones cannot reach the chat while Phones is off: turn on Let paired phones and tablets connect.'}
+            </p>
+          )}
+          {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
+          <Composer draft={draft} onDraft={onDraft} />
+          {error !== null && (
+            <p role="alert" className="text-xs text-warning-fg" data-testid="chat-problem">
+              {error}
+            </p>
+          )}
+          <ChatPeople
+            members={view.members}
+            open={peopleOpen}
+            onOpen={onPeopleOpen}
+            canRemove={!operateOnly}
+            onRemove={(m) => {
+              clearChatError();
+              setRemoving(m);
+            }}
+          />
+          {removing && (
+            <ConfirmDialog
+              // Its name in the words below, marked private, never in the title (which is the dialog's name too).
+              title="Remove this person from the chat?"
+              confirmLabel="Remove"
+              onCancel={() => setRemoving(null)}
+              onConfirm={() => {
+                const who = removing;
+                setRemoving(null);
+                // Unpaired, whatever kind of device, and cut off from the chat and Drashti at once (Main).
+                void chatAction((chat) => chat.remove(who.id));
+              }}
+              testId="chat-remove-confirm"
+            >
+              {/* The dialog lies over the window, outside the section's box: its name is marked on its own. */}
+              <p>
+                <span {...PRIVATE} className="font-medium text-fg">
+                  {removing.name}
+                </span>
+                ’s phone is cut off at once, from the chat and from anything else it does with Drashti. To
+                come back, it is paired again.
+              </p>
+            </ConfirmDialog>
+          )}
+        </>
       )}
-      {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
-      <Composer draft={draft} onDraft={onDraft} />
-      {error !== null && (
-        <p role="alert" className="text-xs text-warning-fg" data-testid="chat-problem">
-          {error}
-        </p>
-      )}
-      <ChatPeople
-        members={view.members}
-        open={peopleOpen}
-        onOpen={onPeopleOpen}
-        canRemove={!operateOnly}
-        onRemove={(m) => {
-          clearChatError();
-          setRemoving(m);
-        }}
-      />
-      {removing && (
-        <ConfirmDialog
-          title={`Remove “${removing.name}” from the chat?`}
-          confirmLabel="Remove"
-          onCancel={() => setRemoving(null)}
-          onConfirm={() => {
-            const who = removing;
-            setRemoving(null);
-            // Unpaired, whatever kind of device it is, and cut off from the chat and Drashti at once (the main process).
-            void chatAction((chat) => chat.remove(who.id));
-          }}
-          testId="chat-remove-confirm"
-        >
-          <p>
-            Their phone is cut off at once, from the chat and from anything else it does with Drashti. To come
-            back, it is paired again.
-          </p>
-        </ConfirmDialog>
-      )}
-    </>
+    </div>
   );
 }
 
@@ -309,7 +312,6 @@ export function ChatContents({ operateOnly }: { operateOnly: boolean }) {
   const error = useChat((s) => s.error);
   const draft = useChat((s) => s.draft);
   const peopleOpen = useChat((s) => s.peopleOpen);
-  const held = usePictureHold((s) => s.held);
   const networkOn = useNetwork((s) => s.status?.state === 'listening');
   useEffect(() => {
     markChatSeen();
@@ -317,7 +319,6 @@ export function ChatContents({ operateOnly }: { operateOnly: boolean }) {
   return (
     <ChatContentsView
       view={view}
-      held={held}
       operateOnly={operateOnly}
       networkOn={networkOn}
       error={error}
