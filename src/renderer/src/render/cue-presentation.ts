@@ -30,6 +30,11 @@ export function cuePresentation(
   let callback = 0;
   // The decoder's first frame is in, but the compositor does not hold it yet: it is read as it is presented.
   let readWhenPresented = false;
+  // Its trim seek landed and its frame was read, but another frame is still the one presented, with nothing new
+  // (a22-cue-1125-175229-57052, CI's Windows hall: the file's start presented during the seek, then nothing for 20 s):
+  // after STALE_FRAME_MS it seeks once more to the same frame, at most once a cue.
+  let staleWait: ReturnType<typeof setTimeout> | null = null;
+  let reseeked = false;
   /**
    * The decoder's actual PTS of the frame the element holds now: a trim can lie between source frames, so no frame rate
    * is assumed. 'later' where Chromium has no frame for the element yet (InvalidStateError: on a loaded computer its
@@ -58,7 +63,35 @@ export function cuePresentation(
   const release = () => {
     if (stopped || finished || video.seeking || !matches()) return;
     finished = true;
+    if (staleWait) clearTimeout(staleWait);
     ready();
+  };
+  /** The decoder's word: its frame read now, or as it is presented. */
+  const decodedNow = () => {
+    const result = read();
+    if (result === 'read') release();
+    else if (result === 'later') readWhenPresented = true;
+    else fail();
+  };
+  const onReseeked = () => {
+    video.removeEventListener('seeked', onReseeked);
+    if (!stopped && !finished) decodedNow();
+  };
+  /** Waits again from now, while the frame presented is not the one read. */
+  const waitIfStale = () => {
+    if (staleWait) clearTimeout(staleWait);
+    staleWait = null;
+    if (reseeked || stopped || finished || decoded === null || presented === null || matches()) return;
+    // eslint-disable-next-line no-restricted-syntax -- decides no frame: only when a held cue asks again for the frame it holds
+    staleWait = setTimeout(() => {
+      staleWait = null;
+      // A seek landing now (playback's own) brings its own frame; a video playing on (after its Go) is not held.
+      if (stopped || finished || video.seeking || matches()) return;
+      if (!video.paused && video.playbackRate !== 0) return;
+      reseeked = true;
+      video.addEventListener('seeked', onReseeked);
+      video.currentTime += RESEEK_STEP_S;
+    }, STALE_FRAME_MS);
   };
   const onPresented: VideoFrameRequestCallback = (_now, frame) => {
     callback = 0;
@@ -79,20 +112,23 @@ export function cuePresentation(
       return;
     }
     release();
-    if (!finished) callback = video.requestVideoFrameCallback(onPresented);
+    if (!finished) {
+      callback = video.requestVideoFrameCallback(onPresented);
+      waitIfStale();
+    }
   };
   callback = video.requestVideoFrameCallback(onPresented);
   const stop = () => {
     stopped = true;
     if (callback) video.cancelVideoFrameCallback(callback);
+    if (staleWait) clearTimeout(staleWait);
+    video.removeEventListener('seeked', onReseeked);
   };
   return {
     decoded: () => {
       if (stopped || finished) return;
-      const result = read();
-      if (result === 'read') release();
-      else if (result === 'later') readWhenPresented = true;
-      else fail();
+      decodedNow();
+      waitIfStale();
     },
     stop,
   };

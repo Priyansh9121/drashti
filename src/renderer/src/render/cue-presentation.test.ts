@@ -7,6 +7,9 @@ class Video {
   seeks: number[] = [];
   decodedTimestamp = 1_000_000;
   seeking = false;
+  /** Held: paused, or playing at rate 0 (render/playback.ts's armed Go lead). */
+  paused = true;
+  playbackRate = 1;
   /** Chromium's compositor has this element's frame (a VideoFrame can be read from it): only once one is presented. */
   framed = true;
   /** A refusal that is not about the moment (a picture that may not be read): its DOMException name. */
@@ -219,7 +222,7 @@ describe('a private Cue first frame', () => {
     expect(earlyReady).toHaveBeenCalledTimes(1);
     earlyGate.stop();
   });
-  it('seeks no held video whose trimmed frame comes, whose seek still lands, whose frame was not read, or whose cue was cancelled', () => {
+  it('seeks no video whose trimmed frame comes, whose seek still lands, whose frame was not read, that plays on, or whose cue was cancelled', () => {
     vi.useFakeTimers();
     // The trimmed frame comes (as on every page, every other try).
     const usual = new Video(),
@@ -249,6 +252,15 @@ describe('a private Cue first frame', () => {
     vi.advanceTimersByTime(60_000);
     expect(unread.seeks).toEqual([]);
     unreadGate.stop();
+    // Playing on (after its Go): not held.
+    const playing = new Video();
+    const playingGate = cuePresentation(playing.element(), vi.fn());
+    playing.present(0);
+    playingGate.decoded();
+    playing.paused = false;
+    vi.advanceTimersByTime(60_000);
+    expect(playing.seeks).toEqual([]);
+    playingGate.stop();
     // Cancelled.
     const cancelled = new Video();
     const cancelledGate = cuePresentation(cancelled.element(), vi.fn());
