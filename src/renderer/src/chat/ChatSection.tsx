@@ -8,9 +8,10 @@ import { ChevronDown, ChevronRight, MessagesSquare, Send, Trash2 } from '../ui/i
 import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { useNetwork } from '../network/network-store';
+import { useNow } from '../render/useNow';
 import { useOperateOnly } from '../simple/simple-features-store';
 import { ChatList } from './ChatList';
-import type { ChatMember, ChatOperatorView } from '../../../shared/chat';
+import type { ChatInvite, ChatMember, ChatOperatorView } from '../../../shared/chat';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
 import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import {
@@ -74,7 +75,8 @@ export function ChatPeople({
   members: readonly ChatMember[];
   open: boolean;
   onOpen: (open: boolean) => void;
-  canRemove: boolean;
+  /** Whether this window may remove that person (Simple Mode: a chat phone only). */
+  canRemove: (member: ChatMember) => boolean;
   onRemove: (member: ChatMember) => void;
 }) {
   const list = useRef<HTMLUListElement>(null);
@@ -123,7 +125,7 @@ export function ChatPeople({
                     {KIND_WORDS[m.kind]} · {m.connected ? 'Connected' : 'Not connected'}
                   </span>
                 </span>
-                {canRemove && (
+                {canRemove(m) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -156,6 +158,33 @@ export function ChatEmpty({ operateOnly }: { operateOnly: boolean }) {
         ? 'Everyone whose phone is paired with Drashti by QR code is in the chat.'
         : 'Everyone whose phone is paired with Drashti by QR code is in the chat. For more people, show the Chat QR code in Phones.'}
     </EmptyState>
+  );
+}
+
+/**
+ * While the Chat QR lets phones join (shown from Phones, Pro Mode), the section says so, with Stop, in either mode
+ * (core's S5: Simple Mode may stop it). A line that is always there, so nothing under it moves as the code ends.
+ */
+function InviteLine({ invite }: { invite: ChatInvite | null }) {
+  const now = useNow(1000);
+  const left = invite ? Math.max(0, Math.ceil((invite.expiresAt - now) / 1000)) : 0;
+  const time = `${String(Math.floor(left / 60))}:${String(left % 60).padStart(2, '0')}`;
+  return (
+    <div className="flex h-7 items-center gap-2 text-xs text-muted" data-testid="chat-invite-slot">
+      {left > 0 && (
+        <>
+          <span className="min-w-0 flex-1">{`Phones can join by the Chat QR code for ${time} more.`}</span>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={() => void chatAction((chat) => chat.endInvite())}
+            data-testid="chat-section-invite-end"
+          >
+            Stop the Chat QR code
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -312,6 +341,7 @@ export function ChatContentsView({
             {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
           </div>
           <Composer draft={draft} onDraft={onDraft} />
+          <InviteLine invite={view.invite} />
           {/* The last refusal, in a line that is always there (so nothing under it moves when one comes). */}
           <p role="alert" className="min-h-4 text-xs text-warning-fg" data-testid="chat-problem">
             {error}
@@ -320,7 +350,8 @@ export function ChatContentsView({
             members={view.members}
             open={peopleOpen}
             onOpen={onPeopleOpen}
-            canRemove={!operateOnly}
+            // Simple Mode removes a chat phone, never a Remote or an Announcements device (core's S5: Main bounds it).
+            canRemove={(m) => !operateOnly || m.kind === 'chat'}
             onRemove={(m) => {
               clearChatError();
               setRemoving(m);
