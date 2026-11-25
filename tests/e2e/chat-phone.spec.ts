@@ -67,11 +67,20 @@ const COUNT_ALERTS = () => {
     audio.AudioContext = StandInContext as unknown as typeof AudioContext;
     audio.__chatAudioStandIn = true;
   }
-  const Sound = audio.AudioContext;
-  const make = Object.getOwnPropertyDescriptor(Sound.prototype, 'createOscillator')?.value as
-    ((this: AudioContext) => OscillatorNode) | undefined;
-  if (make)
-    Object.defineProperty(Sound.prototype, 'createOscillator', {
+  // Counted where the engine defines it: a real engine's createOscillator is BaseAudioContext's (Web Audio's own
+  // interfaces), not AudioContext's own, so the prototype chain is walked (CI Mac run of a22-chat-1125-192312-10846: a
+  // patch on AudioContext.prototype alone counted nothing with WebKit's real Web Audio).
+  let owner: object | null = audio.AudioContext.prototype;
+  while (owner && !Object.getOwnPropertyDescriptor(owner, 'createOscillator'))
+    owner = Object.getPrototypeOf(owner) as object | null;
+  const make = owner
+    ? (Object.getOwnPropertyDescriptor(owner, 'createOscillator')?.value as
+        ((this: AudioContext) => OscillatorNode) | undefined)
+    : undefined;
+  (window as unknown as { __chatSoundCounted?: boolean }).__chatSoundCounted =
+    owner !== null && make !== undefined;
+  if (owner && make)
+    Object.defineProperty(owner, 'createOscillator', {
       configurable: true,
       value: function (this: AudioContext) {
         const tone = make.call(this);
@@ -195,6 +204,13 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
       'function',
       'undefined',
     ]);
+    // Its sounds are counted, whichever Web Audio it has (a count that could not be set up would read 0 for ever).
+    expect(
+      await b.evaluate(
+        () => (window as unknown as { __chatSoundCounted?: boolean }).__chatSoundCounted ?? false,
+      ),
+      'the sounds are counted',
+    ).toBe(true);
     // Safari's own Web Audio where the engine has it (a Mac); elsewhere the counting stand-in above.
     if (process.platform === 'darwin')
       expect(
