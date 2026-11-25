@@ -127,3 +127,7 @@ export function statusWords(status: SabhaFlowStatus): string | null {
       return null;
   }
 }
+
+/* Red: the pages shown are not counted yet. */
+export const pagesShown = (flow: SabhaFlow): number => flow.pageCount;
+export const pagesCapped = (_flow: SabhaFlow): string | null => null;

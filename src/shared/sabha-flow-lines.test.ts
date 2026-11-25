@@ -8,6 +8,8 @@ import {
   nextText,
   nowNext,
   nowText,
+  pagesCapped,
+  pagesShown,
   textLang,
 } from './sabha-flow-lines';
 
@@ -140,5 +142,16 @@ describe('the language of a cell', () => {
     expect(textLang('કાર્યક્રમ', 'mixed')).toBe('gu');
     expect(textLang('कार्यक्रम', 'mixed')).toBe('hi');
     expect(textLang('10 min', 'mixed')).toBe('en');
+  });
+});
+
+describe('the pages shown (a22-review-flow round 2, M2: the panel and the phone the same)', () => {
+  it('are the pages Main drew: at most the first 20, said when there are more', () => {
+    expect(pagesShown(flow({ pageCount: 600 }))).toBe(20);
+    expect(pagesShown(flow({ pageCount: 20 }))).toBe(20);
+    expect(pagesShown(flow({ pageCount: 3 }))).toBe(3);
+    expect(pagesShown(flow({ pageCount: 0 }))).toBe(0);
+    expect(pagesCapped(flow({ pageCount: 600 }))).toBe('Only the first 20 pages are shown.');
+    expect(pagesCapped(flow({ pageCount: 20 }))).toBeNull();
   });
 });
