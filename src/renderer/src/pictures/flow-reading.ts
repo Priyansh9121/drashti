@@ -1,4 +1,4 @@
-import { UNREADABLE_READING, type SabhaFlowReading } from '../../../shared/sabha-flow';
+import type { SabhaFlowReading } from '../../../shared/sabha-flow';
 import { readSabhaFlow } from '../../../shared/sabha-flow-reader';
 import { flowRulesOf, flowTextsOf, type FlowOps, type FlowTextPage } from '../../../shared/sabha-flow-text';
 
@@ -44,14 +44,17 @@ export async function flowPageSafely(page: FlowPdfPage, ops: FlowOps): Promise<F
   }
 }
 
-/** The flow read from its pages' text layers: what the reader finds, or, should it fail, unreadable. */
+/**
+ * The flow read from its pages' text layers: what the reader finds, or null should it fail (the window then says so
+ * with `done`; Main logs why and shows the flow as unreadable, its pages shown).
+ */
 export function readFlowSafely(
   pages: readonly FlowTextPage[],
   read: (pages: readonly FlowTextPage[]) => SabhaFlowReading = readSabhaFlow,
-): SabhaFlowReading {
+): SabhaFlowReading | null {
   try {
     return read(pages);
   } catch {
-    return { ...UNREADABLE_READING };
+    return null;
   }
 }

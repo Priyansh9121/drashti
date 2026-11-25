@@ -162,11 +162,12 @@ async function draw(): Promise<void> {
     // A moment between pages: this window's process never holds on to the processor.
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+  // Sabha flow: read here, never in Main (which checks it); a reader that fails says so.
+  const flowReading = job.flowText ? readFlowSafely(flowPages) : undefined;
   await window.drashti.pictures.done({
     total: doc.numPages,
     failed,
-    // Sabha flow: read here, never in Main (which checks it).
-    ...(job.flowText ? { flowReading: readFlowSafely(flowPages) } : {}),
+    ...(flowReading ? { flowReading } : flowReading === null ? { flowReadCrashed: true } : {}),
   });
   await task.destroy();
 }

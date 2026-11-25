@@ -389,7 +389,7 @@ describe('Sabha flow store: Main never reads a PDF’s words (review M1)', () =>
     await store.choose(s.pdf('Placeholder third.pdf'));
     s.setDrawing({ pages: 1 });
     await store.choose(s.pdf('Placeholder fourth.pdf'));
-    const why = s.log.filter((line) => line.includes('unreadable'));
+    const why = s.log.filter((line) => line.includes('were not read'));
     expect(why).toEqual([
       'Sabha flow: its words were not read (the reader in the pictures window stopped with an error): shown as unreadable, its pages shown',
       'Sabha flow: its words were not read (the reading failed its check): shown as unreadable, its pages shown',
