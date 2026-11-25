@@ -10,8 +10,8 @@ import { EmptyState, Loading } from '../ui/States';
 import { useNetwork } from '../network/network-store';
 import { useOperateOnly } from '../simple/simple-features-store';
 import { ChatList } from './ChatList';
-import type { ChatMember, ChatOperatorView } from './chat-standin';
-import { OPERATOR_ID } from './chat-standin';
+import type { ChatMember, ChatOperatorView } from '../../../shared/chat';
+import { CHAT_OPERATOR_ID } from '../../../shared/chat';
 import { chatAction, clearChatError, connectChat, markChatSeen, useChat, useChatUnread } from './chat-store';
 import { chatRows, composerCheck, unreadWords } from './chat-view';
 
@@ -24,6 +24,9 @@ import { chatRows, composerCheck, unreadWords } from './chat-view';
  *
  * Simple Mode has it while Chat is chosen in Edit › Simple Mode Features… (off to begin with), reading and sending
  * only: Clear chat and removing a person stay Pro Mode's (OperateOnly), as the main process's lock keeps them.
+ *
+ * While Report a Problem takes this window's picture (the picture hold), the section draws none of the chat's words
+ * or names: what is open is kept (a message half typed too), only not drawn, with a line saying why.
  */
 
 const KIND_WORDS: Record<ChatMember['kind'], string> = {
@@ -180,7 +183,7 @@ function Messages({ view }: { view: ChatOperatorView }) {
   const list = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
   const [scrolls, setScrolls] = useState(false);
-  const rows = chatRows(view.messages, OPERATOR_ID);
+  const rows = chatRows(view.messages, CHAT_OPERATOR_ID);
   useLayoutEffect(() => {
     const el = list.current;
     if (!el) return;
@@ -208,7 +211,6 @@ function ChatBody({ operateOnly }: { operateOnly: boolean }) {
   const error = useChat((s) => s.error);
   const networkOn = useNetwork((s) => s.status?.state === 'listening');
   const [removing, setRemoving] = useState<ChatMember | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
   // Open, everything in it is seen: the count on the heading goes as it comes.
   useEffect(() => {
     markChatSeen();
@@ -225,16 +227,16 @@ function ChatBody({ operateOnly }: { operateOnly: boolean }) {
       )}
       {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
       <Composer />
-      {(error ?? problem) !== null && (
+      {error !== null && (
         <p role="alert" className="text-xs text-warning-fg" data-testid="chat-problem">
-          {error ?? problem}
+          {error}
         </p>
       )}
       <ChatPeople
         members={view.members}
         canRemove={!operateOnly}
         onRemove={(m) => {
-          setProblem(null);
+          clearChatError();
           setRemoving(m);
         }}
       />
@@ -246,11 +248,8 @@ function ChatBody({ operateOnly }: { operateOnly: boolean }) {
           onConfirm={() => {
             const who = removing;
             setRemoving(null);
-            // The Phones panel's own Remove: the phone is unpaired, and cut off from the chat and Drashti at once.
-            void window.drashti.network.revokeDevice(who.id).then((r) => {
-              if (r.ok) useNetwork.setState({ status: r.status });
-              else setProblem(r.message);
-            });
+            // Unpaired, whatever kind of device it is, and cut off from the chat and Drashti at once (the main process).
+            void chatAction((chat) => chat.remove(who.id));
           }}
           testId="chat-remove-confirm"
         >
@@ -262,6 +261,11 @@ function ChatBody({ operateOnly }: { operateOnly: boolean }) {
       )}
     </>
   );
+}
+
+/** The section's open part. */
+export function ChatContents({ operateOnly }: { operateOnly: boolean }) {
+  return <ChatBody operateOnly={operateOnly} />;
 }
 
 /** The Chat section under LIVE (Simple Mode's too, while it is chosen). */
@@ -306,7 +310,7 @@ export function ChatSection() {
           )
         }
       >
-        <ChatBody operateOnly={operateOnly} />
+        <ChatContents operateOnly={operateOnly} />
       </Panel>
       {clearing && (
         <ConfirmDialog

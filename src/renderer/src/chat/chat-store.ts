@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { ChatOperatorView, ChatResult } from './chat-standin';
-import { OPERATOR_ID } from './chat-standin';
+import type { ChatOperatorView, ChatResult } from '../../../shared/chat';
+import { CHAT_OPERATOR_ID } from '../../../shared/chat';
+import type { DrashtiBridge } from '../../../shared/bridge';
 import { unreadCount } from './chat-view';
 
 /*
@@ -8,20 +9,6 @@ import { unreadCount } from './chat-view';
  * told of every change), the newest message the operator has seen (the section open), and the last refusal. The main
  * process keeps the chat, checks every request and says no in plain words; the window only shows.
  */
-
-/** The main process's chat requests, as the preload gives them (a22-chat-core). */
-interface ChatBridge {
-  view(): Promise<ChatOperatorView>;
-  onChanged(listener: (view: ChatOperatorView) => void): () => void;
-  send(text: string): Promise<ChatResult>;
-  clear(): Promise<ChatResult>;
-  showInvite(): Promise<ChatResult>;
-  cancelInvite(): Promise<ChatResult>;
-}
-
-// The stand-in's way to the bridge until a22-chat-core's preload lands (then window.drashti.chat, typed).
-const bridge = (): ChatBridge | null =>
-  (window.drashti as unknown as { chat?: ChatBridge }).chat ?? null;
 
 interface ChatWindow {
   view: ChatOperatorView | null;
@@ -42,16 +29,14 @@ let connected = false;
  */
 export function connectChat(): void {
   if (connected) return;
-  const chat = bridge();
-  if (!chat) return;
   connected = true;
   // A change told before the first read is answered is newer than that answer.
   let told = false;
-  chat.onChanged((view) => {
+  window.drashti.chat.onChanged((view) => {
     told = true;
     useChat.setState({ view });
   });
-  void chat.view().then(
+  void window.drashti.chat.view().then(
     (view) => {
       useChat.setState((s) => ({ view: told ? s.view : view, seen: s.seen ?? newest(view) }));
     },
@@ -67,13 +52,13 @@ export function markChatSeen(): void {
 
 /** How many came from others since the operator last had the section open. */
 export const useChatUnread = (): number =>
-  useChat((s) => (s.view ? unreadCount(s.view.messages, s.seen, OPERATOR_ID) : 0));
+  useChat((s) => (s.view ? unreadCount(s.view.messages, s.seen, CHAT_OPERATOR_ID) : 0));
 
-/** Run a request; its view, or its refusal shown in the section. */
-export async function chatAction(run: (chat: ChatBridge) => Promise<ChatResult>): Promise<ChatResult> {
-  const chat = bridge();
-  if (!chat) return { ok: false, message: 'The chat is not ready yet.' };
-  const result = await run(chat);
+/** Run a request; its view, or its refusal shown where it was asked (`error`). */
+export async function chatAction(
+  run: (chat: DrashtiBridge['chat']) => Promise<ChatResult>,
+): Promise<ChatResult> {
+  const result = await run(window.drashti.chat);
   useChat.setState(result.ok ? { view: result.view, error: null } : { error: result.message });
   return result;
 }

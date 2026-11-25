@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage } from './chat-standin';
-import { CHAT_LINES_MAX, CHAT_TEXT_MAX, OPERATOR_ID } from './chat-standin';
+import type { ChatMessage } from '../../../shared/chat';
+import { CHAT_LINES_MAX, CHAT_OPERATOR_ID as OPERATOR_ID, CHAT_TEXT_MAX } from '../../../shared/chat';
 import { chatRows, composerCheck, unreadCount, unreadWords } from './chat-view';
 
 /*

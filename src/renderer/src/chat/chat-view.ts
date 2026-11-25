@@ -1,5 +1,5 @@
-import type { ChatMessage } from './chat-standin';
-import { CHAT_LINES_MAX, CHAT_TEXT_MAX } from './chat-standin';
+import type { ChatMessage } from '../../../shared/chat';
+import { CHAT_LINES_MAX, CHAT_TEXT_MAX, cleanChatText } from '../../../shared/chat';
 
 /*
  * The operator's Chat section's words and counts (QA23-CHAT-1), apart from the window: the day's messages as a
@@ -66,17 +66,6 @@ export function unreadWords(count: number): { badge: string; words: string } | n
   };
 }
 
-/**
- * A message's words as Main keeps them, near enough to count them before Send: the spaces at the ends of each line and
- * of the whole trimmed. (Main cleans them fully and checks again: its limits are the ones that count.)
- */
-const kept = (text: string): string =>
-  text
-    .split(/\r\n?|\n/u)
-    .map((line) => line.trim())
-    .join('\n')
-    .trim();
-
 /** How near the limit the box starts saying how many are left. */
 const NEAR = 50;
 
@@ -84,11 +73,13 @@ const characters = (n: number) => `${String(n)} ${n === 1 ? 'character' : 'chara
 
 /**
  * Whether the text box's words can be sent, and the line under it: how many are left near the limit, or how many too
- * many past it (the words stay in the box, whole, for the operator to shorten). Counted as Main counts them: in UTF-16
- * units, as a text box's maxLength does (an emoji is two).
+ * many past it (the words stay in the box, whole, for the operator to shorten). Counted as Main counts them, once
+ * cleaned as Main cleans them (shared/chat.ts cleanChatText: the ends of each line trimmed, control characters out):
+ * in UTF-16 units, as a text box's maxLength does (an emoji is two). Main checks again: its limits are the ones that
+ * count.
  */
 export function composerCheck(text: string): { canSend: boolean; line: string | null } {
-  const words = kept(text);
+  const words = cleanChatText(text);
   if (words === '') return { canSend: false, line: null };
   if (words.split('\n').length > CHAT_LINES_MAX)
     return { canSend: false, line: `${String(CHAT_LINES_MAX)} lines at most` };
