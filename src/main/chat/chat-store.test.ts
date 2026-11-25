@@ -143,7 +143,7 @@ describe('the chat’s store', () => {
     expect(store.addDevice('c'.repeat(64)).name).toBe('Chat 1');
   });
 
-  it('is kept in its file, and read back by a new start the same day', () => {
+  it('is kept in its file, and read back by a new start the same day', async () => {
     const { make, flushWrites, file } = setup();
     const store = make();
     store.load();
@@ -153,6 +153,7 @@ describe('the chat’s store', () => {
     // Written after a moment, never on each message at once.
     expect(existsSync(file)).toBe(false);
     flushWrites();
+    await store.settled();
     expect(existsSync(file)).toBe(true);
     const again = make();
     again.load();
@@ -160,6 +161,21 @@ describe('the chat’s store', () => {
     expect(again.device(phone.id)).toEqual(store.device(phone.id));
     // The words are kept as typed, as JSON: never HTML-encoded.
     expect(readFileSync(file, 'utf8')).toContain('Placeholder <b>one</b> 👍🏽');
+  });
+
+  it('S1: writes its file off Main’s thread: under way after a change, never done in it', async () => {
+    const { make, flushWrites, file } = setup();
+    const store = make();
+    store.load();
+    store.add(person(1), 'Placeholder one');
+    flushWrites();
+    expect(existsSync(file)).toBe(false);
+    // A change while that write is under way is written after it, never lost under it.
+    store.add(person(1), 'Placeholder two');
+    flushWrites();
+    await store.settled();
+    const kept = JSON.parse(readFileSync(file, 'utf8')) as { messages: { text: string }[] };
+    expect(kept.messages.map((m) => m.text)).toEqual(['Placeholder one', 'Placeholder two']);
   });
 
   it('flush writes what is waiting at once (Drashti quitting)', () => {
@@ -171,7 +187,7 @@ describe('the chat’s store', () => {
     expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ day: '2026-11-25' });
   });
 
-  it('is emptied at the day’s change: messages, people and the chat’s phones, in memory and its file', () => {
+  it('is emptied at the day’s change: messages, people and the chat’s phones, in memory and its file', async () => {
     const { make, clock, flushWrites, file } = setup(Date.UTC(2026, 10, 25, 23, 59));
     const store = make();
     store.load();
@@ -179,6 +195,7 @@ describe('the chat’s store', () => {
     store.addDevice('a'.repeat(64));
     store.add(person(1), 'Placeholder');
     flushWrites();
+    await store.settled();
     expect(store.newDay()).toBe(false);
     clock.t += 2 * 60 * 1000;
     expect(store.newDay()).toBe(true);
@@ -190,16 +207,18 @@ describe('the chat’s store', () => {
     expect(store.devices()).toEqual([]);
     expect(store.newDay()).toBe(false);
     flushWrites();
+    await store.settled();
     expect(readFileSync(file, 'utf8')).not.toContain('Placeholder');
   });
 
-  it('a file from an earlier day is emptied at the start, not read', () => {
+  it('a file from an earlier day is emptied at the start, not read', async () => {
     const { make, clock, flushWrites, file } = setup();
     const store = make();
     store.load();
     store.add(person(1), 'Placeholder from yesterday');
     store.addDevice('a'.repeat(64));
     flushWrites();
+    await store.settled();
     clock.t += DAY_MS;
     const next = make();
     next.load();
@@ -228,7 +247,7 @@ describe('the chat’s store', () => {
     expect(logs.join('\n')).not.toContain('secret');
   });
 
-  it('never writes a name or a word to the log, whatever happens', () => {
+  it('never writes a name or a word to the log, whatever happens', async () => {
     const { make, flushWrites, logs, dir } = setup();
     const store = make();
     store.load();
@@ -238,6 +257,7 @@ describe('the chat’s store', () => {
     rmSync(join(dir, 'chat'), { recursive: true, force: true });
     writeFileSync(join(dir, 'chat'), 'not a folder');
     flushWrites();
+    await store.settled();
     store.flush();
     expect(logs.length).toBeGreaterThan(0);
     for (const line of logs) {

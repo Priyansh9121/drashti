@@ -5,7 +5,7 @@ import { basename } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { STOPPED_REFUSAL } from '../../shared/access';
-import { CHAT_API, CHAT_DEVICE_KINDS, type ChatEvent } from '../../shared/chat';
+import { CHAT_API, CHAT_DEVICE_KINDS, CHAT_FEEDS_MAX, type ChatEvent } from '../../shared/chat';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
@@ -88,6 +88,8 @@ export interface ServerOptions {
   refuseLoopback?: boolean;
   /** Tests: fewer connections at once than SOCKET_LIMITS. */
   sockets?: { total: number; perAddress: number };
+  /** Tests: fewer feeds that follow only the chat than CHAT_FEEDS_MAX. */
+  chatFeeds?: number;
   /** Files phones add (Session 54): the uploads folder, inside the media folder. None are taken without it. */
   uploads?: { dir: string; mediaDir: string };
 }
@@ -296,7 +298,7 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
   // The chat (alpha.23, shared/chat.ts): read, a name given, a message written; the main process checks the rest.
-  route('GET', CHAT_API.read, 'chat'),
+  route('GET', CHAT_API.read, 'chat', (q) => (q['after'] === undefined ? {} : { after: q['after'] })),
   route('POST', CHAT_API.name, 'chat.name', (b) => b),
   route('POST', CHAT_API.send, 'chat.send', (b) => b),
   // Session 54: playlists shared with phones, and files a phone adds (upload-routes.ts).
@@ -1123,6 +1125,19 @@ export class NetworkServer {
       if (device.poster || (!show && !chat)) {
         this.bye(client, 'not-allowed');
         return;
+      }
+      // A feed that follows only the chat (review S6): one a device (a newer page takes over from an older one), and
+      // at most so many, so the show's Remote and Stage devices always keep their seats.
+      if (!show) {
+        const others = [...this.clients].filter((c) => c !== client && c.device && !c.show);
+        for (const older of others.filter((c) => c.device?.id === device.id)) this.bye(older, 'replaced');
+        if (
+          others.filter((c) => c.device && c.device.id !== device.id).length >=
+          (this.options?.chatFeeds ?? CHAT_FEEDS_MAX)
+        ) {
+          this.bye(client, 'busy');
+          return;
+        }
       }
       clearTimeout(hello);
       client.device = device;
