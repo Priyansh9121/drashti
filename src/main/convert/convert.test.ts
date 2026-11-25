@@ -671,7 +671,17 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
       source,
     ]);
     // An import's file Drashti cannot play as it is, to convert.
-    make(['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25', '-t', '2', '-c:v', 'mpeg4', join(mediaDir, 'in', 'clip.avi')]);
+    make([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=320x180:r=25',
+      '-t',
+      '2',
+      '-c:v',
+      'mpeg4',
+      join(mediaDir, 'in', 'clip.avi'),
+    ]);
     db = openDatabase(join(dir, 'drashti.sqlite'));
     db.prepare(
       "INSERT INTO media (id, kind, name, path, playable) VALUES ('m-avi', 'video', 'Placeholder clip.avi', 'in/clip.avi', 0)",

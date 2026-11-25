@@ -274,7 +274,11 @@ export interface CopyOptions {
    * and move it to the front, rewriting the whole part-file just as a show starts; a22-review-fadecopies S9).
    */
   stopAtOnce?: boolean;
-  /** RED STUB (a22-review-fadecopies R2-M1 a): no effect yet. */
+  /**
+   * Why it waits besides the show, the stream and a recording, or null (a page copy: while a cue is armed, since every
+   * page warms its decoder for it; a22-review-fadecopies R2-M1 a). Read as it would start and whenever activity
+   * changes: one running stops then, and starts again from the beginning once it is null.
+   */
   waitWhile?: () => string | null;
   /** Bounded artifacts reserve their actual upper bound, rather than a whole source-sized video. */
   estimatedBytes?: number;
@@ -741,7 +745,8 @@ export class ConvertService {
   }
 
   private pauseForActivity(running: Running | RunningFile, waitForShow: boolean | 'playing'): Stop | null {
-    if (!running.stop && this.waitFor(waitForShow) !== null) {
+    const own = 'copy' in running.job ? (running.job.copy?.waitWhile?.() ?? null) : null;
+    if (!running.stop && (this.waitFor(waitForShow) !== null || own !== null)) {
       running.stop = 'wait';
       if ('preparing' in running) running.preparing?.abort();
       if ('preparation' in running) running.preparation?.abort();
@@ -766,6 +771,15 @@ export class ConvertService {
         file.stop = 'space';
         file.child.kill();
       }
+      // An import's conversion ready to run goes before a page copy, as its files do (a22-review-fadecopies R2-M1 b).
+      const now = Date.now();
+      if (
+        !file.stop &&
+        !busy &&
+        file.job.copy?.kind === 'page-copy' &&
+        this.jobs.some((j) => j.state === 'waiting' && (this.heldUntil.get(j.id) ?? 0) <= now)
+      )
+        this.stopToGiveWay(file);
       return;
     }
     const running = this.running;
@@ -1163,9 +1177,14 @@ export class ConvertService {
     const running = this.runningFile;
     if (!running || running.stop || job.copy?.background || running.job.copy?.kind !== 'page-copy') return;
     if (this.waitFor(job.waitForShow) !== null) return;
+    this.stopToGiveWay(running);
+  }
+
+  /** A page copy stopped to give way: it goes back to the queue, and starts again from the beginning after. */
+  private stopToGiveWay(running: RunningFile): void {
     running.stop = 'wait';
     running.preparation?.abort();
-    if (running.job.copy.strictPriority || running.job.copy.stopAtOnce) running.child?.kill('SIGKILL');
+    if (running.job.copy?.strictPriority || running.job.copy?.stopAtOnce) running.child?.kill('SIGKILL');
     else running.child?.kill();
   }
 
@@ -1189,7 +1208,7 @@ export class ConvertService {
   private nextFile(): void {
     let ready = -1;
     for (const [at, job] of this.files.entries()) {
-      const note = this.waitFor(job.waitForShow);
+      const note = this.waitFor(job.waitForShow) ?? job.copy?.waitWhile?.() ?? null;
       if (note === null) {
         if (ready < 0 || (this.files[ready]?.copy?.background && !job.copy?.background)) ready = at;
       } else if (note !== job.note) {
