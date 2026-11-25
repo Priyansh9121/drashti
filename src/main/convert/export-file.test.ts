@@ -55,4 +55,51 @@ describe('Export… of a finished video (alpha.22)', () => {
       message: 'That video is no longer in Media to export.',
     });
   });
+
+  it('keeps the file’s own type: its extension is added when the name chosen does not end with it (the save-trim review nit)', async () => {
+    // The save dialog has no filters, so a name typed without ".mp4" saved a file without an extension.
+    const source = join(dir, 'abc.mp4');
+    await writeFile(source, 'placeholder trimmed bytes');
+    const out = join(dir, 'Downloads');
+    await mkdir(out);
+    const offered: string[] = [];
+    let typed = 'Placeholder typed';
+    const deps = {
+      video: (id: string) => (id === 'cut' ? { path: source, name: 'Placeholder renamed' } : null),
+      pickDest: (name: string) => {
+        offered.push(name);
+        return Promise.resolve(join(out, typed));
+      },
+    };
+    // A video renamed in Media without its extension is offered with it.
+    expect(await exportMediaFile(deps, 'cut')).toEqual({
+      ok: true,
+      path: join(out, 'Placeholder typed.mp4'),
+    });
+    expect(offered).toEqual(['Placeholder renamed.mp4']);
+    expect(await readFile(join(out, 'Placeholder typed.mp4'), 'utf8')).toBe('placeholder trimmed bytes');
+    // A dot in the name is not its type.
+    typed = 'Placeholder talk 1.5';
+    expect(await exportMediaFile(deps, 'cut')).toEqual({
+      ok: true,
+      path: join(out, 'Placeholder talk 1.5.mp4'),
+    });
+    // Its own extension, in any case, is kept as typed; another one has the file's own added.
+    typed = 'Placeholder upper.MP4';
+    expect(await exportMediaFile(deps, 'cut')).toEqual({
+      ok: true,
+      path: join(out, 'Placeholder upper.MP4'),
+    });
+    typed = 'Placeholder other.mov';
+    expect(await exportMediaFile(deps, 'cut')).toEqual({
+      ok: true,
+      path: join(out, 'Placeholder other.mov.mp4'),
+    });
+    // A free name beside one already there, as before.
+    typed = 'Placeholder typed';
+    expect(await exportMediaFile(deps, 'cut')).toEqual({
+      ok: true,
+      path: join(out, 'Placeholder typed (2).mp4'),
+    });
+  });
 });

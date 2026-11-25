@@ -274,6 +274,7 @@ import { TrimSaves } from './convert/trim-saves';
 import { rowTrimRequestSchema, saveRequestSchema, trimSavedNotice } from '../shared/trim';
 import { TrimmedVideos } from './db/trimmed';
 import { PlaylistTrims } from './convert/playlist-trims';
+import { conversionsLookAt, SaveWake } from './convert/save-wake';
 import { TRIM_RECORDS_FILE, TrimRecords } from './convert/trim-records';
 import { queueTrimCopy, readTrimInfo } from './convert/trim-copy';
 import { exportMediaFile } from './convert/export-file';
@@ -525,7 +526,7 @@ import {
   parseCaptionTiming,
 } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
-import { saveWaitsFor } from '../shared/save-waits';
+import { saveWaitEndsAt, saveWaitsFor } from '../shared/save-waits';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { OscService } from './osc/service';
@@ -5462,11 +5463,17 @@ function start(): void {
   // What holds a save the operator asked for (alpha.22, the owner's "Trim on a row"; shared/save-waits.ts): a row's
   // Trim, Edit Video's Save and Export clip… wait only while a video or a sound plays, the stream is on air (the tests'
   // hook too) or a recording goes on, never for a still slide, a picture or the Wallpaper up; in the operator's words.
+  // A video or a sound that does not go round no longer holds them once it has played to its end (alpha.23), by the
+  // engine's clock (Date.now, as the engine's own).
   const saveWaits = (): string | null =>
-    saveWaitsFor(engine.current, {
-      onAir: testOnAir || streaming.wanted().live,
-      recording: streaming.wanted().recording,
-    });
+    saveWaitsFor(
+      engine.current,
+      {
+        onAir: testOnAir || streaming.wanted().live,
+        recording: streaming.wanted().recording,
+      },
+      Date.now(),
+    );
   const saveIdle = () => saveWaits() === null;
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({
@@ -5632,7 +5639,7 @@ function start(): void {
   });
   stops.add('display activity', offDisplayActivity);
   const offConversionActivity = engine.onChange((state) => {
-    if (!nothingUp(state.layers)) conversions.activityChanged();
+    if (conversionsLookAt(state)) conversions.activityChanged();
   });
   stops.add('conversions', () => {
     conversionActivityChanged = undefined;
@@ -5990,12 +5997,24 @@ function start(): void {
     trimCleanup.activityChanged();
   };
   testTrimActivityChanged = trimActivityChanged;
+  // A video or a sound up that does not go round stops holding a save at its end point, nothing changing on LIVE when
+  // its last picture stays up (alpha.23): the row's cuts look again then (save-wake.ts).
+  const saveWake = new SaveWake({
+    endsAt: () => saveWaitEndsAt(engine.current, Date.now()),
+    now: Date.now,
+    wake: () => {
+      playlistTrims.activityChanged();
+    },
+  });
+  saveWake.changed();
   const offTrimActivity = engine.onChange(() => {
     playlistTrims.activityChanged();
     trimCleanup.activityChanged();
+    saveWake.changed();
   });
   stops.add('playlist trims', () => {
     offTrimActivity();
+    saveWake.close();
     trimActivityChanged = undefined;
     testTrimActivityChanged = undefined;
     trimCleanup.close();

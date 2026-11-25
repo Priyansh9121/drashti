@@ -238,6 +238,30 @@ describe('trimming a playlist video', () => {
     expect(x.statusChanged).toHaveBeenLastCalledWith({});
   });
 
+  it('tells its row how far the cut is each time the percent it shows changes (the save-trim review nit)', async () => {
+    // It was told at each whole percent down (floor) but shown rounded: 0.6% showed 0% until 1% was reached.
+    const x = await setup();
+    expect(await x.service.apply(x.itemId, request)).toEqual({ ok: true });
+    const input = x.queue.mock.calls[0]?.[0];
+    if (!input) throw new Error('The cut was not queued.');
+    const shown = () => trimStatusWords(x.service.statuses()[x.itemId]);
+    input.progress?.(0.004);
+    expect(x.statusChanged).toHaveBeenLastCalledWith({ [x.itemId]: { note: null, progress: 0.004 } });
+    expect(shown()).toBe('Saving the trimmed video: 0%');
+    x.statusChanged.mockClear();
+    input.progress?.(0.006);
+    expect(x.statusChanged).toHaveBeenLastCalledWith({ [x.itemId]: { note: null, progress: 0.006 } });
+    expect(shown()).toBe('Saving the trimmed video: 1%');
+    x.statusChanged.mockClear();
+    // The same percent shown: not told again.
+    input.progress?.(0.009);
+    input.progress?.(0.0149);
+    expect(x.statusChanged).not.toHaveBeenCalled();
+    input.progress?.(0.015);
+    expect(x.statusChanged).toHaveBeenCalledOnce();
+    expect(shown()).toBe('Saving the trimmed video: 2%');
+  });
+
   it('offers Reset for old file playback points and clears them only for that row', async () => {
     const x = await setup();
     x.media.setMarkers('original', request.points);

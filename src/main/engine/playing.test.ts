@@ -15,6 +15,7 @@ import type { MediaElement, RenderSlide } from '../../shared/model';
 import { simpleModeRefuses } from '../../shared/mode';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { savedFrom, toRestore } from '../recovery/live-state';
+import { videoFilesFor } from './playing';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
@@ -795,5 +796,35 @@ describe('automatic imports keep the points of a file already playing', () => {
     expect(background(restored.engine)).toMatchObject({ clip: newClip, marks: newMarks });
     expect(restored.engine.current.layers.pip?.clips).toEqual({ clipped: newClip });
     expect(restored.engine.current.videoFiles?.['clipped']?.marks).toEqual(newMarks);
+  });
+});
+
+describe('the lengths a save waits by (a22-review-trimsave SHOULD-3)', () => {
+  it('names a deck’s transition sound beside the slide’s videos and sounds, with its length from Media', () => {
+    const state = {
+      layers: {
+        slide: {
+          presentationId: 'placeholder-presentation',
+          slideIndex: 0,
+          shownAt: 1000,
+          notes: '',
+          slide: {
+            id: 'placeholder-deck-slide',
+            elements: [],
+            deck: {
+              steps: [],
+              media: [],
+              transition: { name: 'push', durationMs: 500, soundId: 'placeholder-chime' },
+            },
+          },
+        },
+        pip: null,
+      },
+    } as unknown as Parameters<typeof videoFilesFor>[0];
+    const files = videoFilesFor(state, {
+      lengthOf: (id) => (id === 'placeholder-chime' ? 2000 : null),
+      marksOf: () => undefined,
+    });
+    expect(files).toEqual({ 'placeholder-chime': { durationMs: 2000 } });
   });
 });
