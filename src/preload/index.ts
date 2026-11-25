@@ -530,7 +530,10 @@ const bridge: DrashtiBridge = {
     setLook: (mediaId, look) => invoke(IPC.media.setLook, mediaId, look),
     keepLiveZoom: () => invoke(IPC.media.keepLiveZoom),
     photo: (mediaId) => invoke(IPC.media.photo, mediaId),
-    savePicture: (mediaId, name) => invoke(IPC.media.savePicture, mediaId, name),
+    savePicture: (mediaId, name, onSlide) =>
+      onSlide === undefined
+        ? invoke(IPC.media.savePicture, mediaId, name)
+        : invoke(IPC.media.savePicture, mediaId, name, onSlide),
     onLooks: (listener) => on(IPC.media.looksChanged, listener),
     usage: (mediaIds) => invoke(IPC.media.usage, mediaIds),
     remove: (mediaIds) => invoke(IPC.media.remove, mediaIds),

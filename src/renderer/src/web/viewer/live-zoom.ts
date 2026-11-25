@@ -2,6 +2,7 @@ import type { EngineState, MediaFit } from '../../../../shared/engine/state';
 import type { Rect, SlideElement } from '../../../../shared/model';
 import { backgroundShowing, framed, PLAIN, slideShowing, ZOOM } from '../../../../shared/picture-look';
 import { placeContent, type Size } from '../../../../shared/scaling';
+import type { ScalingMode } from '../../../../shared/screens';
 import type { View } from './zoom-math';
 
 /*
@@ -247,6 +248,21 @@ function intoFrame(
   return { x: ((turn.flipX ? -x : x) + sx * a) / (fw * a), y: ((turn.flipY ? -y : y) + sy) / fh };
 }
 
+/**
+ * A move across and down what is drawn, in its fractions, as the move of the picture in its frame's own widths and
+ * heights that the screens draw so (turned back and flipped back as its box is turned and flipped): LIVE's drag
+ * (operator/live-drag.ts).
+ */
+export function moveInFrame(dx: number, dy: number, frame: ZoomFrame): { x: number; y: number } {
+  const fw = frame.width > 0 ? frame.width : 1;
+  const fh = frame.height > 0 ? frame.height : 1;
+  const to = intoFrame(dx, dy, frame, fw, fh);
+  if (!frame.turn?.about) return to;
+  // Turned about its frame's middle, not its box's: the same turn, from another point.
+  const from = intoFrame(0, 0, frame, fw, fh);
+  return { x: to.x - from.x, y: to.y - from.y };
+}
+
 /** The other way: a point in the frame's own widths and heights, from its middle, in fractions of what is drawn. */
 function outOfFrame(x: number, y: number, frame: ZoomFrame): { x: number; y: number } {
   const turn = frame.turn;
@@ -327,16 +343,26 @@ export const screensFollow = (view: View, kept: Framing): boolean => view.zoom <
  * alone; null when the phone may zoom neither (phoneZoomTarget). A cropped PDF page (Crop page…) is drawn moved by
  * where its crop starts (render/SlideView.tsx), its picture's box kept on the whole page: so is its frame, and the
  * screens show the crop in their middle (`middle`). A page turned with Turn page right keeps its picture's box
- * unturned, the box turned about its middle: so is its frame.
+ * unturned, the box turned about its middle: so is its frame. LIVE's picture places its slide by the first screen's
+ * `scaling` (operator/live-drag.ts); a phone's, fitted.
  */
-export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFrame | null {
+export function frameInCanvas(
+  state: EngineState | null,
+  canvas: Size,
+  scaling: ScalingMode = 'fit',
+): ZoomFrame | null {
   const target = phoneZoomTarget(state);
   const slide = state?.layers.slide;
   if (!target) return null;
   if (!slide) return FULL_FRAME;
   const element = slide.slide.elements.find((e) => e.kind === 'image');
   if (!element || canvas.width <= 0 || canvas.height <= 0) return null;
-  const p = placeContent({ width: slide.slide.width, height: slide.slide.height }, canvas, 'fit');
+  const p = placeContent({ width: slide.slide.width, height: slide.slide.height }, canvas, scaling);
+  // A turn keeps lengths in the slide's pixels: the canvas's own shape where the slide is scaled alike both ways.
+  const aspect =
+    p.scaleX === p.scaleY
+      ? canvas.width / canvas.height
+      : (canvas.width * p.scaleY) / (canvas.height * p.scaleX);
   const origin = slide.slide.pageCrop ?? { x: 0, y: 0 };
   const shown = slide.slide.pageCrop
     ? shownMiddle(asDrawn(inSlide(element.frame, origin), element.rotation), slide.slide)
@@ -361,7 +387,7 @@ export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFram
         : owned
           ? { middle: at(owned) }
           : {}),
-    ...turnOf(element, canvas.width / canvas.height, own && at(own)),
+    ...turnOf(element, aspect, own && at(own)),
   };
 }
 

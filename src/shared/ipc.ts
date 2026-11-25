@@ -187,6 +187,7 @@ import type {
   TrimStatuses,
 } from './trim';
 import type { PictureLook } from './picture-look';
+import type { OnSlide } from './picture-on-slide';
 import type { ExportFileResult } from './export-file';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
@@ -2010,7 +2011,10 @@ export interface InvokeContract {
   };
   [IPC.media.keepLiveZoom]: { args: []; result: { ok: true } | { ok: false; message: string } };
   [IPC.media.photo]: { args: [mediaId: string]; result: boolean };
-  [IPC.media.savePicture]: { args: [mediaId: string, name: string]; result: SavePictureResult };
+  [IPC.media.savePicture]: {
+    args: [mediaId: string, name: string, onSlide?: OnSlide];
+    result: SavePictureResult;
+  };
   [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
   [IPC.media.rowTrim]: { args: [itemId: string]; result: RowTrimView | null };
   [IPC.media.applyRowTrim]: { args: [itemId: string, request: RowTrimRequest]; result: RowTrimResult };

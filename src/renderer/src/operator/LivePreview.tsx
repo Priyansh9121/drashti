@@ -223,7 +223,13 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         data-a11y-picture
         aria-hidden="true"
       >
-        {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
+        {practising ? (
+          picture
+        ) : (
+          <ZoomablePreview canvas={canvas} scaling={scaling}>
+            {picture}
+          </ZoomablePreview>
+        )}
         {/* The Stream panel's own drawing, warmed with the picture's, unseen, at its own size on whole pixels (Session
             60, X21: operator/PanelWarmUp.tsx); gone at once where Chromium draws without a graphics chip (nothing to
             warm: the warm-up's last step there draws nothing but black). */}
