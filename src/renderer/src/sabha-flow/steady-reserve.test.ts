@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { facesToLoad, watchReserve, type Measured, type ReserveDeps } from './steady-reserve';
+import {
+  FACES_BOUND_MS,
+  facesToLoad,
+  watchReserve,
+  type Measured,
+  type ReserveBy,
+  type ReserveDeps,
+} from './steady-reserve';
 
 /*
  * Sabha flow (alpha.23): the panel's steady room for Now and Next up, the tallest of all the flow's items (review S16).
@@ -24,6 +31,8 @@ function setup() {
   const loading: { copies: number }[] = [];
   let settled: () => void = () => undefined;
   let settling = 0;
+  // The bound's timer: asked with its length, fired by the test (`bound`), stopped by the watcher.
+  const timers: { ms: number; fire: () => void; stopped: boolean }[] = [];
   const deps: ReserveDeps = {
     observe: (_targets, changed) => {
       changes.push(changed);
@@ -47,8 +56,16 @@ function setup() {
       });
     },
     marginTop: () => 2,
+    timer: (ms, fire) => {
+      const t = { ms, fire, stopped: false };
+      timers.push(t);
+      return () => {
+        t.stopped = true;
+      };
+    },
   };
   const said: number[] = [];
+  const by: ReserveBy[] = [];
   return {
     heights,
     box,
@@ -71,6 +88,23 @@ function setup() {
       for (let k = 0; k < 4; k++) await Promise.resolve();
     },
     settling: () => settling,
+    timers,
+    by,
+    /** Watch, saying each room (and what set it). */
+    watch: () =>
+      watchReserve(
+        box,
+        (px, why) => {
+          said.push(px);
+          by.push(why);
+        },
+        deps,
+      ),
+    /** The bound's time has passed: its timer fires (unless stopped). */
+    bound: async () => {
+      for (const t of timers) if (!t.stopped) t.fire();
+      for (let k = 0; k < 4; k++) await Promise.resolve();
+    },
   };
 }
 
@@ -121,6 +155,76 @@ describe('the steady room for Now and Next up', () => {
     await s.fontsLoad();
     expect(s.said).toEqual([]);
     expect(s.changes).toHaveLength(0);
+  });
+});
+
+describe('the bound on the wait for the faces and the layout (review S18)', () => {
+  it('is a moment: one timer of FACES_BOUND_MS, asked as watching starts', () => {
+    const s = setup();
+    s.watch();
+    expect(s.timers.map((t) => t.ms)).toEqual([FACES_BOUND_MS]);
+    expect(FACES_BOUND_MS).toBeGreaterThanOrEqual(1000);
+    expect(FACES_BOUND_MS).toBeLessThanOrEqual(2000);
+  });
+
+  it('sets the room with the faces that are there when a face’s load never settles: Back, Next, Now and Next up are shown', async () => {
+    const s = setup();
+    s.watch();
+    // The faces never load (document.fonts.ready waits on a load that never ends).
+    await s.bound();
+    expect(s.settling()).toBe(0);
+    expect(s.said).toEqual([84]);
+    expect(s.by).toEqual(['bound']);
+  });
+
+  it('sets the room when the layout’s frames never come (a minimized window draws no frame)', async () => {
+    const s = setup();
+    s.watch();
+    await s.fontsOnly();
+    expect(s.settling()).toBe(1);
+    await s.bound();
+    expect(s.said).toEqual([84]);
+    expect(s.by).toEqual(['bound']);
+  });
+
+  it('measures once more when the faces and the layout come after it, the way a width change does, then only on a new width', async () => {
+    const s = setup();
+    s.watch();
+    await s.bound();
+    // The faces come late: the copies drawn in them are taller.
+    s.heights.next = [44, 71];
+    await s.fontsLoad();
+    expect(s.said).toEqual([84, 18 + 71 + 2]);
+    expect(s.by).toEqual(['bound', 'faces']);
+    // A face later still, or a copy alone: the box's observer fires, its width the same. Nothing moves.
+    s.heights.next = [44, 80];
+    for (const changed of s.changes) changed();
+    expect(s.said).toEqual([84, 91]);
+    // A new width measures again, as before.
+    s.setWidth(300);
+    for (const changed of s.changes) changed();
+    expect(s.said).toEqual([84, 91, 18 + 80 + 2]);
+    expect(s.by).toEqual(['bound', 'faces', 'width']);
+  });
+
+  it('never fires once the faces and the layout came in time: its timer is stopped, the room said once', async () => {
+    const s = setup();
+    s.watch();
+    await s.fontsLoad();
+    expect(s.timers.map((t) => t.stopped)).toEqual([true]);
+    await s.bound();
+    expect(s.said).toEqual([84]);
+    expect(s.by).toEqual(['faces']);
+  });
+
+  it('is stopped with the watching (a new PDF, the panel folded): nothing is said after it', async () => {
+    const s = setup();
+    const stop = s.watch();
+    stop();
+    expect(s.timers.map((t) => t.stopped)).toEqual([true]);
+    await s.bound();
+    await s.fontsLoad();
+    expect(s.said).toEqual([]);
   });
 });
 
