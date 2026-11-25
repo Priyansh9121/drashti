@@ -3,10 +3,15 @@ import { CuedStartKeeper } from '../render/cued-start';
 import { applyVideoEnvelope } from '../audio/video-envelope';
 import { reportVideoCue, reportLoadedVideoCue } from '../render/video-cue-report';
 import { videoSoundGain } from '../audio/sounds';
-import { CROSSFADE_GO_LEAD_MS, videoFadeProgress } from '../../../shared/video-cue';
+import { CROSSFADE_GO_LEAD_MS, type VideoCrossfade, videoFadeProgress } from '../../../shared/video-cue';
 import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
-import { FADE_SOUND_LIMITS, type PlaybackSeek, STREAM_SOUND_LIMITS } from '../../../shared/media';
+import {
+  FADE_SOUND_LIMITS,
+  type PlaybackSeek,
+  playbackPosition,
+  STREAM_SOUND_LIMITS,
+} from '../../../shared/media';
 import { musicAside, soundGain, StepAside } from '../../../shared/sound';
 import type { DeviceChoice } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
@@ -42,6 +47,13 @@ export const STREAM_SAMPLE_RATE = 48_000;
  * little early.
  */
 const FADE_LEAD_MAX_S = (CROSSFADE_GO_LEAD_MS + 500) / 1000;
+
+/** How long after its lead is set an incoming player's start is looked at (ms; QFP-7): it has played a moment. */
+const LEAD_TRIM_AFTER_MS = 250;
+/** A start this close to its aim is left as it is (ms). */
+const LEAD_TRIM_MIN_MS = 5;
+/** The lead is changed only this long, or more, before its first sound comes out of the delay (ms). */
+const LEAD_TRIM_MARGIN_MS = 50;
 
 /** Its clock `leadMs` earlier (QA23-FADE-4): a crossfade's incoming sound, aimed that far ahead and heard as late. */
 function aheadBy(sound: Sound, leadMs: number): PlaybackSeek | undefined {
@@ -350,6 +362,43 @@ export class StreamSound {
     own.lead.delayTime.setValueAtTime(ahead / 1000, this.ctx.currentTime);
     own.leadMs = ahead;
     own.el.dataset['leadMs'] = String(Math.round(ahead));
+    // eslint-disable-next-line no-restricted-syntax -- looks once where its start landed; never times a frame or a sound's start
+    setTimeout(() => {
+      this.trimLead(own, fade);
+    }, LEAD_TRIM_AFTER_MS);
+  }
+
+  /**
+   * QFP-7 (lead 2, answered by lead, owner away): with its lead, a crossfade's incoming player still started about
+   * 0.1 s late on CI's two-core Windows (its play() from paused on a busy page; a22-fadeprep-1125-115335-81323), and was
+   * heard that much behind from the fade's start. Its sound is in the delay's leading silence until then, so the delay
+   * is shortened by how late the start landed (lengthened for an early one), and its aim with it: heard on time, and
+   * nothing passes the delay yet, so no pitch changes and no jump. Once, and only while that silence lasts with room
+   * to spare; a player not yet playing is looked at again a little later.
+   */
+  private trimLead(own: OwnSound, fade: VideoCrossfade): void {
+    if (this.own.get(own.sound.key) !== own || own.leadMs <= 0) return;
+    const el = own.el;
+    const now = engineNow();
+    if (el.paused || el.seeking || !(el.readyState >= 3) || !Number.isFinite(el.currentTime)) {
+      if (now + LEAD_TRIM_AFTER_MS < fade.at)
+        // eslint-disable-next-line no-restricted-syntax -- looks again where its start landed; never times a frame or a sound's start
+        setTimeout(() => {
+          this.trimLead(own, fade);
+        }, 100);
+      return;
+    }
+    const s = own.sound;
+    const aimed = { startedAt: s.startedAt, loop: s.loop, clip: s.clip, seek: aheadBy(s, own.leadMs) };
+    const lateMs = (playbackPosition(aimed, el.duration, now) - el.currentTime) * 1000;
+    // Its first sound comes out of the delay at the fade's moment plus how late it is: change nothing that close.
+    if (Math.abs(lateMs) < LEAD_TRIM_MIN_MS || now + LEAD_TRIM_MARGIN_MS >= fade.at + lateMs) return;
+    const lead = own.leadMs - lateMs;
+    if (lead < 0 || lead > FADE_LEAD_MAX_S * 1000 - 10) return;
+    own.lead.delayTime.setValueAtTime(lead / 1000, this.ctx.currentTime);
+    own.leadMs = lead;
+    el.dataset['leadMs'] = String(Math.round(lead));
+    el.dataset['leadTrimMs'] = String(Math.round(lateMs));
   }
 
   /**
