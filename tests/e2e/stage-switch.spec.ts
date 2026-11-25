@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import WebSocket from 'ws';
 import type { ToDevice } from '../../src/shared/network';
-import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
+import { NETWORK_ENV, networkOn, pairToken } from './devices';
 import { expectPhoneRefuses } from './phone-refuses';
 import {
   launchApp,
