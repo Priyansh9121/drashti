@@ -38,9 +38,9 @@ it('lists the videos of the playlists that crossfade, for their page copies (QA2
       repo.addItems(fading, null, [
         { kind: 'media', mediaId: 'red' },
         { kind: 'media', mediaId: 'blue' },
-      ]).ok,
-    ).toBe(true);
-    expect(repo.addItems(plain, null, [{ kind: 'media', mediaId: 'green' }]).ok).toBe(true);
+      ]),
+    ).toHaveLength(2);
+    expect(repo.addItems(plain, null, [{ kind: 'media', mediaId: 'green' }])).toHaveLength(1);
     repo.setPlayOptions(fading, { shuffle: false, repeatAll: false, crossfadeMs: 2000 });
     expect(repo.crossfadeMediaIds().sort()).toEqual(['blue', 'red']);
     repo.setPlayOptions(fading, { shuffle: false, repeatAll: false, crossfadeMs: 0 });
