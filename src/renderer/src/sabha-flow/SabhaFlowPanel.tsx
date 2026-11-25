@@ -1,6 +1,7 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { NO_FLOW } from '../../../shared/sabha-flow-lines';
 import { useWhatIsThis } from '../help/WhatIsThis';
+import { useElementSize } from '../render/useElementSize';
 import { useOperateOnly } from '../simple/simple-features-store';
 import { Button, IconButton } from '../ui/Button';
 import { ConfirmDialog } from '../ui/Dialog';
@@ -22,6 +23,7 @@ import {
   setFlowPanelOpen,
   useFlow,
   useFlowPanel,
+  setFlowNeed,
 } from './flow-store';
 
 /*
@@ -47,9 +49,24 @@ export function SabhaFlowPanel() {
   useEffect(() => {
     connectFlow();
   }, []);
+  // What the panel needs to show Now and Next up whole (its heading, the body's pinned part and the read list's own
+  // room): the left column gives it that much of its height when it may (operator/flow-area.ts), never cutting words.
+  const header = useRef<HTMLElement>(null);
+  const { height: headerHeight } = useElementSize(header, true);
+  const [bodyNeed, setBodyNeed] = useState(0);
+  useEffect(() => {
+    // The area's border under it (1 px) is in its height.
+    setFlowNeed(open && bodyNeed > 0 ? Math.ceil(headerHeight + bodyNeed + 1) : 0);
+  }, [open, headerHeight, bodyNeed]);
+  useEffect(
+    () => () => {
+      setFlowNeed(0);
+    },
+    [],
+  );
   return (
     <section aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col" data-testid="sabha-flow">
-      <header className="flex min-h-9 shrink-0 items-center gap-1 py-1 pr-3 pl-3" data-strip="">
+      <header ref={header} className="flex min-h-9 shrink-0 items-center gap-1 py-1 pr-3 pl-3" data-strip="">
         <h2 id={titleId} className="min-w-0 flex-1 text-2xs font-bold tracking-wider text-heading uppercase">
           <button
             type="button"
@@ -82,14 +99,18 @@ export function SabhaFlowPanel() {
           className="flex min-h-0 flex-1 flex-col overflow-y-auto"
           data-testid="sabha-flow-body"
         >
-          <FlowBody />
+          <FlowBody onNeed={setBodyNeed} />
         </div>
       )}
     </section>
   );
 }
 
-function FlowBody() {
+/** The read list's own least room under the pinned part (its min-h-24), the page view's (min-h-48). */
+const LIST_ROOM = 96;
+const PAGE_ROOM = 192;
+
+function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
   const flow = useFlow((s) => s.flow);
   const now = useFlow((s) => s.now);
   const loaded = useFlow((s) => s.loaded);
@@ -121,6 +142,16 @@ function FlowBody() {
       {problem}
     </Notice>
   );
+
+  // Now and Next up whole: the pinned part's height and the room under it, for a flow that was read (none to keep whole
+  // otherwise: the panel keeps its share).
+  const pinned = useRef<HTMLDivElement>(null);
+  const { height: pinnedHeight } = useElementSize(pinned, true);
+  const keepWhole = flow?.status === 'read' && pinnedHeight > 0;
+  const need = keepWhole ? pinnedHeight + (shown === 'list' ? LIST_ROOM : PAGE_ROOM) : 0;
+  useEffect(() => {
+    onNeed(need);
+  }, [need, onNeed]);
 
   if (!loaded) return <Loading label="Reading the Sabha flow…" />;
   if (flow === null)
@@ -156,59 +187,62 @@ function FlowBody() {
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-1 px-3 pt-1">
-        <FileText size={14} aria-hidden="true" className="shrink-0 text-muted" />
-        <span
-          className="min-w-0 flex-1 truncate text-xs text-muted"
-          title={flow.fileName}
-          data-testid="flow-file"
-        >
-          {flow.fileName}
-        </span>
-        {setup && (
-          <>
-            <IconButton
-              icon={RefreshCw}
-              size="sm"
-              label="Replace… (choose another PDF)"
-              data-testid="flow-replace"
-              disabled={choosing}
-              onClick={() => void chooseFlow()}
-            />
-            <IconButton
-              icon={Trash2}
-              size="sm"
-              label="Remove the Sabha flow"
-              data-testid="flow-remove"
-              disabled={choosing}
-              onClick={() => {
-                setRemoving(true);
-              }}
-            />
-          </>
+      {/* The pinned part: the file, Now and Next up and the view's tabs; only the read list (or the page) scrolls. */}
+      <div ref={pinned} className="flex shrink-0 flex-col">
+        <div className="flex shrink-0 items-center gap-1 px-3 pt-1">
+          <FileText size={14} aria-hidden="true" className="shrink-0 text-muted" />
+          <span
+            className="min-w-0 flex-1 truncate text-xs text-muted"
+            title={flow.fileName}
+            data-testid="flow-file"
+          >
+            {flow.fileName}
+          </span>
+          {setup && (
+            <>
+              <IconButton
+                icon={RefreshCw}
+                size="sm"
+                label="Replace… (choose another PDF)"
+                data-testid="flow-replace"
+                disabled={choosing}
+                onClick={() => void chooseFlow()}
+              />
+              <IconButton
+                icon={Trash2}
+                size="sm"
+                label="Remove the Sabha flow"
+                data-testid="flow-remove"
+                disabled={choosing}
+                onClick={() => {
+                  setRemoving(true);
+                }}
+              />
+            </>
+          )}
+        </div>
+        {choosing && <Loading label="Reading the PDF…" immediate className="py-1" />}
+        {problemNotice}
+        {flow.status !== 'read' && (
+          <div className="shrink-0 px-3 pt-2">
+            <FlowStatusNotice status={flow.status} tooMuchText={flow.tooMuchText === true} />
+          </div>
+        )}
+        {flow.status === 'read' && (
+          <FlowNowNext flow={flow} now={now} size="panel" onBack={flowBack} onNext={flowNext} />
+        )}
+        {views.length > 1 && (
+          <Tabs
+            group="sabha-flow"
+            label="Sabha flow view"
+            size="sm"
+            items={TABS}
+            value={shown}
+            onChange={setView}
+            className="shrink-0 px-3 pt-1"
+          />
         )}
       </div>
-      {choosing && <Loading label="Reading the PDF…" immediate className="py-1" />}
-      {problemNotice}
-      {flow.status !== 'read' && (
-        <div className="shrink-0 px-3 pt-2">
-          <FlowStatusNotice status={flow.status} tooMuchText={flow.tooMuchText === true} />
-        </div>
-      )}
-      {flow.status === 'read' && (
-        <FlowNowNext flow={flow} now={now} size="panel" onBack={flowBack} onNext={flowNext} />
-      )}
-      {views.length > 1 && (
-        <Tabs
-          group="sabha-flow"
-          label="Sabha flow view"
-          size="sm"
-          items={TABS}
-          value={shown}
-          onChange={setView}
-          className="shrink-0 px-3 pt-1"
-        />
-      )}
       {views.length > 1 ? (
         // The read list scrolls on its own, Now and Next up staying in view above it; the page view has its own.
         <TabPanel

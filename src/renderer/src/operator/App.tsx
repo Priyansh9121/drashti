@@ -276,6 +276,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const announcementsOpen = useAnnouncements((s) => s.open);
   // The Sabha flow panel (alpha.23): open or folded, remembered on this computer.
   const flowOpen = useFlowPanel((s) => s.open);
+  const flowNeed = useFlowPanel((s) => s.need);
   const platform = info?.platform ?? 'darwin';
 
   const openScreens = useCallback(() => {
@@ -431,6 +432,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
               // sabha flow"): at the top, under the Library button; this window only, never a screen.
               flow={<SabhaFlowPanel />}
               flowOpen={flowOpen}
+              flowNeed={flowNeed}
               top={<PlaylistPanel platform={platform} />}
               bottom={byFolder ? <PlaylistFolders /> : null}
               // The wallpapers (Session 55, Part 6), under the playlists, just above the bar of clears.

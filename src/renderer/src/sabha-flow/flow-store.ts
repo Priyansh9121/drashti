@@ -42,9 +42,22 @@ function apply({ flow, state }: SabhaFlowSnapshot): void {
 const OPEN_KEY = 'panel.sabha-flow.open';
 const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
 
-export const useFlowPanel = create<{ open: boolean }>(() => ({
+export const useFlowPanel = create<{
+  open: boolean;
+  /**
+   * What the open panel needs to show Now and Next up whole, with the read list's own room under them (px; 0: nothing to
+   * keep whole): the left column gives it that much of its height when it may (operator/flow-area.ts).
+   */
+  need: number;
+}>(() => ({
   open: readPersisted(OPEN_KEY, false, isBoolean),
+  need: 0,
 }));
+
+/** The open panel's need (px), as measured by the panel. */
+export function setFlowNeed(need: number): void {
+  if (useFlowPanel.getState().need !== need) useFlowPanel.setState({ need });
+}
 
 export function setFlowPanelOpen(open: boolean): void {
   useFlowPanel.setState({ open });

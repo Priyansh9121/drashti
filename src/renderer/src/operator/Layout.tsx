@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useElementSize } from '../render/useElementSize';
 import { usePersistentState } from '../ui/persist';
 import { Splitter } from '../ui/Splitter';
+import { FLOW_SHARE, flowAreaHeight } from './flow-area';
 
 /*
  * The operator window's columns (Session 26a): the playlists on the left (Session 44: the whole column, the
@@ -19,7 +20,8 @@ const RIGHT = { initial: 380, min: 300, max: 620 };
 const MIDDLE_MIN = 400;
 const PLAYLISTS = { initial: 0.42, min: 0.15, max: 0.8 };
 /** The Sabha flow panel's share of the column's height while it is open (alpha.23), the playlists' the rest. */
-const FLOW = { initial: 0.5, min: 0.25, max: 0.75 };
+const FLOW = FLOW_SHARE;
+const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
 
 function useWindowWidth(): number {
   const [width, setWidth] = useState(window.innerWidth);
@@ -104,6 +106,7 @@ export function LeftColumn({
   head,
   flow = null,
   flowOpen = false,
+  flowNeed = 0,
   top,
   bottom,
   wallpapers = null,
@@ -119,6 +122,8 @@ export function LeftColumn({
   flow?: ReactNode;
   /** Whether the Sabha flow panel is open. */
   flowOpen?: boolean;
+  /** What the open panel needs for Now and Next up whole (px; 0: nothing), given it when it may (flow-area.ts). */
+  flowNeed?: number;
   top: ReactNode;
   /** The open folder playlist's folders, or null. */
   bottom: ReactNode | null;
@@ -143,8 +148,11 @@ export function LeftColumn({
   const area = useRef<HTMLDivElement>(null);
   const { height: areaHeight } = useElementSize(area);
   const [flowShare, setFlowShare] = usePersistentState('layout.flow', FLOW.initial, isNumber);
+  // Set by the operator (the splitter moved, not put back): their setting wins over Now and Next up's need.
+  const [flowSet, setFlowSet] = usePersistentState('layout.flow.set', false, isBoolean);
   const areaUsable = Math.max(1, areaHeight);
-  const flowHeight = Math.round(clamp(flowShare, FLOW.min, FLOW.max) * areaUsable);
+  const flowHeight = flowAreaHeight({ area: areaUsable, share: flowShare, need: flowNeed, dragged: flowSet });
+  const flowDefault = Math.round(FLOW.initial * areaUsable);
   return (
     // One landmark for the column (Session 44): the Library button, the playlists, the open playlist's folders
     // and the library's sheet over them.
@@ -170,10 +178,12 @@ export function LeftColumn({
               value={flowHeight}
               onChange={(px) => {
                 setFlowShare(px / areaUsable);
+                // Put back (Enter or a double-click): the panel fits Now and Next up again.
+                setFlowSet(px !== flowDefault);
               }}
               min={Math.round(FLOW.min * areaUsable)}
               max={Math.round(FLOW.max * areaUsable)}
-              defaultValue={Math.round(FLOW.initial * areaUsable)}
+              defaultValue={flowDefault}
               label="Resize the Sabha flow and the playlists"
             />
           )}

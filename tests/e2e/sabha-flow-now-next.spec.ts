@@ -443,6 +443,33 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
           expect(await nextUpCut(nextLine), at).toEqual([]);
         }
       }
+  // The operator's own splitter setting wins (lead 2): at its least (Home), Next up scrolls with the panel's body
+  // (Q-FC-2 A), its label and first line in sight, each line reachable, never cut; put back (Enter), the panel again
+  // holds Next up whole at the owner's 1410 x 900.
+  await sizeWindow(app, win, 'index.html', OWNERS_WINDOW);
+  await playlistsColumn(win, 'Home');
+  await body.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  const splitter = win.getByRole('separator', {
+    name: 'Resize the Sabha flow and the playlists',
+    exact: true,
+  });
+  const area = win.getByTestId('flow-area');
+  await splitter.focus();
+  await splitter.press('Home');
+  const least = Number(await splitter.getAttribute('aria-valuemin'));
+  await expect.poll(async () => Math.round((await area.boundingBox())?.height ?? 0)).toBe(least);
+  const set = 'the splitter at its least, set by the operator, at 1410 × 900';
+  expect(await nextUpOutOfSight(nextLine, 'first line'), set).toEqual([]);
+  expect(await nextUpOutOfSight(nextLine, 'reachable'), set).toEqual([]);
+  expect(await nextUpCut(nextLine), set).toEqual([]);
+  await splitter.press('Enter');
+  await expect.poll(async () => Math.round((await area.boundingBox())?.height ?? 0)).toBeGreaterThan(least);
+  await body.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  expect(await nextUpOutOfSight(nextLine, 'whole'), 'the splitter put back, at 1410 × 900').toEqual([]);
   await app.close();
 });
 
