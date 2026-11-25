@@ -187,8 +187,10 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
     const longFrame = await stream.evaluate(() => {
       const from = Date.now();
       const at = performance.now();
-      // Deliberately occupy this renderer, as the retained S5 long frames do. This is the cause under test.
-      while (performance.now() - at < 500) Math.sqrt(performance.now());
+      // Deliberately occupy this renderer, as the retained S5 long frames do. This is the cause under test. Until BOTH
+      // clocks show 500 ms: the frame is judged on the wall clock (Date.now), which can run a little slower than the
+      // steady one, so the steady clock alone once ended it at 499 (a22-fadeprep's run 45560020157).
+      while (performance.now() - at < 500 || Date.now() - from < 500) Math.sqrt(performance.now());
       return { from, to: Date.now() };
     });
     const result = await finishWatch(app);
@@ -259,8 +261,9 @@ test('The stream keeps all its sound while its PCM worker is held up for a quart
     const held = await reader.evaluate(() => {
       const from = Date.now();
       const at = performance.now();
-      // Deliberately occupy the PCM worker's own thread, as a starved PC did. This is the cause under test.
-      while (performance.now() - at < 250) Math.sqrt(performance.now());
+      // Deliberately occupy the PCM worker's own thread, as a starved PC did. This is the cause under test. Until both
+      // clocks show 250 ms, as the long frame above.
+      while (performance.now() - at < 250 || Date.now() - from < 250) Math.sqrt(performance.now());
       return { from, to: Date.now() };
     });
     await letTimePass(
