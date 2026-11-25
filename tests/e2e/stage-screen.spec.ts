@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { newStageBox, type StageBox } from '../../src/shared/stage-layouts';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import { expectFits } from './fit';
 import {
   chooseMenuItem,
@@ -106,7 +107,7 @@ const placeholderWords = (win: Page) =>
     return made.id;
   });
 
-test('one layout for every stage screen: the Stage screen panel’s Layout or a phone’s changes them all at once, a tablet’s too, and it stays chosen after a restart', async () => {
+test('one layout for every stage screen: the Stage screen panel’s Layout changes them all at once, a tablet’s too, and it stays chosen after a restart; a phone is refused it, in words', async () => {
   test.setTimeout(240_000);
   const { app, userData } = await launchApp({ ...TWO_STAGES, ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -163,24 +164,26 @@ test('one layout for every stage screen: the Stage screen panel’s Layout or a 
   await expect.poll(() => shows(one)).toBe(`layout ${other}`);
   await expect.poll(() => shows(two)).toBe(`layout ${other}`);
 
-  // A phone's Layout, in its Stage screen section: the same choice, both ways.
+  // A phone's Layout (its Stage screen section before alpha.23, QA23-PHONE-1): reading and choosing refused in words,
+  // every stage screen as it was; the same choice in the window (moved from the phone), both ways.
   const phoneCode = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   try {
     await pairByQr(phone.page, base, phoneCode, '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
-    await phone.page.getByTestId('remote-tab-more').click();
-    const onPhone = phone.page.getByTestId('remote-stage-layout');
-    await expect(onPhone).toHaveValue(other);
-    await expect(onPhone.locator('option')).toHaveText(['Standard', 'Placeholder band', 'Placeholder other']);
-    await onPhone.selectOption({ label: 'Placeholder band' });
+    const asks = { win, page: phone.page };
+    await expectPhoneRefuses(asks, 'GET', '/api/v1/stage-layouts', undefined, 'computer');
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/stage-layouts/choose', { id: band }, 'computer', () =>
+      chosenNow(win),
+    );
+    await expect.poll(() => shows(one)).toBe(`layout ${other}`);
+    await expect.poll(() => shows(two)).toBe(`layout ${other}`);
+    await picker.selectOption({ label: 'Placeholder band' });
     await expect.poll(() => shows(one)).toBe(`layout ${band}`);
     await expect.poll(() => shows(two)).toBe(`layout ${band}`);
     await expect(picker).toHaveValue(band);
-    // Chosen in the window: the phone follows.
     await picker.selectOption({ label: 'Placeholder other' });
-    await expect(onPhone).toHaveValue(other);
-    await expectNoSeriousA11yIssues(phone.page, 'the phone’s Stage screen section with its Layout');
+    await expect(picker).toHaveValue(other);
   } finally {
     await phone.close();
   }

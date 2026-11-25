@@ -9,6 +9,7 @@ import type { DeckNativeTransition } from '../../src/shared/deck-transition';
 import type { EngineCommand } from '../../src/shared/engine/commands';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import {
+  holdStill,
   importAndGetIds,
   launchApp,
   letTimePass,
@@ -23,8 +24,10 @@ import {
   windowShowing,
 } from './helpers';
 import { launchMain, launchNode, pairNode } from './nodes';
+import { expectPhoneRefuses } from './phone-refuses';
 import { canvasPixels, near } from './pixels';
 import { holdClock } from './placeholder-slides';
+import { phoneAsks, phoneShowsLive, playlistOf } from './pro-phone';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 const CLOCK = { DRASHTI_TEST_CLOCK_HOLD: '1', DRASHTI_TEST_DECK_CONVERTER: '1' };
@@ -97,7 +100,10 @@ async function outputFor(app: ElectronApplication, screen: string): Promise<Page
   return found;
 }
 
-test('stage Current and Next and a phone follow native clicks through Back and a click during entry', async () => {
+// A Pro Mode phone (alpha.23, QA23-PHONE-1, the owner's "Only PPT and PDF"): the PowerPoint put up from its playlist
+// row on the phone, stepped with its Next and Back, Next stopping at its last click (never the words after it), its
+// slide cleared from the phone; Clear all refused.
+test('stage Current and Next and a phone follow native clicks through Back and a click during entry; the phone puts the deck up from its playlist row, its Next stops at the last click and it clears the slide', async () => {
   const { app } = await launchApp({
     ...CLOCK,
     ...NETWORK_ENV,
@@ -128,7 +134,29 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       await expect(page.getByTestId('connection')).toHaveText('Connected');
       const live = page.getByTestId('remote-live');
 
-      await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+      // The deck in a playlist, words after it; its row put up from the phone (before alpha.23 the operator put it up).
+      const words = await win.evaluate(async () => {
+        const made = await (globalThis as PageGlobals).drashti.library.newFromWords(
+          'Placeholder words after the clicks',
+          'Placeholder words one',
+        );
+        if (!made.ok) throw new Error(made.message);
+        return made.id;
+      });
+      const list = await playlistOf(win, 'Placeholder clicks list', [
+        { kind: 'presentation', presentationId: id },
+        { kind: 'presentation', presentationId: words },
+      ]);
+      expect(
+        (
+          await phoneAsks(page, 'POST', '/api/v1/trigger/item', {
+            playlistId: list.playlistId,
+            itemId: list.rows[0] ?? '',
+          })
+        ).status,
+      ).toBe(200);
+      await expect.poll(async () => (await current(win))?.presentationId).toBe(id);
+      await phoneShowsLive(page, win);
       await expect(target(stageCurrent, 3)).toHaveCSS('opacity', '0');
       await expect(stageNext.locator('[data-shape="rectangle"]')).toHaveCount(2);
       await expect(target(live, 3)).toHaveCSS('opacity', '0');
@@ -208,6 +236,23 @@ test('stage Current and Next and a phone follow native clicks through Back and a
       await expect(target(stageCurrent, 5)).toHaveCSS('opacity', '0');
       await expect(stageNext.locator('[data-shape="rectangle"]')).toHaveCount(2);
       await expect(target(live, 5)).toHaveCSS('opacity', '0');
+
+      // Its last click from the phone, then Next again: nothing changes (never the words after it in the playlist).
+      await page.getByTestId('remote-next-button').click();
+      await expect.poll(async () => (await current(win))?.step).toBe(1);
+      await page.getByTestId('remote-next-button').click();
+      await holdStill(
+        async () => {
+          const now = await current(win);
+          return now?.presentationId === id && now.slideIndex === 1 && now.step === 1;
+        },
+        1500,
+        'Next on the phone at the deck’s last click changes nothing',
+      );
+      // Clear all from the phone: refused; Clear slide (the owner's Q7): the slide goes.
+      await expectPhoneRefuses({ win, page }, 'POST', '/api/v1/clear/all', {}, 'computer');
+      expect((await phoneAsks(page, 'POST', '/api/v1/clear/slide', {})).status).toBe(200);
+      await expect.poll(() => current(win)).toBeNull();
     } finally {
       await phone.close();
     }

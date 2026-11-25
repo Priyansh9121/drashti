@@ -1,6 +1,7 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   closeLibrary,
   killApp,
@@ -363,7 +364,7 @@ test('a video input that stops keeps its last picture, says so with Clear the in
   await app.close();
 });
 
-test('a phone names a video input and clears it, never draws or chooses one; the dashboard says the nodes cannot show it; Simple Mode cannot add one', async () => {
+test('a phone names a video input, never draws it, and is refused clearing, listing or choosing one, in words; the window’s Clear background clears it; the dashboard says the nodes cannot show it; Simple Mode cannot add one', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...FAKE, ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
@@ -392,9 +393,36 @@ test('a phone names a video input and clears it, never draws or chooses one; the
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     const line = p.getByTestId('remote-input');
     await expect(line).toContainText(`Video input: ${INPUT}`);
-    // A phone's own picture draws nothing for it (the input is on Main's computer).
+    // A phone's own picture draws nothing for it (the input is on Main's computer); since alpha.23 (QA23-PHONE-1) its
+    // Clear, Media's video inputs and putting one up are refused in words, the input still up.
     await expect(p.locator('[data-kind="input"]')).toHaveCount(0);
-    await line.getByTestId('remote-input-clear').click();
+    const asks = { win, page: p };
+    const inputs = () =>
+      win.evaluate(async () => (await (globalThis as PageGlobals).drashti.videoInputs.list()).inputs);
+    const [input] = await inputs();
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/clear/background', {}, 'computer');
+    await expectPhoneRefuses(asks, 'GET', '/api/v1/video-inputs', undefined, 'computer');
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      `/api/v1/video-inputs/${input?.id ?? 'none'}/show`,
+      {},
+      'computer',
+    );
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      '/api/v1/video-inputs',
+      { name: 'Another input', device: DEVICE, fit: 'fit' },
+      'computer',
+      inputs,
+    );
+    expect(await background(win)).toMatchObject({ kind: 'input', name: INPUT });
+    // Cleared in the window (moved from the phone): the bottom bar's Clear background.
+    await win
+      .getByTestId('layer-bar')
+      .getByRole('button', { name: /^Clear background/u })
+      .click();
     await expect(line).toHaveCount(0);
     expect(await background(win)).toBeNull();
   } finally {

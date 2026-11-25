@@ -3,9 +3,9 @@ import { expect, test } from '@playwright/test';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage, operatorReady } from './helpers';
@@ -206,7 +206,7 @@ test('Simple Mode has Pro Mode’s playlists on the left: a playlist and a folde
   await app.close();
 });
 
-test('a paired Simple Mode phone can manage other playlists and open a smart playlist', async () => {
+test('a paired Simple Mode phone is refused managing the playlists and reading their rows, in words; Simple Mode’s window makes, fills, renames, deletes and puts them back, and opens a smart playlist', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...NETWORK_ENV, ...QUICK });
   const win = await operatorPage(app);
@@ -221,49 +221,68 @@ test('a paired Simple Mode phone can manage other playlists and open a smart pla
     if (!made.ok) throw new Error(made.message);
     return made.ids[0] ?? '';
   });
+  // What is live, a Simple Mode phone still reads: the hall says which playlist is open in the computer window.
   const hall = async () =>
     ((await apiCall(port, '/api/v1/hall', { token })).json['simple'] as { playlistId?: string } | null)
       ?.playlistId ?? null;
   await expect.poll(hall).toBe(show.playlistId);
 
-  const post = (path: string, body: unknown) => apiCall(port, path, { method: 'POST', token, body });
-  const created = await post('/api/v1/playlists/new', { name: 'Placeholder phone folder', isFolder: true });
-  expect(created.status).toBe(200);
+  // Every playlist change and a playlist's rows, as the phone sent them before alpha.23 (QA23-PHONE-1: a Simple Mode
+  // phone shows the Sabha flow, what is on the screens and the chat): refused in words, the playlists as they were.
+  const asks = { win, port, token };
+  const tree = () => win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
+  const addPicture = { items: [{ kind: 'media', mediaId: show.pictureMediaId }] };
+  for (const [path, body] of [
+    ['/api/v1/playlists/new', { name: 'Placeholder phone folder', isFolder: true }],
+    [`/api/v1/playlists/${other}/add`, addPicture],
+    [`/api/v1/playlists/${other}/rename`, { name: 'Placeholder renamed' }],
+    ['/api/v1/playlists/delete', { ids: [other] }],
+    ['/api/v1/playlists/restore', { ids: [other] }],
+  ] as const)
+    await expectPhoneRefuses(asks, 'POST', path, body, 'computer', tree);
+  await expectPhoneRefuses(asks, 'GET', `/api/v1/playlists/${other}/items`, undefined, 'simple');
+
+  // The same in Simple Mode's window (moved from the phone): a folder and a playlist in it made, a picture added, the
+  // other renamed, deleted and put back.
+  const made = await win.evaluate(async () => {
+    const drashti = (globalThis as PageGlobals).drashti;
+    const folder = await drashti.playlists.create('Placeholder phone folder', null, true);
+    if (!folder.ok) throw new Error(folder.message);
+    const nested = await drashti.playlists.create(
+      'Placeholder nested phone list',
+      folder.ids[0] ?? null,
+      false,
+    );
+    if (!nested.ok) throw new Error(nested.message);
+    return { folder: folder.ids[0] ?? '' };
+  });
   const folder = await playlistNamed(win, 'Placeholder phone folder');
   expect(folder?.isFolder).toBe(true);
-  expect(
-    (await post('/api/v1/playlists/new', { name: 'Placeholder nested phone list', parentId: folder?.id }))
-      .status,
-  ).toBe(200);
+  expect(folder?.id).toBe(made.folder);
   const nested = await playlistNamed(win, 'Placeholder nested phone list');
   expect(nested?.parentId).toBe(folder?.id);
-
-  const addPicture = { items: [{ kind: 'media', mediaId: show.pictureMediaId }] };
-  expect(await post(`/api/v1/playlists/${folder?.id}/add`, addPicture)).toMatchObject({
-    status: 403,
-    json: { ok: false, message: SIMPLE_MODE_REFUSAL },
-  });
-  expect(await post(`/api/v1/playlists/${other}/add`, addPicture)).toMatchObject({
-    status: 403,
-    json: { ok: false, message: expect.stringContaining('Simple Mode') },
-  });
-  const empty = await apiCall(port, `/api/v1/playlists/${other}/items`, { token });
-  expect(empty.json['items']).toEqual([]);
-  // The imported media can still be added by the operator window and used from the phone.
+  const items = (id: string) =>
+    win.evaluate(async (playlistId) => (globalThis as PageGlobals).drashti.playlists.items(playlistId), id);
+  expect(await items(other)).toEqual([]);
+  // The imported media added by the operator window.
   const added = await win.evaluate(
     ({ playlistId, mediaId }) =>
       (globalThis as PageGlobals).drashti.playlists.addItems(playlistId, null, [{ kind: 'media', mediaId }]),
     { playlistId: other, mediaId: show.pictureMediaId },
   );
   expect(added.ok).toBe(true);
-  const listed = await apiCall(port, `/api/v1/playlists/${other}/items`, { token });
-  expect(listed.status).toBe(200);
-  expect(listed.json['items']).toMatchObject([{ kind: 'media', mediaId: show.pictureMediaId }]);
-  expect((await post(`/api/v1/playlists/${other}/rename`, { name: 'Placeholder renamed' })).status).toBe(200);
+  expect(await items(other)).toMatchObject([{ kind: 'media', mediaId: show.pictureMediaId }]);
+  const changed = (r: { ok: boolean }) => expect(r.ok).toBe(true);
+  changed(
+    await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.playlists.rename(id, 'Placeholder renamed'),
+      other,
+    ),
+  );
   expect((await playlistNamed(win, 'Placeholder renamed'))?.id).toBe(other);
-  expect((await post('/api/v1/playlists/delete', { ids: [other] })).status).toBe(200);
+  changed(await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.remove([id]), other));
   expect(await playlistNamed(win, 'Placeholder renamed')).toBeNull();
-  expect((await post('/api/v1/playlists/restore', { ids: [other] })).status).toBe(200);
+  changed(await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.restore([id]), other));
   expect((await playlistNamed(win, 'Placeholder renamed'))?.id).toBe(other);
 
   const watched = join(mkdtempSync(join(tmpdir(), 'drashti-phone-smart-')), 'Placeholder watched');
@@ -274,9 +293,9 @@ test('a paired Simple Mode phone can manage other playlists and open a smart pla
   expect(madeSmart.ok).toBe(true);
   const smart = await playlistNamed(win, 'Placeholder watched');
   expect(smart?.kind).toBe('smart');
-  await expect
-    .poll(async () => (await apiCall(port, `/api/v1/playlists/${smart?.id}/items`, { token })).json['items'])
-    .toMatchObject([{ kind: 'media', media: 'image' }]);
+  // Filling itself, as the window reads it (the phone's read refused, as above).
+  await expect.poll(() => items(smart?.id ?? '')).toMatchObject([{ kind: 'media', media: 'image' }]);
+  await expectPhoneRefuses(asks, 'GET', `/api/v1/playlists/${smart?.id ?? ''}/items`, undefined, 'simple');
 
   // The hall still says which playlist is open in the computer window.
   await node(win, 'Placeholder renamed').click();

@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { newStageBox, type StageBox } from '../../src/shared/stage-layouts';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   launchApp,
   openSection,
@@ -19,8 +20,9 @@ import {
  * never refused), remembered on this computer. Every stage screen shows them at once, wherever the message shows
  * (the Standard stage screen, the operator's preview, a layout's message box, the banner, Stage off's picture). The
  * flash keeps its rhythm, with white (amber for a white box), its words readable in both. A message sent with no
- * colours of its own (a phone, its Shown before, OSC, the API) shows the colours chosen on this computer (alpha.22),
- * amber and black until others are; colours the API gives win. Placeholder words only.
+ * colours of its own (OSC, the API; a phone and its Shown before until alpha.23, which refuses a phone the stage
+ * message, QA23-PHONE-1) shows the colours chosen on this computer (alpha.22), amber and black until others are;
+ * colours the API gives win. Placeholder words only.
  */
 
 const SCREENS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -170,7 +172,7 @@ test('the stage message in the colours chosen, a preset or its own, on every sta
   await app.close();
 });
 
-test('a stage message sent with no colours, from a paired phone, its Shown before or the API, shows the colours chosen on this computer (amber and black, its flash white, until others are); colours the API gives win', async () => {
+test('a stage message sent with no colours, as the API and OSC send it, or again from Shown before, shows the colours chosen on this computer (amber and black, its flash white, until others are); colours the API gives win; a paired phone is refused it', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...SCREENS, ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -195,8 +197,9 @@ test('a stage message sent with no colours, from a paired phone, its Shown befor
   await expect.poll(() => colours(onStage), { timeout: 8_000 }).toEqual({ box: AMBER, words: BLACK });
   expect(await stageCall(win)).not.toHaveProperty('boxColor');
 
-  // Blue chosen on this computer: a paired phone's message shows it on the stage, and so does a tap on the phone's
-  // Shown before; amber chosen again, the phone's next one is amber with black words.
+  // Blue chosen on this computer: a paired phone's message (and its Shown before) is refused, the stage as it was;
+  // the same message with no colours, as the API and OSC send it (moved from the phone), shows it on the stage, and so
+  // does a tap on the Stage screen panel's Shown before; amber chosen again, the next one is amber with black words.
   await choice.selectOption({ label: 'Blue, white words' });
   const { base } = await networkOn(win);
   const phone = await device('chromium');
@@ -204,25 +207,34 @@ test('a stage message sent with no colours, from a paired phone, its Shown befor
     const p = phone.page;
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-more').click();
-    await p.getByTestId('remote-stage-text').fill(PHONE_WORDS);
-    await p.getByTestId('remote-stage').getByRole('button', { name: 'Show' }).click();
-    await expect(onStage).toHaveText(PHONE_WORDS);
-    await expect.poll(() => colours(onStage)).toEqual({ box: BLUE, words: WHITE });
-    expect(await stageCall(win)).toMatchObject({ boxColor: '#1d4ed8', textColor: '#ffffff' });
-    const shownBefore = (words: string) =>
-      p.getByTestId('remote-stage-recent').getByRole('button', { name: words, exact: true }).click();
-    await shownBefore(WORDS);
+    const asks = { win, page: p };
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/stage-message', { text: PHONE_WORDS }, 'computer');
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/stage-message', { text: WORDS }, 'computer');
     await expect(onStage).toHaveText(WORDS);
-    await expect.poll(() => colours(onStage)).toEqual({ box: BLUE, words: WHITE });
-    await choice.selectOption({ label: 'Amber, black words' });
-    await shownBefore(PHONE_WORDS);
-    await expect(onStage).toHaveText(PHONE_WORDS);
-    await expect.poll(() => colours(onStage)).toEqual({ box: AMBER, words: BLACK });
-    expect(await stageCall(win)).not.toHaveProperty('boxColor');
   } finally {
     await phone.close();
   }
+  await win.evaluate(
+    (text) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'setStageMessage', text }),
+    PHONE_WORDS,
+  );
+  await expect(onStage).toHaveText(PHONE_WORDS);
+  await expect.poll(() => colours(onStage)).toEqual({ box: BLUE, words: WHITE });
+  expect(await stageCall(win)).toMatchObject({ boxColor: '#1d4ed8', textColor: '#ffffff' });
+  const shownBefore = (words: string) =>
+    win
+      .getByTestId('stage-message-control')
+      .getByTestId('stage-recent')
+      .getByRole('button', { name: words, exact: true })
+      .click();
+  await shownBefore(WORDS);
+  await expect(onStage).toHaveText(WORDS);
+  await expect.poll(() => colours(onStage)).toEqual({ box: BLUE, words: WHITE });
+  await choice.selectOption({ label: 'Amber, black words' });
+  await shownBefore(PHONE_WORDS);
+  await expect(onStage).toHaveText(PHONE_WORDS);
+  await expect.poll(() => colours(onStage)).toEqual({ box: AMBER, words: BLACK });
+  expect(await stageCall(win)).not.toHaveProperty('boxColor');
 
   // Colours the API gives are shown over this computer's, and one it cannot read is refused with the message.
   await choice.selectOption({ label: 'Blue, white words' });

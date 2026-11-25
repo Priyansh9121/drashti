@@ -8,6 +8,7 @@ import { pipSwapMs } from '../../src/shared/pip';
 import { pipRect } from '../../src/renderer/src/render/pip';
 import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   importAndGetIds,
   launchApp,
@@ -30,7 +31,8 @@ import { makeTestVideo } from './test-media';
  * Media, a video input (Chromium's fake camera: DRASHTI_TEST_FAKE_DEVICES, never a real one) and a window (Session
  * 48's stand-in, a placeholder window the test opens itself: DRASHTI_TEST_WINDOW_STANDIN), each as an output
  * draws it; Swap, Take off, Clear all and Put it back; black-out and the Wallpaper over it (the logo until Session
- * 55); dragging it in LIVE; the stream's Slides layout; and the phone remote. Session 51: Swap
+ * 55); dragging it in LIVE; the stream's Slides layout; and the phone remote, which names it and since alpha.23
+ * (QA23-PHONE-1) is refused taking it off, swapping it or setting one up. Session 51: Swap
  * changes the main picture in the box's time at held moments (a dissolve since Session 52, nothing on the main
  * picture growing or shrinking as the box does); the stream's Camera layout shows the box with the hall's picture
  * at full frame; a key and fill group leaves the box out (a Look could turn it on until Session 55). Session 53: a
@@ -684,7 +686,7 @@ test('black-out and the Wallpaper cover the box and take nothing off; LIVE drags
   await app.close();
 });
 
-test('the phone remote names the box and takes it off; it has nothing to set one up', async () => {
+test('the phone remote names the box, and is refused taking it off, swapping, moving or setting one up, in words; LIVE takes it off', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp({ ...NETWORK_ENV, ...WINDOWED });
   const win = await operatorPage(app);
@@ -699,12 +701,21 @@ test('the phone remote names the box and takes it off; it has nothing to set one
     await pairByQr(phone.page, base, code, '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
     await expect(phone.page.getByTestId('remote-pip')).toHaveCount(0);
+    const asks = { win, page: phone.page };
+    // Setting one up from a phone: refused (it never had a way; since alpha.23 the request is refused too).
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/pip/show', { source: { kind: 'slides' } }, 'computer');
     await dispatch(win, { type: 'showPip', source: { kind: 'slides' }, place: PLACE });
     const named = phone.page.getByTestId('remote-pip');
     await expect(named).toContainText('Picture in picture: the slides');
     await dispatch(win, { type: 'swapPip' });
     await expect(named).toContainText('(swapped)');
-    await named.getByTestId('remote-pip-take-off').click();
+    // Its Take off, Swap and place from the phone: refused, the box as it was.
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/clear/pip', {}, 'computer');
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/pip/swap', {}, 'computer');
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/pip/place', { place: PLACE }, 'computer');
+    await expect(hall.getByTestId('pip-box')).toHaveCount(1);
+    // Taken off in LIVE (moved from the phone).
+    await win.getByTestId('live-pip-take-off').click();
     await expect.poll(() => pipNow(win)).toBeNull();
     await expect(named).toHaveCount(0);
     await expect(hall.getByTestId('pip-box')).toHaveCount(0);
