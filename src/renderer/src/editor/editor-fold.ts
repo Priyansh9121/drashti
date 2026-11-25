@@ -56,13 +56,15 @@ interface MediaList {
   removeEventListener(type: 'change', listener: () => void): void;
 }
 
-/** Tells `told` what folds whenever the window's queries change; returns how to stop. */
+/** Tells `told` what folds now, and again whenever the window's queries change; returns how to stop. */
 export function watchFold(media: (query: string) => MediaList, told: (fold: EditorFold) => void): () => void {
   const lists = [SHORT, NARROW].map((q) => media(q));
   const on = () => {
     told(foldFor((query) => media(query).matches));
   };
   for (const list of lists) list.addEventListener('change', on);
+  // And once now: a change between the first render's reading and this listening came and went unheard (round 4).
+  on();
   return () => {
     for (const list of lists) list.removeEventListener('change', on);
   };
