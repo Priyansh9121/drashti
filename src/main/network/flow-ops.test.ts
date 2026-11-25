@@ -10,7 +10,7 @@ import type { SimpleFeature } from '../../shared/simple-features';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { PHONE_OPS_IN_SIMPLE_MODE, type SimplePhoneScope } from '../simple-mode-phones';
-import { FLOW_WORDS, type FlowReads } from './flow-answers';
+import type { FlowReads } from './flow-answers';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
 /*
@@ -264,7 +264,7 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(asked).toEqual([]);
   });
 
-  it('tells a phone in the hall which tools Simple Mode Features brought into Simple Mode, so it shows the flow only while it is one (QA23-FLOWP-1)', () => {
+  it('tells a phone in the hall which tools Simple Mode Features brought into Simple Mode (QA23-FLOWP-1; the phone’s flow no longer waits on it: the owner’s Q3)', () => {
     const { ask, remote, setSimple, choose } = setup();
     // Pro Mode: no Simple Mode to tell of.
     expect(ask(remote, 'hall').body).toMatchObject({ simple: null });
@@ -274,23 +274,23 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(ask(remote, 'hall').body).toMatchObject({ simple: { features: ['timers', 'sabha-flow'] } });
   });
 
-  it('in Simple Mode answers no flow, in plain words, unless Sabha flow is chosen in Simple Mode Features; chosen, as in Pro Mode', async () => {
+  it('in Simple Mode answers the flow and its pages as in Pro Mode, whatever Simple Mode Features has (the owner’s Q3: always)', async () => {
+    // Until QA23-PHONE-1: no flow unless Sabha flow was chosen in Simple Mode Features (QA23-FLOWP-1). The owner's Q3,
+    // "Always (Recommended)": a Simple Mode phone shows the flow, what is live and the chat.
     const { ask, page, remote, choose, asked } = setup({ simple: true });
-    // Not chosen: as if there were none, saying why; its pages none either, never asked of the store.
-    const off = ask(remote, 'flow');
-    expect(off.status).toBe(200);
-    expect(off.body).toEqual({ ok: true, flow: null, state: null, off: FLOW_WORDS.off });
-    const none = await page(remote, { page: '0', flowId: FLOW.id });
-    expect(none).toEqual({ status: 404, body: { ok: false, message: FLOW_WORDS.off } });
-    choose(['timers']);
-    expect(ask(remote, 'flow').body).toMatchObject({ flow: null, off: FLOW_WORDS.off });
-    expect(asked).toEqual([]);
-    // Chosen: the flow and its pages, as in Pro Mode.
-    choose(['timers', 'sabha-flow']);
-    expect(ask(remote, 'flow')).toEqual({
-      status: 200,
-      body: { ok: true, flow: FLOW, state: { flowId: FLOW.id, now: 0 } },
-    });
-    expect((await page(remote, { page: '0', flowId: FLOW.id })).status).toBe(200);
+    for (const tools of [[], ['timers'], ['timers', 'sabha-flow']] as const) {
+      choose(tools);
+      expect(ask(remote, 'flow'), JSON.stringify(tools)).toEqual({
+        status: 200,
+        body: { ok: true, flow: FLOW, state: { flowId: FLOW.id, now: 0 } },
+      });
+      const shown = await page(remote, { page: '0', flowId: FLOW.id });
+      expect(shown.status, JSON.stringify(tools)).toBe(200);
+    }
+    expect(asked).toEqual([
+      [FLOW.id, 0],
+      [FLOW.id, 0],
+      [FLOW.id, 0],
+    ]);
   });
 });

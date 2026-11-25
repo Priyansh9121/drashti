@@ -2,11 +2,14 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { RemoteSimple } from '../../../../shared/network-phone';
-import { MoreColumns } from './RemoteApp';
+import { phoneControls } from './phone-mode';
+import { ShowColumn } from './RemoteApp';
 
 /*
- * A phone's More tab while Drashti's computer is in Simple Mode (a22-review-flow M6): the Sabha flow is there exactly
- * while it is chosen in Simple Mode Features (QA23-FLOWP-1 A), as in Pro Mode it always is. Placeholder words only.
+ * The Sabha flow on a phone while Drashti's computer is in Simple Mode (alpha.23). Until QA23-PHONE-1 it was in More
+ * exactly while chosen in Simple Mode Features (a22-review-flow M6, QA23-FLOWP-1 A). The owner's Q3, "Always
+ * (Recommended)": a Simple Mode phone always shows the flow, on its Show tab with what is live, whatever Simple Mode
+ * Features has; there is no More tab any more. Placeholder words only.
  */
 
 const simple = (features: RemoteSimple['features']): RemoteSimple => ({
@@ -14,18 +17,25 @@ const simple = (features: RemoteSimple['features']): RemoteSimple => ({
   words: 'Placeholder Simple Mode words',
   ...(features ? { features } : {}),
 });
-const more = (s: RemoteSimple | null) => renderToStaticMarkup(createElement(MoreColumns, { simple: s }));
+const shown = (s: RemoteSimple | null) =>
+  renderToStaticMarkup(
+    createElement(ShowColumn, {
+      state: null,
+      simple: s,
+      controls: phoneControls(s, false),
+      withSlides: true,
+    }),
+  );
 
-describe('a phone’s More in Simple Mode', () => {
-  it('has the Sabha flow while it is chosen in Simple Mode Features, and not otherwise', () => {
-    expect(more(simple(['sabha-flow']))).toContain('data-testid="remote-flow"');
-    expect(more(simple(['timers', 'sabha-flow']))).toContain('data-testid="remote-flow"');
-    expect(more(simple([]))).not.toContain('data-testid="remote-flow"');
-    expect(more(simple(['timers']))).not.toContain('data-testid="remote-flow"');
-    expect(more(simple(undefined))).not.toContain('data-testid="remote-flow"');
+describe('the Sabha flow on a phone in Simple Mode', () => {
+  it('is on its Show tab whatever Simple Mode Features has (the owner’s Q3: always)', () => {
+    for (const features of [['sabha-flow'], ['timers', 'sabha-flow'], [], ['timers'], undefined] as const)
+      expect(shown(simple(features ? [...features] : undefined)), JSON.stringify(features)).toContain(
+        'data-testid="remote-flow"',
+      );
   });
 
-  it('has it in Pro Mode as before', () => {
-    expect(more(null)).toContain('data-testid="remote-flow"');
+  it('is on it in Pro Mode as before', () => {
+    expect(shown(null)).toContain('data-testid="remote-flow"');
   });
 });

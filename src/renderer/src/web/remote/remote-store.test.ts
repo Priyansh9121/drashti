@@ -97,6 +97,12 @@ describe('Simple Mode reads on a phone', () => {
   });
 
   it('says why once per entry to Simple Mode, keeping a dismissed explanation away during screen changes', async () => {
+    // Leaving Simple Mode reads the playlists again (QA23-PHONE-1): answered at once, apart from the hall's reads.
+    fetcher.mockImplementation((url) =>
+      url === '/api/v1/playlists'
+        ? Promise.resolve(json({ ok: true, playlists: [] }))
+        : new Promise<Response>((resolve) => replies.push(resolve)),
+    );
     changed('mode');
     reply(0, simple, 'first');
     await vi.waitFor(() => expect(remote.useRemote.getState().hall?.groupId).toBe('first'));
@@ -137,23 +143,26 @@ describe('the phone’s open playlist', () => {
     expect(remote.useRemote.getState().playlistId).toBe('one');
   });
 
-  it('opens the desktop playlist on entering Simple Mode, then keeps the phone’s choice until it is gone', async () => {
-    const lists = [playlist('one'), playlist('two'), playlist('three')];
+  it('reads no playlist or presentation while Simple Mode is on, and reads them again on leaving it (QA23-PHONE-1)', async () => {
+    // The owner: "in simple mode only show the flow, whats running in live, and chat": a Simple Mode phone asks for
+    // none of what Pro Mode's playlist shows (Drashti refuses them there).
+    const lists = [playlist('one'), playlist('two')];
     listsFromComputer(lists);
+    const asked = () => fetcher.mock.calls.map(([url]) => (typeof url === 'string' ? url : 'not a path'));
     changed('mode');
-    reply(0, { ...simple, playlistId: 'two' });
-    await vi.waitFor(() => expect(remote.useRemote.getState().playlistId).toBe('two'));
-    await remote.showPlaylist('one');
+    reply(0, simple);
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple).toEqual(simple));
+    await remote.loadPlaylists();
+    changed('playlists');
+    remote.view({ presentationId: 'deck', item: null });
+    expect(asked().filter((url) => url !== '/api/v1/hall')).toEqual([]);
+    expect(remote.useRemote.getState().playlists).toBeNull();
 
     changed('mode');
-    reply(1, { ...simple, playlistId: 'three' });
-    await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple?.playlistId).toBe('three'));
-    await remote.loadPlaylists();
-    expect(remote.useRemote.getState().playlistId).toBe('one');
-
-    lists.shift();
-    await remote.loadPlaylists();
-    expect(remote.useRemote.getState().playlistId).toBe('three');
+    reply(1, null);
+    await vi.waitFor(() => expect(remote.useRemote.getState().playlists).toEqual(lists));
+    expect(asked()).toContain('/api/v1/playlists');
+    expect(asked()).toContain('/api/v1/presentations/deck');
   });
 
   it('clears the previous playlist’s rows while reading the next one', async () => {
