@@ -9,6 +9,7 @@ import {
   flowListPage,
   flowScanPage,
   flowTablePage,
+  flowTablePages,
   makeFlowPdf,
   type FlowPdfOptions,
   type FlowPdfPage,
@@ -206,6 +207,74 @@ describe('Sabha flow reader: tables', () => {
       { no: '૧', cells: ['પહેલો', 'વિગત'] },
       { no: '૨', cells: ['બીજો', 'નમૂનો વિગત'] },
     ]);
+  });
+});
+
+describe('Sabha flow reader: tables as word processors draw them', () => {
+  it('reads borders drawn cell by cell, a header over two lines, numbers in the middle of tall rows, "1." numbers', async () => {
+    const flow = await read([
+      flowTablePage({
+        title: 'Placeholder running order',
+        headers: ['Sr.\nNo.', 'Program', 'Details', 'Planned\ntime', 'Presenter'],
+        widths: FIVE,
+        rows: [
+          ['1.', 'Opening item', 'Placeholder details\nover two lines\nand a third', '5 min', 'Presenter A'],
+          ['2.', 'Second item', 'Details two', { text: '10 min', rows: 2 }, 'Presenter B'],
+          ['3.', 'Third item', 'Placeholder details\nover two lines', null, 'Presenter C'],
+        ],
+        total: 'Total: 15 min',
+        borders: 'boxes',
+        uprights: 'per-cell',
+        numberAlign: 'middle',
+      }),
+    ]);
+    expect(flow).toEqual({
+      status: 'read',
+      lang: 'en',
+      title: 'Placeholder running order',
+      headers: ['Sr. No.', 'Program', 'Details', 'Planned time', 'Presenter'],
+      items: [
+        {
+          no: '1',
+          cells: ['Opening item', 'Placeholder details over two lines and a third', '5 min', 'Presenter A'],
+        },
+        { no: '2', cells: ['Second item', 'Details two', '10 min', 'Presenter B'] },
+        { no: '3', cells: ['Third item', 'Placeholder details over two lines', '10 min', 'Presenter C'] },
+      ],
+      total: 'Total: 15 min',
+    });
+  });
+
+  it('reads a table over two pages, its header row repeated on the second', async () => {
+    const flow = await read(
+      flowTablePages({
+        title: 'Placeholder running order',
+        headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+        widths: FIVE,
+        rows: [
+          ['1', 'Opening item', 'Details one', '5 min', 'Presenter A'],
+          ['2', 'Second item', 'Details two', '5 min', 'Presenter B'],
+          ['3', 'Third item', 'Details three', '5 min', 'Presenter C'],
+          ['4', 'Fourth item', 'Details four', '5 min', 'Presenter D'],
+        ],
+        rowsPerPage: 2,
+        total: 'Total: 20 min',
+        borders: 'lines',
+      }),
+    );
+    expect(flow).toEqual({
+      status: 'read',
+      lang: 'en',
+      title: 'Placeholder running order',
+      headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+      items: [
+        { no: '1', cells: ['Opening item', 'Details one', '5 min', 'Presenter A'] },
+        { no: '2', cells: ['Second item', 'Details two', '5 min', 'Presenter B'] },
+        { no: '3', cells: ['Third item', 'Details three', '5 min', 'Presenter C'] },
+        { no: '4', cells: ['Fourth item', 'Details four', '5 min', 'Presenter D'] },
+      ],
+      total: 'Total: 20 min',
+    });
   });
 });
 

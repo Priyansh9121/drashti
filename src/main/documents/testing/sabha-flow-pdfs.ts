@@ -259,7 +259,8 @@ export async function makeFlowPdf(
     }
     for (const text of spec.texts) {
       // Runs of one script each, in one font each, one after another along the baseline.
-      const cps = [...text.text.normalize('NFC')].map((c) => c.codePointAt(0) ?? 0);
+      const cps: number[] = [];
+      for (const c of text.text.normalize('NFC')) cps.push(c.codePointAt(0) ?? 0);
       if (options.shortIFirst)
         for (let i = 1; i < cps.length; i++) {
           const here = cps[i] ?? 0;
@@ -395,6 +396,10 @@ export interface FlowTableSpec {
   borders?: 'lines' | 'boxes' | 'none';
   /** Where a merged cell's words sit: at its top (Word's default) or in its middle. */
   mergedAlign?: 'top' | 'middle';
+  /** Where the number sits in a row taller than one line: at its top (default) or in its middle. */
+  numberAlign?: 'top' | 'middle';
+  /** Upright borders drawn once down the whole table (default), or one per cell, row by row (as Word draws them). */
+  uprights?: 'whole' | 'per-cell';
   size?: number;
 }
 
@@ -443,7 +448,10 @@ export function flowTablePage(spec: FlowTableSpec): FlowPdfPage {
       const end = tops[Math.min(r + span, rows.length)] ?? bottom;
       const words = lines(cell);
       const block = words.length * line;
-      const first = span > 1 && spec.mergedAlign === 'middle' ? top + (end - top - block) / 2 : top + pad;
+      const middle =
+        (span > 1 && spec.mergedAlign === 'middle') ||
+        (c === 0 && r >= (spec.headers ? 1 : 0) && spec.numberAlign === 'middle');
+      const first = middle ? top + (end - top - block) / 2 : top + pad;
       words.forEach((text, k) => {
         if (text !== '') texts.push({ text, x: (xs[c] ?? 0) + pad, y: first + k * line + size, size });
       });
@@ -458,10 +466,35 @@ export function flowTablePage(spec: FlowTableSpec): FlowPdfPage {
         const covered = r < rows.length && rows[r]?.[c] === null;
         if (!covered) rules.push({ x0: xs[c] ?? 0, y0: tops[r] ?? 0, x1: xs[c + 1] ?? 0, y1: tops[r] ?? 0 });
       }
-    for (const x of xs) rules.push({ x0: x, y0: y, x1: x, y1: bottom });
+    if (spec.uprights === 'per-cell')
+      for (let r = 0; r < rows.length; r++)
+        for (const x of xs) rules.push({ x0: x, y0: tops[r] ?? 0, x1: x, y1: tops[r + 1] ?? bottom });
+    else for (const x of xs) rules.push({ x0: x, y0: y, x1: x, y1: bottom });
   }
   if (spec.total) texts.push({ text: spec.total, x: left, y: bottom + size * 2, size });
   return { width, height, texts, rules, ruleStyle: spec.borders === 'boxes' ? 'boxes' : 'lines' };
+}
+
+/**
+ * A table over several pages, `rowsPerPage` rows on each, its header row repeated at the top of each page (as a word
+ * processor repeats it), the title on the first and the total on the last.
+ */
+export function flowTablePages(spec: FlowTableSpec & { rowsPerPage: number }): FlowPdfPage[] {
+  const pages: FlowPdfPage[] = [];
+  for (let at = 0; at < spec.rows.length; at += spec.rowsPerPage) {
+    const last = at + spec.rowsPerPage >= spec.rows.length;
+    const { title, subtitle, total, ...rest } = spec;
+    pages.push(
+      flowTablePage({
+        ...rest,
+        ...(at === 0 && title ? { title } : {}),
+        ...(at === 0 && subtitle ? { subtitle } : {}),
+        ...(last && total ? { total } : {}),
+        rows: spec.rows.slice(at, at + spec.rowsPerPage),
+      }),
+    );
+  }
+  return pages;
 }
 
 /** A numbered list (no table): a title, then one line per item, its number first. */
@@ -479,7 +512,7 @@ export function flowListPage(spec: {
     y += size * 3;
   }
   for (const text of spec.lines) {
-    texts.push({ text, x: text.match(/^\s/u) ? 84 : 60, y, size });
+    texts.push({ text, x: /^\s/u.test(text) ? 84 : 60, y, size });
     y += size * 1.6;
   }
   if (spec.total) texts.push({ text: spec.total, x: 60, y: y + size, size });
