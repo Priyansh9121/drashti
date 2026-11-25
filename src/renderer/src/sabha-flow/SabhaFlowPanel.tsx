@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { NO_FLOW } from '../../../shared/sabha-flow-lines';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useOperateOnly } from '../simple/simple-features-store';
 import { Button, IconButton } from '../ui/Button';
@@ -127,7 +128,7 @@ function FlowBody() {
         {problemNotice}
         <EmptyState
           icon={ListOrdered}
-          title="No Sabha flow yet"
+          title={NO_FLOW}
           compact
           data-testid="flow-empty"
           action={

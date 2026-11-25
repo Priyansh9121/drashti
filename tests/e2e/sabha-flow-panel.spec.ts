@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { flowScanPage, flowTablePage, makeFlowPdf } from '../../src/main/documents/testing/sabha-flow-pdfs';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
@@ -19,7 +20,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Now and Next up with Back and Next, Replace… and Remove; a PDF with no text says so and shows its page only. Never on a
  * screen. Simple Mode has it only when chosen in Simple Mode Features…, without its setup.
  *
- * Placeholder PDFs only, made here with pdf-lib (Helvetica): never a real running order.
+ * Placeholder PDFs only, made here by a22-flow-core's maker (the reader's own tests use it: pdf-lib, the bundled Noto
+ * fonts with ToUnicode maps, a table's borders as lines): never a real running order.
  */
 
 const ROWS = [
@@ -28,73 +30,6 @@ const ROWS = [
   '3 · Talk · Placeholder words three · 15 min · Speaker B',
   '4 · Closing · Placeholder words four · 5 min · Speaker C',
 ];
-
-/**
- * A one-page running order as a word processor saves it: a title and subtitle, a ruled table (No. | Program | Details
- * | Duration | Presenter) whose rows 2 and 3 share one Duration and one Presenter cell, and the total under it.
- */
-async function tablePdf(): Promise<Uint8Array> {
-  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
-  const doc = await PDFDocument.create();
-  const page = doc.addPage([595, 842]);
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const black = rgb(0, 0, 0);
-  const centred = (text: string, y: number, size: number, f = font) => {
-    page.drawText(text, { x: (595 - f.widthOfTextAtSize(text, size)) / 2, y, size, font: f, color: black });
-  };
-  centred('Placeholder evening', 780, 18, bold);
-  centred('A test running order', 756, 12);
-  const columns = [50, 90, 190, 380, 460, 545];
-  const top = 720;
-  const rowHeight = 28;
-  const line = (x1: number, y1: number, x2: number, y2: number) => {
-    page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.8, color: black });
-  };
-  const cell = (text: string, column: number, y: number, f = font) => {
-    page.drawText(text, { x: (columns[column] ?? 0) + 5, y, size: 11, font: f, color: black });
-  };
-  const header = ['No.', 'Program', 'Details', 'Duration', 'Presenter'];
-  header.forEach((h, i) => {
-    cell(h, i, top - 19, bold);
-  });
-  const rows = [
-    ['1', 'Opening', 'Placeholder words one', '10 min', 'Speaker A'],
-    ['2', 'Video', 'Placeholder clip', '', ''],
-    ['3', 'Talk', 'Placeholder words three', '', ''],
-    ['4', 'Closing', 'Placeholder words four', '5 min', 'Speaker C'],
-  ];
-  rows.forEach((r, n) => {
-    const y = top - rowHeight * (n + 1) - 19;
-    r.forEach((text, i) => {
-      if (text !== '') cell(text, i, y);
-    });
-  });
-  // The merged Duration and Presenter: written once, halfway down the two rows they cover.
-  const mergedY = top - rowHeight * 2.5 - 19;
-  cell('15 min', 3, mergedY);
-  cell('Speaker B', 4, mergedY);
-  // The rules: the outer box, each column, and each row's line but the one inside the merged cells.
-  const bottom = top - rowHeight * 5;
-  for (const x of columns) line(x, top, x, bottom);
-  for (let n = 0; n <= 5; n++) {
-    const y = top - rowHeight * n;
-    if (n === 3) line(columns[0] ?? 0, y, columns[3] ?? 0, y);
-    else line(columns[0] ?? 0, y, columns[5] ?? 0, y);
-  }
-  page.drawText('Total 45 min', { x: 380, y: bottom - 24, size: 12, font: bold, color: black });
-  return doc.save();
-}
-
-/** A page with no text at all, as a scan has none: only shapes. */
-async function scanPdf(): Promise<Uint8Array> {
-  const { PDFDocument, rgb } = await import('pdf-lib');
-  const doc = await PDFDocument.create();
-  const page = doc.addPage([595, 842]);
-  page.drawRectangle({ x: 60, y: 500, width: 470, height: 260, color: rgb(0.75, 0.75, 0.75) });
-  page.drawRectangle({ x: 60, y: 300, width: 470, height: 120, color: rgb(0.55, 0.55, 0.55) });
-  return doc.save();
-}
 
 /** Choose PDF… (or Replace…) answered with this file: Main's file dialog, stood in for by the test. */
 async function chooseThis(app: ElectronApplication, file: string): Promise<void> {
@@ -117,20 +52,63 @@ async function seenAll(list: Locator): Promise<string[]> {
   return out;
 }
 
-const flowNow = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.flow.now());
+/** Now, as Main keeps it. */
+const flowNow = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state);
 
-async function makePdfs(): Promise<{ table: string; scan: string }> {
+const WIDTHS = [44, 140, 190, 70, 106];
+
+/**
+ * Three placeholder running orders: an English table whose rows 2 and 3 share one Duration and one Presenter cell, with
+ * a title, subtitle and total; a Gujarati one; and a scan (a picture, no text).
+ */
+async function makePdfs(): Promise<{ table: string; gujarati: string; scan: string }> {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-flow-'));
   const table = join(dir, 'placeholder-flow.pdf');
+  const gujarati = join(dir, 'placeholder-gujarati.pdf');
   const scan = join(dir, 'placeholder-scan.pdf');
-  writeFileSync(table, await tablePdf());
-  writeFileSync(scan, await scanPdf());
-  return { table, scan };
+  writeFileSync(
+    table,
+    await makeFlowPdf([
+      flowTablePage({
+        title: 'Placeholder evening',
+        subtitle: 'A test running order',
+        headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+        widths: WIDTHS,
+        rows: [
+          ['1', 'Opening', 'Placeholder words one', '10 min', 'Speaker A'],
+          ['2', 'Video', 'Placeholder clip', { text: '15 min', rows: 2 }, { text: 'Speaker B', rows: 2 }],
+          ['3', 'Talk', 'Placeholder words three', null, null],
+          ['4', 'Closing', 'Placeholder words four', '5 min', 'Speaker C'],
+        ],
+        total: 'Total 45 min',
+        borders: 'lines',
+      }),
+    ]),
+  );
+  writeFileSync(
+    gujarati,
+    await makeFlowPdf([
+      flowTablePage({
+        title: 'નમૂનો કાર્યક્રમ',
+        headers: ['ક્રમ', 'કાર્યક્રમ', 'વિગત', 'સમય', 'વક્તા'],
+        widths: WIDTHS,
+        rows: [
+          ['૧', 'પહેલો કાર્યક્રમ', 'નમૂનો વિગત', '૫ મિનિટ', 'વક્તા એક'],
+          ['૨', 'બીજો કાર્યક્રમ', 'નમૂનો', '૫ મિનિટ', 'વક્તા બે'],
+        ],
+        total: 'કુલ સમય: ૧૦ મિનિટ',
+        borders: 'boxes',
+      }),
+    ]),
+  );
+  writeFileSync(scan, await makeFlowPdf([flowScanPage()]));
+  return { table, gujarati, scan };
 }
 
 test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the read list in order with merged cells and the total, Now and Next up, the PDF page zoomed, kept over a restart, fitting 1024 × 645, never on a screen', async () => {
   test.setTimeout(180_000);
-  const { table, scan } = await makePdfs();
+  const { table, gujarati, scan } = await makePdfs();
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -245,7 +223,23 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   await expect(rows2).toHaveCount(4, { timeout: 30_000 });
   await expect(rows2.nth(2)).toHaveAttribute('aria-current', 'step');
 
-  // Replace… with a PDF that has no text: said in plain words, its page only, and Now starts again.
+  // Replace… with a Gujarati one: its rows in Gujarati, lang gu, and Now starts again.
+  await chooseThis(again.app, gujarati);
+  await panel2.getByRole('button', { name: 'Replace… (choose another PDF)' }).click();
+  await expect(panel2.getByTestId('flow-file')).toHaveText('placeholder-gujarati.pdf', { timeout: 30_000 });
+  await expect(panel2.getByTestId('flow-read-list')).toHaveAttribute('lang', 'gu');
+  expect(await seenAll(rows2)).toEqual([
+    '૧ · પહેલો કાર્યક્રમ · નમૂનો વિગત · ૫ મિનિટ · વક્તા એક',
+    '૨ · બીજો કાર્યક્રમ · નમૂનો · ૫ મિનિટ · વક્તા બે',
+  ]);
+  await expect(panel2.getByTestId('flow-total')).toHaveText('કુલ સમય: ૧૦ મિનિટ');
+  await expect(rows2.first()).not.toHaveAttribute('aria-current', 'step');
+  expect((await flowNow(win2))?.now ?? null).toBeNull();
+  expect(await seen(panel2.getByTestId('flow-now'))).toBe('Now: not started');
+  // Next up's words keep the PDF's language inside Drashti's English label.
+  await expect(panel2.getByTestId('flow-next').locator('[lang="gu"]').first()).toHaveText('૧');
+
+  // Replace… with a PDF that has no text: said in plain words, its page only.
   await chooseThis(again.app, scan);
   await panel2.getByRole('button', { name: 'Replace… (choose another PDF)' }).click();
   await expect(panel2.getByTestId('flow-status')).toContainText('no words Drashti can read', {
@@ -257,7 +251,6 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   await expect(panel2.getByRole('img', { name: 'Page 1 of 1, placeholder-scan.pdf' })).toBeVisible({
     timeout: 30_000,
   });
-  expect((await flowNow(win2))?.now ?? null).toBeNull();
   await expectFits(panel2, 'the Sabha flow panel, a PDF with no text, at 1024 × 645');
 
   // Remove asks first, then the panel is empty again.
@@ -266,7 +259,10 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   await expect(confirm).toContainText('placeholder-scan.pdf');
   await confirm.getByRole('button', { name: 'Remove', exact: true }).click();
   await expect(panel2.getByTestId('flow-empty')).toBeVisible();
-  expect(await win2.evaluate(() => (globalThis as PageGlobals).drashti.flow.get())).toBeNull();
+  expect(await win2.evaluate(() => (globalThis as PageGlobals).drashti.flow.get())).toEqual({
+    flow: null,
+    state: null,
+  });
 
   // Folded again, it is its heading alone.
   await win2.getByRole('button', { name: 'Sabha flow', exact: true }).click();

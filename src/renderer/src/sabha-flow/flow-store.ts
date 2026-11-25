@@ -63,9 +63,9 @@ export function connectFlow(): void {
     told = true;
     apply(snapshot);
   });
-  void Promise.all([window.drashti.flow.get(), window.drashti.flow.now()]).then(
-    ([flow, state]) => {
-      if (!told) apply({ flow, state });
+  void window.drashti.flow.get().then(
+    (snapshot) => {
+      if (!told) apply(snapshot);
     },
     () => {
       if (!told) useFlow.setState({ loaded: true });
