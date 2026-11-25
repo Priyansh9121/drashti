@@ -22,6 +22,7 @@ import {
   tidyNotes,
 } from '../../shared/pictures';
 import type { PagePart } from '../../shared/page-part';
+import { flowTextPageSchema } from '../../shared/sabha-flow-text';
 import type { ScreenConfig } from '../../shared/screens';
 import { fileProblem } from '../plain-errors';
 import { cutText } from '../../shared/text';
@@ -226,12 +227,32 @@ export class PdfPictures {
     return run;
   }
 
+  /**
+   * Sabha flow (alpha.23): each page (up to `maxPages`) drawn at its own shape on its own white, as large as fits in
+   * `size`, with its text layer and borders read for the flow's reader. In the same queue as every other drawing, one
+   * window, at the lowest priority.
+   */
+  drawForFlow(
+    pdfPath: string,
+    outDir: string,
+    maxPages: number,
+    size: { width: number; height: number },
+    signal?: AbortSignal,
+  ): Promise<PicturesResult> {
+    const run = this.turn.then(() =>
+      this.drawNow(pdfPath, outDir, signal, false, undefined, { maxPages, size }),
+    );
+    this.turn = run.catch(() => undefined);
+    return run;
+  }
+
   private async drawNow(
     pdfPath: string,
     outDir: string,
     signal?: AbortSignal,
     readPageText?: boolean,
     reading?: { pages: number[]; size: { width: number; height: number } },
+    flow?: { maxPages: number; size: { width: number; height: number } },
   ): Promise<PicturesResult> {
     if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
     let data: Buffer;
@@ -249,6 +270,7 @@ export class PdfPictures {
     return this.drawData(data, outDir, signal, {
       ...(readPageText ? { readPageText } : {}),
       ...(reading ? { reading } : {}),
+      ...(flow ? { flow } : {}),
     });
   }
 
@@ -258,23 +280,28 @@ export class PdfPictures {
     signal: AbortSignal | undefined,
     {
       readPageText,
-      part,
+      part: onePart,
       reading,
+      flow,
     }: {
       readPageText?: boolean;
       part?: PagePart;
       /** Book OCR: these pages only, fitted into this size, on white (drawForReading). */
       reading?: { pages: number[]; size: { width: number; height: number } };
+      /** Sabha flow: every page (up to its limit) at its own shape, its text layer read (drawForFlow). */
+      flow?: { maxPages: number; size: { width: number; height: number } };
     },
   ): Promise<PicturesResult> {
     if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
     await mkdir(outDir, { recursive: true });
-    const { width, height } = reading?.size ?? this.deps.size();
+    const { width, height } = flow?.size ?? reading?.size ?? this.deps.size();
+    // A flow's page is the whole of each page, drawn as a part is (its own shape, on its own white).
+    const part: PagePart | undefined = flow ? { x: 0, y: 0, w: 1, h: 1 } : onePart;
     const started = Date.now();
     // Several at once only while nothing is on the screens or the stream (Session 56), and a document not too big.
     // A part of a page (Make a slide…) and a reading's few pages: one window.
     const atOnce =
-      !part && !reading && data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
+      !part && !reading && !flow && data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
         ? (this.deps.atOnce ?? windowsAtOnce(availableParallelism()))
         : 1;
     return new Promise<PicturesResult>((resolve) => {
@@ -305,8 +332,9 @@ export class PdfPictures {
         data: new Uint8Array(data),
         width,
         height,
-        maxPages: part ? 1 : MAX_PICTURE_PAGES,
+        maxPages: flow ? flow.maxPages : part ? 1 : MAX_PICTURE_PAGES,
         ...(readPageText ? { readPageText } : {}),
+        ...(flow ? { flowText: true } : {}),
         ...(share ? { share } : {}),
         ...(part ? { part } : {}),
         ...(reading ? { onWhite: true } : {}),
@@ -427,6 +455,8 @@ export class PdfPictures {
     await writeFile(file, png);
     const notes = page?.notes;
     const pageText = page?.pageText;
+    // A flow's page: its text layer and borders as the reader takes them, checked (left out if not as they should be).
+    const flowPage = job?.flowText ? flowTextPageSchema.safeParse(page?.flowPage) : undefined;
     d.pages.set(index, {
       index,
       file,
@@ -434,6 +464,7 @@ export class PdfPictures {
       ...(job?.readPageText && typeof pageText === 'string' && pageText.length <= MAX_PAGE_TEXT
         ? { pageText }
         : {}),
+      ...(flowPage?.success ? { flowPage: flowPage.data } : {}),
     });
     return goOn();
   }

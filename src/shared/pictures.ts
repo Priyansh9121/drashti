@@ -1,4 +1,5 @@
 import type { PagePart } from './page-part';
+import type { FlowTextPage } from './sabha-flow-text';
 import { cutText } from './text';
 
 /*
@@ -54,6 +55,11 @@ export interface PictureJob {
    * marks). Left out: black, as the screens show a page.
    */
   onWhite?: boolean;
+  /**
+   * Sabha flow (alpha.23): with `part` the whole page, each page also hands back its text layer and its borders, as
+   * the flow's reader needs them (shared/sabha-flow-text.ts).
+   */
+  flowText?: boolean;
 }
 
 export type PageShare = { every: number; from: number } | { pages: number[] };
@@ -72,6 +78,8 @@ export interface PicturePage {
   /** The page's comments (sticky notes), as a PDF's speaker notes: '' when it has none. */
   notes: string;
   pageText?: string;
+  /** Sabha flow: the page's text layer and borders (a flow job only). */
+  flowPage?: FlowTextPage;
 }
 
 /** How the drawing ended. */
@@ -90,7 +98,7 @@ export type PictureAssetKind = 'standardFontDataUrl' | 'wasmUrl' | 'cMapUrl';
 /** A file pdf.js may ask for: a plain name, nothing that could reach another folder. */
 export const PICTURE_ASSET_NAME = /^[A-Za-z0-9_.-]{1,80}$/u;
 
-export interface DrawnPicturePage extends Pick<PicturePage, 'index' | 'notes' | 'pageText'> {
+export interface DrawnPicturePage extends Pick<PicturePage, 'index' | 'notes' | 'pageText' | 'flowPage'> {
   file: string;
 }
 
