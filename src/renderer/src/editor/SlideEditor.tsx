@@ -28,6 +28,7 @@ import {
   Languages,
   ListPlus,
   Palette,
+  AlertTriangle,
   Pin,
   PinOff,
   Redo2,
@@ -93,7 +94,7 @@ import { PdfHandoutDialog } from './PdfHandoutDialog';
 import { replacePdfPage, splitPdfPages } from './pdf-pages';
 import type { PdfPendingAction } from './PdfTools';
 import { SourceLinkDialog } from './SourceLinkDialog';
-import { SourceIssues } from './SourceIssues';
+import { SourceIssues, sourceNotes } from './SourceIssues';
 import { isPdfPage, pdfEditorTabs, visibleEditorGroup } from './pdf-context';
 import { deletePdfPage, turnPdfPageRight } from './pdf-page-ops';
 import { restyle, selectedLook } from './runs-doc';
@@ -166,10 +167,17 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const [inspectorKept, keepInspector] = usePersistentState('editor.inspectorKept', false, isBoolean, 'run');
   const [ribbonDropped, setRibbonDropped] = useState(false);
   const [inspectorOver, setInspectorOver] = useState(false);
+  // A PDF's "Source document limits" notes fold too in a short window, behind a button over the slide (QA23-X95N-1d).
+  const [notesOver, setNotesOver] = useState(false);
   const ribbonFolded = fold.ribbon && !ribbonKept;
   const inspectorFolded = fold.inspector && !inspectorKept;
   const dropped = ribbonFolded && ribbonDropped;
   const over = inspectorFolded && inspectorOver;
+  const notesFolded = fold.ribbon;
+  const notesShown = notesFolded && notesOver;
+  const notesBox = useRef<HTMLDivElement>(null);
+  const notesButton = useRef<HTMLButtonElement>(null);
+  const notesId = useId();
   const header = useRef<HTMLElement>(null);
   const droppedBox = useRef<HTMLDivElement>(null);
   const overBox = useRef<HTMLDivElement>(null);
@@ -178,10 +186,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   // What is open over the slide folds again at a press elsewhere in the editor (menus and dialogs opened from it are
   // drawn outside the editor, and keep it), and at Escape, its first step back (below).
   useEffect(() => {
-    if (!dropped && !over) return;
+    if (!dropped && !over && !notesShown) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target instanceof Node ? e.target : null;
       if (!t || !root.current?.contains(t)) return;
+      if (notesShown && !notesBox.current?.contains(t) && !notesButton.current?.contains(t))
+        setNotesOver(false);
       if (dropped && !droppedBox.current?.contains(t) && !tabsIn(header.current)?.contains(t))
         setRibbonDropped(false);
       if (over && !overBox.current?.contains(t) && !opener.current?.contains(t)) setInspectorOver(false);
@@ -190,10 +200,15 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
     };
-  }, [dropped, over]);
+  }, [dropped, over, notesShown]);
   /** Escape's first step back in a small window: what is open over the slide folds, the keyboard back on its button. */
   const foldOver = (): boolean => {
     const at = document.activeElement;
+    if (notesShown) {
+      setNotesOver(false);
+      if (notesBox.current?.contains(at) || notesButton.current === at) notesButton.current?.focus();
+      return true;
+    }
     if (over) {
       setInspectorOver(false);
       if (overBox.current?.contains(at) || opener.current === at) opener.current?.focus();
@@ -615,6 +630,16 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     };
   }, [mac, saveWhenReady, outsideBusy, translating]);
 
+  // A source page can be linked where it is a picture of a deck's or an old file's page (Link source page…).
+  const sourceLink =
+    shownPage &&
+    (!shownPage.documentPage ||
+      shownPage.documentPage.ext === 'ppt' ||
+      shownPage.documentPage.ext === 'key') &&
+    shownPage.elements.some((element) => element.kind === 'image')
+      ? openSourceLink
+      : undefined;
+  const notes = sourceNotes(sourceIssues);
   return (
     <div
       ref={root}
@@ -955,19 +980,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           is kept as it is, but not shown here.
         </Notice>
       )}
-      <SourceIssues
-        issues={sourceIssues}
-        blocked={exportBusy}
-        onLink={
-          shownPage &&
-          (!shownPage.documentPage ||
-            shownPage.documentPage.ext === 'ppt' ||
-            shownPage.documentPage.ext === 'key') &&
-          shownPage.elements.some((element) => element.kind === 'image')
-            ? openSourceLink
-            : undefined
-        }
-      />
+      {/* In a short window they fold behind a button over the slide (below), never dropped. */}
+      {!notesFolded && <SourceIssues issues={sourceIssues} blocked={exportBusy} onLink={sourceLink} />}
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (
@@ -999,6 +1013,48 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                     useEditor.setState({ finding: false });
                   }}
                 />
+              )}
+              {notesFolded && notes.length > 0 && (
+                // Folded (a short window), the source notes are behind this button at the slide's top left, in the
+                // warning's colours, and open over the slide.
+                <Button
+                  ref={notesButton}
+                  variant="warning"
+                  size="sm"
+                  icon={AlertTriangle}
+                  className="absolute top-2 left-2 z-10 shadow-overlay"
+                  aria-expanded={notesShown}
+                  aria-controls={notesShown ? notesId : undefined}
+                  onClick={() => {
+                    setNotesOver(!notesShown);
+                  }}
+                >
+                  Source notes ({String(notes.length)})
+                </Button>
+              )}
+              {notesShown && notes.length > 0 && (
+                <div
+                  ref={notesBox}
+                  id={notesId}
+                  className="absolute inset-x-2 top-11 z-20 max-h-[calc(100%-3.25rem)] overflow-y-auto rounded-md shadow-overlay"
+                >
+                  <SourceIssues
+                    issues={sourceIssues}
+                    blocked={exportBusy}
+                    onLink={sourceLink}
+                    className="m-0 pr-10"
+                  />
+                  <IconButton
+                    icon={X}
+                    size="sm"
+                    label="Close the source notes"
+                    className="absolute top-1 right-1"
+                    onClick={() => {
+                      setNotesOver(false);
+                      notesButton.current?.focus();
+                    }}
+                  />
+                </div>
               )}
               {inspectorFolded && (
                 // Folded (a narrow window), the Inspector is behind this button, at the slide's bottom left (the
