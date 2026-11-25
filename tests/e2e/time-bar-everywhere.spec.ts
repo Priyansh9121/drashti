@@ -443,8 +443,9 @@ test('in Simple Mode a phone is refused a sound’s Pause, move and Play and put
     const sound = { playing: { layer: 'audio' } };
 
     // Pro Mode: putting the first tone up from the phone's Media is refused (alpha.23, QA23-PHONE-1: "they cant change
-    // videos"; the phone's Media went with the rule, its page the UI builder's); moved to the window: put up as its
-    // Media does, then paused from its bar there, the phone's Pause refused first.
+    // videos"; the phone's Media went with the rule, its page the UI builder's); moved to the window: put up by the
+    // engine's own playAudio (dispatched here, not the window's Media), then paused from the window's bar, the phone's
+    // Pause refused first.
     await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${first}/show`, {}, 'media');
     await dispatch(win, {
       type: 'playAudio',
