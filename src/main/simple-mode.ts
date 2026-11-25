@@ -222,6 +222,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.network.makePoster,
   // Session 54: whether phones may add files, and which playlists they see, are Pro Mode's.
   IPC.network.setAddFiles,
+  // The chat (alpha.23): Clear chat, removing a person (unpairing their device) and the Chat QR are Pro Mode's.
+  IPC.chat.clear,
+  IPC.chat.remove,
+  IPC.chat.invite,
+  IPC.chat.endInvite,
   IPC.playlists.share,
   // Output nodes (Session 13): Simple Mode sees the dashboard and Identify, and changes nothing:
   // no pairing, removing, renaming, assigning, copying everything or reloading an output.

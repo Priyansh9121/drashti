@@ -528,6 +528,8 @@ import { OscService } from './osc/service';
 import { captureWithShowAbort } from './network/slide-picture';
 import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
+import { ChatService } from './chat/chat-service';
+import { ChatStore } from './chat/chat-store';
 import { AnnouncementRepo } from './db/announcements';
 import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-worker';
 import { startPerfDevices } from './network/perf-devices';
@@ -7349,6 +7351,41 @@ function start(): void {
   let quickBarNow: { view(): QuickPin[]; set(pins: QuickPin[]): QuickBarResult } | null = null;
   const STILL_STARTING = { ok: false as const, message: 'Drashti is still starting: try again in a moment.' };
   let presentationChanges: Pick<DesktopLibrary, 'removePresentations' | 'restorePresentations'> | null = null;
+  // The chat with paired phones (alpha.23, QA23-CHAT-1, main/chat/): the day's chat in one file of the data folder
+  // (never the library, so never a backup or a Report a Problem), its rules, and the phones from the Chat QR, paired
+  // for the day. Nothing of a message or a name is ever logged.
+  const chatLog = (level: 'info' | 'warn', message: string) => {
+    if (level === 'warn') log.warn(message);
+    else log.info(message);
+  };
+  const chatStore = new ChatStore({
+    file: join(userDataDir, 'chat', 'today.json'),
+    now: Date.now,
+    log: chatLog,
+  });
+  chatStore.load();
+  // The operator's Chat section reads the chat again a moment after a change (one view for a burst of messages).
+  let chatViewWaiting = false;
+  const chatChanged = () => {
+    if (chatViewWaiting) return;
+    chatViewWaiting = true;
+    setTimeout(() => {
+      chatViewWaiting = false;
+      sendToOperator(IPC.chat.changed, net.chatView());
+    }, 100);
+  };
+  const chat = new ChatService({
+    store: chatStore,
+    now: Date.now,
+    toPhones: (event) => {
+      net.chatEvent(event);
+    },
+    changed: chatChanged,
+    devicesChanged: () => {
+      net.chatDevicesChanged();
+    },
+    log: chatLog,
+  });
   const net = new NetworkService({
     // Phones and tablets work only while Drashti is let in (Session 54): every request, pairing and file refused.
     letIn: isLetIn,
@@ -7484,6 +7521,8 @@ function start(): void {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),
     },
+    chat,
+    chatChanged,
     // The phone as a full Drashti (Session 54): the computer's screens and Audience and Stage, as the window's own
     // requests change them; covering the controls is asked in the computer's own box, never taken from a phone.
     desktop: {
@@ -7612,6 +7651,16 @@ function start(): void {
   network = net;
   net.resume();
   stops.add('network', () => net.close());
+  // The chat's day (alpha.23): a new day empties it (and unpairs its phones) within a minute of midnight, even with no
+  // one asking; what waits to be written is written as Drashti quits.
+  const chatDayCheck = setInterval(() => {
+    chat.tick();
+  }, 60_000);
+  chatDayCheck.unref();
+  stops.add('chat', () => {
+    clearInterval(chatDayCheck);
+    chatStore.flush();
+  });
   const osc = new OscService({
     settings: { get: (key) => settings.get(key), set: laterSetting },
     letIn: isLetIn,
@@ -8148,6 +8197,39 @@ function start(): void {
   handle(IPC.announcements.takeOff, (e, which) =>
     fromOperator(e) ? announcements.takeOff(which) : notQueueOperator,
   );
+
+  // The chat (alpha.23): the operator window's Chat section only. Simple Mode's lock answers Clear chat, Remove and
+  // the Chat QR (simple-mode.ts); sending as the operator is Simple Mode Features' (a22-chat-operator).
+  const notChatOperator = { ok: false as const, message: 'Only the operator window can use the chat.' };
+  const chatViewNow = () => ({ ok: true as const, view: net.chatView() });
+  handle(IPC.chat.view, (e) =>
+    fromOperator(e)
+      ? net.chatView()
+      : { day: '', messages: [], people: [], members: [], invite: null, reachable: false },
+  );
+  handle(IPC.chat.send, (e, text) => {
+    if (!fromOperator(e)) return notChatOperator;
+    const sent = chat.sendAsOperator(text);
+    return sent.ok ? chatViewNow() : sent;
+  });
+  handle(IPC.chat.clear, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    chat.clear();
+    return chatViewNow();
+  });
+  handle(IPC.chat.remove, (e, personId) =>
+    fromOperator(e) ? net.removeChatPerson(personId) : notChatOperator,
+  );
+  handle(IPC.chat.invite, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    const shown = net.startChatInvite();
+    return shown.ok ? chatViewNow() : { ok: false as const, message: shown.message };
+  });
+  handle(IPC.chat.endInvite, (e) => {
+    if (!fromOperator(e)) return notChatOperator;
+    net.endChatInvite();
+    return chatViewNow();
+  });
 
   // Timers: made and edited here, started and paused through the engine.
   const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {
