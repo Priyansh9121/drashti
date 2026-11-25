@@ -15,6 +15,16 @@ export const SHORT = '(max-height: 400px)';
 /** A window this narrow folds the Inspector: 200% text at the least window is 442, 150% 589. */
 export const NARROW = '(max-width: 640px)';
 
+/**
+ * The same queries as classes, for what folds in the layout itself: the moment the window or its text size changes,
+ * before the fold above is told (a media query's change comes with the next frame, and React's render after it), the
+ * ribbon, the Inspector and a PDF's notes are already out of the way, so the page never scrolls down for a moment (the
+ * Mac's CI, run 45571462882: the page read 14 ms after 200% text landed scrolled, the ribbon still in its place).
+ * Each matches its query above (editor-fold.test.ts).
+ */
+export const HIDE_WHEN_SHORT = '[@media(max-height:400px)]:hidden';
+export const HIDE_WHEN_NARROW = '[@media(max-width:640px)]:hidden';
+
 /** What the window's size folds. */
 export interface EditorFold {
   ribbon: boolean;

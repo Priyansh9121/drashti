@@ -42,7 +42,7 @@ import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { Canvas } from './Canvas';
-import { useEditorFold } from './editor-fold';
+import { HIDE_WHEN_NARROW, HIDE_WHEN_SHORT, useEditorFold } from './editor-fold';
 import type { EditorGroup } from './editor-store';
 import {
   acceptSourceConversion,
@@ -838,7 +838,13 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       {/* Folded (a short window), the ribbon is dropped over the slide by its tab, under the top; else in its place,
           its wrappers no boxes of their own (display: contents), so it is laid out exactly as before. */}
       <div
-        className={ribbonFolded ? 'relative z-30 h-0 shrink-0' : 'contents'}
+        className={
+          ribbonFolded
+            ? 'relative z-30 h-0 shrink-0'
+            : ribbonKept
+              ? 'contents'
+              : cx('contents', HIDE_WHEN_SHORT)
+        }
         hidden={ribbonFolded && !dropped}
         data-testid={ribbonFolded ? 'editor-ribbon-folded' : undefined}
       >
@@ -1032,7 +1038,14 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         </Notice>
       )}
       {/* In a short window they fold behind a button over the slide (below), never dropped. */}
-      {!notesFolded && <SourceIssues issues={sourceIssues} blocked={exportBusy} onLink={sourceLink} />}
+      {!notesFolded && (
+        <SourceIssues
+          issues={sourceIssues}
+          blocked={exportBusy}
+          onLink={sourceLink}
+          className={cx('m-2', HIDE_WHEN_SHORT)}
+        />
+      )}
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (
@@ -1128,7 +1141,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               )}
             </div>
             {!fold.inspector ? (
-              <Inspector />
+              <Inspector {...(inspectorKept ? {} : { className: HIDE_WHEN_NARROW })} />
             ) : !inspectorFolded ? (
               <div className="grid shrink-0 grid-rows-[auto_minmax(0,1fr)]">
                 <div className="flex justify-start border-b border-l border-line bg-panel px-2 py-1">

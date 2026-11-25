@@ -2,7 +2,16 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Tabs } from '../ui/Tabs';
-import { foldFor, NARROW, SHORT, SLIDE_PAD, SMALL_PAD, slidePad } from './editor-fold';
+import {
+  foldFor,
+  HIDE_WHEN_NARROW,
+  HIDE_WHEN_SHORT,
+  NARROW,
+  SHORT,
+  SLIDE_PAD,
+  SMALL_PAD,
+  slidePad,
+} from './editor-fold';
 
 /*
  * The slide editor in a small window (a22-ribbonfold): what folds at a window's size in CSS pixels, and the room kept
@@ -44,6 +53,13 @@ describe('what a small window folds (a22-ribbonfold)', () => {
     expect(foldFor(sized(512, 322.5))).toEqual({ ribbon: true, inspector: true });
     expect(foldFor(sized(1400, 380))).toEqual({ ribbon: true, inspector: false });
     expect(foldFor(sized(600, 800))).toEqual({ ribbon: false, inspector: true });
+  });
+});
+
+describe('what folds in the layout itself, at once (the Mac’s CI, run 45571462882)', () => {
+  it('is hidden by the same media queries as the fold, so the two never disagree once the fold is told', () => {
+    expect(HIDE_WHEN_SHORT).toBe(`[@media${SHORT.replace(/\s/gu, '')}]:hidden`);
+    expect(HIDE_WHEN_NARROW).toBe(`[@media${NARROW.replace(/\s/gu, '')}]:hidden`);
   });
 });
 
