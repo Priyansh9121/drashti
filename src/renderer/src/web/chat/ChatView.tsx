@@ -187,13 +187,14 @@ function Composer() {
         <textarea
           id="chat-text-box"
           data-testid="chat-text-box"
-          rows={2}
+          rows={1}
           value={text}
           maxLength={CHAT_TEXT_MAX}
           lang={textLang(text)}
           aria-describedby="chat-mic-hint"
           placeholder="Message"
-          className="max-h-32 min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-field bg-panel-2 px-3 py-2 text-lg text-fg placeholder:text-faint"
+          // One line to start, growing with the words up to a few lines (where the browser can), as a chat's box does.
+          className="field-sizing-content max-h-32 min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-field bg-panel-2 px-3 py-2.5 text-lg text-fg placeholder:text-faint"
           onChange={(e) => {
             setText(e.target.value);
           }}
@@ -296,12 +297,16 @@ export function ChatPanel({ fill }: { fill: boolean }) {
       aria-labelledby="chat-title"
     >
       <div className="flex shrink-0 items-center gap-2">
-        <h2 id="chat-title" className="min-w-0 flex-1 truncate text-base text-muted">
-          <span className="font-bold tracking-wider uppercase">Chat</span> as{' '}
+        <h2 id="chat-title" className="shrink-0 text-base font-bold tracking-wider text-muted uppercase">
+          Chat
+        </h2>
+        {/* A long name is cut to fit (the whole of it is in Change name). */}
+        <p className="min-w-0 flex-1 truncate text-base text-muted">
+          as{' '}
           <span className="text-fg" data-testid="chat-own-name">
             {name}
           </span>
-        </h2>
+        </p>
         <Button
           size="lg"
           variant="ghost"
