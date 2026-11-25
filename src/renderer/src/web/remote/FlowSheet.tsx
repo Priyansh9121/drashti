@@ -41,6 +41,7 @@ import {
   zoomBy,
   zoomFit,
 } from './flow-store';
+import { useFeed } from '../feed';
 import { PhoneSheet } from './PhoneSheet';
 import { useSimple } from './simple';
 
@@ -120,12 +121,22 @@ function NowNext({ flow, now }: { flow: SabhaFlow; now: number | null }) {
   );
 }
 
-/** In More: the flow's file, Now and Next up, and the sheet's button; or plain words. */
+/** What the phone has of the flow, as its store keeps it (flow-store.ts). */
+export type FlowShown = Pick<
+  ReturnType<typeof useFlow.getState>,
+  'snapshot' | 'problem' | 'view' | 'page' | 'zoom' | 'pictures'
+>;
+
+/** In More: the flow, read from the phone's store; not shown while the computer is in Simple Mode. */
 export function FlowSection() {
   const snapshot = useFlow((s) => s.snapshot);
   const problem = useFlow((s) => s.problem);
   const simple = useSimple() !== null;
-  if (simple) return null;
+  return simple ? null : <FlowSectionView snapshot={snapshot} problem={problem} />;
+}
+
+/** In More: the flow's file, Now and Next up, and the sheet's button; or plain words. */
+export function FlowSectionView({ snapshot, problem }: Pick<FlowShown, 'snapshot' | 'problem'>) {
   const flow = snapshot?.flow ?? null;
   const said = flow ? statusWords(flow.status) : null;
   return (
@@ -286,13 +297,23 @@ function ReadList({ flow, now }: { flow: SabhaFlow; now: number | null }) {
 }
 
 /** The PDF page, as the computer drew it: from the screen's width, zoomed up to four times, a page at a time. */
-function PageView({ flow }: { flow: SabhaFlow }) {
-  const page = useFlow((s) => s.page);
-  const zoom = useFlow((s) => s.zoom);
-  const picture = useFlow((s) => s.pictures[pictureKey(flow.id, s.page)]);
+function PageView({
+  flow,
+  page,
+  zoom,
+  picture,
+}: {
+  flow: SabhaFlow;
+  page: number;
+  zoom: number;
+  /** A blob URL, FAILED, or undefined while it is fetched. */
+  picture: string | undefined;
+}) {
+  // Asked again once the phone is back on Drashti's network (a page not reached is not marked as failed).
+  const online = useFeed((s) => s.state === 'online');
   useEffect(() => {
-    void loadFlowPage(flow.id, page);
-  }, [flow.id, page]);
+    if (online) void loadFlowPage(flow.id, page);
+  }, [flow.id, page, online]);
   const count = flow.pageCount;
   const shown = `Page ${String(page + 1)} of ${String(count)}`;
   return (
@@ -397,10 +418,8 @@ function PageView({ flow }: { flow: SabhaFlow }) {
   );
 }
 
-function FlowSheet() {
-  const snapshot = useFlow((s) => s.snapshot);
-  const problem = useFlow((s) => s.problem);
-  const view = useFlow((s) => s.view);
+/** The sheet: the flow's file, Now and Next up, and its read list or its PDF page; or plain words. */
+export function FlowSheetView({ snapshot, problem, view, page, zoom, pictures }: FlowShown) {
   const flow = snapshot?.flow ?? null;
   const views = flowViews(flow);
   const said = flow ? statusWords(flow.status) : null;
@@ -430,7 +449,13 @@ function FlowSheet() {
           {view === 'list' && views.includes('list') ? (
             <ReadList flow={flow} now={snapshot?.state?.now ?? null} />
           ) : (
-            <PageView key={flow.id} flow={flow} />
+            <PageView
+              key={flow.id}
+              flow={flow}
+              page={page}
+              zoom={zoom}
+              picture={pictures[pictureKey(flow.id, page)]}
+            />
           )}
         </>
       )}
@@ -447,4 +472,23 @@ export function FlowLayer() {
     startFlow();
   }, []);
   return open && !simple ? <FlowSheet /> : null;
+}
+
+function FlowSheet() {
+  const snapshot = useFlow((s) => s.snapshot);
+  const problem = useFlow((s) => s.problem);
+  const view = useFlow((s) => s.view);
+  const page = useFlow((s) => s.page);
+  const zoom = useFlow((s) => s.zoom);
+  const pictures = useFlow((s) => s.pictures);
+  return (
+    <FlowSheetView
+      snapshot={snapshot}
+      problem={problem}
+      view={view}
+      page={page}
+      zoom={zoom}
+      pictures={pictures}
+    />
+  );
 }
