@@ -115,13 +115,36 @@ export const HANG_FUNCTION = 'drashtiSelfTestHangsHere';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function waitFor(what: () => Promise<boolean> | boolean, timeoutMs = 10_000): Promise<boolean> {
+/**
+ * How long the self-test waits for one answer from a page (a script's result, a capture). Electron 44 leaves a page's
+ * executeJavaScript pending for good when that page's renderer is crashed or reloaded while the call waits (the
+ * output's heartbeat restarts a page too slow to report, as CI's Rosetta Mac did: alpha.22's Release run 45524056204
+ * gave no result in 480 s), so each call has its own limit and the self-test always ends with a result.
+ */
+export const PAGE_ANSWER_MS = 5000;
+
+/** The call's answer, or a rejection naming `what` once `ms` have passed; its timer is always cleared. */
+export function answerWithin<T>(call: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${what} gave no answer within ${String(ms)} ms`));
+    }, ms);
+  });
+  return Promise.race([call, limit]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+/** Whether `what` says yes within `timeoutMs`: tried every 50 ms, each try held to what is left of the time. */
+export async function waitFor(what: () => Promise<boolean> | boolean, timeoutMs = 10_000): Promise<boolean> {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
     try {
-      if (await what()) return true;
+      if (await answerWithin(Promise.resolve().then(what), Math.max(1, end - Date.now()), 'a check'))
+        return true;
     } catch {
-      // The page may be mid-reload; try again.
+      // The page may be mid-reload, or did not answer in time; try again.
     }
     await sleep(50);
   }
@@ -130,7 +153,14 @@ async function waitFor(what: () => Promise<boolean> | boolean, timeoutMs = 10_00
 
 /** What the compositor drew for this window: a hash of its pixels and how many are bright. */
 async function frameOf(win: BrowserWindow): Promise<Frame> {
-  const bitmap = (await win.webContents.capturePage()).resize({ width: 160, quality: 'good' }).toBitmap();
+  let image: Electron.NativeImage;
+  try {
+    image = await answerWithin(win.webContents.capturePage(), PAGE_ANSWER_MS, 'a capture of the window');
+  } catch {
+    // No picture to judge by (the window was mid-restart, or gone): every check that compares frames says no.
+    return { hash: -1, bright: 0, pid: -1 };
+  }
+  const bitmap = image.resize({ width: 160, quality: 'good' }).toBitmap();
   let hash = 0;
   let bright = 0;
   for (let i = 0; i < bitmap.length; i += 4) {
@@ -163,7 +193,7 @@ async function steadyFrame(win: BrowserWindow, notLike?: number, minBright = 50)
 }
 
 const js = <T>(win: BrowserWindow, code: string) =>
-  win.webContents.executeJavaScript(code, true) as Promise<T>;
+  answerWithin(win.webContents.executeJavaScript(code, true) as Promise<T>, PAGE_ANSWER_MS, 'the page');
 
 const paintedRev = (win: BrowserWindow) =>
   js<string>(win, `document.querySelector('[data-testid="output-root"]')?.dataset.paintedRev ?? ''`);
@@ -222,13 +252,15 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
       `revision ${rev1}`,
     );
     const before = await steadyFrame(output);
-    const loadedAt = await js<number>(output, 'performance.timeOrigin');
+    const loadedAt = await js<number>(output, 'performance.timeOrigin').catch(() => Number.NaN);
     check('the output shows something', before.bright > 50, `${before.bright} bright pixels`);
     const audio = ctx.audioPlayer();
     const audioFollows = await waitFor(async () => audio !== null && (await audioRev(audio)) === rev1);
     check('the audio player follows the show', audioFollows, `revision ${rev1}`);
     const audioPid = audio?.webContents.getOSProcessId();
-    const audioLoadedAt = audio ? await js<number>(audio, 'performance.timeOrigin') : 0;
+    const audioLoadedAt = audio
+      ? await js<number>(audio, 'performance.timeOrigin').catch(() => Number.NaN)
+      : 0;
 
     // 1. Crash the operator window's renderer.
     const operatorReloadsBefore = reloads(ctx, 'operator');
@@ -250,13 +282,13 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
       'the output was never reloaded or redrawn',
       after.hash === before.hash &&
         after.pid === before.pid &&
-        (await js<number>(output, 'performance.timeOrigin')) === loadedAt,
+        (await js<number>(output, 'performance.timeOrigin').catch(() => Number.NaN)) === loadedAt,
     );
     check(
       'the audio player (and its sound) was never touched',
       audio !== null &&
         audio.webContents.getOSProcessId() === audioPid &&
-        (await js<number>(audio, 'performance.timeOrigin')) === audioLoadedAt,
+        (await js<number>(audio, 'performance.timeOrigin').catch(() => Number.NaN)) === audioLoadedAt,
     );
 
     // 2. The show carries on once the operator window is back: Next, from the main process. (Session 54: a key in the
@@ -423,7 +455,7 @@ export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise
   );
   // Whatever Main has up, so long as it is not black: a node's screen may be small (a window, in tests).
   const before = await steadyFrame(output, undefined, NODE_BRIGHT);
-  const loadedAt = await js<number>(output, 'performance.timeOrigin');
+  const loadedAt = await js<number>(output, 'performance.timeOrigin').catch(() => Number.NaN);
   check(
     'the output shows something',
     before.bright > NODE_BRIGHT,
@@ -450,7 +482,7 @@ export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise
     'the output was never reloaded or redrawn',
     after.hash === before.hash &&
       after.pid === before.pid &&
-      (await js<number>(output, 'performance.timeOrigin')) === loadedAt,
+      (await js<number>(output, 'performance.timeOrigin').catch(() => Number.NaN)) === loadedAt,
   );
 
   // 2. Reload the node's window: the output does not change.
