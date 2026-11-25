@@ -181,8 +181,10 @@ export class OutputHeartbeat {
     this.seen.set(screenId, s);
     // Drawing the show (a23-heartbeat): running, and no change behind by BEHIND_MS or more (one younger is in time,
     // review S3). Its streak starts again after a report that is not, or a gap longer than its limit.
+    // A page reports -1 until its first frame (review R2-S1): that is not drawing. why() and lateBy() are untouched, so no
+    // judgement changes.
     const late = this.lateBy(s);
-    const drawing = !warming && (late === null || late < BEHIND_MS);
+    const drawing = !warming && paintedRev >= 0 && (late === null || late < BEHIND_MS);
     if (!drawing || (gap !== null && gap > this.staleLimit(s))) s.drewAt = null;
     if (drawing) s.drewAt ??= now;
     // Said to keep restarting: no longer once it has drawn the show and kept reporting for longer than the longest grace
