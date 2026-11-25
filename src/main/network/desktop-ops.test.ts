@@ -2,21 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
-import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
-import {
-  ASKED_AT_COMPUTER,
-  CAMERA_AT_COMPUTER,
-  CAMERAS_NOT_LISTED,
-  COMPUTER_BUSY,
-  NOT_A_LISTED_CAMERA,
-  SCREEN_RECORDING_AT_COMPUTER,
-  SWITCH_ASKS_FIRST,
-} from '../../shared/network-desktop';
 import type { Announcement, AnnouncementsView } from '../../shared/announcements';
 import type { WindowList } from '../../shared/live-window';
 import type { MidiLearnable, MidiSeen, MidiSettings } from '../../shared/midi';
-import { MIDI_NOT_LISTED, NOT_A_LISTED_MIDI_DEVICE } from '../../shared/network-desktop';
 import type { CameraAccess, VideoInput } from '../../shared/video-inputs';
 import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
 import type {
@@ -30,12 +19,8 @@ import type {
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
-import {
-  SIMPLE_MODE_LOCKED,
-  simpleModeBounds,
-  simpleModeRefusesWhole,
-  type SimpleScope,
-} from '../simple-mode';
+import { SIMPLE_MODE_LOCKED, simpleModeBounds, type SimpleScope } from '../simple-mode';
+import { phoneOpRefusal } from '../../shared/phone-rule';
 import { opensOverControls } from './desktop-answers';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
@@ -46,6 +31,9 @@ import { NetworkService, OP_CHANNEL } from './network-service';
  * device, nothing while Drashti is not let in, Simple Mode refusing on a phone what it refuses in the window, the
  * window's questions answered on the phone, and never the operator's consent to cover the controls from a phone:
  * only the computer's own box gives that. Placeholder names, made-up ids.
+ *
+ * Since alpha.23 (QA23-PHONE-1, the owner's "Only PPT and PDF") a Remote is refused every one of these before anything
+ * runs, in both modes: the tests below show each refused, nothing asked of the window's functions or the computer's box.
  */
 
 const PHONE = '192.168.1.20';
@@ -512,6 +500,13 @@ function setup(options: { locked?: boolean; letIn?: boolean; audioTrackIds?: rea
   };
 }
 
+/**
+ * QA23-PHONE-1 (the owner's "Only PPT and PDF", shared/phone-rule.ts): what a Remote asks of the computer's own things,
+ * refused before anything runs, 403 in its group's words, in Pro Mode and Simple Mode alike. The handlers stay
+ * (desktop-answers.ts) until alpha.24; no phone reaches them.
+ */
+const refusal = (op: DeviceOp) => ({ status: 403, body: { ok: false, message: phoneOpRefusal(op, false) } });
+
 /** Every op of this item, with arguments it takes. */
 const OPS: [DeviceOp, Record<string, unknown>][] = [
   ['screens', {}],
@@ -553,218 +548,120 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
     expect(t.calls).toEqual([]);
   });
 
-  it('does each as the window’s own request does, and gives the phone the screens as they are then', () => {
+  it('refuses a Remote each of them before the window’s own functions are asked, in its group’s words (QA23-PHONE-1)', () => {
     const t = setup();
-    for (const [op, args] of OPS) expect(t.ask(t.remote, op, args).status, op).toBe(200);
-    expect(t.calls).toEqual([
-      { what: 'createGroup', args: ['Placeholder Stage'] },
-      { what: 'renameGroup', args: ['g-hall', 'Placeholder Main Hall'] },
-      { what: 'setGroupRole', args: ['g-hall', 'stage'] },
-      { what: 'deleteGroup', args: ['g-hall'] },
-      // Never with a consent to cover the controls.
-      { what: 'assignDisplay', args: ['g-hall', 2] },
-      { what: 'updateScreen', args: ['s-1', { name: 'Placeholder left projector' }] },
-      { what: 'setDisplayJob', args: [2, 'stage'] },
-      { what: 'removeScreen', args: ['s-1'] },
-      { what: 'keep', args: [] },
-      { what: 'goBack', args: [] },
-      { what: 'identify', args: [] },
-      { what: 'turn', args: ['stage', false] },
-    ]);
-    // The displays as the computer sees them, the controls' display said, and the stream's group left out.
-    expect(t.ask(t.remote, 'screens').body).toEqual({
-      ok: true,
-      screens: {
-        displays: DISPLAYS,
-        controlsDisplayId: 1,
-        groups: [HALL],
-        status: [{ screenId: 's-1', state: 'showing', displayId: 2 }],
-        nodes: [],
-        uses: [],
-        switches: { audience: true, stage: false },
-        asksFirst: { audience: true, stage: false },
-        pending: { deadline: 1_015_000, coversControls: false },
-        asked: null,
-      },
-    });
-  });
-
-  it('refuses in Simple Mode just what the window refuses: the setup’s changes, never Keep, Go back or a screen turned on', () => {
-    const t = setup({ locked: true });
-    for (const [op, args] of OPS) {
-      const channel = OP_CHANNEL[op];
-      const answer = t.ask(t.remote, op, args);
-      if (channel !== null && simpleModeRefusesWhole(channel))
-        expect(answer, op).toEqual({ status: 403, body: { ok: false, message: SIMPLE_MODE_REFUSAL } });
-      else if (op !== 'switch') expect(answer.status, op).toBe(200);
-    }
-    // The setup's changes are each refused; reading, Keep, Go back and Identify are not.
-    const refused = OPS.filter(([op]) => {
-      const channel = OP_CHANNEL[op];
-      return channel !== null && simpleModeRefusesWhole(channel);
-    }).map(([op]) => op);
-    expect(refused).toEqual([
-      'screens.addGroup',
-      'screens.renameGroup',
-      'screens.groupRole',
-      'screens.deleteGroup',
-      'screens.useDisplay',
-      'screens.change',
-      'screens.displayJob',
-      'screens.remove',
-    ]);
-    expect(t.calls.map((c) => c.what)).toEqual(['keep', 'goBack', 'identify']);
-    // Simple Mode only turns the screens on, as in the window: Off is refused before any question.
-    expect(t.ask(t.remote, 'switch', { which: 'audience', on: false })).toEqual({
-      status: 403,
-      body: { ok: false, message: ONLY_ON_IN_SIMPLE_MODE },
-    });
-    t.setSwitches({ audience: false, stage: true });
-    expect(t.ask(t.remote, 'switch', { which: 'audience', on: true }).status).toBe(200);
-    expect(t.calls.at(-1)).toEqual({ what: 'turn', args: ['audience', true] });
-  });
-
-  it('asks the window’s question on the phone before a switch goes off, as the window does while its screens show something', () => {
-    const t = setup();
-    expect(t.ask(t.remote, 'switch', { which: 'audience', on: false })).toEqual({
-      status: 409,
-      body: { ok: false, confirm: 'switch-off', message: SWITCH_ASKS_FIRST },
-    });
+    for (const [op, args] of OPS) expect(t.ask(t.remote, op, args), op).toEqual(refusal(op));
+    // Not even the screens as they are: a phone cannot change this.
+    expect(t.ask(t.remote, 'screens')).toEqual(refusal('screens'));
     expect(t.calls).toEqual([]);
-    expect(t.ask(t.remote, 'switch', { which: 'audience', on: false, confirmed: true }).body).toMatchObject({
-      ok: true,
-      switches: { audience: false, stage: true },
-    });
-    // Stage shows nothing here: it goes off at once, as in the window.
-    expect(t.ask(t.remote, 'switch', { which: 'stage', on: false }).status).toBe(200);
-    expect(t.calls.map((c) => c.args)).toEqual([
-      ['audience', false],
-      ['stage', false],
-    ]);
+    expect(t.boxes).toEqual([]);
+    expect(t.hints).toEqual([]);
   });
 
-  it('never takes a phone’s word for the operator’s consent to cover the controls', () => {
+  it('refuses them in Simple Mode too, in the phone rule’s words, never the window lock’s: Keep, Go back and the switches as well', () => {
+    const t = setup({ locked: true });
+    for (const [op, args] of OPS) expect(t.ask(t.remote, op, args), op).toEqual(refusal(op));
+    // Off and on alike: Audience and Stage are the computer's.
+    expect(t.ask(t.remote, 'switch', { which: 'audience', on: false })).toEqual(refusal('switch'));
+    t.setSwitches({ audience: false, stage: true });
+    expect(t.ask(t.remote, 'switch', { which: 'audience', on: true })).toEqual(refusal('switch'));
+    expect(t.calls).toEqual([]);
+  });
+
+  it('never asks the window’s question on the phone before a switch goes off: the switch is refused first', () => {
     const t = setup();
-    // Each request carries what it changes, and nothing else: the window's consent is refused outright.
-    expect(
-      t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1, coverOperator: true }).status,
-    ).toBe(400);
-    expect(
-      t.ask(t.remote, 'screens.change', { screenId: 's-1', patch: { enabled: true, coverOperator: true } })
-        .status,
-    ).toBe(400);
-    expect(
-      t.ask(t.remote, 'screens.addGroup', { name: 'Placeholder', options: { coverOperator: true } }).status,
-    ).toBe(400);
-    expect(t.ask(t.remote, 'switch', { which: 'audience', on: false, confirmed: 'yes' }).status).toBe(400);
+    for (const args of [
+      { which: 'audience', on: false },
+      { which: 'audience', on: false, confirmed: true },
+      { which: 'stage', on: false },
+    ])
+      expect(t.ask(t.remote, 'switch', args), JSON.stringify(args)).toEqual(refusal('switch'));
+    expect(t.calls).toEqual([]);
+  });
+
+  it('never takes a phone’s word for the operator’s consent to cover the controls: refused before its arguments are read', () => {
+    const t = setup();
+    for (const [op, args] of [
+      ['screens.useDisplay', { groupId: 'g-hall', displayId: 1, coverOperator: true }],
+      ['screens.change', { screenId: 's-1', patch: { enabled: true, coverOperator: true } }],
+      ['screens.addGroup', { name: 'Placeholder', options: { coverOperator: true } }],
+      ['switch', { which: 'audience', on: false, confirmed: 'yes' }],
+    ] as const)
+      expect(t.ask(t.remote, op, args), op).toEqual(refusal(op));
     expect(t.calls).toEqual([]);
     expect(t.boxes).toEqual([]);
   });
 
-  it('asks the computer itself before an output a phone puts on the controls’ display, and changes it only on its yes', async () => {
+  it('never asks the computer about an output a phone would put on the controls’ display: refused at once', async () => {
     const t = setup();
-    const asked = t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 });
-    expect(asked).toMatchObject({
-      status: 202,
-      body: { ok: true, asked: true, message: ASKED_AT_COMPUTER, screens: { asked: { state: 'waiting' } } },
-    });
-    expect(t.boxes.map((b) => b.question)).toEqual([
-      {
-        who: 'Remote “Placeholder phone”',
-        what: 'to put “Placeholder Hall” on Placeholder built-in display · 1920 × 1080 · 60 Hz',
-      },
-    ]);
-    // Asked once, without the consent: nothing changed yet.
-    expect(t.calls).toEqual([{ what: 'assignDisplay', args: ['g-hall', 1] }]);
-    // One question at a time.
-    expect(t.ask(t.remote, 'screens.change', { screenId: 's-1', patch: { enabled: true } })).toEqual({
-      status: 409,
-      body: { ok: false, message: COMPUTER_BUSY },
-    });
-    t.boxes[0]?.answer(true);
+    expect(t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 })).toEqual(
+      refusal('screens.useDisplay'),
+    );
+    expect(t.ask(t.remote, 'screens.change', { screenId: 's-1', patch: { enabled: true } })).toEqual(
+      refusal('screens.change'),
+    );
     await t.settle();
-    expect(t.calls.at(-1)).toEqual({ what: 'assignDisplay', args: ['g-hall', 1, { coverOperator: true }] });
-    expect((t.ask(t.remote, 'screens').body as { screens: { asked: unknown } }).screens.asked).toEqual({
-      state: 'agreed',
-      message: 'The Drashti computer agreed.',
-    });
-    // The phones were told as it was asked and as it was answered.
-    expect(t.hints).toEqual(['setup', 'setup']);
+    expect(t.boxes).toEqual([]);
+    expect(t.calls).toEqual([]);
+    expect(t.hints).toEqual([]);
   });
 
-  // Session 55: a display's job in one tap, as Screens has it; on the controls' display, asked of the computer.
-  it('sets a display’s job as Screens does, asking the computer first on the controls’ display', async () => {
+  it('never sets a display’s job from a phone, on the controls’ display or any other', async () => {
     const t = setup();
-    expect(t.ask(t.remote, 'screens.displayJob', { displayId: 2, job: 'audience' }).status).toBe(200);
-    expect(t.ask(t.remote, 'screens.displayJob', { displayId: 2, job: 'lobby' }).status).toBe(400);
-    expect(
-      t.ask(t.remote, 'screens.displayJob', { displayId: 2, job: 'stage', coverOperator: true }).status,
-    ).toBe(400);
-    const asked = t.ask(t.remote, 'screens.displayJob', { displayId: 1, job: 'audience' });
-    expect(asked).toMatchObject({ status: 202, body: { ok: true, asked: true, message: ASKED_AT_COMPUTER } });
-    expect(t.boxes.map((b) => b.question)).toEqual([
-      {
-        who: 'Remote “Placeholder phone”',
-        what: 'to set Placeholder built-in display · 1920 × 1080 · 60 Hz to Audience',
-      },
-    ]);
-    t.boxes[0]?.answer(true);
+    for (const args of [
+      { displayId: 2, job: 'audience' },
+      { displayId: 2, job: 'lobby' },
+      { displayId: 2, job: 'stage', coverOperator: true },
+      { displayId: 1, job: 'audience' },
+    ])
+      expect(t.ask(t.remote, 'screens.displayJob', args), JSON.stringify(args)).toEqual(
+        refusal('screens.displayJob'),
+      );
     await t.settle();
-    expect(t.calls).toEqual([
-      { what: 'setDisplayJob', args: [2, 'audience'] },
-      { what: 'setDisplayJob', args: [1, 'audience'] },
-      { what: 'setDisplayJob', args: [1, 'audience', { coverOperator: true }] },
-    ]);
+    expect(t.boxes).toEqual([]);
+    expect(t.calls).toEqual([]);
   });
 
-  it('changes nothing when the computer says no, or once that phone may no longer change the screens', async () => {
+  it('changes nothing and asks nothing, whatever the computer, Simple Mode or the phone’s pairing do meanwhile', async () => {
     const t = setup();
-    t.ask(t.remote, 'screens.change', { screenId: 's-1', patch: { enabled: true } });
-    t.boxes[0]?.answer(false);
-    await t.settle();
-    expect(t.calls).toEqual([{ what: 'updateScreen', args: ['s-1', { enabled: true }] }]);
-    // Told no, it waits a moment before asking again.
+    expect(t.ask(t.remote, 'screens.change', { screenId: 's-1', patch: { enabled: true } })).toEqual(
+      refusal('screens.change'),
+    );
     t.later(15_000);
-    // Simple Mode came on while the box was up: the yes changes nothing.
-    t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 });
     t.setLocked(true);
-    t.boxes[1]?.answer(true);
-    await t.settle();
+    expect(t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 })).toEqual(
+      refusal('screens.useDisplay'),
+    );
     t.setLocked(false);
-    // Drashti stopped meanwhile.
-    t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 });
-    t.setLetIn(false);
-    t.boxes[2]?.answer(true);
+    expect(t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 })).toEqual(
+      refusal('screens.useDisplay'),
+    );
     await t.settle();
-    t.setLetIn(true);
-    // The phone was removed in Drashti meanwhile.
-    t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 });
+    // Never asked, so nothing to answer; and nothing changed.
+    expect(t.boxes).toEqual([]);
+    expect(t.calls).toEqual([]);
+    // Removed in Drashti: as before, it is told to pair again.
     t.devices.remove(t.remote);
-    t.boxes[3]?.answer(true);
-    await t.settle();
-    // Each was asked, and none changed anything.
-    expect(t.boxes).toHaveLength(4);
-    expect(t.calls.filter((c) => c.args.length === 3)).toEqual([]);
+    expect(t.ask(t.remote, 'screens.useDisplay', { groupId: 'g-hall', displayId: 1 }).status).toBe(401);
   });
 
-  it('asks the computer before a switch turned on from a phone opens an output over the controls', async () => {
+  it('never turns a switch on from a phone, over the controls or not', async () => {
     const t = setup();
     t.setSwitches({ audience: false, stage: true });
     t.setStatus([{ screenId: 's-1', state: 'switched-off', displayId: 1 }]);
-    expect(t.ask(t.remote, 'switch', { which: 'audience', on: true }).status).toBe(202);
-    expect(t.calls).toEqual([]);
-    t.boxes[0]?.answer(true);
+    expect(t.ask(t.remote, 'switch', { which: 'audience', on: true })).toEqual(refusal('switch'));
     await t.settle();
-    expect(t.calls).toEqual([{ what: 'turn', args: ['audience', true] }]);
+    expect(t.boxes).toEqual([]);
+    expect(t.calls).toEqual([]);
   });
 
-  it('limits a phone’s changes, never its reading of the screens', () => {
+  it('refuses a phone’s changes before its limit counts them, and its reading of the screens too: never 429', () => {
     const t = setup();
     t.hold();
-    const answers = Array.from({ length: 12 }, () => t.ask(t.remote, 'screens.identify').status);
-    expect(answers.slice(0, 10)).toEqual(Array.from({ length: 10 }, () => 200));
-    expect(answers.slice(10)).toEqual([429, 429]);
-    expect(t.ask(t.remote, 'screens').status).toBe(200);
+    const answers = Array.from({ length: 12 }, () => t.ask(t.remote, 'screens.identify'));
+    expect(answers).toEqual(Array.from({ length: 12 }, () => refusal('screens.identify')));
+    expect(t.ask(t.remote, 'screens')).toEqual(refusal('screens'));
+    expect(t.calls).toEqual([]);
   });
 });
 
@@ -777,7 +674,7 @@ describe('the phone as a full Drashti: video inputs and the other apps’ window
     ['window.show', { id: 'window:7:0' }],
   ];
 
-  it('lets a Remote alone name, change, remove and read them, and put a window up, and none while Drashti is not let in', async () => {
+  it('are a Remote’s requests alone, none while Drashti is not let in, and a Remote is refused each (QA23-PHONE-1)', async () => {
     const t = setup();
     for (const [op] of [...OPS3, ['windows', {}] as const]) expect(DEVICE_OPS[op], op).toEqual(['remote']);
     for (const [op, args] of OPS3) {
@@ -791,88 +688,48 @@ describe('the phone as a full Drashti: video inputs and the other apps’ window
     expect((await t.listWindows(t.remote)).status).toBe(503);
     expect(t.calls).toEqual([]);
     t.setLetIn(true);
-    for (const [op, args] of OPS3) expect(t.ask(t.remote, op, args).status, op).toBe(200);
-    expect(t.calls).toEqual([
-      { what: 'addInput', args: [{ name: 'Input 2', device: 'Placeholder capture card', fit: 'fill' }] },
-      { what: 'updateInput', args: ['in-1', { name: 'Placeholder stage camera' }] },
-      { what: 'removeInput', args: ['in-1'] },
-      { what: 'showWindow', args: ['window:7:0'] },
-    ]);
+    for (const [op, args] of OPS3) expect(t.ask(t.remote, op, args), op).toEqual(refusal(op));
+    expect(await t.listWindows(t.remote)).toEqual(refusal('windows'));
+    expect(t.calls).toEqual([]);
   });
 
-  it('gives a phone Media’s inputs, the cameras the computer lists and whether Drashti may use them', () => {
+  it('never gives a phone Media’s inputs or the cameras the computer lists', () => {
     const t = setup();
-    expect(t.ask(t.remote, 'inputs').body).toEqual({
-      ok: true,
-      inputs: [{ id: 'in-1', name: 'Input 1', device: 'Placeholder camera', fit: 'fit' }],
-      access: 'granted',
-      cameras: ['Placeholder camera', 'Placeholder capture card'],
-    });
+    expect(t.ask(t.remote, 'inputs')).toEqual(refusal('inputs'));
   });
 
-  it('names an input only with a camera the computer lists now, never one a phone names, and says why not', () => {
+  it('never names or changes an input from a phone, with a camera listed or not, nor puts a window up', () => {
     const t = setup();
     const add = (device: string) => t.ask(t.remote, 'input.add', { name: 'Input 2', device, fit: 'fit' });
-    expect(add('Placeholder camera of the phone’s own naming')).toEqual({
-      status: 409,
-      body: { ok: false, message: NOT_A_LISTED_CAMERA },
-    });
-    // A change keeps the camera it has, listed or not; another must be listed.
+    expect(add('Placeholder camera of the phone’s own naming')).toEqual(refusal('input.add'));
     t.setInputs({ cameras: ['Placeholder capture card'] });
-    expect(
-      t.ask(t.remote, 'input.change', { inputId: 'in-1', device: 'Placeholder camera', fit: 'fill' }).status,
-    ).toBe(200);
-    expect(t.ask(t.remote, 'input.change', { inputId: 'in-1', device: 'Placeholder webcam' }).status).toBe(
-      409,
-    );
+    for (const args of [
+      { inputId: 'in-1', device: 'Placeholder camera', fit: 'fill' },
+      { inputId: 'in-1', device: 'Placeholder webcam' },
+    ])
+      expect(t.ask(t.remote, 'input.change', args), JSON.stringify(args)).toEqual(refusal('input.change'));
     t.setInputs({ cameras: null });
-    expect(add('Placeholder capture card').body).toEqual({ ok: false, message: CAMERAS_NOT_LISTED });
-    // The camera's own setting is the computer's to answer.
+    expect(add('Placeholder capture card')).toEqual(refusal('input.add'));
     t.setInputs({ cameras: ['Placeholder capture card'], access: 'not-determined' });
-    expect(add('Placeholder capture card').body).toEqual({ ok: false, message: CAMERA_AT_COMPUTER });
-    // Each request carries what it names, and nothing else.
-    t.setInputs({ access: 'granted' });
-    expect(
-      t.ask(t.remote, 'input.add', {
-        name: 'Input 2',
-        device: 'Placeholder capture card',
-        fit: 'fit',
-        id: 'x',
-      }).status,
-    ).toBe(400);
-    expect(t.ask(t.remote, 'window.show', { id: 'window:7:0', sourceId: 'screen:0:0' }).status).toBe(400);
-    expect(t.calls).toEqual([
-      { what: 'updateInput', args: ['in-1', { device: 'Placeholder camera', fit: 'fill' }] },
-    ]);
+    expect(add('Placeholder capture card')).toEqual(refusal('input.add'));
+    expect(t.ask(t.remote, 'window.show', { id: 'window:7:0', sourceId: 'screen:0:0' })).toEqual(
+      refusal('window.show'),
+    );
+    expect(t.calls).toEqual([]);
   });
 
-  it('lists the other apps’ windows by name, never a picture of them, and says when the computer must allow it', async () => {
+  it('never lists the other apps’ windows to a phone, by either way of asking', async () => {
     const t = setup();
-    expect(await t.listWindows(t.remote)).toEqual({
-      status: 200,
-      body: { ok: true, windows: { ok: true, windows: [{ id: 'window:7:0', name: 'Placeholder meeting' }] } },
-    });
+    expect(await t.listWindows(t.remote)).toEqual(refusal('windows'));
     t.setWindows({ ok: false, reason: 'permission', message: 'Screen Recording, on the Mac.' });
-    expect((await t.listWindows(t.remote)).body).toEqual({
-      ok: true,
-      windows: { ok: false, reason: 'permission', message: SCREEN_RECORDING_AT_COMPUTER },
-    });
-    // Answered once listed, never by the request's own answer.
-    expect(t.ask(t.remote, 'windows').status).toBe(400);
+    expect(await t.listWindows(t.remote)).toEqual(refusal('windows'));
+    expect(t.ask(t.remote, 'windows')).toEqual(refusal('windows'));
   });
 
-  it('refuses in Simple Mode just what the window’s Media refuses: naming, changing and removing an input, and the windows', async () => {
+  it('refuses them in Simple Mode too, the inputs’ reading as well, in the phone rule’s words', async () => {
     const t = setup({ locked: true });
-    for (const [op, args] of OPS3)
-      expect(t.ask(t.remote, op, args), op).toEqual(
-        op === 'inputs'
-          ? expect.objectContaining({ status: 200 })
-          : { status: 403, body: { ok: false, message: SIMPLE_MODE_REFUSAL } },
-      );
-    expect(await t.listWindows(t.remote)).toEqual({
-      status: 403,
-      body: { ok: false, message: SIMPLE_MODE_REFUSAL },
-    });
+    for (const [op, args] of OPS3) expect(t.ask(t.remote, op, args), op).toEqual(refusal(op));
+    expect(await t.listWindows(t.remote)).toEqual(refusal('windows'));
     expect(t.calls).toEqual([]);
   });
 });
@@ -909,66 +766,37 @@ describe('whether a switch turned on opens an output over the controls', () => {
 });
 
 describe('the library from a phone (Session 54, the phone as a full Drashti)', () => {
-  it('changes it as the window does, each through the window’s own functions, a delete answered with what its Undo puts back', () => {
+  it('never changes it from a phone: each refused in its group’s words, nothing asked of the window’s functions (QA23-PHONE-1)', () => {
     const { ask, remote, calls } = setup();
-    const ok = (op: DeviceOp, args: Record<string, unknown>) => {
-      const a = ask(remote, op, args);
-      expect(a.status, op).toBe(200);
-      return a.body;
-    };
-    expect(ok('library.new', { name: 'Placeholder words', words: 'Placeholder line one' })).toMatchObject({
-      id: 'p-new',
-    });
-    // Deleted, then put back by the ids the delete answered with: the phone's Undo.
-    const deleted = ok('library.remove', { ids: ['p-1', 'p-2'] });
-    expect(deleted).toMatchObject({ ids: ['p-1', 'p-2'] });
-    ok('library.restore', { ids: (deleted as { ids: string[] }).ids });
-    ok('playlist.new', { name: 'Placeholder evening' });
-    ok('playlist.new', { name: 'Placeholder folder', isFolder: true });
-    ok('playlist.new', { name: 'Placeholder nested playlist', parentId: 'folder' });
-
-    ok('playlist.rename', { playlistId: 'pl-1', name: 'Placeholder evening, again' });
-    ok('playlist.remove', { ids: ['pl-1'] });
-    ok('playlist.restore', { ids: ['pl-1'] });
-    ok('playlist.add', {
-      playlistId: 'pl-1',
-      items: [
-        { kind: 'presentation', presentationId: 'p-1' },
-        { kind: 'media', mediaId: 'm-1' },
-      ],
-    });
-    ok('playlist.move', { playlistId: 'pl-1', ids: ['item-2'], to: 0 });
-    ok('playlist.removeItems', { ids: ['item-2'] });
-    ok('playlist.restoreItems', { ids: ['item-2'] });
-    expect(calls.map((c) => [c.what, c.args])).toEqual([
-      ['newFromWords', ['Placeholder words', 'Placeholder line one']],
-      ['removePresentations', [['p-1', 'p-2']]],
-      ['restorePresentations', [['p-1', 'p-2']]],
-      ['createPlaylist', ['Placeholder evening', null, false]],
-      ['createPlaylist', ['Placeholder folder', null, true]],
-      ['createPlaylist', ['Placeholder nested playlist', 'folder', false]],
-
-      ['renamePlaylist', ['pl-1', 'Placeholder evening, again']],
-      ['removePlaylists', [['pl-1']]],
-      ['restorePlaylists', [['pl-1']]],
+    for (const [op, args] of [
+      ['library.new', { name: 'Placeholder words', words: 'Placeholder line one' }],
+      ['library.remove', { ids: ['p-1', 'p-2'] }],
+      ['library.restore', { ids: ['p-1', 'p-2'] }],
+      ['playlist.new', { name: 'Placeholder evening' }],
+      ['playlist.new', { name: 'Placeholder folder', isFolder: true }],
+      ['playlist.new', { name: 'Placeholder nested playlist', parentId: 'folder' }],
+      ['playlist.rename', { playlistId: 'pl-1', name: 'Placeholder evening, again' }],
+      ['playlist.remove', { ids: ['pl-1'] }],
+      ['playlist.restore', { ids: ['pl-1'] }],
       [
-        'addItems',
-        [
-          'pl-1',
-          null,
-          [
+        'playlist.add',
+        {
+          playlistId: 'pl-1',
+          items: [
             { kind: 'presentation', presentationId: 'p-1' },
             { kind: 'media', mediaId: 'm-1' },
           ],
-        ],
+        },
       ],
-      ['moveItems', ['pl-1', ['item-2'], 0]],
-      ['removeItems', [['item-2']]],
-      ['restoreItems', [['item-2']]],
-    ]);
+      ['playlist.move', { playlistId: 'pl-1', ids: ['item-2'], to: 0 }],
+      ['playlist.removeItems', { ids: ['item-2'] }],
+      ['playlist.restoreItems', { ids: ['item-2'] }],
+    ] as const)
+      expect(ask(remote, op, args as Record<string, unknown>), op).toEqual(refusal(op));
+    expect(calls).toEqual([]);
   });
 
-  it('takes things by their ids only, never a path, a file or a header’s words, and at most 50 at once', () => {
+  it('refuses a path, a file, a header’s words or too many ids before reading them: the request itself is never a phone’s', () => {
     const { ask, remote, calls } = setup();
     for (const [op, args] of [
       ['playlist.add', { playlistId: 'pl-1', items: [{ kind: 'media', path: '/placeholder/file.mp4' }] }],
@@ -982,52 +810,43 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['library.new', { name: 'Placeholder', words: 'x', file: '/placeholder' }],
       ['playlist.new', { name: '   ' }],
     ] as const)
-      expect(ask(remote, op, args as Record<string, unknown>).status, JSON.stringify(args)).toBe(400);
+      expect(ask(remote, op, args as Record<string, unknown>), JSON.stringify(args)).toEqual(refusal(op));
     expect(calls).toEqual([]);
   });
 
-  it('refuses a name with nothing visible in it as a bad request, in the name rule’s words, before asking anything (C15, FT-3)', () => {
+  it('refuses a name with nothing visible in it as every other name from a phone: the rule first, the name never read', () => {
     const { ask, remote, calls } = setup();
-    // A zero-width space, a word joiner and a soft hyphen: nothing a person sees (X3's cleaning empties it).
-    const nothing = '\u200B\u2060\u00AD';
+    const nothing = '​⁠­';
     for (const [op, args] of [
       ['playlist.rename', { playlistId: 'pl-1', name: nothing }],
       ['playlist.new', { name: nothing }],
       ['library.new', { name: nothing, words: 'Placeholder words' }],
-    ] as const) {
-      const answer = ask(remote, op, args);
-      expect(answer.status, op).toBe(400);
-      expect(JSON.stringify(answer.body), op).toMatch(
-        /needs 1 to 200 characters|Give the presentation a name/u,
-      );
-    }
+    ] as const)
+      expect(ask(remote, op, args), op).toEqual(refusal(op));
     expect(calls).toEqual([]);
   });
 
-  it('takes the library limit before a refused restore can look up playlist IDs', () => {
+  it('refuses a restore before the library limit is taken or any playlist ID is looked up: never 429', () => {
     const { ask, remote, hold, lookups, calls } = setup({ locked: true });
     hold();
-    const restore = () => ask(remote, 'playlist.restore', { ids: ['template'] }).status;
-    for (let i = 0; i < 30; i++) expect(restore()).toBe(403);
-    const before = lookups.playlists;
-    expect(before).toBeGreaterThan(0);
-    expect(restore()).toBe(429);
-    expect(lookups.playlists).toBe(before);
+    const restore = () => ask(remote, 'playlist.restore', { ids: ['template'] });
+    for (let i = 0; i < 31; i++)
+      expect(restore(), `restore ${String(i + 1)}`).toEqual(refusal('playlist.restore'));
+    expect(lookups).toEqual({ playlists: 0, items: 0 });
     expect(calls).toEqual([]);
   });
 
-  it('limits a phone’s library changes on their own, thirty at once, as a person tapping through a playlist makes them', () => {
+  it('refuses a phone’s library changes before its limit counts them: thirty-one and more, never 429', () => {
     const { ask, remote, hold, calls } = setup();
     hold();
-    const move = () => ask(remote, 'playlist.move', { playlistId: 'pl-1', ids: ['item-1'], to: 0 }).status;
-    for (let i = 0; i < 30; i += 1) expect(move(), `change ${String(i + 1)}`).toBe(200);
-    expect(move()).toBe(429);
-    expect(calls).toHaveLength(30);
-    // The screens' own limit is apart: still ten at once.
-    expect(ask(remote, 'screens.identify').status).toBe(200);
+    const move = () => ask(remote, 'playlist.move', { playlistId: 'pl-1', ids: ['item-1'], to: 0 });
+    for (let i = 0; i < 31; i += 1)
+      expect(move(), `change ${String(i + 1)}`).toEqual(refusal('playlist.move'));
+    expect(calls).toEqual([]);
+    expect(ask(remote, 'screens.identify')).toEqual(refusal('screens.identify'));
   });
 
-  it('is a Remote’s alone, nothing while Drashti is not let in, and Simple Mode allows only changes within its bounds', () => {
+  it('is a Remote’s alone, nothing while Drashti is not let in, and a Remote is refused in both modes', () => {
     const { ask, remote, stage, poster, calls, setLocked, setLetIn } = setup();
     const add = { playlistId: 'pl-1', items: [{ kind: 'presentation', presentationId: 'p-1' }] };
     for (const op of ['library.remove', 'playlist.add'] as const) {
@@ -1037,6 +856,7 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
     expect(ask(stage, 'playlist.add', add).status).toBe(403);
     expect(ask(poster, 'library.remove', { ids: ['p-1'] }).status).toBe(403);
     setLocked(true);
+    // Within Simple Mode's bounds and outside them alike.
     for (const [op, args] of [
       ['playlist.new', { name: 'Placeholder playlist' }],
       ['playlist.new', { name: 'Placeholder nested playlist', parentId: 'folder' }],
@@ -1047,9 +867,6 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['playlist.move', { playlistId: 'pl-1', ids: ['item-1'], to: 0 }],
       ['playlist.removeItems', { ids: ['item-1'] }],
       ['playlist.restoreItems', { ids: ['item-1'] }],
-    ] as const)
-      expect(ask(remote, op, args).status, op).toBe(200);
-    for (const [op, args] of [
       ['playlist.new', { name: 'Placeholder bad parent', parentId: 'template' }],
       ['playlist.rename', { playlistId: 'template', name: 'Placeholder' }],
       ['playlist.remove', { ids: ['template', 'folder'] }],
@@ -1060,44 +877,28 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['playlist.removeItems', { ids: ['item-1', 'template-item'] }],
       ['playlist.restoreItems', { ids: ['template-item'] }],
       ['library.remove', { ids: ['p-1'] }],
+      ['playlist.new', { name: 'Placeholder smart list', path: '/placeholder' }],
     ] as const)
-      expect(ask(remote, op, args), op).toMatchObject({
-        status: 403,
-        body: { message: SIMPLE_MODE_REFUSAL },
-      });
-    expect(ask(remote, 'playlist.new', { name: 'Placeholder smart list', path: '/placeholder' }).status).toBe(
-      400,
-    );
+      expect(ask(remote, op, args as Record<string, unknown>), op).toEqual(refusal(op));
     setLocked(false);
-    expect(ask(remote, 'playlist.add', add).status).toBe(200);
+    expect(ask(remote, 'playlist.add', add)).toEqual(refusal('playlist.add'));
     setLetIn(false);
     expect(ask(remote, 'library.remove', { ids: ['p-1'] })).toMatchObject({
       status: 503,
       body: { message: STOPPED_REFUSAL },
     });
-    expect(calls).toEqual([
-      { what: 'createPlaylist', args: ['Placeholder playlist', null, false] },
-      { what: 'createPlaylist', args: ['Placeholder nested playlist', 'folder', false] },
-      { what: 'createPlaylist', args: ['Placeholder folder', null, true] },
-      { what: 'renamePlaylist', args: ['folder', 'Placeholder renamed'] },
-      { what: 'removePlaylists', args: [['folder']] },
-      { what: 'restorePlaylists', args: [['folder']] },
-      { what: 'moveItems', args: ['pl-1', ['item-1'], 0] },
-      { what: 'removeItems', args: [['item-1']] },
-      { what: 'restoreItems', args: [['item-1']] },
-      { what: 'addItems', args: ['pl-1', null, add.items] },
-    ]);
+    expect(calls).toEqual([]);
   });
 
-  it('renames a sound on an Audio playlist in Simple Mode and refuses an unlisted sound', () => {
+  it('never renames a sound from a phone, on an Audio playlist or not, in Simple Mode', () => {
     const { ask, remote, calls } = setup({ locked: true, audioTrackIds: ['sound-in-audio'] });
     const name = 'Placeholder renamed track';
-    expect(ask(remote, 'media.rename', { mediaId: 'sound-in-audio', name }).status).toBe(200);
-    expect(ask(remote, 'media.rename', { mediaId: 'sound-unlisted', name }).status).toBe(403);
-    expect(calls).toEqual([{ what: 'renameMedia', args: ['sound-in-audio', name] }]);
+    expect(ask(remote, 'media.rename', { mediaId: 'sound-in-audio', name })).toEqual(refusal('media.rename'));
+    expect(ask(remote, 'media.rename', { mediaId: 'sound-unlisted', name })).toEqual(refusal('media.rename'));
+    expect(calls).toEqual([]);
   });
 
-  it('caps playlist and row id lists before looking up any ids in Simple Mode', () => {
+  it('refuses playlist and row id lists of any length in Simple Mode before looking up any ids', () => {
     const { ask, remote, calls, lookups } = setup({ locked: true });
     for (const [op, limit, id] of [
       ['playlist.remove', 50, 'pl-1'],
@@ -1106,152 +907,98 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       ['playlist.restoreItems', 50, 'item-1'],
     ] as const) {
       const ids = Array.from({ length: limit + 1 }, () => id);
-      expect(ask(remote, op, { ids }).status, op).toBe(403);
+      expect(ask(remote, op, { ids }), op).toEqual(refusal(op));
       expect(lookups, op).toEqual({ playlists: 0, items: 0 });
     }
-    expect(calls).toEqual([]);
     const ids = Array.from({ length: 1000 }, () => 'folder');
-    expect(ask(remote, 'playlist.restore', { ids }).status).toBe(200);
-    expect(calls).toEqual([{ what: 'restorePlaylists', args: [ids] }]);
+    expect(ask(remote, 'playlist.restore', { ids })).toEqual(refusal('playlist.restore'));
+    expect(lookups).toEqual({ playlists: 0, items: 0 });
+    expect(calls).toEqual([]);
   });
 });
 
 describe('MIDI from a phone (Session 54, the phone as a full Drashti)', () => {
-  it('reads it and asks the computer’s window to listen until it has, so its devices are listed, never again after', () => {
+  it('never reads it for a phone, so the computer’s window is never asked to listen', () => {
     const { ask, remote, calls, setMidiSeen } = setup();
     setMidiSeen(null);
-    expect(ask(remote, 'midi').status).toBe(200);
-    setMidiSeen({ access: 'refused', devices: [], connected: false });
-    expect(ask(remote, 'midi').status).toBe(200);
+    expect(ask(remote, 'midi')).toEqual(refusal('midi'));
     setMidiSeen({ access: 'on', devices: ['Placeholder pad', 'Placeholder keys'], connected: true });
-    expect(ask(remote, 'midi')).toMatchObject({
-      status: 200,
-      body: {
-        midi: {
-          settings: { deviceName: 'Placeholder pad' },
-          seen: { devices: ['Placeholder pad', 'Placeholder keys'] },
-        },
-      },
-    });
-    // Asked once, while the window had not said: a refusal or a list never asks again (no loop of reads).
-    expect(calls).toEqual([{ what: 'midiListen', args: [] }]);
+    expect(ask(remote, 'midi')).toEqual(refusal('midi'));
+    expect(calls).toEqual([]);
   });
 
-  it('chooses a device only among those the computer lists, forgets a mapping, and learns only with a device chosen', () => {
-    const { ask, remote, calls, setMidiSeen, midiNow } = setup();
-    expect(ask(remote, 'midi.device', { deviceName: 'Placeholder keys' }).status).toBe(200);
-    expect(midiNow().deviceName).toBe('Placeholder keys');
-    expect(ask(remote, 'midi.device', { deviceName: 'A device the phone made up' })).toMatchObject({
-      status: 409,
-      body: { message: NOT_A_LISTED_MIDI_DEVICE },
-    });
-    expect(ask(remote, 'midi.forget', { index: 0 }).status).toBe(200);
-    expect(midiNow().mappings).toEqual([]);
-    expect(ask(remote, 'midi.forget', { index: 0 }).status).toBe(400);
-    expect(ask(remote, 'midi.learn', { action: 'blackout' }).status).toBe(200);
-    expect(ask(remote, 'midi.learn', { action: null }).status).toBe(200);
-    expect(ask(remote, 'midi.learn', { action: 'macro' }).status).toBe(400);
-    expect(ask(remote, 'midi.device', { deviceName: null }).status).toBe(200);
-    expect(ask(remote, 'midi.learn', { action: 'next' }).status).toBe(409);
-    setMidiSeen(null);
-    expect(ask(remote, 'midi.device', { deviceName: 'Placeholder keys' })).toMatchObject({
-      status: 409,
-      body: { message: MIDI_NOT_LISTED },
-    });
-    expect(calls.map((c) => c.what)).toEqual(['midiSet', 'midiSet', 'midiLearn', 'midiLearn', 'midiSet']);
+  it('never chooses a device, forgets a mapping or learns from a phone', () => {
+    const { ask, remote, calls, midiNow } = setup();
+    const before = midiNow();
+    for (const [op, args] of [
+      ['midi.device', { deviceName: 'Placeholder keys' }],
+      ['midi.device', { deviceName: 'A device the phone made up' }],
+      ['midi.forget', { index: 0 }],
+      ['midi.learn', { action: 'blackout' }],
+      ['midi.learn', { action: null }],
+      ['midi.device', { deviceName: null }],
+    ] as const)
+      expect(ask(remote, op, args as Record<string, unknown>), op).toEqual(refusal(op));
+    expect(midiNow()).toEqual(before);
+    expect(calls).toEqual([]);
   });
 
-  it('is a Remote’s alone, and Simple Mode refuses its changes as the window’s MIDI… does, never its reading', () => {
+  it('is a Remote’s alone, and a Remote is refused in Simple Mode too, its reading as well', () => {
     const { ask, remote, stage, calls, setLocked } = setup();
     expect(ask(stage, 'midi').status).toBe(403);
     expect(ask(stage, 'midi.learn', { action: 'next' }).status).toBe(403);
     setLocked(true);
-    expect(ask(remote, 'midi').status).toBe(200);
+    expect(ask(remote, 'midi')).toEqual(refusal('midi'));
     for (const [op, args] of [
       ['midi.device', { deviceName: null }],
       ['midi.forget', { index: 0 }],
       ['midi.learn', { action: 'next' }],
     ] as const)
-      expect(ask(remote, op, args as Record<string, unknown>)).toMatchObject({
-        status: 403,
-        body: { message: SIMPLE_MODE_REFUSAL },
-      });
-    expect(calls.map((c) => c.what)).toEqual([]);
+      expect(ask(remote, op, args as Record<string, unknown>), op).toEqual(refusal(op));
+    expect(calls).toEqual([]);
   });
 });
 
 describe('the announcements’ queue from a phone (Session 54, the phone as a full Drashti)', () => {
-  it('reads what waits and what shows, never what was decided earlier, and decides as Announcements does', () => {
+  it('never reads or decides the queue from a phone: Announcements at the computer does', () => {
     const { ask, remote, calls } = setup();
-    const read = ask(remote, 'queue');
-    expect(read.status).toBe(200);
-    expect(read.body).toMatchObject({ queue: { waiting: [{ id: 'a-1' }], showing: [{ id: 'a-2' }] } });
-    expect(JSON.stringify(read.body)).not.toContain('a-3');
-    expect(ask(remote, 'queue.approve', { id: 'a-1', as: 'ticker' }).status).toBe(200);
-    expect(ask(remote, 'queue.reject', { id: 'a-1' }).status).toBe(200);
-    expect(ask(remote, 'queue.takeOff', { id: 'a-2' }).status).toBe(200);
-    expect(calls.map((c) => [c.what, c.args[0]])).toEqual([
-      ['approve', { id: 'a-1', as: 'ticker' }],
-      ['reject', { id: 'a-1' }],
-      ['takeOff', { id: 'a-2' }],
-    ]);
+    expect(ask(remote, 'queue')).toEqual(refusal('queue'));
+    expect(ask(remote, 'queue.approve', { id: 'a-1', as: 'ticker' })).toEqual(refusal('queue.approve'));
+    expect(ask(remote, 'queue.reject', { id: 'a-1' })).toEqual(refusal('queue.reject'));
+    expect(ask(remote, 'queue.takeOff', { id: 'a-2' })).toEqual(refusal('queue.takeOff'));
+    expect(calls).toEqual([]);
   });
 
-  it('is a Remote’s alone, never the poster’s, and Simple Mode refuses the decisions, never the reading', () => {
+  it('is a Remote’s alone, never the poster’s, and a Remote is refused in Simple Mode too, its reading as well', () => {
     const { ask, remote, stage, poster, calls, setLocked } = setup();
     for (const device of [stage, poster]) {
       expect(ask(device, 'queue').status).toBe(403);
       expect(ask(device, 'queue.approve', { id: 'a-1', as: 'ticker' }).status).toBe(403);
     }
     setLocked(true);
-    expect(ask(remote, 'queue').status).toBe(200);
+    expect(ask(remote, 'queue')).toEqual(refusal('queue'));
     for (const op of ['queue.approve', 'queue.reject', 'queue.takeOff'] as const)
-      expect(ask(remote, op, { id: 'a-1', as: 'ticker' })).toMatchObject({
-        status: 403,
-        body: { message: SIMPLE_MODE_REFUSAL },
-      });
+      expect(ask(remote, op, { id: 'a-1', as: 'ticker' }), op).toEqual(refusal(op));
     expect(calls).toEqual([]);
   });
 });
 
 describe('the stage layout from a phone (Session 55)', () => {
-  it('reads the layouts by name and the one every stage screen shows, and chooses another as the Stage panel’s Layout does', () => {
+  it('never reads the layouts for a phone nor chooses one from it', () => {
     const t = setup();
-    expect(t.ask(t.remote, 'stage.layouts')).toEqual({
-      status: 200,
-      body: {
-        ok: true,
-        layouts: [
-          { id: 'l-1', name: 'Placeholder band' },
-          { id: 'l-2', name: 'Placeholder anchoring' },
-        ],
-        chosenId: null,
-      },
-    });
-    expect(t.ask(t.remote, 'stage.layout', { layoutId: 'l-2' })).toMatchObject({
-      status: 200,
-      body: { ok: true, chosenId: 'l-2' },
-    });
-    expect(t.calls.at(-1)).toEqual({ what: 'chooseLayout', args: ['l-2'] });
-    // Standard, by null.
-    expect(t.ask(t.remote, 'stage.layout', { layoutId: null })).toMatchObject({ body: { chosenId: null } });
-    // One that is gone, or a request that names none properly: refused, and nothing chosen.
-    expect(t.ask(t.remote, 'stage.layout', { layoutId: 'gone' })).toMatchObject({ status: 409 });
-    for (const bad of [{}, { layoutId: 7 }, { layoutId: 'l-1', extra: true }])
-      expect(t.ask(t.remote, 'stage.layout', bad), JSON.stringify(bad)).toMatchObject({ status: 400 });
-    expect(t.calls.filter((c) => c.what === 'chooseLayout')).toHaveLength(3);
+    expect(t.ask(t.remote, 'stage.layouts')).toEqual(refusal('stage.layouts'));
+    for (const args of [{ layoutId: 'l-2' }, { layoutId: null }, { layoutId: 'gone' }, {}, { layoutId: 7 }])
+      expect(t.ask(t.remote, 'stage.layout', args), JSON.stringify(args)).toEqual(refusal('stage.layout'));
+    expect(t.calls.filter((c) => c.what === 'chooseLayout')).toEqual([]);
   });
 
-  it('is a Remote’s alone, nothing while Drashti is not let in, and Simple Mode refuses the choice, never the reading', () => {
+  it('is a Remote’s alone, nothing while Drashti is not let in, and a Remote is refused in Simple Mode too', () => {
     const t = setup();
     for (const device of [t.stage, t.poster])
       expect(t.ask(device, 'stage.layout', { layoutId: 'l-1' })).toMatchObject({ status: 403 });
     t.setLocked(true);
-    expect(t.ask(t.remote, 'stage.layouts')).toMatchObject({ status: 200 });
-    expect(t.ask(t.remote, 'stage.layout', { layoutId: 'l-1' })).toEqual({
-      status: 403,
-      body: { ok: false, message: SIMPLE_MODE_REFUSAL },
-    });
+    expect(t.ask(t.remote, 'stage.layouts')).toEqual(refusal('stage.layouts'));
+    expect(t.ask(t.remote, 'stage.layout', { layoutId: 'l-1' })).toEqual(refusal('stage.layout'));
     t.setLocked(false);
     t.setLetIn(false);
     expect(t.ask(t.remote, 'stage.layouts')).toEqual({
