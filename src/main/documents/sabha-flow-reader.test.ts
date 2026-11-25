@@ -344,31 +344,44 @@ const handPage = (texts: FlowTextPage['texts'], rules: FlowTextPage['rules'] = [
 });
 const run = (s: string, x: number, y: number, h = 10) => ({ s, x, y, w: s.length * 0.5 * h, h });
 
-describe('Sabha flow reader: its work is bounded (review M1)', () => {
-  it('reads 20 pages of lone numbers one under another in well under two seconds, as no running order', () => {
-    const pages = Array.from({ length: 20 }, () =>
-      // Tiny text, each its own line (a broken or crafted PDF).
-      handPage(Array.from({ length: 4000 }, (_, k) => run('1', 40, 20 + k * 0.2, 0.15))),
+/** A small placeholder table placed by hand: No. | Program | Duration, rows 1 to `rows`. */
+function handTable(rows: number): FlowTextPage {
+  const texts = [run('No.', 40, 100), run('Program', 90, 100), run('Duration', 260, 100)];
+  for (let r = 1; r <= rows; r++)
+    texts.push(
+      run(String(r), 40, 100 + 20 * r),
+      run(`Item ${String(r)}`, 90, 100 + 20 * r),
+      run('5 min', 260, 100 + 20 * r),
     );
-    const started = performance.now();
-    const flow = readSabhaFlow(pages);
-    expect(performance.now() - started).toBeLessThan(2000);
-    expect(flow).toEqual({ status: 'no-items', lang: 'mixed', headers: [], items: [] });
+  return { width: 595, height: Math.max(842, 140 + 20 * rows), texts, rules: [] };
+}
+
+/** Runs of placeholder filler on a page of their own, `count` of them, `length` characters each. */
+const filler = (count: number, length = 1) =>
+  handPage(
+    Array.from({ length: count }, (_, k) =>
+      run('x'.repeat(length), 40 + (k % 40) * 12, 20 + Math.floor(k / 40) * 2, 1),
+    ),
+  );
+
+describe('Sabha flow reader: what it takes in is bounded (review M1; it runs in the pictures window, never Main)', () => {
+  it('a table among more than 12,000 runs of text in all is no running order (no-items); with a few more it reads', () => {
+    expect(readSabhaFlow([handTable(3), filler(100)]).status).toBe('read');
+    expect(readSabhaFlow([handTable(3), filler(12_000)])).toEqual({
+      status: 'no-items',
+      lang: 'en',
+      headers: [],
+      items: [],
+    });
   });
 
-  it('reads the most a PDF can hand over (20 pages of 8,000 long runs) in well under two seconds', () => {
-    const words = 'placeholder words in a dense booklet page '.repeat(40);
-    const pages = Array.from({ length: 20 }, () =>
-      handPage(
-        Array.from({ length: 8000 }, (_, k) =>
-          run(`${String((k % 300) + 1)} ${words}`, 40 + (k % 3), 20 + k * 0.1),
-        ),
-      ),
-    );
-    const started = performance.now();
-    const flow = readSabhaFlow(pages);
-    expect(performance.now() - started).toBeLessThan(2000);
-    expect(flow.status).toBe('no-items');
+  it('a table among more than 200,000 characters in all is no running order (no-items)', () => {
+    expect(readSabhaFlow([handTable(3), filler(120, 2000)]).status).toBe('no-items');
+  });
+
+  it('more than 2,000 numbered lines are no running order (no-items)', () => {
+    expect(readSabhaFlow([handTable(200)]).status).toBe('read');
+    expect(readSabhaFlow([handTable(2100)]).status).toBe('no-items');
   });
 });
 
