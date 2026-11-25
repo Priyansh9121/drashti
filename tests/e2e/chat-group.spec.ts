@@ -16,9 +16,11 @@ import { launchApp, operatorPage, operatorReady, type PageGlobals } from './help
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 import {
   bubble,
+  CHAT_CLOCK,
   chatView,
   feedFrames,
   giveName,
+  holdChatClock,
   keptPairing,
   openChatSection,
   operatorSays,
@@ -230,7 +232,8 @@ test('three phones and the operator in one chat: each phone from the Chat QR pai
 
 test('the limits, refused by Drashti in plain words: 500 characters as a phoneâ€™s box counts them (an emoji is two) and not one more, at most 20 lines, never empty, too many at once (the words kept on the phone), and never the operatorâ€™s name', async () => {
   test.setTimeout(180_000);
-  const { app } = await launchApp(NETWORK_ENV);
+  // The chat's clock a test can hold (too many at once, below).
+  const { app } = await launchApp({ ...NETWORK_ENV, ...CHAT_CLOCK });
   const android = await chromium.launch();
   try {
     const win = await operatorPage(app);
@@ -297,7 +300,11 @@ test('the limits, refused by Drashti in plain words: 500 characters as a phoneâ€
     await expect(p.getByTestId('chat-message')).toHaveCount(1);
 
     // Too many at once (this phone's own, sent together): Drashti refuses the rest in plain words; the phone's next
-    // Send is refused in the same words, and its words stay in its box to send again.
+    // Send is refused in the same words, and its words stay in its box to send again. The chat's clock is held from
+    // before the burst until the refusal is seen: a person's allowance comes back by it (one message every 2 s), and
+    // the phone asks a refused Send again 400 ms and 1,200 ms later (web/device.ts), so on a slow runner its third ask
+    // came after the allowance had (CI Mac run 45670893526: four of the six taken, then the phone's words; a22-phonemac).
+    await holdChatClock(app, true);
     await box.fill('Placeholder: one too many');
     const burst = await p.evaluate(
       async ({ path, token, n }) =>
@@ -323,6 +330,7 @@ test('the limits, refused by Drashti in plain words: 500 characters as a phoneâ€
     await expect(p.getByTestId('chat-problem')).toHaveText(CHAT_REFUSAL.tooFast);
     await expect(box).toHaveValue('Placeholder: one too many');
     expect((await chatView(win)).messages.map((m) => m.text)).not.toContain('Placeholder: one too many');
+    await holdChatClock(app, false);
 
     // The Chat QR stopped: a phone scanning its code now is told it has ended, and keeps no pairing.
     expect((await win.evaluate(() => (globalThis as PageGlobals).drashti.chat.endInvite())).ok).toBe(true);

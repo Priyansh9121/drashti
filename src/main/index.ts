@@ -129,6 +129,7 @@ import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
+import { scheduleClock } from './schedule-clock';
 import {
   CHROMIUM_FAKE_DEVICES,
   CHROMIUM_FAKE_SOUND_FILE,
@@ -1061,13 +1062,13 @@ const announceMinuteMs = Math.min(
   60_000,
   Math.max(100, Number(sw('DRASHTI_TEST_ANNOUNCE_MINUTE_MS') ?? 60_000) || 60_000),
 );
-// Tests only: the schedules (backups; the arti's and macros' too, until Session 44) read this computer's
-// clock moved on by this much (ms), and a test can move it with globalThis.drashtiArtiClock(wallMs).
-// The engine's clock is never moved.
+// Tests only: the schedules (backups; the arti's and macros' too, until Session 44; the chat) read this computer's
+// clock moved on by this much (ms), and a test can move it with globalThis.drashtiArtiClock(wallMs) and hold it with
+// globalThis.drashtiArtiClockHold(true), let go with false (a22-phonemac). The engine's clock is never moved.
 const artiTestClock = sw('DRASHTI_TEST_ARTI_CLOCK') === '1' && !packaged();
-let artiClockOffset = artiTestClock ? Number(sw('DRASHTI_TEST_ARTI_OFFSET_MS') ?? 0) || 0 : 0;
-/** The schedules' clock: this computer's, moved by a test only. */
-const scheduleNow = () => Date.now() + artiClockOffset;
+const artiClock = scheduleClock(artiTestClock ? Number(sw('DRASHTI_TEST_ARTI_OFFSET_MS') ?? 0) || 0 : 0);
+/** The schedules' clock: this computer's, moved or held by a test only. */
+const scheduleNow = () => artiClock.now();
 // Tests only (never a packaged Drashti): updates come from this server instead of GitHub Releases, and
 // install by writing what they would run into a file; a download goes at this rate; and a test can say
 // the stream is on air (globalThis.drashtiTestOnAir), for updates and link downloads (the drop folder and
@@ -7137,11 +7138,20 @@ function start(): void {
     if (fromOperator(e) && saved) shell.showItemInFolder(saved);
     return null;
   });
-  if (artiTestClock)
-    (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
-      artiClockOffset = wallMs - Date.now();
+  if (artiTestClock) {
+    const testClock = globalThis as {
+      drashtiArtiClock?: (wallMs: number) => void;
+      drashtiArtiClockHold?: (held: boolean) => void;
+    };
+    testClock.drashtiArtiClock = (wallMs) => {
+      artiClock.move(wallMs);
       scheduledBackups.check();
     };
+    // Let go, it runs on from where it was held: nothing jumps, so no backup comes due by it.
+    testClock.drashtiArtiClockHold = (held) => {
+      artiClock.hold(held);
+    };
+  }
   // ---- Samvat and tithi: today's entry from the loaded calendars -------------------------
   const calendars = new CalendarService({
     repo: new CalendarRepo(db),
