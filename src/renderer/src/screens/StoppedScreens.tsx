@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
+import { stoppedSentence } from '../../../shared/screens-summary';
 import { connectScreens, useScreens } from './screens-store';
 
 /*
@@ -63,7 +64,14 @@ export function StoppedScreens() {
               </Button>
             }
           >
-            It kept failing, so it is black for now. Drashti tries it again by itself every few minutes.
+            {/* Kept failing (black), or held for the owner (QA23-HEARTBEAT-1, A): kept as it is, not answering. */}
+            {stoppedSentence(
+              snapshot.status.find((st) => st.screenId === id) ?? {
+                screenId: id,
+                state: 'stopped',
+                displayId: null,
+              },
+            )}
             {failed[id] && <span className="block">{failed[id]}</span>}
           </Notice>
         );
