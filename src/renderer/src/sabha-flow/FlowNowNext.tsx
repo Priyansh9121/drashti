@@ -21,8 +21,10 @@ import { ChevronLeft, ChevronRight, Film } from '../ui/icons';
  * screen or the stream.
  *
  * The panel's has Back and Next under it, moving Now by one item (the operator marks where the sabha is; Main keeps it):
- * a button that cannot move (Back before anything is Now, Next on the last item) stays a Tab stop, dimmed, and does
- * nothing, so pressing Next from the keyboard up to the last item never drops the focus out of the panel. The phone's
+ * a button that cannot move (Back before anything is Now, Next on the last item) stays a Tab stop, dimmed, so pressing
+ * Next from the keyboard up to the last item never drops the focus out of the panel. A press always goes to the store,
+ * which steps from the Now last asked of Main (a press while an ask is on its way counts) and does nothing past either
+ * end (flow-store.ts). The phone's
  * is read only and larger. A change is said to a screen reader once, Now and Next up together (not the buttons); where
  * another copy is said instead (a phone's More under its open Sabha flow sheet) `live` is false.
  */
@@ -129,9 +131,7 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
             aria-disabled={canBack ? undefined : true}
             className={CANNOT_MOVE}
             data-testid="flow-back-button"
-            onClick={() => {
-              if (canBack) onBack();
-            }}
+            onClick={onBack}
           >
             Back
           </Button>
@@ -142,9 +142,7 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
             aria-disabled={canNext ? undefined : true}
             className={CANNOT_MOVE}
             data-testid="flow-next-button"
-            onClick={() => {
-              if (canNext) onNext();
-            }}
+            onClick={onNext}
           >
             Next
           </Button>

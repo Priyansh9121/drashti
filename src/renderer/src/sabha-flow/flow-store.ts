@@ -104,12 +104,18 @@ export async function removeFlow(): Promise<void> {
 let asked: { flowId: string; now: number | null } | null = null;
 let ask = 0;
 
+/** Said when a mark could not reach Main at all (its ask failed on its way). */
+export const NOW_NOT_MARKED = 'Drashti couldn’t mark Now in the Sabha flow. Try again.';
+
 /** Where Back and Next step from: the Now last asked for this flow, while Main has not answered it; else Now. */
 function stepFrom(flow: SabhaFlow, now: number | null): number | null {
   return asked !== null && asked.flowId === flow.id ? asked.now : now;
 }
 
-/** Mark Now (null: not started). Refused for a flow replaced meanwhile: the panel then shows the new one. */
+/**
+ * Mark Now (null: not started). Refused for a flow replaced meanwhile: the panel then shows the new one. An ask that
+ * fails on its way says so (NOW_NOT_MARKED), Now staying as Main has it.
+ */
 export async function setFlowNow(now: number | null): Promise<void> {
   const { flow } = useFlow.getState();
   if (flow === null) return;
@@ -125,6 +131,8 @@ export async function setFlowNow(now: number | null): Promise<void> {
     }
     const current = useFlow.getState().flow;
     useFlow.setState({ now: nowOf(current, result.state), problem: null });
+  } catch {
+    if (mine === ask) useFlow.setState({ problem: NOW_NOT_MARKED });
   } finally {
     if (mine === ask) asked = null;
   }
