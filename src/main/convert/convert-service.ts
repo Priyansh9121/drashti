@@ -1317,8 +1317,8 @@ export class ConvertService {
           : job.copy?.kind === 'page-copy'
             ? 'made into a smaller copy for the stream or LIVE'
             : saving
-            ? 'saved as an MP4'
-            : `made ${height}p`;
+              ? 'saved as an MP4'
+              : `made ${height}p`;
     const done = (result: FitResult) => {
       this.runningFile = null;
       job.resolve(result);

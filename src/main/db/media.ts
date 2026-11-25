@@ -251,9 +251,16 @@ export class MediaRepo {
    * when and from where it came in, whether it plays as it is, and the copy everything uses when it was converted (or
    * the original, when it is Drashti's copy). Null for no such item.
    */
-  /** RED STUB (a22-review-fadecopies S6): no-op body, filled in by the next commit. */
+  /**
+   * The bytes still in the library (page copies, QA23-FADE-9 candidate 1): every row's that has its file, deleted rows
+   * that can be undone and missing ones too; never a purged row's, whose path is emptied before its files go
+   * (a22-review-fadecopies S6).
+   */
   liveSha256s(): Set<string> {
-    return new Set();
+    const rows = this.db
+      .prepare("SELECT DISTINCT sha256 FROM media WHERE sha256 IS NOT NULL AND path <> ''")
+      .all() as { sha256: string }[];
+    return new Set(rows.map((r) => r.sha256));
   }
 
   about(mediaId: string): DetailsRow | null {

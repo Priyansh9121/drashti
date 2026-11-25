@@ -71,10 +71,17 @@ export function pageCopyArgs(source: string, tmp: string, info: MediaInfo, plan:
     // The source's own times, each frame kept at its own (no frame added or dropped), keyframes where it has them
     // and nowhere else (the encoder's own turned off), and its sound's packets copied as they are.
     '-copyts',
+    // One thread for the decoding and the filters too, given before the input (as the lighter copies are: one before
+    // it limits only the encoders, a22-review-fadecopies S2).
+    '-threads',
+    '1',
+    '-filter_threads',
+    '1',
     '-i',
     source,
+    // The first real video, never an attached cover picture.
     '-map',
-    '0:v:0',
+    '0:V:0',
     '-map',
     '0:a?',
     '-vf',
@@ -97,29 +104,78 @@ export function pageCopyArgs(source: string, tmp: string, info: MediaInfo, plan:
   ];
 }
 
-// RED STUBS (a22-review-fadecopies): no-op bodies, filled in by the next commit.
-export function pageCopyInspect(_info: MediaInfo, _read: ReadWords): false | undefined {
+/**
+ * Whether the worker makes a copy once it has read the source (saveCopy's `inspect`): not of a video turned by its
+ * display matrix (most phone videos), since FFmpeg turns it upright before the scale and the copy comes out squashed
+ * (a22-review-fadecopies M2). Such a video plays its original everywhere.
+ */
+export function pageCopyInspect(_info: MediaInfo, read: ReadWords): false | undefined {
+  for (const m of read.words.matchAll(/rotation of (-?\d+(?:\.\d+)?) degrees/gu))
+    if (Number(m[1]) !== 0) return false;
   return undefined;
 }
-export function pageCopyCheck(_source: MediaInfo, _plan: PageCopyPlan): (copy: MediaInfo) => string | undefined {
-  return () => undefined;
+
+/** How far a copy's length may be from its source's: within a frame. */
+const LENGTH_WITHIN_MS = 50;
+
+/**
+ * The check of a finished copy, as FFmpeg reads it back before it is published (saveCopy's `validate`; M1): the size
+ * planned, the source's length within a frame, and its sound if the source has sound. Says what is wrong, or nothing.
+ */
+export function pageCopyCheck(
+  source: MediaInfo,
+  plan: PageCopyPlan,
+): (copy: MediaInfo) => string | undefined {
+  return (copy) => {
+    if (!copy.video) return 'The page copy has no picture.';
+    if (copy.video.width !== plan.width || copy.video.height !== plan.height)
+      return 'The page copy is not the size it was made at.';
+    if (
+      source.durationMs != null &&
+      (copy.durationMs == null || Math.abs(copy.durationMs - source.durationMs) > LENGTH_WITHIN_MS)
+    )
+      return 'The page copy is not as long as its video.';
+    if (source.audio && !copy.audio) return 'The page copy lost its video’s sound.';
+    return undefined;
+  };
 }
-export function pageCopiesMayWork(_now: {
+
+/**
+ * Whether copies may be made now: nothing up, not on air or recording, and no cue waiting for its Go, since every page
+ * warms its decoder for an armed cue (a22-review-fadecopies S11).
+ */
+export function pageCopiesMayWork(now: {
   streamInUse: boolean;
   onAir: boolean;
   layersUp: boolean;
   cueArmed: boolean;
 }): boolean {
-  return true;
+  return !now.streamInUse && !now.onAir && !now.layersUp && !now.cueArmed;
 }
+
+/**
+ * What the engine plays for a playlist's video, so the copy is made of that (a22-review-fadecopies S1): its Edit
+ * Video version, then that one's lighter playing copy. None while either is preparing (the engine shows no original
+ * in their place).
+ */
 export function pageCopySource(
   listed: string,
-  _how: {
+  how: {
     edit(id: string): { readyMediaId: string | null } | null;
     proxy(id: string): { mediaId: string | null };
   },
 ): string | null {
-  return listed;
+  const edited = how.edit(listed);
+  const shown = edited === null ? listed : edited.readyMediaId;
+  return shown === null ? null : how.proxy(shown).mediaId;
+}
+
+const removeFile = (file: string) => rm(file, { force: true });
+
+/** An error's code or message, for a log line. */
+function problem(e: unknown): string {
+  if (e instanceof Error) return (e as Error & { code?: string }).code ?? e.message;
+  return String(e);
 }
 
 /** A copy's name, and nothing else: its source's sha256, a height made, and its container. */
@@ -158,13 +214,17 @@ export async function pageCopiesIn(mediaDir: string): Promise<Map<string, PageCo
 export async function sweepPageCopies(
   mediaDir: string,
   liveShas: ReadonlySet<string>,
-  _remove?: (file: string) => Promise<void>,
+  remove: (file: string) => Promise<void> = removeFile,
 ): Promise<string[]> {
   const gone: string[] = [];
   for (const c of copiesOf(await filesIn(mediaDir))) {
     if (liveShas.has(c.sha256)) continue;
-    await rm(join(mediaDir, PAGE_COPIES_DIR, c.name), { force: true });
-    gone.push(c.name);
+    // One another program holds (a scan, on Windows) is left for the next start; the rest go on (M4).
+    const removed = await remove(join(mediaDir, PAGE_COPIES_DIR, c.name)).then(
+      () => true,
+      () => false,
+    );
+    if (removed) gone.push(c.name);
   }
   return gone;
 }
@@ -173,10 +233,11 @@ export async function sweepPageCopies(
 export async function removePageCopiesOf(
   mediaDir: string,
   sha256: string,
-  _remove?: (file: string) => Promise<void>,
+  remove: (file: string) => Promise<void> = removeFile,
 ): Promise<void> {
+  // One that cannot be deleted now is swept at a later start, its source gone (M4): the purge goes on.
   for (const c of copiesOf(await filesIn(mediaDir)))
-    if (c.sha256 === sha256) await rm(join(mediaDir, PAGE_COPIES_DIR, c.name), { force: true });
+    if (c.sha256 === sha256) await remove(join(mediaDir, PAGE_COPIES_DIR, c.name)).catch(() => undefined);
 }
 
 /** A video a page copy may be made of: in a playlist that crossfades (index.ts). */
@@ -217,17 +278,21 @@ export class PageCopies {
   constructor(private readonly deps: PageCopiesDeps) {}
   /** Sweeps once (a copy whose source is gone or changed), reads what is there, then looks every 2 s. */
   async start(): Promise<void> {
-    const gone = await sweepPageCopies(this.deps.mediaDir, this.deps.liveShas());
-    if (gone.length > 0)
-      this.deps.log(`Page copies: ${String(gone.length)} whose video is gone or changed removed`);
-    for (const [sha, heights] of await pageCopiesIn(this.deps.mediaDir)) {
-      const byHeight = new Map<PageCopyHeight, string>();
+    // Nothing here may throw: a rejection would be written to the crash journal (a22-review-fadecopies M4).
+    try {
+      const gone = await sweepPageCopies(this.deps.mediaDir, this.deps.liveShas(), this.deps.remove);
+      if (gone.length > 0)
+        this.deps.log(`Page copies: ${String(gone.length)} whose video is gone or changed removed`);
       const names = await filesIn(this.deps.mediaDir);
-      for (const h of heights) {
-        const name = names.find((n) => n.startsWith(`${sha}-${String(h)}p.`));
-        if (name) byHeight.set(h, name);
+      for (const c of copiesOf(names)) {
+        const byHeight = this.there.get(c.sha256) ?? new Map<PageCopyHeight, string>();
+        byHeight.set(c.height, c.name);
+        this.there.set(c.sha256, byHeight);
       }
-      this.there.set(sha, byHeight);
+    } catch (e) {
+      this.warn(
+        `Page copies: could not look at the copies already made (${problem(e)}); none are used until then`,
+      );
     }
     if (this.closed || this.timer) return;
     this.timer = setInterval(() => {
@@ -235,12 +300,14 @@ export class PageCopies {
     }, 2000);
     this.timer.unref();
   }
-  /** One step: the next copy wanted, made (or nothing). */
+  /** One step: the next copy wanted, made (or nothing). Never throws. */
   async step(): Promise<void> {
     if (this.working || this.closed || !this.deps.slow() || !this.deps.idle()) return;
     this.working = true;
+    let sha: string | null = null;
     try {
       for (const c of this.deps.candidates()) {
+        sha = c.sha256;
         const source = join(this.deps.mediaDir, c.path);
         let info = this.infos.get(c.sha256);
         if (info === undefined) {
@@ -260,6 +327,12 @@ export class PageCopies {
             lengthMs: info.durationMs ?? 0,
             waitForShow: true,
             background: true,
+            // A turned video: none (M2); the copy read back before it is published (M1); stopped outright as a
+            // show starts (S9); and it gives way to an operator's save (S10, by its kind).
+            inspect: pageCopyInspect,
+            validate: pageCopyCheck(info, plan),
+            stopAtOnce: true,
+            kind: 'page-copy',
           }).done;
           // Published under exactly its own name, or not at all (a file there already gets a free name: not a copy).
           if (done.ok && done.copy === dest) {
@@ -271,14 +344,27 @@ export class PageCopies {
           } else {
             // Not again and again: this video gets no more copies until Drashti starts again.
             this.infos.set(c.sha256, null);
-            this.deps.log(`Page copies: ${name} not made${done.ok ? '' : ` (${done.message})`}`);
+            this.deps.log(
+              `Page copies: ${name} not made${done.ok ? (done.copy === null ? ' (a turned video plays its original)' : '') : ` (${done.message})`}`,
+            );
           }
           return;
         }
       }
+    } catch (e) {
+      // A folder it cannot make, a library it cannot read: said once, and that video is not tried again (M4).
+      if (sha) this.infos.set(sha, null);
+      this.warn(`Page copies: could not make a copy (${problem(e)}); the videos play their originals`);
     } finally {
       this.working = false;
     }
+  }
+  /** A problem said once a run, not every 2 s. */
+  private readonly said = new Set<string>();
+  private warn(line: string): void {
+    if (this.said.has(line)) return;
+    this.said.add(line);
+    this.deps.log(line);
   }
   /** The copy of these bytes at this height, relative to the media folder, if it is there. */
   relativePath(sha256: string, height: PageCopyHeight): string | null {
@@ -288,9 +374,15 @@ export class PageCopies {
   /** The heights ready for each candidate video now, by its media id (what the pages are told). */
   ready(): Record<string, PageCopyHeight[]> {
     const out: Record<string, PageCopyHeight[]> = {};
-    for (const c of this.deps.candidates()) {
-      const heights = [...(this.there.get(c.sha256)?.keys() ?? [])].sort((a, b) => a - b);
-      if (heights.length > 0) out[c.mediaId] = heights;
+    try {
+      for (const c of this.deps.candidates()) {
+        const heights = [...(this.there.get(c.sha256)?.keys() ?? [])].sort((a, b) => a - b);
+        if (heights.length > 0) out[c.mediaId] = heights;
+      }
+    } catch (e) {
+      // The library unreadable for a moment: no copies said, every page plays the originals (M4).
+      this.warn(`Page copies: could not read which videos have copies (${problem(e)})`);
+      return {};
     }
     return out;
   }

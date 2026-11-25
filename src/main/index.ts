@@ -402,7 +402,7 @@ import {
 } from './events/sources';
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
-import { PageCopies } from './media/page-copies';
+import { PageCopies, pageCopiesMayWork, pageCopySource } from './media/page-copies';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { OPENING_MS, OPENING_START_HOLD_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
@@ -5537,20 +5537,33 @@ function start(): void {
   const copies = new PageCopies({
     mediaDir,
     slow: pageCopiesSlow,
-    idle: () => !streaming.inUse() && !testOnAir && nothingUp(engine.current.layers),
+    // Not while a cue waits for its Go either: every page warms its decoder for it (a22-review-fadecopies S11).
+    idle: () =>
+      pageCopiesMayWork({
+        streamInUse: streaming.inUse(),
+        onAir: testOnAir,
+        layersUp: !nothingUp(engine.current.layers),
+        cueArmed: !!engine.current.videoCue,
+      }),
+    // Of what the engine plays for each: its Edit Video version, then its lighter playing copy (S1).
     candidates: () =>
-      playlists.crossfadeMediaIds().flatMap((mediaId) => {
-        const row = media.about(mediaId);
-        return row?.kind === 'video' && !row.deleted && !row.missing && row.sha256 && row.path
+      playlists.crossfadeMediaIds().flatMap((listed) => {
+        const mediaId = pageCopySource(listed, {
+          edit: (id) => videoEdits.read(id),
+          proxy: (id) => proxyReadyFor(id),
+        });
+        const row = mediaId === null ? null : media.about(mediaId);
+        return mediaId !== null &&
+          row?.kind === 'video' &&
+          !row.deleted &&
+          !row.missing &&
+          row.sha256 &&
+          row.path
           ? [{ mediaId, sha256: row.sha256, path: row.path }]
           : [];
       }),
-    liveShas: () =>
-      new Set(
-        (
-          libraryDb.prepare('SELECT sha256 FROM media WHERE sha256 IS NOT NULL').all() as { sha256: string }[]
-        ).map((r) => r.sha256),
-      ),
+    // Never a purged row's bytes (S6).
+    liveShas: () => media.liveSha256s(),
     info: (file) => {
       const ffmpeg = findFfmpeg({
         packaged: packaged(),

@@ -114,7 +114,9 @@ describe('how a page copy is made and checked (a22-review-fadecopies)', () => {
   it('copies are made only while nothing is up or armed: not on air, not recording, no cue waiting for Go (S11)', () => {
     const idle = { streamInUse: false, onAir: false, layersUp: false, cueArmed: false };
     expect(pageCopiesMayWork(idle)).toBe(true);
-    expect(pageCopiesMayWork({ ...idle, cueArmed: true }), 'every page warms its decoder for a cue').toBe(false);
+    expect(pageCopiesMayWork({ ...idle, cueArmed: true }), 'every page warms its decoder for a cue').toBe(
+      false,
+    );
     expect(pageCopiesMayWork({ ...idle, layersUp: true })).toBe(false);
     expect(pageCopiesMayWork({ ...idle, streamInUse: true })).toBe(false);
     expect(pageCopiesMayWork({ ...idle, onAir: true })).toBe(false);
@@ -130,9 +132,9 @@ describe('how a page copy is made and checked (a22-review-fadecopies)', () => {
     expect(pageCopySource('clip', { edit: () => edit('clip-edited'), proxy: proxyNone })).toBe('clip-edited');
     expect(pageCopySource('clip', { edit: () => edit(null), proxy: proxyNone })).toBeNull();
     // Over 1080p on a slow computer: its lighter copy, or none while that is preparing.
-    expect(pageCopySource('clip', { edit: () => edit('clip'), proxy: () => ({ mediaId: 'clip-lighter' }) })).toBe(
-      'clip-lighter',
-    );
+    expect(
+      pageCopySource('clip', { edit: () => edit('clip'), proxy: () => ({ mediaId: 'clip-lighter' }) }),
+    ).toBe('clip-lighter');
     expect(pageCopySource('clip', { edit: () => edit('clip'), proxy: () => ({ mediaId: null }) })).toBeNull();
     // Both: the edited version's lighter copy.
     expect(
@@ -325,7 +327,19 @@ describe.skipIf(!ffmpegHere(ffmpeg))('a turned video gets no page copy (a22-revi
     expect(made.status).toBe(0);
     const turn = spawnSync(
       ffmpeg,
-      ['-hide_banner', '-loglevel', 'error', '-display_rotation', '90', '-i', plain, '-c', 'copy', '-y', turned],
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-display_rotation',
+        '90',
+        '-i',
+        plain,
+        '-c',
+        'copy',
+        '-y',
+        turned,
+      ],
       { env: ffmpegEnv() },
     );
     expect(turn.status, String(turn.stderr)).toBe(0);
@@ -411,7 +425,11 @@ describe('the sweep deletes a copy only with its source, or when its source chan
 
   it('a copy that cannot be deleted (held by another program) is left, and the sweep goes on with the rest (M4)', async () => {
     const dir = temp();
-    put(dir, [pageCopyName(SHA_A, 720, 'webm'), pageCopyName(SHA_B, 720, 'webm'), pageCopyName(SHA_B, 540, 'webm')]);
+    put(dir, [
+      pageCopyName(SHA_A, 720, 'webm'),
+      pageCopyName(SHA_B, 720, 'webm'),
+      pageCopyName(SHA_B, 540, 'webm'),
+    ]);
     const held = join(folder(dir), pageCopyName(SHA_B, 720, 'webm'));
     const remove = async (file: string) => {
       if (file === held) throw Object.assign(new Error('placeholder: in use'), { code: 'EBUSY' });

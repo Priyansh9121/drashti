@@ -148,7 +148,9 @@ it('each copy is made with its checks: a turned video refused, the copy read bac
   expect(
     copy?.inspect?.(tall, { words: 'Side data:\n      displaymatrix: rotation of -90.00 degrees', more: [] }),
   ).toBe(false);
-  expect(copy?.inspect?.(tall, { words: 'Stream #0:0: Video: vp8, yuv420p, 1920x1080', more: [] })).toBeUndefined();
+  expect(
+    copy?.inspect?.(tall, { words: 'Stream #0:0: Video: vp8, yuv420p, 1920x1080', more: [] }),
+  ).toBeUndefined();
   expect(typeof copy?.validate).toBe('function');
   expect(typeof copy?.validate?.({ ...tall })).toBe('string');
   expect(copy?.validate?.({ ...tall, video: { ...TALL_VIDEO, width: 1280, height: 720 } })).toBeFalsy();
@@ -192,7 +194,9 @@ it('nothing it does can throw: a copy it cannot delete at its start, a Media fol
   await expect(blocked.copies.step()).resolves.toBeUndefined();
   await expect(blocked.copies.step()).resolves.toBeUndefined();
   expect(blocked.saveCopy).not.toHaveBeenCalled();
-  expect(log.mock.calls.filter(([line]) => String(line).includes('could not')).length).toBeGreaterThanOrEqual(1);
+  expect(log.mock.calls.filter(([line]) => String(line).includes('could not')).length).toBeGreaterThanOrEqual(
+    1,
+  );
   blocked.copies.close();
   unwritable.copies.close();
   // The library unreadable for a moment: nothing rejects.

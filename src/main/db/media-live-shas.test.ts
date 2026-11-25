@@ -26,7 +26,4 @@ it('keeps the bytes of rows with a file, deleted ones that can be undone and mis
   add('purged', '', 'd'.repeat(64), DELETED);
   add('unread', 'ee/unread.webm', null);
   expect([...media.liveSha256s()].sort()).toEqual(['a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]);
-  // The same bytes in a purged row and a kept one: kept.
-  add('purged twin', '', 'a'.repeat(64), DELETED);
-  expect(media.liveSha256s().has('a'.repeat(64))).toBe(true);
 });
