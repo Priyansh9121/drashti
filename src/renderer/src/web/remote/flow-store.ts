@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SabhaFlow, SabhaFlowSnapshot } from '../../../../shared/sabha-flow';
+import { type FlowView, flowViews as viewsOf } from '../../../../shared/sabha-flow-lines';
 import { api, current } from '../device';
 import { onListsChanged, onOnline } from '../feed';
 import { oneAtATime } from '../one-at-a-time';
@@ -14,7 +15,7 @@ import { oneAtATime } from '../one-at-a-time';
  * flow was replaced is let go, and one Drashti says is of an old flow (409) reads the flow again.
  */
 
-export type FlowView = 'list' | 'page';
+export type { FlowView };
 
 /** A page that could not be had: said so in the view, and not asked for again until the flow changes. */
 export const FAILED = 'failed';
@@ -52,8 +53,7 @@ export const pictureKey = (flowId: string, page: number): string => `${flowId}:$
 
 /** The views a flow has: the read list and the page when it was read, else the page alone (none without a flow). */
 export function flowViews(flow: SabhaFlow | null): FlowView[] {
-  if (!flow) return [];
-  return flow.status === 'read' ? ['list', 'page'] : ['page'];
+  return flow ? viewsOf(flow.status) : [];
 }
 
 const firstView = (flow: SabhaFlow | null): FlowView => flowViews(flow)[0] ?? 'list';

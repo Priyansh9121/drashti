@@ -9,9 +9,9 @@ import {
   NOTHING_NEXT,
   NOW_LABEL,
   nowNext,
+  statusWords,
   textLang,
 } from '../../../../shared/sabha-flow-lines';
-import { statusWords } from '../../sabha-flow/FlowViews';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import {
