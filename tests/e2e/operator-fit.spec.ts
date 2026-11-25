@@ -520,8 +520,8 @@ const statusParts = (win: Page) =>
  * Audience on and off too (an ordinary end of a service):
  * - Pro Mode: nothing anywhere is cut short, over another or past the window's edge (the status bar's version words
  *   shortened for it, QA23-STAGE8-4);
- * - Simple Mode: the same state with the tablet and without it finds the very same faults, and the Stage off item is
- *   as wide: the tablet adds none. (Simple Mode's own day playlist's name in a fresh library is cut short in the
+ * - Simple Mode: the same state with the tablet connected and with none showing (paired, not connected: the status
+ *   bar as with no tablet) finds the very same faults, and the Stage off item is as wide: the tablet adds none. (Simple Mode's own day playlist's name in a fresh library is cut short in the
  *   left column at 1024 × 645 with or without it: the owner's QA23-STAGE8-5, held for him.)
  */
 for (const mode of ['pro', 'simple'] as const)
@@ -533,6 +533,9 @@ for (const mode of ['pro', 'simple'] as const)
       await operatorReady(win);
       await sizeOperatorWindow(app, win, CI_WINDOW);
       const { port } = await networkOn(win);
+      // Paired in Pro Mode (Simple Mode pairs nothing), not connected yet: it shows nothing, so the status bar is as
+      // with no tablet at all (no hint: stageTabletsShowing counts connected ones only).
+      const token = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
       // Off from Pro Mode first (Simple Mode only turns them on).
       for (const which of audience === 'off' ? (['stage', 'audience'] as const) : (['stage'] as const)) {
         const turned = await win.evaluate(
@@ -561,13 +564,12 @@ for (const mode of ['pro', 'simple'] as const)
         const box = await stageOff.boundingBox();
         return { faults, width: Math.round(box?.width ?? 0) };
       };
-      // The same state with no tablet paired first.
+      // The same state with no tablet showing first.
       await expect(stageOff).toContainText('Stage off');
       await expect(win.getByTestId('switch-off-stage-tablet')).toHaveCount(0);
-      const without = await faultsNow('no tablet');
-      // A stage tablet paired and connected: said by a tablet in place of the screen icon, the sentence for screen
-      // readers and in its tooltip.
-      const token = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
+      const without = await faultsNow('no tablet showing');
+      // The stage tablet connected: said by a tablet in place of the screen icon, the sentence for screen readers and
+      // in its tooltip.
       const feed = await connectTablet(port, token);
       await expect(win.getByTestId('switch-off-stage-tablet')).toBeVisible();
       await expect(win.getByTestId('switch-off-stage-hint')).toHaveText(
