@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from './chat-standin';
-import { CHAT_TEXT_MAX, OPERATOR_ID } from './chat-standin';
+import { CHAT_LINES_MAX, CHAT_TEXT_MAX, OPERATOR_ID } from './chat-standin';
 import { chatRows, composerCheck, unreadCount, unreadWords } from './chat-view';
 
 /*
@@ -89,19 +89,34 @@ describe('the text box before Send', () => {
 
   it('sends words within the limit, saying how many are left only near it', () => {
     expect(composerCheck('Placeholder words')).toEqual({ canSend: true, line: null });
-    expect(composerCheck('a'.repeat(CHAT_TEXT_MAX - 20))).toEqual({ canSend: true, line: '20 letters left' });
-    expect(composerCheck('a'.repeat(CHAT_TEXT_MAX - 1))).toEqual({ canSend: true, line: '1 letter left' });
-    expect(composerCheck('a'.repeat(CHAT_TEXT_MAX))).toEqual({ canSend: true, line: '0 letters left' });
+    expect(composerCheck('a'.repeat(CHAT_TEXT_MAX - 20))).toEqual({ canSend: true, line: '20 characters left' });
+    expect(composerCheck('a'.repeat(CHAT_TEXT_MAX - 1))).toEqual({ canSend: true, line: '1 character left' });
+    expect(composerCheck('a'.repeat(CHAT_TEXT_MAX))).toEqual({ canSend: true, line: '0 characters left' });
   });
 
   it('refuses words past the limit in plain words, and keeps them all in the box (nothing cut short)', () => {
     expect(composerCheck('a'.repeat(CHAT_TEXT_MAX + 1))).toEqual({
       canSend: false,
-      line: `1 letter too many: ${String(CHAT_TEXT_MAX)} at most`,
+      line: `1 character too many: ${String(CHAT_TEXT_MAX)} at most`,
     });
     expect(composerCheck('a'.repeat(CHAT_TEXT_MAX + 7))).toEqual({
       canSend: false,
-      line: `7 letters too many: ${String(CHAT_TEXT_MAX)} at most`,
+      line: `7 characters too many: ${String(CHAT_TEXT_MAX)} at most`,
+    });
+  });
+
+  it('counts as the main process does: an emoji as its two units, the spaces at the ends left out', () => {
+    // 👍 is two UTF-16 units, as a text box's maxLength and Main's limit count it.
+    expect(composerCheck('👍'.repeat(CHAT_TEXT_MAX / 2))).toEqual({ canSend: true, line: '0 characters left' });
+    expect(composerCheck(`${'👍'.repeat(CHAT_TEXT_MAX / 2)}a`).canSend).toBe(false);
+    expect(composerCheck(`   ${'a'.repeat(CHAT_TEXT_MAX)}   `)).toEqual({ canSend: true, line: '0 characters left' });
+  });
+
+  it('refuses more lines than a message may have, in plain words', () => {
+    expect(composerCheck(Array(CHAT_LINES_MAX).fill('line').join('\n')).canSend).toBe(true);
+    expect(composerCheck(Array(CHAT_LINES_MAX + 1).fill('line').join('\n'))).toEqual({
+      canSend: false,
+      line: `${String(CHAT_LINES_MAX)} lines at most`,
     });
   });
 });
