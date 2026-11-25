@@ -182,9 +182,19 @@ export class SabhaFlowStore {
       return { ok: false, message: drawn.ok || stopped() ? CANCELLED : drawn.message };
     }
     const pages = [...drawn.pages].sort((a, b) => a.index - b.index);
-    // What the pictures window read, as checked; none, or none that passes: unreadable (its pages are shown).
+    // What the pictures window read, as checked; none, or none that passes: unreadable (its pages are shown), and the
+    // log says which (never the PDF's name or words).
     const read = sabhaFlowReadingSchema.safeParse(drawn.flowReading);
     const reading = read.success ? read.data : { ...UNREADABLE_READING };
+    if (!read.success) {
+      const why =
+        drawn.flowReadProblem === 'crashed'
+          ? 'the reader in the pictures window stopped with an error'
+          : drawn.flowReadProblem === 'failed-check' || drawn.flowReading !== undefined
+            ? 'the reading failed its check'
+            : 'no reading came from the pictures window';
+      this.deps.log(`Sabha flow: its words were not read (${why}): shown as unreadable, its pages shown`);
+    }
     let last = -1;
     for (const p of pages) if (p.index > last) last = p.index;
     const checked = sabhaFlowSchema.safeParse({

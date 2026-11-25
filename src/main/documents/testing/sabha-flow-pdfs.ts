@@ -401,6 +401,8 @@ export interface FlowTableSpec {
   mergedAlign?: 'top' | 'middle';
   /** Where the number sits in a row taller than one line: at its top (default) or in its middle. */
   numberAlign?: 'top' | 'middle';
+  /** The numbers set in the middle of their column, across (Noto Sans digits are 0.572 of the size wide). */
+  numbersCentred?: boolean;
   /** Upright borders drawn once down the whole table (default), or one per cell, row by row (as Word draws them). */
   uprights?: 'whole' | 'per-cell';
   size?: number;
@@ -455,8 +457,12 @@ export function flowTablePage(spec: FlowTableSpec): FlowPdfPage {
         (span > 1 && spec.mergedAlign === 'middle') ||
         (c === 0 && r >= (spec.headers ? 1 : 0) && spec.numberAlign === 'middle');
       const first = middle ? top + (end - top - block) / 2 : top + pad;
+      const across = (text: string) =>
+        c === 0 && spec.numbersCentred && /^[0-9]+$/u.test(text)
+          ? (xs[0] ?? 0) + ((spec.widths[0] ?? 0) - text.length * 0.572 * size) / 2
+          : (xs[c] ?? 0) + pad;
       words.forEach((text, k) => {
-        if (text !== '') texts.push({ text, x: (xs[c] ?? 0) + pad, y: first + k * line + size, size });
+        if (text !== '') texts.push({ text, x: across(text), y: first + k * line + size, size });
       });
     });
   });

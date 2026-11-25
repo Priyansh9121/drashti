@@ -7,6 +7,7 @@ import { availableParallelism, constants, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   DrawnPicturePage,
+  FlowReadProblem,
   PageShare,
   PictureAssetKind,
   PictureJob,
@@ -111,8 +112,9 @@ interface Drawing {
   stopped: boolean;
   /** Book OCR (alpha.21): only the pages asked for; past the document's end, no pages and its total (not a failure). */
   chosen?: boolean;
-  /** Sabha flow (alpha.23): what the window's reader made of the pages, as checked. */
+  /** Sabha flow (alpha.23): what the window's reader made of the pages, as checked; or why there is none. */
   flowReading?: SabhaFlowReading;
+  flowReadProblem?: FlowReadProblem;
   finish(result: PicturesResult): void;
   /** The pages windows left, to be drawn by one window of their own (set as it starts). */
   catchUp?: (pages: number[]) => void;
@@ -500,6 +502,13 @@ export class PdfPictures {
     if (mine.job.flowText) {
       const reading = sabhaFlowReadingSchema.safeParse(done?.flowReading);
       if (reading.success) d.flowReading = reading.data;
+      else
+        d.flowReadProblem =
+          done?.flowReadCrashed === true
+            ? 'crashed'
+            : done?.flowReading === undefined
+              ? 'missing'
+              : 'failed-check';
     }
     const total = typeof done?.total === 'number' && Number.isInteger(done.total) ? done.total : 0;
     d.total = Math.max(d.total, total);
@@ -531,6 +540,7 @@ export class PdfPictures {
         total: d.total,
         failed,
         ...(d.flowReading ? { flowReading: d.flowReading } : {}),
+        ...(d.flowReadProblem ? { flowReadProblem: d.flowReadProblem } : {}),
       });
   }
 
