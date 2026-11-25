@@ -4,6 +4,7 @@ import { CHAT_API } from '../../src/shared/chat';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken } from './devices';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { addPhoneDeck, putUpFromComputer } from './phone-deck';
 import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -113,12 +114,15 @@ async function send(p: Page, text: string): Promise<void> {
 
 const bubble = (p: Page, text: string) => p.getByTestId('chat-message').filter({ hasText: text });
 
-/** Where the controls of the show are on a Remote (each slide, each clear, Back and Next), in CSS pixels. */
+/**
+ * Where the controls of the show are on a Remote (each slide, Clear slide, Back and Next: a Pro Mode phone's while a
+ * PDF is up, QA23-PHONE-1), in CSS pixels.
+ */
 const showBoxes = (p: Page) =>
   p.evaluate(() =>
     [
       ...document.querySelectorAll(
-        '[data-testid="remote-slide"], [data-testid="remote-clear-all"], [data-testid="remote-back"], [data-testid="remote-next-button"]',
+        '[data-testid="remote-slide"], [data-testid="remote-clear-slide"], [data-testid="remote-back"], [data-testid="remote-next-button"]',
       ),
     ].map((el) => {
       const r = el.getBoundingClientRect();
@@ -137,16 +141,10 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
     const show = await setUpPlaceholderShow(win);
     const { port, base } = await networkOn(win);
     for (const phone of [android, iphone]) await phone.context.addInitScript(COUNT_ALERTS);
-    // A presentation live: its slides on the Show tab of the phone that runs the show.
-    await win.evaluate(
-      (presentationId) =>
-        (globalThis as PageGlobals).drashti.engine.dispatch({
-          type: 'goLive',
-          presentationId,
-          slideIndex: 0,
-        } as never),
-      show.kirtanId,
-    );
+    // A PDF up from its row: its pages, Clear slide, Back and Next on the Show tab of the phone that runs the show (a
+    // phone puts up and turns a PowerPoint or a PDF alone, QA23-PHONE-1).
+    const deck = await addPhoneDeck(win, show.playlistId);
+    await putUpFromComputer(win, show.playlistId, deck.itemId);
 
     // A third person (a script's Remote) chatted before the phones opened the chat: the day's history.
     const third = await pairToken(win, port, 'remote', 'Placeholder script phone');
@@ -181,6 +179,7 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
 
     // The iPhone runs the show (Show tab, slides up) and has not been tapped yet. Where its controls are, before.
     await expect(b.getByTestId('remote-slide').first()).toBeVisible();
+    await expect(b.getByTestId('remote-next-button')).toBeVisible();
     const before = await showBoxes(b);
 
     // The Android phone sends: on the right, with no name above it, the newest at the bottom.
