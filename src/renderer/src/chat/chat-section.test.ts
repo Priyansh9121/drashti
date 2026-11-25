@@ -3,12 +3,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ChatOperatorView } from '../../../shared/chat';
 import { CHAT_OPERATOR_ID, CHAT_OPERATOR_NAME } from '../../../shared/chat';
+import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import { type ChatContentsProps, ChatContentsView } from './ChatSection';
 
 /*
- * The operator's Chat section's open part (QA23-CHAT-1): while Report a Problem takes the window's picture (the hold),
- * it draws none of the chat's words or names, a message half typed included, and says why; otherwise the day's
- * messages, the text box and the people, with Remove… only in Pro Mode. Placeholder names and words only.
+ * The operator's Chat section's open part (QA23-CHAT-1): the day's messages, the text box and the people, with Remove…
+ * only in Pro Mode; and all of it inside the one box the page marks private, which Report a Problem's picture of the
+ * window blanks (shared/report-private.ts, main/report/private-parts.ts). Placeholder names and words only.
  */
 
 const VIEW: ChatOperatorView = {
@@ -44,7 +45,6 @@ const render = (over: Partial<ChatContentsProps> = {}) =>
   renderToStaticMarkup(
     createElement(ChatContentsView, {
       view: VIEW,
-      held: false,
       operateOnly: false,
       networkOn: true,
       error: null,
@@ -74,18 +74,14 @@ describe('the Chat section’s open part', () => {
     expect(html).not.toContain('data-testid="chat-remove-person"');
   });
 
-  it('draws none of the chat’s words or names while Report a Problem takes the picture, and says why', () => {
-    const html = render({ held: true });
-    for (const words of [
-      'Placeholder secret words',
-      'Placeholder reply words',
-      'Placeholder Sender',
-      'Placeholder Member',
-      'Placeholder draft',
-    ])
-      expect(html, words).not.toContain(words);
-    expect(html).toContain('data-testid="chat-held"');
-    expect(html).toContain('The chat’s words and names are left out of this picture.');
+  it('keeps every word and name of the chat inside the box Report a Problem’s picture blanks', () => {
+    const html = render();
+    // The open part is one box, marked private: nothing of it is outside it.
+    expect(html.startsWith(`<div ${REPORT_PRIVATE_ATTR}=""`)).toBe(true);
+    expect(html.endsWith('</div>')).toBe(true);
+    expect(html.match(new RegExp(`${REPORT_PRIVATE_ATTR}=`, 'gu'))).toHaveLength(1);
+    // Simple Mode's too.
+    expect(render({ operateOnly: true }).startsWith(`<div ${REPORT_PRIVATE_ATTR}=""`)).toBe(true);
   });
 
   it('says plainly when phones cannot reach it, and how to let them', () => {
