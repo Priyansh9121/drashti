@@ -56,7 +56,7 @@ async function expectSectionFits(chat: Locator, what: string): Promise<void> {
         );
       for (const b of el.querySelectorAll('button'))
         if (b.getBoundingClientRect().width > 0 && b.scrollWidth > b.clientWidth + 1)
-          out.push(`“${b.textContent ?? ''}”: its words do not fit`);
+          out.push(`“${b.textContent}”: its words do not fit`);
       if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
       return out;
     });
