@@ -1,5 +1,5 @@
 import type { ChatMessage } from './chat-standin';
-import { CHAT_TEXT_MAX } from './chat-standin';
+import { CHAT_LINES_MAX, CHAT_TEXT_MAX } from './chat-standin';
 
 /*
  * The operator's Chat section's words and counts (QA23-CHAT-1), apart from the window: the day's messages as a
@@ -66,26 +66,37 @@ export function unreadWords(count: number): { badge: string; words: string } | n
   };
 }
 
-/** A message's length as the limit counts it: by characters, so an emoji is one. */
-export const chatLength = (text: string): number => [...text].length;
+/**
+ * A message's words as Main keeps them, near enough to count them before Send: the spaces at the ends of each line and
+ * of the whole trimmed. (Main cleans them fully and checks again: its limits are the ones that count.)
+ */
+const kept = (text: string): string =>
+  text
+    .split(/\r\n?|\n/u)
+    .map((line) => line.trim())
+    .join('\n')
+    .trim();
 
 /** How near the limit the box starts saying how many are left. */
 const NEAR = 50;
 
-const letters = (n: number) => `${String(n)} ${n === 1 ? 'letter' : 'letters'}`;
+const characters = (n: number) => `${String(n)} ${n === 1 ? 'character' : 'characters'}`;
 
 /**
  * Whether the text box's words can be sent, and the line under it: how many are left near the limit, or how many too
- * many past it (the words stay in the box, whole, for the operator to shorten).
+ * many past it (the words stay in the box, whole, for the operator to shorten). Counted as Main counts them: in UTF-16
+ * units, as a text box's maxLength does (an emoji is two).
  */
 export function composerCheck(text: string): { canSend: boolean; line: string | null } {
-  if (text.trim() === '') return { canSend: false, line: null };
-  const length = chatLength(text);
-  if (length > CHAT_TEXT_MAX)
+  const words = kept(text);
+  if (words === '') return { canSend: false, line: null };
+  if (words.split('\n').length > CHAT_LINES_MAX)
+    return { canSend: false, line: `${String(CHAT_LINES_MAX)} lines at most` };
+  if (words.length > CHAT_TEXT_MAX)
     return {
       canSend: false,
-      line: `${letters(length - CHAT_TEXT_MAX)} too many: ${String(CHAT_TEXT_MAX)} at most`,
+      line: `${characters(words.length - CHAT_TEXT_MAX)} too many: ${String(CHAT_TEXT_MAX)} at most`,
     };
-  const left = CHAT_TEXT_MAX - length;
-  return { canSend: true, line: left <= NEAR ? `${letters(left)} left` : null };
+  const left = CHAT_TEXT_MAX - words.length;
+  return { canSend: true, line: left <= NEAR ? `${characters(left)} left` : null };
 }
