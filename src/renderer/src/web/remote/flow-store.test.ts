@@ -9,6 +9,7 @@ import {
   openFlow,
   pictureKey,
   showFlowView,
+  shownPages,
   startFlow,
   turnPage,
   useFlow,
@@ -336,6 +337,16 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(useFlow.getState().zoom).toBe(1);
     for (let i = 0; i < 10; i++) zoomBy(-1);
     expect(useFlow.getState().zoom).toBe(1);
+  });
+
+  it('turns the pages only within those Drashti drew, the first 20 of a longer PDF (S11)', async () => {
+    const long = flow('flow-placeholder-000d', { pageCount: 300 });
+    answer({ flow: long, state: { flowId: long.id, now: null } });
+    await loadFlow();
+    turnPage(100);
+    expect(useFlow.getState().page).toBe(19);
+    expect(shownPages(long)).toBe(20);
+    expect(shownPages(A)).toBe(3);
   });
 
   it('opens and closes the sheet, its view one the flow has', async () => {

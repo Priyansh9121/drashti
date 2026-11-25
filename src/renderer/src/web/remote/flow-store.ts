@@ -51,6 +51,9 @@ export const useFlow = create<FlowPhone>(() => ({
 
 export const pictureKey = (flowId: string, page: number): string => `${flowId}:${String(page)}`;
 
+/** Red: not built yet. */
+export const shownPages = (flow: SabhaFlow): number => flow.pageCount;
+
 /** The views a flow has: the read list and the page when it was read, else the page alone (none without a flow). */
 export function flowViews(flow: SabhaFlow | null): FlowView[] {
   return flow ? viewsOf(flow.status) : [];

@@ -143,6 +143,18 @@ describe('Sabha flow on a phone (alpha.23), drawn', () => {
     expect(flowOnPhone({ ...simple, features: ['timers', 'sabha-flow'] })).toBe(true);
   });
 
+  it('counts only the pages Drashti drew (the first 20), and says so for a longer PDF (S11)', () => {
+    const long: SabhaFlow = { ...SCAN, id: 'flow-placeholder-0003', pageCount: 300 };
+    showing({ flow: long, state: { flowId: long.id, now: null } }, { view: 'page' });
+    const html = sheet();
+    expect(words(html)).toContain('Page 1 of 20');
+    expect(words(html)).toContain(FLOW_PHONE_WORDS.firstPages(20));
+    // A short one: all of them, and nothing said.
+    showing({ flow: FLOW, state: { flowId: FLOW.id, now: null } }, { view: 'page' });
+    expect(words(sheet())).toContain('Page 1 of 2');
+    expect(words(sheet())).not.toContain(FLOW_PHONE_WORDS.firstPages(20));
+  });
+
   it('says there is none once the flow is removed while the sheet is open', () => {
     showing({ flow: null, state: null });
     expect(words(sheet())).toContain('There is no Sabha flow yet');

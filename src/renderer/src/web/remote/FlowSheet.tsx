@@ -67,6 +67,8 @@ export const FLOW_PHONE_WORDS = {
   page: 'PDF page',
   drawing: 'Getting the page…',
   noPage: 'This page could not be shown. The read list still follows the computer.',
+  /** Red: not built yet. */
+  firstPages: (_n: number) => '',
 } as const;
 
 /** A part's lang: the PDF's own, each part's by its script in a mixed one. */
