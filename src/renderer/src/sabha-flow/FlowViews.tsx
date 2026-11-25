@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { SabhaFlow, SabhaFlowLang, SabhaFlowStatus } from '../../../shared/sabha-flow';
 import type { FlowLine } from '../../../shared/sabha-flow-lines';
 import {
@@ -72,8 +73,14 @@ export function FlowReadList({
   const mixed = flow.lang === 'mixed';
   // The PDF's language on the whole list; in a mixed one, on each part.
   const langOf = mixed ? ownLang(flow.lang) : () => undefined;
+  // Now kept in sight as Back and Next move it (the list scrolls in its own box): the nearest way, never a jump.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.querySelector('[aria-current="step"]')?.scrollIntoView({ block: 'nearest' });
+  }, [now]);
   return (
     <div
+      ref={box}
       lang={mixed ? undefined : flow.lang}
       className="flex flex-col gap-2 px-2 py-2"
       data-testid="flow-read-list"
