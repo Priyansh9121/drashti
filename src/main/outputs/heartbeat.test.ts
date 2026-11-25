@@ -579,6 +579,26 @@ describe('held for the owner (QA23-HEARTBEAT-1, A): a page restarted 4 times in 
     expect(kept).toHaveLength(1);
   });
 
+  it('kept, reports before its first frame (paintedRev -1) are not drawing: never back for 2 minutes of them, so the watchdog’s try still comes (review R2-MA1)', () => {
+    make(false, true);
+    restartedInARow(4);
+    run(RESTART_GRACE_MAX_MS);
+    expect(kept).toHaveLength(1);
+    run(2 * 60_000, { hall: () => -1 });
+    expect(back).toEqual([]);
+    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+    expect(stuck).toHaveLength(4);
+  });
+
+  it('restarted 4 times in a row, a report or two before its first frame then silence: kept, not restarted (review R2-MA1)', () => {
+    make(false, true);
+    restartedInARow(4);
+    run(4000, { hall: () => -1 });
+    run(RESTART_GRACE_MAX_MS);
+    expect(stuck).toHaveLength(4);
+    expect(kept.map((k) => k.restarts)).toEqual([4]);
+  });
+
   it('a stall of the main process does not forget that a page drew the show (review SA1)', () => {
     make(false, true);
     restartedInARow(4);
