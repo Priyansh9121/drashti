@@ -27,6 +27,7 @@ const FLOW: SabhaFlow = {
   id: 'flow-placeholder-0001',
   fileName: 'Placeholder evening order.pdf',
   pageCount: 2,
+  drawnPages: 2,
   status: 'read',
   lang: 'en',
   title: 'Placeholder Evening',

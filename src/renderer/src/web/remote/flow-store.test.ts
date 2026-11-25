@@ -55,6 +55,7 @@ const flow = (id: string, over: Partial<SabhaFlow> = {}): SabhaFlow => ({
   id,
   fileName: 'Placeholder evening order.pdf',
   pageCount: 3,
+  drawnPages: 3,
   status: 'read',
   lang: 'en',
   headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
@@ -66,7 +67,7 @@ const flow = (id: string, over: Partial<SabhaFlow> = {}): SabhaFlow => ({
 });
 
 const A = flow('flow-placeholder-000a');
-const B = flow('flow-placeholder-000b', { status: 'no-text', items: [], headers: [], pageCount: 1 });
+const B = flow('flow-placeholder-000b', { status: 'no-text', items: [], headers: [], pageCount: 1, drawnPages: 1 });
 
 const answer = (snapshot: SabhaFlowSnapshot) => {
   drashti.answers.set('/api/v1/flow', { ok: true, ...snapshot });
@@ -340,7 +341,7 @@ describe('Sabha flow on a phone (alpha.23)', () => {
   });
 
   it('turns the pages only within those Drashti drew, the first 20 of a longer PDF (S11)', async () => {
-    const long = flow('flow-placeholder-000d', { pageCount: 300 });
+    const long = flow('flow-placeholder-000d', { pageCount: 300, drawnPages: 20 });
     answer({ flow: long, state: { flowId: long.id, now: null } });
     await loadFlow();
     turnPage(100);

@@ -16,6 +16,7 @@ const FLOW: SabhaFlow = {
   id: 'flow-placeholder-0001',
   fileName: 'Placeholder evening order.pdf',
   pageCount: 2,
+  drawnPages: 2,
   status: 'read',
   lang: 'mixed',
   title: 'Placeholder Evening',
@@ -144,7 +145,7 @@ describe('Sabha flow on a phone (alpha.23), drawn', () => {
   });
 
   it('counts only the pages Drashti drew (the first 20), and says so for a longer PDF (S11)', () => {
-    const long: SabhaFlow = { ...SCAN, id: 'flow-placeholder-0003', pageCount: 300 };
+    const long: SabhaFlow = { ...SCAN, id: 'flow-placeholder-0003', pageCount: 300, drawnPages: 20 };
     showing({ flow: long, state: { flowId: long.id, now: null } }, { view: 'page' });
     const html = sheet();
     expect(words(html)).toContain('Page 1 of 20');
