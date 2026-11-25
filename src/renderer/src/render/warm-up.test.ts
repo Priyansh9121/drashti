@@ -68,8 +68,8 @@ describe('the warm-up', () => {
   });
 
   it('draws a slide going out under its slow zoom while a slide with none comes in by the dissolve (the first change after a Zoom)', () => {
-    // Every Performance check on CI's Mac (308 of 308 plain checks, the first "wipe 800" after the six Zoom runs) drew
-    // one frame of 67-600 ms there, the first time a slide still under its slow zoom went out under a slide with none
+    // The Performance check on CI's Mac (306 of 308 plain checks, the first "wipe 800" after the six Zoom runs) drew
+    // one frame over 60 ms there (51-600 ms, median 169), the first time a slide still under its slow zoom went out under a slide with none
     // coming in light for light (on Calm screens a slide Wipe is drawn as a dissolve); never in the streaming check that
     // follows on the same Mac, as the GPU's other first-use drawings (a22-cue). The warm-up drew a Zoom only coming in.
     const s = scene('zoom-going/calm');
@@ -88,6 +88,19 @@ describe('the warm-up', () => {
     const p = (BEFORE + 100 - coming.shownAt) / (coming.transition?.durationMs ?? 1);
     expect(p).toBeGreaterThan(0);
     expect(p).toBeLessThan(1);
+    // a22-review-firstwipe S2: the slide coming in has no colour of its own, as the measured one (a see-through layer).
+    expect(coming.slide.background, 'the slide coming in has no colour of its own').toBeNull();
+    // N3: one background for both phases, as the show's first wipe has (no second load of the same picture).
+    expect(s.state(true, BEFORE + 100).layers.background).toEqual(s.state(false, BEFORE).layers.background);
+  });
+
+  it('draws the scene after a Zoom again under the notched clip, and last of all, so no other scene is drawn over it', () => {
+    // a22-review-firstwipe S1 (every transition scene again under the notched clip: CI's Mac draws what shares the
+    // screen with a slant or a text shadow by its multisampled pipelines) and S4 (its slide going out is a layer of its
+    // own: drawn last, it changes no other scene's layering).
+    const keys = warmScenes().map((x) => x.key);
+    expect(scene('zoom-going/calm/clipped').clip).toBeDefined();
+    expect(keys.slice(-2)).toEqual(['zoom-going/calm', 'zoom-going/calm/clipped']);
   });
 
   it('draws a deck’s own Wipe part-way: PowerPoint’s band, a mask over the slide coming in, the band itself on the screen (Session 58)', () => {
