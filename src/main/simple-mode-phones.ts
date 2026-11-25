@@ -152,6 +152,11 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'media.rename': 'within',
   'presentation.rename': 'within',
   'playlist.whenEnds': 'simple',
+  // The chat (alpha.23): reading it, a name and a message put nothing on the screens. The window's own chat requests
+  // (OP_CHANNEL) are asked of Simple Mode first, so a phone chats there exactly when the window's chat may.
+  chat: 'reads',
+  'chat.name': 'apart',
+  'chat.send': 'apart',
 };
 
 /**

@@ -5,6 +5,7 @@ import { basename } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { STOPPED_REFUSAL } from '../../shared/access';
+import { CHAT_API, CHAT_DEVICE_KINDS, type ChatEvent } from '../../shared/chat';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
@@ -139,6 +140,10 @@ interface Client {
   address: string;
   device: DeviceAuth | null;
   currentLowerThirdMotions: boolean;
+  /** It is sent the show (a Remote's or a Stage device's feed). */
+  show: boolean;
+  /** It is sent the chat (alpha.23: a page of a device in the chat that follows it). */
+  chat: boolean;
   alive: boolean;
   socket: Duplex;
   seat: string;
@@ -290,6 +295,10 @@ const ROUTES: Route[] = [
   ...phoneRoutes(route),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
+  // The chat (alpha.23, shared/chat.ts): read, a name given, a message written; the main process checks the rest.
+  route('GET', CHAT_API.read, 'chat'),
+  route('POST', CHAT_API.name, 'chat.name', (b) => b),
+  route('POST', CHAT_API.send, 'chat.send', (b) => b),
   // Session 54: playlists shared with phones, and files a phone adds (upload-routes.ts).
   ...UPLOAD_ROUTES.map((r) => route(r.method, r.path, r.op, r.args, r.param)),
 ];
@@ -619,7 +628,8 @@ export class NetworkServer {
     const text = JSON.stringify({ type: 'engine', message } satisfies ToDevice);
     let compatibleText: string | undefined;
     for (const client of this.clients) {
-      if (!client.device) continue;
+      // Never the show to a page that only follows the chat.
+      if (!client.device || !client.show) continue;
       if (client.currentLowerThirdMotions || !state) {
         this.sendText(client, text);
         continue;
@@ -644,6 +654,12 @@ export class NetworkServer {
     for (const c of this.clients)
       if (c.device?.kind === 'remote' || (c.device?.kind === 'stage' && what === 'screens'))
         this.sendText(c, text);
+  }
+
+  /** A chat event (alpha.23): to each page of a device in the chat that follows it, and to no other. */
+  chat(event: ChatEvent): void {
+    const text = JSON.stringify({ type: 'chat', event } satisfies ToDevice);
+    for (const c of this.clients) if (c.device && c.chat && !c.device.poster) this.sendText(c, text);
   }
 
   // ---- checks every request passes -------------------------------------------------------
@@ -1043,6 +1059,8 @@ export class NetworkServer {
       seat,
       device: null,
       currentLowerThirdMotions: false,
+      show: false,
+      chat: false,
       alive: true,
     };
     this.clients.add(client);
@@ -1096,12 +1114,20 @@ export class NetworkServer {
         this.bye(client, 'unauthorized');
         return;
       }
-      if (device.poster || (device.kind !== 'remote' && device.kind !== 'stage')) {
+      // The show to a Remote and a Stage device; the chat (alpha.23) to a page that follows it, of a device in it (a
+      // chat phone's always does; an Announcements device's feed is for the chat only). Never the poster link.
+      const show = device.kind === 'remote' || device.kind === 'stage';
+      const chat =
+        (CHAT_DEVICE_KINDS as readonly string[]).includes(device.kind) &&
+        (device.kind === 'chat' || message.chat === true);
+      if (device.poster || (!show && !chat)) {
         this.bye(client, 'not-allowed');
         return;
       }
       clearTimeout(hello);
       client.device = device;
+      client.show = show;
+      client.chat = chat;
       this.sockets.protect(client.seat);
       const http = this.socketDevices.get(client.seat);
       this.socketDevices.delete(client.seat);
@@ -1123,7 +1149,7 @@ export class NetworkServer {
 
   private sendSnapshot(client: Client): void {
     const state = this.mirror.state;
-    if (!state) return;
+    if (!state || !client.show) return;
     const message: EngineMessage = {
       kind: 'snapshot',
       version: ENGINE_STATE_VERSION,

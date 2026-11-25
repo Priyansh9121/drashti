@@ -110,7 +110,16 @@ export const PHONE_LOWER_THIRD_MOTIONS = 'alpha.18';
 
 /** What a device sends on the feed. The first message must be `hello`, within a few seconds. */
 export type FromDevice =
-  | { type: 'hello'; token: string; lowerThirdMotions?: typeof PHONE_LOWER_THIRD_MOTIONS }
+  | {
+      type: 'hello';
+      token: string;
+      lowerThirdMotions?: typeof PHONE_LOWER_THIRD_MOTIONS;
+      /**
+       * This page follows the chat (alpha.23): it hears each chat event. A chat phone's always does; an Announcements
+       * device's feed is only for the chat, so it is refused without this.
+       */
+      chat?: true;
+    }
   /** Clock sync: the device's time when it asked. */
   | { type: 'clock'; t0: number }
   /** The device's copy fell behind (a revision went missing): send the whole state again. */
