@@ -1,4 +1,4 @@
-import { readdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ConvertService } from '../convert/convert-service';
 import { hasAlpha, type MediaInfo } from '../convert/plan';
@@ -172,24 +172,96 @@ export interface PageCopiesDeps {
 
 /** Makes the page copies, one at a time while idle, and says which are there. */
 export class PageCopies {
+  /** By source sha256: the copies there, height to file name. */
+  private readonly there = new Map<string, Map<PageCopyHeight, string>>();
+  /** By source sha256: what FFmpeg read of it (null: none made of it, after a failure or an unreadable file). */
+  private readonly infos = new Map<string, MediaInfo | null>();
+  private working = false;
+  private closed = false;
+  private timer: ReturnType<typeof setInterval> | null = null;
   constructor(private readonly deps: PageCopiesDeps) {}
   /** Sweeps once (a copy whose source is gone or changed), reads what is there, then looks every few seconds. */
   async start(): Promise<void> {
-    return Promise.resolve();
+    const gone = await sweepPageCopies(this.deps.mediaDir, this.deps.liveShas());
+    if (gone.length > 0)
+      this.deps.log(`Page copies: ${String(gone.length)} whose video is gone or changed removed`);
+    for (const [sha, heights] of await pageCopiesIn(this.deps.mediaDir)) {
+      const byHeight = new Map<PageCopyHeight, string>();
+      const names = await filesIn(this.deps.mediaDir);
+      for (const h of heights) {
+        const name = names.find((n) => n.startsWith(`${sha}-${String(h)}p.`));
+        if (name) byHeight.set(h, name);
+      }
+      this.there.set(sha, byHeight);
+    }
+    if (this.closed || this.timer) return;
+    this.timer = setInterval(() => {
+      void this.step();
+    }, 5000);
+    this.timer.unref();
   }
   /** One step: the next copy wanted, made (or nothing). */
   async step(): Promise<void> {
-    return Promise.resolve();
+    if (this.working || this.closed || !this.deps.slow() || !this.deps.idle()) return;
+    this.working = true;
+    try {
+      for (const c of this.deps.candidates()) {
+        const source = join(this.deps.mediaDir, c.path);
+        let info = this.infos.get(c.sha256);
+        if (info === undefined) {
+          info = await this.deps.info(source).catch(() => null);
+          this.infos.set(c.sha256, info);
+        }
+        if (!info) continue;
+        for (const height of PAGE_COPY_HEIGHTS) {
+          const plan = pageCopyPlan(info, height);
+          if (!plan || this.there.get(c.sha256)?.has(height)) continue;
+          if (this.closed || !this.deps.idle()) return;
+          const name = pageCopyName(c.sha256, height, plan.ext);
+          const dest = join(this.deps.mediaDir, PAGE_COPIES_DIR, name);
+          await mkdir(join(this.deps.mediaDir, PAGE_COPIES_DIR), { recursive: true });
+          const done = await this.deps.conversions.saveCopy(source, dest, info, {
+            args: (tmp) => pageCopyArgs(source, tmp, info, plan),
+            lengthMs: info.durationMs ?? 0,
+            waitForShow: true,
+            background: true,
+          }).done;
+          // Published under exactly its own name, or not at all (a file there already gets a free name: not a copy).
+          if (done.ok && done.copy === dest) {
+            const byHeight = this.there.get(c.sha256) ?? new Map<PageCopyHeight, string>();
+            byHeight.set(height, name);
+            this.there.set(c.sha256, byHeight);
+            this.deps.log(`Page copies: ${name} made`);
+            this.deps.changed();
+          } else {
+            // Not again and again: this video gets no more copies until Drashti starts again.
+            this.infos.set(c.sha256, null);
+            this.deps.log(`Page copies: ${name} not made${done.ok ? '' : ` (${done.message})`}`);
+          }
+          return;
+        }
+      }
+    } finally {
+      this.working = false;
+    }
   }
   /** The copy of these bytes at this height, relative to the media folder, if it is there. */
-  relativePath(_sha256: string, _height: PageCopyHeight): string | null {
-    return null;
+  relativePath(sha256: string, height: PageCopyHeight): string | null {
+    const name = this.there.get(sha256)?.get(height);
+    return name ? join(PAGE_COPIES_DIR, name) : null;
   }
   /** The heights ready for each candidate video now, by its media id (what the pages are told). */
   ready(): Record<string, PageCopyHeight[]> {
-    return {};
+    const out: Record<string, PageCopyHeight[]> = {};
+    for (const c of this.deps.candidates()) {
+      const heights = [...(this.there.get(c.sha256)?.keys() ?? [])].sort((a, b) => a - b);
+      if (heights.length > 0) out[c.mediaId] = heights;
+    }
+    return out;
   }
   close(): void {
-    // Nothing yet.
+    this.closed = true;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
   }
 }
