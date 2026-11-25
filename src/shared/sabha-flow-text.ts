@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cutText } from './text';
 
 /*
  * Sabha flow (alpha.23): what the reader needs of a PDF page, taken from pdf.js in the hidden pictures window (and, in
@@ -34,18 +35,18 @@ export interface FlowTextPage {
 /** At most this many runs of text and lines are kept from one page. */
 export const FLOW_PAGE_LIMITS = { texts: 8000, rules: 8000, chars: 2000 } as const;
 
-const coord = z.number().finite().min(-100000).max(100000);
+const coord = z.number().min(-100000).max(100000);
 export const flowTextPageSchema: z.ZodType<FlowTextPage> = z.object({
-  width: z.number().finite().min(1).max(100000),
-  height: z.number().finite().min(1).max(100000),
+  width: z.number().min(1).max(100000),
+  height: z.number().min(1).max(100000),
   texts: z
     .array(
       z.object({
         s: z.string().max(FLOW_PAGE_LIMITS.chars),
         x: coord,
         y: coord,
-        w: z.number().finite().min(0).max(100000),
-        h: z.number().finite().min(0).max(100000),
+        w: z.number().min(0).max(100000),
+        h: z.number().min(0).max(100000),
       }),
     )
     .max(FLOW_PAGE_LIMITS.texts),
@@ -112,7 +113,7 @@ export function flowTextsOf(content: FlowTextContent, viewport: FlowViewport): F
     if (Math.abs(tx[1]) > 0.02 * h || Math.abs(tx[2]) > 0.02 * h || tx[0] <= 0 || tx[3] >= 0) continue;
     const width = typeof item.width === 'number' && Number.isFinite(item.width) ? item.width : 0;
     texts.push({
-      s: item.str.slice(0, FLOW_PAGE_LIMITS.chars),
+      s: cutText(item.str, FLOW_PAGE_LIMITS.chars),
       x: tx[4],
       y: tx[5],
       w: Math.max(0, width),
@@ -177,7 +178,7 @@ function packedPath(args: unknown): ArrayLike<number> | null {
   const wrapped: unknown = args[1];
   const data: unknown = Array.isArray(wrapped) ? wrapped[0] : wrapped;
   if (data instanceof Float32Array || data instanceof Float64Array) return data;
-  if (Array.isArray(data) && data.every((n) => typeof n === 'number')) return data as number[];
+  if (Array.isArray(data) && data.every((n) => typeof n === 'number')) return data;
   return null;
 }
 

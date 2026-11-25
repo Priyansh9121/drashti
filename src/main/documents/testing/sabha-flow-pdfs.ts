@@ -259,7 +259,8 @@ export async function makeFlowPdf(
     }
     for (const text of spec.texts) {
       // Runs of one script each, in one font each, one after another along the baseline.
-      const cps = [...text.text.normalize('NFC')].map((c) => c.codePointAt(0) ?? 0);
+      const cps: number[] = [];
+      for (const c of text.text.normalize('NFC')) cps.push(c.codePointAt(0) ?? 0);
       if (options.shortIFirst)
         for (let i = 1; i < cps.length; i++) {
           const here = cps[i] ?? 0;
@@ -479,7 +480,7 @@ export function flowListPage(spec: {
     y += size * 3;
   }
   for (const text of spec.lines) {
-    texts.push({ text, x: text.match(/^\s/u) ? 84 : 60, y, size });
+    texts.push({ text, x: /^\s/u.test(text) ? 84 : 60, y, size });
     y += size * 1.6;
   }
   if (spec.total) texts.push({ text: spec.total, x: 60, y: y + size, size });
