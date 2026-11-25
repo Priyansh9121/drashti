@@ -173,7 +173,6 @@ const bridge: DrashtiBridge = {
   },
   flow: {
     get: () => invoke(IPC.flow.get),
-    now: () => invoke(IPC.flow.now),
     choose: () => invoke(IPC.flow.choose),
     remove: () => invoke(IPC.flow.remove),
     setNow: (flowId, now) => invoke(IPC.flow.setNow, flowId, now),

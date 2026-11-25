@@ -48,13 +48,7 @@ import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from '
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
-import type {
-  SabhaFlow,
-  SabhaFlowChoice,
-  SabhaFlowNowResult,
-  SabhaFlowSnapshot,
-  SabhaFlowState,
-} from './sabha-flow';
+import type { SabhaFlowChoice, SabhaFlowNowResult, SabhaFlowSnapshot } from './sabha-flow';
 import type {
   OpeningChoice,
   OpeningEnd,
@@ -375,8 +369,8 @@ export const IPC = {
    * read from its own text, and where the sabha is (Now). Operator window only; never on a screen.
    */
   flow: {
+    /** The flow and its Now, together. */
     get: 'flow:get',
-    now: 'flow:now',
     /** Main's file dialog: Drashti's own copy, read and drawn (null: cancelled). */
     choose: 'flow:choose',
     remove: 'flow:remove',
@@ -1642,8 +1636,7 @@ export interface InvokeContract {
   [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
   [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
-  [IPC.flow.get]: { args: []; result: SabhaFlow | null };
-  [IPC.flow.now]: { args: []; result: SabhaFlowState | null };
+  [IPC.flow.get]: { args: []; result: SabhaFlowSnapshot };
   [IPC.flow.choose]: { args: []; result: SabhaFlowChoice | null };
   [IPC.flow.remove]: { args: []; result: null };
   [IPC.flow.setNow]: { args: [flowId: string, now: number | null]; result: SabhaFlowNowResult };

@@ -11,10 +11,9 @@ import { z } from 'zod';
  * The shared contract: the panel (operator window) and the phone remote build against these types.
  *
  * IPC (shared/ipc.ts `IPC.flow`; the operator window's bridge `window.drashti.flow`), every argument checked in Main:
- *   flow:get                      -> SabhaFlow | null              get()
- *   flow:now                      -> SabhaFlowState | null         now()
+ *   flow:get                      -> SabhaFlowSnapshot             get()         (the flow and its Now, together)
  *   flow:choose                   -> SabhaFlowChoice | null        choose()      (Main's file dialog; null: cancelled)
- *   flow:remove                   -> void                          remove()
+ *   flow:remove                   -> null                          remove()
  *   flow:set-now [flowId, now]    -> SabhaFlowNowResult            setNow(flowId, now)  (refused for a stale flowId)
  *   flow:page    [flowId, page]   -> Uint8Array | null             page(flowId, page)   (a PNG of the page, from 0)
  *   flow:changed (main -> operator) SabhaFlowSnapshot              onChanged(listener)
@@ -36,7 +35,11 @@ export type SabhaFlowStatus = 'read' | 'no-text' | 'unreadable' | 'no-items';
 /** One numbered item: its number as the PDF writes it ('1', '2', ...), and its cells. */
 export interface SabhaFlowItem {
   no: string;
-  /** Follow `headers` after the number's own column; a merged cell is repeated on each row it spans. */
+  /**
+   * The row's other cells, left to right: `cells[i]` is under `headers[i + 1]` (`headers[0]` is the number column's own
+   * header). A merged cell is repeated on each row it spans; an empty cell is ''. A numbered list (no table): one cell,
+   * the item's text, and `headers` is [].
+   */
   cells: string[];
 }
 
@@ -65,7 +68,7 @@ export interface SabhaFlowState {
   now: number | null;
 }
 
-/** The current flow and where it is: what `flow:changed` carries, and what the paired phone gets. */
+/** The current flow and where it is: what `flow:get` answers and `flow:changed` carries, and what the paired phone gets. */
 export interface SabhaFlowSnapshot {
   flow: SabhaFlow | null;
   /** Null exactly when `flow` is null; otherwise its `flowId` is `flow.id`. */
