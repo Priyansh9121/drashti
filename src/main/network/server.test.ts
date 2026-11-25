@@ -17,6 +17,7 @@ import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../.
 import { lowerThirdSchema, NEW_LOWER_THIRD } from '../../shared/lower-thirds';
 import type { ToDevice } from '../../shared/network';
 import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
+import { PHONE_REFUSAL } from '../../shared/phone-rule';
 import { alpha17LowerThirdSchema } from '../../shared/testing/alpha17-lower-third';
 import { NetworkServer, type ServerHost, SOCKET_LIMITS } from './server';
 import { hashToken } from './tokens';
@@ -1005,6 +1006,73 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
       body: JSON.stringify({ showing: 'slide:5000' }),
     });
     expect(host.requests.at(-1)?.args).toEqual({ type: 'resetLiveZoom', showing: 'slide:5000' });
+  });
+
+  /** A POST answered while its body is still being sent (it is never finished): the answer, then the request dropped. */
+  function answeredMidBody(port: number, path: string): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      let answered = false;
+      const req = request(
+        {
+          host: '127.0.0.1',
+          port,
+          path,
+          method: 'POST',
+          headers: {
+            Host: `127.0.0.1:${port}`,
+            ...bearer(REMOTE_TOKEN),
+            'Content-Type': 'application/json',
+            'Content-Length': '100000',
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => {
+            answered = true;
+            resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') });
+            req.destroy();
+          });
+        },
+      );
+      req.on('error', (error) => {
+        if (!answered) reject(error);
+      });
+      req.write('{"name":"placeholder');
+    });
+  }
+
+  it('refuses a phone a video’s own file, an upload and the music before reading a body or asking Drashti (QA23-PHONE-1)', async () => {
+    const { port, host } = await withMedia();
+    const asked = host.requests.length;
+    // A video's own file in pieces, and a link a <video> plays it by: never a phone's.
+    for (const path of ['/api/v1/media/m-video/original', '/api/v1/media/m-video/link']) {
+      const r = await call(port, path, { headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-10' } });
+      expect(r.status, path).toBe(403);
+      expect(JSON.parse(r.body), path).toEqual({ ok: false, message: PHONE_REFUSAL.media });
+    }
+    // A file a phone adds, its piece, and the music: answered at once, their bodies never read.
+    const piece = '/api/v1/uploads/01234567-89ab-cdef-0123-456789abcdef/piece?offset=0';
+    for (const [path, words] of [
+      ['/api/v1/uploads', PHONE_REFUSAL.files],
+      [piece, PHONE_REFUSAL.files],
+      ['/api/v1/music/play', PHONE_REFUSAL.media],
+    ] as const) {
+      const r = await answeredMidBody(port, path);
+      expect(r.status, path).toBe(403);
+      expect(JSON.parse(r.body), path).toEqual({ ok: false, message: words });
+    }
+    // Nothing reached the main process; a picture at a width still does for the live picture (both modes').
+    expect(host.requests.length).toBe(asked);
+    expect(
+      (await call(port, '/api/v1/media/m-picture/picture?width=1280', { headers: bearer(REMOTE_TOKEN) }))
+        .status,
+    ).toBe(200);
+    // A Stage device's picture box, as before.
+    expect(
+      (await call(port, '/api/v1/media/m-picture/picture?width=1280', { headers: bearer(STAGE_TOKEN) }))
+        .status,
+    ).toBe(200);
   });
 });
 
