@@ -18,6 +18,7 @@ describe('Simple Mode Features (alpha.22)', () => {
     expect(SIMPLE_FEATURES.map((f) => f.id)).toEqual([
       'stage',
       'messages',
+      'chat',
       'timers',
       'lower-thirds',
       'show-a-window',
@@ -28,6 +29,7 @@ describe('Simple Mode Features (alpha.22)', () => {
     expect(SIMPLE_FEATURES.map((f) => f.name)).toEqual([
       'Stage screen',
       'Messages',
+      'Chat',
       'Timers',
       'Lower Thirds',
       'Show a Window',
