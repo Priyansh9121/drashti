@@ -151,6 +151,16 @@ describe('a PDF Drashti could not read', () => {
     }
     expect(statusWords('read')).toBeNull();
     expect(renderToStaticMarkup(createElement(FlowStatusNotice, { status: 'read' }))).toBe('');
+    // More text than a running order holds is said as that, not as no numbered items (core's tooMuchText).
+    expect(statusWords('no-items', true)).toBe(
+      'This PDF has more text than a running order holds, so Drashti read none of it. Its page is shown instead.',
+    );
+    expect(statusWords('no-items', false)).toMatch(/found no numbered items/u);
+    const more = renderToStaticMarkup(
+      createElement(FlowStatusNotice, { status: 'no-items', tooMuchText: true }),
+    );
+    expect(more).toContain('more text than a running order holds');
+    expect(more).not.toContain('numbered items');
     expect(flowViews('read')).toEqual(['list', 'page']);
   });
 });

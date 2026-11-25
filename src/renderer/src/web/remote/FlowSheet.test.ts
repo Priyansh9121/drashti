@@ -75,6 +75,12 @@ describe('Sabha flow on a phone (alpha.23), drawn', () => {
   });
 
   it('says plainly when Drashti could not read the PDF’s words, and still opens its page', () => {
+    // More text than a running order holds: said as that, in More and in the sheet.
+    const dense: SabhaFlow = { ...SCAN, status: 'no-items', tooMuchText: true };
+    showing({ flow: dense, state: { flowId: dense.id, now: null } });
+    expect(words(section())).toContain('more text than a running order holds');
+    expect(words(sheet())).toContain('more text than a running order holds');
+    expect(words(sheet())).not.toContain('numbered items');
     showing({ flow: SCAN, state: { flowId: SCAN.id, now: null } });
     const html = section();
     expect(words(html)).toContain('no words Drashti can read');
