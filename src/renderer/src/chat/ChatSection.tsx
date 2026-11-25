@@ -98,6 +98,7 @@ export function ChatPeople({
                     size="sm"
                     icon={Trash2}
                     aria-label={`Remove ${m.name} from the chat`}
+                    className="shrink-0"
                     onClick={() => onRemove(m)}
                     data-testid="chat-remove-person"
                   >
@@ -173,6 +174,7 @@ function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) =
           size="sm"
           icon={Send}
           disabled={!check.canSend || sending}
+          className="shrink-0"
           data-testid="chat-send"
         >
           Send
