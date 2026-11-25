@@ -1,9 +1,28 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import type * as FsPromises from 'node:fs/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CHAT_HISTORY_MAX, CHAT_OPERATOR_ID, CHAT_OPERATOR_NAME } from '../../shared/chat';
 import { ChatStore } from './chat-store';
+
+/** A rename off the thread held until the test lets it go (the quit's race), else as node does it. */
+const hold = vi.hoisted(() => ({ rename: null as null | { hit: () => void; until: Promise<void> } }));
+vi.mock('node:fs/promises', async (original) => {
+  const fs = await original<typeof FsPromises>();
+  return {
+    ...fs,
+    rename: async (from: string, to: string) => {
+      const held = hold.rename;
+      if (held) {
+        hold.rename = null;
+        held.hit();
+        await held.until;
+      }
+      return fs.rename(from, to);
+    },
+  };
+});
 
 /*
  * The chat's day on the Drashti computer (alpha.23, QA23-CHAT-1): in memory and a small file in the data folder,
@@ -174,6 +193,36 @@ describe('the chat’s store', () => {
     store.add(person(1), 'Placeholder two');
     flushWrites();
     await store.settled();
+    const kept = JSON.parse(readFileSync(file, 'utf8')) as { messages: { text: string }[] };
+    expect(kept.messages.map((m) => m.text)).toEqual(['Placeholder one', 'Placeholder two']);
+  });
+
+  it('at quit, a write already under way never lands over the file flushed after it', async () => {
+    const { make, flushWrites, file } = setup();
+    const store = make();
+    store.load();
+    store.add(person(1), 'Placeholder one');
+    let hit = () => undefined as void;
+    const renamed = new Promise<void>((r) => {
+      hit = r;
+    });
+    let release = () => undefined as void;
+    hold.rename = {
+      hit: () => {
+        hit();
+      },
+      until: new Promise<void>((r) => {
+        release = r;
+      }),
+    };
+    flushWrites();
+    // The write is about to put its file in place (or has).
+    await Promise.race([renamed, store.settled()]);
+    store.add(person(1), 'Placeholder two');
+    store.flush();
+    release();
+    await store.settled();
+    hold.rename = null;
     const kept = JSON.parse(readFileSync(file, 'utf8')) as { messages: { text: string }[] };
     expect(kept.messages.map((m) => m.text)).toEqual(['Placeholder one', 'Placeholder two']);
   });

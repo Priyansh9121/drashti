@@ -437,6 +437,22 @@ describe('round 1 of the review (a22-review-chat)', () => {
       expect(chat.read(d, bad)).toMatchObject({ ok: false, status: 400 });
   });
 
+  it('names of emoji alone are names too: two different ones both join, the same one twice does not', () => {
+    const { chat } = setup();
+    expect(chat.setName(device(1), { name: '🙏' }).ok).toBe(true);
+    expect(chat.setName(device(2), { name: '🌼🌼' }).ok).toBe(true);
+    expect(chat.setName(device(3), { name: '🙏' })).toEqual({
+      ok: false,
+      status: 409,
+      message: CHAT_REFUSAL.nameTaken,
+    });
+    expect(chat.setName(device(4), { name: ' 🙏 ' })).toEqual({
+      ok: false,
+      status: 409,
+      message: CHAT_REFUSAL.nameTaken,
+    });
+  });
+
   it('S3: no name that reads as the operator’s, or as another person’s today', () => {
     const { chat } = setup();
     named(chat, 1);
