@@ -8,8 +8,9 @@ import { ChevronDown, ChevronRight, FileText, ListOrdered, RefreshCw, Trash2 } f
 import { Notice } from '../ui/Notice';
 import { EmptyState, Loading } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
+import { FlowNowNext } from './FlowNowNext';
 import type { FlowView } from './FlowViews';
-import { FlowNowNext, FlowReadList, FlowStatusNotice, flowViews } from './FlowViews';
+import { FlowReadList, FlowStatusNotice, flowViews } from './FlowViews';
 import { FlowPage } from './FlowPage';
 import {
   chooseFlow,
@@ -194,7 +195,9 @@ function FlowBody() {
           <FlowStatusNotice status={flow.status} tooMuchText={flow.tooMuchText === true} />
         </div>
       )}
-      {flow.status === 'read' && <FlowNowNext flow={flow} now={now} onBack={flowBack} onNext={flowNext} />}
+      {flow.status === 'read' && (
+        <FlowNowNext flow={flow} now={now} size="panel" onBack={flowBack} onNext={flowNext} />
+      )}
       {views.length > 1 && (
         <Tabs
           group="sabha-flow"

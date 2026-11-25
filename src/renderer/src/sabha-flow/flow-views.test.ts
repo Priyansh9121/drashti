@@ -2,11 +2,12 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { SabhaFlow, SabhaFlowStatus } from '../../../shared/sabha-flow';
-import { FlowNowNext, FlowReadList, FlowStatusNotice, flowViews, statusWords } from './FlowViews';
+import { FlowReadList, FlowStatusNotice, flowViews, statusWords } from './FlowViews';
 
 /*
- * The Sabha flow panel's views (QA23-FLOW-1 and -2), drawn as the operator window draws them: the read list, Now and
- * Next up, and the plain words for a PDF Drashti could not read. Placeholder words only, never a real running order.
+ * The Sabha flow panel's views (QA23-FLOW-1 and -2), drawn as the operator window draws them: the read list and the
+ * plain words for a PDF Drashti could not read (Now and Next up: flow-now-next.test.ts). Placeholder words only, never
+ * a real running order.
  */
 
 const flow = (over: Partial<SabhaFlow> = {}): SabhaFlow => ({
@@ -30,10 +31,6 @@ const flow = (over: Partial<SabhaFlow> = {}): SabhaFlow => ({
 
 const list = (f: SabhaFlow, now: number | null = null) =>
   renderToStaticMarkup(createElement(FlowReadList, { flow: f, now, onPick: () => undefined }));
-const nowNext = (f: SabhaFlow, now: number | null) =>
-  renderToStaticMarkup(
-    createElement(FlowNowNext, { flow: f, now, onBack: () => undefined, onNext: () => undefined }),
-  );
 /** The text a person reads (tags out, the separators' hidden commas out). */
 const words = (html: string) =>
   html
@@ -90,49 +87,6 @@ describe('the read list', () => {
     );
     expect(mixed).toContain('<span lang="gu">કાર્યક્રમ</span>');
     expect(mixed).toContain('<span lang="hi">कार्यक्रम</span>');
-  });
-});
-
-describe('Now and Next up (QA23-FLOW-2)', () => {
-  it('on 1 shows "Now: 1 · Program · Details" and, larger, "Next up: 2 · Program · Details · Duration · Presenter"', () => {
-    const html = nowNext(flow(), 0);
-    const now = /data-testid="flow-now"[^>]*>(.*?)<\/p>/u.exec(html)?.[1] ?? '';
-    const next = /data-testid="flow-next"[^>]*>(.*?)<\/p>/u.exec(html)?.[1] ?? '';
-    expect(words(now).replace(/\s+/gu, ' ').trim()).toBe('Now: 1 · Opening · Placeholder words one');
-    expect(words(next).replace(/\s+/gu, ' ').trim()).toBe(
-      'Next up: 2 · Video · Placeholder clip · 15 min · Speaker B',
-    );
-    // Next up stands out: larger and bolder than Now.
-    expect(html).toMatch(/data-testid="flow-next"[^>]*class="[^"]*text-base[^"]*font-bold/u);
-  });
-
-  it('shows a Video row as the video', () => {
-    expect(nowNext(flow(), 0)).toContain('data-video="true"');
-    expect(nowNext(flow(), 1)).not.toContain('data-video="true"');
-  });
-
-  it('on the last item says "Last item", and Next is off', () => {
-    const html = nowNext(flow(), 2);
-    expect(words(html)).toContain('Last item');
-    expect(html).toMatch(
-      /<button[^>]*disabled=""[^>]*data-testid="flow-next-button"|<button[^>]*data-testid="flow-next-button"[^>]*disabled=""/u,
-    );
-  });
-
-  it('before anything is Now: Next up is the first item, and Back is off', () => {
-    const html = nowNext(flow(), null);
-    expect(words(html)).toContain('Now: not started');
-    expect(words(html)).toContain('Next up: 1 · Opening');
-    expect(html).toMatch(
-      /<button[^>]*disabled=""[^>]*data-testid="flow-back-button"|<button[^>]*data-testid="flow-back-button"[^>]*disabled=""/u,
-    );
-  });
-
-  it('says its changes to a screen reader, and its buttons are named with the words they show', () => {
-    const html = nowNext(flow(), 0);
-    expect(html).toContain('aria-live="polite"');
-    expect(html).toMatch(/<button[^>]*aria-label="Back one item"/u);
-    expect(html).toMatch(/<button[^>]*aria-label="Next item"/u);
   });
 });
 

@@ -2,17 +2,14 @@ import { useEffect, useRef } from 'react';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { SabhaFlow, SabhaFlowLang } from '../../../../shared/sabha-flow';
 import {
-  type FlowLine,
   flowLine,
-  LAST_ITEM,
   NEXT_LABEL,
-  NOT_STARTED,
-  NOTHING_NEXT,
   NOW_LABEL,
   nowNext,
   statusWords,
   textLang,
 } from '../../../../shared/sabha-flow-lines';
+import { FlowLineWords, FlowNowNext } from '../../sabha-flow/FlowNowNext';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import {
@@ -50,7 +47,7 @@ import { useSimple } from './simple';
 /*
  * Sabha flow on a phone (alpha.23, QA23-FLOW-1 and QA23-FLOW-2): in More, under The Drashti computer, the running
  * order the operator chose on the computer, read only: Now and, larger, Next up (a Video row as the video, "Last item"
- * after the last), as the operator window's panel says them (shared/sabha-flow-lines.ts), and Open Sabha flow…, a sheet
+ * after the last), the operator window's panel's own (sabha-flow/FlowNowNext.tsx), and Open Sabha flow…, a sheet
  * with the read list (each item as "1 · Program · Details · Duration · Presenter", in the PDF's own language, a merged
  * cell on each row it covers, Now and Next up marked, the total at the bottom) and the PDF page, zoomed from the
  * screen's width. Both follow the computer: another PDF chosen, it removed, Now marked. Plain words when there is no
@@ -78,56 +75,6 @@ export const FLOW_PHONE_WORDS = {
 /** A part's lang: the PDF's own, each part's by its script in a mixed one. */
 const langOf = (lang: SabhaFlowLang) => (text: string) => textLang(text, lang);
 
-/** A line's number and parts, a middle dot between them that a screen reader reads as a comma. */
-function LineWords({ line, lang }: { line: FlowLine; lang: SabhaFlowLang }) {
-  const of = langOf(lang);
-  return (
-    <span translate="no">
-      <span lang={of(line.no)}>{line.no}</span>
-      {line.parts.map((part, i) => (
-        <span key={i}>
-          <span aria-hidden="true"> · </span>
-          <span className="sr-only">, </span>
-          <span lang={of(part)}>{part}</span>
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** Now, and Next up in full and larger, as the computer has them marked; said to a screen reader as they change. */
-function NowNext({ flow, now }: { flow: SabhaFlow; now: number | null }) {
-  const nn = nowNext(flow, now);
-  return (
-    <div
-      aria-live="polite"
-      aria-atomic="true"
-      className="space-y-1 rounded-lg border border-line bg-panel-2 px-3 py-2"
-      data-testid="remote-flow-now-next"
-    >
-      <p className="text-base break-words text-muted" data-testid="remote-flow-now">
-        {NOW_LABEL}: {nn.now ? <LineWords line={nn.now} lang={flow.lang} /> : NOT_STARTED}
-      </p>
-      <p
-        className="flex items-start gap-2 text-lg leading-snug font-bold break-words text-fg"
-        data-testid="remote-flow-next"
-        data-video={nn.next?.video === true ? 'true' : undefined}
-      >
-        {nn.next?.video === true && <Film size={20} aria-hidden="true" className="mt-0.5 shrink-0" />}
-        <span className="min-w-0 flex-1">
-          {nn.last ? (
-            LAST_ITEM
-          ) : (
-            <>
-              {NEXT_LABEL}: {nn.next ? <LineWords line={nn.next} lang={flow.lang} /> : NOTHING_NEXT}
-            </>
-          )}
-        </span>
-      </p>
-    </div>
-  );
-}
-
 /**
  * Whether the phone shows the Sabha flow: in Pro Mode, and in Simple Mode only while Sabha flow is chosen in Simple
  * Mode Features, as the window shows it (QA23-FLOWP-1, answered by lead, owner away).
@@ -145,8 +92,9 @@ export type FlowShown = Pick<
 export function FlowSection() {
   const snapshot = useFlow((s) => s.snapshot);
   const problem = useFlow((s) => s.problem);
+  const sheetOpen = useFlow((s) => s.open);
   const shown = flowOnPhone(useSimple());
-  return shown ? <FlowSectionView snapshot={snapshot} problem={problem} /> : null;
+  return shown ? <FlowSectionView snapshot={snapshot} problem={problem} sheetOpen={sheetOpen} /> : null;
 }
 
 /** Why the flow could not be read again, beside the flow last read. */
@@ -159,7 +107,14 @@ function ReadAgain({ problem }: { problem: string | null }) {
 }
 
 /** In More: the flow's file, Now and Next up, and the sheet's button; or plain words. */
-export function FlowSectionView({ snapshot, problem }: Pick<FlowShown, 'snapshot' | 'problem'>) {
+export function FlowSectionView({
+  snapshot,
+  problem,
+  sheetOpen = false,
+}: Pick<FlowShown, 'snapshot' | 'problem'> & {
+  /** The Sabha flow's sheet is over More: its Now and Next up is said to a screen reader, not this one. */
+  sheetOpen?: boolean;
+}) {
   const flow = snapshot?.flow ?? null;
   const said = flow ? statusWords(flow.status, flow.tooMuchText === true) : null;
   return (
@@ -192,7 +147,7 @@ export function FlowSectionView({ snapshot, problem }: Pick<FlowShown, 'snapshot
           </p>
           <ReadAgain problem={problem} />
           {said === null ? (
-            <NowNext flow={flow} now={snapshot.state?.now ?? null} />
+            <FlowNowNext flow={flow} now={snapshot.state?.now ?? null} size="phone" live={!sheetOpen} />
           ) : (
             <p className="text-base text-muted" data-testid="remote-flow-said">
               {said}
@@ -301,7 +256,7 @@ function ReadList({ flow, now }: { flow: SabhaFlow; now: number | null }) {
                     {isNow ? NOW_LABEL : NEXT_LABEL}
                   </span>
                 )}
-                <LineWords line={line} lang={flow.lang} />
+                <FlowLineWords line={line} lang={flow.lang} />
               </span>
             </li>
           );
@@ -470,7 +425,7 @@ export function FlowSheetView({ snapshot, problem, view, page, zoom, pictures }:
           </p>
           <ReadAgain problem={problem} />
           {said === null ? (
-            <NowNext flow={flow} now={snapshot?.state?.now ?? null} />
+            <FlowNowNext flow={flow} now={snapshot?.state?.now ?? null} size="phone" />
           ) : (
             <Notice tone="info" data-testid="remote-flow-status">
               {said}
