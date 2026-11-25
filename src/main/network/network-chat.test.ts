@@ -2,13 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  CHAT_INVITE_TTL_MS,
-  CHAT_OPERATOR_ID,
-  CHAT_PEOPLE_MAX,
-  CHAT_REFUSAL,
-  type ChatEvent,
-} from '../../shared/chat';
+import { CHAT_INVITE_TTL_MS, CHAT_OPERATOR_ID, CHAT_PEOPLE_MAX, CHAT_REFUSAL } from '../../shared/chat';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
@@ -171,7 +165,8 @@ describe('the Chat QR', () => {
     if (!shown.ok || !shown.status.chatInvite) throw new Error('no Chat QR');
     const { code, url, expiresAt } = shown.status.chatInvite;
     expect(code).toMatch(/^\d{6}$/u);
-    expect(url).toBe(`http://192.168.1.10:8740/pair#c=${code}`);
+    // The chat's own page (a22-chat-phone's): a phone already paired keeps its pairing and joins with it.
+    expect(url).toBe(`http://192.168.1.10:8740/chat#c=${code}`);
     expect(expiresAt).toBe(clock.t + CHAT_INVITE_TTL_MS);
     const one = scan(service, code);
     const two = scan(service, code, '192.168.1.21');
@@ -311,7 +306,7 @@ describe('the chat’s events and a person removed', () => {
     expect(sent.some((m) => m.type === 'chat')).toBe(false);
     listen();
     ask(remote, 'chat.send', { text: 'Placeholder' });
-    const events = sent.flatMap((m) => (m.type === 'chat' ? [m.event] : [])) as ChatEvent[];
+    const events = sent.flatMap((m) => (m.type === 'chat' ? [m.event] : []));
     expect(events).toMatchObject([{ kind: 'message', message: { text: 'Placeholder' } }]);
   });
 

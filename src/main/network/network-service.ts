@@ -85,6 +85,7 @@ import { cutText } from '../../shared/text';
 import { nfcDeep } from '../../shared/nfc';
 import {
   CHAT_INVITE_TTL_MS,
+  CHAT_PAGE,
   CHAT_REFUSAL,
   type ChatEvent,
   type ChatInvite,
@@ -560,7 +561,8 @@ export class NetworkService implements EngineTransport {
     const chatInvite: ChatInvite | null = invite
       ? {
           code: invite.code,
-          url: `${addresses[0] ?? `http://localhost:${port}`}/pair#c=${invite.code}`,
+          // The chat's own page: a phone already paired keeps its pairing and joins with it (else pairs by the code).
+          url: `${addresses[0] ?? `http://localhost:${port}`}${CHAT_PAGE}#c=${invite.code}`,
           expiresAt: invite.expiresAt,
         }
       : null;
