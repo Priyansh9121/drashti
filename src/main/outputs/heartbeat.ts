@@ -12,27 +12,55 @@
  * Either way the output is said to be stuck (the main process logs it and
  * crashes it into the watchdog's reload). Only visible, showing outputs are
  * judged, never in the first OPEN_GRACE_MS after one opens or reloads, and
- * once judged an output gets the same grace again: the limits are generous so
- * a healthy screen is never reloaded.
+ * once judged an output gets a grace again: the limits are generous so a
+ * healthy screen is never reloaded.
+ *
+ * A slow page is not restarted for good (a23-heartbeat; alpha.22's Release run
+ * 45524056204, the Intel build under Rosetta on CI's Mac VM, whose output sent
+ * its first report after the grace and was restarted every 15-20 s, below the
+ * watchdog's own give-up of more than 5 crashes a minute):
+ *
+ * - run translated, every output gets a warming page's limit (WARMING_STALE_MS);
+ * - each restart of the same output doubles the grace after it, up to
+ *   RESTART_GRACE_MAX_MS, until one comes RESTARTS_FORGET_MS after the last.
+ *
+ * Both only ever wait longer, so nothing is restarted sooner or more often than
+ * before, and a page hung for good is still restarted.
  */
 
 /** No report for this long (they come every 2 s): stuck. */
 export const REPORT_STALE_MS = 6000;
 /**
  * While it warms up its GPU (Session 27), this long: a slow computer's warm-up can keep a page busy for
- * seconds at a time, and an output reloaded for it would only warm up again.
+ * seconds at a time, and an output reloaded for it would only warm up again. Run translated, every output's
+ * limit (a23-heartbeat): there a page's code, fonts and first drawing run slowly, and it skips its warm-up, so
+ * nothing says it is busy (alpha.22's Release run on CI's Mac VM: an output silent past its 15 s grace twice).
  */
 export const WARMING_STALE_MS = 30_000;
 /** A report this long after a change, and it still has not painted it: stuck. */
 export const BEHIND_MS = 3000;
 /** Nothing is judged this soon after an output opens or reloads (fonts, the first snapshot). */
 export const OPEN_GRACE_MS = 15_000;
-/** The longest grace an output restarted again and again gets (a23-heartbeat). */
+/**
+ * The longest grace an output restarted again and again gets (a23-heartbeat): 15 s, then 30 s, then 60 s after each
+ * reload. Over four times the slowest first paint after a reload measured (13.5 s: the Intel build under Rosetta on
+ * a Mac's loaded efficiency cores; 11.4 s on CI's Mac VM); any longer, a hall screen hung for good would wait over a
+ * minute between tries.
+ */
 export const RESTART_GRACE_MAX_MS = 60_000;
-/** A restart this long after the same output's last one starts its count afresh (a23-heartbeat). */
+/**
+ * A restart this long after the same output's last one starts its count afresh (a23-heartbeat): three times the
+ * longest gap between restarts in a row (60 s of grace, 30 s of silence and the reload), so a page restarted again
+ * and again keeps its count, and one hang much later in a service gets the first grace again.
+ */
 export const RESTARTS_FORGET_MS = 5 * 60_000;
 /** How often the outputs are looked at. */
 export const CHECK_EVERY_MS = 1000;
+
+/** The grace after `restarts` restarts of the same output in a row (a23-heartbeat): 15 s, 30 s, then 60 s. */
+export function graceAfter(restarts: number): number {
+  return Math.min(OPEN_GRACE_MS * 2 ** Math.max(0, restarts), RESTART_GRACE_MAX_MS);
+}
 
 interface Seen {
   /** When it opened (or reloaded, or was last judged stuck). */
@@ -51,12 +79,17 @@ export interface HeartbeatDeps {
   judged(): string[];
   /** It is stuck: log it and restart it. */
   stuck(screenId: string, reason: string): void;
-  /** Drashti runs translated (an Intel build under Rosetta, x64 under Windows' emulation; a23-heartbeat). */
+  /**
+   * Drashti runs translated (an Intel build under Rosetta, x64 under Windows' emulation; a23-heartbeat): every
+   * output's reports may come as far apart as a warming one's.
+   */
   translated?: boolean;
 }
 
 export class OutputHeartbeat {
   private readonly seen = new Map<string, Seen>();
+  /** Each output's restarts in a row (a23-heartbeat): how many, and when the last one was. */
+  private readonly restarts = new Map<string, { count: number; at: number }>();
   /** When each recent engine revision happened. */
   private readonly revAt = new Map<number, number>();
   private checkedAt: number | null = null;
@@ -68,8 +101,16 @@ export class OutputHeartbeat {
     this.seen.set(screenId, { since: this.deps.now(), reportAt: null, paintedRev: -1, warming: false });
   }
 
+  /** Its window closed: one made again for the screen starts afresh, its restarts forgotten. */
   closed(screenId: string): void {
     this.seen.delete(screenId);
+    this.restarts.delete(screenId);
+  }
+
+  /** How many times in a row this output was restarted (a23-heartbeat): none once RESTARTS_FORGET_MS passed. */
+  restartsInARow(screenId: string): number {
+    const r = this.restarts.get(screenId);
+    return r && this.deps.now() - r.at < RESTARTS_FORGET_MS ? r.count : 0;
   }
 
   /** When an output opened (or was last judged) and last reported, for Ready? (Session 55, Part 8); null if unknown. */
@@ -122,10 +163,12 @@ export class OutputHeartbeat {
         this.opened(screenId);
         continue;
       }
-      if (now - s.since < OPEN_GRACE_MS) continue;
+      const inARow = this.restartsInARow(screenId);
+      if (now - s.since < graceAfter(inARow)) continue;
       const reason = this.why(s, now);
       if (!reason) continue;
-      // Judged: the same grace again while it restarts.
+      // Judged: a longer grace while it restarts, the longer the more times in a row (a23-heartbeat).
+      this.restarts.set(screenId, { count: inARow + 1, at: now });
       this.opened(screenId);
       this.deps.stuck(screenId, reason);
     }
@@ -133,7 +176,7 @@ export class OutputHeartbeat {
 
   private why(s: Seen, now: number): string | null {
     const heardAt = s.reportAt ?? s.since;
-    if (now - heardAt > (s.warming ? WARMING_STALE_MS : REPORT_STALE_MS))
+    if (now - heardAt > (s.warming || this.deps.translated === true ? WARMING_STALE_MS : REPORT_STALE_MS))
       return `no report for ${Math.round((now - heardAt) / 1000)} s`;
     if (s.reportAt === null || s.warming || s.paintedRev >= this.deps.engineRev()) return null;
     // The first change it has not painted, and how long before its last report that came.

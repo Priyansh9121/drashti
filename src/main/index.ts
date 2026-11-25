@@ -2988,6 +2988,8 @@ function start(): void {
       log.warn(`Output ${name} is stuck (${reason}): restarting it`);
       watchdog.stuck(w.webContents, name, reason);
     },
+    // Translated, a page's reports may come 30 s apart (a23-heartbeat: alpha.22's Intel build under Rosetta on CI).
+    translated: app.runningUnderARM64Translation,
   });
   const heartbeatTimer = setInterval(() => {
     heartbeat.check();

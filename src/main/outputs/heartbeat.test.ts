@@ -209,7 +209,11 @@ describe('a slow output page is not restarted for good (a23-heartbeat: an Intel 
     beat.opened('side');
     const opened = now;
     expect(untilStuck(60_000, { hall: () => rev }) - opened).toBe(OPEN_GRACE_MS);
-    expect(stuck.at(-1)).toEqual({ screenId: 'side', reason: 'no report for 15 s', at: opened + OPEN_GRACE_MS });
+    expect(stuck.at(-1)).toEqual({
+      screenId: 'side',
+      reason: 'no report for 15 s',
+      at: opened + OPEN_GRACE_MS,
+    });
   });
 
   it('each restart of the same output doubles its next grace, up to 60 s: never heard from, it is restarted 15 s after it opens, then 30 s and 60 s after each reload', () => {
@@ -320,7 +324,8 @@ describe('a slow output page is not restarted for good (a23-heartbeat: an Intel 
     for (let page = 0; page < 100; page++) {
       // Reports every 2 s, with gaps now and then: most short, some long (a busy page), some for a minute.
       const reportsAt = new Set<number>();
-      for (let t = 2000; t <= until; t += random() < 0.9 ? 2000 : 2000 * Math.ceil(random() * 30)) reportsAt.add(t);
+      for (let t = 2000; t <= until; t += random() < 0.9 ? 2000 : 2000 * Math.ceil(random() * 30))
+        reportsAt.add(t);
       const today = restartsBefore(reportsAt, until).length;
       before += today;
       for (const translated of [false, true]) {

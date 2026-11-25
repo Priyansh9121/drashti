@@ -547,6 +547,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       log.warn(`Node: output ${name} is stuck (${reason}): restarting it`);
       deps.watchdog.stuck(w.webContents, name, reason);
     },
+    // Translated, a page's reports may come 30 s apart (a23-heartbeat), as on Main.
+    translated: app.runningUnderARM64Translation,
   });
   const heartbeatTimer = setInterval(() => {
     heartbeat.check();
