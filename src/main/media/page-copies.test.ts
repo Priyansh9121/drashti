@@ -88,6 +88,9 @@ describe('which videos get a page copy', () => {
     expect(at({}, 'avi')).toBeNull();
     expect(at({ codec: 'hevc' }, 'mov,mp4,m4a,3gp,3g2,mj2')).toBeNull();
     expect(pageCopyPlan({ ...webm1080, video: null }, 720)).toBeNull();
+    // a22-review-fadecopies S13: with no length, no time limit to give it and no length to check it against.
+    expect(pageCopyPlan({ ...webm1080, durationMs: null }, 720), 'no length').toBeNull();
+    expect(pageCopyPlan({ ...webm1080, durationMs: 0 }, 720), 'no length').toBeNull();
   });
 });
 

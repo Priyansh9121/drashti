@@ -277,6 +277,8 @@ export interface PageCopyCandidate {
   sha256: string;
   /** Relative to the media folder. */
   path: string;
+  /** RED STUB (R2-M1 d): not used yet. */
+  listedId?: string;
 }
 
 export interface PageCopiesDeps {
@@ -296,7 +298,9 @@ export interface PageCopiesDeps {
   /** Deleting a file (tests: one another program holds). */
   remove?: (file: string) => Promise<void>;
   /** The heights made (as built: both; the tests' option B: LIVE's 540p only). */
-  heights?: readonly PageCopyHeight[];
+  heights?: readonly PageCopyHeight[] | (() => readonly PageCopyHeight[]);
+  /** RED STUB (R2-M1 a): not used yet. */
+  holdWhile?: () => string | null;
 }
 
 /**
@@ -357,7 +361,7 @@ export class PageCopies {
           this.infos.set(c.sha256, info);
         }
         if (!info) continue;
-        for (const height of this.deps.heights ?? PAGE_COPY_HEIGHTS) {
+        for (const height of (typeof this.deps.heights === 'function' ? this.deps.heights() : this.deps.heights) ?? PAGE_COPY_HEIGHTS) {
           const plan = pageCopyPlan(info, height);
           if (!plan || this.there.get(c.sha256)?.has(height)) continue;
           if (this.isClosed() || !this.deps.idle()) return;
@@ -427,6 +431,10 @@ export class PageCopies {
       return {};
     }
     return out;
+  }
+  /** RED STUB (R2-M1 d): no-op body. */
+  heightsFor(_listedId: string): PageCopyHeight[] {
+    return [];
   }
   /** Closed meanwhile (a read or a copy awaited in between). */
   private isClosed(): boolean {

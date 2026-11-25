@@ -233,3 +233,72 @@ it('the tests’ option B (lead 2, S8): only LIVE’s 540p copies, so the stream
   expect(copies.ready()).toEqual({ red: [540] });
   copies.close();
 });
+
+it('a start that could not look at the copies there makes none this run: no second copy under a free name (a22-review-fadecopies R2-S1)', async () => {
+  const log = vi.fn();
+  const { copies, made } = setup({
+    liveShas: () => {
+      throw new Error('placeholder: the library is busy');
+    },
+    log,
+  });
+  await copies.start();
+  await copies.step();
+  expect(made, 'nothing made').toEqual([]);
+  expect(log.mock.calls.some(([line]) => String(line).includes('none are made'))).toBe(true);
+  copies.close();
+});
+
+it('a copy whose name another file took meanwhile is not published under a free name (R2-S1)', async () => {
+  const { copies, made, mediaDir } = setup();
+  await copies.start();
+  await copies.step();
+  const publish = made[0]?.copy.beforePublish;
+  expect(typeof publish).toBe('function');
+  const dest = join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 720, 'webm'));
+  expect(() => publish?.('tmp', dest)).not.toThrow();
+  expect(() => publish?.('tmp', join(mediaDir, PAGE_COPIES_DIR, `${SHA_A}-720p (2).webm`))).toThrow();
+  copies.close();
+});
+
+it('makes and offers only the heights asked now: the 720p copy only while a preset below 1080p is chosen (lead 2)', async () => {
+  let heights: readonly (720 | 540)[] = [540];
+  const { copies, made, mediaDir } = setup({ heights: () => heights });
+  mkdirSync(join(mediaDir, PAGE_COPIES_DIR), { recursive: true });
+  // A 720p copy left from before (another preset, or option B's switch): not offered while 720p is not asked.
+  writeFileSync(join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 720, 'webm')), 'placeholder copy');
+  await copies.start();
+  await copies.step();
+  await copies.step();
+  expect(made.map((m) => m.dest)).toEqual([join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 540, 'webm'))]);
+  expect(copies.ready()).toEqual({ red: [540] });
+  expect(copies.relativePath(SHA_A, 720)).toBeNull();
+  heights = [720, 540];
+  expect(copies.ready()).toEqual({ red: [540, 720] });
+  copies.close();
+});
+
+it('says a library video’s copies by its own id, made from the version the engine plays (Media information…, R2-M1 d)', async () => {
+  const { copies } = setup({
+    candidates: () => [{ mediaId: 'red-edited', listedId: 'red', sha256: SHA_A, path: 'red-edited.webm' }],
+  });
+  await copies.start();
+  await copies.step();
+  await copies.step();
+  expect(copies.ready()).toEqual({ 'red-edited': [540, 720] });
+  expect(copies.heightsFor('red'), 'by the library’s id').toEqual([540, 720]);
+  expect(copies.heightsFor('red-edited')).toEqual([540, 720]);
+  expect(copies.heightsFor('another')).toEqual([]);
+  copies.close();
+});
+
+it('a copy waits while a cue is armed: its wait is given to the worker (R2-M1 a)', async () => {
+  let cue: string | null = null;
+  const { copies, made } = setup({ holdWhile: () => cue });
+  await copies.start();
+  await copies.step();
+  expect(made[0]?.copy.waitWhile?.()).toBeNull();
+  cue = 'Waits while a cue is armed.';
+  expect(made[0]?.copy.waitWhile?.()).toBe('Waits while a cue is armed.');
+  copies.close();
+});
