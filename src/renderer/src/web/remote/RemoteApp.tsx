@@ -799,7 +799,7 @@ function TabRow({
   label: string;
   /** Beside the live picture on a tablet held sideways: 'show' is its slides there. */
   panel?: boolean;
-  /** One over the other (a phone held sideways, beside the middle), not in one row. */
+  /** Two by two (a phone held sideways, beside the middle), not in one row. */
   square?: boolean;
 }) {
   const unread = useUnread();
@@ -807,8 +807,8 @@ function TabRow({
     <div
       role="tablist"
       aria-label={label}
-      // In one row under the middle, or (a phone held sideways, beside it) one over the other.
-      className={cx('grid gap-2', square ? 'grid-cols-1' : (COLUMNS[tabs.length] ?? 'grid-cols-3'))}
+      // In one row under the middle, or (a phone held sideways, beside it) two by two, as before alpha.23's fewer tabs.
+      className={cx('grid gap-2', square ? 'grid-cols-2' : (COLUMNS[tabs.length] ?? 'grid-cols-3'))}
     >
       {tabs.map((id) => {
         const TabIcon = TAB[id].icon;
