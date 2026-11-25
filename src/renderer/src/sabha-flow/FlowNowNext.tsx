@@ -161,9 +161,9 @@ const GETTING_READY = 'Getting Now and Next up ready…';
 
 /**
  * Now's and Next up's lines, said to a screen reader as they change (`live`). `steady` (the panel): the lines keep the
- * height of the flow's tallest Now and Next up of all its items, measured once per flow and on every change of their
- * width from unseen copies (review S16): Next and Back never move the read list, the splitter or the playlists under
- * the operator's pointer mid-sabha. A phone's sheet scrolls as a whole.
+ * height of the flow's tallest Now and Next up of all its items, measured once per flow and on every change of the
+ * panel's width from unseen copies (review S16): Next and Back never move the read list, the splitter or the playlists
+ * under the operator's pointer mid-sabha. A phone's sheet scrolls as a whole.
  */
 function NowNextLines({
   flow,
@@ -189,8 +189,8 @@ function NowNextLines({
   const [kept, setKept] = useState(flow);
   if (kept.id !== flow.id) setKept(flow);
   const current = kept.id === flow.id ? kept : flow;
-  // The room, set once for this flow: after its faces have loaded and the layout has taken them (or by the bound, with
-  // the faces there then), before Now and Next can be used; again only on a new width (steady-reserve.ts).
+  // The room, set once for this flow: after its faces have loaded and the layout has taken them (or by the bound, once
+  // its own faces are in), before Now and Next can be used; again only on a new panel width (steady-reserve.ts).
   const [reserve, setReserve] = useState<{ id: string; px: number; by: ReserveBy } | null>(null);
   useLayoutEffect(
     () =>
@@ -243,11 +243,13 @@ function NowNextLines({
         <NextLine flow={flow} nn={nn} look={look} testId={`${look.id}-next`} />
       </div>
       {steady && (
-        // Every item's Now and Next up, unseen, at the lines' own width: what the lines must have room for.
+        // Every item's Now and Next up, unseen: what the lines must have room for. Laid out at the lines' width with the
+        // panel body's scrollbar shown, shown or not (a scrollbar's room of their own, reaching over the body's while it
+        // shows: steady-reserve.ts), so a scrollbar coming or going never changes the room (review S18, CI's Mac).
         <div
           ref={setMeasure}
           aria-hidden="true"
-          className="pointer-events-none invisible absolute inset-x-3 top-0 h-0 overflow-hidden"
+          className="pointer-events-none invisible absolute inset-x-3 top-0 h-0 overflow-hidden [scrollbar-gutter:stable]"
         >
           {copies}
         </div>

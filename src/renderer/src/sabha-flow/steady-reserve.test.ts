@@ -322,7 +322,12 @@ describe('a scrollbar in the panel’s body (review S18, CI’s Mac)', () => {
 
   it('takes the box’s own width, and lays nothing out, where nothing above it scrolls', () => {
     const box: Laid = { parentElement: null, offsetWidth: 250, clientWidth: 250 };
-    const styleOf = () => ({ overflowY: 'hidden', borderLeftWidth: '0px', borderRightWidth: '0px', right: '12px' });
+    const styleOf = () => ({
+      overflowY: 'hidden',
+      borderLeftWidth: '0px',
+      borderRightWidth: '0px',
+      right: '12px',
+    });
     expect(panelWidthOf(box, styleOf)).toBe(250);
     expect(copiesMargin(box, styleOf)).toBe(0);
   });
