@@ -278,8 +278,9 @@ export interface NetworkDeps {
    */
   flow?: FlowReads;
   /**
-   * The tools Edit › Simple Mode Features… brought into Simple Mode (alpha.22): the hall tells a phone, which shows the
-   * Sabha flow in Simple Mode only while it is one (QA23-FLOWP-1). Left out: none.
+   * The tools Edit › Simple Mode Features… brought into Simple Mode (alpha.22): the hall tells a phone. Since the
+   * owner's Q3 ("Always", QA23-PHONE-1) a Simple Mode phone shows the Sabha flow whatever this has (until then only
+   * while it was one, QA23-FLOWP-1). Left out: none.
    */
   simpleFeatures?: () => readonly SimpleFeature[];
 }
