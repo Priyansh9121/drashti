@@ -1142,6 +1142,8 @@ export function MoreColumns({ simple }: { simple: RemoteSimple | null }) {
     return (
       <div className="space-y-5" data-testid="remote-more-columns">
         <DesktopTools />
+        {/* The Sabha flow, only while it is chosen in Simple Mode Features (a22-review-flow M6, QA23-FLOWP-1 A). */}
+        <FlowSection simple={simple} />
         <Music />
       </div>
     );
