@@ -67,7 +67,11 @@ describe('the chat’s store', () => {
     clock.t += 1000;
     const b = store.add(person(2), 'Placeholder two');
     expect(a.id).not.toBe(b.id);
-    expect(a).toMatchObject({ at: new Date(MORNING).toISOString(), from: person(1), text: 'Placeholder one' });
+    expect(a).toMatchObject({
+      at: new Date(MORNING).toISOString(),
+      from: person(1),
+      text: 'Placeholder one',
+    });
     expect(store.state().messages.map((m) => m.text)).toEqual(['Placeholder one', 'Placeholder two']);
   });
 

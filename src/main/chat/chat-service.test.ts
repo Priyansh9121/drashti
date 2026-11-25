@@ -95,7 +95,11 @@ describe('who is in the chat', () => {
     expect(chat.inChat(device(5, 'announcements', true))).toBe(false);
     for (const d of [device(4, 'stage'), device(5, 'announcements', true)]) {
       expect(chat.read(d)).toEqual({ ok: false, status: 403, message: CHAT_REFUSAL.notIn });
-      expect(chat.setName(d, { name: 'Person' })).toEqual({ ok: false, status: 403, message: CHAT_REFUSAL.notIn });
+      expect(chat.setName(d, { name: 'Person' })).toEqual({
+        ok: false,
+        status: 403,
+        message: CHAT_REFUSAL.notIn,
+      });
       expect(chat.send(d, { text: 'Placeholder' })).toEqual({
         ok: false,
         status: 403,
@@ -145,7 +149,11 @@ describe('names', () => {
   it('refuses an empty or long name, the operator’s, and anything but { name }', () => {
     const { chat } = setup();
     for (const name of ['', ' ​ ', 'x'.repeat(61)])
-      expect(chat.setName(device(1), { name })).toEqual({ ok: false, status: 400, message: CHAT_REFUSAL.name });
+      expect(chat.setName(device(1), { name })).toEqual({
+        ok: false,
+        status: 400,
+        message: CHAT_REFUSAL.name,
+      });
     for (const name of ['Operator', ' operator ', 'OPERATOR'])
       expect(chat.setName(device(1), { name })).toEqual({
         ok: false,
@@ -158,7 +166,9 @@ describe('names', () => {
 
   it('a few changes at once, then refused in plain words for a while', () => {
     const { chat, clock } = setup();
-    const answers = Array.from({ length: 5 }, (_, i) => chat.setName(device(1), { name: `Person ${String(i)}` }));
+    const answers = Array.from({ length: 5 }, (_, i) =>
+      chat.setName(device(1), { name: `Person ${String(i)}` }),
+    );
     expect(answers.filter((a) => a.ok)).toHaveLength(3);
     expect(answers.at(-1)).toEqual({ ok: false, status: 429, message: CHAT_REFUSAL.nameTooFast });
     clock.t += 10_000;
@@ -307,7 +317,8 @@ describe('the operator’s Clear chat and Remove', () => {
 
   it('at most CHAT_PEOPLE_MAX chat phones a day', () => {
     const { chat } = setup();
-    for (let i = 0; i < CHAT_PEOPLE_MAX; i++) expect(chat.addDevice(i.toString(16).padStart(64, '0'))).not.toBeNull();
+    for (let i = 0; i < CHAT_PEOPLE_MAX; i++)
+      expect(chat.addDevice(i.toString(16).padStart(64, '0'))).not.toBeNull();
     expect(chat.addDevice('f'.repeat(64))).toBeNull();
   });
 });
@@ -339,10 +350,7 @@ describe('the operator’s Chat section', () => {
     const phone = chat.addDevice('a'.repeat(64));
     if (!phone) throw new Error('no phone');
     chat.setName({ id: phone.id, kind: 'chat', poster: false }, { name: 'Person 2' });
-    const members = chat.members(
-      (id) => (id === 'device-1' ? 'remote' : null),
-      new Set([phone.id]),
-    );
+    const members = chat.members((id) => (id === 'device-1' ? 'remote' : null), new Set([phone.id]));
     expect(members).toEqual([
       { id: 'device-1', name: 'Person 1', kind: 'remote', connected: false },
       { id: phone.id, name: 'Person 2', kind: 'chat', connected: true },
