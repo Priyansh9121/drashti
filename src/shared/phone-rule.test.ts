@@ -29,10 +29,46 @@ describe('the phone rule (QA23-PHONE-1)', () => {
     expect(Object.keys(REMOTE_PHONE_OPS).sort()).toEqual([...OPS].sort());
   });
 
-  it('lets both modes read only what is live: who it is, the status, the state, the hall, previews and pictures', () => {
+  it('lets both modes read only what is live (who it is, the status, the state, the hall, previews and pictures), the Sabha flow and the chat', () => {
     expect(withRule('both')).toEqual(
-      ['hall', 'me', 'media.picture', 'preview', 'state', 'status'].sort((a, b) => a.localeCompare(b)),
+      [
+        'hall',
+        'me',
+        'media.picture',
+        'preview',
+        'state',
+        'status',
+        // s59-a22-chat and s59-a22-flow, joined (the owner: "in simple mode only show the flow, whats running in live,
+        // and chat").
+        'chat',
+        'chat.name',
+        'chat.send',
+        'flow',
+        'flow.page',
+      ].sort((a, b) => a.localeCompare(b)),
     );
+  });
+
+  it('lets a phone in Simple Mode read and write the chat and read the Sabha flow, as in Pro Mode; who else may is unchanged', () => {
+    const joined = [
+      'chat',
+      'chat.name',
+      'chat.send',
+      'flow',
+      'flow.page',
+    ] as const satisfies readonly DeviceOp[];
+    for (const op of joined) {
+      expect(REMOTE_PHONE_OPS[op], op).toBe('both');
+      // Neither the network's own process (which cannot tell the modes apart) nor the main process in either mode.
+      expect(phoneOpRefusal(op, false), op).toBeNull();
+      expect(phoneOpRefusal(op, true), op).toBeNull();
+    }
+    // The phone rule weighs a Remote alone: the kinds that may make these requests are as the chat and the flow made them.
+    expect(DEVICE_OPS.chat).toEqual(['remote', 'announcements', 'chat']);
+    expect(DEVICE_OPS['chat.name']).toEqual(['remote', 'announcements', 'chat']);
+    expect(DEVICE_OPS['chat.send']).toEqual(['remote', 'announcements', 'chat']);
+    expect(DEVICE_OPS.flow).toEqual(['remote']);
+    expect(DEVICE_OPS['flow.page']).toEqual(['remote']);
   });
 
   it('gives Pro Mode the playlists, a playlist’s rows, a presentation and the deck commands; no library sheet', () => {
