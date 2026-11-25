@@ -953,11 +953,10 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
             key: jump.key,
             t: jump.from - fade.at,
             ms: jump.to - jump.from,
-            // QFP-11 B, a record only: a jump still open at the end, and when its element left the page (ms from the
-            // fade's start; null: still in the page).
-            ...(jump.open
-              ? { stillOpen: true, leftPageMs: jump.left === null ? null : jump.left - fade.at }
-              : {}),
+            // QFP-11 B, a record: a jump still open at the end, and when its element left the page (ms from the
+            // fade's start), which ends it there (the owner's QFP-6 item 3).
+            ...(jump.open ? { stillOpen: true } : {}),
+            ...(jump.left === null ? {} : { leftPageMs: jump.left - fade.at }),
           })),
       ),
     );
@@ -1233,14 +1232,11 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     // page: none is frozen in a jump at any moment of a fade (CI's Windows, a22-fade-1124-103850-84620: 0.6 to 4.4 s of
     // each 2 s fade on a page; the Mac 13 to 230 ms).
     expect(pictureJumps, 'the hall’s, LIVE’s and the stream page’s pictures are watched').not.toContain(null);
-    // QFP-11 B, in the message only: how many of these were of an element gone from the page before the fade ended.
-    const gone = pictureFreezes.filter(
-      (f) =>
-        'leftPageMs' in f && f.leftPageMs !== null && f.leftPageMs !== undefined && f.leftPageMs < f.t + f.ms,
-    ).length;
+    // QFP-11 B, in the message only: how many of these ended as their element left the page (QFP-6 item 3).
+    const gone = pictureFreezes.filter((f) => 'leftPageMs' in f).length;
     expect(
       pictureFreezes,
-      `no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade${note}${gone > 0 ? ` [${String(gone)} of ${String(pictureFreezes.length)} of an element that had left the page while its jump was open: QFP-6 item 3]` : ''}`,
+      `no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade${note}${gone > 0 ? ` [${String(gone)} of ${String(pictureFreezes.length)} until their element left the page: QFP-6 item 3]` : ''}`,
     ).toEqual([]);
     // S7: the stream's own two sounds cross by the engine's fade, as the hall's audio player's do in the crossfade case
     // (back since applyLevels reads the engine's time once for all its sounds: a22-fade-1124-103850-84601's one sample
