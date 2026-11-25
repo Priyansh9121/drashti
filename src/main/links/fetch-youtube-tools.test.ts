@@ -18,6 +18,8 @@ import {
   sha256Of,
   verifyFile,
   YT_DLP_BUILDS,
+  YT_DLP_NOTICES,
+  YT_DLP_NOTICES_TAG,
   YT_DLP_VERSION,
 } from '../../../scripts/fetch-youtube-tools.mjs';
 
@@ -53,6 +55,45 @@ describe('the pins', () => {
       expect(b.sha256).toMatch(SHA256);
       expect(b.binarySha256).toMatch(SHA256);
     }
+  });
+
+  it('are the release its notice, the README, each release’s sources and the code’s notes name (QA23-YTDLP-1)', () => {
+    const read = (path: string) => readFileSync(join(app, path), 'utf8');
+    const notice = read('LICENSES/yt-dlp/README.md');
+    expect(notice).toContain(`**yt-dlp ${YT_DLP_VERSION}**`);
+    for (const b of Object.values(YT_DLP_BUILDS)) {
+      expect(notice).toContain(`\`${b.url}\``);
+      expect(notice).toContain(`\`${b.sha256}\``);
+    }
+    const assets = read('scripts/release-assets.mjs');
+    expect(assets).toContain(`name: 'yt-dlp-${YT_DLP_VERSION}.tar.gz'`);
+    expect(assets).toContain(
+      `https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp.tar.gz`,
+    );
+    // Every place that names a yt-dlp release names the pinned one (a newer yt-dlp is read and named in each).
+    for (const path of [
+      'README.md',
+      'LICENSES/yt-dlp/README.md',
+      'scripts/release-assets.mjs',
+      'src/main/links/youtube.ts',
+      'src/main/links/youtube-tools.ts',
+      'src/main/links/youtube.test.ts',
+      'src/main/live-link/youtube-live.test.ts',
+      'tests/e2e/fake-yt-dlp.cjs',
+    ]) {
+      const named = read(path).match(/\b20\d\d\.\d\d\.\d\d\b/gu) ?? [];
+      expect(named.length, path).toBeGreaterThan(0);
+      expect(new Set(named), path).toEqual(new Set([YT_DLP_VERSION]));
+    }
+  });
+
+  it('ship yt-dlp’s licence and its list of what its builds bundle as at the pinned tag (QA23-YTDLP-1)', () => {
+    for (const [file, sha256] of Object.entries(YT_DLP_NOTICES))
+      expect(sha256Of(join(app, 'LICENSES', 'yt-dlp', file)), file).toBe(sha256);
+    expect(Object.keys(YT_DLP_NOTICES).sort()).toEqual(['LICENSE', 'THIRD_PARTY_LICENSES.txt']);
+    // The tag those two were read at is the pinned release's: a newer yt-dlp moves this pin on purpose, its licence
+    // list with it (a22-review-ytdlp S1).
+    expect(YT_DLP_NOTICES_TAG).toBe(YT_DLP_VERSION);
   });
 
   it('refuse a file that differs from its pinned checksum', () => {
