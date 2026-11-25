@@ -18,6 +18,16 @@ describe('the log of an output restarted again and again (a23-heartbeat)', () =>
   });
 });
 
+describe('the log under A, held for the owner (QA23-HEARTBEAT-1; review MA2)', () => {
+  it('says what happens next under A, never that Drashti keeps restarting it', () => {
+    const line = keepsRestartingLine('Output "Main Hall"', RESTARTS_TOLD, true);
+    expect(line).toBe(
+      'Output "Main Hall" was restarted 4 times in a row: its page stopped answering each time (this computer may be too slow for it, or something on it stops the page each time it loads). If it does not draw the show after this restart either, Drashti stops restarting it and leaves it as it is, shown as Stopped; Screens and the status line say so, and Try again in Screens restarts it now.',
+    );
+    expect(line).not.toMatch(/keeps restarting|black/u);
+  });
+});
+
 describe('the log of a page kept as it is, held for the owner (QA23-HEARTBEAT-1, A)', () => {
   it('says why it is not restarted, that it may still catch up, and what Try again does', () => {
     expect(keptLine('Output "Main Hall"', 'no report for 61 s', 4)).toBe(

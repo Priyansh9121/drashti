@@ -9,7 +9,14 @@ import type { ScreenStatus } from './screens';
 export const RESTARTING_WORDS = 'Keeps restarting';
 
 /** Why, in Screens. */
-export function restartingSentence(restarts: number): string {
+/**
+ * Held for the owner (QA23-HEARTBEAT-1, A): this build keeps a page as it is instead of restarting it a 5th time in a
+ * row (HeartbeatDeps.keep on Main and on nodes), so the words say what happens next under A.
+ */
+export const HEARTBEAT_KEEPS_A_PAGE = true;
+
+export function restartingSentence(restarts: number, keeps = false): string {
+  void keeps;
   return `It stopped answering, so Drashti restarted it ${String(restarts)} times in a row. It keeps trying, about once a minute. Try again restarts it now.`;
 }
 

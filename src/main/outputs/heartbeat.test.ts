@@ -9,6 +9,7 @@ import {
   RESTARTS_FORGET_MS,
   RESTARTS_TOLD,
   WARMING_STALE_MS,
+  graceAfter,
 } from './heartbeat';
 
 /* Hung and stale outputs (Session 23): judged from the reports they already send. */
@@ -38,7 +39,7 @@ function run(ms: number, reporting: Record<string, () => number> = {}, warming =
 }
 
 /** A heartbeat as Main makes one, its output 'hall' just opened; `translated` as under Rosetta (a23-heartbeat). */
-function make(translated = false, keeps = false) {
+function make(translated = false, keeps = false, graces?: { openMs: number; maxMs: number }) {
   beat = new OutputHeartbeat({
     now: () => now,
     engineRev: () => rev,
@@ -53,6 +54,7 @@ function make(translated = false, keeps = false) {
         }
       : {}),
     translated,
+    ...(graces ? { graces } : {}),
   });
   beat.opened('hall');
 }
@@ -533,34 +535,60 @@ describe('held for the owner (QA23-HEARTBEAT-1, A): a page restarted 4 times in 
     expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
   });
 
-  it('kept, it is back by itself once it reports and has painted the show, with no reload; silent again soon, it is kept again at once', () => {
+  it('kept, it is back by itself at its first report drawing the show, with no reload; a report a change behind is not drawing', () => {
     make(false, true);
     restartedInARow(4);
     run(RESTART_GRACE_MAX_MS);
     expect(kept).toHaveLength(1);
-    // A slow page catching up: it reports, behind the show, then having painted it.
+    // A slow page catching up: a report 4 s after a change it has not painted, then one having painted it.
     rev++;
     beat.changed(rev);
-    run(4000, { hall: () => rev - 1 });
+    run(4000);
+    beat.report('hall', rev - 1);
     expect(back).toEqual([]);
-    run(2000, { hall: () => rev });
-    expect(back.map((b) => b.screenId)).toEqual(['hall']);
+    run(1000);
+    beat.report('hall', rev);
+    expect(back).toEqual([{ screenId: 'hall', at: now }]);
+    // Still said to keep restarting until it has drawn the show for over a minute (review S1).
+    run(RESTART_GRACE_MAX_MS - 2000, { hall: () => rev });
+    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+    run(4000, { hall: () => rev });
     expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
-    // Healthy: never judged.
-    run(60_000, { hall: () => rev });
     expect(stuck).toHaveLength(4);
     expect(kept).toHaveLength(1);
-    // Silent again within 5 minutes of its last restart: kept again at once, 7 s after its last report, not restarted.
+  });
+
+  it('only a page that has not drawn the show since its last restart is kept: one that drew and then stopped is restarted (review SA1)', () => {
+    make(false, true);
+    restartedInARow(4);
+    // Its reload draws the show for 10 s, then stops: restarted, the 5th in a row, not kept.
+    run(10_000, { hall: () => rev });
+    untilStuck();
+    expect(stuck.at(-1)?.inARow).toBe(5);
+    expect(kept).toEqual([]);
+    // That reload never draws: kept.
+    reloaded();
+    run(RESTART_GRACE_MAX_MS);
+    expect(kept.map((k) => k.restarts)).toEqual([5]);
+    expect(stuck).toHaveLength(5);
+    // Kept and back by itself, then stopped again: it drew since its last restart, so it is restarted again.
     beat.report('hall', rev);
-    const last = now;
-    untilStuck(60_000);
-    expect(stuck).toHaveLength(4);
-    expect(kept.at(-1)).toEqual({
-      screenId: 'hall',
-      reason: 'no report for 7 s',
-      restarts: 4,
-      at: last + 7000,
-    });
+    expect(back).toHaveLength(1);
+    untilStuck();
+    expect(stuck.at(-1)?.inARow).toBe(6);
+    expect(kept).toHaveLength(1);
+  });
+
+  it('a stall of the main process does not forget that a page drew the show (review SA1)', () => {
+    make(false, true);
+    restartedInARow(4);
+    run(10_000, { hall: () => rev });
+    // Ten seconds with no check at all (a stall), then it stops: restarted, not kept.
+    now += 10_000;
+    beat.check();
+    untilStuck();
+    expect(stuck.at(-1)?.inARow).toBe(5);
+    expect(kept).toEqual([]);
   });
 
   it('tried afresh (Try again, or the watchdog’s own try 2 minutes on), it is judged from the first grace and restarted as before', () => {
@@ -591,5 +619,23 @@ describe('held for the owner (QA23-HEARTBEAT-1, A): a page restarted 4 times in 
     restartedInARow(6);
     expect(stuck.map((s) => s.inARow)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(kept).toEqual([]);
+  });
+});
+
+describe('the e2e tests’ shorter limits (DRASHTI_TEST_HEARTBEAT_FAST, never when packaged; review SA4)', () => {
+  it('the graces are 3 s, then 6 s: a page never heard from is restarted at its 6 s limit after each reload', () => {
+    expect(graceAfter(0, 3000, 6000)).toBe(3000);
+    expect(graceAfter(1, 3000, 6000)).toBe(6000);
+    expect(graceAfter(3, 3000, 6000)).toBe(6000);
+    expect(graceAfter(3)).toBe(RESTART_GRACE_MAX_MS);
+    make(false, false, { openMs: 3000, maxMs: 6000 });
+    const after: number[] = [];
+    let openedAt = now;
+    for (let i = 0; i < 4; i++) {
+      after.push(untilStuck() - openedAt);
+      reloaded();
+      openedAt = now;
+    }
+    expect(after).toEqual([7000, 7000, 7000, 7000]);
   });
 });

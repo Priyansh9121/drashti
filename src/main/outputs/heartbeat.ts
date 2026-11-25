@@ -60,7 +60,9 @@ export const CHECK_EVERY_MS = 1000;
 export const RESTARTS_TOLD = 4;
 
 /** The grace after `restarts` restarts of the same output in a row (a23-heartbeat): 15 s, 30 s, then 60 s. */
-export function graceAfter(restarts: number): number {
+export function graceAfter(restarts: number, openMs = OPEN_GRACE_MS, maxMs = RESTART_GRACE_MAX_MS): number {
+  void openMs;
+  void maxMs;
   return Math.min(OPEN_GRACE_MS * 2 ** Math.max(0, restarts), RESTART_GRACE_MAX_MS);
 }
 
@@ -103,6 +105,8 @@ export interface HeartbeatDeps {
    * output's reports may come as far apart as a warming one's.
    */
   translated?: boolean;
+  /** The e2e tests' shorter graces (DRASHTI_TEST_HEARTBEAT_FAST, never when packaged; review SA4). */
+  graces?: { openMs: number; maxMs: number };
 }
 
 export class OutputHeartbeat {

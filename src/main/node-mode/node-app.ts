@@ -57,6 +57,7 @@ import { type LogPeriod, periodText } from '../../shared/log-period';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
 import { CHECK_EVERY_MS, OutputHeartbeat } from '../outputs/heartbeat';
+import { judgedOutputs } from '../outputs/judged-outputs';
 import { keepsRestartingLine, keptLine, restartsWords } from '../outputs/heartbeat-words';
 import { log } from '../log';
 import { handleMediaRequest, mediaRequestOf } from '../media/media-protocol';
@@ -527,22 +528,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const heartbeat = new OutputHeartbeat({
     now: Date.now,
     engineRev: () => mirror.rev,
-    judged: () =>
-      manager
-        .status()
-        .filter((st) => st.state === 'showing')
-        .map((st) => st.screenId)
-        .filter((id) => {
-          const w = outputWindows.get(id);
-          // Never a page that has crashed and waits for the watchdog (or that it gave up on).
-          return (
-            w !== undefined &&
-            !w.isDestroyed() &&
-            !w.webContents.isCrashed() &&
-            w.isVisible() &&
-            !w.isMinimized()
-          );
-        }),
+    judged: () => judgedOutputs(manager.status(), (id) => outputWindows.get(id)),
     stuck: (screenId, reason, inARow) => {
       const w = outputWindows.get(screenId);
       if (!w || w.isDestroyed()) return;

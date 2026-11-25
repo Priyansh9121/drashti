@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ScreenStatus } from './screens';
-import { RESTARTING_WORDS, restartingSentence, screensSummary, stoppedSentence } from './screens-summary';
+import {
+  HEARTBEAT_KEEPS_A_PAGE,
+  RESTARTING_WORDS,
+  restartingSentence,
+  screensSummary,
+  stoppedSentence,
+} from './screens-summary';
 
 const st = (screenId: string, state: ScreenStatus['state'], restarts?: number): ScreenStatus => ({
   screenId,
@@ -52,6 +58,14 @@ describe('a screen restarted again and again, in Screens (a23-heartbeat)', () =>
       'It stopped answering, so Drashti restarted it 4 times in a row. It keeps trying, about once a minute. Try again restarts it now.',
     );
     expect(restartingSentence(7)).toContain('7 times in a row');
+  });
+
+  it('held for the owner (QA23-HEARTBEAT-1, A): says what happens next under A, never that it keeps trying (review MA2)', () => {
+    expect(HEARTBEAT_KEEPS_A_PAGE).toBe(true);
+    expect(restartingSentence(4, true)).toBe(
+      'It stopped answering, so Drashti restarted it 4 times in a row. If it does not draw the show after this restart either, Drashti stops restarting it and shows it as Stopped. Try again restarts it now.',
+    );
+    expect(restartingSentence(4, true)).not.toMatch(/keeps|black/u);
   });
 });
 

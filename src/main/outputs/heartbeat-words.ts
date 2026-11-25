@@ -8,7 +8,8 @@ export function restartsWords(inARow: number): string {
 }
 
 /** Said once, at the restart that tells the operator: what happens, and what to do. */
-export function keepsRestartingLine(who: string, restarts: number): string {
+export function keepsRestartingLine(who: string, restarts: number, keeps = false): string {
+  void keeps;
   return `${who} was restarted ${String(restarts)} times in a row: its page stopped answering each time (this computer may be too slow for it, or something on it stops the page each time it loads). Drashti keeps restarting it, about once a minute; Screens and the status line say so, and Try again in Screens restarts it now.`;
 }
 
