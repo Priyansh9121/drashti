@@ -289,6 +289,41 @@ async function playlistsColumn(win: Page, key: 'Home' | 'End'): Promise<void> {
   });
 }
 
+/**
+ * Where an element (all of its words: its whole box) is out of sight: outside the window, or outside a box around it
+ * that clips what overflows it ([] when all of it is in sight).
+ */
+const outOfSight = (loc: Locator) =>
+  loc.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return ['not drawn'];
+    const out: string[] = [];
+    const within = (r: { left: number; top: number; right: number; bottom: number }, what: string) => {
+      if (
+        box.left < r.left - 0.5 ||
+        box.top < r.top - 0.5 ||
+        box.right > r.right + 0.5 ||
+        box.bottom > r.bottom + 0.5
+      )
+        out.push(
+          `it (${String(Math.round(box.left))},${String(Math.round(box.top))} to ${String(Math.round(box.right))},${String(Math.round(box.bottom))}) is out of ${what} (${String(Math.round(r.left))},${String(Math.round(r.top))} to ${String(Math.round(r.right))},${String(Math.round(r.bottom))})`,
+        );
+    };
+    within({ left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }, 'the window');
+    for (let up = el.parentElement; up; up = up.parentElement) {
+      const style = getComputedStyle(up);
+      if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+      within(
+        up.getBoundingClientRect(),
+        `a box that clips it (${up.dataset['testid'] ?? up.tagName.toLowerCase()})`,
+      );
+    }
+    // Its own words not cut inside it either (nothing hidden past its own edge).
+    if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
+      out.push('its words overflow it');
+    return out;
+  });
+
 test('Now and Next up fit: a Video row with long words as Next up, at the window’s least, CI’s 1024 × 645 and the owner’s 1410 × 900, with the playlists’ column at its least and its most: nothing cut, over another or out of its box, every target 24 px', async () => {
   test.setTimeout(150_000);
   const { long } = await makePdfs();
@@ -322,7 +357,7 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
         await sweep(app, win, 'index.html', panel, `Now and Next up in the Sabha flow panel, ${where}`, [
           size,
         ]);
-        if (!end)
+        if (!end) {
           // At its top: Now's line and Back and Next whole in sight.
           for (const part of [
             panel.getByTestId('flow-now'),
@@ -332,6 +367,14 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
             await expect(part, `${where} at ${String(size.width)} × ${String(size.height)}`).toBeInViewport({
               ratio: 1,
             });
+          // And Next up, shown prominently (the owner: "next up this program"): its label and ALL its words in sight
+          // beside them, whole, in the window and in every box round it that clips (a22-review-flow round 7, lead 2:
+          // nothing cut short, it wraps).
+          expect(
+            await outOfSight(nextLine),
+            `${where} at ${String(size.width)} × ${String(size.height)}`,
+          ).toEqual([]);
+        }
       }
   await app.close();
 });
