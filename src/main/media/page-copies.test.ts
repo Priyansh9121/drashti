@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { MediaInfo } from '../convert/plan';
+import { STREAM_PRESETS } from '../../shared/stream';
 import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import {
@@ -56,6 +57,13 @@ const webm1080: MediaInfo = {
   audio: { codec: 'opus' },
 };
 
+const MP4: MediaInfo = {
+  ...webm1080,
+  container: 'mov,mp4,m4a,3gp,3g2,mj2',
+  video: { ...VIDEO_1080, codec: 'h264' },
+  audio: { codec: 'aac' },
+};
+
 describe('which videos get a page copy', () => {
   it('a 1080p video gets a 720p and a 540p copy in its own container and codec family', () => {
     expect(pageCopyPlan(webm1080, 720)).toEqual({ width: 1280, height: 720, ext: 'webm' });
@@ -95,6 +103,23 @@ describe('how a page copy is made and checked (a22-review-fadecopies)', () => {
     expect(at('-filter_threads'), '-filter_threads 1 before the input').toBeGreaterThanOrEqual(0);
     expect(at('-filter_threads')).toBeLessThan(input);
     expect(args[args.indexOf('-map') + 1], 'the first real video, never an attached picture').toBe('0:V:0');
+  });
+
+  it('the stream’s copy never lowers its picture: at least twice the bitrate of every preset that streams it; VP9 made as VP8 (S8)', () => {
+    // a22-fadeprep's measure (reports/a22-fadeprep.md, S8): libvpx's fastest VP8 at 1.5 Mbps came out below what the
+    // weak preset then encodes from it; at twice its bitrate it is clearly above (VP8 and H.264 alike), and libvpx's
+    // fastest VP9 is below it even at 6 Mbps.
+    const streamed = Object.values(STREAM_PRESETS).filter((p) => p.height <= 720);
+    expect(streamed.length).toBeGreaterThan(0);
+    const most = Math.max(...streamed.map((p) => p.videoKbps));
+    const kbps = (args: string[]) => Number(/^(\d+)k$/u.exec(args[args.indexOf('-b:v') + 1] ?? '')?.[1] ?? 0);
+    for (const info of [webm1080, { ...webm1080, video: { ...VIDEO_1080, codec: 'vp9' } }, MP4]) {
+      const plan = pageCopyPlan(info, 720);
+      if (!plan) throw new Error('no plan');
+      const args = pageCopyArgs('in', 'out', info, plan);
+      expect(kbps(args), `${info.video?.codec ?? ''}: twice the stream's`).toBeGreaterThanOrEqual(2 * most);
+      if (plan.ext === 'webm') expect(args[args.indexOf('-c:v') + 1], 'VP8, its fastest VP9 being too poor').toBe('libvpx');
+    }
   });
 
   it('a copy is published only if FFmpeg reads it back as planned: its size, its length within a frame, its sound (M1)', () => {
@@ -184,13 +209,6 @@ function timeline(file: string) {
     start: length?.[2] ?? null,
   };
 }
-
-const MP4: MediaInfo = {
-  ...webm1080,
-  container: 'mov,mp4,m4a,3gp,3g2,mj2',
-  video: { ...VIDEO_1080, codec: 'h264' },
-  audio: { codec: 'aac' },
-};
 
 describe.skipIf(!ffmpegHere(ffmpeg))('a page copy keeps its source’s timeline exactly', () => {
   const make = (dir: string, name: string, video: string[], sound: string[], more: string[] = []) => {
