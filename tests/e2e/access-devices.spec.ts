@@ -10,6 +10,7 @@ import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairTok
 import { expectFits } from './fit';
 import { importAndGetIds, outputPage, type PageGlobals } from './helpers';
 import { launchMain, launchNode, pairNode, type MainRun, type NodeRun } from './nodes';
+import { expectPhoneRefuses } from './phone-refuses';
 import { makeTestImage } from './test-media';
 
 /*
@@ -43,12 +44,25 @@ test('phones and tablets stop with their Drashti: every request refused, files t
     const token = await pairToken(win, port, 'remote', 'Placeholder script');
     await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveAttribute('data-state', 'online');
-    // While let in: the state, the picture's original and a link to it answer.
+    // While let in: the state answers; the picture's original and a link to it are refused in words (alpha.23,
+    // QA23-PHONE-1: never a picture's or a video's own file for a phone), so no link is ever made for a phone.
     expect((await apiCall(port, '/api/v1/state', { token })).status).toBe(200);
-    expect((await apiCall(port, `/api/v1/media/${pictureId}/original`, { token })).status).toBe(200);
-    const made = await apiCall(port, `/api/v1/media/${pictureId}/link`, { token });
-    expect(made.status).toBe(200);
-    const link = String(made.json['url']);
+    await expectPhoneRefuses(
+      { win, port, token },
+      'GET',
+      `/api/v1/media/${pictureId}/original`,
+      undefined,
+      'media',
+    );
+    await expectPhoneRefuses(
+      { win, port, token },
+      'GET',
+      `/api/v1/media/${pictureId}/link`,
+      undefined,
+      'media',
+    );
+    // A link's own address (no token: what a phone's video played), with none made: still turned away once stopped.
+    const link = `/api/v1/media/${pictureId}/original?link=placeholder`;
     await expect(phone.page.getByTestId('phone-stopped')).toHaveCount(0);
 
     revoke(list, PLACEHOLDER_PERSON);
@@ -59,8 +73,8 @@ test('phones and tablets stop with their Drashti: every request refused, files t
     // Its feed was closed for it, and a new one is refused: nothing of the show reaches it any more.
     await expect(phone.page.getByTestId('connection')).not.toHaveAttribute('data-state', 'online');
     await expectNoSeriousA11yIssues(phone.page, 'a phone’s page once Drashti has stopped');
-    // Every request refused, with the same plain words: the network's own answers (a picture, an original, a link
-    // made before, an upload) as much as those it asks Drashti for, and pairing.
+    // Every request refused, with the same plain words: the network's own answers (a picture, an original, a link's
+    // address, an upload) as much as those it asks Drashti for, and pairing.
     const refused = [
       await apiCall(port, '/api/v1/state', { token }),
       await apiCall(port, '/api/v1/command', { method: 'POST', token, body: { type: 'next' } }),
