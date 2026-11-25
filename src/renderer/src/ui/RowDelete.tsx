@@ -47,6 +47,9 @@ export function RowAction({
         onClick={(e) => {
           // The row's own click (choose, open) must not run too.
           e.stopPropagation();
+          // A double click's second click (or a third) does nothing (QA23-ROWDEL-1): its first took the row out,
+          // and the row under it, moved up under the pointer, would go too. Enter and Space have no count (0).
+          if (e.detail > 1) return;
           onPress();
         }}
       />

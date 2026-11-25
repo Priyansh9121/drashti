@@ -153,8 +153,8 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     publishImport,
     // Also add the clip to Media failing, stopped or let go of late leaves no unlisted row or file (a22-exportclip),
     // removed only at a quiet moment (a22-review-combine2 R-S1, R-S2); what is left is kept for a later start.
-    discardUnlisted: (file, keep, allowed) =>
-      discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, file, keep, allowed }),
+    discardUnlisted: (files, keep, allowed) =>
+      discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, files, keep, allowed }),
     quiet: () => (deps.saveIdle ?? deps.idle)() && !deps.importing(),
     left: copyRequests(join(deps.mediaDir, 'video-clip-left.json')),
     leftFrom: (file) => unlistedMadeFrom(deps.db, file),

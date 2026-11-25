@@ -8,7 +8,7 @@ import {
 
 /*
  * YouTube in Import from a Link (Session 25c): what Drashti asks of yt-dlp
- * 2026.08.19, and how it reads the answers. Each option was read in
+ * 2026.11.23, and how it reads the answers. Each option was read in
  * yt-dlp's own source at that tag (yt_dlp/options.py). Drashti holds no
  * YouTube downloading code of its own: yt-dlp does the downloading, and
  * starts Deno to run YouTube's player JavaScript.

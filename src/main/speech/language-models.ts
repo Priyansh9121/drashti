@@ -122,6 +122,8 @@ const KNOWN: LanguageModelEntry[] = [
     fallback: false,
     timestamps: false,
   },
+  // On Windows the small models here are asked with the fallback off and a sized audio context (QWC-1,
+  // whisper-context.ts), whatever `fallback` says.
   {
     id: 'hi-small-vasista22-f16',
     language: 'hi',
