@@ -94,13 +94,28 @@ describe('the warm-up', () => {
     expect(s.state(true, BEFORE + 100).layers.background).toEqual(s.state(false, BEFORE).layers.background);
   });
 
-  it('draws the scene after a Zoom again under the notched clip, and last of all, so no other scene is drawn over it', () => {
-    // a22-review-firstwipe S1 (every transition scene again under the notched clip: CI's Mac draws what shares the
-    // screen with a slant or a text shadow by its multisampled pipelines) and S4 (its slide going out is a layer of its
-    // own: drawn last, it changes no other scene's layering).
+  it('draws the scene after a Zoom right after the transition scenes, before their notched-clip twins, and its own twin last of all', () => {
+    // a22-review-firstwipe S1: again under the notched clip (CI's Mac draws what shares the screen with a slant or a
+    // text shadow by its multisampled pipelines), that twin last of all (S4). QA23-FIRSTWIPE-3 (the trace a22-cue-macos-15):
+    // drawn last, the scene was never reached on CI's Mac, as the hall's warm-up hit its 8 s cap (6.79 to 14.89 s) still
+    // making the notched twins' multisampled pipelines (300-505 ms each), and the first wipe made its zoomed slide's
+    // Plus pipeline (238 ms). Drawn among the transition scenes, it is made before the cap.
     const keys = warmScenes().map((x) => x.key);
+    const at = keys.indexOf('zoom-going/calm');
+    const kinds = TRANSITION_KINDS.filter((k) => k !== 'cut');
+    for (const movement of MOVEMENTS)
+      for (const kind of kinds) {
+        expect(keys.indexOf(`${kind}/${movement}`), `${kind}/${movement} before it`).toBeLessThan(at);
+        expect(
+          keys.indexOf(`${kind}/${movement}/clipped`),
+          `${kind}/${movement}/clipped after it`,
+        ).toBeGreaterThan(at);
+      }
+    // Right after the transition scenes: the one before it has its notched twin later, and the twins begin after it.
+    expect(keys).toContain(`${keys[at - 1] ?? ''}/clipped`);
+    expect(keys[at + 1]).toBe(`${kinds[0] ?? ''}/${MOVEMENTS[0]}/clipped`);
     expect(scene('zoom-going/calm/clipped').clip).toBeDefined();
-    expect(keys.slice(-2)).toEqual(['zoom-going/calm', 'zoom-going/calm/clipped']);
+    expect(keys.at(-1)).toBe('zoom-going/calm/clipped');
   });
 
   it('draws a deck’s own Wipe part-way: PowerPoint’s band, a mask over the slide coming in, the band itself on the screen (Session 58)', () => {
