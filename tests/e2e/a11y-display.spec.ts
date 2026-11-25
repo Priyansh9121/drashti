@@ -13,6 +13,7 @@ import {
   setUpScreen,
   slideEditorWindow,
 } from './helpers';
+import { addPhoneDeck, DECK, putUpFromComputer } from './phone-deck';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -193,7 +194,11 @@ test('the phone remote at 375 x 812: axe on every tab, targets large enough to t
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
-  await setUpPlaceholderShow(win);
+  const show = await setUpPlaceholderShow(win);
+  // A PDF up from its row (QA23-PHONE-1): Back, Next, Clear slide, its page tiles and the Playlist's rows are on the
+  // phone while one is up, so axe and the 24 px check reach them, as wide as before the phone rule.
+  const deck = await addPhoneDeck(win, show.playlistId);
+  await putUpFromComputer(win, show.playlistId, deck.itemId);
   const { base } = await networkOn(win);
   const browser = await chromium.launch();
   try {
@@ -213,9 +218,18 @@ test('the phone remote at 375 x 812: axe on every tab, targets large enough to t
       'Playlist',
       'Chat',
     ]);
+    // What a PDF up brings: Back and Next under every tab, Clear slide and its page tiles on Show, its rows on Playlist.
+    await expect(phone.getByTestId('remote-next-button')).toBeVisible();
+    await expect(phone.getByTestId('remote-back')).toBeVisible();
     for (const tab of ['show', 'playlist', 'chat']) {
       await phone.getByTestId(`remote-tab-${tab}`).click();
-      await expectNoSeriousA11yIssues(phone, `the remote's ${tab} tab at 375 x 812`);
+      if (tab === 'show') {
+        await expect(phone.getByTestId('remote-clear-slide')).toBeVisible();
+        await expect(phone.getByTestId('remote-slide')).toHaveCount(deck.pages);
+      }
+      if (tab === 'playlist')
+        await expect(phone.getByTestId('remote-row').filter({ hasText: `${DECK}_1` })).toBeVisible();
+      await expectNoSeriousA11yIssues(phone, `the remote's ${tab} tab at 375 x 812, a PDF up`);
       // Every control at least 24 x 24 CSS pixels (WCAG 2.5.8), or spaced so a 24-pixel circle fits.
       const small = await phone.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>('button, a[href], input, select')]
