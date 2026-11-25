@@ -349,21 +349,21 @@ async function setColumns(win: Page, columns: { left: string; right: string }): 
   await win.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
   });
-  // Laid out, and what a size change starts (a container query, the LIVE block's choice) done.
+  await laidOut(win);
+}
+
+/**
+ * Laid out, and what a size change starts (a container query, the LIVE block's choice) done: three frames, then every
+ * finite animation running then finished (a11y's settled).
+ */
+async function laidOut(win: Page): Promise<void> {
   await win.evaluate(
     () =>
       new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       }),
   );
-  await win.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
-        .map((a) => a.finished.catch(() => undefined)),
-    ),
-  );
+  await settled(win);
 }
 
 /** Every part of the window that scrolls up and down, at its top or at its end, then laid out. */
@@ -530,6 +530,38 @@ const statusParts = (win: Page) =>
     };
   });
 
+/** Simple Mode's day playlist as theDaysPlaylist tells it. */
+interface DaysPlaylist {
+  name: string;
+  row: Locator;
+  mayCut: MayEndInEllipsis[];
+}
+
+/**
+ * Simple Mode's day playlist in a new library with none open (main/simple-playlist.ts makes "Sabha, <date>" and the
+ * window opens it), as the main process tells it: its name, its row in the left column, and the one exception the owner
+ * allowed for it (QA23-STAGE8-5): that element, with exactly its name, may end in "…".
+ */
+async function theDaysPlaylist(win: Page): Promise<DaysPlaylist> {
+  const day = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const id = await d.app.simplePlaylist();
+    return (await d.playlists.tree()).find((n) => n.id === id) ?? null;
+  });
+  expect(day?.name).toMatch(/^Sabha, \d{1,2} \p{L}{3,4} \d{4}$/u);
+  const { id, name } = day ?? { id: '', name: '' };
+  const row = win.getByTestId('column-left').locator(`[data-testid="playlist-node"][data-node-id="${id}"]`);
+  await expect(row).toHaveAttribute('data-open', 'true');
+  await expect(win.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(name);
+  const mayCut = [
+    {
+      selector: `[data-testid="column-left"] [data-testid="playlist-node"][data-node-id="${id}"] [data-testid="playlist-node-name"]`,
+      words: name,
+    },
+  ];
+  return { name, row, mayCut };
+}
+
 /*
  * Stage off with a stage tablet connected (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)", and
  * a22-review-stage8's third look, MUST 1): the status bar's Stage off says the tablet shows the audience picture (a
@@ -537,13 +569,15 @@ const statusParts = (win: Page) =>
  * Audience on and off too (an ordinary end of a service):
  * - Pro Mode: nothing anywhere is cut short, over another or past the window's edge (the status bar's version words
  *   shortened for it, QA23-STAGE8-4);
- * - Simple Mode: the same state with the tablet connected and with none showing (paired, not connected: the status
- *   bar as with no tablet) finds the very same faults, and the Stage off item is as wide: the tablet adds none. (Simple Mode's own day playlist's name in a fresh library is cut short in the
- *   left column at 1024 × 645 with or without it: the owner's QA23-STAGE8-5, held for him.)
+ * - Simple Mode: the same, with the tablet connected and with none showing (paired, not connected: the status bar as
+ *   with no tablet), and the Stage off item as wide: the tablet adds nothing. Its own day playlist's name in this new
+ *   library alone may end in "…" in the left column, as the owner allowed (QA23-STAGE8-5, 25 Nov 2026, word for word:
+ *   "End it in '…' (Recommended)"): the same one-element exception as the day playlist's own state below, checked as
+ *   strictly (whole in its title, to a screen reader and in the middle's header).
  */
 for (const mode of ['pro', 'simple'] as const)
   for (const audience of ['on', 'off'] as const)
-    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, Stage off with a stage tablet connected, Audience ${audience}: ${mode === 'pro' ? 'nothing cut short or past the window’s edge' : 'the tablet adds no fault to the same state without it'}`, async () => {
+    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, Stage off with a stage tablet connected, Audience ${audience}: ${mode === 'pro' ? 'nothing cut short or past the window’s edge' : 'nothing cut short or past the window’s edge, with the tablet or without; the day playlist’s name alone may end in “…” (the owner’s QA23-STAGE8-5)'}`, async () => {
       test.setTimeout(120_000);
       const { app } = await launchApp(NETWORK_ENV);
       const win = await operatorPage(app);
@@ -561,9 +595,11 @@ for (const mode of ['pro', 'simple'] as const)
         );
         expect(turned.ok).toBe(true);
       }
+      let day: DaysPlaylist | null = null;
       if (mode === 'simple') {
         await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
         await expect(win.getByTestId('simple-mode')).toBeVisible();
+        day = await theDaysPlaylist(win);
       }
       await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience === 'off' ? 1 : 0);
       const stageOff = win.getByTestId('switch-off-stage');
@@ -572,12 +608,14 @@ for (const mode of ['pro', 'simple'] as const)
         console.log(
           `${mode}, Audience ${audience}, ${label}: the status bar ${JSON.stringify(await statusParts(win))}`,
         );
-        const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
+        // Simple Mode: the day playlist's name in the left column alone may end in "…" (QA23-STAGE8-5); Pro Mode: none.
+        const faults = [...(await fitFaults(win, day?.mayCut)), ...(await smallTargets(win))];
         if (faults.length > 0)
           await test.info().attach(`${mode}-stage-off-audience-${audience}-${label}`, {
             body: await win.screenshot(),
             contentType: 'image/png',
           });
+        if (day) await dayNameStrictly(win, day.row, day.name, `${mode}, Audience ${audience}, ${label}`);
         const box = await stageOff.boundingBox();
         return { faults, width: Math.round(box?.width ?? 0) };
       };
@@ -594,8 +632,9 @@ for (const mode of ['pro', 'simple'] as const)
       );
       const withTablet = await faultsNow('a tablet connected');
       expect(withTablet.width, 'the Stage off item no wider with the tablet').toBe(without.width);
-      if (mode === 'pro') expect(withTablet.faults).toEqual([]);
-      else expect(withTablet.faults).toEqual(without.faults);
+      expect(withTablet.faults).toEqual([]);
+      // Simple Mode: none with no tablet showing either.
+      if (mode === 'simple') expect(without.faults).toEqual([]);
       feed.close();
       await app.close();
     });
@@ -656,24 +695,9 @@ test('Simple Mode at 1024 × 645 with the day’s own playlist (the owner’s QA
   // (main/simple-playlist.ts).
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  const day = await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const id = await d.app.simplePlaylist();
-    return (await d.playlists.tree()).find((n) => n.id === id) ?? null;
-  });
-  expect(day?.name).toMatch(/^Sabha, \d{1,2} \p{L}{3,4} \d{4}$/u);
-  const { id, name } = day ?? { id: '', name: '' };
-  const row = win.getByTestId('column-left').locator(`[data-testid="playlist-node"][data-node-id="${id}"]`);
-  await expect(row).toHaveAttribute('data-open', 'true');
-  await expect(win.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(name);
-  await win.evaluate(() => document.fonts.ready.then(() => undefined));
   // That one element, with exactly the day's name, may end in "…"; nothing else may that NAMES does not name.
-  const mayCut = [
-    {
-      selector: `[data-testid="column-left"] [data-testid="playlist-node"][data-node-id="${id}"] [data-testid="playlist-node-name"]`,
-      words: name,
-    },
-  ];
+  const { name, row, mayCut } = await theDaysPlaylist(win);
+  await win.evaluate(() => document.fonts.ready.then(() => undefined));
   const states: [string, { left: string; right: string } | null][] = [
     ['as Simple Mode opens', null],
     ...Object.entries(COLUMNS),
@@ -681,9 +705,9 @@ test('Simple Mode at 1024 × 645 with the day’s own playlist (the owner’s QA
   const findings: string[] = [];
   const cutIn: string[] = [];
   for (const [state, columns] of states) {
-    // As it opens: laid out and done arriving, as setColumns leaves it.
+    // As it opens: laid out and done arriving, with the very wait setColumns ends with.
     if (columns) await setColumns(win, columns);
-    else await settled(win);
+    else await laidOut(win);
     for (const end of [false, true]) {
       await scrollAll(win, end);
       const where = `${state}${end ? ', scrolled to the end' : ''}`;
