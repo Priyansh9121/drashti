@@ -21,7 +21,9 @@ const picture = (width: number, height: number): CapturedPicture => {
   return { width, height, pixels, order: 'bgra' };
 };
 
-const at = (p: CapturedPicture, x: number, y: number) => [...p.pixels.slice((y * p.width + x) * 4, (y * p.width + x) * 4 + 4)];
+const at = (p: CapturedPicture, x: number, y: number) => [
+  ...p.pixels.slice((y * p.width + x) * 4, (y * p.width + x) * 4 + 4),
+];
 const ORIGINAL = [10, 200, 30, 255];
 
 /** How many pixels are no longer the original colour. */
@@ -90,7 +92,11 @@ describe('the parts of a window kept out of Report a Problem’s picture', () =>
       height: 80,
       rects: [[1, 2, 3, 4]],
     });
-    expect(readPrivateParts({ width: 100, height: 80, rects: [] })).toEqual({ width: 100, height: 80, rects: [] });
+    expect(readPrivateParts({ width: 100, height: 80, rects: [] })).toEqual({
+      width: 100,
+      height: 80,
+      rects: [],
+    });
     for (const bad of [
       null,
       'x',
