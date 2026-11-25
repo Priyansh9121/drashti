@@ -15,10 +15,6 @@ Since alpha.23 a phone does less than before, the same for every phone, iPad, la
 - **In neither mode** does a phone play, put up or change videos, pictures, sounds or music, the wallpapers, timers, the stage message, messages or announcements, or change Drashti's set-up. Kirtans, lyrics, a passage from **Books** and presentations of words do not go up from a phone either: the operator puts those up on the computer. Phones no longer send files to Drashti or see playlists shared with them.
 - **A PowerPoint goes as it was made.** Its own videos and sounds (the ones made in the deck) play as they were made when its slide goes up, and a deck with its own slide timings moves on by itself, both just as from the computer. At the deck's end, whether the playlist goes on by itself is the operator's own setting on the computer: **Next** on your phone stops at the last slide. Nothing else on a phone plays, puts up or controls a video or a sound.
 
-![Shared from Drashti: a shared playlist's files, under its headers](screenshots/phone-shared.png)
-
-![Add from this Phone…: a sound on its way, with how much has gone and Cancel](screenshots/phone-add-files.png)
-
 ## Once: pair your phone or iPad
 
 1. Join the **mandir's Wi-Fi** (the same network as the Drashti computer, not a guest network).
@@ -44,33 +40,20 @@ So it opens like an app, from one tap:
 - **Sabha flow** (since alpha.23), on the phone in both modes: the sabha's running order that the operator chose on the computer (a PDF, in its **Sabha flow** panel), to read only. **Now** is the item the operator marked as where the sabha is, and **Next up**, larger, is the item after it in full (a video's row with a film mark), or **Last item**. **Open Sabha flow…** shows the **Read list**, each item as "1 · Program · Details · Duration · Presenter" in the PDF's own language with Now and Next up marked and the total at the bottom, and the **PDF page**, with **Larger**, **Smaller** and **Fit** (and **Page** back and forward when it has more than one). It follows the computer: another PDF chosen, Now moved on, or the flow removed. When Drashti could not read the PDF's words (a scan, say), it says so and shows the page. Nothing on the phone changes the flow, and it is never on the hall's or the stage screens.
 - **Repeating** under the live picture: slides are going round by themselves (Repeat Slides), started and stopped on the computer.
 
-![The library, searched for words on a slide](screenshots/phone-remote-search.png)
-
-![The clears on a phone, in the operator's order with their keys: those with something to clear are lit](screenshots/phone-remote-clears.png)
-
 The operator can always change the screens from the computer; your page follows whatever is up.
 
 **On the stage screens** (and a tablet used as a stage display): the layout the operator chose, with your notes or the next slide if it has them, and a message from the operator over it, sometimes flashing as it comes up; the hall never sees that message. In a video's last 10 seconds, **Video ends in 0:08** runs across the top, so you know the hall is about to change.
 
 **An iPad, or a laptop**, shows the same, with more room side by side.
 
-![An iPad held sideways: the live picture and notes beside the slides](screenshots/tablet-remote-sideways.png)
-
-![More on an iPad held sideways, in two columns](screenshots/tablet-remote-more.png)
-
 **Preparing slides, at the Drashti computer.** **Edit slides…** opens a window of its own, in Pro Mode and (from a row’s right-click menu) in Simple Mode: **Words**, **Insert**, **Arrange**, **Design**, **Motion** and **Slides**. It prepares text and lists, tables and cropped pictures, grouped and aligned elements, a background and one shared master, timed effects and the slide order. **Undo** and **Redo** include typing and drags; Save keeps the last words still being typed, and closing or switching presentations asks before losing changes. The show controls remain in the operator window. Older presentations and imported decks keep their playback; the phone follows the authored transitions, element effects and automatic advance in step with the screens. See the operator guide for editing.
 
 ## In Pro Mode: a PowerPoint or a PDF from the playlist
 
 - **Playlist** shows the playlist open on the phone, with a row for each slide under its PowerPoint, PDF or Keynote deck's name; choose another playlist from the list above it. Only the PowerPoint and PDF items are offered there: a kirtan, words, a passage from **Books**, a video, a picture or a sound stays on the computer. A tap on the name folds or opens its slides, and a tap on a slide puts it up at once; LIVE marks the row that is up.
-  ![A phone playlist with slide rows, the expanded placeholder kirtan and its live row](screenshots/phone-playlist-rows-375x812.png)
 - **Next** and **Back**, at the bottom of the page, move through the PowerPoint or PDF on the screens, whichever put it up (you or the operator). A deck that came in with its animations goes one click at a time. **Next** stops at the deck's last slide: it never goes on to the next item in the playlist, or to a video. Tapping fast is safe: two quick taps on **Next** go on two slides and never zoom the page, and pulling down at the top does not reload it.
 - **Clear slide** takes the deck's slide off the screens, while a PowerPoint or a PDF is up. Nothing else comes off from a phone.
 - **Look closer** (beside **On the screens**, or tap the live picture) shows what is on the screens over your whole phone, sharp. Two fingers zoom in and out, up to 400% (two quick taps too), and one finger moves what you have zoomed; **Close**, or your phone's own Back (Android's back, an iPhone's swipe from the edge), goes back. It is a view on your phone alone: nothing there changes the screens.
-
-![A picture row’s Pro Mode menu on the phone](screenshots/phone-row-menu-375x812.png)
-
-![Looking closer at the picture on the screens, zoomed on the phone, with Show this zoom on the screens at the side](screenshots/phone-viewer-zoom.png)
 
 ## The chat
 
@@ -100,9 +83,5 @@ The operator can always change the screens from the computer; your page follows 
   - "A phone cannot play, put up or change videos, pictures or sounds. Use Drashti’s computer."
   - "Phones cannot add files to Drashti or open the files it shares. Use Drashti’s computer." Files go into Drashti on the computer.
   - "A phone cannot change this. Use Drashti’s computer." Timers (a timer the operator shows over your PowerPoint or PDF too: Next, Back, Clear slide, its slides and the Playlist’s slide rows wait until it is off, and the page says so), messages, the stage, announcements, the screens and setting Drashti up.
-
-![Simple Mode on the phone: what it does there, and a paused clip's time bar with Play](screenshots/phone-simple-controls-375x812.png)
-
-![A picture row’s Simple Mode menu: look, save, rename and remove](screenshots/phone-simple-row-menu-375x812.png)
 
 What the page never does on its own: nothing you look at or zoom on your phone changes the screens. In Simple Mode the phone changes nothing; in Pro Mode it puts up only a PowerPoint or a PDF you tap, and moves only inside it. No phone plays, puts up or changes videos, pictures or sounds, sends or receives files, or changes timers, messages, the stage, announcements or Drashti's set-up: the operator does those on the computer, and the Access List stays on the owner's computer.
