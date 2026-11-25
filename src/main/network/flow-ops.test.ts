@@ -6,6 +6,7 @@ import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
 import type { SabhaFlow, SabhaFlowSnapshot } from '../../shared/sabha-flow';
+import type { SimpleFeature } from '../../shared/simple-features';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { PHONE_OPS_IN_SIMPLE_MODE, type SimplePhoneScope } from '../simple-mode-phones';
@@ -58,6 +59,7 @@ function setup(options: { simple?: boolean; flow?: boolean } = {}) {
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   let simple = options.simple === true;
+  let chosen: readonly SimpleFeature[] = [];
   let letIn = true;
   let snapshot: SabhaFlowSnapshot = { flow: FLOW, state: { flowId: FLOW.id, now: 0 } };
   let pages: Record<number, Uint8Array | null> = { 0: PNG, 1: PNG };
@@ -125,6 +127,7 @@ function setup(options: { simple?: boolean; flow?: boolean } = {}) {
       simple && ([IPC.flow.choose, IPC.flow.remove, IPC.flow.setNow] as InvokeChannel[]).includes(channel),
     refusal: () => SIMPLE_MODE_REFUSAL,
     simple: () => (simple ? SIMPLE : null),
+    simpleFeatures: () => chosen,
     changed: () => undefined,
     log: () => undefined,
     now: () => 1_000_000,
@@ -152,6 +155,9 @@ function setup(options: { simple?: boolean; flow?: boolean } = {}) {
     },
     setSimple: (on: boolean) => {
       simple = on;
+    },
+    choose: (tools: readonly SimpleFeature[]) => {
+      chosen = tools;
     },
     setLetIn: (on: boolean) => {
       letIn = on;
@@ -244,6 +250,16 @@ describe('Sabha flow on a phone (alpha.23)', () => {
     expect(ask(remote, 'flow')).toEqual({ status: 503, body: { ok: false, message: STOPPED_REFUSAL } });
     expect((await page(remote, { page: '0', flowId: FLOW.id })).status).toBe(503);
     expect(asked).toEqual([]);
+  });
+
+  it('tells a phone in the hall which tools Simple Mode Features brought into Simple Mode, so it shows the flow only while it is one (QA23-FLOWP-1)', () => {
+    const { ask, remote, setSimple, choose } = setup();
+    // Pro Mode: no Simple Mode to tell of.
+    expect(ask(remote, 'hall').body).toMatchObject({ simple: null });
+    setSimple(true);
+    expect(ask(remote, 'hall').body).toMatchObject({ simple: { features: [] } });
+    choose(['timers', 'sabha-flow']);
+    expect(ask(remote, 'hall').body).toMatchObject({ simple: { features: ['timers', 'sabha-flow'] } });
   });
 
   it('reads in Simple Mode as the window reads (Simple Mode locks only the flow’s changes)', async () => {

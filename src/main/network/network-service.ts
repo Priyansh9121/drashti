@@ -63,6 +63,7 @@ import type {
   UploadPolicy,
 } from '../../shared/phone-files';
 import type { ScreenSwitches } from '../../shared/screen-switches';
+import type { SimpleFeature } from '../../shared/simple-features';
 import type { SearchResult } from '../../shared/search';
 import type { PassageResult } from '../../shared/shastra';
 import { referenceInputSchema } from '../../shared/shastra';
@@ -237,6 +238,8 @@ export interface NetworkDeps {
    * flow:get and flow:page answer them. Left out (a test of something else): no flow.
    */
   flow?: FlowReads;
+  /** Red: not built yet. */
+  simpleFeatures?: () => readonly SimpleFeature[];
 }
 
 /**

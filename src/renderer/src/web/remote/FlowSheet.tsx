@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { SabhaFlow, SabhaFlowLang } from '../../../../shared/sabha-flow';
 import {
   type FlowLine,
@@ -120,6 +121,9 @@ function NowNext({ flow, now }: { flow: SabhaFlow; now: number | null }) {
     </div>
   );
 }
+
+/** Red: not built yet. */
+export const flowOnPhone = (simple: RemoteSimple | null): boolean => simple === null;
 
 /** What the phone has of the flow, as its store keeps it (flow-store.ts). */
 export type FlowShown = Pick<

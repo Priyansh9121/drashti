@@ -4,6 +4,7 @@ import { idSchema } from './model-schema';
 import { pictureLookSchema } from './picture-look';
 import { quickPinsSchema } from './quick-bar';
 import { cleanNameSchema } from './rename-name';
+import type { SimpleFeature } from './simple-features';
 import { WHEN_ENDS } from './wallpapers';
 import { wallpaperNameSchema } from './wallpapers';
 
@@ -40,6 +41,8 @@ export interface RemoteWallpapers {
 export interface RemoteSimple {
   playlistId: string | null;
   words: string;
+  /** Red: not built yet. */
+  features?: SimpleFeature[];
 }
 
 /** The file and presentation names a phone takes as the window's Rename… does. */
