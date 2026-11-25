@@ -1,3 +1,4 @@
+import type { ChatEvent, ChatInvite } from './chat';
 import type { EngineMessage } from './engine/protocol';
 import type { AddFilesView } from './phone-files';
 
@@ -13,7 +14,12 @@ import type { AddFilesView } from './phone-files';
  * clock) is the same one output nodes will follow (Session 13).
  */
 
-export type DeviceKind = 'remote' | 'stage' | 'announcements';
+/**
+ * 'chat' (alpha.23, shared/chat.ts): a phone that scanned the pairing dialog's "Chat" QR, in the chat and nothing
+ * else. It is paired for the day only, kept with the chat (never in the library), so it is not one of DEVICE_KINDS,
+ * the kinds the operator pairs one at a time under Phones and tablets.
+ */
+export type DeviceKind = 'remote' | 'stage' | 'announcements' | 'chat';
 
 export const DEVICE_KINDS = ['remote', 'stage', 'announcements'] as const satisfies readonly DeviceKind[];
 
@@ -21,6 +27,7 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
   remote: 'Remote',
   stage: 'Stage',
   announcements: 'Announcements',
+  chat: 'Chat',
 };
 
 /** What each kind of device is for, as the operator reads it when pairing one. */
@@ -28,6 +35,7 @@ export const DEVICE_KIND_HELP: Record<DeviceKind, string> = {
   remote: 'Runs the show: Next and Back, slides, the clears, media, timers, messages and the stage message.',
   stage: 'Watches only: shows what a stage screen shows.',
   announcements: 'Sends announcements for the operator to approve; nothing else.',
+  chat: 'Reads and writes the chat; nothing else. Paired for today only.',
 };
 
 /** The port Drashti listens on unless the operator chooses another. */
@@ -86,6 +94,8 @@ export interface NetworkStatus {
   poster: { url: string; madeAt: string } | null;
   /** Whether phones and tablets may add files, and how large (Session 54: "Phones and tablets may add files"). */
   addFiles?: AddFilesView;
+  /** The pairing dialog's "Chat" QR while it is shown (alpha.23, shared/chat.ts), or null. */
+  chatInvite?: ChatInvite | null;
 }
 
 export type NetworkResult = { ok: true; status: NetworkStatus } | { ok: false; message: string };
@@ -144,6 +154,8 @@ export type ToDevice =
   /** The answer to a clock message: the device's t0, and the engine's clock when it was answered. */
   | { type: 'clock'; t0: number; server: number }
   | { type: 'changed'; what: NetworkChange }
+  /** The chat (alpha.23): to the devices in it only (shared/chat.ts CHAT_DEVICE_KINDS), each as it happens. */
+  | { type: 'chat'; event: ChatEvent }
   /** The connection is ending, and why (the device was revoked, the network turned off...). */
   | { type: 'bye'; reason: ByeReason };
 
