@@ -372,7 +372,15 @@ import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
-import { CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './outputs/heartbeat';
+import {
+  CHECK_EVERY_MS,
+  OPEN_GRACE_MS,
+  OutputHeartbeat,
+  REPORT_STALE_MS,
+  TEST_GRACES,
+} from './outputs/heartbeat';
+import { judgedOutputs } from './outputs/judged-outputs';
+import { HEARTBEAT_KEEPS_A_PAGE } from '../shared/screens-summary';
 import { keepsRestartingLine, keptLine, restartsWords } from './outputs/heartbeat-words';
 import {
   quitDetail,
@@ -2964,26 +2972,24 @@ function start(): void {
   // crashed into the watchdog's reload. One the watchdog gave up on is shown as Stopped.
   /** The outputs the log said keep restarting (a23-heartbeat): said once each time it starts. */
   const keepsRestarting = new Set<string>();
+  // Tests only (never a packaged Drashti; review SA4): shorter graces, and a hook that drops an output's reports, as a
+  // page that does not answer sends none.
+  const heartbeatFast = !packaged() && sw('DRASHTI_TEST_HEARTBEAT_FAST') === '1';
+  const heartbeatDeaf = new Set<string>();
+  if (heartbeatFast)
+    (
+      globalThis as { drashtiTestHeartbeatDeaf?: (screenId: string, on: boolean) => void }
+    ).drashtiTestHeartbeatDeaf = (screenId, on) => {
+      if (on) heartbeatDeaf.add(screenId);
+      else heartbeatDeaf.delete(screenId);
+    };
   const heartbeat = new OutputHeartbeat({
     now: Date.now,
     engineRev: () => engine.rev,
     // Showing, or stopped and tried again since (a retry that hangs is noticed too); never a page
-    // that has crashed and waits for the watchdog.
-    judged: () =>
-      manager
-        .status()
-        .filter((st) => st.state === 'showing' || st.state === 'stopped')
-        .map((st) => st.screenId)
-        .filter((id) => {
-          const w = outputWindows.get(id);
-          return (
-            w !== undefined &&
-            !w.isDestroyed() &&
-            !w.webContents.isCrashed() &&
-            w.isVisible() &&
-            !w.isMinimized()
-          );
-        }),
+    // that has crashed and waits for the watchdog (outputs/judged-outputs.ts, a node's too).
+    judged: () => judgedOutputs(manager.status(), (id) => outputWindows.get(id)),
+    ...(heartbeatFast ? { graces: TEST_GRACES } : {}),
     stuck: (screenId, reason, inARow) => {
       const w = outputWindows.get(screenId);
       if (!w || w.isDestroyed()) return;
@@ -2999,7 +3005,7 @@ function start(): void {
         if (keepsRestarting.delete(screenId)) log.info(`Output ${name} no longer keeps restarting`);
       } else if (!keepsRestarting.has(screenId)) {
         keepsRestarting.add(screenId);
-        log.warn(keepsRestartingLine(`Output ${name}`, restarts));
+        log.warn(keepsRestartingLine(`Output ${name}`, restarts, HEARTBEAT_KEEPS_A_PAGE));
       }
     },
     // HELD FOR THE OWNER (QA23-HEARTBEAT-1, A): stuck once more after RESTARTS_TOLD restarts in a row, it is kept as it is
@@ -3061,7 +3067,11 @@ function start(): void {
     // A page loaded again gets its grace before it is judged; tried again (Try again, or by itself after giving up), its
     // heartbeat restarts are forgotten too (a23-heartbeat).
     if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
-    if (e.kind === 'retried') heartbeat.afresh(screenId);
+    if (e.kind === 'retried') {
+      heartbeat.afresh(screenId);
+      // Tried again: no longer kept as it is (QA23-HEARTBEAT-1, A; review SA2), whatever its page does next.
+      manager.setNotAnswering(screenId, false);
+    }
     // Given up on: Stopped (the status line and Screens say so) until it draws again.
     if (e.kind === 'gave-up') stopOutput(screenId);
   };
@@ -8011,6 +8021,8 @@ function start(): void {
   let firstPainted: () => void = () => undefined;
   handle(IPC.output.report, (e, raw) => {
     const screenId = manager.screenIdFor(e.sender.id);
+    // Tests only (DRASHTI_TEST_HEARTBEAT_FAST): a page that does not answer sends no report.
+    if (screenId && heartbeatDeaf.has(screenId)) return null;
     const r = raw as {
       droppedFrames?: unknown;
       paintedRev?: unknown;

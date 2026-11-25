@@ -121,7 +121,7 @@ export interface ScreenStatus {
   restarts?: number;
   /**
    * Held for the owner (QA23-HEARTBEAT-1, A): Stopped because its page stopped answering after 4 restarts in a row,
-   * and kept as it is (not black). Left out otherwise.
+   * and kept as it is (often black: a page that has not drawn since its last restart). Left out otherwise.
    */
   notAnswering?: true;
 }

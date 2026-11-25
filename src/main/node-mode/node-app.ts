@@ -56,7 +56,8 @@ import { blankQuoted } from '../log-commands';
 import { type LogPeriod, periodText } from '../../shared/log-period';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
-import { CHECK_EVERY_MS, OutputHeartbeat } from '../outputs/heartbeat';
+import { CHECK_EVERY_MS, OutputHeartbeat, TEST_GRACES } from '../outputs/heartbeat';
+import { HEARTBEAT_KEEPS_A_PAGE } from '../../shared/screens-summary';
 import { judgedOutputs } from '../outputs/judged-outputs';
 import { keepsRestartingLine, keptLine, restartsWords } from '../outputs/heartbeat-words';
 import { log } from '../log';
@@ -525,10 +526,22 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   // stop, or stop showing the show, is crashed into the watchdog's reload.
   /** The outputs the log said keep restarting (a23-heartbeat): said once each time it starts. */
   const keepsRestarting = new Set<string>();
+  // Tests only (never a packaged Drashti; review SA4), as on Main: shorter graces, and a hook that drops an output's
+  // reports.
+  const heartbeatFast = !packaged() && sw('DRASHTI_TEST_HEARTBEAT_FAST') === '1';
+  const heartbeatDeaf = new Set<string>();
+  if (heartbeatFast)
+    (
+      globalThis as { drashtiTestHeartbeatDeaf?: (screenId: string, on: boolean) => void }
+    ).drashtiTestHeartbeatDeaf = (screenId, on) => {
+      if (on) heartbeatDeaf.add(screenId);
+      else heartbeatDeaf.delete(screenId);
+    };
   const heartbeat = new OutputHeartbeat({
     now: Date.now,
     engineRev: () => mirror.rev,
     judged: () => judgedOutputs(manager.status(), (id) => outputWindows.get(id)),
+    ...(heartbeatFast ? { graces: TEST_GRACES } : {}),
     stuck: (screenId, reason, inARow) => {
       const w = outputWindows.get(screenId);
       if (!w || w.isDestroyed()) return;
@@ -545,7 +558,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         if (keepsRestarting.delete(screenId)) log.info(`Node: output ${name} no longer keeps restarting`);
       } else if (!keepsRestarting.has(screenId)) {
         keepsRestarting.add(screenId);
-        log.warn(keepsRestartingLine(`Node: output ${name}`, restarts));
+        log.warn(keepsRestartingLine(`Node: output ${name}`, restarts, HEARTBEAT_KEEPS_A_PAGE));
       }
     },
     // HELD FOR THE OWNER (QA23-HEARTBEAT-1, A), as on Main: kept as it is, Stopped (Main's notice says why), tried
@@ -1156,6 +1169,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   handle(IPC.output.report, (event, raw) => {
     const screenId = manager.screenIdFor(event.sender.id);
+    // Tests only (DRASHTI_TEST_HEARTBEAT_FAST): a page that does not answer sends no report.
+    if (screenId && heartbeatDeaf.has(screenId)) return null;
     const r = raw as Partial<OutputReport> | null;
     if (screenId && r && typeof r.droppedFrames === 'number' && typeof r.paintedRev === 'number') {
       reports.set(screenId, {
@@ -1548,7 +1563,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       if (screenId === undefined) return;
       // A page loaded again gets its grace before it is judged; tried again, its restarts forgotten (a23-heartbeat).
       if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
-      if (e.kind === 'retried') heartbeat.afresh(screenId);
+      if (e.kind === 'retried') {
+        heartbeat.afresh(screenId);
+        // Tried again: no longer kept as it is (QA23-HEARTBEAT-1, A; review SA2).
+        manager.setNotAnswering(screenId, false);
+      }
       // Given up on: Stopped (Main's dashboard and its notice say so) until it draws again.
       if (e.kind === 'gave-up') stopOutput(screenId);
     },

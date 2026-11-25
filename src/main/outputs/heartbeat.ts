@@ -61,10 +61,11 @@ export const RESTARTS_TOLD = 4;
 
 /** The grace after `restarts` restarts of the same output in a row (a23-heartbeat): 15 s, 30 s, then 60 s. */
 export function graceAfter(restarts: number, openMs = OPEN_GRACE_MS, maxMs = RESTART_GRACE_MAX_MS): number {
-  void openMs;
-  void maxMs;
-  return Math.min(OPEN_GRACE_MS * 2 ** Math.max(0, restarts), RESTART_GRACE_MAX_MS);
+  return Math.min(openMs * 2 ** Math.max(0, restarts), maxMs);
 }
+
+/** The e2e tests' graces (DRASHTI_TEST_HEARTBEAT_FAST, never when packaged; review SA4): 3 s, then 6 s at most. */
+export const TEST_GRACES = { openMs: 3000, maxMs: 6000 } as const;
 
 interface Seen {
   /** When it opened (or reloaded, or was last judged stuck). */
@@ -78,6 +79,8 @@ interface Seen {
    * again after a report a change behind (BEHIND_MS or more) or a gap in its reports longer than its limit.
    */
   drewAt: number | null;
+  /** It has drawn the show since it opened or reloaded (review SA1): only a page that has not is kept (A). */
+  drew: boolean;
 }
 
 export interface HeartbeatDeps {
@@ -131,6 +134,7 @@ export class OutputHeartbeat {
       paintedRev: -1,
       warming: false,
       drewAt: null,
+      drew: false,
     });
   }
 
@@ -152,6 +156,11 @@ export class OutputHeartbeat {
   /** The operator is told it no longer keeps being restarted, if they were told it did. */
   private untell(screenId: string): void {
     if (this.toldOf.delete(screenId)) this.deps.told?.(screenId, null);
+  }
+
+  /** The longest grace (the e2e tests' shorter one under their switch). */
+  private get maxGraceMs(): number {
+    return this.deps.graces?.maxMs ?? RESTART_GRACE_MAX_MS;
   }
 
   /** How many times in a row this output was restarted (a23-heartbeat): none once RESTARTS_FORGET_MS passed. */
@@ -188,6 +197,7 @@ export class OutputHeartbeat {
       paintedRev: -1,
       warming: false,
       drewAt: null,
+      drew: false,
     };
     const gap = s.reportAt === null ? null : now - s.reportAt;
     s.reportAt = now;
@@ -201,13 +211,16 @@ export class OutputHeartbeat {
     const late = this.lateBy(s);
     const drawing = !warming && paintedRev >= 0 && (late === null || late < BEHIND_MS);
     if (!drawing || (gap !== null && gap > this.staleLimit(s))) s.drewAt = null;
-    if (drawing) s.drewAt ??= now;
+    if (drawing) {
+      s.drewAt ??= now;
+      s.drew = true;
+    }
     // Held for the owner (QA23-HEARTBEAT-1, A): one kept as it is is back by itself at its first report drawing the show.
     if (drawing && this.kept.delete(screenId)) this.deps.back?.(screenId);
     // Said to keep restarting: no longer once it has drawn the show and kept reporting for longer than the longest grace
     // (review S1), so a page that paints after each reload and stops again stays said. Its count is kept, so a page
     // that stops again soon is said to at once.
-    if (this.toldOf.has(screenId) && s.drewAt !== null && now - s.drewAt > RESTART_GRACE_MAX_MS)
+    if (this.toldOf.has(screenId) && s.drewAt !== null && now - s.drewAt > this.maxGraceMs)
       this.untell(screenId);
   }
 
@@ -219,7 +232,12 @@ export class OutputHeartbeat {
     // The main process itself was held up (a stall, the computer asleep): what the outputs did not
     // say meanwhile proves nothing. Every output starts its grace again.
     if (late) {
-      for (const screenId of this.seen.keys()) this.opened(screenId);
+      // Not whether it drew the show since its last restart (review SA1): a stall says nothing of that.
+      for (const [screenId, was] of [...this.seen]) {
+        this.opened(screenId);
+        const s = this.seen.get(screenId);
+        if (s) s.drew = was.drew;
+      }
       return;
     }
     // Its count forgotten, RESTARTS_FORGET_MS with no restart (a23-heartbeat): no longer said to keep restarting. Not
@@ -234,11 +252,13 @@ export class OutputHeartbeat {
       }
       if (this.kept.has(screenId)) continue;
       const inARow = this.restartsInARow(screenId);
-      if (now - s.since < graceAfter(inARow)) continue;
+      if (now - s.since < graceAfter(inARow, this.deps.graces?.openMs, this.maxGraceMs)) continue;
       const reason = this.why(s, now);
       if (!reason) continue;
-      // Held for the owner (QA23-HEARTBEAT-1, A): restarted RESTARTS_TOLD times in a row already, it is kept as it is.
-      if (this.deps.keep && inARow >= RESTARTS_TOLD) {
+      // Held for the owner (QA23-HEARTBEAT-1, A): restarted RESTARTS_TOLD times in a row already and not drawing the show
+      // since its last restart (the slow page A is for), it is kept as it is. One that drew and then stopped (a hang a
+      // reload cures for a while) is restarted as before (review SA1).
+      if (this.deps.keep && inARow >= RESTARTS_TOLD && !s.drew) {
         this.kept.add(screenId);
         this.deps.keep(screenId, reason, inARow);
         continue;

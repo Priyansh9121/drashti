@@ -13,11 +13,14 @@ export const RESTARTING_WORDS = 'Keeps restarting';
  * Held for the owner (QA23-HEARTBEAT-1, A): this build keeps a page as it is instead of restarting it a 5th time in a
  * row (HeartbeatDeps.keep on Main and on nodes), so the words say what happens next under A.
  */
-export const HEARTBEAT_KEEPS_A_PAGE = true;
+export const HEARTBEAT_KEEPS_A_PAGE = true as boolean;
 
+/** Why, in Screens: under A (`keeps`), what happens next, never that Drashti keeps trying (review MA2). */
 export function restartingSentence(restarts: number, keeps = false): string {
-  void keeps;
-  return `It stopped answering, so Drashti restarted it ${String(restarts)} times in a row. It keeps trying, about once a minute. Try again restarts it now.`;
+  const said = `It stopped answering, so Drashti restarted it ${String(restarts)} times in a row.`;
+  return keeps
+    ? `${said} If it does not draw the show after this restart either, Drashti stops restarting it and shows it as Stopped. Try again restarts it now.`
+    : `${said} It keeps trying, about once a minute. Try again restarts it now.`;
 }
 
 /**
@@ -45,7 +48,7 @@ export function screensSummary(status: readonly ScreenStatus[]): {
 
 /** Why a stopped screen is stopped, in its notice and in Screens. */
 export function stoppedSentence(status: ScreenStatus): string {
-  // Held for the owner (QA23-HEARTBEAT-1, A): its page kept as it is, not black.
+  // Held for the owner (QA23-HEARTBEAT-1, A): its page kept as it is (it may well be black: one that never drew).
   return status.notAnswering
     ? 'It stopped answering after 4 restarts in a row, so Drashti stopped restarting it and left it as it is: it may still catch up. Drashti tries it again by itself every few minutes.'
     : 'It kept failing, so it is black for now. Drashti tries it again by itself every few minutes.';

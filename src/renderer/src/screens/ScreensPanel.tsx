@@ -37,7 +37,12 @@ import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
 import { useControlsDisplay } from './controls-display';
 import { AdjustPicture } from './AdjustPicture';
-import { RESTARTING_WORDS, restartingSentence, stoppedSentence } from '../../../shared/screens-summary';
+import {
+  HEARTBEAT_KEEPS_A_PAGE,
+  RESTARTING_WORDS,
+  restartingSentence,
+  stoppedSentence,
+} from '../../../shared/screens-summary';
 import { WidePicture } from './WidePicture';
 
 // The words are a phone's too (Session 54, the phone as a full Drashti).
@@ -158,7 +163,7 @@ function ScreenRow({
           <>
             {/* Restarted again and again by the heartbeat (a23-heartbeat): said, with Try again afresh. */}
             <span className="text-xs text-danger-fg" data-testid="screen-restarting">
-              {restartingSentence(restarts)}
+              {restartingSentence(restarts, HEARTBEAT_KEEPS_A_PAGE)}
             </span>
             <Button
               variant="primary"
