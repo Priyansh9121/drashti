@@ -15,6 +15,7 @@ import {
   relaunchApp,
   type PageGlobals,
 } from './helpers';
+import { logText } from './log-lines';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { releaseServer } from './release-server';
 import { alive, type Proc, stillRunning, under } from './processes';
@@ -170,7 +171,7 @@ test('quitting with everything going on: each service stops in order, cleanly, w
     expect(existsSync(installLog)).toBe(false);
     await app.close();
 
-    const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const log = logText(userData);
     expect(log).not.toContain('Uncaught exception');
     expect(log).not.toContain('did not stop cleanly');
     // A clean quit: the mark names the run the saved show belongs to.
@@ -247,7 +248,7 @@ test('quitting during a download from a link (Session 25b): nothing of it is lef
     expect(readdirSync(chosen)).toEqual([]);
     expect(existsSync(join(userData, 'link-downloads.json'))).toBe(false);
     await expect.poll(() => stillRunning(helpers), { timeout: 15_000 }).toEqual([]);
-    const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const log = logText(userData);
     expect(log).not.toContain('Uncaught exception');
     expect(log).not.toContain('did not stop cleanly');
   } finally {
@@ -324,7 +325,7 @@ test('quitting during Save as MP4 (Session 26e): no file under its name, no part
   // Nothing of it is left: no file under its name, no part-file, no FFmpeg.
   expect(readdirSync(out)).toEqual([]);
   await expect.poll(() => stillRunning(running), { timeout: 15_000 }).toEqual([]);
-  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = logText(userData);
   expect(log).not.toContain('Uncaught exception');
   expect(log).not.toContain('did not stop cleanly');
 });
@@ -403,7 +404,7 @@ test('Drashti stopped dead during Save as MP4: on a Mac its FFmpeg runs on and t
   await expect.poll(() => readdirSync(out), { timeout: 10_000 }).toEqual([]);
   // Said as it is removed, by Drashti's own process a moment after the file goes: waited for, not read once
   // (CI's Mac read the log in that moment, run 39054667458).
-  const logged = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const logged = () => logText(userData);
   await expect.poll(logged, { timeout: 10_000 }).toContain('Removed a part-file left by the last run');
   const log = logged();
   if (process.platform === 'win32') expect(log).not.toContain('left running by the last run');
@@ -479,7 +480,7 @@ test('quitting during a YouTube download (Session 25c): no part-file, and no yt-
   expect(
     existsSync(join(userData, 'Link downloads')) ? readdirSync(join(userData, 'Link downloads')) : [],
   ).toEqual([]);
-  const drashtiLog = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const drashtiLog = logText(userData);
   expect(drashtiLog).not.toContain('Uncaught exception');
   expect(drashtiLog).not.toContain('did not stop cleanly');
 });
@@ -514,7 +515,7 @@ test('quitting while the HEVC question still holds its own page (question 36): a
   // The quit never waits for the answer, and nothing of Drashti is left running.
   expect(Date.now() - asked).toBeLessThan(60_000);
   await expect.poll(() => stillRunning(helpers), { timeout: 15_000 }).toEqual([]);
-  const drashtiLog = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const drashtiLog = logText(userData);
   expect(drashtiLog).toContain("Quit: Drashti's own stops took");
   expect(drashtiLog).not.toMatch(/HEVC video/u);
   expect(drashtiLog).not.toContain('Uncaught exception');

@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
@@ -14,6 +14,7 @@ import {
   outputPages,
   outputReady,
 } from './helpers';
+import { logText } from './log-lines';
 import { decodePng } from './png-decode';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
@@ -457,7 +458,7 @@ test('HEVC’s other kinds as this computer names them are true, and the import 
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
-    const logOf = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const logOf = () => logText(userData);
     const KINDS =
       /The other kinds of HEVC on this computer: Main 10 (plays|cannot play); 4:2:2, 4:4:4 and 12-bit (play|cannot play)/u;
     await expect

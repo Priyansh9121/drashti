@@ -127,6 +127,10 @@ it('renders the real S2 picture and speed once from the original into a WebM cli
     kept: { load: () => [], save: () => undefined },
     prepareImport: () => Promise.resolve('unused'),
     publishImport: () => Promise.resolve(false),
+    discardUnlisted: () => Promise.resolve(0),
+    quiet: () => true,
+    left: { load: () => [], save: () => undefined },
+    leftFrom: () => 0,
   });
   close = () => {
     clips.close();

@@ -21,6 +21,7 @@ import { fileProblem } from '../plain-errors';
 import type { VideoCaptionTrack } from '../../shared/video-captions';
 import { VideoCaptionsRepo } from '../db/video-captions';
 import { discoverVideoCaptions } from './video-captions';
+import { markTaken } from '../library/media-taken';
 
 /*
  * Drashti's media folder. Every file is stored once, under its sha256
@@ -511,6 +512,9 @@ export class MediaStore {
       this.keepReadBy(existing.id, staged);
       // Converted already (Session 51): its copy, which plays, is what this import adds.
       const copy = this.copyOf(existing.id);
+      // Handed back by its bytes: whoever took it may name it only later (a deck's editor on Save, an edit's record),
+      // so it is never removed as a leftover for the rest of this run (a22-review-combine2 L-S1).
+      markTaken(existing.id, copy?.id);
       // Imported as media this time (a deck's page dropped in on its own): it shows in the Media list
       // from now on (migration 37, Session 26a).
       if (source.kind !== 'drashti')

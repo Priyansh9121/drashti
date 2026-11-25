@@ -43,7 +43,8 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
-import type { StudioLivePicture } from './studio-live';
+import type { StudioLiveMessage } from './studio-live';
+import type { NotOnScreen } from './not-on-screens';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
@@ -720,6 +721,22 @@ export const IPC = {
      * where its page can tell nothing else.
      */
     served: 'media:served',
+    /**
+     * The videos still up that one of this computer's screens could not play (alpha.23, a22-halldrop): what LIVE names
+     * under its picture (shared/not-on-screens.ts), read as the operator window opens, and told as it changes.
+     */
+    notOnScreens: 'media:not-on-screens',
+    notOnScreensChanged: 'media:not-on-screens-changed',
+    /**
+     * A screen's page that said a showing could not play drew it after all (a22-halldrop's review, MUST-2): LIVE no
+     * longer names that screen for it.
+     */
+    playsHere: 'media:plays-here',
+    /**
+     * A screen's page has no first frame of a showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a)): LIVE says
+     * it is starting there until it draws (media:plays-here) or the verdict comes.
+     */
+    noFrameYet: 'media:no-frame-yet',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     /**
@@ -1908,6 +1925,9 @@ export interface InvokeContract {
     result: null;
   };
   [IPC.media.served]: { args: [mediaId: string]; result: number };
+  [IPC.media.notOnScreens]: { args: []; result: NotOnScreen[] };
+  [IPC.media.playsHere]: { args: [mediaId: string, startedAt: number]; result: null };
+  [IPC.media.noFrameYet]: { args: [mediaId: string, startedAt: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.proxyStatus]: { args: [mediaId: string, retry: boolean]; result: VideoProxyResult };
   [IPC.media.stopProxy]: { args: [mediaId: string]; result: boolean };
@@ -2303,7 +2323,7 @@ export interface EventContract {
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
-  [IPC.lowerThirds.live]: StudioLivePicture | null;
+  [IPC.lowerThirds.live]: StudioLiveMessage;
   [IPC.slideEditor.edit]: EditSlidesOpen;
   [IPC.slideEditor.sourcePrepared]: EditSourceUpdate;
   [IPC.slideEditor.askClose]: null;
@@ -2330,6 +2350,7 @@ export interface EventContract {
   [IPC.youtube.changed]: YouTubeStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.playsHevcChanged]: boolean;
+  [IPC.media.notOnScreensChanged]: NotOnScreen[];
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.preparingTrimsChanged]: string[];
   [IPC.media.trimStatusesChanged]: TrimStatuses;

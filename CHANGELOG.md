@@ -2,6 +2,19 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- A cued video no longer fails now and then with “could not load its first frame” when a screen kept showing the video’s start.
+- Combine videos… and Export clip… no longer leave a hidden copy in Media’s folder when they fail, are stopped or are cut short by closing Drashti.
+- Phones: Show this zoom on the screens now shows the part you zoomed into on a cropped, turned or flipped picture and on a page cropped with Crop page….
+- With no hall screen on this computer, the Lower Thirds studio’s Live shows what is live from a small copy drawn out of sight.
+- A paused or waiting video that a screen cannot play now gets a notice naming the file and the screen, and LIVE says so; played anyway, it stops again with a notice.
+- Turning Stage on with only a stage tablet, or with the stage display unplugged, no longer says no screen is set to Stage.
+- A video or sound that has played to its end and stays up no longer holds Save trimmed video, Edit Video’s Save, Export clip… or Combine videos…; a deck step’s clip, a deck’s transition sound and a slide’s own sound hold them while they play.
+- Save trimmed video: the Trim dialog names the new video as it will be made, its percent moves as it should, a video cued for Go stops a save at once, and Export… keeps the .mp4 ending.
+- When the stream’s connection drops on a busy computer, Drashti still says why (the stream key, the server’s certificate, the internet) before it tries again.
+- Live captions: when they rest because the computer cannot keep up, the dialog says three answers in a row were too slow and how long the last took; a caption edit still open when its phrase leaves the screens stays open and says so.
+
 ## 1.0.0-alpha.22 (25 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.

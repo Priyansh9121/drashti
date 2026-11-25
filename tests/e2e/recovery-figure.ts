@@ -1,8 +1,9 @@
 import { expect } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { killApp, launchApp, operatorPage, outputPage, relaunchApp, savedLive, setUpScreen } from './helpers';
+import { logLines } from './log-lines';
 import { makeSlides } from './placeholder-slides';
 
 /*
@@ -18,10 +19,9 @@ export interface Phase {
 
 /** The last start's phase lines in a data folder's log, in order ("Start: <what> at <ms> ms"). */
 export function lastStartPhases(userData: string): Phase[] {
-  const file = join(userData, 'logs', 'drashti.log');
-  if (!existsSync(file)) return [];
+  if (!existsSync(join(userData, 'logs'))) return [];
   const phases: Phase[] = [];
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
+  for (const line of logLines(userData)) {
     const m = /Start: (.+) at (\d+) ms$/u.exec(line);
     if (!m) continue;
     // Each start begins again with the main process running.

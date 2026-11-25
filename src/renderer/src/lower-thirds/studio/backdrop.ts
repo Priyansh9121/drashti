@@ -1,5 +1,5 @@
 import type { PictureLook } from '../../../../shared/picture-look';
-import type { StudioLivePicture } from '../../../../shared/studio-live';
+import type { LiveUnseen, StudioLiveMessage, StudioLivePicture } from '../../../../shared/studio-live';
 import type { ChosenWallpaper } from '../../../../shared/wallpapers';
 import { readPersisted, writePersisted } from '../../ui/persist';
 
@@ -11,7 +11,9 @@ import { readPersisted, writePersisted } from '../../ui/persist';
  *   round, each with its look); with none chosen, plain dark with the words "No wallpaper chosen". It took Picture's
  *   place (a made-up picture standing in for the hall's).
  * - Live: what the screens show now (a video, a slide, a picture, the wallpaper, black), as a still the main process
- *   takes about once a second while the studio shows Live, and never otherwise (main/lower-thirds/studio-live.ts).
+ *   takes about once a second while the studio shows Live, and never otherwise (main/lower-thirds/studio-live.ts):
+ *   from a hall screen on this computer, else (alpha.23) from Live's copy, which draws no video input or other app's
+ *   window, and says so then (main/lower-thirds/live-copy.ts).
  * - Dark and Light, plain, as before.
  *
  * The choice is remembered on this computer, as the template picker's favourites are (ui/persist.ts).
@@ -30,6 +32,27 @@ export const DEFAULT_BACKDROP: Backdrop = 'wallpaper';
 export const BACKDROP_KEY = 'lower-third-studio-backdrop';
 export const NO_WALLPAPER = 'No wallpaper chosen';
 export const NO_LIVE = 'No live picture to show';
+/** Live's copy still opening (its page loading): never black alone, which is a real Live picture too. */
+export const LIVE_GETTING = 'Getting the live picture…';
+
+/**
+ * Live from its copy (no hall screen here) while a video input, another app's window or a stream link is live: the
+ * copy draws none of them (it is no screen), and says which.
+ */
+export function unseenWords(unseen: readonly LiveUnseen[]): string {
+  const names = (
+    [
+      ['input', 'the video input'],
+      ['window', 'another app’s window'],
+      ['link', 'the stream link'],
+    ] as const
+  )
+    .filter(([kind]) => unseen.includes(kind))
+    .map(([, name]) => name);
+  const last = names.pop() ?? 'it';
+  const what = names.length === 0 ? last : `${names.join(', ')} or ${last}`;
+  return `Live can’t show ${what} here: there is no hall screen on this computer.`;
+}
 
 export const isBackdrop = (v: unknown): v is Backdrop =>
   typeof v === 'string' && (BACKDROPS as readonly string[]).includes(v);
@@ -37,7 +60,7 @@ export const isBackdrop = (v: unknown): v is Backdrop =>
 /** What the preview draws behind the lower third. */
 export type BackdropDraw =
   | { kind: 'wallpaper'; wallpaper: ChosenWallpaper; pictures: Record<string, PictureLook> }
-  | { kind: 'live'; picture: StudioLivePicture }
+  | { kind: 'live'; picture: StudioLivePicture; words?: string }
   | { kind: 'plain'; colour: string; words?: string };
 
 const DARK = '#1f2937';
@@ -57,7 +80,7 @@ export const TILE_BACKDROP: BackdropDraw = {
 export function backdropDraw(
   backdrop: Backdrop,
   hall: { wallpaper: ChosenWallpaper | null | undefined; pictures: Record<string, PictureLook> },
-  live: StudioLivePicture | null | undefined,
+  live: StudioLiveMessage | undefined,
 ): BackdropDraw {
   switch (backdrop) {
     case 'wallpaper':
@@ -65,7 +88,13 @@ export function backdropDraw(
         ? { kind: 'wallpaper', wallpaper: hall.wallpaper, pictures: hall.pictures }
         : { kind: 'plain', colour: DARK, words: NO_WALLPAPER };
     case 'live':
-      if (live) return { kind: 'live', picture: live };
+      // From Live's copy (no hall screen here) with a video input or another app's window live: it draws neither.
+      // Live's copy still opening: black, saying so.
+      if (live && 'waiting' in live) return { kind: 'plain', colour: BLACK, words: LIVE_GETTING };
+      if (live)
+        return live.unseen && live.unseen.length > 0
+          ? { kind: 'live', picture: live, words: unseenWords(live.unseen) }
+          : { kind: 'live', picture: live };
       return live === null
         ? { kind: 'plain', colour: BLACK, words: NO_LIVE }
         : { kind: 'plain', colour: BLACK };

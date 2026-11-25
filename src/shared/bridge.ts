@@ -36,7 +36,8 @@ import type {
   LowerThirdsResult,
   StudioOpen,
 } from './lower-thirds';
-import type { StudioLivePicture } from './studio-live';
+import type { StudioLiveMessage } from './studio-live';
+import type { NotOnScreen } from './not-on-screens';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -933,6 +934,22 @@ export interface DrashtiBridge {
     cannotPlay(mediaId: string, startedAt: number, code: number, words: string): Promise<null>;
     /** How many bytes of a library file Main has sent the pages so far (Q60-51; 0 for none). */
     served(mediaId: string): Promise<number>;
+    /**
+     * The videos still up that one of this computer's screens could not play (alpha.23, a22-halldrop), what LIVE names
+     * under its picture; and told as they change (operator window).
+     */
+    notOnScreens(): Promise<NotOnScreen[]>;
+    /**
+     * A page that said this showing could not play drew its first frame after all (a22-halldrop's review, MUST-2):
+     * heeded from this computer's screens.
+     */
+    playsHere(mediaId: string, startedAt: number): Promise<null>;
+    /**
+     * A page has no first frame of this showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a)): heeded from
+     * this computer's screens.
+     */
+    starting(mediaId: string, startedAt: number): Promise<null>;
+    onNotOnScreens(listener: (list: NotOnScreen[]) => void): () => void;
   };
   /**
    * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,
@@ -1277,7 +1294,7 @@ export interface DrashtiBridge {
     /** The studio shows Live behind its preview (true) or another backdrop (alpha.22): stills only while it does. */
     watchLive(on: boolean): Promise<null>;
     /** Live's still, about once a second while it is watched (null: nothing on this computer to take it from). */
-    onLive(listener: (picture: StudioLivePicture | null) => void): () => void;
+    onLive(listener: (live: StudioLiveMessage) => void): () => void;
   };
   /** OSC: explicitly allowed local UDP senders, independent of Phones. */
   osc: {

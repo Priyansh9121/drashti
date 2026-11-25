@@ -17,6 +17,7 @@ import {
   windowShowing,
 } from './helpers';
 import { type LinkLook, linkLook, type LiveStandIn, liveStandIn } from './live-stand-in';
+import { logLines } from './log-lines';
 import { audioPage } from './time-bar-helpers';
 import { testFfmpeg } from './stream-helpers';
 
@@ -35,12 +36,11 @@ test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node s
 
 const FAKE = join(__dirname, 'fake-yt-dlp.cjs');
 
-/** The running Drashti's log, whose stream link lines a failure says (the main process's side of what happened). */
-let logFile: string | null = null;
+/** The running Drashti's data folder, whose log's stream link lines a failure says (the main process's side of what happened). */
+let logOwner: string | null = null;
 const mainSaid = (): string =>
-  logFile !== null && existsSync(logFile)
-    ? readFileSync(logFile, 'utf8')
-        .split('\n')
+  logOwner !== null && existsSync(join(logOwner, 'logs'))
+    ? logLines(logOwner)
         .filter((l) => l.includes('Stream link:'))
         .slice(-12)
         .join(' | ')
@@ -134,7 +134,7 @@ async function moving(page: Page, why: string, within: string | null = null): Pr
 async function hallAndLink(extra: Record<string, string> = {}) {
   const standIn = await liveStandIn();
   const { app, userData } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', ...extra });
-  logFile = join(userData, 'logs', 'drashti.log');
+  logOwner = userData;
   const win = await operatorPage(app);
   await operatorReady(win);
   await setUpScreen(win, 'Main Hall', 0);
@@ -465,7 +465,7 @@ test('a YouTube live link through Drashti’s yt-dlp (the fake): never looked at
         liveUrl: standIn.url,
       }),
     });
-    logFile = join(launched.userData, 'logs', 'drashti.log');
+    logOwner = launched.userData;
     const page = await operatorPage(launched.app);
     await operatorReady(page);
     await setUpScreen(page, 'Main Hall', 0);
