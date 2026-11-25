@@ -148,7 +148,7 @@ describe('names', () => {
 
   it('refuses an empty or long name, the operator’s, and anything but { name }', () => {
     const { chat } = setup();
-    for (const name of ['', ' ​ ', 'x'.repeat(61)])
+    for (const name of ['', ' \u200B ', 'x'.repeat(61)])
       expect(chat.setName(device(1), { name })).toEqual({
         ok: false,
         status: 400,
