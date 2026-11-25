@@ -515,7 +515,7 @@ const log = {
 /** Every logical processor (the mask a run without a limit is given back). */
 const ALL = 2 ** cpus().length - 1;
 
-async function helperProgram(): Promise<string> {
+function helperProgram(): string {
   const given = env['CAPLANG_BENCH_HELPER'];
   if (given) return given;
   const exe = WINDOWS ? 'drashti-translate.exe' : 'drashti-translate';
@@ -584,7 +584,7 @@ describe.skipIf(!NAMED)('caption translation bench (QA24-CAPLANG-2, measuring on
       console.log(
         `CAPLANG machine: ${process.platform}-${process.arch}, ${String(cpus().length)} logical processors (${cpus()[0]?.model ?? '?'}), ${String(Math.round(totalmem() / 1_073_741_824))} GiB, plan ${plan.name}`,
       );
-      const program = await helperProgram();
+      const program = helperProgram();
       const store = await storeWithPack();
       const own: Phrase[] = OWN.map((p) => ({ ...p, set: 'own44' }));
       const phrases = [...own, ...fixturePhrases()];
