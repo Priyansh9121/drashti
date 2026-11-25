@@ -34,7 +34,7 @@
 
 ## The phone remote
 
-**What it is.** A paired phone or tablet that shows the sabha: LIVE's picture, the **Sabha flow** and the **Chat**, in both modes. In Simple Mode that is all, with no controls. In Pro Mode it also puts up a PowerPoint or a PDF from a playlist and moves through it. Since alpha.23 it never plays or changes videos, pictures, sounds, timers or messages.
+**What it is.** A paired phone or tablet that shows the sabha: LIVE's picture, the **Sabha flow** and the **Chat**, in both modes. In Simple Mode that is all, with no controls. In Pro Mode it also puts up a PowerPoint or a PDF from a playlist and moves through it. A PowerPoint goes as it was made: its own videos, sounds and slide timings play just as they do from this computer, and at its end the playlist goes on, or not, as you set it here. Since alpha.23 a phone never plays or changes any other video, picture or sound, or the timers or messages.
 
 **When you would use it.** For a presenter who moves their own PowerPoint or PDF, or follows the sabha from the front.
 

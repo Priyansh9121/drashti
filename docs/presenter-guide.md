@@ -13,7 +13,7 @@ Since alpha.23 a phone does less than before, the same for every phone, iPad, la
 - **In Simple Mode** (on the Drashti computer): the phone shows the **Sabha flow**, what is on the screens and the **Chat**, with no controls. Nothing on it changes the show.
 - **In Pro Mode**: all of that, and it also puts up a PowerPoint or a PDF (a Keynote deck too) from the playlist open on the phone, moves through it with **Next** and **Back**, and can take its slide off the screens.
 - **In neither mode** does a phone play, put up or change videos, pictures, sounds or music, the wallpapers, timers, the stage message, messages or announcements, or change Drashti's set-up. Kirtans, lyrics, a passage from **Books** and presentations of words do not go up from a phone either: the operator puts those up on the computer. Phones no longer send files to Drashti or see playlists shared with them.
-- **A PowerPoint's own videos and sounds** (the ones made in the deck) play as they were made when its slide goes up, and a deck with its own slide timings moves on by itself as it does from the computer. Nothing else on a phone plays a video or a sound.
+- **A PowerPoint goes as it was made.** Its own videos and sounds (the ones made in the deck) play as they were made when its slide goes up, and a deck with its own slide timings moves on by itself, both just as from the computer. At the deck's end, whether the playlist goes on by itself is the operator's own setting on the computer: **Next** on your phone stops at the last slide. Nothing else on a phone plays, puts up or controls a video or a sound.
 
 ![Shared from Drashti: a shared playlist's files, under its headers](screenshots/phone-shared.png)
 
