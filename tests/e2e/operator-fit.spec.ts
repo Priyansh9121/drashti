@@ -4,6 +4,7 @@ import axe from 'axe-core';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { settled } from './a11y';
 import { NETWORK_ENV, networkOn } from './devices';
 import type { PageGlobals } from './helpers';
 import {
@@ -573,7 +574,9 @@ test('Simple Mode at 1024 × 645 with the day’s own playlist (the owner’s QA
   const findings: string[] = [];
   const cutIn: string[] = [];
   for (const [state, columns] of states) {
+    // As it opens: laid out and done arriving, as setColumns leaves it.
     if (columns) await setColumns(win, columns);
+    else await settled(win);
     for (const end of [false, true]) {
       await scrollAll(win, end);
       const where = `${state}${end ? ', scrolled to the end' : ''}`;
