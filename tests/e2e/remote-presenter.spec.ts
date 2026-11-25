@@ -12,18 +12,28 @@ import {
   pairToken,
   TABLET,
 } from './devices';
-import { launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
-import { KIRTAN, NOTE_ONE, NOTE_TWO, placeholderTalk, setUpPlaceholderShow, TALK } from './placeholder-show';
+import {
+  holdStill,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  type PageGlobals,
+  setUpScreen,
+} from './helpers';
+import { expectPhoneRefuses } from './phone-refuses';
+import { KIRTAN, NOTE_ONE, NOTE_TWO, placeholderTalk, setUpPlaceholderShow } from './placeholder-show';
+import { PDF_ENV, phoneAsks, phoneShowsLive, placeholderPdf, playlistOf } from './pro-phone';
 
 /*
- * The presenter's remote (Session 18): from a phone or an iPad, the whole
- * library, searched or by name, a presentation opened from it and its
- * slides put up, the screens following; the live slide's notes and the next
- * one's under the live picture; on an iPad held sideways, the live picture,
- * the notes and Next beside the slides. In Simple Mode the remote reads the
- * library and puts up the slides of Simple Mode's playlist only, as its window
- * may (Session 55), and no more. The talk is outside the playlist on purpose.
- * Placeholder words; codes and tokens are made at run time and never printed.
+ * The presenter's remote (Session 18), as a Pro Mode phone has it since alpha.23 (QA23-PHONE-1, the owner's "Only PPT
+ * and PDF"): from a phone or an iPad, a PDF put up from the playlist it opens, stepped inside with Next and Back (Next
+ * stopping at its last page, never the playlist's next row), the screens following; the live slide's notes and the
+ * next one's under the live picture; on an iPad held sideways, the live picture, the notes and Next beside the slides.
+ * The library, a talk of words, a kirtan and a passage are refused, in words. In Simple Mode a Remote only reads what
+ * is live: the library, a presentation's slides and putting one up are refused, even of Simple Mode's playlist, and
+ * the window runs the show. The talk is outside the playlist on purpose. Placeholder words and generated pages;
+ * codes and tokens are made at run time and never printed.
  */
 
 const TABLET_SIDEWAYS = 'iPad (gen 7) landscape';
@@ -34,14 +44,39 @@ async function where(win: Page) {
   return { presentationId: state.live.presentationId, slideIndex: state.layers.slide?.slideIndex ?? null };
 }
 
+/** The hall's screen draws the slide live now: by its id (a PDF's page is a picture, with no words to read). */
+async function hallDrawsLive(win: Page, output: Page): Promise<void> {
+  const id = await win.evaluate(
+    async () =>
+      (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide?.slide.id ?? '',
+  );
+  expect(id, 'a slide is live').not.toBe('');
+  await expect(output.locator(`[data-layer="slide"] [data-slide="${id}"]`).first()).toBeVisible();
+}
+
+/** The presenter's PDF: three placeholder pages, the first two with notes (their comments). */
+const presenterPdf = (win: Page) =>
+  placeholderPdf(win, 'Placeholder presenter PDF', [
+    { width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder PDF opening', note: NOTE_ONE },
+    { width: 960, height: 540, color: [127, 29, 29], text: 'Placeholder PDF point two', note: NOTE_TWO },
+    { width: 960, height: 540, color: [20, 83, 45], text: 'Placeholder PDF closing' },
+  ]);
+
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
-  test(`a presenter's phone finds a talk in the library, puts its slides up and reads their notes (${engine})`, async () => {
+  test(`a presenter's phone puts a PDF up from its playlist, steps inside it and reads its notes; the library, a talk of words, a kirtan and a passage are refused (${engine})`, async () => {
     test.setTimeout(180_000);
-    const { app } = await launchApp(NETWORK_ENV);
+    const { app } = await launchApp({ ...NETWORK_ENV, ...PDF_ENV });
     const win = await operatorPage(app);
     await operatorReady(win);
-    await setUpPlaceholderShow(win);
+    const show = await setUpPlaceholderShow(win);
     const talkId = await placeholderTalk(win);
+    const pdfId = await presenterPdf(win);
+    // The presenter's playlist: the PDF, then the kirtan.
+    const list = await playlistOf(win, 'Placeholder presenter list', [
+      { kind: 'presentation', presentationId: pdfId },
+      { kind: 'presentation', presentationId: show.kirtanId },
+    ]);
+    const [pdfRow = '', kirtanRow = ''] = list.rows;
     await setUpScreen(win);
     const output = await outputPage(app);
     const { base } = await networkOn(win);
@@ -56,38 +91,55 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', 'phone');
 
-      // The whole library, not only the playlist's, by name.
-      await p.getByTestId('remote-tab-library').click();
-      const library = p.getByTestId('remote-library');
-      await expect(library.getByTestId('remote-library-item').filter({ hasText: TALK })).toContainText(
-        '3 slides',
+      // The whole library, searched or a page of it, the talk (words, outside the playlist), the kirtan's row and a
+      // passage: refused in words, nothing up (before alpha.23 the phone found the talk in the library and put it up).
+      const asks = { win, page: p };
+      await expectPhoneRefuses(asks, 'GET', '/api/v1/presentations', undefined, 'library');
+      await expectPhoneRefuses(asks, 'GET', '/api/v1/search?q=talk%20point%20two', undefined, 'library');
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        '/api/v1/trigger/slide',
+        { presentationId: talkId, slideIndex: 1 },
+        'notDeck',
       );
-      await expect(library.getByTestId('remote-library-item').filter({ hasText: KIRTAN })).toBeVisible();
-      await expectNoSeriousA11yIssues(p, `the remote's library on a phone (${engine})`);
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        '/api/v1/trigger/item',
+        { playlistId: list.playlistId, itemId: kirtanRow },
+        'notDeck',
+      );
+      await expectPhoneRefuses(asks, 'POST', '/api/v1/shastra', { reference: 'Placeholder 1:1' }, 'notDeck');
+      expect((await where(win)).presentationId).toBeNull();
 
-      // Searched by words on a slide: found, and opened at that slide (nothing goes up yet).
-      await p.getByTestId('remote-library-search').fill('talk point two');
-      const hit = library.getByTestId('remote-library-item').filter({ hasText: TALK });
-      await expect(hit).toContainText('Placeholder talk point two');
-      await expectNoSeriousA11yIssues(p, `the remote's library searched on a phone (${engine})`);
-      await hit.click();
-      await expect(p.getByTestId('remote-tab-show')).toHaveAttribute('aria-selected', 'true');
-      await expect(p.getByTestId('remote-slides-hint')).toBeVisible();
-      const found = p.locator('[data-testid="remote-slide"][data-focus="true"]');
-      await expect(found).toHaveAttribute('data-position', '1');
-      expect((await where(win)).presentationId).not.toBe(talkId);
+      // Its playlist read: the PDF's row is the one it may put up.
+      const items = await phoneAsks(p, 'GET', `/api/v1/playlists/${list.playlistId}/items`);
+      expect(items.status).toBe(200);
+      expect(items.json['items']).toMatchObject([
+        { id: pdfRow, kind: 'presentation', presentationId: pdfId, phonePlays: true },
+        { id: kirtanRow, kind: 'presentation', presentationId: show.kirtanId, phonePlays: false },
+      ]);
 
-      // Tapped: the screens follow.
-      await found.click();
-      await expect.poll(() => where(win)).toEqual({ presentationId: talkId, slideIndex: 1 });
-      await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder talk point two');
-      await expect(p.getByTestId('remote-slides-hint')).toHaveCount(0);
+      // The PDF's row, tapped: the screens follow.
+      expect(
+        (await phoneAsks(p, 'POST', '/api/v1/trigger/item', { playlistId: list.playlistId, itemId: pdfRow }))
+          .status,
+      ).toBe(200);
+      await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 0 });
+      await hallDrawsLive(win, output);
+      await phoneShowsLive(p, win);
 
       // The live slide's notes, and the next slide's, under the live picture.
+      await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
+      await expect(p.getByTestId('remote-notes-next')).toHaveText(`Next: ${NOTE_TWO}`);
+      await p.getByTestId('remote-next-button').click();
+      await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 1 });
+      await hallDrawsLive(win, output);
       await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_TWO);
       await expect(p.getByTestId('remote-notes-next')).toHaveText('Next: no notes');
       await p.getByTestId('remote-back').click();
-      await expect.poll(() => where(win)).toEqual({ presentationId: talkId, slideIndex: 0 });
+      await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 0 });
       await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
       await expect(p.getByTestId('remote-notes-next')).toHaveText(`Next: ${NOTE_TWO}`);
       await expectNoSeriousA11yIssues(p, `the remote's notes on a phone (${engine})`);
@@ -103,14 +155,28 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await p.getByTestId('remote-notes-toggle').click();
       await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
 
-      // Another presentation looked at while the talk is up: back to what is on the screens in one tap.
-      await p.getByTestId('remote-tab-library').click();
-      await p.getByTestId('remote-library-search').fill('');
-      await library.getByTestId('remote-library-item').filter({ hasText: KIRTAN }).click();
-      await expect(p.getByTestId('remote-show-live')).toBeVisible();
-      await p.getByTestId('remote-show-live').click();
-      await expect(p.getByTestId('remote-slide').nth(0)).toHaveAttribute('data-live', 'true');
-      await expect(p.getByTestId('remote-show-live')).toHaveCount(0);
+      // To its last page, and Next again: it stops there, never the kirtan after it in the playlist.
+      await phoneShowsLive(p, win);
+      for (const slideIndex of [1, 2]) {
+        await p.getByTestId('remote-next-button').click();
+        await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex });
+      }
+      await p.getByTestId('remote-next-button').click();
+      // A Next with no revision of its own (the review's MUST-2): a tap's carries the revision its page saw, and the
+      // engine lets an older one do nothing (TST-11), so only Next's `within` (the main process's) keeps the deck still.
+      expect(await phoneAsks(p, 'POST', '/api/v1/trigger/next', {})).toMatchObject({
+        status: 200,
+        json: { ok: true, changed: false },
+      });
+      await holdStill(
+        async () => {
+          const now = await where(win);
+          return now.presentationId === pdfId && now.slideIndex === 2;
+        },
+        1500,
+        'Next on the phone at the PDF’s last page changes nothing',
+      );
+      await expect(output.locator('[data-layer="slide"]')).not.toContainText('Placeholder chorus line');
 
       // At the smallest phone size too.
       await p.setViewportSize({ width: 375, height: 667 });
@@ -222,11 +288,14 @@ for (const [engine, name] of [
 
 test('a presenter’s iPad held sideways: the live picture, the notes and Next beside the slides', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp(NETWORK_ENV);
+  const { app } = await launchApp({ ...NETWORK_ENV, ...PDF_ENV });
   const win = await operatorPage(app);
   await operatorReady(win);
   await setUpPlaceholderShow(win);
-  const talkId = await placeholderTalk(win);
+  const pdfId = await presenterPdf(win);
+  const list = await playlistOf(win, 'Placeholder presenter list', [
+    { kind: 'presentation', presentationId: pdfId },
+  ]);
   await setUpScreen(win);
   const output = await outputPage(app);
   const { base } = await networkOn(win);
@@ -242,43 +311,47 @@ test('a presenter’s iPad held sideways: the live picture, the notes and Next b
     await expect(presenter.getByTestId('remote-notes-section')).toBeVisible();
     await expect(presenter.getByTestId('remote-next')).toBeVisible();
 
-    // The talk from the library, a tab away beside the live picture; its first slide put up.
-    await t.getByTestId('remote-panel-library').click();
-    await t.getByTestId('remote-library-item').filter({ hasText: TALK }).click();
-    await expect(t.getByTestId('remote-panel-show')).toHaveAttribute('aria-selected', 'true');
-    await t.getByTestId('remote-slide').nth(0).click();
-    await expect.poll(() => where(win)).toEqual({ presentationId: talkId, slideIndex: 0 });
-    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder talk opening');
+    // The PDF from its playlist row, put up from the iPad (before alpha.23, a talk from the library a tab away).
+    expect(
+      (
+        await phoneAsks(t, 'POST', '/api/v1/trigger/item', {
+          playlistId: list.playlistId,
+          itemId: list.rows[0] ?? '',
+        })
+      ).status,
+    ).toBe(200);
+    await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 0 });
+    await hallDrawsLive(win, output);
     await expect(presenter.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
     await expect(presenter.getByTestId('remote-notes-next')).toHaveText(`Next: ${NOTE_TWO}`);
+    await phoneShowsLive(t, win);
 
     // Side by side, all in view: the live picture left of the slides, Next below both.
+    await expect(t.getByTestId('remote-slides')).toBeVisible();
     const live = await presenter.getByTestId('remote-live').boundingBox();
     const slides = await t.getByTestId('remote-slides').boundingBox();
     expect(live && slides ? live.x + live.width <= slides.x : false).toBe(true);
     await expect(t.getByTestId('remote-next-button')).toBeInViewport();
     await expect(presenter.getByTestId('remote-notes-live')).toBeInViewport();
     await t.getByTestId('remote-next-button').click();
-    await expect.poll(() => where(win)).toEqual({ presentationId: talkId, slideIndex: 1 });
+    await expect.poll(() => where(win)).toEqual({ presentationId: pdfId, slideIndex: 1 });
     await expect(presenter.getByTestId('remote-notes-live')).toHaveText(NOTE_TWO);
     await expectNoSeriousA11yIssues(t, 'the remote on an iPad held sideways');
-    await t.getByTestId('remote-panel-library').click();
-    await expectNoSeriousA11yIssues(t, 'the library on an iPad held sideways');
+    // The library beside it: refused (before alpha.23 a tab away).
+    await expectPhoneRefuses({ win, page: t }, 'GET', '/api/v1/presentations', undefined, 'library');
 
-    // Held upright: the playlist or the library beside the show.
+    // Held upright: the playlist beside the show.
     await t.setViewportSize({ width: 810, height: 1080 });
     await expect(t.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
     await expect(t.getByTestId('remote-items')).toBeVisible();
-    await t.getByTestId('remote-side-library').click();
-    await expect(t.getByTestId('remote-library')).toBeVisible();
-    await expectNoSeriousA11yIssues(t, 'the library beside the show on an iPad held upright');
+    await expectNoSeriousA11yIssues(t, 'the playlist beside the show on an iPad held upright');
   } finally {
     await tablet.close();
   }
   await app.close();
 });
 
-test('in Simple Mode a Remote still reads the library, and puts up a slide of Simple Mode’s playlist only, as the window may, and no more', async () => {
+test('in Simple Mode a Remote reads only what is live: the library, a presentation’s slides and putting one up refused in words, even of Simple Mode’s playlist; the window puts it up', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -290,36 +363,22 @@ test('in Simple Mode a Remote still reads the library, and puts up a slide of Si
   const { port } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder presenter script');
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  const asks = { win, port, token };
 
-  // Reading the library, a page at a time and searched, and a presentation's slides.
-  const page = await apiCall(port, '/api/v1/presentations?limit=2', { token });
-  expect(page.status).toBe(200);
-  expect((page.json['presentations'] as unknown[]).length).toBe(2);
-  expect(page.json['total']).toBeGreaterThan(2);
-  const found = await apiCall(port, '/api/v1/search?q=talk%20point%20two', { token });
-  expect(found.status).toBe(200);
-  expect(found.json['hits']).toEqual([
-    expect.objectContaining({ presentationId: talkId, match: expect.objectContaining({ kind: 'text' }) }),
-  ]);
-  expect((await apiCall(port, `/api/v1/presentations/${talkId}`, { token })).status).toBe(200);
+  // The library, a page at a time and searched: refused (alpha.23, QA23-PHONE-1: the library is never a phone's);
+  // a presentation's slides: Pro Mode's, refused in Simple Mode's words.
+  await expectPhoneRefuses(asks, 'GET', '/api/v1/presentations?limit=2', undefined, 'library');
+  await expectPhoneRefuses(asks, 'GET', '/api/v1/search?q=talk%20point%20two', undefined, 'library');
+  await expectPhoneRefuses(asks, 'GET', `/api/v1/presentations/${talkId}`, undefined, 'simple');
 
-  // Putting one of its slides up from the library: refused in words, nothing up (Session 55, the owner's answer of
-  // 30 Oct 2026: a phone does only what Simple Mode's window does, which puts up its one playlist's rows, never the
-  // library's).
-  const slide = () =>
-    apiCall(port, '/api/v1/trigger/slide', {
-      method: 'POST',
-      token,
-      body: { presentationId: talkId, slideIndex: 2 },
-    });
-  const refused = await slide();
-  expect(refused.status).toBe(403);
-  expect(String(refused.json['message'])).toMatch(
-    /^Simple Mode on Drashti’s computer: a phone does only what/u,
-  );
+  // Putting one of its slides up: refused in Simple Mode's words, nothing up; and still refused once the talk is in
+  // Simple Mode's playlist (brought in as its window does): a Simple Mode phone shows the Sabha flow, what is on the
+  // screens and the chat (the owner, alpha.23).
+  const slide = { presentationId: talkId, slideIndex: 2 };
+  await expectPhoneRefuses(asks, 'POST', '/api/v1/trigger/slide', slide, 'simple');
   expect((await where(win)).presentationId).toBeNull();
   await expect(output.locator('[data-layer="slide"]')).toHaveCount(0);
-  // Once in Simple Mode's playlist (brought in as its window does), running the show, which Simple Mode keeps.
   await win.evaluate(async (presentationId) => {
     const d = (globalThis as PageGlobals).drashti;
     const one = await d.app.simplePlaylist();
@@ -327,12 +386,21 @@ test('in Simple Mode a Remote still reads the library, and puts up a slide of Si
     const added = await d.playlists.addItems(one, null, [{ kind: 'presentation', presentationId }]);
     if (!added.ok) throw new Error(added.message);
   }, talkId);
-  const up = await slide();
-  expect(up.status).toBe(200);
+  await expectPhoneRefuses(asks, 'POST', '/api/v1/trigger/slide', slide, 'simple');
+  // The window puts it up (moved from the phone): Simple Mode runs the show on the computer.
+  const up = await win.evaluate(
+    (s) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', ...s }),
+    slide,
+  );
+  expect(up.ok).toBe(true);
   await expect.poll(() => where(win)).toEqual({ presentationId: talkId, slideIndex: 2 });
   await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder talk closing');
+  // What is live, it still reads.
+  for (const path of ['/api/v1/state', '/api/v1/hall', '/api/v1/status'])
+    expect((await apiCall(port, path, { token })).status, path).toBe(200);
 
-  // The library is read, never changed (switching a Look, refused here before Session 55, went with Looks).
+  // The library is read by no phone, and never changed (switching a Look, refused here before Session 55, went with
+  // Looks).
   expect((await apiCall(port, '/api/v1/presentations', { method: 'POST', token })).status).toBe(405);
   expect((await apiCall(port, '/api/v1/search?q=talk', { method: 'POST', token })).status).toBe(405);
   await app.close();
