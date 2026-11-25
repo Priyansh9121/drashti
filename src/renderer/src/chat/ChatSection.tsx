@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { Textarea } from '../ui/Field';
 import { ChevronDown, ChevronRight, MessagesSquare, Send, Trash2 } from '../ui/icons';
 import { LIVE_SECTION, Panel } from '../ui/Panel';
+import { useScrolls } from '../ui/scrolls';
 import { EmptyState, Loading } from '../ui/States';
 import { useNetwork } from '../network/network-store';
 import { useNow } from '../render/useNow';
@@ -45,16 +46,6 @@ const MESSAGES_BOX = 'h-[clamp(10rem,30vh,20rem)] min-h-0';
 /** What Report a Problem's picture of the window blanks (the chat's words and names). */
 const PRIVATE = { [REPORT_PRIVATE_ATTR]: '' };
 
-/** Whether a box scrolls now (its content taller than it), checked again whenever `content` changes. */
-function useScrolls(box: RefObject<HTMLElement | null>, content: unknown): boolean {
-  const [scrolls, setScrolls] = useState(false);
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (el) setScrolls(el.scrollHeight > el.clientHeight + 1);
-  }, [box, content]);
-  return scrolls;
-}
-
 /**
  * How a person is listed (core's M3: every chat phone is listed, named or not; one with no name yet has its device's
  * name, "Chat 3", and `named` false).
@@ -82,8 +73,7 @@ export function ChatPeople({
   canRemove: (member: ChatMember) => boolean;
   onRemove: (member: ChatMember) => void;
 }) {
-  const list = useRef<HTMLUListElement>(null);
-  const scrolls = useScrolls(list, members);
+  const [list, scrolls] = useScrolls();
   return (
     <div className="space-y-1.5" data-testid="chat-people">
       <button
@@ -268,19 +258,25 @@ function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) =
 
 /** The day's messages, kept at the newest while the operator is there (scrolled up, it stays where it was). */
 function Messages({ view }: { view: ChatOperatorView }) {
-  const list = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement | null>(null);
   const atEnd = useRef(true);
-  const [scrolls, setScrolls] = useState(false);
+  // Whether it scrolls now (ui/scrolls.ts): reached by the keyboard only while it does.
+  const [watch, scrolls] = useScrolls();
+  const ref = useCallback(
+    (el: HTMLDivElement | null) => {
+      list.current = el;
+      watch(el);
+    },
+    [watch],
+  );
   const rows = chatRows(view.messages, CHAT_OPERATOR_ID);
   useLayoutEffect(() => {
     const el = list.current;
-    if (!el) return;
-    if (atEnd.current) el.scrollTop = el.scrollHeight;
-    setScrolls(el.scrollHeight > el.clientHeight + 1);
+    if (el && atEnd.current) el.scrollTop = el.scrollHeight;
   }, [view.messages]);
   return (
     <ChatList
-      ref={list}
+      ref={ref}
       rows={rows}
       // It scrolls on its own, inside the box of one height (MESSAGES_BOX), reached by the keyboard while it scrolls.
       className="h-full overflow-y-auto pr-1"
