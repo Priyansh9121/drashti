@@ -21,6 +21,7 @@ import { useNow } from '../render/useNow';
 import { closeNetwork, networkAction, useNetwork } from './network-store';
 import { AddFilesSection } from './AddFilesSection';
 import { QrCode } from './QrCode';
+import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 
 /*
  * The local network's panel (Pro Mode): on or off, the address a phone
@@ -131,7 +132,11 @@ function Pairing({ status }: { status: NetworkStatus }) {
             <p className="text-sm text-muted">
               Scan it with the phone’s camera, or open the address above and type:
             </p>
-            <p className="font-mono text-4xl font-bold tracking-widest text-fg" data-testid="pairing-code">
+            <p
+              className="font-mono text-4xl font-bold tracking-widest text-fg"
+              data-testid="pairing-code"
+              {...{ [REPORT_PRIVATE_ATTR]: '' }}
+            >
               {spaced(offer.code)}
             </p>
             <p className="text-xs text-muted" aria-live="off">

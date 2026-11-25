@@ -42,6 +42,14 @@ export const CHAT_RATE_ALL = { perSecond: 5, burst: 20 } as const;
 export const CHAT_NAME_RATE = { perSecond: 0.1, burst: 3 } as const;
 /** The "Chat" QR lets phones join for this long after the operator shows it (each phone paired by itself). */
 export const CHAT_INVITE_TTL_MS = 10 * 60 * 1000;
+/** One phone's reads of the chat (opening, waking, reconnecting): a few at once, then one a second (review M4). */
+export const CHAT_READ_RATE = { perSecond: 1, burst: 5 } as const;
+/** Phones that join by one Chat QR from one address, at most (one phone scanning again; review M2). */
+export const CHAT_JOINS_PER_ADDRESS = 2;
+/** Phones joining by the Chat QR together: a few at once, then one a second (review M2). */
+export const CHAT_JOIN_RATE = { perSecond: 1, burst: 10 } as const;
+/** Feeds that follow only the chat (chat phones', Announcements devices'), at most: the show's devices keep the rest. */
+export const CHAT_FEEDS_MAX = 60;
 
 // ---- who ---------------------------------------------------------------------------------------------------------
 
@@ -76,21 +84,31 @@ export interface ChatState {
   people: ChatPerson[];
 }
 
-/** What a phone reads (GET /api/v1/chat): the day's chat, and who this phone is in it (name null: not given yet). */
+/**
+ * What a phone reads (GET /api/v1/chat[?after=<id>]): the day's chat, and who this phone is in it (name null: not
+ * given yet). `since`: the message id the answer's messages follow (the phone's `after`, when Drashti still has it:
+ * add them to what the phone has), or null (they are the whole day's: show them in its place).
+ */
 export interface ChatPhoneView extends ChatState {
   you: { id: string; name: string | null };
+  since: string | null;
 }
 
-/** A person as the operator's Chat section lists them: the kind of device, and whether it is connected now. */
+/**
+ * A person as the operator's Chat section lists them: the kind of device, and whether it is connected now. Every chat
+ * phone is listed, named or not (review M3): one with no name yet has its device's name ("Chat 3") and `named` false.
+ */
 export interface ChatMember extends ChatPerson {
   kind: ChatDeviceKind;
   connected: boolean;
+  named: boolean;
 }
 
 /**
  * The pairing dialog's "Chat" QR: a code that pairs each phone that scans it as its own chat-only device, while it is
- * shown (until `expiresAt`, Cancel, or CHAT_PEOPLE_MAX chat devices). `url` opens the pairing page with the code in
- * its #fragment (which browsers never send), as a pairing QR does.
+ * shown (until `expiresAt`, Cancel, or CHAT_PEOPLE_MAX chat devices). `url` opens the chat's own page (CHAT_PAGE)
+ * with the code in its #fragment (which browsers never send): a phone already paired in the chat joins with its own
+ * pairing, any other pairs by the code as the pairing page does (POST /api/v1/pair).
  */
 export interface ChatInvite {
   code: string;
@@ -146,6 +164,12 @@ export const CHAT_REFUSAL = {
   noName: 'Give your name first, then send.',
   name: `A name needs 1 to ${CHAT_NAME_MAX} characters.`,
   operatorName: 'That name is the operator’s: choose another.',
+  nameTaken: 'That name is taken today: choose another.',
+  readTooFast: 'Too many reads at once: wait a moment, then try again.',
+  badRead: 'Drashti cannot read the chat that way.',
+  joinTooMany: 'This phone has joined the chat already. Ask the operator if you need to join again.',
+  joinTooFast: 'Many phones are joining at once: wait a moment, then scan the Chat QR again.',
+  ended: 'This Chat QR has ended: ask the operator to show it again.',
   nameTooFast: 'Too many name changes: wait a moment, then try again.',
   full: `The chat is full: at most ${CHAT_PEOPLE_MAX} people a day. Ask the operator.`,
   notIn: 'This device is not in the chat.',
@@ -161,7 +185,8 @@ const VISIBLE = /[^\p{Z}\p{Cf}\p{M}\p{Default_Ignorable_Code_Point}]/u;
  * A message's words as kept and shown, the same on the computer and a phone:
  * - every line break (CR LF, CR, U+0085, U+2028, U+2029, a vertical tab or form feed) becomes "\n", a tab a space;
  * - other control characters (C0, DEL, C1) and the direction marks, embeddings and isolates (Bidi_Control) are left
- *   out, so no message can turn the words after it around or hide them;
+ *   out, so no message can turn the words after it around or hide them, and so is a lone half of an emoji (it would
+ *   not come back the same from the chat's file);
  * - spaces at the ends of each line and blank lines at either end are trimmed, and no more than one blank line in a
  *   row is kept;
  * - letters, marks, joiners and emoji sequences stay exactly as typed (Gujarati's and Hindi's ZWJ and ZWNJ too);
@@ -172,7 +197,7 @@ export function cleanChatText(text: string): string {
   const lines = text
     .replace(/\r\n?|[\v\f\u0085\u2028\u2029]/gu, '\n')
     .replace(/\t/gu, ' ')
-    .replace(/[\p{Cc}\p{Bidi_Control}]/gu, (c) => (c === '\n' ? c : ''))
+    .replace(/[\p{Cc}\p{Cs}\p{Bidi_Control}]/gu, (c) => (c === '\n' ? c : ''))
     .split('\n')
     .map((line) => line.replace(/^[\p{Z}]+|[\p{Z}]+$/gu, ''));
   const kept: string[] = [];
@@ -204,6 +229,25 @@ export const chatTextSchema = z
 export const chatNameSchema = cleanNameSchema(CHAT_NAME_MAX);
 
 export const chatSendSchema = z.object({ text: z.string() }).strict();
+/** A phone's read: what it has already (the last message id), if anything. */
+export const chatReadSchema = z.object({ after: z.string().min(1).max(128).optional() }).strict();
+
+/** Digits that read as letters in a name ("0perator", "Person l"). */
+const LOOK_ALIKE: Record<string, string> = { '0': 'o', '1': 'l', '3': 'e', '4': 'a', '5': 's', '7': 't' };
+
+/**
+ * A name as two names are compared (review S3): full-width and other compatibility forms as their plain letters
+ * (NFKC), case folded, only letters, marks and digits kept (spaces, punctuation and emoji left out), digits that read as
+ * letters as those letters. "Operator.", "0perator", "Ｏｐｅｒａｔｏｒ" and "O p e r a t o r" all read "operator"; a
+ * Gujarati or Hindi vowel sign stays, so names that differ by one stay different.
+ */
+export function chatNameKey(name: string): string {
+  return name
+    .normalize('NFKC')
+    .toLocaleLowerCase('en')
+    .replace(/[^\p{L}\p{M}\p{N}]/gu, '')
+    .replace(/[013457]/gu, (d) => LOOK_ALIKE[d] ?? d);
+}
 export const chatNameInputSchema = z.object({ name: z.string() }).strict();
 
 /** The day a moment falls on, on the Drashti computer (its time zone unless given): YYYY-MM-DD. */
