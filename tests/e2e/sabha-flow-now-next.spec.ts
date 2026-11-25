@@ -290,37 +290,95 @@ async function playlistsColumn(win: Page, key: 'Home' | 'End'): Promise<void> {
 }
 
 /**
- * Where an element (all of its words: its whole box) is out of sight: outside the window, or outside a box around it
- * that clips what overflows it ([] when all of it is in sight).
+ * Where Next up is out of sight, by how much of it must be (lead 2's Q-FC-2 A): 'whole': all of its words in the window
+ * and in every box round it that clips; 'first line': its label and the whole of its first line so; 'reachable': each of
+ * its lines brought into sight by the panel's own scroll, one after another (the panel's body put back after). [] when
+ * all is well.
  */
-const outOfSight = (loc: Locator) =>
-  loc.evaluate((el) => {
-    const box = el.getBoundingClientRect();
-    if (box.width === 0 || box.height === 0) return ['not drawn'];
+const nextUpOutOfSight = (loc: Locator, how: 'whole' | 'first line' | 'reachable') =>
+  loc.evaluate((el, mode) => {
     const out: string[] = [];
-    const within = (r: { left: number; top: number; right: number; bottom: number }, what: string) => {
-      if (
-        box.left < r.left - 0.5 ||
-        box.top < r.top - 0.5 ||
-        box.right > r.right + 0.5 ||
-        box.bottom > r.bottom + 0.5
-      )
-        out.push(
-          `it (${String(Math.round(box.left))},${String(Math.round(box.top))} to ${String(Math.round(box.right))},${String(Math.round(box.bottom))}) is out of ${what} (${String(Math.round(r.left))},${String(Math.round(r.top))} to ${String(Math.round(r.right))},${String(Math.round(r.bottom))})`,
-        );
+    const clips = (): { r: DOMRect; what: string }[] => {
+      const list = [{ r: new DOMRect(0, 0, window.innerWidth, window.innerHeight), what: 'the window' }];
+      for (let up = el.parentElement; up; up = up.parentElement) {
+        const style = getComputedStyle(up);
+        if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+        list.push({
+          r: up.getBoundingClientRect(),
+          what: `a box that clips it (${up.dataset['testid'] ?? up.tagName.toLowerCase()})`,
+        });
+      }
+      return list;
     };
-    within({ left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }, 'the window');
-    for (let up = el.parentElement; up; up = up.parentElement) {
-      const style = getComputedStyle(up);
-      if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
-      within(
-        up.getBoundingClientRect(),
-        `a box that clips it (${up.dataset['testid'] ?? up.tagName.toLowerCase()})`,
-      );
+    const check = (box: { left: number; top: number; right: number; bottom: number }, part: string) => {
+      for (const { r, what } of clips())
+        if (
+          box.left < r.left - 0.5 ||
+          box.top < r.top - 0.5 ||
+          box.right > r.right + 0.5 ||
+          box.bottom > r.bottom + 0.5
+        )
+          out.push(
+            `${part} (${String(Math.round(box.left))},${String(Math.round(box.top))} to ${String(Math.round(box.right))},${String(Math.round(box.bottom))}) is out of ${what} (${String(Math.round(r.left))},${String(Math.round(r.top))} to ${String(Math.round(r.right))},${String(Math.round(r.bottom))})`,
+          );
+    };
+    // Its lines: the line boxes of all its words, one per height.
+    const lines = (): DOMRect[] => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const byTop: DOMRect[] = [];
+      for (const r of range.getClientRects()) {
+        if (r.width === 0 || r.height === 0) continue;
+        const same = byTop.find((l) => Math.abs(l.top - r.top) < r.height / 2);
+        if (same) {
+          const left = Math.min(same.left, r.left);
+          const right = Math.max(same.right, r.right);
+          const top = Math.min(same.top, r.top);
+          const bottom = Math.max(same.bottom, r.bottom);
+          byTop[byTop.indexOf(same)] = new DOMRect(left, top, right - left, bottom - top);
+        } else byTop.push(new DOMRect(r.left, r.top, r.width, r.height));
+      }
+      return byTop.sort((a, b) => a.top - b.top);
+    };
+    if (mode === 'whole') check(el.getBoundingClientRect(), 'Next up');
+    else if (mode === 'first line') {
+      const first = lines()[0];
+      if (!first) out.push('Next up has no line');
+      else check(first, 'its first line');
+    } else {
+      const body = el.closest('[data-testid="sabha-flow-body"]');
+      if (!(body instanceof HTMLElement)) return ['no panel body'];
+      const was = body.scrollTop;
+      const count = lines().length;
+      for (let k = 0; k < count; k++) {
+        const line = lines()[k];
+        if (!line) break;
+        const bodyBox = body.getBoundingClientRect();
+        body.scrollTop += line.top - bodyBox.top - (bodyBox.height - line.height) / 2;
+        const now = lines()[k];
+        if (now) check(now, `its line ${String(k + 1)} of ${String(count)}, scrolled to`);
+      }
+      body.scrollTop = was;
     }
-    // Its own words not cut inside it either (nothing hidden past its own edge).
-    if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
-      out.push('its words overflow it');
+    return out;
+  }, how);
+
+/** Next up's words are never cut by its own look: no ellipsis, no line clamp, nothing hidden past its edge, no one-line. */
+const nextUpCut = (loc: Locator) =>
+  loc.evaluate((el) => {
+    const out: string[] = [];
+    for (const e of [el, ...el.querySelectorAll('*')]) {
+      const s = getComputedStyle(e);
+      const what = e === el ? 'Next up' : `a part of it (${e.tagName.toLowerCase()})`;
+      if (s.textOverflow === 'ellipsis') out.push(`${what} ends in an ellipsis`);
+      if (s.webkitLineClamp !== 'none' && s.webkitLineClamp !== '') out.push(`${what} is clamped`);
+      if (s.whiteSpace === 'nowrap' || s.whiteSpace === 'pre') out.push(`${what} does not wrap`);
+      if (
+        (s.overflowX !== 'visible' || s.overflowY !== 'visible') &&
+        (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1)
+      )
+        out.push(`${what} hides some of its words`);
+    }
     return out;
   });
 
@@ -367,13 +425,16 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
             await expect(part, `${where} at ${String(size.width)} × ${String(size.height)}`).toBeInViewport({
               ratio: 1,
             });
-          // And Next up, shown prominently (the owner: "next up this program"): its label and ALL its words in sight
-          // beside them, whole, in the window and in every box round it that clips (a22-review-flow round 7, lead 2:
-          // nothing cut short, it wraps).
-          expect(
-            await outOfSight(nextLine),
-            `${where} at ${String(size.width)} × ${String(size.height)}`,
-          ).toEqual([]);
+          // And Next up, shown prominently (the owner: "next up this program"; lead 2's Q-FC-2 A): at the owner's
+          // 1410 x 900 its label and ALL its words in sight, whole; in smaller windows its label and whole first line in
+          // sight, and each of its lines reachable by the panel's own scroll. Its words are never cut.
+          const at = `${where} at ${String(size.width)} × ${String(size.height)}`;
+          if (size === OWNERS_WINDOW) expect(await nextUpOutOfSight(nextLine, 'whole'), at).toEqual([]);
+          else {
+            expect(await nextUpOutOfSight(nextLine, 'first line'), at).toEqual([]);
+            expect(await nextUpOutOfSight(nextLine, 'reachable'), at).toEqual([]);
+          }
+          expect(await nextUpCut(nextLine), at).toEqual([]);
         }
       }
   await app.close();
