@@ -1,20 +1,15 @@
 import { expect, test } from '@playwright/test';
+import type { ElectronApplication, Worker as BrowserWorker } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc';
 import { longestPcmWait, type PcmDelivery } from '../../src/main/testing/pcm-gaps';
+import { letTimePass } from './helpers';
 import { streamSoundPage } from './stream-helpers';
 import { setupVideoCue } from './video-cue-helpers';
 
-test('The stream forwards continuous PCM while its drawing page handles a half-second long frame', async () => {
-  const { app, stream, dir } = await setupVideoCue(true);
-  try {
-    const streamSound = await streamSoundPage(app);
-    // This generated stand-in receives the real capture port in its own utility process, like the encoder.
-    const file = join(dir, 'pcm-observer.cjs');
-    writeFileSync(
-      file,
-      `
+// This generated stand-in receives the real capture port in its own utility process, like the encoder.
+const OBSERVER = `
       const ports = []; let port, frames = 0, started = 0, previous = 0, longest = 0, ready = false;
       // Diagnostics only (a22-cue, the Mac's one 38.9 ms gap in a21-s5-1123-152334-44457): each gap over 20 ms, on the
       // wall clock, to set beside the drawing page's long frame.
@@ -49,61 +44,99 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
           port.start();
         }
       });
-    `,
-    );
-    await app.evaluate(
-      async ({ BrowserWindow, MessageChannelMain, utilityProcess }, { file, url, soundUrl, ipc }) => {
-        const child = utilityProcess.fork(file, [], {
-          serviceName: 'Generated PCM observer',
-          stdio: 'ignore',
+    `;
+
+interface ObserverProbe {
+  waitFor: (kind: string) => Promise<Record<string, number>>;
+  send: (text: string) => void;
+  stop: () => void;
+}
+
+/** The stand-in encoder, paired with the stream's two pages as the stream service pairs the real one. */
+async function startObserver(
+  app: ElectronApplication,
+  dir: string,
+  url: string,
+  soundUrl: string,
+): Promise<void> {
+  const file = join(dir, 'pcm-observer.cjs');
+  writeFileSync(file, OBSERVER);
+  await app.evaluate(
+    async ({ BrowserWindow, MessageChannelMain, utilityProcess }, { file, url, soundUrl, ipc }) => {
+      const child = utilityProcess.fork(file, [], {
+        serviceName: 'Generated PCM observer',
+        stdio: 'ignore',
+      });
+      const waitFor = (kind: string): Promise<Record<string, number>> =>
+        new Promise((resolve) => {
+          const receive = (value: unknown) => {
+            const message = value as { kind?: string };
+            if (message.kind !== kind) return;
+            child.removeListener('message', receive);
+            resolve(message as Record<string, number>);
+          };
+          child.on('message', receive);
         });
-        const waitFor = (kind: string): Promise<Record<string, number>> =>
-          new Promise((resolve) => {
-            const receive = (value: unknown) => {
-              const message = value as { kind?: string };
-              if (message.kind !== kind) return;
-              child.removeListener('message', receive);
-              resolve(message as Record<string, number>);
-            };
-            child.on('message', receive);
-          });
-        const ready = waitFor('ready');
-        const page = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url);
-        if (!page) throw new Error('No generated stream page');
-        const sound = new MessageChannelMain();
-        child.postMessage('port', [sound.port1]);
-        const soundPage = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === soundUrl);
-        if (!soundPage) throw new Error('No generated stream sound page');
-        soundPage.webContents.postMessage(ipc, { role: 'encoder-audio' }, [sound.port2]);
-        const { port1, port2 } = new MessageChannelMain();
-        child.postMessage('port', [port1]);
-        (
-          globalThis as {
-            s5PcmQueue?: { waitFor: typeof waitFor; send: (text: string) => void; stop: () => void };
-          }
-        ).s5PcmQueue = {
-          waitFor,
-          send: (text) => child.postMessage(text),
-          stop: () => {
-            child.kill();
-          },
-        };
-        page.webContents.postMessage(ipc, { role: 'encoder' }, [port2]);
-        await ready;
-      },
-      { file, url: stream.url(), soundUrl: streamSound.url(), ipc: IPC.stream.port },
-    );
-    await app.evaluate(async () => {
-      const probe = (
-        globalThis as {
-          s5PcmQueue?: { waitFor: (kind: string) => Promise<unknown>; send: (text: string) => void };
-        }
-      ).s5PcmQueue;
-      if (!probe) throw new Error('No generated PCM observer');
-      const begun = probe.waitFor('begun');
-      probe.send('begin');
-      await begun;
-    });
+      const ready = waitFor('ready');
+      const page = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url);
+      if (!page) throw new Error('No generated stream page');
+      const sound = new MessageChannelMain();
+      child.postMessage('port', [sound.port1]);
+      const soundPage = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === soundUrl);
+      if (!soundPage) throw new Error('No generated stream sound page');
+      soundPage.webContents.postMessage(ipc, { role: 'encoder-audio' }, [sound.port2]);
+      const { port1, port2 } = new MessageChannelMain();
+      child.postMessage('port', [port1]);
+      (globalThis as { s5PcmQueue?: ObserverProbe }).s5PcmQueue = {
+        waitFor,
+        send: (text) => child.postMessage(text),
+        stop: () => {
+          child.kill();
+        },
+      };
+      page.webContents.postMessage(ipc, { role: 'encoder' }, [port2]);
+      await ready;
+    },
+    { file, url, soundUrl, ipc: IPC.stream.port },
+  );
+}
+
+/** The watch starts: the stand-in counts every sample it is sent from now on. */
+async function beginWatch(app: ElectronApplication): Promise<void> {
+  await app.evaluate(async () => {
+    const probe = (globalThis as { s5PcmQueue?: ObserverProbe }).s5PcmQueue;
+    if (!probe) throw new Error('No generated PCM observer');
+    const begun = probe.waitFor('begun');
+    probe.send('begin');
+    await begun;
+  });
+}
+
+/** The watch ends: what the stand-in was sent, and when. */
+async function finishWatch(app: ElectronApplication): Promise<Record<string, number>> {
+  return await app.evaluate(async () => {
+    const probe = (globalThis as { s5PcmQueue?: ObserverProbe }).s5PcmQueue;
+    if (!probe) throw new Error('No generated PCM observer');
+    const result = probe.waitFor('result');
+    probe.send('finish');
+    return await result;
+  });
+}
+
+async function stopObserver(app: ElectronApplication): Promise<void> {
+  await app.evaluate(() => {
+    const g = globalThis as { s5PcmQueue?: ObserverProbe };
+    g.s5PcmQueue?.stop();
+    delete g.s5PcmQueue;
+  });
+}
+
+test('The stream forwards continuous PCM while its drawing page handles a half-second long frame', async () => {
+  const { app, stream, dir } = await setupVideoCue(true);
+  try {
+    const streamSound = await streamSoundPage(app);
+    await startObserver(app, dir, stream.url(), streamSound.url());
+    await beginWatch(app);
     const longFrame = await stream.evaluate(() => {
       const from = Date.now();
       const at = performance.now();
@@ -111,20 +144,7 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
       while (performance.now() - at < 500) Math.sqrt(performance.now());
       return { from, to: Date.now() };
     });
-    const result = await app.evaluate(async () => {
-      const probe = (
-        globalThis as {
-          s5PcmQueue?: {
-            waitFor: (kind: string) => Promise<Record<string, number>>;
-            send: (text: string) => void;
-          };
-        }
-      ).s5PcmQueue;
-      if (!probe) throw new Error('No generated PCM observer');
-      const result = probe.waitFor('result');
-      probe.send('finish');
-      return await result;
-    });
+    const result = await finishWatch(app);
     await test.info().attach('s5-pcm-queue.json', {
       body: Buffer.from(JSON.stringify({ ...result, longFrame })),
       contentType: 'application/json',
@@ -148,11 +168,65 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
       'the encoder receives sound through the long drawing frame',
     ).toBeLessThanOrEqual(1000 / 30);
   } finally {
-    await app.evaluate(() => {
-      const g = globalThis as { s5PcmQueue?: { stop: () => void } };
-      g.s5PcmQueue?.stop();
-      delete g.s5PcmQueue;
+    await stopObserver(app);
+    await app.close();
+  }
+});
+
+// a22-fadeskip (run 45513574785's retry): on CI's two-core Windows the stream sound page's PCM worker did not run for
+// 335 ms, and Chromium's capture queue in front of it (MediaStreamTrackProcessor, 10 chunks of 10 ms by default) kept
+// only the newest 100 ms: about 230 ms of the stream's sound never reached the encoder, heard as a skip.
+test('The stream keeps all its sound while the sound page’s PCM worker is held up for a quarter of a second', async () => {
+  const { app, stream, dir } = await setupVideoCue(true);
+  try {
+    const streamSound = await streamSoundPage(app);
+    await startObserver(app, dir, stream.url(), streamSound.url());
+    // The worker that reads the sound page's capture and sends it on (program/encoder-audio-worker.ts).
+    let reader: BrowserWorker | undefined;
+    await expect
+      .poll(
+        () => {
+          reader = streamSound
+            .workers()
+            .filter((w) => w.url().includes('encoder-audio-worker'))
+            .at(-1);
+          return reader !== undefined;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    if (!reader) throw new Error('No PCM worker on the stream sound page');
+    await beginWatch(app);
+    const held = await reader.evaluate(() => {
+      const from = Date.now();
+      const at = performance.now();
+      // Deliberately occupy the PCM worker's own thread, as a starved PC did. This is the cause under test.
+      while (performance.now() - at < 250) Math.sqrt(performance.now());
+      return { from, to: Date.now() };
     });
+    await letTimePass(
+      streamSound,
+      500,
+      'what the capture held while its worker was busy reaches the stand-in, then a steady stretch after it',
+    );
+    const result = await finishWatch(app);
+    await test.info().attach('pcm-worker-held.json', {
+      body: Buffer.from(JSON.stringify({ ...result, held })),
+      contentType: 'application/json',
+    });
+    const elapsed = result['elapsed'] ?? 0;
+    const deliveries = (result as unknown as { deliveries: PcmDelivery[] }).deliveries;
+    // Judged only over a watch that covers the whole hold (fail closed).
+    expect(held.to - held.from).toBeGreaterThanOrEqual(250);
+    expect(deliveries[0]?.wall ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(held.from);
+    expect(deliveries.at(-1)?.wall ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(held.to + 400);
+    expect(elapsed).toBeGreaterThanOrEqual(750);
+    expect(
+      (result['frames'] ?? 0) / 48,
+      '48 kHz PCM keeps its full duration while the sound page’s PCM worker is held up',
+    ).toBeGreaterThanOrEqual(elapsed - 1000 / 30);
+  } finally {
+    await stopObserver(app);
     await app.close();
   }
 });
