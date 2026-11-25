@@ -56,6 +56,8 @@ export const RESTART_GRACE_MAX_MS = 60_000;
 export const RESTARTS_FORGET_MS = 5 * 60_000;
 /** How often the outputs are looked at. */
 export const CHECK_EVERY_MS = 1000;
+/** After this many restarts of the same output in a row the operator is told (a23-heartbeat). */
+export const RESTARTS_TOLD = 4;
 
 /** The grace after `restarts` restarts of the same output in a row (a23-heartbeat): 15 s, 30 s, then 60 s. */
 export function graceAfter(restarts: number): number {
@@ -77,8 +79,13 @@ export interface HeartbeatDeps {
   engineRev(): number;
   /** The outputs to judge now: those visible and showing. */
   judged(): string[];
-  /** It is stuck: log it and restart it. */
-  stuck(screenId: string, reason: string): void;
+  /** It is stuck: log it and restart it, the `inARow`th time in a row (a23-heartbeat: 1 for the first). */
+  stuck(screenId: string, reason: string, inARow: number): void;
+  /**
+   * The operator is told (a23-heartbeat): this output was restarted `restarts` times in a row, RESTARTS_TOLD or more;
+   * or null, it no longer is.
+   */
+  told?(screenId: string, restarts: number | null): void;
   /**
    * Drashti runs translated (an Intel build under Rosetta, x64 under Windows' emulation; a23-heartbeat): every
    * output's reports may come as far apart as a warming one's.
@@ -105,6 +112,11 @@ export class OutputHeartbeat {
   closed(screenId: string): void {
     this.seen.delete(screenId);
     this.restarts.delete(screenId);
+  }
+
+  /** Tried afresh (a23-heartbeat: Try again, or the watchdog's own try): its restarts forgotten. */
+  afresh(screenId: string): void {
+    void screenId;
   }
 
   /** How many times in a row this output was restarted (a23-heartbeat): none once RESTARTS_FORGET_MS passed. */
@@ -170,7 +182,7 @@ export class OutputHeartbeat {
       // Judged: a longer grace while it restarts, the longer the more times in a row (a23-heartbeat).
       this.restarts.set(screenId, { count: inARow + 1, at: now });
       this.opened(screenId);
-      this.deps.stuck(screenId, reason);
+      this.deps.stuck(screenId, reason, inARow + 1);
     }
   }
 

@@ -7,6 +7,7 @@ import {
   REPORT_STALE_MS,
   RESTART_GRACE_MAX_MS,
   RESTARTS_FORGET_MS,
+  RESTARTS_TOLD,
   WARMING_STALE_MS,
 } from './heartbeat';
 
@@ -15,7 +16,9 @@ import {
 let now = 0;
 let rev = 0;
 let judged: string[] = [];
-let stuck: { screenId: string; reason: string; at: number }[] = [];
+let stuck: { screenId: string; reason: string; at: number; inARow: number }[] = [];
+/** What the operator was told of outputs restarted again and again (a23-heartbeat). */
+let told: { screenId: string; restarts: number | null }[] = [];
 let beat: OutputHeartbeat;
 
 /**
@@ -37,7 +40,8 @@ function make(translated = false) {
     now: () => now,
     engineRev: () => rev,
     judged: () => judged,
-    stuck: (screenId, reason) => stuck.push({ screenId, reason, at: now }),
+    stuck: (screenId, reason, inARow) => stuck.push({ screenId, reason, at: now, inARow }),
+    told: (screenId, restarts) => told.push({ screenId, restarts }),
     translated,
   });
   beat.opened('hall');
@@ -61,6 +65,7 @@ beforeEach(() => {
   rev = 0;
   judged = ['hall'];
   stuck = [];
+  told = [];
   make();
 });
 
@@ -213,6 +218,7 @@ describe('a slow output page is not restarted for good (a23-heartbeat: an Intel 
       screenId: 'side',
       reason: 'no report for 15 s',
       at: opened + OPEN_GRACE_MS,
+      inARow: 1,
     });
   });
 
@@ -367,5 +373,75 @@ describe('a slow output page is not restarted for good (a23-heartbeat: an Intel 
       expect(at).toHaveLength(4);
       expect(at.at(-1)).toBeLessThan(4 * 60_000);
     }
+  });
+});
+
+describe('the operator is told of an output restarted again and again (a23-heartbeat)', () => {
+  /** Restarted `n` times in a row, never heard from, each reloaded a second after. */
+  const restartedInARow = (n: number) => {
+    for (let i = 0; i < n; i++) {
+      untilStuck();
+      reloaded();
+    }
+  };
+
+  it('each restart says which it is in a row; from the 4th the operator is told, with the count, on each restart after', () => {
+    restartedInARow(3);
+    expect(told).toEqual([]);
+    restartedInARow(2);
+    expect(stuck.map((s) => s.inARow)).toEqual([1, 2, 3, 4, 5]);
+    expect(told).toEqual([
+      { screenId: 'hall', restarts: 4 },
+      { screenId: 'hall', restarts: 5 },
+    ]);
+    expect(RESTARTS_TOLD).toBe(4);
+  });
+
+  it('told, it is told no more once it reports and has painted the show (a report behind the show is not enough); its count is kept', () => {
+    restartedInARow(4);
+    rev++;
+    beat.changed(rev);
+    run(4000, { hall: () => rev - 1 });
+    expect(told).toEqual([{ screenId: 'hall', restarts: 4 }]);
+    run(2000, { hall: () => rev });
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
+    run(30_000, { hall: () => rev });
+    expect(told).toHaveLength(2);
+    // Silent again within 5 minutes: its next restart is the 5th in a row, said at once.
+    untilStuck();
+    expect(stuck.at(-1)?.inARow).toBe(5);
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: 5 });
+  });
+
+  it('tried afresh (Try again, or the watchdog’s own try), its count starts again and it is told no more', () => {
+    restartedInARow(4);
+    beat.afresh('hall');
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
+    // Its reload: the first grace, and the next restart is a first one.
+    beat.opened('hall');
+    const opened = now;
+    expect(untilStuck() - opened).toBe(OPEN_GRACE_MS);
+    expect(stuck.at(-1)?.inARow).toBe(1);
+    expect(told).toHaveLength(2);
+    // Tried afresh when it was never told: nothing to say.
+    beat.afresh('hall');
+    expect(told).toHaveLength(2);
+  });
+
+  it('its count forgotten (5 minutes with no restart) or its window closed, it is told no more', () => {
+    restartedInARow(4);
+    // Not judged meanwhile (its display away, say): 5 minutes on, its count is forgotten.
+    judged = [];
+    run(RESTARTS_FORGET_MS - 2000);
+    expect(told).toHaveLength(1);
+    run(2000);
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
+    // Judged again from a first restart; told again only at the 4th.
+    judged = ['hall'];
+    beat.opened('hall');
+    restartedInARow(4);
+    expect(told.map((t) => t.restarts)).toEqual([4, null, 4]);
+    beat.closed('hall');
+    expect(told.at(-1)).toEqual({ screenId: 'hall', restarts: null });
   });
 });

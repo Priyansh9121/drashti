@@ -293,6 +293,42 @@ describe('OutputManager', () => {
     expect(manager.status()[0]?.state).toBe('showing');
   });
 
+  it('a screen restarted again and again by the heartbeat says so (a23-heartbeat): showing, with its count, until it no longer is', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    const before = changes;
+    manager.setRestarting('audience', 4);
+    expect(manager.status()[0]).toEqual({
+      screenId: 'audience',
+      state: 'showing',
+      displayId: 2,
+      restarts: 4,
+    });
+    expect(manager.status()[1]).toEqual({ screenId: 'stage', state: 'showing', displayId: 3 });
+    expect(changes).toBe(before + 1);
+    manager.setRestarting('audience', 4);
+    expect(changes).toBe(before + 1);
+    manager.setRestarting('audience', 5);
+    expect(manager.status()[0]?.restarts).toBe(5);
+    expect(changes).toBe(before + 2);
+    // Its window is left as it is, on its display.
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    // Stopped by the watchdog meanwhile: Stopped says it, and the count is back once it shows again.
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'stopped', displayId: 2 });
+    manager.setStopped('audience', false);
+    expect(manager.status()[0]?.restarts).toBe(5);
+    manager.setRestarting('audience', null);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+    // A window closed (turned off) forgets it: turned on again, it starts afresh.
+    manager.setRestarting('audience', 4);
+    screens = [screen('audience', hall, false), screen('stage', stage)];
+    manager.reconcile();
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+  });
+
   // ---- Audience and Stage (Session 50) ----------------------------------------------------------------------
 
   const fill = display(4, 'Switcher fill', 5280);

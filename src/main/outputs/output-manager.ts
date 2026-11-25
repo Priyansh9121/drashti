@@ -181,6 +181,12 @@ export class OutputManager {
     this.reconcile();
   }
 
+  /** The heartbeat restarted this screen's window again and again (a23-heartbeat), or no longer: null. */
+  setRestarting(screenId: string, restarts: number | null): void {
+    void screenId;
+    void restarts;
+  }
+
   status(): ScreenStatus[] {
     return this.statuses;
   }
