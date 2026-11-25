@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PAGE_GROUPS } from '../../../preload/page-groups';
+import { PAGE_GROUPS } from '../../preload/page-groups';
 
 /*
  * The chat (QA23-CHAT-1) is the operator window's alone: never an audience or stage screen's, the stream's, a node's
