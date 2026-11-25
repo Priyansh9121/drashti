@@ -97,6 +97,8 @@ export class OutputHeartbeat {
   private readonly seen = new Map<string, Seen>();
   /** Each output's restarts in a row (a23-heartbeat): how many, and when the last one was. */
   private readonly restarts = new Map<string, { count: number; at: number }>();
+  /** The outputs the operator is told of, restarted RESTARTS_TOLD times in a row or more (a23-heartbeat). */
+  private readonly toldOf = new Set<string>();
   /** When each recent engine revision happened. */
   private readonly revAt = new Map<number, number>();
   private checkedAt: number | null = null;
@@ -112,11 +114,18 @@ export class OutputHeartbeat {
   closed(screenId: string): void {
     this.seen.delete(screenId);
     this.restarts.delete(screenId);
+    this.untell(screenId);
   }
 
   /** Tried afresh (a23-heartbeat: Try again, or the watchdog's own try): its restarts forgotten. */
   afresh(screenId: string): void {
-    void screenId;
+    this.restarts.delete(screenId);
+    this.untell(screenId);
+  }
+
+  /** The operator is told it no longer keeps being restarted, if they were told it did. */
+  private untell(screenId: string): void {
+    if (this.toldOf.delete(screenId)) this.deps.told?.(screenId, null);
   }
 
   /** How many times in a row this output was restarted (a23-heartbeat): none once RESTARTS_FORGET_MS passed. */
@@ -156,6 +165,9 @@ export class OutputHeartbeat {
     s.paintedRev = paintedRev;
     s.warming = warming;
     this.seen.set(screenId, s);
+    // Running and drawing the show again (a23-heartbeat): no longer said to keep restarting. Its count is kept, so
+    // a page that stops again soon is said to at once.
+    if (this.toldOf.has(screenId) && !warming && paintedRev >= this.deps.engineRev()) this.untell(screenId);
   }
 
   /** Look at every judged output once (every CHECK_EVERY_MS). */
@@ -169,6 +181,8 @@ export class OutputHeartbeat {
       for (const screenId of this.seen.keys()) this.opened(screenId);
       return;
     }
+    // Its count forgotten, RESTARTS_FORGET_MS with no restart (a23-heartbeat): no longer said to keep restarting.
+    for (const screenId of [...this.toldOf]) if (this.restartsInARow(screenId) === 0) this.untell(screenId);
     for (const screenId of this.deps.judged()) {
       const s = this.seen.get(screenId);
       if (!s) {
@@ -180,9 +194,15 @@ export class OutputHeartbeat {
       const reason = this.why(s, now);
       if (!reason) continue;
       // Judged: a longer grace while it restarts, the longer the more times in a row (a23-heartbeat).
-      this.restarts.set(screenId, { count: inARow + 1, at: now });
+      const count = inARow + 1;
+      this.restarts.set(screenId, { count, at: now });
       this.opened(screenId);
-      this.deps.stuck(screenId, reason, inARow + 1);
+      this.deps.stuck(screenId, reason, count);
+      // Restarted again and again (a23-heartbeat): the operator is told, so a hall screen reloading is never silent.
+      if (count >= RESTARTS_TOLD) {
+        this.toldOf.add(screenId);
+        this.deps.told?.(screenId, count);
+      }
     }
   }
 

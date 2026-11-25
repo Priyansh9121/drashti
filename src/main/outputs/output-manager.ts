@@ -61,6 +61,8 @@ export class OutputManager {
   private statuses: ScreenStatus[] = [];
   /** Screens whose window the watchdog gave up on (Session 23): not "showing" until it reports again. */
   private readonly stopped = new Set<string>();
+  /** Screens the heartbeat restarted again and again (a23-heartbeat), with how many times in a row. */
+  private readonly restarting = new Map<string, number>();
   /**
    * Audience and Stage turned off (Session 50): Audience's screens' windows closed, their displays the computer's,
    * until on again. Stage starts as it was left (alpha.22, told as the manager is made); Audience on at every start.
@@ -155,8 +157,10 @@ export class OutputManager {
         this.open.set(screen.id, { window: this.deps.openWindow(screen, display), displayId: display.id });
     }
 
-    // A window closed is no longer given up on: a new one starts afresh.
+    // A window closed is no longer given up on, nor restarted again and again (a23-heartbeat): a new one starts afresh.
     for (const id of this.stopped) if (!this.open.has(id) && !this.held.has(id)) this.stopped.delete(id);
+    for (const id of this.restarting.keys())
+      if (!this.open.has(id) && !this.held.has(id)) this.restarting.delete(id);
     this.statuses = screens.map((s) => {
       if (!s.enabled) return { screenId: s.id, state: 'disabled', displayId: null };
       if (!s.displayKey) return { screenId: s.id, state: 'unassigned', displayId: null };
@@ -167,7 +171,7 @@ export class OutputManager {
       if (entry && this.stopped.has(s.id))
         return { screenId: s.id, state: 'stopped', displayId: entry.displayId };
       return entry
-        ? { screenId: s.id, state: 'showing', displayId: entry.displayId }
+        ? this.said({ screenId: s.id, state: 'showing', displayId: entry.displayId })
         : { screenId: s.id, state: 'missing-display', displayId: null };
     });
     this.deps.onChange();
@@ -183,8 +187,23 @@ export class OutputManager {
 
   /** The heartbeat restarted this screen's window again and again (a23-heartbeat), or no longer: null. */
   setRestarting(screenId: string, restarts: number | null): void {
-    void screenId;
-    void restarts;
+    if ((this.restarting.get(screenId) ?? null) === restarts) return;
+    if (restarts === null) this.restarting.delete(screenId);
+    else this.restarting.set(screenId, restarts);
+    // Only what Screens says changes: its window is left as it is.
+    this.statuses = this.statuses.map((st) => (st.screenId === screenId ? this.said(st) : st));
+    this.deps.onChange();
+  }
+
+  /** A status with its restarts (a23-heartbeat): said only while it is showing. */
+  private said(st: ScreenStatus): ScreenStatus {
+    const restarts = this.restarting.get(st.screenId);
+    return {
+      screenId: st.screenId,
+      state: st.state,
+      displayId: st.displayId,
+      ...(st.state === 'showing' && restarts !== undefined ? { restarts } : {}),
+    };
   }
 
   status(): ScreenStatus[] {

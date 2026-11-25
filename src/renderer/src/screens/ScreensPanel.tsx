@@ -37,6 +37,7 @@ import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
 import { useControlsDisplay } from './controls-display';
 import { AdjustPicture } from './AdjustPicture';
+import { RESTARTING_WORDS, restartingSentence } from '../../../shared/screens-summary';
 import { WidePicture } from './WidePicture';
 
 // The words are a phone's too (Session 54, the phone as a full Drashti).
@@ -112,6 +113,10 @@ function ScreenRow({
     (p) => p.width === screen.canvasWidth && p.height === screen.canvasHeight,
   );
   const shownOn = displays.find((d) => d.key.id === screen.displayKey?.id);
+  // Showing, but restarted again and again by the heartbeat (a23-heartbeat): how many times in a row.
+  const restarts = useScreens(
+    (s) => s.snapshot?.status.find((st) => st.screenId === screen.id && st.state === 'showing')?.restarts,
+  );
   const node = useScreens((s) =>
     screen.nodeId ? s.snapshot?.nodes.find((n) => n.id === screen.nodeId) : undefined,
   );
@@ -127,10 +132,13 @@ function ScreenRow({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{screen.name}</span>
         <span
-          className={cx('rounded-full border px-2 py-0.5 text-xs font-medium', stateTone[state])}
+          className={cx(
+            'rounded-full border px-2 py-0.5 text-xs font-medium',
+            restarts === undefined ? stateTone[state] : stateTone.stopped,
+          )}
           data-testid="screen-state"
         >
-          {stateText[state]}
+          {restarts === undefined ? stateText[state] : RESTARTING_WORDS}
           {state === 'showing' && shownOn ? ` on ${shownOn.label || `display ${shownOn.id}`}` : ''}
           {node ? ` · ${node.name}` : ''}
         </span>
@@ -141,6 +149,22 @@ function ScreenRow({
           <span className="text-xs text-muted" data-testid="screen-switched-off">
             {switchName} is off: its display shows this computer’s desktop until {switchName} is on again.
           </span>
+        )}
+        {state === 'showing' && restarts !== undefined && (
+          <>
+            {/* Restarted again and again by the heartbeat (a23-heartbeat): said, with Try again afresh. */}
+            <span className="text-xs text-danger-fg" data-testid="screen-restarting">
+              {restartingSentence(restarts)}
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              data-testid="screen-restart-afresh"
+              onClick={() => void nodesAction(() => window.drashti.nodes.reload(screen.nodeId, screen.id))}
+            >
+              Try again
+            </Button>
+          </>
         )}
         {state === 'stopped' && (
           <>

@@ -57,6 +57,7 @@ import { type LogPeriod, periodText } from '../../shared/log-period';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
 import { CHECK_EVERY_MS, OutputHeartbeat } from '../outputs/heartbeat';
+import { keepsRestartingLine, restartsWords } from '../outputs/heartbeat-words';
 import { log } from '../log';
 import { handleMediaRequest, mediaRequestOf } from '../media/media-protocol';
 import {
@@ -521,6 +522,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   // Hung and stale outputs (Session 23; ../outputs/heartbeat.ts): as on Main, an output whose reports
   // stop, or stop showing the show, is crashed into the watchdog's reload.
+  /** The outputs the log said keep restarting (a23-heartbeat): said once each time it starts. */
+  const keepsRestarting = new Set<string>();
   const heartbeat = new OutputHeartbeat({
     now: Date.now,
     engineRev: () => mirror.rev,
@@ -540,12 +543,24 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
             !w.isMinimized()
           );
         }),
-    stuck: (screenId, reason) => {
+    stuck: (screenId, reason, inARow) => {
       const w = outputWindows.get(screenId);
       if (!w || w.isDestroyed()) return;
       const name = outputNames.get(screenId) ?? 'an output';
-      log.warn(`Node: output ${name} is stuck (${reason}): restarting it`);
+      log.warn(`Node: output ${name} is stuck (${reason}): restarting it${restartsWords(inARow)}`);
       deps.watchdog.stuck(w.webContents, name, reason);
+    },
+    // Restarted again and again (a23-heartbeat): Main's Screens and status line say so (from its next health, at
+    // most 2 s on), the log too.
+    told: (screenId, restarts) => {
+      manager.setRestarting(screenId, restarts);
+      const name = outputNames.get(screenId) ?? 'an output';
+      if (restarts === null) {
+        if (keepsRestarting.delete(screenId)) log.info(`Node: output ${name} no longer keeps restarting`);
+      } else if (!keepsRestarting.has(screenId)) {
+        keepsRestarting.add(screenId);
+        log.warn(keepsRestartingLine(`Node: output ${name}`, restarts));
+      }
     },
     // Translated, a page's reports may come 30 s apart (a23-heartbeat), as on Main.
     translated: app.runningUnderARM64Translation,
@@ -636,6 +651,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
             droppedFrames: r?.droppedFrames ?? 0,
             paintedRev: r?.paintedRev ?? -1,
             ...(r?.missingFonts && r.missingFonts.length > 0 ? { missingFonts: r.missingFonts } : {}),
+            // Restarted again and again by its heartbeat (a23-heartbeat): Main says so.
+            ...(st.restarts === undefined ? {} : { restarts: st.restarts }),
           },
         ];
       }),
@@ -759,6 +776,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         const win = outputWindows.get(message.screenId);
         if (win && !win.isDestroyed()) {
           log.info('Node: Main asked to reload an output');
+          // Main's Try again for a screen that keeps restarting (a23-heartbeat) too: its restarts start afresh.
+          heartbeat.afresh(message.screenId);
           win.webContents.reload();
         }
         return;
@@ -1516,8 +1535,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     watchdogEvent: (e) => {
       const screenId = [...outputNames].find(([, n]) => n === e.window)?.[0];
       if (screenId === undefined) return;
-      // A page loaded again gets its grace before it is judged.
+      // A page loaded again gets its grace before it is judged; tried again, its restarts forgotten (a23-heartbeat).
       if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
+      if (e.kind === 'retried') heartbeat.afresh(screenId);
       // Given up on: Stopped (Main's dashboard and its notice say so) until it draws again.
       if (e.kind === 'gave-up') stopOutput(screenId);
     },

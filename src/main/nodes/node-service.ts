@@ -1007,7 +1007,13 @@ export class NodeService implements EngineTransport {
       const out = l.health?.outputs.find((o) => o.screenId === s.id);
       return [
         out
-          ? { screenId: s.id, state: out.state, displayId: out.displayId }
+          ? {
+              screenId: s.id,
+              state: out.state,
+              displayId: out.displayId,
+              // Restarted again and again by the node's heartbeat (a23-heartbeat): Screens says so on Main too.
+              ...(out.state === 'showing' && out.restarts !== undefined ? { restarts: out.restarts } : {}),
+            }
           : { screenId: s.id, state: 'missing-display', displayId: null },
       ];
     });
