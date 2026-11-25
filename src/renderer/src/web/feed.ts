@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ChatEvent } from '../../../shared/chat';
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../../shared/engine/state';
 import {
@@ -55,6 +56,25 @@ const changeListeners = new Set<(what: NetworkChange) => void>();
 export function onListsChanged(listener: (what: NetworkChange) => void): () => void {
   changeListeners.add(listener);
   return () => changeListeners.delete(listener);
+}
+
+const chatListeners = new Set<(event: ChatEvent) => void>();
+
+/**
+ * The chat's events, each as it happens (alpha.23, QA23-CHAT-1: a message, the people, the chat emptied): only a
+ * device in the chat is told them (shared/chat.ts). A page reads the whole chat again each time the feed is online.
+ */
+export function onChatEvent(listener: (event: ChatEvent) => void): () => void {
+  chatListeners.add(listener);
+  return () => chatListeners.delete(listener);
+}
+
+/** This page shows the chat: its hello says so, and Drashti sends it the chat's events (never to the stage display). */
+let chatFollowed = false;
+
+/** Follow the chat on this page's feed, from its next hello on (call it before startFeed, as the pages do). */
+export function followChat(): void {
+  chatFollowed = true;
 }
 
 /** Called each time the feed is (back) online, so a page can read its lists again. */
@@ -148,6 +168,9 @@ function receive(message: ToDevice): void {
     case 'changed':
       for (const l of changeListeners) l(message.what);
       return;
+    case 'chat':
+      for (const l of chatListeners) l(message.event);
+      return;
     case 'bye':
       bye = message.reason;
       return;
@@ -178,6 +201,7 @@ function open(): void {
       type: 'hello',
       token: device.token,
       lowerThirdMotions: PHONE_LOWER_THIRD_MOTIONS,
+      ...(chatFollowed ? { chat: true as const } : {}),
     } satisfies FromDevice;
     ws.send(JSON.stringify(hello));
   };

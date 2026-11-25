@@ -42,6 +42,7 @@ import {
   Eraser,
   FileText,
   ListMusic,
+  MessageCircle,
   MonitorOff,
   PictureInPicture2,
   Play,
@@ -94,6 +95,8 @@ import { useSimple } from './simple';
 import { Swipes, type SwipeWay } from './swipe';
 import { StageScreen } from './StageScreen';
 import { Timers } from './Timers';
+import { ChatBanner, ChatPanel, useUnread } from '../chat/ChatView';
+import { startChat } from '../chat/chat-store';
 
 /*
  * The remote for a phone or tablet (a Remote device): what is on the screens
@@ -929,13 +932,16 @@ function Library() {
 /** On a tablet held upright, the playlist or the library beside the show. */
 function SidePanel() {
   const side = useRemote((s) => s.side);
+  const unread = useUnread();
   return (
     <div className="space-y-3">
-      <div role="tablist" aria-label="Beside the show" className="grid grid-cols-2 gap-2">
+      <div role="tablist" aria-label="Beside the show" className="grid grid-cols-3 gap-2">
         {(
           [
             { id: 'playlist', label: 'Playlist', icon: ListMusic },
             { id: 'library', label: 'Library', icon: BookOpen },
+            // The day's chat of the paired phones (alpha.23, QA23-CHAT-1).
+            { id: 'chat', label: 'Chat', icon: MessageCircle },
           ] as const
         ).map((t) => {
           const TabIcon = t.icon;
@@ -949,18 +955,24 @@ function SidePanel() {
               data-testid={`remote-side-${t.id}`}
               onClick={() => useRemote.setState({ side: t.id })}
               className={cx(
-                'flex min-h-11 items-center justify-center gap-2 rounded-lg text-base',
+                'relative flex min-h-11 items-center justify-center gap-2 rounded-lg text-base',
                 on ? 'bg-panel-3 text-fg' : 'text-muted',
               )}
             >
               <TabIcon size={18} aria-hidden="true" />
               {t.label}
+              {t.id === 'chat' && <UnreadCount count={unread} />}
             </button>
           );
         })}
       </div>
-      <div role="tabpanel" aria-label={side === 'playlist' ? 'Playlist' : 'Library'}>
-        {side === 'playlist' ? <PlaylistTab /> : <LibraryPanel presentations={<Library />} />}
+      <div
+        role="tabpanel"
+        aria-label={side === 'playlist' ? 'Playlist' : side === 'library' ? 'Library' : 'Chat'}
+      >
+        {side === 'playlist' && <PlaylistTab />}
+        {side === 'library' && <LibraryPanel presentations={<Library />} />}
+        {side === 'chat' && <ChatPanel fill={false} />}
       </div>
     </div>
   );
@@ -1240,6 +1252,8 @@ const TABS: { id: RemoteTab; label: string; icon: typeof Play }[] = [
   { id: 'playlist', label: 'Playlist', icon: ListMusic },
   { id: 'library', label: 'Library', icon: BookOpen },
   { id: 'more', label: 'More', icon: Timer },
+  // The day's chat of the paired phones, in Pro Mode and Simple Mode alike (alpha.23, QA23-CHAT-1).
+  { id: 'chat', label: 'Chat', icon: MessageCircle },
 ];
 
 /** On a tablet held sideways, the slides, the playlist, the library or the rest, beside the live picture. */
@@ -1248,7 +1262,23 @@ const PANEL_TABS: { id: RemoteTab; label: string; icon: typeof Play }[] = [
   { id: 'playlist', label: 'Playlist', icon: ListMusic },
   { id: 'library', label: 'Library', icon: BookOpen },
   { id: 'more', label: 'More', icon: Timer },
+  { id: 'chat', label: 'Chat', icon: MessageCircle },
 ];
+
+/** How many chat messages are not seen yet, beside the Chat tab's word (said in words for a screen reader). */
+function UnreadCount({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span
+      data-badge
+      data-testid="chat-unread"
+      className="absolute top-0.5 right-1 min-w-5 rounded-full bg-accent px-1 text-center text-xs leading-5 font-bold text-ink"
+    >
+      {count > 99 ? '99+' : count}
+      <span className="sr-only"> not read</span>
+    </span>
+  );
+}
 
 function TabRow({
   tabs,
@@ -1263,11 +1293,22 @@ function TabRow({
   square?: boolean;
 }) {
   const tab = useRemote((s) => s.tab);
+  const unread = useUnread();
   return (
     <div
       role="tablist"
       aria-label={label}
-      className={cx('grid gap-2', square ? 'grid-cols-2' : tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3')}
+      // Five tabs: in one row under the middle, or (a phone held sideways, beside it) three over two.
+      className={cx(
+        'grid gap-2',
+        square
+          ? tabs.length > 4
+            ? 'grid-cols-3'
+            : 'grid-cols-2'
+          : tabs.length === 5
+            ? 'grid-cols-5'
+            : 'grid-cols-4',
+      )}
     >
       {tabs.map((t) => {
         const TabIcon = t.icon;
@@ -1283,12 +1324,13 @@ function TabRow({
             data-small-label
             onClick={() => useRemote.setState({ tab: t.id })}
             className={cx(
-              'flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-xs',
+              'relative flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-xs',
               on ? 'bg-panel-3 text-fg' : 'text-muted',
             )}
           >
             <TabIcon size={18} aria-hidden="true" />
             {t.label}
+            {t.id === 'chat' && <UnreadCount count={unread} />}
           </button>
         );
       })}
@@ -1375,6 +1417,12 @@ function Layout() {
         </div>
       )}
       <SimpleNote />
+      {/* A new chat message from someone else, while the chat is not in view: a tap opens it. */}
+      <ChatBanner
+        onOpen={() => {
+          useRemote.setState(layout === 'wide' ? { side: 'chat' } : { tab: 'chat' });
+        }}
+      />
     </>
   );
   const tabbed = (
@@ -1383,6 +1431,7 @@ function Layout() {
       {tab === 'playlist' && <PlaylistTab />}
       {tab === 'library' && <LibraryPanel presentations={<Library />} />}
       {tab === 'more' && <TimersAndMessages />}
+      {tab === 'chat' && <ChatPanel fill />}
     </>
   );
   return (
@@ -1427,6 +1476,7 @@ function Layout() {
               {tab === 'playlist' && <PlaylistTab />}
               {tab === 'library' && <LibraryPanel presentations={<Library />} />}
               {tab === 'more' && <TimersAndMessages />}
+              {tab === 'chat' && <ChatPanel fill />}
             </div>
           </div>
         </main>
@@ -1474,6 +1524,8 @@ export function RemoteApp() {
     startRemote();
     startMirror();
     startPhoneFiles();
+    // Before the feed: its hello says this page follows the chat.
+    startChat();
     startFeed();
     void loadPlaylists();
   }, []);

@@ -140,7 +140,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await expect(p.getByTestId('remote')).toBeVisible();
       // Drashti's icon on every page a phone opens: for the Home Screen (Add to Home Screen) and the tab.
-      for (const path of ['/remote', '/stage', '/announce', '/'])
+      for (const path of ['/remote', '/stage', '/announce', '/chat', '/'])
         expect(await pageIcons(p, path), path).toEqual({
           'icon 32x32': '200 image/png 32x32',
           'icon 192x192': '200 image/png 192x192',

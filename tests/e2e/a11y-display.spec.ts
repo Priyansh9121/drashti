@@ -207,7 +207,7 @@ test('the phone remote at 375 x 812: axe on every tab, targets large enough to t
     const phone = await context.newPage();
     await pairByQr(phone, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     // Every tab, the Library's too (Sessions 31–36, A11Y-3).
-    for (const tab of ['show', 'playlist', 'library', 'more']) {
+    for (const tab of ['show', 'playlist', 'library', 'more', 'chat']) {
       await phone.getByTestId(`remote-tab-${tab}`).click();
       await expectNoSeriousA11yIssues(phone, `the remote's ${tab} tab at 375 x 812`);
       // Every control at least 24 x 24 CSS pixels (WCAG 2.5.8), or spaced so a 24-pixel circle fits.
