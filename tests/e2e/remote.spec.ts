@@ -1,5 +1,8 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   apiCall,
@@ -14,6 +17,7 @@ import {
 } from './devices';
 import {
   holdStill,
+  importAndGetIds,
   killApp,
   launchApp,
   operatorPage,
@@ -25,7 +29,7 @@ import {
   setUpScreen,
 } from './helpers';
 import { PHONE_REFUSAL } from '../../src/shared/phone-rule';
-import { addPhoneDeck, DECK } from './phone-deck';
+import { addPhoneDeck, DECK, refusedRequests } from './phone-deck';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-show';
 
 /*
@@ -80,11 +84,7 @@ test('the remote’s waits are said as a status, and its empty places say where 
   const phone = await device('chromium');
   const p = phone.page;
   // Every request of the page that Drashti refuses a phone (403): none, in Pro Mode or Simple Mode.
-  const refused: string[] = [];
-  p.on('response', (r) => {
-    const path = new URL(r.url()).pathname;
-    if (path.startsWith('/api/') && r.status() === 403) refused.push(path);
-  });
+  const refused = refusedRequests(p);
   try {
     // The playlists are held back until their wait has been seen.
     let release: () => void = () => undefined;
@@ -117,6 +117,15 @@ test('the remote’s waits are said as a status, and its empty places say where 
     await expect(p.getByTestId('remote-slides-none')).toHaveText(PHONE_REFUSAL.noDeck);
     await expect(p.getByTestId('remote-flow-none')).toBeVisible();
     await expect(p.getByTestId('remote-next-button')).toHaveCount(0);
+    // Words up from the computer, for the reload in Simple Mode below (no phone puts up words: the computer does).
+    const words = join(mkdtempSync(join(tmpdir(), 'drashti-remote-words-')), 'Placeholder words.txt');
+    writeFileSync(words, 'Placeholder words for the screens\n');
+    const [wordsId = ''] = await importAndGetIds(win, [words]);
+    expect(wordsId, 'the words import').not.toBe('');
+    await dispatch(win, { type: 'goLive', presentationId: wordsId, slideIndex: 0 });
+    await expect(p.getByTestId('remote-live').locator('[data-layer="slide"]')).toContainText(
+      'Placeholder words for the screens',
+    );
     // Simple Mode on the computer: Show and Chat, and nothing more is asked for.
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(p.getByTestId('remote-simple')).toContainText(PHONE_REFUSAL.simple);
@@ -125,6 +134,15 @@ test('the remote’s waits are said as a status, and its empty places say where 
     await p.getByTestId('remote-tab-chat').click();
     await expect(p.getByTestId('remote-tab-chat')).toHaveAttribute('aria-selected', 'true');
     await expectNoSeriousA11yIssues(p, 'the remote in Simple Mode');
+    // Opened again while Simple Mode is on and the words are up (a locked phone coming back, a reload): its snapshot
+    // comes before its hall, and it reads nothing Simple Mode refuses meanwhile (a23-review-phoneui MUST-1).
+    await p.reload();
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await expect(p.getByTestId('remote-simple')).toBeVisible();
+    await expect(p.getByTestId('remote-live').locator('[data-layer="slide"]')).toContainText(
+      'Placeholder words for the screens',
+    );
+    await expect(p.getByTestId('remote-flow-none')).toBeVisible();
     expect(refused, 'requests Drashti refused this phone').toEqual([]);
   } finally {
     await phone.close();
@@ -152,6 +170,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
+    const refused = refusedRequests(p);
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
@@ -252,6 +271,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await nextButton.click();
       await expect.poll(async () => (await where(win)).slideIndex).toBe(1);
       expect(await win.evaluate(() => document.title)).not.toContain(code);
+      expect(refused, 'requests Drashti refused this phone').toEqual([]);
     } finally {
       await phone.close();
     }
@@ -272,6 +292,7 @@ test('the remote on a tablet shows the playlist’s PDF beside the show, and its
   try {
     await pairByQr(tablet.page, base, code, '/remote');
     const t = tablet.page;
+    const refused = refusedRequests(t);
     await expect(t.getByTestId('connection')).toHaveText('Connected');
     // Wide: no tabs; the playlist and the show side by side.
     await expect(t.getByTestId('remote-tab-show')).toHaveCount(0);
@@ -293,6 +314,7 @@ test('the remote on a tablet shows the playlist’s PDF beside the show, and its
     // Back and Next while it is up.
     await expect(t.getByTestId('remote-next-button')).toBeVisible();
     await expectNoSeriousA11yIssues(t, 'the remote on a tablet');
+    expect(refused, 'requests Drashti refused this phone').toEqual([]);
   } finally {
     await tablet.close();
   }
@@ -340,6 +362,7 @@ test('two remotes pressing Next at once move one slide; a phone’s Next says wh
 
   // A phone's Next button sends the revision it saw.
   const phone = await device('chromium');
+  const refused = refusedRequests(phone.page);
   try {
     await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
@@ -350,6 +373,7 @@ test('two remotes pressing Next at once move one slide; a phone’s Next says wh
     // With the run of the engine that revision is from (Session 53).
     expect((await sent).postDataJSON()).toEqual({ rev: seen, session });
     await expect.poll(async () => (await where(win)).slideIndex).toBe(1);
+    expect(refused, 'requests Drashti refused this phone').toEqual([]);
   } finally {
     await phone.close();
   }
@@ -372,6 +396,7 @@ test('a phone’s remote and a tablet’s stage display left open while Drashti 
   const tablet = await device('webkit', TABLET);
   const p = phone.page;
   const t = tablet.page;
+  const refused = refusedRequests(p);
   const mark = 'opened before the restart';
   const marked = (page: Page) => page.evaluate(() => (globalThis as { e2eMark?: string }).e2eMark ?? null);
   try {
@@ -438,6 +463,7 @@ test('a phone’s remote and a tablet’s stage display left open while Drashti 
     // Neither page was loaded again.
     expect(await marked(p)).toBe(mark);
     expect(await marked(t)).toBe(mark);
+    expect(refused, 'requests Drashti refused this phone').toEqual([]);
     await again.app.close();
   } finally {
     await phone.close();

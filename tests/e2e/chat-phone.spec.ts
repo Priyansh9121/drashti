@@ -4,7 +4,7 @@ import { CHAT_API } from '../../src/shared/chat';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken } from './devices';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
-import { addPhoneDeck, putUpFromComputer } from './phone-deck';
+import { addPhoneDeck, putUpFromComputer, refusedRequests } from './phone-deck';
 import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -163,6 +163,8 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
 
     const a = android.page;
     const b = iphone.page;
+    // Neither phone asks for anything Drashti refuses it, in Pro Mode, in Simple Mode, or reloaded there with a PDF up.
+    const refused = [refusedRequests(a), refusedRequests(b)];
     await pairByQr(a, base, await pairingCode(win, 'remote', 'Placeholder Android phone'), '/remote');
     await pairByQr(b, base, await pairingCode(win, 'remote', 'Placeholder iPhone'), '/remote');
     for (const p of [a, b]) await expect(p.getByTestId('connection')).toHaveText('Connected');
@@ -275,6 +277,7 @@ test('two phones chat on the remote’s Chat tab: the name once, WhatsApp-style,
     await expect(a.getByTestId('chat-own-name')).toHaveText('Placeholder Volunteer A');
     await expect(bubble(a, 'Placeholder history message')).toBeVisible();
     await expect(bubble(a, 'Placeholder in Simple Mode')).toBeVisible();
+    expect(refused, 'requests Drashti refused the phones').toEqual([[], []]);
   } finally {
     await android.close();
     await iphone.close();

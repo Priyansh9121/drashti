@@ -54,3 +54,17 @@ export async function putUpFromComputer(win: Page, playlistId: string, itemId: s
   );
   expect(result.ok, 'the row goes up from the computer').toBe(true);
 }
+
+/**
+ * Every request of a phone's page that Drashti refuses it (403), by path, from now on: the page asks for none in either
+ * mode (QA23-PHONE-1; a23-review-phoneui S1). A test that means a refusal (a tap Simple Mode refuses before the phone
+ * has heard of it) checks it apart.
+ */
+export function refusedRequests(page: Page): string[] {
+  const refused: string[] = [];
+  page.on('response', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (path.startsWith('/api/') && r.status() === 403) refused.push(path);
+  });
+  return refused;
+}

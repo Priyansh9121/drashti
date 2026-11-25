@@ -12,6 +12,7 @@ import {
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken } from './devices';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { refusedRequests } from './phone-deck';
 
 /*
  * Sabha flow on a paired phone (alpha.23, QA23-FLOW-1 and QA23-FLOW-2): on the Show tab (QA23-PHONE-1; in More until
@@ -112,6 +113,7 @@ test('Sabha flow on a paired phone: Now and Next up, the read list and the PDF p
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   const p = phone.page;
+  const refused = refusedRequests(p);
   try {
     await p.setViewportSize({ width: 390, height: 844 });
     await pairByQr(p, base, code, '/remote');
@@ -226,6 +228,7 @@ test('Sabha flow on a paired phone: Now and Next up, the read list and the PDF p
     await expect(sheet.getByTestId('remote-flow-row')).toHaveCount(3);
     await sheet.getByTestId('remote-flow-sheet-close').click();
     await expect(sheet).toHaveCount(0);
+    expect(refused, 'requests Drashti refused this phone').toEqual([]);
   } finally {
     await phone.close();
     await app.close();
