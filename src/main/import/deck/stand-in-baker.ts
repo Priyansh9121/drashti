@@ -143,8 +143,12 @@ export async function standInMovie(
   );
   let stderr = '';
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
+  // FFmpeg gone mid-movie: a frame still being written fails (EPIPE) and is let go; its end below says why.
+  child.stdin.on('error', () => undefined);
+  // Once it has exited and all it said has been read ('close'): at its exit alone, a busy computer may not have read
+  // its reason yet (a22-exitreaders, after x58). FFmpeg leaves nothing holding its output.
   const ended = new Promise<number | null>((resolve) => {
-    child.on('exit', resolve);
+    child.on('close', resolve);
     child.on('error', () => {
       resolve(null);
     });
@@ -153,6 +157,11 @@ export async function standInMovie(
   signal?.addEventListener('abort', stop);
   // An FFmpeg that never started, or stopped, takes no more frames: never wait on it.
   const ffmpegRun = { gone: false };
+  // Gone at its exit (Node lets its input go then, so a frame waiting for it to drain is released): no more frames.
+  // Its code and words are taken at 'close', above.
+  child.once('exit', () => {
+    ffmpegRun.gone = true;
+  });
   void ended.then(() => {
     ffmpegRun.gone = true;
     child.stdin.destroy();
@@ -160,7 +169,10 @@ export async function standInMovie(
   try {
     const frame = Buffer.alloc(width * height * 3);
     const before = Buffer.alloc(width * height * 3);
-    for (let n = 0; n < frames && !signal?.aborted && !ffmpegRun.gone; n++) {
+    // Its input closed (it failed while a frame was written, or it exited) takes no more frames either: never wait on
+    // it to drain (read each time: a write can close it).
+    const inputClosed = () => child.stdin.destroyed;
+    for (let n = 0; n < frames && !signal?.aborted && !ffmpegRun.gone && !inputClosed(); n++) {
       const t = (n * 1000) / FPS;
       let i = 0;
       while (i + 1 < starts.length && t >= (starts[i + 1] ?? Infinity)) i++;
@@ -181,7 +193,7 @@ export async function standInMovie(
       }
       // A frame bigger than the pipe holds waits for it to drain (or close), then lets go of both listeners: one
       // left behind at each wait made Node warn of a leak after eleven (Session 58, h-flaky).
-      if (!child.stdin.write(frame))
+      if (!child.stdin.write(frame) && !inputClosed())
         await new Promise<void>((resolve) => {
           const go = () => {
             child.stdin.off('drain', go);
