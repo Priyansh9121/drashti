@@ -43,6 +43,14 @@ export function lastRemoval(stack: readonly UndoStep[], mode: OperatorMode | nul
   return stack.findLast((step) => mode !== 'simple' || step.mode === 'simple');
 }
 
+/** What the Undo line at the left column's foot shows: the last step this mode can undo. */
+export function lineRemoval(
+  state: { stack: readonly UndoStep[] },
+  mode: OperatorMode | null,
+): UndoStep | undefined {
+  return lastRemoval(state.stack, mode);
+}
+
 /** Bring back the last change available in this mode, leaving other history intact. */
 export async function undoRemoval(mode: OperatorMode = useMode.getState().mode ?? 'pro'): Promise<boolean> {
   const last = lastRemoval(useUndo.getState().stack, mode);

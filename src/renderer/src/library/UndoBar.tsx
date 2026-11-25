@@ -3,7 +3,7 @@ import { useEngine } from '../engine/engine-store';
 import { useMode } from '../operator/mode-store';
 import { Button } from '../ui/Button';
 import { Undo2 } from '../ui/icons';
-import { lastRemoval, undoRemoval, useUndo } from './undo';
+import { lineRemoval, undoRemoval, useUndo } from './undo';
 
 /**
  * After a removal or a change (presentations, playlists, words, a theme): what it was, and Undo.
@@ -13,7 +13,7 @@ import { lastRemoval, undoRemoval, useUndo } from './undo';
 export function UndoBar({ platform }: { platform: string }) {
   const mode = useMode((s) => s.mode);
   const puttingBack = useEngine((s) => mode === 'simple' && s.state?.canPutBack === true);
-  const last = useUndo((s) => lastRemoval(s.stack, mode));
+  const last = useUndo((s) => lineRemoval(s, mode));
   const said = useUndo((s) => s.said);
   const spoken = mode === 'simple' && (said.mode !== 'simple' || puttingBack) ? '' : said.text;
   return (
