@@ -46,7 +46,9 @@ test('the Chat section under LIVE: folded after Messages, then Send as the opera
     ),
   );
   expect(tops).not.toContain(null);
-  expect((tops[0] ?? 0) < (tops[1] ?? 0) && (tops[1] ?? 0) < (tops[2] ?? 0), 'Messages, Chat, Timers').toBe(true);
+  expect((tops[0] ?? 0) < (tops[1] ?? 0) && (tops[1] ?? 0) < (tops[2] ?? 0), 'Messages, Chat, Timers').toBe(
+    true,
+  );
 
   const chat = await openChat(win);
   await expect(chat.getByTestId('chat-empty')).toContainText('No messages yet today');
@@ -111,12 +113,20 @@ test('a phone’s message: counted on the folded heading, named above it on the 
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const { port } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder phone');
-  const named = await apiCall(port, CHAT_API.name, { method: 'POST', token, body: { name: 'Placeholder Sender' } });
+  const named = await apiCall(port, CHAT_API.name, {
+    method: 'POST',
+    token,
+    body: { name: 'Placeholder Sender' },
+  });
   expect(named.status).toBe(200);
 
   // Folded: a message from the phone is counted on the heading, in words for a screen reader.
   await expect(toggle(win)).toHaveAttribute('aria-expanded', 'false');
-  const sent = await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text: 'Placeholder from a phone' } });
+  const sent = await apiCall(port, CHAT_API.send, {
+    method: 'POST',
+    token,
+    body: { text: 'Placeholder from a phone' },
+  });
   expect(sent.status).toBe(200);
   const unread = section(win).getByTestId('chat-unread');
   await expect(unread).toHaveText(/^1, 1 new message$/u);
@@ -141,7 +151,11 @@ test('a phone’s message: counted on the folded heading, named above it on the 
   await expect(confirm.getByRole('heading')).not.toContainText('Placeholder Sender');
   await confirm.getByRole('button', { name: 'Remove' }).click();
   await expect(chat.getByTestId('chat-person')).toHaveCount(0);
-  const after = await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text: 'Placeholder again' } });
+  const after = await apiCall(port, CHAT_API.send, {
+    method: 'POST',
+    token,
+    body: { text: 'Placeholder again' },
+  });
   expect(after.status).toBe(401);
 
   // The Chat QR in Phones: shown with how long it works, then stopped.
@@ -152,14 +166,14 @@ test('a phone’s message: counted on the folded heading, named above it on the 
   await expect(invite.getByTestId('qr-code')).toBeVisible();
   await expect(invite.getByTestId('chat-invite-left')).toContainText(/Works for \d+:\d\d more/u);
   await expect
-    .poll(() => win.evaluate(async () => (await (globalThis as PageGlobals).drashti.network.status()).chatInvite))
+    .poll(() =>
+      win.evaluate(async () => (await (globalThis as PageGlobals).drashti.network.status()).chatInvite),
+    )
     .not.toBeNull();
   await expectFits(panel, 'the Phones panel with the Chat QR');
   await invite.getByTestId('chat-invite-end').click();
   await expect(invite.getByTestId('chat-invite-show')).toBeVisible();
-  await expect
-    .poll(async () => (await chatView(win)).invite)
-    .toBeNull();
+  await expect.poll(async () => (await chatView(win)).invite).toBeNull();
   await app.close();
 });
 
@@ -172,7 +186,8 @@ test('Simple Mode with Chat chosen: the section under Audio, reading and sending
   const { port } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder phone');
   expect(
-    (await apiCall(port, CHAT_API.name, { method: 'POST', token, body: { name: 'Placeholder Sender' } })).status,
+    (await apiCall(port, CHAT_API.name, { method: 'POST', token, body: { name: 'Placeholder Sender' } }))
+      .status,
   ).toBe(200);
   expect(
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('chat', true)),
@@ -193,7 +208,9 @@ test('Simple Mode with Chat chosen: the section under Audio, reading and sending
   // Its Clear chat and Remove stay Pro Mode's in the main process too.
   const refused = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    return [await d.chat.clear(), await d.chat.remove('placeholder-id'), await d.chat.invite()].map((r) => r.ok);
+    return [await d.chat.clear(), await d.chat.remove('placeholder-id'), await d.chat.invite()].map(
+      (r) => r.ok,
+    );
   });
   expect(refused).toEqual([false, false, false]);
 
@@ -218,7 +235,11 @@ test('Report a Problem’s picture of the window has the open Chat section blank
   const chat = await openChat(win);
   // Words that draw dark and light marks across the box, so a picture that kept them could never read as one grey.
   const box = chat.getByTestId('chat-text-box');
-  for (const line of ['Placeholder WWWW MMMM 8888', 'Placeholder ████ ▓▓▓▓', 'Placeholder words half typed']) {
+  for (const line of [
+    'Placeholder WWWW MMMM 8888',
+    'Placeholder ████ ▓▓▓▓',
+    'Placeholder words half typed',
+  ]) {
     await box.fill(line);
     if (!line.includes('half typed')) await box.press('Enter');
   }
@@ -267,6 +288,8 @@ test('Report a Problem’s picture of the window has the open Chat section blank
     return { pixels: data.length / 4, off };
   }, share);
   expect(seen?.pixels ?? 0, 'pixels looked at').toBeGreaterThan(200);
-  expect(seen?.off ?? 255, 'the furthest any pixel in the box is from the blank grey').toBeLessThanOrEqual(12);
+  expect(seen?.off ?? 255, 'the furthest any pixel in the box is from the blank grey').toBeLessThanOrEqual(
+    12,
+  );
   await app.close();
 });
