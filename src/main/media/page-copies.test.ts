@@ -118,7 +118,8 @@ describe('how a page copy is made and checked (a22-review-fadecopies)', () => {
       if (!plan) throw new Error('no plan');
       const args = pageCopyArgs('in', 'out', info, plan);
       expect(kbps(args), `${info.video?.codec ?? ''}: twice the stream's`).toBeGreaterThanOrEqual(2 * most);
-      if (plan.ext === 'webm') expect(args[args.indexOf('-c:v') + 1], 'VP8, its fastest VP9 being too poor').toBe('libvpx');
+      if (plan.ext === 'webm')
+        expect(args[args.indexOf('-c:v') + 1], 'VP8, its fastest VP9 being too poor').toBe('libvpx');
     }
   });
 

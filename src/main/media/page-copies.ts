@@ -1,6 +1,7 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ConvertService, ReadWords } from '../convert/convert-service';
+import { STREAM_PRESETS } from '../../shared/stream';
 import { hasAlpha, type MediaInfo } from '../convert/plan';
 
 /*
@@ -49,20 +50,50 @@ export function pageCopyName(sha256: string, height: PageCopyHeight, ext: 'webm'
 }
 
 /** FFmpeg's arguments for a copy written to `tmp`: the source's timeline kept exactly, only the picture smaller. */
-export function pageCopyArgs(source: string, tmp: string, info: MediaInfo, plan: PageCopyPlan): string[] {
+export function pageCopyArgs(source: string, tmp: string, _info: MediaInfo, plan: PageCopyPlan): string[] {
+  // The stream's copy (720p) at twice the bitrate of the presets that stream it, so the stream's own encoding, not the
+  // copy, decides its picture (a22-review-fadecopies S8; a22-fadeprep's measure: at 1.5 Mbps libvpx's fastest VP8 came
+  // out below what the weak preset then encodes; at twice its bitrate, VP8 and H.264 alike, clearly above). VP9 is made
+  // as VP8: libvpx's fastest VP9 was below the stream's even at 6 Mbps. LIVE's (540p) is never streamed.
+  const streamed = Math.max(
+    ...Object.values(STREAM_PRESETS)
+      .filter((p) => p.height <= plan.height)
+      .map((p) => p.videoKbps),
+    0,
+  );
+  const kbps = plan.height >= 720 ? Math.max(2 * streamed, 1500) : 900;
   const picture =
     plan.ext === 'webm'
-      ? [
-          '-c:v',
-          info.video?.codec === 'vp9' ? 'libvpx-vp9' : 'libvpx',
-          '-b:v',
-          plan.height >= 720 ? '1500k' : '900k',
-          '-deadline',
-          'realtime',
-          '-cpu-used',
-          '8',
-        ]
-      : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-sc_threshold', '0'];
+      ? ['-c:v', 'libvpx', '-b:v', `${String(kbps)}k`, '-deadline', 'realtime', '-cpu-used', '8']
+      : plan.height >= 720
+        ? [
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-b:v',
+            `${String(kbps)}k`,
+            '-maxrate',
+            `${String(Math.round(kbps * 1.5))}k`,
+            '-bufsize',
+            `${String(kbps * 2)}k`,
+            '-pix_fmt',
+            'yuv420p',
+            '-sc_threshold',
+            '0',
+          ]
+        : [
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-crf',
+            '21',
+            '-pix_fmt',
+            'yuv420p',
+            '-sc_threshold',
+            '0',
+          ];
   return [
     '-nostdin',
     '-hide_banner',
