@@ -42,7 +42,7 @@ import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { Canvas } from './Canvas';
-import { HIDE_WHEN_NARROW, HIDE_WHEN_SHORT, useEditorFold } from './editor-fold';
+import { foldNow, HIDE_WHEN_NARROW, HIDE_WHEN_SHORT, tabDropsRibbon, useEditorFold } from './editor-fold';
 import type { EditorGroup } from './editor-store';
 import {
   acceptSourceConversion,
@@ -728,7 +728,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               useEditor.setState({ group: next, pdfTool: null, pdfDrawing: false });
             } else useEditor.setState({ group: next });
             // Folded, a group's tab drops its ribbon over the slide.
-            if (ribbonFolded) setRibbonDropped(true);
+            if (tabDropsRibbon(ribbonKept, ribbonFolded, foldNow())) setRibbonDropped(true);
           }}
         />
         <Tooltip content="Undo the last change" kbd={`${mod}Z`} side="bottom">

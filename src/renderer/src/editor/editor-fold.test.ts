@@ -11,6 +11,7 @@ import {
   SLIDE_PAD,
   SMALL_PAD,
   slidePad,
+  tabDropsRibbon,
   watchFold,
 } from './editor-fold';
 
@@ -116,6 +117,24 @@ describe('the fold follows the window’s queries (a22-review-ribbonfold round 4
     win.resize(442, 260);
     win.tell();
     expect(told).toHaveLength(before);
+  });
+});
+
+describe('a group’s tab drops the ribbon over the slide (the Mac’s CI, run of 25 Nov 23:10, 2314c749f)', () => {
+  const short = { ribbon: true, inspector: true };
+  const tall = { ribbon: false, inspector: false };
+
+  it('where the window is short now, even before the fold has been told: the layout already hides the ribbon', () => {
+    // CSS folds at once; the fold hears of it with the next frame, later on a slow computer. A tab pressed between
+    // the two must still drop the ribbon, or it does nothing (the ribbon hidden, no drop) and is never dropped.
+    expect(tabDropsRibbon(false, false, short)).toBe(true);
+    expect(tabDropsRibbon(false, true, short)).toBe(true);
+  });
+
+  it('never where the ribbon is kept open, nor in a window that is not short', () => {
+    expect(tabDropsRibbon(true, false, short)).toBe(false);
+    expect(tabDropsRibbon(true, false, tall)).toBe(false);
+    expect(tabDropsRibbon(false, false, tall)).toBe(false);
   });
 });
 

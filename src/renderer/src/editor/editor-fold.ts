@@ -70,6 +70,14 @@ export function watchFold(media: (query: string) => MediaList, told: (fold: Edit
   };
 }
 
+/**
+ * Whether a group's tab drops the ribbon over the slide: the ribbon not kept open, and folded (`folded`, what the fold
+ * has been told).
+ */
+export function tabDropsRibbon(kept: boolean, folded: boolean, _now: EditorFold): boolean {
+  return !kept && folded;
+}
+
 /** The room kept round the slide in its area, each side. */
 export const SLIDE_PAD = 32;
 /** In a folded editor (a short or a narrow window), only this much, so the slide keeps the room there is. */
