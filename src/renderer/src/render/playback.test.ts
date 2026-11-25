@@ -297,6 +297,51 @@ describe('a file played once to an end point', () => {
     }
   });
 
+  it('loads the original when its page copy fails, telling no one; only the original failing is said (a22-review-fadecopies M1)', () => {
+    // A copy that fails is that page's own trouble (a stale ready list, a copy gone from the disk, one Chromium can't
+    // decode): said to Main, LIVE's or the stream page's word would take the video off the hall too.
+    vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
+    setReadyPageCopies({ clip: [720] });
+    setPageCopyHeight(720);
+    try {
+      const v = Object.assign(new FakeMedia(6), { error: null as { code: number; message: string } | null });
+      const onError = vi.fn();
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'clip',
+        startedAt: Date.now(),
+        pageCopy: true,
+        onError,
+      });
+      try {
+        expect(v.getAttribute('src')).toBe(pageCopyUrl('clip', 720));
+        v.error = { code: 4, message: 'MEDIA_ELEMENT_ERROR: Format error' };
+        v.dispatchEvent(new Event('error'));
+        expect(onError, 'the copy failing is not said').not.toHaveBeenCalled();
+        expect(v.getAttribute('src'), 'the original, on this page').toBe(mediaUrl('clip'));
+        // The original failing is said, as ever.
+        v.dispatchEvent(new Event('error'));
+        expect(onError).toHaveBeenCalledTimes(1);
+      } finally {
+        stop();
+      }
+      // This page takes that copy no more: the next showing plays the original.
+      const next = new FakeMedia(6);
+      const stopNext = startPlayback(next as unknown as HTMLMediaElement, {
+        mediaId: 'clip',
+        startedAt: Date.now(),
+        pageCopy: true,
+      });
+      try {
+        expect(next.getAttribute('src')).toBe(mediaUrl('clip'));
+      } finally {
+        stopNext();
+      }
+    } finally {
+      setPageCopyHeight(null);
+      setReadyPageCopies({});
+    }
+  });
+
   it('uses an already decoded frame immediately only when the caller opts in', () => {
     vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
     for (const reuseLoadedSource of [true, false]) {
