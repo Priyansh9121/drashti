@@ -81,6 +81,7 @@ test('Sabha flow: a PDF chosen is read by the pictures window, drawn at its shap
     id,
     fileName: 'Placeholder order.pdf',
     pageCount: 1,
+    drawnPages: 1,
     status: 'read',
     lang: 'gu',
     title: 'નમૂનો કાર્યક્રમ',

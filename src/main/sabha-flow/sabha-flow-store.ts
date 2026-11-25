@@ -173,6 +173,7 @@ export class SabhaFlowStore {
       id,
       fileName: cutText(basename(file), SABHA_FLOW_LIMITS.maxFileName),
       pageCount: drawn.total,
+      drawnPages: pages.length === 0 ? 0 : Math.max(...pages.map((p) => p.index)) + 1,
       ...reading,
     };
     const checked = sabhaFlowSchema.safeParse(flow);

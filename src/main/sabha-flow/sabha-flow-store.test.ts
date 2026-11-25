@@ -102,6 +102,7 @@ describe('Sabha flow store: choosing a PDF', () => {
       id: 'flow-0001',
       fileName: 'Placeholder order.pdf',
       pageCount: 1,
+      drawnPages: 1,
       status: 'read',
       lang: 'en',
       title: 'Placeholder order',
@@ -272,7 +273,7 @@ describe('Sabha flow store: its pages', () => {
     const store = s.make();
     await store.load();
     await store.choose(s.pdf('Two pages.pdf'));
-    expect(store.snapshot().flow?.pageCount).toBe(2);
+    expect(store.snapshot().flow).toMatchObject({ pageCount: 2, drawnPages: 2 });
     expect(await store.page('flow-0001', 1)).toEqual(new Uint8Array(PNG));
     expect(store.pageFile('flow-0001', 1)).toBe(join(s.dir, 'flow-0001', 'page-0002.png'));
     for (const [id, page] of [

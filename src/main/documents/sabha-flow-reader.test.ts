@@ -334,3 +334,203 @@ describe('Sabha flow reader: a numbered list, and what cannot be read', () => {
     expect(flow).toEqual({ status: 'no-items', lang: 'en', headers: [], items: [] });
   });
 });
+
+/** A page of runs placed by hand (no PDF): for what pdf.js could hand over but no placeholder PDF needs to show. */
+const handPage = (texts: FlowTextPage['texts'], rules: FlowTextPage['rules'] = []): FlowTextPage => ({
+  width: 595,
+  height: 842,
+  texts,
+  rules,
+});
+const run = (s: string, x: number, y: number, h = 10) => ({ s, x, y, w: s.length * 0.5 * h, h });
+
+describe('Sabha flow reader: its work is bounded (review M1)', () => {
+  it('reads 20 pages of lone numbers one under another in well under two seconds, as no running order', () => {
+    const pages = Array.from({ length: 20 }, () =>
+      // Tiny text, each its own line (a broken or crafted PDF).
+      handPage(Array.from({ length: 4000 }, (_, k) => run('1', 40, 20 + k * 0.2, 0.15))),
+    );
+    const started = performance.now();
+    const flow = readSabhaFlow(pages);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(flow).toEqual({ status: 'no-items', lang: 'mixed', headers: [], items: [] });
+  });
+
+  it('reads the most a PDF can hand over (20 pages of 8,000 long runs) in well under two seconds', () => {
+    const words = 'placeholder words in a dense booklet page '.repeat(40);
+    const pages = Array.from({ length: 20 }, () =>
+      handPage(
+        Array.from({ length: 8000 }, (_, k) =>
+          run(`${String((k % 300) + 1)} ${words}`, 40 + (k % 3), 20 + k * 0.1),
+        ),
+      ),
+    );
+    const started = performance.now();
+    const flow = readSabhaFlow(pages);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(flow.status).toBe('no-items');
+  });
+});
+
+describe('Sabha flow reader: what the review found (S1, S2, S3, nits)', () => {
+  it("S1: says 'unreadable' for an old typing font's text that comes out as plain ASCII", async () => {
+    const flow = await read([
+      flowTablePage({
+        title: 'uewuk dk;Zdze',
+        headers: ['dze', 'dk;Zdze', 'fooj.k', 'le;', 'oDrk'],
+        widths: FIVE,
+        rows: [
+          ['1', 'izFke dk;Zdze', 'uewuk fooj.k', '5 feuV', 'oDrk ,d'],
+          ['2', 'f}rh; dk;Zdze', 'uewuk', '10 feuV', 'oDrk nks'],
+          ['3', 'r`rh; dk;Zdze', 'uewuk', '5 feuV', 'oDrk rhu'],
+        ],
+        total: 'dqy le;% 20 feuV',
+      }),
+    ]);
+    expect(flow).toEqual({ status: 'unreadable', lang: 'mixed', headers: [], items: [] });
+  });
+
+  it('S1: plain English with names like McDonald, iPad and Q&A stays read', async () => {
+    const flow = await read([
+      flowTablePage({
+        headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+        widths: FIVE,
+        rows: [
+          ['1', 'Opening item', 'Placeholder Q&A', '5 min', 'Presenter McDonald'],
+          ['2', 'Second item', 'Placeholder iPad slides', '10 min', 'Presenter DeVries'],
+          ['3', 'Third item', 'Placeholder details', '5 min', 'Mr Placeholder'],
+        ],
+      }),
+    ]);
+    expect(flow).toMatchObject({ status: 'read', lang: 'en' });
+    expect(flow.items.map((i) => i.cells[3])).toEqual([
+      'Presenter McDonald',
+      'Presenter DeVries',
+      'Mr Placeholder',
+    ]);
+  });
+
+  it('S2: a lone number in the subtitle, standing over the numbers, is not where the rows start', async () => {
+    const page = flowTablePage({
+      title: 'Placeholder running order',
+      subtitle: 'nd placeholder evening',
+      headers: ['No.', 'Program', 'Details'],
+      widths: [44, 200, 200],
+      rows: [1, 2, 3, 4, 5].map((n) => [String(n), `Item ${String(n)}`, 'Placeholder']),
+    });
+    // As a word processor writes "2nd": the number a run of its own, the "nd" smaller beside it.
+    const subtitle = page.texts.find((t) => t.text === 'nd placeholder evening');
+    if (!subtitle) throw new Error('no subtitle');
+    page.texts.push({ text: '2', x: subtitle.x + 4, y: subtitle.y, size: subtitle.size });
+    subtitle.x += 14;
+    subtitle.size *= 0.7;
+    const flow = await read([page]);
+    expect(flow.items.map((i) => i.no)).toEqual(['1', '2', '3', '4', '5']);
+    expect(flow.headers).toEqual(['No.', 'Program', 'Details']);
+  });
+
+  it("S3: 'total' only as a whole word: a row's 'totally' is its words, a clock time under the table no total", async () => {
+    const flow = await read([
+      flowTablePage({
+        headers: ['No.', 'Program', 'Details'],
+        widths: [44, 200, 200],
+        rows: [
+          ['1', 'Item one', 'Placeholder'],
+          ['2', 'Item two', 'Placeholder details\ntotally placeholder'],
+        ],
+        borders: 'none',
+      }),
+    ]);
+    expect(flow.items[1]).toEqual({
+      no: '2',
+      cells: ['Item two', 'Placeholder details totally placeholder'],
+    });
+    const below = flowListPage({
+      lines: ['1. Placeholder opening', '2. Placeholder second', 'Doors open 7:30'],
+    });
+    expect((await read([below])).total).toBeUndefined();
+  });
+
+  it('nit: a time (3:30) is not an item number', async () => {
+    const flow = await read([
+      flowListPage({ lines: ['1. Placeholder opening', '2. Placeholder second', '3:30 placeholder break'] }),
+    ]);
+    expect(flow.items).toEqual([
+      { no: '1', cells: ['Placeholder opening'] },
+      { no: '2', cells: ['Placeholder second'] },
+    ]);
+  });
+
+  it("nit: a scan with a few words on it (a page number, a watermark) is 'no-text'", () => {
+    expect(readSabhaFlow([handPage([run('p. 1', 290, 820), run('Scan', 40, 20)])])).toEqual({
+      status: 'no-text',
+      lang: 'mixed',
+      headers: [],
+      items: [],
+    });
+  });
+
+  it('nit: a private-use or replacement character in a readable flow is left out of its words', () => {
+    const flow = readSabhaFlow([
+      handPage([
+        run('No.', 40, 100),
+        run('Program', 90, 100),
+        run('Details', 260, 100),
+        run('1', 40, 120),
+        run('Item one', 90, 120),
+        run('Placeholder�', 260, 120),
+        run('2', 40, 140),
+        run('Item two', 90, 140),
+        run('Placeholder', 260, 140),
+      ]),
+    ]);
+    expect(flow.items).toEqual([
+      { no: '1', cells: ['Item one', 'Placeholder'] },
+      { no: '2', cells: ['Item two', 'Placeholder'] },
+    ]);
+  });
+
+  it('a table shaped like a word processor running order: an empty number header, a block merged over 3 rows', async () => {
+    const flow = await read([
+      flowTablePage({
+        title: 'Placeholder running order',
+        subtitle: 'Placeholder evening',
+        headers: ['', 'Program', 'Details', 'Duration', 'Presenter'],
+        widths: [30, 90, 240, 70, 100],
+        rows: [
+          ['1', 'Item one', 'Placeholder one', '5 min', ''],
+          [
+            '2',
+            'Item two',
+            { text: '', rows: 3 },
+            { text: '10 min', rows: 3 },
+            { text: 'Presenter A', rows: 3 },
+          ],
+          ['3', 'Item three', null, null, null],
+          ['4', 'Item four', null, null, null],
+          ['5', 'Item five', 'Placeholder five', '5 min', ''],
+          ['6', '', 'Placeholder six', '5 min', 'Presenter B'],
+        ],
+        total: 'Total: 25 min',
+        borders: 'boxes',
+        uprights: 'per-cell',
+      }),
+    ]);
+    expect(flow).toEqual({
+      status: 'read',
+      lang: 'en',
+      title: 'Placeholder running order',
+      subtitle: 'Placeholder evening',
+      headers: ['', 'Program', 'Details', 'Duration', 'Presenter'],
+      items: [
+        { no: '1', cells: ['Item one', 'Placeholder one', '5 min', ''] },
+        { no: '2', cells: ['Item two', '', '10 min', 'Presenter A'] },
+        { no: '3', cells: ['Item three', '', '10 min', 'Presenter A'] },
+        { no: '4', cells: ['Item four', '', '10 min', 'Presenter A'] },
+        { no: '5', cells: ['Item five', 'Placeholder five', '5 min', ''] },
+        { no: '6', cells: ['', 'Placeholder six', '5 min', 'Presenter B'] },
+      ],
+      total: 'Total: 25 min',
+    });
+  });
+});
