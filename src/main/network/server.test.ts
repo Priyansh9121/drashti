@@ -1009,7 +1009,10 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
   });
 
   /** A POST answered while its body is still being sent (it is never finished): the answer, then the request dropped. */
-  function answeredMidBody(port: number, path: string): Promise<{ status: number; body: string }> {
+  function answeredMidBody(
+    port: number,
+    path: string,
+  ): Promise<{ status: number; body: string; connection: string | undefined }> {
     return new Promise((resolve, reject) => {
       let answered = false;
       const req = request(
@@ -1030,7 +1033,11 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
           res.on('data', (c: Buffer) => chunks.push(c));
           res.on('end', () => {
             answered = true;
-            resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') });
+            resolve({
+              status: res.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString('utf8'),
+              connection: res.headers.connection,
+            });
             req.destroy();
           });
         },
@@ -1061,6 +1068,8 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
       const r = await answeredMidBody(port, path);
       expect(r.status, path).toBe(403);
       expect(JSON.parse(r.body), path).toEqual({ ok: false, message: words });
+      // The connection ends with the answer: what the phone still sends is never waited for (the review's L2).
+      expect(r.connection, path).toBe('close');
     }
     // Nothing reached the main process; a picture at a width still does for the live picture (both modes').
     expect(host.requests.length).toBe(asked);
@@ -1073,6 +1082,21 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
       (await call(port, '/api/v1/media/m-picture/picture?width=1280', { headers: bearer(STAGE_TOKEN) }))
         .status,
     ).toBe(200);
+  });
+
+  it('refuses a phone a video’s file by a link without its token too (the review’s S1)', async () => {
+    const { port, host, server: s } = await withMedia();
+    // No phone can be given a link now: one made as the server makes them, for a Remote and this video.
+    const links = (s as unknown as { media: { links: { make(d: string, m: string): { ticket: string } } } })
+      .media.links;
+    const { ticket } = links.make('d-remote', 'm-video');
+    const asked = host.requests.length;
+    const r = await call(port, `/api/v1/media/m-video/original?link=${ticket}`, {
+      headers: { Range: 'bytes=0-10' },
+    });
+    expect(r.status).toBe(403);
+    expect(JSON.parse(r.body)).toEqual({ ok: false, message: PHONE_REFUSAL.media });
+    expect(host.requests.length).toBe(asked);
   });
 });
 

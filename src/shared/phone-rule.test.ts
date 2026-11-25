@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { engineCommandSchema } from './engine/commands';
+import { DEVICE_KIND_HELP } from './network';
 import { DEVICE_OPS, type DeviceOp } from './network-api';
 import {
   NEVER_COMMAND_WORDS,
@@ -113,8 +114,12 @@ describe('the phone rule (QA23-PHONE-1)', () => {
       notDeck: 'From a phone, only a PowerPoint or a PDF goes up. Put this up on the computer.',
       noDeck: 'No PowerPoint or PDF is on the screens: put one up from the playlist first.',
       media: 'A phone cannot play, put up or change videos, pictures or sounds. Use Drashti’s computer.',
-      files: 'Phones cannot add or share files with Drashti.',
+      // Both ways (the review's S4): files a phone would add, and the playlists Drashti shares with phones.
+      files: 'Phones cannot add files to Drashti or open the files it shares. Use Drashti’s computer.',
       computer: 'A phone cannot change this. Use Drashti’s computer.',
+      // The library sheet and the books' list, which are reads (the review's S4).
+      library:
+        'From a phone, only a playlist’s PowerPoints and PDFs are listed. Find the rest of the library on Drashti’s computer.',
     });
     // Every request and command refused has its group's words.
     for (const op of OPS)
@@ -133,6 +138,7 @@ describe('the phone rule (QA23-PHONE-1)', () => {
       ['upload', 'files'],
       ['upload.piece', 'files'],
       ['shared', 'files'],
+      ['shared.items', 'files'],
       ['timers', 'computer'],
       ['message.show', 'computer'],
       ['lowerThird.show', 'computer'],
@@ -143,7 +149,9 @@ describe('the phone rule (QA23-PHONE-1)', () => {
       ['playlist.add', 'computer'],
       ['shastra', 'notDeck'],
       ['repeat.start', 'notDeck'],
-      ['presentations', 'notDeck'],
+      ['presentations', 'library'],
+      ['search', 'library'],
+      ['shastra.texts', 'library'],
     ];
     for (const [op, words] of cases)
       for (const simple of [false, true]) expect(phoneOpRefusal(op, simple), op).toBe(PHONE_REFUSAL[words]);
@@ -175,5 +183,11 @@ describe('the phone rule (QA23-PHONE-1)', () => {
     expect(phoneCommandRefusal('showPip')).toBe(PHONE_REFUSAL.computer);
     expect(phoneCommandRefusal('nextItem')).toBe(PHONE_REFUSAL.notDeck);
     expect(phoneCommandRefusal('startRepeat')).toBe(PHONE_REFUSAL.notDeck);
+  });
+
+  it('tells the operator, as a Remote is paired, what a phone does in each mode (the review’s S4)', () => {
+    expect(DEVICE_KIND_HELP.remote).toBe(
+      'Shows the Sabha flow, what is on the screens and the chat; in Pro Mode it also puts up a PowerPoint or a PDF from a playlist, moves through it with Next and Back and clears its slide. It never puts up or changes videos, pictures, sounds, timers or messages.',
+    );
   });
 });

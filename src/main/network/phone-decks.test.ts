@@ -188,4 +188,73 @@ describe('a PowerPoint or a PDF, as a phone may put it up (QA23-PHONE-1)', () =>
     expect(isPhoneDeck(read)).toBe(false);
     expect(isPhoneDeck(null)).toBe(false);
   });
+
+  it('is never a PDF, a PowerPoint or a deck’s slides made a kirtan (the review’s MUST-1, the owner’s Q4)', async () => {
+    const pdf = await imported(
+      'Placeholder kirtan pages.pdf',
+      makeTestPdf([{ width: 960, height: 540, color: [60, 20, 40] }]),
+    );
+    expect(isPhoneDeck(pdf)).toBe(true);
+    // Made a kirtan in the library (kirtans:set-details): its details are read with it, and it is a deck no more.
+    db.prepare("INSERT INTO kirtans (presentation_id, category) VALUES (?, 'Kirtan')").run(pdf.id);
+    const marked = new PresentationRepo(db).get(pdf.id);
+    expect(marked?.kirtan?.category).toBe('Kirtan');
+    expect(isPhoneDeck(marked)).toBe(false);
+    const [group] = pdf.groups;
+    const [first] = group?.slides ?? [];
+    if (!group || !first) throw new Error('No slide');
+    // A Drashti file's deck slides with its clicks, made a kirtan: not a deck either.
+    const clicks: PresentationDoc = {
+      ...pdf,
+      source: { kind: 'drashti', path: null, ref: null, importedAt: null },
+      kirtan: { category: 'Kirtan', kavi: null, raag: null, occasions: [], audioMediaId: null, tracks: [] },
+      groups: [
+        {
+          ...group,
+          slides: [{ ...first, slide: { ...first.slide, deck: { steps: [], media: [] } } }],
+        },
+      ],
+    };
+    expect(isPhoneDeck(clicks)).toBe(false);
+  });
+
+  it('is said the same by the library’s own quick query, for every presentation it has (the review’s S2)', async () => {
+    const repo = new PresentationRepo(db);
+    // A Drashti file's deck (its source not the document's), a slide of it holding its clicks; and one switched off.
+    const libraryId = repo.ensureLibrary('Placeholder library');
+    const slideOf = (deck: boolean, enabled = true) => ({
+      enabled,
+      elements: [],
+      cues: [],
+      ...(deck ? { deck: { steps: [], media: [] } } : {}),
+    });
+    const drashti = { kind: 'drashti' as const, path: null, ref: null, importedAt: null };
+    repo.insert({
+      libraryId,
+      name: 'Placeholder deck file',
+      source: drashti,
+      groups: [{ name: '', slides: [slideOf(true), slideOf(false)] }],
+    });
+    repo.insert({
+      libraryId,
+      name: 'Placeholder clicks switched off',
+      source: drashti,
+      groups: [{ name: '', slides: [slideOf(true, false), slideOf(false)] }],
+    });
+    repo.insert({
+      libraryId,
+      name: 'Placeholder deck file made a kirtan',
+      source: drashti,
+      kirtan: { category: 'Kirtan' },
+      groups: [{ name: '', slides: [slideOf(true)] }],
+    });
+    const ids = (db.prepare('SELECT id FROM presentations').all() as { id: string }[]).map((r) => r.id);
+    // Every presentation the imports above made, the kirtan-marked PDF among them.
+    expect(ids.length).toBeGreaterThanOrEqual(9);
+    const decks = repo.phoneDecks([...ids, 'placeholder-gone']);
+    for (const id of ids) expect(decks.has(id), repo.get(id)?.name).toBe(isPhoneDeck(repo.get(id)));
+    expect(decks.has('placeholder-gone')).toBe(false);
+    expect(decks.size).toBeGreaterThanOrEqual(4);
+    expect(repo.phoneDecks([])).toEqual(new Set());
+  });
 });

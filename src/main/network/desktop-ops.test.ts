@@ -816,7 +816,7 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
 
   it('refuses a name with nothing visible in it as every other name from a phone: the rule first, the name never read', () => {
     const { ask, remote, calls } = setup();
-    const nothing = '​⁠­';
+    const nothing = '\u200B\u2060\u00AD';
     for (const [op, args] of [
       ['playlist.rename', { playlistId: 'pl-1', name: nothing }],
       ['playlist.new', { name: nothing }],
