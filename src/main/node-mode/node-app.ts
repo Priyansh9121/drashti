@@ -595,6 +595,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           log.warn(`Node: ${message}`);
         },
       });
+      // A new window starts afresh, as on Main (a23-heartbeat, review S2).
+      heartbeat.closed(config.id);
       heartbeat.opened(config.id);
       window.webContents.on('did-start-loading', () => {
         heartbeat.opened(config.id);
@@ -652,7 +654,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
             paintedRev: r?.paintedRev ?? -1,
             ...(r?.missingFonts && r.missingFonts.length > 0 ? { missingFonts: r.missingFonts } : {}),
             // Restarted again and again by its heartbeat (a23-heartbeat): Main says so.
-            ...(st.restarts === undefined ? {} : { restarts: st.restarts }),
+            // Held under the health's own limit (review N1: past it Main would drop the node's whole health).
+            ...(st.restarts === undefined ? {} : { restarts: Math.min(st.restarts, 100_000) }),
           },
         ];
       }),

@@ -71,6 +71,11 @@ interface Seen {
   paintedRev: number;
   /** Still warming up its GPU, unseen (Session 27): it runs, and draws the show only once done. */
   warming: boolean;
+  /**
+   * Since when its reports have drawn the show without a break (a23-heartbeat, review S1): null until one does, and
+   * again after a report a change behind (BEHIND_MS or more) or a gap in its reports longer than its limit.
+   */
+  drewAt: number | null;
 }
 
 export interface HeartbeatDeps {
@@ -107,7 +112,13 @@ export class OutputHeartbeat {
 
   /** An output opened or reloaded: judged again only after the grace. */
   opened(screenId: string): void {
-    this.seen.set(screenId, { since: this.deps.now(), reportAt: null, paintedRev: -1, warming: false });
+    this.seen.set(screenId, {
+      since: this.deps.now(),
+      reportAt: null,
+      paintedRev: -1,
+      warming: false,
+      drewAt: null,
+    });
   }
 
   /** Its window closed: one made again for the screen starts afresh, its restarts forgotten. */
@@ -155,19 +166,30 @@ export class OutputHeartbeat {
    * is running, so alive, but not yet drawing the show: it is not judged behind until it does.
    */
   report(screenId: string, paintedRev: number, warming = false): void {
+    const now = this.deps.now();
     const s = this.seen.get(screenId) ?? {
-      since: this.deps.now(),
+      since: now,
       reportAt: null,
       paintedRev: -1,
       warming: false,
+      drewAt: null,
     };
-    s.reportAt = this.deps.now();
+    const gap = s.reportAt === null ? null : now - s.reportAt;
+    s.reportAt = now;
     s.paintedRev = paintedRev;
     s.warming = warming;
     this.seen.set(screenId, s);
-    // Running and drawing the show again (a23-heartbeat): no longer said to keep restarting. Its count is kept, so
-    // a page that stops again soon is said to at once.
-    if (this.toldOf.has(screenId) && !warming && paintedRev >= this.deps.engineRev()) this.untell(screenId);
+    // Drawing the show (a23-heartbeat): running, and no change behind by BEHIND_MS or more (one younger is in time,
+    // review S3). Its streak starts again after a report that is not, or a gap longer than its limit.
+    const late = this.lateBy(s);
+    const drawing = !warming && (late === null || late < BEHIND_MS);
+    if (!drawing || (gap !== null && gap > this.staleLimit(s))) s.drewAt = null;
+    if (drawing) s.drewAt ??= now;
+    // Said to keep restarting: no longer once it has drawn the show and kept reporting for longer than the longest grace
+    // (review S1), so a page that paints after each reload and stops again stays said. Its count is kept, so a page
+    // that stops again soon is said to at once.
+    if (this.toldOf.has(screenId) && s.drewAt !== null && now - s.drewAt > RESTART_GRACE_MAX_MS)
+      this.untell(screenId);
   }
 
   /** Look at every judged output once (every CHECK_EVERY_MS). */
@@ -206,16 +228,25 @@ export class OutputHeartbeat {
     }
   }
 
+  /** How long a page may go without a report (warming, or run translated: a23-heartbeat). */
+  private staleLimit(s: Seen): number {
+    return s.warming || this.deps.translated === true ? WARMING_STALE_MS : REPORT_STALE_MS;
+  }
+
+  /** How long after the first change it has not painted its last report came; null when it painted them all. */
+  private lateBy(s: Seen): number | null {
+    if (s.reportAt === null || s.paintedRev >= this.deps.engineRev()) return null;
+    const changedAt = this.revAt.get(s.paintedRev + 1);
+    return changedAt === undefined ? null : s.reportAt - changedAt;
+  }
+
   private why(s: Seen, now: number): string | null {
     const heardAt = s.reportAt ?? s.since;
-    if (now - heardAt > (s.warming || this.deps.translated === true ? WARMING_STALE_MS : REPORT_STALE_MS))
-      return `no report for ${Math.round((now - heardAt) / 1000)} s`;
-    if (s.reportAt === null || s.warming || s.paintedRev >= this.deps.engineRev()) return null;
+    if (now - heardAt > this.staleLimit(s)) return `no report for ${Math.round((now - heardAt) / 1000)} s`;
+    if (s.warming) return null;
     // The first change it has not painted, and how long before its last report that came.
-    const changedAt = this.revAt.get(s.paintedRev + 1);
-    if (changedAt === undefined) return null;
-    const behind = s.reportAt - changedAt;
-    return behind >= BEHIND_MS
+    const behind = this.lateBy(s);
+    return behind !== null && behind >= BEHIND_MS
       ? `painted revision ${s.paintedRev} of ${this.deps.engineRev()}, ${Math.round(behind / 1000)} s after the change`
       : null;
   }

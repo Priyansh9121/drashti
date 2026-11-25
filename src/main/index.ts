@@ -3138,6 +3138,9 @@ function start(): void {
           log.warn(message);
         },
       });
+      // A new window (made again on another display, say: its old one's 'closed' comes after this one is in
+      // outputWindows) starts afresh: nothing of the old one carries over (a23-heartbeat, review S2).
+      heartbeat.closed(config.id);
       heartbeat.opened(config.id);
       // However it loads again (the watchdog, the dashboard's Reload, a test), it gets its grace.
       window.webContents.on('did-start-loading', () => {

@@ -124,10 +124,17 @@ export class OutputManager {
       const displayId = matches.get(screenId);
       if (!entry.window.isDestroyed() && displayId === entry.displayId && wanted.has(screenId)) continue;
       this.open.delete(screenId);
-      if (entry.window.isDestroyed()) continue;
+      if (entry.window.isDestroyed()) {
+        this.restarting.delete(screenId);
+        continue;
+      }
       if (wanted.has(screenId) && (displayId === undefined || displayId === null))
         this.hold(screenId, entry.window);
-      else entry.window.close();
+      else {
+        // Closed (and perhaps made again on another display in this same turn): nothing of it carries over (review S2).
+        this.restarting.delete(screenId);
+        entry.window.close();
+      }
     }
     // A held window whose screen no longer wants a display (turned off, switched off, removed) closes now.
     for (const [screenId, held] of this.held)
