@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { type PictureJump, watchPictureJumps } from '../../../tests/e2e/picture-jumps';
+import { type PictureJump, watchPictureJumps } from '../../../../tests/e2e/picture-jumps';
 
 /*
  * The cost spec's picture-jump watch (tests/e2e/picture-jumps.ts) with a stand-in page: a jump ends when its picture
