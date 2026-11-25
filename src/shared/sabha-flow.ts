@@ -10,7 +10,7 @@ import { z } from 'zod';
  *
  * The shared contract: the panel (operator window) and the phone remote build against these types.
  *
- * IPC (shared/ipc.ts `IPC.flow`; the operator window's bridge `window.drashti.flow`), every argument checked in Main:
+ * IPC (shared/ipc.ts `IPC.flow`; the operator window's bridge, its `flow` group), every argument checked in Main:
  *   flow:get                      -> SabhaFlowSnapshot             get()         (the flow and its Now, together)
  *   flow:choose                   -> SabhaFlowChoice | null        choose()      (Main's file dialog; null: cancelled)
  *   flow:remove                   -> null                          remove()
