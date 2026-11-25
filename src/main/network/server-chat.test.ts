@@ -24,6 +24,7 @@ const T = {
   announce: 'test-made-up-announce-token-chat-000',
   poster: 'test-made-up-poster-token-chat-00000',
   chat: 'test-made-up-chat-token-chat-0000000',
+  chat2: 'test-made-up-chat-token-chat-0000002',
 };
 
 const devices: DeviceAuth[] = [
@@ -38,6 +39,7 @@ const devices: DeviceAuth[] = [
     poster: true,
   },
   { id: 'd-chat', name: 'Chat 1', kind: 'chat', tokenHash: hashToken(T.chat) },
+  { id: 'd-chat2', name: 'Chat 2', kind: 'chat', tokenHash: hashToken(T.chat2) },
 ];
 
 let dir = '';
@@ -48,7 +50,7 @@ afterEach(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
-async function start() {
+async function start(options: { chatFeeds?: number } = {}) {
   dir = mkdtempSync(join(tmpdir(), 'drashti-net-chat-'));
   mkdirSync(join(dir, 'web'), { recursive: true });
   writeFileSync(join(dir, 'web', 'pair.html'), '<!doctype html><title>pair</title>');
@@ -74,6 +76,7 @@ async function start() {
     ffmpeg: null,
     previewDir: join(dir, 'previews'),
     localName: null,
+    ...(options.chatFeeds ? { chatFeeds: options.chatFeeds } : {}),
   });
   if (!started.ok) throw new Error(started.message);
   server.setDevices(devices);
@@ -284,5 +287,32 @@ describe('the chat through the phone server', () => {
     s.chat(message);
     await settle();
     expect(chat.messages.some((m) => m.type === 'chat')).toBe(false);
+  });
+
+  it('M4: a read says what the phone has already (after), for the main process to send only what is new', async () => {
+    const { port, requests } = await start();
+    expect((await call(port, `${CHAT_API.read}?after=m-1`, { token: T.remote })).status).toBe(200);
+    expect(requests[0]).toMatchObject({ op: 'chat', args: { after: 'm-1' } });
+  });
+
+  it('S6: one chat-only feed a device; at their cap a new one is turned away; a Stage device still gets its seat', async () => {
+    const { port } = await start({ chatFeeds: 2 });
+    const welcomed = (f: { messages: ToDevice[] }) => f.messages.some((m) => m.type === 'welcome');
+    const first = await feed(port, { token: T.chat });
+    await until(() => welcomed(first));
+    const again = await feed(port, { token: T.chat });
+    await until(() => welcomed(again));
+    await until(() => first.closed());
+    expect(first.messages.at(-1)).toEqual({ type: 'bye', reason: 'replaced' });
+    const second = await feed(port, { token: T.chat2 });
+    await until(() => welcomed(second));
+    const over = await feed(port, { token: T.announce, chat: true });
+    await until(() => over.messages.some((m) => m.type === 'bye'));
+    expect(over.messages.at(-1)).toEqual({ type: 'bye', reason: 'busy' });
+    const stage = await feed(port, { token: T.stage });
+    await until(() => welcomed(stage));
+    await settle();
+    expect(stage.closed()).toBe(false);
+    expect(again.closed()).toBe(false);
   });
 });

@@ -186,7 +186,7 @@ describe('the Chat QR', () => {
     // Still shown; gone after its time.
     expect(service.status().chatInvite?.code).toBe(code);
     clock.t += CHAT_INVITE_TTL_MS + 1;
-    expect(service.pair(code, PHONE)).toMatchObject({ ok: false, status: 403 });
+    expect(service.pair(code, PHONE)).toEqual({ ok: false, status: 410, message: CHAT_REFUSAL.ended });
     expect(service.status().chatInvite).toBeNull();
   });
 
@@ -195,7 +195,7 @@ describe('the Chat QR', () => {
     const code = invite(service);
     expect(service.endChatInvite()).toMatchObject({ ok: true });
     expect(service.status().chatInvite).toBeNull();
-    expect(service.pair(code, PHONE)).toMatchObject({ ok: false, status: 403 });
+    expect(service.pair(code, PHONE)).toEqual({ ok: false, status: 410, message: CHAT_REFUSAL.ended });
     const again = invite(service);
     const pairing = service.startPairing('remote', 'Placeholder phone');
     if (!pairing.ok || !pairing.status.pairing) throw new Error('no code');
@@ -210,9 +210,13 @@ describe('the Chat QR', () => {
   });
 
   it('takes at most CHAT_PEOPLE_MAX chat phones a day, and says so in plain words', () => {
-    const { service } = setup();
+    const { service, clock } = setup();
     const code = invite(service);
-    for (let i = 0; i < CHAT_PEOPLE_MAX; i++) scan(service, code, `10.0.1.${String(i)}`);
+    // Each from its own phone, a second apart (the joins' own limits: round 1 of the review, M2).
+    for (let i = 0; i < CHAT_PEOPLE_MAX; i++) {
+      scan(service, code, `10.0.1.${String(i)}`);
+      clock.t += 1000;
+    }
     expect(service.pair(code, PHONE)).toEqual({ ok: false, status: 409, message: CHAT_REFUSAL.full });
   });
 
@@ -372,6 +376,95 @@ describe('the chat’s events and a person removed', () => {
         { id: phone.id, name: 'Person 2', kind: 'chat', connected: true },
       ],
     });
+  });
+});
+
+describe('round 1 of the review (a22-review-chat)', () => {
+  it('M2: one phone cannot pair a crowd: a third join from one address is refused, another address still joins', () => {
+    const { service } = setup();
+    const code = invite(service);
+    scan(service, code, '10.0.2.1');
+    scan(service, code, '10.0.2.1');
+    expect(service.pair(code, '10.0.2.1')).toEqual({
+      ok: false,
+      status: 429,
+      message: CHAT_REFUSAL.joinTooMany,
+    });
+    expect(service.pair(code, '10.0.2.2').ok).toBe(true);
+  });
+
+  it('M2: the Chat QR takes a few phones at once, then one a second, refused in plain words meanwhile', () => {
+    const { service, clock } = setup();
+    const code = invite(service);
+    const joins = Array.from({ length: 11 }, (_, i) => service.pair(code, `10.0.3.${String(i)}`));
+    expect(joins.filter((j) => j.ok)).toHaveLength(10);
+    expect(joins.at(-1)).toEqual({ ok: false, status: 429, message: CHAT_REFUSAL.joinTooFast });
+    clock.t += 1000;
+    expect(service.pair(code, '10.0.3.99').ok).toBe(true);
+  });
+
+  it('M3: a chat phone that never gives a name is listed for the operator, and removing it cuts it off', () => {
+    const { service, ask, listen, lastDevices } = setup();
+    listen();
+    const quiet = scan(service, invite(service)).device;
+    expect(ask(quiet.id, 'chat').status).toBe(200);
+    expect(service.chatView().members).toMatchObject([{ id: quiet.id, kind: 'chat', named: false }]);
+    expect(service.removeChatPerson(quiet.id)).toMatchObject({ ok: true });
+    expect(lastDevices().some((d) => d.id === quiet.id)).toBe(false);
+    expect(ask(quiet.id, 'chat').status).toBe(401);
+    expect(service.chatView().members).toEqual([]);
+  });
+
+  it('M4: a phone’s read passes what it has (after) to the chat', () => {
+    const { service, ask } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    ask(remote, 'chat.name', { name: 'Person 1' });
+    const sent = ask(remote, 'chat.send', { text: 'Placeholder' });
+    const id = (sent.body as { message: { id: string } }).message.id;
+    expect(ask(remote, 'chat', { after: id })).toMatchObject({
+      status: 200,
+      body: { chat: { messages: [], since: id } },
+    });
+  });
+
+  it('S4: an ended Chat QR’s code says so, and never counts against the live Chat QR or a pairing code', () => {
+    const { service } = setup();
+    const old = invite(service);
+    service.endChatInvite();
+    const live = invite(service);
+    const pairing = service.startPairing('remote', 'Placeholder phone');
+    if (!pairing.ok || !pairing.status.pairing) throw new Error('no code');
+    expect(old).not.toBe(live);
+    for (let i = 0; i < 12; i++)
+      expect(service.pair(old, `10.0.4.${String(i)}`)).toEqual({
+        ok: false,
+        status: 410,
+        message: CHAT_REFUSAL.ended,
+      });
+    expect(service.pair(live, '10.0.4.50').ok).toBe(true);
+    expect(service.pair(pairing.status.pairing.code, '10.0.4.51').ok).toBe(true);
+  });
+
+  it('S2: the operator’s section hears of connections only when someone in the chat comes or goes', () => {
+    const { service, listen, fromWorker, chatChanges } = setup();
+    listen();
+    const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
+    const phone = scan(service, invite(service)).device;
+    const before = chatChanges();
+    fromWorker({ type: 'connected', deviceIds: [stage] });
+    expect(chatChanges()).toBe(before);
+    fromWorker({ type: 'connected', deviceIds: [stage, phone.id] });
+    expect(chatChanges()).toBe(before + 1);
+  });
+
+  it('a chat phone’s first request after midnight is refused: unpaired at once, before any minute’s check', () => {
+    const { service, ask, clock, listen, lastDevices } = setup();
+    listen();
+    const phone = scan(service, invite(service)).device;
+    ask(phone.id, 'chat.name', { name: 'Person 1' });
+    clock.t = Date.UTC(2026, 10, 26, 0, 0, 5);
+    expect(ask(phone.id, 'chat').status).toBe(401);
+    expect(lastDevices().some((d) => d.id === phone.id)).toBe(false);
   });
 });
 

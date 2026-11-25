@@ -91,3 +91,19 @@ export function composerCheck(text: string): { canSend: boolean; line: string | 
   const left = CHAT_TEXT_MAX - words.length;
   return { canSend: true, line: left <= NEAR ? `${characters(left)} left` : null };
 }
+
+/**
+ * What a key in the text box does (a22-review-chat O-S2): Enter sends, Shift+Enter is a new line, Escape leaves the box
+ * (the chat is used during the show: once the operator stops typing, the show's keys, a clicker's Next among them, must
+ * reach the show). A keyboard composing a word (an IME) keeps its own Enter and Escape; every other key is the box's.
+ */
+export function composerKey(e: {
+  key: string;
+  shiftKey: boolean;
+  isComposing: boolean;
+}): 'send' | 'leave' | null {
+  if (e.isComposing) return null;
+  if (e.key === 'Enter' && !e.shiftKey) return 'send';
+  if (e.key === 'Escape') return 'leave';
+  return null;
+}

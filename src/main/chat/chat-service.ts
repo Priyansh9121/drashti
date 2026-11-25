@@ -6,6 +6,7 @@ import {
   CHAT_PEOPLE_MAX,
   CHAT_RATE,
   CHAT_RATE_ALL,
+  CHAT_READ_RATE,
   CHAT_REFUSAL,
   type ChatDeviceKind,
   type ChatEvent,
@@ -14,7 +15,9 @@ import {
   type ChatPhoneView,
   type ChatState,
   chatNameInputSchema,
+  chatNameKey,
   chatNameSchema,
+  chatReadSchema,
   chatSendSchema,
   chatTextSchema,
 } from '../../shared/chat';
@@ -59,20 +62,21 @@ const refuse = (status: number, message: string): ChatRefusal => ({ ok: false, s
 const isChatKind = (kind: DeviceKind): kind is ChatDeviceKind =>
   (CHAT_DEVICE_KINDS as readonly string[]).includes(kind);
 
-/** The operator's name, as a phone might type it: never a phone's. */
-const sameAsOperator = (name: string) =>
-  name.toLocaleLowerCase('en') === CHAT_OPERATOR_NAME.toLocaleLowerCase('en');
+/** The operator's name as names are compared (review S3): never a phone's, however it is written. */
+const OPERATOR_KEY = chatNameKey(CHAT_OPERATOR_NAME);
 
 export class ChatService {
   private readonly perPerson: RateLimiter;
   private readonly allPhones: RateLimiter;
   private readonly names: RateLimiter;
+  private readonly reads: RateLimiter;
 
   constructor(private readonly deps: ChatServiceDeps) {
     const now = () => deps.now();
     this.perPerson = new RateLimiter(CHAT_RATE.perSecond, CHAT_RATE.burst, now);
     this.allPhones = new RateLimiter(CHAT_RATE_ALL.perSecond, CHAT_RATE_ALL.burst, now);
     this.names = new RateLimiter(CHAT_NAME_RATE.perSecond, CHAT_NAME_RATE.burst, now);
+    this.reads = new RateLimiter(CHAT_READ_RATE.perSecond, CHAT_READ_RATE.burst, now);
   }
 
   /** In the chat: an individually paired Remote or Announcements device, or a chat phone; never the poster link. */
@@ -95,15 +99,31 @@ export class ChatService {
     return this.deps.store.state();
   }
 
-  private view(id: string): ChatPhoneView {
+  /** The day's chat for a phone: only the messages after `after` while Drashti still has that one (review M4). */
+  private view(id: string, after?: string): ChatPhoneView {
     const state = this.deps.store.state();
-    return { ...state, you: { id, name: this.deps.store.person(id)?.name ?? null } };
+    const at = after === undefined ? -1 : state.messages.findIndex((m) => m.id === after);
+    return {
+      ...state,
+      messages: at < 0 ? state.messages : state.messages.slice(at + 1),
+      you: { id, name: this.deps.store.person(id)?.name ?? null },
+      since: at < 0 ? null : (after ?? null),
+    };
   }
 
-  read(device: ChatDeviceLike): { ok: true; chat: ChatPhoneView } | ChatRefusal {
+  /** A phone's read (opening, waking, reconnecting): a few at once, then one a second, refused before it is read. */
+  read(device: ChatDeviceLike, raw: unknown = {}): { ok: true; chat: ChatPhoneView } | ChatRefusal {
     if (!this.inChat(device)) return refuse(403, CHAT_REFUSAL.notIn);
+    const input = chatReadSchema.safeParse(raw);
+    if (!input.success) return refuse(400, CHAT_REFUSAL.badRead);
+    if (!this.reads.take(device.id)) return refuse(429, CHAT_REFUSAL.readTooFast);
     this.tick();
-    return { ok: true, chat: this.view(device.id) };
+    return { ok: true, chat: this.view(device.id, input.data.after) };
+  }
+
+  /** In the chat now: a person with a name, or a chat phone (review S2: whose comings and goings the operator hears). */
+  isMember(id: string): boolean {
+    return this.deps.store.person(id) !== null || this.deps.store.device(id) !== null;
   }
 
   setName(device: ChatDeviceLike, raw: unknown): { ok: true; chat: ChatPhoneView } | ChatRefusal {
@@ -112,9 +132,12 @@ export class ChatService {
     const input = chatNameInputSchema.safeParse(raw);
     const name = input.success ? chatNameSchema.safeParse(input.data.name) : null;
     if (!name?.success) return refuse(400, CHAT_REFUSAL.name);
-    if (sameAsOperator(name.data)) return refuse(400, CHAT_REFUSAL.operatorName);
+    const key = chatNameKey(name.data);
+    if (key === OPERATOR_KEY) return refuse(400, CHAT_REFUSAL.operatorName);
     const known = this.deps.store.person(device.id);
     if (known?.name === name.data) return { ok: true, chat: this.view(device.id) };
+    if (this.deps.store.state().people.some((p) => p.id !== device.id && chatNameKey(p.name) === key))
+      return refuse(409, CHAT_REFUSAL.nameTaken);
     if (!known && this.deps.store.peopleCount() >= CHAT_PEOPLE_MAX) return refuse(409, CHAT_REFUSAL.full);
     if (!this.names.take(device.id)) return refuse(429, CHAT_REFUSAL.nameTooFast);
     this.deps.store.setName(device.id, name.data);
@@ -132,7 +155,8 @@ export class ChatService {
     if (!text.success) return refuse(400, text.error.issues[0]?.message ?? CHAT_REFUSAL.empty);
     const from = this.deps.store.person(device.id);
     if (!from) return refuse(409, CHAT_REFUSAL.noName);
-    if (!this.allPhones.take('all') || !this.perPerson.take(device.id))
+    // The person's own rate first: one looping phone spends only its own, never the group's (review M1).
+    if (!this.perPerson.take(device.id) || !this.allPhones.take('all'))
       return refuse(429, CHAT_REFUSAL.tooFast);
     return { ok: true, message: this.post(from, text.data) };
   }
@@ -190,11 +214,14 @@ export class ChatService {
     return device;
   }
 
+  /** A chat phone of today (a new day unpairs them first: a request just after midnight is refused at once). */
   device(id: string): ChatDevice | null {
+    this.tick();
     return this.deps.store.device(id);
   }
 
   devices(): ChatDevice[] {
+    this.tick();
     return this.deps.store.devices();
   }
 
@@ -205,8 +232,12 @@ export class ChatService {
       if (p.id === CHAT_OPERATOR_ID) continue;
       const kind = this.deps.store.device(p.id) ? 'chat' : kindOf(p.id);
       if (!kind || !isChatKind(kind)) continue;
-      members.push({ id: p.id, name: p.name, kind, connected: connected.has(p.id) });
+      members.push({ id: p.id, name: p.name, kind, connected: connected.has(p.id), named: true });
     }
+    // Every chat phone with no name yet too (review M3): it reads the chat, so the operator sees it and can remove it.
+    for (const d of this.deps.store.devices())
+      if (!this.deps.store.person(d.id))
+        members.push({ id: d.id, name: d.name, kind: 'chat', connected: connected.has(d.id), named: false });
     return members;
   }
 }

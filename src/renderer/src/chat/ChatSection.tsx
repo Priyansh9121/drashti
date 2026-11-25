@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -8,9 +8,10 @@ import { ChevronDown, ChevronRight, MessagesSquare, Send, Trash2 } from '../ui/i
 import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { useNetwork } from '../network/network-store';
+import { useNow } from '../render/useNow';
 import { useOperateOnly } from '../simple/simple-features-store';
 import { ChatList } from './ChatList';
-import type { ChatMember, ChatOperatorView } from '../../../shared/chat';
+import type { ChatInvite, ChatMember, ChatOperatorView } from '../../../shared/chat';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
 import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import {
@@ -22,7 +23,7 @@ import {
   useChat,
   useChatUnread,
 } from './chat-store';
-import { chatRows, composerCheck, unreadWords } from './chat-view';
+import { chatRows, composerCheck, composerKey, unreadWords } from './chat-view';
 
 /*
  * The operator window's Chat section (alpha.23, QA23-CHAT-1; the owner: "a few people scan and a group is created,
@@ -38,8 +39,27 @@ import { chatRows, composerCheck, unreadWords } from './chat-view';
  * Remove dialog's name: Report a Problem's picture of this window blanks them (main/report/private-parts.ts).
  */
 
+/** The messages' box: one height for a window's size, empty or full (a22-review-chat O-S1). */
+const MESSAGES_BOX = 'h-[clamp(10rem,30vh,20rem)] min-h-0';
+
 /** What Report a Problem's picture of the window blanks (the chat's words and names). */
 const PRIVATE = { [REPORT_PRIVATE_ATTR]: '' };
+
+/** Whether a box scrolls now (its content taller than it), checked again whenever `content` changes. */
+function useScrolls(box: RefObject<HTMLElement | null>, content: unknown): boolean {
+  const [scrolls, setScrolls] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el) setScrolls(el.scrollHeight > el.clientHeight + 1);
+  }, [box, content]);
+  return scrolls;
+}
+
+/**
+ * How a person is listed (core's M3: every chat phone is listed, named or not; one with no name yet has its device's
+ * name, "Chat 3", and `named` false).
+ */
+const listedName = (m: ChatMember): string => (m.named ? m.name : `${m.name} (no name yet)`);
 
 const KIND_WORDS: Record<ChatMember['kind'], string> = {
   remote: 'Remote',
@@ -58,9 +78,12 @@ export function ChatPeople({
   members: readonly ChatMember[];
   open: boolean;
   onOpen: (open: boolean) => void;
-  canRemove: boolean;
+  /** Whether this window may remove that person (Simple Mode: a chat phone only). */
+  canRemove: (member: ChatMember) => boolean;
   onRemove: (member: ChatMember) => void;
 }) {
+  const list = useRef<HTMLUListElement>(null);
+  const scrolls = useScrolls(list, members);
   return (
     <div className="space-y-1.5" data-testid="chat-people">
       <button
@@ -75,11 +98,17 @@ export function ChatPeople({
       </button>
       {open &&
         (members.length === 0 ? (
-          <p className="text-xs text-muted">
-            No one yet: a phone joins when its person gives their name on its chat page.
-          </p>
+          <p className="text-xs text-muted">No one is in the chat yet.</p>
         ) : (
-          <ul className="space-y-1" data-testid="chat-people-list">
+          // A height of its own, whoever joins, so nothing under it moves (a22-review-chat O-S1).
+          <ul
+            ref={list}
+            aria-label="People in the chat"
+            // Reached by the keyboard while it scrolls (Simple Mode's has no button in it).
+            tabIndex={scrolls ? 0 : undefined}
+            className="h-28 space-y-1 overflow-y-auto pr-1"
+            data-testid="chat-people-list"
+          >
             {members.map((m) => (
               <li
                 key={m.id}
@@ -87,17 +116,24 @@ export function ChatPeople({
                 data-testid="chat-person"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm break-words text-fg [overflow-wrap:anywhere]">{m.name}</span>
+                  <span
+                    className={cx(
+                      'block text-sm break-words [overflow-wrap:anywhere]',
+                      m.named ? 'text-fg' : 'text-muted italic',
+                    )}
+                  >
+                    {listedName(m)}
+                  </span>
                   <span className="block text-xs text-muted">
                     {KIND_WORDS[m.kind]} · {m.connected ? 'Connected' : 'Not connected'}
                   </span>
                 </span>
-                {canRemove && (
+                {canRemove(m) && (
                   <Button
                     variant="ghost"
                     size="sm"
                     icon={Trash2}
-                    aria-label={`Remove ${m.name} from the chat`}
+                    aria-label={`Remove ${listedName(m)} from the chat`}
                     className="shrink-0"
                     onClick={() => onRemove(m)}
                     data-testid="chat-remove-person"
@@ -124,7 +160,39 @@ export function ChatEmpty({ operateOnly }: { operateOnly: boolean }) {
   );
 }
 
-/** The text box and Send: Enter sends, Shift+Enter starts a new line. Its words are kept in the store (`draft`). */
+/**
+ * While the Chat QR lets phones join (shown from Phones, Pro Mode), the section says so, with Stop, in either mode
+ * (core's S5: Simple Mode may stop it). A line that is always there, so nothing under it moves as the code ends.
+ */
+function InviteLine({ invite }: { invite: ChatInvite | null }) {
+  const now = useNow(1000);
+  const left = invite ? Math.max(0, Math.ceil((invite.expiresAt - now) / 1000)) : 0;
+  const time = `${String(Math.floor(left / 60))}:${String(left % 60).padStart(2, '0')}`;
+  return (
+    <div className="flex h-7 items-center gap-2 text-xs text-muted" data-testid="chat-invite-slot">
+      {left > 0 && (
+        <>
+          <span className="min-w-0 flex-1">{`Phones can join by the Chat QR code for ${time} more.`}</span>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={() => void chatAction((chat) => chat.endInvite())}
+            data-testid="chat-section-invite-end"
+          >
+            Stop the Chat QR code
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The text box and Send: Enter sends, Shift+Enter starts a new line, Escape leaves the box. Its words are kept in the
+ * store (`draft`). Sent (or refused), the box lets the focus go (a22-review-chat O-S2): the window takes no show key
+ * while a text box has the focus, and the chat is used during the show, so the next key (a clicker's Next) is the
+ * show's unless the operator goes back into the box.
+ */
 function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) => void }) {
   const [sending, setSending] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -133,10 +201,10 @@ function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) =
   const send = async () => {
     if (!check.canSend || sending) return;
     setSending(true);
+    box.current?.blur();
     const result = await chatAction((chat) => chat.send(draft));
     setSending(false);
     if (result.ok) onDraft('');
-    box.current?.focus();
   };
   return (
     <form
@@ -151,7 +219,7 @@ function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) =
         <Textarea
           ref={box}
           aria-label="Message to the chat"
-          aria-describedby={check.line === null ? undefined : lineId}
+          aria-describedby={lineId}
           aria-invalid={!check.canSend && check.line !== null ? true : undefined}
           placeholder="Write a message"
           rows={2}
@@ -160,10 +228,16 @@ function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) =
             onDraft(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            }
+            const does = composerKey({
+              key: e.key,
+              shiftKey: e.shiftKey,
+              isComposing: e.nativeEvent.isComposing,
+            });
+            if (does === null) return;
+            // Taken here: nothing else acts on it (the window's keys let a text box's keys go by anyway).
+            e.preventDefault();
+            if (does === 'send') void send();
+            else e.currentTarget.blur();
           }}
           className="min-w-0 flex-1 resize-none px-2 py-1.5"
           data-testid="chat-text-box"
@@ -180,15 +254,14 @@ function Composer({ draft, onDraft }: { draft: string; onDraft: (text: string) =
           Send
         </Button>
       </div>
-      {check.line !== null && (
-        <p
-          id={lineId}
-          className={cx('text-xs', check.canSend ? 'text-muted' : 'text-warning-fg')}
-          data-testid="chat-composer-line"
-        >
-          {check.line}
-        </p>
-      )}
+      {/* A line of its own, there while nothing is said, so the people under it never move as it comes and goes. */}
+      <p
+        id={lineId}
+        className={cx('min-h-4 text-xs', check.canSend ? 'text-muted' : 'text-warning-fg')}
+        data-testid="chat-composer-line"
+      >
+        {check.line}
+      </p>
     </form>
   );
 }
@@ -209,8 +282,8 @@ function Messages({ view }: { view: ChatOperatorView }) {
     <ChatList
       ref={list}
       rows={rows}
-      // It scrolls on its own, so the text box under it stays in reach; reached by the keyboard while it scrolls.
-      className="max-h-[40vh] overflow-y-auto pr-1"
+      // It scrolls on its own, inside the box of one height (MESSAGES_BOX), reached by the keyboard while it scrolls.
+      className="h-full overflow-y-auto pr-1"
       tabIndex={scrolls ? 0 : undefined}
       onScroll={() => {
         const el = list.current;
@@ -261,18 +334,23 @@ export function ChatContentsView({
                 : 'Phones cannot reach the chat while Phones is off: turn on Let paired phones and tablets connect.'}
             </p>
           )}
-          {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
+          {/* One height, empty or full (a22-review-chat O-S1): a message coming in never moves Timers, Lower Thirds
+              and the tools under the section while the operator's pointer is on them. */}
+          <div className={MESSAGES_BOX} data-testid="chat-messages-box">
+            {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
+          </div>
           <Composer draft={draft} onDraft={onDraft} />
-          {error !== null && (
-            <p role="alert" className="text-xs text-warning-fg" data-testid="chat-problem">
-              {error}
-            </p>
-          )}
+          <InviteLine invite={view.invite} />
+          {/* The last refusal, in a line that is always there (so nothing under it moves when one comes). */}
+          <p role="alert" className="min-h-4 text-xs text-warning-fg" data-testid="chat-problem">
+            {error}
+          </p>
           <ChatPeople
             members={view.members}
             open={peopleOpen}
             onOpen={onPeopleOpen}
-            canRemove={!operateOnly}
+            // Simple Mode removes a chat phone, never a Remote or an Announcements device (core's S5: Main bounds it).
+            canRemove={(m) => !operateOnly || m.kind === 'chat'}
             onRemove={(m) => {
               clearChatError();
               setRemoving(m);
@@ -295,10 +373,10 @@ export function ChatContentsView({
               {/* The dialog lies over the window, outside the section's box: its name is marked on its own. */}
               <p>
                 <span {...PRIVATE} className="font-medium text-fg">
-                  {removing.name}
-                </span>
-                ’s phone is cut off at once, from the chat and from anything else it does with Drashti. To
-                come back, it is paired again.
+                  {removing.named ? `${removing.name}’s phone` : `${removing.name} (no name yet)`}
+                </span>{' '}
+                is cut off at once, from the chat and from anything else it does with Drashti. To come back,
+                it is paired again.
               </p>
             </ConfirmDialog>
           )}
