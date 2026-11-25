@@ -1,8 +1,9 @@
-import type { Browser, BrowserContext, Page } from '@playwright/test';
+import type { Browser, BrowserContext, ElectronApplication, Page } from '@playwright/test';
 import { chromium, devices, expect, test, webkit } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { flowTablePage, makeFlowPdf } from '../../src/main/documents/testing/sabha-flow-pdfs';
 import { callBody, placeholderComputer, readAnswer } from '../access-core';
 import { type AccessStandIn, accessStandIn } from '../access-standin';
 import type { Engine } from './devices';
@@ -18,7 +19,8 @@ import { makeTestImage } from './test-media';
  * in 21", 22 Nov 2026): what people open on a phone or another browser. Each page at 360 × 740, 390 × 844 and
  * 430 × 932, upright and held sideways, and on a 768 × 1024 tablet, in Safari's engine and Chrome's, with long
  * placeholder names: the phone remote on each of its tabs and in each of its sheets, its viewer, a row's menu and the
- * Picture editor, files from phones (Add from this Phone… and Shared from Drashti), the pairing page (as a QR code opens
+ * Picture editor, the Sabha flow's sheet (its read list and its PDF page, alpha.23), files from phones (Add from this
+ * Phone… and Shared from Drashti), the pairing page (as a QR code opens
  * it, a wrong code, a device removed), the announcements page with what it sent, the stage display, and the access
  * list's pages an emailed Approve or Reject link opens (the link page on GitHub Pages, and the one a link sent before
  * x38 opens on the web app). On each, nothing is cut, lies over another, is under another, or is off the screen with no way to it; nothing
@@ -547,6 +549,46 @@ async function longShow(win: Page): Promise<{ playlistId: string; presentationId
   );
 }
 
+/**
+ * A Sabha flow with long placeholder words (alpha.23): a long file name, long cells, a Gujarati row, a merged cell and a
+ * total, two pages; chosen in the operator window (its dialog answered by the test) and Now marked on its first item.
+ */
+async function longFlow(app: ElectronApplication, win: Page): Promise<void> {
+  const file = join(
+    mkdtempSync(join(tmpdir(), 'drashti-phone-fit-flow-')),
+    'Placeholder Running Order of the Sunday Evening Sabha with a Long Name.pdf',
+  );
+  const table = flowTablePage({
+    title: 'Placeholder Sunday Evening Sabha with a Long Title for the Phones',
+    subtitle: 'Placeholder hall with a long name, placeholder date',
+    headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+    rows: [
+      ['1', 'Placeholder opening', 'Placeholder words of welcome, long enough to wrap', '5 min', LONG.from],
+      [
+        '2',
+        'Video',
+        'Placeholder clip of the week with a long name',
+        { text: '20 min', rows: 2 },
+        { text: 'Placeholder B', rows: 2 },
+      ],
+      ['3', 'નમૂના કાર્યક્રમ', 'નમૂના શબ્દો', null, null],
+    ],
+    widths: [40, 140, 180, 80, 115],
+    total: 'Placeholder total: 30 min',
+  });
+  writeFileSync(file, await makeFlowPdf([table, table]));
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
+  }, file);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const chosen = await d.flow.choose();
+    if (!chosen?.ok) throw new Error(chosen ? chosen.message : 'The Sabha flow was not chosen');
+    const now = await d.flow.setNow(chosen.flow.id, 0);
+    if (!now.ok) throw new Error(now.message);
+  });
+}
+
 /** One way the remote can look, and how to get there from any other (and back out of it). */
 interface View {
   name: string;
@@ -668,6 +710,28 @@ function remoteViews(layout: 'phone' | 'wide', playlistId: string): View[] {
     sheet('Change the library…', 'remote-open-library', 'remote-library-sheet', more),
     sheet('MIDI…', 'remote-open-midi', 'remote-midi-sheet', more),
     sheet('Announcements…', 'remote-open-queue', 'remote-queue-sheet', more),
+    // The Sabha flow (alpha.23): its read list, then its PDF page.
+    sheet('Open Sabha flow…, its read list', 'remote-open-flow', 'remote-flow-sheet', more),
+    {
+      name: 'Open Sabha flow…, its PDF page',
+      open: async (p) => {
+        await more(p);
+        await p.getByTestId('remote-open-flow').click();
+        await chosen(p, 'remote-flow-view-page');
+        await expect
+          .poll(() =>
+            p
+              .getByTestId('remote-flow-picture')
+              .evaluate((img) => img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0),
+          )
+          .toBe(true);
+      },
+      close: async (p) => {
+        await chosen(p, 'remote-flow-view-list');
+        await p.getByTestId('remote-flow-sheet-close').click();
+        await expect(p.getByTestId('remote-flow-sheet')).toHaveCount(0);
+      },
+    },
   ];
 }
 
@@ -683,6 +747,7 @@ for (const engine of ENGINES)
       const win = await operatorPage(app);
       await operatorReady(win);
       const { playlistId } = await longShow(win);
+      await longFlow(app, win);
       const { port, base } = await networkOn(win);
       // Files from phones on: Add from this Phone… at the top of the library's media.
       await win.evaluate(async () => {
