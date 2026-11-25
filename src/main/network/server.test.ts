@@ -547,7 +547,7 @@ describe('the network server', () => {
     // phone rule's words, the main process never asked.
     const askedBefore = host.requests.length;
     for (const path of ['/api/v1/presentations?offset=100&limit=50', '/api/v1/search?q=placeholder%20words'])
-      phoneRefused(await call(port, path, { headers: bearer(REMOTE_TOKEN) }), PHONE_REFUSAL.notDeck, path);
+      phoneRefused(await call(port, path, { headers: bearer(REMOTE_TOKEN) }), PHONE_REFUSAL.library, path);
     expect(host.requests).toHaveLength(askedBefore);
     // With the rule aside, as the presenter's remote had them (Session 18): a page at a time, and searched, by query
     // string.

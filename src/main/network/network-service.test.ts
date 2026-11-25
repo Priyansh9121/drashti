@@ -860,8 +860,9 @@ describe('the network in the main process', () => {
     expect(service.answer({ address: PHONE, deviceId: stage, op: 'hall', args: {} }).status).toBe(403);
     // Shastra: never a phone's (QA23-PHONE-1, the owner's Q4: only a PowerPoint or a PDF), nothing put up.
     const sent = commands.length;
+    // The books' list is a read: the library's words (the review's S4).
     expect(service.answer({ address: PHONE, deviceId: remote, op: 'shastra.texts', args: {} })).toEqual(
-      refusedAs('notDeck'),
+      refusedAs('library'),
     );
     expect(
       service.answer({ address: PHONE, deviceId: remote, op: 'shastra', args: { reference: 'PG 14' } }),
@@ -965,9 +966,10 @@ describe('the network in the main process', () => {
       const remote = service.pairForCheck('remote', 'Placeholder phone').id;
       const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
       // A phone: the playlist only, a PowerPoint's or a PDF's rows only; nothing put up.
+      // Reads, in the library's words (the review's S4).
       for (const op of ['presentations', 'search'] as const)
         expect(service.answer({ address: PHONE, deviceId: remote, op, args: {} }), op).toEqual(
-          refusedAs('notDeck'),
+          refusedAs('library'),
         );
       expect(
         service.answer({
@@ -1042,7 +1044,7 @@ describe('the network in the main process', () => {
     const id = everything.service.pairForCheck('remote', 'Placeholder phone').id;
     for (const op of ['presentations', 'search'] as const)
       expect(everything.service.answer({ address: PHONE, deviceId: id, op, args: {} })).toEqual(
-        refusedAs('notDeck'),
+        refusedAs('library'),
       );
     ruleAside(everything.service);
     for (const op of ['presentations', 'search'] as const)
@@ -1229,7 +1231,7 @@ describe('the network in the main process', () => {
       ['message.hide', { templateId: 'm1' }, 'computer'],
       ['shastra', { reference: 'PG 14' }, 'notDeck'],
       ['playlists', {}, 'simple'],
-      ['presentations', {}, 'notDeck'],
+      ['presentations', {}, 'library'],
       ['messages', {}, 'computer'],
       ['timers', {}, 'computer'],
     ] as const)
