@@ -97,7 +97,8 @@ describe('Now and Next up (QA23-FLOW-2)', () => {
     const nn = nowNext(flow(), 3);
     expect(nn.last).toBe(true);
     expect(nn.next).toBeNull();
-    expect(nowText(nn)).toBe('Now: 4 · Closing · 5 min');
+    // Now is its Program and Details: an empty Details is left out, nothing else takes its place.
+    expect(nowText(nn)).toBe('Now: 4 · Closing');
     expect(nextText(nn)).toBe('Last item');
   });
 
