@@ -373,6 +373,58 @@ describe('the phone’s open playlist', () => {
     expect(tools.usePhoneTools.getState().docs.has('deck')).toBe(false);
   });
 
+  it('a run of quick library changes costs the phone a few reads, however many changes (CI Mac run 45653717757: a 429)', async () => {
+    const tools = await import('./phone-tools-store');
+    fetcher.mockImplementation((url) => {
+      const path = typeof url === 'string' ? url : '';
+      if (path === '/api/v1/hall') return Promise.resolve(answer(null));
+      if (path === '/api/v1/playlists')
+        return Promise.resolve(json({ ok: true, playlists: [playlist('one')] }));
+      if (path.endsWith('/items')) return Promise.resolve(json({ ok: true, items: [DECK_ROW] }));
+      if (path.startsWith('/api/v1/presentations/'))
+        return Promise.resolve(json({ ok: true, presentation: { id: 'deck' } }));
+      return new Promise<Response>((resolve) => replies.push(resolve));
+    });
+    // Pro Mode heard, a PDF's slides shown.
+    changed('mode');
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall).not.toBeNull());
+    remote.view({ presentationId: 'deck', item: null });
+    await settle();
+    // Each time the rows' decks are let go, the Playlist reads every deck of its rows again.
+    let forgets = 0;
+    tools.usePhoneTools.subscribe((now, before) => {
+      if (now.docs !== before.docs && now.docs.size === 0) forgets += 1;
+    });
+    fetcher.mockClear();
+    // The operator edits the library quickly: 20 changes in half a second, each telling of the playlists and the library.
+    for (let i = 0; i < 20; i += 1) {
+      changed('presentations');
+      changed('playlists');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const count = (pick: (path: string) => boolean) => askedPaths().filter(pick).length;
+    expect(
+      count((u) => u === '/api/v1/hall'),
+      'halls',
+    ).toBeLessThanOrEqual(3);
+    expect(
+      count((u) => u === '/api/v1/playlists'),
+      'playlists',
+    ).toBeLessThanOrEqual(3);
+    expect(
+      count((u) => u.endsWith('/items')),
+      'rows',
+    ).toBeLessThanOrEqual(3);
+    expect(
+      count((u) => u.startsWith('/api/v1/presentations/')),
+      'slides',
+    ).toBeLessThanOrEqual(3);
+    expect(forgets, 'the decks let go (each a read of every deck row)').toBeLessThanOrEqual(3);
+    // And it does catch up: the last change read.
+    expect(count((u) => u === '/api/v1/playlists')).toBeGreaterThanOrEqual(1);
+  });
+
   it('clears the previous playlist’s rows while reading the next one', async () => {
     remote.useRemote.setState({ items: [header('old')] });
     const reading = remote.showPlaylist('two');
