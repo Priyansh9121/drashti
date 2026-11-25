@@ -7,7 +7,7 @@ class Video {
   seeks: number[] = [];
   decodedTimestamp = 1_000_000;
   seeking = false;
-  /** Held: paused, or playing at rate 0 (render/playback.ts's armed Go lead). */
+  /** Held: paused. */
   paused = true;
   playbackRate = 1;
   /** Chromium's compositor has this element's frame (a VideoFrame can be read from it): only once one is presented. */
@@ -222,7 +222,7 @@ describe('a private Cue first frame', () => {
     expect(earlyReady).toHaveBeenCalledTimes(1);
     earlyGate.stop();
   });
-  it('seeks no video whose trimmed frame comes, whose seek still lands, whose frame was not read, that plays on, or whose cue was cancelled', () => {
+  it('seeks no video whose trimmed frame comes, whose seek still lands, whose frame was not read, that is in its Go lead or plays on, or whose cue was cancelled', () => {
     vi.useFakeTimers();
     // The trimmed frame comes (as on every page, every other try).
     const usual = new Video(),
@@ -252,6 +252,16 @@ describe('a private Cue first frame', () => {
     vi.advanceTimersByTime(60_000);
     expect(unread.seeks).toEqual([]);
     unreadGate.stop();
+    // In its Go lead (render/playback.ts's armed branch: playing at rate 0): Go has been pressed, not held.
+    const lead = new Video();
+    const leadGate = cuePresentation(lead.element(), vi.fn());
+    lead.present(0);
+    leadGate.decoded();
+    lead.paused = false;
+    lead.playbackRate = 0;
+    vi.advanceTimersByTime(60_000);
+    expect(lead.seeks).toEqual([]);
+    leadGate.stop();
     // Playing on (after its Go): not held.
     const playing = new Video();
     const playingGate = cuePresentation(playing.element(), vi.fn());
