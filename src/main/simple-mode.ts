@@ -222,11 +222,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.network.makePoster,
   // Session 54: whether phones may add files, and which playlists they see, are Pro Mode's.
   IPC.network.setAddFiles,
-  // The chat (alpha.23): Clear chat, removing a person (unpairing their device) and the Chat QR are Pro Mode's.
+  // The chat (alpha.23): Clear chat and showing the Chat QR are Pro Mode's. Stopping the Chat QR is never refused, and
+  // removing a chat phone is bounded below (review S5: neither touches the screens).
   IPC.chat.clear,
-  IPC.chat.remove,
   IPC.chat.invite,
-  IPC.chat.endInvite,
   IPC.playlists.share,
   // Output nodes (Session 13): Simple Mode sees the dashboard and Identify, and changes nothing:
   // no pairing, removing, renaming, assigning, copying everything or reloading an output.
@@ -383,6 +382,8 @@ export interface SimpleScope extends SimpleOpenPlaylist {
   inMusic?(mediaId: string): boolean;
   /** The presentations an edit kept for Undo covers (main/library/revisions.ts), or null when it is not kept. */
   revisionCovers?(revisionId: string): readonly string[] | null;
+  /** The chat (alpha.23): whether an id is one of today's chat phones (Simple Mode may remove one; review S5). */
+  isChatPhone?(id: string): boolean;
 }
 
 /** Whether a request on a bounded channel, with its arguments as sent, stays within Simple Mode's bounds. */
@@ -559,6 +560,9 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   [IPC.wallpapers.restore, anything],
   [IPC.wallpapers.choose, anything],
   ...SESSION_56_BOUNDED,
+  // The chat (alpha.23, review S5): Remove of a chat phone, which touches nothing on the screens; a Remote or an
+  // Announcements device is removed in Pro Mode, under Phones and tablets or the Chat section.
+  [IPC.chat.remove, ([id], scope) => typeof id === 'string' && (scope.isChatPhone?.(id) ?? false)],
 ]);
 
 /**

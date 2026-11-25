@@ -168,7 +168,17 @@ export type ToDevice =
   /** The connection is ending, and why (the device was revoked, the network turned off...). */
   | { type: 'bye'; reason: ByeReason };
 
-export type ByeReason = 'unauthorized' | 'revoked' | 'network-off' | 'too-slow' | 'not-allowed' | 'stopped';
+export type ByeReason =
+  | 'unauthorized'
+  | 'revoked'
+  | 'network-off'
+  | 'too-slow'
+  | 'not-allowed'
+  | 'stopped'
+  /** The chat (alpha.23): this device opened the chat in another page; this one stops following it. */
+  | 'replaced'
+  /** The chat (alpha.23): as many pages follow the chat alone as Drashti takes; the show's devices keep the rest. */
+  | 'busy';
 
 export const BYE_TEXT: Record<ByeReason, string> = {
   unauthorized: 'This device is not paired with Drashti (or its pairing was removed). Pair it again.',
@@ -178,6 +188,8 @@ export const BYE_TEXT: Record<ByeReason, string> = {
   'not-allowed': 'This device cannot show the state.',
   // Session 54 (access by Gmail): Drashti stopped, or not let in yet. The device stays paired.
   stopped: 'Drashti has stopped on its computer: nothing works here until it is let in again.',
+  replaced: 'The chat is open on this device in another page: this one has stopped following it.',
+  busy: 'Many phones are following the chat: try again in a moment.',
 };
 
 /**

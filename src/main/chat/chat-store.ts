@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import {
@@ -44,7 +45,8 @@ export interface ChatStoreDeps {
   log(level: 'info' | 'warn', message: string): void;
 }
 
-const WRITE_AFTER_MS = 500;
+/** A busy chat is written at most this often. */
+const WRITE_AFTER_MS = 2000;
 
 const personSchema = z
   .object({ id: z.string().min(1).max(128), name: z.string().min(1).max(CHAT_NAME_MAX) })
@@ -87,6 +89,10 @@ const codeOf = (error: unknown): string => (error as NodeJS.ErrnoException | nul
 export class ChatStore {
   private data: ChatFile;
   private writeWaiting = false;
+  /** Writes under way off Main's thread, one after another; which is the newest; and Drashti quitting. */
+  private writing: Promise<void> = Promise.resolve();
+  private generation = 0;
+  private closed = false;
 
   constructor(private readonly deps: ChatStoreDeps) {
     this.data = this.empty();
@@ -229,27 +235,68 @@ export class ChatStore {
     return true;
   }
 
-  /** Write what waits now (Drashti quitting). */
+  /** Write what waits now, on Main's thread (Drashti quitting): no write under way after it lands over it. */
   flush(): void {
     this.writeWaiting = false;
-    this.write();
+    this.closed = true;
+    this.generation++;
+    this.writeNow();
+  }
+
+  /** The writes under way, done (tests; a write that failed has said so in the log). */
+  settled(): Promise<void> {
+    return this.writing;
   }
 
   private changed(): void {
-    if (this.writeWaiting) return;
+    if (this.writeWaiting || this.closed) return;
     this.writeWaiting = true;
     const run = () => {
       if (!this.writeWaiting) return;
       this.writeWaiting = false;
-      this.write();
+      this.writeLater();
     };
     if (this.deps.later) this.deps.later(run);
     else setTimeout(run, WRITE_AFTER_MS).unref();
   }
 
-  private write(): void {
+  /**
+   * The chat as it is now, written off Main's thread (review S1: a Windows PC's antivirus can hold a write): one write
+   * at a time, each after the one before, and one a newer write follows is never written at all.
+   */
+  private writeLater(): void {
+    const generation = ++this.generation;
+    const text = JSON.stringify(this.data);
+    this.writing = this.writing.then(() => this.write(text, generation));
+  }
+
+  private async write(text: string, generation: number): Promise<void> {
+    const stale = () => this.closed || generation !== this.generation;
+    if (stale()) return;
     const file = this.deps.file;
     const temp = `${file}.writing`;
+    try {
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(temp, text, { mode: 0o600 });
+      if (stale()) {
+        await rm(temp, { force: true });
+        return;
+      }
+      await rename(temp, file);
+    } catch (error) {
+      this.deps.log('warn', `Chat: the day's chat could not be kept on disk (${codeOf(error)})`);
+      try {
+        await rm(temp, { force: true });
+      } catch {
+        // Nothing more to do.
+      }
+    }
+  }
+
+  private writeNow(): void {
+    const file = this.deps.file;
+    // Its own name: a write under way off the thread has its own.
+    const temp = `${file}.quitting`;
     try {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(temp, JSON.stringify(this.data), { mode: 0o600 });
@@ -268,6 +315,7 @@ export class ChatStore {
     try {
       rmSync(this.deps.file, { force: true });
       rmSync(`${this.deps.file}.writing`, { force: true });
+      rmSync(`${this.deps.file}.quitting`, { force: true });
     } catch (error) {
       this.deps.log('warn', `Chat: an earlier chat could not be emptied (${codeOf(error)})`);
     }

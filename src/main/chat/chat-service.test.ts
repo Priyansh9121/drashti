@@ -118,6 +118,7 @@ describe('who is in the chat', () => {
         messages: [],
         people: [{ id: CHAT_OPERATOR_ID, name: CHAT_OPERATOR_NAME }],
         you: { id: 'device-1', name: null },
+        since: null,
       },
     });
     named(chat, 1);

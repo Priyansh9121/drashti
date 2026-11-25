@@ -4833,6 +4833,8 @@ function start(): void {
       inMusic: (mediaId) =>
         musicService?.view().playlists.some((p) => p.tracks.some((t) => t.mediaId === mediaId)) ?? false,
       revisionCovers: (revisionId) => revisions.covers(revisionId),
+      // The chat (alpha.23): today's chat phones, which Simple Mode may remove (made below, before any request).
+      isChatPhone: (id) => chat.device(id) !== null,
     };
   };
   /** Simple Mode's phone controls use every active playlist, with the same bounds as the window. */
@@ -7364,7 +7366,8 @@ function start(): void {
     log: chatLog,
   });
   chatStore.load();
-  // The operator's Chat section reads the chat again a moment after a change (one view for a burst of messages).
+  // The operator's Chat section reads the chat again a moment after a change: one view for a burst of messages, at
+  // most twice a second (review S2).
   let chatViewWaiting = false;
   const chatChanged = () => {
     if (chatViewWaiting) return;
@@ -7372,7 +7375,7 @@ function start(): void {
     setTimeout(() => {
       chatViewWaiting = false;
       sendToOperator(IPC.chat.changed, net.chatView());
-    }, 100);
+    }, 500);
   };
   const chat = new ChatService({
     store: chatStore,
