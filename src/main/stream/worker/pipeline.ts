@@ -2,7 +2,12 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createWriteStream, fdatasync, openSync, statfsSync, type WriteStream } from 'node:fs';
 import { setPriority } from 'node:os';
 import { dirname } from 'node:path';
-import { placeName, RECORD_PART_BYTES, type StreamPreset } from '../../../shared/stream';
+import {
+  placeName,
+  RECORD_PART_BYTES,
+  STREAM_SOUND_QUIET_MS,
+  type StreamPreset,
+} from '../../../shared/stream';
 import { redact } from '../redact';
 import { audioArgs, type EncoderChoice, encoderCandidates, pickEncoder, videoArgs } from './encoders';
 import type { MkvCluster } from './mkv';
@@ -583,7 +588,7 @@ export class StreamPipeline {
   private fillSilence(): void {
     if (!this.encodeProcess) return;
     const quiet = Date.now() - this.lastAudioAt;
-    if (quiet < 300) return;
+    if (quiet < STREAM_SOUND_QUIET_MS) return;
     const frames = Math.round((quiet * SAMPLE_RATE) / 1000);
     this.lastAudioAt = Date.now();
     for (let left = frames; left > 0; left -= 4800) {
