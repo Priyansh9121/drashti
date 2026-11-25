@@ -36,7 +36,7 @@ export const CHAT_PEOPLE_MAX = 50;
 export const CHAT_HISTORY_MAX = 300;
 /** One person: a few at once, then one every 2 seconds on average. */
 export const CHAT_RATE = { perSecond: 0.5, burst: 5 } as const;
-/** Everyone together (the operator included), so a busy chat never slows the show. */
+/** The phones together, so a busy chat never slows the show (the operator is never held up by them). */
 export const CHAT_RATE_ALL = { perSecond: 5, burst: 20 } as const;
 /** A person's name given or changed: a few at once, then one every 10 seconds. */
 export const CHAT_NAME_RATE = { perSecond: 0.1, burst: 3 } as const;
@@ -145,6 +145,7 @@ export const CHAT_REFUSAL = {
   tooFast: 'Too many messages at once: wait a moment, then send again.',
   noName: 'Give your name first, then send.',
   name: `A name needs 1 to ${CHAT_NAME_MAX} characters.`,
+  operatorName: 'That name is the operator’s: choose another.',
   nameTooFast: 'Too many name changes: wait a moment, then try again.',
   full: `The chat is full: at most ${CHAT_PEOPLE_MAX} people a day. Ask the operator.`,
   notIn: 'This device is not in the chat.',
