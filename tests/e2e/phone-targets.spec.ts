@@ -165,12 +165,16 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
     await settled(page);
     expect.soft(await tooSmall(page), 'the remote with a notice').toEqual([]);
     release();
-    // Heard: Simple Mode's tabs, and nothing to press on the show.
+    // Heard: Simple Mode's tabs, its note (with its own Dismiss), and nothing to press on the show.
     await expect(page.getByTestId('remote-back')).toHaveCount(0);
     await expect(page.getByTestId('remote-tab-playlist')).toHaveCount(0);
+    await expect(page.getByTestId('remote-simple')).toBeVisible();
     for (const tab of ['show', 'chat']) {
       await page.getByTestId(`remote-tab-${tab}`).click();
       await expect(page.getByTestId(`remote-tab-${tab}`)).toHaveAttribute('aria-selected', 'true');
+      // Measured where it settles, as above: Simple Mode's note rises in as it comes (CI Mac run 45670893526 read both
+      // tabs 70-170 ms after it came, in its 200 ms rise, and its moving Dismiss came out a hair under 44 high).
+      await settled(page);
       expect.soft(await tooSmall(page), `the remote's ${tab} tab in Simple Mode`).toEqual([]);
       expect
         .soft(await smallText(page), `text under 16 px on the remote's ${tab} tab in Simple Mode`)

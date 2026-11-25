@@ -168,3 +168,15 @@ export async function moveChatClock(app: ElectronApplication, wallMs: number): P
     move(ms);
   }, wallMs);
 }
+
+/**
+ * Tests only: the chat's clock (the schedules') held where it is, so a person's spent allowance cannot come back while
+ * a test watches it refused; or let go, running on from there (a22-phonemac).
+ */
+export async function holdChatClock(app: ElectronApplication, held: boolean): Promise<void> {
+  await app.evaluate((_electron, on) => {
+    const hold = (globalThis as { drashtiArtiClockHold?: (held: boolean) => void }).drashtiArtiClockHold;
+    if (!hold) throw new Error('The schedules’ test clock is not on (DRASHTI_TEST_ARTI_CLOCK).');
+    hold(on);
+  }, held);
+}
