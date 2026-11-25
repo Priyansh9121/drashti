@@ -1166,6 +1166,23 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
     expect(JSON.parse(r.body)).toEqual({ ok: false, message: PHONE_REFUSAL.media });
     expect(host.requests.length).toBe(asked);
   });
+
+  it('spends nothing of a phone’s allowance on what it is refused: its Next after a burst of them is never 429 (QA23-PHONE-1)', async () => {
+    const { port, host } = await start();
+    // Far past the per-device allowance (40 at once, 20 a second): a page still asking for what it may not.
+    for (let i = 0; i < 120; i += 1) {
+      const refused = await call(port, i % 2 === 0 ? '/api/v1/timers' : '/api/v1/messages', {
+        headers: bearer(REMOTE_TOKEN),
+      });
+      expect(refused.status, String(i)).toBe(403);
+    }
+    // Its allowed requests still reach the main process.
+    const status = await call(port, '/api/v1/status', { headers: bearer(REMOTE_TOKEN) });
+    expect(status.status).toBe(200);
+    const next = await call(port, '/api/v1/trigger/next', { method: 'POST', headers: bearer(REMOTE_TOKEN) });
+    expect(next.status).toBe(200);
+    expect(host.requests.map((r) => r.op)).toEqual(['status', 'command']);
+  });
 });
 
 describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
