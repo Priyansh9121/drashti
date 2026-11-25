@@ -23,22 +23,24 @@ describe('the chat’s plain text', () => {
   });
 
   it('keeps emoji sequences, joiners and Gujarati and Hindi letters exactly as typed', () => {
-    const typed = 'Jay 👨‍👩‍👧‍👦 👍🏽 🇮🇳 ક્ષ क्ष ર્‍ય';
+    const typed = 'Jay 👨\u200D👩\u200D👧\u200D👦 👍🏽 🇮🇳 ક્ષ क्ष ર્\u200Dય';
     expect(cleanChatText(typed)).toBe(typed);
   });
 
   it('keeps line breaks as "\\n", with at most one blank line in a row, and trims the ends', () => {
-    expect(cleanChatText('  one\r\ntwo\rthree four  \n\n\n\nfive\n\n')).toBe('one\ntwo\nthree\nfour\n\nfive');
+    expect(cleanChatText('  one\r\ntwo\rthree\u2028four  \n\n\n\nfive\n\n')).toBe(
+      'one\ntwo\nthree\nfour\n\nfive',
+    );
     expect(cleanChatText('a\tb')).toBe('a b');
   });
 
   it('leaves out control characters and the direction marks that could turn the words around', () => {
     expect(cleanChatText('a\u0000b\u0007c\u007fd\u009be')).toBe('abcde');
-    expect(cleanChatText('pay ‮gnp.exe‬ now ⁦x⁩ ‏y')).toBe('pay gnp.exe now x y');
+    expect(cleanChatText('pay \u202Egnp.exe\u202C now \u2066x\u2069 \u200Fy')).toBe('pay gnp.exe now x y');
   });
 
   it('is empty when nothing visible is left', () => {
-    expect(cleanChatText('  \n​‍ ­\n ')).toBe('');
+    expect(cleanChatText('  \n\u200B\u200D \u00AD\n ')).toBe('');
     expect(refusal(chatTextSchema.safeParse(' \n '))).toBe(CHAT_REFUSAL.empty);
   });
 
@@ -65,14 +67,14 @@ describe('the chat’s plain text', () => {
 
 describe('a person’s name', () => {
   it('is cleaned as Rename… cleans a name: one line, no control or direction characters', () => {
-    expect(chatNameSchema.parse('  Person\nOne‮ ')).toBe('Person One');
+    expect(chatNameSchema.parse('  Person\nOne\u202E ')).toBe('Person One');
     expect(chatNameSchema.parse('<b>Person</b>')).toBe('<b>Person</b>');
   });
 
   it('takes 1 to CHAT_NAME_MAX characters', () => {
     expect(chatNameSchema.safeParse('x'.repeat(CHAT_NAME_MAX)).success).toBe(true);
     expect(chatNameSchema.safeParse('x'.repeat(CHAT_NAME_MAX + 1)).success).toBe(false);
-    expect(chatNameSchema.safeParse(' ​ ').success).toBe(false);
+    expect(chatNameSchema.safeParse(' \u200B ').success).toBe(false);
   });
 });
 

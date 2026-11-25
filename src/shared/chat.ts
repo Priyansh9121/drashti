@@ -168,19 +168,34 @@ const VISIBLE = /[^\p{Z}\p{Cf}\p{M}\p{Default_Ignorable_Code_Point}]/u;
  * Empty when nothing visible is left.
  */
 export function cleanChatText(text: string): string {
-  return text;
+  const lines = text
+    .replace(/\r\n?|[\v\f\u0085\u2028\u2029]/gu, '\n')
+    .replace(/\t/gu, ' ')
+    .replace(/[\p{Cc}\p{Bidi_Control}]/gu, (c) => (c === '\n' ? c : ''))
+    .split('\n')
+    .map((line) => line.replace(/^[\p{Z}]+|[\p{Z}]+$/gu, ''));
+  const kept: string[] = [];
+  for (const line of lines) {
+    const blank = !VISIBLE.test(line);
+    if (blank && (kept.length === 0 || kept[kept.length - 1] === '')) continue;
+    kept.push(blank ? '' : line);
+  }
+  while (kept.length > 0 && kept[kept.length - 1] === '') kept.pop();
+  return kept.join('\n');
 }
 
 /** A message a phone (or the operator) sends: its words cleaned, then 1 to CHAT_TEXT_MAX of them. */
 export const chatTextSchema = z
   .string()
+  // A huge body is refused before it is cleaned.
   .max(CHAT_TEXT_MAX * 4, CHAT_REFUSAL.tooLong)
   .transform(cleanChatText)
   .pipe(
     z
       .string()
       .min(1, CHAT_REFUSAL.empty)
-      .max(CHAT_TEXT_MAX, CHAT_REFUSAL.tooLong)
+      // UTF-16 units, as a text box's maxLength counts (zod's max counts code points: an emoji would be one).
+      .refine((t) => t.length <= CHAT_TEXT_MAX, CHAT_REFUSAL.tooLong)
       .refine((t) => t.split('\n').length <= CHAT_LINES_MAX, CHAT_REFUSAL.tooManyLines),
   );
 
@@ -191,6 +206,13 @@ export const chatSendSchema = z.object({ text: z.string() }).strict();
 export const chatNameInputSchema = z.object({ name: z.string() }).strict();
 
 /** The day a moment falls on, on the Drashti computer (its time zone unless given): YYYY-MM-DD. */
-export function chatDay(_ms: number, _timeZone?: string): string {
-  return '';
+export function chatDay(ms: number, timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(ms));
+  const part = (type: 'year' | 'month' | 'day') => parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
