@@ -59,15 +59,22 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
   /** While set, each drawing waits for its own release (or its stop). */
   let holding = false;
   const held: (() => void)[] = [];
-  /** The next record written waits inside its writing until let go. */
+  /** The next record written waits inside its writing until let go; and says when it has started waiting. */
   let holdWrite = false;
   let writeHeld: (() => void) | null = null;
+  let writeStarted: (() => void) | null = null;
+  /** Who waits for the store to ask for its nth drawing (signalled, never counted in turns: review M5). */
+  const drawWaiters: { n: number; go: () => void }[] = [];
   const make = () =>
     new SabhaFlowStore({
       dir,
       draw: async (pdf, outDir, signal): Promise<PicturesResult> => {
         drawn.push(pdf);
         signals.push(signal);
+        for (const w of drawWaiters.filter((d) => d.n <= drawn.length)) {
+          drawWaiters.splice(drawWaiters.indexOf(w), 1);
+          w.go();
+        }
         const mine = drawing;
         if (holding)
           await new Promise<void>((resolve) => {
@@ -103,6 +110,8 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
         holdWrite = false;
         await new Promise<void>((resolve) => {
           writeHeld = resolve;
+          writeStarted?.();
+          writeStarted = null;
         });
       },
     });
@@ -133,9 +142,20 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
     releaseAll: () => {
       for (let go = held.shift(); go; go = held.shift()) go();
     },
+    /** Hold the next record's writing: the promise settles once it is waiting inside it. */
     holdNextWrite: () => {
       holdWrite = true;
+      return new Promise<void>((resolve) => {
+        writeStarted = resolve;
+      });
     },
+    /** Settles once the store has asked for its `n`th drawing. */
+    drawnAsked: (n: number) =>
+      drawn.length >= n
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            drawWaiters.push({ n, go: resolve });
+          }),
     /** Whether a record's writing is waiting now. */
     writeWaiting: () => writeHeld !== null,
     letWriteGo: () => {
@@ -427,9 +447,15 @@ const turns = async (n: number) => {
   for (let k = 0; k < n; k++) await new Promise((r) => setImmediate(r));
 };
 
-/** Wait until the store has asked for its `n`th drawing (its copy is made over a few turns of the disk first). */
-async function drawingAsked(s: { drawn: string[] }, n: number): Promise<void> {
-  for (let k = 0; k < 500 && s.drawn.length < n; k++) await turns(1);
+/**
+ * Wait until the store has asked for its `n`th drawing (its copy is made on the disk first, slower on Windows): by its
+ * signal, never by counting turns (review M5).
+ */
+async function drawingAsked(
+  s: { drawn: string[]; drawnAsked: (n: number) => Promise<void> },
+  n: number,
+): Promise<void> {
+  await s.drawnAsked(n);
   expect(s.drawn).toHaveLength(n);
 }
 
@@ -440,9 +466,10 @@ describe('Sabha flow store: what happens at once (review S6, S7)', () => {
     await store.load();
     await store.choose(s.pdf('First.pdf'));
     s.setDrawing({ pages: 1, reading: tableReading(4, 'Other') });
-    s.holdNextWrite();
+    const writing = s.holdNextWrite();
     const chosen = store.choose(s.pdf('Second.pdf'));
-    for (let k = 0; k < 200 && !s.writeWaiting(); k++) await turns(1);
+    // Waited for by its signal, never by counting turns (review M5: the disk work before it is slower on Windows).
+    await writing;
     expect(s.writeWaiting()).toBe(true);
     // Next ▸ on the old flow, its record half written.
     const now = store.setNow('flow-0001', 2);
