@@ -110,13 +110,7 @@ import type { DisplayCopyBlob, PictureAssetKind, SharpenJobView } from './pictur
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
-import type {
-  SabhaFlow,
-  SabhaFlowChoice,
-  SabhaFlowNowResult,
-  SabhaFlowSnapshot,
-  SabhaFlowState,
-} from './sabha-flow';
+import type { SabhaFlowChoice, SabhaFlowNowResult, SabhaFlowSnapshot } from './sabha-flow';
 import type {
   OpeningChoice,
   OpeningEnd,
@@ -380,8 +374,8 @@ export interface DrashtiBridge {
   };
   /** Sabha flow (alpha.23, operator window): the running order's PDF, read, and Now. */
   flow: {
-    get(): Promise<SabhaFlow | null>;
-    now(): Promise<SabhaFlowState | null>;
+    /** The flow and its Now, together. */
+    get(): Promise<SabhaFlowSnapshot>;
     /** "Choose PDF…" (and Replace): Main's file dialog (null: cancelled). */
     choose(): Promise<SabhaFlowChoice | null>;
     remove(): Promise<null>;
