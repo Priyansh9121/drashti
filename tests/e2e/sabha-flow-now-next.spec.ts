@@ -150,8 +150,11 @@ test('Now and Next up in the Sabha flow panel: Next and Back, a row, two quick p
   const rows = panel.getByTestId('flow-row');
   const nowLine = panel.getByTestId('flow-now');
   const nextLine = panel.getByTestId('flow-next');
-  const back = panel.getByRole('button', { name: 'Back one item' });
-  const next = panel.getByRole('button', { name: 'Next item' });
+  const back = panel.getByRole('button', { name: 'Sabha flow: Back', exact: true });
+  const next = panel.getByRole('button', { name: 'Sabha flow: Next', exact: true });
+  // Names of their own: never taken for the show's Next or Next item (a name that begins with Next).
+  await expect(win.getByRole('button', { name: 'Sabha flow: Next', exact: true })).toHaveCount(1);
+  await expect(panel.getByRole('button', { name: /^(Next|Back)/u })).toHaveCount(0);
   const flowId = (await flowNow(win))?.flowId ?? '';
   expect(flowId).not.toBe('');
   /** Now as the panel says it, the row marked, and as Main keeps it, all agreeing. */
@@ -245,7 +248,7 @@ test('Now and Next up in the Sabha flow panel: Next and Back, a row, two quick p
     timeout: 30_000,
   });
   await expect(panel.getByTestId('flow-now-next')).toHaveCount(0);
-  await expect(panel.getByRole('button', { name: 'Next item' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Sabha flow: Next', exact: true })).toHaveCount(0);
 
   // Simple Mode, with Sabha flow chosen there: Now and Next up, Back and Next, as in Pro Mode.
   await openWith(app, win, table, 4);
@@ -257,10 +260,10 @@ test('Now and Next up in the Sabha flow panel: Next and Back, a row, two quick p
   await expect(win.getByTestId('simple-mode')).toHaveCount(1);
   const simple = win.getByTestId('sabha-flow');
   await expect(simple.getByTestId('flow-now-next')).toBeVisible();
-  await simple.getByRole('button', { name: 'Next item' }).dblclick();
+  await simple.getByRole('button', { name: 'Sabha flow: Next', exact: true }).dblclick();
   await expect.poll(() => flowNow(win)).toEqual({ flowId: tableId, now: 1 });
   await expect.poll(() => seen(simple.getByTestId('flow-next'))).toBe(`Next up: ${ROWS[2] ?? ''}`);
-  await simple.getByRole('button', { name: 'Back one item' }).click();
+  await simple.getByRole('button', { name: 'Sabha flow: Back', exact: true }).click();
   await expect.poll(() => flowNow(win)).toEqual({ flowId: tableId, now: 0 });
   await app.close();
 });
@@ -306,8 +309,10 @@ test('Now and Next up fit: a Video row with long words as Next up, at the window
       sizes,
     );
     // Back and Next whole in sight, inside the panel, at each.
-    for (const name of ['Back one item', 'Next item'])
-      await expect(panel.getByRole('button', { name }), `${name}, ${column}`).toBeInViewport({ ratio: 1 });
+    for (const name of ['Sabha flow: Back', 'Sabha flow: Next'])
+      await expect(panel.getByRole('button', { name, exact: true }), `${name}, ${column}`).toBeInViewport({
+        ratio: 1,
+      });
   }
   await app.close();
 });
@@ -331,7 +336,7 @@ test('a paired phone shows the panel’s Now and Next up as each is marked there
     const more = p.getByTestId('remote-flow');
     const panel = await openWith(app, win, table, 4);
     const rows = panel.getByTestId('flow-row');
-    const next = panel.getByRole('button', { name: 'Next item' });
+    const next = panel.getByRole('button', { name: 'Sabha flow: Next', exact: true });
     const flowId = (await flowNow(win))?.flowId ?? '';
     /** Main keeps this Now, the panel says it, and the phone (in `where`) says the same words. */
     const phoneSays = async (now: number | null, where: Locator) => {
@@ -355,7 +360,7 @@ test('a paired phone shows the panel’s Now and Next up as each is marked there
     // Two quick presses of Next, two steps; Back one.
     await next.dblclick();
     await phoneSays(2, more);
-    await panel.getByRole('button', { name: 'Back one item' }).click();
+    await panel.getByRole('button', { name: 'Sabha flow: Back', exact: true }).click();
     await phoneSays(1, more);
     // Read only: nothing to press in it; said to a screen reader as it changes.
     const moreNowNext = more.getByTestId('remote-flow-now-next');

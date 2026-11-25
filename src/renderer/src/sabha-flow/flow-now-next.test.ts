@@ -104,7 +104,7 @@ describe('Now and Next up in the operator window’s Sabha flow panel (QA23-FLOW
     expect(button(html, 'flow-next-button')).not.toMatch(/aria-disabled="true"|disabled=""/u);
   });
 
-  it('says a change to a screen reader once, Now and Next up together (not the buttons), its buttons named with the words they show', () => {
+  it('says a change to a screen reader once, Now and Next up together (not the buttons), its buttons named as the Sabha flow’s own, with the words they show', () => {
     const html = draw({ now: 0 });
     expect(html.match(/aria-live=/gu)).toHaveLength(1);
     const live = /<div[^>]*aria-live="polite"[^>]*>(.*?)<\/div>/u.exec(html);
@@ -112,8 +112,15 @@ describe('Now and Next up in the operator window’s Sabha flow panel (QA23-FLOW
     expect(live?.[1]).toContain('data-testid="flow-now"');
     expect(live?.[1]).toContain('data-testid="flow-next"');
     expect(live?.[1]).not.toContain('<button');
-    expect(button(html, 'flow-back-button')).toContain('aria-label="Back one item"');
-    expect(button(html, 'flow-next-button')).toContain('aria-label="Next item"');
+    // Names of their own, never the show's Next or Next item, each holding the word it shows.
+    expect(button(html, 'flow-back-button')).toContain('aria-label="Sabha flow: Back"');
+    expect(button(html, 'flow-next-button')).toContain('aria-label="Sabha flow: Next"');
+    expect(
+      words(/<button[^>]*data-testid="flow-back-button"[^>]*>(.*?)<\/button>/u.exec(html)?.[1] ?? ''),
+    ).toBe('Back');
+    expect(
+      words(/<button[^>]*data-testid="flow-next-button"[^>]*>(.*?)<\/button>/u.exec(html)?.[1] ?? ''),
+    ).toBe('Next');
     // The middle dots are hidden from a screen reader, which reads a comma between the parts instead.
     expect(html).toContain('<span aria-hidden="true"> · </span>');
     expect(html).toContain('<span class="sr-only">, </span>');
