@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { formatClock, type ClockStyle } from '../../../../shared/format';
 import { cutText } from '../../../../shared/text';
 import { ClockStyleContext } from '../../render/clock-style';
@@ -9,6 +9,7 @@ import { ArrowDown, MessageCircle, Send, X } from '../../ui/icons';
 import { CHAT_NAME_MAX, CHAT_OPERATOR_ID, CHAT_TEXT_MAX, type ChatMessage } from '../../../../shared/chat';
 import { BYE_TEXT } from '../../../../shared/network';
 import { Notice } from '../../ui/Notice';
+import { useScrolls } from '../../ui/scrolls';
 import { useFeed } from '../feed';
 import { Badge } from '../../ui/Badge';
 import { chatInView, dismissBanner, sendChat, setChatName, useChat } from './chat-store';
@@ -283,6 +284,15 @@ export function ChatPanel({ fill }: { fill: boolean }) {
   const elsewhere = useFeed((s) => s.state === 'offline' && s.reason === BYE_TEXT.replaced);
   const [renaming, setRenaming] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
+  // Reached by the keyboard while it scrolls (its messages hold nothing focusable: axe's scrollable-region-focusable).
+  const [watchScrolls, scrolls] = useScrolls();
+  const scrollerRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      scroller.current = el;
+      watchScrolls(el);
+    },
+    [watchScrolls],
+  );
   // At the bottom of the list (as its scrolling last said), and how many messages there were when it left it.
   const [atBottom, setAtBottom] = useState(true);
   const [leftAt, setLeftAt] = useState(0);
@@ -351,7 +361,10 @@ export function ChatPanel({ fill }: { fill: boolean }) {
       </div>
       <div className="relative flex min-h-0 flex-col" style={fill ? { flex: '1 1 0%' } : undefined}>
         <div
-          ref={scroller}
+          ref={scrollerRef}
+          role="region"
+          aria-label="The chat’s messages"
+          tabIndex={scrolls ? 0 : undefined}
           className={cx('overflow-y-auto overscroll-contain', fill ? 'min-h-0 flex-1' : 'max-h-[55dvh]')}
           data-testid="chat-scroller"
           onScroll={(e) => {
