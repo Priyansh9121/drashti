@@ -1,7 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useState } from 'react';
 import { NO_FLOW } from '../../../shared/sabha-flow-lines';
 import { useWhatIsThis } from '../help/WhatIsThis';
-import { useElementSize } from '../render/useElementSize';
 import { useOperateOnly } from '../simple/simple-features-store';
 import { Button, IconButton } from '../ui/Button';
 import { ConfirmDialog } from '../ui/Dialog';
@@ -51,8 +50,8 @@ export function SabhaFlowPanel() {
   }, []);
   // What the panel needs to show Now and Next up whole (its heading, the body's pinned part and the read list's own
   // room): the left column gives it that much of its height when it may (operator/flow-area.ts), never cutting words.
-  const header = useRef<HTMLElement>(null);
-  const { height: headerHeight } = useElementSize(header, true);
+  const [header, setHeader] = useState<HTMLElement | null>(null);
+  const headerHeight = useHeightOf(header);
   const [bodyNeed, setBodyNeed] = useState(0);
   useEffect(() => {
     // The area's border under it (1 px) is in its height.
@@ -66,7 +65,11 @@ export function SabhaFlowPanel() {
   );
   return (
     <section aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col" data-testid="sabha-flow">
-      <header ref={header} className="flex min-h-9 shrink-0 items-center gap-1 py-1 pr-3 pl-3" data-strip="">
+      <header
+        ref={setHeader}
+        className="flex min-h-9 shrink-0 items-center gap-1 py-1 pr-3 pl-3"
+        data-strip=""
+      >
         <h2 id={titleId} className="min-w-0 flex-1 text-2xs font-bold tracking-wider text-heading uppercase">
           <button
             type="button"
@@ -104,6 +107,25 @@ export function SabhaFlowPanel() {
       )}
     </section>
   );
+}
+
+/**
+ * An element's height (its border box, px), kept current from when it is there: 0 while there is none. A
+ * ResizeObserver says the size as soon as it starts observing, and on every change after.
+ */
+function useHeightOf(el: HTMLElement | null): number {
+  const [measured, setMeasured] = useState<{ el: HTMLElement; height: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      setMeasured({ el, height: el.getBoundingClientRect().height });
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [el]);
+  return el !== null && measured?.el === el ? measured.height : 0;
 }
 
 /** The read list's own least room under the pinned part (its min-h-24), the page view's (min-h-48). */
@@ -145,8 +167,9 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
 
   // Now and Next up whole: the pinned part's height and the room under it, for a flow that was read (none to keep whole
   // otherwise: the panel keeps its share).
-  const pinned = useRef<HTMLDivElement>(null);
-  const { height: pinnedHeight } = useElementSize(pinned, true);
+  // Measured from when the part is there (it comes only once the flow is read; useElementSize binds at mount).
+  const [pinned, setPinned] = useState<HTMLDivElement | null>(null);
+  const pinnedHeight = useHeightOf(pinned);
   const keepWhole = flow?.status === 'read' && pinnedHeight > 0;
   const need = keepWhole ? pinnedHeight + (shown === 'list' ? LIST_ROOM : PAGE_ROOM) : 0;
   useEffect(() => {
@@ -188,7 +211,7 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
   return (
     <>
       {/* The pinned part: the file, Now and Next up and the view's tabs; only the read list (or the page) scrolls. */}
-      <div ref={pinned} className="flex shrink-0 flex-col">
+      <div ref={setPinned} className="flex shrink-0 flex-col">
         <div className="flex shrink-0 items-center gap-1 px-3 pt-1">
           <FileText size={14} aria-hidden="true" className="shrink-0 text-muted" />
           <span
