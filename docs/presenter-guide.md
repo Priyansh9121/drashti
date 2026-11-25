@@ -95,10 +95,11 @@ The operator can always change the screens from the computer; your page follows 
 - **A button says it cannot be done**: since alpha.23 the Drashti computer refuses a phone what the rule above does not allow, and the page says which, in one of these:
   - "Simple Mode is on at Drashti’s computer: this phone shows the Sabha flow, what is on the screens and the chat. Run the show on the computer." The computer is in Simple Mode, where a phone has no controls.
   - "From a phone, only a PowerPoint or a PDF goes up. Put this up on the computer." A kirtan, words, a passage from Books or Repeat Slides: the operator puts it up.
+  - "From a phone, only a playlist’s PowerPoints and PDFs are listed. Find the rest of the library on Drashti’s computer." The library, its search and Books are on the computer.
   - "No PowerPoint or PDF is on the screens: put one up from the playlist first." Next, Back or Clear slide with no PowerPoint or PDF up.
   - "A phone cannot play, put up or change videos, pictures or sounds. Use Drashti’s computer."
-  - "Phones cannot add or share files with Drashti." Files go into Drashti on the computer.
-  - "A phone cannot change this. Use Drashti’s computer." Timers, messages, the stage, announcements, the screens and setting Drashti up.
+  - "Phones cannot add files to Drashti or open the files it shares. Use Drashti’s computer." Files go into Drashti on the computer.
+  - "A phone cannot change this. Use Drashti’s computer." Timers (a timer the operator shows over your PowerPoint or PDF too: Next, Back and Clear slide wait until it is off), messages, the stage, announcements, the screens and setting Drashti up.
 
 ![Simple Mode on the phone: what it does there, and a paused clip's time bar with Play](screenshots/phone-simple-controls-375x812.png)
 
