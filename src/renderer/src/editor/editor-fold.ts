@@ -71,11 +71,14 @@ export function watchFold(media: (query: string) => MediaList, told: (fold: Edit
 }
 
 /**
- * Whether a group's tab drops the ribbon over the slide: the ribbon not kept open, and folded (`folded`, what the fold
- * has been told).
+ * Whether a group's tab drops the ribbon over the slide: the ribbon not kept open, and the window short, as the fold
+ * has been told (`folded`) or as the window is now (`now`). The layout hides the ribbon by CSS the moment the window is
+ * short, and the fold hears of it with the next frame (later on a slow computer): a tab pressed between the two drops
+ * the ribbon all the same, shown as soon as the fold is told (the Mac's CI on 2314c749f: Enter on the chosen tab
+ * dropped nothing, and the ribbon never came).
  */
-export function tabDropsRibbon(kept: boolean, folded: boolean, _now: EditorFold): boolean {
-  return !kept && folded;
+export function tabDropsRibbon(kept: boolean, folded: boolean, now: EditorFold): boolean {
+  return !kept && (folded || now.ribbon);
 }
 
 /** The room kept round the slide in its area, each side. */
