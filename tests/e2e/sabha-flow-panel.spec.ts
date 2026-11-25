@@ -125,7 +125,9 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   const libraryBox = await left.getByTestId('library-button').boundingBox();
   const toggleBox = await toggle.boundingBox();
-  const playlistsBox = await left.getByRole('tablist', { name: 'Playlists or templates' }).boundingBox();
+  // The playlists' head: a heading "Playlists" in a fresh data folder (the Playlists or templates tabs come only with
+  // View › Show Books, Templates and Kirtan Details, PlaylistPanel.tsx ViewTabs; a22-flow-next's CI 56605 showed the heading).
+  const playlistsBox = await left.getByRole('heading', { name: 'Playlists', exact: true }).boundingBox();
   expect(toggleBox?.y ?? 0).toBeGreaterThan(libraryBox?.y ?? Infinity);
   expect(toggleBox?.y ?? Infinity).toBeLessThan(playlistsBox?.y ?? 0);
   const panel = win.getByTestId('sabha-flow');
