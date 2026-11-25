@@ -687,6 +687,8 @@ export const LIVE_SECTIONS = [
   'audio',
   'stage',
   'messages',
+  // The chat with paired phones (alpha.23).
+  'chat',
   'timers',
   'lower-thirds',
   'show-a-window',
