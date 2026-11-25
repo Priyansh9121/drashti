@@ -259,7 +259,6 @@ describe('the phone rule in the main process (QA23-PHONE-1)', () => {
       [
         ['media.original', { mediaId: 'm-video' }],
         ['media.show', { mediaId: 'm-video' }],
-        ['playlist.whenEnds', { playlistId: 'sabha', itemId: 'i-video', whenEnds: 'next' }],
         ['command', { type: 'cueVideo', mediaId: 'm-video' }],
         ['command', { type: 'goVideoCue', cueId: 'placeholder-cue' }],
         ['command', { type: 'moveTo', playing: { layer: 'background', mediaId: 'm-video' }, toMs: 1000 }],
@@ -404,6 +403,8 @@ describe('the phone rule in the main process (QA23-PHONE-1)', () => {
         ['playlist.add', { playlistId: 'sabha', items: [] }],
         ['playlist.removeItems', { playlistId: 'sabha', itemIds: ['i-words'] }],
         ['presentation.rename', { presentationId: 'words', name: 'Placeholder' }],
+        // A video row's When it ends is the playlist's (the plan's map: library and playlist changes).
+        ['playlist.whenEnds', { playlistId: 'sabha', itemId: 'i-video', whenEnds: 'next' }],
         ['quickBar.set', { pins: [] }],
       ],
       'computer',

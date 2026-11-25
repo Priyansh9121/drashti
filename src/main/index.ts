@@ -7597,6 +7597,11 @@ function start(): void {
     refusal: () => simpleRefusalText(modes.simpleOnly()),
     // In Simple Mode a phone does only what its window does (Session 55, the owner's answer of 30 Oct 2026).
     simple: simplePhones,
+    // A phone's PowerPoint or PDF from an open playlist, in its row (alpha.23, QA23-PHONE-1), as Simple Mode's reads.
+    phoneLists: {
+      activePlaylist: (id) => playlists.activePlaylist(id),
+      plays: (id, from) => playlists.playsPresentation(id, from),
+    },
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
     },

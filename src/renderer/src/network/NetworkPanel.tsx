@@ -47,6 +47,9 @@ export function seenWords(iso: string | null, now: number): string {
 
 const spaced = (code: string) => `${code.slice(0, 3)} ${code.slice(3)}`;
 
+/** A kind's help after "device:", its first letter small (Pro Mode, PowerPoint and PDF keep their capitals). */
+const firstLower = (text: string) => `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+
 function OnOff({ status }: { status: NetworkStatus }) {
   const [port, setPort] = useState(String(status.port));
   const listening = status.state === 'listening';
@@ -135,7 +138,7 @@ function Pairing({ status }: { status: NetworkStatus }) {
             </p>
             <p className="text-xs text-muted" aria-live="off">
               Works once, for {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}. It becomes a{' '}
-              {DEVICE_KIND_LABEL[offer.kind]} device: {DEVICE_KIND_HELP[offer.kind].toLowerCase()}
+              {DEVICE_KIND_LABEL[offer.kind]} device: {firstLower(DEVICE_KIND_HELP[offer.kind])}
             </p>
             <Button onClick={() => void networkAction(() => window.drashti.network.cancelPairing())}>
               Cancel

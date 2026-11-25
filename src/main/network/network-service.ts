@@ -83,6 +83,10 @@ import { phoneCommandInSimpleMode, phoneMayInSimpleMode, type SimplePhoneScope }
 import { type PhoneActs, PhoneAnswers } from './phone-answers';
 import { cutText } from '../../shared/text';
 import { nfcDeep } from '../../shared/nfc';
+import { isPhoneDeck } from '../../shared/phone-decks';
+import { PHONE_REFUSAL, phoneCommandRefusal, phoneOpRefusal } from '../../shared/phone-rule';
+import { isRepeatId } from '../../shared/repeat';
+import { isPassageId } from '../../shared/shastra';
 
 /*
  * The local network, as the main process runs it (README "The local
@@ -221,6 +225,12 @@ export interface NetworkDeps {
    * and the words a phone is told; null in Pro Mode. Left out (a test of something else): never on.
    */
   simple?: () => SimplePhoneScope | null;
+  /**
+   * The playlists a phone puts a PowerPoint or a PDF up from (alpha.23, QA23-PHONE-1), in Pro Mode: an open playlist,
+   * and whether a presentation is listed in one (in exactly the row named, when one is). Left out (a test of something
+   * else): a phone puts nothing up.
+   */
+  phoneLists?: Pick<SimplePhoneScope, 'activePlaylist' | 'plays'>;
   /** The status changed: the operator window is told. */
   changed(status: NetworkStatus): void;
   log(level: 'info' | 'warn', message: string): void;
@@ -980,16 +990,83 @@ export class NetworkService implements EngineTransport {
     if (!device) return deny(401, 'This device was removed in Drashti. Pair it again.');
     if (!isDeviceOp(request.op) || !deviceMay(device.kind, request.op))
       return deny(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
+    let args = (request.args ?? {}) as Record<string, unknown>;
+    // A phone (alpha.23, QA23-PHONE-1): what it may ask for in this mode, and a command's deck checks, first.
+    if (device.kind === 'remote') {
+      const phone = this.phoneRule(request.op, args);
+      if ('refused' in phone) return deny(403, phone.refused);
+      args = phone.args;
+    }
     if (this.desktop && !this.desktop.admitLibraryChange(request.op, device.id))
       return deny(429, 'Too many changes at once: wait a moment, then try again.');
     const channel = OP_CHANNEL[request.op];
-    const args = (request.args ?? {}) as Record<string, unknown>;
     // A bounded window request with the phone's arguments as the window's would carry them (Part 9), else none.
     if (channel && this.deps.refused(channel, WINDOW_ARGS[request.op]?.(args)))
       return deny(403, this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL);
     const simple = this.deps.simple?.() ?? null;
     if (simple && !phoneMayInSimpleMode(request.op, args, simple)) return deny(403, simple.refusal());
     return { device, args, who: `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”` };
+  }
+
+  /**
+   * A phone's request as the phone rule weighs it (alpha.23, QA23-PHONE-1, shared/phone-rule.ts): why not, in its
+   * group's words; or the arguments it runs with. Simple Mode (any Simple Mode, deps.simple) lets it read what is live
+   * only; Pro Mode lets it read its playlists and put up a PowerPoint or a PDF from one, a row of it or a slide of it,
+   * and step inside the one live: Next, Previous and Back say which (the engine's `within`), whatever a phone sent.
+   */
+  private phoneRule(
+    op: DeviceOp,
+    args: Record<string, unknown>,
+  ): { refused: string } | { args: Record<string, unknown> } {
+    const refused = phoneOpRefusal(op, (this.deps.simple?.() ?? null) !== null);
+    if (refused !== null) return { refused };
+    // A presentation's slides as JSON only: never a picture of a deck's click (Save picture, Q8).
+    if (op === 'presentation' && args['format'] !== undefined) return { refused: PHONE_REFUSAL.media };
+    if (op !== 'command') return { args };
+    const parsed = parseEngineCommand(args);
+    // Not a command: command() says why, as before.
+    if (!parsed.ok) return { args };
+    const command = parsed.command;
+    const never = phoneCommandRefusal(command.type);
+    if (never !== null) return { refused: never };
+    const lists = this.deps.phoneLists;
+    const notDeck = { refused: PHONE_REFUSAL.notDeck };
+    switch (command.type) {
+      case 'playItem': {
+        const row = lists?.activePlaylist(command.playlistId)
+          ? this.deps.reads.items(command.playlistId).find((item) => item.id === command.itemId)
+          : undefined;
+        return row?.kind === 'presentation' && this.isDeck(row.presentationId) ? { args } : notDeck;
+      }
+      case 'goLive': {
+        const from = command.playlist ?? undefined;
+        return lists &&
+          this.isDeck(command.presentationId) &&
+          (from === undefined || lists.activePlaylist(from.playlistId)) &&
+          lists.plays(command.presentationId, from)
+          ? { args }
+          : notDeck;
+      }
+      case 'next':
+      case 'previous':
+      case 'back': {
+        const live = this.deps.engine.state().live.presentationId;
+        return live !== null && this.isDeck(live)
+          ? { args: { ...args, within: live } }
+          : { refused: PHONE_REFUSAL.noDeck };
+      }
+      default:
+        return notDeck;
+    }
+  }
+
+  /** A PowerPoint or a PDF a phone may put up (shared/phone-decks.ts): never a passage or Repeat Slides, by id too. */
+  private isDeck(presentationId: string): boolean {
+    return (
+      !isPassageId(presentationId) &&
+      !isRepeatId(presentationId) &&
+      isPhoneDeck(this.deps.reads.presentation(presentationId))
+    );
   }
 
   /** The other apps' open windows for a phone (Session 54): checked as every request is, answered once listed. */
@@ -1199,9 +1276,22 @@ export class NetworkService implements EngineTransport {
         return ok({ playlists: this.deps.reads.playlists() });
       case 'items': {
         const id = idSchema.safeParse(args['playlistId']);
-        return id.success
-          ? ok({ items: this.deps.reads.items(id.data) })
-          : deny(404, 'There is no such playlist.');
+        if (!id.success) return deny(404, 'There is no such playlist.');
+        const items = this.deps.reads.items(id.data);
+        // A phone's (QA23-PHONE-1): its PowerPoint and PDF rows marked, the only ones it may put up.
+        return ok({
+          items:
+            device.kind === 'remote'
+              ? items.map((item) =>
+                  item.kind === 'presentation'
+                    ? {
+                        ...item,
+                        phonePlays: item.presentationName !== null && this.isDeck(item.presentationId),
+                      }
+                    : item,
+                )
+              : items,
+        });
       }
       case 'presentation': {
         const id = idSchema.safeParse(args['presentationId']);

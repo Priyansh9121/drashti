@@ -25,7 +25,9 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
 
 /** What each kind of device is for, as the operator reads it when pairing one. */
 export const DEVICE_KIND_HELP: Record<DeviceKind, string> = {
-  remote: 'Runs the show: Next and Back, slides, the clears, media, timers, messages and the stage message.',
+  // alpha.23 (QA23-PHONE-1, the owner's "Only PPT and PDF"): shared/phone-rule.ts.
+  remote:
+    'In Pro Mode, puts up a PowerPoint or a PDF from a playlist and moves through it with Next and Back; in Simple Mode, shows the Sabha flow and what is on the screens. The chat in both; never videos, pictures or sounds.',
   stage: 'Watches only: shows what a stage screen shows.',
   announcements: 'Sends announcements for the operator to approve; nothing else.',
 };
