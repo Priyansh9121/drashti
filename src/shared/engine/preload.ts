@@ -31,3 +31,8 @@ export function mediaToPreload(next: UpNext | null): PreloadMedia[] {
   for (const m of stepMedia(deckStep(next.slide.deck, next.step ?? 0))) found.set(m.mediaId, m.media);
   return [...found].map(([mediaId, media]) => ({ mediaId, media }));
 }
+
+/** RED STUB (a22-review-fadecopies S4): no-op body, filled in by the next commit. */
+export function nextBackgroundVideo(_next: UpNext | null): string | null {
+  return null;
+}

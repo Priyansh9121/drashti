@@ -1,4 +1,4 @@
-import { pageCopyUrl } from '../../../shared/media';
+import { mediaUrl, pageCopyUrl } from '../../../shared/media';
 
 /*
  * This page's choice of a video's page copy (QA23-FADE-9 candidate 1; src/main/media/page-copies.ts). A page that
@@ -36,4 +36,9 @@ export function pageCopyFor(mediaId: string, attempt = 0): string | null {
   const heights = Object.hasOwn(ready, mediaId) ? (ready[mediaId] ?? []) : [];
   const pick = heights.filter((h) => h >= height).sort((a, b) => a - b)[0];
   return pick === 720 || pick === 540 ? pageCopyUrl(mediaId, pick) : null;
+}
+
+/** RED STUB (a22-review-fadecopies S4): no-op body, filled in by the next commit. */
+export function preloadVideoUrl(mediaId: string, attempt: number, _background: boolean): string {
+  return mediaUrl(mediaId, attempt);
 }
