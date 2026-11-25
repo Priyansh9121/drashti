@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { ElectronApplication, Worker as BrowserWorker } from '@playwright/test';
+import type { ElectronApplication, Page, Worker as BrowserWorker } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IPC } from '../../src/shared/ipc';
@@ -123,10 +123,66 @@ async function stopObserver(app: ElectronApplication): Promise<void> {
   });
 }
 
+/**
+ * Diagnostics only (QA23-PCMLONG-1, alpha.22 gate 5's Mac :126, 227 ms of sound missing at the watch's end): each sound
+ * chunk the stream page's PCM worker reads, as [read time, Chromium's own capture time in microseconds]. A hole in the
+ * capture times means no sound was made; capture times on time but read late mean the worker was held. Never judged.
+ */
+async function probeReads(page: Page): Promise<BrowserWorker | null> {
+  const worker = page
+    .workers()
+    .filter((w) => w.url().includes('encoder-audio-worker'))
+    .at(-1);
+  if (!worker) return null;
+  const on = await worker
+    .evaluate(() => {
+      const close = Object.getOwnPropertyDescriptor(AudioData.prototype, 'close');
+      if (!close) return false;
+      const rows: [number, number][] = [];
+      Object.defineProperty(AudioData.prototype, 'close', {
+        ...close,
+        value(this: AudioData) {
+          if (rows.length < 20_000) rows.push([Date.now(), this.timestamp]);
+          (close.value as (this: AudioData) => void).call(this);
+        },
+      });
+      (globalThis as { pcmReads?: () => unknown }).pcmReads = () => {
+        Object.defineProperty(AudioData.prototype, 'close', close);
+        return rows;
+      };
+      return true;
+    })
+    .catch(() => false);
+  return on ? worker : null;
+}
+
+/** The long frame's numbers from the probe and the stand-in, printed to the job log on every run, green or not. */
+function readsAround(reads: [number, number][], deliveries: PcmDelivery[], from: number, to: number) {
+  const base = Math.min(...reads.map(([at, ts]) => at - ts / 1000));
+  const near = reads.filter(([at]) => at >= from - 100 && at <= to + 50);
+  const gaps = (v: number[]) => Math.max(0, ...v.slice(1).map((x, i) => x - (v[i] ?? x)));
+  let wait: number | null;
+  try {
+    wait = longestPcmWait(deliveries, from, to);
+  } catch {
+    wait = null;
+  }
+  return {
+    reads: near.length,
+    longestReadGapMs: gaps(near.map(([at]) => at)),
+    largestCaptureHoleMs: gaps(near.map(([, ts]) => ts / 1000).sort((a, b) => a - b)),
+    longestQueueWaitMs: Math.max(0, ...near.map(([at, ts]) => at - ts / 1000 - base)),
+    longestDeliveryWaitMs: wait,
+    // The stand-in's wait from its last sound to the watch's end (its last entry is the end, not a delivery).
+    endWaitMs: (deliveries.at(-1)?.wall ?? 0) - Math.max(...deliveries.slice(1, -1).map((d) => d.wall)),
+  };
+}
+
 test('The stream forwards continuous PCM while its drawing page handles a half-second long frame', async () => {
   const { app, stream, dir } = await setupVideoCue(true);
   try {
     await startObserver(app, dir, stream.url());
+    const reader = await probeReads(stream);
     await beginWatch(app);
     const longFrame = await stream.evaluate(() => {
       const from = Date.now();
@@ -136,10 +192,23 @@ test('The stream forwards continuous PCM while its drawing page handles a half-s
       return { from, to: Date.now() };
     });
     const result = await finishWatch(app);
+    const reads = ((await reader
+      ?.evaluate(() => (globalThis as { pcmReads?: () => unknown }).pcmReads?.())
+      .catch(() => null)) ?? []) as [number, number][];
     await test.info().attach('s5-pcm-queue.json', {
-      body: Buffer.from(JSON.stringify({ ...result, longFrame })),
+      body: Buffer.from(JSON.stringify({ ...result, longFrame, reads })),
       contentType: 'application/json',
     });
+    const summary = { frames: result['frames'], elapsed: result['elapsed'], longFrame };
+    const watched = (result as unknown as { deliveries?: PcmDelivery[] }).deliveries ?? [];
+    console.log(
+      'PCM_LONG ' +
+        JSON.stringify(
+          reads.length > 0 && watched.length > 1
+            ? { ...summary, ...readsAround(reads, watched, longFrame.from, longFrame.to) }
+            : { ...summary, reads: reads.length },
+        ),
+    );
     const elapsed = result['elapsed'] ?? 0;
     expect(elapsed).toBeGreaterThanOrEqual(500);
     expect(
