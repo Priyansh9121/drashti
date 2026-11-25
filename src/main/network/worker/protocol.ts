@@ -1,3 +1,4 @@
+import type { ChatEvent } from '../../../shared/chat';
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import type { NetworkChange } from '../../../shared/network';
 import type { DeviceAnswer, DeviceAuth, DeviceRequest, PairAnswer } from '../../../shared/network-api';
@@ -18,6 +19,8 @@ export type ToNetworkWorker =
   | { type: 'engine'; message: EngineMessage }
   | { type: 'devices'; devices: DeviceAuth[] }
   | { type: 'hint'; what: NetworkChange }
+  /** The chat (alpha.23): an event for the devices in it that follow it. */
+  | { type: 'chat'; event: ChatEvent }
   | { type: 'answer'; id: number; answer: unknown }
   /** Files phones add (Session 54): the switch, the limits and on air; and what came of a file handed over. */
   | { type: 'uploads'; policy: UploadPolicy }

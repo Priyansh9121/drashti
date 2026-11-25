@@ -31,6 +31,7 @@ import {
   crashReporter,
   dialog,
   globalShortcut,
+  nativeImage,
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
@@ -449,6 +450,7 @@ import { printWaits } from '../shared/print-waits';
 import { WordsPrinter } from './words-print';
 import { isReportId, readReportDraft } from '../shared/report';
 import { type HeldPicture, ReportService } from './report/report-service';
+import { blankPrivateParts, PRIVATE_PARTS_SCRIPT, takePrivately } from './report/private-parts';
 import { ErrorReports } from './error-reports/service';
 import { ErrorReportRuntime } from './error-reports/runtime';
 import { automaticIdentity } from './error-reports/identity';
@@ -10185,27 +10187,47 @@ function start(): void {
     if (isLetIn() && !reportsLetIn) reports.wake();
     reportsLetIn = isLetIn();
   });
-  /** The operator window as it is now, before Report a Problem draws: its pixels and a small copy. */
+  /**
+   * The operator window as it is now, before Report a Problem draws: its pixels and a small copy, with what the page
+   * marks private (the chat's words and names, alpha.23) blanked in both; no picture when the page cannot say where.
+   */
   const captureOperator = async (): Promise<HeldPicture | null> => {
     const win = operatorWindow;
     if (!win || win.isDestroyed()) return null;
     try {
-      const image = await win.webContents.capturePage();
+      const contents = win.webContents;
+      const held = await takePrivately(
+        () => contents.executeJavaScript(PRIVATE_PARTS_SCRIPT, true) as Promise<unknown>,
+        () => contents.capturePage(),
+      );
+      if (!held) return null;
+      const image = held.taken;
       if (image.isEmpty()) return null;
       // A Retina window's picture is at twice its size in points: its pixels at the scale they were taken.
       for (const scaleFactor of [...image.getScaleFactors(), 1]) {
         const { width, height } = image.getSize(scaleFactor);
         const pixels = image.toBitmap({ scaleFactor });
-        if (width > 0 && height > 0 && pixels.length === width * height * 4)
-          return {
-            picture: {
+        if (width > 0 && height > 0 && pixels.length === width * height * 4) {
+          const picture = blankPrivateParts(
+            {
               width,
               height,
               pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length),
               order: capturedPixelOrder(),
             },
-            thumb: `data:image/jpeg;base64,${image.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
+            held.parts,
+          );
+          // The small copy from the blanked pixels, never from the picture as taken.
+          const blanked = nativeImage.createFromBitmap(Buffer.from(picture.pixels), {
+            width,
+            height,
+            scaleFactor,
+          });
+          return {
+            picture,
+            thumb: `data:image/jpeg;base64,${blanked.resize({ width: 320, quality: 'good' }).toJPEG(70).toString('base64')}`,
           };
+        }
       }
       return null;
     } catch {
