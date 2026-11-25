@@ -128,6 +128,8 @@ export type MediaDetailsResult = { ok: true; details: MediaDetails } | { ok: fal
 export interface DetailExtras {
   points?: { startMs: number | null; endMs: number | null; markers: number } | null;
   loudness?: { even: boolean; measured: boolean; lufs: number | null; gainDb: number } | null;
+  /** RED STUB (a22-review-fadecopies S5): not said yet. */
+  pageCopies?: number[] | null;
 }
 
 export interface DetailRow {
