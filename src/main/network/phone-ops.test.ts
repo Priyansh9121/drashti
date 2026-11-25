@@ -5,6 +5,7 @@ import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/st
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
+import { PHONE_REFUSAL, phoneOpRefusal } from '../../shared/phone-rule';
 import { PLAIN, type PictureLook } from '../../shared/picture-look';
 import type { QuickPin } from '../../shared/quick-bar';
 import type { WallpapersView } from '../../shared/wallpapers';
@@ -22,6 +23,9 @@ import { NetworkService, OP_CHANNEL } from './network-service';
  * window does: the wallpapers, and its one playlist's rows' Rename and Remove (with Undo), each within the window's own
  * bounds; the rest is refused before anything runs. And the hall tells a phone about Simple Mode, so it shows only what
  * Simple Mode allows. Placeholder names, made-up ids.
+ *
+ * Since alpha.23 (QA23-PHONE-1, the owner's "Only PPT and PDF") a Remote is refused each of them, in both modes: the
+ * tests below show each refused and nothing done; a Stage device, the poster and the hall as before.
  */
 
 const PHONE = '192.168.1.20';
@@ -278,6 +282,16 @@ function setup(options: { simple?: boolean; letIn?: boolean } = {}) {
   };
 }
 
+/**
+ * QA23-PHONE-1 (the owner's "Only PPT and PDF", shared/phone-rule.ts): each of these, from a Remote, refused before
+ * anything runs, 403 in its group's words, in Pro Mode and Simple Mode alike; the handlers (phone-answers.ts) stay until
+ * alpha.24, no phone reaching them.
+ */
+const refusal = (op: DeviceOp, words: keyof typeof PHONE_REFUSAL) => {
+  expect(phoneOpRefusal(op, false), op).toBe(PHONE_REFUSAL[words]);
+  return { status: 403, body: { ok: false, message: PHONE_REFUSAL[words] } };
+};
+
 /** The phone's own requests (Part 9). */
 const PHONE_OPS = [
   'wallpapers',
@@ -295,60 +309,25 @@ const PHONE_OPS = [
 ] as const;
 
 describe('the phone’s own requests (Session 55, Part 9)', () => {
-  it('reads the wallpapers, and chooses, renames, deletes and puts one back as the window’s own requests do', () => {
+  it('never reads, chooses, renames, deletes or puts back a wallpaper from a phone (QA23-PHONE-1)', () => {
     const { ask, remote, calls } = setup();
-    const read = ask(remote, 'wallpapers');
-    expect(read).toEqual({
-      status: 200,
-      body: {
-        ok: true,
-        chosenId: 'w-1',
-        wallpapers: [
-          {
-            id: 'w-1',
-            name: 'Placeholder dusk',
-            pictures: [{ mediaId: 'm-picture', name: 'Placeholder backdrop', missing: false }],
-          },
-          {
-            id: 'w-2',
-            name: 'Placeholder round',
-            pictures: [
-              { mediaId: 'm-a', name: 'Placeholder a', missing: false },
-              { mediaId: 'm-b', name: 'Placeholder b', missing: true },
-            ],
-          },
-        ],
-      },
-    });
-    // Each answered with the wallpapers as they are after it (the phone draws them again at once).
-    expect(ask(remote, 'wallpaper.choose', { wallpaperId: 'w-2' })).toMatchObject({
-      status: 200,
-      body: { ok: true, ids: ['w-2'], chosenId: 'w-1' },
-    });
-    expect(ask(remote, 'wallpaper.choose', { wallpaperId: null }).status).toBe(200);
-    expect(ask(remote, 'wallpaper.rename', { wallpaperId: 'w-1', name: '  Placeholder dawn ' }).status).toBe(
-      200,
-    );
-    // Its name cleaned as a file's is (Session 58, X3): direction marks left out, one that only looks empty refused.
-    expect(
-      ask(remote, 'wallpaper.rename', { wallpaperId: 'w-1', name: 'Placeholder\u202E dawn\u200F' }).status,
-    ).toBe(200);
-    expect(ask(remote, 'wallpaper.rename', { wallpaperId: 'w-1', name: '\u200B\u2060' }).status).toBe(400);
-    expect(ask(remote, 'wallpaper.remove', { wallpaperId: 'w-1' }).status).toBe(200);
-    expect(ask(remote, 'wallpaper.restore', { wallpaperId: 'w-1' }).status).toBe(200);
-    expect(calls.map((c) => [c.what, c.args])).toEqual([
-      ['chooseWallpaper', ['w-2']],
-      ['chooseWallpaper', [null]],
-      ['renameWallpaper', ['w-1', 'Placeholder dawn']],
-      ['renameWallpaper', ['w-1', 'Placeholder dawn']],
-      ['removeWallpaper', ['w-1']],
-      ['restoreWallpaper', ['w-1']],
-    ]);
+    for (const [op, args] of [
+      ['wallpapers', {}],
+      ['wallpaper.choose', { wallpaperId: 'w-2' }],
+      ['wallpaper.choose', { wallpaperId: null }],
+      ['wallpaper.rename', { wallpaperId: 'w-1', name: '  Placeholder dawn ' }],
+      ['wallpaper.rename', { wallpaperId: 'w-1', name: 'Placeholder\u202E dawn\u200F' }],
+      ['wallpaper.rename', { wallpaperId: 'w-1', name: '\u200B\u2060' }],
+      ['wallpaper.remove', { wallpaperId: 'w-1' }],
+      ['wallpaper.restore', { wallpaperId: 'w-1' }],
+    ] as const)
+      expect(ask(remote, op, args), JSON.stringify(args)).toEqual(refusal(op, 'media'));
+    expect(calls).toEqual([]);
   });
 
-  it('reads the quick bar’s pins and changes the bar whole, as the window does: at most 8, each once', () => {
+  it('never reads or changes the quick bar from a phone, a good bar or a bad one', () => {
     const { ask, remote, calls, pins } = setup();
-    expect(ask(remote, 'quickBar')).toEqual({ status: 200, body: { ok: true, pins: [PIN] } });
+    expect(ask(remote, 'quickBar')).toEqual(refusal('quickBar', 'computer'));
     const slide: QuickPin = {
       kind: 'slide',
       presentationId: 'p-talk',
@@ -357,28 +336,24 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
       itemId: 'one-talk',
       label: 'Placeholder talk_3',
     };
-    expect(ask(remote, 'quickBar.set', { pins: [slide, PIN] })).toEqual({
-      status: 200,
-      body: { ok: true, pins: [slide, PIN] },
-    });
-    expect(pins()).toEqual([slide, PIN]);
-    // Nine, the same twice, or a pin that is not one: refused, the bar as it was.
     const nine = Array.from({ length: 9 }, (_, i) => ({ ...PIN, mediaId: `m-${String(i)}` }));
-    for (const bad of [nine, [PIN, PIN], [{ kind: 'file', path: '/placeholder/file.png', label: 'x' }]])
-      expect(ask(remote, 'quickBar.set', { pins: bad }).status, JSON.stringify(bad)).toBe(400);
-    expect(calls).toHaveLength(1);
+    for (const bar of [
+      [slide, PIN],
+      nine,
+      [PIN, PIN],
+      [{ kind: 'file', path: '/placeholder/file.png', label: 'x' }],
+    ])
+      expect(ask(remote, 'quickBar.set', { pins: bar }), JSON.stringify(bar)).toEqual(
+        refusal('quickBar.set', 'computer'),
+      );
+    expect(pins()).toEqual([PIN]);
+    expect(calls).toEqual([]);
   });
 
-  it('reads a picture’s kept look and whether it is a photo, and keeps one as the Picture editor’s Save does', () => {
+  it('never reads or keeps a picture’s look from a phone', () => {
     const { ask, remote, calls } = setup();
-    expect(ask(remote, 'media.look', { mediaId: 'm-picture' })).toEqual({
-      status: 200,
-      body: { ok: true, look: { ...PLAIN, turn: 90, size: { width: 320, height: 180 } }, photo: true },
-    });
-    expect(ask(remote, 'media.look', { mediaId: 'm-other' })).toEqual({
-      status: 200,
-      body: { ok: true, look: null, photo: false },
-    });
+    expect(ask(remote, 'media.look', { mediaId: 'm-picture' })).toEqual(refusal('media.look', 'media'));
+    expect(ask(remote, 'media.look', { mediaId: 'm-other' })).toEqual(refusal('media.look', 'media'));
     const turned: PictureLook = {
       ...PLAIN,
       turn: 180,
@@ -388,46 +363,31 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
       size: { width: 320, height: 180 },
       fill: false,
     };
-    expect(ask(remote, 'media.setLook', { mediaId: 'm-picture', look: turned }).status).toBe(200);
-    // As it was taken: no look at all.
-    expect(ask(remote, 'media.setLook', { mediaId: 'm-picture', look: null }).status).toBe(200);
-    // A look it cannot keep: refused.
-    for (const look of [{ ...PLAIN, zoom: 9 }, { ...PLAIN, turn: 45 }, 'plain'])
-      expect(ask(remote, 'media.setLook', { mediaId: 'm-picture', look }).status, JSON.stringify(look)).toBe(
-        400,
+    for (const look of [turned, null, { ...PLAIN, zoom: 9 }, { ...PLAIN, turn: 45 }, 'plain'])
+      expect(ask(remote, 'media.setLook', { mediaId: 'm-picture', look }), JSON.stringify(look)).toEqual(
+        refusal('media.setLook', 'media'),
       );
-    expect(calls.map((c) => [c.what, c.args])).toEqual([
-      ['setLook', ['m-picture', turned]],
-      ['setLook', ['m-picture', null]],
-    ]);
+    expect(calls).toEqual([]);
   });
 
-  it('renames a picture, video, sound or presentation as Rename… does, and sets a video row’s When it ends', () => {
+  it('never renames a picture, video, sound or presentation from a phone, nor sets a video row’s When it ends', () => {
     const { ask, remote, calls } = setup();
-    expect(ask(remote, 'media.rename', { mediaId: 'm-video', name: ' Placeholder clip, cut ' }).status).toBe(
-      200,
-    );
-    expect(
-      ask(remote, 'presentation.rename', { presentationId: 'p-kirtan', name: 'Placeholder' }).status,
-    ).toBe(200);
-    expect(ask(remote, 'playlist.whenEnds', { itemId: 'other-video', whenEnds: 'loop' }).status).toBe(200);
-    for (const [op, args] of [
-      ['media.rename', { mediaId: 'm-video', name: '   ' }],
-      ['media.rename', { mediaId: 'm-video', name: 'x'.repeat(201) }],
-      // A name that only looks empty (Session 58, X3).
-      ['media.rename', { mediaId: 'm-video', name: '\u200B' }],
-      ['presentation.rename', { presentationId: 'p-kirtan', name: '\u200D \u00AD' }],
-      ['presentation.rename', { presentationId: 'p-kirtan' }],
-      ['playlist.whenEnds', { itemId: 'other-video', whenEnds: 'forever' }],
-      // Never anything but what it names: a path, say.
-      ['media.rename', { mediaId: 'm-video', name: 'Placeholder', path: '/placeholder/file.mp4' }],
+    for (const [op, args, words] of [
+      ['media.rename', { mediaId: 'm-video', name: ' Placeholder clip, cut ' }, 'media'],
+      ['presentation.rename', { presentationId: 'p-kirtan', name: 'Placeholder' }, 'computer'],
+      ['playlist.whenEnds', { itemId: 'other-video', whenEnds: 'loop' }, 'computer'],
+      ['media.rename', { mediaId: 'm-video', name: '   ' }, 'media'],
+      ['media.rename', { mediaId: 'm-video', name: 'x'.repeat(201) }, 'media'],
+      ['media.rename', { mediaId: 'm-video', name: '\u200B' }, 'media'],
+      ['presentation.rename', { presentationId: 'p-kirtan', name: '\u200D \u00AD' }, 'computer'],
+      ['presentation.rename', { presentationId: 'p-kirtan' }, 'computer'],
+      ['playlist.whenEnds', { itemId: 'other-video', whenEnds: 'forever' }, 'computer'],
+      ['media.rename', { mediaId: 'm-video', name: 'Placeholder', path: '/placeholder/file.mp4' }, 'media'],
     ] as const)
-      expect(ask(remote, op, args as Record<string, unknown>).status, JSON.stringify(args)).toBe(400);
-    expect(calls.map((c) => [c.what, c.args])).toEqual([
-      ['renameMedia', ['m-video', 'Placeholder clip, cut']],
-      ['renamePresentation', ['p-kirtan', 'Placeholder']],
-      ['whenEnds', ['other-video', 'loop']],
-    ]);
+      expect(ask(remote, op, args as Record<string, unknown>), JSON.stringify(args)).toEqual(
+        refusal(op, words),
+      );
+    expect(calls).toEqual([]);
   });
 
   it('is a Remote’s alone (never a Stage device or the announcements poster), and nothing while Drashti is not let in', () => {
@@ -446,68 +406,46 @@ describe('the phone’s own requests (Session 55, Part 9)', () => {
     expect(calls).toEqual([]);
   });
 
-  it('limits a phone’s changes, thirty at once, as a person tapping makes them; reading is never limited', () => {
+  it('refuses a phone’s changes before its limit counts them, and its reading too: never 429', () => {
     const { service, remote, calls } = setup();
     const at = (op: DeviceOp, args: Record<string, unknown>) =>
-      service.answer({ address: PHONE, deviceId: remote, op, args }).status;
-    for (let i = 0; i < 30; i += 1)
-      expect(at('wallpaper.choose', { wallpaperId: 'w-1' }), `change ${String(i + 1)}`).toBe(200);
-    expect(at('wallpaper.choose', { wallpaperId: 'w-1' })).toBe(429);
-    expect(at('wallpapers', {})).toBe(200);
-    expect(calls).toHaveLength(30);
+      service.answer({ address: PHONE, deviceId: remote, op, args });
+    for (let i = 0; i < 31; i += 1)
+      expect(at('wallpaper.choose', { wallpaperId: 'w-1' }), `change ${String(i + 1)}`).toEqual(
+        refusal('wallpaper.choose', 'media'),
+      );
+    expect(at('wallpapers', {})).toEqual(refusal('wallpapers', 'media'));
+    expect(calls).toEqual([]);
   });
 
-  it('in Simple Mode: the wallpapers, Rename and Remove with Undo on any playlist’s rows and all four video endings, as its window does; the rest refused before anything runs', () => {
+  it('in Simple Mode too, each refused in the phone rule’s words, never the window lock’s, before anything runs', () => {
     const { ask, remote, calls } = setup({ simple: true });
-    // The wallpapers: Simple Mode's window has them (Part 18), all but their seconds and fade.
-    for (const [op, args] of [
-      ['wallpapers', {}],
-      ['wallpaper.choose', { wallpaperId: 'w-2' }],
-      ['wallpaper.rename', { wallpaperId: 'w-1', name: 'Placeholder dawn' }],
-      ['wallpaper.remove', { wallpaperId: 'w-1' }],
-      ['wallpaper.restore', { wallpaperId: 'w-1' }],
-    ] as const)
-      expect(ask(remote, op, args).status, op).toBe(200);
-    for (const [op, args] of [
-      ['media.rename', { mediaId: 'm-picture', name: 'Placeholder dawn' }],
-      ['presentation.rename', { presentationId: 'p-talk', name: 'Placeholder' }],
-      ['media.rename', { mediaId: 'm-video', name: 'Placeholder video' }],
-      ['presentation.rename', { presentationId: 'p-kirtan', name: 'Placeholder talk' }],
-      ['playlist.removeItems', { ids: ['one-picture', 'other-video'] }],
-      ['playlist.restoreItems', { ids: ['one-picture', 'other-video'] }],
+    for (const [op, args, words] of [
+      ['wallpapers', {}, 'media'],
+      ['wallpaper.choose', { wallpaperId: 'w-2' }, 'media'],
+      ['wallpaper.rename', { wallpaperId: 'w-1', name: 'Placeholder dawn' }, 'media'],
+      ['wallpaper.remove', { wallpaperId: 'w-1' }, 'media'],
+      ['wallpaper.restore', { wallpaperId: 'w-1' }, 'media'],
+      ['media.rename', { mediaId: 'm-picture', name: 'Placeholder dawn' }, 'media'],
+      ['presentation.rename', { presentationId: 'p-talk', name: 'Placeholder' }, 'computer'],
+      ['media.rename', { mediaId: 'm-video', name: 'Placeholder video' }, 'media'],
+      ['presentation.rename', { presentationId: 'p-kirtan', name: 'Placeholder talk' }, 'computer'],
+      ['playlist.removeItems', { ids: ['one-picture', 'other-video'] }, 'computer'],
+      ['playlist.restoreItems', { ids: ['one-picture', 'other-video'] }, 'computer'],
       ...(['wallpaper', 'next', 'loop', 'freeze'] as const).map(
-        (whenEnds) => ['playlist.whenEnds', { itemId: 'other-video', whenEnds }] as const,
+        (whenEnds) => ['playlist.whenEnds', { itemId: 'other-video', whenEnds }, 'computer'] as const,
       ),
+      ['media.rename', { mediaId: 'm-template', name: 'Placeholder' }, 'media'],
+      ['playlist.removeItems', { ids: ['one-picture', 'template-video'] }, 'computer'],
+      ['playlist.restoreItems', { ids: ['template-video'] }, 'computer'],
+      ['playlist.whenEnds', { itemId: 'template-video', whenEnds: 'loop' }, 'computer'],
+      ['quickBar.set', { pins: [] }, 'computer'],
+      ['media.setLook', { mediaId: 'm-picture', look: null }, 'media'],
+      ['quickBar', {}, 'computer'],
+      ['media.look', { mediaId: 'm-picture' }, 'media'],
     ] as const)
-      expect(ask(remote, op, args).status, JSON.stringify(args)).toBe(200);
-
-    for (const [op, args] of [
-      ['media.rename', { mediaId: 'm-template', name: 'Placeholder' }],
-      ['playlist.removeItems', { ids: ['one-picture', 'template-video'] }],
-      ['playlist.restoreItems', { ids: ['template-video'] }],
-      ['playlist.whenEnds', { itemId: 'template-video', whenEnds: 'loop' }],
-      ['quickBar.set', { pins: [] }],
-      ['media.setLook', { mediaId: 'm-picture', look: null }],
-    ] as const)
-      expect(ask(remote, op, args), op).toEqual({
-        status: 403,
-        body: { ok: false, message: SIMPLE_MODE_REFUSAL },
-      });
-    expect(ask(remote, 'quickBar').status).toBe(200);
-    expect(ask(remote, 'media.look', { mediaId: 'm-picture' }).status).toBe(200);
-    expect(calls.map((c) => [c.what, c.args])).toEqual([
-      ['chooseWallpaper', ['w-2']],
-      ['renameWallpaper', ['w-1', 'Placeholder dawn']],
-      ['removeWallpaper', ['w-1']],
-      ['restoreWallpaper', ['w-1']],
-      ['renameMedia', ['m-picture', 'Placeholder dawn']],
-      ['renamePresentation', ['p-talk', 'Placeholder']],
-      ['renameMedia', ['m-video', 'Placeholder video']],
-      ['renamePresentation', ['p-kirtan', 'Placeholder talk']],
-      ['removeItems', [['one-picture', 'other-video']]],
-      ['restoreItems', [['one-picture', 'other-video']]],
-      ...['wallpaper', 'next', 'loop', 'freeze'].map((whenEnds) => ['whenEnds', ['other-video', whenEnds]]),
-    ]);
+      expect(ask(remote, op, args), JSON.stringify(args)).toEqual(refusal(op, words));
+    expect(calls).toEqual([]);
   });
 
   it('each of its requests is the window’s own, so Simple Mode’s lock is asked of it (a bounded one with the phone’s arguments)', () => {
