@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SabhaFlow, SabhaFlowNowResult } from '../../../shared/sabha-flow';
-import { flowBack, flowNext, setFlowNow, useFlow } from './flow-store';
+import { flowBack, flowNext, NOW_NOT_MARKED, setFlowNow, useFlow } from './flow-store';
 
 /*
  * Marking Now from the Sabha flow panel (alpha.23, QA23-FLOW-2; a22-review-flow M3): Back and Next step from the Now
@@ -172,5 +172,28 @@ describe('Back and Next in the Sabha flow panel (a22-review-flow M3)', () => {
     kept(asks[1]);
     await settled();
     expect(useFlow.getState()).toMatchObject({ now: 0, problem: null });
+  });
+
+  it('an ask that fails on its way (no answer from Main) says so in plain words, and the next press steps from Main’s Now', async () => {
+    showing(flow('flow-quick-0008'), 1);
+    vi.stubGlobal('window', {
+      drashti: { flow: { setNow: () => Promise.reject(new Error('placeholder: the ask failed')) } },
+    });
+    await setFlowNow(2);
+    expect(useFlow.getState()).toMatchObject({ now: 1, problem: NOW_NOT_MARKED });
+    expect(NOW_NOT_MARKED).toMatch(/^Drashti couldn’t mark Now\b.*\.$/u);
+    const tried: (number | null)[] = [];
+    vi.stubGlobal('window', {
+      drashti: {
+        flow: {
+          setNow: (_id: string, now: number | null) => {
+            tried.push(now);
+            return new Promise<SabhaFlowNowResult>(() => undefined);
+          },
+        },
+      },
+    });
+    flowNext();
+    expect(tried).toEqual([2]);
   });
 });

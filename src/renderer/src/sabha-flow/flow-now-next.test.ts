@@ -1,6 +1,6 @@
-import { createElement } from 'react';
+import { createElement, isValidElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SabhaFlow } from '../../../shared/sabha-flow';
 import { FlowSectionView } from '../web/remote/FlowSheet';
 import { FlowNowNext, type FlowNowNextProps } from './FlowNowNext';
@@ -116,6 +116,36 @@ describe('Now and Next up in the operator window’s Sabha flow panel (QA23-FLOW
     // The middle dots are hidden from a screen reader, which reads a comma between the parts instead.
     expect(html).toContain('<span aria-hidden="true"> · </span>');
     expect(html).toContain('<span class="sr-only">, </span>');
+  });
+});
+
+/** The element with this test id in what FlowNowNext returns (it has no hooks, so it can be called as it is). */
+function find(node: ReactNode, testId: string): { onClick?: () => void } | null {
+  if (Array.isArray(node)) {
+    for (const child of node as ReactNode[]) {
+      const found = find(child, testId);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isValidElement(node)) return null;
+  const props = node.props as { 'data-testid'?: string; children?: ReactNode; onClick?: () => void };
+  if (props['data-testid'] === testId) return props;
+  return find(props.children, testId);
+}
+
+describe('Back and Next pressed while an ask is on its way (a22-review-flow M3)', () => {
+  it('reach the store even while they show they cannot move: it steps from the Now last asked, and does nothing past either end', () => {
+    const onBack = vi.fn();
+    const onNext = vi.fn();
+    // Next pressed from not started, Main not answered yet: Now still shows not started, Back dimmed.
+    const before = FlowNowNext({ flow: flow(), now: null, size: 'panel', onBack, onNext });
+    find(before, 'flow-back-button')?.onClick?.();
+    expect(onBack).toHaveBeenCalledTimes(1);
+    // On the last item, Back pressed and Next at once: both go to the store, which decides.
+    const last = FlowNowNext({ flow: flow(), now: 2, size: 'panel', onBack, onNext });
+    find(last, 'flow-next-button')?.onClick?.();
+    expect(onNext).toHaveBeenCalledTimes(1);
   });
 });
 
