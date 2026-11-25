@@ -111,6 +111,13 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type {
+  SabhaFlow,
+  SabhaFlowChoice,
+  SabhaFlowNowResult,
+  SabhaFlowSnapshot,
+  SabhaFlowState,
+} from './sabha-flow';
+import type {
   OpeningChoice,
   OpeningEnd,
   OpeningFigures,
@@ -370,6 +377,19 @@ export interface DrashtiBridge {
     onChanged(listener: (view: EventsOutView) => void): () => void;
     /** File > Events Out… was chosen. */
     onOpen(listener: () => void): () => void;
+  };
+  /** Sabha flow (alpha.23, operator window): the running order's PDF, read, and Now. */
+  flow: {
+    get(): Promise<SabhaFlow | null>;
+    now(): Promise<SabhaFlowState | null>;
+    /** "Choose PDF…" (and Replace): Main's file dialog (null: cancelled). */
+    choose(): Promise<SabhaFlowChoice | null>;
+    remove(): Promise<null>;
+    /** Mark Now: an index into the flow's items, or null (refused for a flow that is no longer the current one). */
+    setNow(flowId: string, now: number | null): Promise<SabhaFlowNowResult>;
+    /** A page (from 0) as a PNG, or null. */
+    page(flowId: string, page: number): Promise<Uint8Array | null>;
+    onChanged(listener: (snapshot: SabhaFlowSnapshot) => void): () => void;
   };
   /** The drop folder (Session 28, operator window; Pro Mode). */
   drop: {

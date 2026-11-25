@@ -337,6 +337,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.opening.loadPack,
   IPC.opening.saveCopy,
   IPC.opening.removeSound,
+  // Sabha flow (alpha.23): Pro Mode's, unless chosen in Simple Mode Features. Reading it changes nothing.
+  IPC.flow.choose,
+  IPC.flow.remove,
+  IPC.flow.setNow,
 ];
 
 /** What an id names among the playlists (Session 56), as the lock reads it: a template is Pro Mode's. */
@@ -663,6 +667,7 @@ export function simpleModeRefusals(
   answers.set(IPC.slideEditor.translationCancel, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
+  answers.set(IPC.flow.remove, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).
   for (const c of ACCESS_LIST_EDITS) answers.set(c, () => ({ ...refused(), view: NO_VIEW }));
   answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: words() }));
