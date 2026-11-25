@@ -317,7 +317,8 @@ describe.skipIf(!ffmpegHere(ffmpeg))('a page copy keeps its source’s timeline 
         });
         expect([b.width, b.height]).toEqual([plan.width, height]);
         expect(plan.width).toBe(height === 720 ? 1280 : 960);
-      });
+        // Four FFmpeg runs at 1080p: half of the 20 s default on CI's Windows (a22-review-fadecopies round 2).
+      }, 120_000);
 });
 
 describe.skipIf(!ffmpegHere(ffmpeg))('a turned video gets no page copy (a22-review-fadecopies M2)', () => {
@@ -370,7 +371,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))('a turned video gets no page copy (a22-revi
     expect(words(turned)).toMatch(/rotation of/u);
     expect(pageCopyInspect(MP4, { words: words(turned), more: [] }), 'turned: none').toBe(false);
     expect(pageCopyInspect(MP4, { words: words(plain), more: [] }), 'upright: made').toBeUndefined();
-  });
+  }, 120_000);
 });
 
 describe('the sweep deletes a copy only with its source, or when its source changes', () => {
