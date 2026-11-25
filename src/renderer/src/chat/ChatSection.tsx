@@ -247,8 +247,7 @@ export function ChatContentsView({
   onPeopleOpen,
 }: ChatContentsProps) {
   const [removing, setRemoving] = useState<ChatMember | null>(null);
-  // Red: the hold is not kept yet.
-  if (held && Number.isNaN(0))
+  if (held)
     return (
       <p className="text-xs text-muted" data-testid="chat-held">
         The chat’s words and names are left out of this picture.
