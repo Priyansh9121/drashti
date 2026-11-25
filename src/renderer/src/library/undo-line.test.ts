@@ -108,4 +108,22 @@ describe('the Undo line', () => {
     expect(line('simple')).toBeNull();
     expect(line('pro')).toBeNull();
   });
+
+  it('on a test’s held clock (DRASHTI_TEST_UNDO_LINE only), goes when the test moves it on a minute, not before', async () => {
+    const { line, remove, holdLineClock } = await undoLine();
+    const later = holdLineClock();
+    remove('Placeholder darshan blue');
+    // This computer's time going on does nothing while the clock is held.
+    vi.advanceTimersByTime(120_000);
+    expect(line()).toBe('Deleted the wallpaper “Placeholder darshan blue”');
+    later(59_000);
+    expect(line()).toBe('Deleted the wallpaper “Placeholder darshan blue”');
+    later(1_000);
+    expect(line()).toBeNull();
+    remove('Placeholder darshan green');
+    later(59_999);
+    expect(line()).toBe('Deleted the wallpaper “Placeholder darshan green”');
+    later(1);
+    expect(line()).toBeNull();
+  });
 });
