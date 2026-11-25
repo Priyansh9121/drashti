@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
@@ -7,9 +7,11 @@ import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import type { MusicView } from '../../shared/music';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import type { RemoteMedia } from '../../shared/network-mirror';
+import { PHONE_REFUSAL, type PhoneWords } from '../../shared/phone-rule';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { SIMPLE_MODE_LOCKED, simpleModeBounds } from '../simple-mode';
+import type { OscAction } from '../osc/mapping';
 import type { SimplePhoneScope } from '../simple-mode-phones';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
@@ -19,7 +21,33 @@ import { NetworkService, OP_CHANNEL } from './network-service';
  * id, as the main process reads it from the library, and takes it off; shows a timer alone, the stage message,
  * Back 15 s and the rest. Never a Stage or Announcements device, and Simple Mode's refusals as in the window.
  * Placeholder names, made-up ids.
+ *
+ * Since alpha.23 (QA23-PHONE-1, the owner: "no video access in either of simple or pro mode in phone ... only ppts an
+ * pdfs") a phone may do none of it: each test proves a phone's refusal in the phone rule's words first, nothing run.
+ * The mirror's commands keep their callers the rule never weighs (OSC and the paired controller: runShowAction);
+ * the rest stays until alpha.24 deletes it with no other caller, so its own behaviour is tested with the rule aside.
  */
+
+/** A phone's answer in the phone rule's words (shared/phone-rule.ts), before anything runs. */
+const refusedAs = (words: PhoneWords) => ({
+  status: 403,
+  body: { ok: false, message: PHONE_REFUSAL[words] },
+});
+
+/**
+ * A command or a message from the paired controller (x28) or OSC, which the phone rule never weighs. Sent as a test
+ * writes it, unchecked: runShowAction checks it again, as it did a phone's.
+ */
+const fromController = (service: NetworkService, op: OscAction['op'], args: unknown) =>
+  service.runShowAction({ op, args } as OscAction, 'the paired controller');
+
+/** The phone rule (the private phoneRule) stood aside on this service only: the request as Main ran it before. */
+function ruleAside(service: NetworkService): void {
+  const inner = service as unknown as {
+    phoneRule(op: DeviceOp, args: Record<string, unknown>): { args: Record<string, unknown> };
+  };
+  vi.spyOn(inner, 'phoneRule').mockImplementation((_op, args) => ({ args }));
+}
 
 const PHONE = '192.168.1.20';
 
@@ -189,6 +217,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   const poster = service.pairForCheck('announcements', 'Placeholder poster').id;
   const ask = (deviceId: string, op: DeviceOp, args: Record<string, unknown> = {}) =>
     service.answer({ address: PHONE, deviceId, op, args });
+  /** A command from the paired controller (x28) or OSC, which the phone rule never weighs. */
+  const controller = (args: Record<string, unknown>) => fromController(service, 'command', args);
   const advance = (ms: number) => {
     clock += ms;
   };
@@ -202,6 +232,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     stage,
     poster,
     ask,
+    controller,
     audioView,
     audioCalls,
     playIndexes,
@@ -220,8 +251,16 @@ it('refuses a bounded Simple Mode channel when no window arguments were supplied
 });
 
 describe('the phone as a mirror of the operator window (Session 54, D5)', () => {
-  it('lets a Remote read the media, the lower thirds, the audio playlists and the keys', () => {
-    const { ask, remote } = setup();
+  it('refuses a Remote the media, the lower thirds, the audio playlists and the keys (QA23-PHONE-1); with the rule aside, they read as the window has them', () => {
+    const { ask, remote, service } = setup();
+    for (const [op, words] of [
+      ['keys', 'computer'],
+      ['lowerThirds', 'computer'],
+      ['music', 'media'],
+      ['media', 'media'],
+    ] as const)
+      expect(ask(remote, op), op).toEqual(refusedAs(words));
+    ruleAside(service);
     expect(ask(remote, 'keys')).toEqual({
       status: 200,
       body: { ok: true, keys: { platform: 'darwin', singleKeys: true } },
@@ -243,8 +282,10 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     });
   });
 
-  it('gives the media a page at a time, found by the words of their names', () => {
-    const { ask, remote } = setup();
+  it('refuses a Remote the media’s pages (QA23-PHONE-1); with the rule aside, gives them a page at a time, found by the words of their names', () => {
+    const { ask, remote, service } = setup();
+    expect(ask(remote, 'media', { offset: '1', limit: '2' })).toEqual(refusedAs('media'));
+    ruleAside(service);
     expect(ask(remote, 'media', { offset: '1', limit: '2' }).body).toMatchObject({
       media: [{ id: 'm-vid' }, { id: 'm-tune' }],
       offset: 1,
@@ -259,8 +300,13 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(ask(remote, 'media', { offset: '-4', limit: 'all' }).body).toMatchObject({ offset: 0, total: 5 });
   });
 
-  it('puts a lower third, a picture, a video and a sound up by its id, as the library has it', () => {
-    const { ask, remote, commands } = setup();
+  it('puts up nothing from a Remote (QA23-PHONE-1); with the rule aside, a lower third, a picture, a video and a sound by its id, as the library has it', () => {
+    const { ask, remote, commands, service } = setup();
+    expect(ask(remote, 'lowerThird.show', { lowerThirdId: 'lt-1' })).toEqual(refusedAs('computer'));
+    for (const mediaId of ['m-pic', 'm-vid', 'm-tune'])
+      expect(ask(remote, 'media.show', { mediaId }), mediaId).toEqual(refusedAs('media'));
+    expect(commands).toEqual([]);
+    ruleAside(service);
     expect(ask(remote, 'lowerThird.show', { lowerThirdId: 'lt-1' }).status).toBe(200);
     expect(commands.at(-1)).toMatchObject({
       type: 'showLowerThird',
@@ -290,8 +336,13 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     ]);
   });
 
-  it('says why a missing file, one Drashti cannot play, or one no longer there does not go up', () => {
-    const { ask, remote, commands } = setup();
+  it('tells a Remote the phone rule’s words for any file (QA23-PHONE-1); with the rule aside, says why a missing file, one Drashti cannot play, or one no longer there does not go up', () => {
+    const { ask, remote, commands, service } = setup();
+    for (const mediaId of ['m-gone', 'm-heic', 'm-nothing'])
+      expect(ask(remote, 'media.show', { mediaId }), mediaId).toEqual(refusedAs('media'));
+    expect(ask(remote, 'lowerThird.show', { lowerThirdId: 'lt-nothing' })).toEqual(refusedAs('computer'));
+    expect(commands).toEqual([]);
+    ruleAside(service);
     expect(ask(remote, 'media.show', { mediaId: 'm-gone' })).toEqual({
       status: 409,
       body: { ok: false, message: '“Placeholder gone picture” is missing: Drashti cannot find its file.' },
@@ -310,9 +361,9 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(commands).toEqual([]);
   });
 
-  it('takes them off, and shows a timer alone, the stage message and the skips', () => {
+  it('refuses a Remote all of it (QA23-PHONE-1); from the paired controller, takes them off, and shows a timer alone, the stage message and the skips', () => {
     for (const locked of [false, true]) {
-      const { ask, remote, commands } = setup({ locked });
+      const { ask, controller, remote, commands } = setup({ locked });
       const sent: Record<string, unknown>[] = [
         { type: 'hideLowerThird' },
         { type: 'showTimer', timerId: 'timer-1' },
@@ -321,6 +372,12 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         { type: 'skip', layer: 'background', jump: 'forward' },
         { type: 'skip', layer: 'audio', jump: 'back' },
       ];
+      // A phone: in Simple Mode Simple Mode's words for any command; in Pro Mode the computer's or the media's.
+      for (const args of sent)
+        expect(ask(remote, 'command', args), JSON.stringify(args)).toEqual(
+          refusedAs(locked ? 'simple' : args['type'] === 'skip' ? 'media' : 'computer'),
+        );
+      expect(commands).toEqual([]);
       // In Simple Mode: taking them off, as anything comes off the screens there. Back 15 s and the rest, which move
       // what plays, are Pro Mode's (Session 54's review: Simple Mode shows the time bar and moves nothing), and so are
       // a timer alone and the stage message since Session 55 (the owner's answer of 30 Oct 2026: a phone does only
@@ -328,13 +385,20 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       const refused = (args: Record<string, unknown>) =>
         locked && ['skip', 'showTimer', 'setStageMessage'].includes(String(args['type']));
       for (const args of sent)
-        expect(ask(remote, 'command', args).status, JSON.stringify(args)).toBe(refused(args) ? 403 : 200);
+        expect(controller(args).status, JSON.stringify(args)).toBe(refused(args) ? 403 : 200);
       expect(commands).toEqual(sent.filter((args) => !refused(args)));
     }
   });
 
-  it('in Simple Mode plays Audio playlists and still refuses lower thirds and Media puts', () => {
-    const { ask, remote, commands, played, state } = setup({ locked: true });
+  it('in Simple Mode refuses a Remote Audio, lower thirds and Media in the phone rule’s words (QA23-PHONE-1); with the rule aside, plays Audio playlists and still refuses lower thirds and Media puts', () => {
+    const { ask, remote, commands, played, state, service } = setup({ locked: true });
+    expect(ask(remote, 'lowerThird.show', { lowerThirdId: 'lt-1' })).toEqual(refusedAs('computer'));
+    expect(ask(remote, 'media.show', { mediaId: 'm-pic' })).toEqual(refusedAs('media'));
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' })).toEqual(refusedAs('media'));
+    expect(ask(remote, 'command', { type: 'hideLowerThird' })).toEqual(refusedAs('simple'));
+    expect(commands).toEqual([]);
+    expect(played).toEqual([]);
+    ruleAside(service);
     for (const [op, args] of [
       ['lowerThird.show', { lowerThirdId: 'lt-1' }],
       // Even a picture its one playlist has: Simple Mode's window puts up its rows, never Media's.
@@ -403,9 +467,13 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       expect(REMOTE_COMMANDS as readonly string[], type).not.toContain(type);
   });
 
-  it('starts Repeat Slides going round from its first step, a step given, or an item’s first step (D5 review)', () => {
+  it('starts no Repeat Slides from a Remote, in either mode (QA23-PHONE-1); with the rule aside, from its first step, a step given, or an item’s first step (D5 review)', () => {
     for (const locked of [false, true]) {
-      const { ask, remote, stage, commands } = setup({ locked });
+      const { ask, remote, stage, commands, service } = setup({ locked });
+      for (const args of [{ playlistId: 'repeat-1' }, { playlistId: 'repeat-1', itemId: 'item-2' }])
+        expect(ask(remote, 'repeat.start', args), JSON.stringify(args)).toEqual(refusedAs('notDeck'));
+      expect(commands).toEqual([]);
+      ruleAside(service);
       const start = (args: Record<string, unknown>) =>
         ask(remote, 'repeat.start', { playlistId: 'repeat-1', ...args });
       expect(start({}).status).toBe(200);
@@ -434,8 +502,12 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(DEVICE_OPS['repeat.start']).toEqual(['remote']);
   });
 
-  it('plays the audio playlist a phone chose, or on from where it was paused', () => {
-    const { ask, remote, played } = setup();
+  it('plays no audio playlist from a Remote (QA23-PHONE-1); with the rule aside, the one a phone chose, or on from where it was paused', () => {
+    const { ask, remote, played, service } = setup();
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' })).toEqual(refusedAs('media'));
+    expect(ask(remote, 'music.play')).toEqual(refusedAs('media'));
+    expect(played).toEqual([]);
+    ruleAside(service);
     expect(ask(remote, 'music.play', { playlistId: 'music-1' })).toEqual({
       status: 200,
       body: { ok: true, playing: true },
@@ -449,8 +521,11 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(played).toEqual(['music-1', null, null]);
   });
 
-  it('plays an audio playlist on from the track it stopped on at a phone’s Play (playOn, alpha.20); the API as documented without it', () => {
-    const { ask, remote, played, playIndexes } = setup();
+  it('refuses a Remote’s Play, playOn too (QA23-PHONE-1); with the rule aside, plays an audio playlist on from the track it stopped on at a phone’s Play (playOn, alpha.20), the API as documented without it', () => {
+    const { ask, remote, played, playIndexes, service } = setup();
+    expect(ask(remote, 'music.play', { playlistId: 'music-1', playOn: true })).toEqual(refusedAs('media'));
+    expect(played).toEqual([]);
+    ruleAside(service);
     // A phone's Play, of a playlist or Play music: no track asked, so the music service plays on (music-service.ts).
     expect(ask(remote, 'music.play', { playlistId: 'music-1', playOn: true }).status).toBe(200);
     expect(ask(remote, 'music.play', { playOn: true }).status).toBe(200);
@@ -461,8 +536,10 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(playIndexes).toEqual([undefined, undefined, 0, 2]);
   });
 
-  it('filters audio before paging, leaving the unfiltered list alone', () => {
-    const { ask, remote } = setup();
+  it('refuses a Remote the sounds’ pages (QA23-PHONE-1); with the rule aside, filters audio before paging, leaving the unfiltered list alone', () => {
+    const { ask, remote, service } = setup();
+    expect(ask(remote, 'media', { kind: 'audio', limit: '1' })).toEqual(refusedAs('media'));
+    ruleAside(service);
     expect(ask(remote, 'media', { kind: 'audio', limit: '1' })).toMatchObject({
       status: 200,
       body: { media: [MEDIA[2]], offset: 0, total: 1 },
@@ -478,9 +555,11 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
   });
 
   it.each([false, true])(
-    'lets a Remote use Audio and play the chosen index, with Simple Mode %s',
+    'refuses a Remote Audio and its Play (QA23-PHONE-1); with the rule aside, lets it use Audio and play the chosen index, with Simple Mode %s',
     (locked) => {
-      const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes } = setup({ locked });
+      const { ask, remote, stage, poster, audioView, audioCalls, played, playIndexes, service } = setup({
+        locked,
+      });
       const cases = [
         ['music.new', { name: 'Placeholder tunes' }, ['create', 'Placeholder tunes']],
         [
@@ -504,6 +583,14 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         ['music.removeTrack', { trackId: 'track-1' }, ['removeTrack', 'track-1']],
         ['music.restoreTrack', { trackId: 'track-1', at: 1 }, ['restoreTrack', 'track-1', 1]],
       ] as const;
+      // A phone, in either mode: none of it reaches the music service.
+      expect(ask(remote, 'music.audio')).toEqual(refusedAs('media'));
+      for (const [op, args] of cases) expect(ask(remote, op, args), op).toEqual(refusedAs('media'));
+      expect(ask(remote, 'music.stepsAside', { on: false })).toEqual(refusedAs('media'));
+      expect(ask(remote, 'music.play', { playlistId: 'music-1', index: 2 })).toEqual(refusedAs('media'));
+      expect(audioCalls).toEqual([]);
+      expect(played).toEqual([]);
+      ruleAside(service);
       expect(ask(remote, 'music.audio')).toMatchObject({
         status: 200,
         body: { ok: true, view: audioView, stepsAside: true },
@@ -533,41 +620,62 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     },
   );
 
-  it.each([false, true])('limits Audio changes to each phone, with Simple Mode %s', (locked) => {
-    const { ask, service, remote, audioCalls, advance } = setup({ locked });
-    const name = { name: 'Placeholder tunes' };
-    for (let i = 0; i < 30; i++) expect(ask(remote, 'music.new', name).status).toBe(200);
-    for (const [op, args] of [
-      ['music.new', name],
-      ['music.rename', { playlistId: 'music-1', name: 'Placeholder sounds' }],
-      ['music.remove', { playlistId: 'music-1' }],
-      ['music.restore', { playlistId: 'music-1' }],
-      ['music.options', { playlistId: 'music-1', loop: true, shuffle: false }],
-      ['music.addTracks', { playlistId: 'music-1', mediaIds: ['m-tune'] }],
-      ['music.moveTrack', { trackId: 'track-1', to: 1 }],
-      ['music.removeTrack', { trackId: 'track-1' }],
-      ['music.restoreTrack', { trackId: 'track-1', at: 1 }],
-      ['music.stepsAside', { on: false }],
-    ] as const)
-      expect(ask(remote, op, args).status, op).toBe(429);
-    expect(audioCalls).toHaveLength(30);
-    expect(ask(remote, 'music.audio')).toMatchObject({ status: 200, body: { stepsAside: true } });
-    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(200);
-    const other = service.pairForCheck('remote', 'Placeholder second phone').id;
-    expect(ask(other, 'music.new', name).status).toBe(200);
-    advance(100);
-    expect(ask(remote, 'music.new', name).status).toBe(429);
-    advance(100);
-    expect(ask(remote, 'music.new', name).status).toBe(200);
-  });
+  it.each([false, true])(
+    'refuses a Remote’s Audio changes before any limit (QA23-PHONE-1); with the rule aside, limits them to each phone, with Simple Mode %s',
+    (locked) => {
+      const { ask, service, remote, audioCalls, advance } = setup({ locked });
+      const name = { name: 'Placeholder tunes' };
+      // A phone: each refused in the rule's words, never a 429; nothing taken from its limit.
+      for (let i = 0; i < 31; i++) expect(ask(remote, 'music.new', name)).toEqual(refusedAs('media'));
+      expect(audioCalls).toEqual([]);
+      ruleAside(service);
+      for (let i = 0; i < 30; i++) expect(ask(remote, 'music.new', name).status).toBe(200);
+      for (const [op, args] of [
+        ['music.new', name],
+        ['music.rename', { playlistId: 'music-1', name: 'Placeholder sounds' }],
+        ['music.remove', { playlistId: 'music-1' }],
+        ['music.restore', { playlistId: 'music-1' }],
+        ['music.options', { playlistId: 'music-1', loop: true, shuffle: false }],
+        ['music.addTracks', { playlistId: 'music-1', mediaIds: ['m-tune'] }],
+        ['music.moveTrack', { trackId: 'track-1', to: 1 }],
+        ['music.removeTrack', { trackId: 'track-1' }],
+        ['music.restoreTrack', { trackId: 'track-1', at: 1 }],
+        ['music.stepsAside', { on: false }],
+      ] as const)
+        expect(ask(remote, op, args).status, op).toBe(429);
+      expect(audioCalls).toHaveLength(30);
+      expect(ask(remote, 'music.audio')).toMatchObject({ status: 200, body: { stepsAside: true } });
+      expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(200);
+      const other = service.pairForCheck('remote', 'Placeholder second phone').id;
+      expect(ask(other, 'music.new', name).status).toBe(200);
+      advance(100);
+      expect(ask(remote, 'music.new', name).status).toBe(429);
+      advance(100);
+      expect(ask(remote, 'music.new', name).status).toBe(200);
+    },
+  );
 
-  it('refuses each with Simple Mode’s words when its window request is locked, as the window would be', () => {
+  it('refuses each from a Remote in the phone rule’s words (QA23-PHONE-1); with the rule aside, in Simple Mode’s words when its window request is locked, as the window would be', () => {
     for (const op of [...READS, ...PUTS]) {
       const channel = OP_CHANNEL[op];
       expect(channel, op).not.toBeNull();
       if (channel) expect(SIMPLE_MODE_LOCKED.includes(channel), op).toBe(false);
     }
-    const { ask, remote, commands } = setup({ lockEverything: true });
+    const { ask, remote, commands, service } = setup({ lockEverything: true });
+    // A phone (QA23-PHONE-1): the phone rule's words come first, the lock never asked.
+    const words: Record<(typeof READS)[number] | (typeof PUTS)[number], PhoneWords> = {
+      keys: 'computer',
+      media: 'media',
+      lowerThirds: 'computer',
+      music: 'media',
+      'media.show': 'media',
+      'lowerThird.show': 'computer',
+    };
+    for (const op of [...READS, ...PUTS])
+      expect(ask(remote, op, { mediaId: 'm-pic', lowerThirdId: 'lt-1' }), op).toEqual(refusedAs(words[op]));
+    expect(commands).toEqual([]);
+    // With the rule aside, as the window would be.
+    ruleAside(service);
     for (const op of [...READS, ...PUTS])
       expect(ask(remote, op, { mediaId: 'm-pic', lowerThirdId: 'lt-1' }), op).toEqual({
         status: 403,
@@ -578,16 +686,19 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
 });
 
 describe('what Session 55 took out, from a phone', () => {
-  it('neither lists nor puts up props or masks, nor starts the idle rotation or switches a Look; the Wallpaper goes up and off', () => {
-    const { ask, remote, commands } = setup();
+  it('neither lists nor puts up props or masks, nor starts the idle rotation or switches a Look; the Wallpaper goes up and off from the paired controller, never a phone (QA23-PHONE-1)', () => {
+    const { ask, controller, remote, commands } = setup();
     // No such request any more (the API's routes are gone too: 404 there).
     for (const op of ['props', 'prop.show', 'masks', 'mask.show', 'looks', 'logo', 'logo.set'])
       expect(ask(remote, op as DeviceOp, {}).status, op).toBe(403);
     for (const type of ['hideProp', 'startIdle', 'stopIdle', 'setLook', 'showLogo', 'hideLogo'])
       expect([400, 403], type).toContain(ask(remote, 'command', { type }).status);
     expect(commands).toEqual([]);
-    expect(ask(remote, 'command', { type: 'toggleWallpaper' }).status).toBe(200);
-    expect(ask(remote, 'command', { type: 'setWallpaper', on: false }).status).toBe(200);
+    expect(ask(remote, 'command', { type: 'toggleWallpaper' })).toEqual(refusedAs('media'));
+    expect(ask(remote, 'command', { type: 'setWallpaper', on: false })).toEqual(refusedAs('media'));
+    expect(commands).toEqual([]);
+    expect(controller({ type: 'toggleWallpaper' }).status).toBe(200);
+    expect(controller({ type: 'setWallpaper', on: false }).status).toBe(200);
     expect(commands).toEqual([{ type: 'toggleWallpaper' }, { type: 'setWallpaper', on: false }]);
   });
 });

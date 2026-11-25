@@ -34,7 +34,7 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
 export const DEVICE_KIND_HELP: Record<DeviceKind, string> = {
   // alpha.23 (QA23-PHONE-1, the owner's "Only PPT and PDF"): shared/phone-rule.ts.
   remote:
-    'In Pro Mode, puts up a PowerPoint or a PDF from a playlist and moves through it with Next and Back; in Simple Mode, shows the Sabha flow and what is on the screens. The chat in both; never videos, pictures or sounds.',
+    'Shows the Sabha flow, what is on the screens and the chat; in Pro Mode it also puts up a PowerPoint or a PDF from a playlist, moves through it with Next and Back and clears its slide. It never puts up or changes videos, pictures, sounds, timers or messages.',
   stage: 'Watches only: shows what a stage screen shows.',
   announcements: 'Sends announcements for the operator to approve; nothing else.',
   chat: 'Reads and writes the chat; nothing else. Paired for today only.',

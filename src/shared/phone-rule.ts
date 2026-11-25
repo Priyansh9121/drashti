@@ -28,10 +28,13 @@ export const PHONE_REFUSAL = {
   noDeck: 'No PowerPoint or PDF is on the screens: put one up from the playlist first.',
   /** Videos, pictures, sounds and music, and the wallpapers. */
   media: 'A phone cannot play, put up or change videos, pictures or sounds. Use Drashti’s computer.',
-  /** Files from phones, and the playlists shared with them. */
-  files: 'Phones cannot add or share files with Drashti.',
+  /** Files from phones, and the playlists Drashti shares with them. */
+  files: 'Phones cannot add files to Drashti or open the files it shares. Use Drashti’s computer.',
   /** Timers, messages, the stage, the announcements' queue, the screens and the library's set-up. */
   computer: 'A phone cannot change this. Use Drashti’s computer.',
+  /** The library sheet and the books' list (reads): a phone chooses from a playlist (the owner's Q2). */
+  library:
+    'From a phone, only a playlist’s PowerPoints and PDFs are listed. Find the rest of the library on Drashti’s computer.',
 } as const;
 
 export type PhoneWords = keyof typeof PHONE_REFUSAL;
@@ -168,8 +171,8 @@ type NeverOp = {
 
 /** The words for each request a phone never makes (the typecheck makes each say which). */
 export const NEVER_OP_WORDS: Readonly<Record<NeverOp, PhoneWords>> = {
-  presentations: 'notDeck',
-  search: 'notDeck',
+  presentations: 'library',
+  search: 'library',
   stage: 'computer',
   announce: 'computer',
   announcement: 'computer',
@@ -197,7 +200,7 @@ export const NEVER_OP_WORDS: Readonly<Record<NeverOp, PhoneWords>> = {
   'wallpaper.rename': 'media',
   'wallpaper.remove': 'media',
   'wallpaper.restore': 'media',
-  'shastra.texts': 'notDeck',
+  'shastra.texts': 'library',
   shastra: 'notDeck',
   'repeat.start': 'notDeck',
   shared: 'files',

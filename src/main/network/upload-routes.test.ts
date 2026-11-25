@@ -2,11 +2,28 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
 import type { ArrivedFile, UploadStatus } from '../../shared/phone-files';
+import { PHONE_REFUSAL } from '../../shared/phone-rule';
+import type * as PhoneRule from '../../shared/phone-rule';
 import { NetworkServer, type ServerHost } from './server';
 import { hashToken } from './tokens';
+
+/**
+ * The phone rule (alpha.23, QA23-PHONE-1: "Phones cannot add or share files with Drashti") in the network's process,
+ * stood aside while `ruleAside.on`: the uploads' own handling here stays until alpha.24 deletes it, and no other kind
+ * of device reaches it, so each test proves a phone's refusal first, then that handling as before with the rule aside.
+ */
+const ruleAside = vi.hoisted(() => ({ on: false }));
+vi.mock('../../shared/phone-rule', async (original) => {
+  const rule = await original<typeof PhoneRule>();
+  return {
+    ...rule,
+    phoneOpRefusal: (...args: Parameters<typeof rule.phoneOpRefusal>) =>
+      ruleAside.on ? null : rule.phoneOpRefusal(...args),
+  };
+});
 
 /*
  * The API's requests for files between Drashti and a phone (Session 54, D3 and D4), through the real server on
@@ -35,10 +52,17 @@ const ON = { on: true, maxBytes: 2 * 1024 ** 3, reserveBytes: 0, slowed: false }
 let dir = '';
 let server: NetworkServer | null = null;
 afterEach(async () => {
+  ruleAside.on = false;
   await server?.stop();
   server = null;
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
+
+/** What a phone is told for a file (QA23-PHONE-1). */
+const REFUSED = { status: 403, body: { ok: false, message: PHONE_REFUSAL.files } };
+
+/** An upload's id in the form the routes take (made up). */
+const SOME_UPLOAD = '01234567-89ab-cdef-0123-456789abcdef';
 
 async function start(options: { policyFirst?: boolean } = {}) {
   dir = mkdtempSync(join(tmpdir(), 'drashti-upload-routes-'));
@@ -142,9 +166,31 @@ const picture = (bytes: number) => {
 };
 
 describe('files between Drashti and a phone, over the API', () => {
-  it('a Remote sends a file in pieces, picks up again after one is cut short, and it is handed on whole', async () => {
-    const { port, arrived } = await start();
+  it('refuses a Remote a file, its pieces and how it stands in the phone rule’s words, nothing taken (QA23-PHONE-1); with the rule aside, a file comes in pieces, picks up again after one is cut short, and is handed on whole', async () => {
+    const { port, arrived, requests, uploadsDir } = await start();
     const bytes = picture(300_000);
+    // A phone: none of it, before a byte is kept or the main process asked.
+    expect(
+      await call(port, '/api/v1/uploads', {
+        method: 'POST',
+        token: REMOTE_TOKEN,
+        json: { name: 'Placeholder photo.jpg', size: bytes.length },
+      }),
+    ).toEqual(REFUSED);
+    expect(
+      await call(port, `/api/v1/uploads/${SOME_UPLOAD}/piece?offset=0`, {
+        method: 'POST',
+        token: REMOTE_TOKEN,
+        bytes: bytes.subarray(0, 100_000),
+      }),
+    ).toEqual(REFUSED);
+    expect(await call(port, `/api/v1/uploads/${SOME_UPLOAD}`, { token: REMOTE_TOKEN })).toEqual(REFUSED);
+    expect(await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN })).toEqual(REFUSED);
+    expect(arrived).toEqual([]);
+    expect(readdirSync(uploadsDir)).toEqual([]);
+    expect(requests).toEqual([]);
+    // The uploads' own handling, as before the rule.
+    ruleAside.on = true;
     const begun = await call(port, '/api/v1/uploads', {
       method: 'POST',
       token: REMOTE_TOKEN,
@@ -188,8 +234,13 @@ describe('files between Drashti and a phone, over the API', () => {
     });
   });
 
-  it('a piece without its length, or a cancelled file’s, is refused; Cancel leaves nothing', async () => {
-    const { port, uploadsDir } = await start();
+  it('refuses a Remote’s Cancel in the phone rule’s words (QA23-PHONE-1); with the rule aside, a piece without its length, or a cancelled file’s, is refused; Cancel leaves nothing', async () => {
+    const { port, uploadsDir, requests } = await start();
+    expect(
+      await call(port, `/api/v1/uploads/${SOME_UPLOAD}/cancel`, { method: 'POST', token: REMOTE_TOKEN }),
+    ).toEqual(REFUSED);
+    expect(requests).toEqual([]);
+    ruleAside.on = true;
     const id = (
       (
         await call(port, '/api/v1/uploads', {
@@ -211,7 +262,7 @@ describe('files between Drashti and a phone, over the API', () => {
     expect(late.status).toBe(409);
   });
 
-  it('a Stage or Announcements device can neither see what is shared nor add a file', async () => {
+  it('a Stage or Announcements device can neither see what is shared nor add a file, nor can a Remote now (QA23-PHONE-1)', async () => {
     const { port, requests, uploadsDir } = await start();
     for (const token of [STAGE_TOKEN, ANNOUNCE_TOKEN]) {
       for (const path of ['/api/v1/shared', '/api/v1/shared/p1/items', '/api/v1/uploads'])
@@ -225,13 +276,28 @@ describe('files between Drashti and a phone, over the API', () => {
     }
     expect(requests).toEqual([]);
     expect(readdirSync(uploadsDir)).toEqual([]);
-    // A Remote reads the shared playlists through the main process, as it reads a playlist.
+    // A Remote (QA23-PHONE-1): neither the shared playlists nor their items, the main process never asked.
+    for (const path of ['/api/v1/shared', '/api/v1/shared/p1/items'])
+      expect(await call(port, path, { token: REMOTE_TOKEN }), path).toEqual(REFUSED);
+    expect(requests).toEqual([]);
+    // With the rule aside: read through the main process, as a playlist is.
+    ruleAside.on = true;
     expect((await call(port, '/api/v1/shared', { token: REMOTE_TOKEN })).status).toBe(200);
     expect(requests.map((r) => r.op)).toEqual(['shared']);
   });
 
-  it('the word on files from phones given before the server starts holds once it has', async () => {
-    const { port } = await start({ policyFirst: true });
+  it('refuses a Remote its files with the switch on from the start (QA23-PHONE-1); with the rule aside, the word on files from phones given before the server starts holds once it has', async () => {
+    const { port, requests } = await start({ policyFirst: true });
+    expect(await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN })).toEqual(REFUSED);
+    expect(
+      await call(port, '/api/v1/uploads', {
+        method: 'POST',
+        token: REMOTE_TOKEN,
+        json: { name: 'Placeholder photo.jpg', size: 1000 },
+      }),
+    ).toEqual(REFUSED);
+    expect(requests).toEqual([]);
+    ruleAside.on = true;
     const listed = await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN });
     // Add photos (Session 55, Part 8): no playlist open on Drashti; question 5: not in Simple Mode.
     expect(listed.body['adding']).toEqual({
@@ -248,9 +314,11 @@ describe('files between Drashti and a phone, over the API', () => {
     expect(begun.status).toBe(201);
   });
 
-  it('nothing is taken while the switch is off, and the phone reads that it is off', async () => {
+  it('refuses a Remote in the phone rule’s words, not the switch’s, while the switch is off (QA23-PHONE-1); with the rule aside, nothing is taken and the phone reads that it is off', async () => {
     const { port } = await start();
     server?.setUploadPolicy({ ...ON, on: false });
+    expect(await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN })).toEqual(REFUSED);
+    ruleAside.on = true;
     const listed = await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN });
     expect(listed.body['adding']).toEqual({
       on: false,
