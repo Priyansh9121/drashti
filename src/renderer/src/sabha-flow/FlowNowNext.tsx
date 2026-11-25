@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import type { SabhaFlow, SabhaFlowLang } from '../../../shared/sabha-flow';
 import type { FlowLine } from '../../../shared/sabha-flow-lines';
 import {
@@ -11,6 +11,7 @@ import {
   textLang,
 } from '../../../shared/sabha-flow-lines';
 import { Button } from '../ui/Button';
+import { watchReserve, windowReserveDeps } from './steady-reserve';
 import { ChevronLeft, ChevronRight, Film } from '../ui/icons';
 
 /*
@@ -173,25 +174,26 @@ function NowNextLines({
 }) {
   const [measure, setMeasure] = useState<HTMLDivElement | null>(null);
   const [reserve, setReserve] = useState(0);
-  useLayoutEffect(() => {
-    if (!measure) return;
-    const observer = new ResizeObserver(() => {
-      let now = 0;
-      let next = 0;
-      for (const el of measure.querySelectorAll<HTMLElement>('[data-measure="now"]'))
-        now = Math.max(now, el.getBoundingClientRect().height);
-      for (const el of measure.querySelectorAll<HTMLElement>('[data-measure="next"]'))
-        next = Math.max(
-          next,
-          el.getBoundingClientRect().height + parseFloat(getComputedStyle(el).marginTop || '0'),
+  // Measured as the copies are laid out, on any change of their size, and when a late font has loaded (S17).
+  useLayoutEffect(
+    () => (measure ? watchReserve(measure, setReserve, windowReserveDeps()) : undefined),
+    [measure, flow],
+  );
+  // The unseen copies, made once per flow (and look).
+  const copies = useMemo(
+    () =>
+      steady &&
+      [null, ...flow.items.map((_, i) => i)].map((k) => {
+        const each = nowNext(flow, k);
+        return (
+          <div key={k ?? 'none'} className={look.lines}>
+            <NowLine flow={flow} nn={each} look={look} measure="now" />
+            <NextLine flow={flow} nn={each} look={look} measure="next" />
+          </div>
         );
-      setReserve(Math.ceil(now + next));
-    });
-    observer.observe(measure);
-    return () => {
-      observer.disconnect();
-    };
-  }, [measure, flow]);
+      }),
+    [flow, look, steady],
+  );
   return (
     <>
       <div
@@ -210,15 +212,7 @@ function NowNextLines({
           aria-hidden="true"
           className="pointer-events-none invisible absolute inset-x-3 top-0 h-0 overflow-hidden"
         >
-          {[null, ...flow.items.map((_, i) => i)].map((k) => {
-            const each = nowNext(flow, k);
-            return (
-              <div key={k ?? 'none'} className={look.lines}>
-                <NowLine flow={flow} nn={each} look={look} measure="now" />
-                <NextLine flow={flow} nn={each} look={look} measure="next" />
-              </div>
-            );
-          })}
+          {copies}
         </div>
       )}
     </>
