@@ -3,6 +3,7 @@ import type { CommandResult, EngineCommand } from '../../shared/engine/commands'
 import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
 import type { PresentationDoc } from '../../shared/library';
 import type { DeviceOp, DeviceRequest } from '../../shared/network-api';
+import { isPhoneDeck } from '../../shared/phone-decks';
 import { PHONE_REFUSAL } from '../../shared/phone-rule';
 import type { PlaylistItemInfo } from '../../shared/playlists';
 import { openDatabase } from '../db/database';
@@ -53,12 +54,20 @@ const doc = (id: string, more: Partial<PresentationDoc>): PresentationDoc => ({
   ...more,
 });
 
-/** A PDF's pages (a deck), a kirtan, and a presentation of words. */
+const PICTURES = { kind: 'pictures' as const, path: null, ref: null, importedAt: null };
+const KIRTAN = { category: 'Kirtan', kavi: null, raag: null, occasions: [], audioMediaId: null, tracks: [] };
+
+/**
+ * A PDF's pages (a deck), a kirtan, a presentation of words; a PDF made a kirtan (the review's MUST-1); and a deck in no
+ * playlist ('loose').
+ */
 const DOCS: Record<string, PresentationDoc> = {
-  deck: doc('deck', { source: { kind: 'pictures', path: null, ref: null, importedAt: null } }),
+  deck: doc('deck', { source: PICTURES }),
+  kirtandeck: doc('kirtandeck', { source: PICTURES, kirtan: KIRTAN }),
+  loose: doc('loose', { source: PICTURES }),
   kirtan: doc('kirtan', {
     source: { kind: 'pp6', path: null, ref: null, importedAt: null },
-    kirtan: { category: 'Kirtan', kavi: null, raag: null, occasions: [], audioMediaId: null, tracks: [] },
+    kirtan: KIRTAN,
   }),
   words: doc('words', { source: { kind: 'text', path: null, ref: null, importedAt: null } }),
 };
@@ -72,10 +81,11 @@ const row = (id: string, presentationId: string): PlaylistItemInfo => ({
   order: { mode: 'presentation' },
   arrangementName: null,
   timers: [],
-  ...(presentationId === 'deck' ? { deck: true } : {}),
+  // A document's pages, as the row says of them (db/playlists.ts: source 'pictures').
+  ...(DOCS[presentationId]?.source?.kind === 'pictures' ? { deck: true } : {}),
 });
 
-/** The sabha's playlist: the deck, a kirtan, words and a video; a deck nowhere in a playlist is 'loose'. */
+/** The sabha's playlist: the deck, a kirtan, words, a video, and a PDF made a kirtan; 'loose' is in none. */
 const ITEMS: PlaylistItemInfo[] = [
   row('i-deck', 'deck'),
   row('i-kirtan', 'kirtan'),
@@ -90,7 +100,11 @@ const ITEMS: PlaylistItemInfo[] = [
     unplayable: null,
     timers: [],
   },
+  row('i-kirtandeck', 'kirtandeck'),
 ];
+
+/** The presentations the sabha's playlist lists. */
+const LISTED = ['deck', 'kirtan', 'words', 'kirtandeck'];
 
 const ONE: SimplePhoneScope = {
   playlistId: 'sabha',
@@ -98,19 +112,19 @@ const ONE: SimplePhoneScope = {
   activePlaylist: (id) => id === 'sabha',
   activeItem: (id, itemId) => id === 'sabha' && ITEMS.some((i) => i.id === itemId),
   listsMedia: (mediaId) => mediaId === 'm-video',
-  listsPresentation: (id) => ['deck', 'kirtan', 'words'].includes(id),
+  listsPresentation: (id) => LISTED.includes(id),
   playlistOf: (itemId) => (ITEMS.some((i) => i.id === itemId) ? 'sabha' : null),
   holdsMedia: (mediaId) => mediaId === 'm-video',
-  holdsPresentation: (id) => ['deck', 'kirtan', 'words'].includes(id),
+  holdsPresentation: (id) => LISTED.includes(id),
   plays: (id, from) =>
     from
       ? from.playlistId === 'sabha' &&
         ITEMS.some((i) => i.id === from.itemId && i.kind === 'presentation' && i.presentationId === id)
-      : ['deck', 'kirtan', 'words'].includes(id),
+      : LISTED.includes(id),
   refusal: () => SIMPLE_TABLE_WORDS,
 };
 
-function setup(mode: 'pro' | 'simple') {
+function setup(mode: 'pro' | 'simple', options: { quickDecks?: boolean } = {}) {
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   const worker: NetworkWorker = {
@@ -122,6 +136,9 @@ function setup(mode: 'pro' | 'simple') {
   const commands: EngineCommand[] = [];
   const announced: string[] = [];
   let state: EngineState = initialEngineState();
+  /** Each presentation read, and each quick query the library answered (the review's S2). */
+  const read: string[] = [];
+  const quick: string[][] = [];
   const service = new NetworkService({
     devices,
     settings: { get: () => undefined, set: () => undefined },
@@ -146,7 +163,10 @@ function setup(mode: 'pro' | 'simple') {
     reads: {
       playlists: () => [],
       items: (id) => (id === 'sabha' ? ITEMS : []),
-      presentation: (id) => DOCS[id] ?? null,
+      presentation: (id) => {
+        read.push(id);
+        return DOCS[id] ?? null;
+      },
       library: () => ({ total: 0, presentations: [] }),
       search: (query) => ({ query, hits: [], more: false, legacyCount: 0 }),
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
@@ -187,6 +207,15 @@ function setup(mode: 'pro' | 'simple') {
     phoneLists: {
       activePlaylist: (id: string) => id === 'sabha',
       plays: (id: string, from?: { playlistId: string; itemId: string }) => ONE.plays(id, from),
+      // The library's own quick query (db/presentations.ts phoneDecks), as Main is given it.
+      ...(options.quickDecks
+        ? {
+            decks: (ids: readonly string[]) => {
+              quick.push([...ids]);
+              return new Set(ids.filter((id) => isPhoneDeck(DOCS[id])));
+            },
+          }
+        : {}),
     },
     changed: () => undefined,
     log: () => undefined,
@@ -211,6 +240,8 @@ function setup(mode: 'pro' | 'simple') {
     service,
     commands,
     announced,
+    read,
+    quick,
     phone,
     stage,
     poster,
@@ -225,6 +256,23 @@ function setup(mode: 'pro' | 'simple') {
           presentationId,
           slideIndex: presentationId === null ? null : slideIndex,
           playlist: presentationId === 'deck' ? { playlistId: 'sabha', itemId: 'i-deck' } : null,
+        },
+      };
+    },
+    /** A timer shown alone in the slide's place (the Timers panel's Show on the screens), the deck staying live. */
+    timerAlone: () => {
+      state = {
+        ...state,
+        layers: {
+          ...state.layers,
+          slide: {
+            presentationId: 'timer:placeholder-timer',
+            slideIndex: 0,
+            slide: slide('timer-only').slide,
+            shownAt: 1_000_000,
+            notes: '',
+            timer: { timerId: 'placeholder-timer', name: 'Placeholder countdown' },
+          },
         },
       };
     },
@@ -414,13 +462,19 @@ describe('the phone rule in the main process (QA23-PHONE-1)', () => {
   });
 
   it('refuses slides that are not a PowerPoint’s or a PDF’s, in both modes, and the library sheet', () => {
+    // The library sheet and the books' list are reads: said as such (the review's S4).
+    refusesInBoth(
+      [
+        ['presentations', {}],
+        ['search', { query: 'Placeholder' }],
+        ['shastra.texts', {}],
+      ],
+      'library',
+    );
     refusesInBoth(
       [
         ['shastra', { reference: 'PG 1' }],
-        ['shastra.texts', {}],
         ['repeat.start', { playlistId: 'placeholder-repeat' }],
-        ['presentations', {}],
-        ['search', { query: 'Placeholder' }],
         ['command', { type: 'goLive', presentationId: 'kirtan', slideIndex: 0 }],
         [
           'command',
@@ -570,7 +624,98 @@ describe('the phone rule in the main process (QA23-PHONE-1)', () => {
       ['i-kirtan', false],
       ['i-words', false],
       ['i-video', undefined],
+      // A PDF made a kirtan is a kirtan (MUST-1), its row's own deck flag notwithstanding.
+      ['i-kirtandeck', false],
     ]);
+  });
+
+  it('with the library’s quick query, marks the rows in one read, never reading each presentation (the review’s S2)', () => {
+    const t = setup('pro', { quickDecks: true });
+    const listed = t.ask('items', { playlistId: 'sabha' });
+    const items = (listed.body as { items: (PlaylistItemInfo & { phonePlays?: boolean })[] }).items;
+    expect(items.filter((i) => i.kind === 'presentation').map((i) => [i.id, i.phonePlays])).toEqual([
+      ['i-deck', true],
+      ['i-kirtan', false],
+      ['i-words', false],
+      ['i-kirtandeck', false],
+    ]);
+    expect(t.quick).toEqual([['deck', 'kirtan', 'words', 'kirtandeck']]);
+    expect(t.read).toEqual([]);
+    // The checks ask it too: a deck from its row goes up, a PDF made a kirtan does not.
+    expect(t.ask('command', { type: 'playItem', playlistId: 'sabha', itemId: 'i-deck' }).status).toBe(200);
+    expect(t.ask('command', { type: 'playItem', playlistId: 'sabha', itemId: 'i-kirtandeck' })).toEqual({
+      status: 403,
+      body: { ok: false, message: PHONE_REFUSAL.notDeck },
+    });
+    expect(t.read).toEqual([]);
+  });
+
+  it('refuses a PDF made a kirtan: its row and its slides never go up from a phone (the review’s MUST-1)', () => {
+    const t = setup('pro');
+    for (const command of [
+      { type: 'playItem', playlistId: 'sabha', itemId: 'i-kirtandeck' },
+      {
+        type: 'goLive',
+        presentationId: 'kirtandeck',
+        slideIndex: 0,
+        playlist: { playlistId: 'sabha', itemId: 'i-kirtandeck' },
+      },
+      { type: 'goLive', presentationId: 'kirtandeck', slideIndex: 0 },
+    ])
+      expect(t.ask('command', command), JSON.stringify(command)).toEqual({
+        status: 403,
+        body: { ok: false, message: PHONE_REFUSAL.notDeck },
+      });
+    // Live, put up at the computer: Next, Back and Clear slide refused as for any kirtan.
+    t.live('kirtandeck');
+    for (const command of [{ type: 'next' }, { type: 'back' }, { type: 'clearLayer', layer: 'slide' }])
+      expect(t.ask('command', command), command.type).toEqual({
+        status: 403,
+        body: { ok: false, message: PHONE_REFUSAL.noDeck },
+      });
+    expect(t.commands).toEqual([]);
+  });
+
+  it('never covers or takes off a timer shown alone over the live deck (the review’s MUST-2)', () => {
+    const t = setup('pro');
+    t.live('deck');
+    t.timerAlone();
+    for (const command of [
+      { type: 'clearLayer', layer: 'slide' },
+      { type: 'next' },
+      { type: 'previous' },
+      { type: 'back' },
+      { type: 'playItem', playlistId: 'sabha', itemId: 'i-deck' },
+      {
+        type: 'goLive',
+        presentationId: 'deck',
+        slideIndex: 1,
+        playlist: { playlistId: 'sabha', itemId: 'i-deck' },
+      },
+    ])
+      expect(t.ask('command', command), command.type).toEqual({
+        status: 403,
+        body: { ok: false, message: PHONE_REFUSAL.computer },
+      });
+    expect(t.commands).toEqual([]);
+  });
+
+  it('refuses a deck that is in no playlist, sent without a row (the review’s S1)', () => {
+    const t = setup('pro');
+    expect(t.ask('command', { type: 'goLive', presentationId: 'loose', slideIndex: 0 })).toEqual({
+      status: 403,
+      body: { ok: false, message: PHONE_REFUSAL.notDeck },
+    });
+    // The same deck in its playlist's row does go up (the deck itself, not the row, is what was refused above).
+    expect(
+      t.ask('command', {
+        type: 'goLive',
+        presentationId: 'deck',
+        slideIndex: 0,
+        playlist: { playlistId: 'sabha', itemId: 'i-deck' },
+      }).status,
+    ).toBe(200);
+    expect(t.commands).toHaveLength(1);
   });
 
   it('leaves Stage and Announcements devices, the poster and OSC as they were', () => {

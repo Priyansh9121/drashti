@@ -56,6 +56,8 @@ function setup() {
   source.set('deck', [deckSlide('d1', 2), textSlide('d2', 'Placeholder page two')]);
   source.set('after', [textSlide('a1', 'Placeholder after')]);
   source.set('arti', [textSlide('c1', 'Placeholder cued')]);
+  // A deck whose last slide has clicks of its own (the review's S1).
+  source.set('clicks-last', [textSlide('k1', 'Placeholder page one'), deckSlide('k2', 2)]);
   const playlists = new MemoryPlaylistSource();
   playlists.set('sabha', [
     { id: 'i-before', kind: 'presentation', presentationId: 'before', arrangementId: undefined },
@@ -168,5 +170,87 @@ describe('a phone’s Next, Previous and Back inside its deck (QA23-PHONE-1)', (
     engine.dispatch({ type: 'cueNext', presentationId: 'arti', label: 'Placeholder arti' });
     engine.dispatch({ type: 'next' });
     expect(at(engine)).toMatchObject({ presentationId: 'arti', slideIndex: 0 });
+  });
+
+  it('at the deck’s last slide, its clicks run out, then nothing changes (the review’s S1)', () => {
+    const { engine } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'clicks-last', slideIndex: 1 });
+    expect(at(engine)).toMatchObject({ presentationId: 'clicks-last', slideIndex: 1, slide: 'k2', step: 0 });
+    engine.dispatch({ type: 'next', within: 'clicks-last' });
+    expect(at(engine)).toMatchObject({ slideIndex: 1, slide: 'k2', step: 1 });
+    const before = engine.current;
+    expect(engine.dispatch({ type: 'next', within: 'clicks-last' })).toMatchObject({
+      ok: true,
+      changed: false,
+    });
+    expect(engine.current).toBe(before);
+  });
+
+  it('never goes to an automatic video cue, which Next without it does (the review’s S1)', () => {
+    let now = 10_000;
+    const participants = ['hall', 'audio'];
+    const waits: { at: number; run: () => void; canceled: boolean }[] = [];
+    const lists = new MemoryPlaylistSource();
+    lists.set('pl', [
+      {
+        id: 'a',
+        kind: 'media',
+        mediaId: 'first',
+        media: 'video',
+        label: 'Placeholder first',
+        whenEnds: 'next',
+      },
+      {
+        id: 'b',
+        kind: 'media',
+        mediaId: 'second',
+        media: 'video',
+        label: 'Placeholder second',
+        whenEnds: 'freeze',
+      },
+    ]);
+    const source = new MemorySlideSource();
+    source.set('deck', [deckSlide('d1', 2)]);
+    const engine = new ShowEngine(
+      source,
+      new RecordingTransport(),
+      () => now,
+      { items: (id) => lists.items(id), repeatAll: (id) => lists.repeatAll(id), crossfadeMs: () => 2000 },
+      {
+        mediaKind: () => 'video',
+        mediaLength: () => 10_000,
+        mediaMarkers: () => ({ startMs: 500, endMs: 8000, markers: [] }),
+        videoCueParticipants: () => participants,
+        schedule: (ms, run) => {
+          const job = { at: now + ms, run, canceled: false };
+          waits.push(job);
+          return () => {
+            job.canceled = true;
+          };
+        },
+      },
+    );
+    engine.dispatch({ type: 'playItem', playlistId: 'pl', itemId: 'a' });
+    const prepared = engine.current.videoCue;
+    if (!prepared) throw new Error('No cue');
+    for (const p of participants) engine.reportVideoCue(prepared.id, p, true);
+    // Up to just before the automatic crossfade's moment: the next video prepared to go, by itself, at the end.
+    for (let n = 0; n < 100; n++) {
+      const job = waits.filter((j) => !j.canceled && j.at <= 11_000).sort((a, b) => a.at - b.at)[0];
+      if (!job) break;
+      job.canceled = true;
+      now = Math.max(now, job.at);
+      job.run();
+    }
+    now = 11_000;
+    const cue = engine.current.videoCue;
+    expect(cue?.automatic).toBeTruthy();
+    const before = engine.current;
+    expect(engine.dispatch({ type: 'next', within: 'deck' })).toMatchObject({ ok: true, changed: false });
+    expect(engine.current).toBe(before);
+    expect(engine.current.videoCrossfade ?? null).toBeNull();
+    // Without it, Next goes to the cue as ever.
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.videoCrossfade).toBeTruthy();
   });
 });
