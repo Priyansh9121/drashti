@@ -206,20 +206,17 @@ import { CommandLog, requestLogged } from './log-commands';
 import { type DiagnosticsWho, installId } from './log-who';
 import { type LogPeriod, periodDays, periodText } from '../shared/log-period';
 import { computerName } from './access/identity';
-import {
-  cannotPlayNotice,
-  cannotStartInTimeNotice,
-  NO_FIRST_FRAME,
-  NO_START_IN_TIME,
-  noPictureNotice,
-} from '../shared/no-picture';
+import { cannotPlayNotice, NO_FIRST_FRAME, NO_START_IN_TIME, noPictureNotice } from '../shared/no-picture';
 import {
   CannotPlay,
   type CannotPlayWhere,
   errorKindWords,
+  HallWords,
   NodeCannotPlay,
   whereWords,
 } from './media/cannot-play';
+import { stillUp } from '../shared/not-on-screens';
+import { LiveLinesFollow } from './media/not-on-screens-follow';
 import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
@@ -706,6 +703,16 @@ const gpuStops = new GpuStops();
  */
 /** A paired computer's screen that could not play a video (Q60-44): told once for each node and showing. */
 const nodeCannotPlay = new NodeCannotPlay();
+/**
+ * What the operator was told of, and LIVE names, for each showing up that one of this computer's screens could not play
+ * (alpha.23, a22-halldrop; media/cannot-play.ts): told again to the operator window as it changes.
+ */
+const hallWords = new HallWords();
+let hallWordsChanged: (() => void) | null = null;
+/** What Main does with LIVE's lines as things happen around them (media/not-on-screens-follow.ts). */
+const liveLines = new LiveLinesFollow(hallWords, () => {
+  hallWordsChanged?.();
+});
 const cannotPlay = new CannotPlay({
   now: () => Date.now(),
   later: (ms, run) => {
@@ -720,6 +727,7 @@ let gpuStoppedTwice: ((text: string) => void) | null = null;
 app.on('child-process-gone', (_event, details) => {
   if (details.type !== 'GPU' || quitting) return;
   cannotPlay.gpuGone();
+  liveLines.gpuStopped();
   log.warn(
     `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
   );
@@ -3136,8 +3144,11 @@ function start(): void {
       window.webContents.on('did-start-loading', () => {
         heartbeat.opened(config.id);
         loadedSinceStopped.add(config.id);
+        // A screen whose page loads again draws its videos afresh: LIVE no longer names it (a22-halldrop).
+        liveLines.pageLoading(config.id);
       });
       window.on('closed', () => {
+        liveLines.windowClosed(config.id);
         warmUps.forget(h.webContentsId);
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
@@ -3178,6 +3189,8 @@ function start(): void {
       : ['stage'],
     onChange: () => {
       engine.videoCuePageJoined('');
+      // LIVE's "Not on the screen" lines name the screens as they are now (a22-halldrop).
+      liveLines.screensChanged();
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
         screenId: st.screenId,
@@ -8949,6 +8962,57 @@ function start(): void {
     sendToOperator(IPC.app.notice, { text: noPictureNotice(file.name, converting) });
     return null;
   });
+  // The videos still up that a screen could not play (alpha.23, a22-halldrop), as LIVE names them under its picture:
+  // read as the operator window opens, and told again as one goes off.
+  const nameOfScreen = (screenId: string) => screenRepo.screens().find((s) => s.id === screenId)?.name;
+  const notOnList = () => hallWords.list(nameOfScreen);
+  hallWordsChanged = () => {
+    sendToOperator(IPC.media.notOnScreensChanged, notOnList());
+  };
+  handle(IPC.media.notOnScreens, (e) => (fromOperator(e) ? notOnList() : []));
+  // Play on a video a screen said it could not play is followed by the take-off (the owner's QA23-HALLDROP-1 (b),
+  // "Take it off at Play (Rec.)", as his Q60-31; media/not-on-screens-follow.ts).
+  liveLines.connectPlay({
+    later: (run) => {
+      setImmediate(run);
+    },
+    state: () => engine.current,
+    takeOff: (mediaId, startedAt) => engine.cannotPlay(mediaId, startedAt),
+    tell: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    log: (line) => {
+      log.warn(line);
+    },
+    nameOf: nameOfScreen,
+  });
+  // A screen with no first frame of a showing 2 s after it went up (the owner's QA23-HALLDROP-1 (a), "Words during the
+  // wait (Rec.)"): LIVE says it is starting there until it draws or the verdict comes. Nothing on the screens changes.
+  handle(IPC.media.noFrameYet, (e, mediaId, startedAt) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    const file = media.kindAndName(mediaId);
+    if (file?.kind !== 'video' || !stillUp(engine.current, mediaId, startedAt)) return null;
+    const screenName = nameOfScreen(screenId) ?? screenId;
+    if (liveLines.starting(mediaId, startedAt, screenId, screenName, file.name))
+      log.info(`A video had no first frame on the screen “${screenName}” 2 s after it went up: ${mediaId}`);
+    return null;
+  });
+  // A screen's page that said a showing could not play drew it after all (the review's MUST-2): no longer named.
+  handle(IPC.media.playsHere, (e, mediaId, startedAt) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    if (screenId === undefined || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+    const changed = liveLines.drew(mediaId, startedAt, screenId);
+    log.info(
+      `A video drew on the screen “${nameOfScreen(screenId) ?? screenId}” after all: ${mediaId}${changed ? '' : ' (nothing named there)'}`,
+    );
+    return null;
+  });
+  engine.onChange((state) => {
+    liveLines.showChanged(state);
+  });
   // A video whose element failed on a page that draws the show (Q60-31, the owner's own bug: the hall went black while
   // its sound played on, never taken off, nobody told): taken off as one whose picture cannot be drawn (its sound with
   // it; on the slide, paused; the box off), said by its name and where it failed, and logged with the error's kind,
@@ -8957,7 +9021,7 @@ function start(): void {
     const screenId = manager.screenIdFor(e.sender.id);
     const where: CannotPlayWhere | null =
       screenId !== undefined
-        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId }
+        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId, id: screenId }
         : fromOperator(e)
           ? 'live'
           : streaming.isProgram(e.sender)
@@ -8968,6 +9032,8 @@ function start(): void {
     if (typeof code !== 'number' || typeof words !== 'string') return null;
     const file = media.kindAndName(mediaId);
     if (file?.kind !== 'video') return null;
+    // A screen's new word: a drawing it said before is not this one's (a22-halldrop's re-review, MUST-4).
+    if (screenId !== undefined) hallWords.saidAgain(mediaId, startedAt, screenId);
     // The error's kind and Chromium's words, for the log only (the notice names the file and where).
     const kind = errorKindWords(code);
     const detail = words === '' ? '' : `: ${cutText(words, 300, '…')}`;
@@ -8979,28 +9045,30 @@ function start(): void {
       );
       return null;
     }
-    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords).
+    // Every page that says so within the wait is named, the screens first (cannot-play.ts whereWords). What it took, or
+    // that it was up but not playing (alpha.23, a22-halldrop: until then dropped without a word), is said and logged,
+    // and LIVE names the screens while it stays up (cannot-play.ts heardOutcome); what the screens show is not changed.
     cannotPlay.heard(
       `${mediaId}@${String(startedAt)}`,
       where,
-      (named) => {
+      (_named, wheres) => {
         const took = engine.cannotPlay(mediaId, startedAt);
-        if (!took) return;
-        const off = [
-          took.background ? 'the background' : '',
-          took.slide ? 'paused on the slide' : '',
-          took.box ? 'the box' : '',
-        ]
-          .filter((w) => w !== '')
-          .join(', ');
-        log.warn(`A video could not play on ${named} (${kind}${detail}): ${mediaId}; taken off (${off})`);
-        // Q60-51: a video that still loaded but could not start in time is said to be that, never damaged.
-        sendToOperator(IPC.app.notice, {
-          text:
-            code === NO_START_IN_TIME
-              ? cannotStartInTimeNotice(file.name, named, took)
-              : cannotPlayNotice(file.name, named, took),
-        });
+        const { outcome: said, changed } = hallWords.heard(
+          {
+            name: file.name,
+            mediaId,
+            wheres,
+            code,
+            words,
+            took,
+            stillUp: stillUp(engine.current, mediaId, startedAt),
+          },
+          startedAt,
+        );
+        if (said.log?.level === 'warn') log.warn(said.log.line);
+        else if (said.log) log.info(said.log.line);
+        if (said.notice !== null) sendToOperator(IPC.app.notice, { text: said.notice });
+        if (changed) hallWordsChanged?.();
       },
       (named) => {
         log.info(
