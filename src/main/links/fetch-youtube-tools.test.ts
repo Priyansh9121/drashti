@@ -19,6 +19,7 @@ import {
   verifyFile,
   YT_DLP_BUILDS,
   YT_DLP_NOTICES,
+  YT_DLP_NOTICES_TAG,
   YT_DLP_VERSION,
 } from '../../../scripts/fetch-youtube-tools.mjs';
 
@@ -90,6 +91,9 @@ describe('the pins', () => {
     for (const [file, sha256] of Object.entries(YT_DLP_NOTICES))
       expect(sha256Of(join(app, 'LICENSES', 'yt-dlp', file)), file).toBe(sha256);
     expect(Object.keys(YT_DLP_NOTICES).sort()).toEqual(['LICENSE', 'THIRD_PARTY_LICENSES.txt']);
+    // The tag those two were read at is the pinned release's: a newer yt-dlp moves this pin on purpose, its licence
+    // list with it (a22-review-ytdlp S1).
+    expect(YT_DLP_NOTICES_TAG).toBe(YT_DLP_VERSION);
   });
 
   it('refuse a file that differs from its pinned checksum', () => {
