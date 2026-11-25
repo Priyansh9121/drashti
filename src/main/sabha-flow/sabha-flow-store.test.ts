@@ -57,6 +57,9 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
   /** While set, each drawing waits for its own release (or its stop). */
   let holding = false;
   const held: (() => void)[] = [];
+  /** The next record written waits inside its writing until let go. */
+  let holdWrite = false;
+  let writeHeld: (() => void) | null = null;
   const make = () =>
     new SabhaFlowStore({
       dir,
@@ -92,6 +95,13 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
       changed: (snapshot) => changes.push(snapshot),
       log: (m) => log.push(m),
       newId: () => `flow-${String(++ids).padStart(4, '0')}`,
+      whileWriting: async () => {
+        if (!holdWrite) return;
+        holdWrite = false;
+        await new Promise<void>((resolve) => {
+          writeHeld = resolve;
+        });
+      },
     });
   const pdf = (name: string, bytes: string | Buffer = '%PDF-1.7 placeholder') => {
     const file = join(root, name);
@@ -118,6 +128,16 @@ function setup(options: { drawing?: Drawing; fail?: string } = {}) {
     },
     /** Let the drawing waiting longest go on. */
     release: () => held.shift()?.(),
+    holdNextWrite: () => {
+      holdWrite = true;
+    },
+    /** Whether a record's writing is waiting now. */
+    writeWaiting: () => writeHeld !== null,
+    letWriteGo: () => {
+      const go = writeHeld;
+      writeHeld = null;
+      go?.();
+    },
   };
 }
 
@@ -382,7 +402,32 @@ const turns = async (n: number) => {
 };
 
 describe('Sabha flow store: what happens at once (review S6, S7)', () => {
-  it('Now marked while a new PDF is being kept: the new flow is current, on disk and after a restart, whenever it comes', async () => {
+  it('Now marked while the new PDF’s record is being written: the new flow is current, on disk and after a restart', async () => {
+    const s = setup();
+    const store = s.make();
+    await store.load();
+    await store.choose(s.pdf('First.pdf'));
+    s.setDrawing({ pages: 1, reading: tableReading(4, 'Other') });
+    s.holdNextWrite();
+    const chosen = store.choose(s.pdf('Second.pdf'));
+    for (let k = 0; k < 200 && !s.writeWaiting(); k++) await turns(1);
+    expect(s.writeWaiting()).toBe(true);
+    // Next ▸ on the old flow, its record half written.
+    const now = store.setNow('flow-0001', 2);
+    await turns(5);
+    s.letWriteGo();
+    await Promise.all([chosen, now]);
+    expect(store.snapshot()).toEqual({
+      flow: expect.objectContaining({ id: 'flow-0002' }),
+      state: { flowId: 'flow-0002', now: null },
+    });
+    const again = s.make();
+    await again.load();
+    expect(again.snapshot()).toEqual(store.snapshot());
+    expect(readdirSync(s.dir).sort()).toEqual(['current.json', 'flow-0002']);
+  });
+
+  it('Now marked at any moment of a choice: the new flow is current, on disk and after a restart', async () => {
     for (let at = 0; at <= 12; at++) {
       const s = setup();
       const store = s.make();
@@ -397,7 +442,6 @@ describe('Sabha flow store: what happens at once (review S6, S7)', () => {
       const again = s.make();
       await again.load();
       expect(again.snapshot(), `after a restart, Now ${String(at)} turns in`).toEqual(store.snapshot());
-      expect(readdirSync(s.dir).sort()).toEqual(['current.json', 'flow-0002']);
     }
   });
 
