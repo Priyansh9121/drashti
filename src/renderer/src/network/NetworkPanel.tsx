@@ -12,7 +12,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Field, NumberInput, TextInput } from '../ui/Field';
-import { Megaphone, Pencil, Printer, Smartphone, TabletSmartphone, Trash2 } from '../ui/icons';
+import { Megaphone, MessageSquare, Pencil, Printer, Smartphone, TabletSmartphone, Trash2 } from '../ui/icons';
 import type { Icon } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
@@ -33,6 +33,7 @@ const KIND_ICON: Record<DeviceKind, Icon> = {
   remote: Smartphone,
   stage: TabletSmartphone,
   announcements: Megaphone,
+  chat: MessageSquare,
 };
 
 /** "just now", "5 min ago", "3 h ago", or the date. */
