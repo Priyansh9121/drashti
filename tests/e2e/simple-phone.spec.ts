@@ -360,7 +360,13 @@ test('a Simple Mode phone is refused choosing a playlist’s rows, the time bar 
     const playing = { layer: 'background' } as const;
     await expectPhoneRefuses(asks, 'POST', '/api/v1/playing/pause', { playing }, 'simple');
     await expectPhoneRefuses(asks, 'POST', '/api/v1/playing/move', { playing, toMs: 0 }, 'simple');
-    await expectPhoneRefuses(asks, 'POST', '/api/v1/skip', { layer: 'background', jump: 15 }, 'simple');
+    await expectPhoneRefuses(
+      asks,
+      'POST',
+      '/api/v1/skip',
+      { layer: 'background', jump: 'forward' },
+      'simple',
+    );
     expect((await seek())?.paused).toBeUndefined();
     const run = (command: Parameters<PageGlobals['drashti']['engine']['dispatch']>[0]) =>
       win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), command);
