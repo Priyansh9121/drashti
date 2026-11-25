@@ -20,6 +20,7 @@ import { Toggle } from '../ui/Toggle';
 import { useNow } from '../render/useNow';
 import { closeNetwork, networkAction, useNetwork } from './network-store';
 import { AddFilesSection } from './AddFilesSection';
+import { ChatInviteSection } from '../chat/ChatInvite';
 import { QrCode } from './QrCode';
 
 /*
@@ -378,6 +379,8 @@ export function NetworkPanel() {
         <>
           <OnOff status={status} />
           <Pairing status={status} />
+          {/* The chat's QR (alpha.23): more people into the chat, each phone paired by itself, for today. */}
+          <ChatInviteSection status={status} />
           <Devices status={status} />
           <AddFilesSection status={status} />
           <Poster status={status} />

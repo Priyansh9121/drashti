@@ -71,7 +71,7 @@ export function ChatPeople({
         data-testid="chat-people-toggle"
       >
         {open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-        {members.length === 1 ? '1 person in the chat' : `${String(members.length)} people in the chat`}
+        {`People in the chat (${String(members.length)})`}
       </button>
       {open &&
         (members.length === 0 ? (
