@@ -365,6 +365,32 @@ describe('the chat’s events and a person removed', () => {
     expect(lastDevices().some((d) => d.id === phone.id)).toBe(false);
   });
 
+  it('a chat phone unpaired (a new day, or removed) is cut off before the chat’s event goes out: it is never told to read again (CI run 45532541843)', () => {
+    const { service, chat, clock, listen, sent } = setup();
+    listen();
+    const code = invite(service);
+    const dayPhone = scan(service, code).device;
+    const removed = scan(service, code, '10.0.6.2').device;
+    const order = () =>
+      sent.flatMap((m) =>
+        m.type === 'devices'
+          ? [
+              `devices${m.devices.some((d) => d.id === dayPhone.id) ? '+day' : ''}${m.devices.some((d) => d.id === removed.id) ? '+removed' : ''}`,
+            ]
+          : m.type === 'chat'
+            ? [`chat:${m.event.kind}`]
+            : [],
+      );
+    chat.setName({ id: removed.id, kind: 'chat', poster: false }, { name: 'Person 2' });
+    sent.length = 0;
+    service.removeChatPerson(removed.id);
+    expect(order()).toEqual(['devices+day', 'chat:people']);
+    sent.length = 0;
+    clock.t = Date.UTC(2026, 10, 26, 0, 1);
+    chat.tick();
+    expect(order()).toEqual(['devices', 'chat:cleared']);
+  });
+
   it('the operator’s view: the people with their kinds and who is connected, the Chat QR, reachable', () => {
     const { service, ask, listen, fromWorker } = setup();
     expect(service.chatView()).toMatchObject({ reachable: false, invite: null, members: [] });
