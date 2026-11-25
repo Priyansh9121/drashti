@@ -6,7 +6,6 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 - A cued video no longer fails now and then with “could not load its first frame” when a screen kept showing the video’s start.
 - Combine videos… and Export clip… no longer leave a hidden copy in Media’s folder when they fail, are stopped or are cut short by closing Drashti, and what an earlier failure left is cleared at the start, even after the library has moved.
-- Phones: Show this zoom on the screens now shows the part you zoomed into on a cropped, turned or flipped picture and on a page cropped with Crop page….
 - With no hall screen on this computer, the Lower Thirds studio’s Live shows what is live from a small copy drawn out of sight.
 - A paused or waiting video that a screen cannot play now gets a notice naming the file and the screen, and LIVE says so; played anyway, it stops again with a notice.
 - Turning Stage on with only a stage tablet, or with the stage display unplugged, no longer says no screen is set to Stage.
@@ -23,6 +22,9 @@ Each version, newest first. A version's section is what Help › Check for Updat
 - A quick double click on a row’s trash or rename button, or on an audio playlist track’s trash, now acts once: it no longer also takes out the row that moves up under the pointer.
 - A hall screen on a slow computer is no longer reloaded again and again: it gets longer to answer, Screens says “Keeps restarting” with Try again, and one that still has not drawn is left as it is, shown as Stopped.
 - Import from a Link… downloads from YouTube with yt-dlp 2026.11.23, which keeps up with YouTube’s newest changes.
+- Phones: in Simple Mode a paired phone shows what is on the screens, the Sabha flow and the chat, with nothing to press; in Pro Mode it can also put up and step through a PowerPoint or PDF from its playlist.
+- Phones no longer play or change videos, pictures, sounds, timers or messages, or zoom the screens; Companion and Stream Deck use OSC.
+- Chat: one group chat for this computer and its paired phones, kept for the day only and never on the screens or the stream.
 
 ## 1.0.0-alpha.22 (25 Nov 2026)
 
