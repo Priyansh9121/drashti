@@ -54,7 +54,7 @@ import { useSimple } from './simple';
  * cell on each row it covers, Now and Next up marked, the total at the bottom) and the PDF page, zoomed from the
  * screen's width. Both follow the computer: another PDF chosen, it removed, Now marked. Plain words when there is no
  * flow, or its words could not be read (its page only, then). Never on a screen; shown as text, never spoken. Simple
- * Mode on the computer: not shown (QA23-FLOWP-1).
+ * Mode on the computer: shown only while Sabha flow is chosen in Simple Mode Features (flowOnPhone).
  */
 
 /** The phone's words. */
@@ -122,8 +122,12 @@ function NowNext({ flow, now }: { flow: SabhaFlow; now: number | null }) {
   );
 }
 
-/** Red: not built yet. */
-export const flowOnPhone = (simple: RemoteSimple | null): boolean => simple === null;
+/**
+ * Whether the phone shows the Sabha flow: in Pro Mode, and in Simple Mode only while Sabha flow is chosen in Simple
+ * Mode Features, as the window shows it (QA23-FLOWP-1, answered by lead, owner away).
+ */
+export const flowOnPhone = (simple: RemoteSimple | null): boolean =>
+  simple === null || simple.features?.includes('sabha-flow') === true;
 
 /** What the phone has of the flow, as its store keeps it (flow-store.ts). */
 export type FlowShown = Pick<
@@ -131,12 +135,21 @@ export type FlowShown = Pick<
   'snapshot' | 'problem' | 'view' | 'page' | 'zoom' | 'pictures'
 >;
 
-/** In More: the flow, read from the phone's store; not shown while the computer is in Simple Mode. */
+/** In More: the flow, read from the phone's store; in Simple Mode only while it is one of Simple Mode's tools. */
 export function FlowSection() {
   const snapshot = useFlow((s) => s.snapshot);
   const problem = useFlow((s) => s.problem);
-  const simple = useSimple() !== null;
-  return simple ? null : <FlowSectionView snapshot={snapshot} problem={problem} />;
+  const shown = flowOnPhone(useSimple());
+  return shown ? <FlowSectionView snapshot={snapshot} problem={problem} /> : null;
+}
+
+/** Why the flow could not be read again, beside the flow last read. */
+function ReadAgain({ problem }: { problem: string | null }) {
+  return problem ? (
+    <p className="text-base text-muted" role="status" data-testid="remote-flow-problem">
+      {problem}
+    </p>
+  ) : null;
 }
 
 /** In More: the flow's file, Now and Next up, and the sheet's button; or plain words. */
@@ -171,6 +184,7 @@ export function FlowSectionView({ snapshot, problem }: Pick<FlowShown, 'snapshot
           >
             {flow.fileName}
           </p>
+          <ReadAgain problem={problem} />
           {said === null ? (
             <NowNext flow={flow} now={snapshot.state?.now ?? null} />
           ) : (
@@ -442,6 +456,7 @@ export function FlowSheetView({ snapshot, problem, view, page, zoom, pictures }:
           >
             {flow.fileName}
           </p>
+          <ReadAgain problem={problem} />
           {said === null ? (
             <NowNext flow={flow} now={snapshot?.state?.now ?? null} />
           ) : (
@@ -470,12 +485,12 @@ export function FlowSheetView({ snapshot, problem, view, page, zoom, pictures }:
 /** Over the remote: the Sabha flow's sheet while it is open; and the phone follows the flow. Mounted once. */
 export function FlowLayer() {
   const open = useFlow((s) => s.open);
-  // Simple Mode on the computer: not shown, as in More.
-  const simple = useSimple() !== null;
+  // In Simple Mode only while it is one of Simple Mode's tools, as in More.
+  const shown = flowOnPhone(useSimple());
   useEffect(() => {
     startFlow();
   }, []);
-  return open && !simple ? <FlowSheet /> : null;
+  return open && shown ? <FlowSheet /> : null;
 }
 
 function FlowSheet() {

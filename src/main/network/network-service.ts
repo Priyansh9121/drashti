@@ -238,7 +238,10 @@ export interface NetworkDeps {
    * flow:get and flow:page answer them. Left out (a test of something else): no flow.
    */
   flow?: FlowReads;
-  /** Red: not built yet. */
+  /**
+   * The tools Edit › Simple Mode Features… brought into Simple Mode (alpha.22): the hall tells a phone, which shows the
+   * Sabha flow in Simple Mode only while it is one (QA23-FLOWP-1). Left out: none.
+   */
   simpleFeatures?: () => readonly SimpleFeature[];
 }
 
@@ -1169,7 +1172,13 @@ export class NetworkService implements EngineTransport {
           switches: this.deps.reads.switches(),
           // The stage screens' group (Session 54): a Remote runs the timers of its layout in the live Look.
           stageGroupId: this.deps.reads.stage().groupId,
-          simple: simple ? { playlistId: simple.playlistId, words: simple.refusal() } : null,
+          simple: simple
+            ? {
+                playlistId: simple.playlistId,
+                words: simple.refusal(),
+                features: [...(this.deps.simpleFeatures?.() ?? [])],
+              }
+            : null,
         });
       }
       case 'shastra.texts':

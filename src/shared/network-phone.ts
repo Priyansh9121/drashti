@@ -41,7 +41,10 @@ export interface RemoteWallpapers {
 export interface RemoteSimple {
   playlistId: string | null;
   words: string;
-  /** Red: not built yet. */
+  /**
+   * The tools Simple Mode Features brought into Simple Mode (alpha.23; left out by a Drashti before it): the phone shows
+   * the Sabha flow in Simple Mode only while 'sabha-flow' is one, as the window does (QA23-FLOWP-1).
+   */
   features?: SimpleFeature[];
 }
 
