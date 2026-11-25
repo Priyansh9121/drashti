@@ -145,7 +145,8 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   const rows = panel.getByTestId('flow-row');
   await expect(rows).toHaveCount(4, { timeout: 30_000 });
   expect(await seenAll(rows)).toEqual(ROWS);
-  await expect(rows.first()).toHaveAccessibleName('1, Opening, Placeholder words one, 10 min, Speaker A');
+  // Named by its own words, each part in its own language (Chromium's exact name: a space round each heard comma).
+  await expect(rows.first()).toHaveAccessibleName('1 , Opening , Placeholder words one , 10 min , Speaker A');
   await expect(panel.getByTestId('flow-file')).toHaveText('placeholder-flow.pdf');
   await expect(panel.getByTestId('flow-read-list')).toHaveAttribute('lang', 'en');
   await expect(panel.getByTestId('flow-read-list')).toContainText('Placeholder evening');

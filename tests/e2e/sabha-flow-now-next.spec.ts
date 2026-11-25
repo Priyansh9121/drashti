@@ -235,7 +235,9 @@ test('Now and Next up in the Sabha flow panel: Next and Back, a row, two quick p
   await rows.nth(1).click();
   await nowIs(1);
   await expect(live).toContainText('Now: 2');
-  await expect(rows.nth(1)).toHaveAccessibleName('2, Video, Placeholder clip, 15 min, Speaker B');
+  // Named by its own words, each part in its own language (no aria-label: it would lose them); Chromium's exact name
+  // has a space round each comma a screen reader hears.
+  await expect(rows.nth(1)).toHaveAccessibleName('2 , Video , Placeholder clip , 15 min , Speaker B');
   await expectNoSeriousA11yIssues(win, 'Sabha flow, Now and Next up', '[data-testid="sabha-flow"]');
 
   // Replace… with a Gujarati one: Now starts again, and Next up's words keep the PDF's language inside Drashti's

@@ -52,12 +52,6 @@ export function FlowLineWords({ line, lang }: { line: FlowLine; lang?: SabhaFlow
   );
 }
 
-/**
- * A line's name for a screen reader, its parts with a comma between ("2, Video, Placeholder clip"): a button named by
- * FlowLineWords' content would be read "2 , Video , …" (Chromium puts a space round each hidden comma).
- */
-export const flowLineName = (line: FlowLine): string => [line.no, ...line.parts].join(', ');
-
 /** Each place's look and test ids: the operator panel's, in its narrow column, and a phone's, a thumb's size. */
 const LOOK = {
   panel: {

@@ -4,7 +4,7 @@ import { flowLine, statusWords, textLang } from '../../../shared/sabha-flow-line
 import { cx } from '../ui/cx';
 import { Film } from '../ui/icons';
 import { Notice } from '../ui/Notice';
-import { FlowLineWords, flowLineName } from './FlowNowNext';
+import { FlowLineWords } from './FlowNowNext';
 import { keepInSight } from './keep-in-sight';
 
 /*
@@ -87,7 +87,6 @@ export function FlowReadList({
               <button
                 type="button"
                 data-testid="flow-row"
-                aria-label={flowLineName(line)}
                 aria-current={isNow ? 'step' : undefined}
                 onClick={() => {
                   onPick(i);
