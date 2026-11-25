@@ -85,17 +85,20 @@ describe('the Chat section’s open part', () => {
   });
 
   it('keeps its messages in a box of one height, empty or full, and a slot for a refusal, so nothing under it moves as messages come (a22-review-chat O-S1)', () => {
-    const box = (html: string) => /data-testid="chat-messages-box"[^>]*/u.exec(html)?.[0] ?? '';
+    // An element's opening tag, by its test id (its class comes before the id in the markup).
+    const tag = (html: string, id: string) =>
+      new RegExp(`<[a-z]+[^>]*data-testid="${id}"[^>]*>`, 'u').exec(html)?.[0] ?? '';
+    const box = (html: string) => tag(html, 'chat-messages-box');
     const empty = render({ view: { ...VIEW, messages: [] } });
     const full = render();
     expect(box(empty)).toContain('h-[clamp(10rem,30vh,20rem)]');
     expect(box(full)).toContain('h-[clamp(10rem,30vh,20rem)]');
     expect(full).not.toContain('max-h-[40vh]');
     // The refusal's line is there before any refusal, the same height with one.
-    expect(full).toMatch(/data-testid="chat-problem"[^>]*min-h-4/u);
-    expect(render({ error: 'Placeholder refusal.' })).toMatch(/data-testid="chat-problem"[^>]*min-h-4/u);
+    expect(tag(full, 'chat-problem')).toContain('min-h-4');
+    expect(tag(render({ error: 'Placeholder refusal.' }), 'chat-problem')).toContain('min-h-4');
     // The people, open, in a box of their own height whoever joins.
-    expect(full).toMatch(/data-testid="chat-people-list"[^>]*h-28/u);
+    expect(tag(full, 'chat-people-list')).toContain('h-28');
   });
 
   it('lists a phone with no name yet, removable as anyone (core’s M3, a22-review-chat O-S3)', () => {
