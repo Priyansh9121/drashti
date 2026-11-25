@@ -4,9 +4,10 @@ import { STREAM_SOUND_QUIET_MS } from '../../../shared/stream';
  * How many of Chromium's 10 ms sound chunks the capture holds for its worker when the worker is held up. Chromium's
  * own default is 10 (100 ms), and it drops the oldest when full: on a two-core PC a worker that did not run for 335 ms
  * lost about 230 ms of the stream's sound (a22-fadeskip, run 45513574785). As much as the encoder waits for before it
- * fills silence, so a shorter stall loses none; a longer one the encoder already covers with silence.
+ * fills silence, so a shorter stall loses none. A longer one loses all but its newest 300 ms, which the encoder places
+ * after the silence it has filled (the stream then runs up to 300 ms longer).
  */
-export const PCM_QUEUE_CHUNKS = STREAM_SOUND_QUIET_MS / 10;
+export const PCM_QUEUE_CHUNKS = Math.ceil(STREAM_SOUND_QUIET_MS / 10);
 
 /** The audio source is transferred to its worker's native queue, independently of drawing or video-buffer copies. */
 export class EncoderAudio {

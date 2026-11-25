@@ -56,6 +56,6 @@ it('asks Chromium to hold, for a PCM worker that is held up, as much sound as th
   const track = { readyState: 'live' } as MediaStreamTrack;
   capture.pair({ close: vi.fn() } as unknown as MessagePort, track);
   // Chromium hands Web Audio's sound on in chunks of 10 ms.
-  expect(asked).toEqual([{ track, maxBufferSize: STREAM_SOUND_QUIET_MS / 10 }]);
+  expect(asked).toEqual([{ track, maxBufferSize: Math.ceil(STREAM_SOUND_QUIET_MS / 10) }]);
   expect(worker.sent[0]?.message.type).toBe('start');
 });

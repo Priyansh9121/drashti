@@ -211,6 +211,11 @@ test('The stream keeps all its sound while its PCM worker is held up for a quart
     expect(deliveries[0]?.wall ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(held.from);
     expect(deliveries.at(-1)?.wall ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(held.to + 400);
     expect(elapsed).toBeGreaterThanOrEqual(750);
+    // The hold really held the worker that forwards the sound: its deliveries stopped for most of it (fail closed).
+    expect(
+      longestPcmWait(deliveries, held.from, held.to),
+      'the held worker is the one sending the stream’s sound',
+    ).toBeGreaterThanOrEqual(200);
     expect(
       (result['frames'] ?? 0) / 48,
       '48 kHz PCM keeps its full duration while the stream’s PCM worker is held up',
