@@ -42,7 +42,7 @@ class FakeWindow {
   }
 }
 
-function setup(assets: string[] = [], more: Pick<PdfPicturesDeps, 'wide' | 'atOnce'> = {}) {
+function setup(assets: string[] = [], more: Pick<PdfPicturesDeps, 'wide' | 'atOnce' | 'flowTimeoutMs'> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-pdf-pictures-'));
   const pdf = join(dir, 'Placeholder.pdf');
   writeFileSync(pdf, '%PDF-1.4 placeholder');
@@ -377,14 +377,16 @@ describe('drawing pages for reading their words (book OCR, alpha.21)', () => {
 });
 
 describe('drawing a Sabha flow’s pages (alpha.23)', () => {
-  const flowPage = {
-    width: 595,
-    height: 842,
-    texts: [{ s: 'Placeholder', x: 40, y: 60, w: 50, h: 10 }],
-    rules: [{ x0: 30, y0: 70, x1: 300, y1: 70 }],
+  // What the window's reader made of the pages (src/renderer/src/pictures/flow-reading.ts): Main only checks it.
+  const flowReading = {
+    status: 'read',
+    lang: 'en',
+    title: 'Placeholder order',
+    headers: ['No.', 'Program'],
+    items: [{ no: '1', cells: ['Placeholder'] }],
   };
 
-  it('draws every page up to its limit by one window, each whole at its own shape, and keeps its text layer', async () => {
+  it('draws every page up to its limit by one window, each whole at its own shape; the reading comes with done, checked', async () => {
     const t = setup([], { wide: () => true, atOnce: 3 });
     const out = join(t.dir, 'flow');
     const drawn = t.pictures.drawForFlow(t.pdf, out, 20, { width: 2000, height: 2000 });
@@ -400,33 +402,75 @@ describe('drawing a Sabha flow’s pages (alpha.23)', () => {
       flowText: true,
     });
     expect(job).not.toHaveProperty('share');
-    await t.pictures.page(sender, { index: 0, png: PNG, notes: '', flowPage });
-    // A page's text layer that is not as it should be is left out; the page is kept.
-    await t.pictures.page(sender, { index: 1, png: PNG, notes: '', flowPage: { width: 'wide', texts: 3 } });
-    t.pictures.done(sender, { total: 2, failed: [] });
+    // A page's text never comes to Main: only its picture is kept.
+    await t.pictures.page(sender, {
+      index: 0,
+      png: PNG,
+      notes: '',
+      flowPage: { width: 595, height: 842, texts: [], rules: [] },
+    });
+    await t.pictures.page(sender, { index: 1, png: PNG, notes: '' });
+    t.pictures.done(sender, { total: 2, failed: [], flowReading });
     expect(await drawn).toEqual({
       ok: true,
       width: 2000,
       height: 2000,
       pages: [
-        { index: 0, file: join(out, 'page-0001.png'), notes: '', flowPage },
+        { index: 0, file: join(out, 'page-0001.png'), notes: '' },
         { index: 1, file: join(out, 'page-0002.png'), notes: '' },
       ],
       total: 2,
       failed: [],
+      flowReading,
     });
   });
 
-  it('never keeps a text layer from any other drawing', async () => {
+  it('leaves out a reading that does not pass the check, and never takes one from any other drawing', async () => {
     const t = setup();
-    const out = join(t.dir, 'pages');
-    const drawn = t.pictures.draw(t.pdf, out);
+    const drawn = t.pictures.drawForFlow(t.pdf, join(t.dir, 'flow'), 20, { width: 2000, height: 2000 });
     const w = await t.opened();
-    const sender = t.sender(w.webContents.id);
-    expect(t.pictures.job(sender)).not.toHaveProperty('flowText');
-    await t.pictures.page(sender, { index: 0, png: PNG, notes: '', flowPage });
-    t.pictures.done(sender, { total: 1, failed: [] });
-    const result = await drawn;
-    expect(result.ok && result.pages).toEqual([{ index: 0, file: join(out, 'page-0001.png'), notes: '' }]);
+    await t.pictures.page(t.sender(w.webContents.id), { index: 0, png: PNG, notes: '' });
+    t.pictures.done(t.sender(w.webContents.id), {
+      total: 1,
+      failed: [],
+      flowReading: { ...flowReading, items: [{ no: '', cells: 'not cells' }] },
+    });
+    expect(await drawn).not.toHaveProperty('flowReading');
+    const whole = t.pictures.draw(t.pdf, join(t.dir, 'pages'));
+    for (let i = 0; i < 100 && t.windows.length < 2; i++) await new Promise((r) => setTimeout(r, 5));
+    const second = t.windows.at(-1);
+    if (!second) throw new Error('no window');
+    expect(t.pictures.job(t.sender(second.webContents.id))).not.toHaveProperty('flowText');
+    await t.pictures.page(t.sender(second.webContents.id), { index: 0, png: PNG, notes: '' });
+    t.pictures.done(t.sender(second.webContents.id), { total: 1, failed: [], flowReading });
+    expect(await whole).not.toHaveProperty('flowReading');
+  });
+
+  it('gives up a flow whose drawing takes too long (S7: within its own bound, not the import’s 15 minutes)', async () => {
+    const t = setup([], { flowTimeoutMs: 40 });
+    const drawn = t.pictures.drawForFlow(t.pdf, join(t.dir, 'flow'), 20, { width: 2000, height: 2000 });
+    const w = await t.opened();
+    expect(await drawn).toEqual({
+      ok: false,
+      message:
+        'Reading the PDF took too long: save it again from the program that made it, then choose it again.',
+    });
+    expect(w.destroyed).toBe(true);
+  });
+
+  it('stops when the flow’s choice is stopped (Remove, or another PDF chosen)', async () => {
+    const t = setup();
+    const stop = new AbortController();
+    const drawn = t.pictures.drawForFlow(
+      t.pdf,
+      join(t.dir, 'flow'),
+      20,
+      { width: 2000, height: 2000 },
+      stop.signal,
+    );
+    const w = await t.opened();
+    stop.abort();
+    expect(await drawn).toEqual({ ok: false, message: 'Cancelled.' });
+    expect(w.destroyed).toBe(true);
   });
 });
