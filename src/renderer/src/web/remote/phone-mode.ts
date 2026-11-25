@@ -63,7 +63,7 @@ export function phoneControls(simple: RemoteSimple | null, deckLive: boolean): P
 /**
  * Whether a PowerPoint or a PDF is live, as the phone can tell (the main process decides each request itself): the
  * live presentation's playlist row as Drashti marks it for a phone (phonePlays), or its slides once read (the remote
- * reads the live presentation: remote-store.ts follows what goes live).
+ * reads the live presentation: remote-store.ts follows what goes live); never while a timer is shown alone over it.
  */
 export function deckLiveIn(
   state: EngineState | null,
@@ -72,7 +72,9 @@ export function deckLiveIn(
 ): boolean {
   const live = state?.live;
   const id = live?.presentationId ?? null;
-  if (id === null) return false;
+  // A timer shown alone in the slide's place over it: Drashti refuses a phone's deck commands then (QA23-PHONE-1's
+  // review, MUST-2), so the phone offers none.
+  if (id === null || state?.layers.slide?.timer) return false;
   const itemId = live?.playlist?.itemId;
   const row = itemId ? items?.find((i) => i.id === itemId) : undefined;
   if (row?.kind === 'presentation' && row.presentationId === id && row.phonePlays === true) return true;
