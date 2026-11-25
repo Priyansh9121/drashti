@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SabhaFlow } from '../../../shared/sabha-flow';
 import { FlowSectionView } from '../web/remote/FlowSheet';
 import { FlowNowNext, type FlowNowNextProps } from './FlowNowNext';
+import { FlowReadList } from './FlowViews';
 
 /*
  * Now and Next up (alpha.23, QA23-FLOW-2; the owner: "if we are on 1, it should say next up this program, video which
@@ -67,6 +68,17 @@ describe('Now and Next up in the operator window’s Sabha flow panel (QA23-FLOW
     // Next up stands out: larger and bolder than Now.
     expect(tag(html, 'flow-next')).toMatch(/class="[^"]*text-base[^"]*font-bold/u);
     expect(tag(html, 'flow-now')).toMatch(/class="[^"]*text-xs/u);
+  });
+
+  it('has Back and Next first, above Now and Next up, so a long Next up never pushes them out of reach', () => {
+    const html = draw({ now: 0 });
+    expect(html.indexOf('data-testid="flow-back-button"')).toBeGreaterThan(-1);
+    expect(html.indexOf('data-testid="flow-back-button"')).toBeLessThan(
+      html.indexOf('data-testid="flow-now"'),
+    );
+    expect(html.indexOf('data-testid="flow-next-button"')).toBeLessThan(
+      html.indexOf('data-testid="flow-now"'),
+    );
   });
 
   it('shows a Video row as the video', () => {
@@ -141,6 +153,20 @@ function find(node: ReactNode, testId: string): { onClick?: () => void } | null 
   if (props['data-testid'] === testId) return props;
   return find(props.children, testId);
 }
+
+describe('the read list’s rows, for a screen reader', () => {
+  it('are named by their number and parts with a comma between, as said: no middle dot, no space before a comma', () => {
+    const html = renderToStaticMarkup(createElement(FlowReadList, { flow: flow(), now: 1, onPick: nothing }));
+    const names = [...html.matchAll(/<button[^>]*data-testid="flow-row"[^>]*>/gu)].map(
+      (m) => /aria-label="([^"]*)"/u.exec(m[0])?.[1] ?? '',
+    );
+    expect(names).toEqual([
+      '1, Opening, Placeholder words one, 10 min, Speaker A',
+      '2, Video, Placeholder clip, 15 min, Speaker B',
+      '3, Talk, Placeholder words three, 15 min, Speaker B',
+    ]);
+  });
+});
 
 describe('Back and Next pressed while an ask is on its way (a22-review-flow M3)', () => {
   it('reach the store even while they show they cannot move: it steps from the Now last asked, and does nothing past either end', () => {
