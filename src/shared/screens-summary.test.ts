@@ -78,7 +78,7 @@ describe('a stopped screen, in its notice and in Screens', () => {
 
   it('held for the owner (QA23-HEARTBEAT-1, A): kept as it is after it stopped answering, it may still catch up', () => {
     expect(stoppedSentence({ ...st('a', 'stopped'), notAnswering: true })).toBe(
-      'It stopped answering after 4 restarts in a row, so Drashti stopped restarting it and left it as it is: it may still catch up. Drashti tries it again by itself every few minutes.',
+      'It stopped answering after Drashti restarted it 4 times or more in a row, so Drashti stopped restarting it and left it as it is: it may still catch up. Drashti tries it again by itself every few minutes.',
     );
   });
 });

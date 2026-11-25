@@ -368,6 +368,13 @@ describe('OutputManager', () => {
     manager.setRestarting('audience', null);
     manager.setNotAnswering('audience', true);
     expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+    // Kept, then moved to another display: its window made again there is not said to be kept (review round 2 nit).
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]?.notAnswering).toBe(true);
+    screens = [screen('audience', laptop), screen('stage', stage)];
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3', 'audience@1']);
+    expect(manager.status()[0]?.notAnswering).toBeUndefined();
   });
 
   // ---- Audience and Stage (Session 50) ----------------------------------------------------------------------
