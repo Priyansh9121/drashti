@@ -295,6 +295,13 @@ export interface PageCopiesDeps {
   log(line: string): void;
   /** Deleting a file (tests: one another program holds). */
   remove?: (file: string) => Promise<void>;
+  /** RED STUB (lead 2's option B, S8): not used yet. */
+  heights?: readonly PageCopyHeight[];
+}
+
+/** RED STUB (lead 2's option B, S8): no-op body, filled in by the next commit. */
+export function pageCopyHeightsFor(_value: string | undefined): readonly PageCopyHeight[] {
+  return PAGE_COPY_HEIGHTS;
 }
 
 /** Makes the page copies, one at a time while idle, and says which are there. */

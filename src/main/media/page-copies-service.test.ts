@@ -4,7 +4,13 @@ import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ConvertService, CopyOptions } from '../convert/convert-service';
 import type { MediaInfo } from '../convert/plan';
-import { PAGE_COPIES_DIR, PageCopies, pageCopyName, type PageCopiesDeps } from './page-copies';
+import {
+  PAGE_COPIES_DIR,
+  PageCopies,
+  pageCopyHeightsFor,
+  pageCopyName,
+  type PageCopiesDeps,
+} from './page-copies';
 
 /*
  * Making the page copies (QA23-FADE-9 candidate 1): only on a slow computer, only while idle, one at a time, of the
@@ -210,4 +216,18 @@ it('nothing it does can throw: a copy it cannot delete at its start, a Media fol
   await expect(broken.copies.step()).resolves.toBeUndefined();
   expect(broken.copies.ready()).toEqual({});
   broken.copies.close();
+});
+
+it('the tests’ option B (lead 2, S8): only LIVE’s 540p copies, so the stream’s page plays the original; as built otherwise', async () => {
+  expect(pageCopyHeightsFor(undefined)).toEqual([720, 540]);
+  expect(pageCopyHeightsFor('')).toEqual([720, 540]);
+  expect(pageCopyHeightsFor('live-only')).toEqual([540]);
+  expect(pageCopyHeightsFor('anything else')).toEqual([720, 540]);
+  const { copies, made, mediaDir } = setup({ heights: [540] });
+  await copies.start();
+  await copies.step();
+  await copies.step();
+  expect(made.map((m) => m.dest)).toEqual([join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 540, 'webm'))]);
+  expect(copies.ready()).toEqual({ red: [540] });
+  copies.close();
 });
