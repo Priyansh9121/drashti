@@ -1,6 +1,19 @@
 /** Below half a channel step even for black over white: private pixels still quantize to the current picture. */
 export const PRIVATE_VIDEO_OPACITY = 1 / 1024;
 
+/**
+ * How long a held cue waits, its trim seek landed and its frame read, while the frame presented is still another one
+ * (the file's start, from before that seek) and nothing new is presented, before it asks once more for its frame.
+ */
+export const STALE_FRAME_MS = 500;
+
+/**
+ * Where that one more seek goes: this far past the held place (s). Chromium skips a seek to a paused video's own place
+ * (WebMediaPlayerImpl::DoSeek: no new frame), so it lands 2 µs on, in the same trimmed frame; a frame starting within
+ * those 2 µs would show for under 2 µs at playback.
+ */
+export const RESEEK_STEP_S = 0.000_002;
+
 /** A decoded private frame is ready only once Chromium has actually submitted that trimmed frame. */
 export function cuePresentation(
   video: HTMLVideoElement,
