@@ -25,12 +25,14 @@ let workerBefore: PropertyDescriptor | undefined;
 const require = createRequire(import.meta.url);
 const localAssets = dirname(require.resolve('pdfjs-dist/package.json'));
 
+// pdf.js and its worker, imported cold: over 10 s (vitest's hook limit) once on CI's Windows (86834, the first of two
+// repeats; 632 ms for the whole file the second time). As vitest.config.ts's testTimeout: a stalled runner, not a hang.
 beforeAll(async () => {
   pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const worker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
   workerBefore = Object.getOwnPropertyDescriptor(globalThis, 'pdfjsWorker');
   Object.defineProperty(globalThis, 'pdfjsWorker', { configurable: true, writable: true, value: worker });
-});
+}, 30_000);
 afterAll(() => {
   if (workerBefore) Object.defineProperty(globalThis, 'pdfjsWorker', workerBefore);
   else Reflect.deleteProperty(globalThis, 'pdfjsWorker');
