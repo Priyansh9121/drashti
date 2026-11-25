@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import {
   beginText,
   concatTransformationMatrix,
@@ -28,7 +29,9 @@ import { sfntFromWoff } from '../../import/testing/embedded-font';
  * what is read, not the look). Placeholder words only, never anything real.
  */
 
-const require = createRequire(import.meta.url);
+// From the app's own folder, not this file's place: Playwright loads specs as CommonJS (no import.meta), and vitest
+// and Playwright both run from there (as powerpoint-comparison-stills.ts does).
+const require = createRequire(join(process.cwd(), 'package.json'));
 
 interface Font {
   key: 'latin' | 'gu' | 'hi';
