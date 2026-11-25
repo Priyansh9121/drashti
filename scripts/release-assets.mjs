@@ -6,7 +6,7 @@
 //                         file with its size and SHA-512 (src/shared/updates.ts)
 //   SHA256SUMS.txt        every file's SHA-256, for checking a download by hand
 //   ffmpeg-9.0.2.tar.xz   FFmpeg's source (GPL: offered with every release; pinned and checked here)
-//   yt-dlp-2026.08.19.tar.gz, mutagen-1.48.1.tar.gz
+//   yt-dlp-2026.11.23.tar.gz, mutagen-1.48.1.tar.gz
 //                         yt-dlp's source and the GPL code its builds bundle (Session 25c), likewise
 //   SOURCES.md            where every part's source is, and the written offer for the rest
 //
@@ -106,9 +106,9 @@ const FFMPEG_SOURCE = {
   cache: 'ffmpeg-source',
 };
 const YT_DLP_SOURCE = {
-  name: 'yt-dlp-2026.08.19.tar.gz',
-  url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.tar.gz',
-  sha256: '072aad4f2a7604e92155f61a275a4752dc64046c8f6d90df3710525d94cd37c1',
+  name: 'yt-dlp-2026.11.23.tar.gz',
+  url: 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.23/yt-dlp.tar.gz',
+  sha256: '8f757547e94c723415fd82bb5da857d8e1b24be2e34218890dfaac134907723e',
   cache: 'yt-dlp-source',
 };
 const MUTAGEN_SOURCE = {
@@ -134,7 +134,7 @@ writeFileSync(
 
 - **Drashti** itself: this release's "Source code" archives (GitHub adds them), the repository https://github.com/${repo} at tag \`${tag}\`.
 - **FFmpeg 9.0.2**, bundled as a separate program (GPL version 3): \`${FFMPEG_SOURCE.name}\` attached here (SHA-256 \`${FFMPEG_SOURCE.sha256}\`), from ${FFMPEG_SOURCE.url}. The builds Drashti ships, and the libraries in them, come from their builders' published scripts: macOS from https://git.martin-riedl.de/ffmpeg/build-script, Windows from https://www.gyan.dev/ffmpeg/builds/ (the exact downloads are pinned in \`scripts/fetch-ffmpeg.mjs\`). See \`LICENSES/ffmpeg/README.md\` in the app.
-- **yt-dlp 2026.08.19**, bundled as a separate program for YouTube in Import from a Link (its own code is under the Unlicense; its standalone builds bundle GPL code, so as built they are GPL version 3 or later): its source, \`${YT_DLP_SOURCE.name}\` attached here (SHA-256 \`${YT_DLP_SOURCE.sha256}\`), from ${YT_DLP_SOURCE.url}, built by the scripts in its repository at tag \`2026.08.19\` (https://github.com/yt-dlp/yt-dlp: \`bundle/pyinstaller.py\`, \`bundle/requirements/\` and \`.github/workflows/build.yml\`); and the source of the GPL code its Mac and Windows builds bundle, mutagen 1.48.1 (GPL version 2 or later): \`${MUTAGEN_SOURCE.name}\` attached here (SHA-256 \`${MUTAGEN_SOURCE.sha256}\`), from ${MUTAGEN_SOURCE.url}. Every other part those builds bundle, and its licence, is listed in \`LICENSES/yt-dlp/THIRD_PARTY_LICENSES.txt\` in the app (the exact downloads are pinned in \`scripts/fetch-youtube-tools.mjs\`). See \`LICENSES/yt-dlp/README.md\`.
+- **yt-dlp 2026.11.23**, bundled as a separate program for YouTube in Import from a Link (its own code is under the Unlicense; its standalone builds bundle GPL code, so as built they are GPL version 3 or later): its source, \`${YT_DLP_SOURCE.name}\` attached here (SHA-256 \`${YT_DLP_SOURCE.sha256}\`), from ${YT_DLP_SOURCE.url}, built by the scripts in its repository at tag \`2026.11.23\` (https://github.com/yt-dlp/yt-dlp: \`bundle/pyinstaller.py\`, \`bundle/requirements/\` and \`.github/workflows/build.yml\`); and the source of the GPL code its Mac and Windows builds bundle, mutagen 1.48.1 (GPL version 2 or later): \`${MUTAGEN_SOURCE.name}\` attached here (SHA-256 \`${MUTAGEN_SOURCE.sha256}\`), from ${MUTAGEN_SOURCE.url}. Every other part those builds bundle, and its licence, is listed in \`LICENSES/yt-dlp/THIRD_PARTY_LICENSES.txt\` in the app (the exact downloads are pinned in \`scripts/fetch-youtube-tools.mjs\`). See \`LICENSES/yt-dlp/README.md\`.
 - **Deno 2.9.7**, bundled as a separate program that yt-dlp starts (MIT): its source is https://github.com/denoland/deno at tag \`v2.9.7\` (\`deno_src.tar.gz\` on its release page). See \`LICENSES/deno/README.md\` in the app.
 - **whisper.cpp 1.9.5**, bundled as a separate program for live captions (MIT): its source is https://github.com/ggml-org/whisper.cpp at tag \`v1.9.5\` (the builds Drashti bundles are its release \`b5454\`'s; on a Mac, with Drashti's own small program on its library, \`tools/whisper-server/drashti-whisper.c\` in this repository). See \`LICENSES/whisper/README.md\` in the app.
 - **Written offer:** for at least three years after this release, the maintainers of Drashti will provide anyone who asks with the complete corresponding source of the FFmpeg builds in it (FFmpeg and the libraries those builds contain, among them x264) and of the yt-dlp builds in it (yt-dlp and what those builds bundle), on request through this repository's issues.

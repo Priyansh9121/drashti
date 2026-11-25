@@ -220,6 +220,20 @@ export class RendererWatchdog {
   }
 
   /**
+   * Held for the owner (QA23-HEARTBEAT-1, A): an output its heartbeat restarted again and again, stuck once more, is
+   * given up on without a crash: kept as it is, said, and tried again by itself 2 minutes on (then 10), as a crash
+   * loop is.
+   */
+  stopTrying(target: WatchTarget, name: string, why: string): void {
+    this.giveUp(target, name, why);
+  }
+
+  /** Held for the owner (QA23-HEARTBEAT-1, A): a window given up on is back by itself, its page drawing: no retry. */
+  backByItself(target: WatchTarget): void {
+    this.states.get(target)?.settle();
+  }
+
+  /**
    * A window judged stuck from outside (an output whose heartbeat stopped, Session 23): it is
    * crashed, and the crash path reloads it, as a hang Chromium noticed would be.
    */

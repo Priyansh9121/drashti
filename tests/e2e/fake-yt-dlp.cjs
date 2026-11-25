@@ -1,6 +1,6 @@
 // A fake yt-dlp for Drashti's tests (Session 25c): never the real one, and never the internet. Drashti
 // starts it instead of yt-dlp only when a test sets DRASHTI_TEST_FAKE_YT_DLP (a packaged Drashti ignores
-// it), running it with Electron as Node. It answers as yt-dlp 2026.08.19 does, for made-up videos only:
+// it), running it with Electron as Node. It answers as yt-dlp 2026.11.23 does, for made-up videos only:
 //   --dump-single-json      made-up details: a title, a length, heights from 720p to 4320p, a sound
 //   a download              a part-file named as yt-dlp names them, written a little at a time with
 //                           progress printed through Drashti's --progress-template; a part-file left by a

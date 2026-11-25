@@ -149,6 +149,38 @@ describe('RendererWatchdog', () => {
     expect(dog.retryNow(new FakeContents())).toBe(false);
   });
 
+  it('held for the owner (QA23-HEARTBEAT-1, A): given up on without a crash, kept as it is, then tried again 2 minutes on', () => {
+    dog.stopTrying(contents, 'output "Main Hall"', 'stuck again after 4 restarts in a row');
+    expect(events.map((e) => [e.kind, e.reason])).toEqual([
+      ['gave-up', 'stuck again after 4 restarts in a row'],
+    ]);
+    expect(contents.crashes).toBe(0);
+    expect(contents.reloads).toBe(0);
+    clock.advance(RETRY_FIRST_MS - 1000);
+    expect(contents.reloads).toBe(0);
+    clock.advance(1000);
+    expect(contents.reloads).toBe(1);
+    expect(kinds().at(-1)).toBe('retried');
+  });
+
+  it('held for the owner (QA23-HEARTBEAT-1, A): one back by itself is tried again no more, and given up on afresh later', () => {
+    dog.stopTrying(contents, 'output "Main Hall"', 'stuck again after 4 restarts in a row');
+    dog.backByItself(contents);
+    clock.advance(RETRY_AGAIN_MS);
+    expect(contents.reloads).toBe(0);
+    expect(kinds()).toEqual(['gave-up']);
+    // Stopped again later: said again, and tried again 10 minutes on (its second give-up).
+    dog.stopTrying(contents, 'output "Main Hall"', 'stuck again after 4 restarts in a row');
+    expect(kinds()).toEqual(['gave-up', 'gave-up']);
+    clock.advance(RETRY_AGAIN_MS);
+    expect(contents.reloads).toBe(1);
+    // A window not watched: said, nothing else.
+    const other = new FakeContents();
+    dog.stopTrying(other, 'output "Side"', 'stuck again');
+    expect(events.at(-1)).toMatchObject({ window: 'output "Side"', kind: 'gave-up' });
+    dog.backByItself(other);
+  });
+
   it('a window judged stuck from outside is crashed into the reload', () => {
     dog.stuck(contents, 'operator', 'no report for 7 s');
     expect(contents.crashes).toBe(1);

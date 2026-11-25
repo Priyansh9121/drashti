@@ -114,6 +114,16 @@ export interface ScreenStatus {
   screenId: string;
   state: ScreenState;
   displayId: number | null;
+  /**
+   * Showing, but its page stopped answering and the heartbeat restarted it this many times in a row, 4 or more
+   * (a23-heartbeat): Screens and the status line say so. Left out otherwise.
+   */
+  restarts?: number;
+  /**
+   * Held for the owner (QA23-HEARTBEAT-1, A): Stopped because its page stopped answering after 4 restarts or more in a row,
+   * and kept as it is (often black: a page that has not drawn since its last restart). Left out otherwise.
+   */
+  notAnswering?: true;
 }
 
 /** A node and the displays it last reported, as Screens lists them under it (Session 13). */

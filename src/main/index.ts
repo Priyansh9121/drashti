@@ -382,7 +382,16 @@ import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
-import { CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './outputs/heartbeat';
+import {
+  CHECK_EVERY_MS,
+  OPEN_GRACE_MS,
+  OutputHeartbeat,
+  REPORT_STALE_MS,
+  TEST_GRACES,
+} from './outputs/heartbeat';
+import { judgedOutputs } from './outputs/judged-outputs';
+import { HEARTBEAT_KEEPS_A_PAGE } from '../shared/screens-summary';
+import { keepsRestartingLine, keptLine, restartsWords } from './outputs/heartbeat-words';
 import {
   quitDetail,
   RendererWatchdog,
@@ -500,6 +509,7 @@ import { CaptionCoordinator } from './speech/caption-coordinator';
 import { ownModelCaptionAi } from './speech/caption-routes';
 import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
+import { sizesContext, whisperModelFor } from './speech/whisper-context';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
@@ -3050,33 +3060,67 @@ function start(): void {
   // ---- hung, stale and given-up outputs (Session 23; outputs/heartbeat.ts, watchdog.ts) ----------
   // Each output's 2-second report is its heartbeat: one that stops, or stops painting the show, is
   // crashed into the watchdog's reload. One the watchdog gave up on is shown as Stopped.
+  /** The outputs the log said keep restarting (a23-heartbeat): said once each time it starts. */
+  const keepsRestarting = new Set<string>();
+  // Tests only (never a packaged Drashti; review SA4): shorter graces, and a hook that drops an output's reports, as a
+  // page that does not answer sends none.
+  const heartbeatFast = !packaged() && sw('DRASHTI_TEST_HEARTBEAT_FAST') === '1';
+  const heartbeatDeaf = new Set<string>();
+  if (heartbeatFast)
+    (
+      globalThis as { drashtiTestHeartbeatDeaf?: (screenId: string, on: boolean) => void }
+    ).drashtiTestHeartbeatDeaf = (screenId, on) => {
+      if (on) heartbeatDeaf.add(screenId);
+      else heartbeatDeaf.delete(screenId);
+    };
   const heartbeat = new OutputHeartbeat({
     now: Date.now,
     engineRev: () => engine.rev,
     // Showing, or stopped and tried again since (a retry that hangs is noticed too); never a page
-    // that has crashed and waits for the watchdog.
-    judged: () =>
-      manager
-        .status()
-        .filter((st) => st.state === 'showing' || st.state === 'stopped')
-        .map((st) => st.screenId)
-        .filter((id) => {
-          const w = outputWindows.get(id);
-          return (
-            w !== undefined &&
-            !w.isDestroyed() &&
-            !w.webContents.isCrashed() &&
-            w.isVisible() &&
-            !w.isMinimized()
-          );
-        }),
-    stuck: (screenId, reason) => {
+    // that has crashed and waits for the watchdog (outputs/judged-outputs.ts, a node's too).
+    judged: () => judgedOutputs(manager.status(), (id) => outputWindows.get(id)),
+    ...(heartbeatFast ? { graces: TEST_GRACES } : {}),
+    stuck: (screenId, reason, inARow) => {
       const w = outputWindows.get(screenId);
       if (!w || w.isDestroyed()) return;
       const name = outputNames.get(screenId) ?? 'an output';
-      log.warn(`Output ${name} is stuck (${reason}): restarting it`);
+      log.warn(`Output ${name} is stuck (${reason}): restarting it${restartsWords(inARow)}`);
       watchdog.stuck(w.webContents, name, reason);
     },
+    // Restarted again and again (a23-heartbeat): Screens and the status line say so, and the log once, in plain words.
+    told: (screenId, restarts) => {
+      manager.setRestarting(screenId, restarts);
+      const name = outputNames.get(screenId) ?? 'an output';
+      if (restarts === null) {
+        if (keepsRestarting.delete(screenId)) log.info(`Output ${name} no longer keeps restarting`);
+      } else if (!keepsRestarting.has(screenId)) {
+        keepsRestarting.add(screenId);
+        log.warn(keepsRestartingLine(`Output ${name}`, restarts, HEARTBEAT_KEEPS_A_PAGE));
+      }
+    },
+    // HELD FOR THE OWNER (QA23-HEARTBEAT-1, A): stuck once more after RESTARTS_TOLD restarts in a row, it is kept as it is
+    // (a slow page may still catch up), Stopped with its own words, and tried again by the watchdog's own tries.
+    keep: (screenId, reason, restarts) => {
+      const w = outputWindows.get(screenId);
+      if (!w || w.isDestroyed()) return;
+      const name = outputNames.get(screenId) ?? 'an output';
+      log.warn(keptLine(`Output ${name}`, reason, restarts));
+      manager.setNotAnswering(screenId, true);
+      watchdog.stopTrying(
+        w.webContents,
+        name,
+        `stuck again (${reason}) after ${String(restarts)} restarts in a row`,
+      );
+    },
+    // Kept, and it reported having painted the show: back by itself, no reload, and no try waits.
+    back: (screenId) => {
+      const w = outputWindows.get(screenId);
+      log.info(`Output ${outputNames.get(screenId) ?? 'an output'} draws the show again by itself`);
+      manager.setStopped(screenId, false);
+      if (w && !w.isDestroyed()) watchdog.backByItself(w.webContents);
+    },
+    // Translated, a page's reports may come 30 s apart (a23-heartbeat: alpha.22's Intel build under Rosetta on CI).
+    translated: app.runningUnderARM64Translation,
   });
   const heartbeatTimer = setInterval(() => {
     heartbeat.check();
@@ -3110,8 +3154,14 @@ function start(): void {
       audioOutput.setPlayerStopped(e.kind === 'gave-up');
     const screenId = screenOfOutput(e.window);
     if (screenId === undefined) return;
-    // A page loaded again gets its grace before it is judged.
+    // A page loaded again gets its grace before it is judged; tried again (Try again, or by itself after giving up), its
+    // heartbeat restarts are forgotten too (a23-heartbeat).
     if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
+    if (e.kind === 'retried') {
+      heartbeat.afresh(screenId);
+      // Tried again: no longer kept as it is (QA23-HEARTBEAT-1, A; review SA2), whatever its page does next.
+      manager.setNotAnswering(screenId, false);
+    }
     // Given up on: Stopped (the status line and Screens say so) until it draws again.
     if (e.kind === 'gave-up') stopOutput(screenId);
   };
@@ -3209,6 +3259,9 @@ function start(): void {
           log.warn(message);
         },
       });
+      // A new window (made again on another display, say: its old one's 'closed' comes after this one is in
+      // outputWindows) starts afresh: nothing of the old one carries over (a23-heartbeat, review S2).
+      heartbeat.closed(config.id);
       heartbeat.opened(config.id);
       // However it loads again (the watchdog, the dashboard's Reload, a test), it gets its grace.
       window.webContents.on('did-start-loading', () => {
@@ -4332,6 +4385,15 @@ function start(): void {
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
   const captionSettingsRepo = new CaptionSettingsRepo(opened.db);
+  // The model today's engine loads, and the one QWC-1's sizing judges: one helper for both (whisper-context.ts).
+  // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
+  const whisperModel = (language: SpeechLanguage | 'auto') =>
+    whisperModelFor(
+      captions.languageModelFor(language),
+      (own) => packFileFor(modelPacks, own)?.path,
+      captions.selectedModel(),
+      (id) => modelFile(captionsData, id),
+    );
   const speechEngine =
     testSpeech !== undefined
       ? // DRASHTI_TEST_SPEECH_ONCE: each placeholder phrase heard one time (an end-to-end test corrects one).
@@ -4344,17 +4406,12 @@ function start(): void {
       : createWhisperEngine({
           program: () => whisperProgram,
           // The speaker's language's own model when one is chosen, here and checked (alpha.22); else the general one.
-          model: (language) => {
-            const own = captions.languageModelFor(language);
-            // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
-            const file =
-              own && (own.format ?? 'whisper-ggml') === 'whisper-ggml'
-                ? packFileFor(modelPacks, own)?.path
-                : undefined;
-            return file ?? modelFile(captionsData, captions.selectedModel());
-          },
+          model: (language) => whisperModel(language).file,
           // Asked before every start of the program: a language's own model not ready is never loaded.
           modelProblem: (language) => captions.modelProblem(language),
+          // QWC-1 (the owner: "Yes, Windows small"): the audio context sized to the piece, fallback off, for the model model()
+          // gives, only on a CPU engine with a small model (Windows); every other engine asks as today.
+          sizedContext: (language) => sizesContext(process.platform, whisperModel(language).id),
           fallback: (language) =>
             captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
           // The tuned language models are decoded without timestamps (alpha.22).
@@ -4369,11 +4426,18 @@ function start(): void {
         });
   // Route W (alpha.22, cap-integration): a Gujarati, Hindi or English model of its own from the pack, on Drashti's
   // whisper engine (the stand-in in tests), decoded as that model needs (no timestamps for the tuned ones).
+  // QWC-1 (the owner: "Yes, Windows small"): Route W sizes whisper's audio context for a small model on Windows (the
+  // WeakSet marks which use is sized).
+  const sizedUses = new WeakSet<object>();
   const whisperRoute = createWhisperRoute({
     store: modelPacks,
     known: (sha256) => {
       const entry = languageModels.known().find((e) => e.sha256 === sha256);
-      return entry ? { fallback: entry.fallback, timestamps: entry.timestamps } : null;
+      if (!entry) return null;
+      const use = { fallback: entry.fallback, timestamps: entry.timestamps };
+      // QWC-1: whisper-route.ts hands this same object to engine() below, so the set says which use is sized.
+      if (sizesContext(process.platform, entry.id)) sizedUses.add(use);
+      return use;
     },
     // The pack's file is given back once whisper-server has exited (alpha.23); the stand-in runs no program.
     engine: (file, use, exited) =>
@@ -4392,6 +4456,7 @@ function start(): void {
             model: () => file,
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
+            sizedContext: () => sizedUses.has(use),
             timing: () => captions.timing(),
             keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
@@ -8230,6 +8295,8 @@ function start(): void {
         watchdog.retryNow(win.webContents, 'Try again');
       } else {
         log.info('Reloading an output from the screens dashboard');
+        // Screens' Try again for a screen that keeps restarting (a23-heartbeat) too: its restarts start afresh.
+        heartbeat.afresh(sid.data);
         win.webContents.reload();
       }
       return { ok: true as const, status: nodes.status() };
@@ -8292,6 +8359,8 @@ function start(): void {
       return null;
     }
     const screenId = manager.screenIdFor(e.sender.id);
+    // Tests only (DRASHTI_TEST_HEARTBEAT_FAST): a page that does not answer sends no report.
+    if (screenId && heartbeatDeaf.has(screenId)) return null;
     const r = raw as {
       droppedFrames?: unknown;
       paintedRev?: unknown;

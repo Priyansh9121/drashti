@@ -59,7 +59,7 @@ interface GoneTrim {
 const rowKey = ({ id, path, sha256 }: TrimRow) => ({ id, path, sha256 });
 
 /** The files Drashti made from a media file, kept by its sha256: its still frame, sharpened and blurred copies. */
-async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
+export async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
   await rm(join(mediaDir, stillPath(sha256)), { force: true }).catch(() => undefined);
   // Its sharpened copies (Session 26f), and its blurred copy (Session 55).
   await removeCopiesOf(mediaDir, sha256);

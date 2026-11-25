@@ -57,6 +57,7 @@ import {
 import { isRemoveKey } from '../playlists/playlist-shared';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { createAudioPlaylist, dropSounds, importSounds, takesSounds } from './audio-actions';
+import { TrackDelete } from './TrackDelete';
 import { openLinkForAudio } from '../links/link-store';
 
 /*
@@ -727,12 +728,9 @@ function Tracks({
                 disabled={i === playlist.tracks.length - 1}
                 onClick={() => void musicAction(() => window.drashti.music.moveTrack(t.id, i + 1))}
               />
-              <IconButton
-                icon={Trash2}
-                label={`Remove “${t.name}” from the music`}
-                size="sm"
-                data-testid="music-track-delete"
-                onClick={() => {
+              <TrackDelete
+                name={t.name}
+                onTakeOut={() => {
                   takeOut(t.id);
                 }}
               />
