@@ -27,6 +27,10 @@ export const WARMING_STALE_MS = 30_000;
 export const BEHIND_MS = 3000;
 /** Nothing is judged this soon after an output opens or reloads (fonts, the first snapshot). */
 export const OPEN_GRACE_MS = 15_000;
+/** The longest grace an output restarted again and again gets (a23-heartbeat). */
+export const RESTART_GRACE_MAX_MS = 60_000;
+/** A restart this long after the same output's last one starts its count afresh (a23-heartbeat). */
+export const RESTARTS_FORGET_MS = 5 * 60_000;
 /** How often the outputs are looked at. */
 export const CHECK_EVERY_MS = 1000;
 
@@ -47,6 +51,8 @@ export interface HeartbeatDeps {
   judged(): string[];
   /** It is stuck: log it and restart it. */
   stuck(screenId: string, reason: string): void;
+  /** Drashti runs translated (an Intel build under Rosetta, x64 under Windows' emulation; a23-heartbeat). */
+  translated?: boolean;
 }
 
 export class OutputHeartbeat {

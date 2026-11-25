@@ -5,6 +5,8 @@ import {
   OPEN_GRACE_MS,
   OutputHeartbeat,
   REPORT_STALE_MS,
+  RESTART_GRACE_MAX_MS,
+  RESTARTS_FORGET_MS,
   WARMING_STALE_MS,
 } from './heartbeat';
 
@@ -13,7 +15,7 @@ import {
 let now = 0;
 let rev = 0;
 let judged: string[] = [];
-let stuck: { screenId: string; reason: string }[] = [];
+let stuck: { screenId: string; reason: string; at: number }[] = [];
 let beat: OutputHeartbeat;
 
 /**
@@ -29,18 +31,37 @@ function run(ms: number, reporting: Record<string, () => number> = {}, warming =
   }
 }
 
+/** A heartbeat as Main makes one, its output 'hall' just opened; `translated` as under Rosetta (a23-heartbeat). */
+function make(translated = false) {
+  beat = new OutputHeartbeat({
+    now: () => now,
+    engineRev: () => rev,
+    judged: () => judged,
+    stuck: (screenId, reason) => stuck.push({ screenId, reason, at: now }),
+    translated,
+  });
+  beat.opened('hall');
+}
+
+/** Time passes, a check every second, until the heartbeat judges one more output stuck (at most `ms`): when. */
+function untilStuck(ms = 10 * 60_000, reporting: Record<string, () => number> = {}): number {
+  const before = stuck.length;
+  for (let t = 0; t < ms && stuck.length === before; t += CHECK_EVERY_MS) run(CHECK_EVERY_MS, reporting);
+  return now;
+}
+
+/** The watchdog's reload of a restarted output, a second after: its page loads again (index.ts's opened()). */
+function reloaded(screenId = 'hall') {
+  run(1000);
+  beat.opened(screenId);
+}
+
 beforeEach(() => {
   now = 0;
   rev = 0;
   judged = ['hall'];
   stuck = [];
-  beat = new OutputHeartbeat({
-    now: () => now,
-    engineRev: () => rev,
-    judged: () => judged,
-    stuck: (screenId, reason) => stuck.push({ screenId, reason }),
-  });
-  beat.opened('hall');
+  make();
 });
 
 describe('the outputs’ heartbeat', () => {
@@ -128,5 +149,218 @@ describe('the outputs’ heartbeat', () => {
     beat.check();
     run(4000, { hall: () => rev });
     expect(stuck).toEqual([]);
+  });
+});
+
+/**
+ * Today's heartbeat (Session 23, before a23-heartbeat), for a page that paints every change at once: judged once its
+ * 15 s grace is over and nothing has come for more than 6 s, then the same grace again. When it restarted the page.
+ */
+function restartsBefore(reportsAt: ReadonlySet<number>, until: number): number[] {
+  let since = 0;
+  let heardAt: number | null = null;
+  const at: number[] = [];
+  for (let t = CHECK_EVERY_MS; t <= until; t += CHECK_EVERY_MS) {
+    if (reportsAt.has(t)) heardAt = t;
+    if (t - since < 15_000 || t - (heardAt ?? since) <= 6000) continue;
+    at.push(t);
+    since = t;
+    heardAt = null;
+  }
+  return at;
+}
+
+describe('a slow output page is not restarted for good (a23-heartbeat: an Intel build under Rosetta, alpha.22)', () => {
+  it('under translation, an output’s reports may come as far apart as a warming one’s; silent past 30 s, it is stuck', () => {
+    make(true);
+    run(20_000, { hall: () => rev });
+    // A translated page's main thread busy for 25 s at a time (its code, its fonts): alive.
+    for (let i = 0; i < 4; i++) {
+      run(25_000);
+      beat.report('hall', rev);
+    }
+    expect(stuck).toEqual([]);
+    const last = now;
+    expect(untilStuck() - last).toBe(WARMING_STALE_MS + 1000);
+    expect(stuck.map((s) => s.reason)).toEqual(['no report for 31 s']);
+  });
+
+  it('under translation, a page slow to send its first report is not restarted at the 15 s grace; one never heard from is, after 31 s', () => {
+    make(true);
+    // CI's Rosetta Mac: the output's first report came 15-20 s after it opened, and it was restarted each time.
+    run(25_000);
+    beat.report('hall', rev);
+    run(20_000, { hall: () => rev });
+    expect(stuck).toEqual([]);
+    // Loaded again, and never heard from since.
+    beat.opened('hall');
+    const opened = now;
+    expect(untilStuck() - opened).toBe(WARMING_STALE_MS + 1000);
+    expect(stuck.map((s) => s.reason)).toEqual(['no report for 31 s']);
+  });
+
+  it('not translated, the limits are as before: stuck 7 s after the last report, and a page never heard from 15 s after it opens', () => {
+    run(20_000, { hall: () => rev });
+    const last = now;
+    expect(untilStuck() - last).toBe(REPORT_STALE_MS + 1000);
+    expect(stuck.map((s) => s.reason)).toEqual(['no report for 7 s']);
+    // Another output opened and never heard from: judged as soon as its grace is over, as before.
+    judged = ['hall', 'side'];
+    beat.opened('side');
+    const opened = now;
+    expect(untilStuck(60_000, { hall: () => rev }) - opened).toBe(OPEN_GRACE_MS);
+    expect(stuck.at(-1)).toEqual({ screenId: 'side', reason: 'no report for 15 s', at: opened + OPEN_GRACE_MS });
+  });
+
+  it('each restart of the same output doubles its next grace, up to 60 s: never heard from, it is restarted 15 s after it opens, then 30 s and 60 s after each reload', () => {
+    const after: number[] = [];
+    let openedAt = now;
+    for (let i = 0; i < 4; i++) {
+      after.push(untilStuck() - openedAt);
+      reloaded();
+      openedAt = now;
+    }
+    expect(after).toEqual([OPEN_GRACE_MS, 2 * OPEN_GRACE_MS, RESTART_GRACE_MAX_MS, RESTART_GRACE_MAX_MS]);
+    expect(RESTART_GRACE_MAX_MS).toBe(60_000);
+  });
+
+  it('under translation too, the grace after each restart grows, and the 30 s limit still holds within it', () => {
+    make(true);
+    const after: number[] = [];
+    let openedAt = now;
+    for (let i = 0; i < 4; i++) {
+      after.push(untilStuck() - openedAt);
+      reloaded();
+      openedAt = now;
+    }
+    expect(after).toEqual([31_000, 31_000, 60_000, 60_000]);
+  });
+
+  it('the count is each output’s own: another output’s restarts do not lengthen its grace', () => {
+    judged = ['hall', 'side'];
+    beat.opened('side');
+    const hall = { hall: () => rev };
+    // The side screen is never heard from: restarted twice.
+    untilStuck(undefined, hall);
+    reloaded('side');
+    untilStuck(undefined, hall);
+    reloaded('side');
+    expect(stuck.map((s) => s.screenId)).toEqual(['side', 'side']);
+    // The hall's reports stop: stuck 7 s after, as before; its first restart, so 30 s of grace after its reload.
+    judged = ['hall'];
+    untilStuck();
+    reloaded();
+    const opened = now;
+    expect(untilStuck() - opened).toBe(2 * OPEN_GRACE_MS);
+    expect(stuck.map((s) => s.screenId)).toEqual(['side', 'side', 'hall', 'hall']);
+  });
+
+  it('back for less than 5 minutes, a page keeps its count; back for longer, its next restart is a first one again', () => {
+    const hall = { hall: () => rev };
+    // Restarted twice in a row (never heard from), then back for 2 minutes.
+    untilStuck();
+    reloaded();
+    untilStuck();
+    reloaded();
+    run(2 * 60_000, hall);
+    // Its reports stop: restarted (the third in a row), so 60 s of grace after the reload.
+    untilStuck();
+    reloaded();
+    let opened = now;
+    expect(untilStuck() - opened).toBe(RESTART_GRACE_MAX_MS);
+    reloaded();
+    // Back for longer than RESTARTS_FORGET_MS: the next restart is a first one, 30 s of grace after it.
+    run(RESTARTS_FORGET_MS, hall);
+    untilStuck();
+    reloaded();
+    opened = now;
+    expect(untilStuck() - opened).toBe(2 * OPEN_GRACE_MS);
+    expect(stuck).toHaveLength(6);
+  });
+
+  it('an output closed and made again starts afresh: 15 s of grace', () => {
+    untilStuck();
+    reloaded();
+    untilStuck();
+    beat.closed('hall');
+    beat.opened('hall');
+    const opened = now;
+    expect(untilStuck() - opened).toBe(OPEN_GRACE_MS);
+  });
+
+  it('a healthy screen is never restarted, translated or not, even after a restart earlier: reports every 2 s through an hour of changes', () => {
+    for (const translated of [false, true]) {
+      now = 0;
+      rev = 0;
+      stuck = [];
+      make(translated);
+      // One restart early on (a hang its reload cured), then an hour of the show changing every 3 s.
+      untilStuck();
+      reloaded();
+      let painted = rev;
+      for (let i = 0; i < 1200; i++) {
+        rev++;
+        beat.changed(rev);
+        painted = rev;
+        run(3000, { hall: () => painted });
+      }
+      expect(stuck).toHaveLength(1);
+    }
+  });
+
+  it('a page is never restarted more often than before, translated or not, however its reports come (100 made-up pages, 30 minutes each)', () => {
+    let seed = 23;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+      return seed / 2 ** 31;
+    };
+    const until = 30 * 60_000;
+    let before = 0;
+    const totals = { untranslated: 0, translated: 0 };
+    for (let page = 0; page < 100; page++) {
+      // Reports every 2 s, with gaps now and then: most short, some long (a busy page), some for a minute.
+      const reportsAt = new Set<number>();
+      for (let t = 2000; t <= until; t += random() < 0.9 ? 2000 : 2000 * Math.ceil(random() * 30)) reportsAt.add(t);
+      const today = restartsBefore(reportsAt, until).length;
+      before += today;
+      for (const translated of [false, true]) {
+        now = 0;
+        rev = 0;
+        stuck = [];
+        make(translated);
+        for (let t = 0; t < until; t += CHECK_EVERY_MS) {
+          now += CHECK_EVERY_MS;
+          if (reportsAt.has(now)) beat.report('hall', rev);
+          beat.check();
+        }
+        expect(stuck.length).toBeLessThanOrEqual(today);
+        totals[translated ? 'translated' : 'untranslated'] += stuck.length;
+      }
+    }
+    // Not an empty proof: before, these pages were restarted, and they still are, only less often.
+    expect(before).toBeGreaterThan(100);
+    expect(totals.untranslated).toBeGreaterThan(0);
+    expect(totals.untranslated).toBeLessThan(before);
+    expect(totals.translated).toBeLessThan(totals.untranslated);
+  });
+
+  it('a truly hung page (no reports at all) is still restarted, translated or not, again after each grace while it stays hung', () => {
+    for (const translated of [false, true]) {
+      now = 0;
+      rev = 0;
+      stuck = [];
+      make(translated);
+      run(20_000, { hall: () => rev });
+      const last = now;
+      // Hung for good: its first restart comes at once after the limit, and each reload is judged again.
+      const at: number[] = [];
+      for (let i = 0; i < 4; i++) {
+        at.push(untilStuck() - last);
+        reloaded();
+      }
+      expect(at[0]).toBe(translated ? WARMING_STALE_MS + 1000 : REPORT_STALE_MS + 1000);
+      expect(at).toHaveLength(4);
+      expect(at.at(-1)).toBeLessThan(4 * 60_000);
+    }
   });
 });
