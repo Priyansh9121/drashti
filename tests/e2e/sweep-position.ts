@@ -206,6 +206,12 @@ export interface HeardOptions {
 
 /** A window is read only at this share of the level its sound's gain gives, or more: none of it silent to speak of. */
 const FULL_SHARE = 0.7;
+/** Two windows are next to each other within this (s): a 20 ms hop, and room for one window missed. */
+const NEXT_S = 0.05;
+/** Both sounds heard at least this many windows in a row (0.2 s) for a crossfade's stretch. */
+const RUN_WINDOWS = 10;
+/** Runs this close (s) are one crossfade's: a sound silent for a moment in its fade splits it in two. */
+const JOIN_S = 1.5;
 
 /** Each fade's two sounds where they were heard, against their clocks; or why the recording can't say. */
 export function heardFades(
@@ -240,20 +246,29 @@ export function heardFades(
       .map((s) => s.band)
       .sort((a, b) => a - b)
       .join('+');
+  // Runs of windows next to each other (a click lifts both bands for 1-4 windows, CI's Windows: never a crossfade),
+  // at least RUN_WINDOWS long; then runs less than JOIN_S apart (a sound silent for a moment in its fade) as one.
   const stretches = new Map<string, { from: number; to: number }[]>();
   for (const pair of new Set(fades.map(pairOf))) {
     const bands = pair.split('+').map(Number);
-    const found: { from: number; to: number }[] = [];
+    const runs: { from: number; to: number; windows: number }[] = [];
+    let previous: number | null = null;
     for (const r of readings) {
       if (!bands.every((b) => heardIn(r, b))) continue;
-      const lastOne = found.at(-1);
-      if (lastOne && r.t - lastOne.to < 3) lastOne.to = r.t;
-      else found.push({ from: r.t, to: r.t });
+      const run = runs.at(-1);
+      if (run && previous !== null && r.t - previous <= NEXT_S) {
+        run.to = r.t;
+        run.windows++;
+      } else runs.push({ from: r.t, to: r.t, windows: 1 });
+      previous = r.t;
     }
-    stretches.set(
-      pair,
-      found.filter((s) => s.to - s.from >= 0.3),
-    );
+    const found: { from: number; to: number }[] = [];
+    for (const run of runs.filter((x) => x.windows >= RUN_WINDOWS)) {
+      const lastOne = found.at(-1);
+      if (lastOne && run.from - lastOne.to < JOIN_S) lastOne.to = run.to;
+      else found.push({ from: run.from, to: run.to });
+    }
+    stretches.set(pair, found);
   }
   const used = new Map<string, number>();
   const out: HeardFade[] = [];
