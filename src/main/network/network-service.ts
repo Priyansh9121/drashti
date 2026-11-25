@@ -1012,7 +1012,8 @@ export class NetworkService implements EngineTransport {
    * A phone's request as the phone rule weighs it (alpha.23, QA23-PHONE-1, shared/phone-rule.ts): why not, in its
    * group's words; or the arguments it runs with. Simple Mode (any Simple Mode, deps.simple) lets it read what is live
    * only; Pro Mode lets it read its playlists and put up a PowerPoint or a PDF from one, a row of it or a slide of it,
-   * and step inside the one live: Next, Previous and Back say which (the engine's `within`), whatever a phone sent.
+   * step inside the one live (Next, Previous and Back say which: the engine's `within`, whatever a phone sent) and
+   * clear its slide (the owner's Q7).
    */
   private phoneRule(
     op: DeviceOp,
@@ -1049,11 +1050,14 @@ export class NetworkService implements EngineTransport {
       }
       case 'next':
       case 'previous':
-      case 'back': {
+      case 'back':
+      case 'clearLayer': {
+        // Clear slide (the owner's Q7): the slide layer alone, never the background, the sound or the rest.
+        if (command.type === 'clearLayer' && command.layer !== 'slide')
+          return { refused: PHONE_REFUSAL.computer };
         const live = this.deps.engine.state().live.presentationId;
-        return live !== null && this.isDeck(live)
-          ? { args: { ...args, within: live } }
-          : { refused: PHONE_REFUSAL.noDeck };
+        if (live === null || !this.isDeck(live)) return { refused: PHONE_REFUSAL.noDeck };
+        return command.type === 'clearLayer' ? { args } : { args: { ...args, within: live } };
       }
       default:
         return notDeck;

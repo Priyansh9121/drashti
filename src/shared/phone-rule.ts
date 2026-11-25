@@ -257,7 +257,8 @@ export const NEVER_OP_WORDS: Readonly<Record<NeverOp, PhoneWords>> = {
 
 /**
  * Every engine command, as a phone may send it in Pro Mode: 'deck' only for a PowerPoint or a PDF (main/network
- * checks which: the row or presentation put up is a deck, Next and Back only while one is live, inside it), else never.
+ * checks which: the row or presentation put up is a deck; Next, Back and Clear slide only while one is live, Next and
+ * Back inside it, Clear the slide layer alone), else never.
  */
 export const REMOTE_PHONE_COMMANDS = {
   goLive: 'deck',
@@ -265,7 +266,9 @@ export const REMOTE_PHONE_COMMANDS = {
   next: 'deck',
   previous: 'deck',
   back: 'deck',
-  // Videos, pictures and sounds, and the picture's zoom.
+  // Clear slide (the owner's Q7): the slide layer only, while a PowerPoint or a PDF is live.
+  clearLayer: 'deck',
+  // Videos, pictures and sounds, and the picture's zoom (the owner's Q8: Look closer is the phone's own view).
   cueVideo: 'never',
   goVideoCue: 'never',
   cancelVideoCue: 'never',
@@ -297,8 +300,7 @@ export const REMOTE_PHONE_COMMANDS = {
   cueNext: 'never',
   clearCue: 'never',
   playCue: 'never',
-  // The clears (Q7, Clear slide, not answered yet), covers, timers, messages, the stage, inputs and PIP.
-  clearLayer: 'never',
+  // The other clears, covers, timers, messages, the stage, inputs and PIP.
   clearAll: 'never',
   putBack: 'never',
   oops: 'never',
@@ -362,7 +364,6 @@ export const NEVER_COMMAND_WORDS: Readonly<Record<NeverCommand, PhoneWords>> = {
   cueNext: 'notDeck',
   clearCue: 'notDeck',
   playCue: 'notDeck',
-  clearLayer: 'computer',
   clearAll: 'computer',
   putBack: 'computer',
   oops: 'computer',
