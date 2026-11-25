@@ -253,11 +253,13 @@ it('a copy whose name another file took meanwhile is not published under a free 
   const { copies, made, mediaDir } = setup();
   await copies.start();
   await copies.step();
-  const publish = made[0]?.copy.beforePublish;
-  expect(typeof publish).toBe('function');
+  const copy = made[0]?.copy;
+  expect(typeof copy?.beforePublish).toBe('function');
   const dest = join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 720, 'webm'));
-  expect(() => publish?.('tmp', dest)).not.toThrow();
-  expect(() => publish?.('tmp', join(mediaDir, PAGE_COPIES_DIR, `${SHA_A}-720p (2).webm`))).toThrow();
+  expect(() => copy?.beforePublish?.('tmp', dest)).not.toThrow();
+  expect(() =>
+    copy?.beforePublish?.('tmp', join(mediaDir, PAGE_COPIES_DIR, `${SHA_A}-720p (2).webm`)),
+  ).toThrow();
   copies.close();
 });
 
@@ -270,7 +272,9 @@ it('makes and offers only the heights asked now: the 720p copy only while a pres
   await copies.start();
   await copies.step();
   await copies.step();
-  expect(made.map((m) => m.dest)).toEqual([join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 540, 'webm'))]);
+  expect(made.map((m) => m.dest)).toEqual([
+    join(mediaDir, PAGE_COPIES_DIR, pageCopyName(SHA_A, 540, 'webm')),
+  ]);
   expect(copies.ready()).toEqual({ red: [540] });
   expect(copies.relativePath(SHA_A, 720)).toBeNull();
   heights = [720, 540];

@@ -528,6 +528,7 @@ const bridge: DrashtiBridge = {
     savePicture: (mediaId, name) => invoke(IPC.media.savePicture, mediaId, name),
     onLooks: (listener) => on(IPC.media.looksChanged, listener),
     pageCopies: () => invoke(IPC.media.pageCopies),
+    pageCopiesOf: (mediaId) => invoke(IPC.media.pageCopiesOf, mediaId),
     onPageCopies: (listener) => on(IPC.media.pageCopiesChanged, listener),
     usage: (mediaIds) => invoke(IPC.media.usage, mediaIds),
     remove: (mediaIds) => invoke(IPC.media.remove, mediaIds),

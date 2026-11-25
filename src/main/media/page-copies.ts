@@ -34,6 +34,8 @@ export interface PageCopyPlan {
 export function pageCopyPlan(info: MediaInfo, height: PageCopyHeight): PageCopyPlan | null {
   const v = info.video;
   if (!v || v.still || v.interlaced === true || hasAlpha(info) || v.width < 2 || v.height < 2) return null;
+  // No length: no time limit to give its making, and no length to check the copy against (a22-review-fadecopies S13).
+  if (!info.durationMs) return null;
   // Landscape only: the pages draw 16:9.
   if (v.width < v.height || v.height <= height) return null;
   const container = info.container ?? '';
@@ -277,7 +279,7 @@ export interface PageCopyCandidate {
   sha256: string;
   /** Relative to the media folder. */
   path: string;
-  /** RED STUB (R2-M1 d): not used yet. */
+  /** The library's id of the video it is made for, when the engine plays another version of it (Media information…). */
   listedId?: string;
 }
 
@@ -299,7 +301,7 @@ export interface PageCopiesDeps {
   remove?: (file: string) => Promise<void>;
   /** The heights made (as built: both; the tests' option B: LIVE's 540p only). */
   heights?: readonly PageCopyHeight[] | (() => readonly PageCopyHeight[]);
-  /** RED STUB (R2-M1 a): not used yet. */
+  /** Why a copy waits besides the show (an armed cue, R2-M1 a), or null: the worker reads it as it would start and runs. */
   holdWhile?: () => string | null;
 }
 
@@ -319,6 +321,8 @@ export class PageCopies {
   /** By source sha256: what FFmpeg read of it (null: none made of it, after a failure or an unreadable file). */
   private readonly infos = new Map<string, MediaInfo | null>();
   private working = false;
+  /** Its start could not look at the copies there: none are made this run (R2-S1). */
+  private broken = false;
   private closed = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   constructor(private readonly deps: PageCopiesDeps) {}
@@ -336,8 +340,10 @@ export class PageCopies {
         this.there.set(c.sha256, byHeight);
       }
     } catch (e) {
+      // None made this run: another of a copy already there would get a free name, never read or swept (R2-S1).
+      this.broken = true;
       this.warn(
-        `Page copies: could not look at the copies already made (${problem(e)}); none are used until then`,
+        `Page copies: could not look at the copies already made (${problem(e)}); none are made or used until Drashti starts again`,
       );
     }
     if (this.closed || this.timer) return;
@@ -348,7 +354,7 @@ export class PageCopies {
   }
   /** One step: the next copy wanted, made (or nothing). Never throws. */
   async step(): Promise<void> {
-    if (this.working || this.closed || !this.deps.slow() || !this.deps.idle()) return;
+    if (this.broken || this.working || this.closed || !this.deps.slow() || !this.deps.idle()) return;
     this.working = true;
     let sha: string | null = null;
     try {
@@ -361,7 +367,7 @@ export class PageCopies {
           this.infos.set(c.sha256, info);
         }
         if (!info) continue;
-        for (const height of (typeof this.deps.heights === 'function' ? this.deps.heights() : this.deps.heights) ?? PAGE_COPY_HEIGHTS) {
+        for (const height of this.heights()) {
           const plan = pageCopyPlan(info, height);
           if (!plan || this.there.get(c.sha256)?.has(height)) continue;
           if (this.isClosed() || !this.deps.idle()) return;
@@ -379,6 +385,12 @@ export class PageCopies {
             validate: pageCopyCheck(info, plan),
             stopAtOnce: true,
             kind: 'page-copy',
+            // Not while a cue waits (R2-M1 a).
+            waitWhile: () => this.deps.holdWhile?.() ?? null,
+            // Published under exactly its own name, never a free one beside a file that took it (R2-S1).
+            beforePublish: (_temporary, destination) => {
+              if (destination !== dest) throw new Error('A page copy’s name was taken');
+            },
           }).done;
           // Published under exactly its own name, or not at all (a file there already gets a free name: not a copy).
           if (done.ok && done.copy === dest) {
@@ -414,7 +426,8 @@ export class PageCopies {
   }
   /** The copy of these bytes at this height, relative to the media folder, if it is there. */
   relativePath(sha256: string, height: PageCopyHeight): string | null {
-    const name = this.there.get(sha256)?.get(height);
+    // Only a height asked now: a copy left from another preset (or option B's switch) is not offered.
+    const name = this.heights().includes(height) ? this.there.get(sha256)?.get(height) : undefined;
     return name ? join(PAGE_COPIES_DIR, name) : null;
   }
   /** The heights ready for each candidate video now, by its media id (what the pages are told). */
@@ -422,7 +435,10 @@ export class PageCopies {
     const out: Record<string, PageCopyHeight[]> = {};
     try {
       for (const c of this.deps.candidates()) {
-        const heights = [...(this.there.get(c.sha256)?.keys() ?? [])].sort((a, b) => a - b);
+        const asked = this.heights();
+        const heights = [...(this.there.get(c.sha256)?.keys() ?? [])]
+          .filter((h) => asked.includes(h))
+          .sort((a, b) => a - b);
         if (heights.length > 0) out[c.mediaId] = heights;
       }
     } catch (e) {
@@ -432,9 +448,24 @@ export class PageCopies {
     }
     return out;
   }
-  /** RED STUB (R2-M1 d): no-op body. */
-  heightsFor(_listedId: string): PageCopyHeight[] {
-    return [];
+  /**
+   * The heights ready for a library video, by its own id (Media information…, a22-review-fadecopies R2-M1 d): of the
+   * version the engine plays for it, which the pages' ready list names instead.
+   */
+  heightsFor(listedId: string): PageCopyHeight[] {
+    const ready = this.ready();
+    try {
+      for (const c of this.deps.candidates())
+        if ((c.listedId ?? c.mediaId) === listedId) return ready[c.mediaId] ?? [];
+    } catch {
+      return [];
+    }
+    return ready[listedId] ?? [];
+  }
+  /** The heights made and offered now (as built: both, the 720p only while a preset below 1080p is chosen). */
+  private heights(): readonly PageCopyHeight[] {
+    const asked = this.deps.heights;
+    return (typeof asked === 'function' ? asked() : asked) ?? PAGE_COPY_HEIGHTS;
   }
   /** Closed meanwhile (a read or a copy awaited in between). */
   private isClosed(): boolean {

@@ -53,7 +53,7 @@ function InfoWindow({
       window.drashti.media.details(media.id),
       window.drashti.media.markers(media.id).catch(() => null),
       window.drashti.sound.file(media.id).catch(() => null),
-      window.drashti.media.pageCopies().catch(() => null),
+      window.drashti.media.pageCopiesOf(media.id).catch(() => null),
     ]).then(
       ([result, markers, sound, copies]) => {
         if (!live) return;
@@ -66,7 +66,7 @@ function InfoWindow({
             loudness: sound
               ? { even: sound.even, measured: sound.measured, lufs: sound.lufs, gainDb: sound.gainDb }
               : null,
-            pageCopies: copies?.[media.id] ?? null,
+            pageCopies: copies,
           },
         });
       },

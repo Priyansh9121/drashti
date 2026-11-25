@@ -891,6 +891,8 @@ export interface DrashtiBridge {
     onLooks(listener: (looks: Record<string, PictureLook>) => void): () => void;
     /** The videos' page copies ready, by media id: their heights (QA23-FADE-9 candidate 1). */
     pageCopies(): Promise<Record<string, number[]>>;
+    /** A library video's page copies ready, by its own id: those of the version the engine plays (Media information…). */
+    pageCopiesOf(mediaId: string): Promise<number[]>;
     onPageCopies(listener: (ready: Record<string, number[]>) => void): () => void;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;

@@ -775,6 +775,7 @@ export const IPC = {
      * heights; and main -> the operator window and the stream's picture page, as they change.
      */
     pageCopies: 'media:page-copies',
+    pageCopiesOf: 'media:page-copies-of',
     pageCopiesChanged: 'media:page-copies-changed',
     setMarkers: 'media:set-markers',
     /** Where media is used, asked before deleting it (Session 26a). */
@@ -1953,6 +1954,7 @@ export interface InvokeContract {
   [IPC.media.look]: { args: [mediaId: string]; result: PictureLook | null };
   [IPC.media.looks]: { args: []; result: Record<string, PictureLook> };
   [IPC.media.pageCopies]: { args: []; result: Record<string, number[]> };
+  [IPC.media.pageCopiesOf]: { args: [mediaId: string]; result: number[] };
   [IPC.media.setLook]: {
     args: [mediaId: string, look: PictureLook | null];
     result: { ok: true } | { ok: false; message: string };

@@ -5537,8 +5537,14 @@ function start(): void {
   const copies = new PageCopies({
     mediaDir,
     slow: pageCopiesSlow,
-    // The tests' option B (lead 2, S8): LIVE's 540p copies only; the stream's picture page plays the originals.
-    heights: pageCopyHeightsFor(sw('DRASHTI_TEST_PAGE_COPIES')),
+    // The 720p copy only while the stream's preset is below 1080p, the one that takes it (lead 2); the tests' option B
+    // (S8): LIVE's 540p copies only, the stream's picture page on the originals.
+    heights: () => {
+      const asked = pageCopyHeightsFor(sw('DRASHTI_TEST_PAGE_COPIES'));
+      return streaming.context().height < 1080 ? asked : asked.filter((h) => h !== 720);
+    },
+    // Not while a cue waits for its Go, running or about to start (a22-review-fadecopies R2-M1 a).
+    holdWhile: () => (engine.current.videoCue ? 'Waits while a cue is armed.' : null),
     // Not while a cue waits for its Go either: every page warms its decoder for it (a22-review-fadecopies S11).
     idle: () =>
       pageCopiesMayWork({
@@ -5561,7 +5567,7 @@ function start(): void {
           !row.missing &&
           row.sha256 &&
           row.path
-          ? [{ mediaId, sha256: row.sha256, path: row.path }]
+          ? [{ mediaId, listedId: listed, sha256: row.sha256, path: row.path }]
           : [];
       }),
     // Never a purged row's bytes (S6).
@@ -5589,6 +5595,9 @@ function start(): void {
     copies.close();
   });
   handle(IPC.media.pageCopies, () => copies.ready());
+  handle(IPC.media.pageCopiesOf, (_event, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? copies.heightsFor(mediaId) : [],
+  );
   proxySourceOf = (id) => videoCopies.proxies.sourceOf(id);
   proxyReadyFor = (id) => videoCopies.proxies.readyFor(id);
   stops.add('video copies', () => videoCopies.close());
@@ -5632,7 +5641,8 @@ function start(): void {
   });
   stops.add('display activity', offDisplayActivity);
   const offConversionActivity = engine.onChange((state) => {
-    if (!nothingUp(state.layers)) conversions.activityChanged();
+    // A cue armed too: a page copy waits while it does (a22-review-fadecopies R2-M1 a).
+    if (!nothingUp(state.layers) || state.videoCue) conversions.activityChanged();
   });
   stops.add('conversions', () => {
     conversionActivityChanged = undefined;
