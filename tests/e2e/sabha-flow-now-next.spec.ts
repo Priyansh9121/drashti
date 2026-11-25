@@ -549,3 +549,67 @@ test('a paired phone shows the panel’s Now and Next up as each is marked there
     await app.close();
   }
 });
+
+test('the panel holds steady through a sabha: Next and Back through every item never move the splitter or the playlists under it (review S16), and Simple Mode with Sabha flow chosen holds Next up whole at the owner’s 1410 × 900 too', async () => {
+  test.setTimeout(150_000);
+  const { long } = await makePdfs();
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeWindow(app, win, 'index.html', OWNERS_WINDOW);
+  const panel = await openWith(app, win, long, 3);
+  await playlistsColumn(win, 'Home');
+  const splitter = win.getByRole('separator', {
+    name: 'Resize the Sabha flow and the playlists',
+    exact: true,
+  });
+  const area = win.getByTestId('flow-area');
+  const where = async () => ({
+    area: Math.round((await area.boundingBox())?.height ?? 0),
+    splitter: await splitter.getAttribute('aria-valuenow'),
+  });
+  const now = () =>
+    win.evaluate(async () => (await (globalThis as PageGlobals).drashti.flow.get()).state?.now ?? null);
+  // Steady from the first: each of Next up's lengths (a short one, the long Video row, Last item) already allowed for.
+  await expect.poll(now).toBeNull();
+  await expect.poll(async () => (await where()).area).toBeGreaterThan(0);
+  const first = await where();
+  const next = panel.getByRole('button', { name: 'Sabha flow: Next', exact: true });
+  const back = panel.getByRole('button', { name: 'Sabha flow: Back', exact: true });
+  for (const [press, to] of [
+    [next, 0],
+    [next, 1],
+    [next, 2],
+    [back, 1],
+    [back, 0],
+  ] as const) {
+    await press.click();
+    await expect.poll(now).toBe(to);
+    // Two frames for any resize to land, then the same place.
+    await win.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    expect(await where(), `Now on ${String(to + 1)}`).toEqual(first);
+  }
+
+  // Simple Mode with Sabha flow chosen in Simple Mode Features: the same rule, Next up whole at 1410 x 900.
+  expect(
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('sabha-flow', true)),
+  ).toEqual({ ok: true, chosen: ['sabha-flow'] });
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toHaveCount(1);
+  const simple = win.getByTestId('column-left').getByTestId('sabha-flow');
+  await expect(simple.getByTestId('flow-row')).toHaveCount(3);
+  // Now on 1: Next up is the long Video row.
+  await simple.getByTestId('flow-row').first().click();
+  await expect.poll(now).toBe(0);
+  const simpleNext = simple.getByTestId('flow-next');
+  await expect(simpleNext).toHaveAttribute('data-video', 'true');
+  await simple.getByTestId('sabha-flow-body').evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await expect
+    .poll(() => nextUpOutOfSight(simpleNext, 'whole'), { message: 'Simple Mode at 1410 × 900' })
+    .toEqual([]);
+  await app.close();
+});
