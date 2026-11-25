@@ -40,8 +40,9 @@ export function ChatApp() {
       else if (s.kind === 'elsewhere') location.replace(s.page);
       else {
         if (s.kind === 'ready') {
-          startFeed();
+          // Before the feed: its hello says this page follows the chat.
           startChat();
+          startFeed();
         }
         setStart(s);
       }

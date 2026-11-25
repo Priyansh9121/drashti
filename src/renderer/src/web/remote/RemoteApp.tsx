@@ -1524,8 +1524,9 @@ export function RemoteApp() {
     startRemote();
     startMirror();
     startPhoneFiles();
-    startFeed();
+    // Before the feed: its hello says this page follows the chat.
     startChat();
+    startFeed();
     void loadPlaylists();
   }, []);
   // Drashti's way of writing the time (Sessions 31–36, I18N-8), for the clocks it draws.

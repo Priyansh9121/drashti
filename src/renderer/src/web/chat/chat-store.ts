@@ -7,7 +7,7 @@ import {
   type ChatPhoneView,
 } from '../../../../shared/chat';
 import { api } from '../device';
-import { onChatEvent, onOnline } from '../feed';
+import { followChat, onChatEvent, onOnline } from '../feed';
 import { oneAtATime } from '../one-at-a-time';
 import { alertNewMessage, armAlerts } from './chat-alert';
 import { keepChatName, keptChatName } from './chat-name';
@@ -144,6 +144,7 @@ export function startChat(): void {
   if (started) return;
   started = true;
   useChat.setState({ name: keptChatName() });
+  followChat();
   armAlerts();
   onChatEvent(told);
   onOnline(() => {

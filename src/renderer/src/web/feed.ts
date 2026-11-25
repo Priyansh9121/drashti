@@ -69,9 +69,12 @@ export function onChatEvent(listener: (event: ChatEvent) => void): () => void {
   return () => chatListeners.delete(listener);
 }
 
-/** Red: not built yet. */
+/** This page shows the chat: its hello says so, and Drashti sends it the chat's events (never to the stage display). */
+let chatFollowed = false;
+
+/** Follow the chat on this page's feed, from its next hello on (call it before startFeed, as the pages do). */
 export function followChat(): void {
-  return;
+  chatFollowed = true;
 }
 
 /** Called each time the feed is (back) online, so a page can read its lists again. */
@@ -198,6 +201,7 @@ function open(): void {
       type: 'hello',
       token: device.token,
       lowerThirdMotions: PHONE_LOWER_THIRD_MOTIONS,
+      ...(chatFollowed ? { chat: true as const } : {}),
     } satisfies FromDevice;
     ws.send(JSON.stringify(hello));
   };

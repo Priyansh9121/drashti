@@ -11,8 +11,12 @@ import type * as ChatStore from './chat-store';
 const feed = vi.hoisted(() => ({
   online: [] as (() => void)[],
   chat: [] as ((event: ChatEvent) => void)[],
+  followed: 0,
 }));
 vi.mock('../feed', () => ({
+  followChat: () => {
+    feed.followed++;
+  },
   onOnline: (listener: () => void) => {
     feed.online.push(listener);
     return () => undefined;
@@ -87,6 +91,7 @@ beforeEach(async () => {
   vi.resetModules();
   feed.online = [];
   feed.chat = [];
+  feed.followed = 0;
   alerts.armed = 0;
   alerts.alerted = 0;
   drashti = {
@@ -157,6 +162,8 @@ describe('the phone’s chat: history on opening', () => {
     expect(s.banner).toBeNull();
     expect(alerts.alerted).toBe(0);
     expect(alerts.armed).toBe(1);
+    // Its feed asks Drashti for the chat's events.
+    expect(feed.followed).toBe(1);
   });
 
   it('starts once per page', async () => {
