@@ -1,5 +1,5 @@
 import type { SabhaFlow, SabhaFlowLang, SabhaFlowStatus } from './sabha-flow';
-import { nextUpIndex, nowWithin } from './sabha-flow';
+import { nextUpIndex, nowWithin, SABHA_FLOW_LIMITS } from './sabha-flow';
 
 /*
  * Sabha flow's lines (alpha.23, QA23-FLOW-1 and QA23-FLOW-2), the same in the operator window's panel and on a paired
@@ -8,7 +8,7 @@ import { nextUpIndex, nowWithin } from './sabha-flow';
  * after the last. A row whose Program (or Details) begins with the word for a video, in English, Gujarati or Hindi, is
  * marked as the video. The words of an item stay in the PDF's own language (textLang says which, for its lang
  * attribute); the labels around them are Drashti's. And the plain words for a PDF Drashti could not read (then only its
- * page is shown), and for no flow yet.
+ * page is shown), for no flow yet, and how many pages the page view shows.
  */
 
 /** Between an item's number and its cells, and between the cells. */
@@ -128,6 +128,15 @@ export function statusWords(status: SabhaFlowStatus): string | null {
   }
 }
 
-/* Red: the pages shown are not counted yet. */
-export const pagesShown = (flow: SabhaFlow): number => flow.pageCount;
-export const pagesCapped = (_flow: SabhaFlow): string | null => null;
+/**
+ * The pages a flow's page view shows: those Main drew when the PDF was chosen, the first SABHA_FLOW_LIMITS.maxPages
+ * (a22-review-flow M2: a 600-page scan is never 600 asks, nor a line for each page not drawn).
+ */
+export const pagesShown = (flow: SabhaFlow): number =>
+  Math.max(0, Math.min(flow.pageCount, SABHA_FLOW_LIMITS.maxPages));
+
+/** Said under the pages when the PDF has more than were drawn; null otherwise. */
+export const pagesCapped = (flow: SabhaFlow): string | null =>
+  flow.pageCount > SABHA_FLOW_LIMITS.maxPages
+    ? `Only the first ${String(SABHA_FLOW_LIMITS.maxPages)} pages are shown.`
+    : null;
