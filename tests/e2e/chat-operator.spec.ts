@@ -29,6 +29,41 @@ async function openChat(win: Page): Promise<Locator> {
   return section(win);
 }
 
+/**
+ * The fit rule for the section in the live column at 1024 × 645 (nothing cut short): the section can be taller than the
+ * part of the column in sight (it scrolls, as Audio and Lower Thirds open do), so it is checked part by part: nothing
+ * sideways (expectFits' own checks of the window's width and every button's words), and each part, brought into sight
+ * by the column's scroll, whole inside the column's visible box and the window.
+ */
+async function expectSectionFits(chat: Locator, what: string): Promise<void> {
+  const parts = ['chat-messages-box', 'chat-composer', 'chat-invite-slot', 'chat-people'];
+  if ((await chat.getByTestId('chat-people-list').count()) > 0) parts.push('chat-people-list');
+  for (const id of parts) {
+    const part = chat.getByTestId(id);
+    await part.scrollIntoViewIfNeeded();
+    const problems = await part.evaluate((el) => {
+      const out: string[] = [];
+      let scroller: HTMLElement | null = el.parentElement;
+      while (scroller && !['auto', 'scroll'].includes(getComputedStyle(scroller).overflowY))
+        scroller = scroller.parentElement;
+      const r = el.getBoundingClientRect();
+      const s = scroller?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
+      const top = Math.max(s.top, 0);
+      const bottom = Math.min(s.bottom, innerHeight);
+      if (r.top < top - 0.5 || r.bottom > bottom + 0.5 || r.left < -0.5 || r.right > innerWidth + 0.5)
+        out.push(
+          `cut off: ${[r.left, r.top, r.right, r.bottom].map(Math.round).join(',')} in ${[s.left, top, s.right, bottom].map(Math.round).join(',')}`,
+        );
+      for (const b of el.querySelectorAll('button'))
+        if (b.getBoundingClientRect().width > 0 && b.scrollWidth > b.clientWidth + 1)
+          out.push(`“${b.textContent ?? ''}”: its words do not fit`);
+      if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
+      return out;
+    });
+    expect(problems, `${what}: ${id}`).toEqual([]);
+  }
+}
+
 const chatView = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.chat.view());
 
 test('the Chat section under LIVE: folded after Messages, then Send as the operator (its words stay words), the count near the limit, Clear chat asked first; it fits 1024 × 645 ', async () => {
@@ -97,7 +132,9 @@ test('the Chat section under LIVE: folded after Messages, then Send as the opera
   await box.fill('');
 
   // Laid out at CI's window, and for a screen reader and the keyboard.
-  await expectFits(chat, 'the Chat section, open, at 1024 × 645');
+  await chat.getByTestId('chat-people-toggle').click();
+  await expectSectionFits(chat, 'the Chat section, open, at 1024 × 645');
+  await chat.getByTestId('chat-people-toggle').click();
   await expectNoSeriousA11yIssues(win, 'the Chat section, open', '[data-testid="section-chat"]');
 
   // Clear chat: asked first; Cancel keeps it; Clear chat empties it.
@@ -228,7 +265,7 @@ test('Simple Mode with Chat chosen: the section under Audio, reading and sending
   await chat.getByTestId('chat-people-toggle').click();
   await expect(chat.getByTestId('chat-person')).toHaveCount(1);
   await expect(chat.getByTestId('chat-remove-person')).toHaveCount(0);
-  await expectFits(chat, 'Simple Mode’s Chat section at 1024 × 645');
+  await expectSectionFits(chat, 'Simple Mode’s Chat section at 1024 × 645');
   // Its Clear chat and Remove stay Pro Mode's in the main process too.
   const refused = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
