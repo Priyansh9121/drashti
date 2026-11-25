@@ -26,6 +26,7 @@ import { TRIM_RECORDS_FILE } from '../convert/trim-records';
 import { SHARPENED_DIR } from '../media/sharpened';
 import { BLURRED_DIR } from '../media/blurred';
 import { DISPLAY_DIR } from '../media/display-copies';
+import { PAGE_COPIES_DIR } from '../media/page-copies';
 import { realPlace } from '../media/contained';
 import {
   ORIGINALS_STAGING_DIR,
@@ -171,12 +172,14 @@ const errorCode = (error: unknown): string | undefined =>
  * pictures' sharpened copies (Session 26f: made again from the pictures after a restore), and (Session 54) files
  * phones are sending.
  */
-// Blurred copies (Session 55, Part 5) are left out as the sharpened ones are: each can be made again.
+// Blurred copies (Session 55, Part 5) are left out as the sharpened ones are: each can be made again. So are videos'
+// page copies (QA23-FADE-9 candidate 1, a22-review-fadecopies S3).
 const LEFT_OUT = new Set([
   CONVERTING_DIR,
   SHARPENED_DIR,
   BLURRED_DIR,
   DISPLAY_DIR,
+  PAGE_COPIES_DIR,
   UPLOADS_DIR,
   ORIGINALS_STAGING_DIR,
 ]);
