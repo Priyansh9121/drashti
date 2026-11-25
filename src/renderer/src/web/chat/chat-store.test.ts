@@ -74,10 +74,15 @@ beforeEach(async () => {
   fetcher = vi.fn<typeof fetch>((url, init) => {
     if (url !== '/api/v1/chat') return Promise.resolve(json({ ok: false, message: 'Not here.' }, 404));
     if (init?.method === 'POST') {
-      const body = JSON.parse(String(init.body)) as { text: string; name: string };
+      const body = JSON.parse(init.body as string) as { text: string; name: string };
       sent.push(body);
       if (refuse) return Promise.resolve(json({ ok: false, message: refuse.message }, refuse.status));
-      const made = { id: `s${String(sent.length)}`, at: 1, from: { id: ME, name: body.name }, text: body.text };
+      const made = {
+        id: `s${String(sent.length)}`,
+        at: 1,
+        from: { id: ME, name: body.name },
+        text: body.text,
+      };
       return Promise.resolve(json({ ok: true, message: made }));
     }
     const now = answers[0] ?? chat();
@@ -180,7 +185,9 @@ describe('catching up after the phone wakes or its connection comes back', () =>
   it('reads again when the page is shown again: what came meanwhile is unread with a banner, and no buzz', async () => {
     await started();
     page.show('hidden');
-    answers = [chat(message('1', 'other'), message('2', ME), message('5', 'other'), message('6', 'operator'))];
+    answers = [
+      chat(message('1', 'other'), message('2', ME), message('5', 'other'), message('6', 'operator')),
+    ];
     page.show('visible');
     await vi.waitFor(() => expect(store.useChat.getState().chat?.messages).toHaveLength(4));
     const s = store.useChat.getState();
@@ -260,7 +267,13 @@ describe('sending', () => {
     await started();
     store.setChatName('Placeholder Volunteer');
     await store.sendChat('Placeholder hello');
-    answers = [chat(message('1', 'other'), message('2', ME), { ...message('9', ME), id: 's1', text: 'Placeholder hello' })];
+    answers = [
+      chat(message('1', 'other'), message('2', ME), {
+        ...message('9', ME),
+        id: 's1',
+        text: 'Placeholder hello',
+      }),
+    ];
     changed('chat');
     await vi.waitFor(() => expect(reads()).toBe(2));
     await vi.waitFor(() =>

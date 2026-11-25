@@ -19,10 +19,11 @@ import { onListsChanged, onOnline } from '../feed';
  * The slides shown follow the live item, until the operator picks another.
  */
 
-export type RemoteTab = 'show' | 'playlist' | 'library' | 'more';
+/** The phone's tabs; Chat (alpha.23, QA23-CHAT-1) is the day's group chat of the paired phones. */
+export type RemoteTab = 'show' | 'playlist' | 'library' | 'more' | 'chat';
 
-/** What a tablet's side shows beside the show: the playlist or the whole library (Session 18). */
-export type RemoteSide = 'playlist' | 'library';
+/** What a tablet's side shows beside the show: the playlist or the whole library (Session 18), or the chat. */
+export type RemoteSide = 'playlist' | 'library' | 'chat';
 
 /** The library as a Remote reads it (Session 18): by name a page at a time, or searched. */
 export interface RemoteLibrary {
