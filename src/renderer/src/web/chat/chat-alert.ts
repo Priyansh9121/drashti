@@ -81,7 +81,8 @@ export function makeAlerts(place: AlertPlace): { arm(): void; alert(how?: { soun
       armed = true;
       for (const type of TAPS) place.target.addEventListener(type, onTap, { capture: true, passive: true });
     },
-    alert: () => {
+    /** `sound: false`: a buzz only (the show is on a Remote's screen: a sound would be heard in the sabha). */
+    alert: (how = {}) => {
       if (!tapped) return 'none';
       if (buzzes) {
         try {
@@ -91,7 +92,7 @@ export function makeAlerts(place: AlertPlace): { arm(): void; alert(how?: { soun
         }
         return 'buzz';
       }
-      if (!sound) return 'none';
+      if (!sound || how.sound === false) return 'none';
       try {
         play(sound);
       } catch {
@@ -127,7 +128,7 @@ export function armAlerts(): void {
   pageAlerts().arm();
 }
 
-/** Tell of a new message: a buzz or a sound, as this phone can and has been allowed. */
-export function alertNewMessage(): AlertWay {
-  return pageAlerts().alert();
+/** Tell of a new message: a buzz or a sound, as this phone can and has been allowed (`sound: false`: a buzz only). */
+export function alertNewMessage(how: { sound?: boolean } = {}): AlertWay {
+  return pageAlerts().alert(how);
 }

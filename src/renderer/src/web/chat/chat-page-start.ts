@@ -6,7 +6,8 @@ import { type ApiAnswer, type Paired, PAGE_OF } from '../device';
  * The chat page as it opens (QA23-CHAT-1): a phone that scanned the pairing dialog's "Chat" QR (its code in the
  * address's #fragment, which browsers never send), or one opening the chat again. A pairing this browser keeps that
  * Drashti still knows and that is in the chat (a Remote, an Announcements phone, a chat-only phone) opens the chat as
- * it is: a phone that runs the show is never paired again over (its Chat tab is the same chat). Otherwise the code
+ * it is: a phone that runs the show is never paired again over (its Chat tab is the same chat), nor a Stage screen
+ * (it is not in the chat, and keeps its pairing). Otherwise the code
  * pairs this phone by itself as a chat-only device, as the pairing page pairs one; with neither, the pairing page.
  */
 
@@ -18,7 +19,9 @@ export type ChatPageStart =
   /** The code was refused (its time is over, the chat is full): Drashti's words. */
   | { kind: 'refused'; message: string }
   /** A pairing of a kind not in the chat (a Stage screen): its own page. */
-  | { kind: 'elsewhere'; page: string };
+  | { kind: 'elsewhere'; page: string }
+  /** The same, opened from a Chat QR link: its pairing kept, and the page says why it is not in the chat. */
+  | { kind: 'notInChat'; page: string };
 
 export interface ChatPageDeps {
   hash: string;
@@ -45,9 +48,14 @@ export async function startChatPage(deps: ChatPageDeps): Promise<ChatPageStart> 
       token: known.token,
     });
     if (me.ok && inChat(me.device.kind)) return { kind: 'ready' };
-    if (me.ok && !code) return { kind: 'elsewhere', page: PAGE_OF[me.device.kind] };
-    if (!me.ok && me.status !== 401) return { kind: 'ready' };
-    if (!me.ok) deps.forget();
+    // A Stage screen is never paired over by a Chat QR (a22-review-chat P-S4): it keeps showing the stage.
+    if (me.ok)
+      return code
+        ? { kind: 'notInChat', page: PAGE_OF[me.device.kind] }
+        : { kind: 'elsewhere', page: PAGE_OF[me.device.kind] };
+    // Out of reach or stopped: the chat page says so and tries again. Removed (401): forgotten, then the code.
+    if (me.status !== 401) return { kind: 'ready' };
+    deps.forget();
   }
   if (!code) return { kind: 'pair' };
   const paired = await deps.api<{ token: string; device: { name: string; kind: DeviceKind } }>(

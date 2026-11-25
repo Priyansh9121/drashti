@@ -74,6 +74,15 @@ export function ChatApp() {
               .
             </p>
           </div>
+        ) : start.kind === 'notInChat' ? (
+          <div className="space-y-4" data-testid="chat-not-in">
+            <Notice tone="info">
+              This device is a Stage screen, so it is not in the chat. It stays paired as it is.
+            </Notice>
+            <a className="text-base text-accent underline" href={start.page}>
+              Back to the stage screen
+            </a>
+          </div>
         ) : (
           <ChatPanel fill />
         )}

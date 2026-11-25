@@ -6,7 +6,8 @@ import { textLang } from '../../render/lang';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { ArrowDown, MessageCircle, Send, X } from '../../ui/icons';
-import { CHAT_NAME_MAX, CHAT_TEXT_MAX, type ChatMessage } from '../../../../shared/chat';
+import { CHAT_NAME_MAX, CHAT_OPERATOR_ID, CHAT_TEXT_MAX, type ChatMessage } from '../../../../shared/chat';
+import { Badge } from '../../ui/Badge';
 import { chatInView, dismissBanner, sendChat, setChatName, useChat } from './chat-store';
 
 /*
@@ -27,22 +28,43 @@ const BANNER_MS = 8000;
 /** Within this of the bottom, the list follows each new message down (px). */
 const NEAR_BOTTOM_PX = 64;
 
+/**
+ * The operator's messages carry a mark no name can give (a22-review-chat P-S3): they are known by who sent them (the
+ * operator's id, which no device has), never by the name, so a phone named "Operator." looks like any phone.
+ */
+const fromOperator = (message: ChatMessage): boolean => message.from.id === CHAT_OPERATOR_ID;
+
+function OperatorMark() {
+  return (
+    <Badge tone="info" data-testid="chat-operator-mark">
+      On the computer
+    </Badge>
+  );
+}
+
 function Bubble({ message, own, clock }: { message: ChatMessage; own: boolean; clock: ClockStyle | null }) {
+  const operator = fromOperator(message);
   return (
     <li
       data-testid="chat-message"
       data-own={String(own)}
+      data-operator={String(operator)}
       className={cx('flex max-w-[85%] flex-col', own ? 'self-end' : 'self-start')}
     >
       <div
         className={cx(
           'min-w-0 rounded-2xl border px-3 py-2',
-          own ? 'rounded-br-md border-accent/40 bg-accent/15' : 'rounded-bl-md border-line bg-panel-2',
+          own
+            ? 'rounded-br-md border-accent/40 bg-accent/15'
+            : operator
+              ? 'rounded-bl-md border-l-4 border-line-strong border-l-accent bg-panel-3'
+              : 'rounded-bl-md border-line bg-panel-2',
         )}
       >
         {!own && (
-          <p data-testid="chat-from" className="text-base font-bold break-words text-accent">
-            {message.from.name}
+          <p className="flex flex-wrap items-center gap-x-2 text-base font-bold break-words text-accent">
+            <span data-testid="chat-from">{message.from.name}</span>
+            {operator && <OperatorMark />}
           </p>
         )}
         <p
@@ -363,17 +385,22 @@ export function ChatBannerView({
   message,
   onOpen,
   onDismiss,
+  className,
 }: {
   message: ChatMessage;
   onOpen: () => void;
   onDismiss: () => void;
+  className?: string;
 }) {
   const words = cutText(message.text, BANNER_WORDS, '…');
   return (
     <div
       role="status"
       data-testid="chat-banner"
-      className="flex items-center gap-2 rounded-xl border border-l-4 border-line-strong border-l-accent bg-panel-2 py-1 pr-1 pl-3 shadow-lg"
+      className={cx(
+        'flex items-center gap-2 rounded-xl border border-l-4 border-line-strong border-l-accent bg-panel-2 py-0.5 pr-1 pl-3',
+        className,
+      )}
     >
       <MessageCircle size={20} aria-hidden="true" className="shrink-0 text-accent" />
       <button
@@ -382,11 +409,14 @@ export function ChatBannerView({
         data-testid="chat-banner-open"
         onClick={onOpen}
       >
-        <span className="block truncate text-base font-bold text-fg">
-          <span className="sr-only">New message from </span>
-          {message.from.name}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate text-base font-bold text-fg">
+            <span className="sr-only">New message from </span>
+            {message.from.name}
+          </span>
+          {fromOperator(message) && <OperatorMark />}
         </span>
-        <span className="line-clamp-2 block text-base break-words text-muted" lang={textLang(message.text)}>
+        <span className="block truncate text-base text-muted" lang={textLang(message.text)}>
           {words}
         </span>
       </button>
@@ -403,7 +433,10 @@ export function ChatBannerView({
   );
 }
 
-/** The banner for the newest message not seen yet; it goes by itself after a few seconds. */
+/**
+ * The banner for the newest message not seen yet, laid over its place (the remote's header) so nothing on the page
+ * moves (a22-review-chat P-M1); it goes by itself after a few seconds. Never while the show is on the screen.
+ */
 export function ChatBanner({ onOpen }: { onOpen: () => void }) {
   const banner = useChat((s) => s.banner);
   useEffect(() => {
@@ -415,8 +448,8 @@ export function ChatBanner({ onOpen }: { onOpen: () => void }) {
   }, [banner]);
   if (!banner) return null;
   return (
-    <div className="shrink-0 px-4 pt-3">
-      <ChatBannerView message={banner} onOpen={onOpen} onDismiss={dismissBanner} />
+    <div className="absolute inset-0 z-10 flex items-stretch px-2 py-1">
+      <ChatBannerView message={banner} onOpen={onOpen} onDismiss={dismissBanner} className="min-w-0 flex-1" />
     </div>
   );
 }
