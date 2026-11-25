@@ -676,21 +676,25 @@ function remoteViews(layout: 'phone' | 'wide', playlistId: string, say: () => Pr
         await expect(p.getByTestId('chat-text-box')).toBeVisible();
       },
     },
-    {
-      name: 'a new chat message’s banner over the show',
-      open: async (p) => {
-        // The chat out of view (a tablet's side shows the playlist), then someone else writes.
-        await (phone ? show(p) : playlist(p));
-        await say();
-        await expect(p.getByTestId('chat-banner')).toContainText(LONG.from);
-      },
-      close: async (p) => {
-        // It goes by itself after a few seconds: closed here if it is still up.
-        const banner = p.getByTestId('chat-banner');
-        if (await banner.isVisible()) await p.getByTestId('chat-banner-close').click();
-        await expect(banner).toHaveCount(0);
-      },
-    },
+    // A new message's banner, in the header's place: on a phone off the Show tab (never over the show).
+    ...(phone
+      ? [
+          {
+            name: 'a new chat message’s banner, on the playlist',
+            open: async (p: Page) => {
+              await playlist(p);
+              await say();
+              await expect(p.getByTestId('chat-banner')).toContainText(LONG.from);
+            },
+            close: async (p: Page) => {
+              // It goes by itself after a few seconds: closed here if it is still up.
+              const banner = p.getByTestId('chat-banner');
+              if (await banner.isVisible()) await p.getByTestId('chat-banner-close').click();
+              await expect(banner).toHaveCount(0);
+            },
+          },
+        ]
+      : []),
     {
       name: 'the viewer (Look closer)',
       open: async (p) => {
