@@ -61,7 +61,13 @@ const flowNow = (win: Page) =>
  * Video in row 2; a Gujarati one; a scan (a picture, no text); and one whose words are as long as a running order's
  * get, for the fit.
  */
-async function makePdfs(): Promise<{ table: string; gujarati: string; scan: string; long: string }> {
+async function makePdfs(): Promise<{
+  table: string;
+  gujarati: string;
+  scan: string;
+  long: string;
+  longGujarati: string;
+}> {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-flow-now-next-'));
   const file = (name: string) => join(dir, name);
   writeFileSync(
@@ -119,7 +125,30 @@ async function makePdfs(): Promise<{ table: string; gujarati: string; scan: stri
       }),
     ]),
   );
+  // A Gujarati flow with one long Next up (the bundled Gujarati face loads on first use, by unicode-range).
+  writeFileSync(
+    file('placeholder-long-gujarati.pdf'),
+    await makeFlowPdf([
+      flowTablePage({
+        headers: ['ક્રમ', 'કાર્યક્રમ', 'વિગત', 'સમય', 'વક્તા'],
+        widths: [40, 150, 180, 70, 115],
+        rows: [
+          ['૧', 'પહેલો કાર્યક્રમ', 'નમૂનો વિગત', '૫ મિનિટ', 'વક્તા એક'],
+          [
+            '૨',
+            'નમૂનો કાર્યક્રમ\nલાંબા નામ સાથે',
+            'નમૂનો વિગત ત્રણ\nલીટીમાં લખેલી\nલાંબી વિગત',
+            '૨૫ મિનિટ',
+            'નમૂનો વક્તા\nલાંબા નામ સાથે',
+          ],
+          ['૩', 'છેલ્લો કાર્યક્રમ', 'નમૂનો વિગત', '૫ મિનિટ', 'વક્તા બે'],
+        ],
+        borders: 'lines',
+      }),
+    ]),
+  );
   return {
+    longGujarati: file('placeholder-long-gujarati.pdf'),
     table: file('placeholder-flow.pdf'),
     gujarati: file('placeholder-gujarati.pdf'),
     scan: file('placeholder-scan.pdf'),
@@ -551,8 +580,8 @@ test('a paired phone shows the panel’s Now and Next up as each is marked there
 });
 
 test('the panel holds steady through a sabha: Next and Back through every item never move the splitter or the playlists under it (review S16), and Simple Mode with Sabha flow chosen holds Next up whole at the owner’s 1410 × 900 too', async () => {
-  test.setTimeout(150_000);
-  const { long } = await makePdfs();
+  test.setTimeout(180_000);
+  const { long, longGujarati } = await makePdfs();
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -590,6 +619,32 @@ test('the panel holds steady through a sabha: Next and Back through every item n
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
     expect(await where(), `Now on ${String(to + 1)}`).toEqual(first);
+  }
+
+  // A Gujarati flow (review S17): its face loads by unicode-range once its letters are first drawn, after the first
+  // measure; once the fonts have settled, Next and Back through every item still move nothing.
+  await openWith(app, win, longGujarati, 3);
+  await expect.poll(now).toBeNull();
+  await win.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  await win.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  const firstGujarati = await where();
+  for (const [press, to] of [
+    [next, 0],
+    [next, 1],
+    [next, 2],
+    [back, 1],
+    [back, 0],
+  ] as const) {
+    await press.click();
+    await expect.poll(now).toBe(to);
+    await win.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    expect(await where(), `the Gujarati flow, Now on ${String(to + 1)}`).toEqual(firstGujarati);
   }
 
   // Simple Mode with Sabha flow chosen in Simple Mode Features: the same rule, Next up whole at 1410 x 900.
