@@ -89,8 +89,9 @@ export interface ChatMember extends ChatPerson {
 
 /**
  * The pairing dialog's "Chat" QR: a code that pairs each phone that scans it as its own chat-only device, while it is
- * shown (until `expiresAt`, Cancel, or CHAT_PEOPLE_MAX chat devices). `url` opens the pairing page with the code in
- * its #fragment (which browsers never send), as a pairing QR does.
+ * shown (until `expiresAt`, Cancel, or CHAT_PEOPLE_MAX chat devices). `url` opens the chat's own page (CHAT_PAGE)
+ * with the code in its #fragment (which browsers never send): a phone already paired in the chat joins with its own
+ * pairing, any other pairs by the code as the pairing page does (POST /api/v1/pair).
  */
 export interface ChatInvite {
   code: string;
