@@ -34,7 +34,12 @@ beforeEach(async () => {
   vi.useFakeTimers();
   FakeSocket.made = [];
   vi.stubGlobal('WebSocket', FakeSocket);
-  vi.stubGlobal('location', { host: 'drashti.test:8740', pathname: '/chat', replace: vi.fn(), reload: vi.fn() });
+  vi.stubGlobal('location', {
+    host: 'drashti.test:8740',
+    pathname: '/chat',
+    replace: vi.fn(),
+    reload: vi.fn(),
+  });
   vi.stubGlobal('window', new EventTarget());
   vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible' }));
   vi.stubGlobal('localStorage', {

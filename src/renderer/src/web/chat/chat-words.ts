@@ -1,9 +1,4 @@
-import {
-  CHAT_REFUSAL,
-  type ChatMessage,
-  chatNameSchema,
-  chatTextSchema,
-} from '../../../../shared/chat';
+import { CHAT_REFUSAL, type ChatMessage, chatNameSchema, chatTextSchema } from '../../../../shared/chat';
 import { cleanRenameName } from '../../../../shared/rename-name';
 
 /*

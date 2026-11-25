@@ -27,10 +27,14 @@ function world(given: {
       kept = null;
     },
     api: (path, init) => {
-      asked.push({ path, ...(init?.token ? { token: init.token } : {}), ...(init?.body ? { body: init.body } : {}) });
+      asked.push({
+        path,
+        ...(init?.token ? { token: init.token } : {}),
+        ...(init?.body ? { body: init.body } : {}),
+      });
       if (path === '/api/v1/me')
-        return Promise.resolve(given.me ?? { ok: false, status: 401, message: 'Not paired.' }) as never;
-      return Promise.resolve(given.pair ?? { ok: false, status: 403, message: 'Placeholder code refused.' }) as never;
+        return Promise.resolve(given.me ?? { ok: false, status: 401, message: 'Not paired.' });
+      return Promise.resolve(given.pair ?? { ok: false, status: 403, message: 'Placeholder code refused.' });
     },
   };
   return { deps, asked, cleared, kept: () => kept };
@@ -40,7 +44,10 @@ const chatDevice = { name: 'Placeholder phone', kind: 'chat' as const };
 
 describe('the chat page as it opens (a phone that scanned the Chat QR, or opened it again)', () => {
   it('pairs this phone with the code from the QR, takes the code out of the address, and opens the chat', async () => {
-    const w = world({ hash: '#c=123456', pair: { ok: true, token: 'placeholder-new-token', device: chatDevice } });
+    const w = world({
+      hash: '#c=123456',
+      pair: { ok: true, token: 'placeholder-new-token', device: chatDevice },
+    });
     expect(await startChatPage(w.deps)).toEqual({ kind: 'ready' });
     expect(w.cleared).toHaveBeenCalledTimes(1);
     expect(w.asked).toEqual([{ path: '/api/v1/pair', body: { code: '123456' } }]);
@@ -71,7 +78,10 @@ describe('the chat page as it opens (a phone that scanned the Chat QR, or opened
   });
 
   it('says Drashti’s words when the code is refused (its ten minutes are over), with the pairing page to go to', async () => {
-    const w = world({ hash: '#c=123456', pair: { ok: false, status: 403, message: 'Placeholder code refused.' } });
+    const w = world({
+      hash: '#c=123456',
+      pair: { ok: false, status: 403, message: 'Placeholder code refused.' },
+    });
     expect(await startChatPage(w.deps)).toEqual({ kind: 'refused', message: 'Placeholder code refused.' });
   });
 
@@ -84,7 +94,10 @@ describe('the chat page as it opens (a phone that scanned the Chat QR, or opened
   });
 
   it('a kept pairing not in the chat (a Stage screen) goes to its own page', async () => {
-    const w = world({ kept: 'stage', me: { ok: true, device: { name: 'Placeholder screen', kind: 'stage' } } });
+    const w = world({
+      kept: 'stage',
+      me: { ok: true, device: { name: 'Placeholder screen', kind: 'stage' } },
+    });
     expect(await startChatPage(w.deps)).toEqual({ kind: 'elsewhere', page: '/stage' });
   });
 

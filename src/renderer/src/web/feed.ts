@@ -58,9 +58,15 @@ export function onListsChanged(listener: (what: NetworkChange) => void): () => v
   return () => changeListeners.delete(listener);
 }
 
-/** The chat's events (alpha.23, QA23-CHAT-1). Red: not built yet. */
-export function onChatEvent(_listener: (event: ChatEvent) => void): () => void {
-  return () => undefined;
+const chatListeners = new Set<(event: ChatEvent) => void>();
+
+/**
+ * The chat's events, each as it happens (alpha.23, QA23-CHAT-1: a message, the people, the chat emptied): only a
+ * device in the chat is told them (shared/chat.ts). A page reads the whole chat again each time the feed is online.
+ */
+export function onChatEvent(listener: (event: ChatEvent) => void): () => void {
+  chatListeners.add(listener);
+  return () => chatListeners.delete(listener);
 }
 
 /** Called each time the feed is (back) online, so a page can read its lists again. */
@@ -153,6 +159,9 @@ function receive(message: ToDevice): void {
     }
     case 'changed':
       for (const l of changeListeners) l(message.what);
+      return;
+    case 'chat':
+      for (const l of chatListeners) l(message.event);
       return;
     case 'bye':
       bye = message.reason;

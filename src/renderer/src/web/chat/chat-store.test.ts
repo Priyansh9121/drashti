@@ -89,14 +89,28 @@ beforeEach(async () => {
   feed.chat = [];
   alerts.armed = 0;
   alerts.alerted = 0;
-  drashti = { messages: [message('1', 'other'), message('2', ME)], name: null, names: [], sent: [], refuse: null };
+  drashti = {
+    messages: [message('1', 'other'), message('2', ME)],
+    name: null,
+    names: [],
+    sent: [],
+    refuse: null,
+  };
   page = new Page();
   vi.stubGlobal('document', page);
+  // The phone's storage for this address: it keeps the name over a new load of the page.
+  const kept = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => kept.get(k) ?? null,
+    setItem: (k: string, v: string) => kept.set(k, v),
+    removeItem: (k: string) => kept.delete(k),
+  });
   fetcher = vi.fn<typeof fetch>((url, init) => {
     const body = init?.body === undefined ? {} : (JSON.parse(init.body as string) as Record<string, string>);
     if (init?.method === 'POST' && drashti.refuse)
       return Promise.resolve(json({ ok: false, message: drashti.refuse.message }, drashti.refuse.status));
-    if (url === CHAT_API.read && init?.method !== 'POST') return Promise.resolve(json({ ok: true, chat: view() }));
+    if (url === CHAT_API.read && init?.method !== 'POST')
+      return Promise.resolve(json({ ok: true, chat: view() }));
     if (url === CHAT_API.name && init?.method === 'POST') {
       drashti.names.push(body['name'] ?? '');
       drashti.name = body['name'] ?? null;
@@ -268,7 +282,13 @@ describe('a new message from someone else, told on the feed', () => {
 
   it('the people told of are the chat’s people now', async () => {
     await started();
-    tell({ kind: 'people', people: [{ id: 'operator', name: 'Operator' }, { id: 'p2', name: 'Placeholder Two' }] });
+    tell({
+      kind: 'people',
+      people: [
+        { id: 'operator', name: 'Operator' },
+        { id: 'p2', name: 'Placeholder Two' },
+      ],
+    });
     expect(store.useChat.getState().chat?.people.map((p) => p.id)).toEqual(['operator', 'p2']);
   });
 });
@@ -327,11 +347,12 @@ describe('sending', () => {
     const s = store.useChat.getState();
     expect(s.problem).toBeNull();
     const last = s.chat?.messages.at(-1);
-    expect(last?.text).toBe('Placeholder hello 🙏');
-    expect(last?.from.id).toBe(s.me);
+    if (!last) throw new Error('nothing shown');
+    expect(last.text).toBe('Placeholder hello 🙏');
+    expect(last.from.id).toBe(s.me);
     // The feed brings the same message to every phone, this one too: shown once.
-    tell({ kind: 'message', message: last as ChatMessage });
-    expect(store.useChat.getState().chat?.messages.filter((m) => m.id === last?.id)).toHaveLength(1);
+    tell({ kind: 'message', message: last });
+    expect(store.useChat.getState().chat?.messages.filter((m) => m.id === last.id)).toHaveLength(1);
     expect(alerts.alerted).toBe(0);
   });
 

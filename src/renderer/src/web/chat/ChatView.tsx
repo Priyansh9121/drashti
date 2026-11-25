@@ -93,14 +93,15 @@ export function ChatNameForm({
   initial,
   onCancel,
 }: {
-  /** Null when the name was kept, or what is wrong with it. */
-  onName: (name: string) => string | null;
+  /** Null when Drashti took the name (it is then kept on the phone), or what is wrong with it. */
+  onName: (name: string) => Promise<string | null>;
   problem: string | null;
   initial: string;
   onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial);
   const [wrong, setWrong] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const said = wrong ?? problem;
   return (
     <form
@@ -108,7 +109,12 @@ export function ChatNameForm({
       data-testid="chat-name-form"
       onSubmit={(e) => {
         e.preventDefault();
-        setWrong(onName(name));
+        if (busy) return;
+        setBusy(true);
+        void onName(name).then((answer) => {
+          setBusy(false);
+          setWrong(answer);
+        });
       }}
     >
       <label className="block space-y-2">
@@ -137,7 +143,14 @@ export function ChatNameForm({
         </p>
       )}
       <div className="flex flex-wrap gap-3">
-        <Button type="submit" variant="primary" size="lg" className="min-h-12" data-testid="chat-name-save">
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="min-h-12"
+          disabled={busy}
+          data-testid="chat-name-save"
+        >
           {onCancel ? 'Save name' : 'Join the chat'}
         </Button>
         {onCancel && (
@@ -267,8 +280,8 @@ export function ChatPanel({ fill }: { fill: boolean }) {
         <ChatNameForm
           initial={name ?? ''}
           problem={null}
-          onName={(given) => {
-            const wrong = setChatName(given);
+          onName={async (given) => {
+            const wrong = await setChatName(given);
             if (!wrong) setRenaming(false);
             return wrong;
           }}

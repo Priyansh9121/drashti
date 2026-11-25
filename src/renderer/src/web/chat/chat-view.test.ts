@@ -99,7 +99,7 @@ describe('every word in the chat is shown as words, never run as HTML', () => {
 describe('asking the name once, and the microphone hint', () => {
   it('asks for the name with a text box of 16 px or more (a phone zooms in on a smaller one)', () => {
     const html = renderToStaticMarkup(
-      createElement(ChatNameForm, { onName: () => null, problem: null, initial: '' }),
+      createElement(ChatNameForm, { onName: () => Promise.resolve(null), problem: null, initial: '' }),
     );
     expect(html).toContain('data-testid="chat-name"');
     expect(html).toContain('Your name in the chat');

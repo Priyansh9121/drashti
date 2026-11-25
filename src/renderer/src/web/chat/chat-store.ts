@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { CHAT_API, type ChatMessage, type ChatPhoneView } from '../../../../shared/chat';
+import {
+  CHAT_API,
+  CHAT_REFUSAL,
+  type ChatEvent,
+  type ChatMessage,
+  type ChatPhoneView,
+} from '../../../../shared/chat';
 import { api } from '../device';
 import { onChatEvent, onOnline } from '../feed';
 import { oneAtATime } from '../one-at-a-time';
@@ -9,27 +15,29 @@ import { chatNameProblem, chatTextProblem, newFromOthers, tidyChatName, unreadSt
 
 /*
  * The phone's chat (QA23-CHAT-1): the day's group chat of everyone paired with this Drashti computer, kept by Drashti
- * (Main checks who may read and post, the sizes and the rate). The page reads the whole day's chat when it opens,
- * again each time Drashti says it changed, and again when the phone wakes or its connection comes back, so it
- * catches up on what came meanwhile. A message from someone else that arrives while the page is shown buzzes or
- * sounds (chat-alert.ts); one not seen yet (the chat not in view) is unread and shows a banner.
+ * (Main checks who may read and post, the sizes and the rate: shared/chat.ts). The page reads the whole day's chat
+ * when it opens and again each time the feed is back online or the phone wakes, so it catches up on what came
+ * meanwhile; in between the feed brings each message, the people and Clear chat as they happen. A message from
+ * someone else that arrives while the page is shown buzzes or sounds (chat-alert.ts); one not seen yet (the chat not
+ * in view) is unread and shows a banner. The name, given once, is kept on the phone and given to Drashti again
+ * whenever Drashti does not have it (after a restart, the next day).
  */
 
 interface ChatView {
-  /** The day's chat as last read (null until the first read is in). */
+  /** The day's chat as last read and told (null until the first read is in). */
   chat: ChatPhoneView | null;
   /** This phone in the chat (its own messages are on the right), as Drashti says. */
   me: string | null;
   /** The name this phone gave (asked once), or null. */
   name: string | null;
-  /** Why the last read or send did not work, in Drashti's or the page's words. */
+  /** Why the last read, name or send did not work, in Drashti's or the page's words. */
   problem: string | null;
   sending: boolean;
   /** Messages from others not seen yet, by id. */
   unread: string[];
   /** The newest of them, shown in a banner until seen or put away. */
   banner: ChatMessage | null;
-  /** The chat is on the screen now (its tab or side open). */
+  /** The chat is on the screen now (its tab, its side or its page open, and the page shown). */
   inView: boolean;
 }
 
@@ -44,42 +52,89 @@ export const useChat = create<ChatView>(() => ({
   inView: false,
 }));
 
-const PATH = CHAT_API.read;
-
 const shown = (): boolean => typeof document === 'undefined' || document.visibilityState === 'visible';
 
-/** A change Drashti told of while the page was shown: what it brings buzzes or sounds. */
-let live = false;
+/**
+ * Messages from others that came: unread with a banner while the chat is not in view, and (`live`: told by the feed
+ * while the page is shown) a buzz or a sound.
+ */
+function heard(news: readonly ChatMessage[], live: boolean): void {
+  const newest = news.at(-1);
+  if (!newest) return;
+  if (!useChat.getState().inView)
+    useChat.setState((s) => ({ unread: [...s.unread, ...news.map((m) => m.id)], banner: newest }));
+  if (live && shown()) alertNewMessage();
+}
+
+/** The chat as Drashti has it now: what is new in it is heard (never with a buzz: it is a catch-up). */
+function took(view: ChatPhoneView): void {
+  const { chat: before, unread, banner } = useChat.getState();
+  const news = newFromOthers(before?.messages ?? null, view.messages, view.you.id);
+  useChat.setState({
+    chat: view,
+    me: view.you.id,
+    unread: unreadStill(unread, view.messages),
+    banner: banner && view.messages.some((m) => m.id === banner.id) ? banner : null,
+  });
+  heard(news, false);
+}
+
+/** Give Drashti this phone's name; null when taken, or why not in Drashti's words. */
+async function giveName(name: string): Promise<string | null> {
+  const answer = await api<{ chat: ChatPhoneView }>(CHAT_API.name, { method: 'POST', body: { name } });
+  if (!answer.ok) return answer.message;
+  took(answer.chat);
+  return null;
+}
+
+/** Events told before the first read is in (the read may have been answered before them): read once more. */
+const early = { told: false };
+// Read as it is after the awaits (set by told() meanwhile).
+const toldEarly = () => early.told;
 
 /** One read at a time, and one more if asked meanwhile (one-at-a-time.ts). */
 const read = oneAtATime(async () => {
-  const alerting = live && shown();
-  live = false;
-  const answer = await api<{ chat: ChatPhoneView }>(PATH);
+  early.told = false;
+  const answer = await api<{ chat: ChatPhoneView }>(CHAT_API.read);
   if (!answer.ok) {
     useChat.setState({ problem: answer.message });
     return;
   }
-  const { chat: before, unread, banner, inView } = useChat.getState();
-  // A message this phone sent and already shows (sendChat) is the same message: Drashti's copy replaces it.
-  const news = newFromOthers(before?.messages ?? null, answer.chat.messages, answer.chat.you.id);
-  const still = unreadStill(unread, answer.chat.messages);
-  const newest = news.at(-1) ?? null;
-  const bannerStill = banner && answer.chat.messages.some((m) => m.id === banner.id) ? banner : null;
-  useChat.setState({
-    chat: answer.chat,
-    me: answer.chat.you.id,
-    problem: null,
-    unread: inView ? [] : [...still, ...news.map((m) => m.id)],
-    banner: inView ? null : (newest ?? bannerStill),
-  });
-  if (alerting && newest) alertNewMessage();
+  useChat.setState({ problem: null });
+  took(answer.chat);
+  // The name kept on this phone, given again when Drashti has none (or another): asked once, never again.
+  const { name } = useChat.getState();
+  if (name !== null && answer.chat.you.name !== name) {
+    const wrong = await giveName(name);
+    if (wrong) useChat.setState({ problem: wrong });
+  }
+  if (toldEarly()) void read();
 });
 
-/** Read the chat again: `told` when Drashti said it changed (live), otherwise a catch-up. */
-function readAgain(told: boolean): void {
-  if (told) live = true;
-  void read();
+/** A chat event from the feed, as it happens. */
+function told(event: ChatEvent): void {
+  const { chat } = useChat.getState();
+  if (!chat) {
+    early.told = true;
+    return;
+  }
+  switch (event.kind) {
+    case 'message': {
+      const m = event.message;
+      if (chat.messages.some((had) => had.id === m.id)) return;
+      useChat.setState({ chat: { ...chat, messages: [...chat.messages, m] } });
+      if (m.from.id !== chat.you.id) heard([m], true);
+      return;
+    }
+    case 'people':
+      useChat.setState({ chat: { ...chat, people: event.people } });
+      return;
+    case 'cleared':
+      useChat.setState({ chat: { ...chat, day: event.day, messages: [] }, unread: [], banner: null });
+      // Who is in it, and this phone's name, as Drashti has them after it (a new day starts without names).
+      void read();
+      return;
+  }
 }
 
 let started = false;
@@ -90,23 +145,26 @@ export function startChat(): void {
   started = true;
   useChat.setState({ name: keptChatName() });
   armAlerts();
-  onChatEvent(() => undefined);
+  onChatEvent(told);
   onOnline(() => {
-    readAgain(false);
+    void read();
   });
   if (typeof document !== 'undefined')
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') readAgain(false);
+      if (document.visibilityState === 'visible') void read();
     });
-  readAgain(false);
+  void read();
 }
 
-/** Give (or change) this phone's name: null when kept, or what is wrong with it. */
-export function setChatName(name: string): string | null {
+/** Give (or change) this phone's name: null when Drashti took it (then kept on the phone), or why not. */
+export async function setChatName(name: string): Promise<string | null> {
   const problem = chatNameProblem(name);
   if (problem) return problem;
-  keepChatName(name);
-  useChat.setState({ name: tidyChatName(name), problem: null });
+  const tidy = tidyChatName(name);
+  const wrong = await giveName(tidy);
+  if (wrong) return wrong;
+  keepChatName(tidy);
+  useChat.setState({ name: tidy, problem: null });
   return null;
 }
 
@@ -114,18 +172,19 @@ export function setChatName(name: string): string | null {
 export async function sendChat(text: string): Promise<boolean> {
   const { name, sending } = useChat.getState();
   if (sending) return false;
-  const problem = name === null ? 'Type your name first.' : chatTextProblem(text);
-  if (problem || name === null) {
+  const problem = name === null ? CHAT_REFUSAL.noName : chatTextProblem(text);
+  if (problem) {
     useChat.setState({ problem });
     return false;
   }
   useChat.setState({ sending: true, problem: null });
   try {
-    const answer = await api<{ message: ChatMessage }>(PATH, { method: 'POST', body: { text, name } });
+    const answer = await api<{ message: ChatMessage }>(CHAT_API.send, { method: 'POST', body: { text } });
     if (!answer.ok) {
       useChat.setState({ problem: answer.message });
       return false;
     }
+    // Shown at once; the feed's copy of the same message is then shown once (told() knows it by its id).
     const sent = answer.message;
     useChat.setState((s) => ({
       me: s.me ?? sent.from.id,
