@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { Page, Worker as BrowserWorker } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { cpus } from 'node:os';
 import { join } from 'node:path';
 import { windowShowing, type PageGlobals } from './helpers';
 import { dispatch, snapshot } from './time-bar-helpers';
@@ -264,6 +265,17 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     if (process.platform === 'win32')
       expect(powershell(`(Get-Process -Id ${String(mainPid)}).ProcessorAffinity.ToInt64()`)).toBe('3');
     const features = await app.evaluate(({ app }) => app.getGPUFeatureStatus());
+    // The runner (lead 2, QA23-FADE-9): CI's Windows VMs differ enough between runs (the hall's frame gaps p95 31 ms on
+    // one, 94 on another) that runs are compared only beside the processor, its count and the drawing they had.
+    const runner = {
+      processor: cpus()[0]?.model.trim() ?? 'unknown',
+      logicalProcessors: cpus().length,
+      gpu: features.gpu_compositing === 'enabled' ? 'hardware' : 'software',
+    };
+    /** The runner, beside each strict check's message (lead 2, QA23-FADE-9: runs compared fairly). */
+    const note = ` [runner: ${runner.processor}, ${String(runner.logicalProcessors)} logical processors (the app held to 2), ${runner.gpu} drawing]`;
+    console.log('S5_RUNNER ' + JSON.stringify(runner));
+    info.annotations.push({ type: 'runner', description: note.trim() });
     expect(features.gpu_compositing).not.toBe('enabled');
     expect(features.video_decode).not.toBe('enabled');
     const port = await freePort(),
@@ -994,6 +1006,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     });
     const heard = heardFades(readSweeps(recording, 48_000, COST_BANDS), heardInputs);
     const report = {
+      runner,
       system:
         process.platform === 'win32'
           ? 'two-core Windows, software drawing and decode'
@@ -1095,12 +1108,14 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         asked: '1',
         latencyHint: 1,
       });
-    expect(fadeJumps, 'stream sound never jumps during a fade behind picture decoding').toEqual([]);
+    expect(fadeJumps, `stream sound never jumps during a fade behind picture decoding${note}`).toEqual([]);
     // QA22-FADE-1 (the owner: "Correct by speed"): a stream sound out of step in a fade is brought back by speed:
     // never silent in a jump, never more than ~0.1 s off its clock, and back within 0.05 s 1.5 s into the fade.
     expect(fadeSteps.length, 'every crossfade round had its two sounds’ clocks').toBe(3);
     for (const fade of fadeSteps) {
-      expect(fade.silent, 'no stream sound is still jumping (silent) at any moment of a fade').toEqual([]);
+      expect(fade.silent, `no stream sound is still jumping (silent) at any moment of a fade${note}`).toEqual(
+        [],
+      );
       // Where the page's sampler saw a sound, the bounds hold; its floor is counted where the sound was heard (below).
       for (const sound of fade.sounds) {
         expect(
@@ -1117,7 +1132,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     // read from the stream's recording by its position sweep, and the floor of 20 readings a sound a fade counted there
     // (where its gain is at least 0.1). The page's 50 ms sampler starved for 0.77-0.81 s at a fade's start on CI's
     // two-core Windows (a22-fadeprep-1125-084705-80663), while the sound itself stayed in step.
-    expect(heard, 'the stream recording’s position sweeps are read for every fade').not.toHaveProperty(
+    expect(heard, `the stream recording’s position sweeps are read for every fade${note}`).not.toHaveProperty(
       'error',
     );
     const heardList = 'fades' in heard ? heard.fades : [];
@@ -1126,17 +1141,17 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
       for (const sound of fade.sounds) {
         expect(
           sound.readings.length,
-          `the ${sound.role} sound is heard through the fade (read where its gain is at least 0.1)`,
+          `the ${sound.role} sound is heard through the fade (read where its gain is at least 0.1)${note}`,
         ).toBeGreaterThanOrEqual(20);
         expect(
           Math.max(...sound.readings.map((r) => Math.abs(r.ms))),
-          `the ${sound.role} sound is heard within ${String(FADE_MOST_OFF_MS)} ms of its clock through the fade`,
+          `the ${sound.role} sound is heard within ${String(FADE_MOST_OFF_MS)} ms of its clock through the fade${note}`,
         ).toBeLessThanOrEqual(FADE_MOST_OFF_MS);
         expect(
           sound.readings
             .filter((r) => r.t >= FADE_CLOSED_AFTER_MS && Math.abs(r.ms) > FADE_CLOSED_WITHIN_MS)
             .map((r) => ({ t: Math.round(r.t), ms: Math.round(r.ms) })),
-          `the ${sound.role} sound is heard back within ${String(FADE_CLOSED_WITHIN_MS)} ms of its clock ${String(FADE_CLOSED_AFTER_MS)} ms into the fade`,
+          `the ${sound.role} sound is heard back within ${String(FADE_CLOSED_WITHIN_MS)} ms of its clock ${String(FADE_CLOSED_AFTER_MS)} ms into the fade${note}`,
         ).toEqual([]);
       }
     // Lead 2's QF-1: a crossfade's pictures are brought back by speed, not jumps, on the hall, LIVE and the stream's
@@ -1145,7 +1160,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
     expect(pictureJumps, 'the hall’s, LIVE’s and the stream page’s pictures are watched').not.toContain(null);
     expect(
       pictureFreezes,
-      'no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade',
+      `no picture on the hall, LIVE or the stream’s page is frozen in a jump at any moment of a fade${note}`,
     ).toEqual([]);
     // S7: the stream's own two sounds cross by the engine's fade, as the hall's audio player's do in the crossfade case
     // (back since applyLevels reads the engine's time once for all its sounds: a22-fade-1124-103850-84601's one sample
@@ -1162,7 +1177,7 @@ test('S5 drawing and sound cost: actual 1080p cues and two-decoder crossfades wh
         expect(incoming, 'the incoming gain only rises').toBeGreaterThanOrEqual(previous - 0.001);
         expect(
           Math.abs(incoming - Math.max(0, Math.min(1, (frame.t - fade.at) / fade.durationMs))),
-          'the incoming gain follows the engine’s fade (the sound page writes it every 50 ms)',
+          `the incoming gain follows the engine’s fade (the sound page writes it every 50 ms)${note}`,
         ).toBeLessThanOrEqual(0.04);
         previous = incoming;
       }
