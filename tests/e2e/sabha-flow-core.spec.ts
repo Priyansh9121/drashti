@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SabhaFlowSnapshot } from '../../src/shared/sabha-flow';
@@ -81,6 +81,7 @@ test('Sabha flow: a PDF chosen is read by the pictures window, drawn at its shap
     id,
     fileName: 'Placeholder order.pdf',
     pageCount: 1,
+    drawnPages: 1,
     status: 'read',
     lang: 'gu',
     title: 'નમૂનો કાર્યક્રમ',
@@ -151,4 +152,5 @@ test('Sabha flow: a PDF chosen is read by the pictures window, drawn at its shap
   await operatorReady(last);
   expect(await flowOf(last)).toEqual({ flow: null, state: null });
   await third.app.close();
+  rmSync(dir, { recursive: true, force: true });
 });

@@ -1,5 +1,5 @@
 import type { PagePart } from './page-part';
-import type { FlowTextPage } from './sabha-flow-text';
+import type { SabhaFlowReading } from './sabha-flow';
 import { cutText } from './text';
 
 /*
@@ -56,8 +56,9 @@ export interface PictureJob {
    */
   onWhite?: boolean;
   /**
-   * Sabha flow (alpha.23): with `part` the whole page, each page also hands back its text layer and its borders, as
-   * the flow's reader needs them (shared/sabha-flow-text.ts).
+   * Sabha flow (alpha.23): with `part` the whole page; the window also reads each page's text layer and borders, and
+   * reads the flow from them once the pages are drawn (renderer/src/pictures/flow-reading.ts), handing the reading
+   * over with `done`. Main never reads a PDF's words itself.
    */
   flowText?: boolean;
 }
@@ -78,8 +79,6 @@ export interface PicturePage {
   /** The page's comments (sticky notes), as a PDF's speaker notes: '' when it has none. */
   notes: string;
   pageText?: string;
-  /** Sabha flow: the page's text layer and borders (a flow job only). */
-  flowPage?: FlowTextPage;
 }
 
 /** How the drawing ended. */
@@ -90,6 +89,8 @@ export interface PicturesDone {
   failed: number[];
   /** Why nothing could be drawn (a password, a damaged file), when that is so. */
   error?: string;
+  /** Sabha flow: what the window's reader made of the pages' text (a flow job only; Main checks it). */
+  flowReading?: SabhaFlowReading;
 }
 
 /** Where pdf.js's own data comes from (fonts PDFs name without embedding them, and its decoders). */
@@ -98,7 +99,7 @@ export type PictureAssetKind = 'standardFontDataUrl' | 'wasmUrl' | 'cMapUrl';
 /** A file pdf.js may ask for: a plain name, nothing that could reach another folder. */
 export const PICTURE_ASSET_NAME = /^[A-Za-z0-9_.-]{1,80}$/u;
 
-export interface DrawnPicturePage extends Pick<PicturePage, 'index' | 'notes' | 'pageText' | 'flowPage'> {
+export interface DrawnPicturePage extends Pick<PicturePage, 'index' | 'notes' | 'pageText'> {
   file: string;
 }
 
@@ -113,6 +114,8 @@ export type PicturesResult =
       /** Pages in the document (more than were drawn when it is over the limit). */
       total: number;
       failed: number[];
+      /** Sabha flow: the window's reading of the pages' text, as checked (left out when none passed the check). */
+      flowReading?: SabhaFlowReading;
     }
   | { ok: false; message: string };
 
