@@ -246,6 +246,8 @@ export class StreamPipeline {
   private encoder: EncoderChoice | null = null;
   private encoderName: string | null = null;
   private encodeProcess: ChildProcessWithoutNullStreams | null = null;
+  /** A crossfade is on in the show (QA23-FADE-9, item 3): the encoder at normal priority. */
+  private crossfade = false;
   private writer: MkvWriter | null = null;
   private header: Buffer | null = null;
   private format: { width: number; height: number; format: 'I420' | 'NV12' | 'BGRA' | 'RGBA' } | null = null;
@@ -1075,14 +1077,21 @@ export class StreamPipeline {
   }
 
   /** Stop everything (the worker then exits). */
-  /** A crossfade is on (QA23-FADE-9, item 3): the encoder's priority while it lasts. */
-  setCrossfade(_on: boolean): void {
-    // Not yet: the encoder stays below normal.
+  /**
+   * A crossfade is on (QA23-FADE-9, item 3: the owner's "Try fixes, keep held (Rec.)"; a22-fade-picture's C): the
+   * encoder runs at normal priority until it ends, then below normal again. Below normal, on CI's two-core Windows its
+   * input backed up while three pages decoded two 1080p videos each, and it dropped 212-349 frames a crossfade round:
+   * the stream showed no blend. Only the encoder: the connections stay below normal.
+   */
+  setCrossfade(on: boolean): void {
+    if (this.crossfade === on) return;
+    this.crossfade = on;
+    priorityOf(this.encodeProcess?.pid, this.encoderPriority());
   }
 
-  /** The encoder's priority now (os.setPriority's number): below normal, 10. */
+  /** The encoder's priority now (os.setPriority's number): normal (0) through a crossfade, else below normal (10). */
   private encoderPriority(): number {
-    return 10;
+    return this.crossfade ? 0 : 10;
   }
 
   stop(): void {

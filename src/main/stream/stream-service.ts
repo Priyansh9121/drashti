@@ -175,6 +175,8 @@ export class StreamService {
   private soundReady = false;
   private readonly soundRestarts = new RestartCap();
   private soundStopped = false;
+  /** A crossfade is on in the show (QA23-FADE-9, item 3): told to the worker. */
+  private crossfade = false;
   /** No picture from the stream's page while wanted: it is given its port again (./picture-watch.ts). */
   private readonly pictureWatch = new PictureWatch();
   private readonly watchers = new Map<number, WebContents>();
@@ -993,6 +995,7 @@ export class StreamService {
       caFile,
       ...(this.deps.encoderSearchMs ? { searchAtLeastMs: this.deps.encoderSearchMs } : {}),
     });
+    if (this.crossfade) worker.send({ type: 'crossfade', on: true });
     this.updateProgram();
     this.pairEncoder();
     return worker;
@@ -1567,9 +1570,15 @@ export class StreamService {
   }
 
   /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */
-  /** A crossfade is on in the show (QA23-FADE-9, item 3): the worker's encoder is told. */
-  setCrossfade(_on: boolean): void {
-    // Not yet.
+  /**
+   * A crossfade is on in the show (QA23-FADE-9, item 3: the owner's "Try fixes, keep held (Rec.)"): the worker's
+   * encoder runs at normal priority until it ends (./worker/pipeline.ts setCrossfade). Each change once; a worker
+   * started during one is told at its start.
+   */
+  setCrossfade(on: boolean): void {
+    if (this.crossfade === on) return;
+    this.crossfade = on;
+    this.worker?.send({ type: 'crossfade', on });
   }
 
   close(): void {

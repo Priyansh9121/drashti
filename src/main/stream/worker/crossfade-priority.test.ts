@@ -11,7 +11,7 @@ import { StreamPipeline } from './pipeline';
  */
 
 vi.mock('node:os', async (original) => ({
-  ...(await original<typeof import('node:os')>()),
+  ...(await original<Record<string, unknown>>()),
   setPriority: vi.fn(),
 }));
 

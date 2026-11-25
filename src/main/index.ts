@@ -481,7 +481,7 @@ import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
-import type { FrameGrid } from '../shared/video-cue';
+import { type FrameGrid, videoFadeProgress } from '../shared/video-cue';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
@@ -4114,6 +4114,12 @@ function start(): void {
   const streaming = stream;
   stops.add('stream', () => {
     streaming.close();
+  });
+  // QA23-FADE-9 item 3 (the owner: "Try fixes, keep held (Rec.)"): the stream's encoder at normal priority while a real
+  // crossfade is on (a length, from its state to its end, held while paused), below normal again after it.
+  engine.onChange((state) => {
+    const fade = state.videoCrossfade;
+    streaming.setCrossfade(!!fade && fade.durationMs > 0 && videoFadeProgress(fade, Date.now()) < 1);
   });
   // ---- scheduling on YouTube (x31) ---------------------------------------------------------------
   // The admin's own Google project signs in, in this computer's own browser; a broadcast's key goes from Google straight
