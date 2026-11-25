@@ -36,7 +36,11 @@ export interface ChatDeviceLike {
   poster: boolean;
 }
 
-export type ChatRefusal = { ok: false; status: number; message: string };
+export interface ChatRefusal {
+  ok: false;
+  status: number;
+  message: string;
+}
 
 export interface ChatServiceDeps {
   store: ChatStore;
