@@ -290,7 +290,7 @@ test('the limits, refused by Drashti in plain words: 500 characters as a phone�
     const tooMany = await sayAs(port, token, lines.join('\n'));
     expect(tooMany.status).toBe(400);
     expect(tooMany.json['message']).toBe(CHAT_REFUSAL.tooManyLines);
-    const nothing = await sayAs(port, token, ' \n​\t ');
+    const nothing = await sayAs(port, token, ' \n\u200B\t ');
     expect(nothing.status).toBe(400);
     expect(nothing.json['message']).toBe(CHAT_REFUSAL.empty);
     expect((await chatView(win)).messages).toHaveLength(1);
@@ -429,7 +429,8 @@ test('a person removed by the operator is cut off at once (their phone neither r
 
 /** A name and words that would run, or be drawn as markup, if a page ever took them as HTML. */
 const MARKUP_NAME = '<img src=x onerror="window.__chatRan=1">';
-const MARKUP_WORDS = '<script>window.__chatRan=2</script><b>Placeholder</b> & <i>words</i> 👨‍👩‍👧‍👦 🇮🇳';
+const MARKUP_WORDS =
+  '<script>window.__chatRan=2</script><b>Placeholder</b> & <i>words</i> \u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466} 🇮🇳';
 const OPERATOR_MARKUP = '<img src=x onerror="window.__chatRan=3">Placeholder from the operator';
 
 test('every name and word is shown as text: a name and messages of HTML and script on the phones, the banner and the operator window, nothing in them run or drawn, and no direction mark turning the words around', async () => {
@@ -478,7 +479,7 @@ test('every name and word is shown as text: a name and messages of HTML and scri
     await expect(reader.page.getByTestId('chat-list').locator('img, script, b, i')).toHaveCount(0);
 
     // Direction marks are left out: no message turns the words after it around.
-    await sendFrom(writer.page, 'Placeholder ‮drow‬ turned');
+    await sendFrom(writer.page, 'Placeholder \u202Edrow\u202C turned');
     await expect(bubble(reader.page, 'turned').getByTestId('chat-text')).toHaveText(
       'Placeholder drow turned',
     );
