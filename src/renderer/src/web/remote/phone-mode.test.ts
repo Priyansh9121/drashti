@@ -3,7 +3,7 @@ import { type EngineState, initialEngineState } from '../../../../shared/engine/
 import type { PresentationDoc } from '../../../../shared/library';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
-import { deckLiveIn, phoneControls } from './phone-mode';
+import { deckLiveIn, focusesShow, phoneControls } from './phone-mode';
 
 /*
  * What a paired phone shows and may do, by the computer's mode (alpha.23, QA23-PHONE-1; the owner's words: "no video
@@ -137,5 +137,17 @@ describe('a PowerPoint or a PDF live, as a phone tells it', () => {
     expect(deckLiveIn(null, PDF, null)).toBe(false);
     // Another row of a PowerPoint marked: not the live one.
     expect(deckLiveIn(live('kirtan', 'i-kirtan'), null, [row('i-deck', 'deck', true)])).toBe(false);
+  });
+});
+
+describe('the focus when Simple Mode comes on (a23-review-phoneui LOW-3)', () => {
+  it('goes to Show only when Simple Mode comes on over Pro Mode’s controls, never as a page opens in Simple Mode', () => {
+    // Before: Simple Mode as the page last knew it (null: no hall heard yet on this page); now: as the hall says.
+    expect(focusesShow(false, true)).toBe(true);
+    expect(focusesShow(null, true)).toBe(false);
+    expect(focusesShow(true, true)).toBe(false);
+    expect(focusesShow(false, false)).toBe(false);
+    expect(focusesShow(true, false)).toBe(false);
+    expect(focusesShow(null, false)).toBe(false);
   });
 });

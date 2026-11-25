@@ -47,6 +47,25 @@ const reply = (at: number, mode: RemoteSimple | null, groupId?: string) => {
   resolve(answer(mode, groupId));
 };
 
+/** A row of a PDF, as Drashti marks it for a phone. */
+const DECK_ROW: PlaylistItemInfo = {
+  id: 'i-deck',
+  kind: 'presentation',
+  label: 'Placeholder deck',
+  presentationId: 'deck',
+  presentationName: 'Placeholder deck',
+  order: { mode: 'presentation' },
+  arrangementName: null,
+  timers: [],
+  phonePlays: true,
+};
+
+/** What the page has asked for so far, by path. */
+const askedPaths = () => fetcher.mock.calls.map(([url]) => (typeof url === 'string' ? url : 'not a path'));
+
+/** A moment for what an answer sets going (its microtasks and a timer turn). */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
+
 /** The hall answered once, in Pro Mode: what a phone waits for before it reads a playlist (a23-review-phoneui MUST-1). */
 async function proHall(): Promise<void> {
   changed('mode');
@@ -306,6 +325,52 @@ describe('the phone’s open playlist', () => {
     expect(kept()).toBe(1);
     reply(1, null);
     await vi.waitFor(() => expect(kept()).toBe(0));
+  });
+
+  it('a hall read that fails on a new connection forgets nothing and reads nothing (a23-review-phoneui LOW-1)', async () => {
+    const tools = await import('./phone-tools-store');
+    tools.usePhoneTools.setState({ docs: new Map([['deck', null]]) });
+    online();
+    replies[0]?.(
+      new Response(JSON.stringify({ ok: false, message: 'Placeholder: not now' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await settle();
+    expect(tools.usePhoneTools.getState().docs.size).toBe(1);
+    expect(askedPaths()).toEqual(['/api/v1/hall']);
+  });
+
+  it('reads the Playlist rows’ decks only while this connection’s hall says Pro Mode (a23-review-phoneui LOW-1)', async () => {
+    const tools = await import('./phone-tools-store');
+    const deckReads = () => askedPaths().filter((url) => url === '/api/v1/presentations/deck');
+    online();
+    tools.readDocsFor([DECK_ROW]);
+    expect(deckReads()).toEqual([]);
+    reply(0, simple);
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple).toEqual(simple));
+    tools.readDocsFor([DECK_ROW]);
+    expect(deckReads()).toEqual([]);
+    online();
+    reply(1, null);
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall?.simple).toBeNull());
+    await settle();
+    tools.readDocsFor([DECK_ROW]);
+    expect(deckReads()).toEqual(['/api/v1/presentations/deck']);
+  });
+
+  it('a deck read still on its way when the decks are forgotten never puts its old answer back (a23-review-phoneui LOW-5)', async () => {
+    const tools = await import('./phone-tools-store');
+    await proHall();
+    tools.readDocsFor([DECK_ROW]);
+    expect(askedPaths().at(-1)).toBe('/api/v1/presentations/deck');
+    const onItsWay = replies.at(-1);
+    if (!onItsWay) throw new Error('no deck read on its way');
+    tools.forgetDocs();
+    onItsWay(json({ ok: true, presentation: { id: 'deck', name: 'Placeholder deck as it was' } }));
+    await settle();
+    expect(tools.usePhoneTools.getState().docs.has('deck')).toBe(false);
   });
 
   it('clears the previous playlist’s rows while reading the next one', async () => {

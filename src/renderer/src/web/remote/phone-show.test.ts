@@ -262,9 +262,9 @@ describe('a phone’s Show tab in Pro Mode (QA23-PHONE-1)', () => {
     expect(html).toContain('A timer is on the screens: the computer takes it off.');
   });
 
-  it('a PDF up from the computer but not from this playlist’s row: its page marked live, no tile tapped, and no “Not on the screens” (a23-review-phoneui MUST-2b, 2c)', () => {
+  it('a PDF up but not from this playlist’s row: its page marked live, no tile tapped, and no “Not on the screens” (a23-review-phoneui MUST-2b, 2c; LOW-2: whoever put it up)', () => {
     const shown = slidesOf('deck');
-    // b: from the library, in no playlist; c: from another playlist than the one this phone has open.
+    // b: from the library, in no playlist; c: from another playlist (the computer's, or another phone's own).
     for (const playlist of [null, { playlistId: 'other', itemId: 'i-elsewhere' }]) {
       const live = shown.live ? { ...shown.live, playlist } : null;
       const html = renderToStaticMarkup(
@@ -280,10 +280,30 @@ describe('a phone’s Show tab in Pro Mode (QA23-PHONE-1)', () => {
         { tappable: false, live: true },
       ]);
       expect(html, JSON.stringify(playlist)).not.toContain('Not on the screens');
-      expect(html).toContain(
-        'Put up on the computer, not from this phone’s playlist: Back and Next go through it here.',
-      );
+      // Never "put up on the computer": another phone may have put it up from its own playlist.
+      expect(html).not.toContain('on the computer');
+      expect(html).toContain('Not from this phone’s playlist: Back and Next go through it here.');
     }
+  });
+
+  it('a PDF shown from no row of this playlist that is no longer up: no Back and Next promised (a23-review-phoneui LOW-2)', () => {
+    const shown = slidesOf('deck');
+    // Something else up since (a video, the operator's), the PDF still shown here.
+    const live = shown.live ? { ...shown.live, presentationId: null, playlist: null } : null;
+    const html = renderToStaticMarkup(
+      createElement(SlidesView, {
+        ...shown,
+        viewing: { presentationId: 'deck', item: null },
+        live,
+        shownIndex: null,
+      }),
+    );
+    expect(tiles(html)).toEqual([
+      { tappable: false, live: false },
+      { tappable: false, live: false },
+    ]);
+    expect(html).toContain('Not on the screens now.');
+    expect(html).not.toContain('Back and Next');
   });
 
   it('shows a PowerPoint’s or a PDF’s slides to put up, and never a kirtan’s', () => {
