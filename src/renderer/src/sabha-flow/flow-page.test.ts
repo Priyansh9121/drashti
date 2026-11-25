@@ -9,10 +9,11 @@ import { FlowPage } from './FlowPage';
  * once, never a row for every page of a long PDF, and one plain line saying so. Placeholder flows only.
  */
 
-const flow = (pageCount: number): SabhaFlow => ({
+const flow = (pageCount: number, drawnPages = Math.min(pageCount, 20)): SabhaFlow => ({
   id: 'flow-0001-test',
   fileName: 'placeholder-scan.pdf',
   pageCount,
+  drawnPages,
   status: 'no-text',
   lang: 'en',
   headers: [],
@@ -34,5 +35,11 @@ describe('the PDF page view', () => {
     const html = draw(flow(3));
     expect(slots(html)).toBe(3);
     expect(html).not.toContain('Only the first');
+  });
+
+  it('holds only the pages Main says it drew (drawnPages), however many the PDF has', () => {
+    const html = draw(flow(30, 4));
+    expect(slots(html)).toBe(4);
+    expect(html).toContain('Only the first 4 pages are shown.');
   });
 });

@@ -22,6 +22,7 @@ const flow = (over: Partial<SabhaFlow> = {}): SabhaFlow => ({
   id: 'flow-0001-test',
   fileName: 'placeholder-flow.pdf',
   pageCount: 1,
+  drawnPages: 1,
   status: 'read',
   lang: 'en',
   title: 'Placeholder evening',
@@ -147,11 +148,22 @@ describe('the language of a cell', () => {
 
 describe('the pages shown (a22-review-flow round 2, M2: the panel and the phone the same)', () => {
   it('are the pages Main drew: at most the first 20, said when there are more', () => {
-    expect(pagesShown(flow({ pageCount: 600 }))).toBe(20);
-    expect(pagesShown(flow({ pageCount: 20 }))).toBe(20);
-    expect(pagesShown(flow({ pageCount: 3 }))).toBe(3);
-    expect(pagesShown(flow({ pageCount: 0 }))).toBe(0);
-    expect(pagesCapped(flow({ pageCount: 600 }))).toBe('Only the first 20 pages are shown.');
-    expect(pagesCapped(flow({ pageCount: 20 }))).toBeNull();
+    expect(pagesShown(flow({ pageCount: 600, drawnPages: 20 }))).toBe(20);
+    expect(pagesShown(flow({ pageCount: 20, drawnPages: 20 }))).toBe(20);
+    expect(pagesShown(flow({ pageCount: 3, drawnPages: 3 }))).toBe(3);
+    expect(pagesShown(flow({ pageCount: 0, drawnPages: 0 }))).toBe(0);
+    expect(pagesCapped(flow({ pageCount: 600, drawnPages: 20 }))).toBe('Only the first 20 pages are shown.');
+    expect(pagesCapped(flow({ pageCount: 20, drawnPages: 20 }))).toBeNull();
+  });
+
+  it('are the pages Main says it drew (drawnPages, core 1495be3b0), never more than the PDF has or 20', () => {
+    expect(pagesShown(flow({ pageCount: 30, drawnPages: 4 }))).toBe(4);
+    expect(pagesCapped(flow({ pageCount: 30, drawnPages: 4 }))).toBe('Only the first 4 pages are shown.');
+    expect(pagesCapped(flow({ pageCount: 9, drawnPages: 1 }))).toBe('Only the first page is shown.');
+    expect(pagesCapped(flow({ pageCount: 2, drawnPages: 0 }))).toBe(
+      'Drashti couldn’t draw this PDF’s pages.',
+    );
+    expect(pagesShown(flow({ pageCount: 2, drawnPages: 5 }))).toBe(2);
+    expect(pagesShown(flow({ pageCount: 600, drawnPages: 50 }))).toBe(20);
   });
 });

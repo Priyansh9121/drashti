@@ -10,6 +10,7 @@ const shown: SabhaFlow = {
   id: 'flow-0001-test',
   fileName: 'placeholder-flow.pdf',
   pageCount: 1,
+  drawnPages: 1,
   status: 'read',
   lang: 'en',
   headers: ['No.', 'Program'],
