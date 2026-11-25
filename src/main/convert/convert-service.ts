@@ -268,11 +268,15 @@ export interface CopyOptions {
   finish?(temporary: string): void;
   /** Refuse preparation when below-normal priority cannot be verified. */
   strictPriority?: boolean;
-  /** RED STUB (a22-review-fadecopies S9): no effect yet. */
+  /**
+   * Stopped at once (SIGKILL) when it is stopped, leaving FFmpeg no time to finish its file: for a background copy
+   * that starts again from the beginning anyway (a page copy: on a Mac, a plain stop lets FFmpeg write an MP4's index
+   * and move it to the front, rewriting the whole part-file just as a show starts; a22-review-fadecopies S9).
+   */
   stopAtOnce?: boolean;
   /** Bounded artifacts reserve their actual upper bound, rather than a whole source-sized video. */
   estimatedBytes?: number;
-  kind?: 'analysis' | 'proxy' | 'clip';
+  kind?: 'analysis' | 'proxy' | 'clip' | 'page-copy';
   progress?(fraction: number | null): void;
   waiting?(note: string | null): void;
 }
@@ -739,7 +743,8 @@ export class ConvertService {
       running.stop = 'wait';
       if ('preparing' in running) running.preparing?.abort();
       if ('preparation' in running) running.preparation?.abort();
-      if ('copy' in running.job && running.job.copy?.strictPriority) running.child?.kill('SIGKILL');
+      if ('copy' in running.job && (running.job.copy?.strictPriority || running.job.copy?.stopAtOnce))
+        running.child?.kill('SIGKILL');
       else running.child?.kill();
     }
     return running.stop;
@@ -1089,7 +1094,7 @@ export class ConvertService {
     if (info.video.height <= options.maxHeight) return { ok: true, copy: null };
     const dest = join(outDir, basename(source, extname(source)) + '.mp4');
     return new Promise((resolve) => {
-      this.files.push({
+      const job: FileJob = {
         id: randomUUID(),
         waitForShow: true,
         source,
@@ -1099,7 +1104,9 @@ export class ConvertService {
         copy: null,
         note: null,
         resolve,
-      });
+      };
+      this.files.push(job);
+      this.giveWayTo(job);
       this.watch();
     });
   }
@@ -1126,7 +1133,7 @@ export class ConvertService {
       },
     };
     const done = new Promise<FitResult>((resolve) => {
-      this.files.push({
+      const job: FileJob = {
         id,
         waitForShow: copy.waitForPlaying === true ? 'playing' : copy.waitForShow === true,
         source,
@@ -1136,10 +1143,28 @@ export class ConvertService {
         copy,
         note: null,
         resolve,
-      });
+      };
+      this.files.push(job);
+      this.giveWayTo(job);
       this.watch();
     });
     return { id, done };
+  }
+
+  /**
+   * A file the operator asked for (a Trim save, Combine videos…) or an import's: a page copy running gives way to it at
+   * once, and starts again from the beginning after it (a22-review-fadecopies S10: on a two-core computer a page copy
+   * can take many minutes). Nothing gives way to a job that has to wait anyway, and other background work (a lighter
+   * playing copy, an analysis) goes on as before.
+   */
+  private giveWayTo(job: FileJob): void {
+    const running = this.runningFile;
+    if (!running || running.stop || job.copy?.background || running.job.copy?.kind !== 'page-copy') return;
+    if (this.waitFor(job.waitForShow) !== null) return;
+    running.stop = 'wait';
+    running.preparation?.abort();
+    if (running.job.copy.strictPriority || running.job.copy.stopAtOnce) running.child?.kill('SIGKILL');
+    else running.child?.kill();
   }
 
   /** Stop a part being saved (or waiting to be): nothing is left of it. False when there is none such. */
@@ -1289,7 +1314,9 @@ export class ConvertService {
         ? 'analyzed'
         : job.copy?.kind === 'proxy'
           ? 'made into a lighter playing copy'
-          : saving
+          : job.copy?.kind === 'page-copy'
+            ? 'made into a smaller copy for the stream or LIVE'
+            : saving
             ? 'saved as an MP4'
             : `made ${height}p`;
     const done = (result: FitResult) => {

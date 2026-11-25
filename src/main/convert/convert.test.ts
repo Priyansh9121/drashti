@@ -596,7 +596,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
       video: { codec: 'h264', pixFmt: 'yuv420p', width: 320, height: 180, still: false },
       audio: null,
     };
-    // A page copy's way: read at its own speed (-re: 6 s), an MP4 whose index is moved to its front as it finishes.
+    // A page copy: read at its own speed (-re: 6 s), an MP4 whose index is moved to its front as it finishes.
     const slowCopy = {
       args: (tmp: string) => [
         '-nostdin',
@@ -620,6 +620,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
       waitForShow: true,
       background: true,
       stopAtOnce: true,
+      kind: 'page-copy' as const,
     };
     // S9: a show starts while it runs: stopped at once, its part-file never finished (on a Mac, a plain stop lets
     // FFmpeg write its index and move it to the front, rewriting the whole part-file just as the show starts).
