@@ -61,6 +61,8 @@ import {
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+/** Drashti looks at the chat's day once a minute even when no one asks (index.ts), on this computer's own time. */
+const MINUTE_CHECK_MS = 75_000;
 
 const roleOf = (p: Page) => p.getByTestId('output-root').getAttribute('data-role');
 const openRoles = async (app: ElectronApplication) =>
@@ -354,9 +356,10 @@ test('the day’s change: at midnight every phone’s chat empties at once, a ch
     for (const p of [dayPhone.page, remote.page]) await expect(p.getByTestId('chat-message')).toHaveCount(3);
     expect((await chatView(win)).day).toBe(chatDay(late));
 
-    // Midnight passes: every chat empties at once, and the chat-only phone, paired for its day only, is cut off.
+    // Midnight passes with no one asking: within the minute's check, every chat empties at once, and the chat-only
+    // phone, paired for its day only, is cut off.
     await moveChatClock(first.app, midnight);
-    await expect(remote.page.getByTestId('chat-empty')).toBeVisible();
+    await expect(remote.page.getByTestId('chat-empty')).toBeVisible({ timeout: MINUTE_CHECK_MS });
     await expect(remote.page.getByTestId('chat-message')).toHaveCount(0);
     await expect(section.getByTestId('chat-empty')).toBeVisible();
     const today = await chatView(win);
