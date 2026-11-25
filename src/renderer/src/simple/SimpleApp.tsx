@@ -242,6 +242,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   // The Sabha flow (alpha.23), when chosen in Pro Mode's Simple Mode Features…: at the top of the left column.
   const flowChosen = useSimpleFeatures((s) => s.chosen.includes('sabha-flow'));
   const flowOpen = useFlowPanel((s) => s.open);
+  const flowNeed = useFlowPanel((s) => s.need);
   const items = usePlaylists((s) => s.items);
   const openId = usePlaylists((s) => s.openId);
   const treeUnread = usePlaylists((s) => s.unread.playlists);
@@ -355,6 +356,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
               ) : null
             }
             flowOpen={flowOpen}
+            // As in Pro Mode: room for Now and Next up whole when the column has it (operator/flow-area.ts).
+            flowNeed={flowNeed}
             top={<PlaylistPanel platform={platform} simple />}
             bottom={byFolder ? <PlaylistFolders /> : null}
             wallpapers={<WallpapersPanel />}

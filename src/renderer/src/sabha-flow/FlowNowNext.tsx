@@ -1,3 +1,4 @@
+import { useLayoutEffect, useState } from 'react';
 import type { SabhaFlow, SabhaFlowLang } from '../../../shared/sabha-flow';
 import type { FlowLine } from '../../../shared/sabha-flow-lines';
 import {
@@ -56,7 +57,7 @@ export function FlowLineWords({ line, lang }: { line: FlowLine; lang?: SabhaFlow
 const LOOK = {
   panel: {
     id: 'flow',
-    box: 'flex flex-col gap-2 border-b border-line px-3 py-2',
+    box: 'relative flex flex-col gap-2 border-b border-line px-3 py-2',
     lines: 'min-w-0',
     now: 'text-xs break-words text-muted',
     next: 'mt-0.5 flex items-start gap-1.5 text-base font-bold break-words text-fg',
@@ -90,11 +91,146 @@ export interface FlowNowNextProps {
   live?: boolean;
 }
 
+type Look = (typeof LOOK)[keyof typeof LOOK];
+
+/** Now's line: its number and program, or not started. `testId` on the line shown; `measure` on an unseen copy. */
+function NowLine({
+  flow,
+  nn,
+  look,
+  testId,
+  measure,
+}: {
+  flow: SabhaFlow;
+  nn: ReturnType<typeof nowNext>;
+  look: Look;
+  testId?: string;
+  measure?: 'now';
+}) {
+  return (
+    <p data-testid={testId} data-measure={measure} className={look.now}>
+      {NOW_LABEL}: {nn.now ? <FlowLineWords line={nn.now} lang={flow.lang} /> : NOT_STARTED}
+    </p>
+  );
+}
+
+/** Next up's line: the whole of the item after Now (a video's row marked), or Last item. */
+function NextLine({
+  flow,
+  nn,
+  look,
+  testId,
+  measure,
+}: {
+  flow: SabhaFlow;
+  nn: ReturnType<typeof nowNext>;
+  look: Look;
+  testId?: string;
+  measure?: 'next';
+}) {
+  return (
+    <p
+      data-testid={testId}
+      data-measure={measure}
+      // Marked on the line shown only (an unseen copy is no video row).
+      data-video={testId !== undefined && nn.next?.video === true ? 'true' : undefined}
+      className={look.next}
+    >
+      {nn.next?.video === true && (
+        <Film size={look.film} aria-hidden="true" className={`${look.filmAt} shrink-0`} />
+      )}
+      <span className="min-w-0 flex-1">
+        {nn.last ? (
+          LAST_ITEM
+        ) : (
+          <>
+            {NEXT_LABEL}: {nn.next ? <FlowLineWords line={nn.next} lang={flow.lang} /> : NOTHING_NEXT}
+          </>
+        )}
+      </span>
+    </p>
+  );
+}
+
+/**
+ * Now's and Next up's lines, said to a screen reader as they change (`live`). `steady` (the panel): the lines keep the
+ * height of the flow's tallest Now and Next up of all its items, measured once per flow and on every change of their
+ * width from unseen copies (review S16): Next and Back never move the read list, the splitter or the playlists under
+ * the operator's pointer mid-sabha. A phone's sheet scrolls as a whole.
+ */
+function NowNextLines({
+  flow,
+  nn,
+  look,
+  live,
+  steady,
+}: {
+  flow: SabhaFlow;
+  nn: ReturnType<typeof nowNext>;
+  look: Look;
+  live: boolean;
+  steady: boolean;
+}) {
+  const [measure, setMeasure] = useState<HTMLDivElement | null>(null);
+  const [reserve, setReserve] = useState(0);
+  useLayoutEffect(() => {
+    if (!measure) return;
+    const observer = new ResizeObserver(() => {
+      let now = 0;
+      let next = 0;
+      for (const el of measure.querySelectorAll<HTMLElement>('[data-measure="now"]'))
+        now = Math.max(now, el.getBoundingClientRect().height);
+      for (const el of measure.querySelectorAll<HTMLElement>('[data-measure="next"]'))
+        next = Math.max(
+          next,
+          el.getBoundingClientRect().height + parseFloat(getComputedStyle(el).marginTop || '0'),
+        );
+      setReserve(Math.ceil(now + next));
+    });
+    observer.observe(measure);
+    return () => {
+      observer.disconnect();
+    };
+  }, [measure, flow]);
+  return (
+    <>
+      <div
+        aria-live={live ? 'polite' : undefined}
+        aria-atomic={live ? 'true' : undefined}
+        className={look.lines}
+        style={steady && reserve > 0 ? { minHeight: reserve } : undefined}
+      >
+        <NowLine flow={flow} nn={nn} look={look} testId={`${look.id}-now`} />
+        <NextLine flow={flow} nn={nn} look={look} testId={`${look.id}-next`} />
+      </div>
+      {steady && (
+        // Every item's Now and Next up, unseen, at the lines' own width: what the lines must have room for.
+        <div
+          ref={setMeasure}
+          aria-hidden="true"
+          className="pointer-events-none invisible absolute inset-x-3 top-0 h-0 overflow-hidden"
+        >
+          {[null, ...flow.items.map((_, i) => i)].map((k) => {
+            const each = nowNext(flow, k);
+            return (
+              <div key={k ?? 'none'} className={look.lines}>
+                <NowLine flow={flow} nn={each} look={look} measure="now" />
+                <NextLine flow={flow} nn={each} look={look} measure="next" />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: FlowNowNextProps) {
   const look = LOOK[size];
   const nn = nowNext(flow, now);
   const canBack = nn.now !== null;
   const canNext = nn.next !== null;
+
   return (
     <div className={look.box} data-testid={`${look.id}-now-next`}>
       {onBack && onNext && (
@@ -123,33 +259,7 @@ export function FlowNowNext({ flow, now, size, onBack, onNext, live = true }: Fl
           </Button>
         </div>
       )}
-      <div
-        aria-live={live ? 'polite' : undefined}
-        aria-atomic={live ? 'true' : undefined}
-        className={look.lines}
-      >
-        <p data-testid={`${look.id}-now`} className={look.now}>
-          {NOW_LABEL}: {nn.now ? <FlowLineWords line={nn.now} lang={flow.lang} /> : NOT_STARTED}
-        </p>
-        <p
-          data-testid={`${look.id}-next`}
-          data-video={nn.next?.video === true ? 'true' : undefined}
-          className={look.next}
-        >
-          {nn.next?.video === true && (
-            <Film size={look.film} aria-hidden="true" className={`${look.filmAt} shrink-0`} />
-          )}
-          <span className="min-w-0 flex-1">
-            {nn.last ? (
-              LAST_ITEM
-            ) : (
-              <>
-                {NEXT_LABEL}: {nn.next ? <FlowLineWords line={nn.next} lang={flow.lang} /> : NOTHING_NEXT}
-              </>
-            )}
-          </span>
-        </p>
-      </div>
+      <NowNextLines flow={flow} nn={nn} look={look} live={live} steady={size === 'panel'} />
     </div>
   );
 }
