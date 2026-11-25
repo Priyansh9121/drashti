@@ -768,7 +768,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           ref={droppedBox}
           className={
             ribbonFolded
-              ? 'absolute inset-x-0 top-0 flex flex-col overflow-y-auto border-b border-line bg-panel-2 shadow-overlay'
+              ? 'absolute inset-x-0 top-0 overflow-y-auto border-b border-line bg-panel-2 shadow-overlay'
               : 'contents'
           }
         >
@@ -781,18 +781,35 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 : 'flex shrink-0 items-center overflow-x-auto border-b border-line bg-panel-2 px-3 py-1'
             }
           >
-            {fold.ribbon && !ribbonFolded && (
+            {/* First in its row, in view however far the row scrolls sideways: Show the ribbon where it is dropped,
+                Fold the ribbon where it is kept open in a short window. */}
+            {ribbonFolded ? (
               <Button
                 size="sm"
                 variant="ghost"
-                icon={PinOff}
+                icon={Pin}
                 className="mr-2 shrink-0"
                 onClick={() => {
-                  keepRibbon(false);
+                  keepRibbon(true);
+                  setRibbonDropped(false);
                 }}
               >
-                Fold the ribbon
+                Show the ribbon
               </Button>
+            ) : (
+              fold.ribbon && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={PinOff}
+                  className="mr-2 shrink-0"
+                  onClick={() => {
+                    keepRibbon(false);
+                  }}
+                >
+                  Fold the ribbon
+                </Button>
+              )
             )}
             <div data-testid="editor-ribbon" data-group={shownGroup} className="flex min-w-0 items-start">
               {shownGroup === 'words' && (
@@ -885,21 +902,6 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               )}
             </div>
           </TabPanel>
-          {ribbonFolded && (
-            <div className="flex shrink-0 justify-end px-3 pb-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={Pin}
-                onClick={() => {
-                  keepRibbon(true);
-                  setRibbonDropped(false);
-                }}
-              >
-                Show the ribbon
-              </Button>
-            </div>
-          )}
         </div>
       </div>
       {doc?.master?.id === slideId && (
