@@ -640,3 +640,76 @@ it('a list of what is left longer than its cap is not dropped whole', async () =
   });
   expect(existsSync(real.file)).toBe(false);
 }, 20_000);
+
+/*
+ * Parts of one video joined into one clip (alpha.24; the owner, 27 Nov 2026: "one video can be cut in 2 parts and
+ * merged, for example a 30 minute video, i want from 0 to 10 and 20 to 30 but in 1 video").
+ */
+const joined: ClipExportRequest = {
+  ...request,
+  startMs: 200,
+  endMs: 1600,
+  parts: [
+    { startMs: 200, endMs: 600 },
+    { startMs: 1200, endMs: 1600 },
+  ],
+};
+it('joins two parts of one video into one new clip, each part’s first frame its own, kept across a restart', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  fixture.activity.stream = true;
+  const dest = join(fixture.dir, 'joined.mp4');
+  const deps = service(dest);
+  expect(await clips.start(joined)).toMatchObject({ ok: true, job: { state: 'waiting' } });
+  expect(deps.kept.load(), 'the parts are kept with the request').toMatchObject([{ request: joined }]);
+  clips.close();
+  clips = new ClipExports(deps);
+  clips.resume();
+  expect(clips.list()).toHaveLength(1);
+  fixture.activity.stream = false;
+  const job = await done();
+  expect(job.path).toBe(dest);
+  const info = await readTrimInfo(copyFfmpeg, dest);
+  expect(Math.abs((info.durationMs ?? 0) - 800), 'its length is the two parts’ added up').toBeLessThanOrEqual(80);
+  // The fixture's every frame has its own brightness: the joined clip's frames are the parts' own, in order.
+  const error = (expected: Buffer, actual: Buffer) =>
+    expected.reduce((sum, value, i) => sum + Math.abs(value - (actual[i] ?? 0)), 0) / expected.length;
+  const first = pixels(dest, '0');
+  const second = pixels(dest, '0.400');
+  expect(error(pixels(fixture.source, '0.200'), first), 'part 1 starts at its start').toBeLessThan(4);
+  expect(error(pixels(fixture.source, '1.200'), second), 'part 2 starts at its start').toBeLessThan(4);
+  expect(error(pixels(fixture.source, '0.600'), second), 'not the frame after part 1').toBeGreaterThan(20);
+  expect((await sha256File(fixture.source)).sha256).toBe(fixture.sha);
+  expect(fixture.maxActive()).toBe(1);
+}, 20_000);
+it('refuses Saved edits with two or more parts in plain words, before asking where to save', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const deps = service(join(fixture.dir, 'never.mp4'));
+  const asked = vi.fn(deps.pickDest);
+  deps.pickDest = asked;
+  expect(await clips.start({ ...joined, frame: 'edited', revision: 2 })).toEqual({
+    ok: false,
+    message: 'Joined parts use the original picture and sound. Choose Original under Picture and sound.',
+  });
+  expect(asked).not.toHaveBeenCalled();
+  expect(clips.list()).toEqual([]);
+  expect(deps.kept.load()).toEqual([]);
+});
+it('a kept request of Saved edits with parts is refused at the next start, never exported', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const dest = join(fixture.dir, 'never.mp4');
+  const deps = service(dest);
+  clips.close();
+  deps.kept.save([{ request: { ...joined, frame: 'edited', revision: 2 }, destination: dest, identity: fixture.sha }]);
+  clips = new ClipExports(deps);
+  clips.resume();
+  expect(clips.list()).toMatchObject([
+    {
+      state: 'failed',
+      message: 'Joined parts use the original picture and sound. Choose Original under Picture and sound.',
+    },
+  ]);
+  expect(existsSync(dest)).toBe(false);
+});
