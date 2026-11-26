@@ -43,9 +43,9 @@ export function unavailableText(reason: CaptionTranslationUnavailable | null): s
     case 'speaker-sanskrit':
       return 'Sanskrit speech is not translated: captions show the speaker’s own words.';
     case 'too-slow':
-      return 'This computer could not keep up with translated captions, so they stopped. They are offered only where live captions keep up. Choosing a language in Captions in again tries once more.';
+      return 'This computer could not keep up with translated captions, so they stopped. They are offered only where live captions keep up. Choosing a language again, here or in File › Caption Language, tries once more.';
     case 'engine-fault':
-      return 'The translation engine stopped or could not load its model, so translated captions are off. Choosing a language in Captions in again tries once more.';
+      return 'The translation engine stopped or could not load its model, so translated captions are off. Choosing a language again, here or in File › Caption Language, tries once more.';
     case null:
       return 'Translated captions are not ready on this computer.';
   }
