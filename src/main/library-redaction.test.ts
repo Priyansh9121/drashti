@@ -63,7 +63,7 @@ describe('a library name is blanked only where it is the name', () => {
     ).toBe(`~/Movies/Evening${B}.mp4, ${B}Highlights, ${B}2026.mp4, 2026${B} and ${B} 20261`);
     expect(redactNames('sabhaHighlights, eveningSabha', ['sabha'])).toBe(`${B}Highlights, evening${B}`);
     // A separator written as an escape just before it: a URL's %20 or %2F, JSON's \n, \t or \r.
-    // (A capital after %2F, or a small letter after %2f or \\n, would otherwise carry its word on.)
+    // (A capital after %2F, or a small letter after %2f or \n, would otherwise carry its word on.)
     expect(redactNames('file:///x/Evening%20Sabha.mp4 x%2FSabha x%2fsabha x%2Asabha', ['Sabha'])).toBe(
       `file:///x/Evening%20${B}.mp4 x%2F${B} x%2f${B} x%2A${B}`,
     );

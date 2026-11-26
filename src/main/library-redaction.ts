@@ -22,19 +22,99 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 /*
  * A name is blanked only where it is the name (QA24-DIAG-1: a library name "new" blanked the "new" of "newest" in the
- * crash files' heading, and inside the words of a Quit line). A word is made of letters, marks (the vowel signs and
- * viramas of Gujarati and Devanagari) and digits, in any script, with the zero-width joiners inside it; anything else
- * (a space, punctuation, a path's separator, an underscore) ends it. A name that starts or ends with such a character
- * is blanked there whatever is beside it. Scripts written without spaces between words (Chinese, Japanese, Thai, Lao,
- * Khmer, Burmese) have no such ends to see, so there a name is blanked wherever it is.
+ * crash files' heading, and inside the words of a Quit line), but wherever a word could start or end in a name glued to
+ * other text (the review's F1, F2 and lead 2's D1 A: privacy first).
+ * - A word is made of letters, marks (the vowel signs and viramas of Gujarati and Devanagari) and digits, with the
+ *   zero-width joiners inside it; anything else (a space, punctuation, a path's separator, an underscore) ends it.
+ * - It also ends between a letter and a digit ("Sabha2026"), at a small letter before a capital ("EveningSabha") and
+ *   where the script changes ("Sabhaસભા"). One case and one script of letters, as in "newest", is one word.
+ * - A separator written as an escape starts a word: a URL's %20 or %2F, JSON's \n, \t or \r.
+ * - Gujarati, Devanagari and the other Indic scripts, and Korean, write a word's endings joined to it ("સભા" + "માં"):
+ *   there only a name's start is looked at, whatever follows it.
+ * - Scripts written without spaces between words (Chinese, Japanese, Thai, Lao, Khmer, Burmese) have no word ends to
+ *   see: there a name is blanked wherever it is.
+ * A name that starts or ends with a character that is not of a word is blanked there whatever is beside it.
  */
 const UNSPACED =
-  '\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}\\p{scx=Thai}\\p{scx=Lao}\\p{scx=Khmer}\\p{scx=Myanmar}';
-/** One character of a word written with spaces between words. */
-const IN_WORD = `(?:(?![${UNSPACED}])[\\p{L}\\p{M}\\p{N}\\u200C\\u200D])`;
-const IN_WORD_ONE = new RegExp(`^${IN_WORD}$`, 'u');
+  /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Thai}\p{scx=Lao}\p{scx=Khmer}\p{scx=Myanmar}]$/u;
+const JOINED_ENDINGS =
+  /^[\p{sc=Devanagari}\p{sc=Bengali}\p{sc=Gurmukhi}\p{sc=Gujarati}\p{sc=Oriya}\p{sc=Tamil}\p{sc=Telugu}\p{sc=Kannada}\p{sc=Malayalam}\p{sc=Sinhala}\p{sc=Tibetan}\p{sc=Hangul}]$/u;
+const WORD_CHAR = /^[\p{L}\p{M}\p{N}\u200C\u200D]$/u;
+const DIGIT = /^\p{N}$/u;
+// Case is told by the text's own characters, never by a case-insensitive pattern (there \p{Lu} matches small letters).
+const SMALL = /^\p{Ll}$/u;
+const CAPITAL = /^\p{Lu}$/u;
+const SCRIPTS = [
+  'Latin',
+  'Greek',
+  'Cyrillic',
+  'Armenian',
+  'Hebrew',
+  'Arabic',
+  'Syriac',
+  'Thaana',
+  'Devanagari',
+  'Bengali',
+  'Gurmukhi',
+  'Gujarati',
+  'Oriya',
+  'Tamil',
+  'Telugu',
+  'Kannada',
+  'Malayalam',
+  'Sinhala',
+  'Tibetan',
+  'Georgian',
+  'Hangul',
+  'Ethiopic',
+  'Cherokee',
+  'Mongolian',
+].map((name) => ({ name, test: new RegExp(`^\\p{sc=${name}}$`, 'u') }));
+const scriptOfChar = new Map<string, string | null>();
+/** A character's script, or null for one that goes with any (digits 0-9, joiners, combining accents) or is not listed. */
+function scriptOf(c: string): string | null {
+  let script = scriptOfChar.get(c);
+  if (script === undefined) {
+    script = SCRIPTS.find((s) => s.test.test(c))?.name ?? null;
+    scriptOfChar.set(c, script);
+  }
+  return script;
+}
 
-const inWord = (c: string | undefined) => c !== undefined && IN_WORD_ONE.test(c);
+/** An ASCII character's kind: 0 not of a word, 1 a small letter, 2 a capital, 3 a digit. */
+const asciiKind = (code: number): number =>
+  code >= 0x61 && code <= 0x7a ? 1 : code >= 0x41 && code <= 0x5a ? 2 : code >= 0x30 && code <= 0x39 ? 3 : 0;
+
+/** Whether `a` then `b`, side by side, are inside one word. */
+function joins(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  const x = a.charCodeAt(0);
+  const y = b.charCodeAt(0);
+  if (x < 0x80 && y < 0x80) {
+    const ka = asciiKind(x);
+    const kb = asciiKind(y);
+    return ka !== 0 && kb !== 0 && (ka === 3) === (kb === 3) && !(ka === 1 && kb === 2);
+  }
+  if (!WORD_CHAR.test(a) || !WORD_CHAR.test(b) || UNSPACED.test(a) || UNSPACED.test(b)) return false;
+  if (DIGIT.test(a) !== DIGIT.test(b) || (SMALL.test(a) && CAPITAL.test(b))) return false;
+  const sa = scriptOf(a);
+  const sb = scriptOf(b);
+  return sa === null || sb === null || sa === sb;
+}
+
+/** A separator written as an escape just before a place: %XX (a URL's), or \n, \t, \r (JSON's). */
+const ESCAPED = /(?:%[0-9A-Fa-f]{2}|\\[ntr])$/u;
+
+/** Whether a word can start at `at`. */
+const startsWord = (s: string, at: number): boolean =>
+  !joins(charBefore(s, at), charAt(s, at)) || ESCAPED.test(s.slice(Math.max(0, at - 3), at));
+
+/** Whether a name ending at `end` ends its word there (in a script with joined endings, wherever it ends). */
+function endsWord(s: string, end: number): boolean {
+  const last = charBefore(s, end);
+  return (last !== undefined && JOINED_ENDINGS.test(last)) || !joins(last, charAt(s, end));
+}
+
 /** The character that ends just before `i`, and the one that starts at `i` (whole, past a surrogate pair). */
 function charBefore(s: string, i: number): string | undefined {
   if (i <= 0) return undefined;
@@ -45,7 +125,6 @@ function charAt(s: string, i: number): string | undefined {
   const c = s.codePointAt(i);
   return c === undefined ? undefined : String.fromCodePoint(c);
 }
-const lastChar = (s: string) => charBefore(s, s.length);
 
 /** How many names one pattern holds. */
 const NAMES_AT_ONCE = 400;
@@ -55,36 +134,37 @@ export function redactNames(text: string, names: readonly string[]): string {
   const sorted = [...new Set(names)].filter((n) => n !== '').sort((a, b) => b.length - a.length);
   let out = text;
   for (let i = 0; i < sorted.length; i += NAMES_AT_ONCE) {
-    const some = sorted.slice(i, i + NAMES_AT_ONCE);
-    // Each place any of them is (quick), then, where the longest there ends inside a word, the longest that does not.
-    const find = new RegExp(some.map(escape).join('|'), 'giu');
-    const ending = new RegExp(
-      some.map((n) => `${escape(n)}${inWord(lastChar(n)) ? `(?!${IN_WORD})` : ''}`).join('|'),
-      'iuy',
-    );
+    const some = sorted.slice(i, i + NAMES_AT_ONCE).map(escape);
+    // Each place any of them is (quick), and the longest of them at one place (sticky).
+    const find = new RegExp(some.join('|'), 'giu');
+    const at = new RegExp(some.join('|'), 'iuy');
     // What an earlier pattern blanked stays as it is (a name "library" never blanks the words of a blank).
     out = out
       .split(HIDDEN)
-      .map((part) => blankWhole(part, find, ending))
+      .map((part) => blankWhole(part, find, at))
       .join(HIDDEN);
   }
   return out;
 }
 
-function blankWhole(s: string, find: RegExp, ending: RegExp): string {
+function blankWhole(s: string, find: RegExp, longestAt: RegExp): string {
   let out = '';
   let from = 0;
   find.lastIndex = 0;
   for (let m = find.exec(s); m; m = find.exec(s)) {
     const at = m.index;
-    let length = -1;
+    let length = 0;
     // Every name found here starts with this character (as letters go, case aside), so if it carries on a word that
     // started before it, none of them is the name here.
-    if (!(inWord(charBefore(s, at)) && inWord(charAt(s, at)))) {
-      if (!(inWord(lastChar(m[0])) && inWord(charAt(s, at + m[0].length)))) length = m[0].length;
-      else {
-        ending.lastIndex = at;
-        length = ending.exec(s)?.[0].length ?? -1;
+    if (startsWord(s, at)) {
+      // The longest name here that ends its word: the one found, else each shorter one, found by reading less text.
+      for (let len = m[0].length; len > 0;) {
+        if (endsWord(s, at + len)) {
+          length = len;
+          break;
+        }
+        longestAt.lastIndex = at;
+        len = longestAt.exec(s.slice(0, at + len - 1))?.[0].length ?? 0;
       }
     }
     if (length > 0) {
