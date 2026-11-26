@@ -379,8 +379,11 @@ export interface DrashtiBridge {
   flow: {
     /** The flow and its Now, together. */
     get(): Promise<SabhaFlowSnapshot>;
-    /** "Choose PDF…" (and Replace): Main's file dialog (null: cancelled). */
-    choose(): Promise<SabhaFlowChoice | null>;
+    /**
+     * "Choose PDF…" (and Replace): Main's file dialog (null: cancelled). With a file (alpha.24, a PDF dropped on the
+     * panel: its full path), no dialog: that file, taken as the dialog's is.
+     */
+    choose(file?: string): Promise<SabhaFlowChoice | null>;
     remove(): Promise<null>;
     /** Mark Now: an index into the flow's items, or null (refused for a flow that is no longer the current one). */
     setNow(flowId: string, now: number | null): Promise<SabhaFlowNowResult>;

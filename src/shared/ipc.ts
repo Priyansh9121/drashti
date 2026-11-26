@@ -374,7 +374,10 @@ export const IPC = {
   flow: {
     /** The flow and its Now, together. */
     get: 'flow:get',
-    /** Main's file dialog: Drashti's own copy, read and drawn (null: cancelled). */
+    /**
+     * Main's file dialog: Drashti's own copy, read and drawn (null: cancelled). With a file (alpha.24, a PDF dropped on
+     * the panel), that file instead of the dialog's.
+     */
     choose: 'flow:choose',
     remove: 'flow:remove',
     setNow: 'flow:set-now',
@@ -1671,7 +1674,7 @@ export interface InvokeContract {
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
   [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
   [IPC.flow.get]: { args: []; result: SabhaFlowSnapshot };
-  [IPC.flow.choose]: { args: []; result: SabhaFlowChoice | null };
+  [IPC.flow.choose]: { args: [file?: string | null]; result: SabhaFlowChoice | null };
   [IPC.flow.remove]: { args: []; result: null };
   [IPC.flow.setNow]: { args: [flowId: string, now: number | null]; result: SabhaFlowNowResult };
   [IPC.flow.page]: { args: [flowId: string, page: number]; result: Uint8Array | null };

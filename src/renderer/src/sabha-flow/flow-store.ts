@@ -20,6 +20,17 @@ interface FlowStore {
   choosing: boolean;
   /** Why the last ask did not go (a PDF refused, Now refused), until the next ask. */
   problem: string | null;
+  /** What a drop left out (files that are not PDFs, PDFs after the first), said once its PDF is taken; until the next ask. */
+  note: string | null;
+  /** A PDF dropped while a flow is there: waiting on "Replace the running order?". */
+  dropped: DroppedFlow | null;
+}
+
+/** A PDF dropped on the panel and taken from the files dropped (shared/sabha-flow-drop.ts). */
+export interface DroppedFlow {
+  file: string;
+  name: string;
+  note: string | null;
 }
 
 export const useFlow = create<FlowStore>(() => ({
@@ -28,6 +39,8 @@ export const useFlow = create<FlowStore>(() => ({
   loaded: false,
   choosing: false,
   problem: null,
+  note: null,
+  dropped: null,
 }));
 
 /** Now as the state says it, for this flow only (a state for another flow is not this one's). */
@@ -100,6 +113,25 @@ export async function chooseFlow(): Promise<void> {
   } finally {
     useFlow.setState({ choosing: false });
   }
+}
+
+/** Said of a drop while a PDF is still being read, or before the flow kept from the last run has been read. */
+export const STILL_READING = '';
+
+/** Files dropped on the panel (`setup`: Pro Mode's panel, which sets the flow up). */
+export function dropFlowFiles(paths: readonly string[], setup: boolean): void {
+  // Stub (red first).
+  if (paths.length === 0 && !setup) return;
+}
+
+/** "Replace the running order?" answered Replace: the dropped PDF is chosen. */
+export function confirmDroppedFlow(): void {
+  // Stub (red first).
+}
+
+/** "Replace the running order?" answered Cancel: the flow stays as it is. */
+export function cancelDroppedFlow(): void {
+  // Stub (red first).
 }
 
 /** Remove: Drashti's copy goes (the operator's own PDF stays where it is). */
