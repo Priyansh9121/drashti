@@ -195,6 +195,10 @@ function joinedArgs(
     'passthrough',
     '-map_metadata',
     '0',
+    // No output -t trims the source's chapters here: FFmpeg would copy part 1's input's, shifted only by its start,
+    // which no longer fit the joined clip's time (a24-review-vidparts N8). The one-part export keeps them, trimmed.
+    '-map_chapters',
+    '-1',
     '-metadata:s:v:0',
     'rotate=0',
     '-f',

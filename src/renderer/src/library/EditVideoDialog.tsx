@@ -110,10 +110,13 @@ function TrimTime({
   label,
   ms,
   onTime,
+  focusName,
 }: {
   label: string;
   ms: number | null;
   onTime: (ms: number | null) => void;
+  /** Its name for the editor's focus moves (data-focus-name). */
+  focusName?: string;
 }) {
   const [field, setField] = useState(() => ({ ms, text: ms === null ? '' : trimSeconds(ms) }));
   if (field.ms !== ms)
@@ -122,6 +125,7 @@ function TrimTime({
     <Field label={label} error={ms === null ? TRIM_TIME_WORDS : null}>
       <TextInput
         value={field.text}
+        data-focus-name={focusName}
         onChange={(e) => {
           const text = e.currentTarget.value;
           setField((f) => ({ ...f, text }));
@@ -161,6 +165,18 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
    */
   const [parts, setParts] = useState<AddedPart[]>([]);
   const partKey = useRef(0);
+  /*
+   * Where the keyboard goes once the parts are drawn again (a24-review-vidparts S1): a new part's start field (also
+   * when it is the tenth and Add a part is no longer offered), or Add a part after ×, never the page.
+   */
+  const partsBox = useRef<HTMLDivElement>(null);
+  const focusAfter = useRef<string | null>(null);
+  useEffect(() => {
+    const name = focusAfter.current;
+    if (name === null) return;
+    focusAfter.current = null;
+    partsBox.current?.querySelector<HTMLElement>(`[data-focus-name="${name}"]`)?.focus();
+  });
   /** Start's or End's words are not a time: Save and Export wait for one there. */
   const [badTrim, setBadTrim] = useState({ start: false, end: false });
   const video = useRef<HTMLVideoElement>(null);
@@ -186,6 +202,7 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
     const from = Math.max(firstEnd ?? 0, ...parts.map((part) => part.endMs ?? 0));
     partKey.current += 1;
     const key = partKey.current;
+    focusAfter.current = `part-${String(key)}-start`;
     setParts((all) => [...all, { key, startMs: from, endMs: Math.max(from, duration ?? from) }]);
   };
   const setPart = (key: number, change: Partial<AddedPart>) =>
@@ -597,38 +614,48 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                     Type a time as seconds, such as 600, or as minutes and seconds, such as 10:00 (with hours,
                     1:20:00).
                   </p>
-                  {parts.map((part, at) => {
-                    const n = String(at + 2);
-                    return (
-                      <div
-                        key={part.key}
-                        role="group"
-                        aria-label={`Part ${n}`}
-                        className="grid grid-cols-[1fr_1fr_auto] items-end gap-3"
-                        data-testid="clip-part"
-                      >
-                        <TrimTime
-                          label={`Part ${n} start`}
-                          ms={part.startMs}
-                          onTime={(ms) => setPart(part.key, { startMs: ms })}
-                        />
-                        <TrimTime
-                          label={`Part ${n} end`}
-                          ms={part.endMs}
-                          onTime={(ms) => setPart(part.key, { endMs: ms })}
-                        />
-                        <Button
-                          aria-label={`Remove part ${n}`}
-                          onClick={() => setParts((all) => all.filter((p) => p.key !== part.key))}
+                  <div ref={partsBox} className="space-y-3">
+                    {parts.map((part, at) => {
+                      const n = String(at + 2);
+                      return (
+                        <div
+                          key={part.key}
+                          role="group"
+                          aria-label={`Part ${n}`}
+                          className="grid grid-cols-[1fr_1fr_auto] items-end gap-3"
+                          data-testid="clip-part"
                         >
-                          ×
-                        </Button>
-                      </div>
-                    );
-                  })}
-                  <Button disabled={parts.length + 1 >= CLIP_PARTS_MOST} onClick={addPart}>
-                    Add a part
-                  </Button>
+                          <TrimTime
+                            label={`Part ${n} start`}
+                            ms={part.startMs}
+                            onTime={(ms) => setPart(part.key, { startMs: ms })}
+                            focusName={`part-${String(part.key)}-start`}
+                          />
+                          <TrimTime
+                            label={`Part ${n} end`}
+                            ms={part.endMs}
+                            onTime={(ms) => setPart(part.key, { endMs: ms })}
+                          />
+                          <Button
+                            aria-label={`Remove part ${n}`}
+                            onClick={() => {
+                              focusAfter.current = 'add-part';
+                              setParts((all) => all.filter((p) => p.key !== part.key));
+                            }}
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    <Button
+                      disabled={parts.length + 1 >= CLIP_PARTS_MOST}
+                      onClick={addPart}
+                      data-focus-name="add-part"
+                    >
+                      Add a part
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted">
                     Add a part to keep more of this video in one new clip: Export clip… joins the parts in
                     time order, with a cut at each join, from the original picture and sound. Part 1 is Start
