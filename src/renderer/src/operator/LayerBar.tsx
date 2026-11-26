@@ -7,7 +7,7 @@ import { practiceKey, useShowState } from '../practice/practice-store';
 import { useKeymapNow } from './single-keys-store';
 import { dispatch } from './actions';
 import type { ClearedLayer, ClearLook } from './layer-clears';
-import { clearLook, LAYER_CLEARS } from './layer-clears';
+import { ariaKeys, clearLook, LAYER_CLEARS } from './layer-clears';
 import { cx } from '../ui/cx';
 import type { Icon } from '../ui/icons';
 import {
@@ -98,6 +98,7 @@ function LayerClear({
   label,
   look,
   keyText,
+  keys,
   simple,
   onClear,
 }: {
@@ -105,6 +106,8 @@ function LayerClear({
   label: string;
   look: ClearLook;
   keyText: string;
+  /** Its keys for a screen reader (aria-keyshortcuts). */
+  keys: string | undefined;
   simple: boolean;
   onClear: () => void;
 }) {
@@ -132,6 +135,7 @@ function LayerClear({
             if (on) onClear();
           }}
           aria-label={`Clear ${label.toLowerCase()}${on ? ' (on screen)' : ''}`}
+          aria-keyshortcuts={keys}
           // Lit: wide enough that the dot keeps clear of its key.
           className={cx(
             'col-start-1 row-start-1',
@@ -163,6 +167,7 @@ function CoverButton({
   words,
   onWords,
   keyText,
+  keys,
   icon,
   testId,
   onClick,
@@ -171,6 +176,8 @@ function CoverButton({
   words: string;
   onWords: string;
   keyText: string;
+  /** Its keys for a screen reader (aria-keyshortcuts). */
+  keys: string | undefined;
   icon: Icon;
   testId: string;
   onClick: () => void;
@@ -180,6 +187,7 @@ function CoverButton({
       type="button"
       data-show-control
       data-testid={testId}
+      aria-keyshortcuts={keys}
       data-lit={on ? 'true' : undefined}
       data-dimmed={on ? undefined : 'true'}
       onClick={onClick}
@@ -206,6 +214,8 @@ export function LayerBar({
   // The keys on its buttons, as they act now: none for Black-out while B, . and ? are off; the Wallpaper keeps F12.
   const keymap = useKeymapNow(simple ? SIMPLE_KEYMAP : undefined);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
+  // The same keys for a screen reader, every one the action answers to now.
+  const keys = (action: OperatorAction) => ariaKeys(action, platform, keymap);
   const layers = state?.layers;
   const blackout = state?.blackout ?? false;
   const wallpaper = state?.wallpaper ?? false;
@@ -242,6 +252,7 @@ export function LayerBar({
       data-show-control
       data-variant="strong"
       data-testid={simple ? 'simple-clear-all' : undefined}
+      aria-keyshortcuts={keys('clearAll')}
       // Simple Mode's stays a Tab stop, dimmed (Part 13's answer); Pro Mode's is not pressable.
       disabled={!simple && !anything}
       aria-disabled={simple && !anything ? true : undefined}
@@ -283,6 +294,7 @@ export function LayerBar({
               label={c.label}
               look={clearLook(layers, c.layer)}
               keyText={key(c.action)}
+              keys={keys(c.action)}
               simple={simple}
               onClear={() => {
                 run(c.action);
@@ -297,6 +309,7 @@ export function LayerBar({
           words="Wallpaper"
           onWords="Wallpaper is on"
           keyText={key('toggleWallpaper')}
+          keys={keys('toggleWallpaper')}
           icon={Wallpaper}
           testId={simple ? 'simple-wallpaper' : 'wallpaper-button'}
           onClick={() => {
@@ -308,6 +321,7 @@ export function LayerBar({
           words="Black-out"
           onWords="Black-out is on"
           keyText={key('toggleBlackout')}
+          keys={keys('toggleBlackout')}
           icon={BlackOut}
           testId={simple ? 'simple-blackout' : 'blackout-button'}
           onClick={() => {
