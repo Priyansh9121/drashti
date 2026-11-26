@@ -48,3 +48,16 @@ export function ariaKeys(
   const named = keys.map((k) => k.replace(/\bMod\b/u, mod));
   return named.length > 0 ? named.join(' ') : undefined;
 }
+
+/**
+ * Put it back's keys for a screen reader (clearroom, from lead 2's uibar re-review): in Simple Mode Undo puts back
+ * what Clear all took down, so its Put it back names Undo's key (Mod+Z as each system has it); Pro Mode's Undo brings
+ * back a removal, so its Put it back has none.
+ */
+export function putBackKeys(
+  simple: boolean,
+  platform: string,
+  keymap: readonly KeyBinding[] = KEYMAP,
+): string | undefined {
+  return simple ? ariaKeys('undo', platform, keymap) : undefined;
+}

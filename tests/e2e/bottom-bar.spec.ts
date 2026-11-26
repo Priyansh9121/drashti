@@ -445,6 +445,9 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   await win.keyboard.press('F1');
   await expect(win.getByTestId('simple-put-back')).toBeVisible();
   await expect(clearAll).toHaveCount(0);
+  // Its Put it back names Undo's key for a screen reader: Undo puts back what Clear all took down in Simple Mode.
+  const undo = process.platform === 'darwin' ? 'Meta+Z' : 'Control+Z';
+  await expect(win.getByTestId('simple-put-back')).toHaveAttribute('aria-keyshortcuts', undo);
   await stayPut(win, bar, atRest, 'Simple Mode, Clear all (F1), Put it back offered');
   await win.getByTestId('simple-put-back').click();
   await expect(win.getByTestId('simple-put-back')).toHaveCount(0);

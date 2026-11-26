@@ -7,7 +7,7 @@ import { practiceKey, useShowState } from '../practice/practice-store';
 import { useKeymapNow } from './single-keys-store';
 import { dispatch } from './actions';
 import type { ClearedLayer, ClearLook } from './layer-clears';
-import { ariaKeys, clearLook, LAYER_CLEARS } from './layer-clears';
+import { ariaKeys, clearLook, LAYER_CLEARS, putBackKeys } from './layer-clears';
 import { cx } from '../ui/cx';
 import type { Icon } from '../ui/icons';
 import {
@@ -288,6 +288,8 @@ export function LayerBar({
       data-show-control
       data-testid={simple ? 'simple-put-back' : 'put-back'}
       data-variant="warning"
+      // Simple Mode's Undo puts back what Clear all took down: its key, for a screen reader.
+      aria-keyshortcuts={putBackKeys(simple, platform, keymap)}
       onClick={() => {
         if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
       }}
