@@ -186,11 +186,12 @@ async function putUp(pin: QuickPin): Promise<void> {
           type: 'playAudio',
           audio: { id: pin.mediaId, title: pin.label, mediaId: pin.mediaId, volume: 1, loop: false },
         });
-      // The picture instead of the slide, as a picture's row puts it up.
-      if (useEngine.getState().state?.layers.slide) await dispatch({ type: 'clearLayer', layer: 'slide' });
+      // The picture instead of the slide, in one change, as a picture's row puts it up (alpha.24 bug hunt S3-1: two
+      // changes showed the slide leaving over the old background, and took two presses of Oops to take back).
       return dispatch({
         type: 'setBackground',
         background: { kind: 'media', mediaId: pin.mediaId, media: pin.media, fit: 'fit', loop: false },
+        slideOff: true,
       });
   }
 }

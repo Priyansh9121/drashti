@@ -3396,7 +3396,13 @@ export class ShowEngine {
       case 'setBackground':
         return {
           ok: true,
-          actions: [{ type: 'background/set', background: this.backgroundLayer(command.background) }],
+          actions: [
+            // In the slide's place, in one change (alpha.24 bug hunt S3-1), as showMedia puts a picture's row up.
+            ...(command.slideOff === true
+              ? [{ type: 'layer/clear' as const, layer: 'slide' as const, at: this.now() }]
+              : []),
+            { type: 'background/set', background: this.backgroundLayer(command.background) },
+          ],
         };
       case 'playAudio':
         return {
