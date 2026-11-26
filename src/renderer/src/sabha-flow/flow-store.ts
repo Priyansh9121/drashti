@@ -1,3 +1,4 @@
+import { flowDrop } from '../../../shared/sabha-flow-drop';
 import { create } from 'zustand';
 import type { SabhaFlow, SabhaFlowSnapshot, SabhaFlowState } from '../../../shared/sabha-flow';
 import { nextUpIndex, nowWithin } from '../../../shared/sabha-flow';
@@ -101,12 +102,16 @@ export function connectFlow(): void {
 
 /** Choose PDF… (and Replace…): Main's file dialog; the new flow starts with nothing Now. */
 export async function chooseFlow(): Promise<void> {
+  await takeFlow();
+}
+
+async function takeFlow(file?: string, note: string | null = null): Promise<void> {
   if (useFlow.getState().choosing) return;
-  useFlow.setState({ choosing: true, problem: null });
+  useFlow.setState({ choosing: true, problem: null, note: null, dropped: null });
   try {
-    const result = await window.drashti.flow.choose();
+    const result = await window.drashti.flow.choose(file);
     if (result === null) return;
-    if (result.ok) useFlow.setState({ flow: result.flow, now: null, loaded: true });
+    if (result.ok) useFlow.setState({ flow: result.flow, now: null, loaded: true, note });
     else useFlow.setState({ problem: result.message });
   } catch {
     useFlow.setState({ problem: 'Drashti couldn’t take that PDF. Try again, or choose another.' });
@@ -116,22 +121,35 @@ export async function chooseFlow(): Promise<void> {
 }
 
 /** Said of a drop while a PDF is still being read, or before the flow kept from the last run has been read. */
-export const STILL_READING = '';
+export const STILL_READING = 'Drashti is still reading the Sabha flow: drop the PDF again once it is shown.';
 
 /** Files dropped on the panel (`setup`: Pro Mode's panel, which sets the flow up). */
 export function dropFlowFiles(paths: readonly string[], setup: boolean): void {
-  // Stub (red first).
-  if (paths.length === 0 && !setup) return;
+  useFlow.setState({ problem: null, note: null, dropped: null });
+  const choice = flowDrop(paths, { setup });
+  if (!choice.take) {
+    useFlow.setState({ problem: choice.message });
+    return;
+  }
+  const { choosing, loaded, flow } = useFlow.getState();
+  if (choosing || !loaded) {
+    useFlow.setState({ problem: STILL_READING });
+    return;
+  }
+  if (flow) useFlow.setState({ dropped: { file: choice.file, name: choice.name, note: choice.note } });
+  else void takeFlow(choice.file, choice.note);
 }
 
 /** "Replace the running order?" answered Replace: the dropped PDF is chosen. */
 export function confirmDroppedFlow(): void {
-  // Stub (red first).
+  const dropped = useFlow.getState().dropped;
+  useFlow.setState({ dropped: null });
+  if (dropped) void takeFlow(dropped.file, dropped.note);
 }
 
 /** "Replace the running order?" answered Cancel: the flow stays as it is. */
 export function cancelDroppedFlow(): void {
-  // Stub (red first).
+  useFlow.setState({ dropped: null });
 }
 
 /** Remove: Drashti's copy goes (the operator's own PDF stays where it is). */

@@ -21,12 +21,12 @@ export type FlowDrop =
 
 /** A file's own name, from its path on a Mac or on Windows. */
 export function fileNameOf(path: string): string {
-  return path;
+  return path.split(/[\\/]/).pop() ?? '';
 }
 
 /** Whether a path names a PDF, by its name (Main then checks the file itself begins as a PDF does). */
 export function isPdfPath(path: string): boolean {
-  return path === '';
+  return /\.pdf$/i.test(fileNameOf(path));
 }
 
 /**
@@ -34,5 +34,30 @@ export function isPdfPath(path: string): boolean {
  * Mode's; Simple Mode's only shows it).
  */
 export function flowDrop(paths: readonly string[], { setup }: { setup: boolean }): FlowDrop {
-  return { take: false, message: setup ? '' : String(paths.length) };
+  if (!setup) return { take: false, message: FLOW_CHOSEN_IN_PRO };
+  if (paths.length === 0)
+    return {
+      take: false,
+      message: 'Drop the PDF from the desktop or a USB drive: Drashti can’t tell where that one is kept.',
+    };
+  const pdfs = paths.filter(isPdfPath);
+  const file = pdfs[0];
+  if (!file)
+    return {
+      take: false,
+      message:
+        paths.length === 1
+          ? `“${fileNameOf(paths[0] ?? '')}” is not a PDF, so it was not used. ${ONLY_A_PDF}`
+          : `${paths.length} files were not used: none of them is a PDF. ${ONLY_A_PDF}`,
+    };
+  const others = paths.length - 1;
+  const note =
+    pdfs.length > 1
+      ? FIRST_PDF_ONLY
+      : others === 0
+        ? null
+        : others === 1
+          ? 'Only the PDF was used: the other file is not a PDF.'
+          : `Only the PDF was used: the other ${others} files are not PDFs.`;
+  return { take: true, file, name: fileNameOf(file), note };
 }

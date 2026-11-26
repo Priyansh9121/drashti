@@ -179,6 +179,8 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 4. Click a row, or press **Next**, to mark where the sabha is. **Back** goes one item back.
 5. **Replace…** beside its name chooses another PDF; **Remove** takes Drashti's copy away, asking first.
 
+In Pro Mode, drop a PDF on Sabha flow to use it as the running order; with one already loaded, confirm **Replace the running order?** or Cancel to keep it, and when several PDFs are dropped only the first is used.
+
 A scanned PDF, or one whose letters come out wrong, says so and shows only its page.
 
 ![The operator window as it was before Sabha flow came: its left column with Library at the top](../screenshots/operator-1280x720.png)

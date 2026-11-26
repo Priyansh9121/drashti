@@ -1,3 +1,5 @@
+import { droppedPdf } from './sabha-flow/dropped-pdf';
+import { ONLY_A_PDF } from '../shared/sabha-flow-drop';
 import { editPlan } from './convert/edit-plan';
 import { editedClipSource } from './convert/clip-edited-source';
 import { withSceneMarkers } from './convert/scene-marker-save';
@@ -5196,8 +5198,14 @@ function start(): void {
     await flowLoaded;
     return fromOperator(e) ? flowStore.snapshot() : { flow: null, state: null };
   });
-  handle(IPC.flow.choose, async (e) => {
+  handle(IPC.flow.choose, async (e, dropped) => {
     if (!fromOperator(e) || !operatorWindow) return notFlowOperator;
+    if (dropped !== undefined) {
+      const file = droppedPdf(dropped);
+      if (file === null) return { ok: false as const, message: ONLY_A_PDF };
+      await flowLoaded;
+      return flowStore.choose(file);
+    }
     const picked = await dialog.showOpenDialog(operatorWindow, {
       title: 'Sabha flow',
       message: 'Choose the running order of the sabha, saved as a PDF.',
