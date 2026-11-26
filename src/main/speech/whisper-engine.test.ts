@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { createServer, type Server } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CAPTION_TIMING, type CaptionTiming } from '../../shared/captions';
 import type { Heard, SpeechState } from '../../shared/speech';
 import {
@@ -1012,4 +1012,63 @@ describe('QWC-1: the audio context sized to the piece, fallback off (the owner: 
     expect(form.at(-1)).toEqual(['audio_ctx', String(audioContextFor(samples))]);
     expect(Number(form.at(-1)?.[1])).toBe(512);
   });
+});
+
+describe('a stop just as a piece sets off (QA24-CRASH-1)', () => {
+  it('leaves no promise failing uncaught in the main process', async () => {
+    // The owner's crash journal (2026-11-22T06:58:16Z): "a promise in the main process failed and nothing caught it:
+    // TypeError: Invalid state: ReadableStream is already closed". Node's fetch writes a FormData into its request in a
+    // step nothing awaits, and a stop that aborts the request in that step failed it uncaught. Here the engine's own
+    // fetch (none given), and captions stopped a turn after a piece set off, three times.
+    const failed: unknown[] = [];
+    const uncaught = (reason: unknown) => {
+      failed.push(reason);
+    };
+    process.on('unhandledRejection', uncaught);
+    const real = globalThis.fetch;
+    let stopNow: (() => void) | null = null;
+    vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
+      const going = real(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const stop = stopNow;
+      if (stop && url.endsWith('/inference')) {
+        stopNow = null;
+        void Promise.resolve().then(stop);
+      }
+      return going;
+    });
+    try {
+      for (let round = 0; round < 3; round += 1) {
+        const server = standIn();
+        const sound = bursts();
+        const states: SpeechState[] = [];
+        const engine = createWhisperEngine({
+          program: () => '/placeholder/whisper-server',
+          model: () => '/placeholder/model.bin',
+          fallback: () => true,
+          sound,
+          log: { info: () => undefined, warn: () => undefined },
+          spawn: server.spawn,
+          stepMs: 300,
+          pauseMs: 300,
+        });
+        let stopped = false;
+        const stop = engine.start('en', { heard: () => undefined, state: (s) => states.push(s) });
+        stops.push(stop, server.close);
+        stopNow = () => {
+          stopped = true;
+          stop();
+        };
+        await waitFor(() => states.some((s) => s.phase === 'listening'));
+        await sound.play(1_500, 0);
+        expect(stopped).toBe(true);
+        // A failed promise is told a few turns later.
+        await new Promise((wait) => setTimeout(wait, 200));
+      }
+      expect(failed.map(String)).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+      process.off('unhandledRejection', uncaught);
+    }
+  }, 30_000);
 });
