@@ -88,7 +88,7 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
     });
   });
 
-  it('warns about a HEIC turn while another picture can still show', () => {
+  it('a HEIC among pictures that can show: the screens leave it out until it is converted, and the others go round (bughunt S1-1)', () => {
     const heic = { ...picture('photo', false, 'Placeholder.heic'), unplayable: 'HEIC photo' };
     expect(wallpaperMissing({ pictures: [heic, picture('ready', false)] })).toMatchObject({
       kind: 'some',
@@ -96,7 +96,25 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
       live: null,
       find: [],
       notice:
-        'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. Pictures needing conversion show black on their turns.',
+        'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. The screens leave that picture out until it is converted, and the others go round.',
+    });
+    const other = { ...picture('other', false, 'Placeholder other.heic'), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [heic, other, picture('ready', false)] })).toMatchObject({
+      kind: 'some',
+      count: 2,
+      live: null,
+      notice:
+        '2 of the wallpaper’s pictures need conversion. Convert them in Media. The screens leave those pictures out until they are converted, and the others go round.',
+    });
+    expect(
+      wallpaperMissing({ pictures: [heic, picture('gone', true), picture('ready', false)] }),
+    ).toMatchObject({
+      kind: 'some',
+      count: 2,
+      live: null,
+      find: ['gone'],
+      notice:
+        'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. 1 picture is missing. The screens leave that picture out until it is converted, and the others go round.',
     });
   });
 

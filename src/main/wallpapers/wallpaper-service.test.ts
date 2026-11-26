@@ -128,6 +128,33 @@ describe('the wallpapers', () => {
     expect(service.pictureIds()).toEqual(['blue']);
     expect(service.usedBy('blue')).toEqual(['Placeholder blue']);
   });
+
+  it('a picture that needs conversion (a HEIC photo not converted yet) is left out on the screens as a missing one is, never a black turn; with none drawable, none go round, as with all missing (bughunt S1-1)', () => {
+    const { db, service, pushed } = setup();
+    db.prepare(
+      "INSERT INTO media (id, kind, name, path, playable, format) VALUES ('photo', 'image', 'Placeholder photo.heic', 'ab/photo', 0, 'HEIC photo')",
+    ).run();
+    const made = service.add(['photo'], null);
+    const [id = ''] = made.ok ? made.ids : [];
+    expect(service.add(['blue', 'green'], id)).toMatchObject({ ok: true, ids: [id] });
+    service.choose(id);
+    // The window still has all three (the tile and the panel say the photo needs conversion); the screens only those
+    // they can draw.
+    expect(service.view().wallpapers[0]?.pictures.map((p) => [p.mediaId, p.unplayable ?? null])).toEqual([
+      ['photo', 'HEIC photo'],
+      ['blue', null],
+      ['green', null],
+    ]);
+    expect(pushed.at(-1)).toMatchObject({ id, pictures: ['blue', 'green'] });
+    // The others gone from the library too: nothing to go round, as a wallpaper whose pictures are all missing.
+    db.prepare("UPDATE media SET deleted_at = '2026-11-27T07:00:00.000Z' WHERE id IN ('blue', 'green')").run();
+    service.mediaChanged();
+    expect(pushed.at(-1)).toEqual({ id, name: 'Placeholder photo', pictures: [], secondsEach: 10, fadeMs: 1500 });
+    // Converted (the library says it plays now): on the screens from then on.
+    db.prepare("UPDATE media SET playable = 1, format = NULL WHERE id = 'photo'").run();
+    service.mediaChanged();
+    expect(pushed.at(-1)).toMatchObject({ id, pictures: ['photo'] });
+  });
 });
 
 describe('the idle rotation, made into a wallpaper', () => {
