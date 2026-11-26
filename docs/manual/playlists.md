@@ -152,10 +152,6 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 
 ## Wallpapers
 
-A picture that needs conversion, such as HEIC, says **Convert picture** in its tile; convert it in **Media**. Warning text wraps with its full words in a tooltip.
-
-Find… can bring back a picture just deleted from Media without restarting; LIVE explains that the screens show black whenever the missing wallpaper is up, including under F12.
-
 **What it is.** The pictures the hall sees whenever nothing is up, under the playlists. Several pictures dropped on one wallpaper go round, each fading into the next.
 
 **When you would use it.** Before the sabha, and between items.
@@ -166,6 +162,10 @@ Find… can bring back a picture just deleted from Media without restarting; LIV
 2. Click a wallpaper to use it. Click it again to use none (black).
 3. Right-click it for **Edit wallpaper…** (order, **Seconds each**, **Fade**), **Rename…** and **Delete…**.
 4. **F12** (or **Wallpaper** along the bottom) puts it over whatever is up.
+
+If a wallpaper says **Picture missing**, press **Find…** and choose its folder. A file just deleted from **Media** comes back with the playlist rows and music tracks deleted with it; items removed earlier stay removed.
+
+A picture that says **Convert picture**, such as HEIC, needs converting in **Media**. LIVE explains when the wallpaper makes the screens black, including under **F12**.
 
 ![The Wallpapers under the playlists: three placeholder wallpapers, the second chosen](../screenshots/wallpapers.png)
 

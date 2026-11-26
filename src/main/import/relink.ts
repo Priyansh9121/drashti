@@ -70,7 +70,7 @@ export async function runRelink(ctx: RelinkContext): Promise<ImportRunSummary> {
       nearby: [ctx.folder],
       byName: scan.mediaByName,
       // Keep the filesystem's own filename equivalence (macOS Unicode spellings, for example).
-      allowOriginal: false,
+      allowOriginal: m.keptDeleted !== true,
     });
     if (!found) {
       record({
