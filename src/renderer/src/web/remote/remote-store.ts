@@ -131,6 +131,24 @@ let hallKnown = false;
 /** A playlist or a presentation may be read now: this connection's hall heard, and it says Pro Mode. */
 const mayRead = (): boolean => hallKnown && !inSimpleMode();
 
+/**
+ * Whether this connection's own reads are done (a24-review-phonefix S2): once its hall is heard, the rows' decks let
+ * go, the playlists and the slides shown read afresh (a23-review-phoneui MUST-3). When the connection's first hall read
+ * fails, the first hall heard after it does them, whoever reads it (a library refresh, a mode or screens change), so a
+ * deck changed while the phone was away is never kept.
+ */
+let caughtUp = true;
+
+/** This connection's own reads, once its hall is heard (onOnline's, or the first hall heard after that failed). */
+function catchUp(): void {
+  if (caughtUp || !hallKnown) return;
+  caughtUp = true;
+  forgetDocs();
+  void loadPlaylists();
+  const v = useRemote.getState().viewing;
+  if (v) void loadDoc(v.presentationId);
+}
+
 async function readPlaylists(): Promise<void> {
   if (!mayRead()) return;
   const r = await api<{ playlists: PlaylistNode[] }>('/api/v1/playlists');
@@ -340,12 +358,17 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRefreshAt = Number.NEGATIVE_INFINITY;
 
 const refreshLists = oneAtATime(async () => {
-  const library = libraryChanged;
+  let library = libraryChanged;
   libraryChanged = null;
   lastRefreshAt = Date.now();
   await loadHall();
   // Its hall not heard (the read failed): nothing let go or read, until the next change or connection.
   if (!hallKnown) return;
+  // This connection's first hall heard here (its own first read failed): its reads too, every row let go (S2).
+  if (!caughtUp) {
+    caughtUp = true;
+    library = 'any';
+  }
   // The library changed: the rows' pages read again too (a23-review-phoneui MUST-3), only those it names when it
   // names them (QA24-PHONE-C: a kirtan's words edited reads no PowerPoint or PDF row again).
   if (library === 'any') forgetDocs();
@@ -386,19 +409,15 @@ export function startRemote(): void {
     // This connection's hall first (a23-review-phoneui MUST-1): in Simple Mode the phone reads no playlist or
     // presentation. Then what Pro Mode shows, read afresh: the playlists, the slides shown, the rows' pages (MUST-3).
     hallKnown = false;
-    void loadHall().then(() => {
-      // Its hall not heard (the read failed): nothing let go or read, until the next connection or change.
-      if (!hallKnown) return;
-      forgetDocs();
-      void loadPlaylists();
-      const v = useRemote.getState().viewing;
-      if (v) void loadDoc(v.presentationId);
-    });
+    caughtUp = false;
+    // Its hall not heard (the read failed): nothing let go or read until the next hall is heard (catchUp, S2).
+    void loadHall().then(catchUp);
   });
   onListsChanged((what, ids) => {
     // The hall first (QA23-PHONE-1, CI run 45610620870): Drashti adopts Simple Mode's playlist, a 'playlists' change,
     // before it says the mode changed, and a phone in Simple Mode reads no playlist or presentation.
     if (what === 'playlists' || what === 'presentations') listsChanged(what === 'presentations', ids);
-    if (what === 'screens' || what === 'mode') void loadHall();
+    // The first hall heard on a connection whose own read failed does that connection's reads too (S2).
+    if (what === 'screens' || what === 'mode') void loadHall().then(catchUp);
   });
 }

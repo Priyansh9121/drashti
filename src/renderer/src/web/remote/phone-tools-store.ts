@@ -284,9 +284,10 @@ export function startPhoneTools(): void {
     void loadPins();
     forgetDocs();
   });
-  onListsChanged((what) => {
+  onListsChanged((what, ids) => {
     if (what === 'wallpapers' || what === 'presentations') void loadWallpapers();
     if (what === 'quickBar') void loadPins();
-    if (what === 'presentations') forgetDocs();
+    // Only those a library change names, when it names them (QA24-PHONE-C; a24-review-phonefix S3).
+    if (what === 'presentations') forgetDocs(ids);
   });
 }
