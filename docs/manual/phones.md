@@ -90,6 +90,7 @@
 3. For more people, press **Show the Chat QR code** in **Phones**, and let each phone scan it within 10 minutes.
 4. Folded, its heading shows how many new messages came in.
 5. **Clear chat** empties it for everyone. **Remove…** under **People in the chat** cuts a phone off at once.
+6. A new message from someone else pops up for about 10 seconds over the middle of the window. Click it to open Chat (in Simple Mode only while Chat is chosen there), or × to close it.
 
 ![The Phones panel](../screenshots/phones-panel.png)
 

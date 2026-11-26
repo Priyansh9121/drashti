@@ -4,6 +4,7 @@ import { useElementSize } from '../render/useElementSize';
 import { usePersistentState } from '../ui/persist';
 import { Splitter } from '../ui/Splitter';
 import { FLOW_SHARE, flowAreaHeight } from './flow-area';
+import { popPlaceRef } from './pop-place';
 
 /*
  * The operator window's columns (Session 26a): the playlists on the left (Session 44: the whole column, the
@@ -74,6 +75,8 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         data-zone="middle"
       >
         {middle}
+        {/* The chat popup's place (alpha.24, pop-place.ts): over the middle's foot, just above the bars at the bottom. */}
+        <div ref={popPlaceRef} className="relative h-0 shrink-0" data-testid="pop-place" />
       </div>
       <Splitter
         value={rightWidth}
@@ -155,8 +158,9 @@ export function LeftColumn({
   const flowDefault = Math.round(FLOW.initial * areaUsable);
   return (
     // One landmark for the column (Session 44): the Library button, the playlists, the open playlist's folders
-    // and the library's sheet over them.
-    <section aria-label="Playlists" className="flex min-h-0 flex-1 flex-col">
+    // and the library's sheet over them. The Undo line at its foot keeps its room while the pointer is over it
+    // (library/UndoBar.tsx, data-left-column).
+    <section aria-label="Playlists" data-left-column className="flex min-h-0 flex-1 flex-col">
       {head}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={area} className="flex min-h-0 flex-1 flex-col" inert={covered}>

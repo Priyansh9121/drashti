@@ -163,6 +163,10 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 3. Right-click it for **Edit wallpaper…** (order, **Seconds each**, **Fade**), **Rename…** and **Delete…**.
 4. **F12** (or **Wallpaper** along the bottom) puts it over whatever is up.
 
+If a wallpaper says **Picture missing**, press **Find…** and choose its folder. A file just deleted from **Media** comes back with the playlist rows and music tracks deleted with it; items removed earlier stay removed.
+
+A picture that says **Convert picture**, such as HEIC, needs converting in **Media**. LIVE explains when the wallpaper makes the screens black, including under **F12**.
+
 ![The Wallpapers under the playlists: three placeholder wallpapers, the second chosen](../screenshots/wallpapers.png)
 
 ## Sabha flow
