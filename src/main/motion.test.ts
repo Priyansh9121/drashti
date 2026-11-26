@@ -235,7 +235,9 @@ describe('motion in the interface is tokens', () => {
       /^animation:\s*fold-up calc\(var\(--dur-exit\) \* var\(--lively-time\)\) var\(--ease-in\) both;$/u,
     );
     // Lively's unroll: its insides shown from the top down and faded in, by clip and opacity alone (no box moves).
-    expect(ruleFor(css, ":root[data-interface-motion='lively'] [data-lively='open']")).toMatch(
+    expect(
+      ruleFor(css, ":root[data-interface-motion='lively'][data-chip='yes'] [data-lively='open']"),
+    ).toMatch(
       /^animation:\s*lively-open calc\(var\(--dur-open\) \* var\(--lively-time\)\) var\(--ease-out\) both;$/u,
     );
     const keyframes = (text: string, name: string) =>
@@ -272,5 +274,86 @@ describe('motion in the interface is tokens', () => {
     // The ring eases in from further out; its width never changes (the keyboard's checks read it at once).
     expect(motionCss).not.toMatch(/outline-width|outline-style/u);
     expect(motionCss).toMatch(/outline-offset:\s*var\(--rise-sm\)/u);
+  });
+
+  /*
+   * The release lead's review of uimotion (27 Nov 2026), MUST-1 (option b, answered as recommended, the owner's "till
+   * 9:00AM"): without a graphics chip, Lively is held whole and the window looks as Calm's (the new install's default
+   * stays Lively). S2: a section's insides that hold a show control are there at once. S3: the chevron turns only for a
+   * fold that moves. S6: a menu's choices ease only where every newer motion may.
+   */
+  it('all of Lively waits for a graphics chip: every Lively rule in app.css and ui/motion.css names data-chip', () => {
+    const lively = [...rules(css), ...rules(motionCss)].flatMap((r) =>
+      r.selectors.filter((sel) => sel.includes("[data-interface-motion='lively']")),
+    );
+    expect(lively.length).toBeGreaterThan(8);
+    expect(
+      lively.filter((sel) => !sel.includes("[data-interface-motion='lively'][data-chip='yes']")),
+    ).toEqual([]);
+  });
+
+  it('a section whose insides hold a show control shows them at once, in Calm and in Lively', () => {
+    expect(ruleFor(motionCss, '[data-fold]:has([data-show-control])')).toBe('animation: none;');
+    expect(
+      ruleFor(
+        motionCss,
+        ":root[data-interface-motion='lively'][data-chip='yes'] [data-lively='open']:has([data-show-control])",
+      ),
+    ).toBe('animation: none;');
+  });
+
+  it('the chevron turns only for a fold that moves, and a menu’s choices ease only where newer motion may', () => {
+    const turning = rules(motionCss).filter((r) =>
+      r.selectors.some((sel) => sel.includes('[data-fold-chevron]')),
+    );
+    expect(turning.flatMap((r) => r.selectors)).toEqual([
+      ":root[data-opened][data-chip='yes'] [data-fold-chevron][data-turning]",
+    ]);
+    expect(
+      ruleFor(motionCss, ":root[data-opened][data-chip='yes'] [role^='menuitem']:not([data-show-control])"),
+    ).toMatch(/transition-duration:\s*var\(--dur-hover\);/u);
+    const menu = readFileSync(join(renderer, 'ui', 'Menu.tsx'), 'utf8');
+    expect(menu).not.toMatch(/\btransition-colors\b/u);
+  });
+
+  /*
+   * S4: every control in the sections under LIVE that changes what the hall sees or hears is a show control (Button's
+   * or IconButton's `instant`), so none of them ever glides, fades its colour or is covered by a fold's copy.
+   */
+  it('the sections’ controls that change the hall are show controls', () => {
+    const HALL =
+      /type:\s*'(?:showMessage|hideMessage|startTimer|resetTimer|showAudienceTimer|hideAudienceTimer|setStageMessage|clearStageMessage)'|counts \? 'pauseTimer'|dispatch\('(?:pauseMusic|resumeMusic|musicNext|musicPrevious)'\)|onClick=\{show\}|\bshow\(r\)|Show the countdown|>\s*Show\s*<\/Button>/u;
+    /** Each <Button …> or <IconButton …>: its opening tag, and with a Button's words up to </Button>. */
+    const tags = (text: string) =>
+      [...text.matchAll(/<(Button|IconButton)\b/gu)].map((m) => {
+        let depth = 0;
+        let end = m.index;
+        for (let i = m.index; i < text.length; i++) {
+          const ch = text[i];
+          if (ch === '{') depth += 1;
+          else if (ch === '}') depth -= 1;
+          else if (ch === '>' && depth === 0) {
+            end = i;
+            break;
+          }
+        }
+        const open = text.slice(m.index, end + 1);
+        const words = open.endsWith('/>') ? '' : text.slice(end, text.indexOf('</Button>', end) + 9);
+        return { open, all: open + words };
+      });
+    const FILES: Record<string, number> = {
+      [join('operator', 'TimersPanel.tsx')]: 6,
+      [join('operator', 'MessagesPanel.tsx')]: 2,
+      [join('operator', 'StageControls.tsx')]: 3,
+      [join('music', 'MusicPanel.tsx')]: 4,
+    };
+    for (const [file, count] of Object.entries(FILES)) {
+      const hall = tags(readFileSync(join(renderer, file), 'utf8')).filter((t) => HALL.test(t.all));
+      expect(hall.length, file).toBe(count);
+      expect(
+        hall.filter((t) => !/\binstant\b/u.test(t.open)).map((t) => t.open),
+        file,
+      ).toEqual([]);
+    }
   });
 });

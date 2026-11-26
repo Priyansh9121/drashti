@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { clipInside, foldMove, glides } from './fold';
+import { clipInside, foldCopy, foldMove, glides } from './fold';
+import { livelyWith } from './motion';
 
 /*
  * A section's fold (alpha.24, uimotion; the owner's QA24-UI-3 "more interactive and more animated, more transitions"):
@@ -54,5 +55,39 @@ describe('the copy of what folds away, kept inside its column', () => {
     expect(clipInside({ top: -10, right: 1100, bottom: 700, left: -5 }, { width: 1024, height: 645 })).toBe(
       'inset(0px 0px 0px 0px)',
     );
+  });
+});
+
+/*
+ * The release lead's review (27 Nov 2026). MUST-1: Lively, all of it, waits for a graphics chip (a new install's
+ * default stays Lively; without a chip it looks as Calm does). MUST-2: no copy of what folds away is drawn where a show
+ * control could end up under it.
+ */
+describe('Lively, held as every newer motion is', () => {
+  const NOW = { motion: 'lively', off: false, chip: 'yes', sinceShow: 5000 } as const;
+
+  it('moves with a graphics chip, the show quiet', () => {
+    expect(livelyWith(NOW)).toBe(true);
+  });
+
+  it('is held without a known chip, with Off or reduced motion, in Calm, or as the show changes', () => {
+    expect(livelyWith({ ...NOW, chip: 'no' })).toBe(false);
+    expect(livelyWith({ ...NOW, chip: 'unknown' })).toBe(false);
+    expect(livelyWith({ ...NOW, chip: undefined })).toBe(false);
+    expect(livelyWith({ ...NOW, off: true })).toBe(false);
+    expect(livelyWith({ ...NOW, motion: 'calm' })).toBe(false);
+    expect(livelyWith({ ...NOW, sinceShow: 800 })).toBe(false);
+  });
+});
+
+describe('the copy of what folds away', () => {
+  it('is Calm’s or Lively’s when no show control is near', () => {
+    expect(foldCopy('calm', false)).toBe('fold');
+    expect(foldCopy('lively', false)).toBe('fold-lively');
+  });
+
+  it('is never drawn where a show control moves or sits in the same column', () => {
+    expect(foldCopy('calm', true)).toBeNull();
+    expect(foldCopy('lively', true)).toBeNull();
   });
 });

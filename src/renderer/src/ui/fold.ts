@@ -61,6 +61,11 @@ export function glides(before: readonly number[], after: readonly number[]): num
   });
 }
 
+/** The copy of what folds away (the stand-in before its rule, red first). */
+export function foldCopy(move: FoldMove, _showControlNear: boolean): 'fold' | 'fold-lively' | null {
+  return move === 'lively' ? 'fold-lively' : 'fold';
+}
+
 /** A clip of the window to `box` (the column's scrolling part), as a clip-path. */
 export function clipInside(
   box: { top: number; right: number; bottom: number; left: number },

@@ -92,6 +92,18 @@ export function motionOff(): boolean {
  */
 export const QUIET_MS = 800;
 
+/** What decides whether Lively moves now (the stand-in before its rule, red first). */
+export interface LivelyFacts {
+  motion: string | undefined;
+  off: boolean;
+  chip: string | undefined;
+  sinceShow: number;
+}
+
+export function livelyWith(f: LivelyFacts): boolean {
+  return f.motion === 'lively' && !f.off && f.sinceShow > QUIET_MS;
+}
+
 /** Lively is chosen, the computer allows motion, and the show has not changed just now. */
 export function livelyNow(): boolean {
   return chosenMotion() === 'lively' && !motionOff() && sinceShowChanged() > QUIET_MS;
