@@ -10,6 +10,10 @@
 //   Windows: WIN_CERT_PFX (base64 of a .pfx) and WIN_CERT_PASSWORD; or Azure Trusted Signing with
 //            AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_SIGNING_ENDPOINT,
 //            AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE and AZURE_PUBLISHER_NAME.
+//
+// QA24-SIGN-1, a Mac's third way: Drashti's own certificate (free, self-signed, named "Drashti Code Signing"),
+// imported by the Release workflow into a temporary keychain (scripts/mac-sign-keychain.mjs), whose path alone
+// comes here as MAC_SIGN_KEYCHAIN; the certificate and its password never do. A Developer ID wins over it.
 
 const SIGNING_VARS = [
   'CSC_LINK',
@@ -23,6 +27,10 @@ const SIGNING_VARS = [
   'APPLE_APP_SPECIFIC_PASSWORD',
   'APPLE_TEAM_ID',
 ];
+// Drashti's own certificate's keychain (QA24-SIGN-1): only its branch below gives electron-builder one.
+const OWN_VARS = ['MAC_SIGN_KEYCHAIN', 'CSC_KEYCHAIN'];
+/** The name of Drashti's own certificate, as the owner's steps make it (scripts/mac-signature.mjs). */
+const OWN_IDENTITY = 'Drashti Code Signing';
 
 /**
  * electron-builder's environment and extra arguments for this computer, and what release-signing.json records.
@@ -33,11 +41,12 @@ export function signingPlan({ platform, given, writeSecret }) {
   const env = { ...given };
   const has = (name) => typeof given[name] === 'string' && given[name].trim() !== '';
   // Start from nothing: only what is set below can turn signing on.
-  for (const name of SIGNING_VARS) delete env[name];
+  for (const name of [...SIGNING_VARS, ...OWN_VARS]) delete env[name];
   const extra = [];
   let signed = false;
   let notarised = false;
   let how = 'unsigned (no certificate given)';
+  let own = false;
 
   if (platform === 'darwin' && has('MAC_CERT_P12')) {
     env.CSC_LINK = writeSecret('developer-id.p12', Buffer.from(given.MAC_CERT_P12.trim(), 'base64'));
@@ -52,6 +61,24 @@ export function signingPlan({ platform, given, writeSecret }) {
       notarised = true;
       how += ', and notarised';
     } else how += ', not notarised (no App Store Connect key given)';
+  } else if (platform === 'darwin' && has('MAC_SIGN_KEYCHAIN')) {
+    // Drashti's own certificate (QA24-SIGN-1), found by its name in the keychain the workflow made, and only
+    // there (electron-builder's CSC_KEYCHAIN). Never notarised: notarisation needs a paid Developer ID. Without the
+    // hardened runtime, as ad hoc: its library validation lets a program load only libraries signed by Apple or
+    // with its own Team ID, and a certificate of one's own has no Team ID ("mapped file has no Team ID and is not
+    // a platform binary"), so Drashti would not start; macOS's permissions do not need it. The entitlements are
+    // electron-builder.yml's, as for every build. forceCodeSigning: if the identity is not found, electron-builder
+    // fails, where it would otherwise leave the app unsigned with a warning.
+    env.CSC_KEYCHAIN = given.MAC_SIGN_KEYCHAIN.trim();
+    extra.push(
+      `-c.mac.identity=${OWN_IDENTITY}`,
+      '-c.mac.hardenedRuntime=false',
+      '-c.mac.notarize=false',
+      '-c.forceCodeSigning=true',
+    );
+    signed = true;
+    own = true;
+    how = "signed with Drashti's own certificate, not notarised (it is not a Developer ID)";
   } else if (platform === 'win32' && has('WIN_CERT_PFX')) {
     env.WIN_CSC_LINK = writeSecret('code-signing.pfx', Buffer.from(given.WIN_CERT_PFX.trim(), 'base64'));
     env.WIN_CSC_KEY_PASSWORD = given.WIN_CERT_PASSWORD ?? '';
@@ -87,5 +114,5 @@ export function signingPlan({ platform, given, writeSecret }) {
     extra.push('-c.mac.identity=-', '-c.mac.hardenedRuntime=false');
     how = 'signed ad hoc (no certificate given)';
   }
-  return { env, extra, how, record: { platform, signed, notarised } };
+  return { env, extra, how, record: { platform, signed, notarised, ...(own ? { kind: 'own' } : {}) } };
 }
