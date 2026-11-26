@@ -303,4 +303,14 @@ describe('live translation for captions (alpha.24, QA24-CAPLANG-2)', () => {
     expect(live.may()).toBe(true);
     expect(live.status('gu', 'hi', false)).toMatchObject({ offered: true, unavailable: null, fault: null });
   });
+
+  it('turns spoken times into digits before translating by default (a24-captime’s normalizeSpokenTimes, 2e)', async () => {
+    const engine = fakeEngine();
+    const live = new LiveTranslation({ engine, log });
+    live.begin('gu', 'hi');
+    await live.translate(request('આગામી બસ સવારે સવા આઠ વાગ્યે આવશે.'), new AbortController().signal);
+    const sent = String(spy(engine).translate.mock.calls[0]?.[0]);
+    expect(sent).toContain('8:15 વાગ્યે');
+    expect(sent).not.toContain('સવા આઠ');
+  });
 });
