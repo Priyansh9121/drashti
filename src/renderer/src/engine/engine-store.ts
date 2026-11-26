@@ -7,6 +7,8 @@ import { noteShowChange } from './show-changed';
 interface EngineView {
   state: EngineState | null;
   rev: number;
+  /** Revision of the state published for rendering (operator cleanup may wait briefly). */
+  drawnRev: number;
   /**
    * The run of the engine `rev` counts in (Session 53): each run starts again from 0, so a phone's Next says both.
    * Undefined until a snapshot says it.
@@ -26,6 +28,7 @@ interface EngineView {
 export const useEngine = create<EngineView>(() => ({
   state: null,
   rev: -1,
+  drawnRev: -1,
   sentAt: 0,
   connected: false,
   unread: false,
@@ -47,20 +50,49 @@ export interface EngineSource {
 
 let started = false;
 
+export interface EngineConnectionOptions {
+  /** Operator only: a videoStart-only cleanup is bookkeeping, not a show change at Go. */
+  deferCueCleanup?: boolean;
+}
+
 /**
- * Keep this page's copy of the engine state from a source. Messages are
- * applied as they arrive; a gap asks for a fresh snapshot. Once per page.
+ * Apply every message to the mirror immediately; a gap asks for a fresh snapshot. The operator may defer
+ * publishing only Go cleanup to its render subscribers. Protocol revisions always advance immediately.
  */
-export function connectEngineSource(source: EngineSource): void {
+export function connectEngineSource(source: EngineSource, options: EngineConnectionOptions = {}): void {
   if (started) return;
   started = true;
   const mirror = new EngineMirror();
+  let cleanup: ReturnType<typeof setTimeout> | null = null;
+  const publish = () => {
+    cleanup = null;
+    noteShowChange();
+    useEngine.setState({ state: mirror.state, drawnRev: mirror.rev });
+  };
   source.onMessage((message) => {
+    const start = mirror.state?.videoStart;
     const result = mirror.apply(message);
     if (result === 'applied') {
-      noteShowChange();
+      if (cleanup !== null) clearTimeout(cleanup);
+      cleanup = null;
+      const wait = start ? start.at + 250 - Date.now() : 0;
+      const op = message.kind === 'patch' && message.ops.length === 1 ? message.ops[0] : undefined;
+      const defer =
+        options.deferCueCleanup &&
+        start &&
+        Date.now() >= start.at &&
+        wait > 0 &&
+        op?.path.length === 1 &&
+        op.path[0] === 'videoStart' &&
+        op.value === null;
+      if (defer) {
+        // Bounded operator-only bookkeeping publication; playback still uses the shared clock.
+        cleanup = setTimeout(publish, wait);
+      } else {
+        noteShowChange();
+      }
       useEngine.setState({
-        state: mirror.state,
+        ...(defer ? {} : { state: mirror.state, drawnRev: mirror.rev }),
         rev: mirror.rev,
         session: mirror.session,
         sentAt: message.sentAt,
@@ -83,21 +115,27 @@ export function readEngineAgain(): void {
  * output, the stream's picture, the audio player) says nothing when the state can't be read, and asks more
  * often.
  */
-export function connectEngine(kind: keyof typeof ENGINE_ASK_EVERY_MS = 'says'): void {
+export function connectEngine(
+  kind: keyof typeof ENGINE_ASK_EVERY_MS = 'says',
+  options: EngineConnectionOptions = {},
+): void {
   if (started) return;
   let receive: ((message: EngineMessage) => void) | null = null;
-  connectEngineSource({
-    onMessage: (listener) => {
-      receive = listener;
-      window.drashti.engine.onMessage(listener);
+  connectEngineSource(
+    {
+      onMessage: (listener) => {
+        receive = listener;
+        window.drashti.engine.onMessage(listener);
+      },
+      resync: () => {
+        window.drashti.engine.snapshot().then(
+          (m) => receive?.(m),
+          () => undefined,
+        );
+      },
     },
-    resync: () => {
-      window.drashti.engine.snapshot().then(
-        (m) => receive?.(m),
-        () => undefined,
-      );
-    },
-  });
+    options,
+  );
   // Asked for until it comes (Session 39): again by itself after 1, 2 and 5 s, then said (the operator
   // window, with Try again) and asked for now and then. An ask that never answers counts as failed.
   let failures = 0;
