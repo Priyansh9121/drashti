@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import { launchApp, openSection, operatorPage, operatorReady } from './helpers';
 import { sizeOperatorWindow } from './window-size';
 
@@ -240,6 +241,7 @@ test('Pro Mode: at every width of the live column, Back, Next, the next picture,
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await sizeOperatorWindow(app, win, WINDOW);
   await expect(win.getByTestId('live-column').getByTestId('show-oops')).toBeVisible();
   // Audio, a section under LIVE folded at each start (alpha.22), opened to measure its buttons.
@@ -256,6 +258,7 @@ test('Simple Mode: at every width of the live column, Back, Next, the next pictu
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await sizeOperatorWindow(app, win, WINDOW);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();

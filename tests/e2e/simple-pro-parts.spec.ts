@@ -8,6 +8,7 @@ import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import {
   importAndGetIds,
   launchApp,
@@ -544,6 +545,7 @@ test('Edit slides in Simple Mode opens Pro’s slide editor from a row: its save
 test('Simple Mode’s bar: Slide, Background and Audio beside Clear all, as Pro Mode’s, each taking its own layer off (and F2, F3 and F5)', async () => {
   test.setTimeout(150_000);
   const { app, win, dir } = await start();
+  await helpOn(win);
   const [pictureId = '', soundId = ''] = await importAndGetIds(win, [
     await makeTestImage(win, join(dir, 'Placeholder backdrop.png'), { color: '#1d4e89' }),
     makeTestTone(join(dir, 'Placeholder bell.wav'), { seconds: 30 }),

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink } from './dropbox-stand-in';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import {
   launchApp,
   openLibrary,
@@ -73,6 +74,7 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   const bar = win.getByTestId('layer-bar');
   for (const [width, height] of [
     [1024, 645],
@@ -169,6 +171,7 @@ test('Audio lists its audio playlists directly, with no Music heading or ? of it
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   for (const [width, height] of [
     [1024, 645],
     [1280, 720],

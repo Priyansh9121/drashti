@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { helpOn } from './help';
 
 /*
  * The next thing to do (Session 26g): in a show, Next under LIVE is the one primary on the screen,
@@ -29,6 +30,7 @@ test('in a show, Next under LIVE is the one primary, with its key; Back beside i
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await helpOn(win);
   const next = win.getByTestId('show-next');
   const back = win.getByTestId('show-back');
   await expect(next).toBeVisible();
