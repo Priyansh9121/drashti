@@ -12,7 +12,7 @@ import { endWindow, freshWindow } from './fresh-window';
 
 /** The switch as a new start of the window draws it, in this mode, Help on or off. */
 async function toggle(mode: OperatorMode, helpOn: boolean): Promise<string> {
-  await freshWindow(mode, helpOn);
+  freshWindow(mode, helpOn);
   const { HelpSwitch } = await import('./HelpSwitch');
   return renderToStaticMarkup(createElement(HelpSwitch, { platform: 'darwin' }));
 }

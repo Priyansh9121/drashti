@@ -4,7 +4,10 @@ import { cx } from './cx';
 
 /**
  * A key hint, such as "F1" or "⌘⇧S". It takes the colour of the text around
- * it, so it stays readable on every button.
+ * it, so it stays readable on every button. Beside a button's words in the
+ * operator window it shows only while Help is on or Alt (Option) is held
+ * (alpha.24, help/help.css), and is read out all the while; in a tooltip, a
+ * menu or a sentence it always shows.
  */
 export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -23,7 +26,8 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
  * A button's words with its keys under them (Session 51), "or" between two: every key it answers to shown on a
  * button too narrow for them beside its words (the layer bar below 1440 px, Simple Mode's Black-out, Logo, Clear
  * all and Put it back). `besideFrom1440` puts them after the words from 1440 px wide instead, where the layer bar
- * has room. A key that does not act now is left out by the caller; an empty one shows nothing.
+ * has room. A key that does not act now is left out by the caller; an empty one shows nothing. Its keys and their "or"
+ * show and hide together, as one key does (`data-keys`, help/help.css).
  */
 export function WordsOverKeys({
   words,

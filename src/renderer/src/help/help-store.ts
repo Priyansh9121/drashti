@@ -74,7 +74,7 @@ export function connectKeyHints(win: Window): () => void {
   const root = win.document.documentElement;
   const follow = (e: Event) => {
     const was = useHelp.getState().alt;
-    const alt = altAfter(was, e as AltEvent);
+    const alt = altAfter(was, e);
     if (alt !== was) useHelp.setState({ alt });
   };
   // The window losing the keyboard (Alt+Tab to another program): Alt's letting go goes there.

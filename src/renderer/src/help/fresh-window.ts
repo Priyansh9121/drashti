@@ -7,7 +7,7 @@ import type { OperatorMode } from '../../../shared/mode';
  * each start imports its modules anew: the window's storage holding Help's switch, and the mode as the main process
  * said it.
  */
-export async function freshWindow(mode: OperatorMode, helpOn: boolean): Promise<void> {
+export function freshWindow(mode: OperatorMode, helpOn: boolean): void {
   vi.resetModules();
   const kept = new Map([['drashti.ui.help.on', JSON.stringify(helpOn)]]);
   const storage = {

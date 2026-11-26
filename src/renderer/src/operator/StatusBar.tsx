@@ -1,3 +1,4 @@
+import { HelpSwitch } from '../help/HelpSwitch';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { showReport } from '../help/report-store';
 import { useEffect } from 'react';
@@ -312,7 +313,10 @@ export function StatusBar({
         {/* Captions on but showing nothing, and why (cap-threads): in both modes. */}
         <CaptionsWarning canOpen={pro} />
         <TodayStatus onOpen={onOpenCalendar} />
-        {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button. */}
+        {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button.
+            Help (alpha.24): the one switch for every ? and the buttons' keys, where the bar's ? was, in both modes; the
+            bar's own ? beside it while Help is on (Pro Mode's). */}
+        <HelpSwitch platform={info?.platform ?? 'darwin'} />
         {help.button}
         <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
           <LinkConversionStatus />

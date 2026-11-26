@@ -13,7 +13,7 @@ import { endWindow, freshWindow } from './fresh-window';
 
 /** What a heading's ? and a panel with one draw, in a new start of the window in this mode, Help on or off. */
 async function drawn(mode: OperatorMode, helpOn: boolean) {
-  await freshWindow(mode, helpOn);
+  freshWindow(mode, helpOn);
   const { useWhatIsThis } = await import('./WhatIsThis');
   const { Panel } = await import('../ui/Panel');
   function Asker({ topic }: { topic: 'live' | 'statusbar' }) {
