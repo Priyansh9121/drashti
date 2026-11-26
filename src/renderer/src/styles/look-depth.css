@@ -35,18 +35,20 @@
   }
 
   /*
-   * Elevation, one scale: 0 the ground (the window's own ink, under the bars and in the gaps), 1 the middle (the
+   * Elevation, one scale: 0 the ground (--depth-ground: darker than the window's own ink, nearer the mockup's; under the bars and in the gaps), 1 the middle (the
    * panel), 2 the side columns (one surface up), 3 what is raised in them (cards, fields, a control at rest); a panel's
    * edge is the light along its top (--elev-light). LIVE's red at its tint (the live row) and its ring (round the live
    * picture): LIVE's own, the same in Black and White.
    */
   :root[data-window-look='depth'][data-base='dark'] {
-    --elev-light: #ffffff0f;
+    --depth-ground: #030304;
+    --elev-light: #ffffff17;
     --state-live-tint: #d42a3124;
     --state-live-ring: #d42a313d;
   }
   :root[data-window-look='depth'][data-base='light'] {
-    --elev-light: #ffffffb3;
+    --depth-ground: #d6d9dd;
+    --elev-light: #ffffff;
     --state-live-tint: #d42a310f;
     --state-live-ring: #d42a3129;
   }
@@ -59,7 +61,7 @@
   :root[data-window-look='depth'] :is(body, [data-zone]) {
     --state-fill: var(--color-panel-2);
     /* Opaque, so a fold's fading copy of a section's insides is drawn on the row's own colour (ui/fold.ts). */
-    --state-row: color-mix(in srgb, var(--color-fg) 3%, var(--color-panel));
+    --state-row: color-mix(in srgb, var(--color-fg) 5%, var(--color-panel));
     --state-disabled: 0.4;
   }
   :root[data-window-look='depth'][data-base='dark'] :is(body, [data-zone]) {
@@ -98,14 +100,18 @@
     --color-ink: var(--zone-middle-panel);
   }
   :root[data-window-look='depth'] [data-zone='bar'] {
-    --color-panel: var(--zone-bar-ink);
+    --color-panel: var(--depth-ground);
     border-top-color: transparent;
   }
 
   /* The ground: the top bar (Pro Mode's and Simple Mode's), the access line's strip, the quick bar and the status bar. */
   :root[data-window-look='depth'] body {
-    --color-header: var(--color-ink);
-    --color-header-2: var(--color-ink);
+    --color-header: var(--depth-ground);
+    --color-header-2: var(--depth-ground);
+  }
+  /* The window's own root (Pro Mode's and Simple Mode's: the top bar's parent), seen in the gaps and under the bars. */
+  :root[data-window-look='depth'] :has(> [data-header]) {
+    background-color: var(--depth-ground);
   }
   :root[data-window-look='depth'] [data-header] {
     border-bottom-color: transparent;
@@ -120,6 +126,7 @@
   }
   :root[data-window-look='depth'] footer[aria-label='Status'] {
     border-top-color: transparent;
+    background-color: var(--depth-ground);
   }
 
   /*
