@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { DrashtiBridge } from '../../../shared/bridge';
 import type { InputBackground } from '../../../shared/engine/state';
+import { useStagePreview } from './live-here';
 import {
   findInputDevice,
   notFoundReason,
@@ -261,7 +262,7 @@ const saying = new Map<string, number>();
  * Say how the input up now stands on this page (it plays, it stopped, or no camera of its name is here): once for
  * each change of each showing (`showing`: the input and when it went up), however many pictures of it the page
  * draws. A picture going away (dissolving out) says nothing. `box`: said of the picture-in-picture box's picture
- * (Session 51), which only answers restart recovery's check.
+ * (Session 51), which only answers restart recovery's check. The Stage preview never says it (alpha.23): no screen.
  */
 export function useInputReport(
   inputId: string,
@@ -271,7 +272,8 @@ export function useInputReport(
   reason: StopReason | null = null,
   box = false,
 ): void {
-  const report = on ? reportOf(state, reason) : null;
+  const preview = useStagePreview();
+  const report = on ? reportOf(state, reason, preview ? 'preview' : 'screen') : null;
   useEffect(() => {
     if (report === null) return;
     saying.set(showing, (saying.get(showing) ?? 0) + 1);

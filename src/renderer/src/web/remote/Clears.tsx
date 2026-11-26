@@ -2,6 +2,7 @@ import type { EngineState } from '../../../../shared/engine/state';
 import { cx } from '../../ui/cx';
 import { api } from '../device';
 import { tap } from '../taps';
+import type { ClearedLayer } from '../../operator/layer-clears';
 import { type RemoteClear, remoteClears } from './remote-clears';
 import { useMirror } from './mirror-store';
 
@@ -52,8 +53,17 @@ const TEST_ID: Partial<Record<RemoteClear['action'], string>> = {
   toggleBlackout: 'remote-blackout',
 };
 
-export function Clears({ state }: { state: EngineState | null }) {
+/**
+ * The clears, or (`only`) those of these layers alone: since alpha.23 (QA23-PHONE-1, the owner's Q7) a phone has Clear
+ * slide alone, while a PowerPoint or a PDF is live (phone-mode.ts); the rest are no longer offered.
+ */
+export function Clears({ state, only }: { state: EngineState | null; only?: readonly ClearedLayer[] }) {
   const keys = useMirror((s) => s.keys);
+  // A phone's Clear slide names no key (a23-review-phoneui's low point: the window's keys are no longer read from a
+  // phone, so its own keymap could not be named).
+  const shown = remoteClears(state, keys)
+    .filter((c) => only === undefined || (c.layer !== undefined && only.includes(c.layer)))
+    .map((c) => (only === undefined ? c : { ...c, key: '' }));
   return (
     <div
       role="group"
@@ -61,7 +71,7 @@ export function Clears({ state }: { state: EngineState | null }) {
       className="grid grid-cols-[repeat(auto-fill,minmax(6.25rem,1fr))] gap-2"
       data-testid="remote-actions"
     >
-      {remoteClears(state, keys).map((c) => {
+      {shown.map((c) => {
         // Dimmed with nothing to clear, as the desktop's; the Wallpaper and Black-out stay to be pressed.
         const off = c.layer !== undefined || c.action === 'clearAll' ? !c.lit : false;
         return (

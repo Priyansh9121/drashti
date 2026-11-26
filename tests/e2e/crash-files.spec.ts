@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { logLines } from './log-lines';
 
 /*
  * Crash files and the crash journal (Sessions 31–36, ROB-6). A crash leaves a dump on the computer, never
@@ -61,9 +62,7 @@ test('a crash leaves a dump here; Diagnostics adds it only when ticked; the next
   await expect.poll(journaled, { timeout: 30_000 }).toBe(true);
   // The log says how its process ended (Session 39): in hex on Windows, a number or a signal on a Mac.
   const crashLine = () =>
-    readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-      .split('\n')
-      .find((line) => line.includes('Watchdog: audio player crashed')) ?? '';
+    logLines(userData).find((line) => line.includes('Watchdog: audio player crashed')) ?? '';
   await expect.poll(crashLine).toMatch(EXIT);
   expect(readFileSync(join(userData, 'crash-journal.json'), 'utf8')).toMatch(
     /the audio player crashed \(\w+, (?:exit code \w+|signal \d+: SIG[A-Z]+)\); the watchdog brought it back/u,

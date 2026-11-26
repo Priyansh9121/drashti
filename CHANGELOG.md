@@ -2,6 +2,34 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.23 (26 Nov 2026)
+
+Update after a sabha, and update Main and nodes together.
+
+- A cued video no longer fails now and then with “could not load its first frame” when a screen kept showing the video’s start.
+- Combine videos… and Export clip… no longer leave a hidden copy in Media’s folder when they fail, are stopped or are cut short by closing Drashti, and what an earlier failure left is cleared at the start, even after the library has moved.
+- With no hall screen on this computer, the Lower Thirds studio’s Live shows what is live from a small copy drawn out of sight.
+- A paused or waiting video that a screen cannot play now gets a notice naming the file and the screen, and LIVE says so; played anyway, it stops again with a notice.
+- Turning Stage on with only a stage tablet, or with the stage display unplugged, no longer says no screen is set to Stage.
+- A video or sound that has played to its end and stays up no longer holds Save trimmed video, Edit Video’s Save, Export clip… or Combine videos…; a deck step’s clip, a deck’s transition sound and a slide’s own sound hold them while they play.
+- Save trimmed video: the Trim dialog names the new video as it will be made, its percent moves as it should, a video cued for Go stops a save at once, and Export… keeps the .mp4 ending.
+- When the stream’s connection drops on a busy computer, Drashti still says why (the stream key, the server’s certificate, the internet) before it tries again.
+- Live captions: when they rest because the computer cannot keep up, the dialog says three answers in a row were too slow and how long the last took; a caption edit still open when its phrase leaves the screens stays open and says so.
+- Live captions on Windows with Standard or a small Gujarati or Hindi model: words ready about two to three times sooner on a four-processor PC (less for the small Gujarati model); Macs unchanged.
+- Sabha flow: choose the sabha’s running order as a PDF in the new Sabha flow panel; Drashti reads its numbered items (English, Gujarati or Hindi) from the PDF’s own text and keeps its own copy.
+- The Sabha flow panel shows Now and Next up, and phones show the flow and what is now; only the operator changes it.
+- Simple Mode’s day playlist name may end in “…” in a small window’s left column; its full name shows on hover, to screen readers and in the playlist’s header.
+- Slide editor in a small window (larger text, say): the ribbon folds to its group tabs and the Inspector sits behind a button, so the slide keeps its room.
+- PDF pages cropped or turned: Save picture… saves the page as the screens show it, dragging over LIVE follows the pointer, and Keep crop with nothing changed adds no Undo step.
+- A quick double click on a row’s trash or rename button, or on an audio playlist track’s trash, now acts once: it no longer also takes out the row that moves up under the pointer.
+- A hall screen on a slow computer is no longer reloaded again and again: it gets longer to answer, Screens says “Keeps restarting” with Try again, and one that still has not drawn is left as it is, shown as Stopped.
+- Import from a Link… downloads from YouTube with yt-dlp 2026.11.23, which keeps up with YouTube’s newest changes.
+- Phones: in Simple Mode a paired phone shows what is on the screens, the Sabha flow and the chat, with nothing to press; in Pro Mode it can also put up and step through a PowerPoint or PDF from its playlist.
+- Phones no longer play or change videos, pictures, sounds, timers or messages, or zoom the screens; Companion and Stream Deck use OSC.
+- Chat: one group chat for this computer and its paired phones, kept for the day only and never on the screens or the stream.
+- The Undo line at the foot of the left column now goes after a minute; Cmd/Ctrl+Z still undoes the change after that.
+- Find missing media… now brings back a picture deleted from Media instead of removing it for good; a wallpaper whose picture is missing says so on its tile, in Wallpapers and under LIVE, and follows a converted copy.
+
 ## 1.0.0-alpha.22 (25 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
@@ -21,7 +49,7 @@ Update after a sabha, and update Main and nodes together.
 - Stage starts off; turning it on with no screen set to Stage says so and opens Screens; a Stage preview window shows the stage layout without a third screen.
 - The Lower Thirds studio previews a lower third over the hall’s wallpaper by default, or over what the screens show now, or plain dark or light.
 - The slide editor’s top row wraps at 200% zoom instead of scrolling sideways, and Back and Next fit at every width of the LIVE column.
-- Fixed: Gujarati words in live captions are no longer joined together, and the LIVE picture’s corners are no longer tinted as Drashti starts.
+- Fixed: Gujarati words in live captions are no longer joined together, the LIVE picture’s corners are no longer tinted as Drashti starts, a stream or recording begun as its screen comes up no longer starts with a black frame, and on a busy computer the stream’s and recording’s sound no longer skips a moment.
 
 ## 1.0.0-alpha.21 (24 Nov 2026)
 

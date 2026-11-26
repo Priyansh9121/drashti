@@ -204,6 +204,8 @@ This is offered in Simple Mode too. For an audio playlist that carries on from i
 3. If it names a paired computer, check that computer's screen: it keeps its earlier picture while the video plays on elsewhere.
 4. After the sabha, use **Help › Report a Problem…**. See **Help and when something goes wrong › Report a Problem…** for the optional files and review.
 
+A video on a slide or in the picture-in-picture box that is paused, waiting for its click or at its end does not come off when a screen cannot play it. The notice names the file and the screen, and a line under the LIVE picture says **Not on the screen “…”**: LIVE shows it, that screen does not. If it is played anyway, Drashti stops it again at once with the notice; put something else up. A screen only too slow to start it says **Not on the screen “…” yet** while it is still loading; the line goes once that screen shows it. While a screen waits for a video's first picture, the line **Starting on the screen “…”…** shows from 2 seconds after it went up until that screen shows it.
+
 A video making no progress for 10 seconds comes off; one still loading gets up to 30 seconds. If it still has no picture then, the notice says it **could not start in time**. That does not mean the file is damaged: try it again when less is playing.
 
 If the same video brings a screen, **LIVE** or the sound player down twice within a minute, Drashti takes it off and brings that screen, the controls or the sound back without it. A slide video is paused first; if it still causes failures, its slide comes off as **Clear slide** takes it. Music repeatedly bringing the sound player down comes off as **Clear audio** takes it. **Back** or **Oops** can bring that slide or music back; use another file if it fails again.

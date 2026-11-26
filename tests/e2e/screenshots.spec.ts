@@ -58,12 +58,10 @@ import { callBody, COMPUTERS, PEOPLE, placeholderComputer } from '../access-core
 import {
   KIRTAN,
   NOTE_ONE,
+  NOTE_TWO,
   PICTURE,
-  placeholderTalk,
   PLAYLIST,
   setUpPlaceholderShow,
-  TALK,
-  VIDEO,
   WELCOME,
 } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
@@ -78,6 +76,8 @@ import { addTestPptxShadow } from '../../src/main/import/testing/pptx-shadow';
 import { makeZip } from '../../src/main/import/testing/zip-writer';
 import { dropboxStandIn, folderLink } from './dropbox-stand-in';
 import { longPress } from './phone-gestures';
+import { expectPhoneRefuses } from './phone-refuses';
+import { PDF_ENV, phoneAsks, placeholderPdf, playlistOf } from './pro-phone';
 import { linkFinished, linkView, pasteLink } from './paste-link';
 import { importItem } from './import-details';
 import { liveColumnToTop } from './window-size';
@@ -707,7 +707,7 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
-  await running(win);
+  const show = await running(win);
   await setUpScreen(win);
   const output = await outputPage(app);
   const { base } = await networkOn(win);
@@ -789,9 +789,22 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     await expect.poll(() => words.evaluate((el) => el.getAnimations()[0]?.playState)).toBe('paused');
     await shot(output, 'output-ticker', [], false, true);
     await holdClock(app, null);
+    // A PDF in the open playlist, after the operator's pictures: what a phone's Playlist tab offers (alpha.23,
+    // QA23-PHONE-1: a playlist's PowerPoints and PDFs only).
+    const pdfId = await placeholderPdf(win, 'Placeholder announcements PDF');
+    await win.evaluate(
+      async ({ playlistId, presentationId }) => {
+        const added = await (globalThis as PageGlobals).drashti.playlists.addItems(playlistId, null, [
+          { kind: 'presentation', presentationId },
+        ]);
+        if (!added.ok) throw new Error(added.message);
+      },
+      { playlistId: show.playlistId, presentationId: pdfId },
+    );
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
     await shot(phone.page, 'phone-remote');
     await phone.page.getByTestId('remote-tab-playlist').click();
+    await expect(phone.page.getByTestId('remote-items')).toContainText('Placeholder announcements PDF');
     await shot(phone.page, 'phone-remote-playlist');
     await expect(tablet.page.getByTestId('remote-items')).toBeVisible();
     await shot(tablet.page, 'tablet-remote');
@@ -809,24 +822,24 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
   await app.close();
 });
 
-test('the presenter’s remote: the library and the notes on an iPhone, and an iPad held sideways (Session 18)', async () => {
+test('the presenter’s remote: a PDF put up from its playlist with its notes on an iPhone, and an iPad held sideways and upright (Session 18; the library refused since alpha.23)', async () => {
   test.setTimeout(180_000);
-  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const { app } = await launchApp({ ...NETWORK_ENV, ...PDF_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   await setUpPlaceholderShow(win);
-  const talkId = await placeholderTalk(win);
+  // The presenter's PDF (its pages' comments its notes), in a playlist: a Pro phone puts up a PowerPoint or a PDF only
+  // (alpha.23, QA23-PHONE-1; before, a talk of words from the whole library).
+  const pdfId = await placeholderPdf(win, 'Placeholder presenter PDF', [
+    { width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder PDF opening', note: NOTE_ONE },
+    { width: 960, height: 540, color: [127, 29, 29], text: 'Placeholder PDF point two', note: NOTE_TWO },
+    { width: 960, height: 540, color: [20, 83, 45], text: 'Placeholder PDF closing' },
+  ]);
+  const list = await playlistOf(win, 'Placeholder presenter list', [
+    { kind: 'presentation', presentationId: pdfId },
+  ]);
   await setUpScreen(win);
   await outputPage(app);
-  await win.evaluate(
-    (id) =>
-      (globalThis as PageGlobals).drashti.engine.dispatch({
-        type: 'goLive',
-        presentationId: id,
-        slideIndex: 0,
-      }),
-    talkId,
-  );
   const { base } = await networkOn(win);
   const phone = await device('webkit');
   const sideways = await device('webkit', 'iPad (gen 7) landscape');
@@ -847,29 +860,37 @@ test('the presenter’s remote: the library and the notes on an iPhone, and an i
     await pairByQr(upright.page, base, await pairingCode(win, 'remote', 'Placeholder tablet'), '/remote');
     const p = phone.page;
     await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // The PDF's row, put up from the phone.
+    expect(
+      (
+        await phoneAsks(p, 'POST', '/api/v1/trigger/item', {
+          playlistId: list.playlistId,
+          itemId: list.rows[0] ?? '',
+        })
+      ).status,
+    ).toBe(200);
     // The live slide's notes and the next one's, under the live picture.
     await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
+    await expect(p.getByTestId('remote-notes-next')).toHaveText(`Next: ${NOTE_TWO}`);
     await shot(p, 'phone-remote-notes');
-    // The whole library, by name, then searched by words on a slide.
-    await p.getByTestId('remote-tab-library').click();
-    await expect(p.getByTestId('remote-library-item').filter({ hasText: TALK })).toBeVisible();
-    await shot(p, 'phone-remote-library');
-    await p.getByTestId('remote-library-search').fill('talk point two');
-    await expect(
-      p.getByTestId('remote-library-item').filter({ hasText: 'Placeholder talk point two' }),
-    ).toBeVisible();
-    await shot(p, 'phone-remote-search');
-    // Held sideways: the live picture, the notes and Next beside the slides.
+    // The whole library and its search: refused to a phone, so no picture of them (phone-remote-library and
+    // phone-remote-search were taken here before alpha.23).
+    await expectPhoneRefuses({ win, page: p }, 'GET', '/api/v1/presentations', undefined, 'library');
+    await expectPhoneRefuses({ win, page: p }, 'GET', '/api/v1/search?q=talk', undefined, 'library');
+    await expect(p.getByTestId('remote-tab-library')).toHaveCount(0);
+    // Held sideways: the live picture, the notes and Next beside the PDF's pages.
     const t = sideways.page;
     await expect(t.getByTestId('remote')).toHaveAttribute('data-layout', 'landscape');
     await expect(t.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
     await expect(t.getByTestId('remote-slide').first()).toHaveAttribute('data-live', 'true');
+    await expect(t.getByTestId('remote-next-button')).toBeVisible();
     await shot(t, 'tablet-remote-sideways');
-    // Held upright: the library beside the show.
+    // Held upright: the playlist beside the show, never the library (tablet-remote-library was taken here before
+    // alpha.23).
     const u = upright.page;
-    await u.getByTestId('remote-side-library').click();
-    await expect(u.getByTestId('remote-library-item').filter({ hasText: TALK })).toBeVisible();
-    await shot(u, 'tablet-remote-library');
+    await expect(u.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
+    await expect(u.getByTestId('remote-side-library')).toHaveCount(0);
+    await expect(u.getByTestId('remote-items')).toBeVisible();
   } finally {
     for (const d of [phone, sideways, upright]) await d.close();
   }
@@ -1040,16 +1061,26 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
   await together.ed.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
   await slideEditorClosed(app);
 
-  // The phone remote's More tab (its Looks until Session 55).
+  // The phone remote's More tab (its Looks until Session 55) went with alpha.23 (QA23-PHONE-1: the stage layouts, MIDI
+  // and the screens are the computer's): a Pro phone has Show, Playlist and Chat, and no picture of More is taken
+  // (phone-remote-more was, before).
   const { base } = await networkOn(win);
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   try {
     await pairByQr(phone.page, base, code, '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
-    await phone.page.getByTestId('remote-tab-more').click();
-    await expect(phone.page.getByTestId('remote-tab-more')).toHaveAttribute('aria-selected', 'true');
-    await shot(phone.page, 'phone-remote-more');
+    await expect(phone.page.getByTestId('remote-tab-more')).toHaveCount(0);
+    for (const tab of ['show', 'playlist', 'chat'])
+      await expect(phone.page.getByTestId(`remote-tab-${tab}`), tab).toBeVisible();
+    await expectPhoneRefuses(
+      { win, page: phone.page },
+      'GET',
+      '/api/v1/stage-layouts',
+      undefined,
+      'computer',
+    );
+    await expectPhoneRefuses({ win, page: phone.page }, 'GET', '/api/v1/midi', undefined, 'computer');
   } finally {
     await phone.close();
   }
@@ -2445,17 +2476,13 @@ test('an imported animated deck, a click up in LIVE and its transitions in the s
   await app.close();
 });
 
-/** A file's pieces as a phone sends them (phone-files.spec.ts). */
-const PIECE = /\/api\/v1\/uploads\/[0-9a-f-]{36}\/piece\?offset=\d+$/u;
-
-test('phones and tablets: Files from phones, a playlist shared, Look closer with Show this zoom on the screens, the clears, Shared from Drashti, a file on its way, and More held sideways (Session 54)', async () => {
+test('phones and tablets: Files from phones and a playlist shared (the operator’s), Look closer zoomed on the device alone, and what a phone no longer has: Show this zoom on the screens, the clears, Shared from Drashti, a file on its way and More (Session 54; alpha.23)', async () => {
   test.setTimeout(300_000);
   const ffmpeg = testFfmpeg();
   test.skip(!ffmpeg, 'FFmpeg is not fetched here');
   const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-54-phones-'));
-  // A generated picture with something in it to zoom into, and a placeholder tone to send (about 5.8 MB: pieces).
+  // A generated picture with something in it to zoom into.
   const picture = testPattern(ffmpeg ?? '', join(dir, 'Placeholder darshan.png'), '1920x1080', null);
-  const tone = makeTestTone(join(dir, 'Placeholder tone.wav'), { seconds: 60, rate: 48_000 });
   const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
@@ -2473,7 +2500,8 @@ test('phones and tablets: Files from phones, a playlist shared, Look closer with
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await expect(t.getByTestId('connection')).toHaveText('Connected');
 
-    // Files from phones, in the Phones panel: off until someone turns it on.
+    // Files from phones, in the Phones panel: off until someone turns it on (the operator's switch stays in alpha.23,
+    // the owner's Q11: its words now, the control hidden later; a phone's files are refused meanwhile).
     await win.getByTestId('open-network').click();
     const panel = win.getByTestId('network-panel');
     const addFiles = panel.getByTestId('network-add-files');
@@ -2484,7 +2512,7 @@ test('phones and tablets: Files from phones, a playlist shared, Look closer with
     await part(win, 'phones-panel-files', [section]);
     await panel.getByRole('button', { name: 'Close phones and tablets' }).click();
 
-    // The playlist shared from its menu, offered while a remote is paired; its row marked.
+    // The playlist shared from its menu, offered while a remote is paired; its row marked (the operator's, as above).
     const node = win.getByTestId('playlist-node').filter({ hasText: PLAYLIST });
     await node.click({ button: 'right' });
     const share = win.getByRole('menuitem', { name: 'Share with Phones and Tablets' });
@@ -2493,8 +2521,9 @@ test('phones and tablets: Files from phones, a playlist shared, Look closer with
     await share.click();
     await expect(node.getByTestId('playlist-shared')).toBeVisible();
 
-    // Look closer: the picture on the screens alone, zoomed on the device, with the button at the side that puts
-    // that zoom on the screens (it is the one live); on a phone, and on an iPad held sideways.
+    // Look closer: the picture on the screens alone, zoomed on the device only (the owner's Q8: a view; no Show this
+    // zoom on the screens since alpha.23, and the zoom on the screens refused); on a phone, and on an iPad held
+    // sideways.
     await win.evaluate(
       (id) =>
         (globalThis as PageGlobals).drashti.engine.dispatch({
@@ -2512,7 +2541,7 @@ test('phones and tablets: Files from phones, a playlist shared, Look closer with
       await expect(viewer).toHaveAttribute('data-live', 'true');
       await page.getByTestId('viewer-zoom-in').click();
       await expect(page.getByTestId('viewer-zoom-level')).toHaveText('150%');
-      await expect(page.getByTestId('viewer-show-zoom')).toHaveText('Show this zoom on the screens');
+      await expect(page.getByTestId('viewer-show-zoom')).toHaveCount(0);
       await expect(
         viewer.locator(`img[data-preview="shown"][data-media-id="${pictureId}"]`).first(),
       ).toBeVisible({
@@ -2522,9 +2551,17 @@ test('phones and tablets: Files from phones, a playlist shared, Look closer with
       await page.getByTestId('viewer-close').click();
       await expect(viewer).toHaveCount(0);
     }
+    await expectPhoneRefuses(
+      { win, page: p },
+      'POST',
+      '/api/v1/zoom',
+      { zoom: 1.5, x: 0.5, y: 0.5 },
+      'media',
+    );
 
-    // The clears, in the operator's order with their keys: the kirtan's verse over the picture, a message and the
-    // stage message up, so the slide's, the background's and the messages' are lit.
+    // The clears: none on a phone any more (Clear slide alone, while a PowerPoint or a PDF is up), and refused, the
+    // kirtan's verse over the picture, a message and the stage message staying up (phone-remote-clears was taken
+    // here before alpha.23).
     await win.evaluate(async (kirtanId) => {
       const d = (globalThis as PageGlobals).drashti;
       await d.engine.dispatch({ type: 'goLive', presentationId: kirtanId, slideIndex: 1 });
@@ -2534,55 +2571,33 @@ test('phones and tablets: Files from phones, a playlist shared, Look closer with
       });
       await d.engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes' });
     }, show.kirtanId);
-    await expect(p.getByTestId('remote-clear-messages')).toHaveAttribute('data-lit', 'true');
-    await p.getByTestId('remote-actions').evaluate((el) => {
-      el.scrollIntoView({ block: 'center' });
-    });
-    await shot(p, 'phone-remote-clears');
+    for (const id of [
+      'remote-clear-all',
+      'remote-clear-messages',
+      'remote-clear-background',
+      'remote-clear-slide',
+    ])
+      await expect(p.getByTestId(id), id).toHaveCount(0);
+    await expectPhoneRefuses({ win, page: p }, 'POST', '/api/v1/clear/all', {}, 'computer');
+    await expectPhoneRefuses({ win, page: p }, 'POST', '/api/v1/clear/messages', {}, 'computer');
 
-    // Shared from Drashti, in the phone's library: the shared playlist's files, under its headers.
-    await p.getByTestId('remote-tab-library').click();
-    await p.getByTestId('remote-library-shared').click();
-    const shared = p.getByTestId('remote-shared');
-    await shared.getByTestId('remote-shared-playlist').filter({ hasText: PLAYLIST }).click();
-    await expect(shared.getByTestId('remote-shared-header')).toHaveText(['Welcome', 'Kirtan']);
-    await shot(p, 'phone-shared');
+    // Shared from Drashti and Add from this Phone…: no library on a phone, and both refused in the files' words
+    // (phone-shared and phone-add-files were taken here before alpha.23).
+    await expect(p.getByTestId('remote-tab-library')).toHaveCount(0);
+    await expectPhoneRefuses({ win, page: p }, 'GET', '/api/v1/shared', undefined, 'files');
+    await expectPhoneRefuses(
+      { win, page: p },
+      'POST',
+      '/api/v1/uploads',
+      { name: 'Placeholder tone.wav', size: 1000 },
+      'files',
+    );
 
-    // Add from this Phone…, at the top of the library's Media: a placeholder tone on its way, its second piece
-    // held back so the picture shows it partway, with Cancel.
-    await p.getByTestId('remote-library-media').click();
-    await expect(p.getByTestId('remote-add-button')).toBeVisible();
-    let pieces = 0;
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await p.route(PIECE, async (route) => {
-      pieces++;
-      if (pieces === 2) await held;
-      await route.continue();
-    });
-    const [chooser] = await Promise.all([
-      p.waitForEvent('filechooser'),
-      p.getByTestId('remote-add-button').click(),
-    ]);
-    await chooser.setFiles([tone]);
-    const sending = p.getByTestId('remote-sending').filter({ hasText: 'Placeholder tone.wav' });
-    await expect(sending.getByTestId('remote-sending-words')).toHaveText(/ sent$/u, { timeout: 30_000 });
-    await expect
-      .poll(async () =>
-        Number(await sending.getByTestId('remote-sending-progress').getAttribute('aria-valuenow')),
-      )
-      .toBeGreaterThan(0);
-    await shot(p, 'phone-add-files');
-    release();
-    await expect(sending).toHaveAttribute('data-state', 'added', { timeout: 60_000 });
-
-    // More on an iPad held sideways: the rest of the operator's right column, in two columns.
-    await t.getByTestId('remote-panel-more').click();
-    await expect(t.getByTestId('remote-panel-more')).toHaveAttribute('aria-selected', 'true');
-    await expect(t.getByTestId('remote-stage-message')).toContainText('Placeholder: two minutes');
-    await shot(t, 'tablet-remote-more');
+    // An iPad held sideways: the live picture with Show, Playlist and Chat beside it, no More (tablet-remote-more was
+    // taken here before alpha.23).
+    await expect(t.getByTestId('remote-panel-more')).toHaveCount(0);
+    for (const tab of ['show', 'playlist', 'chat'])
+      await expect(t.getByTestId(`remote-panel-${tab}`), tab).toBeVisible();
   } finally {
     await phone.close();
     await tablet.close();
@@ -3047,12 +3062,25 @@ for (const guideSize of [
   );
 }
 
-test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by 812', async () => {
-  const { app } = await launchApp(NETWORK_ENV);
+test('alpha.14’s phone playlist rows at 375 by 812 as alpha.23 has them: a PDF’s pages to put up and no row menu; Simple Mode’s phone a view (rows, menus and the time bar refused)', async () => {
+  const { app } = await launchApp({ ...NETWORK_ENV, ...PDF_ENV });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win, { video: true });
+    // A PDF in the playlist: a Pro phone's Playlist tab lists its PowerPoints and PDFs only (QA23-PHONE-1).
+    const pdfId = await placeholderPdf(win, 'Placeholder rows PDF');
+    await win.evaluate(
+      async ({ playlistId, presentationId }) => {
+        const added = await (globalThis as PageGlobals).drashti.playlists.addItems(playlistId, null, [
+          { kind: 'presentation', presentationId },
+        ]);
+        if (!added.ok) throw new Error(added.message);
+      },
+      { playlistId: show.playlistId, presentationId: pdfId },
+    );
+    const items = () =>
+      win.evaluate(async (id) => (globalThis as PageGlobals).drashti.playlists.items(id), show.playlistId);
     const { base } = await networkOn(win);
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
@@ -3060,62 +3088,80 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
     const phone = await device('chromium');
     try {
       const p = phone.page;
+      const asks = { win, page: p };
       await p.setViewportSize({ width: 375, height: 812 });
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await p.getByTestId('remote-tab-playlist').click();
       await p.getByTestId('remote-playlist').selectOption(show.playlistId);
       const rows = p.getByTestId('remote-items');
-      const firstVerse = rows.getByTestId('remote-row').filter({ hasText: KIRTAN + '_2' });
+      // The PDF's pages are rows under its name; the kirtan's, the picture's and the video's are not a phone's.
       await expect(
-        rows.locator('[data-testid="remote-item"][data-kind="group"]').filter({ hasText: KIRTAN }),
+        rows
+          .locator('[data-testid="remote-item"][data-kind="group"]')
+          .filter({ hasText: 'Placeholder rows PDF' }),
       ).toHaveAttribute('aria-expanded', 'true');
-      await expect(rows.getByTestId('remote-row').filter({ hasText: KIRTAN + '_' })).toHaveCount(5);
-      await firstVerse.click();
-      await expect(firstVerse).toHaveAttribute('data-live', 'true');
-      await expect(firstVerse).toBeInViewport();
+      const pages = rows.getByTestId('remote-row').filter({ hasText: 'Placeholder rows PDF_' });
+      await expect(pages).toHaveCount(3);
+      await expect(rows.getByTestId('remote-row').filter({ hasText: KIRTAN + '_' })).toHaveCount(0);
+      await expect(rows.locator('[data-testid="remote-item"][data-kind="media"]')).toHaveCount(0);
+      const second = pages.filter({ hasText: 'Placeholder rows PDF_2' });
+      await second.click();
+      await expect(second).toHaveAttribute('data-live', 'true');
+      await expect(second).toBeInViewport();
       await shot(p, 'phone-playlist-rows-375x812');
 
-      const pictureRow = rows
-        .locator('[data-testid="remote-item"][data-kind="media"]')
-        .filter({ hasText: PICTURE });
-      await longPress(pictureRow);
-      const menu = p.getByTestId('remote-row-menu');
-      await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
-        /Look at it on this phone/u,
-        /Picture editor/u,
-        /Save picture/u,
-        /Pin to the quick bar/u,
-        /Rename/u,
-        /Remove from playlist/u,
-      ]);
-      await expect(menu.getByTestId('remote-menu-edit')).toBeInViewport();
-      await expect(menu.getByTestId('remote-row-menu-close')).toBeInViewport();
-      await shot(p, 'phone-row-menu-375x812');
-      await menu.getByTestId('remote-row-menu-close').click();
-      await expect(menu).toHaveCount(0);
+      // A long press offers no menu any more, and what its menu did is refused (phone-row-menu-375x812 was taken here
+      // before alpha.23): the picture's look, Save picture, the quick bar, Rename and Remove.
+      await longPress(second);
+      await expect(p.getByTestId('remote-row-menu')).toHaveCount(0);
+      const pictureRow = (await items()).find((i) => i.kind === 'media' && i.mediaId === show.pictureMediaId);
+      await expectPhoneRefuses(asks, 'GET', `/api/v1/media/${show.pictureMediaId}/look`, undefined, 'media');
+      await expectPhoneRefuses(asks, 'POST', '/api/v1/quick-bar', { pins: [] }, 'computer');
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        `/api/v1/media/${show.pictureMediaId}/rename`,
+        { name: 'Placeholder renamed' },
+        'media',
+      );
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        '/api/v1/playlist-items/delete',
+        { ids: [pictureRow?.id ?? ''] },
+        'computer',
+        items,
+      );
 
-      // Keep the generated two-second clip going through its actual Pro row menu, then pause it.
-      // Loop is an existing Part 9 action; no clock/duration/permission is replaced for the picture.
-      const videoRow = rows
-        .locator('[data-testid="remote-item"][data-kind="media"]')
-        .filter({ hasText: VIDEO });
-      await longPress(videoRow);
-      await menu.getByTestId('remote-menu-when-loop').click();
-      await expect(menu).toHaveCount(0);
-      await expect
-        .poll(async () =>
-          (
-            await win.evaluate(
-              async (id) => (globalThis as PageGlobals).drashti.playlists.items(id),
-              show.playlistId,
-            )
-          ).find((item) => item.kind === 'media' && item.mediaId === show.videoMediaId),
-        )
-        .toMatchObject({ whenEnds: 'loop' });
-      // A separate tap follows the long press's lift guard; its lift must never put the row up.
-      await letTimePass(p, 800, 'the held finger lifts before a separate tap starts the generated video');
-      await videoRow.click();
+      // The video's When it ends and its row: refused from the phone; Loop set and the video put up in the window.
+      const videoRow = (await items()).find((i) => i.kind === 'media' && i.mediaId === show.videoMediaId);
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        `/api/v1/playlist-items/${videoRow?.id ?? ''}/when-ends`,
+        { whenEnds: 'loop' },
+        'computer',
+        items,
+      );
+      const looped = await win.evaluate(
+        (id) => (globalThis as PageGlobals).drashti.playlists.setWhenEnds(id, 'loop'),
+        videoRow?.id ?? '',
+      );
+      expect(looped.ok).toBe(true);
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        '/api/v1/trigger/item',
+        { playlistId: show.playlistId, itemId: videoRow?.id ?? '' },
+        'notDeck',
+      );
+      const played = await win.evaluate(
+        ({ playlistId, itemId }) =>
+          (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'playItem', playlistId, itemId }),
+        { playlistId: show.playlistId, itemId: videoRow?.id ?? '' },
+      );
+      expect(played.ok).toBe(true);
       await expect
         .poll(async () => {
           const background = (
@@ -3126,40 +3172,31 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
           return background?.kind === 'media' ? { mediaId: background.mediaId, loop: background.loop } : null;
         })
         .toEqual({ mediaId: show.videoMediaId, loop: true });
+
+      // Simple Mode: the phone a view of what is live (its Show and the Chat); no time bar, Playlist tab or row menu,
+      // and the time bar refused in Simple Mode's words.
       await p.getByTestId('remote-tab-show').click();
-      await expect(p.getByTestId('remote-time-bar-pause')).toBeEnabled();
-      await p.getByTestId('remote-time-bar-pause').click();
-      const bar = p.getByTestId('remote-time-bar-row').filter({ has: p.getByTestId('remote-time-bar-play') });
-      await expect(bar).toHaveAttribute('data-playing', 'background');
-      await expect(bar).toHaveAttribute('data-paused', 'true');
+      await expect(p.getByTestId('remote-time-bars')).toHaveCount(0);
       await win
         .getByTestId('app-header')
         .getByRole('button', { name: 'Simple Mode', exact: true })
         .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       const simple = p.getByTestId('remote-simple');
-      await expect(simple).toContainText('(playlists, playback and Audio)');
       await expect(simple).toBeInViewport();
-      await expect(bar.getByRole('slider', { name: 'Time of the background video' })).toBeVisible();
-      await expect(bar.getByTestId('remote-time-bar-play')).toBeEnabled();
-      await expect(bar.getByTestId('remote-time-bar-play')).toBeInViewport();
+      await expect(p.getByTestId('remote-live')).toBeVisible();
+      await expect(p.getByTestId('remote-time-bars')).toHaveCount(0);
       await expect(p.getByTestId('remote-quick-bar')).toHaveCount(0);
-      await expect(p.getByTestId('remote-skip-background-forward')).toHaveCount(0);
+      await expect(p.getByTestId('remote-tab-playlist')).toHaveCount(0);
+      await expectPhoneRefuses(
+        asks,
+        'POST',
+        '/api/v1/playing/pause',
+        { playing: { layer: 'background' } },
+        'simple',
+      );
       await shot(p, 'phone-simple-controls-375x812');
-
-      await p.getByTestId('remote-tab-playlist').click();
-      await expect(p.getByTestId('remote-playlist')).toHaveValue(show.playlistId);
-      await expect(p.getByTestId('remote-open-playlists')).toBeVisible();
-      await longPress(pictureRow);
-      await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
-        /Look at it on this phone/u,
-        /Save picture/u,
-        /Rename/u,
-        /Remove from playlist/u,
-      ]);
-      await expect(menu.getByTestId('remote-menu-edit')).toHaveCount(0);
-      await expect(menu.getByTestId('remote-row-menu-close')).toBeInViewport();
-      await shot(p, 'phone-simple-row-menu-375x812');
+      // (phone-simple-row-menu-375x812 was taken here before alpha.23: a Simple Mode phone has no rows.)
     } finally {
       await phone.close();
     }
@@ -3168,12 +3205,6 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
   }
 });
 
-/*
- * The Drashti Manual's own pictures (x37, Session 60; the owner's "A, new Manual"), named manual-*.png, for its chapters
- * (docs/manual/): the manual itself and the guides from Help, the How loud lines with Video muted, a timer's look for
- * the audience, a new message's look, the tools' sections under LIVE with Picture in Picture…, QR code… and OSC control…, the File
- * menu's Opening…, Drop Folder… and Events Out…, and the library's Export kirtan bundle…. Placeholder content only.
- */
 test('the Drashti Manual’s pictures: the manual, the guides, the levels, a timer’s and a message’s look, the tools’ sections and their tools, the File menu’s settings and a kirtan bundle (x37)', async () => {
   test.setTimeout(240_000);
   // A placeholder computer name: Report a Problem's review names the computer (alpha.21's picture run showed this

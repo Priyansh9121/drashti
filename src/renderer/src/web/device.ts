@@ -1,3 +1,4 @@
+import { CHAT_PAGE } from '../../../shared/chat';
 import type { DeviceKind } from '../../../shared/network';
 import { heardStopped, isStoppedAnswer } from './stopped-store';
 
@@ -56,6 +57,8 @@ export const PAGE_OF: Record<DeviceKind, string> = {
   remote: '/remote',
   stage: '/stage',
   announcements: '/announce',
+  // A phone that scanned the "Chat" QR (alpha.23): the chat page (a22-chat-phone builds it).
+  chat: CHAT_PAGE,
 };
 
 /** Back to pairing (the pairing was removed in Drashti). */

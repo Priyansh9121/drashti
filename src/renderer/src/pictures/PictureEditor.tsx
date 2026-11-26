@@ -3,6 +3,7 @@ import type { CSSProperties, PointerEvent, WheelEvent } from 'react';
 import { create } from 'zustand';
 import { mediaUrl } from '../../../shared/media';
 import type { CropShape, PictureLook, PixelSize } from '../../../shared/picture-look';
+import type { OnSlide } from '../../../shared/picture-on-slide';
 import {
   autoLevels,
   editLayout,
@@ -69,8 +70,10 @@ const close = () => {
 };
 
 /** Save picture… (Session 55, Part 5): the main process asks where; a notice says where it went, or why not. */
-async function savePictureOf(mediaId: string, name: string): Promise<void> {
-  const result = await window.drashti.media.savePicture(mediaId, name);
+async function savePictureOf(mediaId: string, name: string, onSlide?: OnSlide): Promise<void> {
+  const result = await (onSlide
+    ? window.drashti.media.savePicture(mediaId, name, onSlide)
+    : window.drashti.media.savePicture(mediaId, name));
   if (result.ok) {
     const file = result.path.split(/[\\/]/u).at(-1) ?? result.path;
     useNotice.setState({ text: `Saved the picture as “${file}”.` });
@@ -84,8 +87,8 @@ export function PictureEditor() {
   useEffect(
     () =>
       addFileMenuItems((target) =>
-        savePictureItems(target, (mediaId, name) => {
-          void savePictureOf(mediaId, name);
+        savePictureItems(target, (mediaId, name, onSlide) => {
+          void savePictureOf(mediaId, name, onSlide);
         }),
       ),
     [],

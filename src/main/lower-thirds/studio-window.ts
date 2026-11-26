@@ -5,7 +5,7 @@ import type { EngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
 import { type LowerThird, type StudioOpen, STUDIO_TITLE } from '../../shared/lower-thirds';
 import { idSchema } from '../../shared/model-schema';
-import type { StudioLivePicture } from '../../shared/studio-live';
+import type { StudioLiveMessage } from '../../shared/studio-live';
 import { ownWindowKey } from '../access/access-list-window';
 import { handle } from '../ipc/handle';
 import { windowIcon } from '../windows/app-icon';
@@ -140,7 +140,7 @@ export class LowerThirdsStudio {
   }
 
   /** Give its page Live's still (alpha.22). */
-  sendLive(picture: StudioLivePicture | null): void {
+  sendLive(picture: StudioLiveMessage): void {
     sendToPage(this.win, IPC.lowerThirds.live, picture);
   }
 

@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { OPENING_DEFAULT_PHOTO_URL, OPENING_MS, OPENING_START_HOLD_MS } from '../../src/shared/opening';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { logLines } from './log-lines';
 
 type TimingGlobals = typeof globalThis & {
   openingDecode?: { previewVisible: boolean | null; readyAt: number | null };
@@ -370,11 +371,9 @@ test('as it ends, the log says its figures: how long it held and why it let go, 
   const first = await launchApp();
   await operatorReady(await operatorPage(first.app));
   await first.app.close();
-  const file = join(first.userData, 'logs', 'drashti.log');
   const lines = () =>
-    existsSync(file)
-      ? readFileSync(file, 'utf8')
-          .split('\n')
+    existsSync(join(first.userData, 'logs'))
+      ? logLines(first.userData)
           .map((l) => l.slice(l.indexOf('Opening: ')))
           .filter((l) => l.startsWith('Opening: ended'))
       : [];

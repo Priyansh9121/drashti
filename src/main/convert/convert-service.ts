@@ -103,8 +103,8 @@ export interface ConvertDeps {
   showBusy?(): boolean;
   /**
    * Why a save the operator asked for waits (alpha.22, shared/save-waits.ts: the stream on air, a recording, a video or
-   * a sound playing), in the operator's words, or null: a still, a picture or the Wallpaper up never holds it. Left out
-   * (tests): such a save waits as waitForShow does.
+   * a sound playing), in the operator's words, or null: a still, a picture or the Wallpaper up never holds it; busy()
+   * holds it as well. Left out (tests): such a save waits as waitForShow does.
    */
   saveBusy?(): string | null;
   freeBytes(dir: string): number;
@@ -175,6 +175,8 @@ const movedSchema = z.object({
   tracks: z.array(z.string()).optional(),
   // A deck's slides whose own videos and sounds moved (Session 54, C2).
   decks: z.array(z.string()).optional(),
+  // Wallpapers' pictures (QA24-WALLBLACK-1), as "wallpaper id:place".
+  wallpapers: z.array(z.string()).optional(),
 });
 
 const KIND_OF: Record<ConvertTarget, MediaRow['kind']> = {
@@ -684,6 +686,9 @@ export class ConvertService {
       props: [...was.props, ...more.props],
       themes: [...was.themes, ...more.themes],
       tracks: [...(was.tracks ?? []), ...(more.tracks ?? [])],
+      // Kept for Undo as the first move kept them (they were left out here before).
+      decks: [...(was.decks ?? []), ...(more.decks ?? [])],
+      wallpapers: [...(was.wallpapers ?? []), ...(more.wallpapers ?? [])],
     };
     db.prepare('UPDATE media_conversions SET moved = ? WHERE id = ?').run(JSON.stringify(merged), done.id);
     this.deps.log('info', said);
@@ -716,8 +721,13 @@ export class ConvertService {
   }
 
   private waitFor(waitForShow: boolean | 'playing'): string | null {
-    // A save the operator asked for (alpha.22): only what plays, the stream or a recording holds it.
-    if (waitForShow === 'playing' && this.deps.saveBusy) return this.deps.saveBusy();
+    // A save the operator asked for (alpha.22): only what plays, the stream or a recording holds it. Whatever the stream
+    // check (busy) says holds it too, so a reason busy gains is never skipped (the save-trim review's SHOULD-5); the
+    // save's own words when both say why.
+    if (waitForShow === 'playing' && this.deps.saveBusy) {
+      const stream = this.deps.busy();
+      return stream === null ? this.deps.saveBusy() : (this.deps.saveBusy() ?? stream);
+    }
     return (
       this.deps.busy() ??
       (waitForShow && this.deps.showBusy?.()

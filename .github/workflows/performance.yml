@@ -97,6 +97,10 @@ on:
         description: 'Instead: only the translation engine on an Intel Mac (alpha.23, a22-review-mt A2): built there, its instruction set and kernel read, timed on generated models (no model pack)'
         type: boolean
         default: false
+      intel_playback:
+        description: "Instead: only the hall's video playback on an Intel Mac (alpha.23, QA23-INTELPLAY-1): Drashti built there plays generated test videos through the hall's own player"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -104,7 +108,7 @@ permissions:
 jobs:
   performance:
     name: Performance check (${{ matrix.os }})
-    if: ${{ !inputs.translate_intel }}
+    if: ${{ !inputs.translate_intel && !inputs.intel_playback }}
     strategy:
       fail-fast: false
       matrix:
@@ -168,8 +172,32 @@ jobs:
       - name: Fetch the live captions engine
         if: inputs.captions != ''
         run: node scripts/fetch-whisper.mjs
+      # ONNX Runtime's package for Route C's helper (QA23-ORTCACHE-1), restored by its exact version, the runner's
+      # platform and the SHA-256 scripts/fetch-indic.mjs pins, then checked by size and SHA-256 before use, as a
+      # download is; a miss downloads it as before. Saved by CI's pushes to main and phase1 (ci.yml), never here.
+      - name: ONNX Runtime's package, its cache key (version, platform, pinned SHA-256)
+        if: inputs.captions != ''
+        id: ort
+        shell: bash
+        run: node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"
+      - name: Restore ONNX Runtime's package (by that key only)
+        if: inputs.captions != ''
+        id: ort-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
+      # A miss downloads exactly as before (cap-review-ortcache S2): whatever a restore that failed part-way left is
+      # removed first. A hit (the exact key, restored whole) stays, and the build checks it.
+      - name: A miss starts clean (anything a restore that failed part-way left is removed)
+        if: steps.ort-cache.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true'
+        env:
+          ORT_PATH: ${{ steps.ort.outputs.path }}
+        shell: bash
+        run: rm -f "$ORT_PATH"
       - name: Build the approved native IndicConformer runtime (no model download)
         if: inputs.captions != ''
+        id: indic
         run: node scripts/fetch-indic.mjs
       - name: Captions bench, alone (two cores)
         if: startsWith(inputs.captions, 'alone')
@@ -287,3 +315,65 @@ jobs:
             ${{ runner.temp }}/translate-timing/sample-beam5.txt
           if-no-files-found: warn
           retention-days: 30
+
+  # The hall's video playback on an Intel Mac (alpha.23, a22-intelplay; the owner's QA23-INTELPLAY-1, "Yes, add it
+  # (Rec.)": run only when asked, never in the release gate). The end-to-end suite runs on Apple silicon and Windows only,
+  # and the owner's video once played in Drashti but not on the hall (Q60-31). Here Drashti is built on GitHub's Intel
+  # Mac runner (its own Electron for Intel, the bundled FFmpeg for Intel) and tests/intel-playback/intel-playback.spec.ts
+  # plays generated test videos (orange, a white bar moving along the foot; H.264 with the movie box first and last, the
+  # owner's file's 1080p30 shape, VP8 in a WebM, HEVC as this Mac takes it) through the hall's own playback path: a
+  # playlist row clicked, the audience screen's background video and Drashti's first-frame watch. It fails on no first
+  # frame, a decoder error, a video taken off, black, a clock that does not move on, too few frames shown or a still
+  # picture; its first tests prove it fails three controls (a cut copy, a black picture, a still one). Started by hand
+  # only, with intel_playback set; the ordinary performance check is skipped. A VM: its graphics are in the summary.
+  intel-playback:
+    name: Video playback on the hall, on an Intel Mac
+    if: inputs.intel_playback
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: The runner's processor
+        run: |
+          uname -m
+          sysctl -n machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType | sed -n '1,25p'
+      - run: pnpm install --frozen-lockfile
+      - name: Cache FFmpeg downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
+      - name: Fetch FFmpeg (Intel)
+        run: node scripts/fetch-ffmpeg.mjs
+      - name: Build Drashti
+        run: pnpm exec electron-vite build
+      - name: Play the test videos on the hall
+        id: play
+        env:
+          DRASHTI_PLAYBACK_READINGS: ${{ runner.temp }}/intel-playback.json
+        run: pnpm exec playwright test -c playwright.intel.config.ts
+      - name: The summary, one row a video (GREEN only when the step above passed and every reading came)
+        if: always()
+        env:
+          DRASHTI_PLAYBACK_READINGS: ${{ runner.temp }}/intel-playback.json
+          PLAY_OUTCOME: ${{ steps.play.outcome }}
+        run: node scripts/playback-check.mjs summary "$DRASHTI_PLAYBACK_READINGS"
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: intel-playback-report
+          path: |
+            playwright-report
+            test-results
+            ${{ runner.temp }}/intel-playback.json
+          if-no-files-found: ignore
+          retention-days: 14

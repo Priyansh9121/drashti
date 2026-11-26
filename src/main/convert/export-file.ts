@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import { copyFile, rm } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { ExportFileResult } from '../../shared/export-file';
 import { freeFileName } from './trim';
 
@@ -19,14 +19,28 @@ export interface ExportFileDeps {
 
 const GONE = 'That video is no longer in Media to export.';
 
+/**
+ * A name that ends with the file's own extension (".mp4"), any case: added when it does not (the save-trim review's
+ * nit: the dialog has no filters, so a name typed without it saved a file with no extension). A dot in the name is
+ * not its type: "Talk 1.5" becomes "Talk 1.5.mp4".
+ */
+function withExtension(name: string, extension: string): string {
+  return extension === '' || name.toLowerCase().endsWith(extension.toLowerCase())
+    ? name
+    : `${name}${extension}`;
+}
+
 export async function exportMediaFile(deps: ExportFileDeps, mediaId: string): Promise<ExportFileResult> {
   const video = deps.video(mediaId);
   if (!video) return { ok: false, message: GONE };
-  const chosen = await deps.pickDest(video.name);
-  if (chosen === null) return { ok: true, path: null };
+  // Its own type kept: a video renamed in Media without its extension is offered with it, and so saved.
+  const extension = extname(video.path);
+  const picked = await deps.pickDest(withExtension(video.name, extension));
+  if (picked === null) return { ok: true, path: null };
   // Read again: it may have gone while the dialog was open.
   const now = deps.video(mediaId);
   if (now?.path !== video.path) return { ok: false, message: GONE };
+  const chosen = withExtension(picked, extension);
   const dest = join(dirname(chosen), freeFileName(dirname(chosen), basename(chosen)));
   try {
     await copyFile(video.path, dest, constants.COPYFILE_EXCL);

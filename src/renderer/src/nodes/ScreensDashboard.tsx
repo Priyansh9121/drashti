@@ -9,6 +9,7 @@ import {
 } from '../../../shared/nodes';
 import type { DisplayInfo, ScreenConfig, ScreenState } from '../../../shared/screens';
 import { pictureWhile, SWITCH_NAMES, switchFor, SWITCHED_OFF_PICTURE } from '../../../shared/screen-switches';
+import { RESTARTING_WORDS } from '../../../shared/screens-summary';
 import { useNow } from '../render/useNow';
 import { useEngine } from '../engine/engine-store';
 import { connectScreens, screensAction, useScreens } from '../screens/screens-store';
@@ -88,9 +89,12 @@ interface DisplayCardProps {
   simple: boolean;
   /** Switched off (Session 50): its switch's words, "Audience off" or "Stage off". */
   offWords?: string | null;
+  /** Showing, but restarted this many times in a row by the heartbeat (a23-heartbeat). */
+  restarts?: number;
 }
 
-function DisplayCard({
+/** One display's card (exported for its render test, a23-heartbeat). */
+export function DisplayCard({
   display,
   number,
   screen,
@@ -100,9 +104,16 @@ function DisplayCard({
   nodeId,
   simple,
   offWords = null,
+  restarts,
 }: DisplayCardProps) {
   const [removing, setRemoving] = useState(false);
-  const known = state ? STATE[state] : null;
+  // Showing, but restarted again and again by the heartbeat (a23-heartbeat): said so in red, as Screens and the status
+  // line say it, never Showing.
+  const known = state
+    ? state === 'showing' && restarts !== undefined
+      ? { text: RESTARTING_WORDS, tone: 'danger' as const }
+      : STATE[state]
+    : null;
   // Switched off (Session 50): which switch, "Audience off", in the neutral tone of something off on purpose.
   const shown = known && state === 'switched-off' && offWords ? { ...known, text: offWords } : known;
   const name = screen?.name ?? (display.label || `Display ${number}`);
@@ -271,9 +282,8 @@ function DisplayGrid({
           screens.find((sc) => sc.id === status?.screenId) ??
           screens.find((sc) => sc.displayKey?.id === d.id) ??
           null;
-        const state = screen
-          ? (snapshot?.status.find((st) => st.screenId === screen.id)?.state ?? null)
-          : null;
+        const said = screen ? snapshot?.status.find((st) => st.screenId === screen.id) : undefined;
+        const state = said?.state ?? null;
         const role = screen ? snapshot?.groups.find((g) => g.id === screen.groupId)?.role : undefined;
         const which = role ? switchFor(role) : null;
         return (
@@ -288,6 +298,7 @@ function DisplayGrid({
             nodeId={nodeId}
             simple={simple}
             offWords={which ? `${SWITCH_NAMES[which]} off` : null}
+            {...(said?.restarts === undefined ? {} : { restarts: said.restarts })}
           />
         );
       })}

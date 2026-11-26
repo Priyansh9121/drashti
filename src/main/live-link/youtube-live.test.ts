@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { youtubeLiveStream } from './youtube-live';
 
 /*
- * Made-up answers only, shaped as yt-dlp 2026.08.19's --dump-single-json gives them for a live video (placeholder ids,
+ * Made-up answers only, shaped as yt-dlp 2026.11.23's --dump-single-json gives them for a live video (placeholder ids,
  * example.org addresses): no real video, channel or stream is named here.
  */
 

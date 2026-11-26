@@ -7,6 +7,7 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { NETWORK_ENV, networkOn } from './devices';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, killApp, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * Roles and PINs gone at the update (Session 54, E5: "remove admin/operator logic completely"). A data folder
@@ -57,9 +58,8 @@ async function noRoles(win: Page): Promise<void> {
 
 /** Drashti's own log, once it says `words`. */
 async function logSays(userData: string, words: string): Promise<string> {
-  const file = join(userData, 'logs', 'drashti.log');
-  await expect.poll(() => (existsSync(file) ? readFileSync(file, 'utf8') : '')).toContain(words);
-  return readFileSync(file, 'utf8');
+  await expect.poll(() => (existsSync(join(userData, 'logs')) ? logText(userData) : '')).toContain(words);
+  return logText(userData);
 }
 
 /** The run named in one of the restart-recovery files, or null (as simple-mode.spec reads it). */

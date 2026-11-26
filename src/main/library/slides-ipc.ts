@@ -79,6 +79,8 @@ export interface SlidesIpcController {
   cancelSourcePreparation(presentationId?: string): void;
   /** After admission closes and cancellation is signalled, wait for full Main staging/cache/cleanup chains. */
   drainSourcePreparation(): Promise<void>;
+  /** A deck's source pages being prepared (it may take up a video in Media by its bytes: a22-review-combine2 R-S1). */
+  sourcePreparing(): boolean;
   documentForExport(
     presentationId: string,
     doc: EditDoc,
@@ -556,5 +558,10 @@ export function registerSlidesIpc({
     settings.set(DEFAULT_TRANSITION, kept);
     return { ok: true as const, transition: kept };
   });
-  return { cancelSourcePreparation, drainSourcePreparation, documentForExport };
+  return {
+    cancelSourcePreparation,
+    drainSourcePreparation,
+    documentForExport,
+    sourcePreparing: () => preparations.size > 0,
+  };
 }

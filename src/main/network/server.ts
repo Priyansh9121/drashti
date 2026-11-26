@@ -5,6 +5,7 @@ import { basename } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { STOPPED_REFUSAL } from '../../shared/access';
+import { CHAT_API, CHAT_DEVICE_KINDS, CHAT_FEEDS_MAX, type ChatEvent } from '../../shared/chat';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
@@ -43,6 +44,7 @@ import type { Uploads } from './uploads';
 import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/phone-files';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
+import { phoneOpRefusal } from '../../shared/phone-rule';
 import { isCapturedPicture, pngOf } from './png';
 import { whileScreensMove } from './slide-picture';
 import { audioRoutes } from './audio-routes';
@@ -50,6 +52,7 @@ import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
 import { engineForAlpha17Phone } from './phone-lower-third-motion';
 import { phoneRoutes } from './phone-routes';
+import { flowPagePng, flowRoutes } from './flow-routes';
 import {
   connectionSeats,
   PairedSeats,
@@ -87,6 +90,8 @@ export interface ServerOptions {
   refuseLoopback?: boolean;
   /** Tests: fewer connections at once than SOCKET_LIMITS. */
   sockets?: { total: number; perAddress: number };
+  /** Tests: fewer feeds that follow only the chat than CHAT_FEEDS_MAX. */
+  chatFeeds?: number;
   /** Files phones add (Session 54): the uploads folder, inside the media folder. None are taken without it. */
   uploads?: { dir: string; mediaDir: string };
 }
@@ -139,6 +144,10 @@ interface Client {
   address: string;
   device: DeviceAuth | null;
   currentLowerThirdMotions: boolean;
+  /** It is sent the show (a Remote's or a Stage device's feed). */
+  show: boolean;
+  /** It is sent the chat (alpha.23: a page of a device in the chat that follows it). */
+  chat: boolean;
   alive: boolean;
   socket: Duplex;
   seat: string;
@@ -288,8 +297,14 @@ const ROUTES: Route[] = [
   ...desktopRoutes(route),
   // The phone's own (Session 55, Part 9): the wallpapers, the quick bar, a picture's look, Rename… and When it ends.
   ...phoneRoutes(route),
+  // Sabha flow (alpha.23): the operator's current flow and its Now, and a page as a PNG, read only.
+  ...flowRoutes(route),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
+  // The chat (alpha.23, shared/chat.ts): read, a name given, a message written; the main process checks the rest.
+  route('GET', CHAT_API.read, 'chat', (q) => (q['after'] === undefined ? {} : { after: q['after'] })),
+  route('POST', CHAT_API.name, 'chat.name', (b) => b),
+  route('POST', CHAT_API.send, 'chat.send', (b) => b),
   // Session 54: playlists shared with phones, and files a phone adds (upload-routes.ts).
   ...UPLOAD_ROUTES.map((r) => route(r.method, r.path, r.op, r.args, r.param)),
 ];
@@ -619,7 +634,8 @@ export class NetworkServer {
     const text = JSON.stringify({ type: 'engine', message } satisfies ToDevice);
     let compatibleText: string | undefined;
     for (const client of this.clients) {
-      if (!client.device) continue;
+      // Never the show to a page that only follows the chat.
+      if (!client.device || !client.show) continue;
       if (client.currentLowerThirdMotions || !state) {
         this.sendText(client, text);
         continue;
@@ -644,6 +660,12 @@ export class NetworkServer {
     for (const c of this.clients)
       if (c.device?.kind === 'remote' || (c.device?.kind === 'stage' && what === 'screens'))
         this.sendText(c, text);
+  }
+
+  /** A chat event (alpha.23): to each page of a device in the chat that follows it, and to no other. */
+  chat(event: ChatEvent): void {
+    const text = JSON.stringify({ type: 'chat', event } satisfies ToDevice);
+    for (const c of this.clients) if (c.device && c.chat && !c.device.poster) this.sendText(c, text);
   }
 
   // ---- checks every request passes -------------------------------------------------------
@@ -804,11 +826,28 @@ export class NetworkServer {
           'This device is not paired with Drashti. Pair it again from Phones and tablets in Drashti.',
         );
       }
+      const found = matchRoute(req.method ?? 'GET', segments);
+      // A phone (alpha.23, QA23-PHONE-1, shared/phone-rule.ts): what it never asks for, refused here before its body is
+      // read (what it still sends is dropped unread, as for a request too large) or this process answers it itself (a
+      // file's original, an upload), and before its allowance is spent: a page still asking for what it may not never
+      // makes its own Next wait (a23-review-phonetests). Pro Mode's own, and Simple Mode, the main process weighs.
+      const never =
+        found.found && device.kind === 'remote' && deviceMay(device.kind, found.route.op)
+          ? phoneOpRefusal(found.route.op, false)
+          : null;
+      if (never !== null) {
+        this.host.seen(device.id);
+        // A body still coming (a file's piece of megabytes, say) is never waited for: the connection ends with the
+        // answer, as for a request too large (the review's L2).
+        if (req.headers['content-length'] !== undefined || req.headers['transfer-encoding'] !== undefined)
+          res.setHeader('Connection', 'close');
+        req.resume();
+        throw new HttpError(403, never);
+      }
       // A file's pieces count apart (Session 54): a phone sending one can still tap Next.
       const limit = isPiece(req.method, segments) ? this.pieces : this.perDevice;
       if (!limit.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
       this.host.seen(device.id);
-      const found = matchRoute(req.method ?? 'GET', segments);
       if (!found.found)
         throw found.method
           ? new HttpError(405, 'That request takes another method.')
@@ -877,6 +916,19 @@ export class NetworkServer {
           'Cache-Control': 'no-store',
         });
         res.end(png);
+        return;
+      }
+      // A page of the Sabha flow (alpha.23): the PNG the main process read, only when it is one.
+      if (r.op === 'flow.page' && answer.status === 200) {
+        const page = flowPagePng(reply);
+        if (!page) throw new Error('A page of the Sabha flow was not a PNG.');
+        res.writeHead(200, {
+          ...SECURITY_HEADERS,
+          'Content-Type': 'image/png',
+          'Content-Length': page.byteLength,
+          'Cache-Control': 'no-store',
+        });
+        res.end(page);
         return;
       }
       this.json(res, answer.status, reply);
@@ -1043,6 +1095,8 @@ export class NetworkServer {
       seat,
       device: null,
       currentLowerThirdMotions: false,
+      show: false,
+      chat: false,
       alive: true,
     };
     this.clients.add(client);
@@ -1096,12 +1150,33 @@ export class NetworkServer {
         this.bye(client, 'unauthorized');
         return;
       }
-      if (device.poster || (device.kind !== 'remote' && device.kind !== 'stage')) {
+      // The show to a Remote and a Stage device; the chat (alpha.23) to a page that follows it, of a device in it (a
+      // chat phone's always does; an Announcements device's feed is for the chat only). Never the poster link.
+      const show = device.kind === 'remote' || device.kind === 'stage';
+      const chat =
+        (CHAT_DEVICE_KINDS as readonly string[]).includes(device.kind) &&
+        (device.kind === 'chat' || message.chat === true);
+      if (device.poster || (!show && !chat)) {
         this.bye(client, 'not-allowed');
         return;
       }
+      // A feed that follows only the chat (review S6): one a device (a newer page takes over from an older one), and
+      // at most so many, so the show's Remote and Stage devices always keep their seats.
+      if (!show) {
+        const others = [...this.clients].filter((c) => c !== client && c.device && !c.show);
+        for (const older of others.filter((c) => c.device?.id === device.id)) this.bye(older, 'replaced');
+        if (
+          others.filter((c) => c.device && c.device.id !== device.id).length >=
+          (this.options?.chatFeeds ?? CHAT_FEEDS_MAX)
+        ) {
+          this.bye(client, 'busy');
+          return;
+        }
+      }
       clearTimeout(hello);
       client.device = device;
+      client.show = show;
+      client.chat = chat;
       this.sockets.protect(client.seat);
       const http = this.socketDevices.get(client.seat);
       this.socketDevices.delete(client.seat);
@@ -1123,7 +1198,7 @@ export class NetworkServer {
 
   private sendSnapshot(client: Client): void {
     const state = this.mirror.state;
-    if (!state) return;
+    if (!state || !client.show) return;
     const message: EngineMessage = {
       kind: 'snapshot',
       version: ENGINE_STATE_VERSION,

@@ -150,9 +150,9 @@ If a video in the box cannot play, the box closes and a notice names it: see **L
 
 ## OSC control
 
-**What it is.** A sound or lighting console, or Companion, on the mandir's network, running **Next**, **Back**, the clears, the covers, timers and messages. It is off until someone turns it on, and has no password.
+**What it is.** OSC lets a sound or lighting console, or Companion on a Stream Deck, on the mandir's network, run **Next**, **Back**, the clears, the covers, timers and messages. It is off until someone turns it on, and has no password.
 
-**When you would use it.** When the sound desk should move the slides.
+**When you would use it.** When the sound desk should move the slides, or a Stream Deck should (since alpha.23 Companion uses OSC, not a phone's pairing).
 
 **How:**
 

@@ -883,8 +883,12 @@ describe('Simple Mode Features (alpha.22): a chosen tool’s operate actions, an
     // Messages, Lower Thirds and the Stage screen's message and timers run through engine commands Simple Mode never
     // refused: what changes is that their section is there.
     expect(SIMPLE_FEATURE_CHANNELS.messages).toEqual([]);
+    // The chat (alpha.23): a message as the operator, while Chat is chosen; the rest of it stays Pro Mode's.
+    expect(SIMPLE_FEATURE_CHANNELS.chat).toEqual([IPC.chat.send]);
     expect(SIMPLE_FEATURE_CHANNELS['lower-thirds']).toEqual([]);
     expect(SIMPLE_FEATURE_CHANNELS.stage).toEqual([]);
+    // The Sabha flow (alpha.23): marking Now; choosing, replacing and removing its PDF stay Pro Mode's.
+    expect(SIMPLE_FEATURE_CHANNELS['sabha-flow']).toEqual([IPC.flow.setNow]);
     for (const channels of Object.values(SIMPLE_FEATURE_CHANNELS))
       for (const channel of channels) {
         expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
@@ -912,6 +916,11 @@ describe('Simple Mode Features (alpha.22): a chosen tool’s operate actions, an
     expect(runs(['picture-in-picture'], IPC.pip.savePlace, { corner: 'top-left' })).toBe(true);
     expect(runs(['video-inputs'], IPC.videoInputs.choose, 'input-1')).toBe(true);
     expect(runs(['messages'], IPC.videoInputs.choose, 'input-1')).toBe(false);
+    // The Sabha flow (alpha.23): Now marked in Simple Mode while it is chosen; its PDF never chosen or removed there.
+    expect(runs(['sabha-flow'], IPC.flow.setNow, 'flow-0001-test', 1)).toBe(true);
+    expect(runs(['messages'], IPC.flow.setNow, 'flow-0001-test', 1)).toBe(false);
+    expect(runs(['sabha-flow'], IPC.flow.choose)).toBe(false);
+    expect(runs(['sabha-flow'], IPC.flow.remove)).toBe(false);
     expect(runs(['timers'], IPC.timers.startCountdown, '19:30')).toBe(true);
     expect(runs(['stage', 'messages'], IPC.timers.startCountdown, '19:30')).toBe(false);
   });

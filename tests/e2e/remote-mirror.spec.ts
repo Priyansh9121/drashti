@@ -25,7 +25,8 @@ import {
   setUpScreen,
   type PageGlobals,
 } from './helpers';
-import { PICTURE, setUpPlaceholderShow, VIDEO } from './placeholder-show';
+import { setUpPlaceholderShow } from './placeholder-show';
+import { expectPhoneRefuses } from './phone-refuses';
 import { makeTestImage, makeTestTone } from './test-media';
 
 /*
@@ -35,7 +36,12 @@ import { makeTestImage, makeTestTone } from './test-media';
  * phone and seen on both sides as it changes (props and the idle rotation went in Session 55); laid out for a phone
  * and a tablet (375 × 812, 768 × 1024 and held sideways) in Safari's
  * engine and Chrome's, with axe, 44 px targets and nothing off the side; and none of it for a Stage or Announcements
- * device. Placeholder content and generated media only; codes and tokens made at run time.
+ * device. Under the phone rule (alpha.23, QA23-PHONE-1, the owner: "no video access in either of simple or pro mode in
+ * phone, they cant change videos, only ppts an pdfs"; "Only PPT and PDF") every one of the phone's requests for them is
+ * refused in its group's words, nothing changed: what each did moved to the operator window (its own bottom bar, its
+ * Stage section, LIVE and the window's bridge for the rest), every desk assertion kept. The phone's page still lays
+ * itself out at each size (its own controls are the UI builder's) and still draws what is live. Placeholder content
+ * and generated media only; codes and tokens made at run time.
  */
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
@@ -93,13 +99,6 @@ const windowClearWords = (win: Page) =>
     .locator('[data-testid="layer-bar"] button:not([data-testid^="what-is-this"])')
     .evaluateAll((buttons) => buttons.map((b) => (b as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
 
-/** The clears' words and keys, in their order on the page. */
-const clearWords = (phone: Page) =>
-  phone
-    .getByTestId('remote-actions')
-    .getByRole('button')
-    .evaluateAll((buttons) => buttons.map((b) => (b as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
-
 /** How late the phone hears Drashti in the clears' test: a phone on a busy Wi-Fi (x58). */
 const FEED_LATE_MS = 400;
 
@@ -124,7 +123,7 @@ async function feedComesLate(page: Page, ms: number): Promise<void> {
 }
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the phone’s clears are the desktop’s bottom bar: in its order with its keys’ names, each lit while its layer is up and clearing it, the keys followed as they change (${engine})`, async () => {
+  test(`the phone’s clears are refused in words, each layer’s, Clear all, Put it back, the Wallpaper and Black-out; the window’s own bottom bar, in its order with its keys’ names, lights and clears each, the keys followed as they change (${engine})`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -139,9 +138,15 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     try {
       await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
-      // In the desktop's order, left to right (LayerBar.tsx), each with the key the window answers.
+      const fromPhone = { win, page: p };
+      const bar = win.getByTestId('layer-bar');
+      const clearOf = (layer: string, on = false) =>
+        bar.getByRole('button', { name: `Clear ${layer}${on ? ' (on screen)' : ''}`, exact: true });
+      const clearAll = bar.getByRole('button', { name: /^Clear all/u });
+      // In the desktop's order, left to right (LayerBar.tsx), each with the key the window answers: the window's own
+      // bar (the phone's copy of it went with the phone rule).
       await expect
-        .poll(() => clearWords(p))
+        .poll(() => windowClearWords(win))
         .toEqual([
           'Clear all F1',
           'Slide F2',
@@ -152,21 +157,19 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           'Wallpaper F12',
           'Black-out B',
         ]);
-      // The Wallpaper (Session 55, in the Logo's place) goes up and off from the phone, as from the window.
-      await p.getByTestId('remote-wallpaper').click();
+      // The Wallpaper (Session 55, in the Logo's place): the phone's refused; moved to the window, up and off.
+      await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/wallpaper', {}, 'media');
+      await win.getByTestId('wallpaper-button').click();
       await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(true);
-      await expect(p.getByTestId('remote-wallpaper')).toHaveAttribute('data-lit', 'true');
-      await p.getByTestId('remote-wallpaper').click();
+      await expect(win.getByTestId('wallpaper-button')).toHaveAttribute('data-lit', 'true');
+      await win.getByTestId('wallpaper-button').click();
       await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(false);
-      // Each bar dims it once it has heard (the phone over its feed, after the engine and the window: x58).
-      await expect(p.getByTestId('remote-wallpaper')).not.toHaveAttribute('data-lit');
       await expect(win.getByTestId('wallpaper-button')).not.toHaveAttribute('data-lit');
-      // Word for word and key for key the window's own bar (D5 review), read from it rather than from a list.
-      expect(await windowClearWords(win)).toEqual(await clearWords(p));
-      // Read out as the desktop's are: a layer's clear by its name, the rest by their words and key.
-      const actions = p.getByTestId('remote-actions');
-      await expect(actions.getByRole('button', { name: 'Clear all F1', exact: true })).toBeDisabled();
-      await expect(actions.getByRole('button', { name: 'Clear slide', exact: true })).toBeDisabled();
+      // Black-out from the phone: refused, the show as it was.
+      await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/blackout', {}, 'computer');
+      // Read out as the desktop's are: a layer's clear by its name, dimmed with nothing up.
+      await expect(clearAll).toBeDisabled();
+      await expect(clearOf('slide')).toBeDisabled();
 
       // The slide, the background and a message up from the operator window: their clears light up.
       await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
@@ -179,44 +182,50 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         message: { id: 'message:placeholder', text: 'Placeholder words' },
       });
       for (const layer of ['slide', 'background', 'messages'])
-        await expect(p.getByTestId(`remote-clear-${layer}`), layer).toHaveAttribute('data-lit', 'true');
-      for (const layer of ['audio', 'ticker'])
-        await expect(p.getByTestId(`remote-clear-${layer}`), layer).toBeDisabled();
-      await expect(
-        actions.getByRole('button', { name: 'Clear slide (on screen)', exact: true }),
-      ).toBeEnabled();
-      await expectNoSeriousA11yIssues(p, `the clears lit on a phone (${engine})`);
+        await expect(clearOf(layer, true), layer).toHaveAttribute('data-lit', 'true');
+      for (const layer of ['audio', 'ticker']) await expect(clearOf(layer), layer).toBeDisabled();
+      await expectNoSeriousA11yIssues(
+        win,
+        `the clears lit in the window (${engine})`,
+        '[data-testid="layer-bar"]',
+      );
 
-      // Each clears its own layer, on the screens too, and goes dim.
-      await p.getByTestId('remote-clear-slide').click();
+      // The phone's clears refused, each in its words (a kirtan is not a PowerPoint or a PDF: its slide too), nothing
+      // taken off. Moved to the window: each clears its own layer, on the screens too, and goes dim.
+      await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/slide', {}, 'noDeck');
+      await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/messages', {}, 'computer');
+      await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/background', {}, 'computer');
+      await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/all', {}, 'computer');
+      await clearOf('slide', true).click();
       await expect(
         output.locator('[data-layer="slide"]', { hasText: 'Placeholder chorus line' }),
       ).toHaveCount(0);
       await expect.poll(async () => (await layers(win)).slide).toBeNull();
-      await p.getByTestId('remote-clear-messages').click();
+      await clearOf('messages', true).click();
       await expect.poll(async () => (await layers(win)).messages).toEqual([]);
-      await p.getByTestId('remote-clear-background').click();
+      await clearOf('background', true).click();
       await expect.poll(async () => (await layers(win)).background).toBeNull();
       for (const layer of ['slide', 'background', 'messages'])
-        await expect(p.getByTestId(`remote-clear-${layer}`), layer).toBeDisabled();
+        await expect(clearOf(layer), layer).toBeDisabled();
 
-      // Clear all, then Put it back in its place (no key, as the desktop's bar), then Clear all again.
+      // Clear all, then Put it back in its place (no key, as the desktop's bar), the phone's refused; then Clear all
+      // again.
       await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 1 });
-      await p.getByTestId('remote-clear-all').click();
-      await expect(p.getByTestId('remote-put-back')).toHaveText('Put it back');
-      await p.getByTestId('remote-put-back').click();
+      await clearAll.click();
+      await expect(win.getByTestId('put-back')).toHaveText('Put it back');
+      await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/put-back', {}, 'computer');
+      await win.getByTestId('put-back').click();
       await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder first verse');
-      await expect(p.getByTestId('remote-clear-all')).toBeEnabled();
+      await expect(clearAll).toBeEnabled();
 
       // The single-letter keys turned off in Drashti: Black-out names no key, the Wallpaper keeps F12; and back.
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(false));
-      await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Wallpaper F12', 'Black-out']);
-      // And still the window's own bar, as its buttons read now.
-      const phoneNow = await clearWords(p);
-      await expect.poll(() => windowClearWords(win)).toEqual(phoneNow);
+      await expect
+        .poll(async () => (await windowClearWords(win)).slice(-2))
+        .toEqual(['Wallpaper F12', 'Black-out']);
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(true));
       await expect
-        .poll(async () => (await clearWords(p)).slice(-2))
+        .poll(async () => (await windowClearWords(win)).slice(-2))
         .toEqual(['Wallpaper F12', 'Black-out B']);
     } finally {
       await phone.close();
@@ -224,7 +233,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     await app.close();
   });
 
-test('from a phone, as from the operator window: media with its skips, the stage message, a timer alone, a lower third and an audio playlist, each seen on both sides as it changes (Session 55: props and the idle rotation went)', async () => {
+test('from a phone, refused in words; from the operator window as before: media with its skips, the stage message, a timer alone, a lower third and an audio playlist, each seen as it changes, and the phone still drawing what is live (Session 55: props and the idle rotation went)', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -247,58 +256,73 @@ test('from a phone, as from the operator window: media with its skips, the stage
   try {
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
+    const fromPhone = { win, page: p };
 
-    await p.getByTestId('remote-tab-more').click();
     // No props, masks or idle rotation on the phone (Session 55).
     for (const id of ['remote-props', 'remote-masks', 'remote-idle', 'remote-looks'])
       await expect(p.getByTestId(id), id).toHaveCount(0);
 
-    // The stage message: shown on the stage screens only, said on the phone and in the window, then cleared.
-    await p.getByTestId('remote-stage-text').fill('Placeholder: five minutes');
-    await p.getByTestId('remote-stage').getByRole('button', { name: 'Show' }).click();
+    // The stage message: the phone's refused; moved to the window, shown on the stage screens only, said in the
+    // window, then cleared (the phone's clear refused too).
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      '/api/v1/stage-message',
+      { text: 'Placeholder: five minutes' },
+      'computer',
+    );
+    await dispatch(win, { type: 'setStageMessage', text: 'Placeholder: five minutes' });
     await expect.poll(async () => (await snapshot(win)).state.stageMessage).toBe('Placeholder: five minutes');
-    await expect(p.getByTestId('remote-stage-message')).toContainText('Placeholder: five minutes');
     await openSection(win, 'stage');
     await expect(win.getByTestId('stage-message-shown')).toHaveText('Placeholder: five minutes');
-    await p.getByTestId('remote-stage-clear').click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/stage-message/clear', {}, 'computer');
+    await dispatch(win, { type: 'clearStageMessage' });
     await expect.poll(async () => (await snapshot(win)).state.stageMessage).toBeNull();
-    await expect(p.getByTestId('remote-stage-message')).toHaveCount(0);
 
-    // A timer up for the audience (Show for the audience, Session 55), then taken off the same way (Hide).
-    const timer = p.getByTestId('remote-timer').first();
-    await timer.getByTestId('remote-timer-show').click();
+    // A timer up for the audience (Show for the audience, Session 55), then taken off the same way (Hide): the
+    // phone's refused; moved to the window, named under LIVE.
+    const timerId = (await snapshot(win)).state.timers.find((t) => t.name === 'Sabha starts in')?.id ?? '';
+    expect(timerId).not.toBe('');
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/timers/${timerId}/show`, {}, 'computer');
+    await dispatch(win, { type: 'showAudienceTimer', timerId });
     await expect.poll(async () => (await layers(win)).timer?.timerId).toBeTruthy();
-    await expect(timer.getByTestId('remote-timer-show')).toHaveText('Hide');
-    // Named under LIVE on the Show tab, as the window's LIVE names it.
-    await p.getByTestId('remote-tab-show').click();
-    await expect(p.getByTestId('remote-audience-timer')).toContainText('Sabha starts in');
     await expect(win.getByTestId('live-audience-timer')).toContainText('Sabha starts in');
-    await p.getByTestId('remote-tab-more').click();
-    await timer.getByTestId('remote-timer-show').click();
+    // Named under LIVE on the phone's Show tab too, as the window's LIVE names it (what is live: the rule keeps it).
+    await expect(p.getByTestId('remote-audience-timer')).toContainText('Sabha starts in');
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/timers/hide', {}, 'computer');
+    await dispatch(win, { type: 'hideAudienceTimer' });
     await expect.poll(async () => (await layers(win)).timer ?? null).toBeNull();
 
-    // The current phone page draws the same new moving background as Main.
+    // A lower third with the new moving background: the phone's list, Show and Hide refused; moved to the window,
+    // and the phone's live picture draws it with the same motion as Main.
     const input: LowerThirdInput = {
       ...NEW_LOWER_THIRD,
       look: { ...NEW_LOWER_THIRD.look, motion: 'streaks' },
       lines: ['Placeholder Speaker', 'Placeholder title', ''],
     };
-    await win.evaluate((made) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, made), input);
-    const third = p.getByTestId('remote-lower-third').filter({ hasText: 'Placeholder Speaker' });
-    await expect(third).toContainText('Placeholder title');
-    await third.getByRole('button', { name: 'Show' }).click();
+    const saved = await win.evaluate(
+      (made) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, made),
+      input,
+    );
+    if (!saved.ok) throw new Error(saved.message);
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/lower-thirds', undefined, 'computer');
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/lower-thirds/${saved.id}/show`, {}, 'computer');
+    expect(
+      await win.evaluate((id) => (globalThis as PageGlobals).drashti.lowerThirds.show(id), saved.id),
+    ).toMatchObject({ ok: true });
     await expect.poll(async () => (await layers(win)).lowerThird?.lines[0]).toBe('Placeholder Speaker');
-    await expect(third).toHaveAttribute('data-up', 'true');
-    await p.getByTestId('remote-tab-show').click();
     await expect(p.getByTestId('remote-live').getByTestId('lower-third-layer')).toHaveAttribute(
       'data-lt-motion',
       'streaks',
     );
-    await p.getByTestId('remote-tab-more').click();
-    await third.getByRole('button', { name: 'Hide' }).click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/lower-thirds/hide', {}, 'computer');
+    expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.lowerThirds.hide())).toMatchObject({
+      ok: true,
+    });
     await expect.poll(async () => (await layers(win)).lowerThird).toBeNull();
 
-    // An audio playlist made in Drashti: listed with its tracks, played from the phone, then paused.
+    // An audio playlist made in Drashti: the phone's list, Play, Next track, Pause and Play on refused; moved to the
+    // window (its Music's Play, as its bridge does it), played, on to its second track, paused, played on there.
     const music = await win.evaluate(
       async (ids) => {
         const d = (globalThis as PageGlobals).drashti;
@@ -310,34 +334,34 @@ test('from a phone, as from the operator window: media with its skips, the stage
       },
       [toneId, secondToneId],
     );
-    const tunes = p.getByTestId('remote-music-playlist').filter({ hasText: 'Placeholder tunes' });
-    await expect(tunes).toContainText('2 tracks');
-    await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
+    const play = () => win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id), music);
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/music', undefined, 'media');
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/play', { playlistId: music }, 'media');
+    expect(await play()).toMatchObject({ ok: true });
     await expect.poll(async () => (await layers(win)).audio?.music?.playlistId).toBe(music);
-    await expect(tunes).toHaveAttribute('data-playing', 'true');
-    await expect(p.getByTestId('remote-music').getByRole('button', { name: 'Previous track' })).toBeVisible();
-    // Its second track, paused on its row: Play there goes on with that track where it was, as the window's Play
-    // does, never from the first track again (D5 review).
-    await p.getByTestId('remote-music').getByRole('button', { name: 'Next track' }).click();
+    // Its second track, paused: Play goes on with that track where it was, never from the first track again (D5
+    // review).
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/next', {}, 'media');
+    await dispatch(win, { type: 'musicNext' });
     await expect.poll(async () => (await layers(win)).audio?.music?.index).toBe(1);
-    await tunes.getByRole('button', { name: 'Pause Placeholder tunes' }).click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/pause', {}, 'media');
+    await dispatch(win, { type: 'pauseMusic' });
     await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
-    await expect(tunes).toHaveAttribute('data-paused', 'true');
-    await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/play', { playlistId: music }, 'media');
+    expect(await play()).toMatchObject({ ok: true });
     await expect
       .poll(async () => {
         const audio = (await layers(win)).audio;
         return { index: audio?.music?.index, paused: audio?.pausedAtMs !== undefined };
       })
       .toEqual({ index: 1, paused: false });
-    await expect(tunes).not.toHaveAttribute('data-paused');
-    await p.getByTestId('remote-music').getByRole('button', { name: 'Pause music' }).click();
+    await dispatch(win, { type: 'pauseMusic' });
     await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
-    // Cleared part-way through its second track (alpha.20, the owner's "Yes, all A" to Q60-39 P1): the phone's Play
-    // plays on from that track, as the window's Play does.
+    // Cleared part-way through its second track (alpha.20, the owner's "Yes, all A" to Q60-39 P1): the window's Play
+    // plays on from that track.
     await expect.poll(async () => (await layers(win)).audio).toBeNull();
-    await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
+    expect(await play()).toMatchObject({ ok: true });
     // Seen from its first moment on its second track: started on the first (of 4 s), it would only come to the
     // second by itself, later.
     const seen: (number | undefined)[] = [];
@@ -351,88 +375,79 @@ test('from a phone, as from the operator window: media with its skips, the stage
     expect(seen[0], 'the track it starts on').toBe(1);
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
 
-    // Next in words beside its picture, as the window's caption says it (D5 review): until then a phone showed only
-    // the next slide's picture, hidden from screen readers.
+    // Next in words beside its picture, as the window's caption says it (D5 review): the phone still says what comes
+    // next; its Next on a kirtan is refused (not a PowerPoint or a PDF).
     await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
-    await p.getByTestId('remote-tab-show').click();
     await expect(p.getByTestId('remote-next-caption')).toHaveText('Placeholder Kirtan, slide 2');
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/trigger/next', {}, 'noDeck');
 
-    // Media: the library's pictures, videos and sounds. A picture goes up as the background, the slide taken off.
-    await p.getByTestId('remote-tab-library').click();
-    await p.getByTestId('remote-library-media').click();
-    await expect(p.getByTestId('remote-library-media')).toHaveAttribute('aria-selected', 'true');
-    const picture = p.getByTestId('remote-media-item').filter({ hasText: PICTURE });
-    await expect(picture).toContainText('Picture');
-    await expectNoSeriousA11yIssues(p, 'Media on a phone');
-    // Media follows the library while it is open (D5 review): a picture imported in Drashti appears, with no reload.
-    const mark = 'Media opened before the import';
-    await p.evaluate((m) => {
-      (globalThis as { e2eMark?: string }).e2eMark = m;
-    }, mark);
-    await importAndGetIds(win, [
-      await makeTestImage(win, join(dir, 'Placeholder new arrival.png'), { color: '#365314' }),
-    ]);
-    await expect(
-      p.getByTestId('remote-media-item').filter({ hasText: 'Placeholder new arrival' }),
-    ).toBeVisible();
-    expect(await p.evaluate(() => (globalThis as { e2eMark?: string }).e2eMark)).toBe(mark);
-    await picture.getByRole('button').first().click();
+    // Media: the phone's list of the library's pictures, videos and sounds, and each put up from it, refused. Moved to
+    // the window, by its engine's own commands (dispatched here, not the window's Media): a picture up as the
+    // background, then taken off. (Taking the slide off with it was the phone's Media's own, its mirror-answers.ts
+    // mediaCommands, now refused: not checked here.)
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/media', undefined, 'media');
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${show.pictureMediaId}/show`, {}, 'media');
+    await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: show.pictureMediaId, media: 'image', fit: 'fit', loop: false },
+    });
     await expect
       .poll(async () => {
-        const l = await layers(win);
-        return { background: l.background?.kind === 'media' ? l.background.mediaId : null, slide: l.slide };
+        const bg = (await layers(win)).background;
+        return bg?.kind === 'media' ? bg.mediaId : null;
       })
-      .toEqual({ background: show.pictureMediaId, slide: null });
-    await expect(picture).toHaveAttribute('data-live', 'true');
-    await picture.getByTestId('remote-media-take-off').click();
+      .toBe(show.pictureMediaId);
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/background', {}, 'computer');
+    await dispatch(win, { type: 'clearLayer', layer: 'background' });
     await expect.poll(async () => (await layers(win)).background).toBeNull();
-    // Look beside it, as a playlist's picture has: D1's viewer on this phone alone, nothing put up.
-    await picture.getByTestId('remote-item-look').click();
-    const viewer = p.getByTestId('viewer');
-    await expect(viewer).toHaveAttribute('data-page', `picture:${show.pictureMediaId}`);
-    await expectNoSeriousA11yIssues(p, 'a picture from Media looked at on a phone');
-    expect((await layers(win)).background).toBeNull();
-    await viewer.getByTestId('viewer-close').click();
-    await expect(viewer).toHaveCount(0);
-    // Found by a word of its name; a video goes up the same way, and its skips are under LIVE.
-    await p.getByTestId('remote-media-search').fill('clip');
-    const video = p.getByTestId('remote-media-item').filter({ hasText: VIDEO });
-    await expect(video).toBeVisible();
-    await expect(p.getByTestId('remote-media-item')).toHaveCount(1);
-    // Play beside it plays it on this phone alone.
-    await expect(video.getByTestId('remote-item-look')).toHaveAttribute(
-      'aria-label',
-      /^Play “Placeholder clip[^”]*” on this device$/u,
-    );
-    await video.getByRole('button').first().click();
+    // A video the same way, and its skips: the phone's refused; the window's skip forward moves it, once Drashti
+    // knows the file's length.
+    const videoId = show.videoMediaId ?? '';
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${videoId}/show`, {}, 'media');
+    await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: videoId, media: 'video', fit: 'fill', loop: true },
+    });
     await expect
       .poll(async () => {
         const bg = (await layers(win)).background;
         return bg?.kind === 'media' ? bg.mediaId : null;
       })
       .toBe(show.videoMediaId);
-    await p.getByTestId('remote-tab-show').click();
-    const forward = p.getByTestId('remote-skip-background-forward');
-    // Dimmed until Drashti knows the file's length, a moment after it starts.
-    await expect(forward).toBeEnabled({ timeout: 20_000 });
-    await forward.click();
+    await expect
+      .poll(
+        async () => {
+          const bg = (await layers(win)).background;
+          return bg?.kind === 'media' ? (bg.durationMs ?? 0) : 0;
+        },
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0);
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      '/api/v1/skip',
+      { layer: 'background', jump: 'forward' },
+      'media',
+    );
+    await dispatch(win, { type: 'skip', layer: 'background', jump: 'forward' });
     await expect
       .poll(async () => {
         const bg = (await layers(win)).background;
         return bg?.kind === 'media' ? (bg.seek?.toMs ?? null) : null;
       })
       .not.toBeNull();
-    await expectNoSeriousA11yIssues(p, 'the Show tab with a video playing');
-    // A sound plays over the rest, and is taken off from Media.
-    await p.getByTestId('remote-tab-library').click();
-    await p.getByTestId('remote-media-search').fill('tune');
-    const tune = p.getByTestId('remote-media-item').filter({ hasText: 'Placeholder tune' });
-    // A sound has neither: a sound plays on a phone only from a playlist shared with phones.
-    await expect(tune.getByTestId('remote-item-look')).toHaveCount(0);
-    await tune.getByRole('button').first().click();
+    await expectNoSeriousA11yIssues(p, 'the phone’s page with a video playing on the screens');
+    // A sound plays over the rest: the phone's refused; the window's engine command puts it up (dispatched here, not the
+    // window's Media), and takes it off.
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/media/${toneId}/show`, {}, 'media');
+    await dispatch(win, {
+      type: 'playAudio',
+      audio: { id: 'placeholder-tune', title: 'Placeholder tune', mediaId: toneId, volume: 1, loop: false },
+    });
     await expect.poll(async () => (await layers(win)).audio?.mediaId).toBe(toneId);
-    await expect(tune).toHaveAttribute('data-live', 'true');
-    await tune.getByTestId('remote-media-take-off').click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/audio', {}, 'computer');
+    await dispatch(win, { type: 'clearLayer', layer: 'audio' });
     await expect.poll(async () => (await layers(win)).audio).toBeNull();
   } finally {
     await phone.close();
@@ -450,34 +465,19 @@ const SIZES = [
   { name: 'a tablet held sideways', width: 1024, height: 768, layout: 'landscape', mobile: true },
 ] as const;
 
-/** The places each layout has: the tabs to press, Media among them. */
+/**
+ * The places each layout has that the phone rule leaves (alpha.23, QA23-PHONE-1: the Show tab and, in Pro Mode, the
+ * playlist; the library, Media and More went with the rule, the phone's page the UI builder's).
+ */
 const PLACES = {
-  phone: [
-    'remote-tab-show',
-    'remote-tab-playlist',
-    'remote-tab-library',
-    'remote-library-media',
-    'remote-tab-more',
-  ],
-  sideways: [
-    'remote-tab-show',
-    'remote-tab-playlist',
-    'remote-tab-library',
-    'remote-library-media',
-    'remote-tab-more',
-  ],
-  wide: ['remote-side-playlist', 'remote-side-library', 'remote-library-media'],
-  landscape: [
-    'remote-panel-show',
-    'remote-panel-playlist',
-    'remote-panel-library',
-    'remote-library-media',
-    'remote-panel-more',
-  ],
+  phone: ['remote-tab-show', 'remote-tab-playlist'],
+  sideways: ['remote-tab-show', 'remote-tab-playlist'],
+  wide: ['remote-side-playlist'],
+  landscape: ['remote-panel-show', 'remote-panel-playlist'],
 } as const;
 
 for (const engine of ['webkit', 'chromium'] as Engine[])
-  test(`the mirror laid out for a phone and a tablet, upright and held sideways, in ${engine === 'webkit' ? 'Safari’s' : 'Chrome’s'} engine: axe, 44 px targets, nothing off the side, the tablet using its width, and Add to Home Screen`, async () => {
+  test(`the phone’s page laid out for a phone and a tablet, upright and held sideways, in ${engine === 'webkit' ? 'Safari’s' : 'Chrome’s'} engine, with everything up on the screens (each refused to it in words): axe, 44 px targets, nothing off the side, its tabs in reach (no Back or Next for Repeat Slides), and Add to Home Screen`, async () => {
     test.setTimeout(240_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -563,67 +563,34 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           await pairByQr(page, base, await pairingCode(win, 'remote', `Placeholder ${size.name}`), '/remote');
           await expect(page.getByTestId('connection')).toHaveText('Connected');
           await expect(page.getByTestId('remote')).toHaveAttribute('data-layout', size.layout);
-          // Where the live column and More are in sight: always beside each other on a tablet; a tab each on a phone.
-          const liveShown = (place: string) =>
-            (size.layout !== 'phone' && size.layout !== 'sideways') ||
-            place === 'remote-tab-show' ||
-            place === 'remote-panel-show';
-          const moreShown = (place: string) =>
-            size.layout === 'wide' || place === 'remote-tab-more' || place === 'remote-panel-more';
+          // Everything up on the screens is refused to a phone in words, nothing changed (alpha.23, QA23-PHONE-1): the
+          // music's Pause, Repeat Slides' Stop, black-out, the message and the stage message taken off.
+          if (size === SIZES[0]) {
+            const fromPhone = { win, page };
+            await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/music/pause', {}, 'media');
+            await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/repeat/stop', {}, 'notDeck');
+            await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/blackout', { on: false }, 'computer');
+            await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/clear/messages', {}, 'computer');
+            await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/stage-message/clear', {}, 'computer');
+          }
           for (const place of PLACES[size.layout]) {
             await page.getByTestId(place).click();
             await expect(page.getByTestId(place)).toHaveAttribute('aria-selected', 'true');
-            if (place === 'remote-library-media')
-              await expect(page.getByTestId('remote-media-item').first()).toBeVisible();
-            // What plays, and LIVE's own line, are there to be checked (D5 review).
-            if (liveShown(place)) {
-              await expect(page.getByTestId('remote-time-bars')).toBeVisible();
-              await expect(page.getByTestId('remote-playing')).toBeVisible();
-              await expect(page.getByTestId('remote-auto-advance')).toBeVisible();
-            }
-            if (moreShown(place)) {
-              await expect(
-                page.getByTestId('remote-music-playlist').filter({ hasText: 'Placeholder tunes' }),
-              ).toHaveAttribute('data-playing', 'true');
-            }
             await expectNoSeriousA11yIssues(page, `${place} on ${at}`);
             expect.soft(await tooSmall(page), `targets under 44 px: ${place} on ${at}`).toEqual([]);
             expect.soft(await offTheSide(page), `off the side: ${place} on ${at}`).toEqual([]);
           }
-          // The clears fill the width: three to a row on a phone, more where there is room.
           if (size.layout === 'phone' || size.layout === 'sideways')
             await page.getByTestId('remote-tab-show').click();
-          const tops = await page
-            .getByTestId('remote-actions')
-            .getByRole('button')
-            .evaluateAll((buttons) => buttons.map((b) => Math.round(b.getBoundingClientRect().top)));
-          const firstRow = tops.filter((t) => t === tops[0]).length;
-          if (size.width < 600) expect(firstRow, at).toBe(3);
-          else expect(firstRow, at).toBeGreaterThanOrEqual(3);
-          // Back and Next always in reach, a phone held sideways too.
-          await expect(page.getByTestId('remote-next-button')).toBeInViewport();
-          await expect(page.getByTestId('remote-back')).toBeInViewport();
-          // Held sideways, More's sections stand in two columns, and Media in a grid of two or more.
-          if (size.layout === 'landscape') {
-            await page.getByTestId('remote-panel-more').click();
-            // Every section of More (Session 55: fewer since props, masks and Looks went, so the second column
-            // starts further down): some in each column.
-            const lefts = await page
-              .locator('[data-testid="remote-more-columns"] > *')
-              .evaluateAll((sections) =>
-                sections
-                  .map((s) => s.getBoundingClientRect())
-                  .filter((r) => r.width > 0)
-                  .map((r) => Math.round(r.left)),
-              );
-            expect(new Set(lefts).size, `More in columns on ${at}`).toBeGreaterThan(1);
-            await page.getByTestId('remote-panel-library').click();
-            await page.getByTestId('remote-library-media').click();
-            const mediaLefts = await page
-              .getByTestId('remote-media-item')
-              .evaluateAll((items) => items.map((i) => Math.round(i.getBoundingClientRect().left)));
-            expect(new Set(mediaLefts).size, `Media in a grid on ${at}`).toBeGreaterThan(1);
-          }
+          // LIVE's own line of what is live (Repeat Slides going round: "Moves on by itself"), there to be checked.
+          await expect(page.getByTestId('remote-auto-advance')).toBeVisible();
+          // Repeat Slides going round is no PowerPoint or PDF: no Back or Next on a phone (QA23-PHONE-1; before it,
+          // always in reach). Its tabs are in reach instead, a phone held sideways too.
+          await expect(page.getByTestId('remote-next-button')).toHaveCount(0);
+          await expect(page.getByTestId('remote-back')).toHaveCount(0);
+          if (size.layout === 'phone' || size.layout === 'sideways')
+            for (const tab of ['remote-tab-show', 'remote-tab-playlist', 'remote-tab-chat'])
+              await expect(page.getByTestId(tab), `${tab} on ${at}`).toBeInViewport({ ratio: 1 });
           // Add to Home Screen: iOS's tags and Android Chrome's, and the icons they name.
           const tags = await page.evaluate(() =>
             Object.fromEntries(
@@ -647,7 +614,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     await app.close();
   });
 
-test('a Stage or Announcements device can read and do none of the mirror’s requests, and a Remote does them', async () => {
+test('a Stage or Announcements device can read and do none of the mirror’s requests, and a Remote is refused them in words', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -673,31 +640,32 @@ test('a Stage or Announcements device can read and do none of the mirror’s req
     for (const [method, path, body] of asks)
       expect((await apiCall(port, path, { method, token, body })).status, `${method} ${path}`).toBe(403);
   expect((await snapshot(win)).rev).toBe(before);
-  // A Remote reads them, and puts the picture up (the skip is refused: nothing is playing).
-  expect((await apiCall(port, '/api/v1/keys', { token: remote })).json).toMatchObject({
-    keys: { singleKeys: true },
-  });
-  expect(
-    (await apiCall(port, `/api/v1/media/${show.pictureMediaId}/show`, { method: 'POST', token: remote }))
-      .status,
-  ).toBe(200);
-  const l = await layers(win);
-  expect(l.background?.kind === 'media' ? l.background.mediaId : null).toBe(show.pictureMediaId);
-  expect(
-    (
-      await apiCall(port, '/api/v1/skip', {
-        method: 'POST',
-        token: remote,
-        body: { layer: 'audio', jump: 'back' },
-      })
-    ).status,
-  ).toBe(409);
+  // A Remote is refused them too, now in its group's words (alpha.23, QA23-PHONE-1), nothing changed: no longer the
+  // keys read and the picture put up (the skip, refused before as nothing played, refused in the media words).
+  const script = { win, port, token: remote };
+  await expectPhoneRefuses(script, 'GET', '/api/v1/keys', undefined, 'computer');
+  await expectPhoneRefuses(script, 'GET', '/api/v1/media', undefined, 'media');
+  await expectPhoneRefuses(script, 'POST', `/api/v1/media/${show.pictureMediaId}/show`, undefined, 'media');
+  await expectPhoneRefuses(script, 'GET', '/api/v1/lower-thirds', undefined, 'computer');
+  await expectPhoneRefuses(script, 'POST', '/api/v1/lower-thirds/hide', undefined, 'computer');
+  await expectPhoneRefuses(script, 'GET', '/api/v1/music', undefined, 'media');
+  await expectPhoneRefuses(
+    script,
+    'POST',
+    '/api/v1/stage-message',
+    { text: 'Placeholder: five minutes' },
+    'computer',
+  );
+  await expectPhoneRefuses(script, 'POST', '/api/v1/stage-message/clear', undefined, 'computer');
+  await expectPhoneRefuses(script, 'POST', '/api/v1/skip', { layer: 'audio', jump: 'back' }, 'media');
+  expect((await layers(win)).background).toBeNull();
   await app.close();
 });
 
 // Session 54, D5 review: a Repeat Slides playlist is never played item by item; it goes round, as the window and
-// Simple Mode start it. Until then a phone's tap on its item, and its Next, played nothing.
-test('Repeat Slides from a phone, as from Simple Mode: Next with nothing up and Start going round start it, an item tapped goes round from it, and Stop (D5 review)', async () => {
+// Simple Mode start it. Under the phone rule (alpha.23, QA23-PHONE-1, the owner's "Only PPT and PDF") a phone starts,
+// steps through and stops none of it, each refused in words; the window starts it, from an item, and stops it.
+test('Repeat Slides from a phone are refused in words: Next with nothing up, an item tapped, Start going round and Stop; from the window: going round from its first step, from an item, and Stop (D5 review)', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -737,35 +705,45 @@ test('Repeat Slides from a phone, as from Simple Mode: Next with nothing up and 
   try {
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-playlist').click();
-    await p.getByTestId('remote-playlist').selectOption(playlistId);
-    await expect(p.getByTestId('remote-going-round')).toBeVisible();
-    await expect(p.getByTestId('remote-item')).toHaveCount(2);
-    await expectNoSeriousA11yIssues(p, 'a Repeat Slides playlist on a phone');
+    const fromPhone = { win, page: p };
+    await expectNoSeriousA11yIssues(p, 'the phone’s page beside a Repeat Slides playlist');
 
-    // Next with nothing up starts it going round from its first step, as Simple Mode's Next does.
-    await p.getByTestId('remote-next-button').click();
+    // Next with nothing up (which started it going round, as Simple Mode's Next does): refused. Moved to the window:
+    // Start going round, from its first step; the phone's Stop refused; the window's stops it.
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/trigger/next', {}, 'noDeck');
+    await dispatch(win, { type: 'startRepeat', playlistId, slideIndex: 0 });
     await expect.poll(going).toEqual({ repeat: playlistId, item: firstItem });
-    await expect(p.getByTestId('remote-item').nth(0)).toHaveAttribute('data-live', 'true');
-    await p.getByTestId('remote-going-round-stop').click();
+    await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/repeat/stop', {}, 'notDeck');
+    await dispatch(win, { type: 'stopRepeat' });
     await expect.poll(async () => (await going()).repeat).toBeNull();
 
-    // An item tapped goes round from that item's first step, and is marked as the one up.
-    await p.getByTestId('remote-item').nth(1).click();
+    // An item tapped (which went round from that item's first step): refused, as a row and as Start from it. Moved to
+    // the window: going round from the second item's step, then Stop (its step stays up).
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      '/api/v1/trigger/item',
+      { playlistId, itemId: secondItem },
+      'notDeck',
+    );
+    await expectPhoneRefuses(
+      fromPhone,
+      'POST',
+      `/api/v1/repeat/${playlistId}/start`,
+      { itemId: secondItem },
+      'notDeck',
+    );
+    await dispatch(win, { type: 'startRepeat', playlistId, slideIndex: 1 });
     await expect.poll(going).toEqual({ repeat: playlistId, item: secondItem });
-    await expect(p.getByTestId('remote-item').nth(1)).toHaveAttribute('data-live', 'true');
-    await expect(p.getByTestId('remote-item').nth(0)).not.toHaveAttribute('data-live');
-    // Under LIVE on the Show tab: Repeating, with its own Stop (its step stays up).
-    await p.getByTestId('remote-tab-show').click();
+    // Under LIVE on the phone's Show tab: Repeating, by the playlist's name (what is live: the rule keeps it).
     await expect(p.getByTestId('remote-repeating')).toContainText('Placeholder Hall Pictures');
-    await p.getByTestId('remote-repeat-stop').click();
+    await dispatch(win, { type: 'stopRepeat' });
     await expect.poll(going).toEqual({ repeat: null, item: secondItem });
 
-    // Start going round: from the first step again.
-    await p.getByTestId('remote-tab-playlist').click();
-    await p.getByTestId('remote-going-round').click();
+    // Start going round (its button on the phone): refused; the window's, from the first step again.
+    await expectPhoneRefuses(fromPhone, 'POST', `/api/v1/repeat/${playlistId}/start`, {}, 'notDeck');
+    await dispatch(win, { type: 'startRepeat', playlistId, slideIndex: 0 });
     await expect.poll(going).toEqual({ repeat: playlistId, item: firstItem });
-    await expect(p.getByTestId('remote-going-round-stop')).toBeVisible();
   } finally {
     await phone.close();
   }

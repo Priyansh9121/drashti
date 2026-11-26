@@ -225,3 +225,70 @@ it('holds a save the operator asked for only while saveBusy says why, never for 
     rmSync(dir, { recursive: true, force: true });
   }
 }, 10_000);
+
+it('still holds a save the operator asked for whatever the stream check says, when saveBusy says nothing (the save-trim review SHOULD-5)', async () => {
+  // A save that waits only for what plays (waitForPlaying) skipped busy() altogether: a reason busy() gained later
+  // would never hold it. Both are asked; the save's own words when both say why.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-copy-busy-'));
+  const db = openDatabase(join(dir, 'library.sqlite'));
+  const source = join(dir, 'Placeholder source.mp4');
+  const dest = join(dir, 'Placeholder trimmed.mp4');
+  writeFileSync(source, 'Placeholder source bytes');
+  const streamWords = 'Waits while the stream is on air or recording, then carries on by itself.';
+  let busy: string | null = streamWords;
+  let saveBusy: string | null = null;
+  const children = fakeEncoders();
+  const service = new ConvertService({
+    db,
+    mediaDir: dir,
+    ffmpegPath: () => 'placeholder-ffmpeg',
+    busy: () => busy,
+    showBusy: () => false,
+    saveBusy: () => saveBusy,
+    freeBytes: () => 100 * 1024 ** 3,
+    changed: () => undefined,
+    libraryChanged: () => undefined,
+    log: () => undefined,
+  });
+  const info = { durationMs: 1000, video: null, audio: null };
+  const waiting = vi.fn();
+  try {
+    const save = service.saveCopy(source, dest, info, {
+      args: (tmp: string) => [tmp],
+      lengthMs: 1000,
+      waitForPlaying: true,
+      waiting,
+    });
+    expect(children).toHaveLength(0);
+    expect(waiting).toHaveBeenLastCalledWith(streamWords);
+    // Both say why: the save's own words.
+    saveBusy = 'Waiting: the stream is on air';
+    await vi.waitFor(() => expect(waiting).toHaveBeenLastCalledWith('Waiting: the stream is on air'), {
+      timeout: 2500,
+    });
+    expect(children).toHaveLength(0);
+    // The save's own reason gone, the stream check's still there: it still waits.
+    saveBusy = null;
+    await vi.waitFor(() => expect(waiting).toHaveBeenLastCalledWith(streamWords), { timeout: 2500 });
+    expect(children).toHaveLength(0);
+    // Running, it stops when the stream check says why, though saveBusy says nothing.
+    busy = null;
+    await vi.waitFor(() => expect(children).toHaveLength(1), { timeout: 2500 });
+    busy = streamWords;
+    service.activityChanged();
+    const first = children[0];
+    if (!first) throw new Error('The encoder did not start.');
+    expect(first.kill).toHaveBeenCalledOnce();
+    first.child.emit('close', 0);
+    await vi.waitFor(() => expect(waiting).toHaveBeenLastCalledWith(streamWords), { timeout: 2500 });
+    expect(existsSync(dest)).toBe(false);
+    busy = null;
+    await vi.waitFor(() => expect(children).toHaveLength(2), { timeout: 2500 });
+    children[1]?.child.emit('close', 0);
+    await expect(save.done).resolves.toEqual({ ok: true, copy: dest });
+  } finally {
+    service.close();
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 15_000);

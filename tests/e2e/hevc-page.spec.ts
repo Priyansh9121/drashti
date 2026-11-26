@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { launchApp, operatorPage, operatorReady } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * The HEVC question's own page (hevc-page.ts) answers however the main process tidies its memory (alpha.21's first
@@ -17,7 +16,7 @@ test('the HEVC question’s page answers even when the main process collects its
   test.setTimeout(120_000);
   const { app, userData } = await launchApp({ DRASHTI_TEST_HEVC_ANSWER_MS: '15000' });
   try {
-    const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const log = () => logText(userData);
     await operatorReady(await operatorPage(app));
     // The question is on its way, in its blank page.
     await expect

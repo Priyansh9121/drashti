@@ -7,9 +7,14 @@ import { usePlaylists } from './playlist-store';
 /*
  * A playlist shared with phones and tablets (Session 54, D3): its right-click menu offers Share with Phones and
  * Tablets while a phone or tablet that can view it is paired (a Remote device), and Stop Sharing once it is
- * shared, paired or not. A playlist made from a folder is shared whole, its folders as its headers. Remote devices
- * list it under "Shared from Drashti", every file to view and play on the device itself, read-only.
+ * shared, paired or not. A playlist made from a folder is shared whole, its folders as its headers. Until alpha.22
+ * Remote devices listed it under "Shared from Drashti", every file to view and play on the device itself, read-only.
+ * Since alpha.23 (QA23-PHONE-1, shared/phone-rule.ts) no phone sees it: the menu and the mark stay for now, and the
+ * mark's words say so (the owner's Q11, "Words now, hide later").
  */
+
+/** What the mark says (since alpha.23): the playlist is marked, and phones no longer see it. */
+export const SHARED_MARK_WORDS = 'Shared with phones and tablets. Phones no longer see shared playlists.';
 
 /** A Remote device is paired (the announcements poster is not one). */
 export const remotePaired = (): boolean =>
@@ -46,11 +51,11 @@ export function SharedMark() {
   return (
     <span
       className="flex shrink-0 items-center text-muted"
-      title="Shared with phones and tablets"
+      title={SHARED_MARK_WORDS}
       data-testid="playlist-shared"
     >
       <Share2 size={13} aria-hidden="true" />
-      <span className="sr-only">, shared with phones and tablets</span>
+      <span className="sr-only">, {SHARED_MARK_WORDS}</span>
     </span>
   );
 }

@@ -1,10 +1,13 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { NETWORK_ENV, networkOn } from './devices';
+import WebSocket from 'ws';
+import type { ToDevice } from '../../src/shared/network';
+import { settled } from './a11y';
+import { NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -17,6 +20,8 @@ import {
 } from './helpers';
 import { makeTestImage, makeTestTone, makeTestVideo, setWebmDuration } from './test-media';
 import { dispatch, row, slideWithVideos } from './time-bar-helpers';
+import type { MayEndInEllipsis } from './fit';
+import { fitFaults } from './fit';
 import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 
 /*
@@ -78,225 +83,6 @@ const NAMES: string[] = [
   'Sample kirtan (placeholder)',
 ];
 
-/**
- * Everything that does not fit in the operator window as it is laid out now, each in words: a control, a heading or a
- * key hint cut (its contents run past it), cut off by what holds it, running out of its column, lying over another, or
- * under a notice; words lying over a control; words of Drashti's own cut short with an ellipsis (a name the operator
- * gave, placeholder here, may be); anything scrolling sideways. What a scroller has scrolled out of sight is not
- * looked at, nor what is hidden from people (aria-hidden, unseen).
- */
-const fitFaults = (win: Page) =>
-  win.evaluate((names) => {
-    const out = new Set<string>();
-    const REGIONS: [string, string][] = [
-      ['the header', '[data-header]'],
-      ['the left column', '[data-testid="column-left"]'],
-      ['the middle', '[data-testid="column-middle"]'],
-      ['the live column', '[data-testid="column-right"]'],
-      ['the quick bar', '[data-testid="quick-bar"]'],
-      ['the bar of clears', '[data-testid="layer-bar"], [data-testid="simple-buttons"]'],
-      ['the status bar', 'footer[aria-label="Status"]'],
-    ];
-    const NOTICES = '[data-testid="operator-notice"], [data-testid="import-notice"]';
-    const CONTROLS =
-      'button, a[href], input:not([type="hidden"]), select, textarea, [role="button"], [role="slider"], [role="switch"], [role="checkbox"], [role="radio"], [role="tab"], [role="combobox"], [role="spinbutton"], [data-show-control], [data-testid="next-up"]';
-    const LABELS = 'h1, h2, h3, h4, [role="heading"], label, legend, kbd';
-    const WORDS_CUT =
-      'button, a, [role="button"], [role="tab"], kbd, h1, h2, h3, h4, [role="heading"], label, legend';
-
-    interface Box {
-      left: number;
-      top: number;
-      right: number;
-      bottom: number;
-    }
-    const boxOf = (r: DOMRect | Box): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-    const meet = (a: Box, b: Box): Box | null => {
-      const m = {
-        left: Math.max(a.left, b.left),
-        top: Math.max(a.top, b.top),
-        right: Math.min(a.right, b.right),
-        bottom: Math.min(a.bottom, b.bottom),
-      };
-      return m.right - m.left > 0.5 && m.bottom - m.top > 0.5 ? m : null;
-    };
-    const named = (el: Element): string => {
-      const id = el.getAttribute('data-testid');
-      const label = el.getAttribute('aria-label');
-      const words = el.textContent.replace(/\s+/gu, ' ').trim().slice(0, 40);
-      const what = el.tagName.toLowerCase();
-      return `${what} “${id ?? label ?? words}”`;
-    };
-
-    /** Not drawn, or drawn unseen (a screen reader's words alone, hidden, see-through). */
-    const unseen = (el: Element): boolean => {
-      if (el.getClientRects().length === 0) return true;
-      const r = el.getBoundingClientRect();
-      if (r.width <= 1 || r.height <= 1) return true;
-      for (let at: Element | null = el; at; at = at.parentElement) {
-        const s = getComputedStyle(at);
-        if (s.visibility === 'hidden' || Number(s.opacity) < 0.05) return true;
-      }
-      return false;
-    };
-    /** Not there for people: unseen, inert, or hidden from screen readers (the live picture excepted). */
-    const hidden = (el: Element): boolean => {
-      if (el.closest('[inert]')) return true;
-      const quiet = el.closest('[aria-hidden="true"]');
-      if (quiet && el.closest('[data-testid="live-preview"]') !== el) return true;
-      return unseen(el);
-    };
-
-    /**
-     * What of `box` is in sight: cut by every box around it that hides its overflow, scrolls, or is the window. Says
-     * too whether something that does not scroll (overflow hidden) cut it, and where.
-     */
-    const inSight = (from: Element | null, box: Box): { seen: Box | null; cutBy: Element | null } => {
-      let seen: Box | null = meet(box, { left: 0, top: 0, right: innerWidth, bottom: innerHeight });
-      let cutBy: Element | null = null;
-      for (let at = from; at && seen; at = at.parentElement) {
-        const s = getComputedStyle(at);
-        const x = s.overflowX;
-        const y = s.overflowY;
-        if (x === 'visible' && y === 'visible') continue;
-        const a = at.getBoundingClientRect();
-        const clipX = x !== 'visible';
-        const clipY = y !== 'visible';
-        const edge = {
-          left: clipX ? a.left : -Infinity,
-          right: clipX ? a.right : Infinity,
-          top: clipY ? a.top : -Infinity,
-          bottom: clipY ? a.bottom : Infinity,
-        };
-        // What is still in sight of it, past the boxes inside this one (one that scrolls has its own room).
-        const cutX = clipX && (seen.left < edge.left - 1 || seen.right > edge.right + 1);
-        const cutY = clipY && (seen.top < edge.top - 1 || seen.bottom > edge.bottom + 1);
-        // Cut by a box that cannot scroll to it: out of reach (a scroller's own cut is scrolling, said below if sideways).
-        const scrollsX = x === 'auto' || x === 'scroll';
-        const scrollsY = y === 'auto' || y === 'scroll';
-        if (!cutBy && ((cutX && !scrollsX) || (cutY && !scrollsY))) cutBy = at;
-        seen = meet(seen, edge);
-      }
-      return { seen, cutBy };
-    };
-
-    const notices = [...document.querySelectorAll(NOTICES)].filter((n) => !hidden(n));
-    // What of each is in sight (the notices scroll in their own place when there are many: one scrolled away covers
-    // nothing).
-    const noticeBoxes = notices.map((n) => inSight(n.parentElement, boxOf(n.getBoundingClientRect())).seen);
-
-    interface Part {
-      el: Element;
-      region: string;
-      seen: Box;
-      control: boolean;
-    }
-    const parts: Part[] = [];
-    const regions = REGIONS.flatMap(([name, selector]) =>
-      [...document.querySelectorAll(selector)].filter((r) => !hidden(r)).map((r) => ({ name, r })),
-    );
-    for (const { name, r } of regions) {
-      const edge = r.getBoundingClientRect();
-      // Nothing in it scrolls sideways.
-      for (const el of [r, ...r.querySelectorAll('*')]) {
-        if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth + 1) continue;
-        const x = getComputedStyle(el).overflowX;
-        if ((x === 'auto' || x === 'scroll') && !hidden(el))
-          out.add(`${name}: ${named(el)} scrolls sideways`);
-      }
-      for (const el of r.querySelectorAll(`${CONTROLS}, ${LABELS}`)) {
-        if (hidden(el) || el.closest(NOTICES)) continue;
-        const box = boxOf(el.getBoundingClientRect());
-        const { seen, cutBy } = inSight(el.parentElement, box);
-        if (cutBy) out.add(`${name}: ${named(el)} is cut off by ${named(cutBy)}`);
-        if (!seen) continue;
-        if (box.left < edge.left - 0.5 || box.right > edge.right + 0.5)
-          out.add(`${name}: ${named(el)} runs out of it`);
-        if (el.matches(WORDS_CUT) && el instanceof HTMLElement) {
-          // Cut with an ellipsis is the next check's (a name the operator gave may be).
-          const style = getComputedStyle(el);
-          const ellipsis = style.textOverflow === 'ellipsis' && style.overflowX !== 'visible';
-          if (!ellipsis && el.scrollWidth > el.clientWidth + 1)
-            out.add(
-              `${name}: ${named(el)} is cut (${String(el.scrollWidth)} > ${String(el.clientWidth)} px)`,
-            );
-          // Its key and icon inside it.
-          for (const inner of el.querySelectorAll('kbd, svg'))
-            if (!unseen(inner) && !meet(boxOf(inner.getBoundingClientRect()), box))
-              out.add(`${name}: ${named(el)}'s ${inner.tagName.toLowerCase()} is outside it`);
-        }
-        parts.push({ el, region: name, seen, control: el.matches(CONTROLS) });
-      }
-      // Words of Drashti's own cut short with an ellipsis (a name the operator gave may be: NAMES).
-      for (const el of r.querySelectorAll('*')) {
-        if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth + 1) continue;
-        const style = getComputedStyle(el);
-        if (style.textOverflow !== 'ellipsis' || style.overflowX === 'visible' || hidden(el)) continue;
-        const words = el.textContent.replace(/\s+/gu, ' ').trim();
-        if (
-          words !== '' &&
-          !names.some((n) => words.includes(n)) &&
-          inSight(el.parentElement, boxOf(el.getBoundingClientRect())).seen
-        )
-          out.add(`${name}: “${words.slice(0, 60)}” is cut short`);
-      }
-    }
-
-    // Controls and headings lying over each other, and controls under a notice. A control wholly in another's box is
-    // an action in a row's own room (Rename and Delete at its end): the row's words and icons must not be under it.
-    const within = (a: Box, b: Box) =>
-      a.left >= b.left - 0.5 &&
-      a.right <= b.right + 0.5 &&
-      a.top >= b.top - 0.5 &&
-      a.bottom <= b.bottom + 0.5;
-    const icons = (el: Element) =>
-      [...el.querySelectorAll('svg, img')]
-        .filter((g) => !unseen(g))
-        .map((g) => boxOf(g.getBoundingClientRect()));
-    parts.forEach((a, i) => {
-      for (const b of parts.slice(i + 1)) {
-        if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
-        if (a.el instanceof HTMLLabelElement && a.el.control === b.el) continue;
-        if (b.el instanceof HTMLLabelElement && b.el.control === a.el) continue;
-        if (!meet(a.seen, b.seen)) continue;
-        const outer = within(b.seen, a.seen) ? a : within(a.seen, b.seen) ? b : null;
-        const inner = outer === a ? b : a;
-        if (outer?.control && inner.control) {
-          if (icons(outer.el).some((g) => meet(g, inner.seen)))
-            out.add(`${outer.region}: an icon of ${named(outer.el)} lies under ${named(inner.el)}`);
-          continue;
-        }
-        out.add(`${a.region}: ${named(a.el)} and ${named(b.el)} lie over each other`);
-      }
-      if (a.control)
-        noticeBoxes.forEach((n, k) => {
-          if (n && meet(a.seen, n))
-            out.add(`${a.region}: ${named(a.el)} is under ${named(notices[k] ?? a.el)}`);
-        });
-    });
-
-    // Words lying over a control that does not hold them.
-    const controls = parts.filter((p) => p.control);
-    for (const { name, r } of regions) {
-      const walk = document.createTreeWalker(r, NodeFilter.SHOW_TEXT);
-      for (let node = walk.nextNode(); node; node = walk.nextNode()) {
-        const parent = node.parentElement;
-        if (!parent || !node.textContent?.trim() || hidden(parent)) continue;
-        const range = document.createRange();
-        range.selectNodeContents(node);
-        for (const rect of range.getClientRects()) {
-          // Its own box's cut counts (an ellipsis's words).
-          const { seen } = inSight(parent, boxOf(rect));
-          if (!seen) continue;
-          for (const c of controls)
-            if (!c.el.contains(parent) && !parent.contains(c.el) && meet(seen, c.seen))
-              out.add(`${name}: “${node.textContent.trim().slice(0, 40)}” lies over ${named(c.el)}`);
-        }
-      }
-    }
-    return [...out];
-  }, NAMES);
-
 /** axe's target-size findings (every target 24 px, or room around it): its words for each. */
 async function smallTargets(win: Page): Promise<string[]> {
   type AxeWindow = typeof globalThis & { axe?: typeof axe };
@@ -330,21 +116,21 @@ async function setColumns(win: Page, columns: { left: string; right: string }): 
   await win.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
   });
-  // Laid out, and what a size change starts (a container query, the LIVE block's choice) done.
+  await laidOut(win);
+}
+
+/**
+ * Laid out, and what a size change starts (a container query, the LIVE block's choice) done: three frames, then every
+ * finite animation running then finished (a11y's settled).
+ */
+async function laidOut(win: Page): Promise<void> {
   await win.evaluate(
     () =>
       new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       }),
   );
-  await win.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
-        .map((a) => a.finished.catch(() => undefined)),
-    ),
-  );
+  await settled(win);
 }
 
 /** Every part of the window that scrolls up and down, at its top or at its end, then laid out. */
@@ -458,7 +244,7 @@ for (const mode of ['pro', 'simple'] as const)
             await scrollAll(win, end);
             // Still there after the columns moved (a resize sends no command).
             await expect(win.getByTestId('operator-notice')).toBeVisible();
-            const faults = [...(await fitFaults(win)), ...(await smallTargets(win))];
+            const faults = [...(await fitFaults(win, NAMES)), ...(await smallTargets(win))];
             const where = `${library ? 'the library open, ' : ''}${name}${end ? ', scrolled to the end' : ''}`;
             findings.push(...faults.map((f) => `${where}: ${f}`));
             if (faults.length > 0)
@@ -475,6 +261,243 @@ for (const mode of ['pro', 'simple'] as const)
       expect(findings).toEqual([]);
       await app.close();
     });
+
+/** A tablet's feed opened as its stage display's page opens it (paired-seats.spec.ts): the hello, then the welcome. */
+async function connectTablet(port: number, token: string): Promise<WebSocket> {
+  const ws = new WebSocket(`ws://127.0.0.1:${String(port)}/api/v1/feed`);
+  await new Promise<void>((resolve, reject) => {
+    ws.once('open', () => {
+      resolve();
+    });
+    ws.once('error', reject);
+  });
+  const welcome = new Promise<ToDevice>((resolve) =>
+    ws.once('message', (data: Buffer) => {
+      resolve(JSON.parse(data.toString('utf8')) as ToDevice);
+    }),
+  );
+  ws.send(JSON.stringify({ type: 'hello', token }));
+  expect(await welcome).toMatchObject({ type: 'welcome', device: { kind: 'stage' } });
+  return ws;
+}
+
+/** The status bar's parts and how wide each is, and the row's own width and what it needs, for the run's output. */
+const statusParts = (win: Page) =>
+  win.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>('footer[aria-label="Status"]');
+    if (!bar) return null;
+    return {
+      width: bar.clientWidth,
+      needs: bar.scrollWidth,
+      parts: [...bar.children].map((c) => ({
+        part: c.getAttribute('data-testid') ?? c.tagName.toLowerCase(),
+        width: Math.round(c.getBoundingClientRect().width),
+        words: c.textContent.slice(0, 60),
+      })),
+    };
+  });
+
+/** Simple Mode's day playlist as theDaysPlaylist tells it. */
+interface DaysPlaylist {
+  name: string;
+  row: Locator;
+  mayCut: MayEndInEllipsis[];
+}
+
+/**
+ * Simple Mode's day playlist in a new library with none open (main/simple-playlist.ts makes "Sabha, <date>" and the
+ * window opens it), as the main process tells it: its name, its row in the left column, and the one exception the owner
+ * allowed for it (QA23-STAGE8-5): that element, with exactly its name, may end in "…".
+ */
+async function theDaysPlaylist(win: Page): Promise<DaysPlaylist> {
+  const day = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const id = await d.app.simplePlaylist();
+    return (await d.playlists.tree()).find((n) => n.id === id) ?? null;
+  });
+  expect(day?.name).toMatch(/^Sabha, \d{1,2} \p{L}{3,4} \d{4}$/u);
+  const { id, name } = day ?? { id: '', name: '' };
+  const row = win.getByTestId('column-left').locator(`[data-testid="playlist-node"][data-node-id="${id}"]`);
+  await expect(row).toHaveAttribute('data-open', 'true');
+  await expect(win.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(name);
+  const mayCut = [
+    {
+      selector: `[data-testid="column-left"] [data-testid="playlist-node"][data-node-id="${id}"] [data-testid="playlist-node-name"]`,
+      words: name,
+    },
+  ];
+  return { name, row, mayCut };
+}
+
+/*
+ * Stage off with a stage tablet connected (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)", and
+ * a22-review-stage8's third look, MUST 1): the status bar's Stage off says the tablet shows the audience picture (a
+ * tablet in place of its screen icon, the words for screen readers and in its tooltip). In CI's 1024 × 645, with
+ * Audience on and off too (an ordinary end of a service):
+ * - Pro Mode: nothing anywhere is cut short, over another or past the window's edge (the status bar's version words
+ *   shortened for it, QA23-STAGE8-4);
+ * - Simple Mode: the same, with the tablet connected and with none showing (paired, not connected: the status bar as
+ *   with no tablet), and the Stage off item as wide: the tablet adds nothing. Its own day playlist's name in this new
+ *   library alone may end in "…" in the left column, as the owner allowed (QA23-STAGE8-5, 25 Nov 2026, word for word:
+ *   "End it in '…' (Recommended)"): the same one-element exception as the day playlist's own state below, checked as
+ *   strictly (whole in its title, to a screen reader and in the middle's header).
+ */
+for (const mode of ['pro', 'simple'] as const)
+  for (const audience of ['on', 'off'] as const)
+    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, Stage off with a stage tablet connected, Audience ${audience}: ${mode === 'pro' ? 'nothing cut short or past the window’s edge' : 'nothing cut short or past the window’s edge, with the tablet or without; the day playlist’s name alone may end in “…” (the owner’s QA23-STAGE8-5)'}`, async () => {
+      test.setTimeout(120_000);
+      const { app } = await launchApp(NETWORK_ENV);
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      await sizeOperatorWindow(app, win, CI_WINDOW);
+      const { port } = await networkOn(win);
+      // Paired in Pro Mode (Simple Mode pairs nothing), not connected yet: it shows nothing, so the status bar is as
+      // with no tablet at all (no hint: stageTabletsShowing counts connected ones only).
+      const token = await pairToken(win, port, 'stage', 'Placeholder stage tablet');
+      // Off from Pro Mode first (Simple Mode only turns them on).
+      for (const which of audience === 'off' ? (['stage', 'audience'] as const) : (['stage'] as const)) {
+        const turned = await win.evaluate(
+          (w) => (globalThis as PageGlobals).drashti.screenSwitches.turn(w, false),
+          which,
+        );
+        expect(turned.ok).toBe(true);
+      }
+      let day: DaysPlaylist | null = null;
+      if (mode === 'simple') {
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+        day = await theDaysPlaylist(win);
+      }
+      await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience === 'off' ? 1 : 0);
+      const stageOff = win.getByTestId('switch-off-stage');
+      const faultsNow = async (label: string) => {
+        await win.evaluate(() => document.fonts.ready.then(() => undefined));
+        console.log(
+          `${mode}, Audience ${audience}, ${label}: the status bar ${JSON.stringify(await statusParts(win))}`,
+        );
+        // Simple Mode: the day playlist's name in the left column alone may end in "…" (QA23-STAGE8-5); Pro Mode: none.
+        const faults = [...(await fitFaults(win, NAMES, day?.mayCut)), ...(await smallTargets(win))];
+        if (faults.length > 0)
+          await test.info().attach(`${mode}-stage-off-audience-${audience}-${label}`, {
+            body: await win.screenshot(),
+            contentType: 'image/png',
+          });
+        if (day) await dayNameStrictly(win, day.row, day.name, `${mode}, Audience ${audience}, ${label}`);
+        const box = await stageOff.boundingBox();
+        return { faults, width: Math.round(box?.width ?? 0) };
+      };
+      // The same state with no tablet showing first.
+      await expect(stageOff).toContainText('Stage off');
+      await expect(win.getByTestId('switch-off-stage-tablet')).toHaveCount(0);
+      const without = await faultsNow('no tablet showing');
+      // The stage tablet connected: said by a tablet in place of the screen icon, the sentence for screen readers and
+      // in its tooltip.
+      const feed = await connectTablet(port, token);
+      await expect(win.getByTestId('switch-off-stage-tablet')).toBeVisible();
+      await expect(win.getByTestId('switch-off-stage-hint')).toHaveText(
+        'the stage tablet shows the audience picture',
+      );
+      const withTablet = await faultsNow('a tablet connected');
+      expect(withTablet.width, 'the Stage off item no wider with the tablet').toBe(without.width);
+      expect(withTablet.faults).toEqual([]);
+      // Simple Mode: none with no tablet showing either.
+      if (mode === 'simple') expect(without.faults).toEqual([]);
+      feed.close();
+      await app.close();
+    });
+
+/** Text taken as itself in a regular expression. */
+const literally = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+
+/**
+ * Simple Mode's day playlist's name as the owner allowed it (QA23-STAGE8-5, 25 Nov 2026, word for word: "End it in '…'
+ * (Recommended)"), checked strictly: in the left column it ends in "…" when it does not fit, cut by CSS on one line,
+ * and is whole on hover (its own title, the one under the pointer) and to a screen reader (its row's name begins with
+ * it); in the middle's header it is whole, in sight, and its name. Whether the left column cuts it now.
+ */
+async function dayNameStrictly(win: Page, row: Locator, name: string, where: string): Promise<boolean> {
+  const shown = row.getByTestId('playlist-node-name');
+  await expect(shown, `${where}: the left column's name`).toHaveCount(1);
+  await expect(shown, `${where}: the left column's name, whole in its words`).toHaveText(name);
+  await expect(shown, `${where}: the left column's name, whole on hover`).toHaveAttribute('title', name);
+  await expect(row, `${where}: the left column's row, whole to a screen reader`).toHaveAccessibleName(
+    new RegExp(`^${literally(name)}(?: |$)`, 'u'),
+  );
+  const left = await shown.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const under = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return {
+      cut: el.scrollWidth > el.clientWidth + 1,
+      ellipsis: style.textOverflow === 'ellipsis' && style.overflowX === 'hidden',
+      oneLine:
+        style.whiteSpace === 'nowrap' &&
+        new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size === 1,
+      hoverShows: under?.closest('[title]') === el,
+    };
+  });
+  expect(left.ellipsis, `${where}: the left column's name ends in “…” by CSS`).toBe(true);
+  expect(left.oneLine, `${where}: the left column's name on one line`).toBe(true);
+  expect(left.hoverShows, `${where}: the pointer over the left column's name shows its own title`).toBe(true);
+  const header = win.getByTestId('column-middle').getByTestId('playlist-title');
+  await expect(header, `${where}: the middle's header`).toHaveText(name);
+  await expect(header, `${where}: the middle's header to a screen reader`).toHaveAccessibleName(name);
+  await expect(header, `${where}: the middle's header in sight`).toBeInViewport({ ratio: 1 });
+  expect(
+    await header.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+    `${where}: the middle's header whole, not cut`,
+  ).toBe(true);
+  return left.cut;
+}
+
+test('Simple Mode at 1024 × 645 with the day’s own playlist (the owner’s QA23-STAGE8-5): its name in the left column alone may end in “…”, whole in its title, to a screen reader and in the middle’s header; nothing else is cut, over another or out of its column, and every target is 24 px', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  // A new library with none open: Simple Mode makes the day's own "Sabha, <date>" playlist and opens it
+  // (main/simple-playlist.ts).
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  // That one element, with exactly the day's name, may end in "…"; nothing else may that NAMES does not name.
+  const { name, row, mayCut } = await theDaysPlaylist(win);
+  await win.evaluate(() => document.fonts.ready.then(() => undefined));
+  const states: [string, { left: string; right: string } | null][] = [
+    ['as Simple Mode opens', null],
+    ...Object.entries(COLUMNS),
+  ];
+  const findings: string[] = [];
+  const cutIn: string[] = [];
+  for (const [state, columns] of states) {
+    // As it opens: laid out and done arriving, with the very wait setColumns ends with.
+    if (columns) await setColumns(win, columns);
+    else await laidOut(win);
+    for (const end of [false, true]) {
+      await scrollAll(win, end);
+      const where = `${state}${end ? ', scrolled to the end' : ''}`;
+      const faults = [...(await fitFaults(win, NAMES, mayCut)), ...(await smallTargets(win))];
+      findings.push(...faults.map((f) => `${where}: ${f}`));
+      if (faults.length > 0)
+        await test.info().attach(`simple-day-playlist-${where}`, {
+          body: await win.screenshot(),
+          contentType: 'image/png',
+        });
+      if (await dayNameStrictly(win, row, name, where)) cutIn.push(where);
+    }
+  }
+  console.log(
+    `simple, the day's playlist “${name}”, 1024 × 645: ${String(findings.length)} findings; its name ends in “…” ${cutIn.length > 0 ? cutIn.join('; ') : 'nowhere'}\n${findings.join('\n')}`,
+  );
+  expect(findings).toEqual([]);
+  // The owner's case itself is met: with the columns at their least the left column cuts the name, so it ends in "…".
+  expect(cutIn, 'the left column cuts the day’s name with the columns at their least').toContain(
+    'both columns at their least',
+  );
+  await app.close();
+});
 
 /** Five refused files told by the main process, as a watched folder's automatic import tells them, and a notice. */
 const REFUSED = Array.from({ length: 5 }, (_, i) => ({

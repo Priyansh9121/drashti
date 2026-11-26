@@ -1,4 +1,5 @@
 import { type EngineState, isLayerEmpty, LAYER_NAMES } from './engine/state';
+import type { DeviceInfo, NetworkStatus } from './network';
 import type { ScreenRole, ScreensSnapshot, ScreenState } from './screens';
 
 /*
@@ -34,6 +35,31 @@ export const STARTS: Readonly<ScreenSwitches> = { audience: true, stage: false }
  */
 export const NO_STAGE_SCREEN = 'No screen is set to Stage.';
 export const SET_UP_STAGE = 'Set up Stage screen…';
+
+/**
+ * The stage tablets that show the audience picture now, while Stage is off (a22-review-stage8, third look): paired as
+ * Stage and connected now, the Network on. One paired but switched off shows nothing. (The no-stage line counts every
+ * paired one: stageDevicesPaired.)
+ */
+export function stageTabletsShowing(network: {
+  on: NetworkStatus['on'];
+  devices: readonly Pick<DeviceInfo, 'kind' | 'poster' | 'connected'>[];
+}): number {
+  if (!network.on) return 0;
+  return network.devices.filter((d) => d.kind === 'stage' && !d.poster && d.connected).length;
+}
+
+/**
+ * What the status bar says beside "Stage off" while stage tablets are connected (`tablets`, stageTabletsShowing), or
+ * nothing with none (alpha.23; the owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)"):
+ * Stage starts off, and until it is on a stage tablet shows the audience picture, far from the operator.
+ */
+export function stageOffHint(tablets: number): string | null {
+  if (tablets <= 0) return null;
+  return tablets === 1
+    ? 'the stage tablet shows the audience picture'
+    : 'the stage tablets show the audience picture';
+}
 
 /** Each one's name, as the top bar, the View menu, the status bar and a phone say it. */
 export const SWITCH_NAMES: Readonly<Record<ScreenSwitch, string>> = { audience: 'Audience', stage: 'Stage' };
@@ -95,17 +121,47 @@ export function openUnder(snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>, 
 }
 
 /**
- * How many screens are set to Stage now (alpha.22): a stage group's screens on a display, this computer's or a
- * node's, showing (with Stage off too: their windows stay) or stopped and tried again. None: Stage has nothing to
- * show on, and says so as it goes on.
+ * A stage screen's states that count as set to Stage: showing (with Stage off too: its window stays), stopped and
+ * tried again, and (alpha.23, a22-review-stage S8) on a display that is unplugged now, or on a node that is offline
+ * now: it shows the stage again as they come back, and the status bar and Screens already say they are away.
  */
-export function stageScreensSet(snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>): number {
+const SET_TO_STAGE: ReadonlySet<ScreenState> = new Set<ScreenState>([
+  'showing',
+  'stopped',
+  'missing-display',
+  'node-offline',
+]);
+
+/**
+ * How many screens are set to Stage now (alpha.22): a stage group's screens on a display, this computer's or a
+ * node's (SET_TO_STAGE), and (alpha.23) the tablets paired as Stage (`stageDevices`, stageDevicesPaired), each a
+ * stage display in a browser. None: Stage has nothing to show on, and says so as it goes on.
+ */
+export function stageScreensSet(
+  snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>,
+  stageDevices = 0,
+): number {
   const staged = new Set(
     snapshot.groups.filter((g) => g.role === 'stage').flatMap((g) => g.screens.map((s) => s.id)),
   );
-  return snapshot.status.filter(
-    (st) => staged.has(st.screenId) && (st.state === 'showing' || st.state === 'stopped'),
-  ).length;
+  return (
+    snapshot.status.filter((st) => staged.has(st.screenId) && SET_TO_STAGE.has(st.state)).length +
+    stageDevices
+  );
+}
+
+/**
+ * The devices paired as Stage (alpha.23): each shows the stage display in its browser (`/stage`), whether it is
+ * connected now or not, as a stage screen whose display is unplugged is still set; but only while the Network
+ * (phones and tablets) is on (a22-review-stage8 S5): with it off a tablet can show nothing, so none counts. Never a
+ * Remote, an Announcements phone or the announcements poster link.
+ */
+export function stageDevicesPaired(network: {
+  on: NetworkStatus['on'];
+  devices: readonly Pick<DeviceInfo, 'kind' | 'poster'>[];
+}): number {
+  if (!network.on) return 0;
+  return network.devices.filter((d) => d.kind === 'stage' && !d.poster).length;
 }
 
 /**

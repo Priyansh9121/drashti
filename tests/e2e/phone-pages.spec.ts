@@ -5,7 +5,8 @@ import { appearanceVars } from '../../src/shared/appearance/vars';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { Engine } from './devices';
 import { NETWORK_ENV, networkOn, pairByQr, pairingCode, PHONE, TABLET } from './devices';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { addPhoneDeck, putUpFromComputer } from './phone-deck';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -14,7 +15,9 @@ import { setUpPlaceholderShow } from './placeholder-show';
  * appearance is (Saffron here), with no lamp light, `theme-color` Black's window colour and the mark the logo's
  * own. On a phone (375 × 812) and on a tablet (810 × 1080, and held sideways at 1080 × 810), in Safari's engine
  * and Chrome's, every page passes axe and every target is 44 px or more. The stage display is a screen and keeps
- * its look (audience-pixels.spec.ts); it passes axe here too. Placeholder content only.
+ * its look (audience-pixels.spec.ts); it passes axe here too. The remote's tabs are each mode's since alpha.23
+ * (QA23-PHONE-1): in Pro Mode Show, Playlist and Chat, a PDF up from the computer so Next is there; then in Simple
+ * Mode Show and Chat. Placeholder content only.
  */
 
 /** Every visible control under 44 × 44 CSS pixels (a tick box or radio counts with its label). */
@@ -123,23 +126,17 @@ const SIZES = [
   layout: string;
 }[];
 
-/** The remote's tabs, as each layout has them, and the library's Media (Session 54, D5) after its library. */
+/** The remote's tabs, as each layout has them in Pro Mode and in Simple Mode (QA23-PHONE-1, web/remote/phone-mode.ts). */
 const TABS_OF = {
-  phone: [
-    'remote-tab-show',
-    'remote-tab-playlist',
-    'remote-tab-library',
-    'remote-library-media',
-    'remote-tab-more',
-  ],
-  wide: ['remote-side-playlist', 'remote-side-library', 'remote-library-media'],
-  landscape: [
-    'remote-panel-show',
-    'remote-panel-playlist',
-    'remote-panel-library',
-    'remote-library-media',
-    'remote-panel-more',
-  ],
+  phone: {
+    pro: ['remote-tab-show', 'remote-tab-playlist', 'remote-tab-chat'],
+    simple: ['remote-tab-show', 'remote-tab-chat'],
+  },
+  wide: { pro: ['remote-side-playlist', 'remote-side-chat'], simple: ['remote-side-chat'] },
+  landscape: {
+    pro: ['remote-panel-show', 'remote-panel-playlist', 'remote-panel-chat'],
+    simple: ['remote-panel-chat'],
+  },
 } as const;
 
 for (const engine of ['webkit', 'chromium'] as const satisfies readonly Engine[])
@@ -152,7 +149,10 @@ for (const engine of ['webkit', 'chromium'] as const satisfies readonly Engine[]
       // Main in another appearance: the phones never follow it.
       await chooseMenuItem(app, 'appearance-saffron');
       await expect(win.locator('html')).toHaveAttribute('data-appearance', 'saffron');
-      await setUpPlaceholderShow(win);
+      const show = await setUpPlaceholderShow(win);
+      // A PDF up from the computer: Pro Mode's Next is on the phone while it is.
+      const deck = await addPhoneDeck(win, show.playlistId);
+      await putUpFromComputer(win, show.playlistId, deck.itemId);
       const { base } = await networkOn(win);
       const browser = await (engine === 'webkit' ? webkit : chromium).launch();
       const context = await browser.newContext({
@@ -183,7 +183,7 @@ for (const engine of ['webkit', 'chromium'] as const satisfies readonly Engine[]
         expect(await header.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
           rgb(BLACK.colours.panel),
         );
-        for (const tab of TABS_OF[size.layout]) {
+        for (const tab of TABS_OF[size.layout].pro) {
           await page.getByTestId(tab).click();
           await expect(page.getByTestId(tab)).toHaveAttribute('aria-selected', 'true');
           await check(`the remote's ${tab}`);
@@ -209,6 +209,19 @@ for (const engine of ['webkit', 'chromium'] as const satisfies readonly Engine[]
         expect(look.image).toContain(rgb(BLACK.colours['primary-hi']));
         expect(look.image).toContain(rgb(BLACK.colours['primary-lo']));
         expect(look.words).toBe(rgb(BLACK.colours['on-primary']));
+
+        // Simple Mode on the computer: the remote's own tabs, in Black too.
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        await expect(page.getByTestId('remote-simple')).toBeVisible();
+        await expect(next).toHaveCount(0);
+        for (const tab of TABS_OF[size.layout].simple) {
+          await page.getByTestId(tab).click();
+          await expect(page.getByTestId(tab)).toHaveAttribute('aria-selected', 'true');
+          await check(`the remote's ${tab} in Simple Mode`);
+        }
+        // Back to Pro Mode: Simple Mode pairs nothing, and the next pages are paired.
+        const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+        expect(pro.ok, 'back to Pro Mode').toBe(true);
 
         // The announcement page.
         await page.goto('about:blank');

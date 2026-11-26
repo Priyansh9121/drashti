@@ -35,6 +35,8 @@ const skipWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_SKIP_WARM_UP')
 const gpuSaidLate = (): boolean => !packaged() && sw('DRASHTI_TEST_GPU_SAID') === 'late';
 /** Tests only: the audience screens and the operator window keep the motion probe's record (Session 57, item 6). */
 const motionProbe = (): boolean => !packaged() && sw('DRASHTI_TEST_MOTION_PROBE') === '1';
+/** Tests only: the operator window's Undo line has its minute moved on by the test (QA23-UNDOLINE-1). */
+const undoLineTest = (): boolean => !packaged() && sw('DRASHTI_TEST_UNDO_LINE') === '1';
 /** Tests only: the stream's page keeps the light of each frame it gives the encoder (Session 58, h-black2). */
 const streamProbe = (): boolean => !packaged() && sw('DRASHTI_TEST_STREAM_PROBE') === '1';
 /**
@@ -68,10 +70,13 @@ export function loadPage(
   const fails = warmUpFails();
   const warmed = fails ? { ...probed, warmUpFails: fails } : probed;
   // X15 / MS-2: only these two control windows can install the fit-report test script. Never packaged.
-  const query =
+  const fitted =
     !packaged() && sw('DRASHTI_TEST_FIT_FAILURES') === '1' && (page === 'index' || page === 'slide-editor')
       ? { ...warmed, fitFailureTest: '1' }
       : warmed;
+  // QA23-UNDOLINE-1: the operator window's Undo line on a clock the test moves on (library/undo-line-test.ts).
+  // Never packaged.
+  const query = undoLineTest() && page === 'index' ? { ...fitted, undoLineTest: '1' } : fitted;
   const dev = devServerUrl();
   if (dev) {
     const url = new URL(`${page}.html`, dev.endsWith('/') ? dev : dev + '/');

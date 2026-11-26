@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { trimmedTitle } from '../../shared/trim';
 import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 import { ffmpegHere, testFfmpeg } from '../testing/ffmpeg-here';
 import type { ConvertService } from './convert-service';
@@ -91,6 +92,24 @@ describe('queuing a trimmed video', () => {
       endMs: 650,
     });
     expect(basename(dest)).toBe('Placeholder v1.2 trimmed.mp4');
+  });
+
+  it('makes the file the Trim dialog names before Save (shared/trim.ts trimmedTitle; the save-trim review nit)', () => {
+    for (const name of [
+      'Placeholder two.mp4',
+      'Placeholder clip.MOV',
+      'Placeholder v1.2',
+      'Placeholder talk 1.5.mp4',
+    ]) {
+      const { dest } = plan({
+        path: join(tmpdir(), 'source.mp4'),
+        name,
+        info: INFO,
+        startMs: 250,
+        endMs: 650,
+      });
+      expect(basename(dest)).toBe(`${trimmedTitle(name)}.mp4`);
+    }
   });
 
   it('keeps a transparent WebM transparent and handles a silent video', () => {

@@ -28,6 +28,7 @@ export function Tabs<T extends string>({
   onChange,
   size = 'md',
   shrink = false,
+  expanded,
   className,
 }: {
   /** A name unique in the window, for the ids that tie tabs to panels. */
@@ -39,6 +40,11 @@ export function Tabs<T extends string>({
   size?: 'sm' | 'md';
   /** In a narrow row the tabs narrow too, their words cut off (whole in their tooltip). */
   shrink?: boolean;
+  /**
+   * Where the panels fold away (the slide editor's ribbon in a short window: a22-ribbonfold), whether the chosen
+   * tab's panel shows now, said on that tab; left out where they never fold.
+   */
+  expanded?: boolean;
   className?: string;
 }) {
   const list = useRef<HTMLDivElement>(null);
@@ -83,6 +89,7 @@ export function Tabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={selected}
+            aria-expanded={selected && expanded !== undefined ? expanded : undefined}
             aria-controls={tabPanelId(group, t.id)}
             tabIndex={selected ? 0 : -1}
             data-testid={`${group}-tab-${t.id}`}

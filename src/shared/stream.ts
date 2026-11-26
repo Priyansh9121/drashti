@@ -227,6 +227,12 @@ export type RecordingKind = 'sound' | 'video';
 /** Recordings roll over in parts that fit on FAT32. */
 export const RECORD_PART_BYTES = 3.5 * 1024 ** 3;
 
+/**
+ * The stream's encoder keeps time with silence once its sound has been quiet this long (the page stalled, or has none).
+ * The stream's sound capture holds this much sound for its worker (program/encoder-audio.ts), so a shorter stall loses none.
+ */
+export const STREAM_SOUND_QUIET_MS = 300;
+
 export interface StreamStatus {
   /** The stream's page is drawing the Program. */
   programOn: boolean;

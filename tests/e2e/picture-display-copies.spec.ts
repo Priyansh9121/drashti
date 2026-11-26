@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { displayUrl, mediaUrl } from '../../src/shared/media';
+import { logText } from './log-lines';
 import { launchMain, launchNode, pairNode } from './nodes';
 import {
   importAndGetIds,
@@ -141,9 +142,7 @@ test('an oversized imported still is ready with its display source, while the or
     await goLive(win, presentation, 0);
     await expect(out.locator(`[data-layer="slide"] img[src^="${source}"]`)).toHaveCount(1);
     const workers = [
-      ...readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8').matchAll(
-        /Display copy worker priority: (-?\d+) \((darwin|win32)\)/gu,
-      ),
+      ...logText(userData).matchAll(/Display copy worker priority: (-?\d+) \((darwin|win32)\)/gu),
     ].map((match) => ({ priority: Number(match[1]), platform: match[2] }));
     expect(workers.length).toBeGreaterThan(0);
     for (const worker of workers) expect(worker.priority).toBeGreaterThan(0);

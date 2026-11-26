@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { type ElectronApplication, expect, type Page, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   killApp,
   launchApp,
@@ -16,6 +17,7 @@ import {
   setUpScreen,
   windowShowing,
 } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * Show a Window… (Session 48): another app's window (a Zoom meeting's) live as the hall's background.
@@ -267,7 +269,7 @@ test('a window closed or hidden keeps its last picture on the screens, with a no
   await app.close();
 });
 
-test('Simple Mode cannot choose a window; a phone names it, can clear it, and cannot choose one', async () => {
+test('Simple Mode cannot choose a window; a phone names it, and is refused clearing it, its list and choosing one, in words; the window’s Clear background clears it', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...STANDIN, ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
@@ -285,9 +287,19 @@ test('Simple Mode cannot choose a window; a phone names it, can clear it, and ca
     const line = p.getByTestId('remote-window');
     await expect(line).toContainText(`A window: ${MEETING}`);
     // A phone's own picture draws nothing for it (the window is on Main's computer), and it has no way to
-    // choose one (no engine command names a window: show-engine.test.ts).
+    // choose one (no engine command names a window: show-engine.test.ts); since alpha.23 (QA23-PHONE-1) its Clear,
+    // the windows' list and Show a Window are refused in words, the window still up.
     await expect(p.locator('[data-kind="window"]')).toHaveCount(0);
-    await line.getByTestId('remote-window-clear').click();
+    const asks = { win, page: p };
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/clear/background', {}, 'computer');
+    await expectPhoneRefuses(asks, 'GET', '/api/v1/windows', undefined, 'computer');
+    await expectPhoneRefuses(asks, 'POST', '/api/v1/windows/show', { id: 'window:1:0' }, 'computer');
+    expect((await background(win))?.kind).toBe('window');
+    // Cleared in the window (moved from the phone): the bottom bar's Clear background.
+    await win
+      .getByTestId('layer-bar')
+      .getByRole('button', { name: /^Clear background/u })
+      .click();
     await expect(line).toHaveCount(0);
     expect(await background(win)).toBeNull();
   } finally {
@@ -351,7 +363,7 @@ test('on a Mac that has not given Screen Recording, the picker says why and open
   await why.getByTestId('window-open-settings').click();
   // The stand-in says in the log that System Settings would open (a test never opens it).
   await expect
-    .poll(() => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'))
+    .poll(() => logText(userData))
     .toContain('Stand-in windows: System Settings would open at Screen Recording');
   await app.close();
 });

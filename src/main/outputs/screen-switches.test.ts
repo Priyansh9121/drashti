@@ -10,7 +10,14 @@ import { ONLY_ON_IN_SIMPLE_MODE, ScreenSwitchService, SwitchQuestion, switchOffB
  * set of switches turned off; placeholder screens only.
  */
 
-function setUp(options: { simple?: boolean; open?: Partial<Record<ScreenSwitch, ScreenState>> } = {}) {
+function setUp(
+  options: {
+    simple?: boolean;
+    open?: Partial<Record<ScreenSwitch, ScreenState>>;
+    /** Tablets paired as Stage (alpha.23). */
+    stageDevices?: number;
+  } = {},
+) {
   const off = new Set<ScreenSwitch>();
   const changes: ScreenSwitches[] = [];
   const logged: string[] = [];
@@ -83,6 +90,7 @@ function setUp(options: { simple?: boolean; open?: Partial<Record<ScreenSwitch, 
     state: () => t.state,
     log: (message) => logged.push(message),
     noStageScreen: () => noStage.push(noStage.length + 1),
+    stageDevices: () => options.stageDevices ?? 0,
   });
   service.onChanged((switches) => changes.push(switches));
   return { service, off, changes, logged, t, noStage };
@@ -144,6 +152,26 @@ describe('Audience and Stage in the main process (Session 50)', () => {
       service.turn('stage', true);
       expect(noStage).toEqual([]);
     }
+  });
+
+  // alpha.23 (a22-review-stage S8; lead 2's QA23-STAGE8-1): never "No screen is set to Stage." while one is.
+  it('says nothing of the stage when its screen’s display is unplugged, its node offline, or only a tablet is paired as Stage', () => {
+    for (const state of ['missing-display', 'node-offline'] as const) {
+      const { service, noStage } = setUp({ open: { stage: state } });
+      service.turn('stage', false);
+      service.turn('stage', true);
+      expect(noStage).toEqual([]);
+    }
+    // No stage screen on a display at all, and one tablet paired as Stage: it is the stage.
+    const tablet = setUp({ open: { stage: 'unassigned' }, stageDevices: 1 });
+    tablet.service.turn('stage', false);
+    tablet.service.turn('stage', true);
+    expect(tablet.noStage).toEqual([]);
+    // With none paired, the same set-up says it.
+    const none = setUp({ open: { stage: 'unassigned' }, stageDevices: 0 });
+    none.service.turn('stage', false);
+    none.service.turn('stage', true);
+    expect(none.noStage).toEqual([1]);
   });
 
   it('refuses anything that is not Audience or Stage, on or off', () => {

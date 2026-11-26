@@ -127,7 +127,7 @@ describe('what Drashti asks of yt-dlp', () => {
     }
   });
 
-  it('starts Deno only as yt-dlp 2026.08.19 does: no --allow-*, the script on its standard input', () => {
+  it('starts Deno only as yt-dlp 2026.11.23 does: no --allow-*, the script on its standard input', () => {
     expect(DENO_AS_YT_DLP_RUNS_IT).toEqual([
       'run',
       '--ext=js',

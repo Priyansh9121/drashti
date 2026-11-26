@@ -17,6 +17,7 @@ import {
   outputReady,
   setUpScreen,
 } from './helpers';
+import { expectPhoneRefuses } from './phone-refuses';
 import { makeTestVideo } from './test-media';
 
 /*
@@ -25,7 +26,7 @@ import { makeTestVideo } from './test-media';
  * loops between its points, and a jump to the marker from under the live
  * picture lands in step on two output windows and the audio player (which
  * plays its sound). Since Session 52 a video on a slide loops between its points
- * too. A generated video with a tone only.
+ * too. A phone's jump is refused in words (alpha.23, QA23-PHONE-1). A generated video with a tone only.
  */
 
 async function audioPage(app: ElectronApplication): Promise<Page> {
@@ -221,18 +222,26 @@ test('a background loops between its points; a jump to a marker lands in step on
   await expect.poll(async () => (await state()).seek?.toMs).toBe(4000);
   await inStep(await state());
 
-  // And from a phone remote, under its live picture as in the window (Session 54, D5: under More until then): a
-  // tap jumps there again, in step everywhere.
+  // From a phone remote no more (alpha.23, QA23-PHONE-1: "they cant change videos"): its tap on the marker is
+  // refused in words, every copy where it was. Moved to the window (was the phone's tap): a second jump from under
+  // the live picture lands there again, in step everywhere.
   const { base } = await networkOn(win);
   const phone = await device('webkit');
   try {
     await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
-    await phone.page.getByTestId('remote-tab-show').click();
-    const remote = phone.page.getByTestId('remote-playing');
-    await expect(remote).toContainText('Placeholder chorus');
-    await expectNoSeriousA11yIssues(phone.page, 'the remote with markers');
+    await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
+    const markerId = kept.markers[0]?.id ?? '';
+    expect(markerId).not.toBe('');
+    await expectPhoneRefuses(
+      { win, page: phone.page },
+      'POST',
+      `/api/v1/markers/${markerId}/jump`,
+      { layer: 'background' },
+      'media',
+    );
+    await expectNoSeriousA11yIssues(win, 'the marker jumps under LIVE', '[data-testid="marker-jumps"]');
     const before = (await state()).seek?.at ?? 0;
-    await remote.getByRole('button', { name: 'Placeholder chorus' }).click();
+    await jumps.getByTestId('marker-jump').click();
     await expect.poll(async () => (await state()).seek?.at ?? 0).toBeGreaterThan(before);
     await inStep(await state());
   } finally {

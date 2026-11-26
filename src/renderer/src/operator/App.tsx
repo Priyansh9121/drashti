@@ -137,8 +137,11 @@ import { StreamPanel } from '../stream/StreamPanel';
 import { NetworkPanel } from '../network/NetworkPanel';
 import { connectNetwork, useNetwork } from '../network/network-store';
 import { AnnouncementsPanel } from '../network/AnnouncementsPanel';
+import { ChatSection } from '../chat/ChatSection';
 import { connectAnnouncements, useAnnouncements } from '../network/announcements-store';
 import { StreamSettings } from '../stream/StreamSettings';
+import { SabhaFlowPanel } from '../sabha-flow/SabhaFlowPanel';
+import { useFlowPanel } from '../sabha-flow/flow-store';
 import { connectStream, useStream } from '../stream/stream-store';
 
 // The window is still opening until its first data is in: taken as this code loads (ui/motion.ts).
@@ -272,6 +275,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const streamOpen = useStream((s) => s.panelOpen);
   const networkOpen = useNetwork((s) => s.open);
   const announcementsOpen = useAnnouncements((s) => s.open);
+  // The Sabha flow panel (alpha.23): open or folded, remembered on this computer.
+  const flowOpen = useFlowPanel((s) => s.open);
+  const flowNeed = useFlowPanel((s) => s.need);
   const platform = info?.platform ?? 'darwin';
 
   const openScreens = useCallback(() => {
@@ -423,6 +429,11 @@ function ProApp({ info }: { info: AppInfo | null }) {
             // and the library opens over both from the Library button.
             <LeftColumn
               head={<LibraryButton />}
+              // The Sabha flow (alpha.23, the owner's "a different window on left side with toggle button saying
+              // sabha flow"): at the top, under the Library button; this window only, never a screen.
+              flow={<SabhaFlowPanel />}
+              flowOpen={flowOpen}
+              flowNeed={flowNeed}
               top={<PlaylistPanel platform={platform} />}
               bottom={byFolder ? <PlaylistFolders /> : null}
               // The wallpapers (Session 55, Part 6), under the playlists, just above the bar of clears.
@@ -459,15 +470,18 @@ function ProApp({ info }: { info: AppInfo | null }) {
                 </>
               }
               rest={
-                /* Session 26a's order: LIVE, Audio, the stage screen, messages, timers; then each tool in a section
-                of its own (alpha.22, the owner's "remove more tools, bring out all the features with collapsable"):
-                Lower Thirds, the tools that put something on the screens in the Tools menu's order, QR code, then
-                the MIDI controller and OSC. Every section is folded at each start (ui/Panel.tsx, LIVE_SECTION). */
+                /* Session 26a's order: LIVE, Audio, the stage screen, messages (and the chat, alpha.23), timers; then
+                each tool in a section of its own (alpha.22, the owner's "remove more tools, bring out all the features
+                with collapsable"): Lower Thirds, the tools that put something on the screens in the Tools menu's
+                order, QR code, then the MIDI controller and OSC. Every section is folded at each start (ui/Panel.tsx,
+                LIVE_SECTION). */
                 <div className="divide-y divide-line">
                   {/* Audio, one part with Simple Mode's (Session 56). */}
                   <AudioGroup platform={platform} section />
                   <StageMessageControl />
                   <MessagesPanel />
+                  {/* The chat with the paired phones (alpha.23): this window only, never a screen. */}
+                  <ChatSection />
                   <TimersPanel />
                   <LowerThirdsPanel platform={platform} />
                   {/* Each with its line and the button that opens its window (operator/SetupTools.tsx); the Tools

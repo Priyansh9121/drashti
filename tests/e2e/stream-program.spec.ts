@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { EngineCommand } from '../../src/shared/engine/commands';
@@ -7,6 +5,7 @@ import type { StreamProfileInput } from '../../src/shared/stream';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * The stream's Program, with Chromium's fake camera and microphone (tests
@@ -297,7 +296,7 @@ test('quitting with the Stream panel’s preview open leaves no uncaught error i
   await streamPage(app);
   await expect(win.getByTestId('stream-preview')).toBeVisible();
   await app.close();
-  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = logText(userData);
   expect(log).toContain("The stream's page opens");
   expect(log).not.toContain('Uncaught exception');
   expect(log).not.toContain('Object has been destroyed');

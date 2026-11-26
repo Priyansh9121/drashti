@@ -10,6 +10,7 @@ import { removeCopiesOf, SHARPENED_DIR } from '../media/sharpened';
 import { BLURRED_DIR, removeBlurredOf } from '../media/blurred';
 import { DISPLAY_DIR, removeDisplayCopiesOf } from '../media/display-copies';
 import { isInside } from '../media/contained';
+import { MEDIA_NAMED_SQL, MEDIA_USED_SQL } from './media-uses';
 import type { Db } from '../db/database';
 import { MediaStore } from '../import/media-store';
 import { hashOffMain } from './hash-off-main';
@@ -58,7 +59,7 @@ interface GoneTrim {
 const rowKey = ({ id, path, sha256 }: TrimRow) => ({ id, path, sha256 });
 
 /** The files Drashti made from a media file, kept by its sha256: its still frame, sharpened and blurred copies. */
-async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
+export async function removeDerived(mediaDir: string, sha256: string): Promise<void> {
   await rm(join(mediaDir, stillPath(sha256)), { force: true }).catch(() => undefined);
   // Its sharpened copies (Session 26f), and its blurred copy (Session 55).
   await removeCopiesOf(mediaDir, sha256);
@@ -274,47 +275,8 @@ export class MediaRemoval {
     if (rows.length === 0) return [];
 
     // Include soft-deleted rows for Undo, plus durable media uses outside the removal dialog's summary.
-    const used = this.db.prepare(
-      `SELECT 1 WHERE
-         EXISTS (SELECT 1 FROM playlist_items WHERE media_id = @id)
-         OR EXISTS (SELECT 1 FROM audio_playlist_tracks WHERE media_id = @id)
-         OR EXISTS (SELECT 1 FROM slide_cues WHERE media_id = @id)
-         OR EXISTS (SELECT 1 FROM kirtans WHERE audio_media_id = @id)
-         OR EXISTS (SELECT 1 FROM wallpaper_pictures WHERE media_id = @id)
-         OR EXISTS (SELECT 1 FROM document_original_previews WHERE media_id = @id)
-         OR EXISTS (SELECT 1 FROM drop_files WHERE media_id = @id)
-         OR EXISTS (SELECT 1 FROM trimmed_videos WHERE original_id = @id)
-         OR EXISTS (SELECT 1 FROM playlist_trim_resets WHERE original_id = @id)
-         OR EXISTS (SELECT 1 FROM media_conversions WHERE original_id = @id OR converted_id = @id)
-         OR EXISTS (
-           SELECT 1 FROM media WHERE id <> @id AND (
-             converted_from = @id
-             OR replace(path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
-             OR replace(source_path, char(92), '/') COLLATE NOCASE IN (@path, @absolute, @real)
-           )
-         )`,
-    );
-    const scanJson = this.db.prepare<[string], { id: string }>(
-      `WITH candidates(id) AS MATERIALIZED (SELECT value FROM json_each(?)),
-            documents(data) AS (
-              SELECT props FROM elements
-              UNION ALL SELECT deck FROM slides
-              UNION ALL SELECT editor_design FROM slides
-              UNION ALL SELECT editor_master FROM presentations
-              UNION ALL SELECT definition FROM props
-              UNION ALL SELECT definition FROM themes
-              UNION ALL SELECT actions FROM macros
-              UNION ALL SELECT value FROM app_meta WHERE key LIKE 'setting.%'
-            ),
-            possible(data) AS MATERIALIZED (
-              SELECT data FROM documents
-               WHERE EXISTS (SELECT 1 FROM candidates WHERE instr(data, id) > 0)
-                  OR instr(data, char(92) || 'u') > 0
-            )
-       SELECT DISTINCT j.atom AS id
-         FROM possible, json_tree(CASE WHEN json_valid(data) THEN data ELSE NULL END) j
-        WHERE j.type = 'text' AND j.atom IN (SELECT id FROM candidates)`,
-    );
+    const used = this.db.prepare(MEDIA_USED_SQL);
+    const scanJson = this.db.prepare<[string], { id: string }>(MEDIA_NAMED_SQL);
     // Every write to the library: this connection's (less the rows this pass has marked) and another's commit.
     const revision = this.db.prepare<[number], { stamp: string }>(
       'SELECT (total_changes() - ?) || char(58) || data_version AS stamp FROM pragma_data_version',

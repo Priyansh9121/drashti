@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { IPC } from '../../src/shared/ipc';
 import type { StreamStatus } from '../../src/shared/stream';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import { expectFits } from './fit';
 import {
   chooseMenuItem,
@@ -166,7 +167,7 @@ test('Mod+1 asks first while the hall’s screens show something; off closes onl
   await app.close();
 });
 
-test('Mod+2 asks first whenever a stage screen is open; off, the stage screens stay and show the audience picture; the status bar’s Turn on brings their own view back; a Remote is told', async () => {
+test('Mod+2 asks first whenever a stage screen is open; off, the stage screens stay and show the audience picture; the status bar’s Turn on brings their own view back; a Remote is told, and cannot turn it', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp({ ...OUTPUTS, ...NETWORK_ENV });
   const win = await operatorPage(app);
@@ -198,8 +199,18 @@ test('Mod+2 asks first whenever a stage screen is open; off, the stage screens s
   const off = win.getByTestId('switch-off-stage');
   await expect(off).toContainText('Stage off');
   await expect(win.getByTestId('switch-stage')).toContainText('Off');
-  // A Remote is told which are off (and since Session 54 turns them as the window does: phone-desktop.spec.ts).
+  // A Remote is told which are off (what is live, in both modes), and since alpha.23 (QA23-PHONE-1) cannot turn them
+  // (from Session 54 it turned them as the window does): refused in words, Stage still off.
   await expect.poll(hallAnswer).toEqual({ audience: true, stage: false });
+  await expectPhoneRefuses(
+    { win, port, token },
+    'POST',
+    '/api/v1/switches/stage',
+    { on: true },
+    'computer',
+    () => win.evaluate(() => (globalThis as PageGlobals).drashti.screenSwitches.get()),
+  );
+  expect(await stageShows()).toBe('audience');
 
   // One click in the status bar: on again, never asked, the stage view in the same window.
   await off.getByRole('button', { name: 'Turn on Stage' }).click();

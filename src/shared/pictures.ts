@@ -1,4 +1,5 @@
 import type { PagePart } from './page-part';
+import type { SabhaFlowReading } from './sabha-flow';
 import { cutText } from './text';
 
 /*
@@ -54,6 +55,12 @@ export interface PictureJob {
    * marks). Left out: black, as the screens show a page.
    */
   onWhite?: boolean;
+  /**
+   * Sabha flow (alpha.23): with `part` the whole page; the window also reads each page's text layer and borders, and
+   * reads the flow from them once the pages are drawn (renderer/src/pictures/flow-reading.ts), handing the reading
+   * over with `done`. Main never reads a PDF's words itself.
+   */
+  flowText?: boolean;
 }
 
 export type PageShare = { every: number; from: number } | { pages: number[] };
@@ -82,7 +89,14 @@ export interface PicturesDone {
   failed: number[];
   /** Why nothing could be drawn (a password, a damaged file), when that is so. */
   error?: string;
+  /** Sabha flow: what the window's reader made of the pages' text (a flow job only; Main checks it). */
+  flowReading?: SabhaFlowReading;
+  /** Sabha flow: the window's reader stopped with an error (no reading). */
+  flowReadCrashed?: boolean;
 }
+
+/** Why a Sabha flow's drawing came with no reading that passed the check (for Main's log; never the PDF's words). */
+export type FlowReadProblem = 'crashed' | 'failed-check' | 'missing';
 
 /** Where pdf.js's own data comes from (fonts PDFs name without embedding them, and its decoders). */
 export type PictureAssetKind = 'standardFontDataUrl' | 'wasmUrl' | 'cMapUrl';
@@ -105,6 +119,10 @@ export type PicturesResult =
       /** Pages in the document (more than were drawn when it is over the limit). */
       total: number;
       failed: number[];
+      /** Sabha flow: the window's reading of the pages' text, as checked (left out when none passed the check). */
+      flowReading?: SabhaFlowReading;
+      /** Sabha flow: why there is no reading, when there is none. */
+      flowReadProblem?: FlowReadProblem;
     }
   | { ok: false; message: string };
 

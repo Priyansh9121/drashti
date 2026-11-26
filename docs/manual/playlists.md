@@ -115,8 +115,8 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 
 1. Right-click the video's row and choose **Trim (start, end and markers)…**.
 2. Set **Start** and **End** on its timeline.
-3. Press **Save trimmed video**. The row says **Preparing**, and under it why it waits, such as **Waiting: a video is playing**, or how far it is. A still slide, a picture or the Wallpaper never holds it.
-4. When it is ready, a notice says it is in **Media**. **Show in Media** finds it; **Export…** saves a copy of its file where you choose, Downloads to begin with. **Export…** is in the row's **Trim** too.
+3. Press **Save trimmed video**. The row says **Preparing**, and under it why it waits, such as **Waiting: a video is playing**, or how far it is. A still slide, a picture, the Wallpaper or a video that has ended never holds it.
+4. When it is ready, a notice says it is in **Media**. **Show in Media** (Pro Mode) finds it; **Export…** saves a copy of its file where you choose, Downloads to begin with. **Export…** is in the row's **Trim** too.
 5. **Reset to original** puts the whole video back in that row.
 
 ![The timeline of a placeholder video, with its start and end](../screenshots/markers-dialog.png)
@@ -164,3 +164,21 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 4. **F12** (or **Wallpaper** along the bottom) puts it over whatever is up.
 
 ![The Wallpapers under the playlists: three placeholder wallpapers, the second chosen](../screenshots/wallpapers.png)
+
+## Sabha flow
+
+**What it is.** The sabha's running order, from a PDF, at the top of the left column under **Library**. Only this window and a paired phone show it, never the screens or the stream. Drashti reads its numbered items in the PDF's own language (English, Gujarati or Hindi), and shows **Now** and, larger, **Next up**.
+
+**When you would use it.** During the sabha, to see where it is and what comes next: the talk or video, who presents it, and for how long.
+
+**How:**
+
+1. Click **Sabha flow** at the top of the left column to open it (click again to fold it).
+2. Press **Choose PDF…** and pick the running order.
+3. **Read list** shows each item as "1 · Program · Details · Duration · Presenter", the total at the bottom; **PDF page** shows the page, with **Zoom in** and **Zoom out**.
+4. Click a row, or press **Next**, to mark where the sabha is. **Back** goes one item back.
+5. **Replace…** beside its name chooses another PDF; **Remove** takes Drashti's copy away, asking first.
+
+A scanned PDF, or one whose letters come out wrong, says so and shows only its page.
+
+![The operator window as it was before Sabha flow came: its left column with Library at the top](../screenshots/operator-1280x720.png)

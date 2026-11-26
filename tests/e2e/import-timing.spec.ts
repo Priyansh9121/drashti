@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeDeckMedia } from '../../src/main/import/testing/make-deck';
@@ -20,6 +20,7 @@ import {
   sizeSlideEditor,
   slideEditorWindow,
 } from './helpers';
+import { logLines } from './log-lines';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -113,8 +114,7 @@ interface StepsEntry {
 
 /** The file's line among Drashti's log's "Import steps". */
 function stepsOf(userData: string, fileName: string): StepsEntry {
-  const entry = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-    .split('\n')
+  const entry = logLines(userData)
     .filter((l) => l.includes(STEPS_LINE))
     .map((l) => JSON.parse(l.slice(l.indexOf(STEPS_LINE) + STEPS_LINE.length)) as StepsEntry)
     .find((e) => e.name === fileName);

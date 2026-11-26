@@ -217,8 +217,9 @@ export const STAGE_PREVIEW_QUERY = 'stagePreview';
 /**
  * The Stage preview (alpha.22): a stage screen's page in a normal window on this computer (stage-preview.ts), so a
  * stage layout can be made and seen with only one projector. It is no screen: nothing counts it, opens it by itself
- * or covers anything with it. It is not a camera page or a screen's page either, so a layout's live video input box,
- * and a video input or another app's window as the audience background, do not draw in it (a22-review-stage S5).
+ * or covers anything with it. It has none of this computer's live pictures (alpha.23, QA23-STAGE8-1:
+ * stage-preview.ts PREVIEW_LIVE): a layout's live video input box, and a video input or another app's window behind
+ * the audience picture, are named there, as on a tablet; it opens no camera and never says how an input stands.
  * Shown without the focus: the show's keys stay with the operator.
  */
 export function createStagePreviewWindow(near: DisplayInfo['bounds'] | null): BrowserWindow {

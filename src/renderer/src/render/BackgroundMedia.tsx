@@ -42,7 +42,7 @@ import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 import { KeptVideo } from './KeptVideo';
 import { useInputReport, useVideoInput } from './video-input';
-import { hasNoPicture, tellCannotPlay, tellNoPicture, watchStart } from './no-picture';
+import { hasNoPicture, tellCannotPlay, tellNoPicture, tellPlaysHere, watchStart } from './no-picture';
 import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
 
@@ -109,6 +109,8 @@ function VideoSlot({
     const ready = () => {
       settled = true;
       reportVideoCue(layer.cueId, 'picture', true);
+      // Its first frame, as this page shows it: said, should this page have said it was starting (QA23-HALLDROP-1 (a)).
+      if (!layer.cueId) tellPlaysHere(mediaId, startedAt);
       if (privateCue.current) dispatch({ type: 'ready', key, at: engineNow() });
       else dispatch({ type: 'loaded', key });
     };
@@ -154,17 +156,23 @@ function VideoSlot({
     // after SLOW_START_MS as not started in time (never "damaged"). Only said: it still loads here, what was drawn
     // before staying meanwhile (background-slots.ts, Scene.tsx), so a page whose word Main only logs (LIVE, the stream,
     // a paired computer) shows it if its first frame comes after all.
-    const stopWatch = watchStart(v, mediaId, (verdict, seen) => {
-      if (settled) return;
-      presentation?.stop();
-      settled = true;
-      reportVideoCue(layer.cueId, 'picture', false);
-      if (!privateCue.current)
-        tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
-          code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
-          message: seen,
-        });
-    });
+    // A screen with no first frame 2 s after it went up says so (the owner's QA23-HALLDROP-1 (a)), not a cued one.
+    const stopWatch = watchStart(
+      v,
+      mediaId,
+      (verdict, seen) => {
+        if (settled) return;
+        presentation?.stop();
+        settled = true;
+        reportVideoCue(layer.cueId, 'picture', false);
+        if (!privateCue.current)
+          tellCannotPlay(mediaId, startedAt, attempt ?? 0, {
+            code: verdict === 'slow' ? NO_START_IN_TIME : NO_FIRST_FRAME,
+            message: seen,
+          });
+      },
+      layer.cueId ? undefined : startedAt,
+    );
     playback.current = p;
     // A cued picture starts on its Go, not 34-79 ms after it: its sound is pulled by this page's silent graph, so its
     // clock starts with its rate (render/cue-clock.ts, QA21-S5-1). Every other picture plays muted, as before.

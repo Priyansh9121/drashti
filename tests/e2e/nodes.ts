@@ -1,11 +1,12 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NodeView } from '../../src/shared/nodes';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage, operatorReady, relaunchApp, windowShowing } from './helpers';
+import { logLines } from './log-lines';
 import { freePort } from './stream-helpers';
 
 /*
@@ -146,11 +147,8 @@ function portHolders(port: number): string {
 
 /** Main's log lines about its node link not listening or stopping (none carries a code or a token), oldest first. */
 function linkTrouble(userData: string): string[] {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((l) => /Nodes:|node link/u.test(l))
     .sort();
 }
@@ -160,11 +158,8 @@ function linkTrouble(userData: string): string[] {
  * they are (for a failing test's diagnostics). None of them carries a code or a token.
  */
 export function linkLog(userData: string, who: string): string[] {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
+  if (!existsSync(join(userData, 'logs'))) return [];
+  return logLines(userData)
     .filter((l) => /Media copies|Node: link|Nodes: .*(connected|disconnected|listening)/u.test(l))
     .sort()
     .map((l) => `${who} ${l}`);

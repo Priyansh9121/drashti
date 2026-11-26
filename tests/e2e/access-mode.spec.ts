@@ -10,11 +10,12 @@ import {
   operatorReady,
   type PageGlobals,
 } from './helpers';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SIMPLE_ACCESS_LOCKED_REFUSAL } from '../../src/shared/mode';
 import type { AccessStandIn } from '../access-standin';
+import { logLines } from './log-lines';
 import { makeTestImage } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -68,10 +69,7 @@ const FOLLOWS_MS = 5_000;
 const checksAnswered = (s: AccessStandIn) => s.calls.filter((op) => op === 'check').length;
 
 /** Main's line for each check it has made, answered or not ("Access: check 3: let in (9 ms)", service.ts). */
-const checkLines = (userData: string) =>
-  readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-    .split('\n')
-    .filter((l) => /Access: check \d+: /u.test(l));
+const checkLines = (userData: string) => logLines(userData).filter((l) => /Access: check \d+: /u.test(l));
 
 /**
  * The owner's change is in Drashti's hands once the list has answered a check after it: wait for that answer. Drashti
@@ -120,9 +118,9 @@ function watchStandIn(s: AccessStandIn): {
   const lines = (userData: string) => {
     let main: string[];
     try {
-      main = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-        .split('\n')
-        .filter((l) => /Access:|Pro access again|Simple access|Switched|priority/u.test(l));
+      main = logLines(userData).filter((l) =>
+        /Access:|Pro access again|Simple access|Switched|priority/u.test(l),
+      );
     } catch (error) {
       main = [`(Main's log could not be read: ${String(error)})`];
     }

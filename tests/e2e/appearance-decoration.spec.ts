@@ -31,8 +31,24 @@ async function inAShow(win: Page) {
   await openLibrary(win);
 }
 
-/** A panel's heading (a group's heading is in the words' own colour). */
-const PANEL_HEADING = 'section > header > :is(h2, h3).text-2xs';
+/**
+ * A panel's heading (a group's heading is in the words' own colour): the right column's first, Stage screen's, the one
+ * measured at 9ed5d00 (then the window's first; alpha.23's Sabha flow heading at the top of the left column now comes
+ * before it in the window, so it is looked for where it is).
+ */
+const PANEL_HEADING = '[data-testid="column-right"] section > header > :is(h2, h3).text-2xs';
+/** The Sabha flow panel's heading (alpha.23), at the top of the left column: drawn as every panel heading is. */
+const FLOW_HEADING =
+  '[data-testid="column-left"] section[data-testid="sabha-flow"] > header > :is(h2, h3).text-2xs';
+
+/** How a heading draws: its colour and its letters (size, weight, spacing, case). */
+const headingDrawn = (win: Page, selector: string) =>
+  win.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const c = getComputedStyle(el);
+    return [c.color, c.fontSize, c.fontWeight, c.letterSpacing, c.textTransform];
+  }, selector);
 
 /** The band's blocks: each one's colour and width. */
 const bandBlocks = (win: Page) =>
@@ -222,6 +238,11 @@ test('Black draws exactly as at 9ed5d00: header, chosen tab and row, headings, a
   const now = await fingerprint(win);
   console.info(`Black: ${JSON.stringify(now)}`);
   expect(now).toEqual(AT_9ED5D00['black']);
+  // The Sabha flow's heading draws exactly as the measured panel heading does (alpha.23).
+  expect(await headingDrawn(win, FLOW_HEADING)).toEqual(await headingDrawn(win, PANEL_HEADING));
+  expect((await headingDrawn(win, FLOW_HEADING))?.[0]).toBe(
+    (AT_9ED5D00['black'] as { heading: string[] }).heading[0],
+  );
   await app.close();
 });
 
@@ -261,6 +282,9 @@ test('White, softened to paper (Session 60, Q60-36 Q2 A), draws its new colours 
     under: was['under'],
     headingText: 'Stage screen',
   });
+  // The Sabha flow's heading draws exactly as the measured panel heading does (alpha.23).
+  expect(await headingDrawn(win, FLOW_HEADING)).toEqual(await headingDrawn(win, PANEL_HEADING));
+  expect((await headingDrawn(win, FLOW_HEADING))?.[0]).toBe(rgb(c.muted));
   // Soft paper, not near-white (Q60-30 (b)): its panel at about 80 % of white's light.
   expect(c.panel).not.toBe('#f8f8fa');
   await app.close();

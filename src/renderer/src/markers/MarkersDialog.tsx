@@ -5,7 +5,7 @@ import type { MediaMarkers, PlaybackMarker } from '../../../shared/markers';
 import { markerTime, parseMarkerTime } from '../../../shared/markers';
 import { mediaUrl } from '../../../shared/media';
 import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
-import type { RowTrimView } from '../../../shared/trim';
+import { type RowTrimView, trimmedTitle } from '../../../shared/trim';
 import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
 import { useTrimPreparing } from '../playlists/PreparingMark';
@@ -105,11 +105,6 @@ export function MarkersDialog({ copies = true }: { copies?: boolean } = {}) {
     return <MarkersForm key={trim.itemId} media={media} start={trim.markers} copies={false} trim={trim} />;
   if (loaded?.id !== media.id) return null;
   return <MarkersForm key={media.id} media={media} start={loaded.markers} copies={copies} />;
-}
-
-/** The name a row’s trimmed video takes in Media (main/convert/trim-copy.ts), without its extension. */
-function trimmedName(name: string): string {
-  return `${name.replace(/(.)\.[^.]+$/u, '$1')} trimmed`;
 }
 
 function trimTime(ms: number): string {
@@ -418,7 +413,7 @@ function MarkersForm({
         )}
         <p className="text-xs text-muted">
           {trim
-            ? `Save trimmed video makes the part from Start to End a new video in Media, “${trimmedName(media.name)}”, and this row plays it; the original stays as it is. It waits only while a video or a sound plays, or the stream is on air or recording (the row says which), and the current video plays until it’s ready. The preview is silent.`
+            ? `Save trimmed video makes the part from Start to End a new video in Media, “${trimmedTitle(media.name)}” (a number after it if that name is taken), and this row plays it; the original stays as it is. It waits only while a video or a sound plays, or the stream is on air or recording (the row says which), and the current video plays until it’s ready. The preview is silent.`
             : copies
               ? 'It plays between its start and end points wherever it is used (a background video loops between them), and the markers can be jumped to while it plays, from under the live picture or a phone. The preview is silent: only the audio player makes sound.'
               : 'It plays between its start and end points wherever it is used (a background video loops between them), and its markers show on its time bar under the live picture. Its file is never cut or copied. The preview is silent: only the audio player makes sound.'}

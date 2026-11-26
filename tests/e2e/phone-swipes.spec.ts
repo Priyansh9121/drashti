@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { device, type Engine, networkOn, NETWORK_ENV, pairByQr, pairingCode } from './devices';
 import { holdStill, launchApp, letTimePass, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { addPhoneDeck } from './phone-deck';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -9,7 +10,9 @@ import { setUpPlaceholderShow } from './placeholder-show';
  * like turning a page; two fingers (zooming) never count as a swipe, nor a drag up or down (the page scrolls); the
  * Back and Next buttons stay. In Chrome's engine the fingers are a touch screen's own (Chromium's input, so the page's
  * touch-action is as a phone's); in Safari's, the pointer events a phone's touches make (Playwright has no second
- * finger of its own there). Placeholder content only.
+ * finger of its own there). Since alpha.23 (QA23-PHONE-1, the owner's "Only PPT and PDF") only a PowerPoint or a PDF
+ * turns from a phone, in Pro Mode: a kirtan up, the phone has no Back or Next and a swipe turns nothing. Placeholder
+ * content only (a generated PDF).
  */
 
 const snapshot = (win: Page) =>
@@ -400,12 +403,13 @@ async function observeFinalTap(p: Page) {
 }
 
 for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[])
-  test(`a swipe on the phone’s live picture turns the page (${engine === 'webkit' ? 'Safari’s' : 'Chrome’s'} engine): to the left is Next, to the right is Back; two fingers never, nor a drag up or down; the buttons stay`, async () => {
+  test(`a swipe on the phone’s live picture turns a PDF’s page (${engine === 'webkit' ? 'Safari’s' : 'Chrome’s'} engine): to the left is Next, to the right is Back; two fingers never, nor a drag up or down; the buttons stay; a kirtan never`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win);
+    const deck = await addPhoneDeck(win, show.playlistId);
     const { base } = await networkOn(win);
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
@@ -415,23 +419,27 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       await p.setViewportSize({ width: 375, height: 812 });
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
-      // The kirtan up at its second slide, from its row.
-      await win.evaluate(
-        async ({ kirtanId, playlistId }) => {
-          const d = (globalThis as PageGlobals).drashti;
-          const item = (await d.playlists.items(playlistId)).find(
-            (i) => i.kind === 'presentation' && i.presentationId === kirtanId,
-          );
-          await d.engine.dispatch({
-            type: 'goLive',
-            presentationId: kirtanId,
-            slideIndex: 1,
-            playlist: item ? { playlistId, itemId: item.id } : null,
-          });
-        },
-        { kirtanId: show.kirtanId, playlistId: show.playlistId },
-      );
+      /** A presentation up from the computer at a slide, from its row. */
+      const upAt = (presentationId: string, slideIndex: number) =>
+        win.evaluate(
+          async ({ presentationId, slideIndex, playlistId }) => {
+            const d = (globalThis as PageGlobals).drashti;
+            const item = (await d.playlists.items(playlistId)).find(
+              (i) => i.kind === 'presentation' && i.presentationId === presentationId,
+            );
+            await d.engine.dispatch({
+              type: 'goLive',
+              presentationId,
+              slideIndex,
+              playlist: item ? { playlistId, itemId: item.id } : null,
+            });
+          },
+          { presentationId, slideIndex, playlistId: show.playlistId },
+        );
+      // The PDF up at its second page, from its row: Back and Next are on the phone.
+      await upAt(deck.deckId, 1);
       await expect.poll(() => slideNow(win)).toBe(1);
+      await expect(p.getByTestId('remote-next-button')).toBeVisible();
       finalTapDiagnostic = await observeFinalTap(p);
       const m = await middle(p);
       const reach = Math.round(m.width * 0.4);
@@ -484,6 +492,22 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       await finalTapDiagnostic.evaluate((monitor) => monitor.markFinalTap());
       await p.getByTestId('remote-live').tap();
       await expect(p.getByTestId('viewer')).toBeVisible();
+      await p.getByTestId('viewer-close').click();
+      await expect(p.getByTestId('viewer')).toHaveCount(0);
+
+      // A kirtan up from the computer (QA23-PHONE-1): no Back or Next on the phone, and a swipe turns nothing.
+      await upAt(show.kirtanId, 1);
+      await expect.poll(async () => (await snapshot(win)).live.presentationId).toBe(show.kirtanId);
+      await expect(p.getByTestId('remote-back')).toHaveCount(0);
+      await expect(p.getByTestId('remote-next-button')).toHaveCount(0);
+      const k = await middle(p);
+      await fingers(p, engine, [{ x: k.x + reach / 2, y: k.y }], [-reach], [0]);
+      await holdStill(
+        async () => (await slideNow(win)) === 1,
+        700,
+        'a swipe never turns a kirtan from a phone',
+      );
+      await expect(p.getByTestId('remote-swiped')).toHaveCount(0);
     } finally {
       try {
         if (finalTapDiagnostic && !p.isClosed()) {

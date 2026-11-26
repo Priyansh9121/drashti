@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { launchApp, openLibrary, operatorPage, operatorReady, slideEditorWindow } from './helpers';
+import { logText } from './log-lines';
 
 type FitTestGlobals = typeof globalThis & { drashtiTestFitFailure?: () => Promise<void> };
 
@@ -41,7 +40,7 @@ for (const target of ['operator', 'slide editor'] as const) {
       expect(caught[0]).toContain(
         `Render error in the ${target === 'operator' ? 'operator window' : 'slide editor'} (caught)`,
       );
-      const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+      const log = () => logText(userData);
       // Main names the operator specially; a separate editor uses its ordinary control-window log name.
       const loggedWindow = target === 'operator' ? 'operator' : 'a window';
       await expect

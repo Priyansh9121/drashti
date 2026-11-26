@@ -2,7 +2,7 @@
 
 **Edit slides…** opens a presentation in a window of its own, the slide editor, while the operator window keeps the show controls. It has six groups along the top: **Words**, **Insert**, **Arrange**, **Design**, **Motion** and **Slides**.
 
-Where the top row has no room for all its commands, as at 200% zoom, it wraps onto a second row and keeps them within reach. Use **Tab** and **Shift+Tab** between controls, and the arrow keys between the editor’s groups.
+Where the top row has no room for all its commands, as at 200% zoom, it wraps onto a second row and keeps them within reach. Use **Tab** and **Shift+Tab** between controls, and the arrow keys between the editor’s groups. In a short window the ribbon folds to its group tabs: a group's tab shows its ribbon over the slide, **Escape** or a click elsewhere folds it, and **Show the ribbon** keeps it open. In a narrow window the **Inspector** button (its sliders), at the slide's bottom left, opens the Inspector over the slide, and **Keep it open** keeps it beside the slide. A PDF's **Source document limits** notes fold in a short window behind the **Source notes** button (a warning sign), at the slide's top left, which opens them over the slide. **Tab** out of what is open folds it too.
 
 ## Edit slides…
 
