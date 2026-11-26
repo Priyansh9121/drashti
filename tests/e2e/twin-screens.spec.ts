@@ -102,8 +102,7 @@ test('two screens of one name: one failing soon after the other is reloaded as i
     await operatorReady(win);
     const displays = await testDisplays(win);
     const left = await setUpScreen(win, 'Placeholder hall', 1);
-    // Its twin on the second pretend display, named as the first, as two TVs of one model are: made again so its window
-    // opens under that name (a rename alone keeps the window it has).
+    // Its twin on the second pretend display.
     const { right, name } = await win.evaluate(
       async ({ groupName, displayId, leftId }) => {
         const d = (globalThis as PageGlobals).drashti;
@@ -115,18 +114,26 @@ test('two screens of one name: one failing soon after the other is reloaded as i
         const first = screens.find((s) => s.id === leftId);
         const second = screens.find((s) => s.id !== leftId);
         if (!first || !second) throw new Error('two screens were not made');
-        const off = await d.screens.updateScreen(second.id, { enabled: false });
-        if (!off.ok) throw new Error(off.message);
-        const on = await d.screens.updateScreen(
-          second.id,
-          { name: first.name, enabled: true },
-          { coverOperator: true },
-        );
-        if (!on.ok) throw new Error(on.message);
         return { right: second.id, name: first.name };
       },
       { groupName: 'Placeholder hall', displayId: displays[2]?.id ?? -1, leftId: left },
     );
+    // Named as the first, as two TVs of one model are: turned off and on again, so its window opens under that name (a
+    // rename alone keeps the window it has). Its first window closed before the next opens.
+    const firstRight = await outputOf(app, right);
+    const turnTwin = (patch: { enabled: boolean; name?: string }) =>
+      win.evaluate(
+        async ({ id, change }) => {
+          const done = await (globalThis as PageGlobals).drashti.screens.updateScreen(id, change, {
+            coverOperator: true,
+          });
+          if (!done.ok) throw new Error(done.message);
+        },
+        { id: right, change: patch },
+      );
+    await turnTwin({ enabled: false });
+    await expect.poll(() => firstRight.isClosed(), { message: 'its first window closes' }).toBe(true);
+    await turnTwin({ name, enabled: true });
     await keepIfAsked(win);
     const leftPage = await outputOf(app, left);
     const rightPage = await outputOf(app, right);
