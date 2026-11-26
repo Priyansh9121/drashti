@@ -52,6 +52,11 @@ export function newMotionNow(): FoldMove | null {
   });
 }
 
+/** How long a section's insides take to arrive, and a little: Panel then forgets how they arrived (hands-on, 4). */
+export function foldArrivalMs(): number {
+  return duration('dur-open') * tokenNumber('lively-time') + 200;
+}
+
 /** How far each part glides from: where it was less where it is, by its place in both lists; none it cannot pair. */
 export function glides(before: readonly number[], after: readonly number[]): number[] {
   if (before.length !== after.length) return after.map(() => 0);
@@ -61,26 +66,40 @@ export function glides(before: readonly number[], after: readonly number[]): num
   });
 }
 
-/** The copy of what folds away (the stand-in before its rule, red first). */
-export function foldCopy(move: FoldMove, _showControlNear: boolean): 'fold' | 'fold-lively' | null {
+/**
+ * The copy of what folds away, Calm's or Lively's; none where a show control could end up under it (the release lead's
+ * review, MUST-2): one among what moves, or anywhere else in the same scrolling part (a short window's LIVE block,
+ * which scrolls with the sections, moving down as the column's end comes up). Then the insides go at once, as with Off.
+ */
+export function foldCopy(move: FoldMove, showControlNear: boolean): 'fold' | 'fold-lively' | null {
+  if (showControlNear) return null;
   return move === 'lively' ? 'fold-lively' : 'fold';
 }
 
-/** Where parts were in the scrolling part and where it was scrolled (the stand-in before its rule, red first). */
+/** Where the parts were in the window (their tops), and where their scrolling part was scrolled to. */
 export interface PartsAt {
   tops: readonly number[];
   scroll: number;
 }
 
+/**
+ * How far each part glides from, measured inside its scrolling part (lead 2's hands-on pass, problem 1): the column
+ * scrolling back as a fold at its end shortens it moves everything in sight at once, the section above as much as the
+ * one folded, so only what moved within the column glides.
+ */
 export function glidesIn(before: PartsAt, after: PartsAt): number[] {
-  return glides(before.tops, after.tops);
+  return glides(
+    before.tops.map((t) => t + before.scroll),
+    after.tops.map((t) => t + after.scroll),
+  );
 }
 
+/** Whether `going` pixels leaving the scrolling part will scroll it back (it is scrolled further than it then can be). */
 export function scrollsBack(
-  _scroller: { scrollTop: number; clientHeight: number; scrollHeight: number },
-  _going: number,
+  scroller: { scrollTop: number; clientHeight: number; scrollHeight: number },
+  going: number,
 ): boolean {
-  return false;
+  return scroller.scrollTop > Math.max(0, scroller.scrollHeight - going - scroller.clientHeight) + 0.5;
 }
 
 /** A clip of the window to `box` (the column's scrolling part), as a clip-path. */
@@ -131,6 +150,13 @@ function partsFrom(section: HTMLElement, clipper: HTMLElement | null): HTMLEleme
 const holdsShowControl = (parts: readonly HTMLElement[]) =>
   parts.some((p) => p.hasAttribute('data-show-control') || p.querySelector('[data-show-control]') !== null);
 
+/** A show control in the same scrolling part as the section, but not in its insides (which go). */
+function showControlNear(section: HTMLElement, body: HTMLElement, clipper: HTMLElement | null): boolean {
+  if (holdsShowControl(partsFrom(section, clipper).slice(1))) return true;
+  const around = clipper ?? document.body;
+  return [...around.querySelectorAll('[data-show-control]')].some((c) => !body.contains(c));
+}
+
 /**
  * Lively: once React has drawn the fold (before the next frame is painted), what moved glides from where it was, over
  * the insides' own time and curve.
@@ -138,15 +164,16 @@ const holdsShowControl = (parts: readonly HTMLElement[]) =>
 function glideAfter(section: HTMLElement, clipper: HTMLElement | null, opening: boolean): void {
   const parts = partsFrom(section, clipper);
   if (holdsShowControl(parts)) return;
-  const before = parts.map((p) => p.getBoundingClientRect().top);
+  const at = (): PartsAt => ({
+    tops: parts.map((p) => p.getBoundingClientRect().top),
+    scroll: clipper?.scrollTop ?? 0,
+  });
+  const before = at();
   const time = duration(opening ? 'dur-open' : 'dur-exit') * tokenNumber('lively-time');
   const curve = easing(opening ? 'ease-out' : 'ease-in');
   requestAnimationFrame(() => {
     if (holdsShowControl(parts)) return;
-    const by = glides(
-      before,
-      parts.map((p) => p.getBoundingClientRect().top),
-    );
+    const by = glidesIn(before, at());
     parts.forEach((part, i) => {
       const from = by[i] ?? 0;
       if (from === 0 || !part.isConnected) return;
@@ -168,14 +195,21 @@ export function pressFold(button: HTMLElement, opening: boolean, bodyId: string)
   const section = button.closest('section');
   const clipper = clipperOf(section);
   const body = opening ? null : document.getElementById(bodyId);
-  if (body) {
+  // No copy where a show control could come under it, nor where the column will scroll back under it.
+  const near =
+    body !== null &&
+    section !== null &&
+    (showControlNear(section, body, clipper) ||
+      (clipper !== null && scrollsBack(clipper, body.getBoundingClientRect().height)));
+  const kind = body && section ? foldCopy(move, near) : null;
+  if (body && kind) {
     const box = clipper?.getBoundingClientRect() ?? {
       top: 0,
       right: innerWidth,
       bottom: innerHeight,
       left: 0,
     };
-    leave(body, move === 'lively' ? 'fold-lively' : 'fold', {
+    leave(body, kind, {
       clip: clipInside(box, { width: innerWidth, height: innerHeight }),
       background: backgroundOf(body),
     });

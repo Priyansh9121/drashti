@@ -5,7 +5,7 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { FoldMove } from './fold';
-import { pressFold } from './fold';
+import { foldArrivalMs, pressFold } from './fold';
 import type { Icon } from './icons';
 import { ChevronRight } from './icons';
 import { openAsks } from './open-asks';
@@ -78,6 +78,19 @@ export function Panel({
   const id = useId();
   // Opened by its button, its insides arrive: Calm's fade or Lively's unroll (alpha.24, ui/fold.ts; data-fold).
   const [opening, setOpening] = useState<FoldMove | null>(null);
+  // The chevron turns only into the state its button's press set moving (the release lead's review, S3).
+  const [turnedTo, setTurnedTo] = useState<boolean | null>(null);
+  // Once the insides have arrived, how they arrived is forgotten: a change of motion later never plays it again
+  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press).
+  useEffect(() => {
+    if (opening === null) return;
+    const arrived = setTimeout(() => {
+      setOpening(null);
+    }, foldArrivalMs());
+    return () => {
+      clearTimeout(arrived);
+    };
+  }, [opening]);
   const [open, setOpen] = usePersistentState<boolean>(
     remember ? `panel.${remember}.open` : null,
     defaultOpen,
@@ -132,13 +145,14 @@ export function Panel({
               onClick={(e) => {
                 const move = pressFold(e.currentTarget, !open, `${id}-body`);
                 setOpening(open ? null : move);
+                setTurnedTo(move === null ? null : !open);
                 setOpen(!open);
               }}
               // 24 px tall at least (WCAG 2.5.8): What is this? sits beside it.
               className="-ml-1 flex min-h-6 max-w-full min-w-0 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-fg"
             >
               {/* It turns as the section folds and unfolds (ui/motion.css). */}
-              <FoldChevron open={open} />
+              <FoldChevron open={open} turning={turnedTo === open} />
               {heading}
             </button>
           ) : (
@@ -163,13 +177,17 @@ export function Panel({
   );
 }
 
-/** A fold's chevron: pointing right while folded, turned down while open. */
-function FoldChevron({ open }: { open: boolean }) {
+/**
+ * A fold's chevron: pointing right while folded, turned down while open; `turning` while it turns into the state its
+ * button's press set moving (ui/motion.css), otherwise it turns at once.
+ */
+function FoldChevron({ open, turning }: { open: boolean; turning: boolean }) {
   return (
     <ChevronRight
       size={14}
       aria-hidden="true"
       data-fold-chevron=""
+      data-turning={turning ? '' : undefined}
       className={open ? 'rotate-90' : undefined}
     />
   );
@@ -230,6 +248,19 @@ export function PanelGroup({
   const help = useWhatIsThis(topic ?? null);
   // Opened by its button, its insides arrive: Calm's fade or Lively's unroll (alpha.24, ui/fold.ts; data-fold).
   const [opening, setOpening] = useState<FoldMove | null>(null);
+  // The chevron turns only into the state its button's press set moving (the release lead's review, S3).
+  const [turnedTo, setTurnedTo] = useState<boolean | null>(null);
+  // Once the insides have arrived, how they arrived is forgotten: a change of motion later never plays it again
+  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press).
+  useEffect(() => {
+    if (opening === null) return;
+    const arrived = setTimeout(() => {
+      setOpening(null);
+    }, foldArrivalMs());
+    return () => {
+      clearTimeout(arrived);
+    };
+  }, [opening]);
   const [open, setOpen] = usePersistentState<boolean>(
     `group.${remember}.open`,
     defaultOpen,
@@ -251,11 +282,12 @@ export function PanelGroup({
             onClick={(e) => {
               const move = pressFold(e.currentTarget, !open, `${id}-body`);
               setOpening(open ? null : move);
+              setTurnedTo(move === null ? null : !open);
               setOpen(!open);
             }}
             className="-ml-1 flex min-h-6 max-w-full min-w-0 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-accent"
           >
-            <FoldChevron open={open} />
+            <FoldChevron open={open} turning={turnedTo === open} />
             <span className="flex min-w-0 items-center gap-1.5">
               {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-muted" />}
               <span className="truncate">{title}</span>

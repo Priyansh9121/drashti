@@ -70,8 +70,6 @@ export function ListRow({
         density === 'compact' ? 'min-h-8 px-2 py-1' : 'min-h-11 px-2.5 py-1.5',
         className,
       )}
-      // Its focus ring eases in, as a button's (alpha.24, ui/motion.css); a show control's row never does.
-      data-row=""
       {...props}
     >
       {leading && <span className="flex shrink-0 items-center">{leading}</span>}

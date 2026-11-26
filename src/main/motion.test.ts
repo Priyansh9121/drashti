@@ -59,7 +59,7 @@ const TABLE: Record<string, string> = {
   // alpha.24 (uimotion, the owner's "more interactive, more animated, more transitions"): out on an ease-in (the
   // release lead's "ease-out in, ease-in out"), a press dims, a hover lifts a pixel (Lively).
   'ease-in': 'cubic-bezier(0.32, 0, 0.67, 0)',
-  'press-dim': '0.92',
+  'press-dim': '0.85',
   lift: '1px',
   // Lively (Session 42): the band sweeps in once as the appearance changes, a block every 40 ms, all of it within
   // the motion skills' 500 ms (one entry under 800 ms, the stagger under 500 ms in all).
@@ -261,35 +261,35 @@ describe('motion in the interface is tokens', () => {
       ),
     );
     expect(wrong).toEqual([]);
-    // Every control kind named, the fold's chevron too.
+    // The buttons and the fold's chevron named.
     const named = moving.flatMap((r) => r.selectors).join('\n');
-    for (const kind of [
-      '[data-variant]',
-      '[data-row]',
-      "[role='tab']",
-      "[role^='menuitem']",
-      '[data-fold-chevron]',
-    ])
-      expect(named, kind).toContain(kind);
-    // The ring eases in from further out; its width never changes (the keyboard's checks read it at once).
-    expect(motionCss).not.toMatch(/outline-width|outline-style/u);
-    expect(motionCss).toMatch(/outline-offset:\s*var\(--rise-sm\)/u);
+    for (const kind of ['[data-variant]', '[data-fold-chevron]']) expect(named, kind).toContain(kind);
+    // Only transform and opacity move (lead 2's decision on the hands-on pass, problem 3): a press dims by opacity, and
+    // the focus ring is there at once, as before alpha.24, nothing of it moving (the keyboard's checks read it at once).
+    expect(
+      ruleFor(
+        motionCss,
+        ":root[data-opened][data-chip='yes'] [data-variant]:not([data-show-control]):not([data-show-control] *):not(:disabled):active",
+      ),
+    ).toMatch(/^opacity:\s*var\(--press-dim\);/u);
+    expect(motionCss).not.toMatch(/outline|brightness|\bfilter:/u);
   });
 
   /*
    * The release lead's review of uimotion (27 Nov 2026), MUST-1 (option b, answered as recommended, the owner's "till
    * 9:00AM"): without a graphics chip, Lively is held whole and the window looks as Calm's (the new install's default
    * stays Lively). S2: a section's insides that hold a show control are there at once. S3: the chevron turns only for a
-   * fold that moves. S6: a menu's choices ease only where every newer motion may.
+   * fold that moves. S6: a menu's choices never ease outside ui/motion.css's guard (and, since the hands-on pass's
+   * problem 3, not at all).
    */
   it('all of Lively waits for a graphics chip: every Lively rule in app.css and ui/motion.css names data-chip', () => {
     const lively = [...rules(css), ...rules(motionCss)].flatMap((r) =>
       r.selectors.filter((sel) => sel.includes("[data-interface-motion='lively']")),
     );
     expect(lively.length).toBeGreaterThan(8);
-    expect(
-      lively.filter((sel) => !sel.includes("[data-interface-motion='lively'][data-chip='yes']")),
-    ).toEqual([]);
+    // Named on <html> itself, with the motion: the root's own part of the selector holds both.
+    const onRoot = (sel: string) => sel.split(' ')[0] ?? '';
+    expect(lively.filter((sel) => !onRoot(sel).includes("[data-chip='yes']"))).toEqual([]);
   });
 
   it('a section whose insides hold a show control shows them at once, in Calm and in Lively', () => {
@@ -302,16 +302,16 @@ describe('motion in the interface is tokens', () => {
     ).toBe('animation: none;');
   });
 
-  it('the chevron turns only for a fold that moves, and a menu’s choices ease only where newer motion may', () => {
+  it('the chevron turns only for a fold that moves, and a menu’s choices have no transition of their own', () => {
     const turning = rules(motionCss).filter((r) =>
       r.selectors.some((sel) => sel.includes('[data-fold-chevron]')),
     );
     expect(turning.flatMap((r) => r.selectors)).toEqual([
       ":root[data-opened][data-chip='yes'] [data-fold-chevron][data-turning]",
     ]);
-    expect(
-      ruleFor(motionCss, ":root[data-opened][data-chip='yes'] [role^='menuitem']:not([data-show-control])"),
-    ).toMatch(/transition-duration:\s*var\(--dur-hover\);/u);
+    // S6, met by lead 2's decision on the hands-on pass (problem 3): with the ring at once, a menu's choices have no
+    // transition at all, neither of their own nor from ui/motion.css.
+    expect(motionCss).not.toMatch(/menuitem/u);
     const menu = readFileSync(join(renderer, 'ui', 'Menu.tsx'), 'utf8');
     expect(menu).not.toMatch(/\btransition-colors\b/u);
   });
