@@ -112,8 +112,13 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
       >
         <span aria-hidden="true" className={cx('h-1.5 w-1.5 shrink-0 rounded-full', look.dot)} />
         {name}
-        <span aria-hidden="true" className="font-bold">
-          {look.word}
+        {/* On and Off in the same room, the wider word's: Off, held unseen in the same cell (not in its words), so
+            turning one moves nothing beside it (lead 2's hands-on pass). */}
+        <span
+          aria-hidden="true"
+          className="inline-grid font-bold after:invisible after:col-start-1 after:row-start-1 after:content-['Off']"
+        >
+          <span className="col-start-1 row-start-1">{look.word}</span>
         </span>
       </Button>
     </Tooltip>
