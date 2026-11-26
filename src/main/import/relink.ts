@@ -54,8 +54,10 @@ export async function runRelink(ctx: RelinkContext): Promise<ImportRunSummary> {
   imports.startRun(ctx.runId, [ctx.folder], {});
   ctx.onProgress?.({ runId: ctx.runId, phase: 'scanning', done: 0, total: 0, current: null });
   const scan = await scanPaths([ctx.folder], { skip: ctx.skipDir });
+  const scanned = new Set(scan.files.map((file) => file.path));
   const wanted = ctx.mediaIds ? new Set(ctx.mediaIds) : null;
-  const missing = ctx.media.missing().filter((m) => !wanted || wanted.has(m.id));
+  // Asked for by id (a wallpaper's Find…, Ready's, a notice's): those deleted a moment ago too (QA24-WALLBLACK-3).
+  const missing = ctx.media.missing(ctx.mediaIds).filter((m) => !wanted || wanted.has(m.id));
   let done = 0;
   let cancelled = false;
   for (const m of missing) {
@@ -65,7 +67,11 @@ export async function runRelink(ctx: RelinkContext): Promise<ImportRunSummary> {
     }
     ctx.onProgress?.({ runId: ctx.runId, phase: 'importing', done, total: missing.length, current: m.name });
     const reference = m.originalPath ?? m.name;
-    const found = resolveMedia(reference, { nearby: [ctx.folder], byName: scan.mediaByName });
+    const found = resolveMedia(reference, {
+      nearby: [ctx.folder],
+      byName: scan.mediaByName,
+      isFile: (path) => scanned.has(path),
+    });
     if (!found) {
       record({
         sourcePath: reference,

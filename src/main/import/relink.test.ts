@@ -213,7 +213,8 @@ describe('Find… right after Delete… (QA24-WALLBLACK-3): a picture deleted fr
       t.db
         .prepare('SELECT path, missing, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?')
         .get(first.mediaId);
-    const pictures = () => t.db.prepare("SELECT media_id FROM wallpaper_pictures WHERE wallpaper_id = 'w'").all();
+    const pictures = () =>
+      t.db.prepare("SELECT media_id FROM wallpaper_pictures WHERE wallpaper_id = 'w'").all();
     return { ...t, path, id: first.mediaId, was: was.path, row, pictures };
   }
 
