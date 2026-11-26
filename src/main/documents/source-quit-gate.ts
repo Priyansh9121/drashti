@@ -6,9 +6,12 @@ const FAILED_STOP = 'failed';
 
 interface SourceQuitDeps {
   cancel(): void;
-  /** True only after owned work stopped; retainOutput/quarantine must return false. */
+  /** True only after owned work stopped; retainOutput/quarantine must return false, or be counted by givenUp. */
   stop(): Promise<boolean>;
-  /** How many owned readers have been given up on so far (O1). (Red: not read yet.) */
+  /**
+   * How many owned readers have been given up on so far (O1): each one's job ended unconfirmed, its output kept and
+   * nothing admitted since. One given up on in a drain holds that drain; one given up on before it began never holds it.
+   */
   givenUp?(): number;
   timeoutMs?: number;
 }
@@ -17,6 +20,8 @@ interface SourceQuitDeps {
 export class SourceQuitGate {
   private flight: Promise<SourceQuitResult> | null = null;
   private drained = false;
+  /** The last drain ended unconfirmed: the next quit or exit drains again (O1). */
+  private refused = false;
   private resumeScheduled = false;
   constructor(private readonly deps: SourceQuitDeps) {}
 
@@ -39,8 +44,11 @@ export class SourceQuitGate {
       settled = true;
       clearTimeout(timer);
       this.drained = result.confirmed;
+      this.refused = !result.confirmed;
       complete(result);
     };
+    // Readers given up on before this drain (its cancel included) never hold it (O1).
+    const givenUpBefore = this.deps.givenUp?.() ?? 0;
     const timer = setTimeout(
       () => finish({ confirmed: false, reason: 'timeout' }),
       this.deps.timeoutMs ?? 5_000,
@@ -58,7 +66,7 @@ export class SourceQuitGate {
           finish(
             cancelFailed
               ? { confirmed: false, reason: FAILED_STOP }
-              : confirmed
+              : confirmed && (this.deps.givenUp?.() ?? 0) === givenUpBefore
                 ? { confirmed: true }
                 : { confirmed: false, reason: 'quarantined' },
           ),
@@ -67,8 +75,17 @@ export class SourceQuitGate {
     return this.flight;
   }
 
-  /** The drain a quit or an exit waits for (O1). (Red: today's, its first result kept.) */
+  /**
+   * The drain a quit or an exit waits for (O1): the one in flight, or the confirmed one, or after a refusal a fresh
+   * bounded one. Before, the first refusal was kept for good, so Drashti never quit normally again (an operator told
+   * "Restart Drashti before editing more imported slides" could only force it). No new source work is admitted once
+   * any drain has begun (closing), refused or not.
+   */
   drainForQuit(): Promise<SourceQuitResult> {
+    if (this.refused) {
+      this.refused = false;
+      this.flight = null;
+    }
     return this.drain();
   }
 
@@ -82,7 +99,7 @@ export class SourceQuitGate {
     event.preventDefault();
     if (!this.resumeScheduled) {
       this.resumeScheduled = true;
-      void this.drain().then((result) => {
+      void this.drainForQuit().then((result) => {
         if (result.confirmed) resume();
         else {
           this.resumeScheduled = false;

@@ -694,7 +694,8 @@ const exitNow = (code: number) => {
     finish();
     return;
   }
-  void sourceQuit.drain().then((result) => {
+  // A quit refused before is asked again (O1).
+  void sourceQuit.drainForQuit().then((result) => {
     if (result.confirmed) finish();
     else log.error(`Source preparation did not confirm exit (${result.reason}); the library remains open.`);
   });
@@ -5293,9 +5294,16 @@ function start(): void {
         drainPdfCopies(),
         drainKirtanExports(),
       ]);
-      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
-      return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
+      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped: one given up on is
+      // counted by givenUp, below.
+      return pdfGeometry.exitConfirmed || pdfGeometry.givenUp;
     },
+    // Owned readers given up on (a document reader's retainOutput; the PDF geometry worker that did not confirm its
+    // exit): one given up on in a quit's own drain holds that quit, as before. One given up on before it began (while
+    // editing: "Restart Drashti before…", or in a refused quit's drain) never holds a later one (O1): its job has ended,
+    // so nothing of it reaches the library, its output is kept and none is admitted since. Before, every quit after it
+    // was refused at once and Drashti could only be forced to quit.
+    givenUp: () => Number(sourceOutputQuarantined) + Number(pdfGeometry.givenUp),
   });
   stops.add('document preparation', () => {
     pdfPictures.stopEditable();
