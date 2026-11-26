@@ -1242,7 +1242,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   handle(IPC.videoInputs.access, () => 'denied' as const);
   handle(IPC.videoInputs.report, () => null);
 
-  // "Quit Drashti?" as the quit begins, before any window closes (review S2), and as the node's window closes.
+  // "Quit Drashti?" as the quit begins, before any window closes (review S2), and as its window closes.
   const nodeQuit = new NodeQuit({
     showing: () => manager.status().filter((st) => st.state === 'showing').length,
     noConfirm: () => sw('DRASHTI_NO_QUIT_CONFIRM') === '1',
@@ -1256,9 +1256,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         detail: `${plural(showing, 'screen')} on this node ${showing === 1 ? 'is' : 'are'} showing. If Drashti quits, ${showing === 1 ? 'it goes' : 'they go'} black.`,
       };
       const parent = nodeWindow && !nodeWindow.isDestroyed() ? nodeWindow : null;
-      const choice = parent
-        ? dialog.showMessageBoxSync(parent, options)
-        : dialog.showMessageBoxSync(options);
+      const choice = parent ? dialog.showMessageBoxSync(parent, options) : dialog.showMessageBoxSync(options);
       return choice === 1;
     },
     manager,
