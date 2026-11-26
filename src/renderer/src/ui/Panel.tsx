@@ -7,6 +7,7 @@ import { cx } from './cx';
 import type { Icon } from './icons';
 import { ChevronDown, ChevronRight } from './icons';
 import { livelyNow } from './motion';
+import { openAsks } from './open-asks';
 import type { Keep } from './persist';
 import { usePersistentState } from './persist';
 
@@ -56,7 +57,10 @@ export function Panel({
    * reader (the toggle's, when it folds).
    */
   badge?: ReactNode;
-  /** An explicit request to unfold this section without moving keyboard focus. */
+  /**
+   * Asks to unfold it, without moving the keyboard's focus (a chat popup's click), counted: only one made after it
+   * mounted unfolds it, once (open-asks.ts).
+   */
   openAsked?: number;
   collapsible?: boolean;
   /** A name to remember whether it is folded (per computer, or while Drashti runs: `keep`). */
@@ -80,12 +84,14 @@ export function Panel({
     keep,
   );
   const section = useRef<HTMLElement>(null);
+  // The asks standing as it mounts are old: mounted again, it stays as the operator left it.
+  const [asks] = useState(() => openAsks(openAsked));
   useEffect(() => {
-    if (openAsked === 0) return;
+    if (!asks.take(openAsked)) return;
     setOpen(true);
     const frame = requestAnimationFrame(() => section.current?.scrollIntoView({ block: 'nearest' }));
     return () => cancelAnimationFrame(frame);
-  }, [openAsked, setOpen]);
+  }, [asks, openAsked, setOpen]);
   const shown = !collapsible || open;
   const help = useWhatIsThis(topic ?? null);
   const heading = (
