@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, over } from '../shared/contrast';
+import { contrastRatio, luminance, over, toLab } from '../shared/contrast';
 import type { Appearance } from '../shared/appearance/appearances';
 import { BLACK, WHITE } from '../shared/appearance/appearances';
 import { ZONES, type Zone } from '../shared/appearance/zones';
@@ -87,6 +87,9 @@ type Base = keyof typeof BASES;
 const SURFACES = ['ink', 'panel', 'panel-2', 'panel-3'] as const;
 type Surface = (typeof SURFACES)[number];
 
+/** The ground in this base (lead 2's nearer-the-mockup round: darker than the window's own ink). */
+const groundOf = (base: Base): string => block(`${SCOPE}[data-base='${base}']`)['--depth-ground'] ?? '';
+
 /** A zone's surfaces as Depth draws them in this base: the zone's own, moved as look-depth.css says. */
 function surfacesOf(a: Appearance, base: Base, zone: Zone): Record<Surface, string> {
   const own = a.zones[zone];
@@ -98,6 +101,10 @@ function surfacesOf(a: Appearance, base: Base, zone: Zone): Record<Surface, stri
   for (const s of SURFACES) {
     const v = moved[`--color-${s}`];
     if (v === undefined) continue;
+    if (v === 'var(--depth-ground)') {
+      out[s] = groundOf(base);
+      continue;
+    }
     const to = new RegExp(`^var\\(--zone-${zone}-(ink|panel|panel-2|panel-3)\\)$`, 'u').exec(v)?.[1];
     if (!to) throw new Error(`${zone}: --color-${s} is ${v}, not one of the zone's measured surfaces`);
     out[s] = own[to as Surface];
@@ -199,7 +206,7 @@ describe('B · Depth: styles/look-depth.css', () => {
       '--state-fill': 'var(--color-panel-2)',
       // A section's row an opaque colour of its own (a 3 % lift of its column's panel): a fold's fading copy of the
       // section's insides is drawn on the first opaque colour round them (uimotion's ui/fold.ts), so the row's own.
-      '--state-row': 'color-mix(in srgb, var(--color-fg) 3%, var(--color-panel))',
+      '--state-row': 'color-mix(in srgb, var(--color-fg) 5%, var(--color-panel))',
       '--state-disabled': '0.4',
     });
     for (const base of ['dark', 'light'] as const) {
@@ -207,7 +214,13 @@ describe('B · Depth: styles/look-depth.css', () => {
       const own = block(`${SCOPE}[data-base='${base}'] :is(body, [data-zone])`);
       expect(own['--state-hover'], `${base}: hover`).toBeDefined();
       expect(own['--state-press'], `${base}: press`).toBeDefined();
-      expect(look['--elev-light'], `${base}: a panel's light`).toMatch(/^#ffffff[0-9a-f]{2}$/u);
+      // A panel's light along its top, seen (the mockup's 1 px inset highlight): at least 9 % white on a dark panel,
+      // and on a light one all but white.
+      const light = look['--elev-light'] ?? '';
+      expect(light, `${base}: a panel's light`).toMatch(/^#ffffff([0-9a-f]{2})?$/u);
+      const lightAlpha = light.length === 9 ? parseInt(light.slice(7), 16) / 255 : 1;
+      expect(lightAlpha, `${base}: a panel's light`).toBeGreaterThanOrEqual(base === 'dark' ? 0.09 : 0.7);
+      expect(look['--depth-ground'], `${base}: the ground`).toMatch(/^#[0-9a-f]{6}$/u);
       // LIVE's tint and ring: LIVE's own red (the same in Black and White), see-through.
       for (const name of ['--state-live-tint', '--state-live-ring']) {
         const v = look[name] ?? '';
@@ -237,7 +250,23 @@ describe('B · Depth: styles/look-depth.css', () => {
         Zone,
         Record<Surface, string>
       >;
-      const ground = a.colours.ink;
+      const ground = groundOf(base);
+      // A darker ground than the window's own ink, with a clear tonal step to each panel (CIELAB lightness).
+      expect(luminance(ground), 'the ground darker than the ink').toBeLessThan(luminance(a.colours.ink));
+      const step = (x: string) => Math.abs(toLab(x)[0] - toLab(ground)[0]);
+      expect(step(a.colours.panel), 'the middle off the ground').toBeGreaterThanOrEqual(4);
+      expect(step(a.colours['panel-2']), 'the side columns off the ground').toBeGreaterThanOrEqual(7);
+      // On the ground (the top bar, the bars along the bottom): every word at 4.5:1, every control's edge and the
+      // keyboard's ring at 3:1 (the header's own: rules.ts, measured here on the ground).
+      const onGround = [
+        ...(['fg', 'muted', 'faint', 'accent'] as const).map((w) => [w, a.colours[w], 4.5] as const),
+        ['on-header', a.decoration['on-header'], 4.5] as const,
+        ['on-header-muted', a.decoration['on-header-muted'], 4.5] as const,
+        ['header-field', a.decoration['header-field'], 3] as const,
+        ['header-ring', a.decoration['header-ring'], 3] as const,
+        ['field', a.colours.field, 3] as const,
+      ].filter(([, colour, least]) => contrastRatio(colour, ground) < least);
+      expect(onGround.map(([w, colour]) => `${w} ${contrastRatio(colour, ground).toFixed(2)}:1`)).toEqual([]);
       // The columns' panels on the ground: the side columns one surface up, the middle the panel; the bar on the ground.
       expect(zones.left.panel).toBe(a.colours['panel-2']);
       expect(zones.right.panel).toBe(a.colours['panel-2']);

@@ -49,6 +49,15 @@ function drawnNow(win: Page) {
     const playlists = document.querySelector('section[aria-label="Playlists"]')?.getBoundingClientRect();
     return {
       look: document.documentElement.dataset['windowLook'] ?? null,
+      // The ground under the bars and in the gaps (look-depth.css), as a colour this page draws.
+      ground: (() => {
+        const probe = document.createElement('div');
+        probe.style.backgroundColor = 'var(--depth-ground)';
+        document.body.append(probe);
+        const colour = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return colour;
+      })(),
       header: header ? [header.backgroundColor, header.borderBottomColor] : null,
       bar: bar ? [bar.backgroundColor, bar.borderTopColor] : null,
       footer: footer ? [footer.backgroundColor, footer.borderTopColor] : null,
@@ -65,13 +74,14 @@ function drawnNow(win: Page) {
 }
 
 /** What Depth draws in an appearance Follow the computer shows (Black or White, each zone its own surfaces). */
-const depthOf = (a: Appearance) => {
+const depthOf = (a: Appearance, ground: string) => {
   const panel = (bg: string) => [rgb(bg), '4px', '4px', CLEAR, '12px', 'padding-box'];
   return {
     look: 'depth',
-    header: [rgb(a.colours.ink), CLEAR],
-    bar: [rgb(a.colours.ink), CLEAR],
-    footer: [rgb(a.colours.ink), CLEAR],
+    ground,
+    header: [ground, CLEAR],
+    bar: [ground, CLEAR],
+    footer: [ground, CLEAR],
     left: panel(a.colours['panel-2']),
     middle: panel(a.colours.panel),
     right: panel(a.colours['panel-2']),
@@ -159,7 +169,10 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     await turnComputer(app, source);
     await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
     await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
-    expect(await drawnNow(win), `${a.name}: Pro Mode`).toEqual(depthOf(a));
+    const pro = await drawnNow(win);
+    // A darker ground than the window's own colour (lead 2's nearer-the-mockup round), the same under every bar.
+    expect(pro.ground, `${a.name}: the ground`).not.toBe(rgb(a.colours.ink));
+    expect(pro, `${a.name}: Pro Mode`).toEqual(depthOf(a, pro.ground));
     expect(await newWaysToDraw(win), `${a.name}: nothing live`).toEqual([]);
 
     // A slide live: the live picture's red frame with a light red ring round it, no blur; the live row tinted inside.
@@ -195,7 +208,8 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
   await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const simple = await drawnNow(win);
-  const black = depthOf(BLACK);
+  expect(simple.ground, 'Simple Mode: the ground').not.toBe(rgb(BLACK.colours.ink));
+  const black = depthOf(BLACK, simple.ground);
   expect(simple, 'Simple Mode').toMatchObject({
     look: 'depth',
     header: black.header,
