@@ -18,7 +18,7 @@ import { LOWER_THIRD_MAX_LINES, lowerThirdOf } from '../../../shared/program';
 import { useStream } from '../stream/stream-store';
 import { missingFontsOf } from '../render/font-probe';
 import { stopRepeat } from '../playlists/repeat-actions';
-import { Badge, LiveBadge } from '../ui/Badge';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Eraser, Repeat2, Square, Timer } from '../ui/icons';
@@ -212,7 +212,8 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
           {/* The Stream panel's primary kept in the GPU's cache, unseen (Session 60, X21: operator/PanelWarmUp.tsx). */}
           {!chipless && <PanelKindKeeper />}
         </h2>
-        {blackout ? <Badge tone="live">Black-out</Badge> : somethingUp ? <LiveBadge /> : null}
+        {/* LIVE is said once, by the top bar's badge (alpha.24, uitop): here its red frame says it; Black-out in words. */}
+        {blackout && <Badge tone="live">Black-out</Badge>}
         {help.button}
       </div>
       {help.card && <div className="-mx-3">{help.card}</div>}

@@ -28,7 +28,7 @@ import { openLinkDialog } from '../links/link-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
-import { Badge, LiveBadge, MissingBadge } from '../ui/Badge';
+import { Badge, LiveDot, MissingBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { rowTops, slideRows, useLivelyArrival } from '../ui/motion';
@@ -286,7 +286,16 @@ function ItemBody({
   /** A presentation's name row (Session 55): whether its slides are folded under it. */
   fold?: boolean | null;
 }) {
-  const liveBadge = live ? <LiveBadge /> : null;
+  // Up (alpha.24, uitop: LIVE is said once, in words, by the top bar's badge): a red edge at the row's start and a dot
+  // at its end, "Live" to a screen reader as the badge said it.
+  const liveBadge = live ? <LiveDot /> : null;
+  const liveEdge = live ? (
+    <span
+      aria-hidden="true"
+      data-live-edge=""
+      className="pointer-events-none absolute inset-y-1.5 left-0.5 w-[3px] rounded-full bg-live-edge"
+    />
+  ) : null;
   const conversion = useConvert((state) =>
     item.kind === 'media' ? jobFor(state.jobs, item.mediaId) : undefined,
   );
@@ -316,6 +325,7 @@ function ItemBody({
   const Chevron = fold ? ChevronRight : ChevronDown;
   return (
     <span className="flex items-center gap-2.5">
+      {liveEdge}
       {fold === null ? (
         <RowNumber number={number} />
       ) : (
@@ -1451,7 +1461,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                 }}
                 className={cx(
                   rowClass({ selected: shownItem === item.id, marked: isMarked, dropTarget: filling }),
-                  'pr-10 pl-2.5',
+                  // Relative: a row that is up has its red edge at its start (ItemBody).
+                  'relative pr-10 pl-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
                   itemFound && !isLive && 'border-accent! bg-panel-2',

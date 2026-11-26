@@ -58,6 +58,20 @@ export function LiveBadge({ label = 'Live', className }: { label?: string; class
   );
 }
 
+/**
+ * A playlist's row on the screens now (alpha.24, uitop: LIVE is said once, in words, by the top bar's badge): a small
+ * dot in LIVE's frame colour beside the row's red edge, and "Live" for screen readers, so the row reads as before. Only
+ * the row that is up has one: its being there says it, never its colour alone.
+ */
+export function LiveDot({ className }: { className?: string }) {
+  return (
+    <span data-live-dot="" className={cx('flex h-4 w-4 shrink-0 items-center justify-center', className)}>
+      <span aria-hidden="true" className="h-2 w-2 rounded-full bg-live-edge" />
+      <span className="sr-only">Live</span>
+    </span>
+  );
+}
+
 /** A file the library cannot find. */
 export function MissingBadge({ title }: { title?: string }) {
   return (
