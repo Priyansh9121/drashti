@@ -9,9 +9,9 @@ import type { Wallpaper } from './wallpapers';
  */
 
 export interface WallpaperMissing {
-  /** None of its pictures there ('all'), some ('some'), or it has none at all ('none'). */
+  /** All or some pictures unavailable, or it has none at all ('none'). */
   kind: 'all' | 'some' | 'none';
-  /** How many of its pictures are missing. */
+  /** How many pictures are missing or need conversion. */
   count: number;
   /** Said after its name, for a screen reader ("its picture is missing"). */
   label: string;
@@ -42,9 +42,50 @@ export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): Wallpa
       find: [],
     };
   const gone = all.filter((p) => p.missing);
-  if (gone.length === 0) return null;
   // A picture whose row is gone from the library has no name, and nothing Find… could look for.
   const find = [...new Set(gone.filter((p) => p.name !== '').map((p) => p.mediaId))];
+  const needsConversion = all.filter((p) => !p.missing && p.unplayable);
+  if (needsConversion.length > 0) {
+    const count = gone.length + needsConversion.length;
+    const allUnavailable = count === all.length;
+    const [first] = needsConversion;
+    const named = needsConversion.length === 1 && first?.name ? `: “${first.name}”` : '';
+    const subject =
+      all.length === 1
+        ? 'The wallpaper’s picture'
+        : needsConversion.length === 1
+          ? 'One of the wallpaper’s pictures'
+          : `${String(needsConversion.length)} of the wallpaper’s pictures`;
+    const issue = `${subject} ${needsConversion.length === 1 ? 'needs' : 'need'} conversion${named}.`;
+    const advice = needsConversion.length === 1 ? 'Convert it in Media.' : 'Convert them in Media.';
+    const missing =
+      gone.length === 0
+        ? ''
+        : gone.length === 1
+          ? ' 1 picture is missing.'
+          : ` ${String(gone.length)} pictures are missing.`;
+    return {
+      kind: allUnavailable ? 'all' : 'some',
+      count,
+      label:
+        gone.length > 0
+          ? `${String(count)} of them are missing or need conversion`
+          : all.length === 1
+            ? 'its picture needs conversion'
+            : `${String(count)} of them ${count === 1 ? 'needs' : 'need'} conversion`,
+      tile: !allUnavailable
+        ? ''
+        : gone.length > 0
+          ? 'Check pictures'
+          : all.length === 1
+            ? 'Convert picture'
+            : 'Convert pictures',
+      notice: `${issue} ${advice}${missing} ${allUnavailable ? BLACK : 'Pictures needing conversion show black on their turns.'}`,
+      live: allUnavailable ? `${issue}${missing} ${LIVE_BLACK}` : null,
+      find,
+    };
+  }
+  if (gone.length === 0) return null;
   const [first] = gone;
   const named = first && first.name !== '' ? `: “${first.name}”` : '';
   if (gone.length < all.length)

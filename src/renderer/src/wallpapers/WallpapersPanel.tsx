@@ -94,7 +94,7 @@ export function wallpaperTarget(wallpaper: Wallpaper, chosen: boolean): FileTarg
 
 export function WallpaperTile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) {
   const [over, setOver] = useState(false);
-  const shown = wallpaper.pictures.find((p) => !p.missing);
+  const shown = wallpaper.pictures.find((p) => !p.missing && !p.unplayable);
   const count = wallpaper.pictures.length;
   // Its pictures gone from the library (QA24-WALLBLACK-1): said, never a black square.
   const missing = wallpaperMissing(wallpaper);

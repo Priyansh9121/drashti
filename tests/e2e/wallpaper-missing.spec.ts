@@ -147,6 +147,36 @@ test('a wallpaper whose picture is missing says so (its tile, the panel with Fin
   await expect(tile.getByTestId('wallpaper-missing')).toHaveAttribute('title', 'Picture missing');
   await expectNoSeriousA11yIssues(win, 'a wallpaper whose picture is missing', '[data-testid="wallpapers"]');
 
+  // Something is up underneath F12: the words explain the black wallpaper without saying nothing is up.
+  await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.engine.dispatch({
+      type: 'setBackground',
+      background: { kind: 'color', color: '#1e3a8a' },
+    }),
+  );
+  await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ kind: 'color' });
+  await win.keyboard.press('F12');
+  await expect.poll(async () => (await state(win)).wallpaper).toBe(true);
+  await expect(live).toHaveText(
+    `Wallpaper’s picture missing: “${FILE}”. The screens show black when the wallpaper is up.`,
+  );
+  expect((await state(win)).layers.background).toMatchObject({ kind: 'color' });
+  await win.keyboard.press('F12');
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
+
+  // Find immediately after Delete, before a restart: the same picture comes back on the first Find.
+  await first.app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, dir);
+  await notice.getByRole('button', { name: 'Find…' }).click();
+  await expect(tile.getByTestId('wallpaper-missing')).toHaveCount(0);
+  await expect.poll(() => hallPicture(hall)).toBe(pictureId);
+  expect((await state(win)).chosenWallpaper?.id).toBe(wallpaperId);
+  expect(
+    await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.remove([id]), pictureId),
+  ).toMatchObject({ ok: true });
+  await says(hall, win);
+
   // Gone for good at the next start (its file removed from Media): the same.
   await first.app.close();
   const second = await relaunchApp(first.userData, ENV);
@@ -201,6 +231,16 @@ test('a photo converted after it became a wallpaper: the wallpaper moves to its 
     if (!chosen.ok) throw new Error(chosen.message);
     return added.ids[0] ?? '';
   }, photo);
+  const wallpaperTile = win
+    .getByTestId('wallpapers')
+    .locator(`[data-testid="wallpaper-tile"][data-wallpaper-id="${wallpaperId}"]`);
+  await expect(wallpaperTile.getByTestId('wallpaper-missing')).toHaveText('Convert picture');
+  await expect(wallpaperTile.locator('img')).toHaveCount(0);
+  await expect(win.getByTestId('wallpaper-missing-notice')).toContainText(
+    'The wallpaper’s picture needs conversion: “Placeholder photo.heic”. Convert it in Media.',
+  );
+  await expect(win.getByTestId('wallpaper-find-missing')).toHaveCount(0);
+  await expect(win.getByTestId('live-wallpaper-missing')).toContainText('needs conversion');
   expect(
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.convert([id]), photo),
   ).toMatchObject({ ok: true });
@@ -224,5 +264,15 @@ test('a photo converted after it became a wallpaper: the wallpaper moves to its 
       timeout: 15_000,
     })
     .toBe(true);
+  await expect(win.getByTestId('wallpaper-missing-notice')).toHaveCount(0);
+  await expect(win.getByTestId('live-wallpaper-missing')).toHaveCount(0);
+  const conversionId = (await job())?.conversionId ?? '';
+  expect(conversionId).not.toBe('');
+  expect(
+    await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.undoConversion(id), conversionId),
+  ).toMatchObject({ ok: true });
+  await expect.poll(async () => (await state(win)).chosenWallpaper?.pictures).toEqual([photo]);
+  await expect(wallpaperTile.getByTestId('wallpaper-missing')).toHaveText('Convert picture');
+  await expect(win.getByTestId('wallpaper-find-missing')).toHaveCount(0);
   await app.close();
 });
