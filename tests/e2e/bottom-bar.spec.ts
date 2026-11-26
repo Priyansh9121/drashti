@@ -4,9 +4,11 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import { dropboxStandIn, fileLink } from './dropbox-stand-in';
 import type { PageGlobals } from './helpers';
 import {
+  importAndGetIds,
   launchApp,
   openLibrary,
   openSection,
@@ -28,8 +30,8 @@ import { makeTestTone } from './test-media';
  * asks for one: Create playlist, Import sounds…, From a Link…, or sounds dropped there. Placeholder slides only.
  *
  * What is up, at a glance (alpha.24, the owner's calmer window): a layer's clear with nothing up is compact, its icon
- * alone, its words and key in its tooltip; lit, its words and key as before. Each keeps its place: no button along
- * the bar moves as a layer goes up.
+ * alone, its words and key in its tooltip; lit, its words and key as before, at once, nothing moving with it. The
+ * clears never move: each keeps its place.
  */
 
 /** Every button lit or on (Clear all, the clears, the Wallpaper and Black-out), each as its words and key. */
@@ -47,6 +49,13 @@ const BAR = [
 /** The bar with nothing up: the clears compact, their icons alone (alpha.24). */
 const AT_REST = ['Clear all F1', '', '', '', '', '', 'Wallpaper F12', 'Black-out B'];
 
+/** The bar's widths the clears are held to: Windows' smallest operator window, CI's, and 1280 × 720. */
+const SIZES = [
+  [1008, 645],
+  [1024, 645],
+  [1280, 720],
+] as const;
+
 /** Each layer's clear by its name, with its key. */
 const CLEARS = [
   ['Clear slide', 'F2'],
@@ -55,6 +64,24 @@ const CLEARS = [
   ['Clear messages', 'F6'],
   ['Clear ticker', 'F7'],
 ] as const;
+
+/** An announcement from a phone, on this computer's own network, approved into the ticker (as function-keys.spec's). */
+async function tickerUp(win: Page, text: string): Promise<void> {
+  const { port } = await networkOn(win);
+  const token = await pairToken(win, port, 'announcements', 'Placeholder poster');
+  const sent = await apiCall(port, '/api/v1/announcements', {
+    method: 'POST',
+    token,
+    body: { text, from: 'Placeholder poster', minutes: 10 },
+  });
+  expect(sent.status).toBe(202);
+  const id = (sent.json['announcement'] as { id: string }).id;
+  const approved = await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.announcements.approve({ id, as: 'ticker' }),
+    id,
+  );
+  expect(approved.ok).toBe(true);
+}
 
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
@@ -75,7 +102,7 @@ interface BarWatch {
  */
 async function watchBar(win: Page): Promise<void> {
   await win.evaluate(() => {
-    const BAR = '[data-testid="layer-bar"], [data-testid="simple-buttons"]';
+    const BARS = '[data-testid="layer-bar"], [data-testid="simple-buttons"]';
     const found: string[] = [];
     const name = (el: Element) =>
       el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName.toLowerCase();
@@ -83,11 +110,11 @@ async function watchBar(win: Page): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/unbound-method -- called on each element below, with call()
     const animate = proto.animate;
     proto.animate = function (this: Element, frames, options) {
-      if (this.closest(BAR)) found.push(`${name(this)}: a Web Animation`);
+      if (this.closest(BARS)) found.push(`${name(this)}: a Web Animation`);
       return animate.call(this, frames, options);
     };
     const starts = (e: Event) => {
-      if (e.target instanceof Element && e.target.closest(BAR)) found.push(`${name(e.target)}: ${e.type}`);
+      if (e.target instanceof Element && e.target.closest(BARS)) found.push(`${name(e.target)}: ${e.type}`);
     };
     document.addEventListener('transitionrun', starts, true);
     document.addEventListener('animationstart', starts, true);
@@ -157,9 +184,9 @@ async function oneRow(win: Page, where: string): Promise<number> {
   return (await bar.boundingBox())?.height ?? 0;
 }
 
-test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; no button moves as layers go up', async () => {
+test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; every layer up, all eight words and keys whole in one row from 1008 px; the clears never move', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp();
+  const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
   const bar = win.getByTestId('layer-bar');
@@ -220,9 +247,13 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(button('Clear background')).toBeDisabled();
   // Lit, its words and key back on it.
   await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', 'Slide F2', ...AT_REST.slice(2)]);
-  // Where each button is now (Clear all's words go bolder once it can be pressed, as before, which moves what follows
-  // it a pixel or two: so the places are held from here, with Clear all as it is).
-  const withSlide = await barMiddles(bar);
+  // Where each button is now, at each size (Clear all's words go bolder once it can be pressed, as before, which moves
+  // what follows it a pixel or two: so the places are held from here, with Clear all as it is).
+  const withSlide = new Map<number, number[]>();
+  for (const [width, height] of SIZES) {
+    await win.setViewportSize({ width, height });
+    withSlide.set(width, await barMiddles(bar));
+  }
 
   // F4 and F8 do nothing; F12 puts the wallpaper up over the slide (black: no wallpaper chosen yet), and off.
   const before = await state(win);
@@ -239,40 +270,37 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(button('Wallpaper')).toHaveAttribute('data-dimmed', 'true');
 
-  // A background and a message up too: their clears light up with their words and keys, in one row at both sizes,
-  // and no button moves.
+  // Every layer up too (the steps function-keys.spec takes): a background, a message, a sound going round and the
+  // ticker. Every clear lit with its words and key, all eight whole in one row from 1008 px, and no button moves.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-bottom-bar-'));
+  const [soundId = ''] = await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder tone.wav'), { seconds: 20, hz: 330 }),
+  ]);
+  expect(soundId).not.toBe('');
   for (const command of [
     { type: 'setBackground', background: { kind: 'color', color: '#1d4e89' } },
     { type: 'showMessage', message: { id: 'placeholder-message', text: 'Placeholder message' } },
+    {
+      type: 'playAudio',
+      audio: { id: 'placeholder-tone', title: 'Placeholder tone', mediaId: soundId, volume: 1, loop: true },
+    },
   ])
     await win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
-  const lit = [
-    'Clear all F1',
-    'Slide F2',
-    'Background F3',
-    '',
-    'Messages F6',
-    '',
-    'Wallpaper F12',
-    'Black-out B',
-  ];
-  for (const [width, height] of [
-    [1024, 645],
-    [1280, 720],
-  ] as const) {
+  await tickerUp(win, 'Placeholder announcement');
+  for (const [width, height] of SIZES) {
     await win.setViewportSize({ width, height });
-    await expect.poll(() => barWords(bar)).toEqual(lit);
-    await oneRow(win, `${width} × ${height}, three layers up`);
+    await expect.poll(() => barWords(bar), { message: `${width} × ${height}, every layer up` }).toEqual(BAR);
+    await oneRow(win, `${width} × ${height}, every layer up`);
+    await stayPut(bar, withSlide.get(width) ?? [], `${width} × ${height}, every layer up`);
   }
-  await stayPut(bar, withSlide, 'a background and a message up too');
   // The slide taken off again: its clear back to its icon at once, nothing moving on it or beside it, and still no
   // button moves.
   await watchBar(win);
   await button('Clear slide').click();
   await expect(button('Clear slide')).toHaveAttribute('data-dimmed', 'true');
   expect(await barStarted(win), 'the slide off: nothing moves on or beside its clear').toEqual([]);
-  await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', '', ...lit.slice(2)]);
-  await stayPut(bar, withSlide, 'the slide taken off, the background and the message up');
+  await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', '', ...BAR.slice(2)]);
+  await stayPut(bar, withSlide.get(1280) ?? [], 'the slide taken off, every other layer up');
   await app.close();
 });
 

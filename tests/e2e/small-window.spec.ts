@@ -1,9 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
+  importAndGetIds,
   launchApp,
   LIVE_SECTIONS,
   openAllSections,
@@ -13,6 +17,7 @@ import {
 } from './helpers';
 import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 import { headingProblems, layoutPicture, liveRowProblems } from './operator-layout';
+import { makeTestImage, makeTestTone } from './test-media';
 
 /*
  * The operator window as CI's displays leave it, about 1024 × 645 (Session 51). Start here's three steps had been
@@ -259,6 +264,13 @@ const rowPlaced = (win: Page) =>
     return out;
   });
 
+/** Simple Mode's clears beside its Clear all (Session 56), in the order of their keys. */
+const SIMPLE_CLEARS = [
+  ['slide', 'F2'],
+  ['background', 'F3'],
+  ['audio', 'F5'],
+] as const;
+
 /** The layer bar's clears, in the order of their keys (Session 55: F4 and F8 went with Props and Masks). */
 const CLEARS = [
   ['slide', 'F2'],
@@ -466,6 +478,13 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
+  // A picture and a sound for its Background and Audio to light up, imported in Pro Mode.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-small-window-'));
+  const [pictureId = '', soundId = ''] = await importAndGetIds(win, [
+    await makeTestImage(win, join(dir, 'Placeholder backdrop.png'), { color: '#1d4e89' }),
+    makeTestTone(join(dir, 'Placeholder bell.wav'), { seconds: 30 }),
+  ]);
+  expect([pictureId, soundId].every((id) => id !== '')).toBe(true);
   // A slide up for Clear all to take down, put up in Pro Mode (Simple Mode chooses none).
   const problem = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
@@ -480,20 +499,47 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   // Pro Mode's bar since Session 55 (Part 18), with Clear all, Slide, Background and Audio beside it (Session 56), the
   // Wallpaper and Black-out, each with its key (a clear with nothing up compact, its icon alone: alpha.24); Put it
   // back in Clear all's place after it. Next and Back are under LIVE, as in Pro Mode.
-  const simpleBar = (clear: string, slideUp: boolean, wallpaper: string, blackout: string) => [
+  const simpleBar = (clear: string, lit: readonly string[], wallpaper: string, blackout: string) => [
     clear,
-    slideUp ? 'Clear slide (on screen) F2' : 'Clear slide',
-    'Clear background',
-    'Clear audio',
+    ...SIMPLE_CLEARS.map(([layer, key]) => {
+      if (lit.includes(layer)) return `Clear ${layer} (on screen) ${key}`;
+      return `Clear ${layer}`;
+    }),
     wallpaper,
     blackout,
   ];
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Clear all F1', true, 'Wallpaper F12', 'Black-out B'),
+    simpleBar('Clear all F1', ['slide'], 'Wallpaper F12', 'Black-out B'),
     'as it opens',
   );
+  // Its three clears lit at once (the picture behind the slide, the sound going round): each with its words and key,
+  // whole at every width; then those two taken off again by their own buttons.
+  for (const command of [
+    {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: pictureId, media: 'image', fit: 'fit', loop: false },
+    },
+    {
+      type: 'playAudio',
+      audio: { id: soundId, title: 'Placeholder bell', mediaId: soundId, volume: 1, loop: true },
+    },
+  ])
+    await win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
+  await expectBarAtEveryWidth(
+    win,
+    'simple-buttons',
+    simpleBar('Clear all F1', ['slide', 'background', 'audio'], 'Wallpaper F12', 'Black-out B'),
+    'a slide, a picture behind it and a sound up',
+  );
+  for (const layer of ['background', 'audio']) {
+    await win.getByTestId(`simple-clear-${layer}`).click();
+    await expect(win.getByTestId(`simple-clear-${layer}`), layer).toHaveAttribute('data-dimmed', 'true');
+  }
+  await win.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
   // One cover at a time (Session 57: the Wallpaper and Black-out take each other off), so the bar is checked with
   // each of them on: Black-out, then the Wallpaper in its place; then Put it back offered with each.
   await win.keyboard.press('b');
@@ -501,7 +547,7 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Clear all F1', true, 'Wallpaper F12', 'Black-out is on B'),
+    simpleBar('Clear all F1', ['slide'], 'Wallpaper F12', 'Black-out is on B'),
     'Black-out on',
   );
   await win.keyboard.press('F12');
@@ -510,7 +556,7 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Clear all F1', true, 'Wallpaper is on F12', 'Black-out B'),
+    simpleBar('Clear all F1', ['slide'], 'Wallpaper is on F12', 'Black-out B'),
     'the Wallpaper on in Black-out’s place',
   );
   await win.keyboard.press('F1');
@@ -518,7 +564,7 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Put it back', false, 'Wallpaper is on F12', 'Black-out B'),
+    simpleBar('Put it back', [], 'Wallpaper is on F12', 'Black-out B'),
     'Put it back offered, the Wallpaper on',
   );
   await win.keyboard.press('b');
@@ -527,7 +573,7 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Put it back', false, 'Wallpaper F12', 'Black-out is on B'),
+    simpleBar('Put it back', [], 'Wallpaper F12', 'Black-out is on B'),
     'Put it back offered, Black-out on in the Wallpaper’s place',
   );
   // Next and Back whole and in sight, at the narrowest as at CI's.
