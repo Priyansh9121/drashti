@@ -7,8 +7,11 @@
 //   node scripts/mac-sign-keychain.mjs --cleanup     the job's last step, always: the runner's trust and the rest
 //
 // Command output is captured and never printed: security may echo its arguments. A failure names only the
-// security subcommand that failed, or a reason this script gives itself; never an argument, an output or a
-// secret. Only the temporary keychain's path reaches packaging; the key and its password do not.
+// security subcommand that failed (for the import, also one fixed reason matched from its words), or a reason
+// this script gives itself; never an argument, an output or a secret. Before the import, one line names the
+// .p12's public algorithms (never a byte of it). A password that fails with whitespace at its ends is tried once
+// without it, with a fixed line saying so. Only the temporary keychain's path reaches packaging; the key and its
+// password do not.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -38,6 +41,37 @@ export function importArgs(p12, keychain, password) {
   return ['import', p12, '-k', keychain, '-P', password, '-x', '-T', '/usr/bin/codesign'];
 }
 
+/**
+ * What security's words on a failed command come to, as a code: they are matched here and dropped, never kept,
+ * printed or thrown (they can repeat the arguments, and so the password). A wrong password's "MAC verification
+ * failed" can also be an older security tool that cannot check a newer .p12's MAC: the algorithm line logged
+ * before the import tells those apart.
+ */
+export function importFailure(output) {
+  const said = String(output).toLowerCase();
+  if (/mac verification failed|wrong password|passphrase/u.test(said)) return 'password';
+  if (/unknown format|unsupported|not supported|decod/u.test(said)) return 'format';
+  if (/invalid/u.test(said)) return 'invalid';
+  return 'unknown';
+}
+
+/** The one fixed reason a failed import prints; `pfx`: the file has a .p12's outer shape (describeP12). */
+export function importReason(failure, pfx) {
+  if (failure === 'password') return 'wrong password';
+  if (failure === 'format' && pfx) return "the .p12's format is not readable by this runner's security tool";
+  if (failure === 'format' || failure === 'invalid') return 'the file is not a .p12';
+  return 'unknown reason';
+}
+
+/** A failed security command: its subcommand and a reason code, never its arguments or output. */
+export class SecurityCommandError extends SigningKeychainError {
+  constructor(subcommand, failure) {
+    super(`Signing keychain command failed: security ${subcommand}`);
+    this.subcommand = subcommand;
+    this.failure = failure;
+  }
+}
+
 /** Runs /usr/bin/security (through sudo -n as administrator); `spawn` is spawnSync but in tests. */
 export function securityRunner(spawn = spawnSync) {
   return (args, administrator = false) => {
@@ -46,9 +80,171 @@ export function securityRunner(spawn = spawnSync) {
     const result = spawn(command, commandArgs, { encoding: 'utf8' });
     // The subcommand alone: the others can hold a password, and the output can repeat them.
     if (result.status !== 0)
-      throw new SigningKeychainError(`Signing keychain command failed: security ${String(args[0])}`);
+      throw new SecurityCommandError(
+        String(args[0]),
+        importFailure(`${result.stderr ?? ''}\n${result.stdout ?? ''}`),
+      );
     return result.stdout;
   };
+}
+
+/*
+ * The .p12's public structure (RFC 7292), read before the import: which algorithms protect it and its MAC. Only
+ * names from this table are ever printed, never a byte of the file, its salts, counts or digests.
+ */
+const ALGORITHMS = new Map([
+  ['1.2.840.113549.1.12.1.1', 'pbeWithSHAAnd128BitRC4'],
+  ['1.2.840.113549.1.12.1.2', 'pbeWithSHAAnd40BitRC4'],
+  ['1.2.840.113549.1.12.1.3', 'pbeWithSHAAnd3-KeyTripleDES-CBC'],
+  ['1.2.840.113549.1.12.1.4', 'pbeWithSHAAnd2-KeyTripleDES-CBC'],
+  ['1.2.840.113549.1.12.1.5', 'pbeWithSHAAnd128BitRC2-CBC'],
+  ['1.2.840.113549.1.12.1.6', 'pbeWithSHAAnd40BitRC2-CBC'],
+  ['1.2.840.113549.1.5.13', 'PBES2'],
+  ['1.2.840.113549.1.5.12', 'PBKDF2'],
+  ['1.2.840.113549.1.5.14', 'PBMAC1'],
+  ['1.2.840.113549.3.7', 'DES-EDE3-CBC'],
+  ['2.16.840.1.101.3.4.1.2', 'AES-128-CBC'],
+  ['2.16.840.1.101.3.4.1.22', 'AES-192-CBC'],
+  ['2.16.840.1.101.3.4.1.42', 'AES-256-CBC'],
+  ['1.2.840.113549.2.7', 'HMAC-SHA-1'],
+  ['1.2.840.113549.2.8', 'HMAC-SHA-224'],
+  ['1.2.840.113549.2.9', 'HMAC-SHA-256'],
+  ['1.2.840.113549.2.10', 'HMAC-SHA-384'],
+  ['1.2.840.113549.2.11', 'HMAC-SHA-512'],
+  ['1.3.14.3.2.26', 'SHA-1'],
+  ['2.16.840.1.101.3.4.2.4', 'SHA-224'],
+  ['2.16.840.1.101.3.4.2.1', 'SHA-256'],
+  ['2.16.840.1.101.3.4.2.2', 'SHA-384'],
+  ['2.16.840.1.101.3.4.2.3', 'SHA-512'],
+]);
+const PKCS7_DATA = '1.2.840.113549.1.7.1';
+const PKCS7_SIGNED_DATA = '1.2.840.113549.1.7.2';
+
+/** One DER element at `at`: its tag and where its contents start and end; null if it does not fit (or is BER). */
+function element(bytes, at) {
+  if (at + 2 > bytes.length) return null;
+  let length = bytes[at + 1];
+  let start = at + 2;
+  if (length & 0x80) {
+    const count = length & 0x7f;
+    // 0: BER's indefinite length, which DER never uses.
+    if (count === 0 || count > 4 || start + count > bytes.length) return null;
+    length = 0;
+    for (let i = 0; i < count; i += 1) length = length * 256 + bytes[start + i];
+    start += count;
+  }
+  const end = start + length;
+  return end <= bytes.length ? { tag: bytes[at], start, end } : null;
+}
+
+/** An OBJECT IDENTIFIER's contents in dotted form, or '' if they are not one. */
+function dotted(bytes, start, end) {
+  const arcs = [];
+  let value = 0;
+  for (let i = start; i < end; i += 1) {
+    value = value * 128 + (bytes[i] & 0x7f);
+    if ((bytes[i] & 0x80) === 0) {
+      arcs.push(value);
+      value = 0;
+    }
+  }
+  if (arcs.length < 2 || (bytes[end - 1] & 0x80) !== 0) return '';
+  const first = arcs[0];
+  const head = first < 80 ? [Math.floor(first / 40), first % 40] : [2, first - 80];
+  return [...head, ...arcs.slice(1)].join('.');
+}
+
+/** The known algorithm names in bytes [from, to), in the order they first appear. */
+function knownNames(bytes, from, to) {
+  const names = [];
+  for (let i = from; i + 2 < to; i += 1) {
+    const length = bytes[i + 1];
+    if (bytes[i] !== 0x06 || length < 3 || length > 20 || i + 2 + length > to) continue;
+    const name = ALGORITHMS.get(dotted(bytes, i + 2, i + 2 + length));
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+function oidOf(bytes, at) {
+  const id = element(bytes, at);
+  return id && id.tag === 0x06 ? dotted(bytes, id.start, id.end) : '';
+}
+
+/**
+ * The .p12's algorithm names (PFX: version 3, the content, then MacData), for one log line before the import.
+ * `pfx` is whether it has a .p12's outer shape; a structure this cannot walk still has its names listed.
+ */
+export function describeP12(bytes) {
+  const top = element(bytes, 0);
+  const version = top && top.tag === 0x30 ? element(bytes, top.start) : null;
+  const content = version && version.tag === 0x02 ? element(bytes, version.end) : null;
+  const walked = Boolean(top && content && content.tag === 0x30 && content.end <= top.end);
+  const pfx =
+    walked &&
+    version.end - version.start === 1 &&
+    bytes[version.start] === 3 &&
+    [PKCS7_DATA, PKCS7_SIGNED_DATA].includes(oidOf(bytes, content.start));
+  let encryption;
+  let mac;
+  if (!walked) {
+    encryption = knownNames(bytes, 0, bytes.length);
+    mac = 'unknown';
+  } else {
+    encryption = knownNames(bytes, content.start, content.end);
+    const macData = content.end < top.end ? element(bytes, content.end) : null;
+    const inMac = macData && macData.tag === 0x30 ? knownNames(bytes, macData.start, macData.end) : [];
+    const digest = inMac.find((name) => /^SHA-/u.test(name));
+    if (!macData) mac = 'none';
+    else if (inMac.includes('PBMAC1'))
+      mac = `PBMAC1 (${inMac.filter((name) => name !== 'PBMAC1').join(' + ') || 'unknown'})`;
+    else mac = digest ? `HMAC-${digest}` : 'unknown';
+  }
+  const uses = encryption.length > 0 ? encryption.join(' + ') : 'no algorithm this check knows';
+  return { pfx, encryption, mac, line: `Signing: .p12 uses ${uses}, MAC ${mac}` };
+}
+
+export const NOT_A_P12 = 'MAC_SIGN_P12_BASE64 is not a .p12 in base64.';
+
+/** The secret's bytes: base64 (line breaks allowed) of a DER SEQUENCE, or the fixed refusal, holding no byte. */
+export function decodeP12(encoded) {
+  const text = encoded.replace(/\s+/gu, '');
+  const bytes = /^[A-Za-z0-9+/]+={0,2}$/u.test(text) ? Buffer.from(text, 'base64') : Buffer.alloc(0);
+  if (bytes.length === 0 || bytes[0] !== 0x30) throw new SigningKeychainError(NOT_A_P12);
+  return bytes;
+}
+
+const TRAILING_LINE_BREAK = 'Signing: the password secret had a trailing line break; it was used without it.';
+const SPACES_AT_ENDS =
+  'Signing: the password secret had spaces at its start or end; it was used without them.';
+const BOTH_TRIED =
+  " (tried as given, and again without the password secret's leading and trailing whitespace)";
+
+/**
+ * The import with the password exactly as given; if that fails and the password has whitespace at its ends
+ * (`openssl rand -base64 30 | pbcopy` copies a line break with it, which a secret pasted from it may keep),
+ * once more without it. A failure names one fixed reason; nothing security said, and no password, is printed.
+ */
+function importIdentity({ security, log }, p12, keychain, password, pfx) {
+  const failed = (error, suffix) =>
+    error instanceof SecurityCommandError
+      ? new SigningKeychainError(
+          `Signing keychain command failed: security import: ${importReason(error.failure, pfx)}${suffix}`,
+        )
+      : error;
+  try {
+    security(importArgs(p12, keychain, password));
+    return;
+  } catch (error) {
+    const trimmed = password.trim();
+    if (trimmed === password || trimmed === '') throw failed(error, '');
+  }
+  try {
+    security(importArgs(p12, keychain, password.trim()));
+  } catch (error) {
+    throw failed(error, BOTH_TRIED);
+  }
+  log(/[\r\n]$/u.test(password) ? TRAILING_LINE_BREAK : SPACES_AT_ENDS);
 }
 
 const MODES = ['--delete-key', '--cleanup'];
@@ -107,14 +303,18 @@ function keychainStep({ argv, env, platform, security, log }) {
     );
   }
   if (!env.GITHUB_ENV) throw new SigningKeychainError('Missing Actions environment file.');
+  // Checked and described before anything is made: its public algorithm names only.
+  const bytes = decodeP12(encoded);
+  const { pfx, line } = describeP12(bytes);
+  log(line);
   mkdirSync(dir, { mode: 0o700 });
   try {
-    writeFileSync(p12, Buffer.from(encoded, 'base64'), { mode: 0o600 });
+    writeFileSync(p12, bytes, { mode: 0o600 });
     const temporaryPassword = randomBytes(32).toString('hex');
     security(['create-keychain', '-p', temporaryPassword, keychain]);
     security(['set-keychain-settings', '-lut', '21600', keychain]);
     security(['unlock-keychain', '-p', temporaryPassword, keychain]);
-    security(importArgs(p12, keychain, password));
+    importIdentity({ security, log }, p12, keychain, password, pfx);
     security(['set-key-partition-list', '-S', 'apple-tool:,apple:', '-s', '-k', temporaryPassword, keychain]);
     // electron-builder searches valid identities. Trust only the public certificate, only on this runner.
     // Noninteractive sudo uses the hosted runner’s admin store; no GUI trust prompt can block the build. No -k:
