@@ -66,12 +66,13 @@ export function altAfter(held: boolean, e: AltEvent): boolean {
 }
 
 /**
- * Alt held on its own this long is a look at the keys, not a press of Alt: its letting go is taken (its default
+ * Alt held on its own this long is a look at the keys, not a tap of Alt: its letting go is taken (its default
  * prevented). On Windows (and Linux) Electron shows the hidden menu bar and gives it the keyboard when Alt alone is let
- * go and the page has not taken it, so after a look the next arrow key would go to the menu, not the show. A quick
- * press still opens the menu bar, as the manual says.
+ * go and the page has not taken it, so after a look the next arrow key would go to the menu, not the show. A quarter of
+ * a second (the release lead's review, S2; 500 ms until then): a deliberate tap takes about 80 to 150 ms and still
+ * opens the menu bar, as the manual says, and a glance at a key is longer.
  */
-export const LOOK_MS = 500;
+export const LOOK_MS = 250;
 
 /**
  * Follow Alt in `win` and keep its root saying when the buttons' keys are hidden (`data-keys-hidden`, help.css) until

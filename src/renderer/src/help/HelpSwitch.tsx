@@ -13,12 +13,15 @@ import { connectKeyHints, toggleHelp, useHelp } from './help-store';
  * once, as everything that shows or hides help does: nothing moves.
  */
 
-/** Its tooltip's words: its name (a narrow window shows its ? alone), what it shows, and Alt (Option on a Mac). */
+/**
+ * Its tooltip's words: its name (a narrow window shows its ? alone), what it shows, and Alt (Option on a Mac); then to
+ * let go of it before pressing a key, as a key pressed with Alt still held is another key (Alt+F2 does nothing).
+ */
 export function helpTip(platform: string, simple: boolean): string {
   const alt = platform === 'darwin' ? 'Option' : 'Alt';
   return simple
-    ? `Help: the keys on the buttons. Hold ${alt} to see them for a moment.`
-    : `Help: the ? beside each part and the keys on the buttons. Hold ${alt} to see the keys for a moment.`;
+    ? `Help: the keys on the buttons. Hold ${alt} to see them; let go of ${alt}, then press one.`
+    : `Help: the ? beside each part and the keys on the buttons. Hold ${alt} to see the keys; let go of ${alt}, then press one.`;
 }
 
 /**
