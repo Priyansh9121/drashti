@@ -175,3 +175,67 @@ test('a double click on a caption word’s Remove takes out that word only: the 
   await expect(dialog.getByTestId('caption-word')).toHaveText(rest.filter((w) => w !== WORDS[2]));
   await app.close();
 });
+
+/** Invented words to leave out, enough that the list scrolls (as with Caption Words, above). */
+const LEFT_OUT = [
+  'Zorvek',
+  'Plindar',
+  'Quosmet',
+  'Vretnal',
+  'Skavoru',
+  'Dremlix',
+  'Tolvaq',
+  'Murnesk',
+] as const;
+
+/** The admin's own English words left out, as the library keeps them. */
+const leftOutKept = (win: Page) =>
+  win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.captionClean.view()).words
+      .filter((w) => w.language === 'en')
+      .map((w) => w.word),
+  );
+
+test('a double click on a word’s Remove in Words Left Out… takes out that word only: the word that moves up under the pointer stays', async () => {
+  test.setTimeout(120_000);
+  const { app, win } = await start();
+  await win.evaluate(
+    async (words) => {
+      await (globalThis as PageGlobals).drashti.captionClean.set(
+        words.map((word) => ({ language: 'en' as const, word })),
+      );
+    },
+    [...LEFT_OUT],
+  );
+  // File › Live Captions… › Words Left Out…, the English list; its words hidden, as each time it opens.
+  await chooseMenuItem(app, 'live-captions');
+  await win.getByTestId('captions-dialog').getByTestId('captions-clean').click();
+  const dialog = win.getByTestId('caption-clean-dialog');
+  await dialog.getByTestId('caption-clean-language').selectOption('en');
+  const rows = dialog.getByTestId('caption-clean-word');
+  await expect(rows).toHaveCount(LEFT_OUT.length);
+  // Hidden, each Remove is named by its place: the first row's is always "Remove Hidden word 1".
+  const first = dialog.getByRole('button', { name: 'Remove Hidden word 1', exact: true });
+  const second = dialog.getByRole('button', { name: 'Remove Hidden word 2', exact: true });
+  const rest = LEFT_OUT.slice(1);
+
+  const at = await pointAt(win, first);
+  // The first click: the word goes at once (kept at once, with no Undo).
+  await firstClick(win);
+  await expect(rows).toHaveCount(LEFT_OUT.length - 1);
+  await expect.poll(() => leftOutKept(win)).toEqual(rest);
+  // The next word has moved up into its place: its Remove is under the pointer, where the second click lands.
+  await expect.poll(() => isUnder(first, at)).toBe(true);
+  await secondClick(win, at);
+  await holdStill(
+    async () => JSON.stringify(await leftOutKept(win)) === JSON.stringify(rest),
+    1500,
+    'a double click’s second click takes out no other word',
+  );
+  await expect(rows).toHaveCount(LEFT_OUT.length - 1);
+  // Enter on a Remove (a click with no count) still takes its word out.
+  await second.focus();
+  await win.keyboard.press('Enter');
+  await expect.poll(() => leftOutKept(win)).toEqual(rest.filter((w) => w !== rest[1]));
+  await app.close();
+});

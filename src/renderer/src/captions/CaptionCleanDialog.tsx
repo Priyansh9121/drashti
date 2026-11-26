@@ -32,6 +32,21 @@ import {
  * Drashti's own list is never shown: only how many words it has.
  */
 
+/** A word's Remove in the list (its name as shown: the word, or "Hidden word 2"): taken out at once, kept at once. */
+export function CleanWordRemove({ shown, onRemove }: { shown: string; onRemove: () => void }) {
+  return (
+    <IconButton
+      icon={Trash2}
+      size="sm"
+      variant="ghost"
+      label={`Remove ${shown}`}
+      onClick={() => {
+        onRemove();
+      }}
+    />
+  );
+}
+
 /** A word's own language for the letters (Sanskrit in Gujarati letters, as the screens show it). */
 const LANG_TAG: Record<SpeechLanguage, string> = { gu: 'gu', hi: 'hi', sa: 'sa-Gujr', en: 'en' };
 
@@ -255,12 +270,9 @@ function CaptionCleanDialog({
                   >
                     {shown}
                   </span>
-                  <IconButton
-                    icon={Trash2}
-                    size="sm"
-                    variant="ghost"
-                    label={`Remove ${shown}`}
-                    onClick={() => {
+                  <CleanWordRemove
+                    shown={shown}
+                    onRemove={() => {
                       save(all.filter((x) => x !== w));
                     }}
                   />
