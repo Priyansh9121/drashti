@@ -206,6 +206,7 @@ import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/dec
 import { deckAppsOf, readDeckAnimations, writeDeckAnimations } from './import/deck/deck-setting';
 import { LinkService } from './links/link-service';
 import { libraryProblem } from './library-problem';
+import { ChangedPresentations } from './library-changes';
 import { parsePlain } from '../shared/plain-parse';
 import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
@@ -4032,7 +4033,7 @@ function start(): void {
     if (!kept.ok) return kept;
     slides.invalidate(presentationId);
     engine.refreshNext();
-    libraryChanged(true);
+    libraryChanged(true, [presentationId]);
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     network?.hint('playlists');
     return { ok: true as const, ids: [presentationId] };
@@ -5186,7 +5187,11 @@ function start(): void {
   // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
   let changedTimer: NodeJS.Timeout | null = null;
   let lastChanged = 0;
-  const libraryChanged = (now = false) => {
+  // The presentations the changes name, for the phones' hint (QA24-PHONE-C): a phone reads again only those of its
+  // rows. `ids` left out: the change cannot name them, so any may have changed (the phones read every row again).
+  const changedPresentations = new ChangedPresentations();
+  const libraryChanged = (now = false, ids?: readonly string[]) => {
+    changedPresentations.add(ids);
     const send = () => {
       changedTimer = null;
       // Quitting: the library has closed (Session 23: a change during an import came 2 s later).
@@ -5197,7 +5202,7 @@ function start(): void {
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       // The slide editor's own window: its pictures, videos and sounds to choose from (Session 55, Part 17a).
       slideEditor?.send(IPC.library.changed, { at: lastChanged, what: 'presentations' });
-      network?.hint('presentations');
+      network?.hint('presentations', changedPresentations.take());
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
       nodeService?.libraryChanged();
@@ -6515,7 +6520,7 @@ function start(): void {
       slides.invalidate(id);
       engine.refreshLive(id);
     }
-    libraryChanged(true);
+    libraryChanged(true, ids);
   };
   const wordsChanges = registerWordsIpc({
     db,
@@ -9317,7 +9322,7 @@ function start(): void {
       for (const id of removed) slides.invalidate(id);
       engine.refreshNext();
       log.info(`Removed ${removed.length} presentation(s)`);
-      libraryChanged(true);
+      libraryChanged(true, removed);
       return { ok: true as const, ids: removed };
     },
     restorePresentations: (ids) => {
@@ -9327,7 +9332,7 @@ function start(): void {
       for (const id of restored) slides.invalidate(id);
       engine.refreshNext();
       log.info(`Restored ${restored.length} presentation(s)`);
-      libraryChanged(true);
+      libraryChanged(true, restored);
       return { ok: true as const, ids: restored };
     },
   };

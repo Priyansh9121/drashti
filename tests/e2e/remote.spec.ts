@@ -150,6 +150,62 @@ test('the remote’s waits are said as a status, and its empty places say where 
   await app.close();
 });
 
+/** What has the focus on the phone's page: a test id, 'page' for the page itself, or another element's tag. */
+function focused(p: Page): Promise<string> {
+  return p.evaluate(() => {
+    const at = document.activeElement;
+    if (!at || at === document.body) return 'page';
+    return at.getAttribute('data-testid') ?? at.tagName;
+  });
+}
+
+test('Simple Mode coming on moves a phone’s focus to Show when Pro Mode’s control that had it goes, and moves nothing when nothing had it (Chromium; QA24-PHONE-B, a24-review-phonefix MUST-1)', async () => {
+  // a23-review-phoneui LOW-3: the focus never left on the page itself (a keyboard, switch access or TalkBack user on
+  // Pro Mode's Playlist tab); QA24-PHONE-B: never moved by itself when nothing had it (an iPhone's tap focuses no
+  // button). Chromium sends focusout while it removes the focused element, still on the page then.
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    const playlistTab = p.getByTestId('remote-tab-playlist');
+    await expect(playlistTab).toBeVisible();
+    // Pro Mode's Playlist tab has the focus (the keyboard's Tab, or a screen reader's cursor on it); Simple Mode
+    // comes on and the tab goes: the focus goes to Show, never left on the page itself.
+    await playlistTab.focus();
+    await expect(playlistTab).toBeFocused();
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    await expect(p.getByTestId('remote-simple')).toBeVisible();
+    await expect(playlistTab).toHaveCount(0);
+    await expect(p.getByTestId('remote-tab-show')).toBeFocused();
+
+    // Pro Mode again; the Playlist tab focused, then a tap on the page's blank part (the connection's words): nothing
+    // has the focus. Simple Mode comes on: nothing had the focus, so nothing moves it.
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+    await expect(playlistTab).toBeVisible();
+    await playlistTab.focus();
+    await expect(playlistTab).toBeFocused();
+    await p.getByTestId('connection').click();
+    await expect.poll(() => focused(p)).toBe('page');
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    await expect(p.getByTestId('remote-simple')).toBeVisible();
+    await expect(playlistTab).toHaveCount(0);
+    await holdStill(
+      async () => (await focused(p)) === 'page',
+      500,
+      'nothing had the focus, so Simple Mode coming on moves nothing',
+    );
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
 /** The slide the engine has up, drawn on the output (by its id), or none drawn there. */
 async function outputDraws(win: Page, output: Page): Promise<boolean> {
   const id = (await snapshot(win)).state.layers.slide?.slide.id ?? null;

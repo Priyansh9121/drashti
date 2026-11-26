@@ -63,7 +63,14 @@ import { LiveLines } from './LiveLines';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import { FlowLayer, FlowSection } from './FlowSheet';
 import { type RemoteLayout, useLayout } from './layout';
-import { deckLiveIn, focusesShow, phoneControls, type PhoneControls, TIMER_ALONE_WORDS } from './phone-mode';
+import {
+  deckLiveIn,
+  focusesShow,
+  focusWatch,
+  phoneControls,
+  type PhoneControls,
+  TIMER_ALONE_WORDS,
+} from './phone-mode';
 import { PlaylistTab } from './PlaylistTab';
 import { useSimple } from './simple';
 import { Swipes, type SwipeWay } from './swipe';
@@ -999,16 +1006,31 @@ function Layout() {
   const panelTab = shownTab(chosen, controls.panelTabs);
   // Simple Mode coming on over Pro Mode's controls takes away what had the focus (Back, Next, a row, a tile): it goes to
   // the Show tab, never left on the page itself. Never as a page opens in Simple Mode (a23-review-phoneui LOW-3: a
-  // screen reader's cursor would move on its own as the page loads).
+  // screen reader's cursor would move on its own as the page loads), and only when an element had the focus and went
+  // (QA24-PHONE-B: on an iPhone a tap focuses no button, and VoiceOver's cursor jumped to Show at every switch).
   const inSimple = simple !== null;
   const hallHeard = useRemote((s) => s.hall !== null);
   const simpleBefore = useRef<boolean | null>(null);
+  const [focus] = useState(() => focusWatch<Element>());
+  useEffect(() => {
+    const took = (e: FocusEvent) => focus.took(e.target instanceof Element ? e.target : null);
+    const left = (e: FocusEvent) => focus.left(e.target instanceof Element ? e.target : null);
+    document.addEventListener('focusin', took);
+    document.addEventListener('focusout', left);
+    return () => {
+      document.removeEventListener('focusin', took);
+      document.removeEventListener('focusout', left);
+    };
+  }, [focus]);
   useEffect(() => {
     if (!hallHeard) return;
-    if (focusesShow(simpleBefore.current, inSimple) && document.activeElement === document.body)
+    if (
+      focusesShow(simpleBefore.current, inSimple, focus.wentAway()) &&
+      document.activeElement === document.body
+    )
       document.querySelector<HTMLElement>('[data-testid="remote-tab-show"]')?.focus();
     simpleBefore.current = inSimple;
-  }, [inSimple, hallHeard]);
+  }, [inSimple, hallHeard, focus]);
   // A view of the show on the screen (a tablet's show column or presenter column, or the Show tab): the chat brings
   // no banner then (it would move or cover the show's controls under the finger) and no sound (a22-review-chat P-M1).
   const showOnScreen = layout === 'wide' || layout === 'landscape' || tab === 'show';

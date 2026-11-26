@@ -50,10 +50,13 @@ export const useFeed = create<FeedView>(() => ({
 const WAITS_MS = [1000, 2000, 4000, 8000];
 const CLOCK_EVERY_MS = 30_000;
 
-const changeListeners = new Set<(what: NetworkChange) => void>();
+const changeListeners = new Set<(what: NetworkChange, ids?: readonly string[]) => void>();
 
-/** Lists this page shows changed in Drashti (playlists, templates...): read them again. */
-export function onListsChanged(listener: (what: NetworkChange) => void): () => void {
+/**
+ * Lists this page shows changed in Drashti (playlists, templates...): read them again. With 'presentations', `ids`
+ * names those that changed when Drashti can (QA24-PHONE-C); left out, any may have.
+ */
+export function onListsChanged(listener: (what: NetworkChange, ids?: readonly string[]) => void): () => void {
   changeListeners.add(listener);
   return () => changeListeners.delete(listener);
 }
@@ -166,7 +169,7 @@ function receive(message: ToDevice): void {
       return;
     }
     case 'changed':
-      for (const l of changeListeners) l(message.what);
+      for (const l of changeListeners) l(message.what, message.ids);
       return;
     case 'chat':
       for (const l of chatListeners) l(message.event);
