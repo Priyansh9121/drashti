@@ -22,7 +22,8 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 /*
  * A name of five letters or more is blanked wherever it is, inside other words too, as before alpha.24 (the owner's
- * QA24-DIAG-2: "Hide long names inside words (Recommended)"). Letters are counted as a reader counts them (\p{L}): a
+ * QA24-DIAG-2: "Hide long names inside words (Recommended)"), and so is any name with a letter of Gujarati, Devanagari,
+ * another Indic script or Hangul, however few its letters: those write compounds and endings joined (the review's G1). Letters are counted as a reader counts them (\p{L}): a
  * vowel sign or a virama is part of its letter, not one more ("નમસ્તે" has four), and the count is the same on every
  * computer (a grapheme count would follow the version of ICU, whose Indic conjunct rules changed in Unicode 15.1).
  *
@@ -34,7 +35,8 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
  * - It also ends between a letter and a digit ("Sabha2026"), at a small letter before a capital ("EveningSabha") and
  *   where the script changes ("Sabhaસભા"); a name's last digit ends it before more digits ("Sabha 2026" in
  *   "Sabha 20261"). One case and one script of letters, as in "newest", is one word.
- * - A run of capitals before a capitalised name starts its word ("ABCNew" is "ABC" and "New"; "ANEW" is one).
+ * - A run of capitals before a capitalised word splits there ("ABCNew" is "ABC" and "New"; "ANEW" is one), at a
+ *   name's start (R1) and at its end (R1b).
  * - A separator written as an escape starts a word: a URL's %20 or %2F, JSON's \n, \t or \r.
  * - Gujarati, Devanagari and the other Indic scripts, and Korean, write a word's endings joined to it ("સભા" + "માં"):
  *   there only a name's start is looked at, whatever follows it.
@@ -137,6 +139,11 @@ function endsWord(s: string, end: number): boolean {
     (JOINED_ENDINGS.test(last) || (DIGIT.test(last) && next !== undefined && DIGIT.test(next)))
   )
     return true;
+  // A capital before a capitalised word (R1b): "ABCSaba" with the name "ABC".
+  if (last !== undefined && next !== undefined && CAPITAL.test(last) && CAPITAL.test(next)) {
+    const after = charAt(s, end + next.length);
+    if (after !== undefined && SMALL.test(after)) return true;
+  }
   return !joins(last, next);
 }
 
@@ -157,6 +164,11 @@ const NAMES_AT_ONCE = 400;
 /** A name with this many letters or more is blanked inside other words too (QA24-DIAG-2). */
 const LONG_NAME_LETTERS = 5;
 const letterCount = (name: string): number => name.match(/\p{L}/gu)?.length ?? 0;
+/** A letter of a script whose words take joined endings and compounds (the review's G1: "સભા" inside "મહાસભા"). */
+const JOINED_LETTER =
+  /[\p{sc=Devanagari}\p{sc=Bengali}\p{sc=Gurmukhi}\p{sc=Gujarati}\p{sc=Oriya}\p{sc=Tamil}\p{sc=Telugu}\p{sc=Kannada}\p{sc=Malayalam}\p{sc=Sinhala}\p{sc=Tibetan}\p{sc=Hangul}]/u;
+/** Blanked inside other words too: five letters or more, or any letter of such a script, however few. */
+const isLong = (name: string): boolean => letterCount(name) >= LONG_NAME_LETTERS || JOINED_LETTER.test(name);
 
 /**
  * The text with every one of these names blanked out: a long name wherever it is, a short one where it is the name;
@@ -164,8 +176,8 @@ const letterCount = (name: string): number => name.match(/\p{L}/gu)?.length ?? 0
  */
 export function redactNames(text: string, names: readonly string[]): string {
   const sorted = [...new Set(names)].filter((n) => n !== '').sort((a, b) => b.length - a.length);
-  const long = sorted.filter((n) => letterCount(n) >= LONG_NAME_LETTERS);
-  const short = sorted.filter((n) => letterCount(n) < LONG_NAME_LETTERS);
+  const long = sorted.filter(isLong);
+  const short = sorted.filter((n) => !isLong(n));
   let out = text;
   // What an earlier pattern blanked stays as it is (a name "library" never blanks the words of a blank).
   const eachPart = (blank: (part: string) => string) => {
