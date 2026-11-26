@@ -274,9 +274,42 @@ const FOLD_LAYER = 5;
 let sheet: CSSStyleSheet | null = null;
 let sheetFrom = -1;
 
-/** A selector without its :host parts (the stand-in before its rule, red first). */
+/** A selector list's selectors, split at its own commas (never at those inside brackets). */
+function selectorsOf(list: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let part = '';
+  for (const ch of list) {
+    if (ch === '(' || ch === '[') depth += 1;
+    else if (ch === ')' || ch === ']') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      out.push(part.trim());
+      part = '';
+    } else part += ch;
+  }
+  if (part.trim() !== '') out.push(part.trim());
+  return out;
+}
+
+/**
+ * A selector list without its :host parts (none left: one that matches nothing). A copy's shadow root takes the page's
+ * styles, and Tailwind's `:root, :host { --color-* }` would set the default appearance's colours on its host, over the
+ * appearance <html> carries (lead 2's hands-on pass of uilook, problem 1): without them the host inherits the window's.
+ */
 export function hostless(selector: string): string {
-  return selector;
+  const kept = selectorsOf(selector).filter((s) => !/:host\b/u.test(s));
+  return kept.length > 0 ? kept.join(', ') : ':not(*)';
+}
+
+/** Every style rule of these, however deep in layers and groups, with its :host parts taken out. */
+function dropHost(rules: CSSRuleList): void {
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) {
+      const kept = hostless(rule.selectorText);
+      if (kept !== rule.selectorText) rule.selectorText = kept;
+    }
+    if ('cssRules' in rule) dropHost((rule as CSSGroupingRule).cssRules);
+  }
 }
 
 /** The page's own styles, for the copy's shadow root (made once; again if the page's styles change). */
@@ -293,6 +326,8 @@ function pageStyles(): CSSStyleSheet[] {
     }
     sheet = new CSSStyleSheet();
     sheet.replaceSync(text.join('\n'));
+    // The copy draws in the window's own appearance, never the default one's (hostless).
+    dropHost(sheet.cssRules);
     sheetFrom = count;
   }
   return [sheet];
