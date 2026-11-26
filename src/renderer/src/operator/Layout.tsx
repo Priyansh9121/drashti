@@ -158,8 +158,9 @@ export function LeftColumn({
   const flowDefault = Math.round(FLOW.initial * areaUsable);
   return (
     // One landmark for the column (Session 44): the Library button, the playlists, the open playlist's folders
-    // and the library's sheet over them.
-    <section aria-label="Playlists" className="flex min-h-0 flex-1 flex-col">
+    // and the library's sheet over them. The Undo line at its foot keeps its room while the pointer is over it
+    // (library/UndoBar.tsx, data-left-column).
+    <section aria-label="Playlists" data-left-column className="flex min-h-0 flex-1 flex-col">
       {head}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={area} className="flex min-h-0 flex-1 flex-col" inert={covered}>
