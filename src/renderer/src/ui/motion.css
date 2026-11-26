@@ -1,0 +1,72 @@
+/*
+ * The operator window's newer motion (alpha.24, uimotion; the owner's QA24-UI-3 "a more interactive and more
+ * animated, more transitions"). Every time and curve is one of app.css's tokens (src/main/motion.test.ts). Off and
+ * reduced motion stop all of it (app.css's own rules), and none of it ever reaches a show control (data-show-control:
+ * Next, Back, the clears, Black-out, the Wallpaper, the slides and the live picture change at once).
+ *
+ * As a live look's touch (shared/appearance/moving.ts, the release lead's rule for anything new), a control's
+ * answer starts only once the window has opened settled (data-opened) and with a graphics chip known to be there
+ * (data-chip): never while the window opens, and never where Chromium draws without one (CI's Windows). Only the
+ * transitions wait for that; what a control looks like at rest never changes with it, so nothing starts moving as
+ * the page says either.
+ */
+
+/* A section's fold (ui/fold.ts): Calm's insides fade in; Lively's unroll (app.css, data-lively="open"). */
+[data-fold='calm'] {
+  animation: fade-in var(--dur-open) var(--ease-out) both;
+}
+/*
+ * Insides that hold a show control (an open Lower Thirds' Show, a timer's Start) are there at once (the release lead's
+ * review, S2): a show control never fades or unrolls in.
+ */
+[data-fold]:has([data-show-control]) {
+  animation: none;
+}
+:root[data-interface-motion='lively'][data-chip='yes'] [data-lively='open']:has([data-show-control]) {
+  animation: none;
+}
+
+/* What folds away leaves as a copy where it was (ui/motion.ts, leave): Calm's fades, Lively's rolls up. */
+[data-leaving='fold'] {
+  animation: fade-out var(--dur-exit) var(--ease-in) both;
+}
+[data-leaving='fold-lively'] {
+  animation: fold-up calc(var(--dur-exit) * var(--lively-time)) var(--ease-in) both;
+}
+@keyframes fold-up {
+  to {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+/*
+ * The fold's chevron turns down as the section opens, and back as it folds: only for a fold its heading's press set
+ * moving (data-turning, ui/Panel.tsx), so never within 0.8 s of a show change or on an unfold asked by something else
+ * (a chat popup's click), when it turns at once (the release lead's review, S3).
+ */
+:root[data-opened][data-chip='yes'] [data-fold-chevron][data-turning] {
+  transition: rotate var(--dur-open) var(--ease-out);
+}
+
+/*
+ * A press dims a button for as long as it is held (Lively's 97% press, app.css, goes with it), by its opacity: only
+ * transform and opacity move (the release lead's rule; lead 2's decision on the hands-on pass, problem 3, the owner's
+ * "till 9:00AM"). Its time is said only while pressed, so letting go, or a button turning disabled, changes at once.
+ * The focus ring, as before alpha.24, is there at once.
+ */
+:root[data-opened][data-chip='yes']
+  [data-variant]:not([data-show-control]):not([data-show-control] *):not(:disabled):active {
+  opacity: var(--press-dim);
+  transition-property:
+    color, background-color, border-color, box-shadow, filter, opacity, transform, translate;
+}
+
+/* Lively: a button pointed at lifts a pixel, and settles back as it is pressed. */
+:root[data-opened][data-chip='yes'][data-interface-motion='lively'] [data-variant]:not([data-show-control]) {
+  transition-property: color, background-color, border-color, box-shadow, filter, transform, translate;
+}
+:root[data-opened][data-chip='yes'][data-interface-motion='lively']
+  [data-variant]:not([data-show-control]):not([data-show-control] *):not(:disabled):hover:not(:active) {
+  translate: 0 calc(var(--lift) * -1);
+}

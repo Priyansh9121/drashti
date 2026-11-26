@@ -1,4 +1,4 @@
-import { renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { FOLLOW, INTERFACE_MOTIONS, type InterfaceMotion } from '../../shared/appearance/appearances';
@@ -94,9 +94,28 @@ export function readAppearance(userData: string, say: (line: string) => void): A
   return { ...DEFAULT_APPEARANCE, own: [], favourites: [] };
 }
 
+/**
+ * How a new install's windows move (alpha.24; the owner's QA24-UI-3 "more interactive and more animated", lead 2's
+ * recommendation, answered as recommended): Lively, kept in its file at that first start. A computer that had Drashti
+ * before keeps what it has: Calm (DEFAULT_APPEARANCE) until someone chooses.
+ */
+export const NEW_INSTALL_MOTION: InterfaceMotion = 'lively';
+
+/**
+ * A data folder Drashti has never started in: no role kept (every start writes it, since Session 13), no library (a
+ * computer from before roles has one) and no appearance kept.
+ */
+export function isNewInstall(userData: string): boolean {
+  return !['drashti-role.json', 'drashti.sqlite', APPEARANCE_FILE].some((name) =>
+    existsSync(join(userData, name)),
+  );
+}
+
 /** Keep the choice (written whole, then put in place). */
 export function writeAppearance(userData: string, settings: AppearanceSettings): void {
   const file = join(userData, APPEARANCE_FILE);
+  // A new install's first start keeps its motion before anything else has made the data folder (alpha.24).
+  mkdirSync(userData, { recursive: true });
   const own = settings.own.map(({ id, name, base, accent }) => ({ id, name, base, accent }));
   const seconds = Object.fromEntries(
     settings.own.flatMap((o) => (o.second === undefined ? [] : [[o.id, o.second] as const])),

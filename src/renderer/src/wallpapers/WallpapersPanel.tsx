@@ -92,9 +92,9 @@ export function wallpaperTarget(wallpaper: Wallpaper, chosen: boolean): FileTarg
   };
 }
 
-function Tile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) {
+export function WallpaperTile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) {
   const [over, setOver] = useState(false);
-  const shown = wallpaper.pictures.find((p) => !p.missing);
+  const shown = wallpaper.pictures.find((p) => !p.missing && !p.unplayable);
   const count = wallpaper.pictures.length;
   // Its pictures gone from the library (QA24-WALLBLACK-1): said, never a black square.
   const missing = wallpaperMissing(wallpaper);
@@ -132,15 +132,20 @@ function Tile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) 
         }}
         {...fileMenuProps(() => wallpaperTarget(wallpaper, chosen))}
       >
-        <span className="relative block aspect-video w-full overflow-hidden rounded bg-black">
+        <span
+          className={cx(
+            'relative block w-full overflow-hidden rounded',
+            shown ? 'aspect-video bg-black' : 'min-h-16 bg-warning-bg px-1 py-5',
+          )}
+        >
           {shown ? (
             <MediaStill mediaId={shown.mediaId} media="image" />
           ) : (
             <span
               data-testid="wallpaper-missing"
-              className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-warning-bg px-1 text-center text-[11px] leading-tight font-medium text-warning-fg"
+              title={missing?.tile}
+              className="block py-1 text-center text-[11px] leading-tight font-medium break-words text-warning-fg"
             >
-              <FileQuestion size={14} aria-hidden="true" />
               {missing?.tile}
             </span>
           )}
@@ -319,7 +324,7 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
           className="grid min-h-0 grid-cols-3 content-start gap-1 overflow-y-auto px-2 pb-2"
         >
           {wallpapers.map((w) => (
-            <Tile key={w.id} wallpaper={w} chosen={w.id === view?.chosenId} />
+            <WallpaperTile key={w.id} wallpaper={w} chosen={w.id === view?.chosenId} />
           ))}
         </ul>
       )}

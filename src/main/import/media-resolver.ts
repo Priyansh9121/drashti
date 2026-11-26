@@ -19,6 +19,8 @@ export interface MediaLookup {
   /** Lower-case file name -> paths, from scanning the imported folders. */
   byName: ReadonlyMap<string, readonly string[]>;
   isFile?: (path: string) => boolean;
+  /** False for Find… in a chosen folder: use only nearby/scanned folders, not the old source path. */
+  allowOriginal?: boolean;
 }
 
 export interface Resolved {
@@ -78,7 +80,8 @@ function parentNameOf(path: string): string {
 export function resolveMedia(reference: string, lookup: MediaLookup): Resolved | null {
   const isFile = lookup.isFile ?? defaultIsFile;
   const original = pathFromReference(reference);
-  if (original !== '' && isFile(original)) return { path: original, how: 'original', alternatives: 0 };
+  if (lookup.allowOriginal !== false && original !== '' && isFile(original))
+    return { path: original, how: 'original', alternatives: 0 };
   const name = fileNameOf(reference);
   if (name === '') return null;
   for (const dir of lookup.nearby) {

@@ -214,6 +214,43 @@ describe('the lines shown on the screens, with bad words left out', () => {
   });
 });
 
+describe('an operator’s typed correction, with bad words left out (alpha.24 captions join, review S1)', () => {
+  it('hands on the cleaned words, counted once when applied; one left with nothing, or not checked, is refused', () => {
+    const { clean, logs } = setup();
+    clean.captionsOn(true);
+    const given: string[] = [];
+    const take = (text: string): boolean => {
+      given.push(text);
+      return true;
+    };
+    expect(clean.correction('alpha zqvorn beta.', take)).toBe(true);
+    // Nothing to leave out: as typed.
+    expect(clean.correction('alpha  zqvornish\nbeta', take)).toBe(true);
+    expect(given).toEqual(['alpha beta.', 'alpha  zqvornish\nbeta']);
+    expect(clean.view().leftOut).toBe(1);
+    // Not applied (the phrase changed meanwhile): not counted.
+    expect(clean.correction('alpha vexmor quill', () => false)).toBe(false);
+    expect(clean.view().leftOut).toBe(1);
+    // Nothing but listed words: refused, as an empty correction is, and never handed on.
+    expect(clean.correction('zqvorn dhumpak.', take)).toBe(false);
+    expect(clean.correction(' ', take)).toBe(false);
+    expect(given).toHaveLength(2);
+    expect(clean.view().leftOut).toBe(1);
+    expect(logs).toEqual([]);
+    // One that cannot be checked is refused too, and the log says so without a word.
+    const failing = setup({
+      hash: () => {
+        throw new Error('Placeholder failure');
+      },
+    });
+    expect(failing.clean.correction('alpha beta', take)).toBe(false);
+    expect(given).toHaveLength(2);
+    expect(failing.logs).toEqual([
+      'Words left out of captions: a caption could not be checked, so it is not shown.',
+    ]);
+  });
+});
+
 describe('the stage band beside a translation (alpha.24 captions join, J1)', () => {
   /** A translation for the hall and the stream, with the speaker's own words for the stage beside it. */
   const translated = (lines: string[], stage: string[] | null): CaptionsShown => ({

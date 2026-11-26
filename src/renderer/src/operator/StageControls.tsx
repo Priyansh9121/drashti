@@ -376,7 +376,8 @@ export function StageMessageControl() {
           }}
           className="flex-1"
         />
-        <Button type="submit" disabled={text.trim() === ''}>
+        {/* Show controls (alpha.24): what the stage screens show changes at once, and they never move. */}
+        <Button type="submit" instant disabled={text.trim() === ''}>
           Show
         </Button>
       </form>
@@ -413,7 +414,12 @@ export function StageMessageControl() {
         <div className="flex items-center gap-2 rounded-md border border-warning/60 bg-warning-bg px-2 py-1 text-sm text-warning-fg">
           <Badge tone="warning">On stage</Badge>
           <Truncate text={shown} className="flex-1" data-testid="stage-message-shown" />
-          <Button variant="ghost" size="sm" onClick={() => void dispatch({ type: 'clearStageMessage' })}>
+          <Button
+            variant="ghost"
+            size="sm"
+            instant
+            onClick={() => void dispatch({ type: 'clearStageMessage' })}
+          >
             Hide
           </Button>
         </div>
@@ -427,6 +433,7 @@ export function StageMessageControl() {
               key={r}
               size="sm"
               variant={r === shown ? 'live' : 'ghost'}
+              instant
               className="max-w-full"
               title={r}
               onClick={() => {

@@ -940,9 +940,13 @@ export class NetworkService implements EngineTransport {
     if (this.worker && this.serverState === 'listening') this.worker.send({ type: 'engine', message });
   }
 
-  /** Lists the remotes show have changed (playlists, presentations, templates...). */
-  hint(what: NetworkChange): void {
-    if (this.worker && this.serverState === 'listening') this.worker.send({ type: 'hint', what });
+  /**
+   * Lists the remotes show have changed (playlists, presentations, templates...); with 'presentations', `ids` names
+   * those that changed when Drashti can (QA24-PHONE-C: a phone reads again only those of its rows).
+   */
+  hint(what: NetworkChange, ids?: readonly string[]): void {
+    if (this.worker && this.serverState === 'listening')
+      this.worker.send({ type: 'hint', what, ...(ids ? { ids: [...ids] } : {}) });
   }
 
   // ---- pairing and devices ------------------------------------------------------------------
