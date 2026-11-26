@@ -12,6 +12,7 @@ import {
   type SpeechLanguage,
 } from '../../shared/speech';
 import type { CaptionHints } from './caption-hints';
+import { keepToLetters } from './caption-letters';
 import { audioContextFor } from './whisper-context';
 import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
@@ -105,6 +106,16 @@ const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
   ['sanskrit', 'sa'],
   ['english', 'en'],
 ]);
+
+/** Each language's name, for the log. */
+const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = {
+  gu: 'Gujarati',
+  hi: 'Hindi',
+  sa: 'Sanskrit',
+  en: 'English',
+};
+
+const counted = (n: number, one: string, many: string): string => `${String(n)} ${n === 1 ? one : many}`;
 
 /**
  * The threads whisper-server is started with (cap-threads): the dialog's setting, but never more than this computer's
@@ -258,10 +269,26 @@ interface Growing {
   sentAt: number;
 }
 
+/**
+ * Node's fetch, with a form packed into its bytes first (QA24-CRASH-1). Given a FormData, Node's fetch writes the form
+ * into the request in a step that nothing awaits; a stop that aborted the request during that step (captions turned
+ * off just as a piece set off) failed it uncaught in the main process: "TypeError: Invalid state: ReadableStream is
+ * already closed" (the owner's crash journal, 22 Nov 2026). Bytes go into the request at once: the same multipart form,
+ * its boundary in the Content-Type as fetch would send it.
+ */
+async function fetchPacked(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const form = init?.body;
+  if (!(form instanceof FormData)) return fetch(input, init);
+  const packed = new Response(form);
+  const headers = new Headers(init?.headers);
+  headers.set('Content-Type', packed.headers.get('Content-Type') ?? 'multipart/form-data');
+  return fetch(input, { ...init, headers, body: new Uint8Array(await packed.arrayBuffer()) });
+}
+
 export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
   const restMs = o.restMs ?? 60_000;
   const readyMs = o.readyMs ?? 90_000;
-  const get = o.fetch ?? fetch;
+  const get = o.fetch ?? fetchPacked;
   const run =
     o.spawn ??
     ((program, args) => {
@@ -302,6 +329,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       let allowFallback = true;
       let withTimestamps = true;
       let sized = false;
+      // QA24-CAPLANG-1: what this start left out for being in other letters than the chosen language's (counts only).
+      let otherPhrases = 0;
+      let otherWords = 0;
       const abort = new AbortController();
       // The noise floor, learnt as it goes: speech is well above it.
       let floor = 300;
@@ -424,13 +454,23 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           }
           const heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
           if (heardIn === null) return;
-          const words = wordsOf(
+          const decoded = wordsOf(
             asked.reply,
             clipAt,
             clipEndAt,
             (seconds, beginning) => capturedAt(captured, seconds, beginning),
             !withTimestamps,
           );
+          // A chosen language's captions keep to its letters (QA24-CAPLANG-1, caption-letters.ts): whisper is asked for
+          // that language, but its language token alone does not keep it from writing a piece, or a word, in another
+          // language's letters (Gujarati most of all). As heard, each piece is the language it was written in.
+          const words = language === 'auto' ? decoded : keepToLetters(decoded, language);
+          // Counted once a phrase, as heard whole: its partials are the same words decoded again (review N2).
+          if (words === null) {
+            if (final) otherPhrases += 1;
+            return;
+          }
+          if (final) otherWords += decoded.length - words.length;
           if (final && words.length === 0) return;
           const heard: Heard = {
             id: piece.id,
@@ -634,6 +674,11 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         if (rest) clearTimeout(rest);
         rest = null;
         end();
+        // Counts only, never a word: how often the engine wrote in other letters than the chosen language's.
+        if (language !== 'auto' && otherPhrases + otherWords > 0)
+          o.log.info(
+            `Speech: with ${LANGUAGE_NAMES[language]} chosen, the engine wrote ${counted(otherPhrases, 'phrase', 'phrases')} wholly and ${counted(otherWords, 'word', 'words')} of other phrases in other letters (phrases heard whole only); they were not shown.`,
+          );
         tellExited();
       };
     },

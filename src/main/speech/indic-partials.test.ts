@@ -217,12 +217,14 @@ describe('Route C shows the words of a phrase while it is still being spoken (ca
     expect(t.lines().at(-1)?.captions?.lines.join(' ')).toBe(WORDS.join(' '));
   });
 
-  it('a final is never padded: the helper gets exactly the phrase as heard, its speech then its own pause, as before', async () => {
+  it('a final is never padded: the helper gets exactly the phrase as heard, its speech then its first 300 ms of quiet (the early final, QA24-CAPFAST-1)', async () => {
     const t = setup(speechReply);
     await speak(t);
     const final = t.decoded.at(-1) ?? new Int16Array(0);
-    // From the onset to the end of its pause: 40 chunks of speech, then 7 of silence; none of the room's hiss.
-    expect(final.length).toBe(47 * 1_600);
+    // From the onset to 300 ms into its pause (the owner's "Yes, show at once": the early final, decoded then, is the
+    // final when the speaker stays quiet; before, it was decoded at the pause's end, 7 chunks of silence): 40 chunks
+    // of speech, then 3 of silence; none of the room's hiss.
+    expect(final.length).toBe(43 * 1_600);
     expect(final.subarray(0, 40 * 1_600).every((x) => x === LOUD)).toBe(true);
     expect(final.subarray(40 * 1_600).every((x) => x === 0)).toBe(true);
   });
@@ -266,7 +268,8 @@ describe('Route C shows the words of a phrase while it is still being spoken (ca
     await t.play(0, 25);
     const final = t.heard.find((h) => h.final);
     expect((final?.heardAt ?? Infinity) - speechEnd).toBeLessThanOrEqual(700 + DECODE_MS);
-    // No decode began once the phrase had 300 ms of quiet, except the final itself.
+    // No decode began once the phrase had 300 ms of quiet, except the final itself (since QA24-CAPFAST-1 the early
+    // final, begun at 300 ms of quiet).
     const partialStarts = t.began.slice(0, -1).map((at) => at - onset);
     for (const at of partialStarts) expect(at).toBeLessThan(speechEnd - onset + 300);
   });

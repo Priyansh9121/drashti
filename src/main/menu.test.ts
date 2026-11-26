@@ -289,6 +289,56 @@ describe('File › Speaker’s Language (alpha.22)', () => {
   );
 });
 
+describe('File › Caption Language (alpha.24, QA24-CAPLANG-2)', () => {
+  it.each(PLATFORMS)(
+    'sets "Captions in" under Speaker’s Language, the chosen one ticked, translations off where not offered, Pro Mode only (%s)',
+    (platform) => {
+      const chosen: string[] = [];
+      const install = (offered: boolean, mode: 'pro' | 'simple' = 'pro') => {
+        on(platform, () => {
+          const made = actions(mode);
+          installMenu({
+            ...made.a,
+            liveCaptions: nothing,
+            speakerLanguage: { language: 'gu', choose: nothing },
+            captionLanguage: { target: 'hi', offered, choose: (target) => chosen.push(target) },
+          });
+        });
+      };
+      install(true);
+      const file = built.at(-1)?.find((m) => m.label === 'File')?.submenu;
+      const ids = Array.isArray(file) ? file.map((i) => i.id) : [];
+      expect(ids.indexOf('caption-language')).toBe(ids.indexOf('speaker-language') + 1);
+      expect(item('caption-language')).toMatchObject({ label: 'Caption Language' });
+      const choices = ['same', 'gu', 'hi', 'en'].map((id) => item(`caption-language-${id}`));
+      expect(choices.map((c) => c?.label)).toEqual([
+        'Same as the speaker',
+        'Gujarati (trial)',
+        'Hindi (trial)',
+        'English (trial)',
+      ]);
+      expect(choices.map((c) => c?.type)).toEqual(['radio', 'radio', 'radio', 'radio']);
+      expect(choices.map((c) => c?.checked)).toEqual([false, false, true, false]);
+      expect(choices.map((c) => c?.enabled ?? true)).toEqual([true, true, true, true]);
+      (item('caption-language-en')?.click as (() => void) | undefined)?.();
+      (item('caption-language-same')?.click as (() => void) | undefined)?.();
+      expect(chosen).toEqual(['en', 'same']);
+      // Not offered on this computer (2f, no pack…): only the speaker's own words can be chosen.
+      install(false);
+      expect(['same', 'gu', 'hi', 'en'].map((id) => item(`caption-language-${id}`)?.enabled ?? true)).toEqual(
+        [true, false, false, false],
+      );
+      // Simple Mode has no File menu; nor is it there where there are no live captions.
+      install(true, 'simple');
+      expect(item('caption-language')).toBeUndefined();
+      on(platform, () => {
+        installMenu({ ...actions('pro').a, captionLanguage: null });
+      });
+      expect(item('caption-language')).toBeUndefined();
+    },
+  );
+});
+
 describe('Help › Caption and Translation Models… (alpha.22, cap-pack)', () => {
   it.each(PLATFORMS)(
     'opens the models dialog, just above Check for Updates…, in Pro Mode only (%s)',

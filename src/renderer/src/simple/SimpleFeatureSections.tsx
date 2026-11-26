@@ -55,13 +55,13 @@ export function SimpleFeatureSections({ platform }: { platform: string }) {
  * The windows a chosen tool opens from its section (Show a Window…, Show a Stream Link…, Picture in Picture…), Pro
  * Mode's own, inside OperateOnly too.
  */
-export function SimpleFeatureDialogs() {
+export function SimpleFeatureDialogs({ platform }: { platform: string }) {
   const chosen = useSimpleFeatures((s) => s.chosen);
   return (
     <OperateOnly.Provider value={true}>
-      {chosen.includes('show-a-window') && <WindowPicker />}
+      {chosen.includes('show-a-window') && <WindowPicker platform={platform} />}
       {chosen.includes('show-a-stream-link') && <StreamLinkDialog />}
-      {chosen.includes('picture-in-picture') && <PipDialog />}
+      {chosen.includes('picture-in-picture') && <PipDialog platform={platform} />}
     </OperateOnly.Provider>
   );
 }

@@ -771,10 +771,11 @@ describe('the packs on this computer (alpha.22, cap-pack)', () => {
     // The old copy is still whole while it is held, and goes once let go.
     expect(readFileSync(old)).toEqual(GU.files['captions/gu/model.bin']);
     hold?.release();
+    // The old folder goes by a recursive rm after the release (store.ts): its file can be gone before the folder is.
     await vi.waitFor(() => {
       expect(existsSync(old)).toBe(false);
+      expect(ours(join(data, 'model-packs'))).toHaveLength(1);
     });
-    expect(ours(join(data, 'model-packs'))).toHaveLength(1);
   });
 
   it('shows a licence’s own text from the copy kept', async () => {

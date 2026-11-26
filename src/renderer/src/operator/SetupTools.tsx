@@ -16,6 +16,7 @@ import { openWindowPicker } from '../live-window/live-window-store';
 import { openStreamLink } from '../live-link/live-link-store';
 import { openAddInput } from '../video-inputs/video-inputs-store';
 import { openPipDialog } from './pip-store';
+import { PipSectionPreview } from './PipPreview';
 import { openStudio } from '../lower-thirds/lower-thirds-store';
 import { openMidiDialog } from '../midi/MidiTool';
 import { openOsc } from '../osc/osc-store';
@@ -183,7 +184,10 @@ export function VideoInputsSection() {
   );
 }
 
-/** Picture in Picture: something small in a corner of the screens. */
+/**
+ * Picture in Picture: something small in a corner of the screens; under its button, a preview of where the next box
+ * goes and how it looks, over what the screens show now, or of the box up now (QA24-PIPPREVIEW-1).
+ */
 export function PictureInPictureSection() {
   return (
     <Panel
@@ -196,6 +200,7 @@ export function PictureInPictureSection() {
       data-testid="section-picture-in-picture"
     >
       <SetupToolLine id="picture-in-picture" />
+      <PipSectionPreview />
     </Panel>
   );
 }

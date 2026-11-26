@@ -1,0 +1,4 @@
+contact_links:
+  - name: Report a security problem privately
+    url: https://github.com/Priyansh9121/drashti/security/advisories/new
+    about: Never in a public issue, and never with a real key or token. Only the owner and you read it (SECURITY.md).

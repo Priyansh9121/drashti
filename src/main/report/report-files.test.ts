@@ -238,6 +238,43 @@ describe('a chosen period’s diagnostics (alpha.21, logs for 100+ installs (c))
     expect(made.text).not.toContain('Placeholder Report Secret');
   });
 
+  it('blank a library name only where it is the name, in the file and the email’s lines (QA24-DIAG-1)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-report-name-'));
+    const dbFile = join(dir, 'library.db');
+    const db = openDatabase(dbFile);
+    const repo = new PresentationRepo(db);
+    repo.insert({
+      libraryId: repo.ensureLibrary('Kirtans'),
+      name: 'New',
+      groups: [{ name: 'Verse', slides: [{ elements: [] }] }],
+    });
+    db.close();
+    const input = inputFor(dir);
+    writeFileSync(
+      input.logFiles[0] ?? '',
+      '2026-11-20T08:59:00.000Z [error] Placeholder: renewed the newest part of New\n',
+    );
+    const made = makeDiagnosticsText(
+      { kind: 'diagnostics-text', main: { input, dbFile }, node: null },
+      { openDb: (file) => openDatabase(file) },
+    );
+    if (!made.ok) throw new Error(made.message);
+    expect(made.text).toContain('== Crash files (kept on this computer, the newest 5) ==');
+    expect(made.text).toContain('Placeholder: renewed the newest part of [library name]');
+    const folder = join(dir, 'report');
+    mkdirSync(folder);
+    const report = await makeReportFiles(
+      { dir: folder, stamp: '2026-11-20 20-00', diagnostics: { input, dbFile }, picture: null, crash: [] },
+      { openDb: (file) => openDatabase(file) },
+    );
+    if (!report.ok) throw new Error(report.message);
+    const text = readFileSync(join(folder, 'files', 'Drashti diagnostics 2026-11-20 20-00.txt'), 'utf8');
+    expect(text).toContain('== Crash files (kept on this computer, the newest 5) ==');
+    expect(report.errors).toEqual([
+      '2026-11-20T08:59:00.000Z [error] Placeholder: renewed the newest part of [library name]',
+    ]);
+  });
+
   it('a node’s too (it has no library)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-diagnostics-text-'));
     const input = inputFor(dir);
