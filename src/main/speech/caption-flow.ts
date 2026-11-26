@@ -21,6 +21,8 @@ export interface ClauseSink {
   view(): CaptionReview;
   correct(correction: CaptionCorrection): boolean;
   dismiss(key: Omit<CaptionCorrection, 'text'>): boolean;
+  /** The phrase being heard was left out whole (alpha.24, QA24-CAPCLEAN-1): what showed of it comes off. */
+  withdraw?(phraseId: string): boolean;
 }
 
 /**
@@ -82,7 +84,15 @@ export function createCaptionFlow(options: CaptionFlowOptions): CaptionFlow {
       .normalize('NFC')
       .trim();
     if (h.final) options.onFinalPhrase?.(h !== given ? { ...h, text } : h);
-    if (text === '') return;
+    if (text === '') {
+      // Every word of the phrase being heard was left out (alpha.24, QA24-CAPCLEAN-1, review F4): what showed of it
+      // comes off the screens.
+      if (last !== null && last.id === h.id && !last.final) {
+        options.coordinator.withdraw?.(h.id);
+        last = null;
+      }
+      return;
+    }
     const same = last !== null && last.id === h.id;
     if (same && last !== null && (last.final || (last.text === text && !h.final))) return;
     const revision = same && last !== null ? last.revision + 1 : 1;

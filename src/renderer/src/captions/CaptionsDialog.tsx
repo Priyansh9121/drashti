@@ -25,6 +25,7 @@ import { Field, Select } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
 import { Toggle } from '../ui/Toggle';
+import { CaptionCleanSection } from './CaptionCleanDialog';
 import { CaptionWordsSection } from './CaptionWordsDialog';
 import { CaptionTargetField } from './CaptionTargetField';
 import { closeCaptions, connectCaptions, takeCaptions, useCaptions } from './captions-store';
@@ -206,6 +207,7 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
           </div>
         )}
         <CaptionWordsSection listening={settings.language} />
+        <CaptionCleanSection listening={settings.language} />
         <Toggle
           checked={settings.audience}
           label="Show them on the audience screens too"

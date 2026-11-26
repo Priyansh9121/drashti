@@ -41,6 +41,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'chat',
     // Caption words (alpha.22, cap-glossary): File › Live Captions… › Caption Words…, Pro Mode.
     'captionWords',
+    // Words left out of captions (alpha.24, QA24-CAPCLEAN-1): File › Live Captions… › Words Left Out…, Pro Mode.
+    'captionClean',
     'videoCaptions',
     'drop',
     'engine',
