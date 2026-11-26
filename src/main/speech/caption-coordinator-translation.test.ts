@@ -273,7 +273,8 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
     finish(0, Array.from({ length: 4 }, () => 'placeholder sentence carries ordinary words').join(' '));
     await vi.advanceTimersByTimeAsync(300 + 3_200 + 3_200);
     expect(last()?.page).toEqual({ n: 3, of: 3 });
-    audience(false);
+    // The audience screens chosen too (a new output policy: the old translation is dropped, never shown again).
+    audience(true);
     await vi.advanceTimersByTimeAsync(0);
     expect(last()).toBeNull();
     expect(c.view()).toMatchObject({ current: null, canCorrect: false });
