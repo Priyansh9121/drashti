@@ -73,4 +73,26 @@ describe('keepToLetters', () => {
     expect(texts(keepToLetters(words(joined, nukta, '\u0965'), 'hi'))).toEqual([joined, nukta, '\u0965']);
     expect(texts(keepToLetters(words(nukta), 'gu'))).toEqual(['\u0a9c\u0abc\u0ab0\u0abe']);
   });
+
+  it('nukta letters written as one character are mapped, not left out (review F1), and the same the other way', () => {
+    // DDDHA (U+095C) and ZA (U+095B) as one character each: whisper writes its tokens' bytes as they are.
+    expect(texts(keepToLetters(words('\u092c\u095c\u093e', '\u095b\u0930\u0942\u0930'), 'gu'))).toEqual([
+      '\u0aac\u0aa1\u0abc\u0abe',
+      '\u0a9c\u0abc\u0ab0\u0ac2\u0ab0',
+    ]);
+    // A piece of such words alone is shown.
+    expect(texts(keepToLetters(words('\u095b\u0930\u0942\u0930'), 'gu'))).toEqual(['\u0a9c\u0abc\u0ab0\u0ac2\u0ab0']);
+    // NNNA, RRA and LLLA (U+0929, U+0931, U+0934), which NFC writes as one character.
+    expect(texts(keepToLetters(words('\u0929', '\u0931', '\u0934'), 'gu'))).toEqual([
+      '\u0aa8\u0abc',
+      '\u0ab0\u0abc',
+      '\u0ab3\u0abc',
+    ]);
+    // Gujarati letters with a nukta come in Devanagari for Hindi and Sanskrit, as NFC writes them.
+    expect(texts(keepToLetters(words('\u0a9c\u0abc\u0ab0\u0ac2\u0ab0', '\u0aa8\u0abc'), 'hi'))).toEqual([
+      '\u091c\u093c\u0930\u0942\u0930',
+      '\u0929',
+    ]);
+    expect(texts(keepToLetters(words('\u0aa1\u0abc', '\u0ab3\u0abc'), 'sa'))).toEqual(['\u0921\u093c', '\u0934']);
+  });
 });

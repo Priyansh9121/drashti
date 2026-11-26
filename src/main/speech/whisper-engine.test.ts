@@ -1096,9 +1096,41 @@ describe('QA24-CAPLANG-1: a chosen language’s captions keep to its letters (th
     stop();
     const line = logs.find((m) => m.includes('other letters'));
     expect(line).toBe(
-      'Speech: with Gujarati chosen, the engine wrote 1 whole piece and 1 word of other pieces in other letters; they were not shown.',
+      'Speech: with Gujarati chosen, the engine wrote 1 phrase wholly and 1 word of other phrases in other letters (phrases heard whole only); they were not shown.',
     );
     expect(logs.some((m) => /Counter|No\.|કાઉન્ટર|ખુલ્લું/u.test(m))).toBe(false);
+  });
+
+  it('counts each phrase once, as heard whole (review N2): a partial in Latin letters, then a Gujarati final, is neither shown nor counted', async () => {
+    // The first answer is a partial (a step shorter than the phrase); every later one, the final too, is Gujarati.
+    const server = standIn({
+      language: 'gujarati',
+      words: (n) => (n === 1 ? [' Counter', ' No.', ' 738'] : [' કાઉન્ટર', ' ખુલ્લું']),
+    });
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const logs: string[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
+      spawn: server.spawn,
+      stepMs: 300,
+      pauseMs: 300,
+    });
+    const stop = engine.start('gu', { heard: (h) => heard.push(h), state: (s) => states.push(s) });
+    stops.push(stop, server.close);
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    await sound.play(1_600, 600);
+    await waitFor(() => heard.some((h) => h.final));
+    stop();
+    expect(server.asked.length).toBeGreaterThan(1);
+    expect(heard.some((h) => /\p{Script=Latin}/u.test(h.text))).toBe(false);
+    expect(heard.find((h) => h.final)).toMatchObject({ id: 's1', language: 'gu', text: 'કાઉન્ટર ખુલ્લું' });
+    expect(logs.some((m) => m.includes('other letters'))).toBe(false);
   });
 
   it('as heard is unchanged: each phrase is the language whisper wrote it in, in its letters', async () => {
