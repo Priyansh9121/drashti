@@ -169,6 +169,41 @@ describe('MediaStore', () => {
     expect(storedFiles(mediaDir)).toHaveLength(1);
   });
 
+  it.each([false, true])(
+    'the first Find restores a duplicate deleted row (purged: %s), records its file and retains wallpaper references',
+    async (purged) => {
+      const { db, store, mediaDir, file } = setup();
+      const path = file('Placeholder duplicate.png', 'placeholder duplicate bytes');
+      const first = await store.importFile(path, { kind: 'media', path });
+      if (first.outcome === 'failed') throw new Error(first.issue.message);
+      const removal = new MediaRemoval(db, { onScreens: () => new Set() });
+      removal.remove([first.mediaId]);
+      if (purged) await removal.purge(mediaDir, new Set());
+      const missing = store.addMissing('/old/Placeholder duplicate.png', 'image', {
+        kind: 'pp6',
+        path: '/placeholder',
+      });
+      db.exec("INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder', 0)");
+      db.prepare("INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, ?)").run(
+        missing,
+      );
+      const found = await store.fillMissing(missing, path, (from, to) => {
+        db.prepare('UPDATE wallpaper_pictures SET media_id = ? WHERE media_id = ?').run(to, from);
+      });
+      expect(found).toMatchObject({ outcome: 'skipped', mediaId: first.mediaId });
+      const row = db
+        .prepare('SELECT path, missing, deleted_at FROM media WHERE id = ?')
+        .get(first.mediaId) as { path: string; missing: number; deleted_at: string | null };
+      expect(row).toMatchObject({ missing: 0, deleted_at: null });
+      expect(readFileSync(join(mediaDir, row.path), 'utf8')).toBe('placeholder duplicate bytes');
+      expect(db.prepare('SELECT media_id FROM wallpaper_pictures').all()).toEqual([
+        { media_id: first.mediaId },
+      ]);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
+      expect(store.missing()).toEqual([]);
+    },
+  );
+
   it('copies a media file in under its sha256 and records where it came from', async () => {
     const { db, store, mediaDir, file } = setup();
     const path = file('Background Loop.MP4', 'placeholder video bytes');
