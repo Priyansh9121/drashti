@@ -81,7 +81,9 @@ describe('keepToLetters', () => {
       '\u0a9c\u0abc\u0ab0\u0ac2\u0ab0',
     ]);
     // A piece of such words alone is shown.
-    expect(texts(keepToLetters(words('\u095b\u0930\u0942\u0930'), 'gu'))).toEqual(['\u0a9c\u0abc\u0ab0\u0ac2\u0ab0']);
+    expect(texts(keepToLetters(words('\u095b\u0930\u0942\u0930'), 'gu'))).toEqual([
+      '\u0a9c\u0abc\u0ab0\u0ac2\u0ab0',
+    ]);
     // NNNA, RRA and LLLA (U+0929, U+0931, U+0934), which NFC writes as one character.
     expect(texts(keepToLetters(words('\u0929', '\u0931', '\u0934'), 'gu'))).toEqual([
       '\u0aa8\u0abc',
@@ -93,6 +95,9 @@ describe('keepToLetters', () => {
       '\u091c\u093c\u0930\u0942\u0930',
       '\u0929',
     ]);
-    expect(texts(keepToLetters(words('\u0aa1\u0abc', '\u0ab3\u0abc'), 'sa'))).toEqual(['\u0921\u093c', '\u0934']);
+    expect(texts(keepToLetters(words('\u0aa1\u0abc', '\u0ab3\u0abc'), 'sa'))).toEqual([
+      '\u0921\u093c',
+      '\u0934',
+    ]);
   });
 });

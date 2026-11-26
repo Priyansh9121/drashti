@@ -1,3 +1,4 @@
+import { otherLetters } from '../../../shared/language-letters';
 import type { SpeechLanguage } from '../../../shared/speech';
 import { plural } from '../../../shared/text';
 
@@ -24,4 +25,23 @@ export function captionWordsHintText(
   if (count === 1) return `${words}, given to the captions engine as a hint.`;
   if (hinted >= count) return `${words}, all given to the captions engine as hints.`;
   return `${words}. The first ${String(hinted)} fit in the captions engine’s hints, so put the most important first; all of them fix spellings.`;
+}
+
+const CAPTION_NAMES: Readonly<Record<SpeechLanguage, string>> = {
+  gu: 'Gujarati',
+  hi: 'Hindi',
+  sa: 'Sanskrit',
+  en: 'English',
+};
+
+/**
+ * Beside an entry under Gujarati, Hindi or Sanskrit typed in other letters than its language's (alpha.24, lead 2):
+ * it is kept as typed, but captions with that language chosen keep to its letters, so it never shows. Null for any
+ * other entry (English's too).
+ */
+export function captionWordLettersText(word: string, language: SpeechLanguage): string | null {
+  if (language === 'en') return null;
+  const other = otherLetters(word, language);
+  if (other === null) return null;
+  return `Typed in ${other} letters: it won’t show in ${CAPTION_NAMES[language]} captions.`;
 }

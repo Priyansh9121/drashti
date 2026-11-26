@@ -314,7 +314,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       let withTimestamps = true;
       let sized = false;
       // QA24-CAPLANG-1: what this start left out for being in other letters than the chosen language's (counts only).
-      let otherPieces = 0;
+      let otherPhrases = 0;
       let otherWords = 0;
       const abort = new AbortController();
       // The noise floor, learnt as it goes: speech is well above it.
@@ -449,11 +449,12 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           // that language, but its language token alone does not keep it from writing a piece, or a word, in another
           // language's letters (Gujarati most of all). As heard, each piece is the language it was written in.
           const words = language === 'auto' ? decoded : keepToLetters(decoded, language);
+          // Counted once a phrase, as heard whole: its partials are the same words decoded again (review N2).
           if (words === null) {
-            otherPieces += 1;
+            if (final) otherPhrases += 1;
             return;
           }
-          otherWords += decoded.length - words.length;
+          if (final) otherWords += decoded.length - words.length;
           if (final && words.length === 0) return;
           const heard: Heard = {
             id: piece.id,
@@ -658,9 +659,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         rest = null;
         end();
         // Counts only, never a word: how often the engine wrote in other letters than the chosen language's.
-        if (language !== 'auto' && otherPieces + otherWords > 0)
+        if (language !== 'auto' && otherPhrases + otherWords > 0)
           o.log.info(
-            `Speech: with ${LANGUAGE_NAMES[language]} chosen, the engine wrote ${counted(otherPieces, 'whole piece', 'whole pieces')} and ${counted(otherWords, 'word', 'words')} of other pieces in other letters; they were not shown.`,
+            `Speech: with ${LANGUAGE_NAMES[language]} chosen, the engine wrote ${counted(otherPhrases, 'phrase', 'phrases')} wholly and ${counted(otherWords, 'word', 'words')} of other phrases in other letters (phrases heard whole only); they were not shown.`,
           );
         tellExited();
       };

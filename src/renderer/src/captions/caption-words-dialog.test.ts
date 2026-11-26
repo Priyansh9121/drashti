@@ -23,7 +23,9 @@ describe('a caption word in the dialog', () => {
     expect(render('gu', HI)).toContain('Typed in Devanagari letters: it won’t show in Gujarati captions.');
     expect(render('hi', GU)).toContain('Typed in Gujarati letters: it won’t show in Hindi captions.');
     expect(render('hi', 'Person Q7')).toContain('Typed in English letters: it won’t show in Hindi captions.');
-    expect(render('sa', 'Zentrova')).toContain('Typed in English letters: it won’t show in Sanskrit captions.');
+    expect(render('sa', 'Zentrova')).toContain(
+      'Typed in English letters: it won’t show in Sanskrit captions.',
+    );
   });
 
   it('says nothing for an entry in its language’s letters: Sanskrit in either script, digits in any, English as it is', () => {
