@@ -26,6 +26,7 @@ export interface WallpaperMissing {
 }
 
 const BLACK = 'With nothing up, the screens show black.';
+const LIVE_BLACK = 'The screens show black when the wallpaper is up.';
 
 /** What is missing of a wallpaper's pictures, in words, or null when all of them are there. */
 export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): WallpaperMissing | null {
@@ -37,7 +38,7 @@ export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): Wallpa
       label: 'it has no picture',
       tile: 'No picture',
       notice: `The wallpaper has no picture. ${BLACK} Drop a picture on it, or choose another.`,
-      live: `Wallpaper has no picture. ${BLACK}`,
+      live: `Wallpaper has no picture. ${LIVE_BLACK}`,
       find: [],
     };
   const gone = all.filter((p) => p.missing);
@@ -66,7 +67,7 @@ export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): Wallpa
         label: 'its picture is missing',
         tile: 'Picture missing',
         notice: `The wallpaper’s picture is missing${named}. ${BLACK}`,
-        live: `Wallpaper’s picture missing${named}. ${BLACK}`,
+        live: `Wallpaper’s picture missing${named}. ${LIVE_BLACK}`,
         find,
       }
     : {
@@ -75,7 +76,7 @@ export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): Wallpa
         label: 'its pictures are missing',
         tile: 'Pictures missing',
         notice: `The wallpaper’s ${String(all.length)} pictures are missing. ${BLACK}`,
-        live: `Wallpaper’s pictures missing. ${BLACK}`,
+        live: `Wallpaper’s pictures missing. ${LIVE_BLACK}`,
         find,
       };
 }
