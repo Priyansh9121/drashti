@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -201,6 +209,48 @@ describe('MediaStore', () => {
       ]);
       expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
       expect(store.missing()).toEqual([]);
+    },
+  );
+
+  it.each([false, true])(
+    'Find restores a deleted converted original in place (purged: %s), preserving its conversion and wallpaper',
+    async (purged) => {
+      const { db, store, mediaDir, file } = setup();
+      const path = file('Placeholder original.heic', '');
+      copyFileSync(join(process.cwd(), 'tests/fixtures/media/placeholder.heic'), path);
+      const first = await store.importFile(path, { kind: 'media', path });
+      if (first.outcome === 'failed') throw new Error(first.issue.message);
+      db.prepare(
+        "INSERT INTO media (id, kind, name, path, playable, converted_from) VALUES ('copy', 'image', 'Placeholder copy.png', 'aa/copy.png', 1, ?)",
+      ).run(first.mediaId);
+      db.prepare(
+        "INSERT INTO media_conversions (id, original_id, converted_id) VALUES ('conversion', ?, 'copy')",
+      ).run(first.mediaId);
+      db.exec("INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder', 0)");
+      db.prepare("INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, ?)").run(
+        first.mediaId,
+      );
+      const removal = new MediaRemoval(db, { onScreens: () => new Set() });
+      removal.remove([first.mediaId]);
+      if (purged) await removal.purge(mediaDir, new Set());
+      const repointed: string[][] = [];
+      expect(
+        await store.fillMissing(first.mediaId, path, (from, to) => {
+          repointed.push([from, to]);
+        }),
+      ).toMatchObject({ outcome: 'imported', mediaId: first.mediaId });
+      expect(repointed).toEqual([]);
+      expect(db.prepare('SELECT original_id, converted_id FROM media_conversions').all()).toEqual([
+        { original_id: first.mediaId, converted_id: 'copy' },
+      ]);
+      expect(db.prepare('SELECT media_id FROM wallpaper_pictures').all()).toEqual([
+        { media_id: first.mediaId },
+      ]);
+      expect(db.prepare('SELECT missing, deleted_at FROM media WHERE id = ?').get(first.mediaId)).toEqual({
+        missing: 0,
+        deleted_at: null,
+      });
+      expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 2 });
     },
   );
 
