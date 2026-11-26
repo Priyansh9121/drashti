@@ -47,7 +47,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * (in the Access List or typed into the Sheet), rejected or unknown, everything stops at once in the main process
  * (the controls behind one plain message with only Quit, every request refused whatever page asks, the screens fading
  * to black, the stream and recording ended). With no answer (no internet; the owner's decisions of 28 and 29 Oct 2026),
- * Drashti keeps working, the stream and recording included, a line under the top bar in Pro and Simple Mode saying how
+ * Drashti keeps working, the stream and recording included, a line in the status bar in Pro and Simple Mode saying how
  * long, for up to 15 days from the last answer, then it stops as a revoke stops it, saying to ask for access again;
  * started with no answer, it opens only within those 15 days of an answer that let it in; quit and started again at once
  * it opens at once; a data folder copied to another computer does not let that computer in. The stand-in list on
@@ -57,10 +57,16 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Session 55 (the owner's decisions of 29 Oct 2026): a start within the 15 days of an answer that let it in opens at
  * once, the list asked in the background (a revoke heard then stops it at that answer); the line, "Can’t reach the
  * access list: Drashti keeps working for 14 days 6 hours more.", shorter as it runs down, only once there has been no
- * answer for about 2 minutes (a few seconds here) and three checks in a row have had none, in a strip kept for it, so
- * nothing in the window moves when it comes or goes and it is never over a control; and when the computer's network
- * comes back (a file stands in for the network here, DRASHTI_TEST_NETWORK_FILE), the list is asked at once, a check
- * waiting on the old network given up.
+ * answer for about 2 minutes (a few seconds here) and three checks in a row have had none, so that nothing in the window
+ * moves when it comes or goes and it is never over a control; and when the computer's network comes back (a file stands
+ * in for the network here, DRASHTI_TEST_NETWORK_FILE), the list is asked at once, a check waiting on the old network
+ * given up.
+ *
+ * alpha.24 (the owner's QA24-ACCESS-STRIP A, 27 Nov 2026, in place of Session 55's strip kept for the line under the top
+ * bar, 24 px in every look): the line is said in the status bar, in place of the version and in the version's own room
+ * (cut short with "…" there if it must be, its words whole in its tooltip and to a screen reader), while the list does
+ * not answer; still nothing in the window moves when it comes or goes, nothing in the status bar either, and it is
+ * never over a control. So nothing comes between the top bar and the columns.
  */
 
 const FAST = {
@@ -70,6 +76,15 @@ const FAST = {
 };
 const SCREENS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
 
+/** The placeholder presentation's first slide up, as in a show. */
+const slideUp = (win: Page) =>
+  win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [p] = await d.library.listPresentations();
+    if (!p) throw new Error('no placeholder presentation');
+    await d.engine.dispatch({ type: 'goLive', presentationId: p.id, slideIndex: 0 });
+  });
+
 /** Drashti let in, with a slide on a screen of its own (a pretend display, as the tests' screens are). */
 async function showing(env: Record<string, string> = {}) {
   const run = await launchApp({ ...FAST, ...SCREENS, ...env });
@@ -77,12 +92,7 @@ async function showing(env: Record<string, string> = {}) {
   await operatorReady(win);
   await setUpScreen(win, 'Main Hall', 1);
   const out = await outputPage(run.app);
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const [p] = await d.library.listPresentations();
-    if (!p) throw new Error('no placeholder presentation');
-    await d.engine.dispatch({ type: 'goLive', presentationId: p.id, slideIndex: 0 });
-  });
+  await slideUp(win);
   await expect(out.locator('[data-layer="slide"]')).toHaveCount(1);
   return { ...run, win, out };
 }
@@ -150,7 +160,10 @@ const layout = (win: Page) =>
     return out;
   });
 
-/** The line is one line, its words whole at this size, and over no control of any kind. */
+/**
+ * The line is one line in the status bar, its words cut at most at their end (whole in its tooltip), and over no
+ * control of any kind.
+ */
 async function oneLineOverNothing(win: Page, what: string): Promise<void> {
   const found = await win.evaluate(() => {
     const line = document.querySelector('[data-testid="access-offline-notice"]');
@@ -159,7 +172,12 @@ async function oneLineOverNothing(win: Page, what: string): Promise<void> {
     const box = line.getBoundingClientRect();
     const problems: string[] = [];
     const words = line.querySelector('span');
-    if (words && words.scrollWidth > words.clientWidth + 1) problems.push('its words are cut');
+    if (!words) problems.push('its words are not in it');
+    // Cut short at most with "…" at their end (alpha.24: the version's room), the whole line in its tooltip.
+    if (words && words.scrollWidth > words.clientWidth + 1 && getComputedStyle(words).textOverflow !== 'ellipsis')
+      problems.push('its words are cut with no “…”');
+    if (words && words.getAttribute('title') !== words.textContent)
+      problems.push(`its tooltip is “${String(words.getAttribute('title'))}”, not its words`);
     // Nor cut at the bottom: the descenders of "keeps working" whole.
     if (words && words.scrollHeight > words.clientHeight + 1)
       problems.push(
@@ -167,8 +185,9 @@ async function oneLineOverNothing(win: Page, what: string): Promise<void> {
       );
     if (box.height > slot.getBoundingClientRect().height + 0.5)
       problems.push(`it is ${String(box.height)} px tall`);
-    const header = document.querySelector('[data-header]')?.getBoundingClientRect();
-    if (header && box.top < header.bottom - 0.5) problems.push('it is not under the top bar');
+    const bar = document.querySelector('footer[aria-label="Status"]')?.getBoundingClientRect();
+    if (!bar || box.top < bar.top - 0.5 || box.bottom > bar.bottom + 0.5 || box.right > bar.right + 0.5)
+      problems.push('it is not in the status bar');
     for (const el of document.querySelectorAll(
       'button, input, select, textarea, a[href], [role="button"], [role="tab"], [data-show-control]',
     )) {
@@ -182,6 +201,93 @@ async function oneLineOverNothing(win: Page, what: string): Promise<void> {
   });
   expect(found.problems, what).toEqual([]);
 }
+
+/** Where something is, as Playwright gives it. */
+interface Place {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The status bar, the version and every control in the bar, each named by its test id (or its name, or what it is)
+ * and exactly where it is, to the fraction of a pixel: none of it may move or change size as the line comes or goes
+ * (alpha.24: the version only hides, keeping its room for the line).
+ */
+const statusBar = (win: Page) =>
+  win.evaluate(() => {
+    const bar = document.querySelector('footer[aria-label="Status"]');
+    if (!bar) return ['no status bar'];
+    const out: string[] = [];
+    const parts = [
+      bar,
+      ...bar.querySelectorAll(
+        'button, a[href], input, select, [role="button"], [role="switch"], [tabindex], [data-testid]',
+      ),
+    ];
+    for (const el of parts) {
+      if (el.closest('[data-testid="access-offline-notices"]')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const id = el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName.toLowerCase();
+      out.push(`${id}: ${String(r.x)},${String(r.y)} ${String(r.width)}×${String(r.height)}`);
+    }
+    return out;
+  });
+
+/** The status bar once its parts have come (each as its store connects): the same at two looks a second apart. */
+async function settledStatusBar(win: Page): Promise<string[]> {
+  let last: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        const now = await statusBar(win);
+        const same = JSON.stringify(now) === JSON.stringify(last);
+        last = now;
+        return same;
+      },
+      { message: 'the status bar settles', intervals: [1000] },
+    )
+    .toBe(true);
+  return last;
+}
+
+/**
+ * The line in the status bar, in place of the version and in its room (alpha.24): the version hidden while the line
+ * shows, the line where the version was (`version`, its box before the line came) and no wider, its words the whole
+ * line to a screen reader and in its tooltip, in its status region (read out as it comes).
+ */
+async function inTheVersionsPlace(win: Page, version: Place | null, what: string): Promise<void> {
+  const slot = win.locator('footer[aria-label="Status"]').getByTestId('access-offline-notices');
+  const line = slot.getByTestId('access-offline-notice');
+  await expect(line, what).toBeVisible();
+  await expect(slot, what).toHaveAttribute('role', 'status');
+  await expect(slot, what).toHaveText(LINE);
+  await expect(line.locator('[title]'), what).toHaveAttribute('title', LINE);
+  await expect(win.getByTestId('app-info'), `${what}: the version hidden`).toBeHidden();
+  expect(version, what).not.toBeNull();
+  const box = await line.boundingBox();
+  expect(box, what).not.toBeNull();
+  const v = version ?? { x: 0, y: 0, width: 0, height: 0 };
+  const b = box ?? { x: 0, y: 0, width: 0, height: 0 };
+  expect(Math.abs(b.x - v.x), `${what}: its left where the version’s was`).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs(b.x + b.width - (v.x + v.width)),
+    `${what}: its right where the version’s was`,
+  ).toBeLessThanOrEqual(0.5);
+}
+
+/**
+ * How far the first column starts from the top bar's bottom: 0 with nothing between them (alpha.24: the access line's
+ * strip gone).
+ */
+const underTheTopBar = (win: Page) =>
+  win.evaluate(() => {
+    const header = document.querySelector('[data-header]')?.getBoundingClientRect();
+    const column = document.querySelector('[data-testid="column-left"]')?.getBoundingClientRect();
+    return header && column ? Math.abs(column.top - header.bottom) : Number.POSITIVE_INFINITY;
+  });
 
 /** Drashti's own log, everything it has written (drashti.log, and since alpha.21 each earlier day's drashti-YYYY-MM-DD.log and its parts). */
 function logOf(userData: string): string {
@@ -276,15 +382,44 @@ test('the stop in Simple Mode, in CI’s window: one message and Quit, fitting, 
   }
 });
 
-test('with no answer: no bar at the first missed checks; after 2 minutes (12 s here) and three missed in a row, one line under the top bar in the owner’s words, nothing in the window moving, over no control; gone when the list answers, nothing moving again', async () => {
+test('no strip under the top bar (alpha.24, the owner’s QA24-ACCESS-STRIP A): at 1024 × 645 in the default look, the first column starts where the top bar ends, in Pro and in Simple Mode', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp(FAST);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    // A slide up, as in a show (Simple Mode's first tips come only with none up, in a place of their own).
+    await slideUp(win);
+    await expect(win.getByTestId('live-text')).toContainText('slide 1 of');
+    await expect
+      .poll(() => underTheTopBar(win), { message: 'Pro Mode: the first column’s top, from the top bar’s bottom' })
+      .toBeLessThanOrEqual(1);
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    await expect(win.getByTestId('simple-mode')).toBeVisible();
+    await expect
+      .poll(() => underTheTopBar(win), {
+        message: 'Simple Mode: the first column’s top, from the top bar’s bottom',
+      })
+      .toBeLessThanOrEqual(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('with no answer: no line at the first missed checks; after 2 minutes (12 s here) and three missed in a row, one line in the status bar in the owner’s words, in place of the version (alpha.24), nothing in the window or the status bar moving, over no control; gone when the list answers, the version back, nothing moving again', async () => {
   test.setTimeout(150_000);
   // "The hour" 10 minutes here, so the line says minutes.
   const { app, win, access: list } = await showing({ ...QUICK, DRASHTI_TEST_ACCESS_STOP_MS: '600000' });
   try {
     await sizeOperatorWindow(app, win, CI_WINDOW);
     const line = win.getByTestId('access-offline-notice');
-    // The strip kept for the line is there, empty, before anything is missed.
-    await expect(win.getByTestId('access-offline-notices')).toBeVisible();
+    // The line's place in the status bar, where the version is (a status region, so the line is read out as it
+    // comes), is there before anything is missed, the version showing in it.
+    const slot = win.locator('footer[aria-label="Status"]').getByTestId('access-offline-notices');
+    await expect(slot).toBeVisible();
+    await expect(slot).toHaveAttribute('role', 'status');
+    await expect(win.getByTestId('app-info')).toBeVisible();
     await expect(line).toHaveCount(0);
     // The viewport's column constraint must have committed before the unchanged Pro baseline.
     await expect(win.getByRole('separator', { name: 'Resize the playlists', exact: true })).toHaveAttribute(
@@ -293,6 +428,8 @@ test('with no answer: no bar at the first missed checks; after 2 minutes (12 s h
     );
     const before = await layout(win);
     expect(before.length).toBeGreaterThan(5);
+    const bar = await settledStatusBar(win);
+    const version = await win.getByTestId('app-info').boundingBox();
     const tries = list.tries;
     stopAnswering(list);
     // Two checks missed (a third on its way): still nothing said, the show going on.
@@ -305,18 +442,22 @@ test('with no answer: no bar at the first missed checks; after 2 minutes (12 s h
     await expect(line).toHaveText(LINE);
     await expect(line).toContainText(/for (9|10) minutes more/u);
     expect(await layout(win), 'nothing moved as the line came').toEqual(before);
+    expect(await statusBar(win), 'nothing in the status bar moved as the line came').toEqual(bar);
+    await inTheVersionsPlace(win, version, 'the line at 1024 × 645');
     await oneLineOverNothing(win, 'the line at 1024 × 645');
     await clearOfShowControls(win, line);
-    await expectFits(win.getByTestId('access-offline-notices'), 'the line at 1024 × 645');
+    await expectFits(slot, 'the line at 1024 × 645');
     await expectNoSeriousA11yIssues(win, 'the line at 1024 × 645');
     for (const what of ['library', 'screens'] as const)
       expect(await tryIt(win, what), what).not.toContain(STOPPED_REFUSAL);
     // A command still runs the show (Black-out on, then off again, as it was).
     for (let i = 0; i < 2; i++) expect(await tryIt(win, 'command')).not.toContain(STOPPED_REFUSAL);
-    // The list answers again: the line goes, and still nothing has moved.
+    // The list answers again: the line goes, the version back, and still nothing has moved.
     answerAgain(list);
     await expect(line).toHaveCount(0, { timeout: 15_000 });
+    await expect(win.getByTestId('app-info')).toBeVisible();
     expect(await layout(win), 'nothing moved as the line went').toEqual(before);
+    expect(await statusBar(win), 'nothing in the status bar moved as the line went').toEqual(bar);
   } finally {
     await app.close();
   }
@@ -402,7 +543,7 @@ test('the line in days and hours: started with no internet 18 hours after an ans
   }
 });
 
-test('the line over Simple Mode, in CI’s window: under its top bar, nothing moving, over none of its big buttons, fitting, passing the accessibility checks, the show going on under it', async () => {
+test('the line in Simple Mode, in CI’s window: in its status bar in place of the version (alpha.24), nothing moving, over none of its big buttons, fitting, passing the accessibility checks, the show going on', async () => {
   test.setTimeout(150_000);
   const { app, win, access: list } = await showing({ ...QUICK, DRASHTI_TEST_ACCESS_STOP_MS: '600000' });
   // Numeric resize diagnostics only: never attach a DOM/storage dump or any access data.
@@ -464,7 +605,10 @@ test('the line over Simple Mode, in CI’s window: under its top bar, nothing mo
     const simple = win.getByTestId('simple-mode');
     await expect(simple).toBeVisible();
     await sizeOperatorWindow(app, win, CI_WINDOW);
-    await expect(win.getByTestId('access-offline-notices')).toBeVisible();
+    const slot = win.locator('footer[aria-label="Status"]').getByTestId('access-offline-notices');
+    await expect(slot).toBeVisible();
+    await expect(slot).toHaveAttribute('role', 'status');
+    await expect(win.getByTestId('app-info')).toBeVisible();
     // The viewport is set: its column constraint must have committed before the unchanged baseline.
     await expect(
       simple.getByRole('separator', { name: 'Resize the playlists', exact: true }),
@@ -472,6 +616,8 @@ test('the line over Simple Mode, in CI’s window: under its top bar, nothing mo
     const before = await layout(win);
     await attachLayoutNumbers('simple-layout-baseline-captured');
     expect(before.length).toBeGreaterThan(3);
+    const bar = await settledStatusBar(win);
+    const version = await win.getByTestId('app-info').boundingBox();
     const tries = list.tries;
     stopAnswering(list);
     const line = win.getByTestId('access-offline-notice');
@@ -479,7 +625,7 @@ test('the line over Simple Mode, in CI’s window: under its top bar, nothing mo
     await expect(line).toHaveCount(0);
     await expect(line).toBeVisible({ timeout: 20_000 });
     await expect(line).toHaveText(LINE);
-    // In Simple Mode's own strip: nothing moved, over none of its big buttons.
+    // In Simple Mode's status bar, in place of the version: nothing moved, over none of its big buttons.
     await expect(simple).toBeVisible();
     try {
       expect(await layout(win), 'nothing moved as the line came').toEqual(before);
@@ -491,20 +637,24 @@ test('the line over Simple Mode, in CI’s window: under its top bar, nothing mo
       }
       throw error;
     }
-    await oneLineOverNothing(win, 'the line over Simple Mode at 1024 × 645');
+    expect(await statusBar(win), 'nothing in the status bar moved as the line came').toEqual(bar);
+    await inTheVersionsPlace(win, version, 'the line in Simple Mode at 1024 × 645');
+    await oneLineOverNothing(win, 'the line in Simple Mode at 1024 × 645');
     await clearOfShowControls(win, line);
-    await expectFits(win.getByTestId('access-offline-notices'), 'the line over Simple Mode at 1024 × 645');
-    await expectNoSeriousA11yIssues(win, 'the line over Simple Mode at 1024 × 645');
+    await expectFits(slot, 'the line in Simple Mode at 1024 × 645');
+    await expectNoSeriousA11yIssues(win, 'the line in Simple Mode at 1024 × 645');
     // The show goes on under it: Simple Mode's own Black-out button still works.
     const blackout = simple.getByTestId('simple-blackout');
     await blackout.click();
     await expect(blackout).toContainText('Black-out is on');
     await blackout.click();
     await expect(blackout).not.toContainText('Black-out is on');
-    // The list answers again: the line goes, and Simple Mode is as it was.
+    // The list answers again: the line goes, the version back, and Simple Mode is as it was.
     answerAgain(list);
     await expect(line).toHaveCount(0, { timeout: 15_000 });
+    await expect(win.getByTestId('app-info')).toBeVisible();
     expect(await layout(win), 'nothing moved as the line went').toEqual(before);
+    expect(await statusBar(win), 'nothing in the status bar moved as the line went').toEqual(bar);
   } finally {
     await app.close();
   }
