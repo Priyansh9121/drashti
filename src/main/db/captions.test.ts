@@ -54,10 +54,11 @@ describe('captions settings in the library', () => {
     const current = openDatabase(file);
     try {
       const repo = new CaptionSettingsRepo(current);
-      expect(repo.get()).toEqual(settings);
+      // "Captions in" (alpha.24) reads as the speaker's own words until it is stored.
+      expect(repo.get()).toEqual({ ...settings, captionLanguage: 'same' });
       const sanskrit = { ...settings, language: 'sa' } as const;
       repo.set(sanskrit);
-      expect(repo.get()).toEqual(sanskrit);
+      expect(repo.get()).toEqual({ ...sanskrit, captionLanguage: 'same' });
     } finally {
       current.close();
     }
@@ -67,7 +68,13 @@ describe('captions settings in the library', () => {
     const db = openDatabase(join(dir, 'library.sqlite'));
     const repo = new CaptionSettingsRepo(db);
     repo.set({ language: 'gu', audience: true, size: 'large', place: 'top' });
-    expect(repo.get()).toEqual({ language: 'gu', audience: true, size: 'large', place: 'top' });
+    expect(repo.get()).toEqual({
+      language: 'gu',
+      audience: true,
+      size: 'large',
+      place: 'top',
+      captionLanguage: 'same',
+    });
     expect(() => db.prepare("UPDATE caption_settings SET language = 'fr'").run()).toThrow(/CHECK/);
     expect(() => db.prepare("UPDATE caption_settings SET size = 'huge'").run()).toThrow(/CHECK/);
     expect(() => db.prepare('INSERT INTO caption_settings (id) VALUES (2)').run()).toThrow(/CHECK/);

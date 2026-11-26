@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  CAPTION_TARGETS,
+  DEFAULT_CAPTION_TARGET,
+  type CaptionStageBand,
+  type CaptionTarget,
+  type CaptionTranslationStatus,
+} from './caption-translation';
 import { SPEECH_LANGUAGES, type SlowHold, type SpeechLanguage, type SpeechState } from './speech';
 
 /*
@@ -27,6 +34,12 @@ export interface CaptionSettings {
   audience: boolean;
   size: CaptionSize;
   place: CaptionPlace;
+  /**
+   * "Captions in" (alpha.24, QA24-CAPLANG-2, migration 093; shared/caption-translation.ts): the speaker's own words
+   * ("same", the default) or a translation into Gujarati, Hindi or English. Always set once parsed; absent (a value
+   * from before alpha.24) reads as "same".
+   */
+  captionLanguage?: CaptionTarget;
 }
 
 export const DEFAULT_CAPTION_SETTINGS: Readonly<CaptionSettings> = Object.freeze({
@@ -34,6 +47,7 @@ export const DEFAULT_CAPTION_SETTINGS: Readonly<CaptionSettings> = Object.freeze
   audience: false,
   size: 'medium',
   place: 'bottom',
+  captionLanguage: DEFAULT_CAPTION_TARGET,
 });
 
 export const captionSettingsSchema = z.object({
@@ -41,6 +55,7 @@ export const captionSettingsSchema = z.object({
   audience: z.boolean(),
   size: z.enum(CAPTION_SIZES),
   place: z.enum(CAPTION_PLACES),
+  captionLanguage: z.enum(CAPTION_TARGETS),
 });
 
 /** Settings as stored or sent, each field checked on its own: anything unknown is that field's default. */
@@ -51,11 +66,13 @@ export function parseCaptionSettings(raw: unknown): CaptionSettings {
   const audience = shape.audience.safeParse(from['audience']);
   const size = shape.size.safeParse(from['size']);
   const place = shape.place.safeParse(from['place']);
+  const captionLanguage = shape.captionLanguage.safeParse(from['captionLanguage']);
   return {
     language: language.success ? language.data : DEFAULT_CAPTION_SETTINGS.language,
     audience: audience.success ? audience.data : DEFAULT_CAPTION_SETTINGS.audience,
     size: size.success ? size.data : DEFAULT_CAPTION_SETTINGS.size,
     place: place.success ? place.data : DEFAULT_CAPTION_SETTINGS.place,
+    captionLanguage: captionLanguage.success ? captionLanguage.data : DEFAULT_CAPTION_TARGET,
   };
 }
 
@@ -73,6 +90,18 @@ export interface CaptionsShown {
   audience: boolean;
   size: CaptionSize;
   place: CaptionPlace;
+  /**
+   * alpha.24 (QA24-CAPLANG-2): `lines` are a translation of the speaker's words (the audience screens and the stream
+   * draw them); absent: the speaker's own words, as before.
+   */
+  kind?: 'translation';
+  /**
+   * alpha.24: what the stage screens draw instead while `lines` are a translation: the speaker's own words as heard
+   * (null: nothing for the stage now). Absent: the stage draws `lines`, as before.
+   */
+  stage?: CaptionStageBand | null;
+  /** alpha.24: a long translation shown as two-line pages: which page this is (from 1), of how many. */
+  page?: { n: number; of: number };
 }
 
 /**
@@ -135,7 +164,15 @@ export function captionsFor(
   captions: CaptionsShown | null | undefined,
   screen: CaptionScreen,
 ): CaptionsShown | null {
-  if (!captions || captions.lines.length === 0) return null;
+  if (!captions) return null;
+  // alpha.24: while the others show a translation, the stage draws the speaker's own words (its own band).
+  if (screen === 'stage' && captions.stage !== undefined) {
+    const own = captions.stage;
+    if (!own || own.lines.length === 0) return null;
+    const { stage: _stage, kind: _kind, page: _page, fit: _fit, ...rest } = captions;
+    return { ...rest, ...(own.fit ? { fit: true } : {}), lines: own.lines, language: own.language };
+  }
+  if (captions.lines.length === 0) return null;
   return screen === 'hall' && !captions.audience ? null : captions;
 }
 
@@ -269,6 +306,11 @@ export interface CaptionsStatus {
    * they are turned on again (never on disk).
    */
   stopped: CaptionsStopped | null;
+  /**
+   * Translated captions on this computer (alpha.24, QA24-CAPLANG-2): what "Captions in" does now, whether it can
+   * translate here (2f), phrases skipped and the engine's fault. Absent: a Drashti before alpha.24 (none).
+   */
+  translation?: CaptionTranslationStatus;
 }
 
 /** After this many rests in a row for slowness, with no phrase heard whole between, captions stop (cap-threads). */

@@ -7,6 +7,7 @@ import type { OperatorMode } from '../shared/mode';
 import type { ScreenSwitch, ScreenSwitches } from '../shared/screen-switches';
 import { SETUP_TOOLS, TOOLS_MENU, type ToolsMenuItem } from '../shared/setup-tools';
 import { type LogPeriod, periodChoices } from '../shared/log-period';
+import type { CaptionTarget } from '../shared/caption-translation';
 import type { SpeechLanguage } from '../shared/speech';
 
 /** File › Speaker’s Language's choices (alpha.22), in the Live captions dialog's order. */
@@ -117,6 +118,16 @@ export interface MenuActions {
   speakerLanguage?: {
     language: SpeechLanguage | 'auto';
     choose: (language: SpeechLanguage | 'auto') => void;
+  } | null;
+  /**
+   * File › Caption Language (alpha.24, QA24-CAPLANG-2, Pro Mode): "Captions in", the language the audience screens
+   * and the stream show captions in (the speaker's own, or a translation), ticked as it is; a translation choice is
+   * disabled while it cannot translate here (`offered`). Left out (or null) where there are no live captions.
+   */
+  captionLanguage?: {
+    target: CaptionTarget;
+    offered: boolean;
+    choose: (target: CaptionTarget) => void;
   } | null;
   /**
    * Help › Caption and Translation Models… (alpha.22, cap-pack; Pro Mode only): the offline model packs on this
