@@ -72,4 +72,41 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
       find: [],
     });
   });
+  it('explains an unconverted HEIC picture without calling it missing or offering Find', () => {
+    const heic = { ...picture('photo', false, 'Placeholder.heic'), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [heic] })).toEqual({
+      kind: 'all',
+      count: 1,
+      label: 'its picture needs conversion',
+      tile: 'Convert picture',
+      notice:
+        'The wallpaper’s picture needs conversion: “Placeholder.heic”. Convert it in Media. With nothing up, the screens show black.',
+      live: 'The wallpaper’s picture needs conversion: “Placeholder.heic”. The screens show black when the wallpaper is up.',
+      find: [],
+    });
+  });
+
+  it('warns about a HEIC turn while another picture can still show', () => {
+    const heic = { ...picture('photo', false, 'Placeholder.heic'), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [heic, picture('ready', false)] })).toMatchObject({
+      kind: 'some',
+      count: 1,
+      live: null,
+      find: [],
+      notice:
+        'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. Pictures needing conversion show black on their turns.',
+    });
+  });
+
+  it('keeps Find for genuinely missing pictures when another needs conversion', () => {
+    const heic = { ...picture('photo', false, 'Placeholder.heic'), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [heic, picture('gone', true)] })).toMatchObject({
+      kind: 'all',
+      count: 2,
+      tile: 'Check pictures',
+      find: ['gone'],
+      notice:
+        'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. 1 picture is missing. With nothing up, the screens show black.',
+    });
+  });
 });
