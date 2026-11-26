@@ -1,4 +1,4 @@
-import { SHOW_F_KEYS } from './keymap';
+import { KEYMAP, type OperatorAction, SHOW_F_KEYS } from './keymap';
 
 /*
  * Every Drashti window's own keys, beyond the operator window's show keys (KEYMAP, keymap.ts): the manual's
@@ -50,6 +50,14 @@ export interface WindowKey {
 }
 
 const ARROWS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'] as const;
+
+/**
+ * An operator action's keys, from KEYMAP itself: the menu bar shows some of the operator window's keys (Audience,
+ * Stage, Uncover the controls, Undo), and only the keymap names them (menu-keys.test.ts: no other file writes F12 or
+ * Mod+1 and Mod+2), so they can never differ.
+ */
+const keymapKeys = (action: OperatorAction): readonly string[] =>
+  KEYMAP.find((b) => b.action === action)?.keys ?? [];
 const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
 
 /** The slide editor's own keys, as its window acts on them (editor/SlideEditor.tsx's keydown) and its buttons show. */
@@ -359,19 +367,23 @@ export const WINDOW_KEYS: readonly WindowKey[] = [
     keys: ['Escape'],
   },
 
-  { window: 'The menu bar', what: 'Edit › Undo', keys: ['Mod+Z'] },
+  { window: 'The menu bar', what: 'Edit › Undo', keys: keymapKeys('undo') },
   { window: 'The menu bar', what: 'Edit › Redo', keys: ['Mod+Shift+Z'], windows: ['Ctrl+Y'] },
   { window: 'The menu bar', what: 'Edit › Cut, Copy, Paste', keys: ['Mod+X', 'Mod+C', 'Mod+V'] },
   { window: 'The menu bar', what: 'Edit › Paste and Match Style', keys: [], mac: ['Mod+Alt+Shift+V'] },
   { window: 'The menu bar', what: 'Edit › Select All', keys: ['Mod+A'] },
-  { window: 'The menu bar', what: 'View › Audience, View › Stage', keys: ['Mod+1', 'Mod+2'] },
+  {
+    window: 'The menu bar',
+    what: 'View › Audience, View › Stage',
+    keys: [...keymapKeys('toggleAudience'), ...keymapKeys('toggleStage')],
+  },
   { window: 'The menu bar', what: 'View › Reload Operator Window', keys: ['Mod+R'] },
   { window: 'The menu bar', what: 'View › Full screen', keys: ['F11'], mac: ['Ctrl+Mod+F'] },
   { window: 'The menu bar', what: 'Window › Minimize', keys: ['Mod+M'] },
   {
     window: 'The menu bar',
     what: 'Window › Uncover the Controls (even when Drashti is not the active app)',
-    keys: ['Mod+Shift+U'],
+    keys: keymapKeys('uncoverControls'),
   },
   { window: 'The menu bar', what: 'Window › Close', keys: ['Ctrl+W'], mac: [] },
   {
