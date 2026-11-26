@@ -60,3 +60,8 @@ export function useToolHere(feature: SimpleFeature): boolean {
   const chosen = useSimpleFeatures((s) => s.chosen.includes(feature));
   return pro || chosen;
 }
+
+/** The same, as it is now, outside a component (a chat popup's click). */
+export function toolHereNow(feature: SimpleFeature): boolean {
+  return useMode.getState().mode !== 'simple' || useSimpleFeatures.getState().chosen.includes(feature);
+}

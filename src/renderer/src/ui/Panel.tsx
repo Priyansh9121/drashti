@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { PanelHelpId } from '../../../shared/panel-help';
 import { useWhatIsThis } from '../help/WhatIsThis';
@@ -7,6 +7,7 @@ import { cx } from './cx';
 import type { Icon } from './icons';
 import { ChevronDown, ChevronRight } from './icons';
 import { livelyNow } from './motion';
+import { openAsks } from './open-asks';
 import type { Keep } from './persist';
 import { usePersistentState } from './persist';
 
@@ -35,6 +36,7 @@ export function Panel({
   help: topic,
   actions,
   badge,
+  openAsked = 0,
   collapsible = false,
   remember,
   defaultOpen = true,
@@ -55,6 +57,11 @@ export function Panel({
    * reader (the toggle's, when it folds).
    */
   badge?: ReactNode;
+  /**
+   * Asks to unfold it, without moving the keyboard's focus (a chat popup's click), counted: only one made after it
+   * mounted unfolds it, once (open-asks.ts).
+   */
+  openAsked?: number;
   collapsible?: boolean;
   /** A name to remember whether it is folded (per computer, or while Drashti runs: `keep`). */
   remember?: string;
@@ -76,6 +83,15 @@ export function Panel({
     (v): v is boolean => typeof v === 'boolean',
     keep,
   );
+  const section = useRef<HTMLElement>(null);
+  // The asks standing as it mounts are old: mounted again, it stays as the operator left it.
+  const [asks] = useState(() => openAsks(openAsked));
+  useEffect(() => {
+    if (!asks.take(openAsked)) return;
+    setOpen(true);
+    const frame = requestAnimationFrame(() => section.current?.scrollIntoView({ block: 'nearest' }));
+    return () => cancelAnimationFrame(frame);
+  }, [asks, openAsked, setOpen]);
   const shown = !collapsible || open;
   const help = useWhatIsThis(topic ?? null);
   const heading = (
@@ -86,7 +102,12 @@ export function Panel({
     </span>
   );
   return (
-    <section aria-labelledby={`${id}-title`} className={cx('flex min-h-0 flex-col', className)} {...data}>
+    <section
+      ref={section}
+      aria-labelledby={`${id}-title`}
+      className={cx('flex min-h-0 flex-col', className)}
+      {...data}
+    >
       {/* A title strip (Session 44: the appearance's, data-strip), but not a panel's set in under a group's. */}
       <header
         className={cx(

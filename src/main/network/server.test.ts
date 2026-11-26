@@ -675,6 +675,24 @@ describe('the network server', () => {
     await until(() => host.connectedNow.length === 0);
   });
 
+  it('tells a phone which presentations changed when Drashti names them, and nothing named otherwise (QA24-PHONE-C)', async () => {
+    const { port, server: s } = await start();
+    s.engine(snapshot(5));
+    const { ws, messages } = await feed(port);
+    ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN }));
+    await until(() => messages.some((m) => m.type === 'engine'));
+    s.hint('presentations', ['p-one', 'p-two']);
+    s.hint('presentations');
+    s.hint('playlists');
+    await until(() => messages.filter((m) => m.type === 'changed').length === 3);
+    expect(messages.filter((m) => m.type === 'changed')).toEqual([
+      { type: 'changed', what: 'presentations', ids: ['p-one', 'p-two'] },
+      { type: 'changed', what: 'presentations' },
+      { type: 'changed', what: 'playlists' },
+    ]);
+    ws.close();
+  });
+
   it('sends a compatible lower third to a phone tab left open from alpha.17', async () => {
     const { port, server: s } = await start();
     const lowerThird = lowerThirdSchema.parse({

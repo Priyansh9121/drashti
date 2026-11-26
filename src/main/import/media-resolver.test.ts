@@ -40,6 +40,13 @@ describe('resolveMedia', () => {
     });
   });
 
+  it('can search only the supplied folders without taking the old source path', () => {
+    const original = '/Users/op/Movies/Loop.mov';
+    const nearby = join('/drop', 'Loop.mov');
+    const lookup = { nearby: ['/drop'], byName, isFile: files(original, nearby), allowOriginal: false };
+    expect(resolveMedia(original, lookup)).toEqual({ path: nearby, how: 'nearby', alternatives: 0 });
+  });
+
   it('then a file of the same name in a nearby folder (next to the presentation, or in its bundle)', () => {
     const isFile = files(join('/bundle/media', 'Loop.mov'));
     expect(
