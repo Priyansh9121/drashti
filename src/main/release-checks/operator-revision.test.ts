@@ -7,9 +7,9 @@ it('operator render hooks never subscribe to the wire revision ahead of the publ
   // A wire-revision hook wakes React on Go cleanup even when engine-store holds that scene publication.
   const offenders: string[] = [];
   for (const directory of ['operator', 'practice', 'screens']) {
-    const root = fileURLToPath(new URL(`../${directory}/`, import.meta.url));
+    const root = fileURLToPath(new URL(`../../renderer/src/${directory}/`, import.meta.url));
     for (const entry of readdirSync(root, { recursive: true, encoding: 'utf8' })) {
-      if (!/\.tsx?$/.test(entry) || /\.test\./.test(entry)) continue;
+      if (!/\.tsx?$/.test(entry) || entry.includes('.test.')) continue;
       const source = readFileSync(`${root}/${entry}`, 'utf8');
       if (/useEngine\(\s*\(?(\w+)\)?\s*=>\s*\1\.rev\s*\)/.test(source)) {
         offenders.push(`${directory}/${entry}`);
