@@ -143,6 +143,9 @@ describe('a name of fewer than five letters is blanked only where it is the name
   it('in scripts written without spaces a name is blanked wherever it is', () => {
     expect(redactNames('プレースホルダーです', ['プレースホルダー'])).toBe(`${B}です`);
     expect(redactNames('占位文本在这里', ['占位文本'])).toBe(`${B}在这里`);
+    // A two-letter name inside a sentence of its own script (round 4, R4-2).
+    expect(redactNames('这是占位的文本', ['占位'])).toBe(`这是${B}的文本`);
+    expect(redactNames('นี่คือตัวอย่างข้อความ', ['ตัว'])).toBe(`นี่คือ${B}อย่างข้อความ`);
   });
 
   it('a longer name is blanked wherever it is the name, before any shorter one inside it', () => {
