@@ -23,8 +23,16 @@ describe('a row’s LIVE dot', () => {
     expect(read(dot)).toBe('Live');
     expect(read(draw(createElement(LiveBadge)))).toBe('Live');
     // The word is there for screen readers alone; what is seen is the dot.
-    expect(dot).toMatch(/<span class="sr-only">Live<\/span>/u);
+    expect(dot).toMatch(/<span class="sr-only[^"]*">Live<\/span>/u);
     expect(dot).toMatch(/<span aria-hidden="true" class="[^"]*rounded-full[^"]*bg-live-edge[^"]*"><\/span>/u);
+  });
+
+  it('says Live in words in forced colours (a Windows contrast theme), where the dot and the red edge, backgrounds, are the system’s own (the release lead’s review, MUST-1)', () => {
+    const dot = draw(createElement(LiveDot));
+    expect(dot).toMatch(/<span class="sr-only [^"]*\bforced-colors:not-sr-only\b[^"]*">Live<\/span>/u);
+    // The dot, painted over by the theme, gives its room to the word; the box grows to hold it.
+    expect(dot).toMatch(/<span aria-hidden="true" class="[^"]*\bforced-colors:hidden\b[^"]*"><\/span>/u);
+    expect(dot).toMatch(/data-live-dot="" class="[^"]*\bmin-w-4\b/u);
   });
 
   it('is no badge: no box, no capitals, nothing a badge’s rules measure', () => {

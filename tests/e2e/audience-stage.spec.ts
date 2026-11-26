@@ -1,7 +1,12 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { IPC } from '../../src/shared/ipc';
 import type { StreamStatus } from '../../src/shared/stream';
+import {
+  type IconAloneButton,
+  MAY_SHOW_ICON_ALONE,
+  WORDS_FROM,
+} from '../../src/renderer/src/operator/top-bar';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import { expectPhoneRefuses } from './phone-refuses';
 import { expectFits } from './fit';
@@ -469,6 +474,63 @@ test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones on: nothing cu
       await onAirAndRec(app, win, stream.live, stream.noSound);
       await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, ${stream.words}`);
     }
+  await app.close();
+});
+
+/*
+ * The top bar's words (alpha.24, uitop; the release lead's review S3): each of Simple Mode, Ready?, Phones,
+ * Announcements and Stream shows its words from the width top-bar.ts gives it, with Phones off and with Phones on. At
+ * that width, on air as the stream says it longest (reconnecting and REC, or No sound), the bar fits and what is live
+ * keeps 48 px; 1 px narrower, that button shows its icon alone, square.
+ */
+const TOP_BAR_BUTTON: Record<IconAloneButton, (header: Locator) => Locator> = {
+  simple: (h) => h.getByRole('button', { name: 'Simple Mode', exact: true }),
+  ready: (h) => h.getByTestId('open-ready'),
+  phones: (h) => h.getByTestId('open-network'),
+  announcements: (h) => h.getByTestId('open-announcements'),
+  stream: (h) => h.getByTestId('open-stream'),
+};
+
+test('the top bar’s words come back where top-bar.ts says, Phones off and on, on air: the bar fits, what is live keeps 48 px, and 1 px narrower each shows its icon alone (uitop)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const header = win.getByTestId('app-header');
+  const streams = [
+    { live: 'live', noSound: false, words: 'on air and recording' },
+    { live: 'reconnecting', noSound: false, words: 'reconnecting and recording' },
+    { live: 'live', noSound: true, words: 'on air and recording, with no sound' },
+  ] as const;
+  for (const crowded of [false, true]) {
+    if (crowded) {
+      await networkOn(win);
+      await expect(header.getByTestId('open-announcements')).toBeVisible();
+    }
+    const phones = crowded ? 'Phones on' : 'Phones off';
+    for (const b of MAY_SHOW_ICON_ALONE) {
+      if (!crowded && b === 'announcements') continue;
+      const from = WORDS_FROM[b][crowded ? 'crowded' : 'quiet'];
+      const button = TOP_BAR_BUTTON[b](header);
+      await win.setViewportSize({ width: from, height: 720 });
+      for (const stream of streams) {
+        await onAirAndRec(app, win, stream.live, stream.noSound);
+        const where = `${phones}, ${b}'s words at ${String(from)} px, ${stream.words}`;
+        await expectTopBarFits(win, where);
+        const line = (await win.getByTestId('live-text').boundingBox())?.width ?? 0;
+        expect(line, `${where}: what is live keeps 48 px`).toBeGreaterThanOrEqual(47.5);
+      }
+      expect(
+        (await button.boundingBox())?.width ?? 0,
+        `${phones}: ${b} with its words at ${String(from)} px`,
+      ).toBeGreaterThan(40);
+      await win.setViewportSize({ width: from - 1, height: 720 });
+      expect(
+        (await button.boundingBox())?.width,
+        `${phones}: ${b}'s icon alone at ${String(from - 1)} px`,
+      ).toBe(32);
+    }
+  }
   await app.close();
 });
 

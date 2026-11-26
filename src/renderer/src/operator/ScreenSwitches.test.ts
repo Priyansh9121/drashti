@@ -25,11 +25,16 @@ describe('the top bar’s Audience and Stage', () => {
     expect(switchLook(false)).toEqual({ variant: 'warning', dot: 'bg-warning', word: 'Off' });
   });
 
-  it('never move in any interface motion, as they change the hall’s screens (uimotion’s review): no lift, no press, no fade, yet no show control, as the header’s gradient may never lie under one', () => {
+  it('never move in any interface motion, as they change the hall’s screens (uimotion’s review): no lift, no press, no press dim (the release lead’s review, MUST-2), no fade, yet no show control, as the header’s gradient may never lie under one', () => {
     const classes = SWITCH_STILL.split(' ');
     // Important, so they hold over the motion rules (unlayered, by data-variant) as over the button's own fade.
     expect(classes).toEqual(
-      expect.arrayContaining(['translate-none!', 'transform-none!', 'transition-none!']),
+      expect.arrayContaining([
+        'translate-none!',
+        'transform-none!',
+        'transition-none!',
+        'active:opacity-100!',
+      ]),
     );
     expect(classes.every((c) => c.endsWith('!'))).toBe(true);
   });
