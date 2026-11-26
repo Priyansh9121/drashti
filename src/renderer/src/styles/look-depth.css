@@ -43,34 +43,37 @@
   :root[data-window-look='depth'][data-base='dark'] {
     --depth-ground: #030304;
     --elev-light: #ffffff17;
-    --state-live-tint: #d42a3124;
+    --state-live-tint: #d42a311c;
     --state-live-ring: #d42a313d;
   }
   :root[data-window-look='depth'][data-base='light'] {
     --depth-ground: #d6d9dd;
     --elev-light: #ffffff;
-    --state-live-tint: #d42a310f;
+    --state-live-tint: #d42a3114;
     --state-live-ring: #d42a3129;
   }
 
   /*
    * The state set, one for every control the look draws (said again in each zone, so it takes the zone's surfaces):
-   * at rest the raised surface, hover a step brighter (darker in a light one), pressed back down; selected as always
-   * (the raised surface and the second colour's edge); live the red ring and tint above; disabled at 40 %.
+   * at rest the pressed surface (a clear step off its column), hover a step brighter (dark: a 3 % lift; light: halfway
+   * to the lighter surface, as every word of rules.ts still reads 4.5:1 there, which a darker one would not), pressed
+   * between; selected as always (the raised surface and the second colour's edge); live the red ring and tint above
+   * (inside the live row, on its own surface: --state-live-base); disabled at 40 %, the buttons' own (opacity-40).
    */
   :root[data-window-look='depth'] :is(body, [data-zone]) {
-    --state-fill: var(--color-panel-2);
+    --state-fill: var(--color-panel-3);
     /* Opaque, so a fold's fading copy of a section's insides is drawn on the row's own colour (ui/fold.ts). */
-    --state-row: color-mix(in srgb, var(--color-fg) 5%, var(--color-panel));
-    --state-disabled: 0.4;
+    --state-row: color-mix(in srgb, var(--color-fg) 3%, var(--color-panel));
   }
   :root[data-window-look='depth'][data-base='dark'] :is(body, [data-zone]) {
-    --state-hover: color-mix(in srgb, var(--color-fg) 7%, var(--color-panel-3));
-    --state-press: var(--color-panel-3);
+    --state-hover: color-mix(in srgb, var(--color-fg) 3%, var(--color-panel-3));
+    --state-press: color-mix(in srgb, var(--color-panel-3) 60%, var(--color-panel));
+    --state-live-base: var(--color-panel-3);
   }
   :root[data-window-look='depth'][data-base='light'] :is(body, [data-zone]) {
-    --state-hover: var(--color-panel-3);
-    --state-press: color-mix(in srgb, var(--color-fg) 4%, var(--color-panel-3));
+    --state-hover: color-mix(in srgb, var(--color-panel-3) 50%, var(--color-panel-2));
+    --state-press: color-mix(in srgb, var(--color-panel-3) 80%, var(--color-panel-2));
+    --state-live-base: var(--color-panel-2);
   }
 
   /*
@@ -131,15 +134,31 @@
 
   /*
    * The columns as panels: the gap inside each column's own box (so no column is narrower or wider than the layout
-   * says: operator/Layout.tsx), the ground showing through it; rounded, with the light along the top. The middle and
-   * the live column keep what they hold inside their corners (clip: no scrolling of its own).
+   * says: operator/Layout.tsx), the ground showing through it, with the light along the top. The middle and the live
+   * column clip square to their box (clip: no scrolling of its own), as the left column already does (overflow-hidden).
    */
   :root[data-window-look='depth']
     :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right']) {
+    position: relative;
+    isolation: isolate;
     border-inline: var(--depth-gap) solid transparent;
-    border-radius: var(--radius-panel);
     background-clip: padding-box;
     box-shadow: inset 0 1px 0 var(--elev-light);
+  }
+  /*
+   * The panels' rounded corners, with no rounded clip (the release lead's review, S1: a rounded clip over a column's
+   * scrolling parts may cost a layer drawn afresh at every frame): each column stays square and clips square, and a
+   * no-blur ring of the ground's own colour lies over its four corners, above whatever reaches them.
+   */
+  :root[data-window-look='depth']
+    :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right'])::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    border-radius: var(--radius-panel);
+    box-shadow: 0 0 0 var(--radius-panel) var(--depth-ground);
+    pointer-events: none;
   }
   :root[data-window-look='depth'] :is([data-testid='column-middle'], [data-testid='column-right']) {
     overflow: clip;
@@ -254,6 +273,7 @@
   }
   /* The live row: its red frame (playlists/SlideRow.tsx), tinted inside; never a glow under it. */
   :root[data-window-look='depth'] [data-testid='slide-thumb'][aria-current='true'] {
+    background-color: var(--state-live-base);
     box-shadow: inset 0 0 0 9999px var(--state-live-tint);
   }
 
