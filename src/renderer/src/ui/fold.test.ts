@@ -4,8 +4,8 @@ import { livelyWith } from './motion';
 
 /*
  * A section's fold (alpha.24, uimotion; the owner's QA24-UI-3 "more interactive and more animated, more transitions"):
- * when a section under LIVE folds or unfolds with motion, and how. As a live look's touch (shared/appearance/moving.ts)
- * it moves only once the window has opened, with a graphics chip, with interface motion not Off and the computer not
+ * when a section under LIVE folds or unfolds with motion, and how. It moves only once the window has opened, with a
+ * graphics chip known to be there (as a live look's touch needs one), with interface motion not Off and the computer not
  * set to reduce motion; and, as Lively's glides, never while the show is changing (0.8 s after an engine change).
  */
 

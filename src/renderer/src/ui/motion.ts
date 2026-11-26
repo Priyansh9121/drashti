@@ -90,8 +90,9 @@ export function motionOff(): boolean {
  * Lively (Session 40): more moves, never on a show control, and none started while the show is changing: a
  * slide change, Next to the next item, a clear, anything the engine says changed in the last QUIET_MS. Since alpha.24
  * (the release lead's review of uimotion, MUST-1; a new install starts in Lively) all of it waits for a graphics chip
- * known to be there, as a live look's touch does: without one Lively moves as Calm does (app.css names data-chip on
- * every Lively rule, and the preload's cross-fade asks the same).
+ * known to be there: without one Lively moves as Calm does (app.css names data-chip on every Lively rule, and the
+ * preload's cross-fade asks the same). Streaming on a slow computer, Moving: Off and a hidden window, which also hold a
+ * live look's touch, do not hold it.
  */
 export const QUIET_MS = 800;
 
