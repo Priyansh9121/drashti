@@ -173,7 +173,7 @@ const bridge: DrashtiBridge = {
   },
   flow: {
     get: () => invoke(IPC.flow.get),
-    choose: () => invoke(IPC.flow.choose),
+    choose: (file) => invoke(IPC.flow.choose, file),
     remove: () => invoke(IPC.flow.remove),
     setNow: (flowId, now) => invoke(IPC.flow.setNow, flowId, now),
     page: (flowId, page) => invoke(IPC.flow.page, flowId, page),
@@ -218,6 +218,13 @@ const bridge: DrashtiBridge = {
     importFile: () => invoke(IPC.captionWords.import),
     exportFile: () => invoke(IPC.captionWords.export),
     setHints: (language, on) => invoke(IPC.captionWords.setHints, language, on),
+  },
+  captionClean: {
+    view: () => invoke(IPC.captionClean.view),
+    set: (words) => invoke(IPC.captionClean.set, words),
+    importFile: () => invoke(IPC.captionClean.import),
+    exportFile: () => invoke(IPC.captionClean.export),
+    onChanged: (listener) => on(IPC.captionClean.changed, listener),
   },
   videoCaptions: {
     view: (mediaId) => invoke(IPC.videoCaptions.view, mediaId),

@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import type { CaptionsStatus } from '../../../shared/captions';
 import { captionsStatusLine } from './captions-words';
+import { translationStatusLine } from './caption-target-words';
 
 /*
  * Live captions in the operator window (Session 55, Part 10): the dialog, opened by File › Live Captions… (Pro Mode).
  * How captions stand is kept whole only while it is open; a window is never sent a word heard. The status bar's line
- * (cap-threads) is kept always: why captions that are on show nothing, or null.
+ * (cap-threads) is kept always: why captions that are on show nothing, or null; since alpha.24 also why a chosen
+ * translation cannot be made (the audience screens and the stream show no captions meanwhile), after captions' own.
  */
 
 export const useCaptions = create<{ view: CaptionsStatus | null; open: boolean; line: string | null }>(
@@ -20,9 +22,13 @@ export const useCaptions = create<{ view: CaptionsStatus | null; open: boolean; 
 const isStatus = (v: unknown): v is CaptionsStatus =>
   typeof v === 'object' && v !== null && 'speech' in v && 'download' in v;
 
+/** The status bar's line for how captions stand: captions' own reason first, then the translation's (alpha.24). */
+const statusLine = (view: CaptionsStatus): string | null =>
+  captionsStatusLine(view) ?? translationStatusLine(view);
+
 /** How captions stand, as told: the dialog's whole view while it is open, the status bar's line always. */
 function told(view: CaptionsStatus): void {
-  const line = captionsStatusLine(view);
+  const line = statusLine(view);
   if (useCaptions.getState().open) useCaptions.setState({ view, line });
   else useCaptions.setState({ line });
 }
@@ -46,7 +52,7 @@ export function connectCaptions(): void {
 
 export function openCaptions(): void {
   void window.drashti.captions.view().then((view) => {
-    if (isStatus(view)) useCaptions.setState({ view, open: true, line: captionsStatusLine(view) });
+    if (isStatus(view)) useCaptions.setState({ view, open: true, line: statusLine(view) });
   });
 }
 

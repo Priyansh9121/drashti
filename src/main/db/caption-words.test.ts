@@ -31,7 +31,12 @@ describe('caption words in the library', () => {
       file,
       MIGRATIONS.filter((m) => m.version <= 90),
     );
-    new CaptionSettingsRepo(v90).set({ language: 'gu', audience: true, size: 'large', place: 'top' });
+    // Written as that version's Drashti wrote it (today's repo also writes alpha.24's "Captions in", migration 093).
+    v90
+      .prepare(
+        "UPDATE caption_settings SET language = 'gu', audience = 1, size = 'large', place = 'top' WHERE id = 1",
+      )
+      .run();
     v90.close();
     const db = openDatabase(file);
     expect(schemaVersion(db)).toBe(LATEST_VERSION);
@@ -42,6 +47,7 @@ describe('caption words in the library', () => {
       audience: true,
       size: 'large',
       place: 'top',
+      captionLanguage: 'same',
     });
     db.close();
   });

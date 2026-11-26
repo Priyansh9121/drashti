@@ -42,8 +42,21 @@ export interface PlaybackReading {
   looks: string[];
   /** The computer, and its graphics as Chromium reports them. */
   runner?: string;
-  gpu?: { videoDecode: string; gpuCompositing: string; devices: string[] };
+  gpu?: PlaybackGpu;
 }
 
 export function judgePlayback(reading: PlaybackReading): string[];
 export function summaryLines(readings: PlaybackReading[], options?: { outcome?: string | null }): string[];
+
+/** Chromium's readable GPU state; a rejected probe retains its reason. */
+export interface PlaybackGpu {
+  videoDecode: string;
+  gpuCompositing: string;
+  devices: string[];
+  problem?: string;
+}
+export interface PlaybackGpuApp {
+  getGPUFeatureStatus(): { video_decode?: string; gpu_compositing?: string };
+  getGPUInfo(kind: 'basic'): Promise<unknown>;
+}
+export function readPlaybackGpu(electron: PlaybackGpuApp | { app: PlaybackGpuApp }): Promise<PlaybackGpu>;

@@ -135,6 +135,7 @@ import type {
   TranslationLanguage,
 } from './prepared-translations';
 import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
+import type { CaptionCleanCount, CaptionCleanResult, CaptionCleanView } from './caption-clean/words';
 import type { SpeechLanguage } from './speech';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
@@ -380,8 +381,11 @@ export interface DrashtiBridge {
   flow: {
     /** The flow and its Now, together. */
     get(): Promise<SabhaFlowSnapshot>;
-    /** "Choose PDF…" (and Replace): Main's file dialog (null: cancelled). */
-    choose(): Promise<SabhaFlowChoice | null>;
+    /**
+     * "Choose PDF…" (and Replace): Main's file dialog (null: cancelled). With a file (alpha.24, a PDF dropped on the
+     * panel: its full path), no dialog: that file, taken as the dialog's is.
+     */
+    choose(file?: string): Promise<SabhaFlowChoice | null>;
     remove(): Promise<null>;
     /** Mark Now: an index into the flow's items, or null (refused for a flow that is no longer the current one). */
     setNow(flowId: string, now: number | null): Promise<SabhaFlowNowResult>;
@@ -435,6 +439,21 @@ export interface DrashtiBridge {
     exportFile(): Promise<CaptionWordsResult>;
     /** A language's switch: its words go to the captions engine as hints (Gujarati off until turned on). */
     setHints(language: SpeechLanguage, on: boolean): Promise<CaptionWordsResult>;
+  };
+  /**
+   * Words left out of captions (alpha.24, QA24-CAPCLEAN-1, operator window; Pro Mode): the admin's own words, and how
+   * many words captions left out since they were turned on. Drashti's own list is never sent: only its counts.
+   */
+  captionClean: {
+    view(): Promise<CaptionCleanView>;
+    /** The admin's whole list after a change (each word checked again in the main process). */
+    set(words: CaptionWord[]): Promise<CaptionCleanResult>;
+    /** Import… a CSV file (Caption Words' file) the admin chooses: its words are added to the list. */
+    importFile(): Promise<CaptionCleanResult>;
+    /** Export… the admin's list as a CSV file where the admin chooses. */
+    exportFile(): Promise<CaptionCleanResult>;
+    /** How many words captions left out since they were turned on, as it changes. */
+    onChanged(listener: (count: CaptionCleanCount) => void): () => void;
   };
   /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
   videoCaptions: {

@@ -518,10 +518,10 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SetupWizard platform={platform} />
       <Welcome />
       <AppearanceDialog />
-      <WindowPicker />
+      <WindowPicker platform={platform} />
       <StreamLinkDialog />
       <VideoInputDialog platform={platform} />
-      <PipDialog />
+      <PipDialog platform={platform} />
       {/* Edit › Simple Mode Features… (alpha.22). */}
       <SimpleFeaturesDialog />
       {/* The MIDI controller's section, or Tools › MIDI Controller… (Session 60, x36). */}
