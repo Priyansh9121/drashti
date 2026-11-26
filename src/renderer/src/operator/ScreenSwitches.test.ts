@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { switchButton } from './ScreenSwitches';
+import { switchButton, switchLook } from './ScreenSwitches';
 
 /*
  * The top bar's Audience and Stage (alpha.22, a22-review-stage S6): until the main process has said which are on,
@@ -18,5 +18,10 @@ describe('the top bar’s Audience and Stage', () => {
     const now = { audience: true, stage: false };
     expect(switchButton('audience', now, true)).toEqual({ on: true, disabled: false });
     expect(switchButton('stage', now, true)).toEqual({ on: false, disabled: false });
+  });
+
+  it('look quiet in the top bar’s group while on (alpha.24, uitop): no box, a small dot in the success colour beside its name and On; off, the warning’s box and dot, with Off', () => {
+    expect(switchLook(true)).toEqual({ variant: 'ghost', dot: 'bg-success', word: 'On' });
+    expect(switchLook(false)).toEqual({ variant: 'warning', dot: 'bg-warning', word: 'Off' });
   });
 });
