@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /*
@@ -21,7 +21,7 @@ const BY_HAND = /(['"`])[^'"`\n]*(?:[⌘⌥⇧⌃]|\b(?:Ctrl|Alt|Shift)\+)[^'"`\
 describe('the editors’ keys on their buttons', () => {
   it('are written from the keys they act on, never by hand', () => {
     // The editor's own files are read (SlideEditor, WordsGroup and the rest), and the words editor.
-    expect(files.map((f) => f.slice(f.lastIndexOf('/') + 1))).toEqual(
+    expect(files.map((f) => basename(f))).toEqual(
       expect.arrayContaining(['SlideEditor.tsx', 'WordsGroup.tsx', 'WordsEditor.tsx']),
     );
     const found = files.flatMap((path) =>
@@ -30,7 +30,7 @@ describe('the editors’ keys on their buttons', () => {
         .flatMap((line, i) => {
           const code = line.replace(/\/\/.*$/u, '');
           if (/^\s*(\*|\/\*)/u.test(code)) return [];
-          return BY_HAND.test(code) ? [`${path.slice(here.length - 'editor'.length)}:${String(i + 1)}`] : [];
+          return BY_HAND.test(code) ? [`${relative(join(here, '..'), path)}:${String(i + 1)}`] : [];
         }),
     );
     expect(found).toEqual([]);
