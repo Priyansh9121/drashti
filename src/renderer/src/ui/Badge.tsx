@@ -61,13 +61,17 @@ export function LiveBadge({ label = 'Live', className }: { label?: string; class
 /**
  * A playlist's row on the screens now (alpha.24, uitop: LIVE is said once, in words, by the top bar's badge): a small
  * dot in LIVE's frame colour beside the row's red edge, and "Live" for screen readers, so the row reads as before. Only
- * the row that is up has one: its being there says it, never its colour alone.
+ * the row that is up has one: its being there says it, never its colour alone. In forced colours (a Windows contrast
+ * theme) the dot and the edge, backgrounds, are the system's own colour, so the word Live is seen there in their place,
+ * in the theme's text colour (the release lead's review, MUST-1).
  */
 export function LiveDot({ className }: { className?: string }) {
   return (
-    <span data-live-dot="" className={cx('flex h-4 w-4 shrink-0 items-center justify-center', className)}>
-      <span aria-hidden="true" className="h-2 w-2 rounded-full bg-live-edge" />
-      <span className="sr-only">Live</span>
+    <span data-live-dot="" className={cx('flex h-4 min-w-4 shrink-0 items-center justify-center', className)}>
+      <span aria-hidden="true" className="h-2 w-2 rounded-full bg-live-edge forced-colors:hidden" />
+      <span className="sr-only forced-colors:not-sr-only forced-colors:text-xs forced-colors:font-bold">
+        Live
+      </span>
     </span>
   );
 }
