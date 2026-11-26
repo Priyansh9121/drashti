@@ -478,6 +478,39 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
       win.getByRole('contentinfo', { name: 'Status' }),
       'the status bar, translated captions off',
     );
+
+    // The engine stopped: the reason, its fault, and Try again (choosing Hindi again: main tries once more, df4a47045).
+    await chooseMenuItem(app, 'live-captions');
+    await expect(dialog).toBeVisible();
+    await tell({
+      on: true,
+      settings: gujarati('hi'),
+      translation: translation({
+        offered: false,
+        unavailable: 'engine-fault',
+        fault: 'Placeholder fault words.',
+      }),
+    });
+    await expect(unavailable).toContainText(unavailableText('engine-fault'));
+    await expect(dialog.getByTestId('captions-target-fault')).toHaveText(
+      'Last problem translating captions: Placeholder fault words.',
+    );
+    await expect(target.locator('option[value="hi"]')).toBeEnabled();
+    const retry = dialog.getByTestId('captions-target-retry');
+    await expect(retry).toHaveText('Try again');
+    const retryBox = await retry.boundingBox();
+    expect(retryBox?.height ?? 0).toBeGreaterThanOrEqual(24);
+    await expectNoSeriousA11yIssues(win, 'Live captions, the translation engine stopped');
+    await retry.click();
+    // Saved again through captions:set-settings: the library keeps Hindi for a Gujarati speaker.
+    await expect
+      .poll(() =>
+        win.evaluate(async () => {
+          const s = (await (globalThis as PageGlobals).drashti.captions.view()).settings;
+          return `${s.language}>${s.captionLanguage ?? ''}`;
+        }),
+      )
+      .toBe('gu>hi');
   } finally {
     await app.close();
   }

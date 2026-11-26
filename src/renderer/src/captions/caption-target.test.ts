@@ -38,7 +38,11 @@ const ALL_REASONS: CaptionTranslationUnavailable[] = [
   'speaker-as-heard',
   'speaker-sanskrit',
   'too-slow',
+  'engine-fault',
 ];
+/** Choosing "Captions in" again tries once more after these (lead 2's contract, df4a47045): they stay choosable. */
+const RETRIED: CaptionTranslationUnavailable[] = ['too-slow', 'engine-fault'];
+const GREYED = ALL_REASONS.filter((reason) => !RETRIED.includes(reason));
 
 const view = (
   over: {
@@ -141,7 +145,7 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
   });
 
   it('while this computer cannot translate: greyed out, with the reason in plain words for each one', () => {
-    for (const reason of ALL_REASONS) {
+    for (const reason of GREYED) {
       const language = reason === 'speaker-as-heard' ? 'auto' : reason === 'speaker-sanskrit' ? 'sa' : 'gu';
       const html = field(view({ language, translation: { offered: false, unavailable: reason } }));
       // Nothing to choose but the speaker's own words: the whole choice is greyed out, and says why.
@@ -160,11 +164,58 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     expect(unavailableText('speaker-as-heard')).toMatch(/speaker’s own words/u);
     expect(unavailableText('speaker-sanskrit')).toMatch(/Sanskrit/u);
     expect(unavailableText('too-slow')).toMatch(/keep up/u);
+    expect(unavailableText('engine-fault')).toMatch(/translation engine stopped/u);
+    // Choosing again tries once more only after slowness or the engine's fault (df4a47045), and says so only then.
+    for (const reason of RETRIED)
+      expect(unavailableText(reason), reason).toMatch(/Captions in again tries once more\.$/u);
+    for (const reason of GREYED) expect(unavailableText(reason), reason).not.toMatch(/once more/u);
+    expect(unavailableText(null)).not.toMatch(/once more/u);
     // A Drashti whose main side says nothing of translations (no status): greyed out, said plainly.
     const none = field(view({ translation: null }));
     expect(selectTag(none)).toMatch(/\sdisabled=""/u);
     expect(captionTargetWhyNot(view({ translation: null }))).toBe(unavailableText(null));
     expect(captionTargetWhyNot(view())).toBeNull();
+  });
+
+  it('after slowness or the engine’s fault: still choosable, since choosing again tries once more; a chosen one offers Try again', () => {
+    for (const reason of RETRIED) {
+      // The speaker's own words chosen: the translations can be chosen (it tries once more), the reason as the hint.
+      const html = field(view({ translation: { offered: false, unavailable: reason } }));
+      expect(selectTag(html), reason).not.toMatch(/\sdisabled=""/u);
+      expect(
+        options(html)
+          .filter((o) => o.disabled)
+          .map((o) => o.value),
+        reason,
+      ).toEqual(['gu']);
+      expect(words(html), reason).toContain(unavailableText(reason));
+      expect(html, reason).not.toContain('captions-target-retry');
+      // Hindi chosen: the reason with what the screens show, and Try again (the same choice saved again).
+      const chosen = field(
+        view({
+          target: 'hi',
+          translation: { offered: false, unavailable: reason, fault: 'Placeholder fault words.' },
+        }),
+      );
+      const notice =
+        /data-testid="captions-target-unavailable"[^>]*>(.*?)<\/div><\/div><\/div>/u.exec(chosen)?.[1] ?? '';
+      expect(words(notice), reason).toContain(unavailableText(reason));
+      expect(words(notice), reason).toMatch(/audience screens and the stream show no captions/u);
+      const retry = /<button[^>]*data-testid="captions-target-retry"[^>]*>/u.exec(chosen)?.[0] ?? '';
+      expect(retry, reason).not.toBe('');
+      expect(words(chosen), reason).toContain('Try again');
+      expect(options(chosen).find((o) => o.value === 'hi')?.disabled, reason).toBe(false);
+      // The engine's own words for its fault, under it.
+      expect(chosen, reason).toContain('captions-target-fault');
+    }
+    // A reason choosing again cannot mend (the pack is missing): no Try again.
+    expect(
+      field(view({ target: 'hi', translation: { offered: false, unavailable: 'no-pack' } })),
+    ).not.toContain('captions-target-retry');
+    // Translating as it should: no Try again.
+    expect(field(view({ target: 'hi', translation: { target: 'hi' } }))).not.toContain(
+      'captions-target-retry',
+    );
   });
 
   it('a translation chosen but not possible now: the choice stays open to go back, the reason shown, no screen of the audience falls back to the speaker’s words', () => {
@@ -268,6 +319,17 @@ describe('the status bar while a chosen translation cannot be made (alpha.24, 2c
     expect(translationStatusLine(off('too-slow'))).toBe(
       'Translated captions are off: this computer cannot keep up with them.',
     );
+    expect(translationStatusLine(off('engine-fault'))).toBe(
+      'Translated captions are off: the translation engine stopped.',
+    );
+    expect(
+      translationStatusLine(
+        view({
+          target: 'hi',
+          translation: { offered: false, unavailable: 'engine-fault', fault: 'Placeholder fault words.' },
+        }),
+      ),
+    ).toBe('Translated captions are off: the translation engine stopped.');
     expect(translationStatusLine(off(null))).toBe('Translated captions are off on this computer.');
     expect(
       translationStatusLine(

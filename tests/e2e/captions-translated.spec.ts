@@ -89,6 +89,13 @@ const forgetLines = (p: Page) =>
     (globalThis as unknown as { captionLines: string[] }).captionLines.length = 0;
   });
 
+/** What the caption band drawn now is ("translation", "speaker", or null with none): its data-kind (a24-capui). */
+const bandKind = (p: Page) =>
+  p.evaluate(() => {
+    const band = document.querySelector('[data-testid="captions"]');
+    return band ? (band.getAttribute('data-kind') ?? 'speaker') : null;
+  });
+
 /** A Gujarati phrase's first word, as the stage draws it. */
 const heardGujarati = (lines: string) => GU_PHRASES.some((p) => lines.includes(p.split(' ')[0] ?? p));
 
@@ -115,6 +122,13 @@ test('Captions in Hindi for a Gujarati speaker: the hall and the stream the tran
     await chooseMenuItem(app, 'caption-language-hi');
     await dialog.getByTestId('captions-on').click();
     await expect(dialog.getByTestId('captions-state')).toHaveText('Listening to the stream’s sound input.');
+    // The dialog's "Captions in" follows File › Caption Language: Hindi, choosable here (the stand-in translates), with
+    // the Trial warning and the phrases skipped (a24-capui).
+    const captionsIn = dialog.getByTestId('captions-target');
+    await expect(captionsIn).toHaveValue('hi');
+    await expect(captionsIn).toBeEnabled();
+    await expect(dialog.getByTestId('captions-target-trial')).toContainText('machine translation');
+    await expect(dialog.getByTestId('captions-target-skipped')).toContainText('since captions started');
     // The hall and the stream: the translation (the stand-in's marked placeholder of a Gujarati phrase), only.
     for (const drawn of [hall, stream]) {
       await expect
@@ -127,6 +141,10 @@ test('Captions in Hindi for a Gujarati speaker: the hall and the stream the tran
     await expect.poll(async () => (await stage()).some(heardGujarati), { timeout: 30_000 }).toBe(true);
     expect((await stage()).filter((lines) => lines.includes(MARK))).toEqual([]);
     await expect(places.stream.getByTestId('captions')).toHaveAttribute('data-source', 'live');
+    // Each band says what it is (a24-capui): the hall's and the stream's a translation, the stage's the speaker's.
+    for (const p of [places.hall, places.stream])
+      await expect.poll(() => bandKind(p), { timeout: 30_000 }).toBe('translation');
+    await expect.poll(() => bandKind(places.stage), { timeout: 30_000 }).toBe('speaker');
     // Back to the speaker's own words: the hall shows the Gujarati phrases again, untranslated.
     await chooseMenuItem(app, 'caption-language-same');
     await forgetLines(places.hall);
@@ -135,6 +153,9 @@ test('Captions in Hindi for a Gujarati speaker: the hall and the stream the tran
         timeout: 30_000,
       })
       .toBe(true);
+    await expect.poll(() => bandKind(places.hall), { timeout: 30_000 }).toBe('speaker');
+    await expect(captionsIn).toHaveValue('same');
+    await expect(dialog.getByTestId('captions-target-trial')).toHaveCount(0);
     // Off: off every place at once.
     await dialog.getByTestId('captions-on').click();
     for (const p of [places.hall, places.stage, places.stream])
