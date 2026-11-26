@@ -269,10 +269,26 @@ interface Growing {
   sentAt: number;
 }
 
+/**
+ * Node's fetch, with a form packed into its bytes first (QA24-CRASH-1). Given a FormData, Node's fetch writes the form
+ * into the request in a step that nothing awaits; a stop that aborted the request during that step (captions turned
+ * off just as a piece set off) failed it uncaught in the main process: "TypeError: Invalid state: ReadableStream is
+ * already closed" (the owner's crash journal, 22 Nov 2026). Bytes go into the request at once: the same multipart form,
+ * its boundary in the Content-Type as fetch would send it.
+ */
+async function fetchPacked(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const form = init?.body;
+  if (!(form instanceof FormData)) return fetch(input, init);
+  const packed = new Response(form);
+  const headers = new Headers(init?.headers);
+  headers.set('Content-Type', packed.headers.get('Content-Type') ?? 'multipart/form-data');
+  return fetch(input, { ...init, headers, body: new Uint8Array(await packed.arrayBuffer()) });
+}
+
 export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
   const restMs = o.restMs ?? 60_000;
   const readyMs = o.readyMs ?? 90_000;
-  const get = o.fetch ?? fetch;
+  const get = o.fetch ?? fetchPacked;
   const run =
     o.spawn ??
     ((program, args) => {
