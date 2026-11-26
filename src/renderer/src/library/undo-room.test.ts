@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { footKept } from './undo-room';
+import { footKept, watchPointer } from './undo-room';
 
 /*
  * The Undo line's room (QA24-UNDOLINE-2): when the line goes with the pointer over the left column, or during one of
@@ -33,5 +33,52 @@ describe('the Undo line’s room', () => {
     expect(at(false, false, true, false)).toBe(false);
     expect(at(false, false, false, true)).toBe(false);
     expect(at(false, false, true, true)).toBe(false);
+  });
+});
+
+/** Each time the line is told to read the column's :hover again, counted; the column and the page stand-ins. */
+function watched(roomKept: boolean) {
+  const column = new EventTarget();
+  const page = new EventTarget();
+  let reads = 0;
+  const stop = watchPointer(column, page, roomKept, () => {
+    reads += 1;
+  });
+  return { column, page, stop, reads: () => reads };
+}
+
+describe('what tells the Undo line where the pointer is', () => {
+  it('the column’s mouseenter and mouseleave, while the line shows or its room is kept', () => {
+    for (const roomKept of [false, true]) {
+      const w = watched(roomKept);
+      w.column.dispatchEvent(new Event('mouseenter'));
+      w.column.dispatchEvent(new Event('mouseleave'));
+      expect(w.reads()).toBe(2);
+      w.stop();
+    }
+  });
+
+  it('while its room is kept, any mouseover in the window too: a menu or dialog that closed under a still pointer leaves the column no mouseleave for the first move out (the review’s SHOULD-2)', () => {
+    const w = watched(true);
+    // The pointer moved straight out of the column onto the middle: no mouseleave came, the middle's mouseover did.
+    w.page.dispatchEvent(new Event('mouseover'));
+    expect(w.reads()).toBe(1);
+    w.stop();
+  });
+
+  it('while the line shows, not every mouseover in the window (its :hover is read again when it goes)', () => {
+    const w = watched(false);
+    w.page.dispatchEvent(new Event('mouseover'));
+    expect(w.reads()).toBe(0);
+    w.stop();
+  });
+
+  it('nothing once it has stopped watching', () => {
+    const w = watched(true);
+    w.stop();
+    w.column.dispatchEvent(new Event('mouseenter'));
+    w.column.dispatchEvent(new Event('mouseleave'));
+    w.page.dispatchEvent(new Event('mouseover'));
+    expect(w.reads()).toBe(0);
   });
 });

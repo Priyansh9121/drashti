@@ -6,7 +6,7 @@ import { useDragging } from '../playlists/drag';
 import { Button } from '../ui/Button';
 import { Undo2 } from '../ui/icons';
 import { lastRemoval, lineRemoval, undoRemoval, useUndo } from './undo';
-import { footKept } from './undo-room';
+import { footKept, watchPointer } from './undo-room';
 
 /**
  * After a removal or a change (presentations, playlists, words, a theme): what it was, and Undo.
@@ -37,16 +37,10 @@ export function UndoBar({ platform }: { platform: string }) {
 /** The left column the line is the foot of (operator/Layout.tsx, LeftColumn: Pro Mode's and Simple Mode's). */
 const leftColumn = (): Element | null => document.querySelector('[data-left-column]');
 
-/** The pointer coming into or leaving the left column. A drag moves no pointer: these say nothing during one. */
-function watchLeftColumn(changed: () => void): () => void {
-  const column = leftColumn();
-  column?.addEventListener('mouseenter', changed);
-  column?.addEventListener('mouseleave', changed);
-  return () => {
-    column?.removeEventListener('mouseenter', changed);
-    column?.removeEventListener('mouseleave', changed);
-  };
-}
+/** The pointer coming into or leaving the left column, while the line shows (undo-room.ts). */
+const watchLine = (changed: () => void) => watchPointer(leftColumn(), document, false, changed);
+/** The same while its room is kept (undo-room.ts: the room's own watch). */
+const watchRoom = (changed: () => void) => watchPointer(leftColumn(), document, true, changed);
 
 /** Whether the pointer is over the left column, as the window's own :hover has it. */
 const overLeftColumn = (): boolean => leftColumn()?.matches(':hover') ?? false;
@@ -72,7 +66,6 @@ function UndoLine({ text, timed, platform }: { text: string | null; timed: boole
   // The line's height (its room), and whether the line is there or its room is kept.
   const [height, setHeight] = useState(0);
   const [kept, setKept] = useState(false);
-  const over = useSyncExternalStore(watchLeftColumn, overLeftColumn);
   const dragging = useDragging((s) => s.on);
   const measure = useCallback((line: HTMLDivElement | null) => {
     if (!line) return;
@@ -88,6 +81,7 @@ function UndoLine({ text, timed, platform }: { text: string | null; timed: boole
   // Gone with its change (the last one undone, or Simple Mode putting the show back): a keyboard's hold goes too.
   if (text === null && focused) setFocused(false);
   const shown = text !== null && (timed || focused);
+  const over = useSyncExternalStore(kept && !shown ? watchRoom : watchLine, overLeftColumn);
   const keep = footKept({ shown, kept, overColumn: over, dragging });
   if (keep !== kept) setKept(keep);
   if (!shown)

@@ -16,3 +16,22 @@ export function footKept(foot: {
 }): boolean {
   return foot.shown || (foot.kept && (foot.overColumn || foot.dragging));
 }
+
+/**
+ * What tells the Undo line the pointer may have come into or left the left column (`changed`; it then reads the
+ * column's :hover again): the column's own mouseenter and mouseleave. A drag moves no pointer: these say nothing
+ * during one. `page` (the document) and `roomKept` are for the room's own watch.
+ */
+export function watchPointer(
+  column: EventTarget | null,
+  page: EventTarget | null,
+  roomKept: boolean,
+  changed: () => void,
+): () => void {
+  column?.addEventListener('mouseenter', changed);
+  column?.addEventListener('mouseleave', changed);
+  return () => {
+    column?.removeEventListener('mouseenter', changed);
+    column?.removeEventListener('mouseleave', changed);
+  };
+}
