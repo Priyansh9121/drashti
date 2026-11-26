@@ -50,6 +50,7 @@ import { join, resolve, sep } from 'node:path';
 import whisperWindowsRuntime from '../src/shared/whisper-windows-runtime.json' with { type: 'json' };
 import { fusesAsWanted, runAsNodeRefused } from './fuse-checks.mjs';
 import { iconFiles, macAppIcon, windowsProgramIcon } from './icon-checks.mjs';
+import { signedBy } from './mac-signature.mjs';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
 import { decodeCheck, fetchModel, modelDir, readModelPin } from './whisper-decode-check.mjs';
 
@@ -318,8 +319,8 @@ function checkMacApp(name, app, arch) {
     fail(name, `built for ${archs} with an FFmpeg for ${ffArchs}, not ${MAC_ARCH[arch]}`);
     return false;
   }
-  // Its own signature covers it all (a Developer ID's, or ad hoc without a certificate): otherwise a
-  // downloaded copy is one macOS calls damaged, with no Open Anyway.
+  // Its own signature covers it all (a Developer ID's, Drashti's own certificate's since QA24-SIGN-1, or ad hoc
+  // without a certificate): otherwise a downloaded copy is one macOS calls damaged, with no Open Anyway.
   const covered = run('codesign', ['--verify', '--deep', '--strict', app]);
   if (!covered.ok) {
     fail(
@@ -329,9 +330,13 @@ function checkMacApp(name, app, arch) {
     return false;
   }
   const appSigning = run('codesign', ['-dvv', app]).out;
-  const kind = /Authority=Developer ID Application/u.test(appSigning) ? 'a Developer ID' : 'ad hoc';
+  const kind = /Authority=Developer ID Application/u.test(appSigning)
+    ? 'a Developer ID'
+    : signedBy(appSigning) === 'own'
+      ? "Drashti's own certificate"
+      : 'ad hoc';
   // YouTube's two programs (Session 25c): there, for this processor, and signed with the rest of the app
-  // (the same Team ID, or none for ad hoc: Deno as it comes carries its maker's own).
+  // (the same Team ID, or none for ad hoc and Drashti's own certificate: Deno as it comes carries its maker's own).
   const team = (text) => /^TeamIdentifier=(.*)$/mu.exec(text)?.[1] ?? 'none';
   const resources = join(app, 'Contents', 'Resources');
   const ytDlp = join(resources, 'yt-dlp', 'yt-dlp_macos');
