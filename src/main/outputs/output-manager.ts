@@ -299,7 +299,7 @@ export class OutputManager {
     this.quit = true;
     for (const entry of this.open.values()) if (!entry.window.isDestroyed()) entry.window.close();
     // Keep ownership until destruction is observed: close may be refused or still pending.
-    for (const screenId of [...this.held.keys()]) this.letGo(screenId);
+    for (const held of this.held.values()) if (!held.window.isDestroyed()) held.window.close();
   }
 
   /** Every window closes, held ones too, and none opens again (the quit's last stop; QA24-QUITRACE-1). */
@@ -307,5 +307,6 @@ export class OutputManager {
     this.closed = true;
     this.closeForQuit();
     this.open.clear();
+    for (const screenId of [...this.held.keys()]) this.letGo(screenId);
   }
 }
