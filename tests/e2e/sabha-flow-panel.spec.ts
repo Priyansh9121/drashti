@@ -187,10 +187,10 @@ test('Sabha flow at the top of the left column: its toggle, Choose PDF…, the r
   await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   const fitted = (await picture.boundingBox())?.width ?? 0;
   await panel.getByRole('button', { name: 'Zoom in' }).click();
-  await expect(panel.getByTestId('flow-zoom')).toHaveText('125%');
+  await expect(panel.getByTestId('flow-zoom')).toHaveValue('125%');
   await expect.poll(async () => (await picture.boundingBox())?.width ?? 0).toBeGreaterThan(fitted * 1.2);
   await panel.getByRole('button', { name: 'Fit to the panel' }).click();
-  await expect(panel.getByTestId('flow-zoom')).toHaveText('100%');
+  await expect(panel.getByTestId('flow-zoom')).toHaveValue('100%');
   await expectFits(panel, 'the Sabha flow panel, its page, at 1024 × 645');
   await expectNoSeriousA11yIssues(win, 'Sabha flow, its PDF page', '[data-testid="sabha-flow"]');
 
