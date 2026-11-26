@@ -210,11 +210,13 @@ describe('a file played once to an end point', () => {
       timing.seek = { at: Date.now() + 120, toMs: 1000, paused: false };
       stop.resync();
       expect(tasks).toHaveLength(1);
-      expect(tasks[0].options.priority).toBe('user-blocking');
-      expect(tasks[0].options.delay).toBe(120);
+      const task = tasks[0];
+      if (!task) throw new Error('LIVE did not schedule its Go check');
+      expect(task.options.priority).toBe('user-blocking');
+      expect(task.options.delay).toBe(120);
       expect(v.playbackRate).toBe(0);
       vi.setSystemTime(timing.seek.at);
-      tasks[0].run();
+      task.run();
       expect(v.playbackRate).toBe(1);
     } finally {
       stop();

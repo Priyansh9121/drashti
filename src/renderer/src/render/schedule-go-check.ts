@@ -8,7 +8,7 @@ interface GoScheduler {
 
 /** Ask for a clock check, never decide playback from a timer or task’s own clock. */
 export function scheduleGoCheck(run: () => void, delay: number, priority: boolean): () => void {
-  const scheduler = (globalThis as typeof globalThis & { scheduler?: GoScheduler }).scheduler;
+  const scheduler = (globalThis as unknown as { scheduler?: GoScheduler }).scheduler;
   if (priority && scheduler) {
     const controller = new AbortController();
     void scheduler

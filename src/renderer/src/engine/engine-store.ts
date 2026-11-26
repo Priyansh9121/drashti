@@ -76,18 +76,17 @@ export function connectEngineSource(source: EngineSource, options: EngineConnect
       if (cleanup !== null) clearTimeout(cleanup);
       cleanup = null;
       const wait = start ? start.at + 250 - Date.now() : 0;
+      const op = message.kind === 'patch' && message.ops.length === 1 ? message.ops[0] : undefined;
       const defer =
         options.deferCueCleanup &&
         start &&
         Date.now() >= start.at &&
         wait > 0 &&
-        message.kind === 'patch' &&
-        message.ops.length === 1 &&
-        message.ops[0].path.length === 1 &&
-        message.ops[0].path[0] === 'videoStart' &&
-        message.ops[0].value === null;
+        op?.path.length === 1 &&
+        op.path[0] === 'videoStart' &&
+        op.value === null;
       if (defer) {
-        // eslint-disable-next-line no-restricted-syntax -- bounded operator-only publication of bookkeeping; playback still uses the shared clock
+        // Bounded operator-only bookkeeping publication; playback still uses the shared clock.
         cleanup = setTimeout(publish, wait);
       } else {
         noteShowChange();
