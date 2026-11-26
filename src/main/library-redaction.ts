@@ -27,7 +27,8 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
  * - A word is made of letters, marks (the vowel signs and viramas of Gujarati and Devanagari) and digits, with the
  *   zero-width joiners inside it; anything else (a space, punctuation, a path's separator, an underscore) ends it.
  * - It also ends between a letter and a digit ("Sabha2026"), at a small letter before a capital ("EveningSabha") and
- *   where the script changes ("Sabhaસભા"). One case and one script of letters, as in "newest", is one word.
+ *   where the script changes ("Sabhaસભા"); a name's last digit ends it before more digits ("Sabha 2026" in
+ *   "Sabha 20261"). One case and one script of letters, as in "newest", is one word.
  * - A separator written as an escape starts a word: a URL's %20 or %2F, JSON's \n, \t or \r.
  * - Gujarati, Devanagari and the other Indic scripts, and Korean, write a word's endings joined to it ("સભા" + "માં"):
  *   there only a name's start is looked at, whatever follows it.
@@ -109,10 +110,19 @@ const ESCAPED = /(?:%[0-9A-Fa-f]{2}|\\[ntr])$/u;
 const startsWord = (s: string, at: number): boolean =>
   !joins(charBefore(s, at), charAt(s, at)) || ESCAPED.test(s.slice(Math.max(0, at - 3), at));
 
-/** Whether a name ending at `end` ends its word there (in a script with joined endings, wherever it ends). */
+/**
+ * Whether a name ending at `end` ends its word there: in a script with joined endings wherever it ends, and a name's
+ * last digit before more digits too (lead 2: "Sabha 2026" is never left readable inside "Sabha 20261").
+ */
 function endsWord(s: string, end: number): boolean {
   const last = charBefore(s, end);
-  return (last !== undefined && JOINED_ENDINGS.test(last)) || !joins(last, charAt(s, end));
+  const next = charAt(s, end);
+  if (
+    last !== undefined &&
+    (JOINED_ENDINGS.test(last) || (DIGIT.test(last) && next !== undefined && DIGIT.test(next)))
+  )
+    return true;
+  return !joins(last, next);
 }
 
 /** The character that ends just before `i`, and the one that starts at `i` (whole, past a surrogate pair). */
