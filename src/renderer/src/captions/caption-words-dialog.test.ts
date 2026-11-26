@@ -19,12 +19,20 @@ describe('a caption word in the dialog', () => {
   it('says when it is typed in other letters than its language’s, for Gujarati, Hindi and Sanskrit, and keeps it as typed', () => {
     const english = render('gu', 'Zentrova');
     expect(english).toContain('Zentrova');
-    expect(english).toContain('Typed in English letters: it won’t show in Gujarati captions.');
-    expect(render('gu', HI)).toContain('Typed in Devanagari letters: it won’t show in Gujarati captions.');
-    expect(render('hi', GU)).toContain('Typed in Gujarati letters: it won’t show in Hindi captions.');
-    expect(render('hi', 'Person Q7')).toContain('Typed in English letters: it won’t show in Hindi captions.');
+    expect(english).toContain(
+      'Typed in English letters: it won’t show in Gujarati captions while Gujarati is chosen.',
+    );
+    expect(render('gu', HI)).toContain(
+      'Typed in Devanagari letters: it won’t show in Gujarati captions while Gujarati is chosen.',
+    );
+    expect(render('hi', GU)).toContain(
+      'Typed in Gujarati letters: it won’t show in Hindi captions while Hindi is chosen.',
+    );
+    expect(render('hi', 'Person Q7')).toContain(
+      'Typed in English letters: it won’t show in Hindi captions while Hindi is chosen.',
+    );
     expect(render('sa', 'Zentrova')).toContain(
-      'Typed in English letters: it won’t show in Sanskrit captions.',
+      'Typed in English letters: it won’t show in Sanskrit captions while Sanskrit is chosen.',
     );
   });
 
