@@ -45,10 +45,11 @@ describe('a library name is blanked only where it is the name', () => {
     expect(redactNames('C:\\Placeholder\\Sabha 2026\\a.mp4 and Sabha 2026.mp4', ['Sabha 2026'])).toBe(
       `C:\\Placeholder\\${B}\\a.mp4 and ${B}.mp4`,
     );
-    // Digits after its digits make another number, and a capital before its capital one word ("ASabha"): left. A letter
-    // after its digit starts another word (the review's F1, stricter than before: "Sabha 2026a" is blanked).
+    // A name ending in a digit ends its word before more digits (lead 2: "Sabha 2026" is never left readable inside
+    // "Sabha 20261"), and a letter after its digit starts another word (the review's F1). Both are stricter than
+    // before. A capital before its capital is one word ("ASabha"): left.
     expect(redactNames('Sabha 20261 and Sabha 2026a and ASabha 2026', ['Sabha 2026'])).toBe(
-      `Sabha 20261 and ${B}a and ASabha 2026`,
+      `${B}1 and ${B}a and ASabha 2026`,
     );
     // Underscores join a file name's words but are not letters: the name between them is blanked.
     expect(redactNames('placeholder_new_deck.mp4', ['new'])).toBe(`placeholder_${B}_deck.mp4`);
@@ -110,10 +111,14 @@ describe('a library name is blanked only where it is the name', () => {
         'Placeholder Sabha 2026',
       ]),
     ).toBe(`${B} and ${B}`);
-    // The longer one is not the name here (a digit follows), so the shorter one inside it is.
+    // The longer one is not the name here (a letter of its word follows), so the shorter one inside it is.
+    expect(redactNames('Placeholder Sabhas', ['Placeholder', 'Placeholder Sabha'])).toBe(`${B} Sabhas`);
+    // A name's last digit before more digits ends it there (lead 2): the longer one is blanked.
     expect(redactNames('Placeholder Sabha 20267', ['Placeholder Sabha', 'Placeholder Sabha 2026'])).toBe(
-      `${B} 20267`,
+      `${B}7`,
     );
+    // A digit before its first digit is left as it is: only a name's end is cut short by digits.
+    expect(redactNames('12026 Placeholder', ['2026 Placeholder'])).toBe('12026 Placeholder');
     // A name starting or ending in punctuation is blanked where it stands.
     expect(redactNames('x(Draft)y and #1 Placeholders', ['(Draft)', '#1 Placeholder'])).toBe(
       `x${B}y and #1 Placeholders`,
@@ -133,7 +138,7 @@ describe('a library name is blanked only where it is the name', () => {
     const names = Array.from({ length: 1000 }, (_, i) => `Placeholder Deck ${String(i)}`);
     names.push('new', 'library');
     expect(redactNames('Placeholder Deck 999 and Placeholder Deck 1000, the newest new', names)).toBe(
-      `${B} and Placeholder Deck 1000, the newest ${B}`,
+      `${B} and ${B}0, the newest ${B}`,
     );
     expect(redactNames(`${B} at the library`, names)).toBe(`${B} at the ${B}`);
   });
