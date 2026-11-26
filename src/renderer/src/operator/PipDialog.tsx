@@ -28,6 +28,8 @@ import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Toggle } from '../ui/Toggle';
 import { dispatch } from './actions';
 import { boxName, boxWhere, closePipDialog, placeBox, rememberedPlace, usePipUi } from './pip-store';
+import type { PreviewSource } from './pip-preview';
+import { PipPreview } from './PipPreview';
 
 /*
  * Picture in Picture… (Session 50): what goes in the box on the audience screens (a video input, a picture or
@@ -36,6 +38,8 @@ import { boxName, boxWhere, closePipDialog, placeBox, rememberedPlace, usePipUi 
  * Large, a thin border and rounded corners, and how it comes on and goes off. Those are on the screens at once
  * while a box is up, and remembered in the library for the next. Swap and Take off are here and under LIVE.
  * Nothing goes up until Show in the box. Pro Mode only (the library's Media tools, beside Show a Window…).
+ * Beside the choices (QA24-PIPPREVIEW-1), a preview of the box as chosen over what the screens show now, following
+ * each choice as it is made, sending nothing (operator/PipPreview.tsx); kept in view as the choices scroll.
  */
 
 type Kind = PipSource['kind'];
@@ -256,6 +260,14 @@ function PipDialogBody() {
       (source.kind === 'input' && box.source.kind === 'input' && source.inputId === box.source.inputId) ||
       (source.kind === 'media' && box.source.kind === 'media' && source.mediaId === box.source.mediaId));
 
+  // The preview's box: what is chosen, by its name (a video input or a window named, never opened there).
+  let shown: PreviewSource = { kind: 'none' };
+  if (kind === 'slides') shown = { kind: 'slides' };
+  else if (kind === 'input' && input) shown = { kind: 'input', name: input.name };
+  else if (kind === 'media' && picture && picture.kind !== 'audio')
+    shown = { kind: 'media', mediaId: picture.id, media: picture.kind, name: picture.name };
+  else if (kind === 'window' && win) shown = { kind: 'window', name: win.name };
+
   const change = (next: Partial<PipPlace>) => {
     const changed = { ...place, ...next };
     setTouched(true);
@@ -280,7 +292,7 @@ function PipDialogBody() {
       subtitle="Something small in a corner of the hall’s screens while the main picture carries on: a camera, a picture or video, a window, or the slides. Nothing goes up until you press Show in the box."
       onClose={closePipDialog}
       closeLabel="Close Picture in Picture"
-      size="md"
+      size="lg"
       testId="pip-dialog"
       footer={
         <>
@@ -297,193 +309,197 @@ function PipDialogBody() {
         </>
       }
     >
-      <div className="space-y-5">
-        {problem && (
-          <Notice tone="danger" compact onDismiss={() => setProblem(null)}>
-            {problem}
-          </Notice>
-        )}
-        {box && (
-          <div
-            role="status"
-            data-testid="pip-now"
-            className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block font-bold">In the box now: {boxName(box.source, allMedia)}</span>
-              <span className="block text-xs text-muted">{boxWhere(box)}</span>
-            </span>
-            <Button
-              size="sm"
-              instant
-              icon={ArrowLeftRight}
-              data-testid="pip-swap"
-              onClick={() => void dispatch({ type: 'swapPip' })}
+      <div className="flex flex-col gap-5 md:flex-row md:items-start">
+        {/* The preview first, as in the Lower Thirds studio; kept in view while the choices scroll beside it. */}
+        <PipPreview place={place} source={shown} className="md:sticky md:top-0 md:w-72 md:shrink-0" />
+        <div className="min-w-0 flex-1 space-y-5">
+          {problem && (
+            <Notice tone="danger" compact onDismiss={() => setProblem(null)}>
+              {problem}
+            </Notice>
+          )}
+          {box && (
+            <div
+              role="status"
+              data-testid="pip-now"
+              className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2 text-sm"
             >
-              Swap
-            </Button>
-            <Button
-              size="sm"
-              instant
-              icon={X}
-              data-testid="pip-take-off"
-              onClick={() => void dispatch({ type: 'hidePip' })}
-            >
-              Take off
-            </Button>
-          </div>
-        )}
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">In the box now: {boxName(box.source, allMedia)}</span>
+                <span className="block text-xs text-muted">{boxWhere(box)}</span>
+              </span>
+              <Button
+                size="sm"
+                instant
+                icon={ArrowLeftRight}
+                data-testid="pip-swap"
+                onClick={() => void dispatch({ type: 'swapPip' })}
+              >
+                Swap
+              </Button>
+              <Button
+                size="sm"
+                instant
+                icon={X}
+                data-testid="pip-take-off"
+                onClick={() => void dispatch({ type: 'hidePip' })}
+              >
+                Take off
+              </Button>
+            </div>
+          )}
 
-        <section className="space-y-2">
-          <h3 id={kindsId} className="text-xs font-medium text-muted">
-            What goes in the box
-          </h3>
-          <Choices
-            labelledBy={kindsId}
-            choices={KINDS}
-            value={kind}
-            onChoose={setKind}
-            testId="pip-kind"
-            columns={2}
-          />
-          {kind === 'slides' && (
-            <p className="text-xs text-muted">
-              The slide as designed, made small. The main picture shows the background, the props, messages
-              and the ticker without it.
+          <section className="space-y-2">
+            <h3 id={kindsId} className="text-xs font-medium text-muted">
+              What goes in the box
+            </h3>
+            <Choices
+              labelledBy={kindsId}
+              choices={KINDS}
+              value={kind}
+              onChoose={setKind}
+              testId="pip-kind"
+              columns={2}
+            />
+            {kind === 'slides' && (
+              <p className="text-xs text-muted">
+                The slide as designed, made small. The main picture shows the background, the props, messages
+                and the ticker without it.
+              </p>
+            )}
+            {kind === 'input' &&
+              (inputs === null ? (
+                <p className="text-xs text-muted">Looking for video inputs…</p>
+              ) : inputs.length === 0 ? (
+                <p className="text-xs text-muted" data-testid="pip-no-inputs">
+                  No video inputs yet: name one under Video inputs in Media first.
+                </p>
+              ) : (
+                <Field label="Video input">
+                  <Select
+                    data-testid="pip-input"
+                    value={input?.id ?? ''}
+                    onChange={(e) => {
+                      setInputId(e.target.value);
+                    }}
+                  >
+                    {inputs.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ))}
+            {kind === 'media' &&
+              (!mediaLoaded ? (
+                <p className="text-xs text-muted">Looking for pictures and videos…</p>
+              ) : media.length === 0 ? (
+                <p className="text-xs text-muted" data-testid="pip-no-media">
+                  No pictures or videos in Media yet: import some first.
+                </p>
+              ) : (
+                <Field label="Picture or video">
+                  <Select
+                    data-testid="pip-media"
+                    value={picture?.id ?? ''}
+                    onChange={(e) => {
+                      setMediaId(e.target.value);
+                    }}
+                  >
+                    {media.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ))}
+            {kind === 'window' && (
+              <WindowChoice
+                list={windows.list}
+                chosen={win?.id ?? null}
+                choose={setWindowId}
+                again={windows.again}
+              />
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h3 id={whereId} className="text-xs font-medium text-muted">
+              Where it sits
+            </h3>
+            <Choices
+              labelledBy={whereId}
+              choices={PIP_CORNERS.map((id) => ({ id, label: PIP_CORNER_NAMES[id] }))}
+              value={place.corner}
+              onChoose={(corner) => {
+                change({ corner });
+              }}
+              testId="pip-corner"
+              columns={4}
+            />
+            <p className="text-xs text-muted" data-testid="pip-where">
+              {place.corner === null
+                ? `Where it was dragged: ${String(Math.round(place.x * 100))}% across, ${String(Math.round(place.y * 100))}% down. Choose a corner, or drag the box in LIVE.`
+                : 'Or drag the box in LIVE to put it anywhere on the screen.'}
             </p>
-          )}
-          {kind === 'input' &&
-            (inputs === null ? (
-              <p className="text-xs text-muted">Looking for video inputs…</p>
-            ) : inputs.length === 0 ? (
-              <p className="text-xs text-muted" data-testid="pip-no-inputs">
-                No video inputs yet: name one under Video inputs in Media first.
-              </p>
-            ) : (
-              <Field label="Video input">
-                <Select
-                  data-testid="pip-input"
-                  value={input?.id ?? ''}
-                  onChange={(e) => {
-                    setInputId(e.target.value);
-                  }}
-                >
-                  {inputs.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            ))}
-          {kind === 'media' &&
-            (!mediaLoaded ? (
-              <p className="text-xs text-muted">Looking for pictures and videos…</p>
-            ) : media.length === 0 ? (
-              <p className="text-xs text-muted" data-testid="pip-no-media">
-                No pictures or videos in Media yet: import some first.
-              </p>
-            ) : (
-              <Field label="Picture or video">
-                <Select
-                  data-testid="pip-media"
-                  value={picture?.id ?? ''}
-                  onChange={(e) => {
-                    setMediaId(e.target.value);
-                  }}
-                >
-                  {media.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            ))}
-          {kind === 'window' && (
-            <WindowChoice
-              list={windows.list}
-              chosen={win?.id ?? null}
-              choose={setWindowId}
-              again={windows.again}
-            />
-          )}
-        </section>
+          </section>
 
-        <section className="space-y-2">
-          <h3 id={whereId} className="text-xs font-medium text-muted">
-            Where it sits
-          </h3>
-          <Choices
-            labelledBy={whereId}
-            choices={PIP_CORNERS.map((id) => ({ id, label: PIP_CORNER_NAMES[id] }))}
-            value={place.corner}
-            onChoose={(corner) => {
-              change({ corner });
-            }}
-            testId="pip-corner"
-            columns={4}
-          />
-          <p className="text-xs text-muted" data-testid="pip-where">
-            {place.corner === null
-              ? `Where it was dragged: ${String(Math.round(place.x * 100))}% across, ${String(Math.round(place.y * 100))}% down. Choose a corner, or drag the box in LIVE.`
-              : 'Or drag the box in LIVE to put it anywhere on the screen.'}
-          </p>
-        </section>
-
-        <section className="space-y-2">
-          <h3 id={sizeId} className="text-xs font-medium text-muted">
-            Size
-          </h3>
-          <Choices
-            labelledBy={sizeId}
-            choices={PIP_SIZES.map((id) => ({ id, ...PIP_SIZE_NAMES[id] }))}
-            value={place.size}
-            onChoose={(size) => {
-              change({ size });
-            }}
-            testId="pip-size"
-            columns={3}
-          />
-          <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
-            <Toggle
-              label="A thin border"
-              checked={place.border}
-              onChange={(border) => {
-                change({ border });
+          <section className="space-y-2">
+            <h3 id={sizeId} className="text-xs font-medium text-muted">
+              Size
+            </h3>
+            <Choices
+              labelledBy={sizeId}
+              choices={PIP_SIZES.map((id) => ({ id, ...PIP_SIZE_NAMES[id] }))}
+              value={place.size}
+              onChoose={(size) => {
+                change({ size });
               }}
-              data-testid="pip-border"
+              testId="pip-size"
+              columns={3}
             />
-            <Toggle
-              label="Rounded corners"
-              checked={place.rounded}
-              onChange={(rounded) => {
-                change({ rounded });
-              }}
-              data-testid="pip-rounded"
-            />
-          </div>
-        </section>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+              <Toggle
+                label="A thin border"
+                checked={place.border}
+                onChange={(border) => {
+                  change({ border });
+                }}
+                data-testid="pip-border"
+              />
+              <Toggle
+                label="Rounded corners"
+                checked={place.rounded}
+                onChange={(rounded) => {
+                  change({ rounded });
+                }}
+                data-testid="pip-rounded"
+              />
+            </div>
+          </section>
 
-        <section className="space-y-2">
-          <h3 id={motionId} className="text-xs font-medium text-muted">
-            How it comes on and goes off
-          </h3>
-          <Choices
-            labelledBy={motionId}
-            choices={PIP_MOTIONS.map((id) => ({ id, label: MOTION_NAMES[id] }))}
-            value={place.motion}
-            onChoose={(motion) => {
-              change({ motion });
-            }}
-            testId="pip-motion"
-            columns={3}
-          />
-          <p className="text-xs text-muted">
-            Swap and moving it move the same way on every screen. The box makes no sound: a video in it plays
-            muted.
-          </p>
-        </section>
+          <section className="space-y-2">
+            <h3 id={motionId} className="text-xs font-medium text-muted">
+              How it comes on and goes off
+            </h3>
+            <Choices
+              labelledBy={motionId}
+              choices={PIP_MOTIONS.map((id) => ({ id, label: MOTION_NAMES[id] }))}
+              value={place.motion}
+              onChoose={(motion) => {
+                change({ motion });
+              }}
+              testId="pip-motion"
+              columns={3}
+            />
+            <p className="text-xs text-muted">
+              Swap and moving it move the same way on every screen. The box makes no sound: a video in it
+              plays muted.
+            </p>
+          </section>
+        </div>
       </div>
     </Dialog>
   );
