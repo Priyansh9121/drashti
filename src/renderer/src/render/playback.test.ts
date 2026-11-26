@@ -187,6 +187,36 @@ describe('a file played once to an end point', () => {
       timing: () => ({ loop: false, ...timing }),
     });
 
+  it('schedules only LIVE’s Go check as an abortable user-blocking task', () => {
+    const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] = [];
+    vi.stubGlobal('scheduler', {
+      postTask: (run: () => void, options: { delay: number; priority: string; signal: AbortSignal }) => {
+        tasks.push({ run, options });
+        return Promise.resolve();
+      },
+    });
+    const v = new FakeMedia(8);
+    const timing = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'cued', startedAt: Date.now(), prepareScheduledStart: true,
+      prioritizeScheduledStart: true, timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(20);
+      timing.seek = { at: Date.now() + 120, toMs: 1000, paused: false };
+      stop.resync();
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].options.priority).toBe('user-blocking');
+      expect(tasks[0].options.delay).toBe(120);
+      expect(v.playbackRate).toBe(0);
+      vi.setSystemTime(timing.seek.at);
+      tasks[0].run();
+      expect(v.playbackRate).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
   it('arms a cued decoder silently at zero rate before Go and releases it at the shared moment', () => {
     const v = new FakeMedia(8, { startLate: 80 });
     const timing: { loop: boolean; seek: PlaybackSeek } = {
