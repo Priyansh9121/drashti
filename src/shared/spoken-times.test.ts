@@ -15,12 +15,12 @@ import { normalizeSpokenTimes } from './spoken-times';
 type Row = readonly [heard: string, toTranslate: string, why: string];
 
 /** साढ़े and डेढ़ with the nukta as its own code point (NFC), and with the one-code-point letter (U+095D). */
-const SAADHE = 'साढ़े';
-const SAADHE_ONE = 'साढ़े';
-const DEDH = 'डेढ़';
-const DEDH_ONE = 'डेढ़';
+const SAADHE = '\u0938\u093e\u0922\u093c\u0947';
+const SAADHE_ONE = '\u0938\u093e\u095d\u0947';
+const DEDH = '\u0921\u0947\u0922\u093c';
+const DEDH_ONE = '\u0921\u0947\u095d';
 /** घड़ी with the one-code-point ड़ (U+095C): the words around a time are kept exactly as they came. */
-const GHADI_ONE = 'घड़ी';
+const GHADI_ONE = '\u0918\u095c\u0940';
 
 const GUJARATI: readonly Row[] = [
   // Quarter words with an hour and a clock word: the bench's own sentences first.
