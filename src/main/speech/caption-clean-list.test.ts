@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CAPTION_CLEAN_EN, CAPTION_CLEAN_GU, CAPTION_CLEAN_HI, CAPTION_CLEAN_SA } from './list';
+import {
+  CAPTION_CLEAN_EN,
+  CAPTION_CLEAN_GU,
+  CAPTION_CLEAN_HI,
+  CAPTION_CLEAN_SA,
+} from '../../shared/caption-clean/list';
 
 /*
  * Drashti's own list of words left out of captions (alpha.24, QA24-CAPCLEAN-1, lead 2's QA24-CAPCLEAN-1a A): kept
@@ -28,7 +33,7 @@ describe('Drashti’s own list', () => {
   });
 
   it('is a file with no word in it: its comment, then four lists of hashes', () => {
-    const source = readFileSync(join(__dirname, 'list.ts'), 'utf8');
+    const source = readFileSync(join(__dirname, '..', '..', 'shared', 'caption-clean', 'list.ts'), 'utf8');
     const strings = [...source.matchAll(/'([^']*)'/gu)].map((m) => m[1] ?? '');
     expect(strings).toEqual(Object.values(LISTS).flat());
     expect(source).not.toMatch(/["`]/u);

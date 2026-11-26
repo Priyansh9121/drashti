@@ -124,7 +124,7 @@ If the secret was not kept, **New secret** makes another. Copy it into the recei
 
 ## Live captions
 
-**What it is.** A trial: the speaker's words written as captions, on the stage screens and the stream, and on the audience screens only if chosen. They start off and can slow the screens while on. With a language's own model, that language's captions show one phrase at a time.
+**What it is.** A trial: the speaker's words written as captions, on the stage screens and the stream, and on the audience screens only if chosen. They start off and can slow the screens while on. With a language's own model, that language's captions show one phrase at a time. Bad words never show: captions leave them out.
 
 **When you would use it.** Only when whoever looks after Drashti has set them up and rehearsed them.
 
@@ -133,7 +133,7 @@ If the secret was not kept, **New secret** makes another. Copy it into the recei
 1. Choose **File**, then **Live Captions…**.
 2. Turn them on or off there.
 3. When the next speaker uses another language, choose **File**, then **Speaker’s Language**, then that language.
-4. Tell whoever looks after Drashti if they are wrong or lag behind. Misspelt names and terms can be added under **Caption Words…** there.
+4. Tell whoever looks after Drashti if they are wrong or lag behind. Misspelt names and terms can be added under **Caption Words…** there, and words to leave out under **Words Left Out…**.
 
 ![Live captions off, and the Gujarati trial's warning](../screenshots/captions-off.png)
 

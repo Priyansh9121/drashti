@@ -532,6 +532,8 @@ import { CaptionSettingsRepo } from './db/captions';
 import { CaptionWordsRepo } from './db/caption-words';
 import { CAPTION_HINTS_ON } from '../shared/caption-words';
 import { CaptionWordsService } from './speech/caption-words-service';
+import { CaptionCleanWordsRepo } from './db/caption-clean-words';
+import { CaptionCleanService } from './speech/caption-clean-service';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
 import { registerVideoCaptionIpc } from './video-captions/ipc';
@@ -540,6 +542,7 @@ import {
   isLanguageModelLanguage,
   parseCaptionSettings,
   parseCaptionTiming,
+  type CaptionsShown,
 } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { saveWaitEndsAt, saveWaitsFor } from '../shared/save-waits';
@@ -4379,6 +4382,41 @@ function start(): void {
     },
     log,
   });
+  // Words left out of captions (alpha.24, QA24-CAPCLEAN-1; the owner: "do not show them"): Drashti's own list (hashes
+  // only), the admin's own words in the library (File › Live Captions… › Words Left Out…, Pro Mode) and, in tests
+  // only, DRASHTI_TEST_CAPTION_CLEAN's placeholder words (never packaged). Every phrase heard and every caption shown.
+  const cleanTestWords = packaged() ? undefined : sw('DRASHTI_TEST_CAPTION_CLEAN');
+  const captionClean = new CaptionCleanService({
+    repo: new CaptionCleanWordsRepo(opened.db),
+    ...(cleanTestWords ? { testWords: cleanTestWords.split('|') } : {}),
+    pickImport: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Import Words to Leave Out',
+        buttonLabel: 'Import',
+        properties: ['openFile'],
+        filters: [{ name: 'Words (CSV)', extensions: ['csv', 'txt'] }],
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    pickExport: async (defaultName) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export Words to Leave Out',
+        defaultPath: defaultName,
+        buttonLabel: 'Export',
+        filters: [{ name: 'Words (CSV)', extensions: ['csv'] }],
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
+    changed: (count) => sendToOperator(IPC.captionClean.changed, count),
+    log,
+  });
+  // The seam's last half: every caption, today's, caption AI's or translated, with words left out just before the
+  // screens (the first half is the spell below, on every phrase heard).
+  const showCaptions = (shown: CaptionsShown | null): void => {
+    engine.setCaptions(captionClean.shown(shown));
+  };
   const captionsEngineProblem =
     testSpeech !== undefined
       ? null
@@ -4499,7 +4537,7 @@ function start(): void {
   const captionCoordinator = new CaptionCoordinator({
     settings: () => parseCaptionSettings(captionSettingsRepo.get()),
     show: (shown) => {
-      engine.setCaptions(shown);
+      showCaptions(shown);
     },
     // The operator's review panel (Codex x90's) shows caption AI's phrase while it runs, for a correction.
     changed: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
@@ -4537,12 +4575,13 @@ function start(): void {
     download: (id, progress, signal) =>
       downloadModel({ dest: modelFile(captionsData, id), source: MODEL_SOURCES[id], progress, signal }),
     show: (shown) => {
-      engine.setCaptions(shown);
+      showCaptions(shown);
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     prototypeChanged: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
-    spell: (phrase) => captionWords.fix(phrase),
+    spell: (phrase) => captionClean.heard(captionWords.fix(phrase)),
     changed: (view) => {
+      captionClean.captionsOn(view.on);
       videoCaptionBand = view.settings;
       engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
@@ -4640,6 +4679,23 @@ function start(): void {
   );
   handle(IPC.captionWords.export, (e) =>
     fromOperator(e) ? captionWords.exportFile() : captionWordsElsewhere(),
+  );
+  // Words left out of captions (alpha.24): another window is told nothing of the admin's words.
+  const noCleanView = () => ({ words: [], own: { gu: 0, hi: 0, sa: 0, en: 0 }, leftOut: 0 });
+  const captionCleanElsewhere = () => ({
+    ok: false,
+    view: noCleanView(),
+    message: 'Only the operator window can do that.',
+  });
+  handle(IPC.captionClean.view, (e) => (fromOperator(e) ? captionClean.view() : noCleanView()));
+  handle(IPC.captionClean.set, (e, words) =>
+    fromOperator(e) ? captionClean.set(words) : captionCleanElsewhere(),
+  );
+  handle(IPC.captionClean.import, (e) =>
+    fromOperator(e) ? captionClean.importFile() : captionCleanElsewhere(),
+  );
+  handle(IPC.captionClean.export, (e) =>
+    fromOperator(e) ? captionClean.exportFile() : captionCleanElsewhere(),
   );
 
   // ---- another app's window as the background (Session 48) -------------------

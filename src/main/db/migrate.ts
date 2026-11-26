@@ -72,6 +72,7 @@ import { up as mediaPlaybackSettings } from './migrations/089-media-playback-set
 import { up as videoEdits } from './migrations/090-video-edits';
 import { up as captionWords } from './migrations/091-caption-words';
 import { up as pdfPageCrops } from './migrations/092-pdf-page-crops';
+import { up as captionCleanWords } from './migrations/094-caption-clean-words';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -167,6 +168,8 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 90, name: 'video edit recipes and immutable prepared copies', up: videoEdits },
   { version: 91, name: 'caption words', up: captionWords },
   { version: 92, name: 'PDF page crops', up: pdfPageCrops },
+  // 093 is a24-captrans's (caption_settings.caption_language, alpha.24).
+  { version: 94, name: 'words left out of captions', up: captionCleanWords },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
