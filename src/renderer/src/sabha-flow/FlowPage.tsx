@@ -187,7 +187,7 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
           aria-label="Zoom"
           aria-invalid={error}
           aria-describedby={error ? 'flow-zoom-error' : undefined}
-          className="w-14 rounded border border-line-strong bg-panel text-center text-xs tabular-nums"
+          className="min-h-6 w-14 rounded border border-line-strong bg-panel text-center text-xs tabular-nums"
           data-testid="flow-zoom"
           type="text"
           inputMode="decimal"
