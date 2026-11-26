@@ -109,4 +109,17 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
         'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. 1 picture is missing. With nothing up, the screens show black.',
     });
   });
+  it('names several pictures needing conversion without claiming they are missing', () => {
+    const a = { ...picture('a', false), unplayable: 'HEIC photo' };
+    const b = { ...picture('b', false), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [a, b] })).toMatchObject({
+      kind: 'all',
+      count: 2,
+      tile: 'Convert pictures',
+      find: [],
+      notice:
+        '2 of the wallpaper’s pictures need conversion. Convert them in Media. With nothing up, the screens show black.',
+      live: '2 of the wallpaper’s pictures need conversion. The screens show black when the wallpaper is up.',
+    });
+  });
 });

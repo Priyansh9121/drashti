@@ -15,7 +15,7 @@ const wallpaper: Wallpaper = {
 describe('a wallpaper tile warning', () => {
   it('keeps its full warning in a tooltip when the narrow tile wraps its words', () => {
     const html = renderToStaticMarkup(createElement(WallpaperTile, { wallpaper, chosen: true }));
-    const warning = html.match(/<span[^>]*data-testid="wallpaper-missing"[^>]*>/u)?.[0];
+    const warning = /<span[^>]*data-testid="wallpaper-missing"[^>]*>/u.exec(html)?.[0];
     expect(warning).toContain('title="Picture missing"');
     expect(html).toContain('aria-label="Placeholder wallpaper, its picture is missing"');
   });
