@@ -36,6 +36,8 @@ Press **Find in playlist**, or **Find in audio playlist** above Audio’s tracks
 
 In Pro Mode, drop a PDF on Sabha flow to use it as the running order; with one already loaded, confirm **Replace the running order?** or Cancel to keep it, and when several PDFs are dropped only the first is used.
 
+In the operator window, drag the PDF page with the mouse to move it both ways, or type 25% to 400% in **Zoom** and press Enter or leave the box; Escape restores the current zoom, and zooming keeps your place.
+
 **The first start.** A new library opens with a welcome: Drashti's lamp lights, then the choices. The screens set themselves (below), so nothing has to be set up first: **Set Up Screens…** changes what each display shows, with the sound and the stream (the admin's guide has it). **Try a practice show first** puts five placeholder slides on this screen only, with a banner saying so: try Next, Back, **B**, **F12** and **F1** as in a sabha; nothing goes to the hall's screens, the phones or a stream, and nothing is saved. As in a sabha, putting up a slide there takes Black-out or the Wallpaper off. **Leave the practice show** brings the welcome back. A new library starts with no presentations, not even test slides. **Skip for now** leaves the middle of the window showing three steps to a sabha: **Import…** what you show, make **this week's playlist**, and the screens, which set themselves (**Set Up Screens…** to change them). In a small window these steps, and the practice show's keys, scroll: none is ever hidden under the bars along the bottom. The welcome comes once; **View › Set Up Screens…** opens the setup any time.
 
 ![The first start: the lamp lit, and three choices](screenshots/first-start-welcome.png)

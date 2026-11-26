@@ -1012,6 +1012,10 @@ The optional Gujarati and Hindi recognition engine needs macOS 13.4 or later on 
 
 **Video recording faults.** If a disk fills while a recording file opens, is written or starts its next part, the recording stops and names the full disk. A failed disk flush also stops it with a notice; check the disk connection and free space before recording again. The outgoing stream continues through disk faults. If the video encoder stops or cannot start, Stream says it is trying again. Once pictures return, the recording continues in a new part beside the earlier one.
 
+## Sabha flow
+
+Open **Sabha flow** under **Library** and choose a PDF to read its running order or view its pages. In the operator window, drag the PDF page with the mouse to move it both ways, or type 25% to 400% in **Zoom** and press Enter or leave the box; Escape restores the current zoom, and zooming keeps your place.
+
 ## Cue a video
 
 In Pro Mode, right-click a video and choose **Cue**. It loads paused at its first start point without changing LIVE. The cue card in LIVE says **Cue ready** once the playing pages have its first frame. **Go** starts that same loaded video at one shared moment; **Cancel** removes the cue. A page that reloads must get ready again. A manual cue comes back paused after an unexpected restart.
