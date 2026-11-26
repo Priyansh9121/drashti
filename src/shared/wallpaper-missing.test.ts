@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { wallpaperMissing } from './wallpaper-missing';
+import { type EngineState, initialEngineState, type PipLayer, type SlideLayer } from './engine/state';
+import { DEFAULT_PIP_PLACE } from './pip';
+import { wallpaperMissing, wallpaperMissingLive } from './wallpaper-missing';
 
 const picture = (mediaId: string, missing: boolean, name = `Placeholder ${mediaId}.png`) => ({
   mediaId,
@@ -71,5 +73,65 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
         'The wallpaper has no picture. With nothing up, the screens show black. Drop a picture on it, or choose another.',
       find: [],
     });
+  });
+});
+
+/** A state with these layers up (and the Wallpaper on or off). */
+function show(layers: Partial<EngineState['layers']>, wallpaper = false): EngineState {
+  const s = initialEngineState();
+  return { ...s, layers: { ...s.layers, ...layers }, wallpaper };
+}
+
+const box = (over: Partial<PipLayer> = {}): PipLayer => ({
+  source: { kind: 'media', mediaId: 'boxed', media: 'image' },
+  place: DEFAULT_PIP_PLACE,
+  swapped: false,
+  shownAt: 1,
+  ...over,
+});
+
+const SLIDE: SlideLayer = {
+  presentationId: 'p',
+  slideIndex: 0,
+  shownAt: 1,
+  notes: '',
+  slide: { id: 's', width: 1920, height: 1080, background: null, elements: [] },
+};
+
+describe('LIVE’s line while the screens show black for a missing wallpaper (QA24-WALLBLACK-1, -2)', () => {
+  const gone = { pictures: [picture('a', true)] };
+  const LINE = 'Wallpaper’s picture missing: “Placeholder a.png”. With nothing up, the screens show black.';
+
+  it('nothing up, or under the Wallpaper: said', () => {
+    expect(wallpaperMissingLive(show({}), gone)).toBe(LINE);
+    expect(wallpaperMissingLive(show({ slide: SLIDE }, true), gone)).toBe(LINE);
+  });
+
+  it('a box up, not swapped, over nothing else: said, as the screens show black behind it (the owner’s A)', () => {
+    expect(wallpaperMissingLive(show({ pip: box() }), gone)).toBe(LINE);
+  });
+
+  it('a box of the slides with no slide up draws nothing, swapped or not: said', () => {
+    expect(wallpaperMissingLive(show({ pip: box({ source: { kind: 'slides' } }) }), gone)).toBe(LINE);
+    expect(
+      wallpaperMissingLive(show({ pip: box({ source: { kind: 'slides' }, swapped: true }) }), gone),
+    ).toBe(LINE);
+  });
+
+  it('a swapped box fills the screen with its own picture: not said', () => {
+    expect(wallpaperMissingLive(show({ pip: box({ swapped: true }) }), gone)).toBeNull();
+  });
+
+  it('something else up, with or without a box: not said', () => {
+    expect(wallpaperMissingLive(show({ slide: SLIDE }), gone)).toBeNull();
+    expect(wallpaperMissingLive(show({ pip: box(), slide: SLIDE }), gone)).toBeNull();
+    expect(
+      wallpaperMissingLive(show({ pip: box(), background: { kind: 'color', color: '#123456' } }), gone),
+    ).toBeNull();
+  });
+
+  it('none chosen, or its pictures there: not said', () => {
+    expect(wallpaperMissingLive(show({ pip: box() }), null)).toBeNull();
+    expect(wallpaperMissingLive(show({ pip: box() }), { pictures: [picture('a', false)] })).toBeNull();
   });
 });

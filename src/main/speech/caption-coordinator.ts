@@ -8,7 +8,12 @@ import type {
   CaptionTranslationRequest,
 } from '../../shared/caption-coordinator';
 import { validCaptionText } from '../../shared/caption-coordinator';
-import { captionClauseLines, captionTranslationLines } from '../../shared/caption-clause-lines';
+import {
+  captionClauseLines,
+  captionTranslationLines,
+  captionTranslationPages,
+} from '../../shared/caption-clause-lines';
+import { CAPTION_PAGE_MIN_MS, CAPTION_PAGE_MS_PER_WORD } from '../../shared/caption-translation';
 import { CAPTION_LINE_CHARS, type CaptionsShown, type CaptionSettings } from '../../shared/captions';
 import type { SpeechLanguage } from '../../shared/speech';
 
@@ -28,6 +33,30 @@ export interface CaptionCoordinatorOptions {
   clock?: () => number;
   /** Future integration must supply the authoritative lease; absent means no translation work. */
   mayTranslate?: () => boolean;
+  /**
+   * alpha.24 (QA24-CAPLANG-2, 2b): while translating, the stage screens keep the speaker's own words as heard
+   * (CaptionsShown.stage), and the audience screens and the stream get the translation (empty until it is ready).
+   */
+  stage?: boolean;
+  /** alpha.24 (2b): a translation longer than two lines is shown as two-line pages in turn, not omitted. */
+  pages?: boolean;
+  /** alpha.24 (2c): a phrase skipped (counted in `omitted`), with why: its translation late, failed or unshowable. */
+  onSkip?: (why: CaptionSkip) => void;
+  /** alpha.24: a translation reached the screens (its first page painted). */
+  onTranslationShown?: () => void;
+}
+
+/** Why a phrase's translation was skipped: too late (or overtaken by the next phrase), failed, or unshowable. */
+export type CaptionSkip = 'late' | 'failed' | 'unfit';
+
+interface Translated {
+  clause: StoredClause;
+  reply: CaptionTranslation;
+  painted: boolean;
+  /** Its two-line pages once first painted, the one showing, and until when it may show. */
+  pages: string[][] | null;
+  page: number;
+  until: number;
 }
 
 type StoredClause = CaptionRevision & {
@@ -56,7 +85,8 @@ export class CaptionCoordinator {
   private previous: StoredClause | null = null;
   private highestPhrase = 0;
   private visible = false;
-  private translated: { clause: StoredClause; reply: CaptionTranslation; painted: boolean } | null = null;
+  private translated: Translated | null = null;
+  private pageTimer: NodeJS.Timeout | null = null;
   private pending: StoredClause | null = null;
   private flight: {
     clause: StoredClause;
@@ -69,6 +99,8 @@ export class CaptionCoordinator {
   private pair: { source: SpeechLanguage; target: SpeechLanguage } | null = null;
   /** A stable clause whose translation failed: not asked again until its words change. */
   private failed: { sessionId: string; phraseId: string; revision: number } | null = null;
+  /** The phrase withdrawn while it was heard (alpha.24, QA24-CAPCLEAN-1): heard on, it comes back fresh (review R2-1). */
+  private withdrawn: string | null = null;
   /** Where the words may be shown (the audience screens or not): a change starts a new output-policy epoch. */
   private policyKey = '';
   private shownAt = Number.NEGATIVE_INFINITY;
@@ -102,6 +134,7 @@ export class CaptionCoordinator {
 
   stop(): void {
     this.sessionId = null;
+    this.withdrawn = null;
     this.pair = null;
     this.failed = null;
     this.current = null;
@@ -145,7 +178,11 @@ export class CaptionCoordinator {
       return false;
     const sourceText = textOf(clause.sourceText);
     if (!validCaptionText(sourceText, 4_096)) return false;
-    if (number === this.highestPhrase) {
+    // A phrase withdrawn while it was heard is heard on as a fresh clause (its flow starts again at revision 1), and
+    // the one before it stays (review R2-1).
+    const heardOn =
+      number === this.highestPhrase && this.current === null && clause.phraseId === this.withdrawn;
+    if (number === this.highestPhrase && !heardOn) {
       if (
         this.current?.status !== 'provisional' ||
         clause.revision <= this.current.revision ||
@@ -155,8 +192,12 @@ export class CaptionCoordinator {
         return false;
       if (sourceText === this.current.sourceText && clause.status === this.current.status) return true;
     }
-    if (number > this.highestPhrase) this.previous = this.current;
+    // After a withdrawn phrase the one before it stays the phrase before (alpha.24 captions join, J3): the withdrawn
+    // one never stood on the screens.
+    if (number > this.highestPhrase)
+      this.previous = this.current ?? (this.withdrawn !== null ? this.previous : null);
     this.highestPhrase = number;
+    this.withdrawn = null;
     const firstSettledAt = clause.status === 'settled' ? now : null;
     const clearAt = now + 6_000;
     this.pair ??= { source: clause.sourceLanguage, target: clause.targetLanguage };
@@ -264,6 +305,44 @@ export class CaptionCoordinator {
     return true;
   }
 
+  /**
+   * A phrase being heard that was left out whole (alpha.24, QA24-CAPCLEAN-1, review F4: every word of it was a word to
+   * leave out) comes off the screens while it is still provisional there, as Dismiss phrase takes a settled one off.
+   * Anything settled before it stays for the review. False when that phrase is not the one being heard.
+   *
+   * While translating (alpha.24 captions join, J3), the phrase before it is the one translated and on the audience
+   * screens and the stream: its translation, pages and timers, and its translation in flight, all stay, and only the
+   * stage band of the withdrawn phrase comes off. Everything clears when the phrase before's own time is up (after its
+   * last page). In the speaker's own words, or with nothing of a phrase before left to show, everything clears now.
+   */
+  withdraw(phraseId: string): boolean {
+    if (this.current?.phraseId !== phraseId || this.current.status !== 'provisional') return false;
+    this.withdrawn = phraseId;
+    this.current = null;
+    const before = this.previous;
+    const now = this.clock();
+    const showing = this.translated?.painted === true && now < this.translated.until;
+    if (this.translating() && this.visible && before !== null && (now < before.clearAt || showing)) {
+      if (this.expiry) clearTimeout(this.expiry);
+      this.expiry = setTimeout(
+        () => {
+          this.expire();
+        },
+        Math.max(0, before.clearAt - now),
+      );
+      this.paint();
+    } else this.clear();
+    this.notify();
+    return true;
+  }
+
+  /** The screens show a translation of the session's phrases (not the speaker's own words). */
+  private translating(): boolean {
+    return (
+      this.options.output === 'translation' && this.pair !== null && this.pair.source !== this.pair.target
+    );
+  }
+
   /** The eventual L8 consumer calls this before revoking work; no show action waits for cancellation. */
   setTranslationHeld(held: boolean): void {
     if (this.held === held) {
@@ -274,9 +353,8 @@ export class CaptionCoordinator {
     this.held = held;
     this.generation += 1;
     this.abortFlight();
-    this.pending = held ? null : this.eligible();
-    this.translated = null;
-    if (this.options.output === 'translation') this.options.show(null);
+    this.pending = held ? null : this.wanted(this.eligible());
+    this.dropTranslation();
     if (!held) this.pump();
     this.notify();
   }
@@ -289,9 +367,9 @@ export class CaptionCoordinator {
       this.policyKey = policy;
       this.policyEpoch += 1;
       this.abortFlight();
-      this.translated = null;
-      const eligible = this.eligible();
-      this.pending = eligible && !this.failedMatches(eligible) ? eligible : null;
+      // Through dropTranslation (a24-review F5): a last page past the phrase's own time clears everything.
+      this.dropTranslation();
+      this.pending = this.wanted(this.eligible());
       this.pump();
       this.notify();
     }
@@ -338,8 +416,62 @@ export class CaptionCoordinator {
     this.version += 1;
     this.options.changed(this.view());
   }
+  /**
+   * The phrase's time is up: everything clears, unless a long translation's pages are still showing (alpha.24, 2b):
+   * then only the stage's words go now, and the rest when its last page has had its time.
+   */
+  private expire(): void {
+    const t = this.translated;
+    if (t?.painted && this.clock() < t.until) {
+      this.paint();
+      return;
+    }
+    this.clear();
+    this.notify();
+  }
+  /** A phrase skipped (2c): counted, and told why. */
+  private skip(why: CaptionSkip, clause?: StoredClause): void {
+    // Given up for good (a24-review F1): never queued or counted again while its words are unchanged.
+    if (clause)
+      this.failed = { sessionId: clause.sessionId, phraseId: clause.phraseId, revision: clause.revision };
+    this.omitted += 1;
+    // Told only while translation may run (a24-review F2): nothing was asked when the lease is closed.
+    if (this.leaseOpen()) this.options.onSkip?.(why);
+  }
+  /** Translation may run now: a port, the lease open, no hold. */
+  private leaseOpen(): boolean {
+    return (
+      this.options.translation !== undefined &&
+      this.translatorIdentity !== null &&
+      !this.held &&
+      this.options.mayTranslate?.() === true
+    );
+  }
+  /** Only a clause into another language is ever queued (a24-review F2): the speaker's own words need nothing. */
+  private wanted(clause: StoredClause | null): StoredClause | null {
+    return clause && clause.sourceLanguage !== clause.targetLanguage && !this.failedMatches(clause)
+      ? clause
+      : null;
+  }
+  /** The translation is gone (replaced, revised, held, expired): with the stage band, the stage keeps its words. */
+  private dropTranslation(): void {
+    this.translated = null;
+    if (this.pageTimer) clearTimeout(this.pageTimer);
+    this.pageTimer = null;
+    if (this.options.output !== 'translation') return;
+    // The phrase's own time ran out while the last page showed: everything clears now.
+    if (this.visible && (!this.current || this.clock() >= this.current.clearAt)) {
+      this.clear();
+      this.notify();
+      return;
+    }
+    if (this.options.stage && this.visible) this.paint();
+    else this.options.show(null);
+  }
   private eligible(): StoredClause | null {
-    const clause = this.current?.status === 'provisional' ? this.previous : this.current;
+    // The phrase before stays the one translated while the next is heard, or after it was withdrawn (J3).
+    const clause =
+      this.current === null || this.current.status === 'provisional' ? this.previous : this.current;
     return this.visible && clause && clause.status !== 'provisional' && this.clock() < clause.clearAt
       ? clause
       : null;
@@ -352,6 +484,8 @@ export class CaptionCoordinator {
   private clear(): void {
     this.visible = false;
     this.translated = null;
+    if (this.pageTimer) clearTimeout(this.pageTimer);
+    this.pageTimer = null;
     this.pending = null;
     this.abortFlight();
     if (this.trailing) clearTimeout(this.trailing);
@@ -371,20 +505,20 @@ export class CaptionCoordinator {
       this.current?.phraseId === this.translated.clause.phraseId &&
       !identity(this.current, this.translated.clause)
     ) {
-      this.translated = null;
-      if (this.options.output === 'translation') this.options.show(null);
+      this.dropTranslation();
     }
     const eligible = this.eligible();
     if (this.flight && (!eligible || !identity(this.flight.clause, eligible))) {
       if (!this.flight.abort.signal.aborted && eligible && this.flight.clause.phraseId !== eligible.phraseId)
-        this.omitted += 1;
+        this.skip('late', this.flight.clause);
       this.abortFlight();
     }
-    if (this.pending && eligible && this.pending.phraseId !== eligible.phraseId) this.omitted += 1;
+    if (this.pending && eligible && this.pending.phraseId !== eligible.phraseId)
+      this.skip('late', this.pending);
     this.pending =
+      this.wanted(eligible) &&
       eligible &&
       !this.translatedMatches(eligible) &&
-      !this.failedMatches(eligible) &&
       (!this.flight || !identity(this.flight.clause, eligible))
         ? eligible
         : null;
@@ -392,8 +526,7 @@ export class CaptionCoordinator {
     const clearAt = this.current?.clearAt ?? this.clock();
     this.expiry = setTimeout(
       () => {
-        this.clear();
-        this.notify();
+        this.expire();
       },
       Math.max(0, clearAt - this.clock()),
     );
@@ -415,41 +548,128 @@ export class CaptionCoordinator {
     const now = this.clock();
     this.shownAt = now;
     const target = this.options.output === 'translation';
-    const bypass = target && this.current?.sourceLanguage === this.current?.targetLanguage;
-    const clause = target && !bypass ? this.translated?.clause : this.current;
-    const text = target && !bypass ? this.translated?.reply.text : clause?.sourceText;
+    // With no phrase being heard (one withdrawn, J3), the phrase before says whether this is a translation.
+    const lead = this.current ?? this.previous;
+    const bypass = target && lead?.sourceLanguage === lead?.targetLanguage;
+    if (target && !bypass) {
+      this.paintTranslation(now);
+      return;
+    }
+    const clause = this.current;
+    const text = clause?.sourceText;
     if (!this.visible || !clause || !text || now >= clause.clearAt) {
       this.options.show(null);
       return;
     }
-    if (target && !bypass && this.translated && !this.translated.painted) {
-      if (now >= (clause.paintDeadlineAt ?? 0)) {
+    const settings = this.shownSettings();
+    this.options.show({
+      ...settings,
+      fit: true,
+      language: target ? clause.targetLanguage : clause.sourceLanguage,
+      lines: captionClauseLines(text, CAPTION_LINE_CHARS[settings.size]),
+    });
+  }
+
+  /** The library's settings as the band takes them ("Captions in" is not the band's). */
+  private shownSettings() {
+    const { captionLanguage: _captionLanguage, ...settings } = this.options.settings();
+    return settings;
+  }
+
+  /**
+   * The translation's band: its page now, first painted only before its deadline, never shortened (a long one in
+   * two-line pages with options.pages; otherwise omitted, as before); with options.stage the speaker's own words as
+   * heard for the stage screens beside it.
+   */
+  private paintTranslation(now: number): void {
+    const settings = this.shownSettings();
+    const max = CAPTION_LINE_CHARS[settings.size];
+    let skipped = false;
+    const t = this.translated;
+    if (t && this.visible && now < t.until && !t.painted) {
+      const pages = this.options.pages
+        ? captionTranslationPages(t.reply.text, max)
+        : ((lines) => (lines ? [lines] : null))(captionTranslationLines(t.reply.text, max));
+      if (now >= (t.clause.paintDeadlineAt ?? 0)) {
         this.translated = null;
-        this.omitted += 1;
-        this.options.show(null);
-        this.notify();
-        return;
+        this.skip('late', t.clause);
+        skipped = true;
+      } else if (!pages) {
+        // Never asked for again while its words are unchanged (was: asked again at the next update, review of
+        // a24-caplang2's prototype).
+        this.translated = null;
+        this.skip('unfit', t.clause);
+        skipped = true;
+      } else {
+        t.painted = true;
+        t.pages = pages;
+        t.page = 0;
+        // Each page shows for its reading time, the last one too, even past the phrase's own clear time.
+        const spans = pages.map((p) =>
+          Math.max(CAPTION_PAGE_MIN_MS, p.join(' ').split(/\s+/u).length * CAPTION_PAGE_MS_PER_WORD),
+        );
+        const lastStart = now + spans.slice(0, -1).reduce((a, b) => a + b, 0);
+        t.until = Math.max(t.until, lastStart + (spans.at(-1) ?? CAPTION_PAGE_MIN_MS));
+        this.schedulePages(t, spans);
+        if (this.translatedExpiry) clearTimeout(this.translatedExpiry);
+        this.translatedExpiry = setTimeout(
+          () => {
+            if (this.translated === t) this.dropTranslation();
+          },
+          Math.max(0, t.until - now),
+        );
+        this.options.onTranslationShown?.();
       }
-      this.translated.painted = true;
     }
-    const settings = this.options.settings();
-    const lines =
-      target && !bypass
-        ? captionTranslationLines(text, CAPTION_LINE_CHARS[settings.size])
-        : captionClauseLines(text, CAPTION_LINE_CHARS[settings.size]);
-    if (!lines) {
-      this.translated = null;
-      this.omitted += 1;
+    const shownT = this.translated && this.visible && now < this.translated.until ? this.translated : null;
+    const pageLines = shownT?.painted ? (shownT.pages?.[shownT.page] ?? []) : [];
+    const pageCount = shownT?.pages?.length ?? 0;
+    const heard =
+      this.options.stage && this.visible && this.current && now < this.current.clearAt ? this.current : null;
+    const stage = heard
+      ? {
+          lines: captionClauseLines(heard.sourceText, max),
+          language: heard.sourceLanguage,
+          fit: true as const,
+        }
+      : null;
+    if (pageLines.length === 0 && (!this.options.stage || stage === null)) {
       this.options.show(null);
-      this.notify();
+      if (skipped) this.notify();
+      return;
+    }
+    const language = (shownT?.clause ?? this.current)?.targetLanguage ?? this.current?.targetLanguage;
+    if (!language) {
+      this.options.show(null);
       return;
     }
     this.options.show({
       ...settings,
       fit: true,
-      language: target ? clause.targetLanguage : clause.sourceLanguage,
-      lines,
+      kind: 'translation',
+      language,
+      lines: pageLines,
+      ...(pageCount > 1 && shownT ? { page: { n: shownT.page + 1, of: pageCount } } : {}),
+      ...(this.options.stage ? { stage } : {}),
     });
+    if (skipped) this.notify();
+  }
+
+  /** Each next page of this translation after the one before has had its reading time. */
+  private schedulePages(t: Translated, spans: readonly number[]): void {
+    if (this.pageTimer) clearTimeout(this.pageTimer);
+    this.pageTimer = null;
+    const next = (): void => {
+      if (this.translated !== t || !t.pages || t.page + 1 >= t.pages.length) return;
+      this.pageTimer = setTimeout(() => {
+        this.pageTimer = null;
+        if (this.translated !== t) return;
+        t.page += 1;
+        this.paint();
+        next();
+      }, spans[t.page] ?? CAPTION_PAGE_MIN_MS);
+    };
+    next();
   }
 
   private pump(): void {
@@ -476,7 +696,7 @@ export class CaptionCoordinator {
     if (clause.sourceLanguage === clause.targetLanguage) return;
     const cutoff = clause.paintDeadlineAt - 350;
     if (this.clock() >= cutoff) {
-      this.omitted += 1;
+      this.skip('late', clause);
       this.notify();
       return;
     }
@@ -502,7 +722,7 @@ export class CaptionCoordinator {
     flight.deadline = setTimeout(
       () => {
         if (!flight.abort.signal.aborted) {
-          this.omitted += 1;
+          this.skip('late', flight.clause);
           this.abortFlight();
           this.notify();
         }
@@ -521,7 +741,7 @@ export class CaptionCoordinator {
       )
         return;
       if (this.clock() >= cutoff) {
-        this.omitted += 1;
+        this.skip('late', clause);
         return;
       }
       const keys = [
@@ -549,17 +769,26 @@ export class CaptionCoordinator {
         !validCaptionText(reply.text, 8_192) ||
         (reply.processingMs !== null && (!Number.isFinite(reply.processingMs) || reply.processingMs < 0))
       ) {
-        this.omitted += 1;
+        this.skip('failed');
         // Not asked again while its words are unchanged (more provisional source arriving is no reason).
         this.failed = { sessionId: clause.sessionId, phraseId: clause.phraseId, revision: clause.revision };
         return;
       }
-      this.translated = { clause, reply: { ...reply, text: textOf(reply.text) }, painted: false };
+      if (this.pageTimer) clearTimeout(this.pageTimer);
+      this.pageTimer = null;
+      const translated: Translated = {
+        clause,
+        reply: { ...reply, text: textOf(reply.text) },
+        painted: false,
+        pages: null,
+        page: 0,
+        until: clause.clearAt,
+      };
+      this.translated = translated;
       if (this.translatedExpiry) clearTimeout(this.translatedExpiry);
       this.translatedExpiry = setTimeout(
         () => {
-          this.translated = null;
-          if (this.options.output === 'translation') this.options.show(null);
+          if (this.translated === translated) this.dropTranslation();
         },
         Math.max(0, clause.clearAt - this.clock()),
       );
@@ -567,7 +796,7 @@ export class CaptionCoordinator {
     };
     void run()
       .catch(() => {
-        if (!flight.abort.signal.aborted && clause.sessionId === this.sessionId) this.omitted += 1;
+        if (!flight.abort.signal.aborted && clause.sessionId === this.sessionId) this.skip('failed', clause);
       })
       .finally(() => {
         if (flight.deadline) clearTimeout(flight.deadline);

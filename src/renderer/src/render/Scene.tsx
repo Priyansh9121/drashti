@@ -26,6 +26,7 @@ import type {
   PipLayer,
   TickerLayer,
 } from '../../../shared/engine/state';
+import { nothingUpBehindBox } from '../../../shared/engine/state';
 import type { GroupLayer, LiveGroupLook, Movement } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import type { TimerState } from '../../../shared/timers';
@@ -525,16 +526,21 @@ const SceneBody = memo(function SceneBody({
   // Worked out at every drawing from the engine's time, kept while it draws the same (Session 51).
   const [run, refreshRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
   const up = boxHere(layers.pip) ? layers.pip : null;
-  // Nothing up on these screens (the box counts): what shows then (Session 55, render/NothingUp.tsx: Part 6's
-  // chosen wallpaper; black with none chosen).
+  // Nothing on the main picture: no background drawn (none, or its first frame not come) and no slide.
+  const mainEmpty = (background === null || nothingDrawnYet) && (layers.slide === null || !shown('slide'));
+  // Nothing up on these screens (the box counts), as the scene says it (data-nothing-up): what shows then (Session 55,
+  // render/NothingUp.tsx: Part 6's chosen wallpaper; black with none chosen).
   // Q60-51 (the owner's "never black", x52's A11): with the box up over a background whose first frame has not come,
   // what shows with nothing up stays under the box until it does; not with the box swapped into the background's
-  // place (its own picture is there).
-  const nothingUp =
-    (background === null || nothingDrawnYet) &&
-    (layers.slide === null || !shown('slide')) &&
-    (up === null || (nothingDrawnYet && !up.swapped));
-  const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
+  // place (its own picture is there). QA24-WALLBLACK-2 (the owner's A, alpha.24): so does a box over nothing else, so
+  // the chosen wallpaper stays behind it as it comes and goes, never black: the one rule, shared/engine/state.ts
+  // nothingUpBehindBox, which LIVE's line for a missing wallpaper and the PiP preview follow too.
+  const nothingUpNow = mainEmpty && nothingUpBehindBox(up) ? nothingUpShows(state) : null;
+  // Where it is drawn (QA24-WALLBLACK-2, lead 2's option A): in the main picture's background place, so with a box up
+  // it is the background a Swap and a Swap back dissolve (render/pip.ts pipMainPlaces), never a cut and never black;
+  // kept there unseen while the box is swapped, as the background is (keptBackground), so it is whole at once when it
+  // comes back. One place with a box or none, so it is never drawn again as the box comes and goes.
+  const nothingDrawn = mainEmpty ? nothingUpShows(state) : null;
   // Back to the Wallpaper (Clear background, a video's end, one that could not play coming off; Q60-31 (3), the
   // lead's): the Wallpaper's picture is read again as it comes back, and the screen showed black meanwhile. Now what the
   // background drew stays, the Wallpaper out of sight over it, until its picture has come (NothingUp's onDrawn), at
@@ -664,6 +670,20 @@ const SceneBody = memo(function SceneBody({
                       onLinkDrawn={setLinkDrawn}
                     />
                   </BackgroundBox.Provider>
+                  {/* What shows with nothing up, over a background still coming (Q60-51) and in its place (above). */}
+                  {nothingDrawn && (
+                    <div
+                      data-wallpaper-coming={holding ? 'true' : undefined}
+                      style={holding ? FULL_UNSEEN : FULL}
+                    >
+                      <NothingUp
+                        shows={nothingDrawn}
+                        state={state}
+                        canvas={canvas}
+                        onDrawn={wallpaperDrawn}
+                      />
+                    </div>
+                  )}
                 </MainSlot>
                 {/* The box's own picture in the background's place, once swapped (Session 50), a video between its
                     file's start and end points as in the box (Session 53). */}
@@ -678,14 +698,6 @@ const SceneBody = memo(function SceneBody({
                     />
                   )}
                 </MainSlot>
-                {nothingUpNow && (
-                  <div
-                    data-wallpaper-coming={holding ? 'true' : undefined}
-                    style={holding ? FULL_UNSEEN : FULL}
-                  >
-                    <NothingUp shows={nothingUpNow} state={state} canvas={canvas} onDrawn={wallpaperDrawn} />
-                  </div>
-                )}
                 <MainSlot slot={slotOf('slide')} swap={swap}>
                   <SlideLayerView
                     layer={shown('slide') ? layers.slide : null}

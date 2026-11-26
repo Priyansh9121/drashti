@@ -920,6 +920,29 @@ export function nothingUp(layers: Layers): boolean {
   return LAYER_NAMES.every((layer) => isLayerEmpty(layers, layer)) && !layers.timer;
 }
 
+/**
+ * Whether what the screens show with nothing up stays behind the picture-in-picture box (QA24-WALLBLACK-2, the owner's
+ * A): with no box, or one not swapped; a swapped box's own picture fills the main picture instead. The one rule of the
+ * screens (render/Scene.tsx's nothing-up), the PiP preview (operator/pip-preview.ts) and LIVE's line for a missing
+ * wallpaper (shared/wallpaper-missing.ts, by nothingUpButTheBox), so they never disagree.
+ */
+export function nothingUpBehindBox(box: Pick<PipLayer, 'swapped'> | null): boolean {
+  return !box?.swapped;
+}
+
+/**
+ * Nothing up but, at most, a picture-in-picture box that keeps what shows with nothing up behind it
+ * (nothingUpBehindBox), or a box of the slides, which draws nothing with no slide up: the screens show what they show
+ * with nothing up (nothingUp, the box apart).
+ */
+export function nothingUpButTheBox(layers: Layers): boolean {
+  const box = layers.pip;
+  return (
+    nothingUp({ ...layers, pip: null }) &&
+    (box === null || box.source.kind === 'slides' || nothingUpBehindBox(box))
+  );
+}
+
 /** True when the layer shows nothing. */
 export function isLayerEmpty(layers: Layers, layer: LayerName): boolean {
   const value = layers[layer];

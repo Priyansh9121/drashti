@@ -69,6 +69,9 @@ test('stored SRT captions follow the hall and stream video clocks through play, 
   const { app } = await launchApp({
     ...ENV,
     DRASHTI_TEST_SPEECH: 'Live placeholder alpha|Live placeholder beta',
+    // Words left out of captions (alpha.24, QA24-CAPCLEAN-1): a test-only placeholder word, never a real one. The
+    // files below carry it, and the screens show their cues without it.
+    DRASHTI_TEST_CAPTION_CLEAN: 'zqvorn',
   });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-caption-e2e-'));
   try {
@@ -81,10 +84,10 @@ test('stored SRT captions follow the hall and stream video clocks through play, 
     });
     const en = join(dir, 'Placeholder captions.en.srt');
     const gu = join(dir, 'Placeholder captions.gu.auto.srt');
-    writeFileSync(en, SRT);
+    writeFileSync(en, SRT.replace('Second placeholder', 'Second zqvorn placeholder'));
     writeFileSync(
       gu,
-      SRT.replace('First placeholder', 'નમૂનો એક')
+      SRT.replace('First placeholder', 'નમૂનો zqvorn એક')
         .replace('Second placeholder', 'નમૂનો બે')
         .replace('Third placeholder', 'નમૂનો ત્રણ'),
     );
