@@ -249,7 +249,9 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
           if (e.button !== 0 || !e.isPrimary) return;
           const el = e.currentTarget;
           if (el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight) return;
-          e.preventDefault();
+          // Its default stays: cancelling it would also cancel the mouse press that closes an open menu (ui/Menu),
+          // which would then keep the show's keys. select-none and the pictures' draggable={false} and
+          // pointer-events-none already keep a drag from selecting or dragging anything out.
           el.focus({ preventScroll: true });
           el.setPointerCapture(e.pointerId);
           drag.current = {
