@@ -15,6 +15,14 @@ import {
   type VideoEditSnapshot,
   type VideoEditFrame,
 } from '../../../shared/video-edit';
+import {
+  CLIP_PARTS_MOST,
+  TRIM_TIME_WORDS,
+  checkClipParts,
+  clipPartsSummary,
+  parseTrimTime,
+  trimSeconds,
+} from '../../../shared/clip-parts';
 import { Button } from '../ui/Button';
 import { saveWaitEndsAt, saveWaitsFor } from '../../../shared/save-waits';
 import { useEngine } from '../engine/engine-store';
@@ -93,6 +101,44 @@ async function thumbnail(video: HTMLVideoElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/**
+ * A trim time (alpha.24): seconds as the number fields took them, or a time such as 10:00 or 1:20:00
+ * (shared/clip-parts.ts). `ms` is the time it holds, or null while its words are not a time (said under it). A new
+ * time from outside (Reset edits, the video's length arriving) replaces the words unless they already say that time.
+ */
+function TrimTime({
+  label,
+  ms,
+  onTime,
+}: {
+  label: string;
+  ms: number | null;
+  onTime: (ms: number | null) => void;
+}) {
+  const [field, setField] = useState(() => ({ ms, text: ms === null ? '' : trimSeconds(ms) }));
+  if (field.ms !== ms)
+    setField({ ms, text: ms !== null && parseTrimTime(field.text) !== ms ? trimSeconds(ms) : field.text });
+  return (
+    <Field label={label} error={ms === null ? TRIM_TIME_WORDS : null}>
+      <TextInput
+        value={field.text}
+        onChange={(e) => {
+          const text = e.currentTarget.value;
+          setField((f) => ({ ...f, text }));
+          onTime(parseTrimTime(text));
+        }}
+      />
+    </Field>
+  );
+}
+
+/** A part kept beyond Start and End, for Export clip… only: either time null while its words are not a time. */
+interface AddedPart {
+  key: number;
+  startMs: number | null;
+  endMs: number | null;
+}
+
 const sections = ['Trim', 'Picture', 'Sound', 'Playback', 'Preparation and export'] as const;
 type Section = (typeof sections)[number];
 
@@ -108,6 +154,15 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
   const [discard, setDiscard] = useState(false);
   const [jpeg, setJpeg] = useState<Uint8Array | undefined>();
   const [tracks, setTracks] = useState<SoundTrack[]>([]);
+  /*
+   * Parts of this video beyond Start and End, joined into one clip by Export clip… (alpha.24; the owner: "one video can
+   * be cut in 2 parts and merged … from 0 to 10 and 20 to 30 but in 1 video"). Never saved: they last while this window
+   * is open, and Save keeps Start and End as before.
+   */
+  const [parts, setParts] = useState<AddedPart[]>([]);
+  const partKey = useRef(0);
+  /** Start's or End's words are not a time: Save and Export wait for one there. */
+  const [badTrim, setBadTrim] = useState({ start: false, end: false });
   const video = useRef<HTMLVideoElement>(null);
   const [sceneBase, setSceneBase] = useState<MediaMarkers | null>(null);
   const [sceneDraft, setSceneDraft] = useState<MediaMarkers | null>(null);
@@ -119,6 +174,22 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
       .map((marker) => marker.atMs) ?? [];
   const dirty =
     JSON.stringify(draft) !== JSON.stringify(kept.recipe) || jpeg !== undefined || sceneTimes.length > 0;
+  const firstEnd = draft.trim.endMs ?? duration;
+  // Part 1 is Start and End; the parts as Export clip… joins them, in time order, or why not.
+  const partsCheck =
+    parts.length === 0
+      ? null
+      : checkClipParts([{ startMs: draft.trim.startMs ?? 0, endMs: firstEnd }, ...parts], duration);
+  const exportProblem =
+    badTrim.start || badTrim.end ? TRIM_TIME_WORDS : partsCheck?.ok === false ? partsCheck.message : null;
+  const addPart = () => {
+    const from = Math.max(firstEnd ?? 0, ...parts.map((part) => part.endMs ?? 0));
+    partKey.current += 1;
+    const key = partKey.current;
+    setParts((all) => [...all, { key, startMs: from, endMs: Math.max(from, duration ?? from) }]);
+  };
+  const setPart = (key: number, change: Partial<AddedPart>) =>
+    setParts((all) => all.map((part) => (part.key === key ? { ...part, ...change } : part)));
   useEffect(() => {
     let active = true;
     void window.drashti.media.markers(initial.mediaId).then(
@@ -186,6 +257,10 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
   };
   const save = async (): Promise<boolean> => {
     if (saving) return false;
+    if (badTrim.start || badTrim.end) {
+      setProblem('Type Start and End as seconds, such as 600, or as a time, such as 10:00, then Save again.');
+      return false;
+    }
     const checked = videoEditRecipeSchema.safeParse(draft);
     if (!checked.success) {
       setProblem('Check the crop, time, speed and fade fields, then try Save again.');
@@ -295,6 +370,8 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
               disabled={saving}
               onClick={() => {
                 setDraft(structuredClone(PLAIN_VIDEO_EDIT));
+                setParts([]);
+                setBadTrim({ start: false, end: false });
                 setJpeg(undefined);
                 setSceneDraft(sceneBase);
                 setProblem(null);
@@ -496,26 +573,76 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
               {section === 'Trim' && (
                 <>
                   <div className="grid grid-cols-2 gap-3">
-                    {number(
-                      'Start (seconds)',
-                      (draft.trim.startMs ?? 0) / 1000,
-                      (n) => setDraft((r) => ({ ...r, trim: { ...r.trim, startMs: Math.round(n * 1000) } })),
-                      0,
-                      (duration ?? 86400000) / 1000,
-                      0.001,
-                    )}
-                    {number(
-                      'End (seconds)',
-                      (draft.trim.endMs ?? duration ?? 0) / 1000,
-                      (n) => setDraft((r) => ({ ...r, trim: { ...r.trim, endMs: Math.round(n * 1000) } })),
-                      0,
-                      (duration ?? 86400000) / 1000,
-                      0.001,
-                    )}
+                    <TrimTime
+                      label="Start (seconds)"
+                      ms={badTrim.start ? null : (draft.trim.startMs ?? 0)}
+                      onTime={(ms) => {
+                        setBadTrim((b) => ({ ...b, start: ms === null }));
+                        if (ms !== null) setDraft((r) => ({ ...r, trim: { ...r.trim, startMs: ms } }));
+                      }}
+                    />
+                    <TrimTime
+                      label="End (seconds)"
+                      ms={badTrim.end ? null : (draft.trim.endMs ?? duration ?? 0)}
+                      onTime={(ms) => {
+                        setBadTrim((b) => ({ ...b, end: ms === null }));
+                        if (ms !== null) setDraft((r) => ({ ...r, trim: { ...r.trim, endMs: ms } }));
+                      }}
+                    />
                   </div>
                   <p className="text-xs text-muted">
                     These times are in the source video. Existing playlist row trims stay with their row.
                   </p>
+                  <p className="text-xs text-muted">
+                    Type a time as seconds, such as 600, or as minutes and seconds, such as 10:00 (with hours,
+                    1:20:00).
+                  </p>
+                  {parts.map((part, at) => {
+                    const n = String(at + 2);
+                    return (
+                      <div
+                        key={part.key}
+                        role="group"
+                        aria-label={`Part ${n}`}
+                        className="grid grid-cols-[1fr_1fr_auto] items-end gap-3"
+                        data-testid="clip-part"
+                      >
+                        <TrimTime
+                          label={`Part ${n} start`}
+                          ms={part.startMs}
+                          onTime={(ms) => setPart(part.key, { startMs: ms })}
+                        />
+                        <TrimTime
+                          label={`Part ${n} end`}
+                          ms={part.endMs}
+                          onTime={(ms) => setPart(part.key, { endMs: ms })}
+                        />
+                        <Button
+                          aria-label={`Remove part ${n}`}
+                          onClick={() => setParts((all) => all.filter((p) => p.key !== part.key))}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  <Button disabled={parts.length + 1 >= CLIP_PARTS_MOST} onClick={addPart}>
+                    Add a part
+                  </Button>
+                  <p className="text-xs text-muted">
+                    Add a part to keep more of this video in one new clip: Export clip… joins the parts in
+                    time order, with a cut at each join, from the original picture and sound. Part 1 is Start
+                    and End. Added parts last while this window is open; Save keeps Start and End.
+                  </p>
+                  {partsCheck && (
+                    <p
+                      role="status"
+                      className={partsCheck.ok ? 'text-xs text-muted' : 'text-xs text-danger-fg'}
+                      data-testid="clip-parts-check"
+                    >
+                      {partsCheck.ok ? clipPartsSummary(partsCheck.parts) : partsCheck.message}
+                    </p>
+                  )}
                   {sceneDraft && (
                     <SceneSuggestions
                       key={kept.revision}
@@ -743,6 +870,8 @@ function Editor({ initial, name }: { initial: VideoEditSnapshot; name: string })
                     revision={kept.revision}
                     dirty={dirty}
                     ready={kept.state === 'ready'}
+                    {...(partsCheck?.ok ? { parts: partsCheck.parts } : {})}
+                    problem={exportProblem}
                   />
                 </>
               )}

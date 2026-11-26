@@ -21,7 +21,20 @@ const MIN = 60_000;
 describe('a time typed in Edit Video’s Trim fields', () => {
   it('reads seconds exactly as the number fields did, so every seconds entry keeps its meaning', () => {
     // As the number field read them: valueAsNumber, then Math.round(seconds × 1000).
-    for (const typed of ['0', '2', '0.350', '1.750', '0.35', '600', '1800', '.5', '5.', '12.3456', '1e3', '0.0004'])
+    for (const typed of [
+      '0',
+      '2',
+      '0.350',
+      '1.750',
+      '0.35',
+      '600',
+      '1800',
+      '.5',
+      '5.',
+      '12.3456',
+      '1e3',
+      '0.0004',
+    ])
       expect(parseTrimTime(typed), typed).toBe(Math.round(Number(typed) * 1000));
     expect(parseTrimTime('0.350')).toBe(350);
     expect(parseTrimTime(' 2 ')).toBe(2000);
@@ -35,7 +48,21 @@ describe('a time typed in Edit Video’s Trim fields', () => {
     expect(parseTrimTime('90:00')).toBe(90 * MIN);
   });
   it('is not a time when it is empty, words, negative or a broken clock time', () => {
-    for (const typed of ['', ' ', 'abc', '-1', '-0.5', '1:5', '10:0', '1:60', '1:2:3:4', '1:75:00', '10:00:', '1..2', 'e3'])
+    for (const typed of [
+      '',
+      ' ',
+      'abc',
+      '-1',
+      '-0.5',
+      '1:5',
+      '10:0',
+      '1:60',
+      '1:2:3:4',
+      '1:75:00',
+      '10:00:',
+      '1..2',
+      'e3',
+    ])
       expect(parseTrimTime(typed), JSON.stringify(typed)).toBeNull();
   });
   it('shows a time as the number field showed it: seconds', () => {
@@ -43,7 +70,8 @@ describe('a time typed in Edit Video’s Trim fields', () => {
     expect(trimSeconds(2000)).toBe('2');
     expect(trimSeconds(350)).toBe('0.35');
     expect(trimSeconds(600_000)).toBe('600');
-    for (const ms of [0, 1, 350, 1750, 2000, 600_000, 4_800_123]) expect(parseTrimTime(trimSeconds(ms))).toBe(ms);
+    for (const ms of [0, 1, 350, 1750, 2000, 600_000, 4_800_123])
+      expect(parseTrimTime(trimSeconds(ms))).toBe(ms);
   });
   it('says what to type in plain words', () => {
     expect(TRIM_TIME_WORDS).toMatch(/600/u);
@@ -194,7 +222,10 @@ describe('the parts kept for one exported clip', () => {
     ).toBe(true);
   });
   it(`joins at most ${String(CLIP_PARTS_MOST)} parts`, () => {
-    const parts = Array.from({ length: CLIP_PARTS_MOST + 1 }, (_, k) => ({ startMs: k * 1000, endMs: k * 1000 + 500 }));
+    const parts = Array.from({ length: CLIP_PARTS_MOST + 1 }, (_, k) => ({
+      startMs: k * 1000,
+      endMs: k * 1000 + 500,
+    }));
     expect(checkClipParts(parts.slice(0, CLIP_PARTS_MOST), 60_000).ok).toBe(true);
     expect(checkClipParts(parts, 60_000)).toEqual({
       ok: false,
@@ -207,7 +238,9 @@ describe('the parts kept for one exported clip', () => {
         { startMs: 0, endMs: 10 * MIN },
         { startMs: 20 * MIN, endMs: 30 * MIN },
       ]),
-    ).toBe('Export clip… joins 2 parts, in time order: 0:00 to 10:00, then 20:00 to 30:00. The new video is 20:00 long.');
+    ).toBe(
+      'Export clip… joins 2 parts, in time order: 0:00 to 10:00, then 20:00 to 30:00. The new video is 20:00 long.',
+    );
     expect(
       clipPartsSummary([
         { startMs: 350, endMs: 1000 },
@@ -272,9 +305,10 @@ describe('a joined clip’s export request', () => {
       {
         ...one,
         endMs: 11_000,
-        parts: Array.from({ length: CLIP_PARTS_MOST + 1 }, (_, k) => ({ startMs: k * 1000, endMs: k * 1000 + 500 })).map(
-          (p, k, all) => (k === all.length - 1 ? { ...p, endMs: 11_000 } : p),
-        ),
+        parts: Array.from({ length: CLIP_PARTS_MOST + 1 }, (_, k) => ({
+          startMs: k * 1000,
+          endMs: k * 1000 + 500,
+        })).map((p, k, all) => (k === all.length - 1 ? { ...p, endMs: 11_000 } : p)),
       },
       { ...one, endMs: 30 * MIN, parts: [{ ...parts[0], extra: 1 }, parts[1]] },
     ];

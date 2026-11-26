@@ -75,7 +75,13 @@ describe('a clip of two or more parts of one video', () => {
   const square = "scale=w='trunc(iw*if(gt(sar,0),sar,1)/2)*2':h=trunc(ih/2)*2,setsar=1";
   const long: MediaInfo = { ...info, durationMs: 1_800_000 };
   it('keeps one part’s export exactly as it was, argument for argument', () => {
-    const base = { source: 'placeholder source.mp4', startMs: 350, endMs: 1750, shape: 'source' as const, info };
+    const base = {
+      source: 'placeholder source.mp4',
+      startMs: 350,
+      endMs: 1750,
+      shape: 'source' as const,
+      info,
+    };
     const today = [
       '-hide_banner',
       '-nostdin',
@@ -132,9 +138,9 @@ describe('a clip of two or more parts of one video', () => {
       'placeholder clip.mp4',
     ];
     expect(clipExportArgs(base, 'placeholder clip.mp4')).toEqual(today);
-    expect(clipExportArgs({ ...base, parts: [{ startMs: 350, endMs: 1750 }] }, 'placeholder clip.mp4')).toEqual(
-      today,
-    );
+    expect(
+      clipExportArgs({ ...base, parts: [{ startMs: 350, endMs: 1750 }] }, 'placeholder clip.mp4'),
+    ).toEqual(today);
   });
   it('opens the one file once per part at the part’s start, and joins the parts with a cut, picture and sound held together', () => {
     const args = clipExportArgs(
@@ -221,7 +227,10 @@ describe('a clip of two or more parts of one video', () => {
     ]);
     // Only the one chosen file is opened, with files only, never the concat protocol or a list of other places.
     expect(args.filter((a) => a === '-i')).toHaveLength(2);
-    expect(args.filter((a, i) => args[i - 1] === '-i')).toEqual(['placeholder source.mp4', 'placeholder source.mp4']);
+    expect(args.filter((_, i) => args[i - 1] === '-i')).toEqual([
+      'placeholder source.mp4',
+      'placeholder source.mp4',
+    ]);
     expect(args.join(' ')).not.toMatch(/concat:|-f concat|-safe/u);
   });
   it('makes each part vertical, selects the chosen sound track, and keeps three parts in their order', () => {
@@ -242,8 +251,8 @@ describe('a clip of two or more parts of one video', () => {
       'placeholder vertical.mp4',
     );
     const graph = args[args.indexOf('-filter_complex') + 1] ?? '';
-    expect(args.filter((a, i) => args[i - 1] === '-ss')).toEqual(['0.500', '1.500', '3.000']);
-    expect(args.filter((a, i) => args[i - 1] === '-t')).toEqual(['0.500', '0.750', '0.500']);
+    expect(args.filter((_, i) => args[i - 1] === '-ss')).toEqual(['0.500', '1.500', '3.000']);
+    expect(args.filter((_, i) => args[i - 1] === '-t')).toEqual(['0.500', '0.750', '0.500']);
     for (const n of ['0', '1', '2']) {
       expect(graph).toContain(`[${n}:a:1]apad`);
       expect(graph).toMatch(new RegExp(`\\[${n}:V:0\\][^;]*crop=1920\\*9/16:1920[^;]*\\[v${n}\\]`, 'u'));
@@ -274,12 +283,16 @@ describe('a clip of two or more parts of one video', () => {
     expect(graph).not.toContain('apad');
     expect(args).not.toContain('[a]');
     expect(args).toContain('-an');
-    expect(args.filter((a, i) => args[i - 1] === '-c:V:0')).toEqual(['libvpx-vp9', 'libvpx-vp9']);
+    expect(args.filter((_, i) => args[i - 1] === '-c:V:0')).toEqual(['libvpx-vp9', 'libvpx-vp9']);
     expect(graph).toContain('format=yuva420p');
     expect(args.slice(-3)).toEqual(['-f', 'webm', 'placeholder joined.webm']);
   });
   it('refuses parts that overlap, are empty, out of order, outside the video or not matching the clip’s start and end', () => {
-    const plan = (parts: { startMs: number; endMs: number }[], startMs = parts[0]?.startMs ?? 0, endMs = parts.at(-1)?.endMs ?? 0) =>
+    const plan = (
+      parts: { startMs: number; endMs: number }[],
+      startMs = parts[0]?.startMs ?? 0,
+      endMs = parts.at(-1)?.endMs ?? 0,
+    ) =>
       clipExportArgs({ source: 'placeholder.mp4', startMs, endMs, shape: 'source', info, parts }, 'clip.mp4');
     for (const parts of [
       [

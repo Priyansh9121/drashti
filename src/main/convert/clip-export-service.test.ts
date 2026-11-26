@@ -670,7 +670,9 @@ it('joins two parts of one video into one new clip, each part’s first frame it
   const job = await done();
   expect(job.path).toBe(dest);
   const info = await readTrimInfo(copyFfmpeg, dest);
-  expect(Math.abs((info.durationMs ?? 0) - 800), 'its length is the two parts’ added up').toBeLessThanOrEqual(80);
+  expect(Math.abs((info.durationMs ?? 0) - 800), 'its length is the two parts’ added up').toBeLessThanOrEqual(
+    80,
+  );
   // The fixture's every frame has its own brightness: the joined clip's frames are the parts' own, in order.
   const error = (expected: Buffer, actual: Buffer) =>
     expected.reduce((sum, value, i) => sum + Math.abs(value - (actual[i] ?? 0)), 0) / expected.length;
@@ -702,7 +704,9 @@ it('a kept request of Saved edits with parts is refused at the next start, never
   const dest = join(fixture.dir, 'never.mp4');
   const deps = service(dest);
   clips.close();
-  deps.kept.save([{ request: { ...joined, frame: 'edited', revision: 2 }, destination: dest, identity: fixture.sha }]);
+  deps.kept.save([
+    { request: { ...joined, frame: 'edited', revision: 2 }, destination: dest, identity: fixture.sha },
+  ]);
   clips = new ClipExports(deps);
   clips.resume();
   expect(clips.list()).toMatchObject([
