@@ -11,12 +11,12 @@ import {
   type CaptionCleanView,
 } from '../../../shared/caption-clean/words';
 import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../../shared/speech';
-import { Button, IconButton } from '../ui/Button';
+import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
-import { Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Toggle } from '../ui/Toggle';
+import { TrashButton } from '../ui/TrashButton';
 import {
   captionCleanCountText,
   captionCleanListText,
@@ -32,19 +32,12 @@ import {
  * Drashti's own list is never shown: only how many words it has.
  */
 
-/** A word's Remove in the list (its name as shown: the word, or "Hidden word 2"): taken out at once, kept at once. */
+/**
+ * A word's Remove in the list (its name as shown: the word, or "Hidden word 2"): taken out at once, kept at once, so a
+ * double click takes out that word only (ui/TrashButton.tsx: the review of QA24-ROWDEL-2, SHOULD-1).
+ */
 export function CleanWordRemove({ shown, onRemove }: { shown: string; onRemove: () => void }) {
-  return (
-    <IconButton
-      icon={Trash2}
-      size="sm"
-      variant="ghost"
-      label={`Remove ${shown}`}
-      onClick={() => {
-        onRemove();
-      }}
-    />
-  );
+  return <TrashButton label={`Remove ${shown}`} onPress={onRemove} />;
 }
 
 /** A word's own language for the letters (Sanskrit in Gujarati letters, as the screens show it). */
