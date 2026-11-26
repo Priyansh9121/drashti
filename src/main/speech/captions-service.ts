@@ -16,6 +16,12 @@ import {
   type CaptionsStopped,
 } from '../../shared/captions';
 import type { CaptionCorrection, CaptionReview } from '../../shared/caption-coordinator';
+import {
+  TRANSLATED_LONGEST_MS,
+  translationTarget,
+  type CaptionTarget,
+  type CaptionTranslationStatus,
+} from '../../shared/caption-translation';
 import type { Heard, SlowHold, SpeechLanguage, SpeechState } from '../../shared/speech';
 import type { CaptionRecognizer } from './caption-routes';
 import {
@@ -95,6 +101,24 @@ export interface CaptionsServiceDeps {
   languageModels?: LanguageModelStore;
   /** This computer's logical processors (os.availableParallelism; a test may say), for the dialog (cap-threads). */
   processors?: () => number;
+  /**
+   * "Captions in" (alpha.24, QA24-CAPLANG-2; main/speech/live-translation.ts): how translated captions stand, and the
+   * live translation run for a pair while captions listen (only where it is offered, 2f). Left out: no translation.
+   */
+  translation?: CaptionsTranslation;
+}
+
+/** What the captions service needs of live translation. */
+export interface CaptionsTranslation {
+  status(
+    speaker: SpeechLanguage | 'auto',
+    target: CaptionTarget | undefined,
+    captionsTooSlow: boolean,
+  ): CaptionTranslationStatus;
+  begin(from: SpeechLanguage, to: SpeechLanguage): void;
+  end(): void;
+  /** The operator chose again: a stop for slowness or the engine's fault is forgotten, translation tried again. */
+  retry(): void;
 }
 
 const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
@@ -155,6 +179,8 @@ export class CaptionsService {
   private closed = false;
   private toldAt = 0;
   private telling: NodeJS.Timeout | null = null;
+  /** The pair live translation runs for now ("gu>hi"), or null. */
+  private translatingPair: string | null = null;
 
   constructor(private readonly deps: CaptionsServiceDeps) {
     this.prototype = new CaptionPrototype({
@@ -177,7 +203,9 @@ export class CaptionsService {
             : given;
           // Caption AI: the speaker's language, and its checked model from the pack (never a download). Only while
           // its path is the one running: a restart on today's path (a model downloaded) stays today's (review S2).
-          if (this.paths ? this.paths.usingAi() : this.useAi()) {
+          // alpha.24: a translation chosen also takes caption AI's path (the coordinator), heard by today's engine
+          // unless the language has a model of its own.
+          if ((this.paths ? this.paths.usingAi() : this.useAi()) && this.useAi()) {
             if (language === 'auto') {
               to.state({
                 phase: 'failed',
@@ -248,13 +276,14 @@ export class CaptionsService {
           createCaptionFlow({
             hub: this.hub,
             coordinator: ai.coordinator,
+            target: (language) => this.targetFor(language),
             ...(ai.spelling ? { spelling: ai.spelling } : {}),
             onFinalPhrase: (phrase) => {
               this.shownWhole = true;
               deps.onFinalPhrase?.(phrase);
             },
           }),
-          () => this.useAi(),
+          () => this.useAi() || this.translating(),
           () => {
             this.hub.setOn(false);
             this.hub.setOn(true);
@@ -293,6 +322,49 @@ export class CaptionsService {
     return this.deps.aiPath?.on() === true;
   }
 
+  /** The language captions are translated into now ("Captions in"), or null: the speaker's own words. */
+  private translationTo(s: CaptionSettings = this.settings()): SpeechLanguage | null {
+    return this.deps.translation && this.deps.aiPath
+      ? translationTarget(s.language, s.captionLanguage)
+      : null;
+  }
+
+  /** A translation is chosen: what is heard goes through the coordinator. */
+  private translating(): boolean {
+    return this.translationTo() !== null;
+  }
+
+  /** The language a phrase heard in `language` is shown in: its translation target, or itself. */
+  private targetFor(language: SpeechLanguage): SpeechLanguage {
+    const s = this.settings();
+    const to = this.translationTo(s);
+    return to !== null && language === s.language ? to : language;
+  }
+
+  /**
+   * Live translation runs for the chosen pair while captions listen, and only where it is offered (2f); it ends when
+   * they stop, or the speaker's own words are chosen.
+   */
+  private syncTranslation(): void {
+    const live = this.deps.translation;
+    if (!live) return;
+    const s = this.settings();
+    const to = this.translationTo(s);
+    const from = s.language;
+    const pair =
+      this.listening &&
+      to !== null &&
+      from !== 'auto' &&
+      live.status(from, s.captionLanguage, this.tooSlow !== null).offered
+        ? { from, to }
+        : null;
+    const want = pair ? `${pair.from}>${pair.to}` : null;
+    if (want === this.translatingPair) return;
+    if (this.translatingPair !== null) live.end();
+    this.translatingPair = want;
+    if (pair) live.begin(pair.from, pair.to);
+  }
+
   /** The route and pack model caption AI listens with now, or null (today's captions). Never a word. */
   aiRecognizer(): { route: string; modelId: string } | null {
     return this.recognizer;
@@ -302,16 +374,27 @@ export class CaptionsService {
   aiPathChanged(): void {
     if (this.closed || !this.paths) return;
     this.choosePath();
+    // A pack imported or removed may offer translated captions here, or no longer (alpha.24).
+    this.syncTranslation();
     this.tell();
   }
 
-  /** Caption AI's path or today's chosen again; back on today's, its general model is fetched if it is not here. */
-  private choosePath(): void {
-    if (!this.paths) return;
+  /** How translated captions stand changed (a skip, a fault): the dialog is told (at most four times a second). */
+  translationChanged(): void {
+    if (!this.closed) this.tellSoon();
+  }
+
+  /**
+   * Caption AI's path or today's chosen again; back on today's, its general model is fetched if it is not here.
+   * Whether the path running changed.
+   */
+  private choosePath(): boolean {
+    if (!this.paths) return false;
     const wasAi = this.paths.usingAi();
-    this.paths.reselect();
+    const switched = this.paths.reselect();
     if (wasAi && !this.paths.usingAi() && this.switch.on) void this.fetchModel();
     this.resume();
+    return switched;
   }
 
   /** The operator's review: caption AI's phrases while it runs (and no rehearsal does), else the rehearsal's. */
@@ -376,6 +459,15 @@ export class CaptionsService {
       timing: this.tuning.timing,
       processors: (this.deps.processors ?? availableParallelism)(),
       stopped: this.tooSlow,
+      ...(this.deps.translation
+        ? {
+            translation: this.deps.translation.status(
+              this.settings().language,
+              this.settings().captionLanguage,
+              this.tooSlow !== null,
+            ),
+          }
+        : {}),
     };
   }
 
@@ -464,15 +556,25 @@ export class CaptionsService {
 
   setSettings(settings: CaptionSettings): CaptionsStatus {
     const s = parseCaptionSettings(settings);
-    const languageChanged = s.language !== this.settings().language;
+    const before = this.settings();
+    const languageChanged = s.language !== before.language;
+    const targetChanged = this.translationTo(s) !== this.translationTo(before);
     this.deps.repo.set(s);
+    // A translation chosen (again): what stopped it for slowness or a fault is forgotten, and it is tried once more.
+    if (this.translationTo(s) !== null) this.deps.translation?.retry();
     if (this.prototype.view().on) {
       if (languageChanged) this.prototype.restart();
       else this.prototype.refresh();
     }
     this.hub.setLanguage(s.language);
     // Caption AI follows the speaker's language at once (a language with its own model, or not).
-    this.choosePath();
+    const switched = this.choosePath();
+    // Another translation target on the same path: a new session for the new pair (the coordinator keeps one pair).
+    if (targetChanged && !switched && !languageChanged && this.listening && this.paths?.usingAi() === true) {
+      this.feed.stop();
+      this.feed.start();
+    }
+    this.syncTranslation();
     this.feed.refresh();
     this.tell();
     return this.view();
@@ -501,6 +603,8 @@ export class CaptionsService {
     this.downloading?.controller.abort();
     this.feed.stop();
     this.hub.close();
+    if (this.translatingPair !== null) this.deps.translation?.end();
+    this.translatingPair = null;
     if (this.telling) clearTimeout(this.telling);
   }
 
@@ -514,6 +618,7 @@ export class CaptionsService {
     this.listening = true;
     this.hub.setOn(true);
     this.feed.start();
+    this.syncTranslation();
     await this.fetchModel();
   }
 
@@ -523,6 +628,7 @@ export class CaptionsService {
     this.stopDownload();
     this.feed.stop();
     this.hub.setOn(false);
+    this.syncTranslation();
   }
 
   /**
@@ -637,9 +743,17 @@ export class CaptionsService {
     return own === null || own.phase === 'ready' ? null : own.message;
   }
 
-  /** The live timing on this computer. */
+  /** The live timing on this computer (as the admin chose it, for the dialog). */
   timing(): CaptionTiming {
     return this.tuning.timing;
+  }
+
+  /** The timing the engines hear with: while translating, a phrase is cut at 8 s at most, so it comes sooner. */
+  liveTiming(): CaptionTiming {
+    const t = this.tuning.timing;
+    return this.translating()
+      ? { ...t, longestMs: Math.min(t.longestMs, TRANSLATED_LONGEST_MS) as typeof t.longestMs }
+      : t;
   }
 
   /** Choose the model for a language (a known id), or the general model (null). */

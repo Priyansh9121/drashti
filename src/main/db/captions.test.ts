@@ -46,7 +46,12 @@ describe('captions settings in the library', () => {
     const settings = { language: 'gu', audience: true, size: 'large', place: 'top' } as const;
     try {
       expect(schemaVersion(previous)).toBe(68);
-      new CaptionSettingsRepo(previous).set(settings);
+      // Written as that version's Drashti wrote it (today's repo also writes alpha.24's "Captions in").
+      previous
+        .prepare(
+          "UPDATE caption_settings SET language = 'gu', audience = 1, size = 'large', place = 'top' WHERE id = 1",
+        )
+        .run();
     } finally {
       previous.close();
     }
@@ -80,5 +85,38 @@ describe('captions settings in the library', () => {
     expect(() => db.prepare('INSERT INTO caption_settings (id) VALUES (2)').run()).toThrow(/CHECK/);
     expect(repo.get().language).toBe('gu');
     db.close();
+  });
+
+  it('keep "Captions in" (alpha.24, migration 093): an alpha.23 library reads the speaker’s own words, a choice is kept', () => {
+    const file = join(dir, 'library.sqlite');
+    const v92 = openDatabase(
+      file,
+      MIGRATIONS.filter((m) => m.version <= 92),
+    );
+    v92
+      .prepare(
+        "UPDATE caption_settings SET language = 'gu', audience = 1, size = 'medium', place = 'bottom' WHERE id = 1",
+      )
+      .run();
+    v92.close();
+    const db = openDatabase(file);
+    try {
+      expect(MIGRATIONS.some((m) => m.version === 93 && m.name === 'captions in another language')).toBe(
+        true,
+      );
+      const repo = new CaptionSettingsRepo(db);
+      expect(repo.get()).toMatchObject({ language: 'gu', audience: true, captionLanguage: 'same' });
+      repo.set({ ...repo.get(), captionLanguage: 'hi' });
+      expect(repo.get().captionLanguage).toBe('hi');
+      expect(db.prepare('SELECT caption_language FROM caption_settings WHERE id = 1').pluck().get()).toBe(
+        'hi',
+      );
+      expect(() => db.prepare("UPDATE caption_settings SET caption_language = 'sa'").run()).toThrow(/CHECK/);
+      // A value from before alpha.24 (none given) is kept as the speaker's own words.
+      repo.set({ language: 'hi', audience: false, size: 'small', place: 'top' });
+      expect(repo.get().captionLanguage).toBe('same');
+    } finally {
+      db.close();
+    }
   });
 });

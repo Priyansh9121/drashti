@@ -1,5 +1,5 @@
 import type { CaptionCorrection, CaptionReview, CaptionRevision } from '../../shared/caption-coordinator';
-import type { Heard, SpeechState } from '../../shared/speech';
+import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
 import type { SpeechHub } from './speech-hub';
 
 /*
@@ -35,6 +35,11 @@ export interface CaptionFlowOptions {
   spelling?: CaptionSpelling;
   /** The local sound recorder's draft gets each final phrase with the glossary's spelling (never a correction). */
   onFinalPhrase?: (phrase: Heard) => void;
+  /**
+   * alpha.24 ("Captions in", QA24-CAPLANG-2): the language each phrase heard in `language` is shown in (a translation
+   * target), or the language itself; left out, the speaker's own words as before.
+   */
+  target?: (language: SpeechLanguage) => SpeechLanguage;
 }
 
 export interface CaptionFlow {
@@ -87,7 +92,7 @@ export function createCaptionFlow(options: CaptionFlowOptions): CaptionFlow {
       phraseId: h.id,
       revision,
       sourceLanguage: h.language,
-      targetLanguage: h.language,
+      targetLanguage: options.target?.(h.language) ?? h.language,
       sourceText: text,
       startAt: h.startAt,
       endAt: h.endAt,

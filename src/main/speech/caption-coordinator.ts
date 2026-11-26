@@ -8,7 +8,12 @@ import type {
   CaptionTranslationRequest,
 } from '../../shared/caption-coordinator';
 import { validCaptionText } from '../../shared/caption-coordinator';
-import { captionClauseLines, captionTranslationLines } from '../../shared/caption-clause-lines';
+import {
+  captionClauseLines,
+  captionTranslationLines,
+  captionTranslationPages,
+} from '../../shared/caption-clause-lines';
+import { CAPTION_PAGE_MIN_MS, CAPTION_PAGE_MS_PER_WORD } from '../../shared/caption-translation';
 import { CAPTION_LINE_CHARS, type CaptionsShown, type CaptionSettings } from '../../shared/captions';
 import type { SpeechLanguage } from '../../shared/speech';
 
@@ -28,6 +33,30 @@ export interface CaptionCoordinatorOptions {
   clock?: () => number;
   /** Future integration must supply the authoritative lease; absent means no translation work. */
   mayTranslate?: () => boolean;
+  /**
+   * alpha.24 (QA24-CAPLANG-2, 2b): while translating, the stage screens keep the speaker's own words as heard
+   * (CaptionsShown.stage), and the audience screens and the stream get the translation (empty until it is ready).
+   */
+  stage?: boolean;
+  /** alpha.24 (2b): a translation longer than two lines is shown as two-line pages in turn, not omitted. */
+  pages?: boolean;
+  /** alpha.24 (2c): a phrase skipped (counted in `omitted`), with why: its translation late, failed or unshowable. */
+  onSkip?: (why: CaptionSkip) => void;
+  /** alpha.24: a translation reached the screens (its first page painted). */
+  onTranslationShown?: () => void;
+}
+
+/** Why a phrase's translation was skipped: too late (or overtaken by the next phrase), failed, or unshowable. */
+export type CaptionSkip = 'late' | 'failed' | 'unfit';
+
+interface Translated {
+  clause: StoredClause;
+  reply: CaptionTranslation;
+  painted: boolean;
+  /** Its two-line pages once first painted, the one showing, and until when it may show. */
+  pages: string[][] | null;
+  page: number;
+  until: number;
 }
 
 type StoredClause = CaptionRevision & {
@@ -56,7 +85,8 @@ export class CaptionCoordinator {
   private previous: StoredClause | null = null;
   private highestPhrase = 0;
   private visible = false;
-  private translated: { clause: StoredClause; reply: CaptionTranslation; painted: boolean } | null = null;
+  private translated: Translated | null = null;
+  private pageTimer: NodeJS.Timeout | null = null;
   private pending: StoredClause | null = null;
   private flight: {
     clause: StoredClause;
@@ -275,8 +305,7 @@ export class CaptionCoordinator {
     this.generation += 1;
     this.abortFlight();
     this.pending = held ? null : this.eligible();
-    this.translated = null;
-    if (this.options.output === 'translation') this.options.show(null);
+    this.dropTranslation();
     if (!held) this.pump();
     this.notify();
   }
@@ -338,6 +367,20 @@ export class CaptionCoordinator {
     this.version += 1;
     this.options.changed(this.view());
   }
+  /** A phrase skipped (2c): counted, and told why. */
+  private skip(why: CaptionSkip): void {
+    this.omitted += 1;
+    this.options.onSkip?.(why);
+  }
+  /** The translation is gone (replaced, revised, held, expired): with the stage band, the stage keeps its words. */
+  private dropTranslation(): void {
+    this.translated = null;
+    if (this.pageTimer) clearTimeout(this.pageTimer);
+    this.pageTimer = null;
+    if (this.options.output !== 'translation') return;
+    if (this.options.stage && this.visible) this.paint();
+    else this.options.show(null);
+  }
   private eligible(): StoredClause | null {
     const clause = this.current?.status === 'provisional' ? this.previous : this.current;
     return this.visible && clause && clause.status !== 'provisional' && this.clock() < clause.clearAt
@@ -352,6 +395,8 @@ export class CaptionCoordinator {
   private clear(): void {
     this.visible = false;
     this.translated = null;
+    if (this.pageTimer) clearTimeout(this.pageTimer);
+    this.pageTimer = null;
     this.pending = null;
     this.abortFlight();
     if (this.trailing) clearTimeout(this.trailing);
@@ -371,16 +416,15 @@ export class CaptionCoordinator {
       this.current?.phraseId === this.translated.clause.phraseId &&
       !identity(this.current, this.translated.clause)
     ) {
-      this.translated = null;
-      if (this.options.output === 'translation') this.options.show(null);
+      this.dropTranslation();
     }
     const eligible = this.eligible();
     if (this.flight && (!eligible || !identity(this.flight.clause, eligible))) {
       if (!this.flight.abort.signal.aborted && eligible && this.flight.clause.phraseId !== eligible.phraseId)
-        this.omitted += 1;
+        this.skip('late');
       this.abortFlight();
     }
-    if (this.pending && eligible && this.pending.phraseId !== eligible.phraseId) this.omitted += 1;
+    if (this.pending && eligible && this.pending.phraseId !== eligible.phraseId) this.skip('late');
     this.pending =
       eligible &&
       !this.translatedMatches(eligible) &&
@@ -416,40 +460,130 @@ export class CaptionCoordinator {
     this.shownAt = now;
     const target = this.options.output === 'translation';
     const bypass = target && this.current?.sourceLanguage === this.current?.targetLanguage;
-    const clause = target && !bypass ? this.translated?.clause : this.current;
-    const text = target && !bypass ? this.translated?.reply.text : clause?.sourceText;
+    if (target && !bypass) {
+      this.paintTranslation(now);
+      return;
+    }
+    const clause = this.current;
+    const text = clause?.sourceText;
     if (!this.visible || !clause || !text || now >= clause.clearAt) {
       this.options.show(null);
       return;
     }
-    if (target && !bypass && this.translated && !this.translated.painted) {
-      if (now >= (clause.paintDeadlineAt ?? 0)) {
+    const settings = this.shownSettings();
+    this.options.show({
+      ...settings,
+      fit: true,
+      language: target ? clause.targetLanguage : clause.sourceLanguage,
+      lines: captionClauseLines(text, CAPTION_LINE_CHARS[settings.size]),
+    });
+  }
+
+  /** The library's settings as the band takes them ("Captions in" is not the band's). */
+  private shownSettings() {
+    const { captionLanguage: _captionLanguage, ...settings } = this.options.settings();
+    return settings;
+  }
+
+  /**
+   * The translation's band: its page now, first painted only before its deadline, never shortened (a long one in
+   * two-line pages with options.pages; otherwise omitted, as before); with options.stage the speaker's own words as
+   * heard for the stage screens beside it.
+   */
+  private paintTranslation(now: number): void {
+    const settings = this.shownSettings();
+    const max = CAPTION_LINE_CHARS[settings.size];
+    let skipped = false;
+    const t = this.translated;
+    if (t && this.visible && now < t.until && !t.painted) {
+      const pages = this.options.pages
+        ? captionTranslationPages(t.reply.text, max)
+        : ((lines) => (lines ? [lines] : null))(captionTranslationLines(t.reply.text, max));
+      if (now >= (t.clause.paintDeadlineAt ?? 0)) {
         this.translated = null;
-        this.omitted += 1;
-        this.options.show(null);
-        this.notify();
-        return;
+        this.skip('late');
+        skipped = true;
+      } else if (!pages) {
+        // Never asked for again while its words are unchanged (was: asked again at the next update, review of
+        // a24-caplang2's prototype).
+        this.translated = null;
+        this.failed = {
+          sessionId: t.clause.sessionId,
+          phraseId: t.clause.phraseId,
+          revision: t.clause.revision,
+        };
+        this.skip('unfit');
+        skipped = true;
+      } else {
+        t.painted = true;
+        t.pages = pages;
+        t.page = 0;
+        // Each page shows for its reading time; the last for at least the floor, even past the phrase's clear time.
+        const spans = pages.map((p) =>
+          Math.max(CAPTION_PAGE_MIN_MS, p.join(' ').split(/\s+/u).length * CAPTION_PAGE_MS_PER_WORD),
+        );
+        const lastStart = now + spans.slice(0, -1).reduce((a, b) => a + b, 0);
+        t.until = Math.max(t.until, lastStart + CAPTION_PAGE_MIN_MS);
+        this.schedulePages(t, spans);
+        if (this.translatedExpiry) clearTimeout(this.translatedExpiry);
+        this.translatedExpiry = setTimeout(
+          () => {
+            if (this.translated === t) this.dropTranslation();
+          },
+          Math.max(0, t.until - now),
+        );
+        this.options.onTranslationShown?.();
       }
-      this.translated.painted = true;
     }
-    const settings = this.options.settings();
-    const lines =
-      target && !bypass
-        ? captionTranslationLines(text, CAPTION_LINE_CHARS[settings.size])
-        : captionClauseLines(text, CAPTION_LINE_CHARS[settings.size]);
-    if (!lines) {
-      this.translated = null;
-      this.omitted += 1;
+    const shownT = this.translated && this.visible && now < this.translated.until ? this.translated : null;
+    const pageLines = shownT?.painted ? (shownT.pages?.[shownT.page] ?? []) : [];
+    const pageCount = shownT?.pages?.length ?? 0;
+    const heard =
+      this.options.stage && this.visible && this.current && now < this.current.clearAt ? this.current : null;
+    const stage = heard
+      ? {
+          lines: captionClauseLines(heard.sourceText, max),
+          language: heard.sourceLanguage,
+          fit: true as const,
+        }
+      : null;
+    if (pageLines.length === 0 && (!this.options.stage || stage === null)) {
       this.options.show(null);
-      this.notify();
+      if (skipped) this.notify();
+      return;
+    }
+    const language = (shownT?.clause ?? this.current)?.targetLanguage ?? this.current?.targetLanguage;
+    if (!language) {
+      this.options.show(null);
       return;
     }
     this.options.show({
       ...settings,
       fit: true,
-      language: target ? clause.targetLanguage : clause.sourceLanguage,
-      lines,
+      kind: 'translation',
+      language,
+      lines: pageLines,
+      ...(pageCount > 1 && shownT ? { page: { n: shownT.page + 1, of: pageCount } } : {}),
+      ...(this.options.stage ? { stage } : {}),
     });
+    if (skipped) this.notify();
+  }
+
+  /** Each next page of this translation after the one before has had its reading time. */
+  private schedulePages(t: Translated, spans: readonly number[]): void {
+    if (this.pageTimer) clearTimeout(this.pageTimer);
+    this.pageTimer = null;
+    const next = (): void => {
+      if (this.translated !== t || !t.pages || t.page + 1 >= t.pages.length) return;
+      this.pageTimer = setTimeout(() => {
+        this.pageTimer = null;
+        if (this.translated !== t) return;
+        t.page += 1;
+        this.paint();
+        next();
+      }, spans[t.page] ?? CAPTION_PAGE_MIN_MS);
+    };
+    next();
   }
 
   private pump(): void {
@@ -476,7 +610,7 @@ export class CaptionCoordinator {
     if (clause.sourceLanguage === clause.targetLanguage) return;
     const cutoff = clause.paintDeadlineAt - 350;
     if (this.clock() >= cutoff) {
-      this.omitted += 1;
+      this.skip('late');
       this.notify();
       return;
     }
@@ -502,7 +636,7 @@ export class CaptionCoordinator {
     flight.deadline = setTimeout(
       () => {
         if (!flight.abort.signal.aborted) {
-          this.omitted += 1;
+          this.skip('late');
           this.abortFlight();
           this.notify();
         }
@@ -521,7 +655,7 @@ export class CaptionCoordinator {
       )
         return;
       if (this.clock() >= cutoff) {
-        this.omitted += 1;
+        this.skip('late');
         return;
       }
       const keys = [
@@ -549,17 +683,26 @@ export class CaptionCoordinator {
         !validCaptionText(reply.text, 8_192) ||
         (reply.processingMs !== null && (!Number.isFinite(reply.processingMs) || reply.processingMs < 0))
       ) {
-        this.omitted += 1;
+        this.skip('failed');
         // Not asked again while its words are unchanged (more provisional source arriving is no reason).
         this.failed = { sessionId: clause.sessionId, phraseId: clause.phraseId, revision: clause.revision };
         return;
       }
-      this.translated = { clause, reply: { ...reply, text: textOf(reply.text) }, painted: false };
+      if (this.pageTimer) clearTimeout(this.pageTimer);
+      this.pageTimer = null;
+      const translated: Translated = {
+        clause,
+        reply: { ...reply, text: textOf(reply.text) },
+        painted: false,
+        pages: null,
+        page: 0,
+        until: clause.clearAt,
+      };
+      this.translated = translated;
       if (this.translatedExpiry) clearTimeout(this.translatedExpiry);
       this.translatedExpiry = setTimeout(
         () => {
-          this.translated = null;
-          if (this.options.output === 'translation') this.options.show(null);
+          if (this.translated === translated) this.dropTranslation();
         },
         Math.max(0, clause.clearAt - this.clock()),
       );
@@ -567,7 +710,7 @@ export class CaptionCoordinator {
     };
     void run()
       .catch(() => {
-        if (!flight.abort.signal.aborted && clause.sessionId === this.sessionId) this.omitted += 1;
+        if (!flight.abort.signal.aborted && clause.sessionId === this.sessionId) this.skip('failed');
       })
       .finally(() => {
         if (flight.deadline) clearTimeout(flight.deadline);
