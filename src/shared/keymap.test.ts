@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   acceleratorFor,
   actionFor,
+  fKeyFirstStep,
+  fKeyHint,
   KEY_GROUPS,
   KEYMAP,
   keyMatches,
@@ -294,7 +296,10 @@ describe('keymap', () => {
 // bar's digits always have: only for a letter of another script, so every Latin layout (QWERTY, AZERTY, QWERTZ,
 // Dvorak) is as it was, letter for letter, and Option on a Mac still types its own letters without acting.
 describe('the keys with a keyboard layout of another script (Gujarati, Hindi)', () => {
-  const at = (key: string, code: string, mods: Parameters<typeof press>[1] = {}) => ({ ...press(key, mods), code });
+  const at = (key: string, code: string, mods: Parameters<typeof press>[1] = {}) => ({
+    ...press(key, mods),
+    code,
+  });
 
   it('answers the key’s place: B is Black-out, and Cmd or Ctrl with F, 1 and 2, on a Mac and on Windows', () => {
     for (const platform of ['darwin', 'win32'] as const) {
@@ -336,6 +341,35 @@ describe('the keys with a keyboard layout of another script (Gujarati, Hindi)', 
     // A Mac's Option+B types "∫" and Option+F "ƒ": never Black-out or Search.
     expect(actionFor(at('∫', 'KeyB', { altKey: true }), 'darwin')).toBeNull();
     expect(actionFor(at('ƒ', 'KeyF', { altKey: true, metaKey: true }), 'darwin')).toBeNull();
+  });
+});
+
+// The show's F-keys on this computer's keyboard (alpha.24, keyplat R4): a Mac's top row, Apple silicon or Intel, is the
+// brightness and the sound unless fn is held, and a Touch Bar has no F-keys; a Windows laptop may need Fn or Fn Lock.
+// The keys sheet says it in this computer's words; Simple Mode, which has no keys sheet, says it once, on a Mac.
+describe('what the F-keys need on this computer', () => {
+  it('says on a Mac: fn, the standard function keys setting, and the Touch Bar’s Function Keys', () => {
+    const mac = fKeyHint('darwin');
+    for (const words of [
+      'fn',
+      'Use F1, F2, etc. keys as standard function keys',
+      'Function Keys',
+      'Touch Bar',
+    ])
+      expect(mac, words).toContain(words);
+    expect(mac).not.toMatch(/Ctrl|Fn Lock|Windows/u);
+  });
+
+  it('says on Windows: Fn, or Fn Lock, and nothing of a Mac’s', () => {
+    const win = fKeyHint('win32');
+    expect(win).toContain('Fn Lock');
+    expect(win).not.toMatch(/⌘|Touch Bar|System Settings|\bfn\b/u);
+  });
+
+  it('gives Simple Mode’s first steps a sentence for a Mac only', () => {
+    expect(fKeyFirstStep('darwin')).toMatch(/\bfn\b/u);
+    expect(fKeyFirstStep('darwin')).toContain('F1');
+    expect(fKeyFirstStep('win32')).toBeNull();
   });
 });
 
