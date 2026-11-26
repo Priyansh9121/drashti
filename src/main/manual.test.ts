@@ -452,6 +452,8 @@ describe('Print… and Save as PDF…', () => {
 it('the Wallpapers manual begins with What it is before its operator steps and advice', () => {
   const feature = features(blocksOf('playlists.md')).find((f) => f.name === 'Wallpapers');
   expect(feature).toBeDefined();
-  expect(leadOf(feature?.blocks[0] as Block)).toBe('What it is.');
+  const first = feature?.blocks[0];
+  if (!first) throw new Error('The Wallpapers introduction is missing.');
+  expect(leadOf(first)).toBe('What it is.');
   expect(chapterText('playlists.md')).not.toContain('Warning text wraps with its full words in a tooltip.');
 });
