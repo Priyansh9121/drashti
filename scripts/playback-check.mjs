@@ -1,11 +1,10 @@
 // The hall's video playback, judged (alpha.23, a22-intelplay; the owner's QA23-INTELPLAY-1, "Yes, add it (Rec.)"):
 // tests/intel-playback/intel-playback.spec.ts plays generated test videos through the hall's own playback path (a
 // playlist row clicked, the audience screen's background video, Drashti's first-frame watch) and reads, for each,
-// what the hall did. This judges a reading, and writes the job's summary from them all:
-//   PLAY_OUTCOME=<the Playwright step's outcome> node scripts/playback-check.mjs summary <readings.json>
-// Run by performance.yml's intel_playback job on GitHub's Intel Mac runner, only when asked; never in the release gate.
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+// what the hall did. This judges a reading, and makes the job's summary from them all (written by
+// scripts/playback-check-summary.mjs). Run by performance.yml's intel_playback job on GitHub's Intel Mac runner, only
+// when asked; never in the release gate. The spec imports this and Playwright loads it as CommonJS: no import.meta
+// here, and nothing run on import (a23-intelfix; src/main/release-checks/playwright-imports.test.ts).
 
 /** How long a video has to show its first frame on the hall (Drashti's own watch takes one off after 10 s). */
 export const FIRST_FRAME_MS = 30_000;
@@ -130,16 +129,4 @@ export function summaryLines(readings, { outcome = null } = {}) {
         : `| ${name} | | | | | | ${verdict} |`,
     ),
   ];
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const [command, file] = process.argv.slice(2);
-  if (command !== 'summary' || !file) {
-    console.error('Usage: PLAY_OUTCOME=<outcome> playback-check.mjs summary <readings.json>');
-    process.exit(2);
-  }
-  const readings = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
-  const text = `${summaryLines(readings, { outcome: process.env.PLAY_OUTCOME || null }).join('\n')}\n`;
-  process.stdout.write(text);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
 }

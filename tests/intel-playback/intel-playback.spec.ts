@@ -271,7 +271,7 @@ async function runnerOf(app: ElectronApplication): Promise<Pick<PlaybackReading,
   return { runner: `macOS ${version} (${process.arch})`, gpu };
 }
 
-/** The readings so far, kept for the job's summary (scripts/playback-check.mjs summary). */
+/** The readings so far, kept for the job's summary (scripts/playback-check-summary.mjs). */
 function keep(reading: PlaybackReading): void {
   const file = process.env['DRASHTI_PLAYBACK_READINGS'];
   if (!file) return;
