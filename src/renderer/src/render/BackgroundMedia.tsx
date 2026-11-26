@@ -194,15 +194,23 @@ function VideoSlot({
     playback.current?.resync();
   }, [seekAt, clipKey]);
   // Drawn over the picture before with its data in (alpha.20): ready once Chromium has presented a frame of it on the
-  // screen, so the picture before goes only then (render/present-wait.ts).
+  // screen, so the picture before goes only then, never with nothing of it to show (render/present-wait.ts).
   const presenting = slot.state === 'loaded' && visible;
   useEffect(() => {
     const v = ref.current;
     if (!presenting || !v) return;
-    return untilPresented(v, () => {
-      dispatch({ type: 'ready', key, at: engineNow() });
-    });
-  }, [presenting, key, dispatch]);
+    return untilPresented(
+      v,
+      () => {
+        dispatch({ type: 'ready', key, at: engineNow() });
+      },
+      // A frame that never comes (a decoder that stopped, a page that draws nothing for long): the no-first-frame watch
+      // ends the wait (no progress for FIRST_FRAME_MS, or SLOW_START_MS gone by), the picture before going then, never
+      // kept for ever. Not said to Main: this page decoded its first frame (said as it loaded, above), and a page out of
+      // sight, drawing nothing, must not take the show's video off.
+      (end) => watchStart(v, mediaId, () => end()),
+    );
+  }, [presenting, key, mediaId, dispatch]);
 
   const opacity = visible ? 1 : layer.cueId ? PRIVATE_VIDEO_OPACITY : 0;
   return (

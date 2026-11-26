@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PRESENT_WAIT_MS, untilPresented } from './present-wait';
+import { FIRST_FRAME_MS } from '../../../shared/no-picture';
+import { watchStart } from './no-picture';
+import { type EndOfWait, PRESENT_WAIT_MS, untilPresented } from './present-wait';
 
 /*
  * A background video drawn over the picture before (another background, the Wallpaper, black-out's cover) takes it
@@ -56,8 +58,27 @@ class FakeVideo extends EventTarget {
   }
 }
 
+/** A stand-in for the slot's no-first-frame watch (render/no-picture.ts watchStart): the test says when it gives up. */
+class FakeWatch {
+  private end: (() => void) | null = null;
+  started = 0;
+  stopped = 0;
+  readonly start: EndOfWait = (end) => {
+    this.started++;
+    this.end = end;
+    return () => {
+      this.stopped++;
+    };
+  };
+
+  giveUp(): void {
+    this.end?.();
+  }
+}
+
 /** The wait, as BackgroundMedia.tsx's slot starts it once the video is drawn over the picture before. */
-const wait = (video: FakeVideo, presented: () => void): (() => void) => untilPresented(video, presented);
+const wait = (video: FakeVideo, presented: () => void, watch = new FakeWatch()): (() => void) =>
+  untilPresented(video, presented, watch.start);
 
 describe('a background video drawn over the picture before (render/present-wait.ts)', () => {
   beforeEach(() => {
@@ -145,5 +166,118 @@ describe('a background video drawn over the picture before (render/present-wait.
     vi.advanceTimersByTime(PRESENT_WAIT_MS * 10);
     video.present();
     expect(presented).not.toHaveBeenCalled();
+  });
+
+  it('ends the wait when the no-first-frame watch gives up: the picture before is never kept for ever', () => {
+    const video = new FakeVideo();
+    const presented = vi.fn();
+    const watch = new FakeWatch();
+    wait(video, presented, watch);
+    expect(watch.started).toBe(1);
+    vi.advanceTimersByTime(PRESENT_WAIT_MS * 10);
+    expect(presented).not.toHaveBeenCalled();
+    watch.giveUp();
+    expect(presented).toHaveBeenCalledTimes(1);
+    expect(watch.stopped).toBe(1);
+    expect(video.asked).toBe(0);
+    video.present();
+    watch.giveUp();
+    expect(presented).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the watch with the wait: at the first presented frame, and as the slot changes', () => {
+    const video = new FakeVideo();
+    const watch = new FakeWatch();
+    wait(video, vi.fn(), watch);
+    video.present();
+    expect(watch.stopped).toBe(1);
+    const other = new FakeWatch();
+    const stop = wait(new FakeVideo(), vi.fn(), other);
+    stop();
+    expect(other.stopped).toBe(1);
+  });
+
+  it('lets go PRESENT_WAIT_MS after a playing video comes to hold still meanwhile (paused, or at its end)', () => {
+    for (const how of ['pause', 'ended'] as const) {
+      const video = new FakeVideo();
+      const presented = vi.fn();
+      wait(video, presented);
+      vi.advanceTimersByTime(PRESENT_WAIT_MS * 2);
+      expect(presented).not.toHaveBeenCalled();
+      video.paused = true;
+      if (how === 'ended') video.ended = true;
+      video.dispatchEvent(new Event(how));
+      vi.advanceTimersByTime(PRESENT_WAIT_MS - 1);
+      expect(presented, how).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(presented, how).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('waits on for its frame when a paused video is played before the timer comes', () => {
+    const video = new FakeVideo();
+    video.paused = true;
+    const presented = vi.fn();
+    wait(video, presented);
+    vi.advanceTimersByTime(PRESENT_WAIT_MS / 2);
+    video.paused = false;
+    video.dispatchEvent(new Event('play'));
+    vi.advanceTimersByTime(PRESENT_WAIT_MS * 10);
+    expect(presented).not.toHaveBeenCalled();
+    video.present();
+    expect(presented).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes a video held at rate 0 (a cue’s Go lead) as holding still; sent on at its Go, it waits for its frame', () => {
+    const held = new FakeVideo();
+    held.playbackRate = 0;
+    const heldDone = vi.fn();
+    wait(held, heldDone);
+    vi.advanceTimersByTime(PRESENT_WAIT_MS);
+    expect(heldDone).toHaveBeenCalledTimes(1);
+    const going = new FakeVideo();
+    going.playbackRate = 0;
+    const goingDone = vi.fn();
+    wait(going, goingDone);
+    vi.advanceTimersByTime(PRESENT_WAIT_MS / 2);
+    going.playbackRate = 1;
+    going.dispatchEvent(new Event('ratechange'));
+    vi.advanceTimersByTime(PRESENT_WAIT_MS * 10);
+    expect(goingDone).not.toHaveBeenCalled();
+    going.present();
+    expect(goingDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a paused video go PRESENT_WAIT_MS after its seek lands, should no frame callback come for it', () => {
+    const video = new FakeVideo();
+    video.paused = true;
+    video.seeking = true;
+    video.readyState = HAVE_METADATA;
+    const presented = vi.fn();
+    wait(video, presented);
+    vi.advanceTimersByTime(PRESENT_WAIT_MS * 3);
+    video.seeking = false;
+    video.readyState = HAVE_ENOUGH_DATA;
+    video.dispatchEvent(new Event('seeked'));
+    vi.advanceTimersByTime(PRESENT_WAIT_MS - 1);
+    expect(presented).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(presented).toHaveBeenCalledTimes(1);
+  });
+
+  it('with the real no-first-frame watch: a playing video that never presents a frame is let go after FIRST_FRAME_MS with no progress', () => {
+    // As BackgroundMedia.tsx starts it: no showing given (no words to Main), no bridge here (nothing sent asked).
+    const video = Object.assign(new FakeVideo(), {
+      buffered: { length: 0, start: () => 0, end: () => 0 },
+      webkitDecodedFrameCount: 1,
+    });
+    const presented = vi.fn();
+    untilPresented(video, presented, (end) =>
+      watchStart(video as unknown as HTMLVideoElement, 'placeholder-media', () => end()),
+    );
+    vi.advanceTimersByTime(FIRST_FRAME_MS - 1);
+    expect(presented).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(presented).toHaveBeenCalledTimes(1);
   });
 });
