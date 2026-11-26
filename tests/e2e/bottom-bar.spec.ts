@@ -229,7 +229,7 @@ async function oneRow(win: Page, where: string): Promise<number> {
   return (await bar.boundingBox())?.height ?? 0;
 }
 
-test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; every layer up, all eight words and keys whole in one row from 1008 px; no button along the bar moves, from nothing up, the first thing up and the last off, F1 and Put it back, the Wallpaper or Black-out on', async () => {
+test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; every layer up, all eight words and keys whole in one row from 1008 px; no button along the bar moves, from nothing up, the first thing up and the last off, F1 and Put it back, the Wallpaper or Black-out on and off again', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -326,6 +326,7 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await button('Wallpaper is on').click();
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(button('Wallpaper')).toHaveAttribute('data-dimmed', 'true');
+  await stayPut(win, bar, atRest, 'the Wallpaper off again');
 
   // Every layer up too (the steps function-keys.spec takes): a background, a message, a sound going round and the
   // ticker. Every clear lit with its words and key, all eight whole in one row from 1008 px, and no button moves.
@@ -360,6 +361,7 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await stayPut(win, bar, atRest, 'every layer up, Black-out on');
   await button('Black-out is on').click();
   await expect(button('Black-out')).toHaveAttribute('data-dimmed', 'true');
+  await stayPut(win, bar, atRest, 'every layer up, Black-out off again');
   // The slide taken off again: its clear back to its icon at once, nothing moving on it or beside it, and still no
   // button moves.
   await watchBar(win);
@@ -381,7 +383,7 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await app.close();
 });
 
-test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wallpaper in the Logo’s place, F12 or the button putting the wallpaper up and taking it off; none of its buttons moves', async () => {
+test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wallpaper in the Logo’s place, F12 or the button putting the wallpaper up and taking it off; none of its buttons moves (the first up, the last off, the Wallpaper and Black-out on and off, F1, Put it back)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -435,13 +437,16 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   await wallpaper.click();
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(wallpaper).not.toHaveText(/is on/u);
-  // Black-out on, then off; F1 with Put it back offered in Clear all's place; Put it back pressed: no button moved.
+  await stayPut(win, bar, atRest, 'Simple Mode, the Wallpaper off again');
+  // Black-out on, then off again; F1 with Put it back offered in Clear all's place; Put it back pressed: no button
+  // moved.
   const blackout = win.getByTestId('simple-blackout');
   await blackout.click();
   await expect(blackout).toHaveText(/Black-out is on/u);
   await stayPut(win, bar, atRest, 'Simple Mode, Black-out on');
   await blackout.click();
   await expect(blackout).not.toHaveText(/is on/u);
+  await stayPut(win, bar, atRest, 'Simple Mode, Black-out off again');
   await win.keyboard.press('F1');
   await expect(win.getByTestId('simple-put-back')).toBeVisible();
   await expect(clearAll).toHaveCount(0);
