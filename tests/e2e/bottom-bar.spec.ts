@@ -151,7 +151,6 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await win.mouse.move(0, 0);
     await expect(tip, words).toHaveCount(0);
   }
-  const atRest = await barMiddles(bar);
 
   // A slide up: its clear lights up and Clear all can be pressed; the rest stay dimmed.
   await setUpScreen(win);
@@ -162,9 +161,11 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(button('Clear slide')).toHaveAttribute('data-lit', 'true');
   await expect(button('Clear all')).toBeEnabled();
   await expect(button('Clear background')).toBeDisabled();
-  // Lit, its words and key back on it, in the place it had; nothing beside it moved.
+  // Lit, its words and key back on it.
   await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', 'Slide F2', ...AT_REST.slice(2)]);
-  await stayPut(bar, atRest, 'a slide up');
+  // Where each button is now (Clear all's words go bolder once it can be pressed, as before, which moves what follows
+  // it a pixel or two: so the places are held from here, with Clear all as it is).
+  const withSlide = await barMiddles(bar);
 
   // F4 and F8 do nothing; F12 puts the wallpaper up over the slide (black: no wallpaper chosen yet), and off.
   const before = await state(win);
@@ -182,7 +183,7 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(button('Wallpaper')).toHaveAttribute('data-dimmed', 'true');
 
   // A background and a message up too: their clears light up with their words and keys, in one row at both sizes,
-  // every button where it was with nothing up.
+  // and no button moves.
   for (const command of [
     { type: 'setBackground', background: { kind: 'color', color: '#1d4e89' } },
     { type: 'showMessage', message: { id: 'placeholder-message', text: 'Placeholder message' } },
@@ -206,7 +207,12 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await expect.poll(() => barWords(bar)).toEqual(lit);
     await oneRow(win, `${width} × ${height}, three layers up`);
   }
-  await stayPut(bar, atRest, 'a slide, a background and a message up');
+  await stayPut(bar, withSlide, 'a background and a message up too');
+  // The slide taken off again: its clear back to its icon, and still no button moves.
+  await button('Clear slide').click();
+  await expect(button('Clear slide')).toHaveAttribute('data-dimmed', 'true');
+  await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', '', ...lit.slice(2)]);
+  await stayPut(bar, withSlide, 'the slide taken off, the background and the message up');
   await app.close();
 });
 
