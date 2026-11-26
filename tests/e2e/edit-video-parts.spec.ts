@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -130,12 +130,12 @@ async function open(win: Page, name: string) {
 test('Edit Video…: two parts of one video, typed as seconds and as m:ss, exported as one clip with picture and sound throughout', async () => {
   test.setTimeout(180_000);
   const { app, userData } = await launchApp();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-edit-video-parts-'));
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
     await sizeOperatorWindow(app, win, CI_WINDOW);
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
-    const dir = mkdtempSync(join(tmpdir(), 'drashti-edit-video-parts-'));
     const source = colours(join(dir, 'Placeholder parts.mp4'));
     const sha = hash(source);
     const [id = ''] = await importAndGetIds(win, [source]);
@@ -265,7 +265,9 @@ test('Edit Video…: two parts of one video, typed as seconds and as m:ss, expor
     expect(isBlue(seam), `part 2’s first frame is ${JSON.stringify(seam)}`).toBe(true);
     expect(isGreen(seam)).toBe(false);
     expect(isBlue(frame(destination, 61)), 'part 2’s last frame').toBe(true);
-    // The tone throughout: no silence anywhere in it, the join included.
+    // The tone throughout: no stretch of silence of 0.1 s or more (silencedetect, below -40 dB for 0.1 s) anywhere in
+    // it, the join included. A shorter pad at a join (at most a frame, where concat fills the sound to the picture's
+    // last frame) is not looked for here; the plan's unit tests pin how each part is held to its length.
     const quiet = ffmpeg([
       '-loglevel',
       'info',
@@ -291,5 +293,6 @@ test('Edit Video…: two parts of one video, typed as seconds and as m:ss, expor
     expect(hash(managed)).toBe(sha);
   } finally {
     await app.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });
