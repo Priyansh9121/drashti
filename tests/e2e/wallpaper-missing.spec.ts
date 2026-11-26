@@ -112,6 +112,37 @@ test('a wallpaper whose picture is missing says so (its tile, the panel with Fin
     await expect.poll(() => nothingUp(hallPage)).toBe('black');
   };
   await says(hall, win);
+  // At CI's 1024 x 645, the smallest left column must show every line of the warning.
+  const splitter = win.getByRole('separator', { name: 'Resize the playlists', exact: true });
+  await splitter.focus();
+  await splitter.press('Home');
+  await expect
+    .poll(() => win.getByTestId('column-left').evaluate((el) => el.getBoundingClientRect().width))
+    .toBe(220);
+  await expect
+    .poll(() =>
+      tile.getByTestId('wallpaper-missing').evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const clipped: string[] = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (!node.textContent?.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          for (const rect of range.getClientRects()) {
+            if (
+              rect.left < box.left - 0.5 ||
+              rect.right > box.right + 0.5 ||
+              rect.top < box.top - 0.5 ||
+              rect.bottom > box.bottom + 0.5
+            )
+              clipped.push(node.textContent);
+          }
+        }
+        return clipped;
+      }),
+    )
+    .toEqual([]);
   await settled(win);
   await expectNoSeriousA11yIssues(win, 'a wallpaper whose picture is missing', '[data-testid="wallpapers"]');
 
