@@ -346,7 +346,8 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           if (growing) {
             growing.partials += 1;
             growing.tookMs = asked.tookMs;
-            if (words.length > 0) growing.shown = true;
+            // Words of an early decode the speaker went on after were never passed on: not shown (a24-review-capfast F1).
+            if (words.length > 0 && (!early || growing.early === early)) growing.shown = true;
           }
           const heardAs = (whole: boolean): Heard => ({
             id: piece.id,
