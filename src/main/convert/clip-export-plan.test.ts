@@ -219,6 +219,8 @@ describe('a clip of two or more parts of one video', () => {
       'passthrough',
       '-map_metadata',
       '0',
+      '-map_chapters',
+      '-1',
       '-metadata:s:v:0',
       'rotate=0',
       '-f',
@@ -232,6 +234,27 @@ describe('a clip of two or more parts of one video', () => {
       'placeholder source.mp4',
     ]);
     expect(args.join(' ')).not.toMatch(/concat:|-f concat|-safe/u);
+  });
+  it('leaves out the source’s chapters, which no longer fit a joined clip’s time; one part keeps them as before', () => {
+    // A joined clip has no output -t to trim them by: FFmpeg would copy part 1's input's chapters shifted only by its
+    // start (a24-review-vidparts N8).
+    const parts = [
+      { startMs: 500, endMs: 1000 },
+      { startMs: 2000, endMs: 3000 },
+    ];
+    const joined = clipExportArgs(
+      { source: 'placeholder.mp4', startMs: 500, endMs: 3000, shape: 'source', info, parts },
+      'joined.mp4',
+    );
+    const at = joined.indexOf('-map_chapters');
+    expect(joined.slice(at, at + 2)).toEqual(['-map_chapters', '-1']);
+    expect(at).toBeGreaterThan(joined.indexOf('-filter_complex'));
+    expect(at).toBeLessThan(joined.indexOf('joined.mp4'));
+    const one = clipExportArgs(
+      { source: 'placeholder.mp4', startMs: 500, endMs: 1000, shape: 'source', info },
+      'one.mp4',
+    );
+    expect(one).not.toContain('-map_chapters');
   });
   it('makes each part vertical, selects the chosen sound track, and keeps three parts in their order', () => {
     const args = clipExportArgs(

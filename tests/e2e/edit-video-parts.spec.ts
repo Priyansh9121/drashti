@@ -179,9 +179,33 @@ test('Edit Video…: two parts of one video, typed as seconds and as m:ss, expor
     );
     await partStart.fill('0:04');
     await partEnd.fill('5.5');
-    await expect(check).toHaveText(
-      'Export clip… joins 2 parts, in time order: 0:00.500 to 0:01.500, then 0:04 to 0:05.500. The new video is 0:02.500 long.',
-    );
+    const summary =
+      'Export clip… joins 2 parts, in time order: 0:00.500 to 0:01.500, then 0:04 to 0:05.500. The new video is 0:02.500 long.';
+    await expect(check).toHaveText(summary);
+    // The keyboard keeps its place (a24-review-vidparts S1): Add a part takes it to the new part's start, and so does
+    // the tenth part, when Add a part is no longer offered; × takes it back to Add a part. Never to the page itself.
+    const add = dialog.getByRole('button', { name: 'Add a part', exact: true });
+    const focused = () =>
+      win.evaluate(() => {
+        const el = document.activeElement;
+        if (el instanceof HTMLInputElement) return el.labels?.[0]?.textContent ?? 'an unnamed field';
+        if (el instanceof HTMLButtonElement) return el.getAttribute('aria-label') ?? el.textContent;
+        return el?.tagName ?? null;
+      });
+    for (let n = 3; n <= 10; n++) {
+      await add.focus();
+      await win.keyboard.press('Enter');
+      await expect.poll(focused, `Add a part, part ${String(n)}`).toBe(`Part ${String(n)} start`);
+    }
+    await expect(add, 'ten parts at most').toBeDisabled();
+    await expect(dialog.getByTestId('clip-part')).toHaveCount(9);
+    for (let n = 10; n >= 3; n--) {
+      await dialog.getByRole('button', { name: `Remove part ${String(n)}`, exact: true }).focus();
+      await win.keyboard.press('Enter');
+      await expect.poll(focused, `× on part ${String(n)}`).toBe('Add a part');
+    }
+    await expect(dialog.getByTestId('clip-part')).toHaveCount(1);
+    await expect(check).toHaveText(summary);
     await expectFits(dialog, 'Edit Video with a second part at the CI operator size');
     await expectNoSeriousA11yIssues(win, 'Edit Video’s Trim with a second part');
 
@@ -196,9 +220,7 @@ test('Edit Video…: two parts of one video, typed as seconds and as m:ss, expor
     ).toBeVisible();
     await expect(exportButton).toBeDisabled();
     await dialog.getByLabel('Picture and sound').selectOption('original');
-    await expect(dialog.getByTestId('clip-parts-export')).toHaveText(
-      'Export clip… joins 2 parts, in time order: 0:00.500 to 0:01.500, then 0:04 to 0:05.500. The new video is 0:02.500 long.',
-    );
+    await expect(dialog.getByTestId('clip-parts-export')).toHaveText(summary);
     await dialog.getByLabel('Also add the clip to Media').check();
     await expectNoSeriousA11yIssues(win, 'Edit Video’s export of two parts');
     await expect(exportButton).toBeEnabled();
