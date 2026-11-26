@@ -46,15 +46,17 @@ interface Held {
   shift?: boolean;
 }
 
-/** A key or pointer event's parts, as the window's listeners get them. */
-const press = (type: string, key: string, mods: Held = {}) => ({
-  type,
+/** A key's parts and the keys held with it, as a key or pointer event carries them. */
+const keyParts = (key: string, mods: Held = {}) => ({
   key,
   altKey: mods.alt ?? false,
   ctrlKey: mods.ctrl ?? false,
   metaKey: mods.meta ?? false,
   shiftKey: mods.shift ?? false,
 });
+
+/** A key or pointer event's parts, as the window's listeners get them. */
+const press = (type: string, key: string, mods: Held = {}) => ({ type, ...keyParts(key, mods) });
 
 describe('the Help switch', () => {
   it('is off at a first start, and remembered on this computer once turned on or off', async () => {
@@ -149,12 +151,12 @@ describe('the window’s root says when the buttons’ keys are hidden', () => {
     const stop = help.connectKeyHints(win);
     const hidden = () => 'keysHidden' in dataset;
     expect(hidden()).toBe(true);
-    send('keydown', press('keydown', 'Alt', { alt: true }));
+    send('keydown', keyParts('Alt', { alt: true }));
     expect(hidden()).toBe(false);
-    send('keyup', press('keyup', 'Alt'));
+    send('keyup', keyParts('Alt'));
     expect(hidden()).toBe(true);
     // The window losing the keyboard while Alt is held (Alt+Tab to another program): hidden again.
-    send('keydown', press('keydown', 'Alt', { alt: true }));
+    send('keydown', keyParts('Alt', { alt: true }));
     expect(hidden()).toBe(false);
     send('blur');
     expect(hidden()).toBe(true);
@@ -165,7 +167,7 @@ describe('the window’s root says when the buttons’ keys are hidden', () => {
     stop();
     // Stopped (the status bar gone): the keys show as they did before alpha.24, and Alt is no longer followed.
     expect(hidden()).toBe(false);
-    send('keydown', press('keydown', 'Alt', { alt: true }));
+    send('keydown', keyParts('Alt', { alt: true }));
     expect(help.useHelp.getState().alt).toBe(false);
     help.setHelp(false);
     expect(hidden()).toBe(false);

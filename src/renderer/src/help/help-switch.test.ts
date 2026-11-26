@@ -1,9 +1,8 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
-import { useMode } from '../operator/mode-store';
-import { HelpSwitch } from './HelpSwitch';
-import { setHelp } from './help-store';
+import type { OperatorMode } from '../../../shared/mode';
+import { endWindow, freshWindow } from './fresh-window';
 
 /*
  * The status bar's Help switch (alpha.24, the owner's "too congusted all around"): where the bar's ? was, a button named
@@ -11,26 +10,25 @@ import { setHelp } from './help-store';
  * (what-is-this.test.ts, help-store.test.ts). Drawn to markup: unit tests run without a page.
  */
 
-const toggle = (platform = 'darwin') => renderToStaticMarkup(createElement(HelpSwitch, { platform }));
+/** The switch as a new start of the window draws it, in this mode, Help on or off. */
+async function toggle(mode: OperatorMode, helpOn: boolean): Promise<string> {
+  await freshWindow(mode, helpOn);
+  const { HelpSwitch } = await import('./HelpSwitch');
+  return renderToStaticMarkup(createElement(HelpSwitch, { platform: 'darwin' }));
+}
 
-afterEach(() => {
-  setHelp(false);
-  useMode.setState({ mode: null });
-});
+afterEach(endWindow);
 
 describe('the status bar’s Help switch', () => {
-  it('is a button named Help that says whether it is pressed, in Pro and Simple Mode', () => {
+  it('is a button named Help that says whether it is pressed, in Pro and Simple Mode', async () => {
     for (const mode of ['pro', 'simple'] as const) {
-      useMode.setState({ mode });
-      setHelp(false);
-      const off = toggle();
+      const off = await toggle(mode, false);
       expect(off).toContain('data-testid="help-toggle"');
       expect(off).toContain('aria-pressed="false"');
       expect(off).toMatch(/>Help<\/button>/u);
       // Its ? is a picture of the word, never read out twice.
       expect(off).toMatch(/<span aria-hidden="true"[^>]*>\?<\/span>/u);
-      setHelp(true);
-      expect(toggle()).toContain('aria-pressed="true"');
+      expect(await toggle(mode, true)).toContain('aria-pressed="true"');
     }
   });
 
