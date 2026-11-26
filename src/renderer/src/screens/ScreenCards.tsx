@@ -160,7 +160,7 @@ function NotSetUp({ what, onClose }: { what: string; onClose: () => void }) {
 /** What the first audience group shows now, small, as the operator window's LIVE preview draws it. */
 function ProjectorPreview({ group }: { group: ScreenGroupConfig | null }) {
   const state = useEngine((s) => s.state);
-  const rev = useEngine((s) => s.rev);
+  const rev = useEngine((s) => s.drawnRev);
   const look = useEngine((s) => (group ? s.state?.look.groups[group.id] : undefined));
   const screen = group?.screens[0];
   const canvas = { width: screen?.canvasWidth ?? 1920, height: screen?.canvasHeight ?? 1080 };
@@ -320,7 +320,7 @@ function LiveProgram() {
 /** What the stream would show now, drawn here (nothing is started for it), the camera's place marked. */
 function StillProgram({ groupId, layout }: { groupId: string | null; layout: StreamLayout }) {
   const state = useEngine((s) => s.state);
-  const rev = useEngine((s) => s.rev);
+  const rev = useEngine((s) => s.drawnRev);
   const streamLook = groupLookIn(state?.look, groupId);
   const languages = streamLook.languages;
   const picture = state ? programPicture(state, layout, languages) : null;
