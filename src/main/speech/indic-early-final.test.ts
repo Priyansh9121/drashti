@@ -68,8 +68,21 @@ function quietWordReply(samples: Int16Array): Reply {
   if (quietAfterS < 0.25) return said;
   return {
     language: 'gu',
-    words: [...said.words, { w: IN_THE_QUIET, start: speechS + 0.1, end: speechS + 0.25, c: 0.95 }],
+    words: [...said.words, { w: IN_THE_QUIET, start: speechS + 0.15, end: speechS + 0.3, c: 0.95 }],
   };
+}
+
+/** As speechReply, but the helper places the last word's start just after the speech ended (CTC's late frames). */
+function lateWordReply(samples: Int16Array): Reply {
+  const said = speechReply(samples);
+  const last = samples.findLastIndex((x) => x === LOUD);
+  const speechS = (last + 1) / RATE;
+  const words = said.words.map((w, i) =>
+    i === said.words.length - 1 && said.words.length === WORDS.length
+      ? { ...w, start: speechS + 0.06, end: speechS + 0.1 }
+      : w,
+  );
+  return { language: 'gu', words };
 }
 
 function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS, longestMs = 12_000) {
@@ -245,5 +258,12 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     const finals = t.heard.filter((h) => h.final);
     expect(finals.map((h) => h.text)).toEqual([WORDS.join(' ')]);
     for (const s of t.lines()) expect(s.captions?.lines.join(' ')).not.toContain(IN_THE_QUIET);
+  });
+
+  it('a word the helper places just after the last speech (its late frames, within a tenth of a second) is kept: it was said (CI: indic-captions.spec.ts)', async () => {
+    const t = setup(lateWordReply);
+    await speak(t);
+    const finals = t.heard.filter((h) => h.final);
+    expect(finals.map((h) => h.text)).toEqual([WORDS.join(' ')]);
   });
 });
