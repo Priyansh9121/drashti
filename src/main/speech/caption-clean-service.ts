@@ -74,6 +74,8 @@ export interface CaptionCleanDeps {
 }
 
 const wordsOf = (n: number): string => plural(n, 'word');
+/** A key of one word with nothing in it but letters, signs and digits. */
+const LETTERS_ONLY = /^[\p{L}\p{M}\p{N}]+$/u;
 const keysOf = (words: readonly string[]): Set<string> =>
   new Set(words.map(cleanPhraseKey).filter((key) => key !== ''));
 
@@ -108,7 +110,10 @@ export class CaptionCleanService {
   private on = false;
   private failedOnce = false;
   private readonly bad: CleanLookup;
-  /** Keys known not to be on Drashti's own list (a word is hashed once): never a listed one; at most 100,000. */
+  /**
+   * Single words known not to be on Drashti's own list, so each is hashed once: letters only, never a listed word, nor a
+   * run of words or a joined word that may hold one (review F3); at most 100,000.
+   */
   private readonly notOwn = new Set<string>();
   /** The lists' version: a video's caption track is cleaned again when the admin's list changes. */
   private version = 0;
@@ -130,8 +135,10 @@ export class CaptionCleanService {
   private ownHas(key: string): boolean {
     if (this.notOwn.has(key)) return false;
     if (this.own.has(this.hash(key))) return true;
-    if (this.notOwn.size >= 100_000) this.notOwn.clear();
-    this.notOwn.add(key);
+    if (LETTERS_ONLY.test(key)) {
+      if (this.notOwn.size >= 100_000) this.notOwn.clear();
+      this.notOwn.add(key);
+    }
     return false;
   }
 
