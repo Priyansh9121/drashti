@@ -348,16 +348,19 @@ export class CaptionsService {
     if (!live) return;
     const s = this.settings();
     const to = this.translationTo(s);
-    const offered =
+    const from = s.language;
+    const pair =
+      this.listening &&
       to !== null &&
-      s.language !== 'auto' &&
-      live.status(s.language, s.captionLanguage, this.tooSlow !== null).offered;
-    const want =
-      this.listening && offered && to !== null && s.language !== 'auto' ? `${s.language}>${to}` : null;
+      from !== 'auto' &&
+      live.status(from, s.captionLanguage, this.tooSlow !== null).offered
+        ? { from, to }
+        : null;
+    const want = pair ? `${pair.from}>${pair.to}` : null;
     if (want === this.translatingPair) return;
     if (this.translatingPair !== null) live.end();
     this.translatingPair = want;
-    if (want !== null && to !== null && s.language !== 'auto') live.begin(s.language, to);
+    if (pair) live.begin(pair.from, pair.to);
   }
 
   /** The route and pack model caption AI listens with now, or null (today's captions). Never a word. */

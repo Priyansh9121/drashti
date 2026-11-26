@@ -75,6 +75,7 @@ function setup(o: { unavailable?: CaptionTranslationStatus['unavailable'] } = {}
       begun = false;
       events.push('end');
     }),
+    retry: vi.fn(() => events.push('retry')),
   };
   const coordinator = new CaptionCoordinator({
     clock: () => Date.now(),
@@ -219,7 +220,7 @@ describe('"Captions in" in the captions service (alpha.24, QA24-CAPLANG-2)', () 
     t.service.close();
   });
 
-  it('cuts phrases at 8 s while translating (the dialog keeps the admin’s own choice), and not otherwise', async () => {
+  it('cuts phrases at 8 s while translating (the dialog keeps the admin’s own choice), and not otherwise', () => {
     const t = setup();
     expect(t.service.liveTiming()).toEqual(DEFAULT_CAPTION_TIMING);
     t.choose({ language: 'hi', captionLanguage: 'en' });
@@ -245,6 +246,15 @@ describe('"Captions in" in the captions service (alpha.24, QA24-CAPLANG-2)', () 
     await vi.advanceTimersByTimeAsync(300);
     // The audience screens and the stream show nothing; the stage keeps the speaker's words.
     expect(t.last()).toMatchObject({ lines: [], stage: { lines: ['લીલું'] } });
+    t.service.close();
+  });
+
+  it('tries translation once more when the operator chooses again (after a stop for slowness or a fault)', async () => {
+    const t = setup();
+    t.choose({ language: 'gu', captionLanguage: 'hi' });
+    await t.service.setOn(true);
+    t.choose({ captionLanguage: 'hi' });
+    expect(t.events).toEqual(['retry', 'begin gu>hi', 'retry']);
     t.service.close();
   });
 });

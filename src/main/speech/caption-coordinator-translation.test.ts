@@ -26,6 +26,16 @@ function deferredPort() {
     clause: Readonly<CaptionTranslationRequest>;
     resolve: (r: CaptionTranslation) => void;
   }[] = [];
+  // As the port must (x89): an abort settles the request at once, as cancelled.
+  const translate = vi.fn(
+    (clause: Readonly<CaptionTranslationRequest>, signal: AbortSignal) =>
+      new Promise<CaptionTranslation>((resolve) => {
+        requests.push({ clause, resolve });
+        signal.addEventListener('abort', () => {
+          resolve({ ...clause, text: '', status: 'cancelled', processingMs: null });
+        });
+      }),
+  );
   const port: CaptionTranslationPort = {
     identity: {
       modelIdentity: 'placeholder@1',
@@ -33,22 +43,13 @@ function deferredPort() {
       processorId: 'placeholder@1',
       glossaryRevision: 'none',
     },
-    // As the port must (x89): an abort settles the request at once, as cancelled.
-    translate: vi.fn(
-      (clause: Readonly<CaptionTranslationRequest>, signal: AbortSignal) =>
-        new Promise<CaptionTranslation>((resolve) => {
-          requests.push({ clause, resolve });
-          signal.addEventListener('abort', () => {
-            resolve({ ...clause, text: '', status: 'cancelled', processingMs: null });
-          });
-        }),
-    ),
+    translate,
   };
   const finish = (index: number, text: string, overrides: Partial<CaptionTranslation> = {}) => {
     const request = must(requests[index]);
     request.resolve({ ...request.clause, text, status: 'ok', processingMs: 1, ...overrides });
   };
-  return { port, requests, finish };
+  return { port, translate, requests, finish };
 }
 
 function setup(port: CaptionTranslationPort, target: 'hi' | 'en' = 'hi') {
@@ -131,14 +132,14 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
   });
 
   it('shows the speaker’s words as today, with no stage band, when the target is the speaker’s own language', async () => {
-    const { port } = deferredPort();
+    const { port, translate } = deferredPort();
     const { coordinator: c, clause, last } = setup(port, 'hi');
     c.accept({ ...clause('Placeholder words', 1, 'settled'), targetLanguage: 'en' });
     await vi.advanceTimersByTimeAsync(300);
     expect(last()).toMatchObject({ lines: ['Placeholder words'], language: 'en' });
     expect(last()?.stage).toBeUndefined();
     expect(last()?.kind).toBeUndefined();
-    expect(port.translate).not.toHaveBeenCalled();
+    expect(translate).not.toHaveBeenCalled();
   });
 
   it('shows a long translation as two-line pages in turn, by reading time, never dropping it', async () => {
@@ -162,7 +163,7 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
   });
 
   it('skips a translation that cannot be shown at all (a word wider than a line) once, and never asks for it again', async () => {
-    const { port, finish } = deferredPort();
+    const { port, translate, finish } = deferredPort();
     const { coordinator: c, clause, last, skips } = setup(port);
     c.accept(clause('Placeholder words', 1, 'settled'));
     finish(0, 'W'.repeat(60));
@@ -172,7 +173,7 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
     // More of the next phrase heard: the phrase before is still eligible, but is not asked for again (was: twice).
     c.accept(clause('Next placeholder', 1, 'provisional', 's2'));
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(port.translate).toHaveBeenCalledTimes(1);
+    expect(translate).toHaveBeenCalledTimes(1);
     expect(c.view().omitted).toBe(1);
   });
 

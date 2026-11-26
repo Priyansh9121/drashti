@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { CaptionTranslationRequest } from '../../shared/caption-coordinator';
 import { TRANSLATION_STOP_AFTER_LATE } from '../../shared/caption-translation';
 import type { TranslationLanguage } from '../../shared/prepared-translations';
@@ -13,20 +13,31 @@ import { LiveTranslation, type LiveTranslationEngine } from './live-translation'
  * switching the screens to the speaker's language. Placeholder words only.
  */
 
+/** A stand-in engine; its spies are kept beside it (eslint's unbound-method: never a method taken off it). */
+const spies = new WeakMap<LiveTranslationEngine, { translate: Mock; prepare: Mock; stop: Mock }>();
 function fakeEngine(overrides: Partial<LiveTranslationEngine> = {}) {
+  const translate = vi.fn((source: string, from: TranslationLanguage, to: TranslationLanguage) =>
+    Promise.resolve(`[${from}>${to}] ${source}`),
+  );
+  const prepare = vi.fn(() => Promise.resolve());
+  const stop = vi.fn();
   const engine: LiveTranslationEngine = {
-    installed: vi.fn(() => true),
-    available: vi.fn(() => true),
-    unknownModel: vi.fn(() => false),
-    prepare: vi.fn(() => Promise.resolve()),
-    translate: vi.fn((source: string, from: TranslationLanguage, to: TranslationLanguage) =>
-      Promise.resolve(`[${from}>${to}] ${source}`),
-    ),
-    stop: vi.fn(),
+    installed: () => true,
+    available: () => true,
+    unknownModel: () => false,
+    prepare,
+    translate,
+    stop,
     ...overrides,
   };
+  spies.set(engine, { translate, prepare, stop });
   return engine;
 }
+const spy = (engine: LiveTranslationEngine) => {
+  const s = spies.get(engine);
+  if (!s) throw new Error('Not a stand-in engine');
+  return s;
+};
 
 function request(
   text: string,
@@ -73,7 +84,7 @@ describe('live translation for captions (alpha.24, QA24-CAPLANG-2)', () => {
     live.begin('gu', 'hi');
     const reply = await live.translate(request('placeholder time words'), new AbortController().signal);
     expect(spokenTimes).toHaveBeenCalledWith('placeholder time words', 'gu');
-    expect(engine.translate).toHaveBeenCalledWith('8:15 words', 'gu', 'hi');
+    expect(spy(engine).translate).toHaveBeenCalledWith('8:15 words', 'gu', 'hi');
     expect(reply).toMatchObject({
       status: 'ok',
       text: '[gu>hi] 8:15 words',
@@ -105,7 +116,7 @@ describe('live translation for captions (alpha.24, QA24-CAPLANG-2)', () => {
     await expect(pending).resolves.toMatchObject({ status: 'cancelled', text: '' });
     finish('late words');
     // Never stops the helper for it (a restart costs about a second): the next phrase goes on the same model.
-    expect(engine.stop).not.toHaveBeenCalled();
+    expect(spy(engine).stop).not.toHaveBeenCalled();
   });
 
   it('answers a failure as an error with no words, and keeps the engine’s fault for the dialog', async () => {
@@ -164,11 +175,11 @@ describe('live translation for captions (alpha.24, QA24-CAPLANG-2)', () => {
     const live = new LiveTranslation({ engine, log });
     expect(live.may()).toBe(false);
     live.begin('en', 'gu');
-    expect(engine.prepare).toHaveBeenCalledWith('en', 'gu');
+    expect(spy(engine).prepare).toHaveBeenCalledWith('en', 'gu');
     expect(live.may()).toBe(true);
     live.end();
     expect(live.may()).toBe(false);
-    expect(engine.stop).toHaveBeenCalledTimes(1);
+    expect(spy(engine).stop).toHaveBeenCalledTimes(1);
   });
 
   it('says why it cannot translate here: no engine, no pack, an unknown model, as heard, Sanskrit, too slow', () => {
@@ -224,5 +235,72 @@ describe('live translation for captions (alpha.24, QA24-CAPLANG-2)', () => {
       offered: false,
       unavailable: 'speaker-as-heard',
     });
+  });
+
+  it('offers translation by this computer alone, the same whatever "Captions in" says (lead 2, contract)', () => {
+    const live = new LiveTranslation({ engine: fakeEngine(), log });
+    for (const target of ['same', 'gu', 'hi', 'en'] as const)
+      expect(live.status('gu', target, false)).toMatchObject({ offered: true, unavailable: null });
+    // A pack without one of the other two: not offered, whichever is chosen.
+    const half = new LiveTranslation({
+      engine: fakeEngine({ available: (_from, to) => to === 'hi' }),
+      log,
+    });
+    for (const target of ['same', 'hi', 'en'] as const)
+      expect(half.status('gu', target, false)).toMatchObject({ offered: false, unavailable: 'no-pack' });
+  });
+
+  it('takes the engine stopping or failing as not offered, with why and the fault; one phrase too long is only that phrase', async () => {
+    const changed = vi.fn();
+    let fail: Error = new HelperError('too-long', 'This text is too long for one translation.');
+    const engine = fakeEngine({ translate: vi.fn(() => Promise.reject(fail)) });
+    const live = new LiveTranslation({ engine, log, changed });
+    live.begin('gu', 'hi');
+    await live.translate(request('placeholder words'), new AbortController().signal);
+    expect(live.status('gu', 'hi', false)).toMatchObject({ offered: true, unavailable: null });
+    expect(live.may()).toBe(true);
+    fail = new HelperError('ended', 'The translation engine stopped. Placeholder reason.');
+    await live.translate(request('placeholder words'), new AbortController().signal);
+    expect(live.status('gu', 'hi', false)).toMatchObject({
+      offered: false,
+      unavailable: 'engine-fault',
+      fault: 'The translation engine stopped. Placeholder reason.',
+    });
+    expect(live.may()).toBe(false);
+    // The operator chooses again (or captions start again): tried once more.
+    live.retry();
+    expect(live.may()).toBe(true);
+    expect(live.status('gu', 'hi', false)).toMatchObject({ offered: true, unavailable: null, fault: null });
+    // A model that fails to load when captions start is the engine's fault too.
+    const loads = new LiveTranslation({
+      engine: fakeEngine({
+        prepare: vi.fn(() => Promise.reject(new HelperError('not-installed', 'Placeholder not installed.'))),
+      }),
+      log,
+    });
+    loads.begin('hi', 'en');
+    await vi.waitFor(() => {
+      expect(loads.status('hi', 'en', false)).toMatchObject({ offered: false, unavailable: 'engine-fault' });
+    });
+    // After captions stop, the engine's own stop is no fault.
+    const ends = new LiveTranslation({
+      engine: fakeEngine({ translate: vi.fn(() => Promise.reject(new HelperError('ended', 'Stopped.'))) }),
+      log,
+    });
+    ends.begin('gu', 'hi');
+    const pending = ends.translate(request('placeholder words'), new AbortController().signal);
+    ends.end();
+    await pending;
+    expect(ends.status('gu', 'hi', false)).toMatchObject({ offered: true, fault: null });
+  });
+
+  it('forgets a stop for slowness when the operator chooses again', () => {
+    const live = new LiveTranslation({ engine: fakeEngine(), log });
+    live.begin('gu', 'hi');
+    for (let i = 0; i < TRANSLATION_STOP_AFTER_LATE; i++) live.skipped('late');
+    expect(live.may()).toBe(false);
+    live.retry();
+    expect(live.may()).toBe(true);
+    expect(live.status('gu', 'hi', false)).toMatchObject({ offered: true, unavailable: null, fault: null });
   });
 });
