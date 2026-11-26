@@ -277,12 +277,14 @@ function TemplateRow({
         </p>
       )}
       <div className="flex flex-wrap gap-1">
-        <Button variant="secondary" size="sm" onClick={show}>
+        {/* Show controls (alpha.24): what the hall sees changes at once, and they never move. */}
+        <Button variant="secondary" size="sm" instant onClick={show}>
           {shown ? 'Update' : 'Show'}
         </Button>
         {shown && (
           <Button
             size="sm"
+            instant
             onClick={() => void dispatch({ type: 'hideMessage', messageId: messageItemId(t.id) })}
           >
             Take off

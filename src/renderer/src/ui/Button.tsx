@@ -144,6 +144,11 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   size?: ButtonSize;
   /** Where the tooltip goes. */
   tooltipSide?: 'top' | 'bottom';
+  /**
+   * A show control (alpha.24, the release lead's review of uimotion, S4: a timer's Start or Show for the audience): its
+   * state changes at once, with no colour fade, and nothing ever moves it (data-show-control).
+   */
+  instant?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }
 
@@ -155,6 +160,7 @@ export function IconButton({
   variant = 'ghost',
   size = 'md',
   tooltipSide = 'top',
+  instant = false,
   className,
   type = 'button',
   ...props
@@ -165,10 +171,11 @@ export function IconButton({
         type={type}
         aria-label={label}
         data-variant={variant}
+        data-show-control={instant ? '' : undefined}
         className={cx(
           base,
           'whitespace-nowrap',
-          fade,
+          !instant && fade,
           weight(variant),
           variants[variant],
           squareSizes[size],

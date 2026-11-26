@@ -166,6 +166,8 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
             <IconButton
               icon={SkipBack}
               label="Previous track"
+              // Show controls (alpha.24): what the hall hears changes at once, and they never move.
+              instant
               disabled={!isShownPlaying}
               onClick={() => void dispatch('musicPrevious')}
             />
@@ -173,6 +175,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               <Button
                 variant="secondary"
                 icon={Pause}
+                instant
                 data-testid="music-pause"
                 onClick={() => void dispatch('pauseMusic')}
               >
@@ -182,6 +185,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               <Button
                 variant="secondary"
                 icon={Play}
+                instant
                 data-testid="music-play"
                 disabled={shown.tracks.length === 0}
                 onClick={() =>
@@ -196,6 +200,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
             <IconButton
               icon={SkipForward}
               label="Next track"
+              instant
               disabled={!isShownPlaying}
               onClick={() => void dispatch('musicNext')}
             />
