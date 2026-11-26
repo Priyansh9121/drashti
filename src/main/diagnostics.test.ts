@@ -123,6 +123,40 @@ describe('diagnostics', () => {
     expect(saved).toContain('nothing caught: Error: [library name]');
   });
 
+  it('blanks a library name only where it is the name, never inside other words (QA24-DIAG-1)', () => {
+    const { db, input, dir } = setup();
+    const repo = new PresentationRepo(db);
+    repo.insert({
+      libraryId: repo.ensureLibrary('Kirtans'),
+      name: 'New',
+      groups: [{ name: 'Verse', slides: [{ elements: [] }] }],
+    });
+    const logFile = join(dir, 'drashti-quit.log');
+    writeFileSync(
+      logFile,
+      '2026-09-29T10:01:00.000Z [info] Quit: placeholder windows renewed, the newest kept; New closed\n',
+    );
+    const saved = readFileSync(
+      saveDiagnostics(dir, {
+        ...input,
+        logFiles: [logFile],
+        crashJournal: [
+          {
+            n: 1,
+            at: '2026-09-29T09:58:00.000Z',
+            what: 'a promise in the main process failed and nothing caught it: Error: newest New',
+          },
+        ],
+      }),
+      'utf8',
+    );
+    // The crash files' heading, a Quit line and a crash note keep their own words; the name alone is blanked.
+    expect(saved).toContain('== Crash files (kept on this computer, the newest 5) ==');
+    expect(saved).toContain('Quit: placeholder windows renewed, the newest kept; [library name] closed');
+    expect(saved).toContain('nothing caught it: Error: newest [library name]');
+    expect(saved).not.toMatch(/\[library name\]\p{L}|\p{L}\[library name\]/u);
+  });
+
   it('holds the crash journal, and lists crash files by name and size, the files only when ticked (ROB-6)', () => {
     const { input, dir } = setup();
     const dump = pretendDump(mkdtempSync(join(tmpdir(), 'drashti-crashpad-')));
