@@ -62,7 +62,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 ## Clear all and the clear buttons
 
-**What it is.** **Clear all** (**F1**) takes everything off the hall's screens. The clear buttons take one layer off each: **Slide** (**F2**), **Background** (**F3**), **Audio** (**F5**), **Messages** (**F6**) and **Ticker** (**F7**). A clear button with nothing of its own up shows its icon alone, in the same place, and is dimmed: rest the mouse on it to see its name and key. So the words along the bottom are what is on the screens.
+**What it is.** **Clear all** (**F1**) takes everything off the hall's screens. The clear buttons take one layer off each: **Slide** (**F2**), **Background** (**F3**), **Audio** (**F5**), **Messages** (**F6**) and **Ticker** (**F7**). A clear button with nothing of its own up shows its icon alone, in the same place, and is dimmed: rest the mouse on it to see its name and key. So the clears' words along the bottom are what is on the screens.
 
 **When you would use it.** At the end of an item, or the end of the sabha.
 
