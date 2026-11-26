@@ -18,7 +18,7 @@
 
 ## What is this?
 
-**What it is.** **Help**, in the status bar along the bottom, shows the small **?** on each panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar) and the keys on the buttons. Drashti starts with it off, so the window is calm, and remembers it on this computer. A **?** says in two or three sentences what the panel is for, in the panel's own space; **Open the manual** opens this manual at that panel's chapter. Without Help, hold **Alt** (**Option** on a Mac) to see the keys while you hold it.
+**What it is.** **Help**, in the status bar along the bottom, shows the small **?** on each panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar) and the keys on the buttons. Drashti starts with it off, so the window is calm, and remembers it on this computer. A **?** says in two or three sentences what the panel is for, in the panel's own space; **Open the manual** opens this manual at that panel's chapter. Without Help, hold **Alt** (**Option** on a Mac) to see the keys while you hold it; let go of **Alt**, then press the key (a key pressed with **Alt** still held does nothing).
 
 **When you would use it.** When you are not sure what a panel does, or which key a button has.
 
