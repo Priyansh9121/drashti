@@ -107,6 +107,8 @@ export class CaptionCleanService {
    * never the caption itself (review F3).
    */
   private lastShown = '';
+  /** The same for the stage band beside a translation (alpha.24 captions join, J1). */
+  private lastStage = '';
   private on = false;
   private failedOnce = false;
   private readonly bad: CleanLookup;
@@ -178,14 +180,35 @@ export class CaptionCleanService {
     return { heard: { ...h, words: kept, text: shownText }, left };
   }
 
-  /** The lines for the screens with the bad words left out (a line left empty goes; none left: nothing shown). */
+  /**
+   * The lines for the screens with the bad words left out (a line left empty goes), and beside a translation the
+   * stage screens' own band too (alpha.24 captions join, J1: the speaker's words as heard, or an operator's
+   * correction; a band left empty is null). Nothing is shown only when neither has words left.
+   */
   shown(captions: CaptionsShown | null): CaptionsShown | null {
     if (captions === null) return null;
     try {
       const cleaned = this.cleanLines(captions.lines);
-      if (cleaned.left === 0) return captions;
-      this.countShown(captions, cleaned.left);
-      return cleaned.lines.length === 0 ? null : { ...captions, lines: cleaned.lines };
+      const band = captions.stage ?? null;
+      const staged = band === null ? null : this.cleanLines(band.lines);
+      if (cleaned.left === 0 && (staged === null || staged.left === 0)) return captions;
+      // Each band counts once however often it is painted, and not again when only the other one changes.
+      if (cleaned.left > 0)
+        this.lastShown = this.countShown(this.lastShown, captions.language, captions.lines, cleaned.left);
+      if (band !== null && staged !== null && staged.left > 0)
+        this.lastStage = this.countShown(this.lastStage, band.language, band.lines, staged.left);
+      const stage =
+        band === null || staged === null || staged.left === 0
+          ? band
+          : staged.lines.length === 0
+            ? null
+            : { ...band, lines: staged.lines };
+      if (cleaned.lines.length === 0 && (stage === null || stage.lines.length === 0)) return null;
+      return {
+        ...captions,
+        lines: cleaned.lines,
+        ...(captions.stage !== undefined ? { stage } : {}),
+      };
     } catch {
       this.failed();
       return null;
@@ -248,6 +271,7 @@ export class CaptionCleanService {
     this.leftOut = 0;
     this.hearing = null;
     this.lastShown = '';
+    this.lastStage = '';
     this.deps.changed({ leftOut: 0 });
   }
 
@@ -333,12 +357,14 @@ export class CaptionCleanService {
     this.add(more);
   }
 
-  /** A caption counts once however often the screens are given it again (a repaint, other line breaks). */
-  private countShown(captions: CaptionsShown, left: number): void {
-    const key = captionCleanHash(`${captions.language}\n${captions.lines.join(' ')}`);
-    if (key === this.lastShown) return;
-    this.lastShown = key;
-    this.add(left);
+  /**
+   * A caption's band counts once however often the screens are given it again (a repaint, other line breaks): its
+   * hash, to keep as the band's last.
+   */
+  private countShown(last: string, language: SpeechLanguage, lines: readonly string[], left: number): string {
+    const key = captionCleanHash(`${language}\n${lines.join(' ')}`);
+    if (key !== last) this.add(left);
+    return key;
   }
 
   private add(more: number): void {

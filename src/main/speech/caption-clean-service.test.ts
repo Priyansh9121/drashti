@@ -280,6 +280,11 @@ describe('the stage band beside a translation (alpha.24 captions join, J1)', () 
     clean.shown(translated(['पहला नमूना'], ['alpha zqvorn']));
     clean.shown(translated(['दूसरा नमूना'], ['alpha zqvorn']));
     expect(clean.view().leftOut).toBe(2);
+    // Main keeps only the bands' hashes, never their words (review F3).
+    const held = JSON.stringify(clean, (_key, value: unknown) =>
+      value instanceof Set || value instanceof Map ? [...(value as Iterable<unknown>)] : value,
+    );
+    expect(held).not.toMatch(/zqvorn|ढ़ुम्पक/u);
   });
 });
 
