@@ -68,6 +68,7 @@ function loaded(): { files: Set<string>; unresolved: string[] } {
 }
 
 const withoutComments = (code: string) => code.replace(/\/\*[^]*?\*\//gu, '').replace(/^\s*\/\/.*$/gmu, '');
+const usesImportMeta = (code: string) => /\bimport\.meta\b/u.test(withoutComments(code));
 
 describe('the modules Playwright loads', () => {
   const { files, unresolved } = loaded();
@@ -93,14 +94,10 @@ describe('the modules Playwright loads', () => {
   });
 
   it('never use import.meta, which Playwright’s CommonJS loading cannot take (the spec then has no tests)', () => {
-    const users = [...files].filter((f) => /\bimport\.meta\b/u.test(withoutComments(read(f))));
+    const users = [...files].filter((f) => usesImportMeta(read(f)));
     expect(users.map(name)).toEqual([]);
     // The check sees import.meta in code, and not in a comment.
-    expect(/\bimport\.meta\b/u.test(withoutComments('if (fileURLToPath(import.meta.url) === argv[1]) {}'))).toBe(
-      true,
-    );
-    expect(/\bimport\.meta\b/u.test(withoutComments('// where import.meta is not there\n/* import.meta */'))).toBe(
-      false,
-    );
+    expect(usesImportMeta('if (fileURLToPath(import.meta.url) === argv[1]) {}')).toBe(true);
+    expect(usesImportMeta('// where import.meta is not there\n/* import.meta */')).toBe(false);
   });
 });
