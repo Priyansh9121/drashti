@@ -484,7 +484,7 @@ test('a video from Media, a video input and a window in the box, live and silent
   await expect(preview.getByTestId('pip-preview-box')).toHaveAttribute('data-pip-source', 'input');
   await expect(preview.getByTestId('pip-preview-box')).toContainText('Placeholder input');
   await expect(preview.getByTestId('pip-preview-words')).toContainText(
-    'The preview opens no camera and captures no window: they show here by name.',
+    'The preview opens no camera, window or stream link: they show here by name.',
   );
   await expect(preview.locator('video')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
@@ -737,6 +737,86 @@ test('black-out and the Wallpaper cover the box and take nothing off; LIVE drags
   const again = await handle.boundingBox();
   if (again) await win.mouse.click(again.x + again.width / 2, again.y + again.height / 2);
   expect((await pipNow(win))?.place.corner).toBe('top-left');
+  await app.close();
+});
+
+/** The wallpaper picture a screen shows now, marked in the page, to tell later whether it was drawn again. */
+const WALLPAPER_NOW = '[data-testid="wallpaper-picture"][data-wallpaper-role="current"]';
+const markWallpaper = (page: Page) =>
+  page.evaluate((sel) => {
+    const el = document.querySelector(sel) as (Element & { kept?: boolean }) | null;
+    if (el) el.kept = true;
+  }, WALLPAPER_NOW);
+const wallpaperKept = (page: Page) =>
+  page.evaluate(
+    (sel) => (document.querySelector(sel) as (Element & { kept?: boolean }) | null)?.kept ?? false,
+    WALLPAPER_NOW,
+  );
+
+test('with nothing else up, the chosen wallpaper stays behind the box on the hall and in LIVE, as the preview shows; swapped, the box’s own picture; taking it off changes nothing behind it (QA24-WALLBLACK-2 A)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(WINDOWED);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-pip-wallpaper-'));
+  const [paper = '', boxed = ''] = await importAndGetIds(win, [
+    await drawPicture(win, join(dir, 'Placeholder wallpaper.png'), plain('180,83,9')),
+    await drawPicture(win, join(dir, 'Placeholder box picture.png'), plain('21,128,61')),
+  ]);
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const added = await d.wallpapers.add([id], null);
+    if (!added.ok) throw new Error(added.message);
+    const chosen = await d.wallpapers.choose(added.ids[0] ?? null);
+    if (!chosen.ok) throw new Error(chosen.message);
+  }, paper);
+  await setUpScreen(win);
+  const hall = await outputPage(app);
+  await outputReady(hall);
+  const hallScene = hall.getByTestId('scene').first();
+  const liveScene = win.getByTestId('live-preview').getByTestId('scene').first();
+  const hallPaper = hall.locator('[data-testid="wallpaper-picture"][data-wallpaper-role="current"]').first();
+  await expect(hallScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+  await expect(hallPaper).toHaveAttribute('data-media-id', paper);
+
+  // The preview showed it so before the box went up: the wallpaper behind the box.
+  await openSection(win, 'picture-in-picture');
+  await win.getByTestId('pip-open').click();
+  const dialog = win.getByTestId('pip-dialog');
+  await dialog.getByTestId('pip-kind-media').click();
+  await dialog.getByTestId('pip-media').selectOption(boxed);
+  await expect(dialog.getByTestId('pip-preview').locator('[data-preview-behind="wallpaper"]')).toHaveCount(1);
+  await expect(dialog.getByTestId('pip-preview-words')).toContainText('(the wallpaper)');
+
+  // Up over nothing else: the wallpaper stays behind it, the same picture, on the hall and in LIVE; never black.
+  await markWallpaper(hall);
+  await dialog.getByTestId('pip-show').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(hallScene).toHaveAttribute('data-pip', 'up');
+  await expect(hallScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+  await expect(hallPaper).toHaveAttribute('data-media-id', paper);
+  await expect(liveScene).toHaveAttribute('data-pip', 'up');
+  await expect(liveScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+  expect(await wallpaperKept(hall), 'the same wallpaper picture as the box came, never drawn again').toBe(
+    true,
+  );
+  // Swapped: the box's own picture fills the screen, with nothing-up not drawn over it, as before.
+  await dispatch(win, { type: 'swapPip' });
+  await expect(hallScene).toHaveAttribute('data-pip', 'swapped');
+  await expect(hallScene).not.toHaveAttribute('data-nothing-up', /./u);
+  await dispatch(win, { type: 'swapPip' });
+  await expect(hallScene).toHaveAttribute('data-pip', 'up');
+  await expect(hallScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+
+  // Taken off: nothing changes behind it, the wallpaper's picture drawn on, not drawn again.
+  await markWallpaper(hall);
+  await win.getByTestId('live-pip-take-off').click();
+  await expect(hall.getByTestId('pip-box')).toHaveCount(0);
+  expect(await pipNow(win)).toBeNull();
+  await expect(hallScene).toHaveAttribute('data-pip', 'none');
+  await expect(hallScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+  await expect(liveScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+  expect(await wallpaperKept(hall), 'the same wallpaper picture, never drawn again').toBe(true);
   await app.close();
 });
 

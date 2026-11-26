@@ -76,3 +76,8 @@ export function boxWhere(box: PipLayer): string {
     ? 'Swapped: it fills the background’s place, under the slides, and the background is small in the box.'
     : 'It is small in the box, over the show.';
 }
+
+/** Red first (the review's F2): not following yet. */
+export function followRememberedPlace(): () => void {
+  return () => undefined;
+}

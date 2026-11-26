@@ -164,6 +164,49 @@ describe('the preview’s box is the screens’ own', () => {
   });
 });
 
+/** A chosen wallpaper (or none) on a state. */
+const papered = (s: EngineState, on = true): EngineState => ({
+  ...s,
+  chosenWallpaper: on
+    ? { id: 'w', name: 'Placeholder wallpaper', pictures: ['paper'], secondsEach: 10, fadeMs: 1000, since: 1 }
+    : null,
+});
+
+/** What the hall's Scene shows with nothing up under this box, up and unswapped (null: something is up). */
+function screensNothingUp(
+  s: EngineState,
+  source: { kind: 'slides' } | { kind: 'media'; mediaId: string; media: 'image' },
+) {
+  const up = { ...s, layers: { ...s.layers, pip: { source, place: place(), swapped: false, shownAt: 1 } } };
+  const html = renderToStaticMarkup(createElement(Scene, { state: up, canvas: HD, scaling: 'fit' }));
+  const scene = /<div[^>]*data-testid="scene"[^>]*>/u.exec(html)?.[0] ?? '';
+  return /data-nothing-up="([^"]*)"/u.exec(scene)?.[1] ?? null;
+}
+
+describe('the picture behind the preview’s box is the screens’ own', () => {
+  it('is what the hall’s Scene shows behind the same box as it goes up, with nothing else up and with something', () => {
+    // A colour, not a picture: a picture waits for its first frame on a screen, which no page here draws.
+    const colour = { kind: 'color', color: '#123456' } as const;
+    const sources = [{ kind: 'slides' }, { kind: 'media', mediaId: 'boxed', media: 'image' }] as const;
+    for (const wallpaper of [true, false])
+      for (const background of [null, colour])
+        for (const slide of [null, SLIDE])
+          for (const source of sources) {
+            const s = papered(show({ background, slide }), wallpaper);
+            const label = `wallpaper ${String(wallpaper)}, ${background ? 'a colour' : 'no background'}, ${slide ? 'a slide' : 'no slide'}, ${source.kind} in the box`;
+            const screens = screensNothingUp(s, source);
+            const behind = previewBehind(s, DEFAULT_LIVE_GROUP_LOOK, source.kind === 'slides');
+            expect(behind.nothing, label).toBe(screens);
+            const html = view(
+              place(),
+              source.kind === 'slides' ? source : { ...source, name: 'Placeholder picture.png' },
+              s,
+            );
+            expect(html.includes('data-preview-behind="wallpaper"'), label).toBe(screens === 'wallpaper');
+          }
+  });
+});
+
 describe('what the preview draws, from stills only', () => {
   it('the picture the screens show now behind the box: the background and the slide, as a group shows them', () => {
     const behind = previewBehind(show(), DEFAULT_LIVE_GROUP_LOOK, false);
@@ -190,7 +233,7 @@ describe('what the preview draws, from stills only', () => {
     expect(html).toContain('data-preview-behind="media"');
     expect(html).not.toContain('data-preview-behind="slide"');
     expect(html).toContain('data-preview-in-box="slide"');
-    // No slide up: the box of the slides is empty on the screens, and the preview says so in it.
+    // No slide up: the screens draw no box of the slides until one is up; the preview says so in its place.
     const none = view(place(), { kind: 'slides' }, show({ slide: null }));
     expect(none).toContain('data-preview-in-box="no-slide"');
   });
@@ -198,18 +241,7 @@ describe('what the preview draws, from stills only', () => {
   it('with nothing up, the wallpaper chosen, else black; black-out and the Wallpaper are said', () => {
     const empty = show({ background: null, slide: null });
     expect(previewBehind(empty, DEFAULT_LIVE_GROUP_LOOK, false).nothing).toBe('black');
-    const papered: EngineState = {
-      ...empty,
-      chosenWallpaper: {
-        id: 'w',
-        name: 'Placeholder wallpaper',
-        pictures: ['paper'],
-        secondsEach: 10,
-        fadeMs: 1000,
-        since: 1,
-      },
-    };
-    expect(previewBehind(papered, DEFAULT_LIVE_GROUP_LOOK, false).nothing).toBe('wallpaper');
+    expect(previewBehind(papered(empty), DEFAULT_LIVE_GROUP_LOOK, false).nothing).toBe('wallpaper');
     expect(previewBehind(show({}, { blackout: true }), DEFAULT_LIVE_GROUP_LOOK, false).covered).toBe(
       'blackout',
     );
@@ -293,7 +325,7 @@ describe('the preview’s words', () => {
     );
     expect(
       previewWords('preview', place(), { kind: 'window', name: 'Placeholder meeting' }, behind),
-    ).toContain('The preview opens no camera and captures no window: they show here by name.');
+    ).toContain('The preview opens no camera, window or stream link: they show here by name.');
     const covered = previewBehind(show({}, { blackout: true }), DEFAULT_LIVE_GROUP_LOOK, false);
     expect(previewWords('preview', place(), { kind: 'slides' }, covered)).toContain(
       'Black-out is on now: the screens show the box once it is off.',
