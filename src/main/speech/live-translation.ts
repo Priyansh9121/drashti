@@ -208,7 +208,7 @@ export class LiveTranslation implements CaptionTranslationPort {
     if (this.pair === null || this.slow || this.faulted) return;
     this.skippedCount += 1;
     if (why === 'late') this.lateInARow += 1;
-    if (!this.slow && this.lateInARow >= TRANSLATION_STOP_AFTER_LATE) {
+    if (this.lateInARow >= TRANSLATION_STOP_AFTER_LATE) {
       this.slow = true;
       this.fault = TOO_SLOW;
       this.o.log.warn(
