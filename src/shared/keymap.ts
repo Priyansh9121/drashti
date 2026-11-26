@@ -237,6 +237,27 @@ function normalise(key: string): string {
   return key.length === 1 ? key.toUpperCase() : key;
 }
 
+/** A letter, mark, digit or stop of a script other than Latin (Gujarati "વ", Devanagari "२" or "।", Cyrillic "и"). */
+const OTHER_SCRIPT = /^[\p{L}\p{M}\p{N}\p{P}]$/u;
+const LATIN = /^\p{Script=Latin}$/u;
+
+/**
+ * The key a press names, for the keymap: its own; or, when a keyboard layout of another script typed it (alpha.24,
+ * keyplat R6: a Gujarati or Hindi layout's B key says "વ" or "ब"), the Latin letter, digit or "." in that place on the
+ * keyboard (`code`), so the keymap's letters act with such a layout on, as the quick bar's digits always have. Only a
+ * character of another script is replaced, never a Latin one (accented or not) nor a symbol: every Latin layout
+ * (QWERTY, AZERTY, QWERTZ, Dvorak) is as it was, letter for letter, and a Mac's Option letters (∫, ™) too. A press
+ * without its place (the main process's) is as it was.
+ */
+function keyOf(input: Pick<KeyInput, 'key' | 'code'>): string {
+  const { key, code } = input;
+  if (code === undefined || (key.codePointAt(0) ?? 0) < 0x370 || !OTHER_SCRIPT.test(key) || LATIN.test(key))
+    return key;
+  const place = /^(?:Key([A-Z])|Digit([0-9]))$/u.exec(code);
+  if (place) return place[1] ?? place[2] ?? key;
+  return code === 'Period' ? '.' : key;
+}
+
 /** Does this key press trigger this binding key? */
 export function keyMatches(input: KeyInput, binding: string, platform: string): boolean {
   const want = parse(binding);
@@ -247,7 +268,7 @@ export function keyMatches(input: KeyInput, binding: string, platform: string): 
   // keyboard's 1 is "&"; Shift with it is another key.
   if (want.alt && /^[0-9]$/u.test(want.key) && input.code !== undefined)
     return input.code === `Digit${want.key}` && input.shiftKey === want.shift;
-  const key = normalise(input.key);
+  const key = normalise(keyOf(input));
   // Shift only matters when the binding asks for it, for named keys (Shift+Space is not Space), and for a letter
   // with Cmd, Ctrl or Alt (Session 51: Shift+Cmd+Z is Redo's key, not Mod+Z). A letter alone matches with Shift
   // or without (Caps Lock, Shift held), as a digit or "?" does: some keyboards need Shift to type them.
