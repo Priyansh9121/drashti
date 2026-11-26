@@ -220,6 +220,8 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 1 });
       await clearAll.click();
       await expect(win.getByTestId('put-back')).toHaveText('Put it back');
+      // No key, so none for a screen reader either (aria-keyshortcuts).
+      await expect(win.getByTestId('put-back')).not.toHaveAttribute('aria-keyshortcuts');
       await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/put-back', {}, 'computer');
       await win.getByTestId('put-back').click();
       await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder first verse');
@@ -230,10 +232,14 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect
         .poll(async () => (await windowClearWords(win)).slice(-2))
         .toEqual(['Wallpaper F12', 'Black-out']);
+      // Nor for a screen reader (aria-keyshortcuts), the Wallpaper keeping F12.
+      await expect(win.getByTestId('blackout-button')).not.toHaveAttribute('aria-keyshortcuts');
+      await expect(win.getByTestId('wallpaper-button')).toHaveAttribute('aria-keyshortcuts', 'F12');
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(true));
       await expect
         .poll(async () => (await windowClearWords(win)).slice(-2))
         .toEqual(['Wallpaper F12', 'Black-out B']);
+      await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-keyshortcuts', 'B .');
     } finally {
       await phone.close();
     }

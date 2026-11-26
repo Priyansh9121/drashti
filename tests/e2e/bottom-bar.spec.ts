@@ -217,6 +217,11 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await expect(button(words), words).toBeEnabled();
     await expect(button(words), words).toHaveAttribute('data-dimmed', 'true');
   }
+  // Each button names its keys for a screen reader too (aria-keyshortcuts), as they act now: Black-out B and its "."
+  // while the single-letter keys are on (as they are to begin with).
+  const KEYS = [['Clear all', 'F1'], ...CLEARS, ['Wallpaper', 'F12'], ['Black-out', 'B .']] as const;
+  for (const [words, key] of KEYS)
+    await expect(button(words), words).toHaveAttribute('aria-keyshortcuts', key);
   // Each layer's clear compact (alpha.24): its icon in sight, no words or key on it; its words and key in its tooltip,
   // the mouse resting on it.
   const tip = win.locator('[role="tooltip"]');
@@ -293,6 +298,9 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await oneRow(win, `${width} × ${height}, every layer up`);
     await stayPut(bar, withSlide.get(width) ?? [], `${width} × ${height}, every layer up`);
   }
+  // Lit, each still names its keys for a screen reader.
+  for (const [words, key] of KEYS)
+    await expect(button(words), words).toHaveAttribute('aria-keyshortcuts', key);
   // The slide taken off again: its clear back to its icon at once, nothing moving on it or beside it, and still no
   // button moves.
   await watchBar(win);
@@ -315,6 +323,16 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'))).toMatchObject({
     ok: true,
   });
+  // Each of its buttons names its keys for a screen reader, as Pro Mode's do (aria-keyshortcuts).
+  for (const [id, key] of [
+    ['simple-clear-all', 'F1'],
+    ['simple-clear-slide', 'F2'],
+    ['simple-clear-background', 'F3'],
+    ['simple-clear-audio', 'F5'],
+    ['simple-wallpaper', 'F12'],
+    ['simple-blackout', 'B .'],
+  ] as const)
+    await expect(win.getByTestId(id), id).toHaveAttribute('aria-keyshortcuts', key);
   // Its Clear all dimmed with nothing up, as the bar of clears' is, and pressable once something is.
   const clearAll = win.getByTestId('simple-clear-all');
   await expect(clearAll).toBeDisabled();
