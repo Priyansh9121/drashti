@@ -53,11 +53,18 @@ describe('the status bar’s Help switch', () => {
     expect(await toggle('pro', false, null)).toMatch(/Help<\/span><\/button><\/span>$/u);
   });
 
-  it('says in its tooltip words what it shows, with the Mac’s Option and Windows’ Alt', async () => {
-    const { helpTip } = await import('./HelpSwitch');
-    // Named first, as it is the ? alone in a narrow window.
+  it('names the hold key the computer’s way: Option ⌥ on a Mac (Apple silicon or Intel: both darwin), Alt on Windows', async () => {
+    const { helpTip, holdKey } = await import('./HelpSwitch');
+    // The owner's "shortcuts should be adaptable to mac, mac intel, and windows".
+    expect(holdKey('darwin')).toBe('Option ⌥');
+    expect(holdKey('win32')).toBe('Alt');
+    expect(holdKey('linux')).toBe('Alt');
+    // Named first, as it is the ? alone in a narrow window; then to let go of the hold key before pressing one.
     expect(helpTip('darwin', false)).toBe(
-      'Help: the ? beside each part and the keys on the buttons. Hold Option to see the keys; let go of Option, then press one.',
+      'Help: the ? beside each part and the keys on the buttons. Hold Option ⌥ to see the keys; let go of Option ⌥, then press one.',
+    );
+    expect(helpTip('darwin', true)).toBe(
+      'Help: the keys on the buttons. Hold Option ⌥ to see them; let go of Option ⌥, then press one.',
     );
     expect(helpTip('win32', false)).toBe(
       'Help: the ? beside each part and the keys on the buttons. Hold Alt to see the keys; let go of Alt, then press one.',
