@@ -4,6 +4,7 @@ import { useElementSize } from '../render/useElementSize';
 import { usePersistentState } from '../ui/persist';
 import { Splitter } from '../ui/Splitter';
 import { FLOW_SHARE, flowAreaHeight } from './flow-area';
+import { popPlaceRef } from './pop-place';
 
 /*
  * The operator window's columns (Session 26a): the playlists on the left (Session 44: the whole column, the
@@ -74,6 +75,8 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         data-zone="middle"
       >
         {middle}
+        {/* The chat popup's place (alpha.24, pop-place.ts): over the middle's foot, just above the bars at the bottom. */}
+        <div ref={popPlaceRef} className="relative h-0 shrink-0" data-testid="pop-place" />
       </div>
       <Splitter
         value={rightWidth}
