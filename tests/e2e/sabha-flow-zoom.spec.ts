@@ -303,3 +303,90 @@ test('a press on the PDF closes an open menu, so the show’s keys then move the
     await app.close();
   }
 });
+
+test('the grab cursor shows only while the PDF can move', async () => {
+  const { scan } = await writeFlows({ scan: SCAN });
+  const { app } = await launchApp();
+  try {
+    const { input, region } = await chooseScan(app, scan);
+    const cursor = () => region.evaluate((el) => getComputedStyle(el).cursor);
+    // At 25% the page fits its box: nothing to move, so no grab cursor.
+    await input.fill('25');
+    await input.press('Enter');
+    await expect(input).toHaveValue('25%');
+    await expect
+      .poll(() =>
+        region.evaluate((el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight),
+      )
+      .toBe(true);
+    await expect.poll(cursor).toBe('auto');
+    await input.fill('400');
+    await input.press('Enter');
+    await expect(input).toHaveValue('400%');
+    await expect.poll(cursor).toBe('grab');
+    // Back to 25%: nothing to move again.
+    await input.fill('25');
+    await input.press('Enter');
+    await expect(input).toHaveValue('25%');
+    await expect.poll(cursor).toBe('auto');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a drag of the PDF ends once a move says no button is held', async () => {
+  const { scan } = await writeFlows({ scan: SCAN });
+  const { app } = await launchApp();
+  try {
+    const { win, input, region } = await chooseScan(app, scan);
+    const cursor = () => region.evaluate((el) => getComputedStyle(el).cursor);
+    const scroll = () => region.evaluate((el) => ({ x: el.scrollLeft, y: el.scrollTop }));
+    await input.fill('400');
+    await input.press('Enter');
+    await expect(input).toHaveValue('400%');
+    // The pointer a drag holds (the mouse's), read from its press.
+    await win.evaluate(() => {
+      document.addEventListener(
+        'pointerdown',
+        (e) => {
+          (globalThis as typeof globalThis & { flowPointer?: number }).flowPointer = e.pointerId;
+        },
+        true,
+      );
+    });
+    await region.evaluate((el) => {
+      el.scrollLeft = 160;
+      el.scrollTop = 180;
+    });
+    await region.scrollIntoViewIfNeeded();
+    const point = await visiblePoint(region);
+    expect(point.hit, 'The mouse must start on the visible PDF region').toBe(true);
+    await win.mouse.move(point.x, point.y);
+    await win.mouse.down();
+    await win.mouse.move(point.x - 30, point.y - 25, { steps: 3 });
+    await expect.poll(async () => (await scroll()).x).toBeGreaterThan(180);
+    await expect.poll(cursor).toBe('grabbing');
+    const held = await scroll();
+    const pointerId = await win.evaluate(
+      () => (globalThis as typeof globalThis & { flowPointer?: number }).flowPointer ?? -1,
+    );
+    // Its release went elsewhere (a system box took the mouse): the next move says no button is held.
+    await region.dispatchEvent('pointermove', {
+      pointerId,
+      pointerType: 'mouse',
+      isPrimary: true,
+      buttons: 0,
+      clientX: point.x - 60,
+      clientY: point.y - 50,
+    });
+    expect(await scroll()).toEqual(held);
+    await expect.poll(cursor).toBe('grab');
+    // The drag is over: moving on moves nothing.
+    await win.mouse.move(point.x - 80, point.y - 70, { steps: 3 });
+    expect(await scroll()).toEqual(held);
+    await win.mouse.up();
+    expect(await scroll()).toEqual(held);
+  } finally {
+    await app.close();
+  }
+});
