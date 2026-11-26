@@ -448,12 +448,27 @@ it('Stop on air after the copy into Media removes nothing on air; the next start
     copied.push(id);
     fixture.activity.stream = true;
   };
-  expect(await clips.start(adding)).toMatchObject({ ok: true });
-  // Waiting again, after its copy into Media.
-  await vi.waitFor(() => {
-    expect(copied).toHaveLength(1);
-    expect(clips.list().at(-1)?.state).toBe('waiting');
+  // Copying and validating a clip uses real FFmpeg. Wait for its actual post-import waiting callback,
+  // rather than assuming that work finishes inside vi.waitFor's one-second default on a busy Mac.
+  let copiedAndWaiting = () => undefined;
+  const waiting = new Promise<void>((resolve) => {
+    copiedAndWaiting = resolve;
   });
+  const saveCopy = fixture.conversions.saveCopy.bind(fixture.conversions);
+  const observed = vi.spyOn(fixture.conversions, 'saveCopy').mockImplementation((source, dest, info, copy) =>
+    saveCopy(source, dest, info, {
+      ...copy,
+      waiting: (note) => {
+        copy.waiting?.(note);
+        if (copied.length === 1 && note) copiedAndWaiting();
+      },
+    }),
+  );
+  cleanup.push(() => observed.mockRestore());
+  expect(await clips.start(adding)).toMatchObject({ ok: true });
+  await waiting;
+  expect(copied).toHaveLength(1);
+  expect(clips.list().at(-1)?.state).toBe('waiting');
   expect(clips.stop(clips.list().at(-1)?.id ?? '')).toBe(true);
   await vi.waitFor(() => {
     expect(hooks.discards.length).toBeGreaterThanOrEqual(1);
