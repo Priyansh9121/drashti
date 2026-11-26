@@ -21,14 +21,20 @@ export function libraryNames(db: Db): string[] {
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 /*
- * A name is blanked only where it is the name (QA24-DIAG-1: a library name "new" blanked the "new" of "newest" in the
- * crash files' heading, and inside the words of a Quit line), but wherever a word could start or end in a name glued to
- * other text (the review's F1, F2 and lead 2's D1 A: privacy first).
+ * A name of five letters or more is blanked wherever it is, inside other words too, as before alpha.24 (the owner's
+ * QA24-DIAG-2: "Hide long names inside words (Recommended)"). Letters are counted as a reader counts them (\p{L}): a
+ * vowel sign or a virama is part of its letter, not one more ("નમસ્તે" has four), and the count is the same on every
+ * computer (a grapheme count would follow the version of ICU, whose Indic conjunct rules changed in Unicode 15.1).
+ *
+ * A shorter name is blanked only where it is the name (QA24-DIAG-1: a library name "new" blanked the "new" of "newest"
+ * in the crash files' heading, and inside the words of a Quit line), but wherever a word could start or end in a name
+ * glued to other text (the review's F1, F2, R1 and lead 2's D1 A: privacy first).
  * - A word is made of letters, marks (the vowel signs and viramas of Gujarati and Devanagari) and digits, with the
  *   zero-width joiners inside it; anything else (a space, punctuation, a path's separator, an underscore) ends it.
  * - It also ends between a letter and a digit ("Sabha2026"), at a small letter before a capital ("EveningSabha") and
  *   where the script changes ("Sabhaસભા"); a name's last digit ends it before more digits ("Sabha 2026" in
  *   "Sabha 20261"). One case and one script of letters, as in "newest", is one word.
+ * - A run of capitals before a capitalised name starts its word ("ABCNew" is "ABC" and "New"; "ANEW" is one).
  * - A separator written as an escape starts a word: a URL's %20 or %2F, JSON's \n, \t or \r.
  * - Gujarati, Devanagari and the other Indic scripts, and Korean, write a word's endings joined to it ("સભા" + "માં"):
  *   there only a name's start is looked at, whatever follows it.
@@ -107,8 +113,17 @@ function joins(a: string | undefined, b: string | undefined): boolean {
 const ESCAPED = /(?:%[0-9A-Fa-f]{2}|\\[ntr])$/u;
 
 /** Whether a word can start at `at`. */
-const startsWord = (s: string, at: number): boolean =>
-  !joins(charBefore(s, at), charAt(s, at)) || ESCAPED.test(s.slice(Math.max(0, at - 3), at));
+function startsWord(s: string, at: number): boolean {
+  const before = charBefore(s, at);
+  const first = charAt(s, at);
+  if (!joins(before, first)) return true;
+  // A run of capitals before a capitalised name (R1): the capital before the name's small letter starts its word.
+  if (before !== undefined && first !== undefined && CAPITAL.test(before) && CAPITAL.test(first)) {
+    const second = charAt(s, at + first.length);
+    if (second !== undefined && SMALL.test(second)) return true;
+  }
+  return ESCAPED.test(s.slice(Math.max(0, at - 3), at));
+}
 
 /**
  * Whether a name ending at `end` ends its word there: in a script with joined endings wherever it ends, and a name's
@@ -139,20 +154,39 @@ function charAt(s: string, i: number): string | undefined {
 /** How many names one pattern holds. */
 const NAMES_AT_ONCE = 400;
 
-/** The text with every one of these names blanked out where it is the name, longest first. */
+/** A name with this many letters or more is blanked inside other words too (QA24-DIAG-2). */
+const LONG_NAME_LETTERS = 5;
+const letterCount = (name: string): number => name.match(/\p{L}/gu)?.length ?? 0;
+
+/**
+ * The text with every one of these names blanked out: a long name wherever it is, a short one where it is the name;
+ * longest first. The long ones go first: a shorter name can never hold a long one (it has fewer letters).
+ */
 export function redactNames(text: string, names: readonly string[]): string {
   const sorted = [...new Set(names)].filter((n) => n !== '').sort((a, b) => b.length - a.length);
+  const long = sorted.filter((n) => letterCount(n) >= LONG_NAME_LETTERS);
+  const short = sorted.filter((n) => letterCount(n) < LONG_NAME_LETTERS);
   let out = text;
-  for (let i = 0; i < sorted.length; i += NAMES_AT_ONCE) {
-    const some = sorted.slice(i, i + NAMES_AT_ONCE).map(escape);
+  // What an earlier pattern blanked stays as it is (a name "library" never blanks the words of a blank).
+  const eachPart = (blank: (part: string) => string) => {
+    out = out.split(HIDDEN).map(blank).join(HIDDEN);
+  };
+  for (let i = 0; i < long.length; i += NAMES_AT_ONCE) {
+    const anywhere = new RegExp(
+      long
+        .slice(i, i + NAMES_AT_ONCE)
+        .map(escape)
+        .join('|'),
+      'giu',
+    );
+    eachPart((part) => part.replace(anywhere, HIDDEN));
+  }
+  for (let i = 0; i < short.length; i += NAMES_AT_ONCE) {
+    const some = short.slice(i, i + NAMES_AT_ONCE).map(escape);
     // Each place any of them is (quick), and the longest of them at one place (sticky).
     const find = new RegExp(some.join('|'), 'giu');
     const at = new RegExp(some.join('|'), 'iuy');
-    // What an earlier pattern blanked stays as it is (a name "library" never blanks the words of a blank).
-    out = out
-      .split(HIDDEN)
-      .map((part) => blankWhole(part, find, at))
-      .join(HIDDEN);
+    eachPart((part) => blankWhole(part, find, at));
   }
   return out;
 }
