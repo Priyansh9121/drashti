@@ -111,7 +111,21 @@ test('a double click on a lower third’s trash takes out that lower third only:
   await app.close();
 });
 
-const WORDS = ['Zentrova', 'Quellmark', 'Varnisto'] as const;
+/**
+ * Invented words, enough that the list scrolls (it shows about six), as an admin's list of names does: the dialog then
+ * keeps its height as one goes. A shorter list shrinks it, and the dialog, centred, moves down by half a row, so the
+ * second click lands on the next word's Remove only from the lower half of the button (CI's red run, :149).
+ */
+const WORDS = [
+  'Zentrova',
+  'Quellmark',
+  'Varnisto',
+  'Brolevan',
+  'Tesmaric',
+  'Olvenor',
+  'Druskel',
+  'Pemarit',
+] as const;
 
 /** The English caption words, as the library keeps them. */
 const wordsKept = (win: Page) =>
@@ -140,23 +154,24 @@ test('a double click on a caption word’s Remove takes out that word only: the 
   await expect(dialog.getByTestId('caption-word')).toHaveText([...WORDS]);
   const remove = (word: string) => dialog.getByRole('button', { name: `Remove ${word}` });
 
+  const rest = WORDS.slice(1);
   const at = await pointAt(win, remove(WORDS[0]));
   // The first click: the word goes at once (kept at once, as each change is).
   await firstClick(win);
-  await expect(dialog.getByTestId('caption-word')).toHaveText([WORDS[1], WORDS[2]]);
-  await expect.poll(() => wordsKept(win)).toEqual([WORDS[1], WORDS[2]]);
+  await expect(dialog.getByTestId('caption-word')).toHaveText(rest);
+  await expect.poll(() => wordsKept(win)).toEqual(rest);
   // The next word has moved up into its place: its Remove is under the pointer, where the second click lands.
   await expect.poll(() => isUnder(remove(WORDS[1]), at)).toBe(true);
   await secondClick(win, at);
   await holdStill(
-    async () => JSON.stringify(await wordsKept(win)) === JSON.stringify([WORDS[1], WORDS[2]]),
+    async () => JSON.stringify(await wordsKept(win)) === JSON.stringify(rest),
     1500,
     'a double click’s second click takes out no other word',
   );
-  await expect(dialog.getByTestId('caption-word')).toHaveText([WORDS[1], WORDS[2]]);
+  await expect(dialog.getByTestId('caption-word')).toHaveText(rest);
   // Enter on a Remove (a click with no count) still takes its word out.
   await remove(WORDS[2]).focus();
   await win.keyboard.press('Enter');
-  await expect(dialog.getByTestId('caption-word')).toHaveText([WORDS[1]]);
+  await expect(dialog.getByTestId('caption-word')).toHaveText(rest.filter((w) => w !== WORDS[2]));
   await app.close();
 });
