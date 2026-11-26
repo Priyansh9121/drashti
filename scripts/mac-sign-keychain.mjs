@@ -51,6 +51,22 @@ export function securityRunner(spawn = spawnSync) {
   };
 }
 
+// RED STUBS (the next commit fills them): the .p12 check, a failed import's reason.
+export class SecurityCommandError extends SigningKeychainError {}
+export const NOT_A_P12 = 'MAC_SIGN_P12_BASE64 is not a .p12 in base64.';
+export function decodeP12(encoded) {
+  return Buffer.from(encoded, 'base64');
+}
+export function describeP12() {
+  return { pfx: false, encryption: [], mac: 'unknown', line: '' };
+}
+export function importFailure() {
+  return 'unknown';
+}
+export function importReason() {
+  return 'unknown reason';
+}
+
 const MODES = ['--delete-key', '--cleanup'];
 
 function keychainStep({ argv, env, platform, security, log }) {
