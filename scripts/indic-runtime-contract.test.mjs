@@ -135,3 +135,22 @@ test('the allocation rule sees any use before the check: a copy into it, a membe
     [],
   );
 });
+
+
+test('allocation checks include indexed and member targets and strdup (cap-review-nits n2)', () => {
+  for (const [target, call] of [
+    ['args[i]', 'malloc(8)'],
+    ['m->tok[id]', 'strdup(word)'],
+    ['state.buffer', 'calloc(8, 1)'],
+  ]) {
+    const allocated = `${target} = ${call};`;
+    assert.deepEqual(allocationsUsedUnchecked(`${allocated} use(${target}); if (!${target}) die();`), {
+      count: 1,
+      unchecked: [target],
+    });
+    assert.deepEqual(allocationsUsedUnchecked(`${allocated} if (!${target}) die(); use(${target});`), {
+      count: 1,
+      unchecked: [],
+    });
+  }
+});
