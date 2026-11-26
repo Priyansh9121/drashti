@@ -4654,6 +4654,8 @@ function start(): void {
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     prototypeChanged: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
     spell: (phrase) => captionClean.heard(captionWords.fix(phrase)),
+    // And an operator's typed correction, where it comes in: never a listed word to the translator (review S1).
+    cleanCorrection: (text, apply) => captionClean.correction(text, apply),
     changed: (view) => {
       captionClean.captionsOn(view.on);
       videoCaptionBand = view.settings;
