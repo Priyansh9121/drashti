@@ -5,6 +5,7 @@ import type { AppearanceNow } from '../shared/appearance/appearances';
 import { drawAppearance, type AppearanceRoot } from '../shared/appearance/draw';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
+import { crossFades } from './cross-fade';
 import { bridgeFor, pageOf } from './page-groups';
 import { EngineViewStamp } from './engine-seen';
 
@@ -1049,7 +1050,16 @@ if (OWN_WINDOWS.includes(pageOf(here))) {
     const reduced = (
       globalThis as unknown as { matchMedia?: (q: string) => { matches: boolean } }
     ).matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (looksOtherwise && next.motion === 'lively' && quiet && !reduced && doc.startViewTransition) {
+    // Lively's cross-fade, with a graphics chip only (cross-fade.ts; alpha.24's review of uimotion, MUST-1).
+    const fades = crossFades({
+      looksOtherwise,
+      motion: next.motion,
+      chip: next.chip,
+      quiet,
+      reduced: reduced === true,
+      canFade: typeof doc.startViewTransition === 'function',
+    });
+    if (fades && doc.startViewTransition) {
       const fade = doc.startViewTransition(() => {
         draw(next);
         // Session 42: the new band sweeps in once (app.css, data-band-sweep: a and b in turn, so it plays again).

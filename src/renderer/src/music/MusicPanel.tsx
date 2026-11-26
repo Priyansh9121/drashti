@@ -39,7 +39,6 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  Trash2,
 } from '../ui/icons';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
@@ -58,6 +57,7 @@ import { isRemoveKey } from '../playlists/playlist-shared';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { createAudioPlaylist, dropSounds, importSounds, takesSounds } from './audio-actions';
 import { TrackDelete } from './TrackDelete';
+import { TrashButton } from '../ui/TrashButton';
 import { openLinkForAudio } from '../links/link-store';
 
 /*
@@ -166,6 +166,8 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
             <IconButton
               icon={SkipBack}
               label="Previous track"
+              // Show controls (alpha.24): what the hall hears changes at once, and they never move.
+              instant
               disabled={!isShownPlaying}
               onClick={() => void dispatch('musicPrevious')}
             />
@@ -173,6 +175,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               <Button
                 variant="secondary"
                 icon={Pause}
+                instant
                 data-testid="music-pause"
                 onClick={() => void dispatch('pauseMusic')}
               >
@@ -182,6 +185,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
               <Button
                 variant="secondary"
                 icon={Play}
+                instant
                 data-testid="music-play"
                 disabled={shown.tracks.length === 0}
                 onClick={() =>
@@ -196,6 +200,7 @@ export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) 
             <IconButton
               icon={SkipForward}
               label="Next track"
+              instant
               disabled={!isShownPlaying}
               onClick={() => void dispatch('musicNext')}
             />
@@ -492,12 +497,10 @@ function AudioPlaylists({
                       useMusic.setState({ renamingId: p.id });
                     }}
                   />
-                  <IconButton
-                    icon={Trash2}
+                  <TrashButton
                     label={`Delete music “${p.name}”`}
-                    size="sm"
-                    data-testid="music-delete"
-                    onClick={() => {
+                    testId="music-delete"
+                    onPress={() => {
                       onDelete(deleting(p.id));
                     }}
                   />

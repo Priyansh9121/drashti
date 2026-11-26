@@ -94,6 +94,12 @@ export interface CaptionsServiceDeps {
   prototypeChanged?: (review: CaptionReview) => void;
   /** The caption words' spelling fixer (alpha.22): each phrase from the engine passes through it, partials too. */
   spell?: (phrase: Heard) => Heard;
+  /**
+   * Words left out of captions for an operator's typed correction (alpha.24 captions join, review S1): it cleans the
+   * text as each phrase heard is cleaned, hands it to apply() (the coordinator) and says whether it was applied; it
+   * refuses one left with nothing or one it cannot check. Left out: the correction as typed.
+   */
+  cleanCorrection?: (text: string, apply: (cleaned: string) => boolean) => boolean;
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
@@ -433,8 +439,16 @@ export class CaptionsService {
   restartPrototype(): void {
     if (!this.closed && this.prototype.view().on) this.prototype.restart();
   }
+  /**
+   * The operator's correction, cleaned once here, where every correction comes in (Apply correction's IPC; review S1):
+   * the coordinator, the live translator, the operator's review and every screen get it with the words left out.
+   */
   correctPrototype(correction: CaptionCorrection): boolean {
-    return !this.closed && (this.aiReview() ?? this.prototype).correct(correction);
+    if (this.closed) return false;
+    const apply = (text: string): boolean =>
+      (this.aiReview() ?? this.prototype).correct({ ...correction, text });
+    const clean = this.deps.cleanCorrection;
+    return clean ? clean(correction.text, apply) : apply(correction.text);
   }
   dismissPrototype(key: Omit<CaptionCorrection, 'text'>): boolean {
     return !this.closed && (this.aiReview() ?? this.prototype).dismiss(key);

@@ -647,7 +647,7 @@ export class MediaRemoval {
       // its full path or by one that climbs out of the folder.
       const own = resolve(mediaDir, r.path);
       if (keep.has(r.id) || isAbsolute(r.path) || !isInside(resolve(mediaDir), own)) continue;
-      forget.run(r.id);
+      if (forget.run(r.id).changes !== 1) continue;
       // Another row with the same bytes would share the file (never, one row per sha256), so it can go.
       await rm(own, { force: true }).catch(() => undefined);
       // Its still frame, sharpened copies (Session 26f) and blurred copy (Session 55) go with it.
