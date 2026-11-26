@@ -367,6 +367,19 @@ export class CaptionCoordinator {
     this.version += 1;
     this.options.changed(this.view());
   }
+  /**
+   * The phrase's time is up: everything clears, unless a long translation's pages are still showing (alpha.24, 2b):
+   * then only the stage's words go now, and the rest when its last page has had its time.
+   */
+  private expire(): void {
+    const t = this.translated;
+    if (t?.painted && this.clock() < t.until) {
+      this.paint();
+      return;
+    }
+    this.clear();
+    this.notify();
+  }
   /** A phrase skipped (2c): counted, and told why. */
   private skip(why: CaptionSkip): void {
     this.omitted += 1;
@@ -378,6 +391,12 @@ export class CaptionCoordinator {
     if (this.pageTimer) clearTimeout(this.pageTimer);
     this.pageTimer = null;
     if (this.options.output !== 'translation') return;
+    // The phrase's own time ran out while the last page showed: everything clears now.
+    if (this.visible && (!this.current || this.clock() >= this.current.clearAt)) {
+      this.clear();
+      this.notify();
+      return;
+    }
     if (this.options.stage && this.visible) this.paint();
     else this.options.show(null);
   }
@@ -436,8 +455,7 @@ export class CaptionCoordinator {
     const clearAt = this.current?.clearAt ?? this.clock();
     this.expiry = setTimeout(
       () => {
-        this.clear();
-        this.notify();
+        this.expire();
       },
       Math.max(0, clearAt - this.clock()),
     );
@@ -518,12 +536,12 @@ export class CaptionCoordinator {
         t.painted = true;
         t.pages = pages;
         t.page = 0;
-        // Each page shows for its reading time; the last for at least the floor, even past the phrase's clear time.
+        // Each page shows for its reading time, the last one too, even past the phrase's own clear time.
         const spans = pages.map((p) =>
           Math.max(CAPTION_PAGE_MIN_MS, p.join(' ').split(/\s+/u).length * CAPTION_PAGE_MS_PER_WORD),
         );
         const lastStart = now + spans.slice(0, -1).reduce((a, b) => a + b, 0);
-        t.until = Math.max(t.until, lastStart + CAPTION_PAGE_MIN_MS);
+        t.until = Math.max(t.until, lastStart + (spans.at(-1) ?? CAPTION_PAGE_MIN_MS));
         this.schedulePages(t, spans);
         if (this.translatedExpiry) clearTimeout(this.translatedExpiry);
         this.translatedExpiry = setTimeout(
