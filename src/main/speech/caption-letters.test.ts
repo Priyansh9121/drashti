@@ -8,7 +8,12 @@ import { keepToLetters } from './caption-letters';
  */
 
 const words = (...texts: string[]): HeardWord[] =>
-  texts.map((text, i) => ({ text, startAt: 1_000 + i * 100, endAt: 1_050 + i * 100, confidence: 0.5 + i / 10 }));
+  texts.map((text, i) => ({
+    text,
+    startAt: 1_000 + i * 100,
+    endAt: 1_050 + i * 100,
+    confidence: 0.5 + i / 10,
+  }));
 const texts = (heard: readonly HeardWord[] | null): string[] | null => heard?.map((w) => w.text) ?? null;
 
 describe('keepToLetters', () => {

@@ -128,9 +128,7 @@ const PLACEHOLDER_WORDS: Readonly<Record<string, readonly [string, string]>> = {
  * A stand-in for whisper-server: /health, and /inference answering after `delayMs` with placeholder words in the
  * letters of the language asked ('alpha beta' for English and as heard), or `words` for the n-th request (from 1).
  */
-function standIn(
-  o: { delayMs?: number; language?: string; words?: (n: number) => readonly string[] } = {},
-) {
+function standIn(o: { delayMs?: number; language?: string; words?: (n: number) => readonly string[] } = {}) {
   const servers: Server[] = [];
   const asked: string[] = [];
   const requestPaths: string[] = [];
@@ -167,7 +165,12 @@ function standIn(
               segments: [
                 {
                   no_speech_prob: 0,
-                  words: said.map((word, i) => ({ word, start: i * 0.4, end: i * 0.4 + 0.3, probability: 0.9 })),
+                  words: said.map((word, i) => ({
+                    word,
+                    start: i * 0.4,
+                    end: i * 0.4 + 0.3,
+                    probability: 0.9,
+                  })),
                 },
               ],
             }),
