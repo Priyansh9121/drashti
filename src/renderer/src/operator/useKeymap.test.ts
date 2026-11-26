@@ -118,7 +118,38 @@ describe('the operator window’s keys, as its listener takes them', () => {
     expect([used, ...unknown].filter((p) => p.taken)).toEqual([]);
   });
 
-  // View › Audience and Stage show ⌘1 and ⌘2 (Ctrl+1 and Ctrl+2) beside them (Session 51). Windows' menu shows a
+  // A Gujarati or Hindi keyboard layout (alpha.24, keyplat R6): the B key types "વ", and the keymap answers its place
+  // (shared/keymap.ts). Typed into a field (the library's search box, the words editor, a slide's words) it is a
+  // letter, never Black-out, Search, Audience or Stage, as the Latin keys are there; on the window it acts as B does.
+  it.each(['darwin', 'win32'] as const)(
+    'runs B, Search, Audience and Stage from a Gujarati or Hindi layout on the window, and never from a field (%s)',
+    (platform) => {
+      const mod = platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
+      const gujarati = (more: Partial<Omit<KeyPress, 'key' | 'preventDefault'>> = {}) => [
+        new Press('વ', { code: 'KeyB', ...more }),
+        new Press('ब', { code: 'KeyB', shiftKey: true, ...more }),
+        new Press('િ', { code: 'KeyF', ...mod, ...more }),
+        new Press('૧', { code: 'Digit1', ...mod, ...more }),
+        new Press('२', { code: 'Digit2', ...mod, ...more }),
+      ];
+      const fields = [
+        typingIn('INPUT'), // the library's search box, a playlist's Find
+        typingIn('TEXTAREA'), // the words editor
+        { target: new StandInElement('DIV', true) }, // a slide's words, being typed
+      ];
+      const { ran, onKey } = listening(platform);
+      const typed = fields.flatMap((field) => gujarati(field));
+      for (const p of typed) onKey(p);
+      expect(ran).toEqual([]);
+      // A letter typed is never taken (it reaches the field); Cmd or Ctrl with 1 or 2 is, as with the Latin keys.
+      expect(typed.filter((p) => p.taken).map((p) => p.key)).toEqual(['૧', '२', '૧', '२', '૧', '२']);
+      const onWindow = gujarati();
+      for (const p of onWindow) onKey(p);
+      expect(ran).toEqual(['toggleBlackout', 'toggleBlackout', 'findInLibrary', 'toggleAudience', 'toggleStage']);
+    },
+  );
+
+  // View › Audience and Stage show ⌘1 and ⌘2  // View › Audience and Stage show ⌘1 and ⌘2 (Ctrl+1 and Ctrl+2) beside them (Session 51). Windows' menu shows a
   // key without binding it (registerAccelerator: false), but the Mac's acts on any key it shows that the page
   // leaves alone: so the page takes every press of them, the ones it lets go by included, and each acts once.
   it.each([

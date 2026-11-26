@@ -289,6 +289,56 @@ describe('keymap', () => {
   });
 });
 
+// A Gujarati or Hindi keyboard layout (alpha.24, keyplat R6): its letters type Gujarati or Devanagari, so the B key says
+// "વ", not "B". The keymap's letters, digits and "." then answer the key's place on the keyboard (`code`), as the quick
+// bar's digits always have: only for a letter of another script, so every Latin layout (QWERTY, AZERTY, QWERTZ,
+// Dvorak) is as it was, letter for letter, and Option on a Mac still types its own letters without acting.
+describe('the keys with a keyboard layout of another script (Gujarati, Hindi)', () => {
+  const at = (key: string, code: string, mods: Parameters<typeof press>[1] = {}) => ({ ...press(key, mods), code });
+
+  it('answers the key’s place: B is Black-out, and Cmd or Ctrl with F, 1 and 2, on a Mac and on Windows', () => {
+    for (const platform of ['darwin', 'win32'] as const) {
+      const mod = platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
+      // Gujarati and Devanagari letters on the B key, Shift or not (Caps Lock), and "." as the full stop key's.
+      expect(actionFor(at('વ', 'KeyB'), platform), platform).toBe('toggleBlackout');
+      expect(actionFor(at('ब', 'KeyB', { shiftKey: true }), platform), platform).toBe('toggleBlackout');
+      expect(actionFor(at('।', 'Period'), platform), platform).toBe('toggleBlackout');
+      expect(actionFor(at('િ', 'KeyF', mod), platform), platform).toBe('findInLibrary');
+      expect(actionFor(at('૧', 'Digit1', mod), platform), platform).toBe('toggleAudience');
+      expect(actionFor(at('२', 'Digit2', mod), platform), platform).toBe('toggleStage');
+      expect(actionFor(at('મ', 'KeyS', { ...mod, shiftKey: true }), platform), platform).toBe('openScreens');
+      expect(actionFor(at('ુ', 'KeyZ', mod), platform, SIMPLE_KEYMAP), platform).toBe('undo');
+    }
+  });
+
+  it('acts only where the Latin key acts: the same modifiers, and a letter the keymap has', () => {
+    // A key with no binding of its own stays unbound.
+    expect(actionFor(at('ૌ', 'KeyQ'), 'win32')).toBeNull();
+    expect(actionFor(at('ृ', 'BracketLeft'), 'win32')).toBeNull();
+    // Shift as the binding has it: Cmd+Shift+F is not Cmd+F, Cmd+M (no Shift) is not Screens.
+    expect(actionFor(at('િ', 'KeyF', { metaKey: true, shiftKey: true }), 'darwin')).toBeNull();
+    expect(actionFor(at('મ', 'KeyS', { metaKey: true }), 'darwin')).toBeNull();
+    // Black-out's B with Cmd or Ctrl is not Black-out; Cmd+1 on Windows is not Ctrl+1.
+    expect(actionFor(at('વ', 'KeyB', { ctrlKey: true }), 'win32')).toBeNull();
+    expect(actionFor(at('૧', 'Digit1', { metaKey: true }), 'win32')).toBeNull();
+    // A digit alone is not Audience, and a press without its place (the main process's) is as before.
+    expect(actionFor(at('૧', 'Digit1'), 'win32')).toBeNull();
+    expect(actionFor(press('વ'), 'win32')).toBeNull();
+  });
+
+  it('leaves every Latin layout and a Mac’s Option letters as they were', () => {
+    // Dvorak: the key in B's place types X, and X is nothing; its own B is Black-out wherever it is.
+    expect(actionFor(at('x', 'KeyB'), 'win32')).toBeNull();
+    expect(actionFor(at('b', 'KeyN'), 'win32')).toBe('toggleBlackout');
+    // AZERTY: Ctrl with the key that types "é" (the 2's place) stays nothing; QWERTZ's Z (Y's place) is still Z.
+    expect(actionFor(at('é', 'Digit2', { ctrlKey: true }), 'win32')).toBeNull();
+    expect(actionFor(at('z', 'KeyY', { ctrlKey: true }), 'win32', SIMPLE_KEYMAP)).toBe('undo');
+    // A Mac's Option+B types "∫" and Option+F "ƒ": never Black-out or Search.
+    expect(actionFor(at('∫', 'KeyB', { altKey: true }), 'darwin')).toBeNull();
+    expect(actionFor(at('ƒ', 'KeyF', { altKey: true, metaKey: true }), 'darwin')).toBeNull();
+  });
+});
+
 describe('the show’s F-keys from the slide editor’s window (Session 55, Part 17a)', () => {
   it('are the clears, Oops and the Wallpaper: keys that never type a letter', () => {
     expect([...SHOW_F_KEYS].sort()).toEqual(['F1', 'F12', 'F2', 'F3', 'F5', 'F6', 'F7', 'F9']);
