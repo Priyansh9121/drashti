@@ -144,19 +144,13 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         bar.getByRole('button', { name: `Clear ${layer}${on ? ' (on screen)' : ''}`, exact: true });
       const clearAll = bar.getByRole('button', { name: /^Clear all/u });
       // In the desktop's order, left to right (LayerBar.tsx), each with the key the window answers: the window's own
-      // bar (the phone's copy of it went with the phone rule).
+      // bar (the phone's copy of it went with the phone rule). With nothing up a layer's clear is compact, its icon
+      // alone (alpha.24); lit, its words and key, below.
       await expect
         .poll(() => windowClearWords(win))
-        .toEqual([
-          'Clear all F1',
-          'Slide F2',
-          'Background F3',
-          'Audio F5',
-          'Messages F6',
-          'Ticker F7',
-          'Wallpaper F12',
-          'Black-out B',
-        ]);
+        .toEqual(['Clear all F1', '', '', '', '', '', 'Wallpaper F12', 'Black-out B']);
+      for (const layer of ['slide', 'background', 'audio', 'messages', 'ticker'])
+        await expect(clearOf(layer), layer).toBeDisabled();
       // The Wallpaper (Session 55, in the Logo's place): the phone's refused; moved to the window, up and off.
       await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/wallpaper', {}, 'media');
       await win.getByTestId('wallpaper-button').click();
@@ -184,6 +178,19 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       for (const layer of ['slide', 'background', 'messages'])
         await expect(clearOf(layer, true), layer).toHaveAttribute('data-lit', 'true');
       for (const layer of ['audio', 'ticker']) await expect(clearOf(layer), layer).toBeDisabled();
+      // Lit, each with its words and the key the window answers, in the desktop's order.
+      await expect
+        .poll(() => windowClearWords(win))
+        .toEqual([
+          'Clear all F1',
+          'Slide F2',
+          'Background F3',
+          '',
+          'Messages F6',
+          '',
+          'Wallpaper F12',
+          'Black-out B',
+        ]);
       await expectNoSeriousA11yIssues(
         win,
         `the clears lit in the window (${engine})`,
@@ -213,6 +220,8 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 1 });
       await clearAll.click();
       await expect(win.getByTestId('put-back')).toHaveText('Put it back');
+      // No key, so none for a screen reader either (aria-keyshortcuts).
+      await expect(win.getByTestId('put-back')).not.toHaveAttribute('aria-keyshortcuts');
       await expectPhoneRefuses(fromPhone, 'POST', '/api/v1/put-back', {}, 'computer');
       await win.getByTestId('put-back').click();
       await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder first verse');
@@ -223,10 +232,14 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect
         .poll(async () => (await windowClearWords(win)).slice(-2))
         .toEqual(['Wallpaper F12', 'Black-out']);
+      // Nor for a screen reader (aria-keyshortcuts), the Wallpaper keeping F12.
+      await expect(win.getByTestId('blackout-button')).not.toHaveAttribute('aria-keyshortcuts');
+      await expect(win.getByTestId('wallpaper-button')).toHaveAttribute('aria-keyshortcuts', 'F12');
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(true));
       await expect
         .poll(async () => (await windowClearWords(win)).slice(-2))
         .toEqual(['Wallpaper F12', 'Black-out B']);
+      await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-keyshortcuts', 'B .');
     } finally {
       await phone.close();
     }
