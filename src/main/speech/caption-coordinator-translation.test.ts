@@ -312,8 +312,10 @@ describe('a phrase withdrawn while translated captions show (alpha.24 captions j
     // At once: the stage band goes, the translation's page stays.
     expect(last()).toMatchObject({ kind: 'translation', lines: first.lines, page: { n: 1, of: 2 }, stage: null });
     expect(c.view()).toMatchObject({ current: null, previous: { phraseId: 's1', status: 'settled' } });
-    // Its next page at its own time, still with no stage band.
-    await vi.advanceTimersByTimeAsync(span(first.lines) - 600);
+    // Its next page at its own time (its first page was painted 300 ms before the withdraw), still with no stage band.
+    await vi.advanceTimersByTimeAsync(span(first.lines) - 300 - 1);
+    expect(last()).toMatchObject({ page: { n: 1, of: 2 }, stage: null });
+    await vi.advanceTimersByTimeAsync(1);
     const second = must(last());
     expect(second).toMatchObject({ page: { n: 2, of: 2 }, stage: null });
     expect([...first.lines, ...second.lines].join(' ')).toBe(long);

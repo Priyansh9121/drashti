@@ -192,7 +192,10 @@ export class CaptionCoordinator {
         return false;
       if (sourceText === this.current.sourceText && clause.status === this.current.status) return true;
     }
-    if (number > this.highestPhrase) this.previous = this.current;
+    // After a withdrawn phrase the one before it stays the phrase before (alpha.24 captions join, J3): the withdrawn
+    // one never stood on the screens.
+    if (number > this.highestPhrase)
+      this.previous = this.current ?? (this.withdrawn !== null ? this.previous : null);
     this.highestPhrase = number;
     this.withdrawn = null;
     const firstSettledAt = clause.status === 'settled' ? now : null;
@@ -306,14 +309,40 @@ export class CaptionCoordinator {
    * A phrase being heard that was left out whole (alpha.24, QA24-CAPCLEAN-1, review F4: every word of it was a word to
    * leave out) comes off the screens while it is still provisional there, as Dismiss phrase takes a settled one off.
    * Anything settled before it stays for the review. False when that phrase is not the one being heard.
+   *
+   * While translating (alpha.24 captions join, J3), the phrase before it is the one translated and on the audience
+   * screens and the stream: its translation, pages and timers, and its translation in flight, all stay, and only the
+   * stage band of the withdrawn phrase comes off. Everything clears when the phrase before's own time is up (after its
+   * last page). In the speaker's own words, or with nothing of a phrase before left to show, everything clears now.
    */
   withdraw(phraseId: string): boolean {
     if (this.current?.phraseId !== phraseId || this.current.status !== 'provisional') return false;
     this.withdrawn = phraseId;
     this.current = null;
-    this.clear();
+    const before = this.previous;
+    const now = this.clock();
+    const showing = this.translated?.painted === true && now < this.translated.until;
+    if (this.translating() && this.visible && before !== null && (now < before.clearAt || showing)) {
+      if (this.expiry) clearTimeout(this.expiry);
+      this.expiry = setTimeout(
+        () => {
+          this.expire();
+        },
+        Math.max(0, before.clearAt - now),
+      );
+      this.paint();
+    } else this.clear();
     this.notify();
     return true;
+  }
+
+  /** The screens show a translation of the session's phrases (not the speaker's own words). */
+  private translating(): boolean {
+    return (
+      this.options.output === 'translation' &&
+      this.pair !== null &&
+      this.pair.source !== this.pair.target
+    );
   }
 
   /** The eventual L8 consumer calls this before revoking work; no show action waits for cancellation. */
@@ -442,7 +471,9 @@ export class CaptionCoordinator {
     else this.options.show(null);
   }
   private eligible(): StoredClause | null {
-    const clause = this.current?.status === 'provisional' ? this.previous : this.current;
+    // The phrase before stays the one translated while the next is heard, or after it was withdrawn (J3).
+    const clause =
+      this.current === null || this.current.status === 'provisional' ? this.previous : this.current;
     return this.visible && clause && clause.status !== 'provisional' && this.clock() < clause.clearAt
       ? clause
       : null;
@@ -519,7 +550,9 @@ export class CaptionCoordinator {
     const now = this.clock();
     this.shownAt = now;
     const target = this.options.output === 'translation';
-    const bypass = target && this.current?.sourceLanguage === this.current?.targetLanguage;
+    // With no phrase being heard (one withdrawn, J3), the phrase before says whether this is a translation.
+    const lead = this.current ?? this.previous;
+    const bypass = target && lead?.sourceLanguage === lead?.targetLanguage;
     if (target && !bypass) {
       this.paintTranslation(now);
       return;
