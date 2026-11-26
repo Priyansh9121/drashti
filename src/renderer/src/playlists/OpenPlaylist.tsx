@@ -1328,7 +1328,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           const slides = own?.slides ?? [];
           const doc =
             item.kind === 'presentation' && !isRepeat ? (docs[item.presentationId] ?? undefined) : undefined;
-          // One of its slides is up: its name row says LIVE too (folded, its slides are not there to say it).
+          // One of its slides is up: its name row is marked up too, its edge and dot (folded, its slides are not there
+          // to say it).
           const slideUp = slides.some(isSlideLive);
           // A presentation's slide rows move (Part 4b), by a drag or from the keyboard: not a passage's, nor a Repeat
           // Slides playlist's steps.
