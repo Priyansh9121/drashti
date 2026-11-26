@@ -9,6 +9,7 @@ import { WindowBoundary } from '../ui/WindowBoundary';
 import { reportRenderError } from '../ui/render-errors';
 import { reportFitFailuresTo } from '../render/shrink-to-fit';
 import { installFitFailureTestIfAsked } from '../render/fit-failure-test';
+import { installUndoLineTestIfAsked } from '../library/undo-line-test';
 import { setLiveWindowSize } from '../render/live-window';
 import { holdClock } from '../render/clock';
 import { OPERATOR_TRACKS, startMotionProbeIfAsked } from '../render/motion-probe';
@@ -35,6 +36,8 @@ reportFitFailuresTo((error) => {
   caught(error, {});
 });
 installFitFailureTestIfAsked();
+// Tests only (a test switch's, never an installed Drashti's): the Undo line's minute moved on by the test.
+installUndoLineTestIfAsked();
 createRoot(root, {
   onUncaughtError: reportRenderError('operator window', 'uncaught', sendError),
   onCaughtError: caught,

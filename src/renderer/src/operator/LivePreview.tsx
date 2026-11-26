@@ -12,6 +12,9 @@ import { pauseClock } from '../render/clock';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
 import type { EngineState, RepeatRun, TimerShow } from '../../../shared/engine/state';
+import { nothingUp } from '../../../shared/engine/state';
+import { wallpaperMissing } from '../../../shared/wallpaper-missing';
+import { useWallpapers } from '../wallpapers/wallpaper-store';
 import { LOWER_THIRD_MAX_LINES, lowerThirdOf } from '../../../shared/program';
 import { useStream } from '../stream/stream-store';
 import { missingFontsOf } from '../render/font-probe';
@@ -87,12 +90,21 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // slide is up, until its cues run again. Its sound cue's file the same (Session 53).
   const fileMissing = state?.layers.slide?.fileMissing ?? null;
   const soundMissing = state?.layers.slide?.soundMissing ?? null;
+  // The chosen wallpaper's pictures gone from the library (QA24-WALLBLACK-1): why LIVE is black with nothing up (or
+  // under the Wallpaper), said while it is (the show's, never practice's).
+  const chosenWallpaper = useWallpapers(
+    (s) => s.view?.wallpapers.find((w) => w.id === s.view?.chosenId) ?? null,
+  );
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
   // The videos up that one of this computer's screens could not play (alpha.23, a22-halldrop): LIVE shows them, the
   // screens named do not, so it says so while each stays up (the show's, never practice's).
   const notOnList = useNotOnScreens((s) => s.list);
   const notOn = practising ? [] : notOnScreensNow(notOnList, state);
+  const wallpaperGone =
+    !practising && state !== null && chosenWallpaper !== null && (nothingUp(state.layers) || state.wallpaper)
+      ? (wallpaperMissing(chosenWallpaper)?.live ?? null)
+      : null;
   const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
@@ -262,6 +274,12 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       {fileMissing !== null && (
         <p className="text-xs text-warning-fg" data-testid="live-file-missing">
           File missing: “{fileMissing}”. The background stays as it was.
+        </p>
+      )}
+      {/* The chosen wallpaper's pictures are missing (QA24-WALLBLACK-1): the screens show black with nothing up. */}
+      {wallpaperGone !== null && (
+        <p className="text-xs text-warning-fg" data-testid="live-wallpaper-missing">
+          {wallpaperGone}
         </p>
       )}
       {/* The live slide's sound file is missing (Session 53): nothing went on the audio layer for it. */}

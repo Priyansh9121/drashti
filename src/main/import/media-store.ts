@@ -658,7 +658,11 @@ export class MediaStore {
     const stage = await this.stage(path);
     if (!stage.ok) return { outcome: 'failed', issue: stage.issue };
     const stored = stage.staged;
-    const existing = this.bySha(stored.sha256);
+    // Its own bytes (QA24-WALLBLACK-1): a row deleted from the library keeps its sha256 once its file has gone at a
+    // start, so the file found is this item's own, filled in below; merged into itself, it was deleted instead (with
+    // what pointed at it, a wallpaper's picture among them).
+    const found = this.bySha(stored.sha256);
+    const existing = found?.id === mediaId ? undefined : found;
     const convert = stored.convert ? { convert: true } : {};
     if (existing) {
       // Converted already (Session 51): merged into its copy, which everything uses.
@@ -690,7 +694,8 @@ export class MediaStore {
     }
     this.db
       .prepare(
-        "UPDATE media SET path = ?, sha256 = ?, bytes = ?, missing = 0, playable = ?, format = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        // Found again, it is in the library again, as when the same file is imported again (deleted_at cleared).
+        "UPDATE media SET path = ?, sha256 = ?, bytes = ?, missing = 0, deleted_at = NULL, playable = ?, format = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
       )
       .run(
         stored.rel,
