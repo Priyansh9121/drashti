@@ -203,20 +203,22 @@ export class CaptionCleanService {
     const known = this.tracks.get(track);
     if (known?.version === this.version) return known.track;
     let changed = false;
-    const cues = track.cues.flatMap((cue) => {
+    const cues: VideoCaptionTrack['cues'] = [];
+    for (const cue of track.cues) {
       let text: string;
       try {
-        const lines = cue.text.split(/\r\n|\n|\r/u);
-        const cleaned = this.cleanLines(lines);
+        const cleaned = this.cleanLines(cue.text.split(/\r\n|\n|\r/u));
         text = cleaned.left === 0 ? cue.text : cleaned.lines.join('\n');
       } catch {
         this.failed();
         text = '';
       }
-      if (text === cue.text) return [cue];
-      changed = true;
-      return text === '' ? [] : [{ ...cue, text }];
-    });
+      if (text === cue.text) cues.push(cue);
+      else {
+        changed = true;
+        if (text !== '') cues.push({ ...cue, text });
+      }
+    }
     const out = changed ? { ...track, cues } : track;
     this.tracks.set(track, { version: this.version, track: out });
     return out;
