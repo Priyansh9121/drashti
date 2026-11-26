@@ -1512,11 +1512,13 @@ export class ShowEngine {
   /**
    * An announcement's time is up (or the operator took it off): off the
    * screens, as a message or in the ticker, and out of what Put it back
-   * would bring back.
+   * and Oops would bring back (alpha.24 bug hunt S2-1: Oops brought it back,
+   * and nothing took it down again but Clear ticker).
    */
   takeDown(id: string): CommandResult {
     return this.atOnce(() => {
       if (this.cleared) this.cleared = { ...this.cleared, from: withoutItem(this.cleared.from, id) };
+      this.oopsSteps = this.oopsSteps.map((step) => ({ ...step, layers: withoutItem(step.layers, id) }));
       return this.apply([
         { type: 'message/hide', messageId: id },
         { type: 'ticker/hide', itemId: id, at: this.now() },
