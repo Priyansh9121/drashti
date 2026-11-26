@@ -445,7 +445,8 @@ describe('the phone’s open playlist', () => {
         return Promise.resolve(json({ ok: true, playlists: [playlist('one')] }));
       if (path.endsWith('/items')) return Promise.resolve(json({ ok: true, items: rows }));
       const deck = /^\/api\/v1\/presentations\/([^/]+)$/.exec(path);
-      if (deck?.[1]) return Promise.resolve(json({ ok: true, presentation: { id: decodeURIComponent(deck[1]) } }));
+      if (deck?.[1])
+        return Promise.resolve(json({ ok: true, presentation: { id: decodeURIComponent(deck[1]) } }));
       return new Promise<Response>((resolve) => replies.push(resolve));
     });
     changed('mode');

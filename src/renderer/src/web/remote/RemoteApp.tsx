@@ -63,7 +63,14 @@ import { LiveLines } from './LiveLines';
 import type { RemoteSimple } from '../../../../shared/network-phone';
 import { FlowLayer, FlowSection } from './FlowSheet';
 import { type RemoteLayout, useLayout } from './layout';
-import { deckLiveIn, focusesShow, focusWatch, phoneControls, type PhoneControls, TIMER_ALONE_WORDS } from './phone-mode';
+import {
+  deckLiveIn,
+  focusesShow,
+  focusWatch,
+  phoneControls,
+  type PhoneControls,
+  TIMER_ALONE_WORDS,
+} from './phone-mode';
 import { PlaylistTab } from './PlaylistTab';
 import { useSimple } from './simple';
 import { Swipes, type SwipeWay } from './swipe';
@@ -1017,7 +1024,10 @@ function Layout() {
   }, [focus]);
   useEffect(() => {
     if (!hallHeard) return;
-    if (focusesShow(simpleBefore.current, inSimple, focus.wentAway()) && document.activeElement === document.body)
+    if (
+      focusesShow(simpleBefore.current, inSimple, focus.wentAway()) &&
+      document.activeElement === document.body
+    )
       document.querySelector<HTMLElement>('[data-testid="remote-tab-show"]')?.focus();
     simpleBefore.current = inSimple;
   }, [inSimple, hallHeard, focus]);
