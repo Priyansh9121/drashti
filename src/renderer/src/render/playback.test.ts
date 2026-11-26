@@ -7,6 +7,7 @@ import {
   playbackPosition,
   SOUND_LIMITS,
 } from '../../../shared/media';
+import { holdClock, pauseClock } from './clock';
 import { RESEEK_STEP_S } from './cue-presentation';
 import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
 
@@ -290,6 +291,52 @@ describe('a file played once to an end point', () => {
       stop();
     }
   });
+
+  // a24-review-cuelive3 SHOULD-1: a Go less than a ms ahead of a clock that stands still (the GPU warm-up's pause, a
+  // test's hold) asked again at once for as long as it stood, now as user-blocking tasks, which a delay under 1 ms (cut
+  // to 0 by postTask) never spaces out, ahead of the page's rendering and frame reads. A whole ms at least: a 1 ms poll
+  // at worst, and never early by Date.now's whole ms.
+  for (const still of [
+    { what: 'the warm-up’s pause', stand: pauseClock },
+    { what: 'a test’s hold', stand: holdClock },
+  ])
+    it(`asks a cue's Go check less than a ms ahead no sooner than in a whole ms while the clock stands still (${still.what})`, () => {
+      const delays: number[] = [];
+      const runs: (() => void)[] = [];
+      vi.stubGlobal('scheduler', {
+        postTask: (run: () => void, options: { delay: number }) => {
+          delays.push(options.delay);
+          runs.push(run);
+          return Promise.resolve();
+        },
+      });
+      const v = new FakeMedia(8);
+      const timing = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'cued',
+        startedAt: Date.now(),
+        prepareScheduledStart: true,
+        timing: () => timing,
+      });
+      try {
+        vi.advanceTimersByTime(20);
+        still.stand(Date.now());
+        timing.seek = { at: Date.now() + 0.5, toMs: 1000, paused: false };
+        stop.resync();
+        expect(delays, `${still.what}: one check asked`).toHaveLength(1);
+        // The clock still stands: that check finds Go still ahead and asks again.
+        runs[0]?.();
+        expect(delays, `${still.what}: asked again`).toHaveLength(2);
+        for (const delay of delays) {
+          expect(Number.isInteger(delay), `${still.what}: ${String(delay)} ms is a whole ms`).toBe(true);
+          expect(delay, `${still.what}: never 0 ms`).toBeGreaterThanOrEqual(1);
+        }
+        expect(v.playbackRate, `${still.what}: no start before Go`).toBe(0);
+      } finally {
+        still.stand(null);
+        stop();
+      }
+    });
 
   it('arms a cued decoder silently at zero rate before Go and releases it at the shared moment', () => {
     const v = new FakeMedia(8, { startLate: 80 });
