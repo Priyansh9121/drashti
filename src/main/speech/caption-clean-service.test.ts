@@ -7,6 +7,8 @@ import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/capti
 import { cleanPhraseKey } from '../../shared/caption-clean/key';
 import type { CaptionCleanCount } from '../../shared/caption-clean/words';
 import type { Heard, SpeechLanguage } from '../../shared/speech';
+import type { VideoCaptionTrack } from '../../shared/video-captions';
+import { heardProblem } from './speech-hub';
 import { captionCleanHash, CaptionCleanService, type CaptionCleanList } from './caption-clean-service';
 
 /*
@@ -49,6 +51,7 @@ afterEach(() => {
 function setup(o: { words?: CaptionWord[]; testWords?: string[]; hash?: (key: string) => string } = {}) {
   let stored: CaptionWord[] = o.words ?? [];
   const logs: string[] = [];
+  const listChanges: number[] = [];
   const counts: CaptionCleanCount[] = [];
   const picks: { open: string | null; save: string | null } = { open: null, save: null };
   const clean = new CaptionCleanService({
@@ -64,12 +67,13 @@ function setup(o: { words?: CaptionWord[]; testWords?: string[]; hash?: (key: st
     pickImport: () => Promise.resolve(picks.open),
     pickExport: () => Promise.resolve(picks.save),
     changed: (count) => counts.push(count),
+    listChanged: () => listChanges.push(listChanges.length + 1),
     log: {
       info: (m) => logs.push(m),
       warn: (m) => logs.push(m),
     },
   });
-  return { clean, logs, counts, picks, stored: () => stored };
+  return { clean, logs, counts, picks, listChanges, stored: () => stored };
 }
 
 let at = Date.UTC(2026, 10, 26, 12, 0, 0);
@@ -127,6 +131,33 @@ describe('a phrase heard, with bad words left out', () => {
     expect(clean.heard(phrase('नमूना dhumpak', true, 's1', 'gu')).text).toBe('नमूना');
     expect(clean.heard(phrase('નમૂનો ઢુમ્પક', true, 's1', 'gu')).text).toBe('નમૂનો');
     expect(clean.heard(phrase('नमूना ढुंपक', true, 's1', 'sa')).text).toBe('नमूना');
+  });
+
+  it('sends a final phrase left with nothing on as an empty partial of its own id, for the hub to pass on (review F4)', () => {
+    const { clean, logs } = setup();
+    const h = phrase('zqvorn vexmor quill', true, 's4');
+    const out = clean.heard(h);
+    expect(out).toMatchObject({
+      id: 's4',
+      final: false,
+      words: [],
+      text: '',
+      startAt: h.startAt,
+      endAt: h.endAt,
+    });
+    expect(heardProblem(out, { phase: 'listening', language: 'auto' }, new Set())).toBeNull();
+    // Counted as the final phrase it was, and nothing said in the log.
+    expect(clean.view().leftOut).toBe(2);
+    expect(logs).toEqual([]);
+    // A phrase that cannot be checked is not shown either way, final or not.
+    const failing = setup({
+      hash: () => {
+        throw new Error('Placeholder failure');
+      },
+    });
+    const failed = failing.clean.heard(phrase('alpha beta', true, 's5'));
+    expect(failed).toMatchObject({ id: 's5', final: false, words: [], text: '' });
+    expect(heardProblem(failed, { phase: 'listening', language: 'auto' }, new Set())).toBeNull();
   });
 
   it('passes a phrase with nothing to leave out on as it came', () => {
@@ -339,6 +370,82 @@ describe('the words themselves', () => {
     } finally {
       for (const spy of console_) spy.mockRestore();
     }
+  });
+});
+
+describe('Main’s memory (review F3)', () => {
+  it('keeps no caption that had words left out, only its hash', () => {
+    const { clean } = setup();
+    clean.shown(shown(['alpha zqvorn beta']));
+    clean.shown(shown(['alpha zqvorn beta']));
+    clean.heard(phrase('gamma zqvorn', false, 's9'));
+    clean.track(track(['alpha zqvorn']));
+    const held = JSON.stringify(clean, (_key, value: unknown) =>
+      value instanceof Set || value instanceof Map ? [...(value as Iterable<unknown>)] : value,
+    );
+    expect(held).not.toMatch(/zqvorn/u);
+    expect(clean.view().leftOut).toBe(1);
+  });
+});
+
+/** A video's caption track (a file beside it), as the library keeps it. */
+function track(texts: string[]): VideoCaptionTrack {
+  return {
+    id: 'placeholder-track',
+    language: 'en',
+    automatic: true,
+    name: 'English (automatic)',
+    cues: texts.map((text, i) => ({ startMs: i * 1_000, endMs: i * 1_000 + 900, text })),
+  };
+}
+
+describe('a video’s caption file, as the screens show it (the owner: "Yes, clean them too")', () => {
+  it('leaves the words out of each cue, keeps its lines and times, and drops a cue left with nothing', () => {
+    const { clean, counts } = setup();
+    const t = track([
+      'alpha zqvorn beta',
+      'zqvorn',
+      'gamma\nvexmor quill delta',
+      'नमूना ढ़ुम्पक।',
+      'epsilon',
+    ]);
+    const out = clean.track(t);
+    expect(out?.cues).toEqual([
+      { startMs: 0, endMs: 900, text: 'alpha beta' },
+      { startMs: 2_000, endMs: 2_900, text: 'gamma\ndelta' },
+      { startMs: 3_000, endMs: 3_900, text: 'नमूना।' },
+      { startMs: 4_000, endMs: 4_900, text: 'epsilon' },
+    ]);
+    expect(out?.cues[3]).toBe(t.cues[4]);
+    expect({ ...out, cues: [] }).toEqual({ ...t, cues: [] });
+    // Never counted: the count is live captions'.
+    expect(clean.view().leftOut).toBe(0);
+    expect(counts).toEqual([]);
+    expect(clean.track(null)).toBeNull();
+  });
+
+  it('gives the same track back while the track and the lists are unchanged, a new one after the list changes', () => {
+    const { clean, listChanges } = setup();
+    const t = track(['alpha qelmar beta', 'gamma']);
+    const clean1 = clean.track(t);
+    expect(clean.track(t)).toBe(clean1);
+    expect(clean1).toBe(t);
+    clean.set([{ language: 'en', word: 'Qelmar' }]);
+    expect(listChanges).toEqual([1]);
+    const clean2 = clean.track(t);
+    expect(clean2).not.toBe(clean1);
+    expect(clean2?.cues.map((c) => c.text)).toEqual(['alpha beta', 'gamma']);
+    expect(clean.track(t)).toBe(clean2);
+  });
+
+  it('shows no cue that cannot be checked', () => {
+    const { clean, logs } = setup({
+      hash: () => {
+        throw new Error('Placeholder failure');
+      },
+    });
+    expect(clean.track(track(['alpha', 'beta']))?.cues).toEqual([]);
+    expect(logs).toHaveLength(1);
   });
 });
 

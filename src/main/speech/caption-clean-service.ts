@@ -23,6 +23,7 @@ import {
   type CaptionCleanView,
 } from '../../shared/caption-clean/words';
 import type { Heard, SpeechLanguage } from '../../shared/speech';
+import type { VideoCaptionTrack } from '../../shared/video-captions';
 import { plural } from '../../shared/text';
 
 /*
@@ -67,6 +68,8 @@ export interface CaptionCleanDeps {
   pickExport: (defaultName: string) => Promise<string | null>;
   /** The count changed: the operator window is told (a number, never a word). */
   changed: (count: CaptionCleanCount) => void;
+  /** The admin's list changed (red first: not called yet). */
+  listChanged?: () => void;
   log: { info(message: string): void; warn(message: string): void };
 }
 
@@ -168,6 +171,11 @@ export class CaptionCleanService {
       this.failed();
       return null;
     }
+  }
+
+  /** Red first (QA24-CAPCLEAN-1, the owner's "Yes, clean them too"): not written yet. */
+  track(track: VideoCaptionTrack | null): VideoCaptionTrack | null {
+    return track;
   }
 
   /** Captions turned on or off on this computer: from nothing again each time they are turned on. */

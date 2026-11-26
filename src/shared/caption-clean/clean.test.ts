@@ -91,6 +91,20 @@ describe('a caption with bad words left out', () => {
     expect(clean('gamma flimbat/zqvorn')).toEqual({ text: 'gamma', left: 1 });
   });
 
+  it('leaves out, whole, a word joined to a listed one by a mark with no space after it (review F1)', () => {
+    expect(clean('alpha zqvorn,beta gamma')).toEqual({ text: 'alpha gamma', left: 1 });
+    expect(clean('alpha beta.zqvorn')).toEqual({ text: 'alpha', left: 1 });
+    expect(clean('alpha zqvorn?!beta')).toEqual({ text: 'alpha', left: 1 });
+    expect(clean('alpha zqvorn;beta:gamma')).toEqual({ text: 'alpha', left: 1 });
+    expect(clean('नमूना ढ़ुम्पक।नमूना')).toEqual({ text: 'नमूना', left: 1 });
+    expect(clean('नमूना नमूना॥ढ़ुम्पक')).toEqual({ text: 'नमूना', left: 1 });
+    // Clean words joined so are kept as they are.
+    expect(clean('alpha,beta e.g. 3.5 नमूना।नमूना')).toEqual({
+      text: 'alpha,beta e.g. 3.5 नमूना।नमूना',
+      left: 0,
+    });
+  });
+
   it('knows a Latin spelling as a word of its own', () => {
     expect(clean('alpha dhumpak beta')).toEqual({ text: 'alpha beta', left: 1 });
     expect(clean('Dhumpak!')).toEqual({ text: '', left: 1 });

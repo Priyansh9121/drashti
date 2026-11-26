@@ -254,6 +254,80 @@ describe('the words-left-out seam on every caption path', () => {
     coordinator.stop();
   });
 
+  it('a phrase left out whole, on today’s captions: what showed of it goes, nothing reaches the draft, nothing reads as a fault (review F4)', async () => {
+    const t = captions({ language: 'en' });
+    t.service.start();
+    await t.service.setOn(true);
+    t.say('alpha beta', true, 's1');
+    vi.advanceTimersByTime(400);
+    // The engine's first try at the next phrase, then the phrase as it settles: nothing but listed words.
+    t.say('gamma', false, 's2');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['alpha beta', 'gamma']);
+    t.say('zqvorn', true, 's2');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['alpha beta']);
+    expect(t.finals.map((f) => f.text)).toEqual(['alpha beta']);
+    expect(t.logs.join('\n')).not.toMatch(/not passed on/u);
+    // The next phrase comes as ever.
+    t.say('delta', true, 's3');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['delta']);
+    t.service.close();
+  });
+
+  it('a phrase left out whole, on caption AI: what showed of it comes off the screens (review F4)', async () => {
+    const t = captions({ language: 'gu', ai: true });
+    t.service.start();
+    await t.service.setOn(true);
+    t.say('નમૂનો', false, 's1');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['નમૂનો']);
+    t.say('ઢુમ્પક', true, 's1');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)).toBeNull();
+    expect(t.finals).toEqual([]);
+    expect(t.logs.join('\n')).not.toMatch(/not passed on/u);
+    t.say('બીજો', true, 's2');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['બીજો']);
+    t.service.close();
+  });
+
+  it('the coordinator takes a phrase being heard off the screens when it is withdrawn, never a settled one', async () => {
+    const s = seam();
+    const coordinator = new CaptionCoordinator({
+      clock: () => Date.now(),
+      settings: () => DEFAULT_CAPTION_SETTINGS,
+      show: s.showCaptions,
+      changed: () => undefined,
+    });
+    const sessionId = coordinator.start();
+    const clause = (phraseId: string, sourceText: string, status: 'provisional' | 'settled') => ({
+      sessionId,
+      phraseId,
+      revision: 1,
+      sourceLanguage: 'en' as const,
+      targetLanguage: 'en' as const,
+      sourceText,
+      startAt: Date.now() - 1_000,
+      endAt: Date.now(),
+      status,
+    });
+    coordinator.accept(clause('s1', 'A blue box', 'settled'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(coordinator.withdraw('s1')).toBe(false);
+    expect(s.screens.at(-1)?.lines).toEqual(['A blue box']);
+    coordinator.accept(clause('s2', 'A green', 'provisional'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(s.screens.at(-1)?.lines).toEqual(['A green']);
+    expect(coordinator.withdraw('s3')).toBe(false);
+    expect(coordinator.withdraw('s2')).toBe(true);
+    expect(s.screens.at(-1)).toBeNull();
+    expect(coordinator.view()).toMatchObject({ current: null, previous: { phraseId: 's1' } });
+    coordinator.stop();
+  });
+
   it('puts no word left out into any log line', async () => {
     const t = captions({ language: 'en' });
     t.service.start();

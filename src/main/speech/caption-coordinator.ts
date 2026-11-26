@@ -264,6 +264,12 @@ export class CaptionCoordinator {
     return true;
   }
 
+  /** Red first (QA24-CAPCLEAN-1, review F4): not written yet. */
+  withdraw(phraseId: string): boolean {
+    void phraseId;
+    return false;
+  }
+
   /** The eventual L8 consumer calls this before revoking work; no show action waits for cancellation. */
   setTranslationHeld(held: boolean): void {
     if (this.held === held) {
