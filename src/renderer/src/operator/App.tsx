@@ -1,3 +1,4 @@
+import { ChatPopup } from '../chat/ChatPop';
 import { EditVideoDialog } from '../library/EditVideoDialog';
 import { CombineVideosDialog } from '../library/CombineVideosDialog';
 import { SoundPictureDialog } from '../library/SoundPictureDialog';
@@ -501,6 +502,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
       )}
       <NoticeArea />
       <LinkDialog />
+      {/* A chat message's popup (alpha.24): over the middle column's foot, so above the quick bar and the bar of clears
+      together, over none of their buttons; without the columns (the practice show), just above them. */}
+      <ChatPopup />
       {/* The quick bar (Session 55, Part 8), just above the bar of clears: hidden when empty. */}
       <QuickBar platform={platform} run={run} />
       <LayerBar platform={platform} run={run} />
