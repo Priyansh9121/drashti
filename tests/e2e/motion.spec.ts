@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { settled } from './a11y';
 import {
   chooseMenuItem,
   closeLibrary,
@@ -349,9 +350,12 @@ async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> 
   await openLibrary(win);
   await win.getByTestId('library-tab-media').click();
   await still(win, 'a tab chosen');
-  // A section under LIVE opening (Audio, a group as More tools was until alpha.22; folded at the start).
+  // A section under LIVE opening (Audio, a group as More tools was until alpha.22; folded at the start), and folding
+  // again (alpha.24: no copy of it is drawn).
   await win.getByTestId('group-audio-toggle').click();
   await still(win, 'a panel opening');
+  await win.getByTestId('group-audio-toggle').click();
+  await still(win, 'a panel folding');
 }
 
 test('with the computer set to reduce motion, nothing in the window moves at all', async () => {
@@ -384,6 +388,12 @@ test('with the computer set to reduce motion, Lively moves nothing either (Sessi
   await nothingMoves(app, win);
   await app.close();
 });
+
+/** Whether Chromium draws without a graphics chip, once it has said (data-chip: unknown until then). */
+async function chipless(win: Page): Promise<boolean> {
+  await expect(win.locator('html')).toHaveAttribute('data-chip', /^(yes|no)$/u);
+  return (await win.locator('html').getAttribute('data-chip')) === 'no';
+}
 
 /** Every animation running in the window now that is not a leaving copy's: its target and length. */
 const running = (win: Page) =>
@@ -519,11 +529,17 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   await win.getByTestId('library-tab-media').click();
   expect((await started).some((a) => a.what === 'underline' && a.ms === 240)).toBe(true);
 
-  // A folded panel's insides arrive as it opens (Audio: every section under LIVE is folded at the start, alpha.22).
+  // A folded panel's insides arrive as it opens (Audio: every section under LIVE is folded at the start, alpha.22),
+  // unrolling (alpha.24); held as a live look's touch is, so without a graphics chip (CI's Windows) simply there.
+  const noChip = await chipless(win);
   await win.getByTestId('group-audio-toggle').click();
-  const body = win.locator('[data-lively="open"]').first();
-  await expect(body).toBeVisible();
-  expect(await body.evaluate((el) => getComputedStyle(el).animationName)).toBe('lively-open');
+  await expect(win.getByTestId('music-panel')).toBeVisible();
+  if (noChip) await expect(win.locator('[data-lively="open"]')).toHaveCount(0);
+  else {
+    const body = win.locator('[data-lively="open"]').first();
+    await expect(body).toBeVisible();
+    expect(await body.evaluate((el) => getComputedStyle(el).animationName)).toBe('lively-open');
+  }
 
   // A button answers a press; a show control never does.
   const transitions = (sel: string) =>
@@ -645,4 +661,248 @@ test('Lively never moves a show control or the live picture, starts nothing as t
   await expect(next.locator('html')).toHaveAttribute('data-opened', '');
   expect(await running(next)).toEqual([]);
   await again.app.close();
+});
+
+/*
+ * alpha.24 (uimotion; the owner's QA24-UI-3 "a more interactive and more animated, more transitions"): a section under
+ * LIVE folds and unfolds as its heading is pressed. Calm fades its insides in and a copy of them out, every box in its
+ * place in the frame the press lands (so nothing that measures the window catches a fold half-open); Lively unrolls
+ * them as what is under it glides; and, as a live look's touch, none of it without a graphics chip, with Off or with
+ * reduced motion, or while the show changes. Placeholder content only.
+ */
+
+/** What a press sets moving in the column from the click's arrival, for `ms`: each glide's length, each copy's kind. */
+const watchFold = (win: Page, ms: number) =>
+  win.evaluate(
+    (wait) =>
+      new Promise<{ glides: number[]; copies: string[] }>((resolve) => {
+        const glides: number[] = [];
+        const copies: string[] = [];
+        const seen = new Set<Animation>();
+        const look = () => {
+          for (const a of document.getAnimations()) {
+            if (seen.has(a) || a instanceof CSSAnimation || a instanceof CSSTransition) continue;
+            seen.add(a);
+            const effect = a.effect as KeyframeEffect | null;
+            if (!effect?.target?.closest('[data-testid="live-rest"]')) continue;
+            if (effect.getKeyframes().some((k) => String(k['transform'] ?? '').startsWith('translateY')))
+              glides.push(Number(effect.getComputedTiming().duration ?? 0));
+          }
+        };
+        const hosts = new MutationObserver((records) => {
+          for (const r of records)
+            for (const n of r.addedNodes)
+              if (n instanceof HTMLElement && n.dataset['leavingHost']) copies.push(n.dataset['leavingHost']);
+        });
+        window.addEventListener(
+          'click',
+          () => {
+            hosts.observe(document.body, { childList: true });
+            const changes = new MutationObserver(look);
+            changes.observe(document, { subtree: true, childList: true, attributes: true });
+            let frame = 0;
+            const each = () => {
+              look();
+              frame = requestAnimationFrame(each);
+            };
+            frame = requestAnimationFrame(each);
+            setTimeout(() => {
+              hosts.disconnect();
+              changes.disconnect();
+              cancelAnimationFrame(frame);
+              resolve({ glides, copies });
+            }, wait);
+          },
+          { capture: true, once: true },
+        );
+      }),
+    ms,
+  );
+
+/*
+ * Show a Window: its insides are words and a button, the same however long it has been open (Messages' list comes a
+ * moment after it opens, and would move what is under it then).
+ */
+const SECTION = 'show-a-window';
+
+/** The top of the section under Show a Window (its heading's button), now. */
+const belowTop = (win: Page) =>
+  win
+    .getByTestId('group-show-a-stream-link-toggle')
+    .evaluate((el) => Math.round(el.getBoundingClientRect().top));
+
+/** The opened insides' arrival: its data-fold, and its animation's name and length. */
+const arrival = (win: Page) =>
+  win.getByTestId(`section-${SECTION}`).evaluate((section) => {
+    const body = section.querySelector<HTMLElement>('[id$="-body"]');
+    if (!body) return 'no body';
+    const st = getComputedStyle(body);
+    return `${body.dataset['fold'] ?? 'none'} ${body.dataset['lively'] ?? 'none'} ${st.animationName} ${st.animationDuration}`;
+  });
+
+/** Press Show a Window's heading, and what it set moving; then everything settled. */
+async function pressFold(win: Page): Promise<{ glides: number[]; copies: string[]; topAtOnce: number }> {
+  const watch = watchFold(win, 800);
+  await win.getByTestId(`group-${SECTION}-toggle`).click();
+  const topAtOnce = await belowTop(win);
+  const moved = await watch;
+  await settled(win);
+  return { ...moved, topAtOnce };
+}
+
+test('a section under LIVE: Calm fades its insides in and a copy of them out, every box in place at once; Lively unrolls it as what is under it glides; Off moves nothing (alpha.24)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  const noChip = await chipless(win);
+  const toggle = win.getByTestId(`group-${SECTION}-toggle`);
+  const chevron = toggle.locator('[data-fold-chevron]');
+  await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+
+  // Calm, opening: the insides fade in where they go; the section under it is in its new place at once.
+  let pressed = await pressFold(win);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(pressed.topAtOnce, 'the section under it, in its place at once').toBe(await belowTop(win));
+  expect(pressed.glides).toEqual([]);
+  expect(await arrival(win)).toBe(noChip ? 'none none none 0s' : 'calm none fade-in 0.2s');
+  // The chevron turned down (turning, with a chip).
+  expect(await chevron.evaluate((el) => getComputedStyle(el).rotate)).toBe('90deg');
+  expect(await chevron.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe(
+    noChip ? '0s' : '0.2s',
+  );
+  // Calm, folding: a copy of the insides fades where they were (unseen: no one can reach it), the rest at once.
+  pressed = await pressFold(win);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(win.getByTestId(SECTION)).toHaveCount(0);
+  expect(pressed.topAtOnce).toBe(await belowTop(win));
+  expect(pressed.glides).toEqual([]);
+  expect(pressed.copies).toEqual(noChip ? [] : ['fold']);
+  await expect(win.locator('[data-leaving-host]')).toHaveCount(0);
+  expect(await chevron.evaluate((el) => getComputedStyle(el).rotate)).toBe('none');
+
+  // Lively: the insides unroll as the sections under it glide down from where they were, in step; folding, the copy
+  // rolls up as they glide back.
+  await interfaceMotion(win, 'lively');
+  await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+  pressed = await pressFold(win);
+  expect(await arrival(win)).toBe(noChip ? 'none none none 0s' : 'lively open lively-open 0.25s');
+  if (noChip) expect(pressed.glides).toEqual([]);
+  else {
+    expect(pressed.glides.length).toBeGreaterThan(0);
+    expect(new Set(pressed.glides)).toEqual(new Set([250]));
+  }
+  pressed = await pressFold(win);
+  expect(pressed.copies).toEqual(noChip ? [] : ['fold-lively']);
+  if (noChip) expect(pressed.glides).toEqual([]);
+  else expect(new Set(pressed.glides)).toEqual(new Set([187.5]));
+  // Off: nothing moves, either way.
+  await interfaceMotion(win, 'off');
+  for (const expanded of ['true', 'false']) {
+    pressed = await pressFold(win);
+    await expect(toggle).toHaveAttribute('aria-expanded', expanded);
+    expect(pressed).toEqual({ glides: [], copies: [], topAtOnce: await belowTop(win) });
+  }
+  await app.close();
+});
+
+test('without a graphics chip a fold moves nothing, in Calm or Lively (alpha.24; the show changing: ui/fold.test.ts)', async () => {
+  test.setTimeout(120_000);
+  // Without a chip (as CI's Windows always is): Calm and Lively alike.
+  const chipOff = await launchApp({ DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software' });
+  const win = await operatorPage(chipOff.app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  expect(await chipless(win)).toBe(true);
+  await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+  for (const motion of ['calm', 'lively'] as const) {
+    await interfaceMotion(win, motion);
+    for (let i = 0; i < 2; i++) {
+      const pressed = await pressFold(win);
+      expect(pressed, motion).toEqual({ glides: [], copies: [], topAtOnce: await belowTop(win) });
+      expect(await arrival(win)).toMatch(/^(none none none 0s|no body)$/u);
+    }
+  }
+  await chipOff.app.close();
+});
+
+test('a new install starts in Lively and keeps it; a computer that had Drashti before starts as it was, Calm until chosen (alpha.24)', async () => {
+  test.setTimeout(120_000);
+  // An installed Drashti's own new install (the other specs start in Calm: DRASHTI_TEST_MOTION_AT_START, helpers.ts).
+  const asInstalled = { DRASHTI_TEST_MOTION_AT_START: '' };
+  const { app, userData } = await launchApp(asInstalled);
+  const win = await operatorPage(app);
+  await expect(win.locator('html')).toHaveAttribute('data-interface-motion', 'lively');
+  await operatorReady(win);
+  await app.close();
+  const again = await relaunchApp(userData, asInstalled);
+  const next = await operatorPage(again.app);
+  await expect(next.locator('html')).toHaveAttribute('data-interface-motion', 'lively');
+  await operatorReady(next);
+  await again.app.close();
+
+  // Started before alpha.24 (a data folder Drashti has run in, nothing chosen in the Appearance window): Calm.
+  const before = await launchApp();
+  const old = await operatorPage(before.app);
+  await expect(old.locator('html')).toHaveAttribute('data-interface-motion', 'calm');
+  await operatorReady(old);
+  await before.app.close();
+  const updated = await relaunchApp(before.userData, asInstalled);
+  const now = await operatorPage(updated.app);
+  await expect(now.locator('html')).toHaveAttribute('data-interface-motion', 'calm');
+  await operatorReady(now);
+  await updated.app.close();
+});
+
+test('the controls that are not show controls answer: the focus ring eases in at its full width, a press dims, Lively lifts one pointed at; a show control never does (alpha.24)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  const noChip = await chipless(win);
+  const style = (sel: string, ...names: string[]) =>
+    win
+      .locator(sel)
+      .first()
+      .evaluate((el, n) => n.map((name) => getComputedStyle(el).getPropertyValue(name)).join(' | '), names);
+  // A button that is not a show control: its ring eases in (with a chip), always 2 px wide when it shows.
+  const network = '[data-testid="open-network"]';
+  expect(await style(network, 'transition-property')).toContain(noChip ? 'color' : 'outline-offset');
+  await win.locator(network).focus();
+  await win.keyboard.press('Shift+Tab');
+  await win.keyboard.press('Tab');
+  await expect(win.locator(network)).toBeFocused();
+  expect(await style(network, 'outline-style', 'outline-width')).toBe('solid | 2px');
+  // A press dims it, held (the pointer let go elsewhere, so nothing is pressed).
+  await win.locator(network).hover();
+  await win.mouse.down();
+  // Polled: with a chip the dimming takes --dur-hover.
+  await expect.poll(() => style(network, 'filter')).toBe(noChip ? 'none' : 'brightness(0.92)');
+  await win.mouse.move(2, 2);
+  await win.mouse.up();
+  // Lively: pointed at, it lifts a pixel (with a chip).
+  await interfaceMotion(win, 'lively');
+  await win.locator(network).hover();
+  await expect.poll(() => style(network, 'translate')).toBe(noChip ? 'none' : '0px -1px');
+  await win.mouse.move(2, 2);
+  // A show control, pointed at: no transition, no lift, no ring waiting.
+  await win.getByTestId('show-next').hover();
+  expect(await style('[data-testid="show-next"]', 'transition-property', 'translate', 'filter')).toBe(
+    'none | none | none',
+  );
+  // The ring of a tab and of a menu's choice eases in too (with a chip).
+  await openLibrary(win);
+  expect(await style('[role="tab"]', 'transition-property')).toContain(noChip ? 'color' : 'outline-offset');
+  await win.getByTestId('presentation-list').getByRole('button').first().click({ button: 'right' });
+  await expect(win.getByRole('menu')).toBeVisible();
+  expect(await style('[role="menu"] [role^="menuitem"]', 'transition-property')).toContain(
+    noChip ? 'color' : 'outline-offset',
+  );
+  await win.keyboard.press('Escape');
+  await app.close();
 });
