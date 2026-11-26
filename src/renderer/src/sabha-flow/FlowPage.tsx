@@ -40,8 +40,9 @@ export function zoomPosition(
   before: number,
   after: number,
   padding = 0,
+  afterAnchor = anchor,
 ): number {
-  return Math.max(0, (scroll + anchor - padding) * (after / before) + padding - anchor);
+  return Math.max(0, (scroll + anchor - padding) * (after / before) + padding - afterAnchor);
 }
 
 type PageImage = { url: string } | { url: null };
@@ -96,30 +97,53 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
   const [error, setError] = useState(false);
   const [dragging, setDragging] = useState(false);
   const currentZoom = useRef(FIT);
-  const pending = useRef<{ left: number; top: number } | null>(null);
+  const renderedZoom = useRef(FIT);
+  const pending = useRef<{
+    left: number;
+    top: number;
+    before: number;
+    x: number;
+    y: number;
+    paddingX: number;
+    paddingY: number;
+    point?: { x: number; y: number };
+  } | null>(null);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
   const changeZoom = useCallback((next: number, point?: { x: number; y: number }) => {
     const el = box.current;
-    const before = currentZoom.current;
+    const before = renderedZoom.current;
     if (el && before !== next) {
       const rect = el.getBoundingClientRect();
       const x = point ? point.x - rect.left - el.clientLeft : el.clientWidth / 2;
       const y = point ? point.y - rect.top - el.clientTop : el.clientHeight / 2;
       const style = getComputedStyle(el);
       pending.current = {
-        left: zoomPosition(el.scrollLeft, x, before, next, parseFloat(style.paddingLeft)),
-        top: zoomPosition(el.scrollTop, y, before, next, parseFloat(style.paddingTop)),
+        left: el.scrollLeft,
+        top: el.scrollTop,
+        before,
+        x,
+        y,
+        paddingX: parseFloat(style.paddingLeft),
+        paddingY: parseFloat(style.paddingTop),
+        point,
       };
-    }
+    } else pending.current = null;
     currentZoom.current = next;
     setZoom(next);
     setDraft(`${String(Math.round(next * 100))}%`);
     setError(false);
   }, []);
   useLayoutEffect(() => {
-    if (box.current && pending.current) {
-      box.current.scrollLeft = pending.current.left;
-      box.current.scrollTop = pending.current.top;
+    renderedZoom.current = zoom;
+    const el = box.current;
+    const move = pending.current;
+    if (el && move) {
+      // Scrollbars (and the error line going away) can change the viewport's centre during the layout.
+      const rect = el.getBoundingClientRect();
+      const x = move.point ? move.point.x - rect.left - el.clientLeft : el.clientWidth / 2;
+      const y = move.point ? move.point.y - rect.top - el.clientTop : el.clientHeight / 2;
+      el.scrollLeft = zoomPosition(move.left, move.x, move.before, zoom, move.paddingX, x);
+      el.scrollTop = zoomPosition(move.top, move.y, move.before, zoom, move.paddingY, y);
       pending.current = null;
     }
   }, [zoom]);
