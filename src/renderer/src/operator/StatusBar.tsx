@@ -315,9 +315,8 @@ export function StatusBar({
         <TodayStatus onOpen={onOpenCalendar} />
         {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button.
             Help (alpha.24): the one switch for every ? and the buttons' keys, where the bar's ? was, in both modes; the
-            bar's own ? beside it while Help is on (Pro Mode's). */}
-        <HelpSwitch platform={info?.platform ?? 'darwin'} />
-        {help.button}
+            bar's own ? after it while Help is on (Pro Mode's), from 1280 px wide. */}
+        <HelpSwitch platform={info?.platform ?? 'darwin'} ask={help.button} />
         <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
           <LinkConversionStatus />
           <ImportStatus />

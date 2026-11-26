@@ -47,7 +47,7 @@ describe('the status bar’s Help switch', () => {
     const ask = createElement('button', { 'data-testid': 'what-is-this-statusbar' }, '?');
     const on = await toggle('pro', true, ask);
     expect(on).toMatch(
-      /Help<\/span><\/button><\/span><span class="max-\[1280px\]:hidden"><button data-testid="what-is-this-statusbar">\?<\/button><\/span>$/u,
+      /Help<\/span><\/button><\/span><span class="flex max-\[1280px\]:hidden"><button data-testid="what-is-this-statusbar">\?<\/button><\/span>$/u,
     );
     // None (Help off, or Simple Mode): nothing after the switch.
     expect(await toggle('pro', false, null)).toMatch(/Help<\/span><\/button><\/span>$/u);

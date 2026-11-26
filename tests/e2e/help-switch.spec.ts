@@ -73,6 +73,19 @@ test('Pro Mode: Help off at a first start: no ?, the keys hidden but read out, A
   await expect(win.getByTestId('what-is-this-live')).toBeVisible();
   await expect(win.getByTestId('what-is-this-statusbar')).toBeVisible();
   await expect(win.getByTestId('what-is-this-controls')).toBeVisible();
+  // In CI's 1024 × 645 the switch is its round ? alone, in the ?'s own 24 px, and the bar's own ? goes (as the
+  // header's do below 1280 px), so the bar holds no more than before: nothing runs past the window.
+  await win.setViewportSize({ width: 1024, height: 645 });
+  await expect(win.getByTestId('what-is-this-statusbar')).toBeHidden();
+  await expect.poll(async () => (await help.boundingBox())?.width).toBe(24);
+  await expect(help).toHaveAccessibleName('Help');
+  await expect
+    .poll(() => win.evaluate(() => document.documentElement.scrollWidth <= innerWidth), {
+      message: 'the page does not scroll sideways at 1024 × 645',
+    })
+    .toBe(true);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await expect(win.getByTestId('what-is-this-statusbar')).toBeVisible();
   await expect.poll(() => seen(nextKey)).toBe(true);
   await expect.poll(() => seen(clearAllKey)).toBe(true);
   await expect(next).toHaveAccessibleName(/^Next\s*→$/u);

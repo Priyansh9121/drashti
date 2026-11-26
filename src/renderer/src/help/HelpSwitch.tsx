@@ -1,5 +1,6 @@
 import './help.css';
 import { useLayoutEffect } from 'react';
+import type { ReactNode } from 'react';
 import { useMode } from '../operator/mode-store';
 import { cx } from '../ui/cx';
 import { Tooltip } from '../ui/Tooltip';
@@ -27,32 +28,45 @@ export function helpTip(platform: string, simple: boolean): string {
  */
 const NARROW = 'max-[1280px]:w-6 max-[1280px]:justify-center max-[1280px]:px-0';
 
-export function HelpSwitch({ platform }: { platform: string }) {
+export function HelpSwitch({
+  platform,
+  ask = null,
+}: {
+  platform: string;
+  /**
+   * The status bar's own ? (useWhatIsThis's, null while Help is off), after the switch: gone below 1280 px, as the
+   * header's are, so a narrow bar holds no more than it did with its ? alone.
+   */
+  ask?: ReactNode;
+}) {
   const on = useHelp((s) => s.on);
   const simple = useMode((s) => s.mode === 'simple');
   // Before the window's first drawing: a key never shows and then goes as it opens.
   useLayoutEffect(() => connectKeyHints(window), []);
   return (
-    <Tooltip content={helpTip(platform, simple)}>
-      <button
-        type="button"
-        aria-pressed={on}
-        data-testid="help-toggle"
-        onClick={toggleHelp}
-        // 24 px tall (WCAG 2.5.8); on, it stands out as a pressed secondary does, in the bar's own colours.
-        className={cx(
-          'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-sm border border-transparent px-1.5 font-medium text-muted hover:text-fg aria-pressed:border-field aria-pressed:bg-panel-2 aria-pressed:text-fg',
-          NARROW,
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-current text-[10px] leading-none font-bold"
+    <>
+      <Tooltip content={helpTip(platform, simple)}>
+        <button
+          type="button"
+          aria-pressed={on}
+          data-testid="help-toggle"
+          onClick={toggleHelp}
+          // 24 px tall (WCAG 2.5.8); on, it stands out as a pressed secondary does, in the bar's own colours.
+          className={cx(
+            'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-sm border border-transparent px-1.5 font-medium text-muted hover:text-fg aria-pressed:border-field aria-pressed:bg-panel-2 aria-pressed:text-fg',
+            NARROW,
+          )}
         >
-          ?
-        </span>
-        <span className="max-[1280px]:sr-only">Help</span>
-      </button>
-    </Tooltip>
+          <span
+            aria-hidden="true"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-current text-[10px] leading-none font-bold"
+          >
+            ?
+          </span>
+          <span className="max-[1280px]:sr-only">Help</span>
+        </button>
+      </Tooltip>
+      {ask !== null && <span className="flex max-[1280px]:hidden">{ask}</span>}
+    </>
   );
 }
