@@ -507,6 +507,7 @@ import { FanoutTransport, type EngineTransport } from '../shared/engine/transpor
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
 import { CaptionCoordinator } from './speech/caption-coordinator';
+import { LiveTranslation } from './speech/live-translation';
 import { ownModelCaptionAi } from './speech/caption-routes';
 import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
@@ -4385,6 +4386,8 @@ function start(): void {
       : (whisperProblem(process.platform, process.getSystemVersion()) ??
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
+  // File › Caption Language's tick and whether translations can be chosen (alpha.24).
+  let captionLanguageTicked = '';
   const captionSettingsRepo = new CaptionSettingsRepo(opened.db);
   // The model today's engine loads, and the one QWC-1's sizing judges: one helper for both (whisper-context.ts).
   // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
@@ -4417,7 +4420,8 @@ function start(): void {
             captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
           // The tuned language models are decoded without timestamps (alpha.22).
           timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
-          timing: () => captions.timing(),
+          // While translating, phrases are cut at 8 s (alpha.24): the engines hear with the live timing.
+          timing: () => captions.liveTiming(),
           // Captions that have shown a phrase whole are never stopped as too slow (cap-review-threads MUST-1b).
           keptUp: () => captions.keptUp(),
           sound: { open: (chunk) => streaming.listenSound(chunk) },
@@ -4458,7 +4462,7 @@ function start(): void {
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
             sizedContext: () => sizedUses.has(use),
-            timing: () => captions.timing(),
+            timing: () => captions.liveTiming(),
             keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
@@ -4488,14 +4492,54 @@ function start(): void {
     admission: 'below-show',
     // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
     threads: 2,
-    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review).
-    timing: () => captions.timing(),
+    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review); 8 s
+    // phrases at most while translating (alpha.24).
+    timing: () => captions.liveTiming(),
     sound: { open: (chunk) => streaming.listenSound(chunk) },
     log,
   });
   // Caption AI (alpha.22, cap-integration): a speaker's language with a model of its own is heard through the
   // captions coordinator (Codex x90): one clause at a time in at most two lines, provisional while heard, settled
   // when final. As heard, Sanskrit and a language without its own model keep today's captions exactly.
+  // Translated live captions (alpha.24, QA24-CAPLANG-2, the owner's 2a-2f, all A): "Captions in" translates each
+  // settled phrase on this computer with the pack's IndicTrans2 through an engine of its own (greedy, two threads,
+  // below the show, the pair's model kept while captions run). Going on air never stops it: Prepare translations'
+  // engine (further down) is another, and still waits while on air. Tests only (never packaged):
+  // DRASHTI_TEST_TRANSLATE=1 stands in with x83's marked placeholder, so CI drives it without a model pack.
+  const liveTranslateProgram = findTranslateHelper({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const liveTranslationEngine = new TranslationEngine({
+    program: () => liveTranslateProgram,
+    models: modelPacks,
+    log,
+    beam: 1,
+    // Let go when captions stop (LiveTranslation.end), never while they run.
+    idleMs: 24 * 60 * 60_000,
+  });
+  const liveStandIn = !packaged() && sw('DRASHTI_TEST_TRANSLATE') === '1' ? new StandInTranslator() : null;
+  const liveTranslation = new LiveTranslation({
+    engine: liveStandIn
+      ? {
+          installed: () => true,
+          available: (from, to) => from !== to,
+          unknownModel: () => false,
+          prepare: () => Promise.resolve(),
+          translate: (source, from, to) => liveStandIn.translate(source, from, to),
+          stop: () => undefined,
+        }
+      : liveTranslationEngine,
+    // The spoken-times seam: a24-captime's normalizeSpokenTimes once it is merged; the speaker's words until then.
+    spokenTimes: (text) => text,
+    log,
+    changed: () => {
+      captions.translationChanged();
+    },
+  });
   const captionCoordinator = new CaptionCoordinator({
     settings: () => parseCaptionSettings(captionSettingsRepo.get()),
     show: (shown) => {
@@ -4503,6 +4547,18 @@ function start(): void {
     },
     // The operator's review panel (Codex x90's) shows caption AI's phrase while it runs, for a correction.
     changed: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
+    // alpha.24: the translation slot, filled; the stage keeps the speaker's words; long translations as pages.
+    translation: liveTranslation,
+    output: 'translation',
+    stage: true,
+    pages: true,
+    mayTranslate: () => liveTranslation.may(),
+    onSkip: (why) => {
+      liveTranslation.skipped(why);
+    },
+    onTranslationShown: () => {
+      liveTranslation.shown();
+    },
   });
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
@@ -4546,14 +4602,18 @@ function start(): void {
       videoCaptionBand = view.settings;
       engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
-      // File › Speaker's Language ticks the language as it is (alpha.22).
-      if (view.settings.language !== speakerLanguageTicked) {
+      // File › Speaker's Language ticks the language as it is (alpha.22), and File › Caption Language its choice and
+      // whether a translation can be chosen here (alpha.24).
+      const captionLanguage = `${view.settings.captionLanguage ?? 'same'} ${String(view.translation?.offered ?? false)}`;
+      if (view.settings.language !== speakerLanguageTicked || captionLanguage !== captionLanguageTicked) {
         speakerLanguageTicked = view.settings.language;
+        captionLanguageTicked = captionLanguage;
         captionsMenuChanged();
       }
     },
     languageModels,
     log,
+    translation: liveTranslation,
   });
   captionsStreamUseChanged = (inUse) => captions.setStreamInUse(inUse);
   captions.start();
@@ -11002,6 +11062,15 @@ function start(): void {
       language: captions.view().settings.language,
       choose: (language) => {
         if (mode === 'pro') captions.setSettings({ ...captions.view().settings, language });
+        rebuildMenu();
+      },
+    },
+    // File › Caption Language (alpha.24, QA24-CAPLANG-2): "Captions in", a translation only where it is offered here.
+    captionLanguage: {
+      target: captions.view().settings.captionLanguage ?? 'same',
+      offered: captions.view().translation?.offered ?? false,
+      choose: (target) => {
+        if (mode === 'pro') captions.setSettings({ ...captions.view().settings, captionLanguage: target });
         rebuildMenu();
       },
     },
