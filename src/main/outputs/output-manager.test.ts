@@ -629,6 +629,22 @@ describe('OutputManager after a refused quit', () => {
     expect(manager.windows()[0]?.window).toBe(window);
   });
 
+  it('retains a held output that refuses gap cleanup and restores the same window', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    const window = opened[0];
+    if (!window) throw new Error('Expected output');
+    window.close = () => undefined;
+    displays = [laptop];
+    manager.reconcile();
+    manager.closeForQuit();
+    displays = [laptop, hall];
+    manager.cancelQuitting();
+    expect(opened).toHaveLength(1);
+    expect(window.hidden).toBe(false);
+    expect(manager.windows()[0]?.window).toBe(window);
+  });
+
   it('reopens destroyed windows and restores held windows after cancellation, then guards the next quit', () => {
     screens = [screen('audience', hall), screen('stage', stage)];
     manager.reconcile();
