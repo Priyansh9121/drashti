@@ -189,12 +189,7 @@ async function placesAtEachSize(win: Page, bar: Locator): Promise<Map<number, Pl
  * left of it). Each state's verdict is soft, so one run names every state and button that moves; the window is left
  * at the last size.
  */
-async function stayPut(
-  win: Page,
-  bar: Locator,
-  before: Map<number, Place[]>,
-  where: string,
-): Promise<void> {
+async function stayPut(win: Page, bar: Locator, before: Map<number, Place[]>, where: string): Promise<void> {
   const off = (a: number, b: number | undefined) => Math.round((a - (b ?? Number.NaN)) * 100) / 100;
   for (const [width, height] of SIZES) {
     await win.setViewportSize({ width, height });
