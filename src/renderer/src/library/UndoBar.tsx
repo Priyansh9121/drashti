@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import { shortcutText } from '../../../shared/keymap';
 import { useEngine } from '../engine/engine-store';
 import { useMode } from '../operator/mode-store';
+import { useDragging } from '../playlists/drag';
 import { Button } from '../ui/Button';
 import { Undo2 } from '../ui/icons';
 import { lastRemoval, lineRemoval, undoRemoval, useUndo } from './undo';
+import { footKept } from './undo-room';
 
 /**
  * After a removal or a change (presentations, playlists, words, a theme): what it was, and Undo.
@@ -27,23 +29,75 @@ export function UndoBar({ platform }: { platform: string }) {
         <div role="status">{said.count % 2 === 0 ? spoken : ''}</div>
         <div role="status">{said.count % 2 === 1 ? spoken : ''}</div>
       </div>
-      {last && !puttingBack && <UndoLine text={last.text} timed={timed} platform={platform} />}
+      <UndoLine text={last && !puttingBack ? last.text : null} timed={timed} platform={platform} />
     </>
   );
 }
 
+/** The left column the line is the foot of (operator/Layout.tsx, LeftColumn: Pro Mode's and Simple Mode's). */
+const leftColumn = (): Element | null => document.querySelector('[data-left-column]');
+
+/** The pointer coming into or leaving the left column. A drag moves no pointer: these say nothing during one. */
+function watchLeftColumn(changed: () => void): () => void {
+  const column = leftColumn();
+  column?.addEventListener('mouseenter', changed);
+  column?.addEventListener('mouseleave', changed);
+  return () => {
+    column?.removeEventListener('mouseenter', changed);
+    column?.removeEventListener('mouseleave', changed);
+  };
+}
+
+/** Whether the pointer is over the left column, as the window's own :hover has it. */
+const overLeftColumn = (): boolean => leftColumn()?.matches(':hover') ?? false;
+
 /**
- * The line, while its minute is on (`timed`). With the keyboard on its Undo when the minute is up,
- * it stays until the keyboard leaves it (QA23-UNDOLINE-1): taken away under it, the keyboard, and a
- * screen reader with it, would drop back to the window's start, and nothing here moves the focus.
- * Only the keyboard's focus (:focus-visible, as ui/Tooltip.tsx) holds it: a mouse click on Undo
- * focuses the button too, and the line still goes on time then (the review's F1).
+ * The line (`text`, the last change this mode can undo), while its minute is on (`timed`). With the
+ * keyboard on its Undo when the minute is up, it stays until the keyboard leaves it (QA23-UNDOLINE-1):
+ * taken away under it, the keyboard, and a screen reader with it, would drop back to the window's
+ * start, and nothing here moves the focus. Only the keyboard's focus (:focus-visible, as ui/Tooltip.tsx)
+ * holds it: a mouse click on Undo focuses the button too, and the line still goes on time then (the
+ * review's F1).
+ *
+ * Its room (QA24-UNDOLINE-2): when the line goes (its minute up, or its own Undo taking back the last
+ * change there is) with the pointer over the left column, or during one of Drashti's drags, its room
+ * stays, empty, until the pointer is somewhere else. Everything in the column above it (the
+ * wallpapers, the playlists) moved by the line's height when it went, unasked, so a click aimed at a
+ * wallpaper or a playlist could land on another; now nothing there moves under the pointer. Its words
+ * still go on time. With the pointer elsewhere it goes at once, as before, and the column moves away
+ * from the pointer.
  */
-function UndoLine({ text, timed, platform }: { text: string; timed: boolean; platform: string }) {
+function UndoLine({ text, timed, platform }: { text: string | null; timed: boolean; platform: string }) {
   const [focused, setFocused] = useState(false);
-  if (!timed && !focused) return null;
+  // The line's height (its room), and whether the line is there or its room is kept.
+  const [height, setHeight] = useState(0);
+  const [kept, setKept] = useState(false);
+  const over = useSyncExternalStore(watchLeftColumn, overLeftColumn);
+  const dragging = useDragging((s) => s.on);
+  const measure = useCallback((line: HTMLDivElement | null) => {
+    if (!line) return;
+    const sizes = new ResizeObserver(([entry]) => {
+      const box = entry?.borderBoxSize[0]?.blockSize;
+      if (box !== undefined) setHeight(box);
+    });
+    sizes.observe(line);
+    return () => {
+      sizes.disconnect();
+    };
+  }, []);
+  // Gone with its change (the last one undone, or Simple Mode putting the show back): a keyboard's hold goes too.
+  if (text === null && focused) setFocused(false);
+  const shown = text !== null && (timed || focused);
+  const keep = footKept({ shown, kept, overColumn: over, dragging });
+  if (keep !== kept) setKept(keep);
+  if (!shown)
+    return keep ? (
+      <div key="room" data-testid="undo-room" aria-hidden="true" className="shrink-0" style={{ height }} />
+    ) : null;
   return (
     <div
+      key="line"
+      ref={measure}
       data-testid="undo-removal"
       // Its words whole, Undo under them in a narrow column (alpha.21: the owner's column at its least cut "Deleted
       // folder" short).
