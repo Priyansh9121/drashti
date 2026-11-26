@@ -1,4 +1,6 @@
 import { cueClock } from './cue-clock';
+import { afterCueStart, cueStarted, startedNow } from './cue-started';
+import { atGoMoment } from './go-moment';
 import { cuePresentation, PRIVATE_VIDEO_OPACITY } from './cue-presentation';
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
 import { reportVideoCue, reportLoadedVideoCue } from './video-cue-report';
@@ -75,11 +77,14 @@ function VideoSlot({
   visible,
   shape,
   dispatch,
+  tellStart = false,
 }: {
   slot: MediaSlot;
   visible: boolean;
   shape: number | null;
   dispatch: Dispatch<SlotEvent>;
+  /** The operator's LIVE preview (QA23-CUELIVE-1): says when its cued picture has started at Go (cue-started.ts). */
+  tellStart?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const { key, layer, attempt } = slot;
@@ -132,6 +137,7 @@ function VideoSlot({
       attempt,
       startedAt,
       prepareScheduledStart: layer.cueId !== undefined,
+      prioritizeScheduledStart: tellStart,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
         if (hasNoPicture(v)) {
@@ -185,11 +191,27 @@ function VideoSlot({
       p();
       unclock?.();
     };
-  }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch]);
+  }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch, tellStart]);
   useEffect(() => {
     if (slot.cued && slot.state === 'ready' && ref.current)
       reportLoadedVideoCue(layer.cueId, 'picture', ref.current);
   }, [slot, layer.cueId]);
+  // The operator's LIVE preview (QA23-CUELIVE-1): its cued picture says it has started once its rate is set above 0
+  // while it plays (a prepared start's rate at Go; a start with no lead plays at its rate), after its own check for Go.
+  const cueId = layer.cueId;
+  useEffect(() => {
+    const v = ref.current;
+    if (!tellStart || !cueId || !v) return;
+    const told = () => {
+      if (startedNow(v)) cueStarted(cueId);
+    };
+    v.addEventListener('ratechange', told);
+    v.addEventListener('playing', told);
+    return () => {
+      v.removeEventListener('ratechange', told);
+      v.removeEventListener('playing', told);
+    };
+  }, [tellStart, cueId]);
   const seekAt = layer.seek?.at;
   const clipKey = `${String(layer.clip?.startMs)}/${String(layer.clip?.endMs)}`;
   useEffect(() => {
@@ -432,6 +454,10 @@ export function BackgroundMedia(props: {
   opaqueCanvas?: boolean;
   layer: BackgroundLayer | null;
   annotate?: boolean;
+  /** The operator window's previews (QA23-CUELIVE-1): their Go-moment work after LIVE's cued picture's start. */
+  cueStartFirst?: boolean;
+  /** LIVE's preview alone: its cued picture tells the window when it has started at Go. */
+  cueStartTeller?: boolean;
   /** How this screen's group moves (Session 27): its dissolve's curve. */
   movement?: Movement;
   /**
@@ -485,12 +511,16 @@ function BackgroundPlayer({
   cue,
   crossfade,
   opaqueCanvas = false,
+  cueStartFirst = false,
+  cueStartTeller = false,
 }: {
   opaqueCanvas?: boolean;
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
   layer: BackgroundLayer | null;
   annotate?: boolean;
+  cueStartFirst?: boolean;
+  cueStartTeller?: boolean;
   movement?: Movement;
   onDrawn?: (key: string | null) => void;
 }) {
@@ -537,16 +567,12 @@ function BackgroundPlayer({
       !coming.layer.cueId
     )
       return;
-    let frame = 0;
     const at = coming.layer.seek?.at ?? coming.layer.startedAt;
-    const activate = () => {
-      const now = engineNow();
-      if (now >= at) dispatch({ type: 'activate', key: coming.key, at: now, fade: crossfade });
-      else frame = requestAnimationFrame(activate);
-    };
-    activate();
-    return () => cancelAnimationFrame(frame);
-  }, [coming, crossfade]);
+    const activate = (now: number) =>
+      dispatch({ type: 'activate', key: coming.key, at: now, fade: crossfade });
+    const afterStart = cueStartFirst ? afterCueStart(coming.layer.cueId) : undefined;
+    return atGoMoment(at, activate, { checkNow: true, ...(afterStart ? { afterStart } : {}) });
+  }, [coming, crossfade, cueStartFirst]);
   // During Pause/Play the outgoing source clock changes in place, without replacing its decoder.
   const outgoing = crossfade?.from;
   const leaving = slots.leaving && outgoing ? { ...slots.leaving, layer: outgoing } : slots.leaving;
@@ -595,7 +621,13 @@ function BackgroundPlayer({
             : null;
         const element = isMediaSlot(slot) ? (
           slot.layer.media === 'video' ? (
-            <VideoSlot slot={slot} visible={visible} shape={shape} dispatch={dispatch} />
+            <VideoSlot
+              slot={slot}
+              visible={visible}
+              shape={shape}
+              dispatch={dispatch}
+              tellStart={cueStartTeller}
+            />
           ) : (
             <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
           )

@@ -62,6 +62,8 @@ function TimerRow({
           icon={counts ? Pause : Square}
           label={counts ? 'Pause' : 'Stop'}
           size="sm"
+          // A show control (alpha.24): what the hall's timers show changes at once, and the button never moves.
+          instant
           onClick={() => void dispatch({ type: counts ? 'pauseTimer' : 'resetTimer', timerId: t.id })}
         />
       ) : (
@@ -70,6 +72,7 @@ function TimerRow({
           label="Start"
           variant="secondary"
           size="sm"
+          instant
           onClick={() => void dispatch({ type: 'startTimer', timerId: t.id })}
         />
       )}
@@ -78,6 +81,7 @@ function TimerRow({
           icon={RotateCcw}
           label="Reset"
           size="sm"
+          instant
           onClick={() => void dispatch({ type: 'resetTimer', timerId: t.id })}
         />
       )}
@@ -87,6 +91,7 @@ function TimerRow({
         variant={shown ? 'live' : 'ghost'}
         size="sm"
         data-testid="timer-show"
+        instant
         onClick={() =>
           void dispatch(shown ? { type: 'hideAudienceTimer' } : { type: 'showAudienceTimer', timerId: t.id })
         }
@@ -152,12 +157,13 @@ function StartCountdown({ onDone }: { onDone: () => void }) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="secondary" size="sm">
+        <Button type="submit" variant="secondary" size="sm" instant>
           Show the countdown
         </Button>
         {up !== null && up === q?.id && (
           <Button
             size="sm"
+            instant
             onClick={() => {
               void dispatch({ type: 'hideAudienceTimer' }).then(onDone);
             }}

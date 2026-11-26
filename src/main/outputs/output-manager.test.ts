@@ -27,6 +27,7 @@ class FakeWindow implements OutputWindow {
   closed = false;
   hidden = false;
   bounds: DisplayInfo['bounds'] | null = null;
+  private readonly closedListeners: (() => void)[] = [];
   constructor(
     readonly screenId: string,
     readonly displayId: number,
@@ -35,7 +36,13 @@ class FakeWindow implements OutputWindow {
     this.bounds = b;
   }
   close(): void {
+    if (this.closed) return;
     this.closed = true;
+    // Electron's 'closed', which every close ends with (destroy() too).
+    for (const listener of this.closedListeners) listener();
+  }
+  onClosed(listener: () => void): void {
+    this.closedListeners.push(listener);
   }
   isDestroyed(): boolean {
     return this.closed;
@@ -673,6 +680,39 @@ describe('OutputManager after a refused quit', () => {
     manager.closeAll();
     manager.cancelQuitting();
     manager.reconcile();
+    expect(live()).toEqual([]);
+  });
+});
+
+describe('OutputManager learns a window has closed (review S1)', () => {
+  it('a window still closing when a quit is refused opens again once it has closed', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    const closing = opened[0];
+    // Electron's quit has begun closing the output (its page still warming up, it closes a moment later)...
+    manager.quitting();
+    // ...and the quit is refused ("Keep showing" on a node): not closed yet, the window is kept.
+    manager.cancelQuitting();
+    expect(opened).toHaveLength(1);
+    // It finishes closing: on the next turn its screen opens again, on its display.
+    closing?.close();
+    advance(0);
+    expect(opened).toHaveLength(2);
+    expect(live()).toEqual(['audience@2']);
+    expect(manager.status()).toEqual([{ screenId: 'audience', state: 'showing', displayId: 2 }]);
+  });
+
+  it('a window the manager closed itself, or one closed in a quit that goes ahead, opens nothing again', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    // The manager closes the stage's window itself (its screen turned off)...
+    screens = [screen('audience', hall), screen('stage', stage, false)];
+    manager.reconcile();
+    // ...and the quit, going ahead, closes the hall's.
+    manager.quitting();
+    opened[0]?.close();
+    advance(0);
+    expect(opened).toHaveLength(2);
     expect(live()).toEqual([]);
   });
 });

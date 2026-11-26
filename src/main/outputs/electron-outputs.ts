@@ -207,6 +207,10 @@ export function createOutputWindow(
     show: () => {
       if (!win.isDestroyed()) win.showInactive();
     },
+    // However it closed (its own close, destroy(), Electron's quit): the manager is told (review S1).
+    onClosed: (listener) => {
+      win.once('closed', listener);
+    },
   };
   return { window: win, handle };
 }
