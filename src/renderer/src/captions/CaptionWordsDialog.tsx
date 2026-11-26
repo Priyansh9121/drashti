@@ -13,9 +13,10 @@ import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../../shared/speech';
 import { Button, IconButton } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
-import { ArrowUp, Trash2 } from '../ui/icons';
+import { ArrowUp } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Toggle } from '../ui/Toggle';
+import { TrashButton } from '../ui/TrashButton';
 import { captionWordLettersText, captionWordsLine } from './caption-words-text';
 
 /*
@@ -260,12 +261,9 @@ function CaptionWordsDialog({
                     save(withMine(next));
                   }}
                 />
-                <IconButton
-                  icon={Trash2}
-                  size="sm"
-                  variant="ghost"
+                <TrashButton
                   label={`Remove ${w.word}`}
-                  onClick={() => {
+                  onPress={() => {
                     save(withMine(mine.filter((_, j) => j !== i)));
                   }}
                 />

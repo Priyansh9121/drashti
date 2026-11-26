@@ -206,6 +206,7 @@ import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/dec
 import { deckAppsOf, readDeckAnimations, writeDeckAnimations } from './import/deck/deck-setting';
 import { LinkService } from './links/link-service';
 import { libraryProblem } from './library-problem';
+import { ChangedPresentations } from './library-changes';
 import { parsePlain } from '../shared/plain-parse';
 import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
@@ -350,6 +351,7 @@ import {
 } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
+import { onQuitRefused } from './outputs/quit-refused';
 import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
@@ -3631,8 +3633,9 @@ function start(): void {
   /** The displays read again (their own identities), the outputs following, then each one plugged in given its job. */
   const displaysRead = () => {
     void displayIds.refresh().then(() => {
-      // Read as Drashti quits, after the library has closed: nothing to do.
-      if (db === null) return;
+      // Read as Drashti quits (QA24-QUITRACE-1: the start's reading can end after the quit has begun), or after the
+      // library has closed: nothing to do.
+      if (db === null || quitStarted) return;
       manager.reconcile();
       autoScreens.check();
     });
@@ -4032,7 +4035,7 @@ function start(): void {
     if (!kept.ok) return kept;
     slides.invalidate(presentationId);
     engine.refreshNext();
-    libraryChanged(true);
+    libraryChanged(true, [presentationId]);
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     network?.hint('playlists');
     return { ok: true as const, ids: [presentationId] };
@@ -5186,7 +5189,11 @@ function start(): void {
   // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
   let changedTimer: NodeJS.Timeout | null = null;
   let lastChanged = 0;
-  const libraryChanged = (now = false) => {
+  // The presentations the changes name, for the phones' hint (QA24-PHONE-C): a phone reads again only those of its
+  // rows. `ids` left out: the change cannot name them, so any may have changed (the phones read every row again).
+  const changedPresentations = new ChangedPresentations();
+  const libraryChanged = (now = false, ids?: readonly string[]) => {
+    changedPresentations.add(ids);
     const send = () => {
       changedTimer = null;
       // Quitting: the library has closed (Session 23: a change during an import came 2 s later).
@@ -5197,7 +5204,7 @@ function start(): void {
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       // The slide editor's own window: its pictures, videos and sounds to choose from (Session 55, Part 17a).
       slideEditor?.send(IPC.library.changed, { at: lastChanged, what: 'presentations' });
-      network?.hint('presentations');
+      network?.hint('presentations', changedPresentations.take());
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
       nodeService?.libraryChanged();
@@ -6515,7 +6522,7 @@ function start(): void {
       slides.invalidate(id);
       engine.refreshLive(id);
     }
-    libraryChanged(true);
+    libraryChanged(true, ids);
   };
   const wordsChanges = registerWordsIpc({
     db,
@@ -9317,7 +9324,7 @@ function start(): void {
       for (const id of removed) slides.invalidate(id);
       engine.refreshNext();
       log.info(`Removed ${removed.length} presentation(s)`);
-      libraryChanged(true);
+      libraryChanged(true, removed);
       return { ok: true as const, ids: removed };
     },
     restorePresentations: (ids) => {
@@ -9327,7 +9334,7 @@ function start(): void {
       for (const id of restored) slides.invalidate(id);
       engine.refreshNext();
       log.info(`Restored ${restored.length} presentation(s)`);
-      libraryChanged(true);
+      libraryChanged(true, restored);
       return { ok: true as const, ids: restored };
     },
   };
@@ -10450,6 +10457,24 @@ function start(): void {
     return quitConfirmed;
   };
 
+  // Cancellation can come from a later listener or any window's beforeunload (macOS included).
+  // Observe after synchronous listeners finish, while the library and stop list are still live.
+  const resumeAfterQuitRefused = () => {
+    if (db === null) return;
+    quitStarted = false;
+    quitting = false;
+    quitConfirmed = false;
+    manager.cancelQuitting();
+  };
+  const watchQuitRefusal = (window: BrowserWindow) => {
+    window.on('close', (event) => onQuitRefused(event, resumeAfterQuitRefused));
+    window.webContents.on('will-prevent-unload', (event) =>
+      onQuitRefused(event, resumeAfterQuitRefused, true),
+    );
+  };
+  for (const window of BrowserWindow.getAllWindows()) watchQuitRefusal(window);
+  app.on('browser-window-created', (_event, window) => watchQuitRefusal(window));
+
   operatorWindow = createOperatorWindow(appearance.background());
   appearance.track(operatorWindow);
   // The opening (Session 55): timed from the window's making; a page loaded again (the watchdog's reload, Reload
@@ -10580,9 +10605,15 @@ function start(): void {
     operatorWindow = null;
     // Output windows would otherwise keep the app alive.
     app.quit();
+    // In a quit, app.quit() does nothing more: an output opened once it had begun (QA24-QUITRACE-1: Electron closes
+    // only the windows open as it began) closes here, with every other, and none opens again.
+    if (quitStarted) manager.closeForQuit();
   });
   let quitSavingSound = false;
   app.on('before-quit', (event) => {
+    // Our bounded sound/source drains resume the quit themselves; preventDefault there is a hold, not refusal.
+    let held = false;
+    onQuitRefused(event, resumeAfterQuitRefused, false, () => held);
     if (!confirmQuit()) {
       event.preventDefault();
       return;
@@ -10592,12 +10623,16 @@ function start(): void {
     // quit says whether Drashti or what came after was slow.
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
+    // No output opens or is put back now (QA24-QUITRACE-1: the start's display reading, ending 16 ms after Quitting,
+    // opened again the output the quit had just closed, and Drashti ran on).
+    manager.quitting();
     const soundSaved = streaming.quitting();
     studio.quitting();
     // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
     hevcPage?.close();
     slideEditor?.quitting();
     if (soundSaved) {
+      held = true;
       event.preventDefault();
       if (!quitSavingSound) {
         quitSavingSound = true;
@@ -10629,13 +10664,16 @@ function start(): void {
         event,
         () => app.quit(),
         (result) => {
+          resumeAfterQuitRefused();
           log.error(
             `Source preparation did not confirm shutdown (${result.reason}); the library remains open.`,
           );
         },
       )
-    )
+    ) {
+      held = true;
       return;
+    }
   });
 
   const runSelfTest = () =>
@@ -11644,8 +11682,8 @@ function start(): void {
   manager.reconcile();
   displaysRead();
   watchDisplays(() => {
-    // A display change noticed as Drashti quits comes after the library has closed: nothing to do.
-    if (db === null) return;
+    // A display change noticed as Drashti quits (QA24-QUITRACE-1), or after the library has closed: nothing to do.
+    if (db === null || quitStarted) return;
     manager.reconcile();
     displaysRead();
   });

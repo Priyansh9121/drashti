@@ -546,3 +546,133 @@ describe('OutputManager', () => {
     expect(live()).toEqual([]);
   });
 });
+
+/*
+ * Drashti quitting (QA24-QUITRACE-1; Windows CI run a22-pippreview-1126-152423-56400, wallpapers.spec.ts:154): the
+ * start's reading of the displays' own identities ended 16 ms after "Quitting", and its reconcile found the output
+ * window the quit had just closed and opened it again. Electron's quit closes only the windows open as it began, and
+ * app.quit() again does nothing while it quits: the new window kept Drashti running, and the quit never ended.
+ */
+describe('OutputManager as Drashti quits (QA24-QUITRACE-1)', () => {
+  it('once the quit has begun, the window the quit closed is never opened again', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    manager.quitting();
+    // Electron's quit closes the window; the display reading that ends now reconciles.
+    opened[0]?.close();
+    manager.reconcile();
+    expect(opened).toHaveLength(1);
+    expect(live()).toEqual([]);
+  });
+
+  it('once the quit has begun, nothing opens or is put back: a display plugged in or back, a screen turned on, Audience on, a window drawing again', () => {
+    screens = [screen('audience', hall), screen('stage', stage), screen('spare', laptop, false)];
+    manager.reconcile();
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    // The hall's display drops (its window held, hidden); Audience is turned off; the stage's window is given up on.
+    displays = [laptop, stage];
+    manager.reconcile();
+    const held = opened[0];
+    expect(held?.hidden).toBe(true);
+    manager.setStopped('stage', true);
+    manager.quitting();
+    // The quit closes the stage's window.
+    opened[1]?.close();
+    // The hall's display back: its window is not shown again.
+    displays = [laptop, hall, stage];
+    manager.reconcile();
+    expect(held?.hidden).toBe(true);
+    expect(putBack).toEqual([]);
+    // A screen turned on, Audience off and on, the stage's page drawing again: nothing opens.
+    screens = [screen('audience', hall), screen('stage', stage), screen('spare', laptop)];
+    manager.reconcile();
+    manager.setSwitch('audience', false);
+    manager.setSwitch('audience', true);
+    manager.setStopped('stage', false);
+    // The held window's grace ends: it closes, and nothing opens after it.
+    advance(DISPLAY_DROP_MS);
+    expect(opened).toHaveLength(2);
+    expect(live()).toEqual([]);
+  });
+
+  it('after closeAll (the quit’s last stop, and as LIVE’s window closes in a quit), nothing opens again, and a window opened in the gap is closed', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    // The quit closes both; a reconcile before the manager is told opens one again (the gap).
+    opened[0]?.close();
+    opened[1]?.close();
+    manager.reconcile();
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    // closeAll closes the windows opened in the gap...
+    manager.closeAll();
+    expect(live()).toEqual([]);
+    // ...and a display change noticed after it (Session 23: as Drashti quits) opens nothing.
+    displays = [laptop, hall];
+    manager.reconcile();
+    displays = [laptop, hall, stage];
+    manager.reconcile();
+    expect(opened).toHaveLength(4);
+    expect(live()).toEqual([]);
+  });
+});
+
+describe('OutputManager after a refused quit', () => {
+  it('retains a gap window that refuses closing instead of duplicating it on cancellation', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    const window = opened[0];
+    if (!window) throw new Error('Expected output');
+    window.close = () => undefined;
+    manager.closeForQuit();
+    manager.cancelQuitting();
+    expect(opened).toHaveLength(1);
+    expect(manager.windows()[0]?.window).toBe(window);
+  });
+
+  it('retains a held output that refuses gap cleanup and restores the same window', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    const window = opened[0];
+    if (!window) throw new Error('Expected output');
+    window.close = () => undefined;
+    displays = [laptop];
+    manager.reconcile();
+    manager.closeForQuit();
+    displays = [laptop, hall];
+    manager.cancelQuitting();
+    expect(opened).toHaveLength(1);
+    expect(window.hidden).toBe(false);
+    expect(manager.windows()[0]?.window).toBe(window);
+  });
+
+  it('reopens destroyed windows and restores held windows after cancellation, then guards the next quit', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    displays = [laptop, stage];
+    manager.reconcile();
+    const held = opened[0];
+    manager.quitting();
+    opened[1]?.close();
+    displays = [laptop, hall, stage];
+    manager.cancelQuitting();
+    expect(held?.hidden).toBe(false);
+    expect(putBack).toEqual(['audience']);
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    manager.quitting();
+    opened.at(-1)?.close();
+    manager.reconcile();
+    expect(opened).toHaveLength(3);
+  });
+
+  it('can recover gap-window cleanup, but never recovers the final stop', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    manager.closeForQuit();
+    manager.cancelQuitting();
+    expect(live()).toEqual(['audience@2']);
+    manager.closeAll();
+    manager.cancelQuitting();
+    manager.reconcile();
+    expect(live()).toEqual([]);
+  });
+});

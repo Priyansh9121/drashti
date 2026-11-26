@@ -39,7 +39,6 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  Trash2,
 } from '../ui/icons';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
@@ -58,6 +57,7 @@ import { isRemoveKey } from '../playlists/playlist-shared';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { createAudioPlaylist, dropSounds, importSounds, takesSounds } from './audio-actions';
 import { TrackDelete } from './TrackDelete';
+import { TrashButton } from '../ui/TrashButton';
 import { openLinkForAudio } from '../links/link-store';
 
 /*
@@ -492,12 +492,10 @@ function AudioPlaylists({
                       useMusic.setState({ renamingId: p.id });
                     }}
                   />
-                  <IconButton
-                    icon={Trash2}
+                  <TrashButton
                     label={`Delete music “${p.name}”`}
-                    size="sm"
-                    data-testid="music-delete"
-                    onClick={() => {
+                    testId="music-delete"
+                    onPress={() => {
                       onDelete(deleting(p.id));
                     }}
                   />

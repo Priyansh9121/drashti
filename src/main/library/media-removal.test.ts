@@ -945,3 +945,27 @@ it('purges only a deleted original’s display copies, keeping the other picture
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+it('startup purge leaves a file and its derived copy alone when its snapshotted row was revived', async () => {
+  const { removal, media } = library();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-revived-purge-'));
+  for (const rel of ['aa/pic.png', 'stills/aa.jpg']) {
+    mkdirSync(join(dir, rel, '..'), { recursive: true });
+    writeFileSync(join(dir, rel), 'placeholder');
+  }
+  removal.remove(['pic']);
+  const keep = new Set<string>();
+  vi.spyOn(keep, 'has').mockImplementation((id) => {
+    if (id === 'pic') expect(removal.restore(['pic'])).toEqual(['pic']);
+    return false;
+  });
+  try {
+    expect(await removal.purge(dir, keep)).toBe(0);
+    expect(existsSync(join(dir, 'aa/pic.png'))).toBe(true);
+    expect(existsSync(join(dir, 'stills/aa.jpg'))).toBe(true);
+    expect(media.file('pic')).toMatchObject({ path: 'aa/pic.png', missing: false, deleted: false });
+  } finally {
+    vi.restoreAllMocks();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

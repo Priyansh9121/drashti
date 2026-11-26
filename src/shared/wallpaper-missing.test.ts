@@ -22,7 +22,7 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
       tile: 'Picture missing',
       notice:
         'The wallpaper’s picture is missing: “Placeholder a.png”. With nothing up, the screens show black.',
-      live: 'Wallpaper’s picture missing: “Placeholder a.png”. With nothing up, the screens show black.',
+      live: 'Wallpaper’s picture missing: “Placeholder a.png”. The screens show black when the wallpaper is up.',
       find: ['a'],
     });
   });
@@ -35,7 +35,7 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
       count: 3,
       tile: 'Pictures missing',
       notice: 'The wallpaper’s 3 pictures are missing. With nothing up, the screens show black.',
-      live: 'Wallpaper’s pictures missing. With nothing up, the screens show black.',
+      live: 'Wallpaper’s pictures missing. The screens show black when the wallpaper is up.',
       find: ['a', 'b'],
     });
   });
@@ -74,6 +74,56 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
       find: [],
     });
   });
+  it('explains an unconverted HEIC picture without calling it missing or offering Find', () => {
+    const heic = { ...picture('photo', false, 'Placeholder.heic'), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [heic] })).toEqual({
+      kind: 'all',
+      count: 1,
+      label: 'its picture needs conversion',
+      tile: 'Convert picture',
+      notice:
+        'The wallpaper’s picture needs conversion: “Placeholder.heic”. Convert it in Media. With nothing up, the screens show black.',
+      live: 'The wallpaper’s picture needs conversion: “Placeholder.heic”. The screens show black when the wallpaper is up.',
+      find: [],
+    });
+  });
+
+  it('warns about a HEIC turn while another picture can still show', () => {
+    const heic = { ...picture('photo', false, 'Placeholder.heic'), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [heic, picture('ready', false)] })).toMatchObject({
+      kind: 'some',
+      count: 1,
+      live: null,
+      find: [],
+      notice:
+        'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. Pictures needing conversion show black on their turns.',
+    });
+  });
+
+  it('keeps Find for genuinely missing pictures when another needs conversion', () => {
+    const heic = { ...picture('photo', false, 'Placeholder.heic'), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [heic, picture('gone', true)] })).toMatchObject({
+      kind: 'all',
+      count: 2,
+      tile: 'Check pictures',
+      find: ['gone'],
+      notice:
+        'One of the wallpaper’s pictures needs conversion: “Placeholder.heic”. Convert it in Media. 1 picture is missing. With nothing up, the screens show black.',
+    });
+  });
+  it('names several pictures needing conversion without claiming they are missing', () => {
+    const a = { ...picture('a', false), unplayable: 'HEIC photo' };
+    const b = { ...picture('b', false), unplayable: 'HEIC photo' };
+    expect(wallpaperMissing({ pictures: [a, b] })).toMatchObject({
+      kind: 'all',
+      count: 2,
+      tile: 'Convert pictures',
+      find: [],
+      notice:
+        '2 of the wallpaper’s pictures need conversion. Convert them in Media. With nothing up, the screens show black.',
+      live: '2 of the wallpaper’s pictures need conversion. The screens show black when the wallpaper is up.',
+    });
+  });
 });
 
 /** A state with these layers up (and the Wallpaper on or off). */
@@ -100,7 +150,8 @@ const SLIDE: SlideLayer = {
 
 describe('LIVE’s line while the screens show black for a missing wallpaper (QA24-WALLBLACK-1, -2)', () => {
   const gone = { pictures: [picture('a', true)] };
-  const LINE = 'Wallpaper’s picture missing: “Placeholder a.png”. With nothing up, the screens show black.';
+  const LINE =
+    'Wallpaper’s picture missing: “Placeholder a.png”. The screens show black when the wallpaper is up.';
 
   it('nothing up, or under the Wallpaper: said', () => {
     expect(wallpaperMissingLive(show({}), gone)).toBe(LINE);
