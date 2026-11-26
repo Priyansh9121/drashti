@@ -11,7 +11,7 @@ import { useScrolls } from '../ui/scrolls';
 import { EmptyState, Loading } from '../ui/States';
 import { useNetwork } from '../network/network-store';
 import { useNow } from '../render/useNow';
-import { useToolHere, useOperateOnly } from '../simple/simple-features-store';
+import { useOperateOnly } from '../simple/simple-features-store';
 import { ChatList } from './ChatList';
 import type { ChatInvite, ChatMember, ChatOperatorView } from '../../../shared/chat';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
@@ -294,8 +294,6 @@ function Messages({ view }: { view: ChatOperatorView }) {
 export interface ChatContentsProps {
   view: ChatOperatorView | null;
   operateOnly: boolean;
-  /** Sending follows the existing Simple Mode Chat feature choice. */
-  canSend?: boolean;
   /** The phones' network is on and listening. */
   networkOn: boolean;
   error: string | null;
@@ -312,7 +310,6 @@ export interface ChatContentsProps {
 export function ChatContentsView({
   view,
   operateOnly,
-  canSend = true,
   networkOn,
   error,
   draft,
@@ -339,13 +336,7 @@ export function ChatContentsView({
           <div className={MESSAGES_BOX} data-testid="chat-messages-box">
             {view.messages.length === 0 ? <ChatEmpty operateOnly={operateOnly} /> : <Messages view={view} />}
           </div>
-          {canSend ? (
-            <Composer draft={draft} onDraft={onDraft} />
-          ) : (
-            <p className="text-xs text-muted" data-testid="chat-read-only">
-              To reply here, choose Chat in Pro Mode’s Simple Mode Features.
-            </p>
-          )}
+          <Composer draft={draft} onDraft={onDraft} />
           <InviteLine invite={view.invite} />
           {/* The last refusal, in a line that is always there (so nothing under it moves when one comes). */}
           <p role="alert" className="min-h-4 text-xs text-warning-fg" data-testid="chat-problem">
@@ -394,7 +385,6 @@ export function ChatContentsView({
 
 /** The section's open part, from the stores. Open, everything in the chat is seen: the heading's count goes. */
 export function ChatContents({ operateOnly }: { operateOnly: boolean }) {
-  const canSend = useToolHere('chat');
   const view = useChat((s) => s.view);
   const error = useChat((s) => s.error);
   const draft = useChat((s) => s.draft);
@@ -407,7 +397,6 @@ export function ChatContents({ operateOnly }: { operateOnly: boolean }) {
     <ChatContentsView
       view={view}
       operateOnly={operateOnly}
-      canSend={canSend}
       networkOn={networkOn}
       error={error}
       draft={draft}

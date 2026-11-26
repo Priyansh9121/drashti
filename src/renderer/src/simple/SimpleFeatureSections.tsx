@@ -1,7 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import type { SimpleFeature } from '../../../shared/simple-features';
 import { SIMPLE_FEATURES } from '../../../shared/simple-features';
-import { useChatOpen } from '../chat/ChatPop';
 import { ChatSection } from '../chat/ChatSection';
 import { StreamLinkDialog } from '../live-link/StreamLinkDialog';
 import { StreamLinkNotice } from '../live-link/StreamLinkNotice';
@@ -42,11 +41,10 @@ const SECTION: Record<SimpleFeature, (platform: string) => ReactNode> = {
 
 /** The chosen tools' sections, after Simple Mode's Audio; none chosen, nothing. */
 export function SimpleFeatureSections({ platform }: { platform: string }) {
-  const chatAsked = useChatOpen((s) => s.asked > 0);
   const chosen = useSimpleFeatures((s) => s.chosen);
   return (
     <OperateOnly.Provider value={true}>
-      {SIMPLE_FEATURES.filter((f) => chosen.includes(f.id) || (f.id === 'chat' && chatAsked)).map((f) => (
+      {SIMPLE_FEATURES.filter((f) => chosen.includes(f.id)).map((f) => (
         <Fragment key={f.id}>{SECTION[f.id](platform)}</Fragment>
       ))}
     </OperateOnly.Provider>

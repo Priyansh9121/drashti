@@ -44,7 +44,7 @@ for (const simple of [false, true]) {
         .status,
     ).toBe(200);
     if (simple) {
-      // Sending follows alpha.23's existing Chat feature choice; the off-feature case below stays read-only.
+      // Chat chosen for Simple Mode, so a click opens it there too (QA24-CHATPOP-2 = B); without it: the last test.
       expect(
         await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('chat', true)),
       ).toEqual({ ok: true, chosen: ['chat'] });

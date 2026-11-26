@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
 import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import { usePopPlace } from '../operator/pop-place';
+import { toolHereNow } from '../simple/simple-features-store';
 import { motionOff } from '../ui/motion';
 import { arrivals, popAfter, popChangesAt, popPhase, popWords, type ChatPop } from './chat-pop';
 import { connectChat, useChat } from './chat-store';
@@ -11,8 +12,12 @@ import { connectChat, useChat } from './chat-store';
 /** Only the operator shells mount this: no audience, stage, phone or stream imports it. */
 export const useChatOpen = create<{ asked: number }>(() => ({ asked: 0 }));
 
-/** A popup's click asking Chat to open (red: today's rule, whatever the mode). */
+/**
+ * A popup's click (the owner's QA24-CHATPOP-2 = B): it asks Chat to open where Chat is this mode's, Pro Mode or Simple
+ * Mode with Chat chosen; otherwise it asks nothing (the popup only closes), so Simple Mode never gains a section.
+ */
 export function openChatFromPop(): void {
+  if (!toolHereNow('chat')) return;
   useChatOpen.setState((s) => ({ asked: s.asked + 1 }));
 }
 
@@ -112,7 +117,7 @@ export function ChatPopup() {
       onDismiss={() => usePop.setState({ pop: null })}
       onOpen={() => {
         usePop.setState({ pop: null });
-        useChatOpen.setState((s) => ({ asked: s.asked + 1 }));
+        openChatFromPop();
       }}
     />
   );
