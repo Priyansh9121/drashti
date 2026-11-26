@@ -24,7 +24,7 @@ import { showPlaylist, useRemote } from './remote-store';
  * marks them for a phone (phonePlays). Their rows (phone-rows.ts): a presentation's name, which folds its slides
  * (remembered on this phone), and a row a slide under it, "<name>_N" with a small picture and a text slide's first
  * line; one tap on a slide's row puts it up, LIVE marking the one up. Until alpha.23 every row (pictures, videos,
- * sounds, video inputs, kirtans, words), a long press for its menu (row-actions.ts), Manage playlists…, a folder's own
+ * sounds, video inputs, kirtans, words), a long press for its menu, Manage playlists…, a folder's own
  * rows, Repeat Slides and the wallpapers under the rows: none of them now (the network refuses them from a phone).
  */
 

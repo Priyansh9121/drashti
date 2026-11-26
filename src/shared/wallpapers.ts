@@ -37,6 +37,8 @@ export interface WallpaperPicture {
   name: string;
   /** Gone from the library, or its file missing: left out on the screens. */
   missing: boolean;
+  /** Present but not drawable as it is (for example, a HEIC photo awaiting conversion). */
+  unplayable?: string;
 }
 
 /** A wallpaper: one picture, or several in turn. */
