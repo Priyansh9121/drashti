@@ -136,7 +136,6 @@ test('the allocation rule sees any use before the check: a copy into it, a membe
   );
 });
 
-
 test('allocation checks include indexed and member targets and strdup (cap-review-nits n2)', () => {
   for (const [target, call] of [
     ['args[i]', 'malloc(8)'],
