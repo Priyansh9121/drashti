@@ -16,6 +16,7 @@ import {
 import type { SpeechLanguage } from '../../../shared/speech';
 import { CaptionTargetField } from './CaptionTargetField';
 import {
+  CAPTIONS_STOPPED_TOO_SLOW,
   captionTargetWhyNot,
   skippedText,
   TRANSLATION_TRIAL_WARNING,
@@ -251,6 +252,10 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     );
     const html = field(v);
     expect(html).not.toContain('captions-target-retry');
+    // While captions are off no screen shows any captions, the stage included: the notice says only why (review round 2).
+    const notice =
+      /data-testid="captions-target-unavailable"[^>]*>(.*?)<\/div><\/div><\/div>/u.exec(html)?.[1] ?? '';
+    expect(words(notice)).toBe(CAPTIONS_STOPPED_TOO_SLOW);
     expect(words(html)).not.toMatch(/Choosing a language again/u);
     // Still choosable, as File › Caption Language allows: the choice is kept for when captions are on again.
     expect(options(html).find((o) => o.value === 'hi')?.disabled).toBe(false);
@@ -298,6 +303,9 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     expect(TRANSLATION_TRIAL_WARNING).toMatch(/times and numbers/u);
     expect(TRANSLATION_TRIAL_WARNING).toMatch(/reader/u);
     expect(TRANSLATION_TRIAL_WARNING).toMatch(/rehearsal/u);
+    // The delay as measured (review R2-2): about 1.3 s with an IndicConformer model, 2-3 s with the others.
+    expect(words(html)).toMatch(/about 1 to 3 seconds after the speaker pauses/u);
+    expect(words(html)).not.toMatch(/about a second after/u);
     const trial = /data-testid="captions-target-trial"[^>]*>(.*?)<\/div><\/div>/u.exec(html)?.[1] ?? '';
     expect(words(trial)).toContain(TRANSLATION_TRIAL_WARNING);
     // What each kind of screen shows, a phrase at a time.
