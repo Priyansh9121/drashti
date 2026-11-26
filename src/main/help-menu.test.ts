@@ -50,8 +50,14 @@ describe('Help › Show Help: the tick in step with the status bar’s Help swit
   it('refuses anything but on or off from the window, and keeps the tick as it was', () => {
     const { help, built } = setUp();
     help.told(true);
-    for (const said of ['true', 1, null, undefined, {}])
-      expect(help.told(said), `told ${JSON.stringify(said) ?? 'undefined'}`).toBe(false);
+    const refused: [string, unknown][] = [
+      ['the word true', 'true'],
+      ['a number', 1],
+      ['null', null],
+      ['nothing', undefined],
+      ['an object', {}],
+    ];
+    for (const [what, said] of refused) expect(help.told(said), `told ${what}`).toBe(false);
     expect(help.on()).toBe(true);
     expect(built).toEqual([true]);
   });

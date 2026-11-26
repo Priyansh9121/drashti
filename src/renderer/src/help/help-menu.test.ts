@@ -9,7 +9,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /** The window's own storage, as ui/persist.ts reads it, holding Help's switch as this computer remembers it. */
 function storage(helpOn: boolean | null) {
-  const items = new Map<string, string>(helpOn === null ? [] : [['drashti.ui.help.on', JSON.stringify(helpOn)]]);
+  const items = new Map<string, string>(
+    helpOn === null ? [] : [['drashti.ui.help.on', JSON.stringify(helpOn)]],
+  );
   return {
     items,
     getItem: (key: string) => items.get(key) ?? null,

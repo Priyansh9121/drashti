@@ -260,6 +260,7 @@ import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
 import { pictureCannotSeeThrough } from './media/see-through';
 import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
+import { helpMenu } from './help-menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
 import { runPerformanceTest, seedPerfLibrary } from './perftest';
 import { type PlaylistChanges, registerPlaylistIpc } from './playlists/playlist-ipc';
@@ -11075,6 +11076,19 @@ function start(): void {
   // ---- View > Show Safe Areas (Sessions 31–36): the slide editor's guides, anyone's to turn on ---------
   const safeAreasShown = () => settings.get('showSafeAreas') === true;
   handle(IPC.app.safeAreas, () => safeAreasShown());
+  // ---- Help › Show Help (alpha.24, helpmenu): ticked as the operator window's Help switch is, both ways ----
+  const help = helpMenu(
+    () => {
+      rebuildMenu();
+    },
+    (on) => {
+      sendToOperator(IPC.app.helpChosen, { on });
+    },
+  );
+  handle(IPC.app.help, (e, on) => {
+    if (fromOperator(e)) help.told(on);
+    return null;
+  });
   // The LIVE picture's warm-up where Chromium draws without a graphics chip (Session 58, WU-1): none, as for the outputs
   // and the stream's page. Asked as the window opens, and told once Chromium has said, should it open before then.
   handle(IPC.app.noGpu, (e) =>
@@ -11259,6 +11273,8 @@ function start(): void {
     guides: () => {
       sendToOperator(IPC.app.showGuides, { at: Date.now() });
     },
+    // Help › Show Help (alpha.24, helpmenu), in either mode: the tick follows the switch, not the click.
+    help: { on: help.on(), toggle: help.chosen },
     // Help › Drashti Manual… (x37, Session 60), in either mode.
     manual: () => {
       sendToOperator(IPC.app.showManual, { at: Date.now() });

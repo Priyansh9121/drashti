@@ -103,6 +103,11 @@ const bridge: DrashtiBridge = {
       on(IPC.app.showManual, () => {
         listener();
       }),
+    help: (shown) => invoke(IPC.app.help, shown),
+    onHelpChosen: (listener) =>
+      on(IPC.app.helpChosen, ({ on: shown }) => {
+        listener(shown);
+      }),
     onShowReport: (listener) =>
       on(IPC.app.showReport, () => {
         listener();
