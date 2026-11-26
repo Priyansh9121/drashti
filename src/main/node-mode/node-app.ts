@@ -70,6 +70,7 @@ import {
 } from '../outputs/electron-outputs';
 import { OutputManager } from '../outputs/output-manager';
 import { onQuitRefused } from '../outputs/quit-refused';
+import { NodeQuit } from './node-quit';
 import type { SleepGuard } from '../outputs/sleep-guard';
 import type { SelfTestResult } from '../selftest';
 import { runNodeWatchdogSelfTest } from '../selftest';
@@ -1241,18 +1242,35 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   handle(IPC.videoInputs.access, () => 'denied' as const);
   handle(IPC.videoInputs.report, () => null);
 
-  const resumeAfterQuitRefused = () => manager.cancelQuitting();
+  // "Quit Drashti?" as the quit begins, before any window closes (review S2), and as the node's window closes.
+  const nodeQuit = new NodeQuit({
+    showing: () => manager.status().filter((st) => st.state === 'showing').length,
+    noConfirm: () => sw('DRASHTI_NO_QUIT_CONFIRM') === '1',
+    ask: (showing) => {
+      const options = {
+        type: 'warning' as const,
+        buttons: ['Keep showing', 'Quit Drashti'],
+        defaultId: 0,
+        cancelId: 0,
+        message: 'Quit Drashti?',
+        detail: `${plural(showing, 'screen')} on this node ${showing === 1 ? 'is' : 'are'} showing. If Drashti quits, ${showing === 1 ? 'it goes' : 'they go'} black.`,
+      };
+      const parent = nodeWindow && !nodeWindow.isDestroyed() ? nodeWindow : null;
+      const choice = parent
+        ? dialog.showMessageBoxSync(parent, options)
+        : dialog.showMessageBoxSync(options);
+      return choice === 1;
+    },
+    manager,
+  });
   const watchQuitRefusal = (window: BrowserWindow) => {
-    window.on('close', (event) => onQuitRefused(event, resumeAfterQuitRefused));
-    window.webContents.on('will-prevent-unload', (event) =>
-      onQuitRefused(event, resumeAfterQuitRefused, true),
-    );
+    window.on('close', (event) => onQuitRefused(event, nodeQuit.refused));
+    window.webContents.on('will-prevent-unload', (event) => onQuitRefused(event, nodeQuit.refused, true));
   };
   for (const window of BrowserWindow.getAllWindows()) watchQuitRefusal(window);
   app.on('browser-window-created', (_event, window) => watchQuitRefusal(window));
   app.on('before-quit', (event) => {
-    manager.quitting();
-    onQuitRefused(event, resumeAfterQuitRefused);
+    nodeQuit.beforeQuit(event);
   });
 
   nodeWindow = new BrowserWindow({
@@ -1274,20 +1292,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   void loadPage(nodeWindow, 'node');
   nodeWindow.on('close', (event) => {
-    const showing = manager.status().filter((st) => st.state === 'showing').length;
-    if (showing === 0 || sw('DRASHTI_NO_QUIT_CONFIRM') === '1') return;
-    const options = {
-      type: 'warning' as const,
-      buttons: ['Keep showing', 'Quit Drashti'],
-      defaultId: 0,
-      cancelId: 0,
-      message: 'Quit Drashti?',
-      detail: `${plural(showing, 'screen')} on this node ${showing === 1 ? 'is' : 'are'} showing. If Drashti quits, ${showing === 1 ? 'it goes' : 'they go'} black.`,
-    };
-    const choice = nodeWindow
-      ? dialog.showMessageBoxSync(nodeWindow, options)
-      : dialog.showMessageBoxSync(options);
-    if (choice === 0) event.preventDefault();
+    nodeQuit.windowClose(event);
   });
   nodeWindow.on('closed', () => {
     nodeWindow = null;
