@@ -7,7 +7,13 @@ import { defineConfig } from 'vitest/config';
  * other was filling its library on another worker (CI's runners have 2 to 4
  * cores). What they measure, and their budgets, are the same either way.
  */
-const SPEED_TESTS = ['src/main/db/library-list.test.ts', 'src/main/db/search-budget.test.ts'];
+// The colour sweep is CPU-heavy too: keep it out of the concurrent FFmpeg/filesystem tests.
+// Its per-test timeout and every accent checked stay the same.
+const SERIAL_TESTS = [
+  'src/main/db/library-list.test.ts',
+  'src/main/db/search-budget.test.ts',
+  'src/shared/appearance/derive.test.ts',
+];
 
 export default defineConfig({
   test: {
@@ -23,7 +29,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['src/**/*.test.{ts,tsx}'],
-          exclude: SPEED_TESTS,
+          exclude: SERIAL_TESTS,
           sequence: { groupOrder: 0 },
         },
       },
@@ -31,7 +37,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'speed',
-          include: SPEED_TESTS,
+          include: SERIAL_TESTS,
           fileParallelism: false,
           sequence: { groupOrder: 1 },
         },
