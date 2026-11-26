@@ -266,9 +266,16 @@ export function actionFor(
   return null;
 }
 
-/** A binding's key, written for people as this computer shows it: "→", "Page Down", "⌘⇧S" or "Ctrl+Shift+S". */
+/**
+ * A binding's key, written for people as this computer shows it: "→", "Page Down", "⇧⌘S" or "Ctrl+Shift+S". A Mac
+ * (Apple silicon or Intel: both darwin) writes its modifiers in Apple's order, Control, Option, Shift, Command (⌃⌥⇧⌘),
+ * as its menus draw the same keys (alpha.24, the owner's "shortcuts should be adaptable to mac, mac intel, and
+ * windows"); Windows writes Ctrl, Alt, Shift. "Ctrl" in a binding is the Control key itself on both (a Mac's ⌃, as
+ * its menus' full screen ⌃⌘F has it): only the manual's other windows' keys use it (window-keys.ts), never KEYMAP.
+ */
 export function keyText(binding: string, platform: string): string {
   const { key, mod, shift, alt } = parse(binding);
+  const ctrl = binding.split('+').slice(0, -1).includes('Ctrl');
   const names: Record<string, string> = {
     ArrowRight: '→',
     ArrowLeft: '←',
@@ -278,11 +285,11 @@ export function keyText(binding: string, platform: string): string {
     PageUp: 'Page Up',
   };
   const name = names[key] ?? key;
-  if (platform === 'darwin') return `${mod ? '⌘' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${name}`;
-  return [mod ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
+  if (platform === 'darwin') return `${ctrl ? '⌃' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${mod ? '⌘' : ''}${name}`;
+  return [mod || ctrl ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
 }
 
-/** The first key of an action, written for people, e.g. "F2", "Space", "⌘⇧S" or "Ctrl+Shift+S". */
+/** The first key of an action, written for people, e.g. "F2", "Space", "⇧⌘S" or "Ctrl+Shift+S". */
 export function shortcutText(
   action: OperatorAction,
   platform: string,
