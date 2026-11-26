@@ -19,6 +19,7 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     const panel = win.getByTestId('sabha-flow');
     await panel.getByRole('button', { name: 'Choose PDF…' }).click();
     const image = panel.getByTestId('flow-page');
+    await expect(image).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
     const input = panel.getByRole('textbox', { name: 'Zoom', exact: true });
     const region = panel.getByTestId('flow-pages');
@@ -76,6 +77,12 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     const after = await region.evaluate((el) => ({ x: (el.scrollLeft + el.clientWidth / 2 - 8) / 3, y: (el.scrollTop + el.clientHeight / 2 - 8) / 3 }));
     expect(Math.abs(after.x - anchor.x)).toBeLessThan(1);
     expect(Math.abs(after.y - anchor.y)).toBeLessThan(1);
+    await region.evaluate((el) => { el.scrollLeft = 100; el.scrollTop = 200; });
+    const pointerBefore = await scroll();
+    await region.dispatchEvent('wheel', { ctrlKey: true, deltaY: -100, clientX: x, clientY: y });
+    await expect(input).toHaveValue('400%');
+    const pointerAfter = await scroll();
+    expect(Math.abs((pointerAfter.x + bounds.width / 2 - 8) / 4 - (pointerBefore.x + bounds.width / 2 - 8) / 3)).toBeLessThan(2);
     await panel.getByRole('button', { name: 'Fit to the panel' }).click();
     await expect(input).toHaveValue('100%');
     await expectFits(panel, 'PDF typed zoom at 1024 × 645');
