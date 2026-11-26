@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaptionReview } from '../../shared/caption-coordinator';
-import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/captions';
+import { DEFAULT_CAPTION_SETTINGS, type CaptionTiming, type CaptionsShown } from '../../shared/captions';
 import type { Heard } from '../../shared/speech';
 import { CaptionCoordinator } from './caption-coordinator';
 import { createCaptionFlow } from './caption-flow';
@@ -97,7 +97,12 @@ function markedEarlyReply(samples: Int16Array): Reply {
   return { language: 'gu', words: [...said.words.slice(0, -1), { ...lastWord, w: MARK }] };
 }
 
-function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS, longestMs = 12_000) {
+function setup(
+  reply: (samples: Int16Array) => Reply,
+  decodeMs = DECODE_MS,
+  longestMs = 12_000,
+  speech: CaptionTiming['speech'] = 'standard',
+) {
   let chunk: ((samples: Int16Array, endAt: number, startAt?: number) => void) | undefined;
   const decoded: Int16Array[] = [];
   const began: number[] = [];
@@ -112,7 +117,7 @@ function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS, long
       stepMs: 1_500,
       pauseMs: 700,
       longestMs: longestMs as 12_000,
-      speech: 'standard',
+      speech,
       threads: 4,
     }),
     program: () => '/native',
@@ -369,4 +374,31 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     expect((first?.at ?? Infinity) - resumed).toBeLessThanOrEqual(800);
     clean(t);
   });
+
+  it('Noisy hall keeps the final after the whole pause, as before (the owner, QCF-5: "Keep it accurate"): no early decode, the phrase settled 700 ms and one decode after its speech', async () => {
+    const t = setup(speechReply, DECODE_MS, 12_000, 'noisy-hall');
+    const speechEnd = await speak(t);
+    const finals = t.rawFinals();
+    expect(finals.map((h) => h.text)).toEqual([WORDS.join(' ')]);
+    // The final's sound is the whole phrase with its whole pause (47 chunks), decoded at the pause's end.
+    expect(t.decoded.at(-1)?.length).toBe(47 * 1_600);
+    expect((t.began.at(-1) ?? 0) - speechEnd).toBe(700);
+    expect((finals[0]?.heardAt ?? 0) - speechEnd).toBe(700 + DECODE_MS);
+    // No decode began in its pause before its end: no early final.
+    for (const at of t.began.slice(0, -1)) expect(at - speechEnd).toBeLessThan(300);
+    clean(t);
+  });
+
+  for (const speech of ['standard', 'quiet-room'] as const) {
+    it(`${speech === 'standard' ? 'Standard' : 'Quiet room'} keeps the early final: settled from the decode begun at 300 ms of quiet, at the pause`, async () => {
+      const t = setup(speechReply, DECODE_MS, 12_000, speech);
+      const speechEnd = await speak(t);
+      const finals = t.rawFinals();
+      expect(finals.map((h) => h.text)).toEqual([WORDS.join(' ')]);
+      expect(t.decoded.at(-1)?.length).toBe(43 * 1_600);
+      expect((t.began.at(-1) ?? 0) - speechEnd).toBe(300);
+      expect((finals[0]?.heardAt ?? Infinity) - speechEnd).toBeLessThanOrEqual(700);
+      clean(t);
+    });
+  }
 });
