@@ -27,7 +27,7 @@ export const TRANSLATION_TRIAL_WARNING =
 
 /** How translated captions show (2b, 2c), once a translation is chosen. */
 export const TRANSLATION_HOW =
-  'The audience screens and the stream show the translation a whole phrase at a time, about a second after the speaker pauses; a long one shows as two-line pages. A phrase whose translation is late is skipped, never shown late. The stage screens keep the speaker’s own words.';
+  'The audience screens and the stream show the translation a whole phrase at a time, about 1 to 3 seconds after the speaker pauses; a long one shows as two-line pages. A phrase whose translation is late is skipped, never shown late. The stage screens keep the speaker’s own words.';
 
 /** Why "Captions in" cannot translate on this computer now, in plain words (null: this Drashti says nothing). */
 export function unavailableText(reason: CaptionTranslationUnavailable | null): string {
@@ -133,8 +133,10 @@ export function chosenUnavailableText(
   if (speakers || translationTarget(view.settings.language, target) === null)
     return { tone: 'warning', text: why, retry: false };
   // Choosing again tries once more after slowness or the engine's fault: Try again does so. Not while live captions
-  // themselves stopped as too slow (they are off: turning them on again tries once more).
+  // themselves stopped as too slow (they are off: turning them on again tries once more), and then no screen shows
+  // any captions, the stage included: only why (the review's round 2).
   const reason = captionTargetReason(view) ?? null;
+  if (captionsStoppedTooSlow(view, reason)) return { tone: 'danger', text: why, retry: false };
   return {
     tone: 'danger',
     retry: triedAgainOnChoosing(reason) && !captionsStoppedTooSlow(view, reason),
