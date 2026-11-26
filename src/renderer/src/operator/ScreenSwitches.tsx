@@ -229,7 +229,7 @@ export function SwitchedOffStatus() {
             key={which}
             role="status"
             data-testid={`switch-off-${which}`}
-            className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
+            className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 text-warning-fg"
           >
             {said !== null ? (
               <TabletSmartphone
@@ -248,10 +248,12 @@ export function SwitchedOffStatus() {
                 <span data-testid="switch-off-stage-hint">{said}</span>
               </span>
             )}
+            {/* 24 px, a target's least, inside the 28 px status bar (alpha.24, uitop): its h-5 had lost to the small
+                button's own h-7, and 28 px with the item's padding ran 3 px past the bar, so the page scrolled. */}
             <Button
               variant="secondary"
               size="sm"
-              className="h-5"
+              className="h-6!"
               aria-label={`Turn on ${SWITCH_NAMES[which]}`}
               onClick={() => void turnOnIfOff(which).then(say)}
             >
