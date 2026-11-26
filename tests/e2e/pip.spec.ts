@@ -802,9 +802,14 @@ test('with nothing else up, the chosen wallpaper stays behind the box on the hal
   );
   // Swapped: the box's own picture fills the screen, with nothing-up not drawn over it, as before.
   await dispatch(win, { type: 'swapPip' });
+  await expect.poll(async () => (await pipNow(win))?.swapped).toBe(true);
   await expect(hallScene).toHaveAttribute('data-pip', 'swapped');
   await expect(hallScene).not.toHaveAttribute('data-nothing-up', /./u);
+  // Back: a Swap pressed while one still runs changes nothing (Session 51), so once it is over by the engine's clock.
+  const changedAt = (await pipNow(win))?.changed?.at ?? 0;
+  await expect.poll(() => Date.now() - changedAt).toBeGreaterThanOrEqual(pipSwapMs([]));
   await dispatch(win, { type: 'swapPip' });
+  await expect.poll(async () => (await pipNow(win))?.swapped).toBe(false);
   await expect(hallScene).toHaveAttribute('data-pip', 'up');
   await expect(hallScene).toHaveAttribute('data-nothing-up', 'wallpaper');
 
