@@ -92,7 +92,7 @@ export function wallpaperTarget(wallpaper: Wallpaper, chosen: boolean): FileTarg
   };
 }
 
-function Tile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) {
+export function WallpaperTile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) {
   const [over, setOver] = useState(false);
   const shown = wallpaper.pictures.find((p) => !p.missing);
   const count = wallpaper.pictures.length;
@@ -319,7 +319,7 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
           className="grid min-h-0 grid-cols-3 content-start gap-1 overflow-y-auto px-2 pb-2"
         >
           {wallpapers.map((w) => (
-            <Tile key={w.id} wallpaper={w} chosen={w.id === view?.chosenId} />
+            <WallpaperTile key={w.id} wallpaper={w} chosen={w.id === view?.chosenId} />
           ))}
         </ul>
       )}

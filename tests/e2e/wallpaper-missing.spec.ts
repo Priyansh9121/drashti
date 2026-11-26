@@ -144,6 +144,7 @@ test('a wallpaper whose picture is missing says so (its tile, the panel with Fin
     )
     .toEqual([]);
   await settled(win);
+  await expect(tile.getByTestId('wallpaper-missing')).toHaveAttribute('title', 'Picture missing');
   await expectNoSeriousA11yIssues(win, 'a wallpaper whose picture is missing', '[data-testid="wallpapers"]');
 
   // Gone for good at the next start (its file removed from Media): the same.
