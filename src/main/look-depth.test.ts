@@ -1,13 +1,14 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, over } from '../../../shared/contrast';
-import type { Appearance } from '../../../shared/appearance/appearances';
-import { BLACK, WHITE } from '../../../shared/appearance/appearances';
-import { ZONES, type Zone } from '../../../shared/appearance/zones';
+import { contrastRatio, over } from '../shared/contrast';
+import type { Appearance } from '../shared/appearance/appearances';
+import { BLACK, WHITE } from '../shared/appearance/appearances';
+import { ZONES, type Zone } from '../shared/appearance/zones';
 
 /*
- * B · Depth (alpha.24, the owner's QA24-UI-4): styles/look-depth.css, read from the source. The operator window alone
+ * B · Depth (alpha.24, the owner's QA24-UI-4): src/renderer/src/styles/look-depth.css, read from the source (here, as
+ * motion.test.ts and contrast.test.ts read app.css: a renderer's tests have no Node). The operator window alone
  * loads it, once; every rule is the Depth look's (:root[data-window-look='depth']) and none applies in forced colours;
  * it draws nothing that costs a computer without a graphics chip a new way of drawing (no gradient, no blur, no glow,
  * no backdrop filter, no layer of its own, no animation, no number of its own for a transition); its tokens are one
@@ -17,9 +18,8 @@ import { ZONES, type Zone } from '../../../shared/appearance/zones';
  * computer shows).
  */
 
-const styles = __dirname;
-const renderer = join(styles, '..');
-const FILE = join(styles, 'look-depth.css');
+const renderer = join(__dirname, '..', 'renderer', 'src');
+const FILE = join(renderer, 'styles', 'look-depth.css');
 const source = existsSync(FILE) ? readFileSync(FILE, 'utf8') : '';
 const css = source.replace(/\/\*[\s\S]*?\*\//gu, '');
 
@@ -64,7 +64,13 @@ const rules: Rule[] = [...inner.matchAll(/([^{}]+)\{([^{}]*)\}/gu)].map((m) => (
       .filter((d) => d !== '')
       .map((d) => {
         const at = d.indexOf(':');
-        return [d.slice(0, at).trim(), d.slice(at + 1).trim().replace(/\s+/gu, ' ')];
+        return [
+          d.slice(0, at).trim(),
+          d
+            .slice(at + 1)
+            .trim()
+            .replace(/\s+/gu, ' '),
+        ];
       }),
   ),
 }));
@@ -107,9 +113,10 @@ function drawn(value: string, colours: Record<string, string>, under: string): s
     if (hex === undefined) throw new Error(`cannot read ${v}`);
     return hex;
   };
-  const mix = /^color-mix\(in srgb, (var\(--color-[\w-]+\)) (\d+(?:\.\d+)?)%, (transparent|var\(--color-[\w-]+\))\)$/u.exec(
-    value,
-  );
+  const mix =
+    /^color-mix\(in srgb, (var\(--color-[\w-]+\)) (\d+(?:\.\d+)?)%, (transparent|var\(--color-[\w-]+\))\)$/u.exec(
+      value,
+    );
   if (mix) {
     const top = named(mix[1] ?? '');
     const share = Number(mix[2]) / 100;
@@ -151,15 +158,17 @@ describe('B · Depth: styles/look-depth.css', () => {
   it('draws no new way: no gradient, blur, glow, backdrop filter, layer, animation or timing of its own', () => {
     const all = rules.flatMap((r) => Object.entries(r.decls).map(([p, v]) => `${r.selector} { ${p}: ${v} }`));
     const banned = all.filter((d) =>
-      /gradient\(|backdrop-filter|blur\(|will-change|translateZ|translate3d|animation|!important|filter:/u.test(d),
+      /gradient\(|backdrop-filter|blur\(|will-change|translateZ|translate3d|animation|!important|filter:/u.test(
+        d,
+      ),
     );
     expect(banned).toEqual([]);
     expect(css).not.toMatch(/@keyframes/u);
     // A transition only of colours, on the motion's tokens.
     const transitions = all.filter((d) => /\btransition/u.test(d));
-    expect(
-      transitions.filter((d) => /\d+(?:\.\d+)?m?s\b/u.test(d.replace(/var\([^)]*\)/gu, ''))),
-    ).toEqual([]);
+    expect(transitions.filter((d) => /\d+(?:\.\d+)?m?s\b/u.test(d.replace(/var\([^)]*\)/gu, '')))).toEqual(
+      [],
+    );
     // Every shadow a ring or an inset light: never blurred (a blur round a rounded corner is a new way of drawing).
     const blurred = rules.flatMap((r) => {
       const shadow = r.decls['box-shadow'];
@@ -209,8 +218,12 @@ describe('B · Depth: styles/look-depth.css', () => {
   });
 
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {
+    // Inside its frame exactly as before (the light along its top: warm-up.spec compares the picture's own pixels).
+    expect(block(`${SCOPE} [data-testid='live-preview']`)['box-shadow']).toBe(
+      'inset 0 1px 0 var(--depth-light)',
+    );
     const picture = block(`${SCOPE} [data-testid='live-preview'].border-live-edge`)['box-shadow'] ?? '';
-    expect(picture).toMatch(/^0 0 0 \d+px var\(--state-live-ring\)$/u);
+    expect(picture).toMatch(/^inset 0 1px 0 var\(--depth-light\), 0 0 0 \d+px var\(--state-live-ring\)$/u);
     const row = block(`${SCOPE} [data-testid='slide-thumb'][aria-current='true']`)['box-shadow'] ?? '';
     // The tint inside the row's red frame; the red in its shadow, as appearance-drawing.spec reads it.
     expect(row).toMatch(/^inset 0 0 0 \d+px var\(--state-live-tint\)$/u);

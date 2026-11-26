@@ -1,0 +1,267 @@
+/*
+ * B · Depth (alpha.24, the owner's QA24-UI-4, built as recommended): the operator window's look while it follows the
+ * computer, the default, in Black's or White's colours (src/main/appearance/appearance-service.ts, now().depth; the
+ * preload sets <html data-window-look>). An appearance chosen by name draws as it always did.
+ *
+ * The three columns are panels on a darker ground, with small gaps (the splitters between them are the gaps) and
+ * rounded corners; the top bar, the bar of clears and the status bar sit on the ground with no line. Depth is tonal: a
+ * panel one surface up and a 1 px light along its top, never a blurred shadow, a glow, a gradient or a backdrop filter
+ * (the Performance self-test: CI's Mac draws the window's first picture without a graphics chip). Controls in the
+ * columns are filled, soft pills that brighten on hover; the sections under LIVE are soft rounded rows with no line
+ * between them, an open one's heading in the words' own colour; LIVE is its red frame with a light red ring round the
+ * picture and a light red tint in the live row. Show controls (Back, Next, the clears, Black-out) still change at once
+ * and keep their shape: app.css's [data-show-control] rule takes every transition off them. The look sets no motion of
+ * its own: its colours change with the buttons' own transitions (ui/Button.tsx, --dur-hover), and the sections' folding
+ * and the window's motion are ui/motion.ts's.
+ *
+ * Only the operator window loads this file (operator/main.tsx, once): never the screens in the hall, the stream, the
+ * stage display or the phones. Every surface it draws is one the appearance's rules measure (a zone's ink, panel,
+ * panel-2 and panel-3: src/shared/appearance/rules.ts), but for a control's hover and press, a section's row and LIVE's
+ * tint, where src/main/look-depth.test.ts measures the words at 4.5:1. In forced colours (Windows' contrast themes) none of it
+ * applies: the system paints the window as before. docs/design.md lists the tokens.
+ */
+@media not (forced-colors: active) {
+  /*
+   * The tokens. Radius, one scale: 4 key hints, 6 badges, 8 rows and the sections under LIVE, 12 the columns' panels,
+   * 18 dialogs, and pills for controls. The gap each column keeps on either side: 8 px between two, a splitter's width.
+   * Type: the open playlist's name a size above the panels' headings and words.
+   */
+  :root[data-window-look='depth'] {
+    --radius-row: var(--radius-md);
+    --radius-panel: var(--radius-lg);
+    --radius-pill: 9999px;
+    --depth-gap: 4px;
+    --type-title: 1.0625rem;
+  }
+
+  /*
+   * Elevation, one scale: 0 the ground (the window's own ink, under the bars and in the gaps), 1 the middle (the
+   * panel), 2 the side columns (one surface up), 3 what is raised in them (cards, fields, a control at rest); a panel's
+   * edge is the light along its top (--elev-light). LIVE's red at its tint (the live row) and its ring (round the live
+   * picture): LIVE's own, the same in Black and White.
+   */
+  :root[data-window-look='depth'][data-base='dark'] {
+    --elev-light: #ffffff0f;
+    --state-live-tint: #d42a3124;
+    --state-live-ring: #d42a313d;
+  }
+  :root[data-window-look='depth'][data-base='light'] {
+    --elev-light: #ffffffb3;
+    --state-live-tint: #d42a310f;
+    --state-live-ring: #d42a3129;
+  }
+
+  /*
+   * The state set, one for every control the look draws (said again in each zone, so it takes the zone's surfaces):
+   * at rest the raised surface, hover a step brighter (darker in a light one), pressed back down; selected as always
+   * (the raised surface and the second colour's edge); live the red ring and tint above; disabled at 40 %.
+   */
+  :root[data-window-look='depth'] :is(body, [data-zone]) {
+    --state-fill: var(--color-panel-2);
+    --state-row: color-mix(in srgb, var(--color-fg) 3%, transparent);
+    --state-disabled: 0.4;
+  }
+  :root[data-window-look='depth'][data-base='dark'] :is(body, [data-zone]) {
+    --state-hover: color-mix(in srgb, var(--color-fg) 7%, var(--color-panel-3));
+    --state-press: var(--color-panel-3);
+  }
+  :root[data-window-look='depth'][data-base='light'] :is(body, [data-zone]) {
+    --state-hover: var(--color-panel-3);
+    --state-press: color-mix(in srgb, var(--color-fg) 4%, var(--color-panel-3));
+  }
+
+  /*
+   * The surfaces. Dark: the side columns one surface up (their raised things one more), the middle the panel. Light:
+   * the side columns the lightest surface, their raised things a shade under it, the middle the panel. The bar of
+   * clears on the ground. Each zone's own surfaces (zones.ts), so every ratio rules.ts measures still holds.
+   */
+  :root[data-window-look='depth'][data-base='dark'] [data-zone='left'] {
+    --color-ink: var(--zone-left-panel);
+    --color-panel: var(--zone-left-panel-2);
+    --color-panel-2: var(--zone-left-panel-3);
+  }
+  :root[data-window-look='depth'][data-base='dark'] [data-zone='right'] {
+    --color-ink: var(--zone-right-panel);
+    --color-panel: var(--zone-right-panel-2);
+    --color-panel-2: var(--zone-right-panel-3);
+  }
+  :root[data-window-look='depth'][data-base='light'] [data-zone='left'] {
+    --color-panel: var(--zone-left-panel-2);
+    --color-panel-2: var(--zone-left-panel);
+  }
+  :root[data-window-look='depth'][data-base='light'] [data-zone='right'] {
+    --color-panel: var(--zone-right-panel-2);
+    --color-panel-2: var(--zone-right-panel);
+  }
+  :root[data-window-look='depth'] [data-zone='middle'] {
+    --color-ink: var(--zone-middle-panel);
+  }
+  :root[data-window-look='depth'] [data-zone='bar'] {
+    --color-panel: var(--zone-bar-ink);
+    border-top-color: transparent;
+  }
+
+  /* The ground: the top bar (Pro Mode's and Simple Mode's), the access line's strip, the quick bar and the status bar. */
+  :root[data-window-look='depth'] body {
+    --color-header: var(--color-ink);
+    --color-header-2: var(--color-ink);
+  }
+  :root[data-window-look='depth'] [data-header] {
+    border-bottom-color: transparent;
+  }
+  :root[data-window-look='depth'] [data-testid='access-offline-notices'] {
+    background-color: transparent;
+    border-bottom-color: transparent;
+  }
+  :root[data-window-look='depth'] [data-testid='quick-bar'] {
+    background-color: transparent;
+    border-top-color: transparent;
+  }
+  :root[data-window-look='depth'] footer[aria-label='Status'] {
+    border-top-color: transparent;
+  }
+
+  /*
+   * The columns as panels: the gap inside each column's own box (so no column is narrower or wider than the layout
+   * says: operator/Layout.tsx), the ground showing through it; rounded, with the light along the top. The middle and
+   * the live column keep what they hold inside their corners (clip: no scrolling of its own).
+   */
+  :root[data-window-look='depth']
+    :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right']) {
+    border-inline: var(--depth-gap) solid transparent;
+    border-radius: var(--radius-panel);
+    background-clip: padding-box;
+    box-shadow: inset 0 1px 0 var(--elev-light);
+  }
+  :root[data-window-look='depth'] :is([data-testid='column-middle'], [data-testid='column-right']) {
+    overflow: clip;
+  }
+  /* The open playlist lies on the middle's own panel, so its light shows. */
+  :root[data-window-look='depth'] [data-testid='centre-playlist'] {
+    background-color: transparent;
+  }
+
+  /* The splitters between the columns are the gaps: no line until pointed at or reached by the keyboard. */
+  :root[data-window-look='depth'] :is([data-zone='left'], [data-zone='middle']) + [role='separator'] > span {
+    background-color: transparent;
+  }
+  :root[data-window-look='depth']
+    :is([data-zone='left'], [data-zone='middle'])
+    + [role='separator']:hover
+    > span {
+    background-color: color-mix(in srgb, var(--color-accent) 70%, transparent);
+  }
+  :root[data-window-look='depth']
+    :is([data-zone='left'], [data-zone='middle'])
+    + [role='separator']:is(:focus-visible, :active)
+    > span {
+    background-color: var(--color-accent);
+  }
+
+  /* The left column: its parts apart by space and type, not lines; the Library button a filled pill. */
+  :root[data-window-look='depth'] [data-testid='flow-area'] {
+    border-bottom-color: transparent;
+  }
+  :root[data-window-look='depth'] [data-testid='wallpapers'] {
+    border-top-color: transparent;
+  }
+  :root[data-window-look='depth'] [data-testid='library-button'] {
+    background-color: var(--state-fill);
+  }
+
+  /* The middle's header: the open playlist's name leads, a size up, with no line under its strip. */
+  :root[data-window-look='depth'] [data-zone='middle'] [data-strip] {
+    border-bottom-color: transparent;
+  }
+  :root[data-window-look='depth'] [data-testid='playlist-title'] {
+    font-size: var(--type-title);
+    line-height: 1.5rem;
+  }
+
+  /*
+   * Controls in the columns (not the show's: Back, Next and the clears keep their shape): filled, soft pills that
+   * brighten on hover. One a person switches on (pressed or checked) keeps the edge that says so.
+   */
+  :root[data-window-look='depth']
+    :is([data-zone='left'], [data-zone='middle'], [data-testid='live-rest'])
+    :is([data-variant='secondary'], [data-variant='strong']):not(
+      [aria-pressed],
+      [aria-checked],
+      [data-show-control]
+    ) {
+    border-color: transparent;
+    background-color: var(--state-fill);
+  }
+  :root[data-window-look='depth']
+    :is([data-zone='left'], [data-zone='middle'], [data-testid='live-rest'])
+    :is([data-variant='secondary'], [data-variant='strong'], [data-variant='ghost']):not(
+      [data-show-control]
+    ) {
+    border-radius: var(--radius-pill);
+  }
+  :root[data-window-look='depth']
+    :is([data-zone='left'], [data-zone='middle'], [data-testid='live-rest'])
+    :is([data-variant='secondary'], [data-variant='strong'], [data-variant='ghost']):not(
+      [data-show-control],
+      :disabled
+    ):hover {
+    background-color: var(--state-hover);
+  }
+  :root[data-window-look='depth']
+    :is([data-zone='left'], [data-zone='middle'], [data-testid='live-rest'])
+    :is([data-variant='secondary'], [data-variant='strong'], [data-variant='ghost']):not(
+      [data-show-control],
+      :disabled
+    ):active {
+    background-color: var(--state-press);
+  }
+  /* The next thing to do (Next, and a panel's one primary): a flat fill with its light along the top, no glow. */
+  :root[data-window-look='depth'] [data-zone] [data-variant='primary']:not(:disabled) {
+    background-image: none;
+    background-color: var(--color-primary);
+    box-shadow: inset 0 1px 0 var(--depth-primary-top);
+  }
+  :root[data-window-look='depth'] [data-zone] [data-variant='primary']:not(:disabled):hover {
+    background-color: var(--color-primary-hi);
+  }
+  :root[data-window-look='depth'] [data-zone] [data-variant='primary']:not(:disabled):active {
+    background-color: var(--color-primary-lo);
+  }
+
+  /*
+   * The LIVE block: what stands still under the picture with no line above the levels; the picture at rest a panel's
+   * light, and while something is up its red frame with the light red ring round it (no glow), in the same frame as the
+   * screens (data-show-control).
+   */
+  :root[data-window-look='depth'] [data-testid='live-still'] > :has(> [data-testid='sound-levels']) {
+    border-top-color: transparent;
+  }
+  :root[data-window-look='depth'] [data-testid='live-preview'] {
+    box-shadow: inset 0 1px 0 var(--depth-light);
+  }
+  :root[data-window-look='depth'] [data-testid='live-preview'].border-live-edge {
+    box-shadow:
+      inset 0 1px 0 var(--depth-light),
+      0 0 0 4px var(--state-live-ring);
+  }
+  /* The live row: its red frame (playlists/SlideRow.tsx), tinted inside; never a glow under it. */
+  :root[data-window-look='depth'] [data-testid='slide-thumb'][aria-current='true'] {
+    box-shadow: inset 0 0 0 9999px var(--state-live-tint);
+  }
+
+  /* The sections under LIVE: soft rounded rows, a gap apart, with no line between them. */
+  :root[data-window-look='depth'] [data-testid='live-rest'] {
+    border-top-color: transparent;
+    padding-top: var(--depth-gap);
+  }
+  :root[data-window-look='depth'] [data-testid='live-rest'] > div > * {
+    margin-inline: var(--depth-gap);
+    margin-bottom: var(--depth-gap);
+    border-width: 0;
+    border-radius: var(--radius-row);
+    background-color: var(--state-row);
+  }
+  :root[data-window-look='depth'] [data-testid='live-rest'] > div > * > header [aria-expanded='true'] {
+    color: var(--color-fg);
+  }
+}

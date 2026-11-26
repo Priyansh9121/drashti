@@ -123,7 +123,8 @@ function newWaysToDraw(win: Page) {
             const [, , blur = 0, spread = 0] = [
               ...shadow.replace(/rgba?\([^)]*\)|color\([^)]*\)/gu, '').matchAll(/(-?[\d.]+)px/gu),
             ].map((m) => Number(m[1]));
-            if (blur > 0 && spread + corner > 0) found.push(`${name}: a blur round a ${String(corner)} px corner`);
+            if (blur > 0 && spread + corner > 0)
+              found.push(`${name}: a blur round a ${String(corner)} px corner`);
           }
         if (st.backgroundImage.includes('gradient(')) {
           const allowed =
@@ -163,6 +164,7 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
 
     // A slide live: the live picture's red frame with a light red ring round it, no blur; the live row tinted inside.
     const thumbs = win.getByTestId('slide-thumb');
+    await expect(thumbs.first()).toBeVisible();
     await thumbs.first().click();
     await expect(thumbs.first()).toHaveAttribute('aria-current', 'true');
     const preview = win.getByTestId('live-preview');
@@ -170,11 +172,17 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     const live = await win.evaluate(() => ({
       picture: getComputedStyle(document.querySelector('[data-testid="live-preview"]') ?? document.body)
         .boxShadow,
-      row: getComputedStyle(document.querySelector('[data-testid="slide-thumb"][aria-current="true"]') ?? document.body)
-        .boxShadow,
+      row: getComputedStyle(
+        document.querySelector('[data-testid="slide-thumb"][aria-current="true"]') ?? document.body,
+      ).boxShadow,
     }));
-    expect(live.picture, `${a.name}: the live picture`).toMatch(/^rgba\(212, 42, 49, 0\.\d+\) 0px 0px 0px 4px$/u);
-    expect(live.row, `${a.name}: the live row`).toMatch(/^rgba\(212, 42, 49, 0\.\d+\) 0px 0px 0px \d+px inset$/u);
+    // Inside its frame as before (its light along the top), the ring outside it.
+    expect(live.picture, `${a.name}: the live picture`).toMatch(
+      /^rgba\(255, 255, 255, [\d.]+\) 0px 1px 0px 0px inset, rgba\(212, 42, 49, 0\.\d+\) 0px 0px 0px 4px$/u,
+    );
+    expect(live.row, `${a.name}: the live row`).toMatch(
+      /^rgba\(212, 42, 49, 0\.\d+\) 0px 0px 0px \d+px inset$/u,
+    );
     expect(await newWaysToDraw(win), `${a.name}: in a show`).toEqual([]);
     await win.evaluate(() =>
       (

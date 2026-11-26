@@ -166,6 +166,8 @@ export class AppearanceService {
       look: shown.moving?.kinds ?? [],
       slow: isSlow(this.deps.cores ?? availableParallelism()),
       chip: this.deps.chip?.() ?? 'unknown',
+      // B · Depth (alpha.24, QA24-UI-4): Follow the computer's look; one chosen by name draws as it always did.
+      depth: this.settings.choice === FOLLOW,
     };
   }
 

@@ -241,6 +241,12 @@ export interface AppearanceNow {
    * never moves before it is known (no chip: it never moves).
    */
   chip: 'unknown' | 'yes' | 'no';
+  /**
+   * The window's look (alpha.24, the owner's QA24-UI-4): B · Depth while the window follows the computer, the default
+   * (styles/look-depth.css: panels on a darker ground, pills, LIVE a red ring and tint); flat, exactly as before, in an
+   * appearance chosen by name.
+   */
+  depth: boolean;
 }
 
 /** One a person made (Session 40): kept as its name, base and accent; the rest is worked out (derive.ts). */
