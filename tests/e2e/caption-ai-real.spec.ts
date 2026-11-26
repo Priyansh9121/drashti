@@ -8,7 +8,7 @@ import { captionClips, characterErrorRate, fakeMicrophoneFile } from './caption-
 import { routeCInTheApp } from './route-c-in-app';
 
 /*
- * Caption AI's REAL recogniser inside Drashti (alpha.23, cap-realc; a22-review-cap S4): Route C (AI4Bharat's
+ * Caption AI's REAL recogniser inside Drashti (alpha.25, cap-realc; a22-review-cap S4): Route C (AI4Bharat's
  * IndicConformer, CTC) from alpha.22's real packs, imported as an admin does (Import a Zip…), hearing generated speech
  * (cap-winci's synthetic clips: never real speech, a recording or a microphone) as the stream's sound input
  * (route-c-in-app.ts). No stand-in engine.
@@ -18,8 +18,7 @@ import { routeCInTheApp } from './route-c-in-app';
  * (never skips) where it is not there. The parts leave it out
  * (playwright.config.ts): CI runs it in a step of its own with DRASHTI_E2E_REAL_CAPTIONS=1 (ci.yml, "End-to-end and
  * installers", runs asked by hand only: never on a push, so the release gate never downloads them). Route C is the only
- * recogniser this test asks for; until cap-next's fix, captions start only where Whisper's program is present (CI
- * fetches it), nothing else of it is used.
+ * recogniser this test asks for; no Whisper model or stand-in engine is used.
  */
 
 /** Silence before the first clip: the stream's frames are measured, then Route C starts listening, within it. */
@@ -98,7 +97,7 @@ for (const route of ROUTES) {
       // Chromium's fake microphone, which fell behind real time on CI's Mac and lost sound (cap-realc.md). Right words
       // on the Mac here mean the fake device was the cause; wrong words would be the stream's own sound path. Each
       // clip is placed where it played in the stream's graph (route-c-placement.ts), whose clock ran slower than real
-      // time on CI's Mac (run 45401342094; QA23-REALC-3, the owner's call).
+      // time on CI's Mac (run 45401342094; QA23-REALC-3: "By when it played (Rec.)").
       seam: 'stream-clock',
       wav,
       sounds,

@@ -595,7 +595,7 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     summary['framesWorse'] = framesVerdict(process.platform, trials, controls, o.seam).worse;
     await say();
     for (const c of controls) expect(c.frames, 'a control window drew').toBeGreaterThan(30);
-    // The owner (QA23-REALC-2): "Mac: log frames only (Rec.)": recorded above, judged everywhere but the Mac.
+    // QA23-REALC-2: the fake-microphone chain logs Mac frames only; the stream-clock real spec judges them too.
     const verdict = framesVerdict(process.platform, trials, controls, o.seam);
     expect(
       verdict.judged && verdict.worse,

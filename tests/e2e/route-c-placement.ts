@@ -1,6 +1,6 @@
 /*
- * Where each generated clip actually played in the stream's own audio graph (alpha.23, cap-realc; QA23-REALC-3, held
- * for the owner, prepared on s59-cap-realc-graph): through the stream-clock seam the clip plays on the graph's clock,
+ * Where each generated clip actually played in the stream's own audio graph (alpha.25, cap-realc; QA23-REALC-3, the
+ * owner: "By when it played (Rec.)"): through the stream-clock seam the clip plays on the graph's clock,
  * which on CI's Mac ran slower than real time (run 45401342094), so the file's positions on the wall clock no longer
  * say when each clip was heard. The stream page's level reports (body data-level: the loudest of each 100 ms, with this
  * computer's clock) do. A clip's latency is taken from the end of its sound there, with the meter's step added.

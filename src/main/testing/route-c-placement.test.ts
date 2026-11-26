@@ -8,7 +8,7 @@ import {
 } from '../../../tests/e2e/route-c-placement';
 
 /*
- * caption-ai-real.spec.ts through the stream-clock seam (alpha.23, cap-realc; lead 2, QA23-REALC-3 held for the owner):
+ * caption-ai-real.spec.ts through the stream-clock seam (alpha.25, cap-realc; QA23-REALC-3, the owner's answer):
  * each clip placed where it actually played in the stream's own audio graph (the stream page's level reports, the
  * loudest of each 100 ms), not where the file holds it on the wall clock. On CI's Mac the graph played slower than real
  * time (run 45401342094: a 2.56 s voice loud for 4.0 s, arriving 2.2 s late), so the file's positions put whole, right
