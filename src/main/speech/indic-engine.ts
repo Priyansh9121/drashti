@@ -149,8 +149,11 @@ function wordsToShow(words: readonly { start: number; end: number }[], seconds: 
  * one's words. Measured
  * (a24-capfast) on 30 minutes of real Gujarati: WER +0.5 points [-0.4, +1.7] against the final after the whole pause.
  */
-function earlyDue(g: Growing): boolean {
-  return g.quietMs >= PAUSING_MS && g.early === null;
+function earlyDue(g: Growing, speechLevel: CaptionTiming['speech']): boolean {
+  // Not in a noisy hall (QCF-5, the owner: "Keep it accurate (Recommended)"): its higher speech level ends the speech
+  // sooner, and the early final then lost a real last word in 2 of 100 (real Gujarati WER +1.3 points, a real cost).
+  // There a phrase keeps its final after the whole pause, as before.
+  return speechLevel !== 'noisy-hall' && g.quietMs >= PAUSING_MS && g.early === null;
 }
 
 /**
@@ -301,7 +304,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         const piece = final ?? growing;
         if (!piece) return;
         const early: Early | null =
-          growing && earlyDue(growing)
+          growing && earlyDue(growing, speechLevel)
             ? {
                 speechS: (growing.length - quietSamples(growing)) / SAMPLE_RATE,
                 heard: null,
