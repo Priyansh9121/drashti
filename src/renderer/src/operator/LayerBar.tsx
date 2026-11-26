@@ -51,8 +51,9 @@ import { Tooltip } from '../ui/Tooltip';
  *
  * No button along the bar moves (alpha.24, clearroom), by so much as a pixel, whatever goes up or comes off: each
  * clear keeps its room; Clear all and Put it back share one, held by unseen copies of Clear all as it can be pressed
- * (its words bolder) and of Put it back, the one shown filling it. So the bar is one row from 1008 px in every state
- * as before, and its width never changes with what is up.
+ * (its words bolder) and of Put it back, the one shown filling it; the Wallpaper and Black-out each keep the room
+ * their words take while on ("Wallpaper is on", "Black-out is on"), their words in the middle of it while off. So the
+ * bar is one row from 1008 px in every state as before, and its width never changes with what is up.
  */
 
 /** Simple Mode's clears beside its Clear all (Session 56), in the order of their keys (F2, F3, F5). */
@@ -201,7 +202,11 @@ function PutBackLook() {
   );
 }
 
-/** The Wallpaper or Black-out: on in LIVE's red, saying so in words; off, dimmed and pressable. */
+/**
+ * The Wallpaper or Black-out: on in LIVE's red, saying so in words; off, dimmed and pressable. Its room is its on
+ * look's (an unseen copy of its on words and key), off as on, so turning it on or off moves nothing beside it
+ * (clearroom).
+ */
 function CoverButton({
   on,
   words,
@@ -223,19 +228,25 @@ function CoverButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      data-show-control
-      data-testid={testId}
-      aria-keyshortcuts={keys}
-      data-lit={on ? 'true' : undefined}
-      data-dimmed={on ? undefined : 'true'}
-      onClick={onClick}
-      className={cx(BAR_BUTTON, on ? ON : cx(DIMMED, 'hover:bg-panel-2 hover:text-fg'))}
-    >
-      <BarIcon shape={icon} />
-      <WordsAndKey words={on ? onWords : words} keyText={keyText} />
-    </button>
+    <span className={ROOM} data-bar-room={testId}>
+      <Unseen>
+        <BarIcon shape={icon} />
+        <WordsAndKey words={onWords} keyText={keyText} />
+      </Unseen>
+      <button
+        type="button"
+        data-show-control
+        data-testid={testId}
+        aria-keyshortcuts={keys}
+        data-lit={on ? 'true' : undefined}
+        data-dimmed={on ? undefined : 'true'}
+        onClick={onClick}
+        className={cx(BAR_BUTTON, ROOM_FILL, on ? ON : cx(DIMMED, 'hover:bg-panel-2 hover:text-fg'))}
+      >
+        <BarIcon shape={icon} />
+        <WordsAndKey words={on ? onWords : words} keyText={keyText} />
+      </button>
+    </span>
   );
 }
 
