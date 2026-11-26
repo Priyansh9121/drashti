@@ -42,13 +42,18 @@ export type CaptionTranslationUnavailable =
   /** Sanskrit speech is not translated (2d). */
   | 'speaker-sanskrit'
   /** 2f: live captions do not keep up on this computer (they stopped as too slow), or translations kept coming late. */
-  | 'too-slow';
+  | 'too-slow'
+  /** The translation engine stopped or failed (its fault says how): tried again when "Captions in" is chosen again. */
+  | 'engine-fault';
 
 /** How translated captions stand on this computer, for the Live Captions dialog (inside CaptionsStatus). */
 export interface CaptionTranslationStatus {
   /** The language captions are translated into now, or null when they show the speaker's own words. */
   target: SpeechLanguage | null;
-  /** Whether "Captions in" can translate here now for the chosen speaker's language (2f). */
+  /**
+   * Whether this computer can translate now for the speaker's language (2f), whatever "Captions in" says: the dialog
+   * greys the translations out before one is chosen. False also while the engine has stopped or failed.
+   */
   offered: boolean;
   /** Why not, when it cannot; null when it can (or "Same as the speaker" is chosen and nothing is asked). */
   unavailable: CaptionTranslationUnavailable | null;

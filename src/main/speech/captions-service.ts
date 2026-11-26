@@ -117,6 +117,8 @@ export interface CaptionsTranslation {
   ): CaptionTranslationStatus;
   begin(from: SpeechLanguage, to: SpeechLanguage): void;
   end(): void;
+  /** The operator chose again: a stop for slowness or the engine's fault is forgotten, translation tried again. */
+  retry(): void;
 }
 
 const LANGUAGE_NAMES: Readonly<Record<SpeechLanguage, string>> = Object.freeze({
@@ -558,6 +560,8 @@ export class CaptionsService {
     const languageChanged = s.language !== before.language;
     const targetChanged = this.translationTo(s) !== this.translationTo(before);
     this.deps.repo.set(s);
+    // A translation chosen (again): what stopped it for slowness or a fault is forgotten, and it is tried once more.
+    if (this.translationTo(s) !== null) this.deps.translation?.retry();
     if (this.prototype.view().on) {
       if (languageChanged) this.prototype.restart();
       else this.prototype.refresh();

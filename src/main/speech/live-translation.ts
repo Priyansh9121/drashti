@@ -14,6 +14,7 @@ import {
   type SpokenTimes,
 } from '../../shared/caption-translation';
 import type { TranslationLanguage } from '../../shared/prepared-translations';
+import { HelperError } from '../translation/translation-helper';
 import type { SpeechLanguage } from '../../shared/speech';
 import type { CaptionSkip } from './caption-coordinator';
 
@@ -55,6 +56,9 @@ export interface LiveTranslationOptions {
 const isTranslated = (language: SpeechLanguage): language is TranslationLanguage =>
   TRANSLATED_SPEECH.includes(language);
 
+/** The engine's refusals that are about one phrase only (too long, a model marker): the engine carries on. */
+const PHRASE_ONLY = new Set(['too-long', 'special-token']);
+
 const TOO_SLOW =
   'This computer is too slow for translated captions, so they stopped: the stage still shows the speaker’s words. Choose Captions in again to try once more.';
 
@@ -69,6 +73,8 @@ export class LiveTranslation implements CaptionTranslationPort {
   private skippedCount = 0;
   private lateInARow = 0;
   private slow = false;
+  /** The engine stopped or failed (not one phrase): no more asks until chosen again or captions start again. */
+  private faulted = false;
   private fault: string | null = null;
 
   constructor(private readonly o: LiveTranslationOptions) {}
@@ -78,18 +84,40 @@ export class LiveTranslation implements CaptionTranslationPort {
     this.skippedCount = 0;
     this.lateInARow = 0;
     this.slow = false;
+    this.faulted = false;
     this.fault = null;
     if (!isTranslated(from) || !isTranslated(to) || from === to) {
       this.pair = null;
       return;
     }
     this.pair = { from, to };
+    this.load();
+    this.o.changed?.();
+  }
+
+  /**
+   * The operator chose "Captions in" again: a stop for slowness or the engine's fault is forgotten and translation
+   * tried once more (the model loaded again). The skip count runs on.
+   */
+  retry(): void {
+    const again = this.slow || this.faulted;
+    this.lateInARow = 0;
+    this.slow = false;
+    this.faulted = false;
+    this.fault = null;
+    if (again && this.pair) this.load();
+    this.o.changed?.();
+  }
+
+  /** Load the pair's model now; a model that cannot load is the engine's fault. */
+  private load(): void {
     const pair = this.pair;
-    this.o.engine.prepare(from, to).catch((error: unknown) => {
+    if (!pair) return;
+    this.o.engine.prepare(pair.from, pair.to).catch((error: unknown) => {
       if (this.pair !== pair) return;
+      this.faulted = true;
       this.setFault(error);
     });
-    this.o.changed?.();
   }
 
   /** Captions stopped translating (off, or the speaker's own words chosen): the model is let go. */
@@ -100,7 +128,7 @@ export class LiveTranslation implements CaptionTranslationPort {
 
   /** The coordinator's lease: translating a pair, and not stopped as too slow. */
   may(): boolean {
-    return this.pair !== null && !this.slow;
+    return this.pair !== null && !this.slow && !this.faulted;
   }
 
   async translate(
@@ -142,6 +170,9 @@ export class LiveTranslation implements CaptionTranslationPort {
       (text) => answer(text, 'ok'),
       (error: unknown) => {
         if (signal.aborted) return answer('', 'cancelled');
+        // Captions stopped meanwhile (the helper was let go): no fault of the engine's.
+        if (this.pair === null) return answer('', 'error');
+        if (error instanceof HelperError && !PHRASE_ONLY.has(error.code)) this.faulted = true;
         this.setFault(error);
         return answer('', 'error');
       },
@@ -178,7 +209,7 @@ export class LiveTranslation implements CaptionTranslationPort {
     captionsTooSlow: boolean,
   ): CaptionTranslationStatus {
     const to = translationTarget(speaker, target);
-    const unavailable = this.unavailable(speaker, to, captionsTooSlow);
+    const unavailable = this.unavailable(speaker, captionsTooSlow);
     return {
       target: to,
       offered: unavailable === null,
@@ -190,20 +221,19 @@ export class LiveTranslation implements CaptionTranslationPort {
 
   private unavailable(
     speaker: SpeechLanguage | 'auto',
-    to: SpeechLanguage | null,
     captionsTooSlow: boolean,
   ): CaptionTranslationUnavailable | null {
     if (speaker === 'auto') return 'speaker-as-heard';
     if (!isTranslated(speaker)) return 'speaker-sanskrit';
     const engine = this.o.engine;
     if (!engine.installed()) return 'no-engine';
-    // The pair in force; with the speaker's own words chosen, the other two must both be there to offer them.
-    const targets = to !== null && isTranslated(to) ? [to] : TRANSLATED_SPEECH.filter((l) => l !== speaker);
-    for (const t of targets) {
-      if (!isTranslated(t) || engine.available(speaker, t)) continue;
+    // By this computer alone, whatever "Captions in" says (lead 2's contract): both other languages from this speaker.
+    for (const t of TRANSLATED_SPEECH) {
+      if (t === speaker || !isTranslated(t) || engine.available(speaker, t)) continue;
       return engine.unknownModel(speaker, t) ? 'unknown-model' : 'no-pack';
     }
     if (captionsTooSlow || this.slow) return 'too-slow';
+    if (this.faulted) return 'engine-fault';
     return null;
   }
 
