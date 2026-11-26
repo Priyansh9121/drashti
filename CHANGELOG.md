@@ -28,6 +28,7 @@ Update after a sabha, and update Main and nodes together.
 - Phones no longer play or change videos, pictures, sounds, timers or messages, or zoom the screens; Companion and Stream Deck use OSC.
 - Chat: one group chat for this computer and its paired phones, kept for the day only and never on the screens or the stream.
 - The Undo line at the foot of the left column now goes after a minute; Cmd/Ctrl+Z still undoes the change after that.
+- Find missing media… now brings back a picture deleted from Media instead of removing it for good; a wallpaper whose picture is missing says so on its tile, in Wallpapers and under LIVE, and follows a converted copy.
 
 ## 1.0.0-alpha.22 (25 Nov 2026)
 

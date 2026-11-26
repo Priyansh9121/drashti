@@ -51,6 +51,7 @@ describe('moving everything to the converted file', () => {
       themes: ['th'],
       tracks: [],
       decks: [],
+      wallpapers: [],
     });
     expect(uses(db, 'old')).toEqual([0, 0, 0, 0, 0, 0]);
     expect(uses(db, 'new')).toEqual([1, 1, 1, 1, 1, 1]);
@@ -79,6 +80,28 @@ describe('moving everything to the converted file', () => {
       (db.prepare("SELECT media_id FROM playlist_items WHERE id = 'i1'").get() as { media_id: string })
         .media_id,
     ).toBe('other');
+  });
+});
+
+describe('a converted picture in a wallpaper (QA24-WALLBLACK-1)', () => {
+  it('moves the wallpaper to the copy, keeping its place, and back with Undo', () => {
+    const db = library();
+    db.exec(`
+      INSERT INTO media (id, kind, name, path) VALUES ('photo', 'image', 'Placeholder.heic', 'dd/photo.heic'),
+        ('photo-copy', 'image', 'Placeholder.jpg', 'ee/photo.jpg');
+      INSERT INTO wallpapers (id, name, position) VALUES ('w1', 'Placeholder', 0);
+      INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w1', 0, 'other'), ('w1', 1, 'photo');
+    `);
+    const pictures = () =>
+      (
+        db
+          .prepare('SELECT media_id AS id FROM wallpaper_pictures WHERE wallpaper_id = ? ORDER BY position')
+          .all('w1') as { id: string }[]
+      ).map((r) => r.id);
+    const moved = moveMedia(db, 'photo', 'photo-copy');
+    expect(pictures()).toEqual(['other', 'photo-copy']);
+    moveBack(db, moved, 'photo', 'photo-copy');
+    expect(pictures()).toEqual(['other', 'photo']);
   });
 });
 
