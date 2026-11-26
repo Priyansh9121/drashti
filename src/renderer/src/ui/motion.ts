@@ -88,25 +88,38 @@ export function motionOff(): boolean {
 
 /*
  * Lively (Session 40): more moves, never on a show control, and none started while the show is changing: a
- * slide change, Next to the next item, a clear, anything the engine says changed in the last QUIET_MS.
+ * slide change, Next to the next item, a clear, anything the engine says changed in the last QUIET_MS. Since alpha.24
+ * (the release lead's review of uimotion, MUST-1; a new install starts in Lively) all of it waits for a graphics chip
+ * known to be there, as a live look's touch does: without one Lively moves as Calm does (app.css names data-chip on
+ * every Lively rule, and the preload's cross-fade asks the same).
  */
 export const QUIET_MS = 800;
 
-/** What decides whether Lively moves now (the stand-in before its rule, red first). */
+/** What decides whether Lively moves now. */
 export interface LivelyFacts {
+  /** The interface motion chosen (data-interface-motion). */
   motion: string | undefined;
+  /** Nothing moves: reduced motion, or Off (motionOff). */
   off: boolean;
+  /** Whether Chromium draws with a graphics chip (data-chip: unknown until it has said). */
   chip: string | undefined;
+  /** Milliseconds since the show last changed. */
   sinceShow: number;
 }
 
+/** Lively is chosen, the computer allows motion and has a graphics chip, and the show is quiet. */
 export function livelyWith(f: LivelyFacts): boolean {
-  return f.motion === 'lively' && !f.off && f.sinceShow > QUIET_MS;
+  return f.motion === 'lively' && !f.off && f.chip === 'yes' && f.sinceShow > QUIET_MS;
 }
 
-/** Lively is chosen, the computer allows motion, and the show has not changed just now. */
+/** Lively moves now (livelyWith, as the page is). */
 export function livelyNow(): boolean {
-  return chosenMotion() === 'lively' && !motionOff() && sinceShowChanged() > QUIET_MS;
+  return livelyWith({
+    motion: chosenMotion(),
+    off: motionOff(),
+    chip: typeof document === 'undefined' ? undefined : document.documentElement.dataset['chip'],
+    sinceShow: sinceShowChanged(),
+  });
 }
 
 /**
