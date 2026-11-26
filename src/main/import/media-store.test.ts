@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -160,9 +169,91 @@ describe('MediaStore', () => {
       missing: 0,
       deleted_at: null,
     });
+    expect(
+      db
+        .prepare("SELECT media_id FROM wallpaper_pictures WHERE wallpaper_id = 'placeholder-wallpaper'")
+        .all(),
+    ).toEqual([{ media_id: first.mediaId }]);
     expect(store.missing()).toEqual([]);
     expect(storedFiles(mediaDir)).toHaveLength(1);
   });
+
+  it.each([false, true])(
+    'the first Find restores a duplicate deleted row (purged: %s), records its file and retains wallpaper references',
+    async (purged) => {
+      const { db, store, mediaDir, file } = setup();
+      const path = file('Placeholder duplicate.png', 'placeholder duplicate bytes');
+      const first = await store.importFile(path, { kind: 'media', path });
+      if (first.outcome === 'failed') throw new Error(first.issue.message);
+      const removal = new MediaRemoval(db, { onScreens: () => new Set() });
+      removal.remove([first.mediaId]);
+      if (purged) await removal.purge(mediaDir, new Set());
+      const missing = store.addMissing('/old/Placeholder duplicate.png', 'image', {
+        kind: 'pp6',
+        path: '/placeholder',
+      });
+      db.exec("INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder', 0)");
+      db.prepare("INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, ?)").run(
+        missing,
+      );
+      const found = await store.fillMissing(missing, path, (from, to) => {
+        db.prepare('UPDATE wallpaper_pictures SET media_id = ? WHERE media_id = ?').run(to, from);
+      });
+      expect(found).toMatchObject({ outcome: 'skipped', mediaId: first.mediaId });
+      const row = db
+        .prepare('SELECT path, missing, deleted_at FROM media WHERE id = ?')
+        .get(first.mediaId) as { path: string; missing: number; deleted_at: string | null };
+      expect(row).toMatchObject({ missing: 0, deleted_at: null });
+      expect(readFileSync(join(mediaDir, row.path), 'utf8')).toBe('placeholder duplicate bytes');
+      expect(db.prepare('SELECT media_id FROM wallpaper_pictures').all()).toEqual([
+        { media_id: first.mediaId },
+      ]);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
+      expect(store.missing()).toEqual([]);
+    },
+  );
+
+  it.each([false, true])(
+    'Find restores a deleted converted original in place (purged: %s), preserving its conversion and wallpaper',
+    async (purged) => {
+      const { db, store, mediaDir, file } = setup();
+      const path = file('Placeholder original.heic', '');
+      copyFileSync(join(process.cwd(), 'tests/fixtures/media/placeholder.heic'), path);
+      const first = await store.importFile(path, { kind: 'media', path });
+      if (first.outcome === 'failed') throw new Error(first.issue.message);
+      db.prepare(
+        "INSERT INTO media (id, kind, name, path, playable, converted_from) VALUES ('copy', 'image', 'Placeholder copy.png', 'aa/copy.png', 1, ?)",
+      ).run(first.mediaId);
+      db.prepare(
+        "INSERT INTO media_conversions (id, original_id, converted_id) VALUES ('conversion', ?, 'copy')",
+      ).run(first.mediaId);
+      db.exec("INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder', 0)");
+      db.prepare("INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, ?)").run(
+        first.mediaId,
+      );
+      const removal = new MediaRemoval(db, { onScreens: () => new Set() });
+      removal.remove([first.mediaId]);
+      if (purged) await removal.purge(mediaDir, new Set());
+      const repointed: string[][] = [];
+      expect(
+        await store.fillMissing(first.mediaId, path, (from, to) => {
+          repointed.push([from, to]);
+        }),
+      ).toMatchObject({ outcome: 'imported', mediaId: first.mediaId });
+      expect(repointed).toEqual([]);
+      expect(db.prepare('SELECT original_id, converted_id FROM media_conversions').all()).toEqual([
+        { original_id: first.mediaId, converted_id: 'copy' },
+      ]);
+      expect(db.prepare('SELECT media_id FROM wallpaper_pictures').all()).toEqual([
+        { media_id: first.mediaId },
+      ]);
+      expect(db.prepare('SELECT missing, deleted_at FROM media WHERE id = ?').get(first.mediaId)).toEqual({
+        missing: 0,
+        deleted_at: null,
+      });
+      expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 2 });
+    },
+  );
 
   it('copies a media file in under its sha256 and records where it came from', async () => {
     const { db, store, mediaDir, file } = setup();
@@ -736,5 +827,93 @@ describe('an import’s new points for a file the library has (Session 55: the o
     });
     expect(store.takeMarkers(picture.mediaId, points(1000, 'x'))).toBeNull();
     expect(store.takeMarkers('no-such-item', points(1000, 'x'))).toBeNull();
+  });
+});
+
+describe('review: Find revives a Delete and its same-stamp uses atomically', () => {
+  async function deletedSound() {
+    const t = setup();
+    const path = t.file('Placeholder shared.mp3', 'placeholder shared sound bytes');
+    const imported = await t.store.importFile(path, { kind: 'media', path });
+    if (imported.outcome === 'failed') throw new Error(imported.issue.message);
+    const id = imported.mediaId;
+    t.db.exec(
+      "INSERT INTO playlists (id, name) VALUES ('pl', 'Placeholder'); INSERT INTO audio_playlists (id, name) VALUES ('music', 'Placeholder')",
+    );
+    t.db
+      .prepare(
+        "INSERT INTO playlist_items (id, playlist_id, position, kind, media_id, deleted_at) VALUES ('item', 'pl', 0, 'media', ?, NULL), ('earlier', 'pl', 1, 'media', ?, '2020-01-01')",
+      )
+      .run(id, id);
+    t.db
+      .prepare(
+        "INSERT INTO audio_playlist_tracks (id, playlist_id, position, media_id, deleted_at) VALUES ('track', 'music', 0, ?, NULL), ('earlier-track', 'music', 1, ?, '2020-01-01')",
+      )
+      .run(id, id);
+    new MediaRemoval(t.db, { onScreens: () => new Set() }).remove([id]);
+    return { ...t, path, id };
+  }
+
+  it.each([false, true])(
+    'restores exactly the rows and tracks removed with the revived file (duplicate merge: %s)',
+    async (merge) => {
+      const { db, store, path, id } = await deletedSound();
+      const target = merge
+        ? store.addMissing('/old/Placeholder shared.mp3', 'audio', { kind: 'pp6', path: '/placeholder' })
+        : id;
+      expect(await store.fillMissing(target, path)).toMatchObject({ mediaId: id });
+      expect(db.prepare('SELECT id, deleted_at FROM playlist_items ORDER BY position').all()).toEqual([
+        { id: 'item', deleted_at: null },
+        { id: 'earlier', deleted_at: '2020-01-01' },
+      ]);
+      expect(db.prepare('SELECT id, deleted_at FROM audio_playlist_tracks ORDER BY position').all()).toEqual([
+        { id: 'track', deleted_at: null },
+        { id: 'earlier-track', deleted_at: '2020-01-01' },
+      ]);
+    },
+  );
+
+  it.each([false, true])(
+    'rolls back media and playlist restoration if a music track restore fails (duplicate merge: %s)',
+    async (merge) => {
+      const { db, store, path, id } = await deletedSound();
+      const target = merge
+        ? store.addMissing('/old/Placeholder shared.mp3', 'audio', { kind: 'pp6', path: '/placeholder' })
+        : id;
+      const before = db.prepare('SELECT deleted_at FROM media WHERE id = ?').get(id);
+      db.exec(
+        "CREATE TRIGGER reject_track_restore BEFORE UPDATE OF deleted_at ON audio_playlist_tracks WHEN NEW.deleted_at IS NULL BEGIN SELECT RAISE(ABORT, 'placeholder restore rejected'); END",
+      );
+      await expect(store.fillMissing(target, path)).rejects.toThrow('placeholder restore rejected');
+      expect(db.prepare('SELECT deleted_at FROM media WHERE id = ?').get(id)).toEqual(before);
+      expect(db.prepare("SELECT deleted_at FROM playlist_items WHERE id = 'item'").get()).toEqual(before);
+      expect(db.prepare('SELECT id FROM media WHERE id = ?').get(target)).toEqual({ id: target });
+    },
+  );
+
+  it('re-copies the selected file when the deleted row says its kept file exists but it is gone', async () => {
+    const { db, store, mediaDir, path, id } = await deletedSound();
+    const row = db.prepare('SELECT path FROM media WHERE id = ?').get(id) as { path: string };
+    rmSync(join(mediaDir, row.path));
+    expect(await store.fillMissing(id, path)).toMatchObject({ outcome: 'imported', mediaId: id });
+    expect(readFileSync(join(mediaDir, row.path), 'utf8')).toBe('placeholder shared sound bytes');
+    expect(db.prepare("SELECT deleted_at FROM audio_playlist_tracks WHERE id = 'track'").get()).toEqual({
+      deleted_at: null,
+    });
+  });
+
+  it('falls through to stage-and-fill when the kept-row revival changes no row', async () => {
+    const { db, store, path, id } = await deletedSound();
+    db.exec(
+      "CREATE TRIGGER forget_before_revive BEFORE UPDATE OF deleted_at ON media WHEN OLD.path <> '' AND NEW.path = OLD.path AND NEW.deleted_at IS NULL BEGIN UPDATE media SET path = '', missing = 1 WHERE id = OLD.id; SELECT RAISE(IGNORE); END",
+    );
+    expect(await store.fillMissing(id, path)).toMatchObject({ outcome: 'imported', mediaId: id });
+    expect(db.prepare('SELECT missing, deleted_at FROM media WHERE id = ?').get(id)).toEqual({
+      missing: 0,
+      deleted_at: null,
+    });
+    expect(db.prepare("SELECT deleted_at FROM playlist_items WHERE id = 'item'").get()).toEqual({
+      deleted_at: null,
+    });
   });
 });

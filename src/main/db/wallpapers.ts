@@ -28,6 +28,8 @@ interface PictureRow {
   media_id: string;
   name: string | null;
   missing: number;
+  playable: number | null;
+  format: string | null;
 }
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
@@ -174,7 +176,7 @@ export class WallpaperRepo {
     if (ids.length === 0) return out;
     const rows = this.db
       .prepare(
-        `SELECT p.wallpaper_id, p.media_id, m.name,
+        `SELECT p.wallpaper_id, p.media_id, m.name, m.playable, m.format,
                 (m.id IS NULL OR m.deleted_at IS NOT NULL OR m.missing = 1) AS missing
            FROM wallpaper_pictures p LEFT JOIN media m ON m.id = p.media_id
           WHERE p.wallpaper_id IN (${ids.map(() => '?').join(', ')})
@@ -183,7 +185,12 @@ export class WallpaperRepo {
       .all(...ids) as PictureRow[];
     for (const r of rows) {
       const list = out.get(r.wallpaper_id) ?? [];
-      list.push({ mediaId: r.media_id, name: r.name ?? '', missing: r.missing === 1 });
+      list.push({
+        mediaId: r.media_id,
+        name: r.name ?? '',
+        missing: r.missing === 1,
+        ...(r.playable === 0 ? { unplayable: r.format ?? 'a picture Drashti cannot show' } : {}),
+      });
       out.set(r.wallpaper_id, list);
     }
     return out;
