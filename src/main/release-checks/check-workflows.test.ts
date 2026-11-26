@@ -197,17 +197,17 @@ jobs:
     // another job.
     const packaged = signing.replace(
       '        run: node scripts/package-release.mjs',
-      '        env:\n          MAC_SIGN_P12_PASSWORD: \${{ secrets.MAC_SIGN_P12_PASSWORD }}\n        run: node scripts/package-release.mjs',
+      '        env:\n          MAC_SIGN_P12_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}\n        run: node scripts/package-release.mjs',
     );
     expect(checkWorkflow(packaged, 'release.yml')).toEqual([`release.yml:18: ${secrets}`]);
     const jobEnv = signing.replace(
       '    runs-on: macos-latest',
-      '    env:\n      MAC_SIGN_P12_BASE64: \${{ secrets.MAC_SIGN_P12_BASE64 }}\n    runs-on: macos-latest',
+      '    env:\n      MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}\n    runs-on: macos-latest',
     );
     expect(checkWorkflow(jobEnv, 'release.yml')).toEqual([`release.yml:10: ${secrets}`]);
     const windows = signing.replace(
       '    steps: []',
-      '    env:\n      MAC_SIGN_P12_BASE64: \${{ secrets.MAC_SIGN_P12_BASE64 }}\n    steps: []',
+      '    env:\n      MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}\n    steps: []',
     );
     expect(checkWorkflow(windows, 'release.yml')).toEqual([`release.yml:31: ${secrets}`]);
     expect(
