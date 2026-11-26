@@ -1,6 +1,7 @@
 import './help.css';
 import { useLayoutEffect } from 'react';
 import { useMode } from '../operator/mode-store';
+import { cx } from '../ui/cx';
 import { Tooltip } from '../ui/Tooltip';
 import { connectKeyHints, toggleHelp, useHelp } from './help-store';
 
@@ -11,13 +12,20 @@ import { connectKeyHints, toggleHelp, useHelp } from './help-store';
  * once, as everything that shows or hides help does: nothing moves.
  */
 
-/** Its tooltip's words: what it shows, and Alt (Option on a Mac) for a look at the keys. */
+/** Its tooltip's words: its name (a narrow window shows its ? alone), what it shows, and Alt (Option on a Mac). */
 export function helpTip(platform: string, simple: boolean): string {
   const alt = platform === 'darwin' ? 'Option' : 'Alt';
   return simple
-    ? `Shows the keys on the buttons. Hold ${alt} to see them for a moment.`
-    : `Shows the ? beside each part and the keys on the buttons. Hold ${alt} to see the keys for a moment.`;
+    ? `Help: the keys on the buttons. Hold ${alt} to see them for a moment.`
+    : `Help: the ? beside each part and the keys on the buttons. Hold ${alt} to see the keys for a moment.`;
 }
+
+/**
+ * Below 1280 px wide (as the header's ? go, top-bar.ts) it is its round ? alone, 24 px square, the room the bar's ?
+ * had: CI's 1024 × 645 status bar, with the captions' warning in it, had no room for the word (the page scrolled
+ * sideways). Its word stays for screen readers, and its tooltip says it.
+ */
+const NARROW = 'max-[1280px]:w-6 max-[1280px]:justify-center max-[1280px]:px-0';
 
 export function HelpSwitch({ platform }: { platform: string }) {
   const on = useHelp((s) => s.on);
@@ -32,7 +40,10 @@ export function HelpSwitch({ platform }: { platform: string }) {
         data-testid="help-toggle"
         onClick={toggleHelp}
         // 24 px tall (WCAG 2.5.8); on, it stands out as a pressed secondary does, in the bar's own colours.
-        className="inline-flex min-h-6 shrink-0 items-center gap-1 rounded-sm border border-transparent px-1.5 font-medium text-muted hover:text-fg aria-pressed:border-field aria-pressed:bg-panel-2 aria-pressed:text-fg"
+        className={cx(
+          'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-sm border border-transparent px-1.5 font-medium text-muted hover:text-fg aria-pressed:border-field aria-pressed:bg-panel-2 aria-pressed:text-fg',
+          NARROW,
+        )}
       >
         <span
           aria-hidden="true"
@@ -40,7 +51,7 @@ export function HelpSwitch({ platform }: { platform: string }) {
         >
           ?
         </span>
-        Help
+        <span className="max-[1280px]:sr-only">Help</span>
       </button>
     </Tooltip>
   );

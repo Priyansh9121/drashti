@@ -24,7 +24,7 @@
 
 **How:**
 
-1. Press **Help** in the status bar. It stays pressed while it is on.
+1. Press **Help** in the status bar (in a narrow window, its round **?**). It stays pressed while it is on.
 2. Press the **?** on the panel's heading, and read its sentences under the heading.
 3. Press **Open the manual** to read more, or **Got it** to close them.
 4. Press **Help** again to put every **?** and key away.

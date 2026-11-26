@@ -36,9 +36,9 @@ describe('the status bar’s Help switch', () => {
     // CI's Windows, 1024 × 645, uihelp's first ask: with the captions' warning in it, the status bar ran past the
     // window by the word's width (the page scrolled sideways), so a narrow window keeps the ?'s own room.
     const off = await toggle('pro', false);
-    const button = /<button[^>]*class="([^"]*)"/u.exec(off)?.[1].split(' ') ?? [];
+    const button = /<button[^>]*class="([^"]*)"/u.exec(off)?.[1]?.split(' ') ?? [];
     expect(button).toEqual(expect.arrayContaining(['max-[1280px]:w-6', 'max-[1280px]:px-0', 'min-h-6']));
-    const word = /<span class="([^"]*)">Help<\/span>/u.exec(off)?.[1].split(' ') ?? [];
+    const word = /<span class="([^"]*)">Help<\/span>/u.exec(off)?.[1]?.split(' ') ?? [];
     expect(word).toEqual(['max-[1280px]:sr-only']);
   });
 
