@@ -49,6 +49,7 @@ describe('after a refused quit (review S3)', () => {
     const to: QuitResume = {
       libraryOpen: () => library,
       reset: () => did.push('reset'),
+      partsBack: () => did.push('parts'),
       screens: () => did.push('screens'),
       operatorOpen: () => operator,
       openOperator: () => did.push('operator window'),
@@ -59,19 +60,28 @@ describe('after a refused quit (review S3)', () => {
   it('a refused source stop after the operator window closed (its X began the quit) opens it again, with the screens', () => {
     const { to, did } = main(true, false);
     resumeAfterRefusal(to, true);
-    expect(did).toEqual(['reset', 'screens', 'operator window']);
+    expect(did).toEqual(['reset', 'parts', 'screens', 'operator window']);
   });
 
   it('with the operator window still open, only the screens come back', () => {
     const { to, did } = main(true, true);
     resumeAfterRefusal(to, true);
-    expect(did).toEqual(['reset', 'screens']);
+    expect(did).toEqual(['reset', 'parts', 'screens']);
   });
 
   it('any other refusal leaves the operator window as it is, as before', () => {
     const { to, did } = main(true, false);
     resumeAfterRefusal(to, false);
-    expect(did).toEqual(['reset', 'screens']);
+    expect(did).toEqual(['reset', 'parts', 'screens']);
+  });
+
+  it('each part told the quit had begun is told it is off, before the screens come back (bughunt S3-2)', () => {
+    // The stream (Record and the stream's page: "Drashti is quitting."), the slide editor and the Lower Thirds studio
+    // (their "Save changes?"), each told at the quit's start, before the source stop that refused it.
+    const { to, did } = main(true, true);
+    resumeAfterRefusal(to, false);
+    expect(did.indexOf('parts')).toBeGreaterThan(did.indexOf('reset'));
+    expect(did.indexOf('parts')).toBeLessThan(did.indexOf('screens'));
   });
 
   it('once the library has closed, nothing comes back', () => {
