@@ -167,7 +167,7 @@ export const PANEL_HELP = {
     chapter: 'start',
     feature: 'The status bar',
     doc: 'operator',
-    text: 'What Drashti is doing: the screens, the sound output (and in red Audio muted or Video muted while one is, or at 0 %), imports and warnings, and its version; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off means this computer’s hall screens are switched off, and Stage off that its stage screens show the audience picture; Turn on brings them back where they were, asking nothing. A display plugged in sets itself, said in a line under the top bar; when a change made by hand puts a screen on the display with these controls, Keep these screens? undoes it in 15 seconds unless you press Keep.',
+    text: 'What Drashti is doing: the screens, the sound output (and in red Audio muted or Video muted while one is, or at 0 %), imports and warnings, and its version; with no internet, Can’t reach the access list shows in the version’s place, saying how long Drashti keeps working; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off means this computer’s hall screens are switched off, and Stage off that its stage screens show the audience picture; Turn on brings them back where they were, asking nothing. A display plugged in sets itself, said in a line under the top bar; when a change made by hand puts a screen on the display with these controls, Keep these screens? undoes it in 15 seconds unless you press Keep.',
     guide: '**Along the bottom:**',
   },
   audio: {
