@@ -145,16 +145,22 @@ function wordsToShow(words: readonly { start: number; end: number }[], seconds: 
  * still unsettled. If the speaker is still quiet when the pause ends, that decode is the phrase's final, with no decode
  * after it; if it is still decoding then, its answer settles the phrase when it comes. Speech before that and the
  * phrase goes on (a later quiet asks again); a phrase that ends at the longest phrase, with no pause, is decoded whole
- * as before. Of its words, one begun after the phrase's last speech is not kept: the quiet is no one's words. Measured
+ * as before. Of its words, one begun more than LATE_S after the phrase's last speech is not kept: the quiet is no
+ * one's words. Measured
  * (a24-capfast) on 30 minutes of real Gujarati: WER +0.5 points [-0.4, +1.7] against the final after the whole pause.
  */
 function earlyDue(g: Growing): boolean {
   return g.quietMs >= PAUSING_MS && g.early === null;
 }
 
-/** How many of an early final's words to keep: those begun before the phrase's last speech ended (seconds). */
+/**
+ * How many of an early final's words to keep: those begun before the phrase's last speech ended (seconds), or within
+ * LATE_S after it, where the helper's 40 ms frames can put a word said at the very end (a generated model's last words
+ * begin 20-60 ms after its one chunk of speech: indic-captions.spec.ts). A word begun later was heard in the quiet.
+ */
+const LATE_S = 0.1;
 function wordsBefore(words: readonly { start: number }[], speechS: number): number {
-  const n = words.findIndex((w) => w.start >= speechS);
+  const n = words.findIndex((w) => w.start >= speechS + LATE_S);
   return n < 0 ? words.length : n;
 }
 
