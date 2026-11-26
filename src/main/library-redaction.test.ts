@@ -29,11 +29,21 @@ describe('a name of five letters or more is blanked wherever it is (QA24-DIAG-2 
     // "પ્રાર્થના" and "प्रार्थना" have five letters (પ ર ર થ ન): blanked inside a compound that ends in them.
     expect(redactNames('સાંજપ્રાર્થના, પ્રાર્થનાઓ', ['પ્રાર્થના'])).toBe(`સાંજ${B}, ${B}ઓ`);
     expect(redactNames('संध्याप्रार्थना', ['प्रार्थना'])).toBe(`संध्या${B}`);
-    // "નમસ્તે" and "नमस्ते" have four (ન મ સ ત; six characters in all): whole words only.
-    expect(redactNames('સૌનમસ્તે, નમસ્તે', ['નમસ્તે'])).toBe(`સૌનમસ્તે, ${B}`);
-    expect(redactNames('सबनमस्ते, नमस्ते', ['नमस्ते'])).toBe(`सबनमस्ते, ${B}`);
-    // "સભા" has two letters: never inside "મહાસભા" (a compound ending in it).
-    expect(redactNames('મહાસભા, સભા', ['સભા'])).toBe(`મહાસભા, ${B}`);
+    // Any name with a letter of an Indic script or Hangul is blanked anywhere, however few its letters (the review's
+    // G1: "સભા" has two, "नमस्ते" four, "안녕" two): their compounds join words with no space, "the Gujarati compound
+    // ending in the name" of the owner's answer. Stricter than round 2, which left these compounds shown.
+    expect(redactNames('મહાસભા, સભા', ['સભા'])).toBe(`મહા${B}, ${B}`);
+    expect(redactNames('સૌનમસ્તે, નમસ્તે', ['નમસ્તે'])).toBe(`સૌ${B}, ${B}`);
+    expect(redactNames('सौनमस्ते, नमस्ते', ['नमस्ते'])).toBe(`सौ${B}, ${B}`);
+    expect(redactNames('महासभागृह, सभा', ['सभा'])).toBe(`महा${B}गृह, ${B}`);
+    expect(redactNames('모두안녕, 안녕하세요', ['안녕'])).toBe(`모두${B}, ${B}하세요`);
+  });
+
+  it('a long name and a short one side by side: the long one inside words, the short one only as a word', () => {
+    expect(redactNames('Sabhas and newest; new Sabha, renewed', ['Sabha', 'new'])).toBe(
+      `${B}s and newest; ${B} ${B}, renewed`,
+    );
+    expect(redactNames('સભામાં newest new', ['સભા', 'new'])).toBe(`${B}માં newest ${B}`);
   });
 });
 
@@ -99,11 +109,13 @@ describe('a name of fewer than five letters is blanked only where it is the name
     expect(redactNames('Anew and news, Sabas', ['new', 'Saba'])).toBe('Anew and news, Sabas');
   });
 
-  it('a run of capitals before a capitalised name starts its word (R1: "ABCSaba" is "ABC" and "Saba")', () => {
+  it('a run of capitals before a capitalised word splits there (R1: "ABCSaba" is "ABC" and "Saba")', () => {
     expect(redactNames('ABCNew, ANew, ANEW, Anew, NEWEST', ['new'])).toBe(
       `ABC${B}, A${B}, ANEW, Anew, NEWEST`,
     );
     expect(redactNames('ABCSaba, ASaba, ASABA, Asaba', ['Saba'])).toBe(`ABC${B}, A${B}, ASABA, Asaba`);
+    // At a short name's end too (R1b): an acronym name before a capitalised word.
+    expect(redactNames('ABCSaba, ABCNew, ABCDE, ABCs', ['ABC'])).toBe(`${B}Saba, ${B}New, ABCDE, ABCs`);
   });
 
   it('a change of script with no space between ends a word', () => {
@@ -112,18 +124,17 @@ describe('a name of fewer than five letters is blanked only where it is the name
     expect(redactNames('नमस्तेSaba', ['Saba'])).toBe(`नमस्ते${B}`);
   });
 
-  it('in Gujarati, Devanagari, Tamil, Korean and the like a name is blanked where a word starts, whatever ending follows (D1 A)', () => {
-    // Their endings are written joined to the word ("સભા" + "માં"), so only the word's start is looked at.
+  it('in Gujarati, Devanagari, Tamil, Korean and the like a name is blanked wherever it is, whatever is joined to it (D1 A, G1)', () => {
+    // Their endings and compounds are written joined to the word ("સભા" + "માં", "મહા" + "સભા").
     expect(redactNames('સભામાં, સભાનો; સભા૨૦૨૬, ૨૦૨૬સભા; મહાસભા', ['સભા'])).toBe(
-      `${B}માં, ${B}નો; ${B}૨૦૨૬, ૨૦૨૬${B}; મહાસભા`,
+      `${B}માં, ${B}નો; ${B}૨૦૨૬, ૨૦૨૬${B}; મહા${B}`,
     );
-    expect(redactNames('सभाओं में, सभा। महासभा', ['सभा'])).toBe(`${B}ओं में, ${B}। महासभा`);
+    expect(redactNames('सभाओं में, सभा। महासभा', ['सभा'])).toBe(`${B}ओं में, ${B}। महा${B}`);
     expect(redactNames('சபையில் வந்தனர்', ['சபை'])).toBe(`${B}யில் வந்தனர்`);
     expect(redactNames('안녕하세요, 안녕', ['안녕'])).toBe(`${B}하세요, ${B}`);
-    // Vowel signs and viramas belong to their word: a name is never blanked inside one.
-    expect(redactNames('નવી અને નવ.', ['વી'])).toBe('નવી અને નવ.');
-    expect(redactNames('नया नय', ['या'])).toBe('नया नय');
-    // The cost, accepted by lead 2: another word that starts with the name is blanked there ("નવી" in "નવીન").
+    // Inside a word too (stricter than round 2, which kept "નવી" and "नया" whole for the names "વી" and "या").
+    expect(redactNames('નવી અને નવ.', ['વી'])).toBe(`ન${B} અને નવ.`);
+    expect(redactNames('नया नय', ['या'])).toBe(`न${B} नय`);
     expect(redactNames('નવીન રીતે, નવી સભા', ['નવી'])).toBe(`${B}ન રીતે, ${B} સભા`);
     // A name joined to the next letter by a zero-width joiner is blanked at its word's start too.
     expect(redactNames('नय\u200Cा and नय\u200D', ['नय'])).toBe(`${B}\u200Cा and ${B}\u200D`);
