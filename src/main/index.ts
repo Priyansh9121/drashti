@@ -508,6 +508,7 @@ import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions
 import { CaptionsService } from './speech/captions-service';
 import { CaptionCoordinator } from './speech/caption-coordinator';
 import { LiveTranslation } from './speech/live-translation';
+import { normalizeSpokenTimes } from '../shared/spoken-times';
 import { ownModelCaptionAi } from './speech/caption-routes';
 import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
@@ -4533,8 +4534,8 @@ function start(): void {
           stop: () => undefined,
         }
       : liveTranslationEngine,
-    // The spoken-times seam: a24-captime's normalizeSpokenTimes once it is merged; the speaker's words until then.
-    spokenTimes: (text) => text,
+    // Spoken times into digits before translating (2e; a24-captime): "sava aath" -> 8:15. Never what the stage shows.
+    spokenTimes: normalizeSpokenTimes,
     log,
     changed: () => {
       captions.translationChanged();

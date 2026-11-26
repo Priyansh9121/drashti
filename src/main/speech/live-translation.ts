@@ -14,6 +14,7 @@ import {
   type SpokenTimes,
 } from '../../shared/caption-translation';
 import type { TranslationLanguage } from '../../shared/prepared-translations';
+import { normalizeSpokenTimes } from '../../shared/spoken-times';
 import { HelperError } from '../translation/translation-helper';
 import type { SpeechLanguage } from '../../shared/speech';
 import type { CaptionSkip } from './caption-coordinator';
@@ -21,7 +22,7 @@ import type { CaptionSkip } from './caption-coordinator';
 /*
  * Translated live captions' engine side (alpha.24, QA24-CAPLANG-2; the owner's 2a-2f, all A): the captions
  * coordinator's translation slot (x89's CaptionTranslationPort). Each settled phrase goes, after the spoken-times
- * seam (a24-captime's normalizeSpokenTimes; identity until it is merged), to its own TranslationEngine: the pack's
+ * seam (a24-captime's normalizeSpokenTimes: "sava aath" -> 8:15, 2e), to its own TranslationEngine: the pack's
  * IndicTrans2 through drashti-translate, greedy (beam 1, a24-caplang2's measurements: beam 5 is no better on short
  * phrases and twice as slow), two threads, below the show, one model kept loaded for the chosen pair while captions
  * run. Prepare translations' own engine is a different one, and still waits while on air; this one never stops for
@@ -46,7 +47,7 @@ export interface LiveTranslationEngine {
 
 export interface LiveTranslationOptions {
   engine: LiveTranslationEngine;
-  /** The spoken-times seam, applied to the speaker's words just before translating (identity when left out). */
+  /** The spoken-times seam, applied to the speaker's words just before translating (normalizeSpokenTimes when left out). */
   spokenTimes?: SpokenTimes;
   log: { info(line: string): void; warn(line: string): void };
   /** How translated captions stand changed (a skip, a fault): tell the dialog. */
@@ -162,7 +163,8 @@ export class LiveTranslation implements CaptionTranslationPort {
     const to = clause.targetLanguage;
     if (signal.aborted) return answer('', 'cancelled');
     if (!isTranslated(from) || !isTranslated(to) || from === to) return answer('', 'unavailable');
-    const words = this.o.spokenTimes ? this.o.spokenTimes(clause.sourceText, from) : clause.sourceText;
+    // Gujarati, Hindi and English speakers only (`from` is one of them here); never what the stage shows.
+    const words = (this.o.spokenTimes ?? normalizeSpokenTimes)(clause.sourceText, from);
     const aborted = new Promise<CaptionTranslation>((resolve) => {
       signal.addEventListener('abort', () => resolve(answer('', 'cancelled')), { once: true });
     });
