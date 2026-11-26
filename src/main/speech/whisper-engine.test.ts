@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { createServer, type Server } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CAPTION_TIMING, type CaptionTiming } from '../../shared/captions';
 import type { Heard, SpeechState } from '../../shared/speech';
 import {
@@ -117,8 +117,18 @@ describe('what the engine heard (whisper-server’s verbose_json)', () => {
   });
 });
 
-/** A stand-in for whisper-server: /health, and /inference answering with placeholder words after `delayMs`. */
-function standIn(o: { delayMs?: number; language?: string } = {}) {
+/** Placeholder words in the letters of the language asked (alpha.24: a chosen language's captions keep to its letters). */
+const PLACEHOLDER_WORDS: Readonly<Record<string, readonly [string, string]>> = {
+  gu: [' આલ્ફા', ' બીટા'],
+  hi: [' अल्फा', ' बीटा'],
+  sa: [' अल्फा', ' बीटा'],
+};
+
+/**
+ * A stand-in for whisper-server: /health, and /inference answering after `delayMs` with placeholder words in the
+ * letters of the language asked ('alpha beta' for English and as heard), or `words` for the n-th request (from 1).
+ */
+function standIn(o: { delayMs?: number; language?: string; words?: (n: number) => readonly string[] } = {}) {
   const servers: Server[] = [];
   const asked: string[] = [];
   const requestPaths: string[] = [];
@@ -147,6 +157,7 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
       req.on('end', () => {
         const language = /name="language"\r\n\r\n([a-z]+)/.exec(body)?.[1] ?? '?';
         asked.push(language);
+        const said = o.words?.(asked.length) ?? PLACEHOLDER_WORDS[language] ?? [' alpha', ' beta'];
         setTimeout(() => {
           res.writeHead(200, { 'Content-Type': 'application/json' }).end(
             JSON.stringify({
@@ -154,10 +165,12 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
               segments: [
                 {
                   no_speech_prob: 0,
-                  words: [
-                    { word: ' alpha', start: 0.0, end: 0.3, probability: 0.9 },
-                    { word: ' beta', start: 0.4, end: 0.7, probability: 0.9 },
-                  ],
+                  words: said.map((word, i) => ({
+                    word,
+                    start: i * 0.4,
+                    end: i * 0.4 + 0.3,
+                    probability: 0.9,
+                  })),
                 },
               ],
             }),
@@ -1012,4 +1025,176 @@ describe('QWC-1: the audio context sized to the piece, fallback off (the owner: 
     expect(form.at(-1)).toEqual(['audio_ctx', String(audioContextFor(samples))]);
     expect(Number(form.at(-1)?.[1])).toBe(512);
   });
+});
+
+describe('QA24-CAPLANG-1: a chosen language’s captions keep to its letters (the owner: "it goes between hindi, english, gujarati and sanskrit on his own even if i pick gujarati")', () => {
+  /*
+   * The replies are whisper's own, recorded by cap-eval (23 Nov) when today's Mac engine (turbo) was asked for
+   * Gujarati on the committed test speech (tests/fixtures/captions/gu): gu-14-f, "કાઉન્ટર નંબર સાત અત્યારે ખુલ્લું છે.",
+   * came back as "Counter No. 738", and gu-07-f, "પાણીની બોટલ ટેબલની નીચે નથી.", with Devanagari letters in its first
+   * word. One request per phrase (a step longer than the phrase): the first phrase gets the first reply.
+   */
+  async function heardWith(
+    language: 'gu' | 'auto',
+    replies: readonly (readonly string[])[],
+    replyLanguage = 'gujarati',
+  ): Promise<{ heard: Heard[]; asked: string[]; logs: string[]; stop: () => void }> {
+    const server = standIn({ language: replyLanguage, words: (n) => replies[n - 1] ?? [] });
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const logs: string[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
+      spawn: server.spawn,
+      stepMs: 60_000,
+      pauseMs: 300,
+    });
+    const stop = engine.start(language, { heard: (h) => heard.push(h), state: (s) => states.push(s) });
+    stops.push(stop, server.close);
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    for (let i = 0; i < replies.length; i += 1) {
+      await sound.play(1_200, 600);
+      await waitFor(() => server.asked.length > i);
+    }
+    // The last reply has come back and been read (each answers at once).
+    await new Promise((wait) => setTimeout(wait, 300));
+    return { heard, asked: server.asked, logs, stop };
+  }
+
+  it('with Gujarati chosen, a phrase whisper wrote in Latin letters is not shown, and its Devanagari letters come in Gujarati letters', async () => {
+    const { heard, asked } = await heardWith('gu', [
+      [' Counter', ' No.', ' 738'],
+      [' પाणीनी', ' બોટલ'],
+    ]);
+    expect(asked).toEqual(['gu', 'gu']);
+    // The phrase in Latin letters (and the number left from it) was never passed on as Gujarati.
+    expect(heard.some((h) => h.id === 's1')).toBe(false);
+    expect(heard.some((h) => /\p{Script=Latin}/u.test(h.text))).toBe(false);
+    const final = heard.find((h) => h.final && h.id === 's2');
+    expect(final).toMatchObject({ language: 'gu', text: 'પાણીની બોટલ' });
+    expect(final?.words.map((w) => w.text)).toEqual(['પાણીની', 'બોટલ']);
+    expect(final?.words.every((w) => w.confidence === 0.9 && w.endAt >= w.startAt)).toBe(true);
+    expect(heard.some((h) => /\p{Script=Devanagari}/u.test(h.text))).toBe(false);
+  });
+
+  it('with Gujarati chosen, a word in Latin letters inside a Gujarati phrase is left out; the rest is shown', async () => {
+    const { heard } = await heardWith('gu', [[' કાઉન્ટર', ' No.', ' 7', ' ખુલ્લું']]);
+    const final = heard.find((h) => h.final);
+    expect(final).toMatchObject({ id: 's1', language: 'gu', text: 'કાઉન્ટર 7 ખુલ્લું' });
+  });
+
+  it('says how many pieces and words in other letters were not shown, when stopped, never a word', async () => {
+    const { logs, stop } = await heardWith('gu', [
+      [' Counter', ' No.', ' 738'],
+      [' કાઉન્ટર', ' No.', ' ખુલ્લું'],
+    ]);
+    stop();
+    const line = logs.find((m) => m.includes('other letters'));
+    expect(line).toBe(
+      'Speech: with Gujarati chosen, the engine wrote 1 phrase wholly and 1 word of other phrases in other letters (phrases heard whole only); they were not shown.',
+    );
+    expect(logs.some((m) => /Counter|No\.|કાઉન્ટર|ખુલ્લું/u.test(m))).toBe(false);
+  });
+
+  it('counts each phrase once, as heard whole (review N2): a partial in Latin letters, then a Gujarati final, is neither shown nor counted', async () => {
+    // The first answer is a partial (a step shorter than the phrase); every later one, the final too, is Gujarati.
+    const server = standIn({
+      language: 'gujarati',
+      words: (n) => (n === 1 ? [' Counter', ' No.', ' 738'] : [' કાઉન્ટર', ' ખુલ્લું']),
+    });
+    const sound = bursts();
+    const heard: Heard[] = [];
+    const states: SpeechState[] = [];
+    const logs: string[] = [];
+    const engine = createWhisperEngine({
+      program: () => '/placeholder/whisper-server',
+      model: () => '/placeholder/model.bin',
+      fallback: () => true,
+      sound,
+      log: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
+      spawn: server.spawn,
+      stepMs: 300,
+      pauseMs: 300,
+    });
+    const stop = engine.start('gu', { heard: (h) => heard.push(h), state: (s) => states.push(s) });
+    stops.push(stop, server.close);
+    await waitFor(() => states.some((s) => s.phase === 'listening'));
+    await sound.play(1_600, 600);
+    await waitFor(() => heard.some((h) => h.final));
+    stop();
+    expect(server.asked.length).toBeGreaterThan(1);
+    expect(heard.some((h) => /\p{Script=Latin}/u.test(h.text))).toBe(false);
+    expect(heard.find((h) => h.final)).toMatchObject({ id: 's1', language: 'gu', text: 'કાઉન્ટર ખુલ્લું' });
+    expect(logs.some((m) => m.includes('other letters'))).toBe(false);
+  });
+
+  it('as heard is unchanged: each phrase is the language whisper wrote it in, in its letters', async () => {
+    const { heard, asked } = await heardWith('auto', [[' Counter', ' No.', ' 738']], 'english');
+    expect(asked).toEqual(['auto']);
+    expect(heard.find((h) => h.final)).toMatchObject({ language: 'en', text: 'Counter No. 738' });
+  });
+});
+
+describe('a stop just as a piece sets off (QA24-CRASH-1)', () => {
+  it('leaves no promise failing uncaught in the main process', async () => {
+    // The owner's crash journal (2026-11-22T06:58:16Z): "a promise in the main process failed and nothing caught it:
+    // TypeError: Invalid state: ReadableStream is already closed". Node's fetch writes a FormData into its request in a
+    // step nothing awaits, and a stop that aborts the request in that step failed it uncaught. Here the engine's own
+    // fetch (none given), and captions stopped a turn after a piece set off, three times.
+    const failed: unknown[] = [];
+    const uncaught = (reason: unknown) => {
+      failed.push(reason);
+    };
+    process.on('unhandledRejection', uncaught);
+    const real = globalThis.fetch;
+    let stopNow: (() => void) | null = null;
+    vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
+      const going = real(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const stop = stopNow;
+      if (stop && url.endsWith('/inference')) {
+        stopNow = null;
+        void Promise.resolve().then(stop);
+      }
+      return going;
+    });
+    try {
+      for (let round = 0; round < 3; round += 1) {
+        const server = standIn();
+        const sound = bursts();
+        const states: SpeechState[] = [];
+        const engine = createWhisperEngine({
+          program: () => '/placeholder/whisper-server',
+          model: () => '/placeholder/model.bin',
+          fallback: () => true,
+          sound,
+          log: { info: () => undefined, warn: () => undefined },
+          spawn: server.spawn,
+          stepMs: 300,
+          pauseMs: 300,
+        });
+        let stopped = false;
+        const stop = engine.start('en', { heard: () => undefined, state: (s) => states.push(s) });
+        stops.push(stop, server.close);
+        stopNow = () => {
+          stopped = true;
+          stop();
+        };
+        await waitFor(() => states.some((s) => s.phase === 'listening'));
+        await sound.play(1_500, 0);
+        expect(stopped).toBe(true);
+        // A failed promise is told a few turns later.
+        await new Promise((wait) => setTimeout(wait, 200));
+      }
+      expect(failed.map(String)).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+      process.off('unhandledRejection', uncaught);
+    }
+  }, 30_000);
 });

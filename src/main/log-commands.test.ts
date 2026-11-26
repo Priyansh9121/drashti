@@ -265,6 +265,17 @@ describe('notice names in the computer’s own log', () => {
     }
   });
 
+  it('blanks a library name only where it is the name, never inside other words (QA24-DIAG-1)', () => {
+    const { log, lines, pass } = harness(() => ['New', 'Main']);
+    log.notice('The newest copy is kept: the main window renewed it.');
+    log.notice('New could not be opened in the domain.');
+    pass(0);
+    expect(lines).toEqual([
+      'Notice: The newest copy is kept: the [library name] window renewed it.',
+      'Notice: [library name] could not be opened in the domain.',
+    ]);
+  });
+
   it('never logs a notice’s words if its library names cannot be read', () => {
     const { log, lines, pass } = harness(() => {
       throw new Error('Placeholder private database failure');

@@ -35,6 +35,35 @@ describe('the hints for the language the engine is asked for', () => {
     expect(hintsOf([], 'gu')).toEqual({ words: [], prompt: '' });
   });
 
+  it('leave out an entry not in its language’s letters (review F2): with a language chosen it never shows, and in the prompt it would push the engine towards letters that are left out', () => {
+    const SA = 'मोरिना';
+    const list: CaptionWord[] = [
+      { language: 'gu', word: 'Zentrova' },
+      { language: 'gu', word: HI },
+      { language: 'gu', word: GU },
+      { language: 'gu', word: '108' },
+      { language: 'hi', word: GU },
+      { language: 'hi', word: 'Person Q7' },
+      { language: 'hi', word: HI },
+      // Sanskrit in either script (typed in Gujarati letters, as the screens show it, or in Devanagari).
+      { language: 'sa', word: 'વેલ્મોરિન' },
+      { language: 'sa', word: SA },
+      { language: 'sa', word: 'Zentrova' },
+      { language: 'en', word: GU },
+      { language: 'en', word: 'Zentrova' },
+    ];
+    // Digits alone belong to every language.
+    expect(hintsOf(list, 'gu')).toEqual({ words: [GU, '108'], prompt: `108, ${GU}` });
+    expect(hintsOf(list, 'hi')).toEqual({ words: [HI], prompt: HI });
+    expect(hintsOf(list, 'sa')).toEqual({ words: [HI, SA], prompt: `${SA}, ${HI}` });
+    expect(hintsOf(list, 'en')).toEqual({ words: ['Zentrova'], prompt: 'Zentrova' });
+    const all = createCaptionHints(
+      () => list,
+      () => ({ gu: true, hi: true, sa: true, en: true }),
+    );
+    expect(all.hinted()).toEqual({ gu: 2, hi: 1, sa: 2, en: 1 });
+  });
+
   it('give Sanskrit in Devanagari, as the engine writes it (the screens show Gujarati letters)', () => {
     expect(hintsOf([{ language: 'sa', word: 'વેલ્મોરિન' }], 'sa').prompt).toBe('वेल्मोरिन');
   });

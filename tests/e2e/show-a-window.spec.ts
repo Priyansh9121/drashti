@@ -356,6 +356,17 @@ test('on a Mac that has not given Screen Recording, the picker says why and open
   const why = win.getByTestId('window-permission');
   await expect(why).toContainText('Screen Recording');
   await expect(why).toContainText('nothing goes up until you press Show on the screens');
+  // QA24-SCREENREC-1: on a Mac only, what to do when Drashti is already on in the list after an update (macOS ties
+  // the switch to the build before). The whole box fits CI's 1024 × 645 operator window, its two buttons too.
+  const afterUpdate = why.getByTestId('screen-recording-after-update');
+  if (process.platform === 'darwin') {
+    await expect(afterUpdate).toHaveText(
+      'Already on in the list? After an update macOS needs it again: select Drashti, press −, then Open System Settings and turn it on.',
+    );
+    await expect(afterUpdate).toBeInViewport({ ratio: 1 });
+  } else await expect(afterUpdate).toHaveCount(0);
+  await expect(why.getByTestId('window-open-settings')).toBeInViewport({ ratio: 1 });
+  await expect(why.getByRole('button', { name: 'Look again' })).toBeInViewport({ ratio: 1 });
   await expect(win.getByTestId('window-choice')).toHaveCount(0);
   await expect(win.getByTestId('window-show')).toBeDisabled();
   await settled(win);

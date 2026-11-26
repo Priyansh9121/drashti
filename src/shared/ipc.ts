@@ -73,6 +73,7 @@ import type {
   TranslationLanguage,
 } from './prepared-translations';
 import type { CaptionWord, CaptionWordsResult, CaptionWordsView } from './caption-words';
+import type { CaptionCleanCount, CaptionCleanResult, CaptionCleanView } from './caption-clean/words';
 import type { SpeechLanguage } from './speech';
 import type { LinkDownloadOptions, LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
@@ -374,7 +375,10 @@ export const IPC = {
   flow: {
     /** The flow and its Now, together. */
     get: 'flow:get',
-    /** Main's file dialog: Drashti's own copy, read and drawn (null: cancelled). */
+    /**
+     * Main's file dialog: Drashti's own copy, read and drawn (null: cancelled). With a file (alpha.24, a PDF dropped on
+     * the panel), that file instead of the dialog's.
+     */
     choose: 'flow:choose',
     remove: 'flow:remove',
     setNow: 'flow:set-now',
@@ -433,6 +437,19 @@ export const IPC = {
     export: 'captionwords:export',
     /** A language's switch: its words go to the captions engine as hints (Gujarati off until turned on). */
     setHints: 'captionwords:set-hints',
+  },
+  /**
+   * Words left out of captions (alpha.24, QA24-CAPCLEAN-1, shared/caption-clean/words.ts): the admin's own words per
+   * language, in Pro Mode only, as Caption Words; and how many words captions left out since they were turned on.
+   * Drashti's own list never leaves the main process (it is hashes only).
+   */
+  captionClean: {
+    view: 'captionclean:view',
+    set: 'captionclean:set',
+    import: 'captionclean:import',
+    export: 'captionclean:export',
+    /** main -> operator: how many words captions left out since they were turned on (a number, never a word). */
+    changed: 'captionclean:changed',
   },
   /**
    * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
@@ -1671,7 +1688,7 @@ export interface InvokeContract {
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
   [IPC.events.copySecret]: { args: [secret: string]; result: boolean };
   [IPC.flow.get]: { args: []; result: SabhaFlowSnapshot };
-  [IPC.flow.choose]: { args: []; result: SabhaFlowChoice | null };
+  [IPC.flow.choose]: { args: [file?: string | null]; result: SabhaFlowChoice | null };
   [IPC.flow.remove]: { args: []; result: null };
   [IPC.flow.setNow]: { args: [flowId: string, now: number | null]; result: SabhaFlowNowResult };
   [IPC.flow.page]: { args: [flowId: string, page: number]; result: Uint8Array | null };
@@ -1701,6 +1718,10 @@ export interface InvokeContract {
   [IPC.captionWords.import]: { args: []; result: CaptionWordsResult };
   [IPC.captionWords.export]: { args: []; result: CaptionWordsResult };
   [IPC.captionWords.setHints]: { args: [language: SpeechLanguage, on: boolean]; result: CaptionWordsResult };
+  [IPC.captionClean.view]: { args: []; result: CaptionCleanView };
+  [IPC.captionClean.set]: { args: [words: CaptionWord[]]; result: CaptionCleanResult };
+  [IPC.captionClean.import]: { args: []; result: CaptionCleanResult };
+  [IPC.captionClean.export]: { args: []; result: CaptionCleanResult };
   [IPC.captions.view]: { args: []; result: CaptionsStatus };
   [IPC.captions.setOn]: { args: [on: boolean]; result: CaptionsStatus };
   [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };
@@ -2349,6 +2370,7 @@ export interface EventContract {
   [IPC.videoCaptions.changed]: { mediaId: string; view: VideoCaptionChoice };
   [IPC.captions.prototypeChanged]: CaptionReview;
   [IPC.captions.changed]: CaptionsStatus;
+  [IPC.captionClean.changed]: CaptionCleanCount;
   [IPC.captions.open]: { at: number };
   [IPC.modelPacks.changed]: ModelPacksStatus;
   [IPC.modelPacks.open]: { at: number };

@@ -30,3 +30,20 @@ export function captionTranslationLines(text: string, max: number): string[] | n
   const lines = captionLines(words, max, Number.MAX_SAFE_INTEGER);
   return lines.length <= 2 ? lines : null;
 }
+
+/**
+ * A translation as two-line pages, in turn (alpha.24, QA24-CAPLANG-2, the owner's 2b: long translations as pages, not
+ * dropped): whole words, every word kept, at most two lines a page. Null only when a word is wider than a line (or
+ * there is nothing to show): that translation cannot be shown and is skipped.
+ */
+export function captionTranslationPages(text: string, max: number): string[][] | null {
+  const words = text
+    .trim()
+    .split(/\s+/u)
+    .filter((word) => word !== '');
+  if (words.length === 0 || words.some((word) => Array.from(word).length > max)) return null;
+  const lines = captionLines(words, max, Number.MAX_SAFE_INTEGER);
+  const pages: string[][] = [];
+  for (let i = 0; i < lines.length; i += 2) pages.push(lines.slice(i, i + 2));
+  return pages;
+}

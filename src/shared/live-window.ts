@@ -40,5 +40,18 @@ export const SCREEN_RECORDING_WHY =
 export const SCREEN_RECORDING_STEPS =
   'Press Open System Settings, turn Drashti on under Screen Recording, then quit Drashti and open it again.';
 
+/**
+ * A Mac's, after an update (QA24-SCREENREC-1): System Settings can list Drashti turned on under Screen Recording and
+ * macOS still refuse it, as Drashti is signed ad hoc and macOS ties the switch to the build that was allowed. Removing
+ * it from the list (−, under it) and asking again gives the build now installed its own. Never said on Windows or
+ * Linux, where nothing is asked.
+ */
+export const SCREEN_RECORDING_AFTER_UPDATE =
+  'Already on in the list? After an update macOS needs it again: select Drashti, press −, then Open System Settings and turn it on.';
+
+/** What the box says after its steps on this computer: the Mac's after-update words, or nothing elsewhere. */
+export const screenRecordingAfterUpdate = (platform: string): string | null =>
+  platform === 'darwin' ? SCREEN_RECORDING_AFTER_UPDATE : null;
+
 /** The picker's words when it cannot list the windows for another reason. */
 export const WINDOWS_FAILED = 'Drashti could not list the open windows. Try again in a moment.';
