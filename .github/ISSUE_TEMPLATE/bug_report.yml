@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in Drashti went wrong
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This page is public: anyone can read it.** Never paste a stream key, a password, a token, a PIN, a pairing code or a Gmail address, and never a private name (a person's, a mandir's or a computer's). Use placeholder words and pictures only: no real kirtan, scripture or mandir content, and never your library.
+
+        At the mandir, **Help › Report a Problem…** in Drashti sends a report to whoever looks after Drashti, not in public. This form is for the people who build and test Drashti.
+  - type: input
+    id: version
+    attributes:
+      label: Drashti version
+      description: The line along the very bottom of Drashti's window says it.
+      placeholder: 1.0.0-alpha.23
+    validations:
+      required: true
+  - type: dropdown
+    id: computer
+    attributes:
+      label: Computer
+      options:
+        - A Mac with Apple silicon (M1 or later)
+        - A Mac with an Intel processor
+        - A Windows 10 or 11 PC (64-bit)
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System version
+      description: On a Mac, Apple menu, then About This Mac. On Windows, press the Windows key, type winver and press Enter.
+      placeholder: macOS Sonoma 14.6, or Windows 11 23H2
+  - type: dropdown
+    id: build
+    attributes:
+      label: Installed or built from source
+      options:
+        - Installed from a release
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead? Say Pro Mode or Simple Mode, and which screens, the stream or phones were on.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it
+      description: From starting Drashti, one step a line, with placeholder content.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: The Save Diagnostics file
+      description: |
+        In Drashti: Help, then Save Diagnostics, then Today… (or the day it happened; on Windows press Alt first to show the menu bar). A file appears on the Desktop: drag it here. Leave Include crash files unticked: a crash file can hold words from slides. The file holds no kirtan words, names, file paths or Gmail addresses, but its first lines name the computer and its place on the access list. If that should not be public, say so here, and send the file to the owner another way.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: A picture of the window (placeholder content only), how often it happens, or what you tried.
+  - type: checkboxes
+    id: nothing-private
+    attributes:
+      label: Before you send it
+      options:
+        - label: Nothing here, in the words, the pictures or the files, holds a stream key, password, token, PIN, pairing code, Gmail address or private name.
+          required: true
