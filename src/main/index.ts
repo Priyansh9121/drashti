@@ -351,7 +351,7 @@ import {
 } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
-import { onQuitRefused } from './outputs/quit-refused';
+import { onQuitRefused, resumeAfterRefusal, type QuitResume } from './outputs/quit-refused';
 import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
@@ -694,7 +694,8 @@ const exitNow = (code: number) => {
     finish();
     return;
   }
-  void sourceQuit.drain().then((result) => {
+  // A quit refused before is asked again (O1).
+  void sourceQuit.drainForQuit().then((result) => {
     if (result.confirmed) finish();
     else log.error(`Source preparation did not confirm exit (${result.reason}); the library remains open.`);
   });
@@ -5293,9 +5294,16 @@ function start(): void {
         drainPdfCopies(),
         drainKirtanExports(),
       ]);
-      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
-      return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
+      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped: one given up on is
+      // counted by givenUp, below.
+      return pdfGeometry.exitConfirmed || pdfGeometry.givenUp;
     },
+    // Owned readers given up on (a document reader's retainOutput; the PDF geometry worker that did not confirm its
+    // exit): one given up on in a quit's own drain holds that quit, as before. One given up on before it began (while
+    // editing: "Restart Drashti before…", or in a refused quit's drain) never holds a later one (O1): its job has ended,
+    // so nothing of it reaches the library, its output is kept and none is admitted since. Before, every quit after it
+    // was refused at once and Drashti could only be forced to quit.
+    givenUp: () => Number(sourceOutputQuarantined) + Number(pdfGeometry.givenUp),
   });
   stops.add('document preparation', () => {
     pdfPictures.stopEditable();
@@ -10457,14 +10465,27 @@ function start(): void {
     return quitConfirmed;
   };
 
+  /** The operator window made again after a refused source stop (review S3): set where its listeners are known. */
+  let reopenOperatorWindow: () => void = () => undefined;
+  const quitResume: QuitResume = {
+    libraryOpen: () => db !== null,
+    reset: () => {
+      quitStarted = false;
+      quitting = false;
+      quitConfirmed = false;
+    },
+    screens: () => {
+      manager.cancelQuitting();
+    },
+    operatorOpen: () => operatorWindow !== null && !operatorWindow.isDestroyed(),
+    openOperator: () => {
+      reopenOperatorWindow();
+    },
+  };
   // Cancellation can come from a later listener or any window's beforeunload (macOS included).
   // Observe after synchronous listeners finish, while the library and stop list are still live.
   const resumeAfterQuitRefused = () => {
-    if (db === null) return;
-    quitStarted = false;
-    quitting = false;
-    quitConfirmed = false;
-    manager.cancelQuitting();
+    resumeAfterRefusal(quitResume, false);
   };
   const watchQuitRefusal = (window: BrowserWindow) => {
     window.on('close', (event) => onQuitRefused(event, resumeAfterQuitRefused));
@@ -10508,26 +10529,46 @@ function start(): void {
   operatorWindow.webContents.once('did-finish-load', () => {
     log.info(phaseLine('operator window loaded'));
   });
-  watchdog.watch(operatorWindow.webContents, 'operator');
-  // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
-  // again, or its page stops, the question goes from the outputs too, never left there.
-  operatorWindow.webContents.on('did-start-loading', () => {
-    switchQuestion.asking(null);
-    // A picture adjusted from the window that is loading again (x27): its grid goes from the screens.
-    screens.stopAdjusting();
-    // News waits for its page to open (x53: tellOperator).
-    operatorAsked = false;
-  });
-  operatorWindow.webContents.on('did-start-navigation', (navigation) => {
-    if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
+  let moveTimer: NodeJS.Timeout | null = null;
+  /** The operator window's own listeners: the first one's, and one made again after a refused quit (review S3). */
+  const watchOperatorWindow = (win: BrowserWindow) => {
+    watchdog.watch(win.webContents, 'operator');
+    // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
+    // again, or its page stops, the question goes from the outputs too, never left there.
+    win.webContents.on('did-start-loading', () => {
+      switchQuestion.asking(null);
+      // A picture adjusted from the window that is loading again (x27): its grid goes from the screens.
+      screens.stopAdjusting();
+      // News waits for its page to open (x53: tellOperator).
+      operatorAsked = false;
+    });
+    win.webContents.on('did-start-navigation', (navigation) => {
+      if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
+        importNotices.pause();
+    });
+    win.webContents.on('render-process-gone', () => {
       importNotices.pause();
-  });
-  operatorWindow.webContents.on('render-process-gone', () => {
-    importNotices.pause();
-    switchQuestion.asking(null);
-    screens.stopAdjusting();
-    operatorAsked = false;
-  });
+      switchQuestion.asking(null);
+      screens.stopAdjusting();
+      operatorAsked = false;
+    });
+    win.on('moved', () => {
+      if (moveTimer) clearTimeout(moveTimer);
+      moveTimer = setTimeout(guardOperator, 250);
+    });
+    win.on('close', (event) => {
+      if (!confirmQuit()) event.preventDefault();
+    });
+    win.on('closed', () => {
+      if (operatorWindow === win) operatorWindow = null;
+      // Output windows would otherwise keep the app alive.
+      app.quit();
+      // In a quit, app.quit() does nothing more: an output opened once it had begun (QA24-QUITRACE-1: Electron closes
+      // only the windows open as it began) closes here, with every other, and none opens again.
+      if (quitStarted) manager.closeForQuit();
+    });
+  };
+  watchOperatorWindow(operatorWindow);
   // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
   // has loaded, and again at its next load while it could not be told. Never of the operator window itself (question
   // 36): Chromium holds the page that asks until the GPU process has said which video decoders it has (about 15 s on
@@ -10593,22 +10634,21 @@ function start(): void {
     holdPriority('with the operator window open');
   });
   setTimeout(startAudioPlayer, 5000);
-  let moveTimer: NodeJS.Timeout | null = null;
-  operatorWindow.on('moved', () => {
-    if (moveTimer) clearTimeout(moveTimer);
-    moveTimer = setTimeout(guardOperator, 250);
-  });
-  operatorWindow.on('close', (event) => {
-    if (!confirmQuit()) event.preventDefault();
-  });
-  operatorWindow.on('closed', () => {
-    operatorWindow = null;
-    // Output windows would otherwise keep the app alive.
-    app.quit();
-    // In a quit, app.quit() does nothing more: an output opened once it had begun (QA24-QUITRACE-1: Electron closes
-    // only the windows open as it began) closes here, with every other, and none opens again.
-    if (quitStarted) manager.closeForQuit();
-  });
+  // After a refused source stop, the operator window that had closed (review S3): made again with its own listeners,
+  // playing no opening (this is no start), the HEVC question and the audio player as a first window's load would.
+  reopenOperatorWindow = () => {
+    log.info('The quit did not go ahead: the operator window opens again');
+    const win = createOperatorWindow(appearance.background());
+    operatorWindow = win;
+    appearance.track(win);
+    openingPageAgain = true;
+    openingKeys.reset();
+    watchOperatorWindow(win);
+    if (hevc.now === null) win.webContents.on('did-finish-load', askHevc);
+    win.webContents.once('did-finish-load', startAudioPlayer);
+    // Never under the screens that came back just before it.
+    guardOperator();
+  };
   let quitSavingSound = false;
   app.on('before-quit', (event) => {
     // Our bounded sound/source drains resume the quit themselves; preventDefault there is a hold, not refusal.
@@ -10664,7 +10704,8 @@ function start(): void {
         event,
         () => app.quit(),
         (result) => {
-          resumeAfterQuitRefused();
+          // The operator window too, if it had closed (review S3).
+          resumeAfterRefusal(quitResume, true);
           log.error(
             `Source preparation did not confirm shutdown (${result.reason}); the library remains open.`,
           );
