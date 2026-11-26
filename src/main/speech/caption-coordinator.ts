@@ -69,6 +69,8 @@ export class CaptionCoordinator {
   private pair: { source: SpeechLanguage; target: SpeechLanguage } | null = null;
   /** A stable clause whose translation failed: not asked again until its words change. */
   private failed: { sessionId: string; phraseId: string; revision: number } | null = null;
+  /** The phrase withdrawn while it was heard (alpha.24, QA24-CAPCLEAN-1): heard on, it comes back fresh (review R2-1). */
+  private withdrawn: string | null = null;
   /** Where the words may be shown (the audience screens or not): a change starts a new output-policy epoch. */
   private policyKey = '';
   private shownAt = Number.NEGATIVE_INFINITY;
@@ -102,6 +104,7 @@ export class CaptionCoordinator {
 
   stop(): void {
     this.sessionId = null;
+    this.withdrawn = null;
     this.pair = null;
     this.failed = null;
     this.current = null;
@@ -145,7 +148,11 @@ export class CaptionCoordinator {
       return false;
     const sourceText = textOf(clause.sourceText);
     if (!validCaptionText(sourceText, 4_096)) return false;
-    if (number === this.highestPhrase) {
+    // A phrase withdrawn while it was heard is heard on as a fresh clause (its flow starts again at revision 1), and
+    // the one before it stays (review R2-1).
+    const heardOn =
+      number === this.highestPhrase && this.current === null && clause.phraseId === this.withdrawn;
+    if (number === this.highestPhrase && !heardOn) {
       if (
         this.current?.status !== 'provisional' ||
         clause.revision <= this.current.revision ||
@@ -157,6 +164,7 @@ export class CaptionCoordinator {
     }
     if (number > this.highestPhrase) this.previous = this.current;
     this.highestPhrase = number;
+    this.withdrawn = null;
     const firstSettledAt = clause.status === 'settled' ? now : null;
     const clearAt = now + 6_000;
     this.pair ??= { source: clause.sourceLanguage, target: clause.targetLanguage };
@@ -271,6 +279,7 @@ export class CaptionCoordinator {
    */
   withdraw(phraseId: string): boolean {
     if (this.current?.phraseId !== phraseId || this.current.status !== 'provisional') return false;
+    this.withdrawn = phraseId;
     this.current = null;
     this.clear();
     this.notify();
