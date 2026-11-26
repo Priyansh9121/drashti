@@ -615,3 +615,37 @@ describe('OutputManager as Drashti quits (QA24-QUITRACE-1)', () => {
     expect(live()).toEqual([]);
   });
 });
+
+
+describe('OutputManager after a refused quit', () => {
+  it('reopens destroyed windows and restores held windows after cancellation, then guards the next quit', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    displays = [laptop, stage];
+    manager.reconcile();
+    const held = opened[0];
+    manager.quitting();
+    opened[1]?.close();
+    displays = [laptop, hall, stage];
+    manager.cancelQuitting();
+    expect(held?.hidden).toBe(false);
+    expect(putBack).toEqual(['audience']);
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    manager.quitting();
+    opened.at(-1)?.close();
+    manager.reconcile();
+    expect(opened).toHaveLength(3);
+  });
+
+  it('can recover gap-window cleanup, but never recovers the final stop', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    manager.closeForQuit();
+    manager.cancelQuitting();
+    expect(live()).toEqual(['audience@2']);
+    manager.closeAll();
+    manager.cancelQuitting();
+    manager.reconcile();
+    expect(live()).toEqual([]);
+  });
+});

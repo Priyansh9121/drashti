@@ -286,6 +286,14 @@ export class OutputManager {
     this.quit = true;
   }
 
+  /** A refused quit lets screens follow displays again. */
+  cancelQuitting(): void {}
+
+  /** Close gap windows while the quit can still be refused. */
+  closeForQuit(): void {
+    this.closeAll();
+  }
+
   /** Every window closes, held ones too, and none opens again (the quit's last stop; QA24-QUITRACE-1). */
   closeAll(): void {
     this.quit = true;
