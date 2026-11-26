@@ -186,12 +186,12 @@ function LayerClear({
             <IconShape size={15} aria-hidden="true" className="shrink-0" />
           )}
         </button>
-        {/* Decoration only: never pressed, read out or seen at rest. */}
+        {/* Decoration only: never pressed, read out or seen at rest, nor in forced colours. */}
         <span
           ref={trace}
           aria-hidden="true"
           className={cx(
-            'pointer-events-none absolute inset-0 rounded-md opacity-0',
+            'pointer-events-none absolute inset-0 rounded-md opacity-0 forced-colors:hidden',
             on ? 'bg-live-edge' : 'bg-layer-edge',
           )}
         />
