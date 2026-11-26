@@ -21,10 +21,18 @@ export function closePipDialog(): void {
   usePipUi.setState({ open: false });
 }
 
+/**
+ * The place the library remembers, as this window last read it or had it kept (null until then): the Picture in
+ * Picture section's preview of where the next box goes follows it (QA24-PIPPREVIEW-1, operator/PipPreview.tsx).
+ */
+export const usePipPlace = create<{ place: PipPlace | null }>(() => ({ place: null }));
+
 /** Where a new box goes and how it looks, as the library remembers it (Drashti's own when it can't be read). */
 export async function rememberedPlace(): Promise<PipPlace> {
   try {
-    return await window.drashti.pip.place();
+    const place = await window.drashti.pip.place();
+    usePipPlace.setState({ place });
+    return place;
   } catch {
     return DEFAULT_PIP_PLACE;
   }
@@ -40,10 +48,12 @@ const NOT_KEPT = 'Drashti could not keep where the box goes for next time: set i
 export async function placeBox(place: PipPlace): Promise<string | null> {
   if (useEngine.getState().state?.layers.pip) {
     const moved = await window.drashti.engine.dispatch({ type: 'placePip', place });
+    if (moved.ok) usePipPlace.setState({ place });
     return moved.ok ? null : moved.message;
   }
   try {
     const saved = await window.drashti.pip.savePlace(place);
+    if (saved.ok) usePipPlace.setState({ place: saved.place });
     return saved.ok ? null : saved.message;
   } catch {
     return NOT_KEPT;

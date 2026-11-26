@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -41,7 +39,14 @@ function show(over: Partial<EngineState['layers']> = {}, rest: Partial<EngineSta
     ...rest,
     layers: {
       ...state.layers,
-      background: { kind: 'media', mediaId: 'backdrop', media: 'image', fit: 'fill', loop: false, startedAt: 1 },
+      background: {
+        kind: 'media',
+        mediaId: 'backdrop',
+        media: 'image',
+        fit: 'fill',
+        loop: false,
+        startedAt: 1,
+      },
       slide: SLIDE,
       ...over,
     },
@@ -170,7 +175,10 @@ describe('what the preview draws, from stills only', () => {
     expect(html).toContain('data-preview-behind="media"');
     expect(html).toContain('data-preview-behind="slide"');
     // A group that leaves the background out: none behind the box.
-    const noBackground = { ...DEFAULT_LIVE_GROUP_LOOK, layers: DEFAULT_LIVE_GROUP_LOOK.layers.filter((l) => l !== 'background') };
+    const noBackground = {
+      ...DEFAULT_LIVE_GROUP_LOOK,
+      layers: DEFAULT_LIVE_GROUP_LOOK.layers.filter((l) => l !== 'background'),
+    };
     expect(previewBehind(show(), noBackground, false).background).toBeNull();
   });
 
@@ -202,8 +210,12 @@ describe('what the preview draws, from stills only', () => {
       },
     };
     expect(previewBehind(papered, DEFAULT_LIVE_GROUP_LOOK, false).nothing).toBe('wallpaper');
-    expect(previewBehind(show({}, { blackout: true }), DEFAULT_LIVE_GROUP_LOOK, false).covered).toBe('blackout');
-    expect(previewBehind(show({}, { wallpaper: true }), DEFAULT_LIVE_GROUP_LOOK, false).covered).toBe('wallpaper');
+    expect(previewBehind(show({}, { blackout: true }), DEFAULT_LIVE_GROUP_LOOK, false).covered).toBe(
+      'blackout',
+    );
+    expect(previewBehind(show({}, { wallpaper: true }), DEFAULT_LIVE_GROUP_LOOK, false).covered).toBe(
+      'wallpaper',
+    );
   });
 
   it('a video input, a window or a stream link is named, never opened: no camera, no capture, no video', () => {
@@ -231,36 +243,57 @@ describe('what the preview draws, from stills only', () => {
 
   it('is a picture for the eyes, its words beside it for everyone', () => {
     const html = view(place());
-    expect(html).toMatch(/data-testid="pip-preview-picture"[^>]*aria-hidden="true"|aria-hidden="true"[^>]*data-testid="pip-preview-picture"/u);
+    expect(html).toMatch(
+      /data-testid="pip-preview-picture"[^>]*aria-hidden="true"|aria-hidden="true"[^>]*data-testid="pip-preview-picture"/u,
+    );
     expect(html).toContain('data-a11y-picture');
     expect(html).toContain('data-testid="pip-preview-words"');
-    expect(html).toContain(previewWords('preview', place(), { kind: 'slides' }, previewBehind(show(), DEFAULT_LIVE_GROUP_LOOK, true)));
+    expect(html).toContain(
+      previewWords(
+        'preview',
+        place(),
+        { kind: 'slides' },
+        previewBehind(show(), DEFAULT_LIVE_GROUP_LOOK, true),
+      ),
+    );
   });
 });
 
 describe('the preview’s words', () => {
   const behind = previewBehind(show(), DEFAULT_LIVE_GROUP_LOOK, false);
   it('say where the box sits, its size and look, what it holds and what is behind it', () => {
-    expect(previewWords('preview', place(), { kind: 'slides' }, previewBehind(show(), DEFAULT_LIVE_GROUP_LOOK, true))).toBe(
+    expect(
+      previewWords(
+        'preview',
+        place(),
+        { kind: 'slides' },
+        previewBehind(show(), DEFAULT_LIVE_GROUP_LOOK, true),
+      ),
+    ).toBe(
       'Preview: in the bottom right, Medium, with a thin border and rounded corners, holding the slides, over what the screens show now (a picture).',
     );
     expect(
-      previewWords('preview', place({ corner: 'top-left', size: 'small', border: false, rounded: false }), { kind: 'media', mediaId: 'm', media: 'video', name: 'Placeholder clip.webm' }, behind),
+      previewWords(
+        'preview',
+        place({ corner: 'top-left', size: 'small', border: false, rounded: false }),
+        { kind: 'media', mediaId: 'm', media: 'video', name: 'Placeholder clip.webm' },
+        behind,
+      ),
     ).toBe(
       'Preview: in the top left, Small, with no border and square corners, holding “Placeholder clip.webm”, over what the screens show now (a picture and a slide).',
     );
-    expect(previewWords('preview', place({ corner: null, x: 0.4, y: 0.2 }), { kind: 'none' }, behind)).toContain(
-      'where it was dragged (40% across, 20% down)',
-    );
+    expect(
+      previewWords('preview', place({ corner: null, x: 0.4, y: 0.2 }), { kind: 'none' }, behind),
+    ).toContain('where it was dragged (40% across, 20% down)');
   });
 
   it('say a camera or a window shows by its name, and when black-out or the Wallpaper covers the box', () => {
     expect(previewWords('preview', place(), { kind: 'input', name: 'Placeholder input' }, behind)).toContain(
       'holding the video input “Placeholder input”',
     );
-    expect(previewWords('preview', place(), { kind: 'window', name: 'Placeholder meeting' }, behind)).toContain(
-      'The preview opens no camera and captures no window: they show here by name.',
-    );
+    expect(
+      previewWords('preview', place(), { kind: 'window', name: 'Placeholder meeting' }, behind),
+    ).toContain('The preview opens no camera and captures no window: they show here by name.');
     const covered = previewBehind(show({}, { blackout: true }), DEFAULT_LIVE_GROUP_LOOK, false);
     expect(previewWords('preview', place(), { kind: 'slides' }, covered)).toContain(
       'Black-out is on now: the screens show the box once it is off.',
@@ -268,8 +301,12 @@ describe('the preview’s words', () => {
   });
 
   it('in the section: where the next box goes, or the box up now', () => {
-    expect(previewWords('next', place(), { kind: 'none' }, behind)).toMatch(/^The next box: in the bottom right, Medium/u);
-    expect(previewWords('now', place(), { kind: 'slides' }, behind)).toMatch(/^The box now: in the bottom right/u);
+    expect(previewWords('next', place(), { kind: 'none' }, behind)).toMatch(
+      /^The next box: in the bottom right, Medium/u,
+    );
+    expect(previewWords('now', place(), { kind: 'slides' }, behind)).toMatch(
+      /^The box now: in the bottom right/u,
+    );
   });
 });
 
@@ -302,8 +339,15 @@ describe('the preview sends nothing to the screens or the stream', () => {
   });
 
   it('its parts use no command, no camera and no window capture', () => {
-    for (const file of ['PipPreview.tsx', 'pip-preview.ts']) {
-      const source = readFileSync(join(__dirname, file), 'utf8');
+    const files = import.meta.glob<string>(['./PipPreview.tsx', './pip-preview.ts'], {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    });
+    expect(Object.keys(files).sort()).toEqual(['./PipPreview.tsx', './pip-preview.ts']);
+    for (const [file, raw] of Object.entries(files)) {
+      // Its code, not its comments (which say what it does not use, and why).
+      const source = raw.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/^\s*\/\/.*$/gmu, '');
       for (const banned of [
         /engine\.dispatch/u,
         /from '\.\/actions'/u,
