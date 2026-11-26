@@ -5,8 +5,8 @@ import { StopScreen } from './StopScreen';
 
 /*
  * The operator window behind the lock (Session 54, access by Gmail), around Pro and Simple Mode alike: the controls
- * only while this computer is let in (with no internet too, for up to an hour: AccessOfflineNotice says so in the
- * window's flow); the stop in their place once Drashti has stopped (the controls gone, so no key, click or MIDI note
+ * only while this computer is let in (with no internet too, for up to 15 days: AccessOfflineNotice says so in the
+ * status bar, in place of the version); the stop in their place once Drashti has stopped (the controls gone, so no key, click or MIDI note
  * reaches them). The main process refuses every request of theirs anyway: this only shows what it decided.
  */
 export function AccessGate({ children }: { children: ReactNode }) {

@@ -38,10 +38,12 @@ import { LinkStatus } from '../links/LinkDialog';
 import { showSave, stopSave, useSaves } from '../markers/save-store';
 import { MutedStatus } from '../sound/SoundLevels';
 import { CaptionsWarning } from '../captions/CaptionsWarning';
+import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
- * sound goes, an import or backup under way, and the version. Notices pop up
+ * sound goes, an import or backup under way, and the version (in its place,
+ * while the access list does not answer, the line saying so). Notices pop up
  * just above it (NoticeArea).
  */
 
@@ -323,7 +325,11 @@ export function StatusBar({
           <SaveStatus platform={info?.platform ?? 'darwin'} />
           <TaskStatus />
         </div>
-        <AppInfoWords info={info} />
+        {/* Can't reach the access list (alpha.24, the owner's QA24-ACCESS-STRIP A; a strip under the top bar before):
+            in place of the version and in its room, while the list does not answer. */}
+        <AccessOfflineNotice>
+          <AppInfoWords info={info} />
+        </AccessOfflineNotice>
       </footer>
     </>
   );

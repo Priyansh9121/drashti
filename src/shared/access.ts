@@ -183,7 +183,8 @@ export function offlineLeftText(ms: number): string {
 
 /**
  * While the list has not answered for about 2 minutes (no internet): how long Drashti keeps working, in the owner's
- * own words (Session 55, 29 Oct 2026: "Drashti keeps working for 14 days 6 hours more"). One line under the top bar.
+ * own words (Session 55, 29 Oct 2026: "Drashti keeps working for 14 days 6 hours more"). One line in the status bar, in
+ * place of the version (alpha.24; under the top bar before).
  */
 export const offlineLine = (ms: number): string =>
   `Can’t reach the access list: Drashti keeps working for ${offlineLeftText(ms)} more.`;
