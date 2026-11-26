@@ -70,11 +70,44 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
       el.scrollLeft = 160;
       el.scrollTop = 180;
     });
+    await region.scrollIntoViewIfNeeded();
     const start = await scroll();
     const bounds = await region.boundingBox();
     if (!bounds) throw new Error('PDF region has no bounds');
-    const x = bounds.x + bounds.width / 2;
-    const y = bounds.y + bounds.height / 2;
+    // The scan's PDF region sits inside the panel body's own scroller at this window size.
+    // Hit the part actually visible through every clipping ancestor, not the full region's hidden centre.
+    const point = await region.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      let left = Math.max(r.left, 0);
+      let right = Math.min(r.right, innerWidth);
+      let top = Math.max(r.top, 0);
+      let bottom = Math.min(r.bottom, innerHeight);
+      for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        const clip = parent.getBoundingClientRect();
+        if (/(auto|scroll|hidden|clip)/u.test(style.overflowX)) {
+          left = Math.max(left, clip.left);
+          right = Math.min(right, clip.right);
+        }
+        if (/(auto|scroll|hidden|clip)/u.test(style.overflowY)) {
+          top = Math.max(top, clip.top);
+          bottom = Math.min(bottom, clip.bottom);
+        }
+      }
+      const x = (left + right) / 2;
+      const y = (top + bottom) / 2;
+      return {
+        x,
+        y,
+        width: right - left,
+        height: bottom - top,
+        hit: el.contains(document.elementFromPoint(x, y)),
+      };
+    });
+    expect(point.width).toBeGreaterThan(0);
+    expect(point.height).toBeGreaterThan(0);
+    expect(point.hit, 'The mouse must start on the visible PDF region').toBe(true);
+    const { x, y } = point;
     await win.mouse.move(x, y);
     await win.mouse.down();
     await win.mouse.move(x - 35, y - 30, { steps: 4 });
@@ -113,7 +146,7 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     await expect(input).toHaveValue('400%');
     const pointerAfter = await scroll();
     expect(
-      Math.abs((pointerAfter.x + bounds.width / 2 - 8) / 4 - (pointerBefore.x + bounds.width / 2 - 8) / 3),
+      Math.abs((pointerAfter.x + x - bounds.x - 8) / 4 - (pointerBefore.x + x - bounds.x - 8) / 3),
     ).toBeLessThan(2);
     await panel.getByRole('button', { name: 'Fit to the panel' }).click();
     await expect(input).toHaveValue('100%');
