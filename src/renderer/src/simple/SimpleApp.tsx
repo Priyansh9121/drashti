@@ -438,10 +438,9 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <LinkDialog />
       {/* Files dropped with no playlist open: a new playlist or folder for them (Session 60, x36). */}
       <DropNewDialog />
-      <div className="relative shrink-0">
-        <ChatPopup />
-        <LayerBar platform={platform} run={run} simple />
-      </div>
+      {/* A chat message's popup (alpha.24): over the middle column's foot, just above Simple Mode's show buttons. */}
+      <ChatPopup />
+      <LayerBar platform={platform} run={run} simple />
       <StatusBar info={info} onOpenScreens={null} />
       {/* A row's right-click menu, its Delete's question when it is up, and From a Link…. */}
       <FileMenu platform={platform} />

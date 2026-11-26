@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { create } from 'zustand';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
 import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
+import { usePopPlace } from '../operator/pop-place';
 import { motionOff } from '../ui/motion';
 import { arrivals, popAfter, popChangesAt, popPhase, popWords, type ChatPop } from './chat-pop';
 import { connectChat, useChat } from './chat-store';
@@ -20,12 +22,18 @@ export interface ChatPopViewProps {
 export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopViewProps) {
   const words = pop ? popWords(pop) : null;
   return (
-    <div role="status" aria-live="polite" aria-atomic="true" {...{ [REPORT_PRIVATE_ATTR]: '' }}>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="w-full max-w-[32rem]"
+      {...{ [REPORT_PRIVATE_ATTR]: '' }}
+    >
       {words && (
         <div
           data-testid="chat-pop"
           data-leaving={leaving || undefined}
-          className={`pointer-events-auto flex w-[min(32rem,calc(100vw-2rem))] items-start gap-2 rounded-lg border border-line bg-panel p-3 text-fg shadow-lg ${still ? '' : 'transition-opacity [transition-duration:var(--dur-notice)] motion-reduce:transition-none'}`}
+          className={`pointer-events-auto flex w-full items-start gap-2 rounded-lg border border-line bg-panel p-3 text-fg shadow-lg ${still ? '' : 'transition-opacity [transition-duration:var(--dur-notice)] motion-reduce:transition-none'}`}
           style={{ opacity: leaving ? 0 : 1 }}
         >
           <button
@@ -90,18 +98,29 @@ export function ChatPopup() {
     return () => clearTimeout(timer);
   }, [pop, now]);
   const phase = popPhase(pop, now, still);
+  const place = usePopPlace((s) => s.place);
+  const view = (
+    <ChatPopView
+      pop={phase === 'gone' ? null : pop}
+      leaving={phase === 'leaving'}
+      still={still}
+      onDismiss={() => usePop.setState({ pop: null })}
+      onOpen={() => {
+        usePop.setState({ pop: null });
+        useChatOpen.setState((s) => ({ asked: s.asked + 1 }));
+      }}
+    />
+  );
+  // Over the middle column's foot (operator/pop-place.ts), centred, never wider than the middle.
+  if (place)
+    return createPortal(
+      <div className="pointer-events-none absolute inset-x-2 bottom-2 z-40 flex justify-center">{view}</div>,
+      place,
+    );
+  // Without the columns (the practice show): centred over the window, just above the quick bar and the bar of clears.
   return (
-    <div className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-2 -translate-x-1/2">
-      <ChatPopView
-        pop={phase === 'gone' ? null : pop}
-        leaving={phase === 'leaving'}
-        still={still}
-        onDismiss={() => usePop.setState({ pop: null })}
-        onOpen={() => {
-          usePop.setState({ pop: null });
-          useChatOpen.setState((s) => ({ asked: s.asked + 1 }));
-        }}
-      />
+    <div className="relative z-40 h-0 shrink-0">
+      <div className="pointer-events-none absolute inset-x-4 bottom-2 flex justify-center">{view}</div>
     </div>
   );
 }
