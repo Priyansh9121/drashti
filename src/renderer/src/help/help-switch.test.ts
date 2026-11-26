@@ -25,21 +25,32 @@ describe('the status bar’s Help switch', () => {
       const off = await toggle(mode, false);
       expect(off).toContain('data-testid="help-toggle"');
       expect(off).toContain('aria-pressed="false"');
-      expect(off).toMatch(/>Help<\/button>/u);
+      expect(off).toMatch(/>Help<\/span><\/button>/u);
       // Its ? is a picture of the word, never read out twice.
       expect(off).toMatch(/<span aria-hidden="true"[^>]*>\?<\/span>/u);
       expect(await toggle(mode, true)).toContain('aria-pressed="true"');
     }
   });
 
+  it('is the round ? alone below 1280 px, 24 px square as the ? it replaced, its word kept for screen readers', async () => {
+    // CI's Windows, 1024 × 645, uihelp's first ask: with the captions' warning in it, the status bar ran past the
+    // window by the word's width (the page scrolled sideways), so a narrow window keeps the ?'s own room.
+    const off = await toggle('pro', false);
+    const button = /<button[^>]*class="([^"]*)"/u.exec(off)?.[1].split(' ') ?? [];
+    expect(button).toEqual(expect.arrayContaining(['max-[1280px]:w-6', 'max-[1280px]:px-0', 'min-h-6']));
+    const word = /<span class="([^"]*)">Help<\/span>/u.exec(off)?.[1].split(' ') ?? [];
+    expect(word).toEqual(['max-[1280px]:sr-only']);
+  });
+
   it('says in its tooltip words what it shows, with the Mac’s Option and Windows’ Alt', async () => {
     const { helpTip } = await import('./HelpSwitch');
+    // Named first, as it is the ? alone in a narrow window.
     expect(helpTip('darwin', false)).toBe(
-      'Shows the ? beside each part and the keys on the buttons. Hold Option to see the keys for a moment.',
+      'Help: the ? beside each part and the keys on the buttons. Hold Option to see the keys for a moment.',
     );
     expect(helpTip('win32', false)).toBe(
-      'Shows the ? beside each part and the keys on the buttons. Hold Alt to see the keys for a moment.',
+      'Help: the ? beside each part and the keys on the buttons. Hold Alt to see the keys for a moment.',
     );
-    expect(helpTip('win32', true)).toBe('Shows the keys on the buttons. Hold Alt to see them for a moment.');
+    expect(helpTip('win32', true)).toBe('Help: the keys on the buttons. Hold Alt to see them for a moment.');
   });
 });
