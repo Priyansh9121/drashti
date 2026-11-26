@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { KEYMAP, keyText } from '../shared/keymap';
-import { type Block, type Inline, inlineText, parseMarkdown, type TableRow } from '../shared/markdown';
+import { type Block, type Inline, inlineText, parseMarkdown } from '../shared/markdown';
 import { KEY_WINDOWS, type KeyWindow, keysOn, WINDOW_KEYS } from '../shared/window-keys';
 import { ownWindowKey } from './access/access-list-window';
 
@@ -79,7 +79,7 @@ function keyTables(blocks: readonly Block[]): { sections: string[]; rows: KeyRow
       odd.push(`${section}: a table headed ${head.join(' | ')}`);
       continue;
     }
-    for (const r of b.rows as TableRow[]) {
+    for (const r of b.rows) {
       const [what, a = [], c = [], d = []] = r.cells;
       rows.push({
         section,

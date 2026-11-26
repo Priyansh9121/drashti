@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * modifier and a plus (Ctrl+, Alt+, Shift+) in quotes, outside a comment.
  */
 
-const here = __dirname;
+const here = join(__dirname, '..', 'renderer', 'src', 'editor');
 const files = [
   ...readdirSync(here)
     .filter((f) => f.endsWith('.tsx'))
@@ -20,6 +20,10 @@ const BY_HAND = /(['"`])[^'"`\n]*(?:[⌘⌥⇧⌃]|\b(?:Ctrl|Alt|Shift)\+)[^'"`\
 
 describe('the editors’ keys on their buttons', () => {
   it('are written from the keys they act on, never by hand', () => {
+    // The editor's own files are read (SlideEditor, WordsGroup and the rest), and the words editor.
+    expect(files.map((f) => f.slice(f.lastIndexOf('/') + 1))).toEqual(
+      expect.arrayContaining(['SlideEditor.tsx', 'WordsGroup.tsx', 'WordsEditor.tsx']),
+    );
     const found = files.flatMap((path) =>
       readFileSync(path, 'utf8')
         .split('\n')

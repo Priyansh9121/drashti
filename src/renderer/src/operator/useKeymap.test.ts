@@ -145,7 +145,13 @@ describe('the operator window’s keys, as its listener takes them', () => {
       expect(typed.filter((p) => p.taken).map((p) => p.key)).toEqual(['૧', '२', '૧', '२', '૧', '२']);
       const onWindow = gujarati();
       for (const p of onWindow) onKey(p);
-      expect(ran).toEqual(['toggleBlackout', 'toggleBlackout', 'findInLibrary', 'toggleAudience', 'toggleStage']);
+      expect(ran).toEqual([
+        'toggleBlackout',
+        'toggleBlackout',
+        'findInLibrary',
+        'toggleAudience',
+        'toggleStage',
+      ]);
     },
   );
 

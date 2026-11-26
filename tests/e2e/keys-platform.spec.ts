@@ -43,7 +43,12 @@ test('with a Gujarati or Hindi layout, B is Black-out and Cmd or Ctrl with F is 
   const blackout = win.getByTestId('blackout-button');
   const mod = platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
   // A key press as a Gujarati or Devanagari layout makes it: its letter, and its place on the keyboard.
-  const press = (where: 'window' | 'search', key: string, code: string, mods: KeyboardEventInit = {}) =>
+  const press = (
+    where: 'window' | 'search',
+    key: string,
+    code: string,
+    mods: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean } = {},
+  ) =>
     win.evaluate(
       ({ where: w, key: k, code: c, mods: m }) => {
         const target =
