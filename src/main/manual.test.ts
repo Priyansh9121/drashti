@@ -448,3 +448,10 @@ describe('Print… and Save as PDF…', () => {
     expect(messageOf(result)).not.toContain('EACCES');
   });
 });
+
+it('the Wallpapers manual begins with What it is before its operator steps and advice', () => {
+  const feature = features(blocksOf('playlists.md')).find((f) => f.name === 'Wallpapers');
+  expect(feature).toBeDefined();
+  expect(leadOf(feature?.blocks[0] as Block)).toBe('What it is.');
+  expect(chapterText('playlists.md')).not.toContain('Warning text wraps with its full words in a tooltip.');
+});

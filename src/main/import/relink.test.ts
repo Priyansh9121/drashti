@@ -198,6 +198,18 @@ describe('runRelink', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
   });
 
+  it('still finds an ordinary missing file at its old source when that path is back', async () => {
+    const { db, media, found, dir } = setup();
+    const old = join(dir, 'Returned drive');
+    mkdirSync(old);
+    const path = join(old, 'Placeholder returned.png');
+    const id = media.addMissing(path, 'image', { kind: 'pp6', path: '/placeholder' });
+    writeFileSync(path, 'placeholder returned bytes');
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: found, mediaIds: [id] });
+    expect(run.totals).toMatchObject({ imported: 1, failed: 0 });
+    expect(media.missing()).toEqual([]);
+  });
+
   it('says when nothing is missing', async () => {
     const { db, media, found } = setup();
     const run = await runRelink({ db, media, runId: randomUUID(), folder: found });
@@ -273,5 +285,33 @@ describe('Find… right after Delete… (QA24-WALLBLACK-3): a picture deleted fr
     const run = await runRelink({ db, media, runId: randomUUID(), folder: found });
     expect(run.message).toBe('No media is missing.');
     expect(row()).toEqual({ path: was, missing: 0, deleted: 1 });
+  });
+  it('Find restores the playlist row removed by the same Delete as the wallpaper picture', async () => {
+    const t = setup();
+    const path = join(t.found, 'Placeholder shared.png');
+    writeFileSync(path, 'placeholder shared bytes');
+    const imported = await t.media.importFile(path, { kind: 'media', path });
+    if (imported.outcome === 'failed') throw new Error(imported.issue.message);
+    t.db.exec(
+      "INSERT INTO playlists (id, name) VALUES ('pl', 'Placeholder'); INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder', 0)",
+    );
+    t.db
+      .prepare(
+        "INSERT INTO playlist_items (id, playlist_id, position, kind, media_id) VALUES ('item', 'pl', 0, 'media', ?)",
+      )
+      .run(imported.mediaId);
+    t.db
+      .prepare("INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, ?)")
+      .run(imported.mediaId);
+    new MediaRemoval(t.db, { onScreens: () => new Set() }).remove([imported.mediaId]);
+    expect(
+      (await runRelink({ ...t, runId: randomUUID(), folder: t.found, mediaIds: [imported.mediaId] })).totals,
+    ).toMatchObject({ imported: 1, failed: 0 });
+    expect(t.db.prepare("SELECT deleted_at FROM playlist_items WHERE id = 'item'").get()).toEqual({
+      deleted_at: null,
+    });
+    expect(t.db.prepare('SELECT media_id FROM wallpaper_pictures').all()).toEqual([
+      { media_id: imported.mediaId },
+    ]);
   });
 });
