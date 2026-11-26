@@ -66,7 +66,7 @@ export interface PlaybackOptions {
    * check is a task ahead of the page's ordinary ones (render/schedule-go-check.ts), on every page (a24-cuelive-mac5).
    */
   prepareScheduledStart?: boolean;
-  /** LIVE alone: every future start's check ahead of ordinary page tasks, not only a cue's Go (a time bar's start). */
+  /** LIVE alone: every later start's check ahead of ordinary page tasks, not only a cue's Go. */
   prioritizeScheduledStart?: boolean;
   /**
    * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
@@ -206,7 +206,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
           starting = null;
           check();
         },
-        Math.max(0, at - engineNow()),
+        // A whole ms at least (a24-review-cuelive3 SHOULD-1): never early by Date.now's whole ms, and a clock that
+        // stands still (the warm-up's pause, a test's hold) with Go less than a ms ahead is asked every ms, not in a
+        // 0 ms loop of priority tasks.
+        Math.max(0, Math.ceil(at - engineNow())),
         // A cue's Go on every page (a24-cuelive-mac5): an ordinary timer waits behind work queued before it is due,
         // a rendering step most of all (on CI's Mac the stream's ran 62 ms after Go and started 87 ms late).
         options.prioritizeScheduledStart === true || options.prepareScheduledStart === true,

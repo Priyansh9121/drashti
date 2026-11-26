@@ -20,7 +20,7 @@ it('keeps a check not asked to go first (a later start that is no cue) on its ti
   cancel();
 });
 
-it('aborts a superseded or stopped LIVE Go task', async () => {
+it('aborts a superseded or stopped cue Go task', async () => {
   let signal: AbortSignal | undefined;
   vi.stubGlobal('scheduler', {
     postTask: (_run: () => void, options: { signal: AbortSignal }) => {
