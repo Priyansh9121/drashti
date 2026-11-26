@@ -10,6 +10,7 @@ import {
   playbackPosition,
 } from '../../../shared/media';
 import { engineNow } from './clock';
+import { scheduleGoCheck } from './schedule-go-check';
 
 /**
  * A late start caught up (Session 57, C3's review M1; render/DeckStep.tsx alone asks): a deck's first clip whose first
@@ -60,8 +61,13 @@ export interface PlaybackOptions {
    * whatever the element holds.
    */
   reuseLoadedSource?: boolean;
-  /** S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame. */
+  /**
+   * S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame; its Go
+   * check is a task ahead of the page's ordinary ones (render/schedule-go-check.ts), on every page (a24-cuelive-mac5).
+   */
   prepareScheduledStart?: boolean;
+  /** LIVE alone: every later start's check ahead of ordinary page tasks, not only a cue's Go. */
+  prioritizeScheduledStart?: boolean;
   /**
    * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
    * pace is set from its first moving frame, not the next check. Left out (every other caller), nothing more listens to
@@ -111,6 +117,14 @@ const HOLD_EARLY = 0.008;
 const IN_STEP = 2 / 30;
 /** A file still out of step once it has played on after landing is aimed again at once, so many times in a row. */
 const REAIMS = 2;
+/**
+ * A cue held before its Go (S5) is woken at least this often (ms; a24-cue306). Chromium lets go of a paused player's
+ * decoder once it has been idle 15 s, looked at every 5 s (renderer_web_media_player_delegate.cc), unless its video fills
+ * most of its page (web_media_player_impl.cc, OnIdleTimeout): LIVE's preview does not, nor does the sound window's
+ * audio, so Go had to set them up again inside its 120 ms lead, and LIVE started up to 207 ms late on CI's Mac. A play
+ * marks a player not idle; the pause after it starts its 15 s again.
+ */
+const KEEP_AWAKE_MS = 10_000;
 
 /**
  * Play a library file in a media element, starting where a playback that
@@ -178,7 +192,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   // A start still to come (Session 54, C2): a deck's video or sound a moment after its click, a step's hold once its
   // clip is over. It waits at its point, paused, every screen alike, until the engine's time gets there, and is
   // checked again just then (until then it played at once, and was pulled back at every check).
-  let starting: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  let starting: { at: number; cancel: () => void } | null = null;
   const later = (
     seek: PlaybackSeek | undefined,
     clip: PlaybackClip | undefined,
@@ -186,16 +200,21 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const at = seek ? seek.at : startedAt;
     if (seek?.paused || at <= engineNow()) return seek;
     if (starting?.at !== at) {
-      if (starting) clearTimeout(starting.timer);
-      // eslint-disable-next-line no-restricted-syntax -- never decides a frame: asks for a check when the engine's time reaches its start (check() plays it from where the clock says)
-      const timer = setTimeout(
+      if (starting) starting.cancel();
+      const cancel = scheduleGoCheck(
         () => {
           starting = null;
           check();
         },
-        Math.max(0, at - engineNow()),
+        // A whole ms at least (a24-review-cuelive3 SHOULD-1): never early by Date.now's whole ms, and a clock that
+        // stands still (the warm-up's pause, a test's hold) with Go less than a ms ahead is asked every ms, not in a
+        // 0 ms loop of priority tasks.
+        Math.max(0, Math.ceil(at - engineNow())),
+        // A cue's Go on every page (a24-cuelive-mac5): an ordinary timer waits behind work queued before it is due,
+        // a rendering step most of all (on CI's Mac the stream's ran 62 ms after Go and started 87 ms late).
+        options.prioritizeScheduledStart === true || options.prepareScheduledStart === true,
       );
-      starting = { at, timer };
+      starting = { at, cancel };
     }
     return { at, toMs: seek ? seek.toMs : (clip?.startMs ?? 0), paused: true };
   };
@@ -268,8 +287,38 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     else v.addEventListener('loadeddata', frame, { once: true });
   };
   const onPlaying = () => {
+    // Played and paused again in one task (a held cue's wake, keepAwake): its word comes with it paused, and is no
+    // start. Its start after Go is measured as any is.
+    if (v.paused) return;
+    v.removeEventListener('playing', onPlaying);
     // eslint-disable-next-line no-restricted-properties -- a length of time: when it began to play
     if (seekFrom === 0 && settleFrom === 0) startFrom = performance.now();
+  };
+  // A cue held before its Go (a24-cue306): when it was last woken, or first held; and whether its clock has run since
+  // (its Go: a pause of the time bar after it waits as any paused file does, never woken).
+  let wokeAt: number | null = null;
+  let gone = false;
+  /**
+   * Keep a held cue's player from Chromium's idle release (KEEP_AWAKE_MS), woken at the last check before it has been
+   * still that long: in one task, played at rate 0 and paused again, its own rate given back. Chromium's player is given
+   * the rate before it plays (as the Go lead's warm-up is), so nothing moves and nothing sounds, and it is paused on the
+   * same frame before anything else runs; its events come after, with it paused (onPlaying above, BackgroundMedia's
+   * start word and every other listener read it so). Its Go then finds the same player, and only its rate changes.
+   */
+  const keepAwake = () => {
+    // eslint-disable-next-line no-restricted-properties -- a length of time: how long a held cue has been still
+    const now = performance.now();
+    if (wokeAt === null) {
+      wokeAt = now;
+      return;
+    }
+    if (now - wokeAt < KEEP_AWAKE_MS - CHECK_MS || !v.paused || v.seeking || v.ended) return;
+    wokeAt = now;
+    const rate = v.playbackRate;
+    v.playbackRate = 0;
+    void v.play().catch(() => undefined);
+    v.pause();
+    v.playbackRate = rate;
   };
   const onMetadata = () => {
     if (audible) audioOnlyTracks(v);
@@ -363,8 +412,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
         if (!v.paused) v.pause();
         if (v.currentTime !== at) v.currentTime = at;
       } else holdAt(at);
+      if (options.prepareScheduledStart && intended?.paused === true && !gone) keepAwake();
       return;
     }
+    gone = true;
     const { start, end } = playbackBounds(c.clip, v.duration);
     const point = endPoint(c);
     // An end point is held once the clock gets there, or once the element has (a moment ahead of the
@@ -469,7 +520,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     armHold();
   };
   v.muted = !audible;
-  v.addEventListener('playing', onPlaying, { once: true });
+  v.addEventListener('playing', onPlaying);
   if (options.catchesUp === true) v.addEventListener('playing', paceAtStart);
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
@@ -493,7 +544,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       delete v.dataset['captionStartedAt'];
     }
     clearInterval(timer);
-    if (starting) clearTimeout(starting.timer);
+    if (starting) starting.cancel();
     if (wrap) clearTimeout(wrap);
     if (hold) clearTimeout(hold);
     v.removeEventListener('loadedmetadata', onMetadata);

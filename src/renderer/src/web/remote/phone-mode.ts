@@ -70,8 +70,44 @@ export function phoneControls(simple: RemoteSimple | null, deckLive: boolean): P
  * Whether Simple Mode coming on moves the focus to the Show tab (a23-review-phoneui LOW-3): only over Pro Mode's
  * controls (`before`: Simple Mode as the page last knew it, null before any hall was heard on this page), never as a
  * page opens in Simple Mode, where nothing of Pro Mode's had the focus and a screen reader's cursor would move on its own.
+ * And only when the element that had the focus went from the page with them (`focusGone`, focusWatch's; QA24-PHONE-B):
+ * on an iPhone a tap focuses no button, so the focus is on the page itself, nothing was taken away, and moving it made
+ * VoiceOver's cursor jump to Show at every switch.
  */
-export const focusesShow = (before: boolean | null, now: boolean): boolean => before === false && now;
+export const focusesShow = (before: boolean | null, now: boolean, focusGone: boolean): boolean =>
+  before === false && now && focusGone;
+
+/** What focusWatch needs of an element: whether it is still on the page. */
+export interface OnThePage {
+  readonly isConnected: boolean;
+}
+
+/**
+ * Which element has the focus, from the page's focusin and focusout (QA24-PHONE-B), and whether it went from the page
+ * while it had it. A focusout while the element stays on the page (a tap on the page's blank part, the focus moved on)
+ * lets go of it; an element taken off the page keeps being the one that went, whether the browser sent its focusout
+ * while removing it (Chromium: still on the page then, a24-review-phonefix MUST-1), after, or not at all (WebKit). So
+ * a focusout is judged a microtask later, once a removal is done. Pure, so it is tested apart.
+ */
+export function focusWatch<E extends OnThePage>() {
+  let held: E | null = null;
+  return {
+    /** focusin: `el` has the focus now. */
+    took(el: E | null): void {
+      held = el;
+    },
+    /** focusout of `el`: judged once a removal in progress is done (Chromium sends it before the element is off). */
+    left(el: E | null): void {
+      queueMicrotask(() => {
+        if (held === el && el?.isConnected) held = null;
+      });
+    },
+    /** Whether the element that had the focus went from the page while it had it. */
+    wentAway(): boolean {
+      return held !== null && !held.isConnected;
+    },
+  };
+}
 
 /**
  * Whether a PowerPoint or a PDF is live, as the phone can tell (the main process decides each request itself): the

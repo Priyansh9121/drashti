@@ -109,6 +109,9 @@ export async function launchApp(
       // Stage on at a new library's start, as it was before alpha.22, until a spec turns it (an installed Drashti
       // starts with it off: stage-switch.spec.ts starts so, with '').
       DRASHTI_TEST_STAGE_AT_START: 'on',
+      // Calm as every new data folder started before alpha.24, until a spec asks with '' (an installed Drashti's new
+      // install starts Lively: motion.spec.ts's new-install test).
+      DRASHTI_TEST_MOTION_AT_START: 'calm',
       // Crash files go into the test's own output folder (Session 39), which Playwright keeps only when the
       // test fails (playwright.config.ts, preserveOutput), so a failed run's report carries them.
       ...crashFilesHere(),

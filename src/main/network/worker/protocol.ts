@@ -18,7 +18,8 @@ export type ToNetworkWorker =
   | { type: 'stop'; reason: 'network-off' }
   | { type: 'engine'; message: EngineMessage }
   | { type: 'devices'; devices: DeviceAuth[] }
-  | { type: 'hint'; what: NetworkChange }
+  /** With 'presentations', those that changed when Drashti names them (QA24-PHONE-C); left out, any may have. */
+  | { type: 'hint'; what: NetworkChange; ids?: string[] }
   /** The chat (alpha.23): an event for the devices in it that follow it. */
   | { type: 'chat'; event: ChatEvent }
   | { type: 'answer'; id: number; answer: unknown }

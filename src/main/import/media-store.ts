@@ -621,15 +621,122 @@ export class MediaStore {
     return id;
   }
 
-  /** Media items still waiting for their file. */
-  missing(): { id: string; name: string; kind: MediaKind; originalPath: string | null }[] {
+  /**
+   * Media items still waiting for their file. With `asked` (a Find… for those items: a wallpaper's, Ready's, a
+   * notice's), the ones among them deleted from the library are looked for too, at once (QA24-WALLBLACK-3): deleted a
+   * moment ago, a wallpaper says its picture is missing, but until the next start (its file kept for Undo) Find… said
+   * "No media is missing.". A Find… of the whole library leaves what was deleted alone.
+   */
+  missing(
+    asked?: readonly string[],
+  ): { id: string; name: string; kind: MediaKind; originalPath: string | null; keptDeleted?: true }[] {
+    const rows = (
+      asked
+        ? this.db
+            .prepare(
+              `SELECT id, name, kind, source_path, (deleted_at IS NOT NULL AND missing = 0 AND path <> '') AS kept_deleted FROM media
+                WHERE missing = 1 OR (deleted_at IS NOT NULL AND id IN (SELECT value FROM json_each(?)))
+                ORDER BY name COLLATE NOCASE`,
+            )
+            .all(JSON.stringify(asked))
+        : this.db
+            .prepare(
+              "SELECT id, name, kind, source_path, (deleted_at IS NOT NULL AND missing = 0 AND path <> '') AS kept_deleted FROM media WHERE missing = 1 ORDER BY name COLLATE NOCASE",
+            )
+            .all()
+    ) as { id: string; name: string; kind: MediaKind; source_path: string | null; kept_deleted: number }[];
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      originalPath: r.source_path,
+      ...(r.kept_deleted === 1 ? { keptDeleted: true as const } : {}),
+    }));
+  }
+
+  private deleteStamp(mediaId: string): string | null {
     return (
-      this.db
+      (
+        this.db.prepare('SELECT deleted_at FROM media WHERE id = ?').get(mediaId) as
+          { deleted_at: string | null } | undefined
+      )?.deleted_at ?? null
+    );
+  }
+
+  /** Called inside the same transaction as revival: restore only what that Delete removed, as Undo does. */
+  private restoreDeletedUses(mediaId: string, stamp: string | null): void {
+    if (stamp === null) return;
+    this.db
+      .prepare('UPDATE playlist_items SET deleted_at = NULL WHERE media_id = ? AND deleted_at = ?')
+      .run(mediaId, stamp);
+    this.db
+      .prepare('UPDATE audio_playlist_tracks SET deleted_at = NULL WHERE media_id = ? AND deleted_at = ?')
+      .run(mediaId, stamp);
+  }
+
+  /** A deleted item whose file is still kept, found again (QA24-WALLBLACK-3): back as itself if `path` is its bytes. */
+  private async foundDeleted(
+    row: {
+      path: string;
+      name: string;
+      kind: MediaKind;
+      sha256: string | null;
+      playable: number | null;
+      format: string | null;
+    },
+    path: string,
+    mediaId: string,
+  ): Promise<MediaImportResult | null> {
+    let hashed: { sha256: string; bytes: number };
+    try {
+      hashed = await sha256File(path);
+    } catch (error) {
+      return {
+        outcome: 'failed',
+        issue: {
+          severity: 'error',
+          code: 'unreadable',
+          message: `Could not read ${basename(path)}. ${fileProblem(error, 'read')}`,
+          fix: { kind: 'relink-media', mediaId },
+        },
+      };
+    }
+    if (hashed.sha256 !== row.sha256)
+      return {
+        outcome: 'failed',
+        issue: {
+          severity: 'warning',
+          code: 'not-the-one-deleted',
+          message: `${basename(path)} in that folder is a different file from the one deleted from Media.`,
+          fix: { kind: 'relink-media', mediaId },
+        },
+      };
+    const kept = await stat(join(this.dir, row.path)).catch(() => null);
+    if (!kept?.isFile() || kept.size !== hashed.bytes) return null;
+    const revived = this.db.transaction(() => {
+      const stamp = this.deleteStamp(mediaId);
+      const changed = this.db
         .prepare(
-          'SELECT id, name, kind, source_path FROM media WHERE missing = 1 ORDER BY name COLLATE NOCASE',
+          "UPDATE media SET deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND deleted_at IS NOT NULL AND missing = 0 AND path = ?",
         )
-        .all() as { id: string; name: string; kind: MediaKind; source_path: string | null }[]
-    ).map((r) => ({ id: r.id, name: r.name, kind: r.kind, originalPath: r.source_path }));
+        .run(mediaId, row.path).changes;
+      if (changed !== 1) return false;
+      this.restoreDeletedUses(mediaId, stamp);
+      return true;
+    })();
+    if (!revived) return null;
+    return {
+      outcome: 'imported',
+      mediaId,
+      sha256: hashed.sha256,
+      bytes: hashed.bytes,
+      name: row.name,
+      probe: {
+        playable: row.playable === null ? null : row.playable === 1,
+        format: row.format ?? 'file of a kind Drashti does not recognise',
+        kind: row.kind,
+      },
+    };
   }
 
   /**
@@ -643,7 +750,23 @@ export class MediaStore {
     path: string,
     repoint: (fromId: string, toId: string) => void = () => undefined,
   ): Promise<MediaImportResult> {
-    const row = this.db.prepare('SELECT id FROM media WHERE id = ? AND missing = 1').get(mediaId);
+    const row = this.db
+      .prepare(
+        `SELECT id, path, name, kind, sha256, playable, format, missing = 0 AND path <> '' AS kept FROM media
+          WHERE id = ? AND (missing = 1 OR deleted_at IS NOT NULL)`,
+      )
+      .get(mediaId) as
+      | {
+          id: string;
+          path: string;
+          name: string;
+          kind: MediaKind;
+          sha256: string | null;
+          playable: number | null;
+          format: string | null;
+          kept: number;
+        }
+      | undefined;
     if (!row) {
       return {
         outcome: 'failed',
@@ -654,6 +777,13 @@ export class MediaStore {
           fix: null,
         },
       };
+    }
+    // Deleted from the library a moment ago, its file still kept for Undo (QA24-WALLBLACK-3): only its own bytes are
+    // it. Found, it is in the library again as itself, its kept file the same; another file of its name is not taken
+    // for it (nothing is copied in for it).
+    if (row.kept === 1 && row.sha256 !== null) {
+      const revived = await this.foundDeleted(row, path, mediaId);
+      if (revived !== null) return revived;
     }
     const stage = await this.stage(path);
     if (!stage.ok) return { outcome: 'failed', issue: stage.issue };
@@ -675,6 +805,15 @@ export class MediaStore {
           { markers: string | null } | undefined
       )?.markers;
       const took = this.db.transaction((): ReturnType<MediaStore['takeMarkers']> => {
+        // The duplicate may itself have been deleted or lost. Record the file staged by this first Find,
+        // so its surviving references can use it immediately and the next startup does not purge it again.
+        const stamp = this.deleteStamp(existing.id);
+        const revived = this.db
+          .prepare(
+            "UPDATE media SET path = ?, bytes = ?, missing = 0, deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND (missing = 1 OR deleted_at IS NOT NULL)",
+          )
+          .run(stored.rel, stored.bytes, existing.id).changes;
+        if (revived === 1) this.restoreDeletedUses(existing.id, stamp);
         repoint(mediaId, into);
         this.db.prepare('DELETE FROM media WHERE id = ?').run(mediaId);
         this.markPlayable(existing.id, stored);
@@ -692,19 +831,34 @@ export class MediaStore {
         ...(took === 'new' || took === 'replaced' ? { pointsTaken: true as const } : {}),
       };
     }
-    this.db
-      .prepare(
-        // Found again, it is in the library again, as when the same file is imported again (deleted_at cleared).
-        "UPDATE media SET path = ?, sha256 = ?, bytes = ?, missing = 0, deleted_at = NULL, playable = ?, format = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
-      )
-      .run(
-        stored.rel,
-        stored.sha256,
-        stored.bytes,
-        playableValue(stored.probe),
-        stored.probe.format,
-        mediaId,
-      );
+    const changed = this.db.transaction(() => {
+      const stamp = this.deleteStamp(mediaId);
+      const changed = this.db
+        .prepare(
+          // Found again, it is in the library again, as when the same file is imported again (deleted_at cleared).
+          "UPDATE media SET path = ?, sha256 = ?, bytes = ?, missing = 0, deleted_at = NULL, playable = ?, format = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        )
+        .run(
+          stored.rel,
+          stored.sha256,
+          stored.bytes,
+          playableValue(stored.probe),
+          stored.probe.format,
+          mediaId,
+        ).changes;
+      if (changed === 1) this.restoreDeletedUses(mediaId, stamp);
+      return changed;
+    })();
+    if (changed !== 1)
+      return {
+        outcome: 'failed',
+        issue: {
+          severity: 'warning',
+          code: 'not-missing',
+          message: 'That media item is not missing.',
+          fix: null,
+        },
+      };
     this.keepLength(mediaId, stored);
     this.keepReadBy(mediaId, stored);
     return {

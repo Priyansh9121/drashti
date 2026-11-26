@@ -316,9 +316,15 @@ function BackgroundPicture({
   cue,
   crossfade,
   opaqueCanvas = false,
+  cueStartFirst = false,
+  cueStartTeller = false,
   onLinkDrawn,
 }: {
   opaqueCanvas?: boolean;
+  /** The operator window's previews (QA23-CUELIVE-1): their work for a cue's Go moment after LIVE's picture's start. */
+  cueStartFirst?: boolean;
+  /** LIVE's preview alone: its cued picture says when it has started at Go (render/cue-started.ts). */
+  cueStartTeller?: boolean;
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
   background: BackgroundLayer | null;
@@ -361,6 +367,8 @@ function BackgroundPicture({
         cue={cue}
         crossfade={crossfade}
         opaqueCanvas={opaqueCanvas}
+        cueStartFirst={cueStartFirst}
+        cueStartTeller={cueStartTeller}
       />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
       {background?.kind === 'link' && <LinkView layer={background} onDrawn={onLinkDrawn} />}
@@ -426,6 +434,9 @@ const SceneBody = memo(function SceneBody({
   place = 'hall',
   captions = true,
   picturesFirst = place === 'stream',
+  cueStartFirst = false,
+  cueStartTeller = false,
+  engineState,
 }: {
   state: EngineState;
   canvas: Size;
@@ -454,10 +465,23 @@ const SceneBody = memo(function SceneBody({
    * page (Session 58, Q57-35) and the hall's screens (Session 59, X19, output/HallScene.tsx). Left out: the stream only.
    */
   picturesFirst?: boolean;
+  /**
+   * The operator's LIVE preview alone (QA23-CUELIVE-1): its own React work for a cue's Go moment (the scene's swap, the
+   * cued slot's activation) runs after its cued picture has set its rate at Go, never ahead of it. On alpha.22's gate 3
+   * (CI's Mac) LIVE's picture set its rate 23-27 ms after Go behind the operator window's work. Every screen as before.
+   */
+  cueStartFirst?: boolean;
+  /**
+   * LIVE's preview alone (QA23-CUELIVE-1): its cued picture tells the window when it has started at Go; the window's
+   * previews set to `cueStartFirst` wait for that (250 ms past Go at the latest).
+   */
+  cueStartTeller?: boolean;
+  /** The engine's own state that `state` was prepared from (Scene's): LIVE's keeper compares those (QA23-CUELIVE-1). */
+  engineState?: EngineState;
   translationOutputId?: string;
   translationGroupId?: string | null;
 }) {
-  const state = useCuedStart(rawState);
+  const state = useCuedStart(rawState, cueStartFirst, engineState ?? rawState);
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);
@@ -668,6 +692,8 @@ const SceneBody = memo(function SceneBody({
                       movement={look.movement}
                       onDrawn={setDrawnKey}
                       onLinkDrawn={setLinkDrawn}
+                      cueStartFirst={cueStartFirst}
+                      cueStartTeller={cueStartTeller}
                     />
                   </BackgroundBox.Provider>
                   {/* What shows with nothing up, over a background still coming (Q60-51) and in its place (above). */}
@@ -826,5 +852,5 @@ export const Scene = memo(function Scene(props: ComponentProps<typeof SceneBody>
       props.place,
     ],
   );
-  return <SceneBody {...props} state={state} />;
+  return <SceneBody {...props} state={state} engineState={props.state} />;
 });

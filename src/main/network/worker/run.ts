@@ -81,7 +81,7 @@ export function runNetworkWorker(
         server.setDevices(message.devices);
         return;
       case 'hint':
-        server.hint(message.what);
+        server.hint(message.what, message.ids);
         return;
       case 'chat':
         server.chat(message.event);

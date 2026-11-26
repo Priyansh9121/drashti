@@ -21,7 +21,13 @@ import { appearanceVars } from '../../shared/appearance/vars';
 import { IPC } from '../../shared/ipc';
 import { cleanRenameName } from '../../shared/rename-name';
 import { sendToPage } from '../windows/send';
-import { FAVOURITES_MAX, readAppearance, writeAppearance, type AppearanceSettings } from './appearance-file';
+import {
+  FAVOURITES_MAX,
+  NEW_INSTALL_MOTION,
+  readAppearance,
+  writeAppearance,
+  type AppearanceSettings,
+} from './appearance-file';
 
 /*
  * The appearance this computer shows (Sessions 39–40): Follow the computer (Black or White, as macOS or Windows
@@ -55,6 +61,12 @@ export interface AppearanceDeps {
   cores?: number;
   /** Whether Chromium draws with a graphics chip: unknown until its GPU process has said (Main's warm-up choices). */
   chip?: () => 'unknown' | 'yes' | 'no';
+  /**
+   * This start is a new install's first (appearance-file.ts, isNewInstall): it starts in NEW_INSTALL_MOTION and keeps
+   * it. Never a self-test's (the Performance check measures what it always has), nor the e2e tests' unless a spec asks
+   * (DRASHTI_TEST_MOTION_AT_START).
+   */
+  newInstall?: boolean;
 }
 
 export class AppearanceService {
@@ -65,6 +77,11 @@ export class AppearanceService {
 
   constructor(private readonly deps: AppearanceDeps) {
     this.settings = readAppearance(deps.userData, deps.say);
+    if (deps.newInstall === true && this.settings.motion !== NEW_INSTALL_MOTION) {
+      this.settings = { ...this.settings, motion: NEW_INSTALL_MOTION };
+      this.keep();
+      deps.say(`Appearance: a new install, so interface motion ${NEW_INSTALL_MOTION}`);
+    }
     if (deps.startIn && (deps.startIn === FOLLOW || this.list().some((a) => a.id === deps.startIn)))
       this.settings = { ...this.settings, choice: deps.startIn };
   }
