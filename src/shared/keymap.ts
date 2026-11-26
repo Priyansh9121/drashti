@@ -304,9 +304,16 @@ export function keyText(binding: string, platform: string): string {
     ArrowDown: '↓',
     PageDown: 'Page Down',
     PageUp: 'Page Up',
+    // As both computers' keyboards print it (esc, Esc), and the guides write it.
+    Escape: 'Esc',
+    // Windows' Menu key (a Mac has none: its lists' menus are Shift+F10 or a Control-click).
+    ContextMenu: 'Menu',
   };
-  const name = names[key] ?? key;
-  if (platform === 'darwin') return `${ctrl ? '⌃' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${mod ? '⌘' : ''}${name}`;
+  // A Mac's own: its return key as its menus draw it (⌘↩), and a modifier held on its own (while dragging) as its sign.
+  const mac: Record<string, string> = { Enter: '↩', Alt: '⌥', Shift: '⇧', Mod: '⌘', Ctrl: '⌃' };
+  const name = (platform === 'darwin' ? mac[key] : undefined) ?? names[key] ?? (key === 'Mod' ? 'Ctrl' : key);
+  if (platform === 'darwin')
+    return `${ctrl ? '⌃' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${mod ? '⌘' : ''}${name}`;
   return [mod || ctrl ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
 }
 
