@@ -825,6 +825,144 @@ test('with nothing else up, the chosen wallpaper stays behind the box on the hal
   await app.close();
 });
 
+/**
+ * How much of a screen's main picture is lit now, by its own markup: the chosen wallpaper's picture and the box's own
+ * picture in the background's place, each by how much of it is seen (its opacities through the scene; 0 while unseen,
+ * or before its picture has come). The box itself is apart. Both 0 is a black main picture.
+ */
+function mainLit(page: Page) {
+  return page.evaluate(() => {
+    const scene = document.querySelector<HTMLElement>('[data-testid="scene"]');
+    const seen = (img: Element | null | undefined): number => {
+      if (!scene || !(img instanceof HTMLImageElement) || !img.complete || img.naturalWidth === 0) return 0;
+      if (getComputedStyle(img).visibility === 'hidden') return 0;
+      let lit = 1;
+      for (let e: Element | null = img; e && e !== scene; e = e.parentElement)
+        lit *= Number(getComputedStyle(e).opacity);
+      return lit;
+    };
+    return {
+      wallpaper: seen(
+        scene?.querySelector('[data-testid="wallpaper-picture"][data-wallpaper-role="current"] img'),
+      ),
+      boxed: seen(scene?.querySelector('[data-pip-main="source"] [data-pip-picture="media"] img')),
+    };
+  });
+}
+
+test('with nothing else up, Swap and Swap back dissolve the chosen wallpaper as a background, held at moments through them: never a cut, never black (QA24-WALLBLACK-2)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ ...WINDOWED, DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-pip-wallpaper-swap-'));
+  const [paper = '', boxed = ''] = await importAndGetIds(win, [
+    await drawPicture(win, join(dir, 'Placeholder wallpaper.png'), plain('180,83,9')),
+    await drawPicture(win, join(dir, 'Placeholder box picture.png'), plain('21,128,61')),
+  ]);
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const added = await d.wallpapers.add([id], null);
+    if (!added.ok) throw new Error(added.message);
+    const chosen = await d.wallpapers.choose(added.ids[0] ?? null);
+    if (!chosen.ok) throw new Error(chosen.message);
+  }, paper);
+  await setUpScreen(win);
+  const hall = await outputPage(app);
+  await outputReady(hall);
+  const hallScene = hall.getByTestId('scene').first();
+  await expect(hallScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+
+  // Up over nothing else (Fade, Calm: a swap 250 ms out, then 250 ms in), the wallpaper whole behind it.
+  await heldChange(app, () =>
+    dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: boxed }, place: PLACE }),
+  );
+  const shownAt = (await pipNow(win))?.shownAt ?? 0;
+  await holdClock(app, shownAt + 2000);
+  await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
+  await expect.poll(() => mainLit(hall)).toEqual({ wallpaper: 1, boxed: 0 });
+
+  // Drawn at the moment held: the box, and the main picture's two pictures while they dissolve.
+  const moment = async (at: number, t: number) => {
+    await holdClock(app, at + t);
+    await expect
+      .poll(async () => {
+        const d = await drawn(hall);
+        return d.box?.at === String(t) && [d.coming, d.going].every((p) => p === null || p.at === String(t));
+      })
+      .toBe(true);
+    return { d: await drawn(hall), lit: await mainLit(hall) };
+  };
+  const lit = (m: Awaited<ReturnType<typeof moment>>) => m.lit.wallpaper + m.lit.boxed;
+
+  // Swap: as the box goes out, the wallpaper stays whole in the background's place (the box's own picture ready
+  // unseen there); then it dissolves out as the box's picture comes in over it, the two adding up: never a cut to
+  // black, never a dip.
+  await heldChange(app, () => dispatch(win, { type: 'swapPip' }));
+  await expect.poll(async () => (await pipNow(win))?.swapped).toBe(true);
+  const changedAt = (await pipNow(win))?.changed?.at ?? 0;
+  // Its picture ready unseen before the middle, as in a show (the box goes out over 250 ms meanwhile).
+  await expect(
+    hall.locator('[data-pip-main="source"][data-pip-ready] [data-pip-picture="media"] img'),
+  ).toHaveCount(1);
+  await expect
+    .poll(() =>
+      hall.evaluate(() => {
+        const img = document.querySelector('[data-pip-main="source"] [data-pip-picture="media"] img');
+        return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0;
+      }),
+    )
+    .toBe(true);
+  for (const t of [50, 150, 245]) {
+    const m = await moment(changedAt, t);
+    expect(m.lit.wallpaper, `Swap at ${String(t)} ms: the wallpaper whole as the box goes out`).toBeCloseTo(
+      1,
+      2,
+    );
+    expect(m.lit.boxed, `Swap at ${String(t)} ms`).toBe(0);
+  }
+  for (const t of [255, 300, 375, 450, 495]) {
+    const m = await moment(changedAt, t);
+    expect(m.d).toMatchObject({ coming: { picture: 'source' }, going: { picture: 'background' }, moved: 0 });
+    expect(lit(m), `Swap at ${String(t)} ms: never black, never a dip`).toBeCloseTo(1, 2);
+  }
+  const swapMiddle = await moment(changedAt, 375);
+  expect(swapMiddle.lit.wallpaper, 'half way: the wallpaper half seen').toBeGreaterThan(0.2);
+  expect(swapMiddle.lit.wallpaper).toBeLessThan(0.8);
+  await holdClock(app, changedAt + 3000);
+  await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
+  expect(await mainLit(hall), 'swapped: the box’s own picture fills the main picture').toEqual({
+    wallpaper: 0,
+    boxed: 1,
+  });
+  await expect(hallScene).not.toHaveAttribute('data-nothing-up', /./u);
+
+  // Swap back, once the first is over by the engine's clock: the box's picture goes as the wallpaper, kept unseen in
+  // its place meanwhile, comes back under it; then the wallpaper whole. Never a cut in, never black.
+  await expect.poll(() => Date.now() - changedAt).toBeGreaterThanOrEqual(pipSwapMs([]));
+  await heldChange(app, () => dispatch(win, { type: 'swapPip' }));
+  await expect.poll(async () => (await pipNow(win))?.swapped).toBe(false);
+  const backAt = (await pipNow(win))?.changed?.at ?? 0;
+  for (const t of [5, 50, 125, 200, 245]) {
+    const m = await moment(backAt, t);
+    expect(m.d).toMatchObject({ coming: { picture: 'background' }, going: { picture: 'source' }, moved: 0 });
+    expect(lit(m), `Swap back at ${String(t)} ms: never black, never a dip`).toBeCloseTo(1, 2);
+  }
+  const backMiddle = await moment(backAt, 125);
+  expect(backMiddle.lit.wallpaper, 'half way: the wallpaper half seen, not cut in').toBeGreaterThan(0.2);
+  expect(backMiddle.lit.wallpaper).toBeLessThan(0.8);
+  for (const t of [255, 400]) {
+    const m = await moment(backAt, t);
+    expect(m.lit, `Swap back at ${String(t)} ms: the wallpaper whole`).toEqual({ wallpaper: 1, boxed: 0 });
+  }
+  await holdClock(app, backAt + 3000);
+  await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
+  expect(await mainLit(hall)).toEqual({ wallpaper: 1, boxed: 0 });
+  await expect(hallScene).toHaveAttribute('data-nothing-up', 'wallpaper');
+  await holdClock(app, null);
+  await app.close();
+});
+
 test('the phone remote names the box, and is refused taking it off, swapping, moving or setting one up, in words; LIVE takes it off', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp({ ...NETWORK_ENV, ...WINDOWED });

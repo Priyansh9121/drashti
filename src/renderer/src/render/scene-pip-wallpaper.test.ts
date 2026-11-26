@@ -1,10 +1,12 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { EngineState, PipLayer, SlideLayer } from '../../../shared/engine/state';
 import { initialEngineState } from '../../../shared/engine/state';
 import { DEFAULT_PIP_PLACE } from '../../../shared/pip';
 import { wallpaperMissingLive } from '../../../shared/wallpaper-missing';
+import { holdClock } from './clock';
+import { pipLength } from './pip';
 import { Scene } from './Scene';
 
 /*
@@ -62,6 +64,48 @@ function drawn(s: EngineState) {
   };
 }
 
+/** The element that starts at `from` (a `<div`) up to its end, in a page's markup. */
+function elementAt(html: string, from: number): string {
+  const tags = /<div\b|<\/div>/gu;
+  tags.lastIndex = from;
+  let depth = 0;
+  for (let tag = tags.exec(html); tag; tag = tags.exec(html)) {
+    depth += tag[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(from, tags.lastIndex);
+  }
+  return html.slice(from);
+}
+
+/**
+ * Where the screen draws what shows with nothing up (the wallpaper): in the main picture's background place (lead 2's
+ * option A for QA24-WALLBLACK-2) or a place of its own; whether that place is seen, and how it dissolves now (in a swap).
+ */
+function nothingUpPlace(s: EngineState) {
+  const html = renderToStaticMarkup(
+    createElement(Scene, { state: s, canvas: { width: 1920, height: 1080 }, scaling: 'fit' }),
+  );
+  const slot = /<div data-pip-main="background"[^>]*>/u.exec(html);
+  const inSlot = slot ? elementAt(html, slot.index) : '';
+  const tag = slot?.[0] ?? '';
+  if (!html.includes('data-testid="wallpaper-picture"')) return null;
+  if (!inSlot.includes('data-testid="wallpaper-picture"'))
+    return { place: 'own', seen: true, dissolve: null };
+  return {
+    place: 'background',
+    seen: !tag.includes('data-pip-ready'),
+    dissolve: /data-pip-dissolve="([^"]*)"/u.exec(tag)?.[1] ?? null,
+  };
+}
+
+/** How the box's own picture's place on the main picture dissolves now (null: not dissolving, or not there). */
+function sourceDissolve(s: EngineState): string | null {
+  const html = renderToStaticMarkup(
+    createElement(Scene, { state: s, canvas: { width: 1920, height: 1080 }, scaling: 'fit' }),
+  );
+  const tag = /<div data-pip-main="source"[^>]*>/u.exec(html)?.[0] ?? '';
+  return /data-pip-dissolve="([^"]*)"/u.exec(tag)?.[1] ?? null;
+}
+
 describe('the wallpaper behind the picture-in-picture box (the owner’s QA24-WALLBLACK-2 A)', () => {
   it('nothing up, no box: the chosen wallpaper, as before', () => {
     expect(drawn(state({}))).toEqual({ pip: 'none', nothingUp: 'wallpaper', wallpaperPicture: true });
@@ -77,11 +121,18 @@ describe('the wallpaper behind the picture-in-picture box (the owner’s QA24-WA
     expect(drawn(state({ pip: box() }, false))).toMatchObject({ pip: 'up', nothingUp: 'black' });
   });
 
-  it('a swapped box: its own picture fills the screen, nothing-up not drawn over it, as before', () => {
+  it('a swapped box: its own picture fills the screen, nothing-up not drawn over it, as before; the wallpaper kept unseen in the background’s place', () => {
+    // Since lead 2's option A (QA24-WALLBLACK-2): drawn, but in the background's place, which a swapped box's main
+    // picture keeps unseen (render/pip.ts keptBackground), never over the box's own picture.
     expect(drawn(state({ pip: box({ swapped: true }) }))).toEqual({
       pip: 'swapped',
       nothingUp: null,
-      wallpaperPicture: false,
+      wallpaperPicture: true,
+    });
+    expect(nothingUpPlace(state({ pip: box({ swapped: true }) }))).toEqual({
+      place: 'background',
+      seen: false,
+      dissolve: null,
     });
   });
 
@@ -125,5 +176,59 @@ describe('LIVE’s missing-wallpaper line and the screens agree (QA24-WALLBLACK-
             drawn(missing).nothingUp === 'black',
           );
         }
+  });
+});
+
+describe('the wallpaper in the background’s place, so a Swap dissolves it (QA24-WALLBLACK-2, lead 2’s option A)', () => {
+  afterEach(() => {
+    holdClock(null);
+  });
+
+  it('with nothing else up, it is drawn in the main picture’s background place, seen: with no box, and under one', () => {
+    expect(nothingUpPlace(state({}))).toEqual({ place: 'background', seen: true, dissolve: null });
+    expect(nothingUpPlace(state({ pip: box() }))).toEqual({
+      place: 'background',
+      seen: true,
+      dissolve: null,
+    });
+  });
+
+  it('a Swap: whole through the box’s going out, then dissolving out as the box’s own picture dissolves in over it', () => {
+    const at = 1_000_000;
+    const length = pipLength('swap', DEFAULT_PIP_PLACE.motion, 'calm');
+    const swapping = state({
+      pip: box({ swapped: true, changed: { at, place: DEFAULT_PIP_PLACE, swapped: false } }),
+    });
+    holdClock(at + length * 0.25);
+    // Swap pressed: the engine's swapped, so nothing-up is not said (its meaning kept), but still seen whole.
+    expect(drawn(swapping)).toMatchObject({ pip: 'swapped', nothingUp: null, wallpaperPicture: true });
+    expect(nothingUpPlace(swapping)).toEqual({ place: 'background', seen: true, dissolve: null });
+    holdClock(at + length * 0.75);
+    expect(nothingUpPlace(swapping)).toEqual({ place: 'background', seen: true, dissolve: 'out' });
+    expect(sourceDissolve(swapping)).toBe('in');
+    holdClock(at + length + 1);
+    expect(nothingUpPlace(swapping)).toEqual({ place: 'background', seen: false, dissolve: null });
+  });
+
+  it('a Swap back: dissolving in as the box’s own picture dissolves out over it, then whole', () => {
+    const at = 1_000_000;
+    const length = pipLength('swap', DEFAULT_PIP_PLACE.motion, 'calm');
+    const back = state({
+      pip: box({ swapped: false, changed: { at, place: DEFAULT_PIP_PLACE, swapped: true } }),
+    });
+    holdClock(at + length * 0.25);
+    expect(drawn(back)).toMatchObject({ pip: 'up', nothingUp: 'wallpaper', wallpaperPicture: true });
+    expect(nothingUpPlace(back)).toEqual({ place: 'background', seen: true, dissolve: 'in' });
+    expect(sourceDissolve(back)).toBe('out');
+    holdClock(at + length * 0.75);
+    expect(nothingUpPlace(back)).toEqual({ place: 'background', seen: true, dissolve: null });
+    holdClock(at + length + 1);
+    expect(nothingUpPlace(back)).toEqual({ place: 'background', seen: true, dissolve: null });
+  });
+
+  it('something on the main picture: no nothing-up there, with a box or swapped', () => {
+    expect(nothingUpPlace(state({ pip: box(), slide: SLIDE }))).toBeNull();
+    expect(nothingUpPlace(state({ pip: box({ swapped: true }), slide: SLIDE }))).toBeNull();
+    expect(nothingUpPlace(state({ pip: box(), background: { kind: 'color', color: '#123456' } }))).toBeNull();
   });
 });
