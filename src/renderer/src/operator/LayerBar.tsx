@@ -1,4 +1,3 @@
-import { useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { isLayerEmpty } from '../../../shared/engine/state';
@@ -8,9 +7,8 @@ import { practiceKey, useShowState } from '../practice/practice-store';
 import { useKeymapNow } from './single-keys-store';
 import { dispatch } from './actions';
 import type { ClearedLayer, ClearLook } from './layer-clears';
-import { clearLook, clearTrace, LAYER_CLEARS, TRACE_TIMING, traceFrames } from './layer-clears';
+import { clearLook, LAYER_CLEARS } from './layer-clears';
 import { cx } from '../ui/cx';
-import { duration, easing, motionOff } from '../ui/motion';
 import type { Icon } from '../ui/icons';
 import {
   BlackOut,
@@ -48,11 +46,9 @@ import { Tooltip } from '../ui/Tooltip';
  * What is up, at a glance (alpha.24, the owner's calmer window): a layer's clear with nothing up is compact, its icon
  * alone in a 32 px square, its words and key in its tooltip (the mouse resting on it, or Simple Mode's keyboard on
  * it), the same name read out and the same test id; lit, it is as before. Each keeps the room its lit look takes (an
- * unseen copy of its words and key holds it), so no button along the bar ever moves as layers go up and come off, and
- * the bar is one row from 1008 px in every state as before. A clear still changes in the same frame as the screens and
- * never moves itself; as it lights up or goes out a trace in its room (decoration only) grows from the icon or shrinks
- * into it, once, in transform and opacity (layer-clears.ts, clearTrace): not as the window opens, nor with interface
- * motion Off or reduced motion.
+ * unseen copy of its words and key holds it), so the clears never move: each keeps its place, and the bar is one row
+ * from 1008 px in every state as before. A clear turns lit or compact at once, in the same frame as the screens, and
+ * nothing moves with it (a show control's state).
  */
 
 /** Simple Mode's clears beside its Clear all (Session 56), in the order of their keys (F2, F3, F5). */
@@ -93,18 +89,14 @@ function BarIcon({ shape }: { shape: Icon }) {
   return <IconShape size={15} aria-hidden="true" className="hidden shrink-0 min-[1280px]:block" />;
 }
 
-/** The window has opened settled (ui/motion.ts says so on the page). */
-const windowOpened = () => document.documentElement.dataset['opened'] !== undefined;
-
 /**
  * A layer's clear in its room: lit, its words and key; compact, its icon (alpha.24). The room is its lit look's, held
- * by an unseen copy, so nothing beside it moves; the trace over it plays once as it lights up or goes out.
+ * by an unseen copy, so nothing beside it moves.
  */
 function LayerClear({
   layer,
   label,
   look,
-  known,
   keyText,
   simple,
   onClear,
@@ -112,47 +104,21 @@ function LayerClear({
   layer: ClearedLayer;
   label: string;
   look: ClearLook;
-  /** The show's state has come (nothing plays from the first state the window hears). */
-  known: boolean;
   keyText: string;
   simple: boolean;
   onClear: () => void;
 }) {
   const on = look === 'lit';
-  const button = useRef<HTMLButtonElement>(null);
-  const trace = useRef<HTMLSpanElement>(null);
-  const was = useRef<ClearLook | null>(null);
-  // After the clear has changed (in the same frame as the screens): its trace, from what it was to what it is; a
-  // change before it ends, or the bar going, stops it.
-  useLayoutEffect(() => {
-    const now = known ? look : null;
-    const kind = clearTrace(was.current, now, { moves: !motionOff(), opened: windowOpened() });
-    was.current = now;
-    const el = trace.current;
-    const room = el?.parentElement?.getBoundingClientRect().width ?? 0;
-    // The compact button is a square as tall as the lit one.
-    const square = button.current?.getBoundingClientRect().height ?? 0;
-    if (kind === null || !el || room <= 0) return;
-    const { time, curve } = TRACE_TIMING[kind];
-    const played = el.animate(traceFrames(kind, square / room), {
-      duration: duration(time),
-      easing: easing(curve),
-    });
-    return () => {
-      played.cancel();
-    };
-  }, [look, known]);
   const IconShape = icons[layer];
   return (
     <Tooltip content={`Clear ${label.toLowerCase()}`} kbd={keyText} describes={false}>
-      <span className="relative inline-grid shrink-0 place-items-center" data-clear-room={layer}>
+      <span className="inline-grid shrink-0 place-items-center" data-clear-room={layer}>
         {/* The room its lit look takes, kept while it is compact. */}
         <span aria-hidden="true" className={cx(BAR_BUTTON, 'invisible col-start-1 row-start-1 pr-3.5')}>
           <BarIcon shape={IconShape} />
           <WordsAndKey words={label} keyText={keyText} />
         </span>
         <button
-          ref={button}
           type="button"
           // Simple Mode's stay Tab stops, dimmed, as its Clear all (Part 13's answer); Pro Mode's are not
           // pressable while their layer has nothing up.
@@ -186,15 +152,6 @@ function LayerClear({
             <IconShape size={15} aria-hidden="true" className="shrink-0" />
           )}
         </button>
-        {/* Decoration only: never pressed, read out or seen at rest, nor in forced colours. */}
-        <span
-          ref={trace}
-          aria-hidden="true"
-          className={cx(
-            'pointer-events-none absolute inset-0 rounded-md opacity-0 forced-colors:hidden',
-            on ? 'bg-live-edge' : 'bg-layer-edge',
-          )}
-        />
       </span>
     </Tooltip>
   );
@@ -325,7 +282,6 @@ export function LayerBar({
               layer={c.layer}
               label={c.label}
               look={clearLook(layers, c.layer)}
-              known={layers !== undefined}
               keyText={key(c.action)}
               simple={simple}
               onClear={() => {
