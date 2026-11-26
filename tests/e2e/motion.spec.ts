@@ -1049,7 +1049,10 @@ const copyColours = (win: Page) =>
         const w = window as unknown as { shadows?: ShadowRoot[] };
         if (!w.shadows) {
           w.shadows = [];
-          const attach = Element.prototype.attachShadow;
+          const attach = Object.getOwnPropertyDescriptor(Element.prototype, 'attachShadow')?.value as (
+            this: Element,
+            init: ShadowRootInit,
+          ) => ShadowRoot;
           Element.prototype.attachShadow = function (this: Element, init: ShadowRootInit) {
             const root = attach.call(this, init);
             w.shadows?.push(root);
