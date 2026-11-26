@@ -1,11 +1,13 @@
-import { SCREEN_RECORDING_STEPS } from '../../../shared/live-window';
+import { SCREEN_RECORDING_STEPS, screenRecordingAfterUpdate } from '../../../shared/live-window';
 import { Button } from '../ui/Button';
 import { RotateCw, Settings } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 
 /*
  * The box that asks for macOS's Screen Recording (Session 48), as Show a Window… and Picture in Picture…'s window
- * choice show it: why, what to do, then Open System Settings and Look again.
+ * choice show it: why, what to do, then Open System Settings and Look again. On a Mac it then says what to do when
+ * Drashti is already on in the list after an update (QA24-SCREENREC-1: macOS ties the switch to the build that was
+ * allowed); Windows and Linux never say it.
  */
 
 export interface ScreenRecordingNoticeProps {
@@ -22,11 +24,13 @@ export interface ScreenRecordingNoticeProps {
 
 export function ScreenRecordingNotice({
   message,
+  platform,
   testId,
   openTestId,
   onOpen,
   onAgain,
 }: ScreenRecordingNoticeProps) {
+  const afterUpdate = screenRecordingAfterUpdate(platform);
   return (
     <Notice
       tone="info"
@@ -43,7 +47,14 @@ export function ScreenRecordingNotice({
         </>
       }
     >
-      {message} {SCREEN_RECORDING_STEPS}
+      <p>
+        {message} {SCREEN_RECORDING_STEPS}
+      </p>
+      {afterUpdate && (
+        <p className="mt-1" data-testid="screen-recording-after-update">
+          {afterUpdate}
+        </p>
+      )}
     </Notice>
   );
 }

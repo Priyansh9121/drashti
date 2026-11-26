@@ -36,8 +36,10 @@ describe('the admin’s guide on a Mac’s permissions after an update', () => {
     expect(text).toContain('Open System Settings');
     // The Terminal line, by Drashti's own id, and the other two permissions' names in it.
     expect(appId).toBe('org.drashti.app');
-    expect(text).toContain(`tccutil reset ScreenCapture ${appId}`);
-    expect(text).toMatch(/\(or Camera or Microphone in place of ScreenCapture\)/u);
+    expect(text).toContain(`tccutil reset Camera ${appId}`);
+    expect(text).toContain(
+      '(or Microphone in place of Camera; ScreenCapture does the same for Screen Recording)',
+    );
     // Short: one paragraph, not a section.
     expect(text.length).toBeLessThanOrEqual(900);
   });
