@@ -148,6 +148,20 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     expect(
       Math.abs((pointerAfter.x + x - bounds.x - 8) / 4 - (pointerBefore.x + x - bounds.x - 8) / 3),
     ).toBeLessThan(2);
+    await region.evaluate((el) => {
+      el.scrollTop = 600;
+    });
+    const beforeFit = await region.evaluate((el) => (el.scrollTop + el.clientHeight / 2 - 8) / 4);
+    await panel.getByRole('button', { name: 'Fit to the panel' }).click();
+    await expect(input).toHaveValue('100%');
+    const fittedCentre = await region.evaluate((el) => el.scrollTop + el.clientHeight / 2 - 8);
+    expect(Math.abs(fittedCentre - beforeFit)).toBeLessThan(1);
+    // Crossing Fit adds/removes a horizontal scrollbar on Windows: use the new viewport centre.
+    await input.fill('130');
+    await input.press('Enter');
+    await expect(input).toHaveValue('130%');
+    const typedCentre = await region.evaluate((el) => (el.scrollTop + el.clientHeight / 2 - 8) / 1.3);
+    expect(Math.abs(typedCentre - fittedCentre)).toBeLessThan(1);
     await panel.getByRole('button', { name: 'Fit to the panel' }).click();
     await expect(input).toHaveValue('100%');
     await expectFits(panel, 'PDF typed zoom at 1024 × 645');
