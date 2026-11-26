@@ -72,6 +72,16 @@ interface Growing {
   shown: boolean;
   /** How long its last working out took (ms). */
   tookMs: number;
+  /** Its early final (QA24-CAPFAST-1), asked in this stretch of quiet; gone when speech comes again. */
+  early: Early | null;
+}
+
+/** The early final: where its speech ended, and once it answered, the phrase as heard then. */
+interface Early {
+  /** Where its speech ended in what was asked (seconds): a word begun after that is not kept. */
+  speechS: number;
+  heard: Heard | null;
+  answered: boolean;
 }
 
 /*
@@ -125,6 +135,32 @@ function padded(phrase: Int16Array, quiet: Int16Array): Int16Array {
 function wordsToShow(words: readonly { start: number; end: number }[], seconds: number): number {
   const n = words.findIndex((w) => w.start >= seconds || w.end > seconds - MARGIN_S);
   return n < 0 ? words.length : n;
+}
+
+/*
+ * The early final (QA24-CAPFAST-1; the owner: "faster caption as well, 0.5seconds or around", then "Yes, show at
+ * once"). A phrase's words are all said once it has PAUSING_MS of quiet, but its final waited for the whole pause
+ * (700 ms by default) and then one decode: about 0.9 s on a two-core Windows PC, 1.1 s on a Mac. So once it has
+ * PAUSING_MS of quiet it is decoded as it is then, unpadded as a final is, and its words go on the screens at once,
+ * still unsettled. If the speaker is still quiet when the pause ends, that decode is the phrase's final, with no decode
+ * after it; if it is still decoding then, its answer settles the phrase when it comes. Speech before that and the
+ * phrase goes on (a later quiet asks again); a phrase that ends at the longest phrase, with no pause, is decoded whole
+ * as before. Of its words, one begun after the phrase's last speech is not kept: the quiet is no one's words. Measured
+ * (a24-capfast) on 30 minutes of real Gujarati: WER +0.5 points [-0.4, +1.7] against the final after the whole pause.
+ */
+function earlyDue(g: Growing): boolean {
+  return g.quietMs >= PAUSING_MS && g.early === null;
+}
+
+/** How many of an early final's words to keep: those begun before the phrase's last speech ended (seconds). */
+function wordsBefore(words: readonly { start: number }[], speechS: number): number {
+  const n = words.findIndex((w) => w.start >= speechS);
+  return n < 0 ? words.length : n;
+}
+
+/** The quiet a growing phrase ends with, in samples. */
+function quietSamples(g: Growing): number {
+  return Math.min(g.length, Math.round((g.quietMs / 1000) * SAMPLE_RATE));
 }
 
 function partialDue(g: Growing, stepMs: number, now: number): boolean {
@@ -189,8 +225,11 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
       // The room's quiet heard last between phrases (at most PAD), to pad a partial with.
       let roomQuiet = new Int16Array(0);
       const finals: Growing[] = [];
+      // A phrase whose pause has ended while its early final is still decoding: that answer settles it.
+      let settling: Growing | null = null;
       const end = (): void => {
         generation += 1;
+        settling = null;
         closeSound?.();
         closeSound = null;
         if (retrySound) clearTimeout(retrySound);
@@ -254,12 +293,22 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         const final = finals.shift();
         const growing = final ? null : phrase;
         const piece = final ?? growing;
-        if (!piece || (growing && !partialDue(growing, stepMs, Date.now()))) return;
+        if (!piece) return;
+        const early: Early | null =
+          growing && earlyDue(growing)
+            ? {
+                speechS: (growing.length - quietSamples(growing)) / SAMPLE_RATE,
+                heard: null,
+                answered: false,
+              }
+            : null;
+        if (growing && !early && !partialDue(growing, stepMs, Date.now())) return;
         const mine = generation;
         working = true;
         piece.sentAt = Date.now();
-        // A partial with the room's quiet after it; a final exactly as heard (its pause is its own).
-        const samples = growing ? padded(joined(piece), roomQuiet) : joined(piece);
+        if (growing && early) growing.early = early;
+        // A partial with the room's quiet after it; a final, or an early final, exactly as heard.
+        const samples = growing && !early ? padded(joined(piece), roomQuiet) : joined(piece);
         const heardS = piece.length / SAMPLE_RATE;
         // Freeze the clock with the submitted samples: more microphone chunks can arrive during inference.
         const captured = piece.captured.slice();
@@ -278,9 +327,14 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
           const decoded = indicWords(asked.reply, chosen, clipAt, clipEndAt, (seconds, beginning) =>
             capturedAt(captured, seconds, beginning),
           );
-          // A padded partial shows only its first words that ended before the cut (above); a final, all of them.
+          // A padded partial shows only its first words that ended before the cut (above); a final, all of them; an
+          // early final, all those begun before the phrase's last speech.
           const reply = parseIndicReply(asked.reply, chosen).words;
-          const kept = growing ? reply.slice(0, wordsToShow(reply, heardS)) : reply;
+          const kept = early
+            ? reply.slice(0, wordsBefore(reply, early.speechS))
+            : growing
+              ? reply.slice(0, wordsToShow(reply, heardS))
+              : reply;
           // Noise or hum (one-syllable words heard unsure) is nothing heard: a growing phrase clears, a whole goes.
           const words = noiseOnly(kept) ? [] : decoded.slice(0, kept.length);
           if (growing) {
@@ -288,10 +342,9 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             growing.tookMs = asked.tookMs;
             if (words.length > 0) growing.shown = true;
           }
-          if (final && words.length === 0) return;
-          const heard: Heard = {
+          const heardAs = (whole: boolean): Heard => ({
             id: piece.id,
-            final: final !== undefined,
+            final: whole,
             language: heardIn,
             languageConfidence: null,
             words,
@@ -299,8 +352,24 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             startAt: Math.min(clipAt, words[0]?.startAt ?? clipAt),
             endAt: Math.max(words.at(-1)?.endAt ?? clipAt, clipAt),
             heardAt: Date.now(),
-          };
-          to.heard(heard);
+          });
+          if (early && growing) {
+            // Speech came since it was asked: the phrase goes on, and this answer is not its final.
+            if (growing.early !== early) return;
+            early.answered = true;
+            early.heard = words.length > 0 ? heardAs(true) : null;
+            if (settling === growing) {
+              // Its pause ended while it was decoding: this answer settles it.
+              settling = null;
+              if (early.heard) to.heard({ ...early.heard, heardAt: Date.now() });
+              return;
+            }
+            // Shown at once, unsettled until the pause ends (the owner: "Yes, show at once").
+            if (words.length > 0) to.heard(heardAs(false));
+            return;
+          }
+          if (final && words.length === 0) return;
+          to.heard(heardAs(final !== undefined));
         } catch {
           if (!ended() && !resting() && mine === generation) fail();
         } finally {
@@ -357,6 +426,7 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
             partials: 0,
             shown: false,
             tookMs: 0,
+            early: null,
           };
         }
         phrase.captured.push({
@@ -369,15 +439,27 @@ export function createIndicEngine(o: IndicEngineOptions): SpeechEngine {
         phrase.length += samples.length;
         phrase.endAt = endAt;
         phrase.quietMs = speech ? 0 : phrase.quietMs + ms;
+        // More was said: an early final asked in the quiet before no longer stands (QA24-CAPFAST-1).
+        if (speech) phrase.early = null;
         if (
           phrase.quietMs >= pauseMs ||
           phrase.length >= SAMPLE_RATE * 12 ||
           endAt - phrase.startAt >= maxMs
         ) {
-          finals.push(phrase);
+          const early = phrase.quietMs >= pauseMs ? phrase.early : null;
+          const ended = phrase;
           phrase = null;
-          // More than two whole phrases waiting: the oldest is dropped (the hub would drop it as late anyway).
-          if (finals.length > 2) finals.shift();
+          if (early?.answered) {
+            // Its pause has ended and the speaker stayed quiet: the early final is the phrase's final, now.
+            if (early.heard) to.heard({ ...early.heard, heardAt: Date.now() });
+          } else if (early) {
+            // Still decoding: its answer settles the phrase when it comes.
+            settling = ended;
+          } else {
+            finals.push(ended);
+            // More than two whole phrases waiting: the oldest is dropped (the hub would drop it as late anyway).
+            if (finals.length > 2) finals.shift();
+          }
         }
         void pump();
       };
