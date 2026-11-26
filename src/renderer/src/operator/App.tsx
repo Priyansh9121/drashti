@@ -150,7 +150,7 @@ const firstData = holdOpening();
 /** Everything that keeps the window up to date, connected once as it opens. */
 function useConnections(setInfo: (info: AppInfo) => void): void {
   useEffect(() => {
-    connectEngine();
+    connectEngine('says', { deferCueCleanup: true });
     connectScreens();
     // Audience and Stage (Session 50): in both modes (Simple Mode's status bar turns one on).
     connectScreenSwitches();

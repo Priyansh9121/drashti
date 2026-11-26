@@ -188,7 +188,8 @@ describe('a file played once to an end point', () => {
     });
 
   it('schedules only LIVE’s Go check as an abortable user-blocking task', () => {
-    const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] = [];
+    const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] =
+      [];
     vi.stubGlobal('scheduler', {
       postTask: (run: () => void, options: { delay: number; priority: string; signal: AbortSignal }) => {
         tasks.push({ run, options });
@@ -198,8 +199,11 @@ describe('a file played once to an end point', () => {
     const v = new FakeMedia(8);
     const timing = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
     const stop = startPlayback(v as unknown as HTMLMediaElement, {
-      mediaId: 'cued', startedAt: Date.now(), prepareScheduledStart: true,
-      prioritizeScheduledStart: true, timing: () => timing,
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      prioritizeScheduledStart: true,
+      timing: () => timing,
     });
     try {
       vi.advanceTimersByTime(20);

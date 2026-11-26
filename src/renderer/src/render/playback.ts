@@ -10,6 +10,7 @@ import {
   playbackPosition,
 } from '../../../shared/media';
 import { engineNow } from './clock';
+import { scheduleGoCheck } from './schedule-go-check';
 
 /**
  * A late start caught up (Session 57, C3's review M1; render/DeckStep.tsx alone asks): a deck's first clip whose first
@@ -62,6 +63,8 @@ export interface PlaybackOptions {
   reuseLoadedSource?: boolean;
   /** S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame. */
   prepareScheduledStart?: boolean;
+  /** LIVE alone: schedule its Go check ahead of ordinary page tasks. */
+  prioritizeScheduledStart?: boolean;
   /**
    * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
    * pace is set from its first moving frame, not the next check. Left out (every other caller), nothing more listens to
@@ -178,7 +181,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   // A start still to come (Session 54, C2): a deck's video or sound a moment after its click, a step's hold once its
   // clip is over. It waits at its point, paused, every screen alike, until the engine's time gets there, and is
   // checked again just then (until then it played at once, and was pulled back at every check).
-  let starting: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  let starting: { at: number; cancel: () => void } | null = null;
   const later = (
     seek: PlaybackSeek | undefined,
     clip: PlaybackClip | undefined,
@@ -186,16 +189,16 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const at = seek ? seek.at : startedAt;
     if (seek?.paused || at <= engineNow()) return seek;
     if (starting?.at !== at) {
-      if (starting) clearTimeout(starting.timer);
-      // eslint-disable-next-line no-restricted-syntax -- never decides a frame: asks for a check when the engine's time reaches its start (check() plays it from where the clock says)
-      const timer = setTimeout(
+      if (starting) starting.cancel();
+      const cancel = scheduleGoCheck(
         () => {
           starting = null;
           check();
         },
         Math.max(0, at - engineNow()),
+        options.prioritizeScheduledStart === true,
       );
-      starting = { at, timer };
+      starting = { at, cancel };
     }
     return { at, toMs: seek ? seek.toMs : (clip?.startMs ?? 0), paused: true };
   };
@@ -493,7 +496,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       delete v.dataset['captionStartedAt'];
     }
     clearInterval(timer);
-    if (starting) clearTimeout(starting.timer);
+    if (starting) starting.cancel();
     if (wrap) clearTimeout(wrap);
     if (hold) clearTimeout(hold);
     v.removeEventListener('loadedmetadata', onMetadata);

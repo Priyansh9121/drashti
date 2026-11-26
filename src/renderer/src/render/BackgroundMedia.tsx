@@ -137,6 +137,7 @@ function VideoSlot({
       attempt,
       startedAt,
       prepareScheduledStart: layer.cueId !== undefined,
+      prioritizeScheduledStart: tellStart,
       timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
         if (hasNoPicture(v)) {
@@ -190,7 +191,7 @@ function VideoSlot({
       p();
       unclock?.();
     };
-  }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch]);
+  }, [key, mediaId, attempt, startedAt, layer.cueId, dispatch, tellStart]);
   useEffect(() => {
     if (slot.cued && slot.state === 'ready' && ref.current)
       reportLoadedVideoCue(layer.cueId, 'picture', ref.current);

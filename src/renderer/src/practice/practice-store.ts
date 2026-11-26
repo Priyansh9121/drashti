@@ -187,6 +187,6 @@ export function useShowState(): EngineState | null {
 export function useShowRev(): number {
   const on = usePractice((s) => s.on);
   const practice = usePractice((s) => s.practice.rev);
-  const real = useEngine((s) => s.rev);
+  const real = useEngine((s) => s.drawnRev);
   return on ? practice : real;
 }
