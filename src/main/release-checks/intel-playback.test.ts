@@ -173,6 +173,12 @@ describe('the one hand-started Intel playback job, never in the release gate', (
       /\n {8}id: play\n[^]*run: pnpm exec playwright test -c playwright\.intel\.config\.ts\n/u,
     );
     expect(job).toContain('PLAY_OUTCOME: ${{ steps.play.outcome }}');
+    // The summary is its own command, so the judge the spec imports holds no import.meta (Playwright loads it as
+    // CommonJS: the job's first run found no tests; a23-intelfix, playwright-imports.test.ts).
+    expect(job).toContain('run: node scripts/playback-check-summary.mjs "$DRASHTI_PLAYBACK_READINGS"\n');
+    expect(read('scripts/playback-check-summary.mjs')).toMatch(
+      /^import \{ summaryLines \} from '\.\/playback-check\.mjs';$/mu,
+    );
     expect(read('playwright.intel.config.ts')).toContain("testDir: 'tests/intel-playback'");
   });
 
