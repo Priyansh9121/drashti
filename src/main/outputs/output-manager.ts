@@ -298,7 +298,7 @@ export class OutputManager {
   closeForQuit(): void {
     this.quit = true;
     for (const entry of this.open.values()) if (!entry.window.isDestroyed()) entry.window.close();
-    this.open.clear();
+    // Keep ownership until destruction is observed: close may be refused or still pending.
     for (const screenId of [...this.held.keys()]) this.letGo(screenId);
   }
 
@@ -306,5 +306,6 @@ export class OutputManager {
   closeAll(): void {
     this.closed = true;
     this.closeForQuit();
+    this.open.clear();
   }
 }

@@ -616,7 +616,6 @@ describe('OutputManager as Drashti quits (QA24-QUITRACE-1)', () => {
   });
 });
 
-
 describe('OutputManager after a refused quit', () => {
   it('retains a gap window that refuses closing instead of duplicating it on cancellation', () => {
     screens = [screen('audience', hall)];
