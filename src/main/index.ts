@@ -348,6 +348,7 @@ import {
 } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
+import { onQuitRefused } from './outputs/quit-refused';
 import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
@@ -10305,6 +10306,24 @@ function start(): void {
     return quitConfirmed;
   };
 
+  // Cancellation can come from a later listener or any window's beforeunload (macOS included).
+  // Observe after synchronous listeners finish, while the library and stop list are still live.
+  const resumeAfterQuitRefused = () => {
+    if (db === null) return;
+    quitStarted = false;
+    quitting = false;
+    quitConfirmed = false;
+    manager.cancelQuitting();
+  };
+  const watchQuitRefusal = (window: BrowserWindow) => {
+    window.on('close', (event) => onQuitRefused(event, resumeAfterQuitRefused));
+    window.webContents.on('will-prevent-unload', (event) =>
+      onQuitRefused(event, resumeAfterQuitRefused, true),
+    );
+  };
+  for (const window of BrowserWindow.getAllWindows()) watchQuitRefusal(window);
+  app.on('browser-window-created', (_event, window) => watchQuitRefusal(window));
+
   operatorWindow = createOperatorWindow(appearance.background());
   appearance.track(operatorWindow);
   // The opening (Session 55): timed from the window's making; a page loaded again (the watchdog's reload, Reload
@@ -10437,10 +10456,11 @@ function start(): void {
     app.quit();
     // In a quit, app.quit() does nothing more: an output opened once it had begun (QA24-QUITRACE-1: Electron closes
     // only the windows open as it began) closes here, with every other, and none opens again.
-    if (quitStarted) manager.closeAll();
+    if (quitStarted) manager.closeForQuit();
   });
   let quitSavingSound = false;
   app.on('before-quit', (event) => {
+    onQuitRefused(event, resumeAfterQuitRefused);
     if (!confirmQuit()) {
       event.preventDefault();
       return;
@@ -10490,6 +10510,7 @@ function start(): void {
         event,
         () => app.quit(),
         (result) => {
+          resumeAfterQuitRefused();
           log.error(
             `Source preparation did not confirm shutdown (${result.reason}); the library remains open.`,
           );

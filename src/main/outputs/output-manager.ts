@@ -76,6 +76,7 @@ export class OutputManager {
    * Drashti running and the quit would never end.
    */
   private quit = false;
+  private closed = false;
 
   constructor(private readonly deps: OutputManagerDeps) {
     this.off = new Set(deps.startsOff ?? []);
@@ -287,18 +288,23 @@ export class OutputManager {
   }
 
   /** A refused quit lets screens follow displays again. */
-  cancelQuitting(): void {}
+  cancelQuitting(): void {
+    if (this.closed || !this.quit) return;
+    this.quit = false;
+    this.reconcile();
+  }
 
   /** Close gap windows while the quit can still be refused. */
   closeForQuit(): void {
-    this.closeAll();
-  }
-
-  /** Every window closes, held ones too, and none opens again (the quit's last stop; QA24-QUITRACE-1). */
-  closeAll(): void {
     this.quit = true;
     for (const entry of this.open.values()) if (!entry.window.isDestroyed()) entry.window.close();
     this.open.clear();
     for (const screenId of [...this.held.keys()]) this.letGo(screenId);
+  }
+
+  /** Every window closes, held ones too, and none opens again (the quit's last stop; QA24-QUITRACE-1). */
+  closeAll(): void {
+    this.closed = true;
+    this.closeForQuit();
   }
 }
