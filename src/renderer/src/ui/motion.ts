@@ -274,6 +274,11 @@ const FOLD_LAYER = 5;
 let sheet: CSSStyleSheet | null = null;
 let sheetFrom = -1;
 
+/** A selector without its :host parts (the stand-in before its rule, red first). */
+export function hostless(selector: string): string {
+  return selector;
+}
+
 /** The page's own styles, for the copy's shadow root (made once; again if the page's styles change). */
 function pageStyles(): CSSStyleSheet[] {
   const count = document.styleSheets.length;
