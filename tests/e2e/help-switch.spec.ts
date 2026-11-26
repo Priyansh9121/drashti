@@ -1,8 +1,18 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import type { LowerThirdInput } from '../../src/shared/lower-thirds';
+import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import {
+  chooseMenuItem,
+  holdStill,
+  launchApp,
+  openSection,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+} from './helpers';
 import { CI_WINDOW } from './window-size';
 
 /*
@@ -27,21 +37,42 @@ const seen = (key: Locator) =>
     return true;
   });
 
-/** Every show control along the bottom, in the quick bar and under LIVE (Back, Next, Oops): where it is, how big. */
-const showControls = (win: Page) =>
-  win.evaluate(() =>
-    [
+/**
+ * Every show control along the bottom, in the quick bar and under LIVE (Back, Next, Oops), and the Undo line's Undo:
+ * where each is and how big, and where its first word or icon is (what the eye is on: Next's "Next", a pin's icon, the
+ * bar's words), its key never counted.
+ */
+const keyedButtons = (win: Page) =>
+  win.evaluate(() => {
+    const at = (r: DOMRect) =>
+      `${r.left.toFixed(1)}, ${r.top.toFixed(1)}, ${r.width.toFixed(1)} × ${r.height.toFixed(1)}`;
+    const first = (el: Element): string => {
+      for (const part of el.childNodes) {
+        if (part.nodeType === Node.TEXT_NODE) {
+          if (part.textContent?.trim() === '') continue;
+          const range = document.createRange();
+          range.selectNodeContents(part);
+          const r = range.getBoundingClientRect();
+          if (r.width > 0) return `“${part.textContent?.trim() ?? ''}” at ${at(r)}`;
+          continue;
+        }
+        if (!(part instanceof Element) || part.matches('kbd, [data-keys]')) continue;
+        const r = part.getBoundingClientRect();
+        if (r.width > 1 && r.height > 1) return `${part.tagName.toLowerCase()} at ${at(r)}`;
+      }
+      return 'nothing';
+    };
+    return [
       ...document.querySelectorAll(
-        '[data-zone="bar"] button, [data-testid="quick-bar"] button, [data-testid="show-back"], [data-testid="show-next"], [data-testid="show-oops"]',
+        '[data-zone="bar"] button, [data-testid="quick-bar"] button, [data-testid="show-back"], [data-testid="show-next"], [data-testid="show-oops"], [data-testid="undo-removal"] button',
       ),
     ]
       .filter((el) => el.getClientRects().length > 0 && !el.matches('[data-what-is-this]'))
       .map((el) => {
-        const r = el.getBoundingClientRect();
         const name = el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.textContent.trim();
-        return `${name}: ${r.left.toFixed(1)}, ${r.top.toFixed(1)}, ${r.width.toFixed(1)} × ${r.height.toFixed(1)}`;
-      }),
-  );
+        return `${name}: ${at(el.getBoundingClientRect())}; first ${first(el)}`;
+      });
+  });
 
 /** Every ? in the window. */
 const asks = (win: Page) => win.locator('[data-what-is-this]');
@@ -183,9 +214,18 @@ test('Simple Mode: the keys hidden at rest, Alt held shows them, Help on shows t
   await app.close();
 });
 
-test('the show controls never move as their keys come and go: Help off, Alt held and Help on draw each in its place, at 1024 × 645 and 1280 × 720, in Pro and Simple Mode', async () => {
+/** A lower third, placeholder words only: one deleted is a change the Undo line says. */
+const lowerThird = (name: string): LowerThirdInput => ({
+  lines: [name, 'Placeholder title', ''],
+  look: DEFAULT_LOWER_THIRD_LOOK,
+  where: 'hall',
+  animation: 'fade-quick',
+});
+
+test('nothing moves as the keys come and go: Help off, Alt held and Help on draw every show control and the Undo line, and what is on them, in place, at 1024 × 645 and 1440 × 820, in Pro and Simple Mode', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp();
+  // The Undo line's clock held (its test switch), so it stays while it is measured.
+  const { app } = await launchApp({ DRASHTI_TEST_UNDO_LINE: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   // Two pins in the quick bar (Pro Mode's), so its keys are measured too.
@@ -197,6 +237,15 @@ test('the show controls never move as their keys come and go: Help off, Alt held
   );
   expect(set.ok).toBe(true);
   await expect(win.getByTestId('quick-bar').getByRole('button')).toHaveCount(2);
+  // A lower third deleted with its trash: the Undo line at the left column's foot, with Undo and its key.
+  await win.evaluate(async (i) => {
+    const made = await (globalThis as PageGlobals).drashti.lowerThirds.save(null, i);
+    if (!made.ok) throw new Error(made.message);
+  }, lowerThird('Placeholder one'));
+  await openSection(win, 'lower-thirds');
+  await win.getByTestId('lower-thirds-panel').getByTestId('lower-third-delete').click();
+  const undoLine = win.getByTestId('undo-removal');
+  await expect(undoLine).toContainText('Deleted “Placeholder one”');
   const help = win.getByTestId('help-toggle');
   const nextKey = win.getByTestId('show-next').locator('kbd');
   for (const mode of ['pro', 'simple'] as const) {
@@ -204,39 +253,55 @@ test('the show controls never move as their keys come and go: Help off, Alt held
       await chooseMenuItem(app, 'switch-mode');
       await expect(win.getByTestId('simple-mode')).toBeVisible();
     }
-    for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
+    for (const size of [CI_WINDOW, { width: 1440, height: 820 }]) {
       const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${String(size.width)} × ${String(size.height)}`;
       await win.setViewportSize(size);
       await expect(help).toHaveAttribute('aria-pressed', 'false');
       await expect.poll(() => seen(nextKey), { message: `${where}: Next's key hidden` }).toBe(false);
-      const atRest = await showControls(win);
-      expect(atRest.length, `${where}: the show controls measured`).toBeGreaterThanOrEqual(
-        mode === 'pro' ? 13 : 8,
-      );
+      if (mode === 'pro') await expect(undoLine.getByRole('button', { name: /^Undo/u })).toBeVisible();
+      const atRest = await keyedButtons(win);
+      expect(atRest.length, `${where}: what is measured`).toBeGreaterThanOrEqual(mode === 'pro' ? 14 : 8);
       // Alt held for a look: the keys come, and nothing moves all the while it is held.
       await win.keyboard.down('Alt');
       await expect.poll(() => seen(nextKey), { message: `${where}: Next's key shown with Alt` }).toBe(true);
       await holdStill(
-        async () => JSON.stringify(await showControls(win)) === JSON.stringify(atRest),
+        async () => JSON.stringify(await keyedButtons(win)) === JSON.stringify(atRest),
         600,
-        `${where}: Alt held, every show control where it was`,
+        `${where}: Alt held, every one where it was`,
       );
-      expect(await showControls(win), `${where}: Alt held`).toEqual(atRest);
+      expect(await keyedButtons(win), `${where}: Alt held`).toEqual(atRest);
       await win.keyboard.up('Alt');
       await expect.poll(() => seen(nextKey), { message: `${where}: Next's key hidden again` }).toBe(false);
-      expect(await showControls(win), `${where}: Alt let go`).toEqual(atRest);
+      expect(await keyedButtons(win), `${where}: Alt let go`).toEqual(atRest);
       // Help on: the keys come, and nothing moves; Help off again.
       await help.dispatchEvent('click');
       await expect(help).toHaveAttribute('aria-pressed', 'true');
       await expect
         .poll(() => seen(nextKey), { message: `${where}: Next's key shown with Help on` })
         .toBe(true);
-      expect(await showControls(win), `${where}: Help on`).toEqual(atRest);
+      expect(await keyedButtons(win), `${where}: Help on`).toEqual(atRest);
       await help.dispatchEvent('click');
       await expect(help).toHaveAttribute('aria-pressed', 'false');
       await expect.poll(() => seen(nextKey)).toBe(false);
-      expect(await showControls(win), `${where}: Help off again`).toEqual(atRest);
+      expect(await keyedButtons(win), `${where}: Help off again`).toEqual(atRest);
     }
   }
+  await app.close();
+});
+
+test('in forced colours (a contrast theme), Help pressed and not pressed look different', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await win.emulateMedia({ forcedColors: 'active' });
+  const help = win.getByTestId('help-toggle');
+  const ground = () => help.evaluate((b) => getComputedStyle(b).backgroundColor);
+  await expect(help).toHaveAttribute('aria-pressed', 'false');
+  const off = await ground();
+  await help.dispatchEvent('click');
+  await expect(help).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(ground, { message: 'Help on draws a ground of its own' }).not.toBe(off);
+  await win.emulateMedia({ forcedColors: 'none' });
   await app.close();
 });

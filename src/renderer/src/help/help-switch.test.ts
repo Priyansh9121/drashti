@@ -57,11 +57,13 @@ describe('the status bar’s Help switch', () => {
     const { helpTip } = await import('./HelpSwitch');
     // Named first, as it is the ? alone in a narrow window.
     expect(helpTip('darwin', false)).toBe(
-      'Help: the ? beside each part and the keys on the buttons. Hold Option to see the keys for a moment.',
+      'Help: the ? beside each part and the keys on the buttons. Hold Option to see the keys; let go of Option, then press one.',
     );
     expect(helpTip('win32', false)).toBe(
-      'Help: the ? beside each part and the keys on the buttons. Hold Alt to see the keys for a moment.',
+      'Help: the ? beside each part and the keys on the buttons. Hold Alt to see the keys; let go of Alt, then press one.',
     );
-    expect(helpTip('win32', true)).toBe('Help: the keys on the buttons. Hold Alt to see them for a moment.');
+    expect(helpTip('win32', true)).toBe(
+      'Help: the keys on the buttons. Hold Alt to see them; let go of Alt, then press one.',
+    );
   });
 });

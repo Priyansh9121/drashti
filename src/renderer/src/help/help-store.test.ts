@@ -178,21 +178,22 @@ describe('the window’s root says when the buttons’ keys are hidden', () => {
 });
 
 describe('a look at the keys never opens Windows’ menu bar', () => {
-  it('takes Alt’s letting go after a look (held half a second or more); a press of Alt alone still opens it', async () => {
+  it('takes Alt’s letting go after a look (held a quarter of a second or more); a tap of Alt alone still opens it', async () => {
     const help = await freshStore(storage());
     const { win, send } = windowStandIn();
     let now = 0;
     const stop = help.connectKeyHints(win, () => now);
-    // A press (Windows: the menu bar shows and takes the keyboard, as it always has): let by.
+    // A tap (Windows: the menu bar shows and takes the keyboard, as it always has): let by. A deliberate tap takes
+    // about 80 to 150 ms (the release lead's review, S2).
     expect(send('keydown', keyParts('Alt', { alt: true }))).toBe(false);
     now = 200;
     expect(send('keyup', keyParts('Alt'))).toBe(false);
-    // A look: held, its repeats too, then let go: taken, so the show keeps the keyboard.
+    // A look (a glance at a key, 300 ms), its repeats too, then let go: taken, so the show keeps the keyboard.
     now = 1000;
     expect(send('keydown', keyParts('Alt', { alt: true }))).toBe(false);
-    now = 1300;
+    now = 1150;
     expect(send('keydown', keyParts('Alt', { alt: true }))).toBe(false);
-    now = 1500;
+    now = 1300;
     expect(send('keyup', keyParts('Alt'))).toBe(true);
     // Alt with another key (a shortcut: the menu bar never opens for it) is let by, however long it was held.
     now = 2000;
