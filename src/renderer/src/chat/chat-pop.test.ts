@@ -42,7 +42,13 @@ const T0 = 1_000_000;
 
 describe('which messages pop up', () => {
   it('none from the first view: what was in the chat as the window opened is no news', () => {
-    expect(arrivals(null, [message(A, 'Placeholder old one'), message(B, 'Placeholder old two')], CHAT_OPERATOR_ID)).toEqual([]);
+    expect(
+      arrivals(
+        null,
+        [message(A, 'Placeholder old one'), message(B, 'Placeholder old two')],
+        CHAT_OPERATOR_ID,
+      ),
+    ).toEqual([]);
   });
 
   it('others’ new messages, oldest first; the operator’s own never', () => {
@@ -138,13 +144,19 @@ describe('it stays about 10 s, then fades (no fade with reduced motion)', () => 
 describe('its words: “Chat from <name>: <message>”, the message cut to 2 lines and “…”', () => {
   it('who and what, and “and N more” only when more came', () => {
     const one: ChatPop = { message: message(A, 'Placeholder hello'), more: 0, at: T0 };
-    expect(popWords(one)).toEqual({ from: 'Chat from Placeholder Sender:', text: 'Placeholder hello', more: null });
+    expect(popWords(one)).toEqual({
+      from: 'Chat from Placeholder Sender:',
+      text: 'Placeholder hello',
+      more: null,
+    });
     expect(popWords({ ...one, more: 1 }).more).toBe('and 1 more');
     expect(popWords({ ...one, more: 3 }).more).toBe('and 3 more');
   });
 
   it('two lines kept whole; a third cut, with “…”', () => {
-    expect(popText('Placeholder line one\nPlaceholder line two')).toBe('Placeholder line one\nPlaceholder line two');
+    expect(popText('Placeholder line one\nPlaceholder line two')).toBe(
+      'Placeholder line one\nPlaceholder line two',
+    );
     expect(popText('Placeholder line one\nPlaceholder line two\nPlaceholder line three')).toBe(
       'Placeholder line one\nPlaceholder line two…',
     );

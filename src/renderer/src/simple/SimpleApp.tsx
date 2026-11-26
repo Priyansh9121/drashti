@@ -1,3 +1,4 @@
+import { ChatPopup } from '../chat/ChatPop';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -437,7 +438,10 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <LinkDialog />
       {/* Files dropped with no playlist open: a new playlist or folder for them (Session 60, x36). */}
       <DropNewDialog />
-      <LayerBar platform={platform} run={run} simple />
+      <div className="relative shrink-0">
+        <ChatPopup />
+        <LayerBar platform={platform} run={run} simple />
+      </div>
       <StatusBar info={info} onOpenScreens={null} />
       {/* A row's right-click menu, its Delete's question when it is up, and From a Link…. */}
       <FileMenu platform={platform} />

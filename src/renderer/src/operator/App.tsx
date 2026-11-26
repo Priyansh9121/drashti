@@ -1,3 +1,4 @@
+import { ChatPopup } from '../chat/ChatPop';
 import { EditVideoDialog } from '../library/EditVideoDialog';
 import { CombineVideosDialog } from '../library/CombineVideosDialog';
 import { SoundPictureDialog } from '../library/SoundPictureDialog';
@@ -503,7 +504,10 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <LinkDialog />
       {/* The quick bar (Session 55, Part 8), just above the bar of clears: hidden when empty. */}
       <QuickBar platform={platform} run={run} />
-      <LayerBar platform={platform} run={run} />
+      <div className="relative shrink-0">
+        <ChatPopup />
+        <LayerBar platform={platform} run={run} />
+      </div>
       <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
 
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />

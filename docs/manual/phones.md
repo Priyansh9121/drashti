@@ -79,6 +79,8 @@
 
 ## The chat
 
+New messages from others appear silently for about 10 seconds in a centred popup above the bottom show controls, in Pro and Simple Mode; click it to open Chat, or × to dismiss it, without taking the keyboard from the show, and it never appears on the hall, stage, phones’ show or stream.
+
 **What it is.** One group chat for this computer and the phones paired with it, as a WhatsApp group: each message with its sender's name and time. Phone remotes and Announcements devices are in it, and the phones that scan the **Chat QR code**. It goes over the mandir's Wi-Fi only, is kept for today only, and never shows on the screens or the stream.
 
 **When you would use it.** When volunteers with phones need to tell each other, or the operator, something during the sabha.
