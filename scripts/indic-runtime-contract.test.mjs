@@ -73,7 +73,7 @@ test('Indic unknown-token markers never reach displayed words, while malformed r
 });
 
 /**
- * The C source's allocations (`name = malloc(`, `calloc(`, `realloc(`), and those used before their null check: after
+ * The C source's allocations (`malloc`, `calloc`, `realloc`, `strdup`; names, members or indexed targets), and those used before their null check: after
  * the statement that allocates it, the name's first appearance must be `!name` (cap-review-next n3: any use, such as
  * `memcpy(name, …)`, `name->` or a call with it, not only `name[` and `(name +`). Comments, strings and characters are
  * no use.
@@ -83,13 +83,20 @@ function allocationsUsedUnchecked(source) {
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/gu, (t) =>
     t.startsWith('/') ? ' ' : `${t[0] ?? ''}${t[0] ?? ''}`,
   );
-  const allocations = [...code.matchAll(/\b(\w+)\s*=\s*(?:malloc|calloc|realloc)\(/gu)];
+  const allocations = [
+    ...code.matchAll(
+      /\b([A-Za-z_]\w*(?:(?:\[[^\]\n]+\])|(?:(?:->|\.)[A-Za-z_]\w*))*)\s*=\s*(?:malloc|calloc|realloc|strdup)\s*\(/gu,
+    ),
+  ];
   const unchecked = [];
   for (const allocation of allocations) {
     const name = allocation[1] ?? '';
     const end = code.indexOf(';', allocation.index);
     const after = end < 0 ? '' : code.slice(end + 1);
-    const first = after.search(new RegExp(`\\b${name}\\b`, 'u'));
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    // A post-increment in the checked index still dereferences the allocated element first.
+    const target = escaped.replaceAll('\\]', '(?:\\+\\+|--)?\\]');
+    const first = after.search(new RegExp(`\\b${target}(?!\\w)`, 'u'));
     if (first < 1 || after[first - 1] !== '!') unchecked.push(name);
   }
   return { count: allocations.length, unchecked };
@@ -152,4 +159,15 @@ test('allocation checks include indexed and member targets and strdup (cap-revie
       unchecked: [],
     });
   }
+});
+
+test('a checked post-increment still checks the allocated element, while an earlier use fails', () => {
+  assert.deepEqual(
+    allocationsUsedUnchecked('m->tok[i] = strdup(word); if (!m->tok[i++]) die();').unchecked,
+    [],
+  );
+  assert.deepEqual(
+    allocationsUsedUnchecked('m->tok[i] = strdup(word); use(m->tok[i++]); if (!m->tok[i]) die();').unchecked,
+    ['m->tok[i]'],
+  );
 });
