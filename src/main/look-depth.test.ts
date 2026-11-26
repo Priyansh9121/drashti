@@ -197,7 +197,9 @@ describe('B · Depth: styles/look-depth.css', () => {
     const states = block(`${SCOPE} :is(body, [data-zone])`);
     expect(states).toMatchObject({
       '--state-fill': 'var(--color-panel-2)',
-      '--state-row': 'color-mix(in srgb, var(--color-fg) 3%, transparent)',
+      // A section's row an opaque colour of its own (a 3 % lift of its column's panel): a fold's fading copy of the
+      // section's insides is drawn on the first opaque colour round them (uimotion's ui/fold.ts), so the row's own.
+      '--state-row': 'color-mix(in srgb, var(--color-fg) 3%, var(--color-panel))',
       '--state-disabled': '0.4',
     });
     for (const base of ['dark', 'light'] as const) {
