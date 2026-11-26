@@ -508,6 +508,9 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
         { kind: 'presentation', presentationId: b?.id ?? '' },
       ]);
     }
+    // An audio playlist, so Audio's insides hold the music's Play, Previous and Next (show controls, alpha.24's S4).
+    const sounds = await d.music.create('Placeholder lively sounds');
+    if (!sounds.ok) throw new Error('Could not make the audio playlist');
   });
   const row = (name: string) =>
     win.getByTestId('playlist-node').filter({ hasText: new RegExp(`^${name}`, 'u') });
@@ -559,6 +562,7 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   await letTimePass(win, 900, 'the show has not changed for a moment, as Lively waits for');
   await win.getByTestId('group-audio-toggle').click();
   await expect(win.getByTestId('music-panel')).toBeVisible();
+  await expect(win.getByTestId('music-play')).toHaveAttribute('data-show-control', '');
   expect(await unrolls('audio')).toBe(noChip ? 'none none' : 'open none');
 
   // A button answers a press; a show control never does.
