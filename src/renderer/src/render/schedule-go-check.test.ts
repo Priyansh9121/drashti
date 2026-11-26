@@ -6,7 +6,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('keeps audience checks on timers even with the task scheduler present', () => {
+it('keeps a check not asked to go first (a later start that is no cue) on its timer, even with the task scheduler present', () => {
   vi.useFakeTimers();
   const task = vi.fn();
   vi.stubGlobal('scheduler', { postTask: task });

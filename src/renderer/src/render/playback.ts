@@ -61,9 +61,12 @@ export interface PlaybackOptions {
    * whatever the element holds.
    */
   reuseLoadedSource?: boolean;
-  /** S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame. */
+  /**
+   * S5 Cue only: warm the decoder at zero rate during an armed future start, still held at its first frame; its Go
+   * check is a task ahead of the page's ordinary ones (render/schedule-go-check.ts), on every page (a24-cuelive-mac5).
+   */
   prepareScheduledStart?: boolean;
-  /** LIVE alone: schedule its Go check ahead of ordinary page tasks. */
+  /** LIVE alone: every future start's check ahead of ordinary page tasks, not only a cue's Go (a time bar's start). */
   prioritizeScheduledStart?: boolean;
   /**
    * A deck's clip or hold that may start late and catch up (`timing().catchUp`; render/DeckStep.tsx alone asks): its
@@ -204,7 +207,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
           check();
         },
         Math.max(0, at - engineNow()),
-        options.prioritizeScheduledStart === true,
+        // A cue's Go on every page (a24-cuelive-mac5): an ordinary timer waits behind work queued before it is due,
+        // a rendering step most of all (on CI's Mac the stream's ran 62 ms after Go and started 87 ms late).
+        options.prioritizeScheduledStart === true || options.prepareScheduledStart === true,
       );
       starting = { at, cancel };
     }

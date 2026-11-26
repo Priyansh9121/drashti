@@ -1,4 +1,7 @@
-/** The browser task scheduler used by LIVE; other pages retain their ordinary timer. */
+/**
+ * The browser task scheduler, for a cue's Go check on every page and LIVE's other future starts (render/playback.ts);
+ * any other later start (a deck's clip) keeps its ordinary timer.
+ */
 interface GoScheduler {
   postTask(
     run: () => void,

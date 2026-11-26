@@ -187,7 +187,7 @@ describe('a file played once to an end point', () => {
       timing: () => ({ loop: false, ...timing }),
     });
 
-  it('schedules only LIVE’s Go check as an abortable user-blocking task', () => {
+  it('schedules LIVE’s Go check, opted in, as an abortable user-blocking task', () => {
     const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] =
       [];
     vi.stubGlobal('scheduler', {
