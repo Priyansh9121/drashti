@@ -50,6 +50,24 @@ for (const simple of [false, true]) {
       ).toEqual({ ok: true, chosen: ['chat'] });
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
       await expect(win.getByTestId('simple-mode')).toHaveCount(1);
+    } else {
+      // The quick bar's one row full of pinned show buttons (Pro Mode's only): the popup lies over none of them.
+      const pinned = await win.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        const pins: { kind: 'message'; templateId: string; label: string }[] = [];
+        for (let i = 1; i <= 8; i++) {
+          const made = await d.messages.create({
+            name: `Placeholder pin ${String(i)}`,
+            template: `Placeholder pinned words ${String(i)}`,
+            fields: {},
+          });
+          if (!made.ok) throw new Error(made.message);
+          pins.push({ kind: 'message', templateId: made.id, label: `Placeholder pin ${String(i)}` });
+        }
+        return d.quickBar.set(pins);
+      });
+      expect(pinned.ok).toBe(true);
+      await expect(win.getByTestId('quick-pin')).toHaveCount(8);
     }
     const bar = win.getByTestId(simple ? 'simple-buttons' : 'layer-bar');
     await bar.locator('button:enabled').first().focus();
@@ -69,14 +87,39 @@ for (const simple of [false, true]) {
     await expect(pop).toContainText('Placeholder incoming message');
     await expect(win.locator('[data-popup-focus]')).toBeFocused();
     const box = await pop.boundingBox();
-    const controls = await bar.boundingBox();
+    // Just above the show controls the window has at its foot: Pro Mode's quick bar over its bar of clears, together.
+    const controls = await (simple ? bar : win.getByTestId('quick-bar')).boundingBox();
+    const middle = await win.getByTestId('column-middle').boundingBox();
     const viewport = await win.evaluate(() => ({ width: innerWidth, height: innerHeight }));
     expect(box).not.toBeNull();
     expect(controls).not.toBeNull();
-    if (!box || !controls) throw new Error('Popup or controls missing');
+    expect(middle).not.toBeNull();
+    if (!box || !controls || !middle) throw new Error('Popup, controls or middle column missing');
     expect(box.y + box.height).toBeLessThanOrEqual(controls.y);
     expect(controls.y - box.y - box.height).toBeLessThanOrEqual(12);
-    expect(Math.abs(box.x + box.width / 2 - viewport.width / 2)).toBeLessThanOrEqual(1);
+    // Centred over the middle of the window (the owner's "in middle screen"), inside the middle column.
+    expect(Math.abs(box.x + box.width / 2 - (middle.x + middle.width / 2))).toBeLessThanOrEqual(1);
+    expect(box.x).toBeGreaterThanOrEqual(middle.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(middle.x + middle.width);
+    // Over nothing the operator presses: no pin, no show button, neither side column (the left one's Undo at its foot,
+    // the live column's notices at its).
+    expect(
+      await win.evaluate(() => {
+        const card = document.querySelector('[data-testid="chat-pop"]')?.getBoundingClientRect();
+        if (!card) return ['no popup'];
+        const parts = document.querySelectorAll(
+          '[data-testid="quick-pin"], [data-testid="layer-bar"] button, [data-testid="simple-buttons"] button, [data-testid="column-left"], [data-testid="column-right"]',
+        );
+        return [...parts]
+          .filter((el) => {
+            const r = el.getBoundingClientRect();
+            return (
+              r.width > 0 && r.left < card.right && card.left < r.right && r.top < card.bottom && card.top < r.bottom
+            );
+          })
+          .map((el) => `${el.getAttribute('data-testid') ?? 'a button'} ${el.textContent.trim()}`);
+      }),
+    ).toEqual([]);
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
@@ -98,6 +141,30 @@ for (const simple of [false, true]) {
     await win.getByTestId('chat-pop-dismiss').click();
     await expect(pop).toHaveCount(0);
     await expect(win.locator('[data-popup-focus]')).toBeFocused();
+    if (!simple) {
+      // While a popup is up, the pin nearest its middle still takes a click and puts its message up; Chat stays folded.
+      await send('Placeholder over the pins');
+      await expect(pop).toBeVisible();
+      const nearest = await win.evaluate(() => {
+        const card = document.querySelector('[data-testid="chat-pop"]')?.getBoundingClientRect();
+        if (!card) return -1;
+        const mid = card.left + card.width / 2;
+        let best = -1;
+        let far = Infinity;
+        document.querySelectorAll('[data-testid="quick-pin"]').forEach((pin, i) => {
+          const r = pin.getBoundingClientRect();
+          const d = Math.abs(r.left + r.width / 2 - mid);
+          if (d < far) [best, far] = [i, d];
+        });
+        return best;
+      });
+      expect(nearest).toBeGreaterThanOrEqual(0);
+      await win.getByTestId('quick-pin').nth(nearest).click();
+      await expect
+        .poll(async () => (await engine(win)).state.layers.messages.map((m) => m.text))
+        .toEqual([`Placeholder pinned words ${String(nearest + 1)}`]);
+      await expect(win.getByTestId('group-chat-toggle')).toHaveAttribute('aria-expanded', 'false');
+    }
     await send('Placeholder open the chat');
     await expect(pop).toBeVisible();
     await win.getByTestId('chat-pop-open').click();
