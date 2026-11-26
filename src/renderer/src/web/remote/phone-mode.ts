@@ -85,8 +85,9 @@ export interface OnThePage {
 /**
  * Which element has the focus, from the page's focusin and focusout (QA24-PHONE-B), and whether it went from the page
  * while it had it. A focusout while the element stays on the page (a tap on the page's blank part, the focus moved on)
- * lets go of it; an element taken off the page keeps being the one that went, whether or not the browser sent a
- * focusout as it left (browsers differ). Pure, so it is tested apart.
+ * lets go of it; an element taken off the page keeps being the one that went, whether the browser sent its focusout
+ * while removing it (Chromium: still on the page then, a24-review-phonefix MUST-1), after, or not at all (WebKit). So
+ * a focusout is judged a microtask later, once a removal is done. Pure, so it is tested apart.
  */
 export function focusWatch<E extends OnThePage>() {
   let held: E | null = null;
@@ -95,9 +96,11 @@ export function focusWatch<E extends OnThePage>() {
     took(el: E | null): void {
       held = el;
     },
-    /** focusout of `el`. */
+    /** focusout of `el`: judged once a removal in progress is done (Chromium sends it before the element is off). */
     left(el: E | null): void {
-      if (held === el && el?.isConnected) held = null;
+      queueMicrotask(() => {
+        if (held === el && el?.isConnected) held = null;
+      });
     },
     /** Whether the element that had the focus went from the page while it had it. */
     wentAway(): boolean {
