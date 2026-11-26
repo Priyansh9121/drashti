@@ -19,7 +19,7 @@ Files come into Drashti by **Import…**, **Add files…**, a drop, **From a Lin
 
 ## From a Link…
 
-**What it is.** A YouTube or Dropbox share link downloaded into the open playlist, at the best quality up to 1080p. You choose where to save before pressing **Download**. Pasting a link only checks it; nothing is downloaded yet.
+**What it is.** A YouTube or Dropbox share link downloaded into the open playlist, at the best quality up to 1080p, or at the **Quality** you choose for a YouTube video. You choose where to save before pressing **Download**. Pasting a link only checks it; nothing is downloaded yet.
 
 **When you would use it.** When someone sends a link to a video for tonight.
 
@@ -28,7 +28,8 @@ Files come into Drashti by **Import…**, **Add files…**, a drop, **From a Lin
 1. Press **From a Link…** above the playlist (or in the library's **Import…**).
 2. Paste the link into its small window and wait for its name and details.
 3. Check or change **Name** and **Save in**. Press **Choose…** to choose the folder before the download starts.
-4. Press **Download** (Enter). The status bar shows how it goes, with **Stop**.
+4. For a YouTube video, change **Quality** if you want: each height it offers, with about how big the file will be. From **Audio**: **Best**, **192 kbps** or **128 kbps**.
+5. Press **Download** (Enter). The status bar shows how it goes and the quality, with **Stop**.
 
 ![From a Link…: a placeholder YouTube link pasted](../screenshots/import-link-youtube.png)
 

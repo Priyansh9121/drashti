@@ -186,6 +186,70 @@ test('YouTube: the paste takes the best quality below 1080p when 1080p is unavai
   await app.close();
 });
 
+test('YouTube: Quality offers what the video has, with sizes, the usual to begin with; the one chosen is downloaded and said (alpha.24)', async () => {
+  test.setTimeout(300_000);
+  const { app, win, chosen, log } = await open({
+    heights: [360, 720, 1080, 1440, 2160],
+    steps: 30,
+    stepMs: 100,
+  });
+  const field = win.getByTestId('link-paste');
+  await pasteLink(win, LINK, false);
+  await expect(win.getByTestId('link-name')).toHaveValue('Placeholder video');
+  // Every height the made-up video offers, tallest first, each with about how big its MP4 is; the best up to 1080p.
+  const quality = field.getByRole('combobox', { name: 'Quality' });
+  await expect(quality).toHaveAttribute('data-testid', 'link-quality');
+  await expect(quality).toHaveValue('1080');
+  await expect(quality.locator('option')).toHaveText([
+    /^2160p \(4K\), about [\d.]+ MB$/u,
+    /^1440p, about [\d.]+ MB$/u,
+    /^1080p, about [\d.]+ MB$/u,
+    /^720p, about [\d.]+ MB$/u,
+    /^360p, about [\d.]+ MB$/u,
+  ]);
+  await expect(field.getByText('To begin with, the best up to 1080p.')).toBeVisible();
+  // In the keyboard's order, right after Save in's Choose….
+  await win.getByTestId('link-choose-folder').focus();
+  await win.keyboard.press('Tab');
+  await expect(quality).toBeFocused();
+  await expectFits(field, 'the link window with its Quality at 1024 × 645');
+  await expectNoSeriousA11yIssues(win, 'the Quality choice', '[data-testid="link-paste"]');
+  await quality.selectOption('1440');
+  await expect(field.getByText(/^Above 1080p: a bigger file/u)).toBeVisible();
+  await quality.selectOption('720');
+  await expect(field.getByText('To begin with, the best up to 1080p.')).toBeVisible();
+  // Checking downloaded nothing; Download takes 720p, and the status bar says so.
+  expect(fakeStarts(log)).toEqual([]);
+  await win.getByTestId('link-download').click();
+  const status = win.getByTestId('link-status');
+  await expect(status).toContainText('Downloading from YouTube');
+  await expect(status).toContainText(', 720p');
+  await linkFinished(win);
+  expect((await view(win)).choice).toEqual({ type: 'mp4', height: 720 });
+  expect(readFileSync(log, 'utf8')).toMatch(/^done mp4 720$/mu);
+  expect(readdirSync(chosen)).toEqual(['Placeholder video.mp4']);
+
+  // From Audio: the best sound to begin with, then 192 and 128 kbps, each about as big; 128 kbps is the one made.
+  await openSection(win, 'audio');
+  await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
+  await pasteLink(win, LINK, false);
+  await expect(win.getByTestId('link-name')).toHaveValue('Placeholder video');
+  const sound = win.getByTestId('link-paste').getByRole('combobox', { name: 'Quality' });
+  await expect(sound).toHaveValue('0');
+  await expect(sound.locator('option')).toHaveText([
+    /^Best, about [\d.]+ MB$/u,
+    /^192 kbps, about [\d.]+ MB$/u,
+    /^128 kbps, about [\d.]+ [KM]B$/u,
+  ]);
+  await sound.selectOption('128');
+  await win.getByTestId('link-download').click();
+  await linkFinished(win);
+  expect((await view(win)).choice).toEqual({ type: 'mp3', height: null, kbps: 128 });
+  expect(readFileSync(log, 'utf8')).toMatch(/^done mp3 128K$/mu);
+  expect(readdirSync(chosen).sort()).toEqual(['Placeholder video.mp3', 'Placeholder video.mp4']);
+  await app.close();
+});
+
 test('YouTube: when yt-dlp fails, plain words with what to do next, never its own', async () => {
   test.setTimeout(120_000);
   const { app, win } = await open({
