@@ -7,6 +7,7 @@ import type {
 } from '../../shared/caption-coordinator';
 import { CAPTION_PAGE_MIN_MS, CAPTION_PAGE_MS_PER_WORD } from '../../shared/caption-translation';
 import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/captions';
+import { captionTranslationPages } from '../../shared/caption-clause-lines';
 import { CaptionCoordinator, type CaptionSkip } from './caption-coordinator';
 
 /*
@@ -160,6 +161,31 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
     expect([...first.lines, ...second.lines].join(' ')).toBe(long);
     expect(skips).toEqual([]);
     expect(c.view().omitted).toBe(0);
+  });
+
+  it('shows every page of a long translation, even past the phrase’s 6 s, each for its reading time, then clears', async () => {
+    const { port, finish } = deferredPort();
+    const { coordinator: c, clause, last, skips } = setup(port);
+    c.accept(clause('A long placeholder sentence', 1, 'settled'));
+    const long = Array.from({ length: 4 }, () => 'placeholder sentence carries ordinary words').join(' ');
+    const pages = must(captionTranslationPages(long, 40));
+    expect(pages).toHaveLength(3);
+    const span = (page: readonly string[]) =>
+      Math.max(CAPTION_PAGE_MIN_MS, page.join(' ').split(' ').length * CAPTION_PAGE_MS_PER_WORD);
+    finish(0, long);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()?.page).toEqual({ n: 1, of: 3 });
+    await vi.advanceTimersByTimeAsync(span(must(pages[0])));
+    expect(last()).toMatchObject({ page: { n: 2, of: 3 }, lines: pages[1] });
+    await vi.advanceTimersByTimeAsync(span(must(pages[1])));
+    // Past the phrase's own 6 s: its last page still shows, for its own reading time.
+    expect(Date.now() - new Date('2026-11-26T09:00:00Z').getTime()).toBeGreaterThan(6_000);
+    expect(last()).toMatchObject({ page: { n: 3, of: 3 }, lines: pages[2] });
+    await vi.advanceTimersByTimeAsync(span(must(pages[2])) - 100);
+    expect(last()?.page).toEqual({ n: 3, of: 3 });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(last()).toBeNull();
+    expect(skips).toEqual([]);
   });
 
   it('skips a translation that cannot be shown at all (a word wider than a line) once, and never asks for it again', async () => {
