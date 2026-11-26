@@ -24,9 +24,15 @@ export interface QuitResume {
   openOperator(): void;
 }
 
-/** A refused quit: Main as it was before it, its screens again. (Red: today's, the operator window never again.) */
-export function resumeAfterRefusal(to: QuitResume, _sourceStop: boolean): void {
+/**
+ * A refused quit: Main as it was before it, its screens again. A refused source stop (the imported slides' own work
+ * not stopping in time) after the operator window had closed (its X began the quit, on Windows the usual one) opens it
+ * again too, after the screens (review S3, answered as recommended): before, the hall's screens came back with no
+ * controls, and nothing but Task Manager could quit Drashti. Any other refusal leaves the operator window as it is.
+ */
+export function resumeAfterRefusal(to: QuitResume, sourceStop: boolean): void {
   if (!to.libraryOpen()) return;
   to.reset();
   to.screens();
+  if (sourceStop && !to.operatorOpen()) to.openOperator();
 }
