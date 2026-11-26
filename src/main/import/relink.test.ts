@@ -7,6 +7,7 @@ import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { MediaRepo } from '../db/media';
 import { PresentationRepo } from '../db/presentations';
+import { MediaRemoval } from '../library/media-removal';
 import { parseFfmpegInfo } from '../convert/plan';
 import { MediaStore, type MediaStoreOptions } from './media-store';
 import { runRelink } from './relink';
@@ -189,5 +190,75 @@ describe('runRelink', () => {
     const { db, media, found } = setup();
     const run = await runRelink({ db, media, runId: randomUUID(), folder: found });
     expect(run.message).toBe('No media is missing.');
+  });
+});
+
+describe('Find… right after Delete… (QA24-WALLBLACK-3): a picture deleted from Media a moment ago, its file still kept for Undo', () => {
+  /** A picture imported from the chosen folder, a wallpaper's, then deleted from Media (its file kept until the next start). */
+  async function deleted() {
+    const t = setup();
+    const path = join(t.found, 'Placeholder wallpaper.png');
+    writeFileSync(path, 'placeholder wallpaper bytes');
+    const first = await t.media.importFile(path, { kind: 'media', path });
+    if (!('mediaId' in first)) throw new Error('not imported');
+    t.db.exec("INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder', 0)");
+    t.db
+      .prepare("INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, ?)")
+      .run(first.mediaId);
+    const was = t.db.prepare('SELECT path FROM media WHERE id = ?').get(first.mediaId) as { path: string };
+    expect(new MediaRemoval(t.db, { onScreens: () => new Set() }).remove([first.mediaId])).toEqual([
+      first.mediaId,
+    ]);
+    const row = () =>
+      t.db
+        .prepare('SELECT path, missing, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?')
+        .get(first.mediaId);
+    const pictures = () => t.db.prepare("SELECT media_id FROM wallpaper_pictures WHERE wallpaper_id = 'w'").all();
+    return { ...t, path, id: first.mediaId, was: was.path, row, pictures };
+  }
+
+  it('asked for by its id (its wallpaper’s Find…), it is looked for at once: found, back in the library as itself, its file the same', async () => {
+    const { db, media, found, id, was, row, pictures } = await deleted();
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: found, mediaIds: [id] });
+    expect(run.message).toBeNull();
+    expect(run.totals).toMatchObject({ imported: 1, failed: 0 });
+    expect(new ImportRepo(db).report(run.id)?.items.map((i) => [i.name, i.outcome, i.target?.id])).toEqual([
+      ['Placeholder wallpaper.png', 'imported', id],
+    ]);
+    expect(row()).toEqual({ path: was, missing: 0, deleted: 0 });
+    expect(pictures()).toEqual([{ media_id: id }]);
+  });
+
+  it('not in the folder chosen: said so, and it stays deleted with its file (Undo still brings it back)', async () => {
+    const { db, media, dir, id, was, row } = await deleted();
+    const elsewhere = join(dir, 'Elsewhere');
+    mkdirSync(elsewhere);
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: elsewhere, mediaIds: [id] });
+    expect(run.totals).toMatchObject({ imported: 0, failed: 1 });
+    expect(new ImportRepo(db).report(run.id)?.items[0]?.issues[0]?.message).toBe(
+      'Placeholder wallpaper.png is still missing.',
+    );
+    expect(row()).toEqual({ path: was, missing: 0, deleted: 1 });
+  });
+
+  it('another file of its name in the folder: not taken for it (its own is still kept), and it stays deleted', async () => {
+    const { db, media, dir, id, was, row } = await deleted();
+    const other = join(dir, 'Other');
+    mkdirSync(other);
+    writeFileSync(join(other, 'Placeholder wallpaper.png'), 'other placeholder bytes');
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: other, mediaIds: [id] });
+    expect(run.totals).toMatchObject({ imported: 0, failed: 1 });
+    expect(new ImportRepo(db).report(run.id)?.items[0]?.message).toBe(
+      'Placeholder wallpaper.png in that folder is a different file from the one deleted from Media.',
+    );
+    expect(row()).toEqual({ path: was, missing: 0, deleted: 1 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
+  });
+
+  it('a Find… of the whole library (no ids) leaves what was deleted alone, as before', async () => {
+    const { db, media, found, was, row } = await deleted();
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: found });
+    expect(run.message).toBe('No media is missing.');
+    expect(row()).toEqual({ path: was, missing: 0, deleted: 1 });
   });
 });
