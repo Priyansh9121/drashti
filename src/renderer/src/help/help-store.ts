@@ -66,19 +66,38 @@ export function altAfter(held: boolean, e: AltEvent): boolean {
 }
 
 /**
+ * Alt held on its own this long is a look at the keys, not a press of Alt: its letting go is taken (its default
+ * prevented). On Windows (and Linux) Electron shows the hidden menu bar and gives it the keyboard when Alt alone is let
+ * go and the page has not taken it, so after a look the next arrow key would go to the menu, not the show. A quick
+ * press still opens the menu bar, as the manual says.
+ */
+export const LOOK_MS = 500;
+
+/**
  * Follow Alt in `win` and keep its root saying when the buttons' keys are hidden (`data-keys-hidden`, help.css) until
  * the returned stop, which leaves the keys shown as before alpha.24. The operator window's status bar starts it, in Pro
- * and Simple Mode (before its first drawing, so no key shows and then goes); no other window does.
+ * and Simple Mode (before its first drawing, so no key shows and then goes); no other window does. `now` is the
+ * window's clock (a test's own).
  */
-export function connectKeyHints(win: Window): () => void {
+export function connectKeyHints(win: Window, now: () => number = () => performance.now()): () => void {
   const root = win.document.documentElement;
+  // When Alt began to be held on its own (null while it is not).
+  let since: number | null = null;
   const follow = (e: Event) => {
+    // A key's or a pointer's parts (a KeyboardEvent or a PointerEvent).
+    const parts: AltEvent = e;
     const was = useHelp.getState().alt;
-    const alt = altAfter(was, e);
+    const alt = altAfter(was, parts);
+    if (alt && since === null) since = now();
+    const look =
+      was && parts.type === 'keyup' && parts.key === 'Alt' && since !== null && now() - since >= LOOK_MS;
+    if (look) e.preventDefault();
+    if (!alt) since = null;
     if (alt !== was) useHelp.setState({ alt });
   };
   // The window losing the keyboard (Alt+Tab to another program): Alt's letting go goes there.
   const letGo = () => {
+    since = null;
     if (useHelp.getState().alt) useHelp.setState({ alt: false });
   };
   const say = (s: HelpState) => {
@@ -86,7 +105,7 @@ export function connectKeyHints(win: Window): () => void {
     else root.dataset['keysHidden'] = '';
   };
   const stop = new AbortController();
-  // Before anything else sees them (a dialog's own keys stop there), only read: nothing is taken.
+  // Before anything else sees them (a dialog's own keys stop there); only a look's letting go of Alt is taken.
   for (const kind of ['keydown', 'keyup', 'pointerdown', 'pointermove'])
     win.addEventListener(kind, follow, { capture: true, signal: stop.signal });
   win.addEventListener('blur', letGo, { signal: stop.signal });
