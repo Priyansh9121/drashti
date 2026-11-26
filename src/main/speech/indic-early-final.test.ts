@@ -4,7 +4,7 @@ import { DEFAULT_CAPTION_SETTINGS, type CaptionsShown } from '../../shared/capti
 import type { Heard } from '../../shared/speech';
 import { CaptionCoordinator } from './caption-coordinator';
 import { createCaptionFlow } from './caption-flow';
-import { createSpeechHub } from './hub';
+import { createSpeechHub, type SpeechEngine } from './hub';
 import { createIndicEngine } from './indic-engine';
 
 /*
@@ -85,11 +85,27 @@ function lateWordReply(samples: Int16Array): Reply {
   return { language: 'gu', words };
 }
 
+/** A word only an unpadded decode with 0.3-0.69 s of quiet after the speech hears (an early decode): it marks it. */
+const MARK = 'ચિહ્ન';
+function markedEarlyReply(samples: Int16Array): Reply {
+  const said = speechReply(samples);
+  const last = samples.findLastIndex((x) => x === LOUD);
+  const tail = samples.subarray(last + 1);
+  const quietAfterS = tail.length / RATE;
+  const lastWord = said.words.at(-1);
+  if (!tail.every((x) => x === 0) || quietAfterS < 0.3 || quietAfterS >= 0.7 || !lastWord) return said;
+  return { language: 'gu', words: [...said.words.slice(0, -1), { ...lastWord, w: MARK }] };
+}
+
 function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS, longestMs = 12_000) {
   let chunk: ((samples: Int16Array, endAt: number, startAt?: number) => void) | undefined;
   const decoded: Int16Array[] = [];
   const began: number[] = [];
-  const engine = createIndicEngine({
+  // Everything the engine passed on (the hub turns a second final for an id away with only a warning), and every
+  // warning, the engine's and the hub's: a test that sees two finals or a warning fails.
+  const raw: Heard[] = [];
+  const warns: string[] = [];
+  const inner = createIndicEngine({
     admission: 'below-show',
     threads: 2,
     timing: () => ({
@@ -112,7 +128,7 @@ function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS, long
         };
       },
     },
-    log: { info: () => undefined, warn: () => undefined },
+    log: { info: () => undefined, warn: (m) => warns.push(`engine: ${m}`) },
     open: () =>
       Promise.resolve({
         decode: (samples: Int16Array) => {
@@ -123,7 +139,21 @@ function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS, long
         close: () => undefined,
       }),
   });
-  const hub = createSpeechHub({ engine, log: { info: () => undefined, warn: () => undefined }, lingerMs: 0 });
+  const engine: SpeechEngine = {
+    start: (language, to) =>
+      inner.start(language, {
+        heard: (h) => {
+          raw.push(h);
+          to.heard(h);
+        },
+        state: (state) => to.state(state),
+      }),
+  };
+  const hub = createSpeechHub({
+    engine,
+    log: { info: () => undefined, warn: (m) => warns.push(m) },
+    lingerMs: 0,
+  });
   const shown: { at: number; captions: CaptionsShown | null }[] = [];
   const reviews: { at: number; review: CaptionReview }[] = [];
   const coordinator = new CaptionCoordinator({
@@ -147,7 +177,21 @@ function setup(reply: (samples: Int16Array) => Reply, decodeMs = DECODE_MS, long
     }
   };
   const lines = () => shown.filter((s) => s.captions !== null);
-  return { hub, heard, shown, reviews, lines, decoded, began, play, ready: () => chunk !== undefined };
+  const rawFinals = (): Heard[] => raw.filter((h) => h.final);
+  return {
+    hub,
+    heard,
+    raw,
+    rawFinals,
+    warns,
+    shown,
+    reviews,
+    lines,
+    decoded,
+    began,
+    play,
+    ready: () => chunk !== undefined,
+  };
 }
 
 describe('the early final: a phrase settled from one decode at 300 ms of quiet (QA24-CAPFAST-1)', () => {
@@ -168,6 +212,13 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
   afterEach(() => {
     vi.useRealTimers();
   });
+
+  /** Nothing turned away or warned, and one final per phrase (the hub would only warn at a second one). */
+  const clean = (t: ReturnType<typeof setup>): void => {
+    expect(t.warns).toEqual([]);
+    const ids = t.rawFinals().map((h) => h.id);
+    expect(ids).toEqual([...new Set(ids)]);
+  };
 
   /** A second of the room's quiet, then `speech` chunks, then `quiet` chunks of silence: when the speech ended. */
   const speak = async (t: ReturnType<typeof setup>, speech = 40, quiet = 25): Promise<number> => {
@@ -192,6 +243,7 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     expect(last.length).toBe(43 * 1_600);
     expect((t.began.at(-1) ?? 0) - speechEnd).toBe(300);
     expect(t.began.every((at) => at <= speechEnd + 300)).toBe(true);
+    clean(t);
   });
 
   it('its words are on the screens as soon as that decode answers (300 ms of quiet and one decode), unsettled until the pause ends, then settled without a change', async () => {
@@ -209,6 +261,7 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     expect((settled?.at ?? Infinity) - speechEnd).toBeLessThanOrEqual(700);
     const after = t.lines().filter((s) => s.at >= (first?.at ?? 0));
     for (const s of after) expect(s.captions?.lines.join(' ')).toBe(whole);
+    clean(t);
   });
 
   it('a speaker who goes on after a short pause (400 ms): that early decode is not the final; the phrase goes on and is settled whole at its real pause', async () => {
@@ -226,6 +279,7 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     // Settled from the decode at the second quiet's 300 ms, and at its pause.
     expect((finals[0]?.heardAt ?? Infinity) - speechEnd).toBeLessThanOrEqual(700);
     expect(t.decoded.at(-1)?.length).toBe((20 + 4 + 20 + 3) * 1_600);
+    clean(t);
   });
 
   it('a phrase that reaches the longest phrase without a pause is decoded whole at the limit, as before', async () => {
@@ -238,6 +292,7 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     // Its final decode is the whole first 6 s, as heard: no early decode stands in for it.
     const cutAt = t.decoded.find((d) => d.length === 60 * 1_600);
     expect(cutAt, 'the 6 s phrase was not decoded whole').toBeDefined();
+    clean(t);
   });
 
   it('a slow computer: the early decode still answering when the pause ends settles the phrase when it answers, never later than a decode after the pause', async () => {
@@ -250,6 +305,7 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     expect((finals[0]?.heardAt ?? Infinity) - speechEnd).toBeLessThan(700 + slow);
     const lastBegan = t.began.at(-1) ?? 0;
     expect(lastBegan - speechEnd).toBeLessThan(700);
+    clean(t);
   });
 
   it('a word heard in the quiet after the speech (begun after its last chunk of speech) is never kept, on the screens or in the final', async () => {
@@ -258,6 +314,7 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     const finals = t.heard.filter((h) => h.final);
     expect(finals.map((h) => h.text)).toEqual([WORDS.join(' ')]);
     for (const s of t.lines()) expect(s.captions?.lines.join(' ')).not.toContain(IN_THE_QUIET);
+    clean(t);
   });
 
   it('a word the helper places just after the last speech (its late frames, within a tenth of a second) is kept: it was said (CI: indic-captions.spec.ts)', async () => {
@@ -265,5 +322,51 @@ describe('the early final: a phrase settled from one decode at 300 ms of quiet (
     await speak(t);
     const finals = t.heard.filter((h) => h.final);
     expect(finals.map((h) => h.text)).toEqual([WORDS.join(' ')]);
+    clean(t);
+  });
+
+  it('shown at once (the owner: "Yes, show at once"): with no partial near the speech end (3.4 s of speech), the whole phrase is on the screens 300 ms of quiet and one decode after it, before the pause ends', async () => {
+    const t = setup(speechReply);
+    const speechEnd = await speak(t, 34);
+    const finals = t.rawFinals();
+    expect(finals).toHaveLength(1);
+    const whole = finals[0]?.text ?? '';
+    const first = t.lines().find((s) => s.captions?.lines.join(' ') === whole);
+    // Shown at once: +500 ms (300 ms of quiet and a 200 ms decode); shown only at the pause: +700; before: +900.
+    expect((first?.at ?? Infinity) - speechEnd).toBeLessThanOrEqual(300 + DECODE_MS);
+    clean(t);
+  });
+
+  it('the speaker goes on while the early decode is still decoding: that answer is never shown or settled, and the phrase is settled once, whole', async () => {
+    const t = setup(markedEarlyReply);
+    await vi.advanceTimersByTimeAsync(0);
+    await t.play(0, 10, HISS);
+    await t.play(20, 3); // two seconds of speech, 300 ms of quiet: the early decode is asked now (200 ms)
+    await t.play(20, 0); // the speaker goes on 100 ms later, while it decodes
+    const speechEnd = Date.now();
+    await t.play(0, 25);
+    // Before the speech ended, nothing the discarded answer heard reached the screens.
+    for (const s of t.lines().filter((x) => x.at < speechEnd))
+      expect(s.captions?.lines.join(' ')).not.toContain(MARK);
+    const finals = t.rawFinals();
+    expect(finals).toHaveLength(1);
+    expect(finals[0]?.id).toBe('s1');
+    clean(t);
+  });
+
+  it('a discarded early decode leaves the half-second rule for first words as it was: a speaker who goes on while it decodes has first words within the rule (cap-partials: every half second until they show)', async () => {
+    const t = setup(speechReply);
+    await vi.advanceTimersByTimeAsync(0);
+    await t.play(0, 10, HISS);
+    await t.play(6, 3); // 0.6 s of speech, 300 ms of quiet: the early decode is asked
+    const resumed = Date.now() + 100;
+    await t.play(20, 0); // the speaker goes on while it decodes
+    await t.play(0, 25);
+    const first = t.lines()[0];
+    expect(first, 'nothing reached the screens').toBeDefined();
+    // Within half a second of the early's start, one decode and a chunk: about 0.6 s (with the early's words marking
+    // the phrase as shown, the next partial waited the 1.5 s step: 1.6 s).
+    expect((first?.at ?? Infinity) - resumed).toBeLessThanOrEqual(800);
+    clean(t);
   });
 });
