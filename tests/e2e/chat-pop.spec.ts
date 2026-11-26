@@ -44,6 +44,10 @@ for (const simple of [false, true]) {
         .status,
     ).toBe(200);
     if (simple) {
+      // Sending follows alpha.23's existing Chat feature choice; the off-feature case below stays read-only.
+      expect(
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSimpleFeature('chat', true)),
+      ).toEqual({ ok: true, chosen: ['chat'] });
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
       await expect(win.getByTestId('simple-mode')).toHaveCount(1);
     }
