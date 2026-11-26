@@ -1,37 +1,102 @@
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { holdStill, launchApp, operatorPage, operatorReady } from './helpers';
 import { SCAN, writeFlows } from './sabha-flow-fixtures';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 import { expectFits } from './fit';
-import { setUpPlaceholderShow } from './placeholder-show';
+import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
+
+/** The operator page's globals, with the presses of 1 and 2 a test keeps (as function-keys.spec.ts keeps them). */
+type Pressed = typeof globalThis & { digitPresses?: KeyboardEvent[] };
+
+/**
+ * The operator window at CI's size, the placeholder show's kirtan up, and the scan's PDF chosen in the Sabha flow
+ * panel, its page drawn (with `playlist`, the placeholder playlist open in the middle first).
+ */
+async function chooseScan(
+  app: ElectronApplication,
+  scan: string,
+  options: { playlist?: boolean } = {},
+): Promise<{ win: Page; panel: Locator; input: Locator; region: Locator }> {
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  const { kirtanId } = await setUpPlaceholderShow(win, { video: false });
+  if (options.playlist) {
+    await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).first().click();
+    await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
+  }
+  await win.evaluate(async (id) => {
+    await (globalThis as PageGlobals).drashti.engine.dispatch({
+      type: 'goLive',
+      presentationId: id,
+      slideIndex: 0,
+    });
+  }, kirtanId);
+  await win.getByRole('button', { name: 'Sabha flow', exact: true }).click();
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
+  }, scan);
+  const panel = win.getByTestId('sabha-flow');
+  await panel.getByRole('button', { name: 'Choose PDF…' }).click();
+  const image = panel.getByTestId('flow-page');
+  await expect(image).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  const input = panel.getByRole('textbox', { name: 'Zoom', exact: true });
+  const region = panel.getByTestId('flow-pages');
+  return { win, panel, input, region };
+}
+
+/**
+ * The middle of the part of the PDF region actually visible through every clipping ancestor (the scan's region sits
+ * inside the panel body's own scroller at CI's size), and whether a press there lands on the region.
+ */
+function visiblePoint(
+  region: Locator,
+): Promise<{ x: number; y: number; width: number; height: number; hit: boolean }> {
+  return region.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    let left = Math.max(r.left, 0);
+    let right = Math.min(r.right, innerWidth);
+    let top = Math.max(r.top, 0);
+    let bottom = Math.min(r.bottom, innerHeight);
+    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      const clip = parent.getBoundingClientRect();
+      if (/(auto|scroll|hidden|clip)/u.test(style.overflowX)) {
+        left = Math.max(left, clip.left);
+        right = Math.min(right, clip.right);
+      }
+      if (/(auto|scroll|hidden|clip)/u.test(style.overflowY)) {
+        top = Math.max(top, clip.top);
+        bottom = Math.min(bottom, clip.bottom);
+      }
+    }
+    const x = (left + right) / 2;
+    const y = (top + bottom) / 2;
+    return {
+      x,
+      y,
+      width: right - left,
+      height: bottom - top,
+      hit: el.contains(document.elementFromPoint(x, y)),
+    };
+  });
+}
+
+/** The show as the engine keeps it: its revision and state. */
+const show = (win: Page) =>
+  win.evaluate(async () => {
+    const { rev, state } = await (globalThis as PageGlobals).drashti.engine.snapshot();
+    return { rev, state };
+  });
 
 test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI window size', async () => {
   const { scan } = await writeFlows({ scan: SCAN });
   const { app } = await launchApp();
   try {
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    await sizeOperatorWindow(app, win, CI_WINDOW);
-    const { kirtanId } = await setUpPlaceholderShow(win, { video: false });
-    await win.evaluate(async (id) => {
-      await (globalThis as PageGlobals).drashti.engine.dispatch({
-        type: 'goLive',
-        presentationId: id,
-        slideIndex: 0,
-      });
-    }, kirtanId);
-    await win.getByRole('button', { name: 'Sabha flow', exact: true }).click();
-    await app.evaluate(({ dialog }, path) => {
-      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
-    }, scan);
-    const panel = win.getByTestId('sabha-flow');
-    await panel.getByRole('button', { name: 'Choose PDF…' }).click();
-    const image = panel.getByTestId('flow-page');
-    await expect(image).toBeVisible({ timeout: 30_000 });
-    await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
-    const input = panel.getByRole('textbox', { name: 'Zoom', exact: true });
-    const region = panel.getByTestId('flow-pages');
+    const { win, panel, input, region } = await chooseScan(app, scan);
     const scroll = () => region.evaluate((el) => ({ x: el.scrollLeft, y: el.scrollTop }));
     await input.fill('130%');
     await input.press('Enter');
@@ -51,19 +116,14 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     await input.press('Escape');
     await expect(input).toHaveValue('200%');
     await expect(panel.getByRole('alert')).toHaveCount(0);
-    const show = () =>
-      win.evaluate(async () => {
-        const { rev, state } = await (globalThis as PageGlobals).drashti.engine.snapshot();
-        return { rev, state };
-      });
-    const before = await show();
+    const before = await show(win);
     expect(before.state.layers.slide).not.toBeNull();
     await input.focus();
     await input.press('ArrowRight');
     await input.press('Space');
     await input.press('b');
     await input.press('Escape');
-    expect(await show()).toEqual(before);
+    expect(await show(win)).toEqual(before);
     await input.fill('400');
     await input.press('Enter');
     await region.evaluate((el) => {
@@ -76,34 +136,7 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     if (!bounds) throw new Error('PDF region has no bounds');
     // The scan's PDF region sits inside the panel body's own scroller at this window size.
     // Hit the part actually visible through every clipping ancestor, not the full region's hidden centre.
-    const point = await region.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      let left = Math.max(r.left, 0);
-      let right = Math.min(r.right, innerWidth);
-      let top = Math.max(r.top, 0);
-      let bottom = Math.min(r.bottom, innerHeight);
-      for (let parent = el.parentElement; parent; parent = parent.parentElement) {
-        const style = getComputedStyle(parent);
-        const clip = parent.getBoundingClientRect();
-        if (/(auto|scroll|hidden|clip)/u.test(style.overflowX)) {
-          left = Math.max(left, clip.left);
-          right = Math.min(right, clip.right);
-        }
-        if (/(auto|scroll|hidden|clip)/u.test(style.overflowY)) {
-          top = Math.max(top, clip.top);
-          bottom = Math.min(bottom, clip.bottom);
-        }
-      }
-      const x = (left + right) / 2;
-      const y = (top + bottom) / 2;
-      return {
-        x,
-        y,
-        width: right - left,
-        height: bottom - top,
-        hit: el.contains(document.elementFromPoint(x, y)),
-      };
-    });
+    const point = await visiblePoint(region);
     expect(point.width).toBeGreaterThan(0);
     expect(point.height).toBeGreaterThan(0);
     expect(point.hit, 'The mouse must start on the visible PDF region').toBe(true);
@@ -165,6 +198,43 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     await panel.getByRole('button', { name: 'Fit to the panel' }).click();
     await expect(input).toHaveValue('100%');
     await expectFits(panel, 'PDF typed zoom at 1024 × 645');
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌘1 and ⌘2 (Ctrl+1 and Ctrl+2) typed in the Zoom box are the window’s, as in every field: taken, nothing typed, Audience and Stage stay on (S2-6)', async () => {
+  const { scan } = await writeFlows({ scan: SCAN });
+  const { app } = await launchApp();
+  try {
+    const { win, input } = await chooseScan(app, scan);
+    // Each press of 1 or 2, kept to read whether the window took it (its default prevented) once it has gone by.
+    await win.evaluate(() => {
+      const g = globalThis as Pressed;
+      g.digitPresses = [];
+      document.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key === '1' || e.key === '2') g.digitPresses?.push(e);
+        },
+        true,
+      );
+    });
+    const taken = () =>
+      win.evaluate(() => ((globalThis as Pressed).digitPresses ?? []).map((e) => e.defaultPrevented));
+    const bothOn = async () => {
+      const s = await win.evaluate(() => (globalThis as PageGlobals).drashti.screenSwitches.get());
+      return s.audience && s.stage;
+    };
+    expect(await bothOn()).toBe(true);
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await input.focus();
+    await win.keyboard.press(`${mod}+1`);
+    await win.keyboard.press(`${mod}+2`);
+    await expect(input).toHaveValue('100%');
+    await expect(input).toBeFocused();
+    await holdStill(bothOn, 1000, 'Mod+1 and Mod+2 in the Zoom box turn nothing off');
+    expect(await taken()).toEqual([true, true]);
   } finally {
     await app.close();
   }
