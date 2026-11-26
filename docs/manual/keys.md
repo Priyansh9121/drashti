@@ -4,7 +4,7 @@ Every show action has a key, so the show can be run from the keyboard alone. The
 
 ## The keys sheet
 
-**What it is.** **Help › Keyboard Shortcuts…**: every key, as your computer writes it. Pro Mode's; Simple Mode's buttons show their keys on them.
+**What it is.** **Help › Keyboard Shortcuts…**: every key, as your computer writes it. Pro Mode's. In both modes the buttons show their keys while **Help** is on in the status bar, or while you hold **Alt** (**Option** on a Mac).
 
 **When you would use it.** When you forget a key, or to learn them.
 

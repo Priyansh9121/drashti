@@ -18,15 +18,16 @@
 
 ## What is this?
 
-**What it is.** The small **?** on a panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar). It says in two or three sentences what the panel is for, in the panel's own space. **Open the manual** opens this manual at that panel's chapter.
+**What it is.** **Help**, in the status bar along the bottom, shows the small **?** on each panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar) and the keys on the buttons. Drashti starts with it off, so the window is calm, and remembers it on this computer. A **?** says in two or three sentences what the panel is for, in the panel's own space; **Open the manual** opens this manual at that panel's chapter. Without Help, hold **Alt** (**Option** on a Mac) to see the keys while you hold it.
 
-**When you would use it.** When you are not sure what a panel does.
+**When you would use it.** When you are not sure what a panel does, or which key a button has.
 
 **How:**
 
-1. Press the **?** on the panel's heading.
-2. Read its sentences under the heading.
+1. Press **Help** in the status bar. It stays pressed while it is on.
+2. Press the **?** on the panel's heading, and read its sentences under the heading.
 3. Press **Open the manual** to read more, or **Got it** to close them.
+4. Press **Help** again to put every **?** and key away.
 
 ![What is this? opened on the Messages panel](../screenshots/what-is-this.png)
 
