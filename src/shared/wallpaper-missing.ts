@@ -4,9 +4,10 @@ import type { Wallpaper } from './wallpapers';
 /*
  * A wallpaper whose pictures are gone from the library (QA24-WALLBLACK-1, the owner's "the wallpaper goes black"):
  * deleted from Media, or gone at a start after that, or never found. The screens leave such a picture out, as they
- * always have: with none of its pictures left, they show black whenever nothing is up, as with no wallpaper chosen
- * (render/NothingUp.tsx). The operator window says so, never a silent black: its tile, the Wallpapers panel (with
- * Find…, Find missing media… for those pictures) and LIVE.
+ * always have, and since alpha.24 one that needs conversion too (a HEIC photo not converted yet; bughunt S1-1): with
+ * none of its pictures left, they show black whenever nothing is up, as with no wallpaper chosen (render/NothingUp.tsx).
+ * The operator window says so, never a silent black: its tile, the Wallpapers panel (with Find…, Find missing media…
+ * for the missing pictures) and LIVE.
  */
 
 export interface WallpaperMissing {
@@ -81,7 +82,8 @@ export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): Wallpa
           : all.length === 1
             ? 'Convert picture'
             : 'Convert pictures',
-      notice: `${issue} ${advice}${missing} ${allUnavailable ? BLACK : 'Pictures needing conversion show black on their turns.'}`,
+      // Left out on the screens until converted, as a missing one is (bughunt S1-1: main/wallpapers/wallpaper-service.ts).
+      notice: `${issue} ${advice}${missing} ${allUnavailable ? BLACK : needsConversion.length === 1 ? 'The screens leave that picture out until it is converted, and the others go round.' : 'The screens leave those pictures out until they are converted, and the others go round.'}`,
       live: allUnavailable ? `${issue}${missing} ${LIVE_BLACK}` : null,
       find,
     };

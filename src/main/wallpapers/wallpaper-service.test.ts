@@ -147,9 +147,17 @@ describe('the wallpapers', () => {
     ]);
     expect(pushed.at(-1)).toMatchObject({ id, pictures: ['blue', 'green'] });
     // The others gone from the library too: nothing to go round, as a wallpaper whose pictures are all missing.
-    db.prepare("UPDATE media SET deleted_at = '2026-11-27T07:00:00.000Z' WHERE id IN ('blue', 'green')").run();
+    db.prepare(
+      "UPDATE media SET deleted_at = '2026-11-27T07:00:00.000Z' WHERE id IN ('blue', 'green')",
+    ).run();
     service.mediaChanged();
-    expect(pushed.at(-1)).toEqual({ id, name: 'Placeholder photo', pictures: [], secondsEach: 10, fadeMs: 1500 });
+    expect(pushed.at(-1)).toEqual({
+      id,
+      name: 'Placeholder photo',
+      pictures: [],
+      secondsEach: 10,
+      fadeMs: 1500,
+    });
     // Converted (the library says it plays now): on the screens from then on.
     db.prepare("UPDATE media SET playable = 1, format = NULL WHERE id = 'photo'").run();
     service.mediaChanged();
