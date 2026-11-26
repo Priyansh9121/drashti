@@ -289,8 +289,12 @@ describe('a converted original, added again anywhere (Session 51)', () => {
   it('repairs a wallpaper on a converted original at startup and keeps it for Undo', async () => {
     const db = library();
     db.exec(`
+      INSERT INTO media (id, kind, name, path, playable, format) VALUES
+        ('photo', 'image', 'Placeholder.heic', 'hh/photo.heic', 0, 'HEIC photo'),
+        ('photo-copy', 'image', 'Placeholder.png', 'ii/photo.png', 1, 'PNG picture');
+      INSERT INTO media_conversions (id, original_id, converted_id) VALUES ('cv-photo', 'photo', 'photo-copy');
       INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder wallpaper', 0);
-      INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, 'avi');
+      INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, 'photo');
     `);
     const picture = () =>
       db.prepare("SELECT media_id FROM wallpaper_pictures WHERE wallpaper_id = 'w'").get();
@@ -311,13 +315,13 @@ describe('a converted original, added again anywhere (Session 51)', () => {
     try {
       service.resumeWaiting();
       await until(() => changed > 0);
-      expect(picture()).toEqual({ media_id: 'mp4' });
-      const record = db.prepare("SELECT moved FROM media_conversions WHERE id = 'cv-avi'").get() as {
+      expect(picture()).toEqual({ media_id: 'photo-copy' });
+      const record = db.prepare("SELECT moved FROM media_conversions WHERE id = 'cv-photo'").get() as {
         moved: string;
       };
       expect(JSON.parse(record.moved)).toMatchObject({ wallpapers: ['w:0'] });
-      expect(service.undo('cv-avi')).toEqual({ ok: true });
-      expect(picture()).toEqual({ media_id: 'avi' });
+      expect(service.undo('cv-photo')).toEqual({ ok: true });
+      expect(picture()).toEqual({ media_id: 'photo' });
     } finally {
       service.close();
       db.close();
