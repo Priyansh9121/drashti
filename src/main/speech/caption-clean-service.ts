@@ -68,7 +68,7 @@ export interface CaptionCleanDeps {
   pickExport: (defaultName: string) => Promise<string | null>;
   /** The count changed: the operator window is told (a number, never a word). */
   changed: (count: CaptionCleanCount) => void;
-  /** The admin's list changed (red first: not called yet). */
+  /** The admin's list changed: the screens' video captions are drawn again with it. */
   listChanged?: () => void;
   log: { info(message: string): void; warn(message: string): void };
 }
@@ -100,11 +100,20 @@ export class CaptionCleanService {
   private leftOut = 0;
   /** The phrase being heard and how many it leaves out, counted once it is final or the next one starts. */
   private hearing: { id: string; left: number } | null = null;
-  /** The last caption the screens were given that had words left out, so a repaint is not counted again. */
+  /**
+   * The hash of the last caption the screens were given that had words left out, so a repaint is not counted again:
+   * never the caption itself (review F3).
+   */
   private lastShown = '';
   private on = false;
   private failedOnce = false;
   private readonly bad: CleanLookup;
+  /** Keys known not to be on Drashti's own list (a word is hashed once): never a listed one; at most 100,000. */
+  private readonly notOwn = new Set<string>();
+  /** The lists' version: a video's caption track is cleaned again when the admin's list changes. */
+  private version = 0;
+  /** Each video caption track as cleaned, while it and the lists are unchanged (the engine compares tracks by identity). */
+  private readonly tracks = new WeakMap<VideoCaptionTrack, { version: number; track: VideoCaptionTrack }>();
 
   constructor(private readonly deps: CaptionCleanDeps) {
     const own = deps.own ?? CAPTION_CLEAN_OWN;
@@ -114,8 +123,16 @@ export class CaptionCleanService {
     this.hash = deps.hash ?? captionCleanHash;
     this.list = parseCleanWords(deps.repo.get());
     this.adminKeys = keysOf(this.list.map((w) => w.word));
-    this.bad = (key) =>
-      key !== '' && (this.adminKeys.has(key) || this.testKeys.has(key) || this.own.has(this.hash(key)));
+    this.bad = (key) => key !== '' && (this.adminKeys.has(key) || this.testKeys.has(key) || this.ownHas(key));
+  }
+
+  /** Whether a key is on Drashti's own list, by its hash. */
+  private ownHas(key: string): boolean {
+    if (this.notOwn.has(key)) return false;
+    if (this.own.has(this.hash(key))) return true;
+    if (this.notOwn.size >= 100_000) this.notOwn.clear();
+    this.notOwn.add(key);
+    return false;
   }
 
   /** A phrase heard with the bad words left out (each other word as it came); as it came when none is. */
@@ -125,10 +142,15 @@ export class CaptionCleanService {
       cleaned = this.cleanHeard(h);
     } catch {
       this.failed();
-      return { ...h, words: [], text: '' };
+      return { ...h, final: false, words: [], text: '' };
     }
     this.countHeard(h, cleaned.left);
-    return cleaned.heard;
+    const out = cleaned.heard;
+    // A final phrase left with nothing goes on as an empty partial of its own id (review F4): the hub passes it on
+    // (a final phrase must have words), and what showed of it while it was heard comes off the screens.
+    return out.final && (out.words.length === 0 || out.text === '')
+      ? { ...out, final: false, words: [], text: '' }
+      : out;
   }
 
   private cleanHeard(h: Heard): { heard: Heard; left: number } {
@@ -153,29 +175,60 @@ export class CaptionCleanService {
   shown(captions: CaptionsShown | null): CaptionsShown | null {
     if (captions === null) return null;
     try {
-      const words: { line: number; text: string }[] = [];
-      captions.lines.forEach((line, i) => {
-        for (const text of line.split(/\s+/u)) if (text !== '') words.push({ line: i, text });
-      });
-      const cleaned = cleanWords(
-        words.map((w) => w.text),
-        this.bad,
-      );
+      const cleaned = this.cleanLines(captions.lines);
       if (cleaned.left === 0) return captions;
-      const lines: string[][] = captions.lines.map(() => []);
-      for (const { from, text } of cleaned.kept) lines[words[from]?.line ?? 0]?.push(text);
-      const kept = lines.map((l) => l.join(' ')).filter((l) => l !== '');
       this.countShown(captions, cleaned.left);
-      return kept.length === 0 ? null : { ...captions, lines: kept };
+      return cleaned.lines.length === 0 ? null : { ...captions, lines: cleaned.lines };
     } catch {
       this.failed();
       return null;
     }
   }
 
-  /** Red first (QA24-CAPCLEAN-1, the owner's "Yes, clean them too"): not written yet. */
+  /**
+   * A video's caption track (a file beside it, a YouTube download's automatic track among them) as the screens show
+   * it (the owner: "Yes, clean them too"): each cue with the words left out, its lines and times kept; a cue left with
+   * nothing is dropped, and a cue that cannot be checked is not shown. Never counted. The same object while the track
+   * and the lists are unchanged.
+   */
   track(track: VideoCaptionTrack | null): VideoCaptionTrack | null {
-    return track;
+    if (track === null) return null;
+    const known = this.tracks.get(track);
+    if (known?.version === this.version) return known.track;
+    let changed = false;
+    const cues = track.cues.flatMap((cue) => {
+      let text: string;
+      try {
+        const lines = cue.text.split(/\r\n|\n|\r/u);
+        const cleaned = this.cleanLines(lines);
+        text = cleaned.left === 0 ? cue.text : cleaned.lines.join('\n');
+      } catch {
+        this.failed();
+        text = '';
+      }
+      if (text === cue.text) return [cue];
+      changed = true;
+      return text === '' ? [] : [{ ...cue, text }];
+    });
+    const out = changed ? { ...track, cues } : track;
+    this.tracks.set(track, { version: this.version, track: out });
+    return out;
+  }
+
+  /** Lines with the bad words left out (an entry may run on from one line to the next); a line left empty goes. */
+  private cleanLines(lines: readonly string[]): { lines: string[]; left: number } {
+    const words: { line: number; text: string }[] = [];
+    lines.forEach((line, i) => {
+      for (const text of line.split(/\s+/u)) if (text !== '') words.push({ line: i, text });
+    });
+    const cleaned = cleanWords(
+      words.map((w) => w.text),
+      this.bad,
+    );
+    if (cleaned.left === 0) return { lines: [...lines], left: 0 };
+    const kept: string[][] = lines.map(() => []);
+    for (const { from, text } of cleaned.kept) kept[words[from]?.line ?? 0]?.push(text);
+    return { lines: kept.map((l) => l.join(' ')).filter((l) => l !== ''), left: cleaned.left };
   }
 
   /** Captions turned on or off on this computer: from nothing again each time they are turned on. */
@@ -256,6 +309,8 @@ export class CaptionCleanService {
     this.deps.repo.set(list);
     this.list = parseCleanWords(this.deps.repo.get());
     this.adminKeys = keysOf(this.list.map((w) => w.word));
+    this.version += 1;
+    this.deps.listChanged?.();
   }
 
   /** A phrase counts once: its last revision's words, when it is final or the next phrase starts. */
@@ -271,7 +326,7 @@ export class CaptionCleanService {
 
   /** A caption counts once however often the screens are given it again (a repaint, other line breaks). */
   private countShown(captions: CaptionsShown, left: number): void {
-    const key = `${captions.language}\n${captions.lines.join(' ')}`;
+    const key = captionCleanHash(`${captions.language}\n${captions.lines.join(' ')}`);
     if (key === this.lastShown) return;
     this.lastShown = key;
     this.add(left);

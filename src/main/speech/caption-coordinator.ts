@@ -264,10 +264,17 @@ export class CaptionCoordinator {
     return true;
   }
 
-  /** Red first (QA24-CAPCLEAN-1, review F4): not written yet. */
+  /**
+   * A phrase being heard that was left out whole (alpha.24, QA24-CAPCLEAN-1, review F4: every word of it was a word to
+   * leave out) comes off the screens while it is still provisional there, as Dismiss phrase takes a settled one off.
+   * Anything settled before it stays for the review. False when that phrase is not the one being heard.
+   */
   withdraw(phraseId: string): boolean {
-    void phraseId;
-    return false;
+    if (this.current?.phraseId !== phraseId || this.current.status !== 'provisional') return false;
+    this.current = null;
+    this.clear();
+    this.notify();
+    return true;
   }
 
   /** The eventual L8 consumer calls this before revoking work; no show action waits for cancellation. */

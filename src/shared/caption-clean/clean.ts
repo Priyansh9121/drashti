@@ -5,7 +5,8 @@ import { cleanKey, pieceOf } from './key';
  * do not show them"). A word on a list is simply left out: no asterisks, no dots. Whole words only, compared by
  * their keys (key.ts), so a clean word that holds a bad one is never cut; an entry of two or three words is left
  * out only as those words together, with nothing but spaces between them. A word whose part (between hyphens,
- * apostrophes or a slash) is a listed word is left out whole. The marks around a word go with it, but a sentence’s
+ * apostrophes, a slash, or a sentence’s marks with no space after them: review F1) is a listed word is left out
+ * whole. The marks around a word go with it, but a sentence’s
  * closing mark (. ? ! । ॥) moves onto the word before. Pure: the lists are the caller’s (CleanLookup), and nothing
  * here keeps or says a word.
  */
@@ -23,12 +24,12 @@ export interface CleanedWords {
   left: number;
 }
 
-const PARTS = /[-\u2010-\u2015'\u2018\u2019\u02bc/_]+/u;
+const PARTS = /[-\u2010-\u2015'\u2018\u2019\u02bc/_,;:.!?\u0964\u0965]+/u;
 const CLOSING = /[.?!\u0964\u0965]+$/u;
 /** A pause before a closing mark moved onto its word: the closing mark takes its place. */
 const PAUSE = /[,;:]+$/u;
 
-/** A word’s parts between hyphens, apostrophes or a slash, when it has more than one. */
+/** A word’s parts between hyphens, apostrophes, a slash or a sentence’s marks, when it has more than one. */
 const partsOf = (core: string): string[] => core.split(PARTS).filter((p) => p !== '');
 
 /** Which of these words are left out (true), and how many entries that was. */

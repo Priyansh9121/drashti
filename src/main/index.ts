@@ -534,6 +534,7 @@ import { CAPTION_HINTS_ON } from '../shared/caption-words';
 import { CaptionWordsService } from './speech/caption-words-service';
 import { CaptionCleanWordsRepo } from './db/caption-clean-words';
 import { CaptionCleanService } from './speech/caption-clean-service';
+import type { VideoCaptionTrack } from '../shared/video-captions';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
 import { registerVideoCaptionIpc } from './video-captions/ipc';
@@ -2103,6 +2104,9 @@ function start(): void {
    */
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
+  // Words left out of captions (alpha.24, the owner: "Yes, clean them too"): a video's caption track as the screens
+  // show it, by the words-left-out service made further down; no video captions show before it is there.
+  let cleanVideoCaptions: (track: VideoCaptionTrack | null) => VideoCaptionTrack | null = () => null;
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
   let proxySourceOf: (id: string) => string = (id) => id;
@@ -2201,7 +2205,7 @@ function start(): void {
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
         const sourceId = editedPlaying.sourceId(mediaId);
-        const original = videoCaptionsRepo.chosen(sourceId);
+        const original = cleanVideoCaptions(videoCaptionsRepo.chosen(sourceId));
         const rendition = editedPlaying.renditionOf(mediaId);
         const length = mediaLength(sourceId);
         const track =
@@ -4410,6 +4414,8 @@ function start(): void {
       return picked.canceled || !picked.filePath ? null : picked.filePath;
     },
     changed: (count) => sendToOperator(IPC.captionClean.changed, count),
+    // The admin's list changed: a video's captions on the screens are drawn again with it.
+    listChanged: () => engine.refreshVideoCaptions(),
     log,
   });
   // The seam's last half: every caption, today's, caption AI's or translated, with words left out just before the
@@ -4417,6 +4423,9 @@ function start(): void {
   const showCaptions = (shown: CaptionsShown | null): void => {
     engine.setCaptions(captionClean.shown(shown));
   };
+  // And a video's caption files (the owner: "Yes, clean them too"), cue by cue, where a track is read for the screens.
+  cleanVideoCaptions = (track) => captionClean.track(track);
+  engine.refreshVideoCaptions();
   const captionsEngineProblem =
     testSpeech !== undefined
       ? null

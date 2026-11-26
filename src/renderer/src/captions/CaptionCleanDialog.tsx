@@ -58,7 +58,7 @@ export function CaptionCleanSection({ listening }: { listening: SpeechLanguage |
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted">
-        Bad words are never shown in captions, in any language: they are left out.
+        Words on Drashti’s list or yours are never shown in captions, in any language: they are left out.
       </p>
       {leftOut !== null && (
         <p className="text-sm text-muted" data-testid="captions-left-out">
@@ -173,8 +173,9 @@ function CaptionCleanDialog({
     >
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Live captions and translated captions never show a bad word: on the screens, in the stream and its
-          recording, and in a sound recording’s caption draft, the word is simply left out.
+          Live captions, translated captions and a video’s caption files never show a word on Drashti’s list
+          or yours: on the screens, in the stream and its recording, and in a sound recording’s caption draft,
+          the word is left out.
         </p>
         {view && (
           <p className="text-sm text-muted" data-testid="caption-clean-own">
@@ -182,9 +183,9 @@ function CaptionCleanDialog({
           </p>
         )}
         <p className="text-sm text-muted">
-          Add any other words to leave out. A word is left out only as a whole word, in either Indian script
-          and in any spelling of its letters, so a longer word that holds it still shows. Add each ending of a
-          word that you want left out too.
+          Add any other words to leave out. A word is left out only as a whole word, in Gujarati or Devanagari
+          letters, with or without a nukta, and in Latin letters in any case, so a longer word that holds it
+          still shows. Add each ending of a word that you want left out too.
         </p>
         <Field label="Language">
           <Select
