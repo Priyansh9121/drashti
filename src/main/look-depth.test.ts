@@ -213,10 +213,10 @@ describe('B · Depth: styles/look-depth.css', () => {
     });
     const states = block(`${SCOPE} :is(body, [data-zone])`);
     expect(states).toMatchObject({
-      '--state-fill': 'var(--color-panel-2)',
+      '--state-fill': 'var(--color-panel-3)',
       // A section's row an opaque colour of its own (a 3 % lift of its column's panel): a fold's fading copy of the
       // section's insides is drawn on the first opaque colour round them (uimotion's ui/fold.ts), so the row's own.
-      '--state-row': 'color-mix(in srgb, var(--color-fg) 5%, var(--color-panel))',
+      '--state-row': 'color-mix(in srgb, var(--color-fg) 3%, var(--color-panel))',
     });
     for (const base of ['dark', 'light'] as const) {
       const look = block(`${SCOPE}[data-base='${base}']`);
@@ -338,6 +338,11 @@ describe('B · Depth: styles/look-depth.css', () => {
         expect(places['hover'], `${zone}: hover`).not.toBe(places['rest']);
         expect(places['press'], `${zone}: press`).not.toBe(places['hover']);
         expect(places['press'], `${zone}: press`).not.toBe(places['rest']);
+        // A pill stands off its column (lead 2's hands-on pass: 1.06–1.14:1 was too faint to see).
+        expect(
+          contrastRatio(places['rest'] ?? '', zones[zone].panel),
+          `${zone}: a pill off its column`,
+        ).toBeGreaterThanOrEqual(1.1);
       }
       expect(low).toEqual([]);
     });
