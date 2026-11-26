@@ -16,7 +16,10 @@ name: Release
 # builds and checks everything, reports what the gate finds, and keeps the files as an artifact for 7 days: a
 # dry run, which publishes nothing.
 #
-# MAC_SIGN_P12_BASE64 and MAC_SIGN_P12_PASSWORD are release environment secrets, read only by build-mac.
+# MAC_SIGN_P12_BASE64 and MAC_SIGN_P12_PASSWORD are release environment secrets, read only by build-mac's import
+# step (Drashti's own certificate, QA24-SIGN-1): both or neither (one alone fails the run). build-mac runs only on a
+# push or a manual run from main or release-dry-run, so a Release started from any other branch builds Windows
+# alone and goes no further (publish.sh dispatches from main; dry runs are pushes).
 # Other optional secrets go only to the packaging script; no signing secret is printed:
 #   MAC_CERT_P12, MAC_CERT_PASSWORD                       Developer ID Application certificate
 #   APPLE_API_KEY_P8, APPLE_API_KEY_ID, APPLE_API_ISSUER  App Store Connect key, for notarisation
@@ -110,6 +113,11 @@ jobs:
         run: node scripts/package-release.mjs
       - name: Check the signatures (when signed)
         run: node scripts/verify-signing.mjs
+      # The key goes as soon as the signatures are checked, before anything runs the packaged app or its bundled
+      # programs (the signing review, SHOULD 1); the last step below is the always-run safety net.
+      - name: Delete the signing key
+        if: always()
+        run: node scripts/mac-sign-keychain.mjs --delete-key
       - name: Each packaged app finds and runs its FFmpeg, yt-dlp, Deno, Whisper and video out
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Restart after a restore (packaged app)
