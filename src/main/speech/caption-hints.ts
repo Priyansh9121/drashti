@@ -1,4 +1,5 @@
 import { CAPTION_HINTS_ON, type CaptionWord } from '../../shared/caption-words';
+import { otherLetters } from '../../shared/language-letters';
 import { toDevanagari } from '../../shared/scripts';
 import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../shared/speech';
 
@@ -19,7 +20,9 @@ import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../shared/speech';
  *
  * None for "as heard" (the engine chooses the language phrase by phrase: one language's words would push the others'
  * spelling towards its letters), and none when the list has no words for the language: then nothing is sent.
- * Sanskrit's words go in Devanagari, as the engine writes Sanskrit (the screens show it in Gujarati letters).
+ * Sanskrit's words go in Devanagari, as the engine writes Sanskrit (the screens show it in Gujarati letters). An
+ * entry typed in other letters than its language's (a name in English letters under Gujarati) is never given
+ * (alpha.24, shared/language-letters.ts).
  */
 
 export const HINT_PROMPT_TOKENS = 220;
@@ -65,7 +68,9 @@ const bytesOf = (text: string): number => Buffer.byteLength(text, 'utf8');
 export function hintsOf(words: readonly CaptionWord[], language: SpeechLanguage | 'auto'): Hints {
   if (language === 'auto') return NONE;
   const mine = words
-    .filter((w) => w.language === language)
+    // Only entries in the language's own letters (review F2): with a language chosen, captions keep to its letters, so
+    // another's never shows, and in the prompt it would push the engine towards letters that are left out.
+    .filter((w) => w.language === language && otherLetters(w.word, language) === null)
     .slice(0, HINT_WORDS)
     .map((w) => (language === 'sa' ? toDevanagari(w.word) : w.word));
   if (mine.length === 0) return NONE;
