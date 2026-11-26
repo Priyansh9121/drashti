@@ -351,15 +351,16 @@ function quarterTime(hour: number, offset: number): string {
 /** A word of digits as a number: ASCII, or this language's own digits (one script in a word). */
 function digitsOf(word: string, zero: number): number | null {
   if (/^[0-9]{1,2}$/u.test(word)) return Number(word);
+  if (zero === 0) return null;
   let n = 0;
-  const chars = [...word];
-  if (chars.length < 1 || chars.length > 2 || zero === 0) return null;
-  for (const ch of chars) {
+  let count = 0;
+  for (const ch of word) {
     const d = (ch.codePointAt(0) ?? 0) - zero;
-    if (d < 0 || d > 9) return null;
+    count += 1;
+    if (d < 0 || d > 9 || count > 2) return null;
     n = n * 10 + d;
   }
-  return n;
+  return count > 0 ? n : null;
 }
 
 function wordsOf(text: string, lower: boolean): Word[] {
