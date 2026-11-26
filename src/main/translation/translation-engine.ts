@@ -210,6 +210,27 @@ export class TranslationEngine implements Translator {
     return run;
   }
 
+  /**
+   * Load a direction's model now (alpha.24: live captions, before the first phrase, so it is not late). Queued as a
+   * translation is; nothing is translated. Throws a HelperError with plain words when it cannot.
+   */
+  prepare(from: TranslationLanguage, to: TranslationLanguage): Promise<void> {
+    const generation = this.generation;
+    const { signal } = this.abort;
+    const stopped = (): boolean => generation !== this.generation;
+    const run = this.queue.then(async () => {
+      try {
+        await this.ready(routeFor(from, to), from, to, stopped, signal);
+        this.restartIdle();
+      } catch (error) {
+        if (stopped()) throw cancelled();
+        throw error;
+      }
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
   /** Stop what is under way and anything waiting (the helper ends: a careful search cannot stop mid-sentence). */
   cancel(): void {
     this.nextGeneration();
