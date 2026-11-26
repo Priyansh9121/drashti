@@ -4,13 +4,14 @@ import { describe, expect, it } from 'vitest';
 
 /*
  * Why a Mac installs an update by hand, as the Updates dialog and a node's window say it (QA24-SIGN-1, the signing
- * review's SHOULD 10, as src/main/update/installer.ts says it): true of an ad hoc copy and of one signed with
+ * review's SHOULD 10, as installer.ts beside this test says it): true of an ad hoc copy and of one signed with
  * Drashti's own certificate alike. Squirrel.Mac needs an Apple Developer ID, which neither has; the second is
  * signed, so never "not signed". Read from each window's source, its JSX text joined as React joins it (one space
  * where a line breaks).
  */
 
-const RENDERER = join(__dirname, '..');
+// Read here, in the main process's tests: a renderer's own tests may not use Node.
+const RENDERER = join(__dirname, '..', '..', 'renderer', 'src');
 const words = (file: string) => readFileSync(join(RENDERER, file), 'utf8').replace(/\s+/gu, ' ');
 
 describe('a Mac that installs an update by hand is told why, truly', () => {
