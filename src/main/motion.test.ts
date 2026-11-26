@@ -322,7 +322,7 @@ describe('motion in the interface is tokens', () => {
    */
   it('the sections’ controls that change the hall are show controls', () => {
     const HALL =
-      /type:\s*'(?:showMessage|hideMessage|startTimer|resetTimer|showAudienceTimer|hideAudienceTimer|setStageMessage|clearStageMessage|skip)'|counts \? 'pauseTimer'|dispatch\('(?:pauseMusic|resumeMusic|musicNext|musicPrevious)'\)|dispatch\((?:play|pause)Command\(|\bjump\(layer, m\.id\)|toggleInputOnAudience\(|onClick=\{show\}|\bshow\(r\)|Show the countdown|>\s*Show\s*<\/Button>/u;
+      /type:\s*'(?:showMessage|hideMessage|startTimer|resetTimer|showAudienceTimer|hideAudienceTimer|setStageMessage|clearStageMessage|skip|goVideoCue|cancelVideoCue|resetLiveZoom|moveTo|clearLayer)'|counts \? 'pauseTimer'|dispatch\('(?:pauseMusic|resumeMusic|musicNext|musicPrevious)'\)|dispatch\((?:play|pause)Command\(|\bjump\(layer, m\.id\)|toggleInputOnAudience\(|onClick=\{\(\) => by\(|onClick=\{show\}|\bshow\(r\)|Show the countdown|>\s*Show\s*<\/Button>/u;
     /** Each <Button …> or <IconButton …>: its opening tag, and with a Button's words up to </Button>. */
     const tags = (text: string) =>
       [...text.matchAll(/<(Button|IconButton)\b/gu)].map((m) => {
@@ -353,6 +353,17 @@ describe('motion in the interface is tokens', () => {
       [join('markers', 'PlayingBars.tsx')]: 2,
       [join('markers', 'MarkersDialog.tsx')]: 1,
       [join('operator', 'InputOnAudience.tsx')]: 1,
+      // The release lead's bug hunt of alpha.24's merged diff (S3-1): the cued video's Go and Cancel, the stage and
+      // audience timers' controls, the live picture's zoom (out, in, back), Resume at …, and the three notices' Take
+      // off / Clear buttons (a window, a stream link, a video input gone).
+      [join('operator', 'VideoCueStrip.tsx')]: 2,
+      [join('operator', 'StageTimerControls.tsx')]: 3,
+      [join('operator', 'AudienceTimerControls.tsx')]: 4,
+      [join('operator', 'LiveZoom.tsx')]: 3,
+      [join('markers', 'ResumeOffers.tsx')]: 1,
+      [join('live-window', 'LiveWindowNotice.tsx')]: 1,
+      [join('live-link', 'StreamLinkNotice.tsx')]: 1,
+      [join('video-inputs', 'VideoInputNotice.tsx')]: 1,
     };
     for (const [file, count] of Object.entries(FILES)) {
       const hall = tags(readFileSync(join(renderer, file), 'utf8')).filter((t) => HALL.test(t.all));
