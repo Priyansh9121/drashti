@@ -22,7 +22,7 @@ import {
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
 /** Gujarati placeholder phrases (coloured boxes and shapes), each a single line at Medium. */
-const GU_PHRASES = ['લીલું ખોખું ગોળ આકાર પાસે છે', 'વાદળી ખોખું ડાબી બાજુ છે'];
+const GU_PHRASES = ['લીલું ખોખું ગોળ આકાર પાસે છે', 'વાદળી ખોખું ડાબી બાજુ છે', 'બસ સવા આઠ વાગ્યે આવશે'];
 const MARK = '[Test placeholder gu/hi:';
 
 const roleOf = (p: Page) => p.getByTestId('output-root').getAttribute('data-role');
@@ -123,9 +123,23 @@ test('Captions in Hindi for a Gujarati speaker: the hall and the stream the tran
       // Never the speaker's words by themselves (2b, 2c): every band drawn there is the translation, or none.
       expect((await drawn()).filter((lines) => lines !== '' && !lines.startsWith(MARK))).toEqual([]);
     }
-    // The stage: the speaker's own words, never the translation.
+    // A time said in words is translated as digits (2e): the stand-in shows what reached the engine.
+    for (const drawn of [hall, stream])
+      await expect
+        .poll(
+          async () =>
+            (await drawn()).some((lines) => lines.startsWith(MARK) && lines.includes('8:15 વાગ્યે')),
+          {
+            timeout: 30_000,
+          },
+        )
+        .toBe(true);
+    // The stage: the speaker's own words, never the translation (its time as said).
     await expect.poll(async () => (await stage()).some(heardGujarati), { timeout: 30_000 }).toBe(true);
     expect((await stage()).filter((lines) => lines.includes(MARK))).toEqual([]);
+    await expect
+      .poll(async () => (await stage()).some((lines) => lines.includes('સવા આઠ')), { timeout: 30_000 })
+      .toBe(true);
     await expect(places.stream.getByTestId('captions')).toHaveAttribute('data-source', 'live');
     // Back to the speaker's own words: the hall shows the Gujarati phrases again, untranslated.
     await chooseMenuItem(app, 'caption-language-same');
