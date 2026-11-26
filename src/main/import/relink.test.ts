@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -66,6 +66,18 @@ describe('runRelink', () => {
       ) as unknown,
       fix: { kind: 'convert-media', mediaId: id },
     });
+  });
+
+  it('uses the filesystem’s equivalent filename spelling inside the chosen folder', async () => {
+    const { db, media, found } = setup();
+    const name = 'Placeholder caf\u00e9.png';
+    writeFileSync(join(found, name.normalize('NFD')), 'placeholder picture bytes');
+    // macOS accepts both Unicode spellings of this filename; filesystems that distinguish them must leave it missing.
+    const nativeAlias = existsSync(join(found, name));
+    const id = media.addMissing('/old/' + name, 'image', { kind: 'pp6', path: '/placeholder' });
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: found, mediaIds: [id] });
+    expect(run.totals).toMatchObject({ imported: nativeAlias ? 1 : 0, failed: nativeAlias ? 0 : 1 });
+    expect(media.missing().map((m) => m.id)).toEqual(nativeAlias ? [] : [id]);
   });
 
   it('only looks for the items asked for', async () => {
