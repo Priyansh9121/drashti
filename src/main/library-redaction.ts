@@ -22,8 +22,9 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 /*
  * A name of five letters or more is blanked wherever it is, inside other words too, as before alpha.24 (the owner's
- * QA24-DIAG-2: "Hide long names inside words (Recommended)"), and so is any name with a letter of Gujarati, Devanagari,
- * another Indic script or Hangul, however few its letters: those write compounds and endings joined (the review's G1). Letters are counted as a reader counts them (\p{L}): a
+ * QA24-DIAG-2: "Hide long names inside words (Recommended)"), and so is any name with a letter of a script that writes
+ * words joined (JOINED_SCRIPTS: the Indic scripts, Hangul, Han, kana, Thai, Lao, Khmer, Burmese), however few its
+ * letters (the review's G1 and R4-2). Letters are counted as a reader counts them (\p{L}): a
  * vowel sign or a virama is part of its letter, not one more ("નમસ્તે" has four), and the count is the same on every
  * computer (a grapheme count would follow the version of ICU, whose Indic conjunct rules changed in Unicode 15.1).
  *
@@ -44,10 +45,28 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
  *   see: there a name is blanked wherever it is.
  * A name that starts or ends with a character that is not of a word is blanked there whatever is beside it.
  */
-const UNSPACED =
-  /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Thai}\p{scx=Lao}\p{scx=Khmer}\p{scx=Myanmar}]$/u;
-const JOINED_ENDINGS =
-  /^[\p{sc=Devanagari}\p{sc=Bengali}\p{sc=Gurmukhi}\p{sc=Gujarati}\p{sc=Oriya}\p{sc=Tamil}\p{sc=Telugu}\p{sc=Kannada}\p{sc=Malayalam}\p{sc=Sinhala}\p{sc=Tibetan}\p{sc=Hangul}]$/u;
+/**
+ * The scripts that write words joined, the one list (round 4, R4-1): the Indic scripts and Hangul join endings and
+ * compounds to a word with no space; Han, kana, Thai, Lao, Khmer and Burmese use no spaces between words at all. A name
+ * with a letter of any of them is blanked wherever it is (G1, R4-2).
+ */
+const JOINED_SCRIPTS: readonly { property: string; noSpaces: boolean }[] = [
+  ...['Devanagari', 'Bengali', 'Gurmukhi', 'Gujarati', 'Oriya', 'Tamil', 'Telugu', 'Kannada', 'Malayalam']
+    .concat(['Sinhala', 'Tibetan', 'Hangul'])
+    .map((name) => ({ property: `sc=${name}`, noSpaces: false })),
+  ...['Han', 'Hiragana', 'Katakana', 'Thai', 'Lao', 'Khmer', 'Myanmar'].map((name) => ({
+    property: `scx=${name}`,
+    noSpaces: true,
+  })),
+];
+const classOf = (scripts: readonly { property: string }[]) =>
+  scripts.map(({ property }) => `\\p{${property}}`).join('');
+/** One character of a script written without spaces between words. */
+const UNSPACED = new RegExp(`^[${classOf(JOINED_SCRIPTS.filter((s) => s.noSpaces))}]$`, 'u');
+/** One character of any script that writes words joined. */
+const JOINED_ENDINGS = new RegExp(`^[${classOf(JOINED_SCRIPTS)}]$`, 'u');
+/** A name with any letter of such a script. */
+const JOINED_LETTER = new RegExp(`[${classOf(JOINED_SCRIPTS)}]`, 'u');
 const WORD_CHAR = /^[\p{L}\p{M}\p{N}\u200C\u200D]$/u;
 const DIGIT = /^\p{N}$/u;
 // Case is told by the text's own characters, never by a case-insensitive pattern (there \p{Lu} matches small letters).
@@ -164,9 +183,6 @@ const NAMES_AT_ONCE = 400;
 /** A name with this many letters or more is blanked inside other words too (QA24-DIAG-2). */
 const LONG_NAME_LETTERS = 5;
 const letterCount = (name: string): number => name.match(/\p{L}/gu)?.length ?? 0;
-/** A letter of a script whose words take joined endings and compounds (the review's G1: "સભા" inside "મહાસભા"). */
-const JOINED_LETTER =
-  /[\p{sc=Devanagari}\p{sc=Bengali}\p{sc=Gurmukhi}\p{sc=Gujarati}\p{sc=Oriya}\p{sc=Tamil}\p{sc=Telugu}\p{sc=Kannada}\p{sc=Malayalam}\p{sc=Sinhala}\p{sc=Tibetan}\p{sc=Hangul}]/u;
 /** Blanked inside other words too: five letters or more, or any letter of such a script, however few. */
 const isLong = (name: string): boolean => letterCount(name) >= LONG_NAME_LETTERS || JOINED_LETTER.test(name);
 
