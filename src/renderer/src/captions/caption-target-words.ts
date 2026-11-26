@@ -64,7 +64,32 @@ export const triedAgainOnChoosing = (reason: CaptionTranslationUnavailable | nul
  */
 export function captionTargetWhyNot(view: CaptionsStatus): string | null {
   const reason = captionTargetReason(view);
-  return reason === undefined ? null : unavailableText(reason);
+  if (reason === undefined) return null;
+  return captionsStoppedTooSlow(view, reason) ? CAPTIONS_STOPPED_TOO_SLOW : unavailableText(reason);
+}
+
+/**
+ * Too slow because live captions themselves stopped as too slow (review N3): captions are off, so choosing a language
+ * again cannot mend it; turning captions on again tries once more.
+ */
+const captionsStoppedTooSlow = (
+  view: CaptionsStatus,
+  reason: CaptionTranslationUnavailable | null,
+): boolean => reason === 'too-slow' && view.stopped !== null;
+export const CAPTIONS_STOPPED_TOO_SLOW =
+  'Live captions stopped on this computer as too slow, so they cannot be translated now. Turning captions on again tries once more.';
+
+/**
+ * The field's hint while a translation can be chosen: what it does, and why the speaker's own language is greyed out
+ * (review N7).
+ */
+export function captionTargetHint(view: CaptionsStatus): string {
+  const speaker = view.settings.language;
+  const own =
+    speaker === 'gu' || speaker === 'hi' || speaker === 'en'
+      ? ` ${LANGUAGE_NAMES[speaker]} is greyed out: it is the speaker’s own language.`
+      : '';
+  return `Translate the speaker’s words for the audience screens and the stream.${own}`;
 }
 
 /** Why this computer cannot translate now (null: no reason given), or undefined while it can. */
@@ -107,10 +132,12 @@ export function chosenUnavailableText(
   const speakers = t.unavailable === 'speaker-as-heard' || t.unavailable === 'speaker-sanskrit';
   if (speakers || translationTarget(view.settings.language, target) === null)
     return { tone: 'warning', text: why, retry: false };
+  // Choosing again tries once more after slowness or the engine's fault: Try again does so. Not while live captions
+  // themselves stopped as too slow (they are off: turning them on again tries once more).
+  const reason = captionTargetReason(view) ?? null;
   return {
     tone: 'danger',
-    // Choosing again tries once more after slowness or the engine's fault: Try again does so.
-    retry: triedAgainOnChoosing(captionTargetReason(view) ?? null),
+    retry: triedAgainOnChoosing(reason) && !captionsStoppedTooSlow(view, reason),
     text: `${why} Until then the audience screens and the stream show no captions, and the stage screens keep the speaker’s words. Choose Same as the speaker to show the speaker’s own words everywhere.`,
   };
 }
@@ -147,6 +174,7 @@ export function translationStatusLine(view: CaptionsStatus | null): string | nul
   if (t.offered) return null;
   const reason = shortReason(t.unavailable);
   if (reason !== null) return `Translated captions are off: ${reason}.`;
-  if (t.fault !== null) return `Translated captions are off: ${t.fault}`;
+  // Main's fault is a sentence of its own (review N5).
+  if (t.fault !== null) return `Translated captions are off. ${t.fault}`;
   return 'Translated captions are off on this computer.';
 }

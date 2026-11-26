@@ -9,6 +9,7 @@ import { Button } from '../ui/Button';
 import { Field, Select } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import {
+  captionTargetHint,
   captionTargetReason,
   captionTargetWhyNot,
   chosenTarget,
@@ -52,11 +53,7 @@ export function CaptionTargetField({
     <div className="space-y-2" data-testid="captions-target-section">
       <Field
         label="Captions in"
-        hint={
-          <span data-testid="captions-target-hint">
-            {whyNot ?? 'Translate the speaker’s words for the audience screens and the stream.'}
-          </span>
-        }
+        hint={<span data-testid="captions-target-hint">{whyNot ?? captionTargetHint(view)}</span>}
       >
         <Select
           data-testid="captions-target"
