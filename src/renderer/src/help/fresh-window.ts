@@ -16,7 +16,12 @@ export async function freshWindow(mode: OperatorMode, helpOn: boolean): Promise<
       kept.set(key, value);
     },
   };
-  vi.stubGlobal('window', { localStorage: storage, sessionStorage: storage });
+  // A page still loading (ui/motion.ts waits for it), its storage as above.
+  vi.stubGlobal(
+    'window',
+    Object.assign(new EventTarget(), { localStorage: storage, sessionStorage: storage }),
+  );
+  vi.stubGlobal('document', { readyState: 'loading', documentElement: { dataset: {} } });
   vi.doMock('../operator/mode-store', async (original) => {
     const { create } = await import('zustand');
     return { ...(await original<object>()), useMode: create(() => ({ mode })) };

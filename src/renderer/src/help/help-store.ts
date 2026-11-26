@@ -85,15 +85,15 @@ export function connectKeyHints(win: Window): () => void {
     if (keysShown(s)) delete root.dataset['keysHidden'];
     else root.dataset['keysHidden'] = '';
   };
-  const kinds = ['keydown', 'keyup', 'pointerdown', 'pointermove'] as const;
+  const stop = new AbortController();
   // Before anything else sees them (a dialog's own keys stop there), only read: nothing is taken.
-  for (const kind of kinds) win.addEventListener(kind, follow, true);
-  win.addEventListener('blur', letGo);
+  for (const kind of ['keydown', 'keyup', 'pointerdown', 'pointermove'])
+    win.addEventListener(kind, follow, { capture: true, signal: stop.signal });
+  win.addEventListener('blur', letGo, { signal: stop.signal });
   say(useHelp.getState());
   const unsubscribe = useHelp.subscribe(say);
   return () => {
-    for (const kind of kinds) win.removeEventListener(kind, follow, true);
-    win.removeEventListener('blur', letGo);
+    stop.abort();
     unsubscribe();
     if (useHelp.getState().alt) useHelp.setState({ alt: false });
     delete root.dataset['keysHidden'];
