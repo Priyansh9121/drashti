@@ -251,6 +251,37 @@ describe('LIVE shows one thing at a time (Session 56): a video going up takes th
     expect(covers(engine.current)).toEqual(OFF);
   });
 
+  // alpha.24 bug hunt S2-2: under a cover, a wrong row's click took it off, and Oops then showed the slide that was
+  // under it instead of the cover. Oops and Put it back put the screens back as they were, covers and all.
+  for (const [name, on, covered] of [
+    ['Black-out', { type: 'setBlackout', on: true }, BLACKOUT],
+    ['the Wallpaper', { type: 'setWallpaper', on: true }, WALLPAPER],
+  ] as const)
+    it(`Oops and Put it back put ${name} back as it was before the change they take back, the slide under it`, () => {
+      const { engine } = setup();
+      engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+      engine.dispatch(on);
+      const under = engine.current.layers.slide?.slide.id;
+      // A wrong row's click: the cover comes off and the hall sees that slide.
+      engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 2 });
+      expect(covers(engine.current)).toEqual(OFF);
+      // Oops: the cover is back as it was, the slide that was under it under it again.
+      expect(engine.dispatch({ type: 'oops' })).toMatchObject({ ok: true, changed: true });
+      expect(covers(engine.current)).toEqual(covered);
+      expect(engine.current.layers.slide?.slide.id).toBe(under);
+      // A message shown under the cover and taken back by Oops: the cover stays.
+      engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
+      expect(covers(engine.current)).toEqual(covered);
+      engine.dispatch({ type: 'oops' });
+      expect(engine.current.layers.messages).toEqual([]);
+      expect(covers(engine.current)).toEqual(covered);
+      // Clear all under the cover, then Put it back: the slide comes back still under it.
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ ok: true, changed: true });
+      expect(engine.current.layers.slide?.slide.id).toBe(under);
+      expect(covers(engine.current)).toEqual(covered);
+    });
+
   it('a slide with a video on it, and Play on a video waiting under a cover', () => {
     const { engine, cover } = setup();
     cover();
