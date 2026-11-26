@@ -507,7 +507,7 @@ import { FanoutTransport, type EngineTransport } from '../shared/engine/transpor
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
 import { CaptionCoordinator } from './speech/caption-coordinator';
-import { LiveTranslation } from './speech/live-translation';
+import { LiveTranslation, translationChoosable } from './speech/live-translation';
 import { normalizeSpokenTimes } from '../shared/spoken-times';
 import { ownModelCaptionAi } from './speech/caption-routes';
 import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
@@ -4523,6 +4523,9 @@ function start(): void {
     idleMs: 24 * 60 * 60_000,
   });
   const liveStandIn = !packaged() && sw('DRASHTI_TEST_TRANSLATE') === '1' ? new StandInTranslator() : null;
+  // Prepare translations' drafts stop when translated captions begin, and wait while they run (lead 2's decision a):
+  // set once its engine exists (further down).
+  let stopDraftsForLiveCaptions: () => void = () => undefined;
   const liveTranslation = new LiveTranslation({
     engine: liveStandIn
       ? {
@@ -4539,6 +4542,9 @@ function start(): void {
     log,
     changed: () => {
       captions.translationChanged();
+    },
+    onBegin: () => {
+      stopDraftsForLiveCaptions();
     },
   });
   const captionCoordinator = new CaptionCoordinator({
@@ -4605,7 +4611,7 @@ function start(): void {
       sendToOperator(IPC.captions.changed, view);
       // File › Speaker's Language ticks the language as it is (alpha.22), and File › Caption Language its choice and
       // whether a translation can be chosen here (alpha.24).
-      const captionLanguage = `${view.settings.captionLanguage ?? 'same'} ${String(view.translation?.offered ?? false)}`;
+      const captionLanguage = `${view.settings.captionLanguage ?? 'same'} ${String(view.translation ? translationChoosable(view.translation) : false)}`;
       if (view.settings.language !== speakerLanguageTicked || captionLanguage !== captionLanguageTicked) {
         speakerLanguageTicked = view.settings.language;
         captionLanguageTicked = captionLanguage;
@@ -6668,6 +6674,7 @@ function start(): void {
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
     onAir: translationOnAir,
+    liveCaptions: () => liveTranslation.running(),
     engine: testTranslate
       ? {
           installed: () => true,
@@ -6680,6 +6687,9 @@ function start(): void {
   });
   const stopTranslationOnAir = () => {
     if (translationOnAir()) translationEngine.cancel();
+  };
+  stopDraftsForLiveCaptions = () => {
+    translationEngine.cancel();
   };
   pdfReadWaits.add(stopTranslationOnAir);
   stops.add('translation engine', () => {
@@ -11069,7 +11079,8 @@ function start(): void {
     // File › Caption Language (alpha.24, QA24-CAPLANG-2): "Captions in", a translation only where it is offered here.
     captionLanguage: {
       target: captions.view().settings.captionLanguage ?? 'same',
-      offered: captions.view().translation?.offered ?? false,
+      // Where offered, or where choosing again mends it (too slow, the engine's fault: a24-review F3).
+      offered: ((t) => (t ? translationChoosable(t) : false))(captions.view().translation),
       choose: (target) => {
         if (mode === 'pro') captions.setSettings({ ...captions.view().settings, captionLanguage: target });
         rebuildMenu();

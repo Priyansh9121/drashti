@@ -559,6 +559,7 @@ export class CaptionsService {
     const before = this.settings();
     const languageChanged = s.language !== before.language;
     const targetChanged = this.translationTo(s) !== this.translationTo(before);
+    const longestBefore = this.liveTiming().longestMs;
     this.deps.repo.set(s);
     // A translation chosen (again): what stopped it for slowness or a fault is forgotten, and it is tried once more.
     if (this.translationTo(s) !== null) this.deps.translation?.retry();
@@ -569,8 +570,15 @@ export class CaptionsService {
     this.hub.setLanguage(s.language);
     // Caption AI follows the speaker's language at once (a language with its own model, or not).
     const switched = this.choosePath();
-    // Another translation target on the same path: a new session for the new pair (the coordinator keeps one pair).
-    if (targetChanged && !switched && !languageChanged && this.listening && this.paths?.usingAi() === true) {
+    const steady = !switched && !languageChanged && this.listening;
+    if (steady && this.liveTiming().longestMs !== longestBefore) {
+      // The 8 s phrases came or went (a24-review F4): the engines read the timing when they start, so a language's
+      // own model starts listening again (once; a new coordinator session with it). Today's engine gets this through
+      // the change of path.
+      this.hub.setOn(false);
+      this.hub.setOn(true);
+    } else if (steady && targetChanged && this.paths?.usingAi() === true) {
+      // Another translation target on the same path: a new session for the new pair (the coordinator keeps one pair).
       this.feed.stop();
       this.feed.start();
     }
@@ -618,6 +626,8 @@ export class CaptionsService {
     this.listening = true;
     this.hub.setOn(true);
     this.feed.start();
+    // Captions on again try translation again (a24-review F3): a stop for slowness or a fault is not kept for ever.
+    this.deps.translation?.retry();
     this.syncTranslation();
     await this.fetchModel();
   }

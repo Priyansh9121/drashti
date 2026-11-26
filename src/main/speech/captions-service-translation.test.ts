@@ -269,14 +269,15 @@ describe('"Captions in" in the captions service (alpha.24, QA24-CAPLANG-2)', () 
     const t = setup();
     t.choose({ language: 'gu', captionLanguage: 'hi' });
     await t.service.setOn(true);
-    expect(t.translation.retry).toHaveBeenCalledTimes(1);
-    t.choose({ captionLanguage: 'hi' });
+    // Chosen, then captions on (which try again too, a24-review F3).
     expect(t.translation.retry).toHaveBeenCalledTimes(2);
+    t.choose({ captionLanguage: 'hi' });
+    expect(t.translation.retry).toHaveBeenCalledTimes(3);
     // The same pair runs on: not begun again.
     expect(t.events).toEqual(['begin gu>hi']);
     // The speaker's own words: nothing to try.
     t.choose({ captionLanguage: 'same' });
-    expect(t.translation.retry).toHaveBeenCalledTimes(2);
+    expect(t.translation.retry).toHaveBeenCalledTimes(3);
     t.service.close();
   });
 
