@@ -32,12 +32,13 @@ import { plural } from '../../shared/text';
  * recording, or in a sound recording's caption draft. The word is simply left out.
  *
  * The seam (src/main/index.ts): every phrase heard passes heard() right after the caption words' spelling fixer,
- * before anything else sees it (today's captions, caption AI, the operator's correction panel, the draft); and every
- * caption passes shown() last, just before the screens (so a translation, after translating, and an operator's
- * correction too). Each word is checked against every language's words: Drashti's own list (hashes only:
- * shared/caption-clean/list.ts), the admin's own (the library, migration 094) and, in tests only, the test switch's
- * placeholder words. A caption that cannot be checked is not shown. The log says counts, never a word; the
- * operator window is told only how many words were left out since captions were turned on.
+ * before anything else sees it (today's captions, caption AI, the operator's correction panel, the draft); an operator's
+ * typed correction passes correction() where it comes in, before the coordinator and the live translator (the captions
+ * join, review S1); and every caption passes shown() last, just before the screens (so a translation, after
+ * translating, and an operator's correction too). Each word is checked against every language's words: Drashti's own
+ * list (hashes only: shared/caption-clean/list.ts), the admin's own (the library, migration 094) and, in tests only,
+ * the test switch's placeholder words. A caption that cannot be checked is not shown. The log says counts, never a
+ * word; the operator window is told only how many words were left out since captions were turned on.
  */
 
 export type CaptionCleanList = Readonly<Record<SpeechLanguage, readonly string[]>>;
@@ -178,6 +179,26 @@ export class CaptionCleanService {
     // The phrase's text as its words that stay; a partial with no words yet keeps its own text, cleaned.
     const shownText = h.words.length > 0 ? kept.map((w) => w.text).join(' ') : text.text;
     return { heard: { ...h, words: kept, text: shownText }, left };
+  }
+
+  /**
+   * An operator's typed correction (alpha.24 captions join, review S1) with the bad words left out as a heard phrase's
+   * are, before anything sees it: apply() (the coordinator) is given the cleaned text, so the live translator, the
+   * operator's review and every screen are too, and says whether it took it. A correction left with nothing is refused,
+   * as an empty one is, and so is one that cannot be checked. Its words left out count once, when it is applied.
+   */
+  correction(text: string, apply: (cleaned: string) => boolean): boolean {
+    let cleaned: { text: string; left: number };
+    try {
+      cleaned = cleanCaption(text, this.bad);
+    } catch {
+      this.failed();
+      return false;
+    }
+    if (cleaned.text.trim() === '') return false;
+    const applied = apply(cleaned.text);
+    if (applied) this.add(cleaned.left);
+    return applied;
   }
 
   /**
