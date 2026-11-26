@@ -77,7 +77,18 @@ export function boxWhere(box: PipLayer): string {
     : 'It is small in the box, over the show.';
 }
 
-/** Red first (the review's F2): not following yet. */
+/**
+ * The section's preview of the next box (QA24-PIPPREVIEW-1): the remembered place read now, and again each time the
+ * box comes off, since a box a phone or the API moved while it was up is remembered by the main process
+ * (main/engine/pip-places.ts) and this window hears nothing of it otherwise (the review's F2). Only reads. Returns how
+ * to stop (the section folded).
+ */
 export function followRememberedPlace(): () => void {
-  return () => undefined;
+  void rememberedPlace();
+  let wasUp = Boolean(useEngine.getState().state?.layers.pip);
+  return useEngine.subscribe((view) => {
+    const up = Boolean(view.state?.layers.pip);
+    if (wasUp && !up) void rememberedPlace();
+    wasUp = up;
+  });
 }

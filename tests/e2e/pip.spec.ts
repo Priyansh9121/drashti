@@ -744,12 +744,12 @@ test('black-out and the Wallpaper cover the box and take nothing off; LIVE drags
 const WALLPAPER_NOW = '[data-testid="wallpaper-picture"][data-wallpaper-role="current"]';
 const markWallpaper = (page: Page) =>
   page.evaluate((sel) => {
-    const el = document.querySelector(sel) as (Element & { kept?: boolean }) | null;
+    const el = document.querySelector<Element & { kept?: boolean }>(sel);
     if (el) el.kept = true;
   }, WALLPAPER_NOW);
 const wallpaperKept = (page: Page) =>
   page.evaluate(
-    (sel) => (document.querySelector(sel) as (Element & { kept?: boolean }) | null)?.kept ?? false,
+    (sel) => document.querySelector<Element & { kept?: boolean }>(sel)?.kept ?? false,
     WALLPAPER_NOW,
   );
 

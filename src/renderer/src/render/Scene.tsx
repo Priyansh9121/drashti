@@ -529,11 +529,10 @@ const SceneBody = memo(function SceneBody({
   // chosen wallpaper; black with none chosen).
   // Q60-51 (the owner's "never black", x52's A11): with the box up over a background whose first frame has not come,
   // what shows with nothing up stays under the box until it does; not with the box swapped into the background's
-  // place (its own picture is there).
+  // place (its own picture is there). QA24-WALLBLACK-2 (the owner's A, alpha.24): so does a box over nothing else, so
+  // the chosen wallpaper stays behind it as it comes and goes, never black.
   const nothingUp =
-    (background === null || nothingDrawnYet) &&
-    (layers.slide === null || !shown('slide')) &&
-    (up === null || (nothingDrawnYet && !up.swapped));
+    (background === null || nothingDrawnYet) && (layers.slide === null || !shown('slide')) && !up?.swapped;
   const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
   // Back to the Wallpaper (Clear background, a video's end, one that could not play coming off; Q60-31 (3), the
   // lead's): the Wallpaper's picture is read again as it comes back, and the screen showed black meanwhile. Now what the

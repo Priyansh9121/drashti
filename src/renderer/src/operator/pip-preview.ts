@@ -50,7 +50,7 @@ export interface PreviewBehind {
   slide: SlideLayer | null;
   /** The slide in the box, when it holds the slides (null with no slide up). */
   boxSlide: SlideLayer | null;
-  /** With neither a background nor a slide on the main picture: the wallpaper chosen, else black. */
+  /** With neither a background nor a slide up: the wallpaper chosen, else black (null: something is up). */
   nothing: 'wallpaper' | 'black' | null;
   /** Black-out or the Wallpaper over the screens now: the box shows once it is off. */
   covered: 'blackout' | 'wallpaper' | null;
@@ -70,9 +70,11 @@ export function previewBehind(
   const background = state && shown('background') ? state.layers.background : null;
   const slideUp = state && shown('slide') ? state.layers.slide : null;
   const slide = holdsSlides ? null : slideUp;
-  // Nothing on the main picture: what the screens show with nothing up (black before the state is read).
+  // Neither a background nor a slide up (render/Scene.tsx's nothing-up): behind a box as it goes up, unswapped, what
+  // the screens show with nothing up (QA24-WALLBLACK-2, the owner's A: the chosen wallpaper, else black). A slide up
+  // in the box counts as something up there, so the main picture is black behind it, as the screens draw it.
   let nothing: PreviewBehind['nothing'] = null;
-  if (background === null && slide === null) nothing = state ? nothingUpShows(state) : 'black';
+  if (background === null && slideUp === null) nothing = state ? nothingUpShows(state) : 'black';
   return {
     background,
     slide,
@@ -156,7 +158,7 @@ export function previewWords(
   const first = [where(place), PIP_SIZE_NAMES[place.size].label, looks(place), ...(held ? [held] : [])];
   const sentences = [`${LEADS[lead]}: ${first.join(', ')}, ${behindWords(behind)}.`];
   if (namesLive(source, behind))
-    sentences.push('The preview opens no camera and captures no window: they show here by name.');
+    sentences.push('The preview opens no camera, window or stream link: they show here by name.');
   if (behind.covered === 'blackout')
     sentences.push('Black-out is on now: the screens show the box once it is off.');
   if (behind.covered === 'wallpaper')

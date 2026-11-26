@@ -26,7 +26,7 @@ import {
   type PreviewSource,
   previewWords,
 } from './pip-preview';
-import { boxName, rememberedPlace, usePipPlace } from './pip-store';
+import { boxName, followRememberedPlace, usePipPlace } from './pip-store';
 
 /*
  * Picture in Picture's preview (QA24-PIPPREVIEW-1, the owner, 26 Nov 2026: "in picture in picture, add a preview to see
@@ -312,16 +312,14 @@ export function PipPreview({
 
 /**
  * The section's preview, under LIVE: the box up now where the screens have it, with what is in it; with none up,
- * where the next box goes and how it looks, as the library remembers it (read as the section opens, and kept as the
- * dialog or a drag in LIVE changes it: pip-store.ts).
+ * where the next box goes and how it looks, as the library remembers it (read as the section opens and each time the
+ * box comes off, and kept as the dialog or a drag in LIVE changes it: pip-store.ts).
  */
 export function PipSectionPreview() {
   const { state, look, canvas, scaling, languages } = useShown();
   const media = useMedia((s) => s.media);
   const remembered = usePipPlace((s) => s.place);
-  useEffect(() => {
-    void rememberedPlace();
-  }, []);
+  useEffect(() => followRememberedPlace(), []);
   const box = state?.layers.pip ?? null;
   let source: PreviewSource = { kind: 'none' };
   if (box?.source.kind === 'slides') source = { kind: 'slides' };
