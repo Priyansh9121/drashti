@@ -6,7 +6,7 @@ import type { PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlist
 import type * as RemoteStore from './remote-store';
 
 const feed = vi.hoisted(() => ({
-  changed: [] as ((what: NetworkChange) => void)[],
+  changed: [] as ((what: NetworkChange, ids?: readonly string[]) => void)[],
   online: [] as (() => void)[],
 }));
 vi.mock('../feed', () => ({
@@ -14,7 +14,7 @@ vi.mock('../feed', () => ({
     feed.online.push(listener);
     return () => undefined;
   },
-  onListsChanged: (listener: (what: NetworkChange) => void) => {
+  onListsChanged: (listener: (what: NetworkChange, ids?: readonly string[]) => void) => {
     feed.changed.push(listener);
     return () => undefined;
   },
@@ -34,8 +34,9 @@ const answer = (mode: RemoteSimple | null, groupId = 'hall') =>
     }),
     { headers: { 'Content-Type': 'application/json' } },
   );
-const changed = (what: NetworkChange) => {
-  for (const listener of feed.changed) listener(what);
+/** Drashti's hint that a list changed; for the library, the presentations it names (left out: any may have). */
+const changed = (what: NetworkChange, ids?: readonly string[]) => {
+  for (const listener of feed.changed) listener(what, ids);
 };
 /** The feed connected (its welcome): each new connection, the first and every one after a drop. */
 const online = () => {
@@ -425,6 +426,81 @@ describe('the phone’s open playlist', () => {
     expect(forgets, 'the decks let go (each a read of every deck row)').toBeLessThanOrEqual(3);
     // And it does catch up: the last change read.
     expect(count((u) => u === '/api/v1/playlists')).toBeGreaterThanOrEqual(1);
+  });
+
+  it('a library change that names its presentations reads again only those of the rows and the slides shown (QA24-PHONE-C)', async () => {
+    // a23-review-phonelows LOW-C: each library change let go of every deck row, so the Playlist read them all again
+    // (about 2 reads a second a row while the operator edited a kirtan). Drashti names what changed when it can.
+    const tools = await import('./phone-tools-store');
+    const rows: PlaylistItemInfo[] = ['deck-1', 'deck-2', 'deck-3'].map((id) => ({
+      ...DECK_ROW,
+      id: `i-${id}`,
+      presentationId: id,
+      presentationName: `Placeholder ${id}`,
+    }));
+    fetcher.mockImplementation((url) => {
+      const path = typeof url === 'string' ? url : '';
+      if (path === '/api/v1/hall') return Promise.resolve(answer(null));
+      if (path === '/api/v1/playlists')
+        return Promise.resolve(json({ ok: true, playlists: [playlist('one')] }));
+      if (path.endsWith('/items')) return Promise.resolve(json({ ok: true, items: rows }));
+      const deck = /^\/api\/v1\/presentations\/([^/]+)$/.exec(path);
+      if (deck?.[1]) return Promise.resolve(json({ ok: true, presentation: { id: decodeURIComponent(deck[1]) } }));
+      return new Promise<Response>((resolve) => replies.push(resolve));
+    });
+    changed('mode');
+    await vi.waitFor(() => expect(remote.useRemote.getState().hall).not.toBeNull());
+    // The Playlist tab reads its rows' decks again each time the decks change (PlaylistTab.tsx's effect).
+    tools.usePhoneTools.subscribe(() => {
+      tools.readDocsFor(rows);
+    });
+    tools.readDocsFor(rows);
+    remote.view({ presentationId: 'deck-1', item: null });
+    await vi.waitFor(() => expect(tools.usePhoneTools.getState().docs.size).toBe(3));
+    await settle();
+    const deckReads = () => askedPaths().filter((u) => u.startsWith('/api/v1/presentations/'));
+    const rowsRead = () => askedPaths().filter((u) => u.endsWith('/items')).length;
+    const step = async (ids?: readonly string[]) => {
+      // A refresh at most each LIST_REFRESH_GAP_MS: each step its own.
+      await new Promise((resolve) => setTimeout(resolve, remote.LIST_REFRESH_GAP_MS));
+      fetcher.mockClear();
+      changed('presentations', ids);
+      await vi.waitFor(() => expect(rowsRead()).toBe(1));
+      await settle();
+      return deckReads().sort();
+    };
+
+    // A kirtan's words edited: no deck of the rows and not the slides shown, so no deck is read again.
+    expect(await step(['kirtan'])).toEqual([]);
+    expect(tools.usePhoneTools.getState().docs.size).toBe(3);
+    // One PDF of the rows changed: that one read again, once.
+    expect(await step(['deck-2'])).toEqual(['/api/v1/presentations/deck-2']);
+    // The PDF whose slides are shown: its row and the slides shown, each read once.
+    expect(await step(['deck-1'])).toEqual(['/api/v1/presentations/deck-1', '/api/v1/presentations/deck-1']);
+    // A change Drashti does not name: every row and the slides shown read again, as before.
+    expect(await step()).toEqual([
+      '/api/v1/presentations/deck-1',
+      '/api/v1/presentations/deck-1',
+      '/api/v1/presentations/deck-2',
+      '/api/v1/presentations/deck-3',
+    ]);
+    expect(tools.usePhoneTools.getState().docs.size).toBe(3);
+  });
+
+  it('a deck read on its way when that deck alone is let go never puts its old answer back (QA24-PHONE-C, as LOW-5)', async () => {
+    const tools = await import('./phone-tools-store');
+    await proHall();
+    tools.readDocsFor([DECK_ROW]);
+    expect(askedPaths().at(-1)).toBe('/api/v1/presentations/deck');
+    const onItsWay = replies.at(-1);
+    if (!onItsWay) throw new Error('no deck read on its way');
+    tools.usePhoneTools.setState({ docs: new Map([['other', null]]) });
+    tools.forgetDocs(['deck']);
+    onItsWay(json({ ok: true, presentation: { id: 'deck', name: 'Placeholder deck as it was' } }));
+    await settle();
+    expect(tools.usePhoneTools.getState().docs.has('deck')).toBe(false);
+    // Another presentation's deck is kept.
+    expect(tools.usePhoneTools.getState().docs.has('other')).toBe(true);
   });
 
   it('clears the previous playlist’s rows while reading the next one', async () => {
