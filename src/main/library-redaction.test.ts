@@ -45,21 +45,57 @@ describe('a library name is blanked only where it is the name', () => {
     expect(redactNames('C:\\Placeholder\\Sabha 2026\\a.mp4 and Sabha 2026.mp4', ['Sabha 2026'])).toBe(
       `C:\\Placeholder\\${B}\\a.mp4 and ${B}.mp4`,
     );
+    // Digits after its digits make another number, and a capital before its capital one word ("ASabha"): left. A letter
+    // after its digit starts another word (the review's F1, stricter than before: "Sabha 2026a" is blanked).
     expect(redactNames('Sabha 20261 and Sabha 2026a and ASabha 2026', ['Sabha 2026'])).toBe(
-      'Sabha 20261 and Sabha 2026a and ASabha 2026',
+      `Sabha 20261 and ${B}a and ASabha 2026`,
     );
     // Underscores join a file name's words but are not letters: the name between them is blanked.
     expect(redactNames('placeholder_new_deck.mp4', ['new'])).toBe(`placeholder_${B}_deck.mp4`);
   });
 
-  it('a Gujarati or Devanagari name leaves the words it is part of, vowel signs included', () => {
-    // "નવી" inside "નવીન"; "નવ" before the vowel sign of "નવી"; "નયા"-like Devanagari likewise.
-    expect(redactNames('નવીન રીતે, નવી સભા', ['નવી'])).toBe(`નવીન રીતે, ${B} સભા`);
-    expect(redactNames('નવી અને નવ.', ['નવ'])).toBe(`નવી અને ${B}.`);
-    expect(redactNames('नयापन, नया (नया)', ['नया'])).toBe(`नयापन, ${B} (${B})`);
-    expect(redactNames('नया नय', ['नय'])).toBe(`नया ${B}`);
-    // A name joined to the next letter by a zero-width non-joiner is inside that word.
-    expect(redactNames('नय\u200Cा and नय', ['नय'])).toBe(`नय\u200Cा and ${B}`);
+  it('a name joined to other letters, digits or escapes is blanked where its word starts or ends there (F1, F2)', () => {
+    // A change between letters and digits, and a small letter before a capital, end a word: file and folder names.
+    expect(
+      redactNames('~/Movies/EveningSabha.mp4, SabhaHighlights, Sabha2026.mp4, 2026Sabha and Sabha 20261', [
+        'Sabha',
+      ]),
+    ).toBe(`~/Movies/Evening${B}.mp4, ${B}Highlights, ${B}2026.mp4, 2026${B} and ${B} 20261`);
+    expect(redactNames('sabhaHighlights, eveningSabha', ['sabha'])).toBe(`${B}Highlights, evening${B}`);
+    // A separator written as an escape just before it: a URL's %20 or %2F, JSON's \n, \t or \r.
+    // (A capital after %2F, or a small letter after %2f or \\n, would otherwise carry its word on.)
+    expect(redactNames('file:///x/Evening%20Sabha.mp4 x%2FSabha x%2fsabha x%2Asabha', ['Sabha'])).toBe(
+      `file:///x/Evening%20${B}.mp4 x%2F${B} x%2f${B} x%2A${B}`,
+    );
+    expect(redactNames('{"detail":"Verse 1\\nSabha\\nsabha\\tsabha\\rsabha"}', ['Sabha'])).toBe(
+      `{"detail":"Verse 1\\n${B}\\n${B}\\t${B}\\r${B}"}`,
+    );
+    // The owner's case stays: letters of one case and one script are one word.
+    expect(redactNames('the newest, renewed, NEWEST', ['new'])).toBe('the newest, renewed, NEWEST');
+    expect(redactNames('ASabha and Sabhas', ['Sabha'])).toBe('ASabha and Sabhas');
+  });
+
+  it('a change of script with no space between ends a word', () => {
+    expect(redactNames('Sabhaસભા', ['Sabha'])).toBe(`${B}સભા`);
+    expect(redactNames('Sabhaસભા', ['સભા'])).toBe(`Sabha${B}`);
+    expect(redactNames('नमस्तेSabha', ['Sabha'])).toBe(`नमस्ते${B}`);
+  });
+
+  it('in Gujarati, Devanagari, Tamil, Korean and the like a name is blanked where a word starts, whatever ending follows (D1 A)', () => {
+    // Their endings are written joined to the word ("સભા" + "માં"), so only the word's start is looked at.
+    expect(redactNames('સભામાં, સભાનો; સભા૨૦૨૬, ૨૦૨૬સભા; મહાસભા', ['સભા'])).toBe(
+      `${B}માં, ${B}નો; ${B}૨૦૨૬, ૨૦૨૬${B}; મહાસભા`,
+    );
+    expect(redactNames('सभाओं में, सभा। महासभा', ['सभा'])).toBe(`${B}ओं में, ${B}। महासभा`);
+    expect(redactNames('சபையில் வந்தனர்', ['சபை'])).toBe(`${B}யில் வந்தனர்`);
+    expect(redactNames('안녕하세요, 안녕', ['안녕'])).toBe(`${B}하세요, ${B}`);
+    // Vowel signs and viramas belong to their word: a name is never blanked inside one.
+    expect(redactNames('નવી અને નવ.', ['વી'])).toBe('નવી અને નવ.');
+    expect(redactNames('नया नय', ['या'])).toBe('नया नय');
+    // The cost, accepted by lead 2: another word that starts with the name is blanked there ("નવી" in "નવીન").
+    expect(redactNames('નવીન રીતે, નવી સભા', ['નવી'])).toBe(`${B}ન રીતે, ${B} સભા`);
+    // A name joined to the next letter by a zero-width joiner is blanked at its word's start too.
+    expect(redactNames('नय\u200Cा and नय\u200D', ['नय'])).toBe(`${B}\u200Cा and ${B}\u200D`);
   });
 
   it('in scripts written without spaces a name is blanked wherever it is', () => {
