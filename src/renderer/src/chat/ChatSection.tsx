@@ -294,6 +294,8 @@ function Messages({ view }: { view: ChatOperatorView }) {
 export interface ChatContentsProps {
   view: ChatOperatorView | null;
   operateOnly: boolean;
+  /** Sending follows the existing Simple Mode Chat feature choice. */
+  canSend?: boolean;
   /** The phones' network is on and listening. */
   networkOn: boolean;
   error: string | null;

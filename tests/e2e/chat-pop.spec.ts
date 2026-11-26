@@ -115,3 +115,41 @@ for (const simple of [false, true]) {
     await app.close();
   });
 }
+
+test('Simple popup with Chat not chosen opens a read-only section and preserves the send guard', async () => {
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const { port } = await networkOn(win);
+  const token = await pairToken(win, port, 'remote', 'Placeholder phone');
+  expect(
+    (await apiCall(port, CHAT_API.name, { method: 'POST', token, body: { name: 'Placeholder Sender' } }))
+      .status,
+  ).toBe(200);
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toHaveCount(1);
+  await expect(win.getByTestId('section-chat')).toHaveCount(0);
+  expect(
+    (
+      await apiCall(port, CHAT_API.send, {
+        method: 'POST',
+        token,
+        body: { text: 'Placeholder read-only message' },
+      })
+    ).status,
+  ).toBe(200);
+  await expect(win.getByTestId('chat-pop')).toBeVisible();
+  await win.getByTestId('chat-pop-open').click();
+  await expect(win.getByTestId('group-chat-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(win.getByTestId('chat-contents')).toContainText('Placeholder read-only message');
+  await expect(win.getByTestId('chat-contents')).toContainText(
+    'To reply here, choose Chat in Pro Mode’s Simple Mode Features.',
+  );
+  await expect(win.getByTestId('chat-composer')).toHaveCount(0);
+  const refused = await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.chat.send('Placeholder refused reply'),
+  );
+  expect(refused.ok).toBe(false);
+  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simpleFeatures())).toEqual([]);
+  await app.close();
+});

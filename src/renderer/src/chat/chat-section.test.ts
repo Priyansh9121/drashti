@@ -144,3 +144,22 @@ describe('the Chat section’s open part', () => {
     expect(simple).not.toContain('turn on');
   });
 });
+
+describe('a popup opens Chat while its Simple Mode feature is off', () => {
+  it('reads the messages but offers no composer whose send Main would refuse', () => {
+    const html = render({ operateOnly: true, canSend: false });
+    expect(html).toContain('Placeholder secret words');
+    expect(html).toContain('To reply here, choose Chat in Pro Mode’s Simple Mode Features.');
+    expect(html).not.toContain('data-testid="chat-composer"');
+    expect(html).not.toContain('data-testid="chat-send"');
+    // Existing Simple Mode rules for removing a chat-only phone stay as they are.
+    expect(html.match(/data-testid="chat-remove-person"/g)).toHaveLength(1);
+  });
+
+  it('with Chat chosen, keeps the composer and sending as before', () => {
+    const html = render({ operateOnly: true, canSend: true });
+    expect(html).toContain('data-testid="chat-composer"');
+    expect(html).toContain('data-testid="chat-send"');
+    expect(html).not.toContain('To reply here, choose Chat');
+  });
+});
