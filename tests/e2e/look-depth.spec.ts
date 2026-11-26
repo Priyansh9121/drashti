@@ -1,0 +1,222 @@
+import type { ElectronApplication, Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import type { Appearance } from '../../src/shared/appearance/appearances';
+import { BLACK, WHITE } from '../../src/shared/appearance/appearances';
+import { chooseMenuItem, launchApp, OWN_APPEARANCE, operatorPage, operatorReady } from './helpers';
+
+/*
+ * B · Depth (alpha.24, the owner's QA24-UI-4; src/renderer/src/styles/look-depth.css): while the window follows the
+ * computer (the default), the three columns are rounded panels on the window's own colour, 4 px in from either side
+ * (8 px between two: the splitters' own width), the side columns a surface above the middle; the top bar, the bar of
+ * clears and the status bar sit on that ground with no line; the sections under LIVE are rounded rows with no line
+ * between them; LIVE is its red frame with a light red ring round the picture and a light red tint in the live row,
+ * never a glow; and none of it is a new way of drawing. Simple Mode looks the same. An appearance chosen by name draws
+ * as before (appearance-decoration.spec holds Black and White to 9ed5d00), and in forced colours none of it applies.
+ * Read from the page as it draws; placeholder content only.
+ */
+
+const rgb = (hex: string) =>
+  `rgb(${[1, 3, 5].map((at) => String(parseInt(hex.slice(at, at + 2), 16))).join(', ')})`;
+const CLEAR = 'rgba(0, 0, 0, 0)';
+
+/** How the window draws its parts now (the mode's own root: Pro Mode's or Simple Mode's). */
+function drawnNow(win: Page) {
+  return win.evaluate(() => {
+    const st = (sel: string) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el) : null;
+    };
+    const column = (id: string) => {
+      const s = st(`[data-testid="${id}"]`);
+      return s
+        ? [
+            s.backgroundColor,
+            s.borderLeftWidth,
+            s.borderRightWidth,
+            s.borderLeftColor,
+            s.borderTopLeftRadius,
+            s.backgroundClip,
+          ]
+        : null;
+    };
+    const header = st('[data-header]');
+    const bar = st('[data-zone="bar"]');
+    const footer = st('footer[aria-label="Status"]');
+    const sections = [...document.querySelectorAll('[data-testid="live-rest"] > div > *')].map((el) => {
+      const s = getComputedStyle(el);
+      return [s.borderTopWidth, s.borderBottomWidth, s.borderTopLeftRadius, s.marginLeft].join(' ');
+    });
+    const playlists = document.querySelector('section[aria-label="Playlists"]')?.getBoundingClientRect();
+    return {
+      look: document.documentElement.dataset['windowLook'] ?? null,
+      header: header ? [header.backgroundColor, header.borderBottomColor] : null,
+      bar: bar ? [bar.backgroundColor, bar.borderTopColor] : null,
+      footer: footer ? [footer.backgroundColor, footer.borderTopColor] : null,
+      left: column('column-left'),
+      middle: column('column-middle'),
+      right: column('column-right'),
+      // The splitter between the left column and the middle: its line at rest.
+      splitter: st('[data-testid="column-left"] + [role="separator"] > span')?.backgroundColor ?? null,
+      sections: [...new Set(sections)],
+      // The left column's panel starts its gap in from the window's edge.
+      playlistsAt: playlists ? Math.round(playlists.x) : null,
+    };
+  });
+}
+
+/** What Depth draws in an appearance Follow the computer shows (Black or White, each zone its own surfaces). */
+const depthOf = (a: Appearance) => {
+  const panel = (bg: string) => [rgb(bg), '4px', '4px', CLEAR, '12px', 'padding-box'];
+  return {
+    look: 'depth',
+    header: [rgb(a.colours.ink), CLEAR],
+    bar: [rgb(a.colours.ink), CLEAR],
+    footer: [rgb(a.colours.ink), CLEAR],
+    left: panel(a.colours['panel-2']),
+    middle: panel(a.colours.panel),
+    right: panel(a.colours['panel-2']),
+    splitter: CLEAR,
+    sections: ['0px 0px 8px 4px'],
+    playlistsAt: 4,
+  };
+};
+
+/**
+ * What would cost a computer without a graphics chip a new way of drawing (appearance-drawing.spec's rules): a blur
+ * round a rounded corner, a gradient but the primary's and the decoration's, a layer of its own.
+ */
+function newWaysToDraw(win: Page) {
+  return win.evaluate(() => {
+    const found: string[] = [];
+    const parts = (list: string) => {
+      const out: string[] = [];
+      let depth = 0;
+      let part = '';
+      for (const ch of list) {
+        if (ch === '(') depth += 1;
+        if (ch === ')') depth -= 1;
+        if (ch === ',' && depth === 0) {
+          out.push(part);
+          part = '';
+        } else part += ch;
+      }
+      if (part.trim() !== '') out.push(part);
+      return out;
+    };
+    for (const el of document.querySelectorAll('body *')) {
+      if (el.closest('[data-testid="scene"], [data-chip-warm-up], [data-touch-layer]')) continue;
+      for (const pseudo of [null, '::before', '::after']) {
+        const st = getComputedStyle(el, pseudo);
+        if (pseudo !== null && st.content === 'none') continue;
+        const name = `${el.getAttribute('data-testid') ?? el.tagName.toLowerCase()}${pseudo ?? ''}`;
+        const corner = Math.max(
+          ...[
+            st.borderTopLeftRadius,
+            st.borderTopRightRadius,
+            st.borderBottomLeftRadius,
+            st.borderBottomRightRadius,
+          ].map((r) => Number.parseFloat(r) || 0),
+        );
+        if (st.boxShadow !== 'none')
+          for (const shadow of parts(st.boxShadow)) {
+            if (shadow.includes('inset')) continue;
+            const [, , blur = 0, spread = 0] = [
+              ...shadow.replace(/rgba?\([^)]*\)|color\([^)]*\)/gu, '').matchAll(/(-?[\d.]+)px/gu),
+            ].map((m) => Number(m[1]));
+            if (blur > 0 && spread + corner > 0) found.push(`${name}: a blur round a ${String(corner)} px corner`);
+          }
+        if (st.backgroundImage.includes('gradient(')) {
+          const allowed =
+            pseudo === null &&
+            (el.getAttribute('data-variant') === 'primary' ||
+              el.matches('[data-header], [data-strip], [data-decoration]'));
+          if (!allowed) found.push(`${name}: a gradient`);
+        }
+        if (st.willChange !== 'auto') found.push(`${name}: a layer of its own`);
+      }
+    }
+    return [...new Set(found)];
+  });
+}
+
+const turnComputer = (app: ElectronApplication, source: 'light' | 'dark') =>
+  app.evaluate(({ nativeTheme }, s) => {
+    nativeTheme.themeSource = s;
+  }, source);
+
+test('B · Depth while the window follows the computer, in Pro Mode and Simple Mode, light and dark; flat in one chosen by name and in forced colours', async () => {
+  test.setTimeout(120_000);
+  // Follow the computer (CI's Black job would start every other Drashti in Black, chosen by name).
+  const { app } = await launchApp(OWN_APPEARANCE);
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  for (const [source, a] of [
+    ['light', WHITE],
+    ['dark', BLACK],
+  ] as const) {
+    await turnComputer(app, source);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+    await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
+    expect(await drawnNow(win), `${a.name}: Pro Mode`).toEqual(depthOf(a));
+    expect(await newWaysToDraw(win), `${a.name}: nothing live`).toEqual([]);
+
+    // A slide live: the live picture's red frame with a light red ring round it, no blur; the live row tinted inside.
+    const thumbs = win.getByTestId('slide-thumb');
+    await thumbs.first().click();
+    await expect(thumbs.first()).toHaveAttribute('aria-current', 'true');
+    const preview = win.getByTestId('live-preview');
+    await expect(preview).toHaveClass(/border-live-edge/u);
+    const live = await win.evaluate(() => ({
+      picture: getComputedStyle(document.querySelector('[data-testid="live-preview"]') ?? document.body)
+        .boxShadow,
+      row: getComputedStyle(document.querySelector('[data-testid="slide-thumb"][aria-current="true"]') ?? document.body)
+        .boxShadow,
+    }));
+    expect(live.picture, `${a.name}: the live picture`).toMatch(/^rgba\(212, 42, 49, 0\.\d+\) 0px 0px 0px 4px$/u);
+    expect(live.row, `${a.name}: the live row`).toMatch(/^rgba\(212, 42, 49, 0\.\d+\) 0px 0px 0px \d+px inset$/u);
+    expect(await newWaysToDraw(win), `${a.name}: in a show`).toEqual([]);
+    await win.evaluate(() =>
+      (
+        globalThis as unknown as { drashti: { engine: { dispatch(c: unknown): Promise<unknown> } } }
+      ).drashti.engine.dispatch({ type: 'clearAll' }),
+    );
+  }
+
+  // Simple Mode: the same look.
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  const simple = await drawnNow(win);
+  const black = depthOf(BLACK);
+  expect(simple, 'Simple Mode').toMatchObject({
+    look: 'depth',
+    header: black.header,
+    bar: black.bar,
+    footer: black.footer,
+    left: black.left,
+    middle: black.middle,
+    right: black.right,
+    splitter: CLEAR,
+  });
+  expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
+  await chooseMenuItem(app, 'switch-mode');
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+
+  // Forced colours (a Windows contrast theme): the system's colours, and none of Depth's gaps or rows.
+  await win.emulateMedia({ forcedColors: 'active' });
+  await expect
+    .poll(() => win.getByTestId('column-left').evaluate((el) => getComputedStyle(el).borderLeftWidth))
+    .toBe('0px');
+  await win.emulateMedia({ forcedColors: 'none' });
+
+  // Black chosen by name: flat, exactly as before; Follow the computer again: Depth again.
+  await chooseMenuItem(app, `appearance-${BLACK.id}`);
+  await expect(win.locator('html')).toHaveAttribute('data-window-look', 'flat');
+  const flat = await drawnNow(win);
+  expect(flat.header?.[0]).toBe(rgb(BLACK.decoration.header));
+  expect(flat.left?.slice(0, 3)).toEqual([rgb(BLACK.colours.panel), '0px', '0px']);
+  expect(flat.playlistsAt).toBe(0);
+  await chooseMenuItem(app, 'appearance-follow');
+  await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
+  await app.close();
+});
