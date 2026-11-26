@@ -223,6 +223,74 @@ describe('a file played once to an end point', () => {
     }
   });
 
+  // a24-cuelive-mac5 (CI's Mac, video-cue-crossfade.spec.ts:306): the stream page's Go check, an ordinary timer due at
+  // Go, ran 62 ms after it, behind a rendering step at +33 and the page's own work for the moment; its 30 fps frames
+  // then showed the first moving frame a frame later, and the stream started 87 ms late. Every page's cued picture and
+  // sound (the hall, the stream, the Screens previews, the sound window, the stream's own sound) asks for its Go check
+  // as LIVE's does: a task ahead of the page's ordinary ones, never a timer that waits behind them.
+  for (const page of [
+    { what: 'a hall’s or the stream’s cued picture', audible: false, limits: PICTURE_LIMITS },
+    { what: 'a cued sound (the sound window, the stream’s own sound)', audible: true, limits: SOUND_LIMITS },
+  ])
+    it(`schedules ${page.what}'s Go check as an abortable user-blocking task, without LIVE's opt-in`, () => {
+      const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] =
+        [];
+      vi.stubGlobal('scheduler', {
+        postTask: (run: () => void, options: { delay: number; priority: string; signal: AbortSignal }) => {
+          tasks.push({ run, options });
+          return Promise.resolve();
+        },
+      });
+      const v = new FakeMedia(8);
+      const timing = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'cued',
+        startedAt: Date.now(),
+        prepareScheduledStart: true,
+        audible: page.audible,
+        limits: page.limits,
+        timing: () => timing,
+      });
+      try {
+        vi.advanceTimersByTime(20);
+        timing.seek = { at: Date.now() + 120, toMs: 1000, paused: false };
+        stop.resync();
+        expect(tasks, `${page.what}: its Go check is a prioritised task`).toHaveLength(1);
+        const task = tasks[0];
+        if (!task) throw new Error('No Go check was scheduled as a task');
+        expect(task.options.priority).toBe('user-blocking');
+        expect(task.options.delay).toBe(120);
+        expect(v.playbackRate).toBe(0);
+        vi.setSystemTime(timing.seek.at);
+        task.run();
+        expect(v.playbackRate).toBe(1);
+      } finally {
+        stop();
+      }
+    });
+
+  it('keeps a later start that is no cue (a deck’s clip a moment after its click) on its ordinary timer', () => {
+    const postTask = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('scheduler', { postTask });
+    const v = new FakeMedia(8);
+    const startsAt = Date.now() + 1400;
+    const seek: PlaybackSeek = { at: startsAt, toMs: 2000 };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'later',
+      startedAt: Date.now() - 5000,
+      timing: () => ({ loop: false, seek }),
+    });
+    try {
+      vi.advanceTimersByTime(1390);
+      expect(v.paused).toBe(true);
+      vi.advanceTimersByTime(20);
+      expect(v.paused, 'its own timer started it').toBe(false);
+      expect(postTask).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
+
   it('arms a cued decoder silently at zero rate before Go and releases it at the shared moment', () => {
     const v = new FakeMedia(8, { startLate: 80 });
     const timing: { loop: boolean; seek: PlaybackSeek } = {
