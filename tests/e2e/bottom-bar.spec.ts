@@ -64,6 +64,59 @@ const barButtons = (bar: Locator) => bar.locator('button:visible:not([aria-label
 const barWords = (bar: Locator) =>
   barButtons(bar).evaluateAll((b) => b.map((x) => (x as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
 
+interface BarWatch {
+  barWatch?: { found: string[]; stop: () => void };
+}
+
+/**
+ * From now until barStarted: everything that starts moving on a clear or beside one (anywhere in the bar of clears),
+ * however short: a Web Animation asked of anything in it, or a CSS transition or animation starting there. A clear
+ * changes at once, in the same frame as the screens, and nothing moves with it (a show control's state, Session 25).
+ */
+async function watchBar(win: Page): Promise<void> {
+  await win.evaluate(() => {
+    const BAR = '[data-testid="layer-bar"], [data-testid="simple-buttons"]';
+    const found: string[] = [];
+    const name = (el: Element) =>
+      el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName.toLowerCase();
+    const proto = Element.prototype;
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- called on each element below, with call()
+    const animate = proto.animate;
+    proto.animate = function (this: Element, frames, options) {
+      if (this.closest(BAR)) found.push(`${name(this)}: a Web Animation`);
+      return animate.call(this, frames, options);
+    };
+    const starts = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest(BAR)) found.push(`${name(e.target)}: ${e.type}`);
+    };
+    document.addEventListener('transitionrun', starts, true);
+    document.addEventListener('animationstart', starts, true);
+    (globalThis as BarWatch).barWatch = {
+      found,
+      stop: () => {
+        proto.animate = animate;
+        document.removeEventListener('transitionrun', starts, true);
+        document.removeEventListener('animationstart', starts, true);
+      },
+    };
+  });
+}
+
+/** What started on or beside a clear since watchBar, two frames after the change was seen; the watch ends. */
+const barStarted = (win: Page) =>
+  win.evaluate(
+    () =>
+      new Promise<string[]>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const watch = (globalThis as BarWatch).barWatch;
+            watch?.stop();
+            resolve(watch?.found ?? []);
+          });
+        });
+      }),
+  );
+
 /** Where each of the bar's buttons is along it: its middle, in whole pixels. */
 const barMiddles = (bar: Locator) =>
   barButtons(bar).evaluateAll((b) =>
@@ -152,13 +205,17 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await expect(tip, words).toHaveCount(0);
   }
 
-  // A slide up: its clear lights up and Clear all can be pressed; the rest stay dimmed.
+  // A slide up: its clear lights up and Clear all can be pressed; the rest stay dimmed. It lights up at once and
+  // nothing starts moving on it or beside it (the window opened settled first: what arrives later moves).
   await setUpScreen(win);
   const audience = await outputPage(app);
   await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  await watchBar(win);
   await win.getByTestId('slide-thumb').first().click();
   await expect(button('Clear slide')).toHaveAttribute('data-lit', 'true');
+  expect(await barStarted(win), 'a slide up: nothing moves on or beside its clear').toEqual([]);
   await expect(button('Clear all')).toBeEnabled();
   await expect(button('Clear background')).toBeDisabled();
   // Lit, its words and key back on it.
@@ -208,9 +265,12 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await oneRow(win, `${width} × ${height}, three layers up`);
   }
   await stayPut(bar, withSlide, 'a background and a message up too');
-  // The slide taken off again: its clear back to its icon, and still no button moves.
+  // The slide taken off again: its clear back to its icon at once, nothing moving on it or beside it, and still no
+  // button moves.
+  await watchBar(win);
   await button('Clear slide').click();
   await expect(button('Clear slide')).toHaveAttribute('data-dimmed', 'true');
+  expect(await barStarted(win), 'the slide off: nothing moves on or beside its clear').toEqual([]);
   await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', '', ...lit.slice(2)]);
   await stayPut(bar, withSlide, 'the slide taken off, the background and the message up');
   await app.close();
