@@ -618,6 +618,18 @@ describe('OutputManager as Drashti quits (QA24-QUITRACE-1)', () => {
 
 
 describe('OutputManager after a refused quit', () => {
+  it('retains a gap window that refuses closing instead of duplicating it on cancellation', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    const window = opened[0];
+    if (!window) throw new Error('Expected output');
+    window.close = () => undefined;
+    manager.closeForQuit();
+    manager.cancelQuitting();
+    expect(opened).toHaveLength(1);
+    expect(manager.windows()[0]?.window).toBe(window);
+  });
+
   it('reopens destroyed windows and restores held windows after cancellation, then guards the next quit', () => {
     screens = [screen('audience', hall), screen('stage', stage)];
     manager.reconcile();
