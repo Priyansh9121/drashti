@@ -269,6 +269,11 @@ export class OutputManager {
     return [...this.open].map(([screenId, e]) => ({ screenId, window: e.window, displayId: e.displayId }));
   }
 
+  /** Drashti is quitting (QA24-QUITRACE-1). Today: nothing changes (red). */
+  quitting(): void {
+    // Nothing yet.
+  }
+
   closeAll(): void {
     for (const entry of this.open.values()) if (!entry.window.isDestroyed()) entry.window.close();
     this.open.clear();
