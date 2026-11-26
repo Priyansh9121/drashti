@@ -286,6 +286,93 @@ describe('a converted original, added again anywhere (Session 51)', () => {
     }
   });
 
+  it('repairs a wallpaper on a converted original at startup and keeps it for Undo', async () => {
+    const db = library();
+    db.exec(`
+      INSERT INTO wallpapers (id, name, position) VALUES ('w', 'Placeholder wallpaper', 0);
+      INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('w', 0, 'avi');
+    `);
+    const picture = () =>
+      db.prepare("SELECT media_id FROM wallpaper_pictures WHERE wallpaper_id = 'w'").get();
+    let changed = 0;
+    const service = new ConvertService({
+      db,
+      mediaDir: join(tmpdir(), 'drashti-added-again-nowhere'),
+      ffmpegPath: () => 'placeholder-ffmpeg',
+      busy: () => null,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: () => undefined,
+      libraryChanged: () => {
+        changed++;
+      },
+      log: () => undefined,
+      limits: { afterStartMs: 0 },
+    });
+    try {
+      service.resumeWaiting();
+      await until(() => changed > 0);
+      expect(picture()).toEqual({ media_id: 'mp4' });
+      const record = db.prepare("SELECT moved FROM media_conversions WHERE id = 'cv-avi'").get() as {
+        moved: string;
+      };
+      expect(JSON.parse(record.moved)).toMatchObject({ wallpapers: ['w:0'] });
+      expect(service.undo('cv-avi')).toEqual({ ok: true });
+      expect(picture()).toEqual({ media_id: 'avi' });
+    } finally {
+      service.close();
+      db.close();
+    }
+  });
+
+  it('keeps a deck moved earlier in the record when another use follows the copy, so Undo returns both', () => {
+    const db = library();
+    db.exec(`
+      INSERT INTO libraries (id, name) VALUES ('lib', 'Placeholder');
+      INSERT INTO presentations (id, library_id, name) VALUES ('p', 'lib', 'Placeholder deck');
+      INSERT INTO slide_groups (id, presentation_id, name, position) VALUES ('g', 'p', 'Placeholder', 0);
+      INSERT INTO slides (id, group_id, position, deck) VALUES ('deck', 'g', 0, '{"media":{"picture":"mp4"}}');
+      INSERT INTO playlist_items (id, playlist_id, position, kind, media_id) VALUES ('later', 'pl', 0, 'media', 'avi');
+    `);
+    db.prepare("UPDATE media_conversions SET moved = ? WHERE id = 'cv-avi'").run(
+      JSON.stringify({
+        cues: [],
+        items: [],
+        kirtans: [],
+        elements: [],
+        props: [],
+        themes: [],
+        decks: ['deck'],
+      }),
+    );
+    const service = new ConvertService({
+      db,
+      mediaDir: join(tmpdir(), 'drashti-added-again-nowhere'),
+      ffmpegPath: () => 'placeholder-ffmpeg',
+      busy: () => 'Placeholder busy',
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: () => undefined,
+      libraryChanged: () => undefined,
+      log: () => undefined,
+    });
+    try {
+      service.convert(['avi']);
+      const record = db.prepare("SELECT moved FROM media_conversions WHERE id = 'cv-avi'").get() as {
+        moved: string;
+      };
+      expect(JSON.parse(record.moved)).toMatchObject({ decks: ['deck'], items: ['later'] });
+      expect(service.undo('cv-avi')).toEqual({ ok: true });
+      expect(db.prepare("SELECT deck FROM slides WHERE id = 'deck'").get()).toEqual({
+        deck: '{"media":{"picture":"avi"}}',
+      });
+      expect(db.prepare("SELECT media_id FROM playlist_items WHERE id = 'later'").get()).toEqual({
+        media_id: 'avi',
+      });
+    } finally {
+      service.close();
+      db.close();
+    }
+  });
+
   it('the same file imported again (Media, a drop, the drop folder): its copy, never converted again', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-added-again-'));
     const mediaDir = join(dir, 'Media');

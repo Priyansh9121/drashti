@@ -160,6 +160,11 @@ describe('MediaStore', () => {
       missing: 0,
       deleted_at: null,
     });
+    expect(
+      db
+        .prepare("SELECT media_id FROM wallpaper_pictures WHERE wallpaper_id = 'placeholder-wallpaper'")
+        .all(),
+    ).toEqual([{ media_id: first.mediaId }]);
     expect(store.missing()).toEqual([]);
     expect(storedFiles(mediaDir)).toHaveLength(1);
   });
