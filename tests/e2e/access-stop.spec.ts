@@ -174,7 +174,11 @@ async function oneLineOverNothing(win: Page, what: string): Promise<void> {
     const words = line.querySelector('span');
     if (!words) problems.push('its words are not in it');
     // Cut short at most with "…" at their end (alpha.24: the version's room), the whole line in its tooltip.
-    if (words && words.scrollWidth > words.clientWidth + 1 && getComputedStyle(words).textOverflow !== 'ellipsis')
+    if (
+      words &&
+      words.scrollWidth > words.clientWidth + 1 &&
+      getComputedStyle(words).textOverflow !== 'ellipsis'
+    )
       problems.push('its words are cut with no “…”');
     if (words && words.getAttribute('title') !== words.textContent)
       problems.push(`its tooltip is “${String(words.getAttribute('title'))}”, not its words`);
@@ -393,7 +397,9 @@ test('no strip under the top bar (alpha.24, the owner’s QA24-ACCESS-STRIP A): 
     await slideUp(win);
     await expect(win.getByTestId('live-text')).toContainText('slide 1 of');
     await expect
-      .poll(() => underTheTopBar(win), { message: 'Pro Mode: the first column’s top, from the top bar’s bottom' })
+      .poll(() => underTheTopBar(win), {
+        message: 'Pro Mode: the first column’s top, from the top bar’s bottom',
+      })
       .toBeLessThanOrEqual(1);
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(win.getByTestId('simple-mode')).toBeVisible();
