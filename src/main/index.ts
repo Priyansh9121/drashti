@@ -382,7 +382,7 @@ import { PdfEditor } from './library/pdf-editor';
 import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
-import { ownSchema } from './appearance/appearance-file';
+import { isNewInstall, ownSchema } from './appearance/appearance-file';
 import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
@@ -1014,6 +1014,13 @@ const appearance = new AppearanceService({
   // Whether Chromium draws with a graphics chip, once its GPU process has said (Session 60: a live look waits for it).
   chip: () => (warmUps.hasSaid ? (warmUps.drawsWithoutChip() ? 'no' : 'yes') : 'unknown'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
+  // A new install starts in Lively and keeps it (alpha.24, appearance-file.ts); never a self-test (the Performance
+  // check measures what it always has), and the e2e tests start as every start did before unless a spec asks
+  // (DRASHTI_TEST_MOTION_AT_START=calm, tests/e2e/helpers.ts).
+  newInstall:
+    sw('DRASHTI_SELFTEST') === undefined &&
+    !(!packaged() && sw('DRASHTI_TEST_MOTION_AT_START') === 'calm') &&
+    isNewInstall(app.getPath('userData')),
   // Tests only (never a packaged Drashti): how many logical cores this computer has, for the moving looks' pause.
   ...(!packaged() && /^[0-9]{1,3}$/u.test(sw('DRASHTI_TEST_CORES') ?? '')
     ? { cores: Number(sw('DRASHTI_TEST_CORES')) }

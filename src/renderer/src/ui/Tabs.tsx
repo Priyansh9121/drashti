@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { cx } from './cx';
+import { newMotionNow } from './fold';
 import type { Icon } from './icons';
-import { glideFrom } from './motion';
+import { duration, glideFrom } from './motion';
 
 export interface TabItem<T extends string> {
   id: T;
@@ -122,6 +123,29 @@ export function Tabs<T extends string>({
   );
 }
 
+/**
+ * Lively (alpha.24): as another tab is chosen, its panel arrives (app.css, data-lively="arrive"); never as it is first
+ * drawn (a dialog opening with it rises already), and held as every newer motion is (ui/fold.ts: the window opened,
+ * a graphics chip, not Off or reduced motion, the show quiet).
+ */
+function useTabArrival(id: string): boolean {
+  const [seen, setSeen] = useState({ id, arriving: false });
+  if (seen.id !== id) setSeen({ id, arriving: newMotionNow() === 'lively' });
+  useEffect(() => {
+    if (!seen.arriving) return;
+    const done = setTimeout(
+      () => {
+        setSeen((s) => ({ ...s, arriving: false }));
+      },
+      duration('dur-arrive') + 200,
+    );
+    return () => {
+      clearTimeout(done);
+    };
+  }, [seen]);
+  return seen.arriving && seen.id === id;
+}
+
 /** The panel a tab shows. */
 export function TabPanel({
   group,
@@ -134,8 +158,15 @@ export function TabPanel({
   children: ReactNode;
   className?: string;
 }) {
+  const arriving = useTabArrival(id);
   return (
-    <div role="tabpanel" id={tabPanelId(group, id)} aria-labelledby={tabId(group, id)} className={className}>
+    <div
+      role="tabpanel"
+      id={tabPanelId(group, id)}
+      aria-labelledby={tabId(group, id)}
+      data-lively={arriving ? 'arrive' : undefined}
+      className={className}
+    >
       {children}
     </div>
   );
