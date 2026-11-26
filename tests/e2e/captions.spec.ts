@@ -1,5 +1,13 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import type { CaptionTranslationStatus } from '../../src/shared/caption-translation';
+import type { CaptionsStatus } from '../../src/shared/captions';
+import { IPC } from '../../src/shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
+import {
+  skippedText,
+  TRANSLATION_TRIAL_WARNING,
+  unavailableText,
+} from '../../src/renderer/src/captions/caption-target-words';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import {
@@ -333,6 +341,123 @@ test('a known model comes with the model pack, chosen for Gujarati and checked; 
     // As heard again: from the menu too.
     await chooseMenuItem(app, 'speaker-language-auto');
     await expect(dialog.getByTestId('captions-language')).toHaveValue('auto');
+  } finally {
+    await app.close();
+  }
+});
+
+/**
+ * "Captions in" (alpha.24, QA24-CAPLANG-2, the owner's 2a, 2c, 2e and 2f A): one choice for the whole show, under
+ * Speaker's language in Pro Mode's Live captions dialog. How translated captions stand is a stand-in told to the
+ * operator window as main tells it (captions:changed, test-side only: nothing in Drashti for it): whether this
+ * computer can translate, the phrases skipped and the engine's fault are main's (a24-captrans, with specs of its own).
+ * This test is the dialog's: its label and hints, the reasons, the Trial warning, the count and the fault, its fit in
+ * CI's window and a screen reader's view, and the status bar. Nothing is translated or drawn on a screen here.
+ */
+test('"Captions in" under Speaker’s language: greyed out with the reason, the Trial warning once chosen, the phrases skipped and the fault; the status bar says when a chosen translation cannot be made', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ ...NO_PLACEHOLDERS });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await chooseMenuItem(app, 'live-captions');
+    const dialog = win.getByTestId('captions-dialog');
+    await expect(dialog).toBeVisible();
+
+    // A select with its own visible label, under Speaker's language, the speaker's own words chosen.
+    const target = dialog.getByLabel('Captions in', { exact: true });
+    await expect(target).toHaveAttribute('data-testid', 'captions-target');
+    await expect(target).toHaveValue('same');
+    expect(
+      await dialog.evaluate((d) => {
+        const speaker = d.querySelector('[data-testid="captions-language"]');
+        const captionsIn = d.querySelector('[data-testid="captions-target"]');
+        return speaker && captionsIn
+          ? (speaker.compareDocumentPosition(captionsIn) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+          : false;
+      }),
+    ).toBe(true);
+
+    const real: CaptionsStatus = await win.evaluate(() => (globalThis as PageGlobals).drashti.captions.view());
+    const translation = (over: Partial<CaptionTranslationStatus>): CaptionTranslationStatus => ({
+      target: null,
+      offered: true,
+      unavailable: null,
+      skipped: 0,
+      fault: null,
+      ...over,
+    });
+    const tell = (over: Partial<CaptionsStatus>) =>
+      app.evaluate(
+        ({ BrowserWindow }, { channel, payload }) => {
+          BrowserWindow.getAllWindows()
+            .find((w) => w.webContents.getURL().includes('index.html'))
+            ?.webContents.send(channel, payload);
+        },
+        { channel: IPC.captions.changed, payload: { ...real, ...over } },
+      );
+    const gujarati = (captionLanguage: 'same' | 'hi') => ({ ...real.settings, language: 'gu' as const, captionLanguage });
+
+    // This computer cannot translate (no pack): greyed out, and its description says why.
+    await tell({ settings: gujarati('same'), translation: translation({ offered: false, unavailable: 'no-pack' }) });
+    await expect(target).toBeDisabled();
+    await expect(target).toHaveAccessibleDescription(unavailableText('no-pack'));
+    await tell({
+      settings: { ...real.settings, language: 'auto', captionLanguage: 'same' },
+      translation: translation({ offered: false, unavailable: 'speaker-as-heard' }),
+    });
+    await expect(target).toHaveAccessibleDescription(unavailableText('speaker-as-heard'));
+
+    // It can: open, the speaker's own language greyed out.
+    await tell({ settings: gujarati('same'), translation: translation({}) });
+    await expect(target).toBeEnabled();
+    await expect(target.locator('option[value="gu"]')).toBeDisabled();
+    for (const other of ['same', 'hi', 'en']) await expect(target.locator(`option[value="${other}"]`)).toBeEnabled();
+
+    // Hindi chosen and translating: the Trial warning, the phrases skipped (no live region) and the last fault.
+    await tell({
+      on: true,
+      settings: gujarati('hi'),
+      translation: translation({ target: 'hi', skipped: 2, fault: 'Placeholder fault words.' }),
+    });
+    await expect(target).toHaveValue('hi');
+    await expect(dialog.getByTestId('captions-target-trial')).toHaveText(TRANSLATION_TRIAL_WARNING);
+    await expect(dialog.getByTestId('captions-target-skipped')).toHaveText(skippedText(2));
+    await expect(dialog.getByTestId('captions-target-skipped')).not.toHaveAttribute('aria-live', /./u);
+    await expect(dialog.getByTestId('captions-target-fault')).toHaveText(
+      'Last problem translating captions: Placeholder fault words.',
+    );
+    // A target of at least 24 × 24 (WCAG 2.5.8).
+    const box = await target.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(24);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(24);
+    for (const size of [
+      { width: 1024, height: 645 },
+      { width: 1280, height: 720 },
+    ]) {
+      await win.setViewportSize(size);
+      await expectFits(dialog, `the Live captions dialog translating at ${String(size.width)} × ${String(size.height)}`);
+    }
+    await expectNoSeriousA11yIssues(win, 'Live captions translated into Hindi');
+
+    // Chosen, but the pack has gone: the reason, and that the audience screens and the stream show no captions;
+    // the speaker's own words can still be chosen again.
+    await tell({ on: true, settings: gujarati('hi'), translation: translation({ offered: false, unavailable: 'no-pack' }) });
+    const unavailable = dialog.getByTestId('captions-target-unavailable');
+    await expect(unavailable).toContainText(unavailableText('no-pack'));
+    await expect(unavailable).toContainText('the audience screens and the stream show no captions');
+    await expect(target).toBeEnabled();
+    await expect(target.locator('option[value="same"]')).toBeEnabled();
+    await expectNoSeriousA11yIssues(win, 'Live captions, the translation pack gone');
+
+    // The status bar says so, with the dialog closed.
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const line = win.getByTestId('captions-warning');
+    await expect(line).toHaveText(
+      'Translated captions are off: the translation model pack is not on this computer.Live Captions…',
+    );
+    await expectFits(win.getByRole('contentinfo', { name: 'Status' }), 'the status bar, translated captions off');
   } finally {
     await app.close();
   }
