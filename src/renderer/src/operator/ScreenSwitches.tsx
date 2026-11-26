@@ -71,11 +71,12 @@ export function switchLook(on: boolean): { variant: ButtonVariant; dot: string; 
 
 /**
  * Audience and Stage change the hall's screens, so no interface motion ever moves them (uimotion's review): no lift
- * as the pointer rests on one, no press, no colour fade; each state is there at once, as a show control's is. They are
- * not marked show controls (data-show-control) all the same: the header's decoration gradient never lies under one
- * (appearance-drawing.spec.ts, in every appearance that has one). Important, so these hold over the motion rules.
+ * as the pointer rests on one, no press, no press dim (ui/motion.css's, the release lead's review MUST-2), no colour
+ * fade; each state is there at once, as a show control's is. They are not marked show controls (data-show-control) all
+ * the same: the header's decoration gradient never lies under one (appearance-drawing.spec.ts, in every appearance that
+ * has one). Important, so these hold over the motion rules.
  */
-export const SWITCH_STILL = 'translate-none! transform-none! transition-none!';
+export const SWITCH_STILL = 'translate-none! transform-none! transition-none! active:opacity-100!';
 
 function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: string }) {
   const switches = useScreenSwitches((s) => s.switches);
