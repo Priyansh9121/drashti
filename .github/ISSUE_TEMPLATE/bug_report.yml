@@ -9,6 +9,8 @@ body:
         **This page is public: anyone can read it.** Never paste a stream key, a password, a token, a PIN, a pairing code or a Gmail address, and never a private name (a person's, a mandir's or a computer's). Use placeholder words and pictures only: no real kirtan, scripture or mandir content, and never your library.
 
         At the mandir, **Help › Report a Problem…** in Drashti sends a report to whoever looks after Drashti, not in public. This form is for the people who build and test Drashti.
+
+        **A security problem never goes here:** report it privately through the repository's Security tab, [Report a vulnerability](https://github.com/Priyansh9121/drashti/security/advisories/new) (SECURITY.md).
   - type: input
     id: version
     attributes:
