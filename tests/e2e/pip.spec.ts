@@ -169,24 +169,57 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   // Picture in Picture…, in its own section under LIVE (alpha.22; More tools' from Session 60, x36): nothing goes up
   // until Show in the box.
   await openSection(win, 'picture-in-picture');
-  await expect(win.getByTestId('section-picture-in-picture').getByTestId('pip-open')).toBeVisible();
+  const section = win.getByTestId('section-picture-in-picture');
+  await expect(section.getByTestId('pip-open')).toBeVisible();
+  // The section's preview (QA24-PIPPREVIEW-1): where the next box goes and how it looks, over the picture now.
+  const canvas = (await drawn(hall)).canvas;
+  const sectionBox = section.getByTestId('pip-section-preview-box');
+  await expect(sectionBox).toHaveAttribute('data-pip-rect', rectOn(canvas, PLACE));
+  await expect(section.getByTestId('pip-section-preview-words')).toContainText(
+    'The next box: in the bottom right, Medium',
+  );
   await win.getByTestId('pip-open').click();
   const dialog = win.getByTestId('pip-dialog');
   await expect(dialog).toBeVisible();
   await settled(win);
   await expectNoSeriousA11yIssues(win, 'Picture in Picture');
+  // The dialog's preview (QA24-PIPPREVIEW-1, the owner: "in picture in picture, add a preview to see how it looks"):
+  // the box over what the screens show now (the backdrop and the slide, as stills), before it goes up.
+  const preview = dialog.getByTestId('pip-preview');
+  const previewBox = preview.getByTestId('pip-preview-box');
+  await expect(preview).toBeVisible();
+  await expect(previewBox).toHaveAttribute('data-pip-rect', rectOn(canvas, PLACE));
+  await expect(preview.locator('[data-preview-behind="media"]')).toHaveCount(1);
   await dialog.getByTestId('pip-kind-slides').click();
   await expect(dialog.getByTestId('pip-kind-slides')).toHaveAttribute('aria-checked', 'true');
+  // The slides in the box: the slide made small in it, the main picture the backdrop alone, as the screens will draw.
+  await expect(previewBox).toHaveAttribute('data-pip-source', 'slides');
+  await expect(previewBox).toContainText('Placeholder words one');
+  await expect(preview.locator('[data-preview-behind="slide"]')).toHaveCount(0);
   await dialog.getByTestId('pip-corner-top-left').click();
   await dialog.getByTestId('pip-size-small').click();
   await dialog.getByTestId('pip-motion-scale').click();
+  // It follows each choice at once: the corner, the size and the border.
+  const small = { ...PLACE, corner: 'top-left', size: 'small' } as const;
+  await expect(previewBox).toHaveAttribute('data-pip-rect', rectOn(canvas, small));
+  await expect(previewBox).toHaveAttribute('data-pip-corner', 'top-left');
+  await dialog.getByTestId('pip-border').click();
+  await expect(previewBox.locator('[data-pip-border]')).toHaveCount(0);
+  await dialog.getByTestId('pip-border').click();
+  await expect(previewBox.locator('[data-pip-border]')).toHaveCount(1);
+  await expect(preview.getByTestId('pip-preview-words')).toContainText(
+    'Preview: in the top left, Small, with a thin border and rounded corners, holding the slides',
+  );
   // Session 55: Movement went with Looks, so the box swaps and moves alike on every screen, as the dialog says.
   await expect(dialog).toContainText('Swap and moving it move the same way on every screen.');
   expect(await pipNow(win)).toBeNull();
   // The library remembers where the box goes, for next time.
   await expect
     .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.pip.place()))
-    .toMatchObject({ corner: 'top-left', size: 'small', motion: 'scale' });
+    .toMatchObject({ corner: 'top-left', size: 'small', motion: 'scale', border: true });
+  // The preview sent nothing to the screens: no box on them, the main picture as it was.
+  expect(await pipNow(win)).toBeNull();
+  expect(await drawn(hall)).toMatchObject({ pip: 'none', main: ['background', 'slide'], box: null });
 
   // In: from when it went up, growing as it fades in, the same on every screen (held at a moment part-way).
   await heldChange(app, () => dialog.getByTestId('pip-show').click());
@@ -215,6 +248,11 @@ test('the slides in the box from Picture in Picture…: the background alone on 
     box: { source: 'slides', corner: 'top-left', size: 'small', opacity: '', border: true },
   });
   expect(up.box?.rect).toBe(rectOn(up.canvas, { ...PLACE, corner: 'top-left', size: 'small' }));
+  // The section's preview shows the box up now, where the screens have it.
+  await expect(sectionBox).toHaveAttribute('data-pip-rect', rectOn(canvas, small));
+  await expect(section.getByTestId('pip-section-preview-words')).toContainText(
+    'The box now: in the top left, Small',
+  );
   await expect(hall.locator('[data-testid="pip-box"] [data-layer="slide"]')).toContainText(
     'Placeholder words one',
   );
@@ -436,6 +474,22 @@ test('a video from Media, a video input and a window in the box, live and silent
     if (!made.ok) throw new Error(made.message);
     return made.view.inputs.find((i) => i.name === 'Placeholder input')?.id ?? '';
   }, camera);
+  // Picture in Picture…'s preview of a video input (QA24-PIPPREVIEW-1): named in the box, never opened (no camera
+  // and no video in the preview); the screens keep the video in the box.
+  await openSection(win, 'picture-in-picture');
+  await win.getByTestId('pip-open').click();
+  const dialog = win.getByTestId('pip-dialog');
+  await dialog.getByTestId('pip-kind-input').click();
+  const preview = dialog.getByTestId('pip-preview');
+  await expect(preview.getByTestId('pip-preview-box')).toHaveAttribute('data-pip-source', 'input');
+  await expect(preview.getByTestId('pip-preview-box')).toContainText('Placeholder input');
+  await expect(preview.getByTestId('pip-preview-words')).toContainText(
+    'The preview opens no camera and captures no window: they show here by name.',
+  );
+  await expect(preview.locator('video')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect((await drawn(hall)).box).toMatchObject({ source: 'media' });
   await dispatch(win, { type: 'showPip', source: { kind: 'input', inputId } });
   const input = hall.locator('[data-testid="pip-box"] [data-pip-picture="input"]');
   await expect(input).toHaveAttribute('data-input-state', 'live', { timeout: 15_000 });
