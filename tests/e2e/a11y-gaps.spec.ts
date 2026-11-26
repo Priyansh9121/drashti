@@ -53,7 +53,8 @@ test('with a tooltip open the window passes the accessibility checks, and the to
   await win.getByTestId('open-stream').hover();
   const tip = win.getByRole('tooltip');
   await expect(tip).toBeVisible();
-  await expect(tip).toContainText('The stream to YouTube, and recording');
+  // Its name first since alpha.24 (uitop), as it may show its icon alone.
+  await expect(tip).toContainText('Stream: to YouTube, and recording');
   await expectNoSeriousA11yIssues(win, 'the operator window with a tooltip open');
   await app.close();
 });

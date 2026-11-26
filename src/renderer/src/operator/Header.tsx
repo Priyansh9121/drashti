@@ -144,7 +144,8 @@ export function Header({
           data-crowded={crowded ? 'true' : undefined}
         >
           <span className="flex items-center gap-0.5">
-            <Tooltip content="The stream to YouTube, and recording" side="bottom">
+            {/* Its tooltip names it, as it may show its icon alone (top-bar.ts). */}
+            <Tooltip content="Stream: to YouTube, and recording" side="bottom">
               <Button
                 variant="ghost"
                 icon={Radio}
@@ -182,7 +183,7 @@ export function Header({
           <Divider />
           {/* Ready? (Session 55, Part 8): one press before the sabha checks the screens, sound, files and power. */}
           <Tooltip
-            content="Before the sabha: check the screens, sound, files, access and power"
+            content="Ready?: before the sabha, check the screens, sound, files, access and power"
             side="bottom"
           >
             <Button
