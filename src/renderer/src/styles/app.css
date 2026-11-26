@@ -253,6 +253,7 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* side sheets */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* the light passing once across a notice */
   --ease-flame: cubic-bezier(0.2, 0.8, 0.25, 1); /* the flame growing; never an overshoot */
+  --ease-in: cubic-bezier(0.32, 0, 0.67, 0); /* a section's folded insides leaving (alpha.24): ease-in out */
   --rise-sm: 4px;
   --rise-notice: 6px;
   --rise: 8px;
@@ -272,6 +273,9 @@
   --ease-glide: cubic-bezier(0.2, 0, 0, 1);
   --rise-arrive: 6px;
   --press-scale: 0.97;
+  /* alpha.24 (uimotion, ui/motion.css): a press dims a button that is not a show control (its opacity); Lively lifts one. */
+  --press-dim: 0.85;
+  --lift: 1px;
   /*
    * Lively (Session 42): the band sweeps in once as the appearance changes, a block every --stagger-sweep, all
    * of it in under 500 ms (the motion skills' tables); then it is still.
@@ -302,9 +306,11 @@
  * Interface motion (Session 40), chosen in the Appearance window, set on <html> as data-interface-motion: Calm is
  * Rising (above); Lively moves further and more (below); Off, like reduced motion, moves nothing. Whichever is
  * chosen, the show controls, the thumbnails and the live picture never move (data-show-control), only opacity
- * and transform move, and nothing starts while the show is changing (ui/motion.ts, showIsQuiet).
+ * and transform move, and nothing starts while the show is changing (ui/motion.ts, showIsQuiet). Since alpha.24 every
+ * Lively rule also names data-chip='yes' (the release lead's review of uimotion, MUST-1): without a graphics chip known
+ * to be there, Lively looks and moves as Calm does, as a live look's touch is held.
  */
-:root[data-interface-motion='lively'] {
+:root[data-interface-motion='lively'][data-chip='yes'] {
   --rise: 12px;
   --rise-notice: 9px;
   --rise-sm: 6px;
@@ -573,24 +579,24 @@ body.web {
   }
 
   /* Lively (Session 40): dialogs, sheets, menus and notices take longer over their bigger moves. */
-  :root[data-interface-motion='lively'] [data-motion='dialog'] {
+  :root[data-interface-motion='lively'][data-chip='yes'] [data-motion='dialog'] {
     animation-duration: calc(var(--dur-dialog) * var(--lively-time));
   }
-  :root[data-interface-motion='lively'] [data-motion='sheet'] {
+  :root[data-interface-motion='lively'][data-chip='yes'] [data-motion='sheet'] {
     animation-duration: calc(var(--dur-panel) * var(--lively-time));
   }
-  :root[data-interface-motion='lively'] [data-motion='pop'],
-  :root[data-interface-motion='lively'] [data-motion='notice'] {
+  :root[data-interface-motion='lively'][data-chip='yes'] [data-motion='pop'],
+  :root[data-interface-motion='lively'][data-chip='yes'] [data-motion='notice'] {
     animation-duration: calc(var(--dur-menu) * var(--lively-time));
   }
   /* A playlist's cards, just opened, arrive one after another (at most --arrive-most apart). */
-  :root[data-interface-motion='lively'] [data-lively='arrive'] {
+  :root[data-interface-motion='lively'][data-chip='yes'] [data-lively='arrive'] {
     animation: lively-arrive var(--dur-arrive) var(--ease-out)
       calc(min(var(--i, 0), var(--arrive-most)) * var(--stagger-arrive)) both;
   }
-  /* A folded panel's insides as it opens. */
-  :root[data-interface-motion='lively'] [data-lively='open'] {
-    animation: lively-open var(--dur-open) var(--ease-out) both;
+  /* A folded panel's insides as it opens: they unroll from the top, as what is under it glides down (ui/fold.ts). */
+  :root[data-interface-motion='lively'][data-chip='yes'] [data-lively='open'] {
+    animation: lively-open calc(var(--dur-open) * var(--lively-time)) var(--ease-out) both;
   }
 
   /*
@@ -619,10 +625,11 @@ body.web {
   background-color: transparent;
   border-color: transparent;
 }
-:root[data-interface-motion='lively'] [data-variant]:not([data-show-control]) {
+:root[data-interface-motion='lively'][data-chip='yes'] [data-variant]:not([data-show-control]) {
   transition-property: background-color, border-color, color, box-shadow, filter, transform;
 }
-:root[data-interface-motion='lively'] [data-variant]:not([data-show-control], :disabled):active {
+:root[data-interface-motion='lively'][data-chip='yes']
+  [data-variant]:not([data-show-control], :disabled):active {
   transform: scale(var(--press-scale));
   transition-duration: var(--dur-press);
 }
@@ -873,11 +880,11 @@ body.web {
  * opens, never in Calm, and Off and reduced motion stop it with every other animation. Only transform moves, and
  * nothing stays: once played, the blocks are as they were.
  */
-:root[data-interface-motion='lively'][data-band-sweep='a'] [data-band] > * {
+:root[data-interface-motion='lively'][data-chip='yes'][data-band-sweep='a'] [data-band] > * {
   animation: band-sweep-a var(--dur-sweep) var(--ease-glide) calc(var(--sweep-i) * var(--stagger-sweep))
     backwards;
 }
-:root[data-interface-motion='lively'][data-band-sweep='b'] [data-band] > * {
+:root[data-interface-motion='lively'][data-chip='yes'][data-band-sweep='b'] [data-band] > * {
   animation: band-sweep-b var(--dur-sweep) var(--ease-glide) calc(var(--sweep-i) * var(--stagger-sweep))
     backwards;
 }
@@ -922,7 +929,7 @@ body.web {
 @keyframes lively-open {
   from {
     opacity: 0;
-    transform: translateY(calc(var(--rise-sm) * -1));
+    clip-path: inset(0 0 100% 0);
   }
 }
 

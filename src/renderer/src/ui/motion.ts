@@ -88,13 +88,38 @@ export function motionOff(): boolean {
 
 /*
  * Lively (Session 40): more moves, never on a show control, and none started while the show is changing: a
- * slide change, Next to the next item, a clear, anything the engine says changed in the last QUIET_MS.
+ * slide change, Next to the next item, a clear, anything the engine says changed in the last QUIET_MS. Since alpha.24
+ * (the release lead's review of uimotion, MUST-1; a new install starts in Lively) all of it waits for a graphics chip
+ * known to be there, as a live look's touch does: without one Lively moves as Calm does (app.css names data-chip on
+ * every Lively rule, and the preload's cross-fade asks the same).
  */
-const QUIET_MS = 800;
+export const QUIET_MS = 800;
 
-/** Lively is chosen, the computer allows motion, and the show has not changed just now. */
+/** What decides whether Lively moves now. */
+export interface LivelyFacts {
+  /** The interface motion chosen (data-interface-motion). */
+  motion: string | undefined;
+  /** Nothing moves: reduced motion, or Off (motionOff). */
+  off: boolean;
+  /** Whether Chromium draws with a graphics chip (data-chip: unknown until it has said). */
+  chip: string | undefined;
+  /** Milliseconds since the show last changed. */
+  sinceShow: number;
+}
+
+/** Lively is chosen, the computer allows motion and has a graphics chip, and the show is quiet. */
+export function livelyWith(f: LivelyFacts): boolean {
+  return f.motion === 'lively' && !f.off && f.chip === 'yes' && f.sinceShow > QUIET_MS;
+}
+
+/** Lively moves now (livelyWith, as the page is). */
 export function livelyNow(): boolean {
-  return chosenMotion() === 'lively' && !motionOff() && sinceShowChanged() > QUIET_MS;
+  return livelyWith({
+    motion: chosenMotion(),
+    off: motionOff(),
+    chip: typeof document === 'undefined' ? undefined : document.documentElement.dataset['chip'],
+    sinceShow: sinceShowChanged(),
+  });
 }
 
 /**
@@ -163,6 +188,12 @@ export function duration(name: string): number {
   return text.endsWith('ms') ? n : n * 1000;
 }
 
+/** A number token (--lively-time: 1.25), or 1 when there is none. */
+export function tokenNumber(name: string): number {
+  const n = Number.parseFloat(tokenText(name));
+  return Number.isFinite(n) ? n : 1;
+}
+
 /** An easing token (--ease-out). */
 export function easing(name: string): string {
   return tokenText(name) || 'ease-out';
@@ -224,7 +255,20 @@ export function glideHighlight(
  * into it), or be found by anything querying the page.
  */
 
-export type Leaving = 'dialog' | 'sheet' | 'pop' | 'notice';
+export type Leaving = 'dialog' | 'sheet' | 'pop' | 'notice' | 'fold' | 'fold-lively';
+
+/**
+ * Where a section's folded insides leave (alpha.24, ui/fold.ts): over their column on its own background, so the
+ * sections moved up under them show only as the copy goes, and clipped to the column's scrolling part (never over
+ * the layer bar or LIVE's block); under the window's overlays.
+ */
+export interface LeavingPlace {
+  clip: string;
+  background: string;
+}
+
+/** A section's copy sits just over the column, under menus, notices and dialogs. */
+const FOLD_LAYER = 5;
 
 let sheet: CSSStyleSheet | null = null;
 let sheetFrom = -1;
@@ -249,7 +293,7 @@ function pageStyles(): CSSStyleSheet[] {
 }
 
 /** Play `node`'s exit as a copy, where it is now. Call it just before React removes the node. */
-export function leave(node: Element | null, kind: Leaving): void {
+export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace): void {
   if (!(node instanceof HTMLElement) || !node.isConnected || motionOff()) return;
   const box = node.getBoundingClientRect();
   if (box.width === 0 || box.height === 0) return;
@@ -261,22 +305,33 @@ export function leave(node: Element | null, kind: Leaving): void {
   // In its own layer when it has one, so a dialog that goes under Keep these screens? leaves under it too
   // (Session 51); otherwise over everything.
   const layer = Number.parseInt(seen.zIndex, 10);
-  host.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:${String(Number.isNaN(layer) ? 70 : layer)}`;
+  host.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:${String(place ? FOLD_LAYER : Number.isNaN(layer) ? 70 : layer)}`;
+  if (place) host.style.clipPath = place.clip;
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.adoptedStyleSheets = pageStyles();
   const copy = node.cloneNode(true) as HTMLElement;
+  // Where its scrolling parts were scrolled to (a copy starts at their tops): set again once it is drawn.
+  const originals = [node, ...node.querySelectorAll('*')];
+  const copies = [copy, ...copy.querySelectorAll('*')];
+  const scrolled = originals.flatMap((el, i) => {
+    const to = copies[i];
+    return to && (el.scrollTop !== 0 || el.scrollLeft !== 0)
+      ? [{ to, top: el.scrollTop, left: el.scrollLeft }]
+      : [];
+  });
   for (const el of [copy, ...copy.querySelectorAll('*')]) {
     el.removeAttribute('id');
     el.removeAttribute('data-testid');
     el.removeAttribute('data-motion');
   }
-  // A picture of it, never a player: a copied video or sound never loads or plays.
+  // A picture of it, never a player: a copied video or sound never loads or plays, and a page in it never loads.
   for (const media of copy.querySelectorAll<HTMLMediaElement>('video, audio')) {
     media.removeAttribute('src');
     media.removeAttribute('autoplay');
     media.preload = 'none';
     for (const source of media.querySelectorAll('source')) source.remove();
   }
+  for (const page of copy.querySelectorAll('iframe, webview, object, embed')) page.remove();
   Object.assign(copy.style, {
     position: 'fixed',
     left: `${String(box.left)}px`,
@@ -289,18 +344,23 @@ export function leave(node: Element | null, kind: Leaving): void {
     fontFamily: seen.fontFamily,
     fontSize: seen.fontSize,
     lineHeight: seen.lineHeight,
+    ...(place ? { backgroundColor: place.background, overflow: 'hidden' } : {}),
   });
   copy.dataset['leaving'] = kind;
   shadow.append(copy);
   document.body.append(host);
+  for (const { to, top, left } of scrolled) {
+    to.scrollTop = top;
+    to.scrollLeft = left;
+  }
   const gone = () => {
     host.remove();
   };
   copy.addEventListener('animationend', (e) => {
     if (e.target === copy) gone();
   });
-  // In case its animation never runs (a hidden window): never longer than its exit and a little.
-  setTimeout(gone, duration('dur-exit') + 200);
+  // In case its animation never runs (a hidden window): never longer than its exit and a little (Lively's longer).
+  setTimeout(gone, duration('dur-exit') * tokenNumber('lively-time') + 200);
 }
 
 /** An element that plays its exit when it goes: give it this ref. */
