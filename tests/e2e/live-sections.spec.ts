@@ -8,7 +8,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 /*
  * The sections under LIVE (alpha.22; the owner, 24 Nov 2026: "remove more tools, bring out all the features with
  * collapsable, like this. and by default it should be collapsed, we can uncollapse it when we want."): no More tools;
- * under the LIVE block, Audio, the Stage screen, Messages and Timers, then each tool in a folding section of its own,
+ * under the LIVE block, Audio, the Stage screen, Messages, the phones' Chat (alpha.23, QA23-CHAT-1) and Timers, then each tool in a folding section of its own,
  * looking and working as those four do. Every section is folded at each start, and stays as the operator leaves it
  * while Drashti runs. Placeholder words only.
  */
@@ -22,6 +22,8 @@ const SECTIONS = [
     id: 'messages',
     shows: (s: Locator) => s.getByRole('button', { name: 'New message' }),
   },
+  // The phones' group chat (alpha.23, QA23-CHAT-1: the owner's ask, the operator's window gets a Chat section too).
+  { title: 'Chat', id: 'chat', shows: (s: Locator) => s.getByTestId('chat-contents') },
   { title: 'Timers', id: 'timers', shows: (s: Locator) => s.getByTestId('open-calendar') },
   { title: 'Lower Thirds', id: 'lower-thirds', shows: (s: Locator) => s.getByTestId('lower-third-new') },
   { title: 'Show a Window', id: 'show-a-window', shows: (s: Locator) => s.getByTestId('show-a-window') },
