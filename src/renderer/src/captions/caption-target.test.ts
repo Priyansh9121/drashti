@@ -126,6 +126,11 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     expect(html).toContain(`<label for="${id}"`);
     expect(words(html)).toContain('Captions in');
     expect(select).toMatch(/aria-describedby="[^"]+"/u);
+    // The greyed-out speaker's own language says why (review N7).
+    const hintId = /aria-describedby="([^"]+)"/u.exec(select)?.[1] ?? '';
+    expect(words(`<p ${html.split(`id="${hintId}"`)[1]?.split('</p>')[0] ?? ''}`)).toBe(
+      'Translate the speaker’s words for the audience screens and the stream. Gujarati is greyed out: it is the speaker’s own language.',
+    );
     // The value chosen is the speaker's own words (the default, and every library from before alpha.24).
     expect(html).toMatch(/<option value="same" selected="">/u);
     // Nothing of a translation's warning, count or fault while the speaker's own words are chosen.
@@ -218,6 +223,40 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     // Translating as it should: no Try again.
     expect(field(view({ target: 'hi', translation: { target: 'hi' } }))).not.toContain(
       'captions-target-retry',
+    );
+  });
+
+  it('too slow because live captions themselves stopped: says so, and choosing again cannot mend it, so no Try again (review N3)', () => {
+    const stopped = {
+      slow: {
+        answerMs: 9100,
+        behindMs: 0,
+        limitMs: 2250,
+        threads: 2,
+        processors: 2,
+        rests: 3,
+        keptUp: false,
+        stops: true,
+      },
+      language: 'gu' as const,
+    };
+    const v = view({
+      on: false,
+      stopped,
+      target: 'hi',
+      translation: { offered: false, unavailable: 'too-slow' },
+    });
+    expect(captionTargetWhyNot(v)).toBe(
+      'Live captions stopped on this computer as too slow, so they cannot be translated now. Turning captions on again tries once more.',
+    );
+    const html = field(v);
+    expect(html).not.toContain('captions-target-retry');
+    expect(words(html)).not.toMatch(/Choosing a language again/u);
+    // Still choosable, as File › Caption Language allows: the choice is kept for when captions are on again.
+    expect(options(html).find((o) => o.value === 'hi')?.disabled).toBe(false);
+    // Translations that came late (captions still on): choosing again mends it, as before.
+    expect(captionTargetWhyNot(view({ translation: { offered: false, unavailable: 'too-slow' } }))).toBe(
+      unavailableText('too-slow'),
     );
   });
 
@@ -338,7 +377,7 @@ describe('the status bar while a chosen translation cannot be made (alpha.24, 2c
       translationStatusLine(
         view({ target: 'hi', translation: { offered: false, fault: 'Placeholder stop.' } }),
       ),
-    ).toBe('Translated captions are off: Placeholder stop.');
+    ).toBe('Translated captions are off. Placeholder stop.');
     // Nothing to say: working, the speaker's own words chosen, a pair that does not translate, or captions off.
     expect(translationStatusLine(view({ target: 'hi', translation: { target: 'hi' } }))).toBeNull();
     expect(

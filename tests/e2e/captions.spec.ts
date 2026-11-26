@@ -465,6 +465,8 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
     await expect(unavailable).toContainText('the audience screens and the stream show no captions');
     await expect(target).toBeEnabled();
     await expect(target.locator('option[value="same"]')).toBeEnabled();
+    await win.setViewportSize({ width: 1024, height: 645 });
+    await expectFits(dialog, 'the Live captions dialog, the translation pack gone, at 1024 × 645');
     await expectNoSeriousA11yIssues(win, 'Live captions, the translation pack gone');
 
     // The status bar says so, with the dialog closed.
@@ -500,6 +502,7 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
     await expect(retry).toHaveText('Try again');
     const retryBox = await retry.boundingBox();
     expect(retryBox?.height ?? 0).toBeGreaterThanOrEqual(24);
+    await expectFits(dialog, 'the Live captions dialog, the translation engine stopped, at 1024 × 645');
     await expectNoSeriousA11yIssues(win, 'Live captions, the translation engine stopped');
     await retry.click();
     // Saved again through captions:set-settings: the library keeps Hindi for a Gujarati speaker.
