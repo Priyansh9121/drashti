@@ -124,8 +124,14 @@ jobs:
       signing.replace("github.event_name == 'workflow_dispatch'", "github.event_name == 'pull_request'"),
       signing.replace('        if: always()', '        if: success()'),
       signing.replace('node scripts/mac-sign-keychain.mjs --cleanup', 'echo done'),
-      signing.replace('    runs-on: macos-latest', '    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@' + SHA + ' # v7.0.1\n        with:\n          ref: refs/pull/1/head\n          persist-credentials: false'),
-    ]) expect(checkWorkflow(unsafe, 'release.yml'), unsafe).not.toEqual([]);
+      signing.replace(
+        '    runs-on: macos-latest',
+        '    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@' +
+          SHA +
+          ' # v7.0.1\n        with:\n          ref: refs/pull/1/head\n          persist-credentials: false',
+      ),
+    ])
+      expect(checkWorkflow(unsafe, 'release.yml'), unsafe).not.toEqual([]);
   });
 
   it('this repository’s workflows keep them', () => {

@@ -6,6 +6,7 @@
 //   - the release build without caches (a poisoned cache could reach an installer); since Session 58 (X2b) a
 //     cache step (actions/cache, its restore or save) only after its job has uploaded what it built
 //     (actions/upload-artifact), never a setup action's cache: (restored before the build).
+//   - release signing's environment only on the guarded Mac job, never from a PR, with unconditional cleanup.
 //
 //   node scripts/check-workflows.mjs            check .github/workflows/*.yml; exit 1 with what is wrong
 import { readdirSync, readFileSync } from 'node:fs';
@@ -74,6 +75,25 @@ export function checkWorkflow(text, name) {
     if (run !== null && line.includes('${{'))
       problems.push(`${name}:${String(at)}: \${{ … }} inside run: (pass it through env:)`);
   });
+  if (name === 'release.yml' && /environment:|mac-sign-keychain/u.test(text)) {
+    const guard =
+      "(github.event_name == 'workflow_dispatch' || github.event_name == 'push') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-dry-run')";
+    const jobs = [...text.matchAll(/^ {2}([\w-]+):\s*\n([\s\S]*?)(?=^ {2}[\w-]+:|$(?![\s\S]))/gmu)];
+    const mac = jobs.find((j) => j[1] === 'build-mac')?.[2] ?? '';
+    const fail = (why) => problems.push(`${name}: release signing: ${why}`);
+    if (/\bpull_request(?:_target)?\b/u.test(text.replace(/#.*$/gmu, '')))
+      fail('no pull request events or workflow sources');
+    if (!mac.split('\n').includes(`    if: ${guard}`))
+      fail('build-mac must guard event and branch before any step');
+    if (!/^ {4}environment: release$/mu.test(mac)) fail('build-mac must use environment release');
+    for (const job of jobs)
+      if (job[1] !== 'build-mac' && /^ {4}environment:/mu.test(job[2]))
+        fail('only build-mac may name an environment');
+    if (/^\s+ref:/mu.test(text)) fail('checkout must use the guarded run commit');
+    if (!mac.includes('run: node scripts/mac-sign-keychain.mjs\n')) fail('missing keychain import');
+    if (!mac.includes('        if: always()\n        run: node scripts/mac-sign-keychain.mjs --cleanup'))
+      fail('keychain cleanup must always run');
+  }
   endCheckout();
   return problems;
 }

@@ -100,6 +100,7 @@ describe('Drashti’s own certificate in a Mac build’s signature (QA24-SIGN-1)
   it('refuses the build’s own hash (ad hoc), a Developer ID’s, another id and anything more', () => {
     const adHoc = ownRequirement(designatedRequirement(AD_HOC));
     expect(adHoc.ok).toBe(false);
+    if (adHoc.ok) throw new Error('An ad hoc requirement must be refused');
     expect(adHoc.why).toMatch(/the build’s own hash \(cdhash, as ad hoc\)/u);
     expect(ownRequirement(designatedRequirement(DEVELOPER_ID)).ok).toBe(false);
     const other = ownRequirement(`identifier "org.example.other" and certificate leaf = H"${SHA1}"`);

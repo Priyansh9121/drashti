@@ -43,10 +43,10 @@ describe('the release’s signing plan', () => {
       APPLE_API_ISSUER: 'ISSUER',
     });
     expect(p.extra).toEqual([]);
-    expect(p.env.CSC_LINK).toBe('/runner-temp/drashti-signing-x/developer-id.p12');
-    expect(p.env.CSC_KEY_PASSWORD).toBe('placeholder');
-    expect(p.env.CSC_IDENTITY_AUTO_DISCOVERY).toBe('true');
-    expect(p.env.APPLE_API_KEY).toBe('/runner-temp/drashti-signing-x/app-store-connect.p8');
+    expect(p.env['CSC_LINK']).toBe('/runner-temp/drashti-signing-x/developer-id.p12');
+    expect(p.env['CSC_KEY_PASSWORD']).toBe('placeholder');
+    expect(p.env['CSC_IDENTITY_AUTO_DISCOVERY']).toBe('true');
+    expect(p.env['APPLE_API_KEY']).toBe('/runner-temp/drashti-signing-x/app-store-connect.p8');
     expect(p.how).toBe('signed with a Developer ID, and notarised');
     expect(p.record).toEqual({ platform: 'darwin', signed: true, notarised: true });
     expect(written).toEqual(['developer-id.p12', 'app-store-connect.p8']);
@@ -58,7 +58,7 @@ describe('the release’s signing plan', () => {
     expect(none.how).toBe('unsigned (no certificate given)');
     expect(none.record).toEqual({ platform: 'win32', signed: false, notarised: false });
     const pfx = plan('win32', { WIN_CERT_PFX: 'cGxhY2Vob2xkZXI=', WIN_CERT_PASSWORD: 'placeholder' });
-    expect(pfx.env.WIN_CSC_LINK).toBe('/runner-temp/drashti-signing-x/code-signing.pfx');
+    expect(pfx.env['WIN_CSC_LINK']).toBe('/runner-temp/drashti-signing-x/code-signing.pfx');
     expect(pfx.how).toBe('signed with a code-signing certificate');
   });
 
@@ -79,7 +79,7 @@ describe('the release’s signing plan', () => {
       '-c.mac.notarize=false',
       '-c.forceCodeSigning=true',
     ]);
-    expect(p.env.CSC_KEYCHAIN).toBe(KEYCHAIN);
+    expect(p.env['CSC_KEYCHAIN']).toBe(KEYCHAIN);
     for (const name of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_API_KEY', 'MAC_SIGN_KEYCHAIN'])
       expect(p.env[name], name).toBeUndefined();
     expect(p.how).toBe("signed with Drashti's own certificate, not notarised (it is not a Developer ID)");
@@ -95,7 +95,7 @@ describe('the release’s signing plan', () => {
     });
     expect(p.how).toBe('signed with a Developer ID, not notarised (no App Store Connect key given)');
     expect(p.extra).toEqual([]);
-    expect(p.env.CSC_KEYCHAIN).toBeUndefined();
+    expect(p.env['CSC_KEYCHAIN']).toBeUndefined();
     expect(p.record).toEqual({ platform: 'darwin', signed: true, notarised: false });
   });
 
