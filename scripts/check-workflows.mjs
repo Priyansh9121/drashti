@@ -6,7 +6,10 @@
 //   - the release build without caches (a poisoned cache could reach an installer); since Session 58 (X2b) a
 //     cache step (actions/cache, its restore or save) only after its job has uploaded what it built
 //     (actions/upload-artifact), never a setup action's cache: (restored before the build).
-//   - release signing's environment only on the guarded Mac job, never from a PR, with unconditional cleanup.
+//   - release signing's environment only on the guarded Mac job, never from a PR, with unconditional cleanup;
+//     since the signing review (QA24-SIGN-1), in every workflow: an environment only on release.yml's build-mac,
+//     the Mac signing secrets (MAC_SIGN_P12_*) only in its import step, and its key deleted (--delete-key) in
+//     the step straight after verify-signing, before any step runs the packaged programs.
 //
 //   node scripts/check-workflows.mjs            check .github/workflows/*.yml; exit 1 with what is wrong
 import { readdirSync, readFileSync } from 'node:fs';
@@ -14,6 +17,30 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PINNED = /^[\w.-]+\/[\w.-]+(\/[\w./-]+)?@[0-9a-f]{40}$/u;
+
+/** The lines [start, end) of one job under jobs:, or null. */
+function jobLines(lines, job) {
+  const jobs = lines.findIndex((l) => /^jobs:\s*$/u.test(l));
+  const start = jobs < 0 ? -1 : lines.findIndex((l, i) => i > jobs && l.trimEnd() === `  ${job}:`);
+  if (start < 0) return null;
+  let end = start + 1;
+  // Up to the next job or top-level key (a comment or a blank line belongs to the job).
+  while (end < lines.length && !/^ {0,2}[^\s#]/u.test(lines[end] ?? '')) end += 1;
+  return [start, end];
+}
+
+/** The lines [start, end) of the step (at six spaces, as this repository writes them) holding `line`, or null. */
+function stepLines(lines, [start, end], line) {
+  const at = lines.findIndex((l, i) => i > start && i < end && l.trim() === line);
+  if (at < 0) return null;
+  let first = at;
+  while (first > start && !/^ {6}-\s/u.test(lines[first] ?? '')) first -= 1;
+  let last = at + 1;
+  while (last < end && !/^ {6}-\s/u.test(lines[last] ?? '')) last += 1;
+  return [first, last];
+}
+
+const within = (span, i) => span !== null && i >= span[0] && i < span[1];
 
 /** What is wrong with one workflow file (empty when nothing). `name` is its file name. */
 export function checkWorkflow(text, name) {
@@ -75,6 +102,19 @@ export function checkWorkflow(text, name) {
     if (run !== null && line.includes('${{'))
       problems.push(`${name}:${String(at)}: \${{ … }} inside run: (pass it through env:)`);
   });
+  // The release environment and its signing secrets reach only release.yml's build-mac, and the secrets only its
+  // import step: anywhere else a job, and every action and dependency it runs, would get the signing key.
+  const macJob = name === 'release.yml' ? jobLines(lines, 'build-mac') : null;
+  const importer = macJob && stepLines(lines, macJob, 'run: node scripts/mac-sign-keychain.mjs');
+  lines.forEach((line, i) => {
+    if (/^\s*#/u.test(line)) return;
+    if (/\benvironment\s*:/u.test(line) && !(within(macJob, i) && /^ {4}environment:/u.test(line)))
+      problems.push(`${name}:${String(i + 1)}: only release.yml's build-mac may name an environment`);
+    if (line.includes('MAC_SIGN_P12_') && !within(importer, i))
+      problems.push(
+        `${name}:${String(i + 1)}: the Mac signing secrets (MAC_SIGN_P12_*) belong to release.yml's build-mac import step alone`,
+      );
+  });
   if (name === 'release.yml' && /environment:|mac-sign-keychain/u.test(text)) {
     const guard =
       "(github.event_name == 'workflow_dispatch' || github.event_name == 'push') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-dry-run')";
@@ -86,13 +126,18 @@ export function checkWorkflow(text, name) {
     if (!mac.split('\n').includes(`    if: ${guard}`))
       fail('build-mac must guard event and branch before any step');
     if (!/^ {4}environment: release$/mu.test(mac)) fail('build-mac must use environment release');
-    for (const job of jobs)
-      if (job[1] !== 'build-mac' && /^ {4}environment:/mu.test(job[2]))
-        fail('only build-mac may name an environment');
     if (/^\s+ref:/mu.test(text)) fail('checkout must use the guarded run commit');
     if (!mac.includes('run: node scripts/mac-sign-keychain.mjs\n')) fail('missing keychain import');
     if (!mac.includes('        if: always()\n        run: node scripts/mac-sign-keychain.mjs --cleanup'))
       fail('keychain cleanup must always run');
+    // The key goes before the packaged app or its bundled programs run (the signing review's SHOULD 1): the
+    // very next step, comments between allowed.
+    if (
+      !/^ {8}run: node scripts\/verify-signing\.mjs\n(?: {6}#[^\n]*\n)* {6}- name: [^\n]*\n(?: {8}if: always\(\)\n)? {8}run: node scripts\/mac-sign-keychain\.mjs --delete-key$/mu.test(
+        mac,
+      )
+    )
+      fail('the signing key must be deleted (--delete-key) in the step straight after verify-signing');
   }
   endCheckout();
   return problems;

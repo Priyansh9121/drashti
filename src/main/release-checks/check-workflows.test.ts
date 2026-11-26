@@ -4,8 +4,10 @@ import { checkWorkflow, checkWorkflows } from '../../../scripts/check-workflows.
 
 /*
  * The workflows' safety rules (Session 30 step 4): actions pinned to a commit SHA with a version comment,
- * checkouts without kept credentials, no expression inside a run: script, no pull_request_target, and the
- * release build without caches. Fed bad workflows here; this repository's own are checked too.
+ * checkouts without kept credentials, no expression inside a run: script, no pull_request_target, the
+ * release build without caches, and (QA24-SIGN-1) the release environment and the Mac signing secrets in
+ * release.yml's build-mac alone, its key deleted straight after the signature check. Fed bad workflows here;
+ * this repository's own are checked too.
  */
 
 const SHA = '3d3c42e5aac5ba805825da76410c181273ba90b1';
@@ -105,7 +107,19 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Import signing identity
+        env:
+          MAC_SIGN_P12_BASE64: \${{ secrets.MAC_SIGN_P12_BASE64 }}
+          MAC_SIGN_P12_PASSWORD: \${{ secrets.MAC_SIGN_P12_PASSWORD }}
         run: node scripts/mac-sign-keychain.mjs
+      - name: Package
+        run: node scripts/package-release.mjs
+      - name: Check the signatures (when signed)
+        run: node scripts/verify-signing.mjs
+      - name: Delete the signing key
+        if: always()
+        run: node scripts/mac-sign-keychain.mjs --delete-key
+      - name: Each packaged app runs its programs
+        run: node scripts/check-ffmpeg.mjs --packaged
       - name: Delete signing keychain
         if: always()
         run: node scripts/mac-sign-keychain.mjs --cleanup
@@ -122,7 +136,10 @@ jobs:
       signing.replace('  build-windows:\n', '  build-windows:\n    environment: release\n'),
       signing.replace("github.ref == 'refs/heads/main'", "github.ref == 'refs/tags/v1'"),
       signing.replace("github.event_name == 'workflow_dispatch'", "github.event_name == 'pull_request'"),
-      signing.replace('        if: always()', '        if: success()'),
+      signing.replace(
+        '        if: always()\n        run: node scripts/mac-sign-keychain.mjs --cleanup',
+        '        if: success()\n        run: node scripts/mac-sign-keychain.mjs --cleanup',
+      ),
       signing.replace('node scripts/mac-sign-keychain.mjs --cleanup', 'echo done'),
       signing.replace(
         '    runs-on: macos-latest',
@@ -132,6 +149,73 @@ jobs:
       ),
     ])
       expect(checkWorkflow(unsafe, 'release.yml'), unsafe).not.toEqual([]);
+  });
+
+  it('deletes the signing key straight after the signature check, before the packaged programs run (signing review SHOULD 1)', () => {
+    const early =
+      '      - name: Delete the signing key\n        if: always()\n        run: node scripts/mac-sign-keychain.mjs --delete-key\n';
+    const check =
+      '      - name: Each packaged app runs its programs\n        run: node scripts/check-ffmpeg.mjs --packaged\n';
+    expect(signing).toContain(early);
+    expect(checkWorkflow(signing.replace(early, ''), 'release.yml')).toEqual([
+      'release.yml: release signing: the signing key must be deleted (--delete-key) in the step straight after verify-signing',
+    ]);
+    // After a step that runs the packaged programs is too late.
+    expect(checkWorkflow(signing.replace(early + check, check + early), 'release.yml')).toEqual([
+      'release.yml: release signing: the signing key must be deleted (--delete-key) in the step straight after verify-signing',
+    ]);
+    // On success only is enough there: the last, always-run cleanup is the safety net.
+    expect(
+      checkWorkflow(signing.replace(early, early.replace('        if: always()\n', '')), 'release.yml'),
+    ).toEqual([]);
+  });
+
+  it('names an environment, and the Mac signing secrets, nowhere but release.yml’s build-mac (signing review SHOULD 6)', () => {
+    const env = "only release.yml's build-mac may name an environment";
+    const secrets =
+      "the Mac signing secrets (MAC_SIGN_P12_*) belong to release.yml's build-mac import step alone";
+    // Any other workflow: an environment, in either form, or the secrets anywhere.
+    const named = good.replace(
+      '    runs-on: ubuntu-latest',
+      '    environment: release\n    runs-on: ubuntu-latest',
+    );
+    expect(checkWorkflow(named, 'ci.yml')).toEqual([`ci.yml:5: ${env}`]);
+    expect(
+      checkWorkflow(named.replace('environment: release', 'environment: { name: release }'), 'ci.yml'),
+    ).toEqual([`ci.yml:5: ${env}`]);
+    expect(checkWorkflow(good.replace('inputs.what', 'secrets.MAC_SIGN_P12_BASE64'), 'ci.yml')).toEqual([
+      `ci.yml:13: ${secrets}`,
+    ]);
+    expect(checkWorkflow(good.replace('inputs.what', 'secrets.MAC_SIGN_P12_PASSWORD'), 'soak.yml')).toEqual([
+      `soak.yml:13: ${secrets}`,
+    ]);
+    // A whole-line comment may name them.
+    expect(
+      checkWorkflow(good.replace('jobs:', '# environment: release; MAC_SIGN_P12_BASE64\njobs:'), 'ci.yml'),
+    ).toEqual([]);
+    // In release.yml: the secrets in build-mac's import step alone, never another step, the job's own env or
+    // another job.
+    const packaged = signing.replace(
+      '        run: node scripts/package-release.mjs',
+      '        env:\n          MAC_SIGN_P12_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}\n        run: node scripts/package-release.mjs',
+    );
+    expect(checkWorkflow(packaged, 'release.yml')).toEqual([`release.yml:18: ${secrets}`]);
+    const jobEnv = signing.replace(
+      '    runs-on: macos-latest',
+      '    env:\n      MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}\n    runs-on: macos-latest',
+    );
+    expect(checkWorkflow(jobEnv, 'release.yml')).toEqual([`release.yml:10: ${secrets}`]);
+    const windows = signing.replace(
+      '    steps: []',
+      '    env:\n      MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}\n    steps: []',
+    );
+    expect(checkWorkflow(windows, 'release.yml')).toEqual([`release.yml:31: ${secrets}`]);
+    expect(
+      checkWorkflow(
+        signing.replace('  build-windows:\n', '  build-windows:\n    environment: release\n'),
+        'release.yml',
+      ),
+    ).toEqual([`release.yml:29: ${env}`]);
   });
 
   it('this repository’s workflows keep them', () => {
