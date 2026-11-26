@@ -8,8 +8,8 @@
 //     (actions/upload-artifact), never a setup action's cache: (restored before the build).
 //   - release signing's environment only on the guarded Mac job, never from a PR, with unconditional cleanup;
 //     since the signing review (QA24-SIGN-1), in every workflow: an environment only on release.yml's build-mac,
-//     the Mac signing secrets (MAC_SIGN_P12_*) only in its import step, and its key deleted (--delete-key) in
-//     the step straight after verify-signing, before any step runs the packaged programs.
+//     the Mac signing secrets (MAC_SIGN_P12_*, or the whole secrets object) only in its import step, and its key
+//     deleted (--delete-key) in the step straight after verify-signing, before any step runs the packaged programs.
 //
 //   node scripts/check-workflows.mjs            check .github/workflows/*.yml; exit 1 with what is wrong
 import { readdirSync, readFileSync } from 'node:fs';
@@ -108,11 +108,18 @@ export function checkWorkflow(text, name) {
   const importer = macJob && stepLines(lines, macJob, 'run: node scripts/mac-sign-keychain.mjs');
   lines.forEach((line, i) => {
     if (/^\s*#/u.test(line)) return;
-    if (/\benvironment\s*:/u.test(line) && !(within(macJob, i) && /^ {4}environment:/u.test(line)))
+    // Quoted or not, it is the same key to YAML.
+    if (/\benvironment["']?\s*:/u.test(line) && !(within(macJob, i) && /^ {4}environment:/u.test(line)))
       problems.push(`${name}:${String(i + 1)}: only release.yml's build-mac may name an environment`);
     if (line.includes('MAC_SIGN_P12_') && !within(importer, i))
       problems.push(
         `${name}:${String(i + 1)}: the Mac signing secrets (MAC_SIGN_P12_*) belong to release.yml's build-mac import step alone`,
+      );
+    // Every secret at once, or one by a name worked out (expressions' functions are any case): the environment's
+    // too, without naming them (the signing re-review).
+    if (/\btojson\s*\(\s*secrets\s*\)|\bsecrets\s*\[/iu.test(line) && !within(importer, i))
+      problems.push(
+        `${name}:${String(i + 1)}: the whole secrets object (toJSON(secrets) or secrets[…]) belongs to release.yml's build-mac import step alone`,
       );
   });
   if (name === 'release.yml' && /environment:|mac-sign-keychain/u.test(text)) {
