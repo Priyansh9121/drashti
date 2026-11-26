@@ -1061,8 +1061,9 @@ const copyColours = (win: Page) =>
         }
         const colours = (el: Element | null | undefined) =>
           el ? `${getComputedStyle(el).backgroundColor} ${getComputedStyle(el).color}` : null;
-        const live = document.querySelector(
-          '[data-testid="section-show-a-window"] [id$="-body"] [data-variant]',
+        // Read now: once the press has folded it, the button is gone from the page and has no colours of its own.
+        const live = colours(
+          document.querySelector('[data-testid="section-show-a-window"] [id$="-body"] [data-variant]'),
         );
         const before = w.shadows.length;
         window.addEventListener(
@@ -1071,7 +1072,7 @@ const copyColours = (win: Page) =>
             requestAnimationFrame(() => {
               const root = (w.shadows ?? []).slice(before).at(-1);
               resolve({
-                live: colours(live) ?? 'none',
+                live: live ?? 'none',
                 copy: colours(root?.querySelector('[data-variant]')),
               });
             });
