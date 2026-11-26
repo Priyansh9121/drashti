@@ -28,7 +28,7 @@ import { openLinkDialog } from '../links/link-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
-import { Badge, LiveDot, MissingBadge } from '../ui/Badge';
+import { Badge, LiveDot, LiveEdge, MissingBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { rowTops, slideRows, useLivelyArrival } from '../ui/motion';
@@ -289,13 +289,7 @@ function ItemBody({
   // Up (alpha.24, uitop: LIVE is said once, in words, by the top bar's badge): a red edge at the row's start and a dot
   // at its end, "Live" to a screen reader as the badge said it.
   const liveBadge = live ? <LiveDot /> : null;
-  const liveEdge = live ? (
-    <span
-      aria-hidden="true"
-      data-live-edge=""
-      className="pointer-events-none absolute inset-y-1.5 left-0.5 w-[3px] rounded-full bg-live-edge"
-    />
-  ) : null;
+  const liveEdge = live ? <LiveEdge /> : null;
   const conversion = useConvert((state) =>
     item.kind === 'media' ? jobFor(state.jobs, item.mediaId) : undefined,
   );

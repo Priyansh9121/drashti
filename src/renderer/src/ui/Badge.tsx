@@ -76,6 +76,20 @@ export function LiveDot({ className }: { className?: string }) {
   );
 }
 
+/**
+ * A row's red edge at its start while it is up (alpha.24, uitop), with its LiveDot: decoration only (hidden from screen
+ * readers), absolute in the row (which is relative), so nothing in the row moves as it comes or goes.
+ */
+export function LiveEdge() {
+  return (
+    <span
+      aria-hidden="true"
+      data-live-edge=""
+      className="pointer-events-none absolute inset-y-1.5 left-0.5 w-[3px] rounded-full bg-live-edge"
+    />
+  );
+}
+
 /** A file the library cannot find. */
 export function MissingBadge({ title }: { title?: string }) {
   return (
