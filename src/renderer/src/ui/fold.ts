@@ -66,6 +66,23 @@ export function foldCopy(move: FoldMove, _showControlNear: boolean): 'fold' | 'f
   return move === 'lively' ? 'fold-lively' : 'fold';
 }
 
+/** Where parts were in the scrolling part and where it was scrolled (the stand-in before its rule, red first). */
+export interface PartsAt {
+  tops: readonly number[];
+  scroll: number;
+}
+
+export function glidesIn(before: PartsAt, after: PartsAt): number[] {
+  return glides(before.tops, after.tops);
+}
+
+export function scrollsBack(
+  _scroller: { scrollTop: number; clientHeight: number; scrollHeight: number },
+  _going: number,
+): boolean {
+  return false;
+}
+
 /** A clip of the window to `box` (the column's scrolling part), as a clip-path. */
 export function clipInside(
   box: { top: number; right: number; bottom: number; left: number },

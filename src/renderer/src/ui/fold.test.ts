@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clipInside, foldCopy, foldMove, glides } from './fold';
+import { clipInside, foldCopy, foldMove, glides, glidesIn, scrollsBack } from './fold';
 import { livelyWith } from './motion';
 
 /*
@@ -89,5 +89,30 @@ describe('the copy of what folds away', () => {
   it('is never drawn where a show control moves or sits in the same column', () => {
     expect(foldCopy('calm', true)).toBeNull();
     expect(foldCopy('lively', true)).toBeNull();
+  });
+});
+
+/*
+ * Lead 2's hands-on pass of 68394720e (N/reports/a24-uimotion-handson.md, problem 1): folding the last section with the
+ * column scrolled to its end, the column scrolls back at once, and a glide measured in the window's coordinates read
+ * that as the section moving (its heading slid over the one above for 187.5 ms). Measured inside the scrolling part,
+ * a fold that only scrolls the column glides nothing; and no copy is drawn where the column will scroll back.
+ */
+describe('a fold at the column’s end', () => {
+  it('glides only what moved inside the scrolling part, never the column scrolling back', () => {
+    // OSC, the last section, folded at the end: the column scrolls back 80 px, OSC's heading stays where it is in it.
+    expect(glidesIn({ tops: [900], scroll: 500 }, { tops: [980], scroll: 420 })).toEqual([0]);
+    // A section in the middle folded at the end: the ones under it move up 80 px inside the column, the column 30.
+    expect(glidesIn({ tops: [300, 700], scroll: 500 }, { tops: [330, 650], scroll: 470 })).toEqual([0, 80]);
+    // Not scrolled: as before.
+    expect(glidesIn({ tops: [100, 200], scroll: 0 }, { tops: [100, 280], scroll: 0 })).toEqual([0, -80]);
+  });
+
+  it('knows when folding will scroll the column back', () => {
+    // 1965 tall, 504 in sight, at its end (1461): 80 px folding away scrolls it back.
+    expect(scrollsBack({ scrollTop: 1461, clientHeight: 504, scrollHeight: 1965 }, 80)).toBe(true);
+    // Room under what is in sight for what goes: no scrolling back.
+    expect(scrollsBack({ scrollTop: 1000, clientHeight: 504, scrollHeight: 1965 }, 80)).toBe(false);
+    expect(scrollsBack({ scrollTop: 0, clientHeight: 504, scrollHeight: 504 }, 80)).toBe(false);
   });
 });
