@@ -155,14 +155,18 @@ describe('B · Depth: styles/look-depth.css', () => {
       for (const name of readdirSync(dir)) {
         const path = join(dir, name);
         if (statSync(path).isDirectory()) walk(path);
-        else if (/\.(tsx?|css)$/u.test(name) && readFileSync(path, 'utf8').includes('look-depth.css'))
+        // An import of it (a comment that names it is no import).
+        else if (
+          /\.(tsx?|css)$/u.test(name) &&
+          /(?:^import\s+|@import\s+)['"][^'"]*look-depth\.css['"]/mu.test(readFileSync(path, 'utf8'))
+        )
           mains.push(relative(renderer, path).split('\\').join('/'));
       }
     };
     walk(renderer);
     expect(mains.filter((m) => !m.endsWith('.test.ts'))).toEqual(['operator/main.tsx']);
     const main = readFileSync(join(renderer, 'operator', 'main.tsx'), 'utf8');
-    expect(main.match(/look-depth\.css/gu)?.length).toBe(1);
+    expect(main.match(/^import '\.\.\/styles\/look-depth\.css';$/gmu)?.length).toBe(1);
   });
 
   it('is all the Depth look’s, and none of it in forced colours', () => {
@@ -247,7 +251,10 @@ describe('B · Depth: styles/look-depth.css', () => {
   it('rounds the columns with no rounded clip: square columns clipped to their box, a ring of the ground over their corners', () => {
     // The release lead's review, S1: a rounded overflow clip over a column's scrolling parts may cost a layer drawn
     // afresh at every frame; a square clip and a no-blur ring in the ground's colour round the corners instead.
-    const columns = rules.filter((r) => r.selector.includes("[data-testid='column-middle']"));
+    // The columns' own rules (their ::after ring is the one rounded thing, over them).
+    const columns = rules.filter(
+      (r) => r.selector.includes("[data-testid='column-middle']") && !r.selector.endsWith('::after'),
+    );
     for (const r of columns) {
       const rounded = r.decls['border-radius'];
       if (rounded !== undefined) expect(rounded, r.selector).toBe('0');
