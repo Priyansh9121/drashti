@@ -381,8 +381,8 @@ test('a drag of the PDF ends once a move says no button is held', async () => {
     });
     expect(await scroll()).toEqual(held);
     await expect.poll(cursor).toBe('grab');
-    // The drag is over: moving on moves nothing.
-    await win.mouse.move(point.x - 80, point.y - 70, { steps: 3 });
+    // The drag is over: moving on (along the page, so the release lands on it too) moves nothing.
+    await win.mouse.move(point.x - 80, point.y, { steps: 3 });
     expect(await scroll()).toEqual(held);
     await win.mouse.up();
     expect(await scroll()).toEqual(held);
