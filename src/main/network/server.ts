@@ -653,10 +653,11 @@ export class NetworkServer {
 
   /**
    * Lists a remote shows have changed; a stage display hears of the screens
-   * changing too (which group is the stage's).
+   * changing too (which group is the stage's). `ids`: with 'presentations', those
+   * that changed when Drashti names them (QA24-PHONE-C).
    */
-  hint(what: NetworkChange): void {
-    const text = JSON.stringify({ type: 'changed', what } satisfies ToDevice);
+  hint(what: NetworkChange, ids?: readonly string[]): void {
+    const text = JSON.stringify({ type: 'changed', what, ...(ids ? { ids: [...ids] } : {}) } satisfies ToDevice);
     for (const c of this.clients)
       if (c.device?.kind === 'remote' || (c.device?.kind === 'stage' && what === 'screens'))
         this.sendText(c, text);

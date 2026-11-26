@@ -121,12 +121,15 @@ export function gateDocs(may: () => boolean): void {
 
 /** How many times the rows' presentations were let go: an answer to a read from before is dropped (LOW-5). */
 let generation = 0;
+/** The same for each presentation let go alone (QA24-PHONE-C: a library change that names it). */
+const ownGeneration = new Map<string, number>();
 
 async function readDoc(id: string): Promise<void> {
   const from = generation;
+  const fromOwn = ownGeneration.get(id) ?? 0;
   const r = await api<{ presentation: PresentationDoc }>(`/api/v1/presentations/${encodeURIComponent(id)}`);
   // Let go meanwhile (a library change, a new connection): this answer may be of the old presentation.
-  if (from !== generation) return;
+  if (from !== generation || fromOwn !== (ownGeneration.get(id) ?? 0)) return;
   asked.delete(id);
   usePhoneTools.setState((s) => {
     const docs = new Map(s.docs);
@@ -149,11 +152,28 @@ export function readDocsFor(items: readonly PlaylistItemInfo[] | null): void {
   }
 }
 
-/** The rows' presentations let go, to be read again as the rows show (remote-store.ts: a library change, a connection). */
-export function forgetDocs(): void {
-  generation += 1;
-  asked.clear();
-  usePhoneTools.setState({ docs: new Map() });
+/**
+ * The rows' presentations let go, to be read again as the rows show (remote-store.ts: a library change, a connection):
+ * all of them, or only those `ids` names (QA24-PHONE-C: a library change that names what changed, so the Playlist
+ * reads again only those, never every PowerPoint and PDF row).
+ */
+export function forgetDocs(ids?: readonly string[]): void {
+  if (ids === undefined) {
+    generation += 1;
+    asked.clear();
+    usePhoneTools.setState({ docs: new Map() });
+    return;
+  }
+  const { docs } = usePhoneTools.getState();
+  const gone = ids.filter((id) => docs.has(id) || asked.has(id));
+  if (gone.length === 0) return;
+  const kept = new Map(docs);
+  for (const id of gone) {
+    ownGeneration.set(id, (ownGeneration.get(id) ?? 0) + 1);
+    asked.delete(id);
+    kept.delete(id);
+  }
+  usePhoneTools.setState({ docs: kept });
 }
 
 // ---- the wallpapers ---------------------------------------------------------------------------------------------

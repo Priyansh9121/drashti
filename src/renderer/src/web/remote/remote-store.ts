@@ -331,27 +331,39 @@ function followLive(): void {
  */
 export const LIST_REFRESH_GAP_MS = 500;
 
-/** A library change seen since the last refresh began: the rows' decks and the slides shown read again too. */
-let libraryChanged = false;
+/**
+ * The library changes seen since the last refresh began: the presentations they name (QA24-PHONE-C), or 'any' when
+ * one named none; null, no library change. Those of the rows' decks and the slides shown are read again too.
+ */
+let libraryChanged: Set<string> | 'any' | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRefreshAt = Number.NEGATIVE_INFINITY;
 
 const refreshLists = oneAtATime(async () => {
   const library = libraryChanged;
-  libraryChanged = false;
+  libraryChanged = null;
   lastRefreshAt = Date.now();
   await loadHall();
   // Its hall not heard (the read failed): nothing let go or read, until the next change or connection.
   if (!hallKnown) return;
-  // The library changed: the rows' pages read again too (a23-review-phoneui MUST-3).
-  if (library) forgetDocs();
+  // The library changed: the rows' pages read again too (a23-review-phoneui MUST-3), only those it names when it
+  // names them (QA24-PHONE-C: a kirtan's words edited reads no PowerPoint or PDF row again).
+  if (library === 'any') forgetDocs();
+  else if (library) forgetDocs([...library]);
   await loadPlaylists();
   const v = useRemote.getState().viewing;
-  if (library && v) await loadDoc(v.presentationId);
+  if (v && (library === 'any' || library?.has(v.presentationId))) await loadDoc(v.presentationId);
 });
 
-function listsChanged(library: boolean): void {
-  if (library) libraryChanged = true;
+/** A change of the playlists, or of the library (`library`) naming the presentations it changed (`ids`, when it can). */
+function listsChanged(library: boolean, ids?: readonly string[]): void {
+  if (library) {
+    if (ids === undefined || libraryChanged === 'any') libraryChanged = 'any';
+    else {
+      libraryChanged ??= new Set();
+      for (const id of ids) libraryChanged.add(id);
+    }
+  }
   if (refreshTimer) return;
   refreshTimer = setTimeout(
     () => {
@@ -383,10 +395,10 @@ export function startRemote(): void {
       if (v) void loadDoc(v.presentationId);
     });
   });
-  onListsChanged((what) => {
+  onListsChanged((what, ids) => {
     // The hall first (QA23-PHONE-1, CI run 45610620870): Drashti adopts Simple Mode's playlist, a 'playlists' change,
     // before it says the mode changed, and a phone in Simple Mode reads no playlist or presentation.
-    if (what === 'playlists' || what === 'presentations') listsChanged(what === 'presentations');
+    if (what === 'playlists' || what === 'presentations') listsChanged(what === 'presentations', ids);
     if (what === 'screens' || what === 'mode') void loadHall();
   });
 }
