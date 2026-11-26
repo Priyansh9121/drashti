@@ -25,7 +25,7 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
         <div
           data-testid="chat-pop"
           data-leaving={leaving || undefined}
-          className={`pointer-events-auto flex w-[min(32rem,calc(100vw-2rem))] items-start gap-2 rounded-lg border border-line bg-panel p-3 text-fg shadow-lg ${still ? '' : 'transition-opacity duration-200 motion-reduce:transition-none'}`}
+          className={`pointer-events-auto flex w-[min(32rem,calc(100vw-2rem))] items-start gap-2 rounded-lg border border-line bg-panel p-3 text-fg shadow-lg ${still ? '' : 'transition-opacity [transition-duration:var(--dur-notice)] motion-reduce:transition-none'}`}
           style={{ opacity: leaving ? 0 : 1 }}
         >
           <button
