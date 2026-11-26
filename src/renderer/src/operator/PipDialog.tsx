@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import type { PipMotion, PipPlace, PipSource } from '../../../shared/engine/state';
 import { PIP_CORNERS, PIP_MOTIONS, PIP_SIZES } from '../../../shared/engine/state';
-import { SCREEN_RECORDING_STEPS, type WindowList, WINDOWS_FAILED } from '../../../shared/live-window';
+import { type WindowList, WINDOWS_FAILED } from '../../../shared/live-window';
 import { DEFAULT_PIP_PLACE, PIP_CORNER_NAMES, PIP_SIZE_NAMES } from '../../../shared/pip';
 import type { VideoInput } from '../../../shared/video-inputs';
 import { useEngine } from '../engine/engine-store';
@@ -19,10 +19,10 @@ import {
   PictureInPicture2,
   Presentation,
   RotateCw,
-  Settings,
   Video,
   X,
 } from '../ui/icons';
+import { ScreenRecordingNotice } from '../live-window/ScreenRecordingNotice';
 import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Toggle } from '../ui/Toggle';
@@ -184,13 +184,14 @@ function useWindows(wanted: boolean): { list: WindowList | null; again: () => vo
   };
 }
 
-export function PipDialog() {
+/** platform: the computer's (AppInfo's), for the Mac's own words in the Screen Recording box. */
+export function PipDialog({ platform }: { platform: string }) {
   const open = usePipUi((s) => s.open);
   if (!open) return null;
-  return <PipDialogBody />;
+  return <PipDialogBody platform={platform} />;
 }
 
-function PipDialogBody() {
+function PipDialogBody({ platform }: { platform: string }) {
   const box = useEngine((s) => s.state?.layers.pip ?? null);
   const allMedia = useMedia((s) => s.media);
   const mediaLoaded = useMedia((s) => s.loaded);
@@ -421,6 +422,7 @@ function PipDialogBody() {
                 chosen={win?.id ?? null}
                 choose={setWindowId}
                 again={windows.again}
+                platform={platform}
               />
             )}
           </section>
@@ -511,37 +513,24 @@ function WindowChoice({
   chosen,
   choose,
   again,
+  platform,
 }: {
   list: WindowList | null;
   chosen: string | null;
   choose: (id: string) => void;
   again: () => void;
+  platform: string;
 }) {
   if (list === null) return <p className="text-xs text-muted">Looking for open windows…</p>;
   if (!list.ok && list.reason === 'permission')
     return (
-      <Notice
-        tone="info"
-        title="Let Drashti see other apps’ windows"
-        data-testid="pip-window-permission"
-        actions={
-          <>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={Settings}
-              onClick={() => void window.drashti.liveWindow.access()}
-            >
-              Open System Settings
-            </Button>
-            <Button size="sm" icon={RotateCw} onClick={again}>
-              Look again
-            </Button>
-          </>
-        }
-      >
-        {list.message} {SCREEN_RECORDING_STEPS}
-      </Notice>
+      <ScreenRecordingNotice
+        message={list.message}
+        platform={platform}
+        testId="pip-window-permission"
+        onOpen={() => void window.drashti.liveWindow.access()}
+        onAgain={again}
+      />
     );
   if (!list.ok)
     return (

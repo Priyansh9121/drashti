@@ -455,7 +455,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />
       {/* What a chosen tool opens from its section (alpha.22): Show a Window…, Show a Stream Link…, Picture in Picture…. */}
-      <SimpleFeatureDialogs />
+      <SimpleFeatureDialogs platform={platform} />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
     </div>
   );
