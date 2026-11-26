@@ -94,6 +94,46 @@ describe('the workflows’ rules', () => {
     expect(checkWorkflow(`${good}${restore}`, 'ci.yml')).toEqual([]);
   });
 
+  const signing = `on:
+  workflow_dispatch:
+  push:
+    branches: [release-dry-run]
+jobs:
+  build-mac:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-dry-run')
+    environment: release
+    runs-on: macos-latest
+    steps:
+      - name: Import signing identity
+        run: node scripts/mac-sign-keychain.mjs
+      - name: Delete signing keychain
+        if: always()
+        run: node scripts/mac-sign-keychain.mjs --cleanup
+  build-windows:
+    runs-on: windows-latest
+    steps: []
+`;
+
+  it('isolates the release environment to the guarded Mac job, with unconditional cleanup', () => {
+    expect(checkWorkflow(signing, 'release.yml')).toEqual([]);
+    for (const unsafe of [
+      signing.replace('  workflow_dispatch:', '  pull_request:'),
+      signing.replace('    environment: release', '    environment: other'),
+      signing.replace('  build-windows:\n', '  build-windows:\n    environment: release\n'),
+      signing.replace("github.ref == 'refs/heads/main'", "github.ref == 'refs/tags/v1'"),
+      signing.replace("github.event_name == 'workflow_dispatch'", "github.event_name == 'pull_request'"),
+      signing.replace('        if: always()', '        if: success()'),
+      signing.replace('node scripts/mac-sign-keychain.mjs --cleanup', 'echo done'),
+      signing.replace(
+        '    runs-on: macos-latest',
+        '    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@' +
+          SHA +
+          ' # v7.0.1\n        with:\n          ref: refs/pull/1/head\n          persist-credentials: false',
+      ),
+    ])
+      expect(checkWorkflow(unsafe, 'release.yml'), unsafe).not.toEqual([]);
+  });
+
   it('this repository’s workflows keep them', () => {
     expect(checkWorkflows(join(__dirname, '..', '..', '..', '.github', 'workflows'))).toEqual([]);
   });
