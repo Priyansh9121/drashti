@@ -145,7 +145,10 @@ test('when the Undo line goes with the pointer over the left column, its room st
   // 3. A change made from the live column, the pointer still there when its minute is up: no room is kept; the
   //    wallpapers go back down at once, away from the pointer, as before.
   await deleteOne(NAMES[1]);
-  expect(await top()).toBeCloseTo(withLine, 0);
+  // Its words are another lower third's, so its own height (they could wrap differently).
+  const otherLine = await line.boundingBox();
+  if (!otherLine) throw new Error('the Undo line is not in view');
+  expect(without - (await top())).toBeCloseTo(otherLine.height, 0);
   await later(win, 60_000);
   await drawn(win);
   await expect(line).toHaveCount(0);
