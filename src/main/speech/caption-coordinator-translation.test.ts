@@ -280,3 +280,115 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
     expect(c.view()).toMatchObject({ current: null, canCorrect: false });
   });
 });
+
+/*
+ * A phrase being heard withdrawn while a translation shows (alpha.24 captions join, J3): every word of it was a word
+ * left out (QA24-CAPCLEAN-1), so what the stage showed of it comes off, but the translation of the phrase before,
+ * its pages and timers, and its translation in flight all stay, as if the withdrawn phrase had never been heard.
+ */
+describe('a phrase withdrawn while translated captions show (alpha.24 captions join, J3)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-26T09:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const span = (page: readonly string[]) =>
+    Math.max(CAPTION_PAGE_MIN_MS, page.join(' ').split(' ').length * CAPTION_PAGE_MS_PER_WORD);
+
+  it('keeps the translation of the phrase before and its later pages at their times; only the stage band goes', async () => {
+    const { port, finish } = deferredPort();
+    const { coordinator: c, clause, last, skips } = setup(port);
+    c.accept(clause('A long placeholder sentence', 1, 'settled'));
+    const long = 'placeholder sentence number one carries several ordinary words along the bottom line today';
+    finish(0, long);
+    await vi.advanceTimersByTimeAsync(300);
+    const first = must(last());
+    expect(first.page).toEqual({ n: 1, of: 2 });
+    c.accept(clause('Next placeholder', 1, 'provisional', 's2'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toMatchObject({ lines: first.lines, stage: { lines: ['Next placeholder'] } });
+    expect(c.withdraw('s2')).toBe(true);
+    // At once: the stage band goes, the translation's page stays.
+    expect(last()).toMatchObject({ kind: 'translation', lines: first.lines, page: { n: 1, of: 2 }, stage: null });
+    expect(c.view()).toMatchObject({ current: null, previous: { phraseId: 's1', status: 'settled' } });
+    // Its next page at its own time, still with no stage band.
+    await vi.advanceTimersByTimeAsync(span(first.lines) - 600);
+    const second = must(last());
+    expect(second).toMatchObject({ page: { n: 2, of: 2 }, stage: null });
+    expect([...first.lines, ...second.lines].join(' ')).toBe(long);
+    expect(skips).toEqual([]);
+    expect(c.view().omitted).toBe(0);
+    // Then everything goes when its time is up.
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(last()).toBeNull();
+  });
+
+  it('never aborts the translation in flight of the phrase before: it lands and shows', async () => {
+    const { port, translate, finish } = deferredPort();
+    const { coordinator: c, clause, last, skips, painted } = setup(port);
+    c.accept(clause('First placeholder', 1, 'settled'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(translate).toHaveBeenCalledTimes(1);
+    const signal = must(translate.mock.calls[0])[1];
+    c.accept(clause('Next placeholder', 1, 'provisional', 's2'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(c.withdraw('s2')).toBe(true);
+    expect(signal.aborted).toBe(false);
+    expect(last()).toBeNull();
+    finish(0, 'प्लेसहोल्डर अनुवाद');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toMatchObject({ kind: 'translation', lines: ['प्लेसहोल्डर अनुवाद'], stage: null });
+    expect(painted).toHaveBeenCalledTimes(1);
+    expect(skips).toEqual([]);
+    expect(translate).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the withdrawn phrase come back fresh beside the translation before (review R2-1)', async () => {
+    const { port, finish } = deferredPort();
+    const { coordinator: c, clause, last } = setup(port);
+    c.accept(clause('First placeholder', 1, 'settled'));
+    finish(0, 'प्लेसहोल्डर अनुवाद');
+    await vi.advanceTimersByTimeAsync(300);
+    c.accept(clause('Next placeholder', 1, 'provisional', 's2'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(c.withdraw('s2')).toBe(true);
+    expect(last()).toMatchObject({ lines: ['प्लेसहोल्डर अनुवाद'], stage: null });
+    // Heard on: its flow starts again at revision 1.
+    expect(c.accept(clause('Next words', 1, 'provisional', 's2'))).toBe(true);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toMatchObject({ lines: ['प्लेसहोल्डर अनुवाद'], stage: { lines: ['Next words'] } });
+    expect(c.view()).toMatchObject({ current: { phraseId: 's2' }, previous: { phraseId: 's1' } });
+  });
+
+  it('keeps the phrase before eligible when the next phrase comes after a withdrawn one', async () => {
+    const { port, translate, finish } = deferredPort();
+    const { coordinator: c, clause, last, skips } = setup(port);
+    c.accept(clause('First placeholder', 1, 'settled'));
+    await vi.advanceTimersByTimeAsync(0);
+    const signal = must(translate.mock.calls[0])[1];
+    c.accept(clause('Next placeholder', 1, 'provisional', 's2'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(c.withdraw('s2')).toBe(true);
+    // The phrase after it is being heard: the phrase before is still the one translated, as it would be next to s2.
+    c.accept(clause('Third placeholder', 1, 'provisional', 's3'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(signal.aborted).toBe(false);
+    expect(c.view()).toMatchObject({ current: { phraseId: 's3' }, previous: { phraseId: 's1' } });
+    finish(0, 'प्लेसहोल्डर अनुवाद');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toMatchObject({ lines: ['प्लेसहोल्डर अनुवाद'], stage: { lines: ['Third placeholder'] } });
+    expect(skips).toEqual([]);
+  });
+
+  it('clears everything as before when nothing of a phrase before is left to show', async () => {
+    const { port } = deferredPort();
+    const { coordinator: c, clause, last } = setup(port);
+    c.accept(clause('Only placeholder', 1, 'provisional'));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(last()).toMatchObject({ lines: [], stage: { lines: ['Only placeholder'] } });
+    expect(c.withdraw('s1')).toBe(true);
+    expect(last()).toBeNull();
+    expect(c.view()).toMatchObject({ current: null, previous: null });
+  });
+});
