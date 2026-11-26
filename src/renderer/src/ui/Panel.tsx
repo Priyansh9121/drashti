@@ -4,9 +4,10 @@ import type { PanelHelpId } from '../../../shared/panel-help';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
+import type { FoldMove } from './fold';
+import { pressFold } from './fold';
 import type { Icon } from './icons';
-import { ChevronDown, ChevronRight } from './icons';
-import { livelyNow } from './motion';
+import { ChevronRight } from './icons';
 import type { Keep } from './persist';
 import { usePersistentState } from './persist';
 
@@ -68,8 +69,8 @@ export function Panel({
   nested?: boolean;
 } & DataAttributes) {
   const id = useId();
-  // Lively (Session 40): opened by a click, its insides arrive (app.css, data-lively="open").
-  const [opening, setOpening] = useState(false);
+  // Opened by its button, its insides arrive: Calm's fade or Lively's unroll (alpha.24, ui/fold.ts; data-fold).
+  const [opening, setOpening] = useState<FoldMove | null>(null);
   const [open, setOpen] = usePersistentState<boolean>(
     remember ? `panel.${remember}.open` : null,
     defaultOpen,
@@ -107,18 +108,16 @@ export function Panel({
               // Only while the body is there to point at (axe: aria-controls must name an element).
               aria-controls={open ? `${id}-body` : undefined}
               data-testid={remember ? `group-${remember}-toggle` : undefined}
-              onClick={() => {
-                setOpening(!open && livelyNow());
+              onClick={(e) => {
+                const move = pressFold(e.currentTarget, !open, `${id}-body`);
+                setOpening(open ? null : move);
                 setOpen(!open);
               }}
               // 24 px tall at least (WCAG 2.5.8): What is this? sits beside it.
               className="-ml-1 flex min-h-6 max-w-full min-w-0 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-fg"
             >
-              {open ? (
-                <ChevronDown size={14} aria-hidden="true" />
-              ) : (
-                <ChevronRight size={14} aria-hidden="true" />
-              )}
+              {/* It turns as the section folds and unfolds (ui/motion.css). */}
+              <FoldChevron open={open} />
               {heading}
             </button>
           ) : (
@@ -132,13 +131,26 @@ export function Panel({
       {shown && (
         <div
           id={`${id}-body`}
-          data-lively={opening ? 'open' : undefined}
+          data-fold={opening ?? undefined}
+          data-lively={opening === 'lively' ? 'open' : undefined}
           className={cx('min-h-0 flex-1', bodyClassName)}
         >
           {children}
         </div>
       )}
     </section>
+  );
+}
+
+/** A fold's chevron: pointing right while folded, turned down while open. */
+function FoldChevron({ open }: { open: boolean }) {
+  return (
+    <ChevronRight
+      size={14}
+      aria-hidden="true"
+      data-fold-chevron=""
+      className={open ? 'rotate-90' : undefined}
+    />
   );
 }
 
@@ -195,8 +207,8 @@ export function PanelGroup({
 } & DataAttributes) {
   const id = useId();
   const help = useWhatIsThis(topic ?? null);
-  // Lively (Session 40): opened by a click, its insides arrive (app.css, data-lively="open").
-  const [opening, setOpening] = useState(false);
+  // Opened by its button, its insides arrive: Calm's fade or Lively's unroll (alpha.24, ui/fold.ts; data-fold).
+  const [opening, setOpening] = useState<FoldMove | null>(null);
   const [open, setOpen] = usePersistentState<boolean>(
     `group.${remember}.open`,
     defaultOpen,
@@ -215,17 +227,14 @@ export function PanelGroup({
             aria-expanded={open}
             aria-controls={open ? `${id}-body` : undefined}
             data-testid={`group-${remember}-toggle`}
-            onClick={() => {
-              setOpening(!open && livelyNow());
+            onClick={(e) => {
+              const move = pressFold(e.currentTarget, !open, `${id}-body`);
+              setOpening(open ? null : move);
               setOpen(!open);
             }}
             className="-ml-1 flex min-h-6 max-w-full min-w-0 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-accent"
           >
-            {open ? (
-              <ChevronDown size={14} aria-hidden="true" />
-            ) : (
-              <ChevronRight size={14} aria-hidden="true" />
-            )}
+            <FoldChevron open={open} />
             <span className="flex min-w-0 items-center gap-1.5">
               {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-muted" />}
               <span className="truncate">{title}</span>
@@ -237,7 +246,12 @@ export function PanelGroup({
       </header>
       {help.card}
       {open && (
-        <div id={`${id}-body`} data-lively={opening ? 'open' : undefined} className="divide-y divide-line">
+        <div
+          id={`${id}-body`}
+          data-fold={opening ?? undefined}
+          data-lively={opening === 'lively' ? 'open' : undefined}
+          className="divide-y divide-line"
+        >
           {children}
         </div>
       )}

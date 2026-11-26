@@ -1,1 +1,73 @@
-/* The operator window's newer motion (alpha.24, uimotion): the stand-in before its rules (red first). */
+/*
+ * The operator window's newer motion (alpha.24, uimotion; the owner's QA24-UI-3 "a more interactive and more
+ * animated, more transitions"). Every time and curve is one of app.css's tokens (src/main/motion.test.ts). Off and
+ * reduced motion stop all of it (app.css's own rules), and none of it ever reaches a show control (data-show-control:
+ * Next, Back, the clears, Black-out, the Wallpaper, the slides and the live picture change at once).
+ *
+ * As a live look's touch (shared/appearance/moving.ts, the release lead's rule for anything new), a control's
+ * answer starts only once the window has opened settled (data-opened) and with a graphics chip known to be there
+ * (data-chip): never while the window opens, and never where Chromium draws without one (CI's Windows). Only the
+ * transitions wait for that; what a control looks like at rest never changes with it, so nothing starts moving as
+ * the page says either.
+ */
+
+/* A section's fold (ui/fold.ts): Calm's insides fade in; Lively's unroll (app.css, data-lively="open"). */
+[data-fold='calm'] {
+  animation: fade-in var(--dur-open) var(--ease-out) both;
+}
+
+/* What folds away leaves as a copy where it was (ui/motion.ts, leave): Calm's fades, Lively's rolls up. */
+[data-leaving='fold'] {
+  animation: fade-out var(--dur-exit) var(--ease-in) both;
+}
+[data-leaving='fold-lively'] {
+  animation: fold-up calc(var(--dur-exit) * var(--lively-time)) var(--ease-in) both;
+}
+@keyframes fold-up {
+  to {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+/* The fold's chevron turns down as the section opens, and back as it folds. */
+:root[data-opened][data-chip='yes'] [data-fold-chevron] {
+  transition: rotate var(--dur-open) var(--ease-out);
+}
+
+/*
+ * The focus ring of a control that is not a show control (nor inside one) waits a little further out, unseen, and
+ * eases in to its place as the keyboard reaches it (its width stays 2 px throughout: the keyboard's checks read it at
+ * once).
+ */
+[data-variant]:not([data-show-control]):not([data-show-control] *):not(:focus-visible),
+[data-row]:not([data-show-control]):not([data-show-control] *):not(:focus-visible),
+[role='tab']:not([data-show-control]):not([data-show-control] *):not(:focus-visible),
+[role^='menuitem']:not([data-show-control]):not([data-show-control] *):not(:focus-visible) {
+  outline-color: transparent;
+  outline-offset: var(--rise-sm);
+}
+:root[data-opened][data-chip='yes'] [data-variant]:not([data-show-control]),
+:root[data-opened][data-chip='yes'] [data-row]:not([data-show-control]),
+:root[data-opened][data-chip='yes'] [role='tab']:not([data-show-control]),
+:root[data-opened][data-chip='yes'] [role^='menuitem']:not([data-show-control]) {
+  transition-property:
+    color, background-color, border-color, box-shadow, filter, outline-color, outline-offset;
+}
+
+/* A press dims a button for as long as it is held (Lively's 97% press, app.css, goes with it). */
+:root[data-opened][data-chip='yes']
+  [data-variant]:not([data-show-control]):not([data-show-control] *):not(:disabled):active {
+  filter: brightness(var(--press-dim));
+}
+
+/* Lively: a button pointed at lifts a pixel, and settles back as it is pressed. */
+:root[data-opened][data-chip='yes'][data-interface-motion='lively'] [data-variant]:not([data-show-control]) {
+  transition-property:
+    color, background-color, border-color, box-shadow, filter, outline-color, outline-offset, transform,
+    translate;
+}
+:root[data-opened][data-chip='yes'][data-interface-motion='lively']
+  [data-variant]:not([data-show-control]):not([data-show-control] *):not(:disabled):hover:not(:active) {
+  translate: 0 calc(var(--lift) * -1);
+}

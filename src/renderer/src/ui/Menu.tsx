@@ -198,7 +198,8 @@ export function Menu({
               aria-describedby={noteId}
               disabled={entry.disabled}
               className={cx(
-                'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-panel-3 focus-visible:bg-panel-3 disabled:cursor-not-allowed disabled:opacity-40',
+                // The choice pointed at or reached by the arrows lights over --dur-hover, its ring easing in (alpha.24).
+                'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-panel-3 focus-visible:bg-panel-3 disabled:cursor-not-allowed disabled:opacity-40',
                 entry.danger ? 'text-danger' : 'text-fg',
               )}
               onClick={() => {

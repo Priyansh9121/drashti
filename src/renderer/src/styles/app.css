@@ -253,6 +253,7 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* side sheets */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* the light passing once across a notice */
   --ease-flame: cubic-bezier(0.2, 0.8, 0.25, 1); /* the flame growing; never an overshoot */
+  --ease-in: cubic-bezier(0.32, 0, 0.67, 0); /* a section's folded insides leaving (alpha.24): ease-in out */
   --rise-sm: 4px;
   --rise-notice: 6px;
   --rise: 8px;
@@ -272,6 +273,9 @@
   --ease-glide: cubic-bezier(0.2, 0, 0, 1);
   --rise-arrive: 6px;
   --press-scale: 0.97;
+  /* alpha.24 (uimotion, ui/motion.css): a press dims a button that is not a show control; Lively lifts one pointed at. */
+  --press-dim: 0.92;
+  --lift: 1px;
   /*
    * Lively (Session 42): the band sweeps in once as the appearance changes, a block every --stagger-sweep, all
    * of it in under 500 ms (the motion skills' tables); then it is still.
@@ -588,9 +592,9 @@ body.web {
     animation: lively-arrive var(--dur-arrive) var(--ease-out)
       calc(min(var(--i, 0), var(--arrive-most)) * var(--stagger-arrive)) both;
   }
-  /* A folded panel's insides as it opens. */
+  /* A folded panel's insides as it opens: they unroll from the top, as what is under it glides down (ui/fold.ts). */
   :root[data-interface-motion='lively'] [data-lively='open'] {
-    animation: lively-open var(--dur-open) var(--ease-out) both;
+    animation: lively-open calc(var(--dur-open) * var(--lively-time)) var(--ease-out) both;
   }
 
   /*
@@ -922,7 +926,7 @@ body.web {
 @keyframes lively-open {
   from {
     opacity: 0;
-    transform: translateY(calc(var(--rise-sm) * -1));
+    clip-path: inset(0 0 100% 0);
   }
 }
 
