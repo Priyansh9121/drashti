@@ -5,7 +5,7 @@ import { readPersisted, writePersisted } from '../ui/persist';
  * Help on demand (alpha.24, the owner's "we also want a really innovative and non-congusted UI"): one Help switch, in
  * the status bar where its ? was (HelpSwitch.tsx), shows every "?" (WhatIsThis.tsx) and the keys beside the buttons'
  * words (help.css); while it is off, no ? is drawn at all and the keys are hidden to the eye, kept for screen readers.
- * Alt (Option on a Mac) held down on its own shows the keys while it is held, Help on or off. The switch is off at a
+ * Alt (Option ⌥ on a Mac) held down on its own shows the keys while it is held, Help on or off. The switch is off at a
  * first start, so the window starts calm, and is remembered on this computer (ui/persist.ts: the window's own storage).
  */
 
@@ -17,7 +17,7 @@ const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
 export interface HelpState {
   /** The switch: every ? and every button's key shown. */
   on: boolean;
-  /** Alt (Option) held down on its own: the buttons' keys shown while it is. */
+  /** Alt (Option ⌥ on a Mac) held down on its own: the buttons' keys shown while it is. */
   alt: boolean;
   /** How many times it has been turned on in this window: a ? card left open does not come back open with it. */
   round: number;

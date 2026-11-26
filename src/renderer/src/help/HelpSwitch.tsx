@@ -14,11 +14,20 @@ import { connectKeyHints, toggleHelp, useHelp } from './help-store';
  */
 
 /**
- * Its tooltip's words: its name (a narrow window shows its ? alone), what it shows, and Alt (Option on a Mac); then to
- * let go of it before pressing a key, as a key pressed with Alt still held is another key (Alt+F2 does nothing).
+ * The key held for a look at the keys, named as the computer names it (the owner's "shortcuts should be adaptable to
+ * mac, mac intel, and windows"): Option ⌥ on a Mac, Apple silicon or Intel alike (both are darwin, as the app's
+ * platform says everywhere), Alt on Windows; ⌥ as the keys sheet and the quick bar write Option (shared/keymap.ts).
+ */
+export function holdKey(platform: string): string {
+  return platform === 'darwin' ? 'Option ⌥' : 'Alt';
+}
+
+/**
+ * Its tooltip's words: its name (a narrow window shows its ? alone), what it shows, and the hold key; then to let go of
+ * it before pressing a key, as a key pressed with it still held is another key (Alt+F2 does nothing).
  */
 export function helpTip(platform: string, simple: boolean): string {
-  const alt = platform === 'darwin' ? 'Option' : 'Alt';
+  const alt = holdKey(platform);
   return simple
     ? `Help: the keys on the buttons. Hold ${alt} to see them; let go of ${alt}, then press one.`
     : `Help: the ? beside each part and the keys on the buttons. Hold ${alt} to see the keys; let go of ${alt}, then press one.`;

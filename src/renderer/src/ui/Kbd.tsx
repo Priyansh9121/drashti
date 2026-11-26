@@ -5,7 +5,7 @@ import { cx } from './cx';
 /**
  * A key hint, such as "F1" or "⌘⇧S". It takes the colour of the text around
  * it, so it stays readable on every button. Beside a button's words in the
- * operator window it shows only while Help is on or Alt (Option) is held
+ * operator window it shows only while Help is on or Alt (Option ⌥) is held
  * (alpha.24, help/help.css), and is read out all the while; meanwhile it is
  * drawn see-through in its room, so nothing moves as it comes and goes; in a
  * tooltip, a menu or a sentence it always shows.
