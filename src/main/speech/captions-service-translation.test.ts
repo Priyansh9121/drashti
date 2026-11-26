@@ -205,8 +205,9 @@ describe('"Captions in" in the captions service (alpha.24, QA24-CAPLANG-2)', () 
     await t.service.setOn(true);
     t.say('પહેલું', true);
     t.choose({ captionLanguage: 'en' });
-    t.say('બીજું', true, 's1');
-    expect(t.accepted.at(-1)).toMatchObject({ phraseId: 's1', targetLanguage: 'en' });
+    // The engine listens on (its next phrase s2); the coordinator's session is new, for the new pair.
+    t.say('બીજું', true, 's2');
+    expect(t.accepted.at(-1)).toMatchObject({ phraseId: 's2', targetLanguage: 'en' });
     expect(t.events).toEqual(['begin gu>hi', 'end', 'begin gu>en']);
     // The speaker's own words: today's captions (no translation running, nothing for the coordinator to translate).
     t.choose({ captionLanguage: 'same' });

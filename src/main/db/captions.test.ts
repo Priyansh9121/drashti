@@ -49,7 +49,7 @@ describe('captions settings in the library', () => {
       // Written as that version's Drashti wrote it (today's repo also writes alpha.24's "Captions in").
       previous
         .prepare(
-          "INSERT INTO caption_settings (id, language, audience, size, place) VALUES (1, 'gu', 1, 'large', 'top')",
+          "UPDATE caption_settings SET language = 'gu', audience = 1, size = 'large', place = 'top' WHERE id = 1",
         )
         .run();
     } finally {
@@ -95,7 +95,7 @@ describe('captions settings in the library', () => {
     );
     v92
       .prepare(
-        "INSERT INTO caption_settings (id, language, audience, size, place) VALUES (1, 'gu', 1, 'medium', 'bottom')",
+        "UPDATE caption_settings SET language = 'gu', audience = 1, size = 'medium', place = 'bottom' WHERE id = 1",
       )
       .run();
     v92.close();
