@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { SCREEN_RECORDING_STEPS, type OfferedWindow } from '../../../shared/live-window';
+import type { OfferedWindow } from '../../../shared/live-window';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
-import { AppWindow, RotateCw, Settings } from '../ui/icons';
+import { AppWindow, RotateCw } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { closeWindowPicker, refreshWindows, useLiveWindowUi } from './live-window-store';
+import { ScreenRecordingNotice } from './ScreenRecordingNotice';
 
 /*
  * Show a Window… (Session 48): another app's open windows, each by name with a small live picture, to show
@@ -62,7 +63,8 @@ function WindowChoice({
   );
 }
 
-export function WindowPicker() {
+/** platform: the computer's (AppInfo's), for the Mac's own words in the Screen Recording box. */
+export function WindowPicker({ platform }: { platform: string }) {
   const picking = useLiveWindowUi((s) => s.picking);
   const list = useLiveWindowUi((s) => s.list);
   const [chosen, setChosen] = useState<string | null>(null);
@@ -124,29 +126,14 @@ export function WindowPicker() {
         {list === null ? (
           <p className="text-sm text-muted">Looking for open windows…</p>
         ) : !list.ok && list.reason === 'permission' ? (
-          <Notice
-            tone="info"
-            title="Let Drashti see other apps’ windows"
-            data-testid="window-permission"
-            actions={
-              <>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={Settings}
-                  data-testid="window-open-settings"
-                  onClick={() => void window.drashti.liveWindow.access()}
-                >
-                  Open System Settings
-                </Button>
-                <Button size="sm" icon={RotateCw} onClick={() => void refreshWindows()}>
-                  Look again
-                </Button>
-              </>
-            }
-          >
-            {list.message} {SCREEN_RECORDING_STEPS}
-          </Notice>
+          <ScreenRecordingNotice
+            message={list.message}
+            platform={platform}
+            testId="window-permission"
+            openTestId="window-open-settings"
+            onOpen={() => void window.drashti.liveWindow.access()}
+            onAgain={() => void refreshWindows()}
+          />
         ) : !list.ok ? (
           <Notice tone="warning" compact>
             {list.message}
