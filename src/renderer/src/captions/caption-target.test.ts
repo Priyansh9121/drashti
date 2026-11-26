@@ -167,7 +167,10 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     expect(unavailableText('engine-fault')).toMatch(/translation engine stopped/u);
     // Choosing again tries once more only after slowness or the engine's fault (df4a47045), and says so only then.
     for (const reason of RETRIED)
-      expect(unavailableText(reason), reason).toMatch(/Captions in again tries once more\.$/u);
+      // The same in both places (a24-review F3): the dialog and File › Caption Language both choose again.
+      expect(unavailableText(reason), reason).toMatch(
+        /Choosing a language again, here or in File › Caption Language, tries once more\.$/u,
+      );
     for (const reason of GREYED) expect(unavailableText(reason), reason).not.toMatch(/once more/u);
     expect(unavailableText(null)).not.toMatch(/once more/u);
     // A Drashti whose main side says nothing of translations (no status): greyed out, said plainly.
