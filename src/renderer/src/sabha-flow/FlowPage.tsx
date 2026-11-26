@@ -197,20 +197,19 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
             setError(false);
           }}
           onBlur={applyDraft}
+          // Only its own two keys stop here, as in every field (PlaylistFind): the window lets a field's other keys go
+          // by (isTyping) but still takes ⌘1 and ⌘2, which the Mac's View menu would act on (S2-6).
           onKeyDown={(e) => {
-            e.stopPropagation();
             if (e.key === 'Enter') {
               e.preventDefault();
+              e.stopPropagation();
               applyDraft();
-            }
-            if (e.key === 'Escape') {
+            } else if (e.key === 'Escape') {
               e.preventDefault();
+              e.stopPropagation();
               setDraft(percent);
               setError(false);
             }
-          }}
-          onKeyUp={(e) => {
-            e.stopPropagation();
           }}
         />
         <IconButton
