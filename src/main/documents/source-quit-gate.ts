@@ -8,6 +8,8 @@ interface SourceQuitDeps {
   cancel(): void;
   /** True only after owned work stopped; retainOutput/quarantine must return false. */
   stop(): Promise<boolean>;
+  /** How many owned readers have been given up on so far (O1). (Red: not read yet.) */
+  givenUp?(): number;
   timeoutMs?: number;
 }
 
@@ -63,6 +65,11 @@ export class SourceQuitGate {
         () => finish({ confirmed: false, reason: FAILED_STOP }),
       );
     return this.flight;
+  }
+
+  /** The drain a quit or an exit waits for (O1). (Red: today's, its first result kept.) */
+  drainForQuit(): Promise<SourceQuitResult> {
+    return this.drain();
   }
 
   /** Called only after the existing quit confirmation succeeds. False means this quit was held. */
