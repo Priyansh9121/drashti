@@ -10604,7 +10604,9 @@ function start(): void {
   });
   let quitSavingSound = false;
   app.on('before-quit', (event) => {
-    onQuitRefused(event, resumeAfterQuitRefused);
+    // Our bounded sound/source drains resume the quit themselves; preventDefault there is a hold, not refusal.
+    let held = false;
+    onQuitRefused(event, resumeAfterQuitRefused, false, () => held);
     if (!confirmQuit()) {
       event.preventDefault();
       return;
@@ -10623,6 +10625,7 @@ function start(): void {
     hevcPage?.close();
     slideEditor?.quitting();
     if (soundSaved) {
+      held = true;
       event.preventDefault();
       if (!quitSavingSound) {
         quitSavingSound = true;
@@ -10660,8 +10663,10 @@ function start(): void {
           );
         },
       )
-    )
+    ) {
+      held = true;
       return;
+    }
   });
 
   const runSelfTest = () =>
