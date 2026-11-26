@@ -58,7 +58,8 @@
    */
   :root[data-window-look='depth'] :is(body, [data-zone]) {
     --state-fill: var(--color-panel-2);
-    --state-row: color-mix(in srgb, var(--color-fg) 3%, transparent);
+    /* Opaque, so a fold's fading copy of a section's insides is drawn on the row's own colour (ui/fold.ts). */
+    --state-row: color-mix(in srgb, var(--color-fg) 3%, var(--color-panel));
     --state-disabled: 0.4;
   }
   :root[data-window-look='depth'][data-base='dark'] :is(body, [data-zone]) {
