@@ -33,7 +33,7 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   await row.getByRole('button', { name: 'Use this display' }).click();
   await expect(confirm).toContainText('Cover the Drashti controls?');
   await expect(confirm).toContainText('cover them completely');
-  await expect(confirm).toContainText(process.platform === 'darwin' ? '⌘⇧U' : 'Ctrl+Shift+U');
+  await expect(confirm).toContainText(process.platform === 'darwin' ? '⇧⌘U' : 'Ctrl+Shift+U');
   await confirm.getByRole('button', { name: 'Cancel' }).click();
   await expect(confirm).toHaveCount(0);
   await expect(op.getByTestId('screen-row')).toHaveCount(0);

@@ -141,7 +141,7 @@ describe('keymap', () => {
     expect(shortcutText('next', 'darwin')).toBe('→');
     expect(shortcutText('clearSlide', 'win32')).toBe('F2');
     expect(shortcutText('toggleBlackout', 'darwin')).toBe('B');
-    expect(shortcutText('openScreens', 'darwin')).toBe('⌘⇧S');
+    expect(shortcutText('openScreens', 'darwin')).toBe('⇧⌘S');
     expect(shortcutText('openScreens', 'win32')).toBe('Ctrl+Shift+S');
   });
 
@@ -176,6 +176,27 @@ describe('keymap', () => {
     expect(keyText('PageDown', 'win32')).toBe('Page Down');
     expect(keyText('?', 'darwin')).toBe('?');
     expect(actionFor(press('?', { shiftKey: true }), 'darwin')).toBe('showKeys');
+  });
+
+  // The owner's "shortcuts should be adaptable to mac, mac intel, and windows" (alpha.24): a Mac writes its modifiers
+  // in Apple's order, Control, Option, Shift, Command (⌃⌥⇧⌘), as its own menus draw the same keys (Window › Uncover
+  // the Controls is ⇧⌘U there), on Apple silicon and Intel alike (both darwin); Windows keeps Ctrl, Alt, Shift.
+  // "Ctrl" in a binding is the Control key itself on both (a Mac's menus' full screen, ⌃⌘F), never Cmd.
+  it('writes a Mac’s modifiers in Apple’s order, ⌃⌥⇧⌘, and Windows’ as Ctrl, Alt, Shift', () => {
+    expect(keyText('Mod+Shift+S', 'darwin')).toBe('⇧⌘S');
+    expect(keyText('Mod+Shift+U', 'darwin')).toBe('⇧⌘U');
+    expect(keyText('Mod+Shift+U', 'win32')).toBe('Ctrl+Shift+U');
+    expect(keyText('Alt+Shift+ArrowUp', 'darwin')).toBe('⌥⇧↑');
+    expect(keyText('Alt+Shift+ArrowUp', 'win32')).toBe('Alt+Shift+↑');
+    expect(keyText('Mod+Alt+Shift+V', 'darwin')).toBe('⌥⇧⌘V');
+    expect(keyText('Mod+Alt+Shift+V', 'win32')).toBe('Ctrl+Alt+Shift+V');
+    expect(keyText('Ctrl+Mod+F', 'darwin')).toBe('⌃⌘F');
+    expect(keyText('Ctrl+Y', 'win32')).toBe('Ctrl+Y');
+    expect(keyText('Ctrl+Y', 'darwin')).toBe('⌃Y');
+    // One key, one way on a Mac: what the menu draws for an accelerator is what the window writes.
+    expect(shortcutText('uncoverControls', 'darwin')).toBe('⇧⌘U');
+    expect(shortcutText('toggleAudience', 'darwin')).toBe('⌘1');
+    expect(shortcutText('quickBar', 'darwin')).toBe('⌥1');
   });
 
   // WCAG 2.1.4 (Session 37): a key of one character with no Cmd, Ctrl or Alt acts on its own, so they can
