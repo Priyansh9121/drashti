@@ -1,4 +1,4 @@
-import { type EngineState, nothingUp } from './engine/state';
+import { type EngineState, nothingUpButTheBox } from './engine/state';
 import type { Wallpaper } from './wallpapers';
 
 /*
@@ -82,13 +82,15 @@ export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): Wallpa
 }
 
 /**
- * LIVE's line for the chosen wallpaper (operator/LivePreview.tsx), while the screens show black for it: with nothing up,
- * or under the Wallpaper; null when none is chosen, its pictures are there, or something is up.
+ * LIVE's line for the chosen wallpaper (operator/LivePreview.tsx), while the screens show black for it: with nothing up
+ * (a box up and not swapped over nothing else too, as the screens draw it: QA24-WALLBLACK-2, the one rule of
+ * shared/engine/state.ts nothingUpBehindBox), or under the Wallpaper; null when none is chosen, its pictures are there,
+ * or something is up.
  */
 export function wallpaperMissingLive(
   state: Pick<EngineState, 'layers' | 'wallpaper'>,
   chosen: Pick<Wallpaper, 'pictures'> | null,
 ): string | null {
-  if (chosen === null || !(nothingUp(state.layers) || state.wallpaper)) return null;
+  if (chosen === null || !(nothingUpButTheBox(state.layers) || state.wallpaper)) return null;
   return wallpaperMissing(chosen)?.live ?? null;
 }

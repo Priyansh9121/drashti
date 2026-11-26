@@ -1,4 +1,5 @@
 import type { BackgroundLayer, EngineState, PipPlace, SlideLayer } from '../../../shared/engine/state';
+import { nothingUpBehindBox } from '../../../shared/engine/state';
 import type { GroupLayer, LiveGroupLook } from '../../../shared/looks';
 import { PIP_CORNER_NAMES, PIP_SIZE_NAMES } from '../../../shared/pip';
 import type { Size } from '../../../shared/scaling';
@@ -60,6 +61,9 @@ export interface PreviewBehind {
   state: EngineState | null;
 }
 
+/** The preview draws the box as it goes up: not swapped (the words say when the one up is). */
+const AS_IT_GOES_UP = { swapped: false } as const;
+
 /** The picture the screens show now, behind a box that holds the slides (`holdsSlides`) or anything else. */
 export function previewBehind(
   state: EngineState | null,
@@ -71,10 +75,12 @@ export function previewBehind(
   const slideUp = state && shown('slide') ? state.layers.slide : null;
   const slide = holdsSlides ? null : slideUp;
   // Neither a background nor a slide up (render/Scene.tsx's nothing-up): behind a box as it goes up, unswapped, what
-  // the screens show with nothing up (QA24-WALLBLACK-2, the owner's A: the chosen wallpaper, else black). A slide up
-  // in the box counts as something up there, so the main picture is black behind it, as the screens draw it.
+  // the screens show with nothing up (QA24-WALLBLACK-2, the owner's A: the chosen wallpaper, else black), by the
+  // screens' own rule for the box. A slide up in the box counts as something up there, so the main picture is black
+  // behind it, as the screens draw it.
   let nothing: PreviewBehind['nothing'] = null;
-  if (background === null && slideUp === null) nothing = state ? nothingUpShows(state) : 'black';
+  if (background === null && slideUp === null && nothingUpBehindBox(AS_IT_GOES_UP))
+    nothing = state ? nothingUpShows(state) : 'black';
   return {
     background,
     slide,

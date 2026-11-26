@@ -116,9 +116,14 @@ describe('LIVE’s missing-wallpaper line and the screens agree (QA24-WALLBLACK-
       for (const background of [null, { kind: 'color', color: '#123456' } as const])
         for (const slide of [null, SLIDE]) {
           const s = state({ pip, background, slide });
-          const missing = { ...s, chosenWallpaper: s.chosenWallpaper && { ...s.chosenWallpaper, pictures: [] } };
+          const missing = {
+            ...s,
+            chosenWallpaper: s.chosenWallpaper && { ...s.chosenWallpaper, pictures: [] },
+          };
           const label = `${pip ? `${pip.source.kind} in the box${pip.swapped ? ', swapped' : ''}` : 'no box'}, ${background ? 'a colour' : 'no background'}, ${slide ? 'a slide' : 'no slide'}`;
-          expect(wallpaperMissingLive(missing, view) !== null, label).toBe(drawn(missing).nothingUp === 'black');
+          expect(wallpaperMissingLive(missing, view) !== null, label).toBe(
+            drawn(missing).nothingUp === 'black',
+          );
         }
   });
 });
