@@ -268,10 +268,16 @@ const CLEARS = [
   ['ticker', 'F7'],
 ] as const;
 
-/** The layer bar's buttons left to right (single-letter keys on): the clears in the order of their keys. */
+/**
+ * The layer bar's buttons left to right (single-letter keys on): the clears in the order of their keys, each lit one
+ * with its key, each with nothing up compact, its icon alone (alpha.24: its key in its tooltip).
+ */
 const proBar = (first: string, lit: string[], wallpaper: string, blackout: string): string[] => [
   first,
-  ...CLEARS.map(([layer, key]) => `Clear ${layer}${lit.includes(layer) ? ' (on screen)' : ''} ${key}`),
+  ...CLEARS.map(([layer, key]) => {
+    if (lit.includes(layer)) return `Clear ${layer} (on screen) ${key}`;
+    return `Clear ${layer}`;
+  }),
   'What is this? Show controls',
   wallpaper,
   blackout,
@@ -472,13 +478,13 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   // Pro Mode's bar since Session 55 (Part 18), with Clear all, Slide, Background and Audio beside it (Session 56), the
-  // Wallpaper and Black-out, each with its key; Put it back in Clear all's place after it. Next and Back are under
-  // LIVE, as in Pro Mode.
+  // Wallpaper and Black-out, each with its key (a clear with nothing up compact, its icon alone: alpha.24); Put it
+  // back in Clear all's place after it. Next and Back are under LIVE, as in Pro Mode.
   const simpleBar = (clear: string, slideUp: boolean, wallpaper: string, blackout: string) => [
     clear,
-    `Clear slide${slideUp ? ' (on screen)' : ''} F2`,
-    'Clear background F3',
-    'Clear audio F5',
+    slideUp ? 'Clear slide (on screen) F2' : 'Clear slide',
+    'Clear background',
+    'Clear audio',
     wallpaper,
     blackout,
   ];

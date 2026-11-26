@@ -26,8 +26,13 @@ import { makeTestTone } from './test-media';
  * up instead of the picture (black until Part 6 brings wallpapers) and takes it off, as the Logo did; Simple
  * Mode's too. Audio lists its audio playlists directly, with no Music heading and no ? of its own; with none it
  * asks for one: Create playlist, Import sounds…, From a Link…, or sounds dropped there. Placeholder slides only.
+ *
+ * What is up, at a glance (alpha.24, the owner's calmer window): a layer's clear with nothing up is compact, its icon
+ * alone, its words and key in its tooltip; lit, its words and key as before. Each keeps its place: no button along
+ * the bar moves as a layer goes up.
  */
 
+/** Every button lit or on (Clear all, the clears, the Wallpaper and Black-out), each as its words and key. */
 const BAR = [
   'Clear all F1',
   'Slide F2',
@@ -39,6 +44,18 @@ const BAR = [
   'Black-out B',
 ];
 
+/** The bar with nothing up: the clears compact, their icons alone (alpha.24). */
+const AT_REST = ['Clear all F1', '', '', '', '', '', 'Wallpaper F12', 'Black-out B'];
+
+/** Each layer's clear by its name, with its key. */
+const CLEARS = [
+  ['Clear slide', 'F2'],
+  ['Clear background', 'F3'],
+  ['Clear audio', 'F5'],
+  ['Clear messages', 'F6'],
+  ['Clear ticker', 'F7'],
+] as const;
+
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 
@@ -46,6 +63,25 @@ const state = (win: Page) =>
 const barButtons = (bar: Locator) => bar.locator('button:visible:not([aria-label^="What is this?"])');
 const barWords = (bar: Locator) =>
   barButtons(bar).evaluateAll((b) => b.map((x) => (x as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
+
+/** Where each of the bar's buttons is along it: its middle, in whole pixels. */
+const barMiddles = (bar: Locator) =>
+  barButtons(bar).evaluateAll((b) =>
+    b.map((x) => {
+      const r = x.getBoundingClientRect();
+      return Math.round(r.left + r.width / 2);
+    }),
+  );
+
+/** No button moved along the bar since `before` (a pixel's rounding allowed). */
+async function stayPut(bar: Locator, before: number[], where: string): Promise<void> {
+  const now = await barMiddles(bar);
+  expect(now.length, where).toBe(before.length);
+  expect(
+    now.filter((x, i) => Math.abs(x - (before[i] ?? Number.NaN)) > 1),
+    `${where}: no button moved (${JSON.stringify(before)} then ${JSON.stringify(now)})`,
+  ).toEqual([]);
+}
 
 /** Every one of the bar's buttons in one row, none cut, the bar not scrolling; its height. */
 async function oneRow(win: Page, where: string): Promise<number> {
@@ -68,7 +104,7 @@ async function oneRow(win: Page, where: string): Promise<number> {
   return (await bar.boundingBox())?.height ?? 0;
 }
 
-test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed', async () => {
+test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; no button moves as layers go up', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -79,7 +115,7 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     [1280, 720],
   ] as const) {
     await win.setViewportSize({ width, height });
-    await expect.poll(() => barWords(bar)).toEqual(BAR);
+    await expect.poll(() => barWords(bar)).toEqual(AT_REST);
     const tall = await oneRow(win, `${width} × ${height}`);
     // Smaller than before (Session 54's bar was 57 px tall with its buttons' keys under their words).
     expect(tall, `${width} × ${height}: the bar's height`).toBeLessThanOrEqual(44);
@@ -101,6 +137,21 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await expect(button(words), words).toBeEnabled();
     await expect(button(words), words).toHaveAttribute('data-dimmed', 'true');
   }
+  // Each layer's clear compact (alpha.24): its icon in sight, no words or key on it; its words and key in its tooltip,
+  // the mouse resting on it.
+  const tip = win.locator('[role="tooltip"]');
+  for (const [words, key] of CLEARS) {
+    const clear = button(words);
+    await expect(clear, words).toHaveAttribute('data-dimmed', 'true');
+    await expect(clear.locator('svg'), words).toBeVisible();
+    await expect(clear.locator('kbd'), words).toHaveCount(0);
+    await clear.hover();
+    await expect(tip, words).toContainText(words);
+    await expect(tip.locator('kbd'), words).toHaveText(key);
+    await win.mouse.move(0, 0);
+    await expect(tip, words).toHaveCount(0);
+  }
+  const atRest = await barMiddles(bar);
 
   // A slide up: its clear lights up and Clear all can be pressed; the rest stay dimmed.
   await setUpScreen(win);
@@ -111,6 +162,9 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(button('Clear slide')).toHaveAttribute('data-lit', 'true');
   await expect(button('Clear all')).toBeEnabled();
   await expect(button('Clear background')).toBeDisabled();
+  // Lit, its words and key back on it, in the place it had; nothing beside it moved.
+  await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', 'Slide F2', ...AT_REST.slice(2)]);
+  await stayPut(bar, atRest, 'a slide up');
 
   // F4 and F8 do nothing; F12 puts the wallpaper up over the slide (black: no wallpaper chosen yet), and off.
   const before = await state(win);
@@ -126,6 +180,33 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await button('Wallpaper is on').click();
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(button('Wallpaper')).toHaveAttribute('data-dimmed', 'true');
+
+  // A background and a message up too: their clears light up with their words and keys, in one row at both sizes,
+  // every button where it was with nothing up.
+  for (const command of [
+    { type: 'setBackground', background: { kind: 'color', color: '#1d4e89' } },
+    { type: 'showMessage', message: { id: 'placeholder-message', text: 'Placeholder message' } },
+  ])
+    await win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
+  const lit = [
+    'Clear all F1',
+    'Slide F2',
+    'Background F3',
+    '',
+    'Messages F6',
+    '',
+    'Wallpaper F12',
+    'Black-out B',
+  ];
+  for (const [width, height] of [
+    [1024, 645],
+    [1280, 720],
+  ] as const) {
+    await win.setViewportSize({ width, height });
+    await expect.poll(() => barWords(bar)).toEqual(lit);
+    await oneRow(win, `${width} × ${height}, three layers up`);
+  }
+  await stayPut(bar, atRest, 'a slide, a background and a message up');
   await app.close();
 });
 
