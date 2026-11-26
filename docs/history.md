@@ -4,7 +4,7 @@
 
 Until 26 Nov 2026 this was the README's "Status" section. It moved here whole, word for word, so that the README starts with what a newcomer needs. It says what is built, part by part, with the session or release that built it.
 
-- Names in quotes, such as "Soak test" or "Access by Gmail", are sections of the [README](../README.md), and "below" means there.
+- Names in quotes, such as "Soak test" or "Access by Gmail", are sections of the [README](../README.md), and "below" means there. Those of its "Running a show", such as "Simple Mode", "The stage screen" or "The time bar", are in [running-a-show.md](running-a-show.md) since 26 Nov 2026.
 - What each release changed, in plain words: [CHANGELOG.md](../CHANGELOG.md).
 - The newest release: https://github.com/Priyansh9121/drashti/releases/latest.
 
