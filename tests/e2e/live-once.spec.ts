@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { launchApp, operatorPage, operatorReady, slidesOf } from './helpers';
+import { launchApp, openLibrary, operatorPage, operatorReady, slidesOf } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -58,6 +58,19 @@ test('LIVE is said once, in the top bar; the LIVE column has no badge; the rows 
   await expect(slides.nth(2).locator('[data-live-dot]')).toHaveCount(1);
   await expect(slides.nth(1).locator('[data-live-dot]')).toHaveCount(0);
   await expect(open.locator('[data-live-dot]')).toHaveCount(2);
+  expect(await liveWordsSeen(win)).toEqual([true]);
+
+  // The library's sheet open (lead 2's hands-on pass): its presentation that is up says so as the playlist's rows do,
+  // its red edge and dot, Live to a screen reader, and no badge: the word LIVE is still seen once.
+  await openLibrary(win);
+  const kirtan = win
+    .getByTestId('presentation-list')
+    .getByTestId('presentation-row')
+    .filter({ hasText: KIRTAN });
+  await expect(kirtan).toBeVisible();
+  await expect(kirtan.locator('[data-live-dot]')).toHaveCount(1);
+  await expect(kirtan.locator('xpath=..').locator('[data-live-edge]')).toHaveCount(1);
+  await expect(kirtan).toContainText('Live');
   expect(await liveWordsSeen(win)).toEqual([true]);
   await app.close();
 });

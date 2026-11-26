@@ -534,6 +534,34 @@ test('the top bar’s words come back where top-bar.ts says, Phones off and on, 
   await app.close();
 });
 
+test('Stage off and on again moves nothing in the top bar: On and Off keep the same room (uitop, lead 2’s hands-on pass)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const header = win.getByTestId('app-header');
+  const stage = header.getByTestId('switch-stage');
+  await expect(stage).toBeEnabled();
+  /** Where each of the top bar's buttons is, and how wide. */
+  const places = () =>
+    header.locator('button').evaluateAll((buttons) =>
+      buttons.map((b) => {
+        const r = b.getBoundingClientRect();
+        return [r.x, r.width];
+      }),
+    );
+  const before = await places();
+  const was = (await stage.getAttribute('aria-checked')) === 'true';
+  // Nothing shows on a stage screen here: turned either way at once, asking nothing.
+  await win.keyboard.press(`${MOD}+2`);
+  await expect(stage).toHaveAttribute('aria-checked', was ? 'false' : 'true');
+  expect(await places(), 'Stage the other way: every button where it was, 0 px').toEqual(before);
+  await win.keyboard.press(`${MOD}+2`);
+  await expect(stage).toHaveAttribute('aria-checked', was ? 'true' : 'false');
+  expect(await places()).toEqual(before);
+  await app.close();
+});
+
 test('a hall screen switched off, turned off and on again in Screens, asks nothing; Audience on, it is back where it was', async () => {
   test.setTimeout(120_000);
   // Keep these screens? asks here, as it does for the operators.
