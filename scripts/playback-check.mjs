@@ -1,11 +1,10 @@
 // The hall's video playback, judged (alpha.23, a22-intelplay; the owner's QA23-INTELPLAY-1, "Yes, add it (Rec.)"):
 // tests/intel-playback/intel-playback.spec.ts plays generated test videos through the hall's own playback path (a
 // playlist row clicked, the audience screen's background video, Drashti's first-frame watch) and reads, for each,
-// what the hall did. This judges a reading, and writes the job's summary from them all:
-//   PLAY_OUTCOME=<the Playwright step's outcome> node scripts/playback-check.mjs summary <readings.json>
-// Run by performance.yml's intel_playback job on GitHub's Intel Mac runner, only when asked; never in the release gate.
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+// what the hall did. This judges a reading, and makes the job's summary from them all (written by
+// scripts/playback-check-summary.mjs). Run by performance.yml's intel_playback job on GitHub's Intel Mac runner, only
+// when asked; never in the release gate. The spec imports this and Playwright loads it as CommonJS: no import.meta
+// here, and nothing run on import (a23-intelfix; src/main/release-checks/playwright-imports.test.ts).
 
 /** How long a video has to show its first frame on the hall (Drashti's own watch takes one off after 10 s). */
 export const FIRST_FRAME_MS = 30_000;
@@ -43,6 +42,30 @@ const MEDIA_ERRORS = {
 };
 
 const seconds = (ms) => (ms / 1000).toFixed(1);
+
+/** GPU telemetry must not discard a completed playback reading. Self-contained for Electron evaluate. */
+export async function readPlaybackGpu(electron) {
+  const app = electron.app ?? electron;
+  const gpu = { videoDecode: 'unknown', gpuCompositing: 'unknown', devices: [] };
+  const problems = [];
+  try {
+    const status = app.getGPUFeatureStatus();
+    gpu.videoDecode = status.video_decode ?? 'unknown';
+    gpu.gpuCompositing = status.gpu_compositing ?? 'unknown';
+  } catch (error) {
+    problems.push(`feature status unreadable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  try {
+    const info = await app.getGPUInfo('basic');
+    gpu.devices = (info.gpuDevice ?? []).map(
+      (d) =>
+        `${(d.vendorId ?? 0).toString(16)}:${(d.deviceId ?? 0).toString(16)}${d.active ? ' (active)' : ''}`,
+    );
+  } catch (error) {
+    problems.push(`off: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return problems.length ? { ...gpu, problem: problems.join('; ') } : gpu;
+}
 
 /** What is wrong with one video's playback on the hall (empty when it played). */
 export function judgePlayback(r) {
@@ -103,24 +126,31 @@ export function summaryLines(readings, { outcome = null } = {}) {
   });
   const wrong = rows.filter((row) => !row.ok);
   const green = outcome === 'success' && wrong.length === 0;
+  const limited = readings.filter((r) => r.gpu && (r.gpu.problem || r.gpu.gpuCompositing !== 'enabled'));
   const ms = (n) => (n === null ? 'none' : `${String(Math.round(n))} ms`);
   const first = readings.find((r) => r.runner);
   return [
     '## Video playback on the hall, on an Intel Mac (generated test videos only)',
     '',
-    green
-      ? `**GREEN**: the hall played all ${String(VIDEOS.length)} test videos (a first frame, playing on, frames shown, the picture moving, never off, never black), and the check failed each of its ${String(CONTROLS.length)} controls for its own reason.`
-      : `**RED**: ${[
-          ...(outcome === 'success'
-            ? []
-            : [`the Playwright step's outcome: ${String(outcome ?? 'unknown')}`]),
-          ...wrong.map((row) => `${row.name}: ${row.verdict}`),
-        ].join(' · ')}`,
+    green && limited.length
+      ? '**SOFTWARE-ONLY / GPU UNVERIFIED**: the playback pipeline passed, but this machine had no working GPU or its GPU state could not be verified. This does not prove Intel hardware playback; owner acceptance is required.'
+      : green
+        ? `**GREEN**: the hall played all ${String(VIDEOS.length)} test videos (a first frame, playing on, frames shown, the picture moving, never off, never black), and the check failed each of its ${String(CONTROLS.length)} controls for its own reason.`
+        : `**RED**: ${[
+            ...(outcome === 'success'
+              ? []
+              : [`the Playwright step's outcome: ${String(outcome ?? 'unknown')}`]),
+            ...wrong.map((row) => `${row.name}: ${row.verdict}`),
+          ].join(' · ')}`,
     '',
     first?.runner ? `Runner: ${first.runner}` : 'Runner: not read',
     first?.gpu
       ? `Graphics (Chromium's own words): video decode ${first.gpu.videoDecode}, GPU compositing ${first.gpu.gpuCompositing}, devices ${first.gpu.devices.join(', ') || 'none'}`
       : 'Graphics: not read',
+    ...limited.map(
+      (r) =>
+        `Graphics limitation (${r.name}): ${r.gpu.problem ?? `no working GPU: GPU compositing ${r.gpu.gpuCompositing}`}`,
+    ),
     '',
     '| Video | Kind | First frame | Played | Frames shown in the watch (dropped) | Bar places | Verdict |',
     '| --- | --- | --- | --- | --- | --- | --- |',
@@ -130,16 +160,4 @@ export function summaryLines(readings, { outcome = null } = {}) {
         : `| ${name} | | | | | | ${verdict} |`,
     ),
   ];
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const [command, file] = process.argv.slice(2);
-  if (command !== 'summary' || !file) {
-    console.error('Usage: PLAY_OUTCOME=<outcome> playback-check.mjs summary <readings.json>');
-    process.exit(2);
-  }
-  const readings = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
-  const text = `${summaryLines(readings, { outcome: process.env.PLAY_OUTCOME || null }).join('\n')}\n`;
-  process.stdout.write(text);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
 }
