@@ -1,3 +1,4 @@
+import { type EngineState, nothingUp } from './engine/state';
 import type { Wallpaper } from './wallpapers';
 
 /*
@@ -78,4 +79,16 @@ export function wallpaperMissing(wallpaper: Pick<Wallpaper, 'pictures'>): Wallpa
         live: `Wallpaper’s pictures missing. ${BLACK}`,
         find,
       };
+}
+
+/**
+ * LIVE's line for the chosen wallpaper (operator/LivePreview.tsx), while the screens show black for it: with nothing up,
+ * or under the Wallpaper; null when none is chosen, its pictures are there, or something is up.
+ */
+export function wallpaperMissingLive(
+  state: Pick<EngineState, 'layers' | 'wallpaper'>,
+  chosen: Pick<Wallpaper, 'pictures'> | null,
+): string | null {
+  if (chosen === null || !(nothingUp(state.layers) || state.wallpaper)) return null;
+  return wallpaperMissing(chosen)?.live ?? null;
 }

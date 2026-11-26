@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { EngineState, PipLayer, SlideLayer } from '../../../shared/engine/state';
 import { initialEngineState } from '../../../shared/engine/state';
 import { DEFAULT_PIP_PLACE } from '../../../shared/pip';
+import { wallpaperMissingLive } from '../../../shared/wallpaper-missing';
 import { Scene } from './Scene';
 
 /*
@@ -96,5 +97,28 @@ describe('the wallpaper behind the picture-in-picture box (the owner’s QA24-WA
       nothingUp: null,
     });
     expect(drawn(state({ pip: box(), slide: SLIDE }))).toMatchObject({ pip: 'up', nothingUp: null });
+  });
+});
+
+describe('LIVE’s missing-wallpaper line and the screens agree (QA24-WALLBLACK-1 and -2)', () => {
+  it('says the screens show black exactly while the hall’s Scene shows its nothing-up black', () => {
+    // The chosen wallpaper's one picture missing: the operator window's view names it, and the engine's state
+    // leaves it out (main/wallpapers/wallpaper-service.ts), so the screens show black with nothing up.
+    const view = { pictures: [{ mediaId: 'paper', name: 'Placeholder wallpaper.png', missing: true }] };
+    const boxes = [
+      null,
+      box(),
+      box({ swapped: true }),
+      box({ source: { kind: 'slides' } }),
+      box({ source: { kind: 'slides' }, swapped: true }),
+    ];
+    for (const pip of boxes)
+      for (const background of [null, { kind: 'color', color: '#123456' } as const])
+        for (const slide of [null, SLIDE]) {
+          const s = state({ pip, background, slide });
+          const missing = { ...s, chosenWallpaper: s.chosenWallpaper && { ...s.chosenWallpaper, pictures: [] } };
+          const label = `${pip ? `${pip.source.kind} in the box${pip.swapped ? ', swapped' : ''}` : 'no box'}, ${background ? 'a colour' : 'no background'}, ${slide ? 'a slide' : 'no slide'}`;
+          expect(wallpaperMissingLive(missing, view) !== null, label).toBe(drawn(missing).nothingUp === 'black');
+        }
   });
 });
