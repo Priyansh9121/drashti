@@ -10,6 +10,7 @@ import {
   VIDEOS,
   WATCH_MS,
   judgePlayback,
+  readPlaybackGpu,
   summaryLines,
 } from '../../../scripts/playback-check.mjs';
 
@@ -131,6 +132,40 @@ describe('the hall’s playback, judged', () => {
     expect(
       summaryLines(all({ [CONTROLS[0]?.name ?? '']: { off: false } }), { outcome: 'success' }).join('\n'),
     ).toContain('**RED**');
+  });
+
+  it('keeps feature status when Chromium refuses GPU details, without aborting playback', async () => {
+    const gpu = await readPlaybackGpu({
+      getGPUFeatureStatus: () => ({ video_decode: 'disabled_software', gpu_compositing: 'disabled_software' }),
+      getGPUInfo: () => Promise.reject(new Error('GPU access is disabled due to frequent crashes.')),
+    });
+    expect(gpu).toEqual({
+      videoDecode: 'disabled_software',
+      gpuCompositing: 'disabled_software',
+      devices: [],
+      problem: 'off: GPU access is disabled due to frequent crashes.',
+    });
+    const lines = summaryLines(all().map((r) => ({ ...r, gpu })), { outcome: 'success' }).join('\n');
+    expect(lines).toContain('SOFTWARE-ONLY');
+    expect(lines).toContain('no working GPU');
+    expect(lines).toContain(gpu.problem);
+    expect(lines).not.toContain('**GREEN**');
+    expect(lines).toContain('| played |');
+  });
+
+  it('records successful GPU details and tolerates a failed feature-status read', async () => {
+    expect(await readPlaybackGpu({
+      getGPUFeatureStatus: () => ({ video_decode: 'enabled', gpu_compositing: 'enabled' }),
+      getGPUInfo: () => Promise.resolve({ gpuDevice: [{ vendorId: 0x106b, deviceId: 0xeeee, active: true }] }),
+    })).toEqual({ videoDecode: 'enabled', gpuCompositing: 'enabled', devices: ['106b:eeee (active)'] });
+    const gpu = await readPlaybackGpu({
+      getGPUFeatureStatus: () => { throw new Error('status unavailable'); },
+      getGPUInfo: () => Promise.resolve({}),
+    });
+    expect(gpu.problem).toContain('status unavailable');
+    expect(summaryLines(all().map((r) => ({ ...r, gpu })), { outcome: 'success' }).join('\n')).not.toContain('**GREEN**');
+    const software = { videoDecode: 'disabled_software', gpuCompositing: 'disabled_software', devices: [] };
+    expect(summaryLines(all().map((r) => ({ ...r, gpu: software })), { outcome: 'success' }).join('\n')).toContain('SOFTWARE-ONLY');
   });
 
   it('prints the runner and its graphics as Chromium reports them (a22-review-intelplay S3)', () => {
