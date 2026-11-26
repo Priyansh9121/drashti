@@ -1,3 +1,4 @@
+import { ChatPopup } from '../chat/ChatPop';
 import { EditVideoDialog } from '../library/EditVideoDialog';
 import { CombineVideosDialog } from '../library/CombineVideosDialog';
 import { SoundPictureDialog } from '../library/SoundPictureDialog';
@@ -150,7 +151,7 @@ const firstData = holdOpening();
 /** Everything that keeps the window up to date, connected once as it opens. */
 function useConnections(setInfo: (info: AppInfo) => void): void {
   useEffect(() => {
-    connectEngine();
+    connectEngine('says', { deferCueCleanup: true });
     connectScreens();
     // Audience and Stage (Session 50): in both modes (Simple Mode's status bar turns one on).
     connectScreenSwitches();
@@ -501,6 +502,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
       )}
       <NoticeArea />
       <LinkDialog />
+      {/* A chat message's popup (alpha.24): over the middle column's foot, so above the quick bar and the bar of clears
+      together, over none of their buttons; without the columns (the practice show), just above them. */}
+      <ChatPopup />
       {/* The quick bar (Session 55, Part 8), just above the bar of clears: hidden when empty. */}
       <QuickBar platform={platform} run={run} />
       <LayerBar platform={platform} run={run} />
@@ -518,10 +522,10 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SetupWizard platform={platform} />
       <Welcome />
       <AppearanceDialog />
-      <WindowPicker />
+      <WindowPicker platform={platform} />
       <StreamLinkDialog />
       <VideoInputDialog platform={platform} />
-      <PipDialog />
+      <PipDialog platform={platform} />
       {/* Edit › Simple Mode Features… (alpha.22). */}
       <SimpleFeaturesDialog />
       {/* The MIDI controller's section, or Tools › MIDI Controller… (Session 60, x36). */}

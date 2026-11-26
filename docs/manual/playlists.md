@@ -163,6 +163,10 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 3. Right-click it for **Edit wallpaper…** (order, **Seconds each**, **Fade**), **Rename…** and **Delete…**.
 4. **F12** (or **Wallpaper** along the bottom) puts it over whatever is up.
 
+If a wallpaper says **Picture missing**, press **Find…** and choose its folder. A file just deleted from **Media** comes back with the playlist rows and music tracks deleted with it; items removed earlier stay removed.
+
+A picture that says **Convert picture**, such as HEIC, needs converting in **Media**. LIVE explains when the wallpaper makes the screens black, including under **F12**.
+
 ![The Wallpapers under the playlists: three placeholder wallpapers, the second chosen](../screenshots/wallpapers.png)
 
 ## Sabha flow
@@ -178,6 +182,10 @@ To bring a playlist file in, choose **+ New › Import a Playlist File (M3U)…*
 3. **Read list** shows each item as "1 · Program · Details · Duration · Presenter", the total at the bottom; **PDF page** shows the page, with **Zoom in** and **Zoom out**.
 4. Click a row, or press **Next**, to mark where the sabha is. **Back** goes one item back.
 5. **Replace…** beside its name chooses another PDF; **Remove** takes Drashti's copy away, asking first.
+
+In Pro Mode, drop a PDF on Sabha flow to use it as the running order; with one already loaded, confirm **Replace the running order?** or Cancel to keep it, and when several PDFs are dropped only the first is used.
+
+In the operator window, drag the PDF page with the mouse to move it both ways, or type 25% to 400% in **Zoom** and press Enter or leave the box; Escape restores the current zoom, and zooming keeps your place.
 
 A scanned PDF, or one whose letters come out wrong, says so and shows only its page.
 

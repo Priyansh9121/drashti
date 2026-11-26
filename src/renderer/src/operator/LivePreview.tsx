@@ -12,8 +12,7 @@ import { pauseClock } from '../render/clock';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
 import type { EngineState, RepeatRun, TimerShow } from '../../../shared/engine/state';
-import { nothingUp } from '../../../shared/engine/state';
-import { wallpaperMissing } from '../../../shared/wallpaper-missing';
+import { wallpaperMissingLive } from '../../../shared/wallpaper-missing';
 import { useWallpapers } from '../wallpapers/wallpaper-store';
 import { LOWER_THIRD_MAX_LINES, lowerThirdOf } from '../../../shared/program';
 import { useStream } from '../stream/stream-store';
@@ -101,10 +100,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // screens named do not, so it says so while each stays up (the show's, never practice's).
   const notOnList = useNotOnScreens((s) => s.list);
   const notOn = practising ? [] : notOnScreensNow(notOnList, state);
-  const wallpaperGone =
-    !practising && state !== null && chosenWallpaper !== null && (nothingUp(state.layers) || state.wallpaper)
-      ? (wallpaperMissing(chosenWallpaper)?.live ?? null)
-      : null;
+  const wallpaperGone = !practising && state !== null ? wallpaperMissingLive(state, chosenWallpaper) : null;
   const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
@@ -191,6 +187,9 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
               canvas={canvas}
               scaling={scaling}
               annotate
+              // Its own work for a cue's Go moment after its cued picture's start, which it tells (QA23-CUELIVE-1).
+              cueStartFirst
+              cueStartTeller
               translationGroupId={translationGroupId}
               translationOutputId={audienceOutputId}
               {...(audience ? { look: audience.look } : {})}

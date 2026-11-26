@@ -365,7 +365,7 @@ jobs:
         env:
           DRASHTI_PLAYBACK_READINGS: ${{ runner.temp }}/intel-playback.json
           PLAY_OUTCOME: ${{ steps.play.outcome }}
-        run: node scripts/playback-check.mjs summary "$DRASHTI_PLAYBACK_READINGS"
+        run: node scripts/playback-check-summary.mjs "$DRASHTI_PLAYBACK_READINGS"
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

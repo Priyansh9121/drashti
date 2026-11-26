@@ -183,6 +183,11 @@ export default defineConfig(
             ],
             ['src/main/stream/worker/progress.ts', 'buffer.slice(0, at)', 'FFmpeg’s output up to a newline'],
             [
+              'src/main/library-redaction.ts',
+              's.slice(0, at + len - 1)',
+              'never shown: the text read only up to a longer name’s last character, to find a shorter name there',
+            ],
+            [
               'src/main/import/rtf/rtf.ts',
               'style.slice(0, -slant[0].length)',
               'a font’s name without its style',

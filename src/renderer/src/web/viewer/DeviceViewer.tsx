@@ -21,7 +21,7 @@ import type { EngineState } from '../../../../shared/engine/state';
  * two fingers on this device only, with the pages before and after it (a presentation looked through). A view only
  * since alpha.23 (QA23-PHONE-1, the owner's Q8 "View only (Recommended)"): until then a zoomed page the screens showed
  * had a button putting that zoom on the screens and Back to Whole (D2), and a picture Save picture… (Session 55, Part
- * 5); none now (the network refuses a phone's zoom; save-picture.ts and the pages' `save` are no longer used). A page
+ * 5); none now (the network refuses a phone's zoom; the pages' `save` is no longer used). A page
  * the screens show zoomed by the operator still starts where they are. Esc or Close goes back to the remote. Mounted
  * once, by the remote (RemoteApp.tsx). Its bars keep clear of a phone's notch and rounded corners however it is held
  * (the safe areas, D1/D2 review).

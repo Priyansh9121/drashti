@@ -81,6 +81,20 @@ describe('wallpapers in the library', () => {
     expect(repo.usedBy('none')).toEqual([]);
   });
 
+  it('carries an unconverted HEIC diagnosis to the wallpaper view and clears it when the picture becomes playable', () => {
+    const db = openDatabase(':memory:');
+    picture(db, 'photo', 'Placeholder.heic');
+    db.prepare("UPDATE media SET playable = 0, format = 'HEIC photo' WHERE id = 'photo'").run();
+    const repo = new WallpaperRepo(db);
+    const id = repo.create('Placeholder', ['photo']);
+    expect(repo.get(id)?.pictures).toEqual([
+      { mediaId: 'photo', name: 'Placeholder.heic', missing: false, unplayable: 'HEIC photo' },
+    ]);
+    db.prepare("UPDATE media SET playable = 1, format = 'PNG picture' WHERE id = 'photo'").run();
+    expect(repo.get(id)?.pictures).toEqual([{ mediaId: 'photo', name: 'Placeholder.heic', missing: false }]);
+    db.close();
+  });
+
   it('an alpha.13 library (49) gains the wallpapers empty, and its playlist rows When it ends left to the default', () => {
     const file = join(dir, 'library.sqlite');
     const db = openDatabase(

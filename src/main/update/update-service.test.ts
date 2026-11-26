@@ -79,7 +79,13 @@ function manifestFor(base: string, version: string, name: string, body: Buffer):
 
 function service(
   base: string,
-  extra: { onAir?: () => boolean; current?: string; node?: boolean; packaged?: boolean } = {},
+  extra: {
+    onAir?: () => boolean;
+    current?: string;
+    node?: boolean;
+    packaged?: boolean;
+    fetch?: (url: string, init: { headers: Record<string, string> }) => Promise<Response>;
+  } = {},
 ) {
   const installed: string[] = [];
   const views: UpdateView[] = [];
@@ -100,7 +106,7 @@ function service(
       arch: 'x64',
       base,
       dir,
-      fetch: (url, init) => fetch(url, init),
+      fetch: extra.fetch ?? ((url, init) => fetch(url, init)),
       installer,
       onAir: extra.onAir ?? (() => false),
       autoCheck: extra.node
@@ -339,6 +345,38 @@ describe('the manifest (Session 30)', () => {
     const v = (await t.make().check()) as { ok: true; view: UpdateView };
     expect(v.view).toMatchObject({ phase: 'error', offer: null });
     expect(t.logs.join('\n')).toContain('larger than 64 KB');
+  });
+
+  it('over 64 KB as its answer fails, refused with no promise failing uncaught (QA24-CRASH-1)', async () => {
+    // The answer's first part is already too big, and the connection drops just after it: the read is given up, and
+    // giving it up fails with the drop's error, which is caught (it was left to fail uncaught in the main process).
+    const failed: unknown[] = [];
+    const uncaught = (reason: unknown) => {
+      failed.push(reason);
+    };
+    process.on('unhandledRejection', uncaught);
+    try {
+      // Asked for only as it is read (no high-water mark), so the part reaches the read before the drop.
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            controller.enqueue(new Uint8Array(70_000));
+            controller.error(new Error('Placeholder: the connection dropped'));
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const t = service('https://placeholder.invalid/releases', {
+        fetch: () => Promise.resolve(new Response(body, { status: 200 })),
+      });
+      const v = (await t.make().check()) as { ok: true; view: UpdateView };
+      expect(v.view).toMatchObject({ phase: 'error', offer: null });
+      expect(t.logs.join('\n')).toContain('larger than 64 KB');
+      await new Promise((wait) => setTimeout(wait, 50));
+      expect(failed.map(String)).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', uncaught);
+    }
   });
 
   it('a node asking for one version refuses a manifest of another', async () => {

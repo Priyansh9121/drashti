@@ -1,3 +1,4 @@
+import { ChatPopup } from '../chat/ChatPop';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -437,6 +438,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <LinkDialog />
       {/* Files dropped with no playlist open: a new playlist or folder for them (Session 60, x36). */}
       <DropNewDialog />
+      {/* A chat message's popup (alpha.24): over the middle column's foot, just above Simple Mode's show buttons. */}
+      <ChatPopup />
       <LayerBar platform={platform} run={run} simple />
       <StatusBar info={info} onOpenScreens={null} />
       {/* A row's right-click menu, its Delete's question when it is up, and From a Link…. */}
@@ -455,7 +458,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />
       {/* What a chosen tool opens from its section (alpha.22): Show a Window…, Show a Stream Link…, Picture in Picture…. */}
-      <SimpleFeatureDialogs />
+      <SimpleFeatureDialogs platform={platform} />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
     </div>
   );

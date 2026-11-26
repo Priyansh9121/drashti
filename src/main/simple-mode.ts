@@ -293,6 +293,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.captionWords.import,
   IPC.captionWords.export,
   IPC.captionWords.setHints,
+  // Words left out of captions (alpha.24): the admin's own words, Pro Mode only (the leaving out works in both modes).
+  IPC.captionClean.view,
+  IPC.captionClean.set,
+  IPC.captionClean.import,
+  IPC.captionClean.export,
   // A file deleted from the library and put back (the audio playlists' own changes are bounded since Session 56, below).
   IPC.media.remove,
   // Snapshot (alpha.20, the time bar's ⋯) is Pro Mode's (the owner's "Yes, all A" to Q60-39 P6 (j) A).

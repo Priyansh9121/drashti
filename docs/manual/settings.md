@@ -48,7 +48,7 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 
 ## Interface motion
 
-**What it is.** How Drashti's own window moves: **Calm**, **Lively** or **Off**. Next, Back, the clears, the slides and the live picture never move, whichever you choose.
+**What it is.** How Drashti's own window moves: **Calm**, **Lively** or **Off**. A new install starts in **Lively**; a computer that had Drashti before keeps what it had (**Calm** unless someone chose). In **Calm** a section under LIVE fades open and closed; in **Lively** it unrolls as the sections under it slide down, and a button lifts a little as you point at it. Next, Back, the clears, the slides and the live picture never move, whichever you choose, and on a computer without a graphics chip Lively looks and moves as Calm does, and the sections and buttons simply change.
 
 **When you would use it.** Choose **Off** if moving panels distract, or for someone who finds motion hard.
 
@@ -124,7 +124,7 @@ If the secret was not kept, **New secret** makes another. Copy it into the recei
 
 ## Live captions
 
-**What it is.** A trial: the speaker's words written as captions, on the stage screens and the stream, and on the audience screens only if chosen. They start off and can slow the screens while on. With a language's own model, that language's captions show one phrase at a time.
+**What it is.** A trial: the speaker's words written as captions, on the stage screens and the stream, and on the audience screens only if chosen. They start off and can slow the screens while on. With a language's own model, that language's captions show one phrase at a time. Words on Drashti's list never show: captions leave them out.
 
 **When you would use it.** Only when whoever looks after Drashti has set them up and rehearsed them.
 
@@ -133,7 +133,8 @@ If the secret was not kept, **New secret** makes another. Copy it into the recei
 1. Choose **File**, then **Live Captions…**.
 2. Turn them on or off there.
 3. When the next speaker uses another language, choose **File**, then **Speaker’s Language**, then that language.
-4. Tell whoever looks after Drashti if they are wrong or lag behind. Misspelt names and terms can be added under **Caption Words…** there.
+4. To show the captions in another language (Pro Mode, a trial), choose it under **Captions in** there, or choose **File**, then **Caption Language**. It needs the translation pack, and a reader should check a rehearsal first.
+5. Tell whoever looks after Drashti if they are wrong or lag behind. Misspelt names and terms can be added under **Caption Words…** there, and words to leave out under **Words Left Out…**.
 
 ![Live captions off, and the Gujarati trial's warning](../screenshots/captions-off.png)
 

@@ -166,7 +166,11 @@ export type ToDevice =
   | { type: 'engine'; message: EngineMessage }
   /** The answer to a clock message: the device's t0, and the engine's clock when it was answered. */
   | { type: 'clock'; t0: number; server: number }
-  | { type: 'changed'; what: NetworkChange }
+  /**
+   * With 'presentations': the presentations that changed, when Drashti can name them (QA24-PHONE-C: a phone reads
+   * again only those of its rows); left out, any may have changed.
+   */
+  | { type: 'changed'; what: NetworkChange; ids?: string[] }
   /** The chat (alpha.23): to the devices in it only (shared/chat.ts CHAT_DEVICE_KINDS), each as it happens. */
   | { type: 'chat'; event: ChatEvent }
   /** The connection is ending, and why (the device was revoked, the network turned off...). */

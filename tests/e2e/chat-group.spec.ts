@@ -22,6 +22,7 @@ import {
   giveName,
   holdChatClock,
   keptPairing,
+  moveChatClock,
   openChatSection,
   operatorSays,
   type Phone,
@@ -330,6 +331,34 @@ test('the limits, refused by Drashti in plain words: 500 characters as a phoneâ€
     await expect(p.getByTestId('chat-problem')).toHaveText(CHAT_REFUSAL.tooFast);
     await expect(box).toHaveValue('Placeholder: one too many');
     expect((await chatView(win)).messages.map((m) => m.text)).not.toContain('Placeholder: one too many');
+
+    // A refused Send goes later, never twice (QA24-CHAT-1, a23-review-phonejoin S1): with the allowance still spent
+    // and the clock held, the phone's Send is refused (429) and asked again 400 ms later (web/device.ts). That ask is
+    // held back here until the chat's clock has moved on by room for two messages, so it is taken: once only, though a
+    // second would have been taken too. Then no problem is said, the box is empty, and the chat has the words once.
+    const later = 'Placeholder: one too many';
+    let asks = 0;
+    let letThrough: () => void = () => undefined;
+    const clockMoved = new Promise<void>((resolve) => {
+      letThrough = resolve;
+    });
+    const sendPath = `**${CHAT_API.send}`;
+    await p.route(sendPath, async (route) => {
+      asks += 1;
+      if (asks > 1) await clockMoved;
+      await route.continue();
+    });
+    const firstRefused = p.waitForResponse((r) => r.url().endsWith(CHAT_API.send) && r.status() === 429);
+    await p.getByTestId('chat-send').click();
+    await firstRefused;
+    await moveChatClock(app, Date.now() + (2 / CHAT_RATE.perSecond) * 1000 + 500);
+    letThrough();
+    await expect(box).toHaveValue('');
+    expect(asks, 'one ask refused, then one taken: no third').toBe(2);
+    await expect(p.getByTestId('chat-problem')).toHaveCount(0);
+    await expect(p.getByTestId('chat-message').filter({ hasText: later })).toHaveCount(1);
+    expect((await chatView(win)).messages.filter((m) => m.text === later)).toHaveLength(1);
+    await p.unroute(sendPath);
     await holdChatClock(app, false);
 
     // The Chat QR stopped: a phone scanning its code now is told it has ended, and keeps no pairing.

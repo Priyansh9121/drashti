@@ -13,10 +13,11 @@ import { SPEECH_LANGUAGES, type SpeechLanguage } from '../../../shared/speech';
 import { Button, IconButton } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
-import { ArrowUp, Trash2 } from '../ui/icons';
+import { ArrowUp } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Toggle } from '../ui/Toggle';
-import { captionWordsHintText } from './caption-words-text';
+import { TrashButton } from '../ui/TrashButton';
+import { captionWordLettersText, captionWordsLine } from './caption-words-text';
 
 /*
  * File › Live Captions… › Caption Words… (alpha.22; Pro Mode): the names and terms a speaker says, each spelt as
@@ -31,6 +32,26 @@ const isView = (v: unknown): v is CaptionWordsView =>
   typeof v === 'object' && v !== null && Array.isArray((v as { words?: unknown }).words);
 const isResult = (v: unknown): v is CaptionWordsResult =>
   typeof v === 'object' && v !== null && isView((v as { view?: unknown }).view);
+
+/**
+ * One entry in the list, as typed; under Gujarati, Hindi or Sanskrit in other letters than its language's, a short
+ * note says it never shows in that language's captions (alpha.24: they keep to its letters). Kept either way.
+ */
+export function CaptionWordText({ word }: { word: CaptionWord }) {
+  const note = captionWordLettersText(word.word, word.language);
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-sm" lang={LANG_TAG[word.language]} data-testid="caption-word">
+        {word.word}
+      </span>
+      {note !== null && (
+        <span className="block text-xs text-warning-fg" data-testid="caption-word-letters">
+          {note}
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** The Live captions dialog's line about caption words, and the button that opens them. */
 export function CaptionWordsSection({ listening }: { listening: SpeechLanguage | 'auto' }) {
@@ -203,7 +224,7 @@ function CaptionWordsDialog({
           </Button>
         </form>
         <p className="text-sm text-muted" data-testid="caption-words-hints">
-          {captionWordsHintText(name, mine.length, view?.hinted[language] ?? 0, listening, language, hintsOn)}
+          {captionWordsLine(mine, view?.hinted[language] ?? 0, listening, language, hintsOn)}
         </p>
         <Toggle
           checked={hintsOn}
@@ -227,13 +248,7 @@ function CaptionWordsDialog({
           >
             {mine.map((w, i) => (
               <li key={w.word} className="flex items-center gap-2 px-2 py-1">
-                <span
-                  className="min-w-0 flex-1 truncate text-sm"
-                  lang={LANG_TAG[w.language]}
-                  data-testid="caption-word"
-                >
-                  {w.word}
-                </span>
+                <CaptionWordText word={w} />
                 <IconButton
                   icon={ArrowUp}
                   size="sm"
@@ -246,12 +261,9 @@ function CaptionWordsDialog({
                     save(withMine(next));
                   }}
                 />
-                <IconButton
-                  icon={Trash2}
-                  size="sm"
-                  variant="ghost"
+                <TrashButton
                   label={`Remove ${w.word}`}
-                  onClick={() => {
+                  onPress={() => {
                     save(withMine(mine.filter((_, j) => j !== i)));
                   }}
                 />

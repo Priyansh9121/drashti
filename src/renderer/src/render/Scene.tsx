@@ -26,6 +26,7 @@ import type {
   PipLayer,
   TickerLayer,
 } from '../../../shared/engine/state';
+import { nothingUpBehindBox } from '../../../shared/engine/state';
 import type { GroupLayer, LiveGroupLook, Movement } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import type { TimerState } from '../../../shared/timers';
@@ -315,9 +316,15 @@ function BackgroundPicture({
   cue,
   crossfade,
   opaqueCanvas = false,
+  cueStartFirst = false,
+  cueStartTeller = false,
   onLinkDrawn,
 }: {
   opaqueCanvas?: boolean;
+  /** The operator window's previews (QA23-CUELIVE-1): their work for a cue's Go moment after LIVE's picture's start. */
+  cueStartFirst?: boolean;
+  /** LIVE's preview alone: its cued picture says when it has started at Go (render/cue-started.ts). */
+  cueStartTeller?: boolean;
   cue?: VideoCue | null;
   crossfade?: VideoCrossfade | null;
   background: BackgroundLayer | null;
@@ -360,6 +367,8 @@ function BackgroundPicture({
         cue={cue}
         crossfade={crossfade}
         opaqueCanvas={opaqueCanvas}
+        cueStartFirst={cueStartFirst}
+        cueStartTeller={cueStartTeller}
       />
       {background?.kind === 'window' && <LiveWindowView layer={background} />}
       {background?.kind === 'link' && <LinkView layer={background} onDrawn={onLinkDrawn} />}
@@ -425,6 +434,9 @@ const SceneBody = memo(function SceneBody({
   place = 'hall',
   captions = true,
   picturesFirst = place === 'stream',
+  cueStartFirst = false,
+  cueStartTeller = false,
+  engineState,
 }: {
   state: EngineState;
   canvas: Size;
@@ -453,10 +465,23 @@ const SceneBody = memo(function SceneBody({
    * page (Session 58, Q57-35) and the hall's screens (Session 59, X19, output/HallScene.tsx). Left out: the stream only.
    */
   picturesFirst?: boolean;
+  /**
+   * The operator's LIVE preview alone (QA23-CUELIVE-1): its own React work for a cue's Go moment (the scene's swap, the
+   * cued slot's activation) runs after its cued picture has set its rate at Go, never ahead of it. On alpha.22's gate 3
+   * (CI's Mac) LIVE's picture set its rate 23-27 ms after Go behind the operator window's work. Every screen as before.
+   */
+  cueStartFirst?: boolean;
+  /**
+   * LIVE's preview alone (QA23-CUELIVE-1): its cued picture tells the window when it has started at Go; the window's
+   * previews set to `cueStartFirst` wait for that (250 ms past Go at the latest).
+   */
+  cueStartTeller?: boolean;
+  /** The engine's own state that `state` was prepared from (Scene's): LIVE's keeper compares those (QA23-CUELIVE-1). */
+  engineState?: EngineState;
   translationOutputId?: string;
   translationGroupId?: string | null;
 }) {
-  const state = useCuedStart(rawState);
+  const state = useCuedStart(rawState, cueStartFirst, engineState ?? rawState);
   const captionRoot = useRef<HTMLDivElement>(null);
   // Clipped at the canvas's edges, but on a screen warped out of square (x27: render/canvas-clip.ts).
   const canvasClip = useContext(CanvasClip);
@@ -525,16 +550,21 @@ const SceneBody = memo(function SceneBody({
   // Worked out at every drawing from the engine's time, kept while it draws the same (Session 51).
   const [run, refreshRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
   const up = boxHere(layers.pip) ? layers.pip : null;
-  // Nothing up on these screens (the box counts): what shows then (Session 55, render/NothingUp.tsx: Part 6's
-  // chosen wallpaper; black with none chosen).
+  // Nothing on the main picture: no background drawn (none, or its first frame not come) and no slide.
+  const mainEmpty = (background === null || nothingDrawnYet) && (layers.slide === null || !shown('slide'));
+  // Nothing up on these screens (the box counts), as the scene says it (data-nothing-up): what shows then (Session 55,
+  // render/NothingUp.tsx: Part 6's chosen wallpaper; black with none chosen).
   // Q60-51 (the owner's "never black", x52's A11): with the box up over a background whose first frame has not come,
   // what shows with nothing up stays under the box until it does; not with the box swapped into the background's
-  // place (its own picture is there).
-  const nothingUp =
-    (background === null || nothingDrawnYet) &&
-    (layers.slide === null || !shown('slide')) &&
-    (up === null || (nothingDrawnYet && !up.swapped));
-  const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
+  // place (its own picture is there). QA24-WALLBLACK-2 (the owner's A, alpha.24): so does a box over nothing else, so
+  // the chosen wallpaper stays behind it as it comes and goes, never black: the one rule, shared/engine/state.ts
+  // nothingUpBehindBox, which LIVE's line for a missing wallpaper and the PiP preview follow too.
+  const nothingUpNow = mainEmpty && nothingUpBehindBox(up) ? nothingUpShows(state) : null;
+  // Where it is drawn (QA24-WALLBLACK-2, lead 2's option A): in the main picture's background place, so with a box up
+  // it is the background a Swap and a Swap back dissolve (render/pip.ts pipMainPlaces), never a cut and never black;
+  // kept there unseen while the box is swapped, as the background is (keptBackground), so it is whole at once when it
+  // comes back. One place with a box or none, so it is never drawn again as the box comes and goes.
+  const nothingDrawn = mainEmpty ? nothingUpShows(state) : null;
   // Back to the Wallpaper (Clear background, a video's end, one that could not play coming off; Q60-31 (3), the
   // lead's): the Wallpaper's picture is read again as it comes back, and the screen showed black meanwhile. Now what the
   // background drew stays, the Wallpaper out of sight over it, until its picture has come (NothingUp's onDrawn), at
@@ -662,8 +692,24 @@ const SceneBody = memo(function SceneBody({
                       movement={look.movement}
                       onDrawn={setDrawnKey}
                       onLinkDrawn={setLinkDrawn}
+                      cueStartFirst={cueStartFirst}
+                      cueStartTeller={cueStartTeller}
                     />
                   </BackgroundBox.Provider>
+                  {/* What shows with nothing up, over a background still coming (Q60-51) and in its place (above). */}
+                  {nothingDrawn && (
+                    <div
+                      data-wallpaper-coming={holding ? 'true' : undefined}
+                      style={holding ? FULL_UNSEEN : FULL}
+                    >
+                      <NothingUp
+                        shows={nothingDrawn}
+                        state={state}
+                        canvas={canvas}
+                        onDrawn={wallpaperDrawn}
+                      />
+                    </div>
+                  )}
                 </MainSlot>
                 {/* The box's own picture in the background's place, once swapped (Session 50), a video between its
                     file's start and end points as in the box (Session 53). */}
@@ -678,14 +724,6 @@ const SceneBody = memo(function SceneBody({
                     />
                   )}
                 </MainSlot>
-                {nothingUpNow && (
-                  <div
-                    data-wallpaper-coming={holding ? 'true' : undefined}
-                    style={holding ? FULL_UNSEEN : FULL}
-                  >
-                    <NothingUp shows={nothingUpNow} state={state} canvas={canvas} onDrawn={wallpaperDrawn} />
-                  </div>
-                )}
                 <MainSlot slot={slotOf('slide')} swap={swap}>
                   <SlideLayerView
                     layer={shown('slide') ? layers.slide : null}
@@ -814,5 +852,5 @@ export const Scene = memo(function Scene(props: ComponentProps<typeof SceneBody>
       props.place,
     ],
   );
-  return <SceneBody {...props} state={state} />;
+  return <SceneBody {...props} state={state} engineState={props.state} />;
 });

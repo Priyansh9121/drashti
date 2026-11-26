@@ -1,3 +1,5 @@
+import { droppedPdf } from './sabha-flow/dropped-pdf';
+import { ONLY_A_PDF } from '../shared/sabha-flow-drop';
 import { editPlan } from './convert/edit-plan';
 import { editedClipSource } from './convert/clip-edited-source';
 import { withSceneMarkers } from './convert/scene-marker-save';
@@ -204,6 +206,7 @@ import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/dec
 import { deckAppsOf, readDeckAnimations, writeDeckAnimations } from './import/deck/deck-setting';
 import { LinkService } from './links/link-service';
 import { libraryProblem } from './library-problem';
+import { ChangedPresentations } from './library-changes';
 import { parsePlain } from '../shared/plain-parse';
 import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
@@ -348,6 +351,7 @@ import {
 } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
+import { onQuitRefused, resumeAfterRefusal, type QuitResume } from './outputs/quit-refused';
 import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
@@ -378,7 +382,7 @@ import { PdfEditor } from './library/pdf-editor';
 import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
-import { ownSchema } from './appearance/appearance-file';
+import { isNewInstall, ownSchema } from './appearance/appearance-file';
 import { familyOf, FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList, stopTimes } from './lifecycle';
@@ -507,6 +511,8 @@ import { FanoutTransport, type EngineTransport } from '../shared/engine/transpor
 import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import { CaptionsService } from './speech/captions-service';
 import { CaptionCoordinator } from './speech/caption-coordinator';
+import { LiveTranslation, translationChoosable } from './speech/live-translation';
+import { normalizeSpokenTimes } from '../shared/spoken-times';
 import { ownModelCaptionAi } from './speech/caption-routes';
 import { registerCaptionPrototypeIpc } from './speech/caption-prototype-ipc';
 import { createWhisperEngine } from './speech/whisper-engine';
@@ -532,6 +538,9 @@ import { CaptionSettingsRepo } from './db/captions';
 import { CaptionWordsRepo } from './db/caption-words';
 import { CAPTION_HINTS_ON } from '../shared/caption-words';
 import { CaptionWordsService } from './speech/caption-words-service';
+import { CaptionCleanWordsRepo } from './db/caption-clean-words';
+import { CaptionCleanService } from './speech/caption-clean-service';
+import type { VideoCaptionTrack } from '../shared/video-captions';
 import { VideoCaptionsRepo } from './db/video-captions';
 import { CaptionFileReader } from './video-captions/reader';
 import { registerVideoCaptionIpc } from './video-captions/ipc';
@@ -540,6 +549,7 @@ import {
   isLanguageModelLanguage,
   parseCaptionSettings,
   parseCaptionTiming,
+  type CaptionsShown,
 } from '../shared/captions';
 import { type EngineState, nothingUp, rowVideoLive } from '../shared/engine/state';
 import { saveWaitEndsAt, saveWaitsFor } from '../shared/save-waits';
@@ -684,7 +694,8 @@ const exitNow = (code: number) => {
     finish();
     return;
   }
-  void sourceQuit.drain().then((result) => {
+  // A quit refused before is asked again (O1).
+  void sourceQuit.drainForQuit().then((result) => {
     if (result.confirmed) finish();
     else log.error(`Source preparation did not confirm exit (${result.reason}); the library remains open.`);
   });
@@ -1003,6 +1014,13 @@ const appearance = new AppearanceService({
   // Whether Chromium draws with a graphics chip, once its GPU process has said (Session 60: a live look waits for it).
   chip: () => (warmUps.hasSaid ? (warmUps.drawsWithoutChip() ? 'no' : 'yes') : 'unknown'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
+  // A new install starts in Lively and keeps it (alpha.24, appearance-file.ts); never a self-test (the Performance
+  // check measures what it always has), and the e2e tests start as every start did before unless a spec asks
+  // (DRASHTI_TEST_MOTION_AT_START=calm, tests/e2e/helpers.ts).
+  newInstall:
+    sw('DRASHTI_SELFTEST') === undefined &&
+    !(!packaged() && sw('DRASHTI_TEST_MOTION_AT_START') === 'calm') &&
+    isNewInstall(app.getPath('userData')),
   // Tests only (never a packaged Drashti): how many logical cores this computer has, for the moving looks' pause.
   ...(!packaged() && /^[0-9]{1,3}$/u.test(sw('DRASHTI_TEST_CORES') ?? '')
     ? { cores: Number(sw('DRASHTI_TEST_CORES')) }
@@ -2100,6 +2118,9 @@ function start(): void {
    */
   let inputRenamed: (from: string, to: string) => () => void = () => () => undefined;
   const videoCaptionsRepo = new VideoCaptionsRepo(db);
+  // Words left out of captions (alpha.24, the owner: "Yes, clean them too"): a video's caption track as the screens
+  // show it, by the words-left-out service made further down; no video captions show before it is there.
+  let cleanVideoCaptions: (track: VideoCaptionTrack | null) => VideoCaptionTrack | null = () => null;
   let videoCaptionBand = new CaptionSettingsRepo(db).get();
   // Sound and picture… (alpha.20): each file's own playback settings, read once from the library and kept until changed.
   let proxySourceOf: (id: string) => string = (id) => id;
@@ -2198,7 +2219,7 @@ function start(): void {
       mediaMarkers: (mediaId, itemId) => mediaMarkers(mediaId, itemId),
       videoCaptionsOf: (mediaId) => {
         const sourceId = editedPlaying.sourceId(mediaId);
-        const original = videoCaptionsRepo.chosen(sourceId);
+        const original = cleanVideoCaptions(videoCaptionsRepo.chosen(sourceId));
         const rendition = editedPlaying.renditionOf(mediaId);
         const length = mediaLength(sourceId);
         const track =
@@ -3620,8 +3641,9 @@ function start(): void {
   /** The displays read again (their own identities), the outputs following, then each one plugged in given its job. */
   const displaysRead = () => {
     void displayIds.refresh().then(() => {
-      // Read as Drashti quits, after the library has closed: nothing to do.
-      if (db === null) return;
+      // Read as Drashti quits (QA24-QUITRACE-1: the start's reading can end after the quit has begun), or after the
+      // library has closed: nothing to do.
+      if (db === null || quitStarted) return;
       manager.reconcile();
       autoScreens.check();
     });
@@ -4021,7 +4043,7 @@ function start(): void {
     if (!kept.ok) return kept;
     slides.invalidate(presentationId);
     engine.refreshNext();
-    libraryChanged(true);
+    libraryChanged(true, [presentationId]);
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     network?.hint('playlists');
     return { ok: true as const, ids: [presentationId] };
@@ -4379,12 +4401,54 @@ function start(): void {
     },
     log,
   });
+  // Words left out of captions (alpha.24, QA24-CAPCLEAN-1; the owner: "do not show them"): Drashti's own list (hashes
+  // only), the admin's own words in the library (File › Live Captions… › Words Left Out…, Pro Mode) and, in tests
+  // only, DRASHTI_TEST_CAPTION_CLEAN's placeholder words (never packaged). Every phrase heard and every caption shown.
+  const cleanTestWords = packaged() ? undefined : sw('DRASHTI_TEST_CAPTION_CLEAN');
+  const captionClean = new CaptionCleanService({
+    repo: new CaptionCleanWordsRepo(opened.db),
+    ...(cleanTestWords ? { testWords: cleanTestWords.split('|') } : {}),
+    pickImport: async () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Import Words to Leave Out',
+        buttonLabel: 'Import',
+        properties: ['openFile'],
+        filters: [{ name: 'Words (CSV)', extensions: ['csv', 'txt'] }],
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    pickExport: async (defaultName) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return null;
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Export Words to Leave Out',
+        defaultPath: defaultName,
+        buttonLabel: 'Export',
+        filters: [{ name: 'Words (CSV)', extensions: ['csv'] }],
+      });
+      return picked.canceled || !picked.filePath ? null : picked.filePath;
+    },
+    changed: (count) => sendToOperator(IPC.captionClean.changed, count),
+    // The admin's list changed: a video's captions on the screens are drawn again with it.
+    listChanged: () => engine.refreshVideoCaptions(),
+    log,
+  });
+  // The seam's last half: every caption, today's, caption AI's or translated, with words left out just before the
+  // screens (the first half is the spell below, on every phrase heard).
+  const showCaptions = (shown: CaptionsShown | null): void => {
+    engine.setCaptions(captionClean.shown(shown));
+  };
+  // And a video's caption files (the owner: "Yes, clean them too"), cue by cue, where a track is read for the screens.
+  cleanVideoCaptions = (track) => captionClean.track(track);
+  engine.refreshVideoCaptions();
   const captionsEngineProblem =
     testSpeech !== undefined
       ? null
       : (whisperProblem(process.platform, process.getSystemVersion()) ??
         (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   let speakerLanguageTicked: SpeechLanguage | 'auto' | null = null;
+  // File › Caption Language's tick and whether translations can be chosen (alpha.24).
+  let captionLanguageTicked = '';
   const captionSettingsRepo = new CaptionSettingsRepo(opened.db);
   // The model today's engine loads, and the one QWC-1's sizing judges: one helper for both (whisper-context.ts).
   // Only a whisper.cpp model is ever this engine's (another format is caption AI's own route).
@@ -4417,7 +4481,8 @@ function start(): void {
             captions.languageModelFor(language)?.fallback ?? captions.selectedModel() !== 'turbo',
           // The tuned language models are decoded without timestamps (alpha.22).
           timestamps: (language) => captions.languageModelFor(language)?.timestamps ?? true,
-          timing: () => captions.timing(),
+          // While translating, phrases are cut at 8 s (alpha.24): the engines hear with the live timing.
+          timing: () => captions.liveTiming(),
           // Captions that have shown a phrase whole are never stopped as too slow (cap-review-threads MUST-1b).
           keptUp: () => captions.keptUp(),
           sound: { open: (chunk) => streaming.listenSound(chunk) },
@@ -4458,7 +4523,7 @@ function start(): void {
             fallback: () => use.fallback,
             timestamps: () => use.timestamps,
             sizedContext: () => sizedUses.has(use),
-            timing: () => captions.timing(),
+            timing: () => captions.liveTiming(),
             keptUp: () => captions.keptUp(),
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             hints: captionWords.hints,
@@ -4488,21 +4553,79 @@ function start(): void {
     admission: 'below-show',
     // Two threads (the lead, with cap-ship-c's measurement: a 2.4-3.7 s clip in 219-258 ms warm on arm64).
     threads: 2,
-    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review).
-    timing: () => captions.timing(),
+    // The dialog's live timing (step, pause, longest phrase, speech level), as Route W's (alpha.23, the review); 8 s
+    // phrases at most while translating (alpha.24).
+    timing: () => captions.liveTiming(),
     sound: { open: (chunk) => streaming.listenSound(chunk) },
     log,
   });
   // Caption AI (alpha.22, cap-integration): a speaker's language with a model of its own is heard through the
   // captions coordinator (Codex x90): one clause at a time in at most two lines, provisional while heard, settled
   // when final. As heard, Sanskrit and a language without its own model keep today's captions exactly.
+  // Translated live captions (alpha.24, QA24-CAPLANG-2, the owner's 2a-2f, all A): "Captions in" translates each
+  // settled phrase on this computer with the pack's IndicTrans2 through an engine of its own (greedy, two threads,
+  // below the show, the pair's model kept while captions run). Going on air never stops it: Prepare translations'
+  // engine (further down) is another, and still waits while on air. Tests only (never packaged):
+  // DRASHTI_TEST_TRANSLATE=1 stands in with x83's marked placeholder, so CI drives it without a model pack.
+  const liveTranslateProgram = findTranslateHelper({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const liveTranslationEngine = new TranslationEngine({
+    program: () => liveTranslateProgram,
+    models: modelPacks,
+    log,
+    beam: 1,
+    // Let go when captions stop (LiveTranslation.end), never while they run.
+    idleMs: 24 * 60 * 60_000,
+  });
+  const liveStandIn = !packaged() && sw('DRASHTI_TEST_TRANSLATE') === '1' ? new StandInTranslator() : null;
+  // Prepare translations' drafts stop when translated captions begin, and wait while they run (lead 2's decision a):
+  // set once its engine exists (further down).
+  let stopDraftsForLiveCaptions: () => void = () => undefined;
+  const liveTranslation = new LiveTranslation({
+    engine: liveStandIn
+      ? {
+          installed: () => true,
+          available: (from, to) => from !== to,
+          unknownModel: () => false,
+          prepare: () => Promise.resolve(),
+          translate: (source, from, to) => liveStandIn.translate(source, from, to),
+          stop: () => undefined,
+        }
+      : liveTranslationEngine,
+    // Spoken times into digits before translating (2e; a24-captime): "sava aath" -> 8:15. Never what the stage shows.
+    spokenTimes: normalizeSpokenTimes,
+    log,
+    changed: () => {
+      captions.translationChanged();
+    },
+    onBegin: () => {
+      stopDraftsForLiveCaptions();
+    },
+  });
   const captionCoordinator = new CaptionCoordinator({
     settings: () => parseCaptionSettings(captionSettingsRepo.get()),
     show: (shown) => {
-      engine.setCaptions(shown);
+      showCaptions(shown);
     },
     // The operator's review panel (Codex x90's) shows caption AI's phrase while it runs, for a correction.
     changed: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
+    // alpha.24: the translation slot, filled; the stage keeps the speaker's words; long translations as pages.
+    translation: liveTranslation,
+    output: 'translation',
+    stage: true,
+    pages: true,
+    mayTranslate: () => liveTranslation.may(),
+    onSkip: (why) => {
+      liveTranslation.skipped(why);
+    },
+    onTranslationShown: () => {
+      liveTranslation.shown();
+    },
   });
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
@@ -4537,23 +4660,30 @@ function start(): void {
     download: (id, progress, signal) =>
       downloadModel({ dest: modelFile(captionsData, id), source: MODEL_SOURCES[id], progress, signal }),
     show: (shown) => {
-      engine.setCaptions(shown);
+      showCaptions(shown);
     },
     onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     prototypeChanged: (review) => sendToOperator(IPC.captions.prototypeChanged, review),
-    spell: (phrase) => captionWords.fix(phrase),
+    spell: (phrase) => captionClean.heard(captionWords.fix(phrase)),
+    // And an operator's typed correction, where it comes in: never a listed word to the translator (review S1).
+    cleanCorrection: (text, apply) => captionClean.correction(text, apply),
     changed: (view) => {
+      captionClean.captionsOn(view.on);
       videoCaptionBand = view.settings;
       engine.refreshVideoCaptions();
       sendToOperator(IPC.captions.changed, view);
-      // File › Speaker's Language ticks the language as it is (alpha.22).
-      if (view.settings.language !== speakerLanguageTicked) {
+      // File › Speaker's Language ticks the language as it is (alpha.22), and File › Caption Language its choice and
+      // whether a translation can be chosen here (alpha.24).
+      const captionLanguage = `${view.settings.captionLanguage ?? 'same'} ${String(view.translation ? translationChoosable(view.translation) : false)}`;
+      if (view.settings.language !== speakerLanguageTicked || captionLanguage !== captionLanguageTicked) {
         speakerLanguageTicked = view.settings.language;
+        captionLanguageTicked = captionLanguage;
         captionsMenuChanged();
       }
     },
     languageModels,
     log,
+    translation: liveTranslation,
   });
   captionsStreamUseChanged = (inUse) => captions.setStreamInUse(inUse);
   captions.start();
@@ -4640,6 +4770,23 @@ function start(): void {
   );
   handle(IPC.captionWords.export, (e) =>
     fromOperator(e) ? captionWords.exportFile() : captionWordsElsewhere(),
+  );
+  // Words left out of captions (alpha.24): another window is told nothing of the admin's words.
+  const noCleanView = () => ({ words: [], own: { gu: 0, hi: 0, sa: 0, en: 0 }, leftOut: 0 });
+  const captionCleanElsewhere = () => ({
+    ok: false,
+    view: noCleanView(),
+    message: 'Only the operator window can do that.',
+  });
+  handle(IPC.captionClean.view, (e) => (fromOperator(e) ? captionClean.view() : noCleanView()));
+  handle(IPC.captionClean.set, (e, words) =>
+    fromOperator(e) ? captionClean.set(words) : captionCleanElsewhere(),
+  );
+  handle(IPC.captionClean.import, (e) =>
+    fromOperator(e) ? captionClean.importFile() : captionCleanElsewhere(),
+  );
+  handle(IPC.captionClean.export, (e) =>
+    fromOperator(e) ? captionClean.exportFile() : captionCleanElsewhere(),
   );
 
   // ---- another app's window as the background (Session 48) -------------------
@@ -5050,7 +5197,11 @@ function start(): void {
   // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
   let changedTimer: NodeJS.Timeout | null = null;
   let lastChanged = 0;
-  const libraryChanged = (now = false) => {
+  // The presentations the changes name, for the phones' hint (QA24-PHONE-C): a phone reads again only those of its
+  // rows. `ids` left out: the change cannot name them, so any may have changed (the phones read every row again).
+  const changedPresentations = new ChangedPresentations();
+  const libraryChanged = (now = false, ids?: readonly string[]) => {
+    changedPresentations.add(ids);
     const send = () => {
       changedTimer = null;
       // Quitting: the library has closed (Session 23: a change during an import came 2 s later).
@@ -5061,7 +5212,7 @@ function start(): void {
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       // The slide editor's own window: its pictures, videos and sounds to choose from (Session 55, Part 17a).
       slideEditor?.send(IPC.library.changed, { at: lastChanged, what: 'presentations' });
-      network?.hint('presentations');
+      network?.hint('presentations', changedPresentations.take());
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
       nodeService?.libraryChanged();
@@ -5150,9 +5301,16 @@ function start(): void {
         drainPdfCopies(),
         drainKirtanExports(),
       ]);
-      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
-      return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
+      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped: one given up on is
+      // counted by givenUp, below.
+      return pdfGeometry.exitConfirmed || pdfGeometry.givenUp;
     },
+    // Owned readers given up on (a document reader's retainOutput; the PDF geometry worker that did not confirm its
+    // exit): one given up on in a quit's own drain holds that quit, as before. One given up on before it began (while
+    // editing: "Restart Drashti before…", or in a refused quit's drain) never holds a later one (O1): its job has ended,
+    // so nothing of it reaches the library, its output is kept and none is admitted since. Before, every quit after it
+    // was refused at once and Drashti could only be forced to quit.
+    givenUp: () => Number(sourceOutputQuarantined) + Number(pdfGeometry.givenUp),
   });
   stops.add('document preparation', () => {
     pdfPictures.stopEditable();
@@ -5196,8 +5354,14 @@ function start(): void {
     await flowLoaded;
     return fromOperator(e) ? flowStore.snapshot() : { flow: null, state: null };
   });
-  handle(IPC.flow.choose, async (e) => {
+  handle(IPC.flow.choose, async (e, dropped) => {
     if (!fromOperator(e) || !operatorWindow) return notFlowOperator;
+    if (dropped !== undefined) {
+      const file = droppedPdf(dropped);
+      if (file === null) return { ok: false as const, message: ONLY_A_PDF };
+      await flowLoaded;
+      return flowStore.choose(file);
+    }
     const picked = await dialog.showOpenDialog(operatorWindow, {
       title: 'Sabha flow',
       message: 'Choose the running order of the sabha, saved as a PDF.',
@@ -6373,7 +6537,7 @@ function start(): void {
       slides.invalidate(id);
       engine.refreshLive(id);
     }
-    libraryChanged(true);
+    libraryChanged(true, ids);
   };
   const wordsChanges = registerWordsIpc({
     db,
@@ -6607,6 +6771,7 @@ function start(): void {
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
     onAir: translationOnAir,
+    liveCaptions: () => liveTranslation.running(),
     engine: testTranslate
       ? {
           installed: () => true,
@@ -6619,6 +6784,9 @@ function start(): void {
   });
   const stopTranslationOnAir = () => {
     if (translationOnAir()) translationEngine.cancel();
+  };
+  stopDraftsForLiveCaptions = () => {
+    translationEngine.cancel();
   };
   pdfReadWaits.add(stopTranslationOnAir);
   stops.add('translation engine', () => {
@@ -9171,7 +9339,7 @@ function start(): void {
       for (const id of removed) slides.invalidate(id);
       engine.refreshNext();
       log.info(`Removed ${removed.length} presentation(s)`);
-      libraryChanged(true);
+      libraryChanged(true, removed);
       return { ok: true as const, ids: removed };
     },
     restorePresentations: (ids) => {
@@ -9181,7 +9349,7 @@ function start(): void {
       for (const id of restored) slides.invalidate(id);
       engine.refreshNext();
       log.info(`Restored ${restored.length} presentation(s)`);
-      libraryChanged(true);
+      libraryChanged(true, restored);
       return { ok: true as const, ids: restored };
     },
   };
@@ -10304,6 +10472,37 @@ function start(): void {
     return quitConfirmed;
   };
 
+  /** The operator window made again after a refused source stop (review S3): set where its listeners are known. */
+  let reopenOperatorWindow: () => void = () => undefined;
+  const quitResume: QuitResume = {
+    libraryOpen: () => db !== null,
+    reset: () => {
+      quitStarted = false;
+      quitting = false;
+      quitConfirmed = false;
+    },
+    screens: () => {
+      manager.cancelQuitting();
+    },
+    operatorOpen: () => operatorWindow !== null && !operatorWindow.isDestroyed(),
+    openOperator: () => {
+      reopenOperatorWindow();
+    },
+  };
+  // Cancellation can come from a later listener or any window's beforeunload (macOS included).
+  // Observe after synchronous listeners finish, while the library and stop list are still live.
+  const resumeAfterQuitRefused = () => {
+    resumeAfterRefusal(quitResume, false);
+  };
+  const watchQuitRefusal = (window: BrowserWindow) => {
+    window.on('close', (event) => onQuitRefused(event, resumeAfterQuitRefused));
+    window.webContents.on('will-prevent-unload', (event) =>
+      onQuitRefused(event, resumeAfterQuitRefused, true),
+    );
+  };
+  for (const window of BrowserWindow.getAllWindows()) watchQuitRefusal(window);
+  app.on('browser-window-created', (_event, window) => watchQuitRefusal(window));
+
   operatorWindow = createOperatorWindow(appearance.background());
   appearance.track(operatorWindow);
   // The opening (Session 55): timed from the window's making; a page loaded again (the watchdog's reload, Reload
@@ -10337,26 +10536,46 @@ function start(): void {
   operatorWindow.webContents.once('did-finish-load', () => {
     log.info(phaseLine('operator window loaded'));
   });
-  watchdog.watch(operatorWindow.webContents, 'operator');
-  // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
-  // again, or its page stops, the question goes from the outputs too, never left there.
-  operatorWindow.webContents.on('did-start-loading', () => {
-    switchQuestion.asking(null);
-    // A picture adjusted from the window that is loading again (x27): its grid goes from the screens.
-    screens.stopAdjusting();
-    // News waits for its page to open (x53: tellOperator).
-    operatorAsked = false;
-  });
-  operatorWindow.webContents.on('did-start-navigation', (navigation) => {
-    if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
+  let moveTimer: NodeJS.Timeout | null = null;
+  /** The operator window's own listeners: the first one's, and one made again after a refused quit (review S3). */
+  const watchOperatorWindow = (win: BrowserWindow) => {
+    watchdog.watch(win.webContents, 'operator');
+    // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
+    // again, or its page stops, the question goes from the outputs too, never left there.
+    win.webContents.on('did-start-loading', () => {
+      switchQuestion.asking(null);
+      // A picture adjusted from the window that is loading again (x27): its grid goes from the screens.
+      screens.stopAdjusting();
+      // News waits for its page to open (x53: tellOperator).
+      operatorAsked = false;
+    });
+    win.webContents.on('did-start-navigation', (navigation) => {
+      if (loadsOperatorPageAgain(navigation, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }))
+        importNotices.pause();
+    });
+    win.webContents.on('render-process-gone', () => {
       importNotices.pause();
-  });
-  operatorWindow.webContents.on('render-process-gone', () => {
-    importNotices.pause();
-    switchQuestion.asking(null);
-    screens.stopAdjusting();
-    operatorAsked = false;
-  });
+      switchQuestion.asking(null);
+      screens.stopAdjusting();
+      operatorAsked = false;
+    });
+    win.on('moved', () => {
+      if (moveTimer) clearTimeout(moveTimer);
+      moveTimer = setTimeout(guardOperator, 250);
+    });
+    win.on('close', (event) => {
+      if (!confirmQuit()) event.preventDefault();
+    });
+    win.on('closed', () => {
+      if (operatorWindow === win) operatorWindow = null;
+      // Output windows would otherwise keep the app alive.
+      app.quit();
+      // In a quit, app.quit() does nothing more: an output opened once it had begun (QA24-QUITRACE-1: Electron closes
+      // only the windows open as it began) closes here, with every other, and none opens again.
+      if (quitStarted) manager.closeForQuit();
+    });
+  };
+  watchOperatorWindow(operatorWindow);
   // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
   // has loaded, and again at its next load while it could not be told. Never of the operator window itself (question
   // 36): Chromium holds the page that asks until the GPU process has said which video decoders it has (about 15 s on
@@ -10422,21 +10641,26 @@ function start(): void {
     holdPriority('with the operator window open');
   });
   setTimeout(startAudioPlayer, 5000);
-  let moveTimer: NodeJS.Timeout | null = null;
-  operatorWindow.on('moved', () => {
-    if (moveTimer) clearTimeout(moveTimer);
-    moveTimer = setTimeout(guardOperator, 250);
-  });
-  operatorWindow.on('close', (event) => {
-    if (!confirmQuit()) event.preventDefault();
-  });
-  operatorWindow.on('closed', () => {
-    operatorWindow = null;
-    // Output windows would otherwise keep the app alive.
-    app.quit();
-  });
+  // After a refused source stop, the operator window that had closed (review S3): made again with its own listeners,
+  // playing no opening (this is no start), the HEVC question and the audio player as a first window's load would.
+  reopenOperatorWindow = () => {
+    log.info('The quit did not go ahead: the operator window opens again');
+    const win = createOperatorWindow(appearance.background());
+    operatorWindow = win;
+    appearance.track(win);
+    openingPageAgain = true;
+    openingKeys.reset();
+    watchOperatorWindow(win);
+    if (hevc.now === null) win.webContents.on('did-finish-load', askHevc);
+    win.webContents.once('did-finish-load', startAudioPlayer);
+    // Never under the screens that came back just before it.
+    guardOperator();
+  };
   let quitSavingSound = false;
   app.on('before-quit', (event) => {
+    // Our bounded sound/source drains resume the quit themselves; preventDefault there is a hold, not refusal.
+    let held = false;
+    onQuitRefused(event, resumeAfterQuitRefused, false, () => held);
     if (!confirmQuit()) {
       event.preventDefault();
       return;
@@ -10446,12 +10670,16 @@ function start(): void {
     // quit says whether Drashti or what came after was slow.
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
+    // No output opens or is put back now (QA24-QUITRACE-1: the start's display reading, ending 16 ms after Quitting,
+    // opened again the output the quit had just closed, and Drashti ran on).
+    manager.quitting();
     const soundSaved = streaming.quitting();
     studio.quitting();
     // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
     hevcPage?.close();
     slideEditor?.quitting();
     if (soundSaved) {
+      held = true;
       event.preventDefault();
       if (!quitSavingSound) {
         quitSavingSound = true;
@@ -10483,13 +10711,17 @@ function start(): void {
         event,
         () => app.quit(),
         (result) => {
+          // The operator window too, if it had closed (review S3).
+          resumeAfterRefusal(quitResume, true);
           log.error(
             `Source preparation did not confirm shutdown (${result.reason}); the library remains open.`,
           );
         },
       )
-    )
+    ) {
+      held = true;
       return;
+    }
   });
 
   const runSelfTest = () =>
@@ -11005,6 +11237,16 @@ function start(): void {
         rebuildMenu();
       },
     },
+    // File › Caption Language (alpha.24, QA24-CAPLANG-2): "Captions in", a translation only where it is offered here.
+    captionLanguage: {
+      target: captions.view().settings.captionLanguage ?? 'same',
+      // Where offered, or where choosing again mends it (too slow, the engine's fault: a24-review F3).
+      offered: ((t) => (t ? translationChoosable(t) : false))(captions.view().translation),
+      choose: (target) => {
+        if (mode === 'pro') captions.setSettings({ ...captions.view().settings, captionLanguage: target });
+        rebuildMenu();
+      },
+    },
     modelPacks: () => {
       if (mode === 'pro') sendToOperator(IPC.modelPacks.open, { at: Date.now() });
     },
@@ -11488,8 +11730,8 @@ function start(): void {
   manager.reconcile();
   displaysRead();
   watchDisplays(() => {
-    // A display change noticed as Drashti quits comes after the library has closed: nothing to do.
-    if (db === null) return;
+    // A display change noticed as Drashti quits (QA24-QUITRACE-1), or after the library has closed: nothing to do.
+    if (db === null || quitStarted) return;
     manager.reconcile();
     displaysRead();
   });

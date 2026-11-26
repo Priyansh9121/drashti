@@ -5,10 +5,11 @@ import { clickedMany } from '../music/music-store';
 import { isRemoveKey } from '../playlists/playlist-shared';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { Captions, Palette, Pencil, Plus, Trash2 } from '../ui/icons';
+import { Captions, Palette, Pencil, Plus } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
 import { LIVE_SECTION, Panel } from '../ui/Panel';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
+import { TrashButton } from '../ui/TrashButton';
 import { Truncate } from '../ui/Truncate';
 import { useOperateOnly } from '../simple/simple-features-store';
 import {
@@ -209,12 +210,10 @@ export function LowerThirdsPanel({ platform }: { platform: string }) {
                         data-testid="lower-third-edit"
                         onClick={() => void openStudio({ id: lt.id })}
                       />
-                      <IconButton
-                        icon={Trash2}
+                      <TrashButton
                         label={`Delete “${name}”`}
-                        size="sm"
-                        data-testid="lower-third-delete"
-                        onClick={() => void deleteLowerThirds(deleting(lt.id))}
+                        testId="lower-third-delete"
+                        onPress={() => void deleteLowerThirds(deleting(lt.id))}
                       />
                     </>
                   )}
